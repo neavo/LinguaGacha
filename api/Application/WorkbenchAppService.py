@@ -48,6 +48,18 @@ class WorkbenchAppService:
         self.data_manager.schedule_delete_file(rel_path)
         return {"accepted": True}
 
+    def reorder_files(self, request: dict[str, Any]) -> dict[str, object]:
+        """按前端拖拽后的完整顺序持久化工作台文件列表。"""
+
+        ordered_rel_paths_raw = request.get("ordered_rel_paths", [])
+        ordered_rel_paths = (
+            [str(rel_path) for rel_path in ordered_rel_paths_raw]
+            if isinstance(ordered_rel_paths_raw, list)
+            else []
+        )
+        self.data_manager.schedule_reorder_files(ordered_rel_paths)
+        return {"accepted": True}
+
     def get_supported_extensions(self, request: dict[str, Any]) -> dict[str, object]:
         """提供工作台导入文件选择器需要的支持格式列表。"""
 

@@ -27,6 +27,9 @@ export const zh_cn_task = {
         untranslated: '未翻译',
       },
       table: {
+        drag_handle: '拖拽',
+        drag_handle_aria: '拖拽排序',
+        index: '序号',
         file_name: '文件名',
         format: '格式',
         line_count: '行数',
@@ -37,8 +40,8 @@ export const zh_cn_task = {
         add_file: '添加文件',
         export_translation: '生成译文',
         close_project: '关闭项目',
-        replace: '替换',
-        reset: '重置',
+        replace: '替换文件',
+        reset: '重置翻译状态',
         delete: '删除',
       },
       format: {
@@ -50,6 +53,9 @@ export const zh_cn_task = {
       },
       command: {
         description: '工作台底栏会承接工程级快捷操作。',
+      },
+      reorder: {
+        failed: '文件顺序保存失败，请稍后再试。',
       },
       dialog: {
         cancel: '取消',
@@ -82,6 +88,8 @@ export const zh_cn_task = {
       empty: {
         title: '项目未加载',
         description: '请先加载工程后再管理文件、导出译文或关闭项目。',
+        loaded_title: '还没有导入文件',
+        loaded_description: '先从下方命令栏添加文件，工作台就会在这里展示可排序的文件列表。',
       },
     },
   },

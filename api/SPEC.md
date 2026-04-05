@@ -70,6 +70,7 @@
 | `POST` | `/api/workbench/replace-file` | `{"rel_path": "...", "path": "..."}` | `{"accepted": true}` |
 | `POST` | `/api/workbench/reset-file` | `{"rel_path": "..."}` | `{"accepted": true}` |
 | `POST` | `/api/workbench/delete-file` | `{"rel_path": "..."}` | `{"accepted": true}` |
+| `POST` | `/api/workbench/reorder-files` | `{"ordered_rel_paths": ["...", "..."]}` | `{"accepted": true}` |
 | `POST` | `/api/workbench/extensions` | `{}` | `{"extensions": [".txt", ".json"]}` |
 
 `snapshot` 当前包含：
@@ -91,6 +92,11 @@
   ]
 }
 ```
+
+`/api/workbench/reorder-files` 额外约束：
+
+- `ordered_rel_paths` 必须完整覆盖当前工作台文件，且不允许重复路径
+- 成功后新的文件顺序会写回当前 `.lg` 工程，并在后续快照中保持一致
 
 ## 6. 设置接口
 

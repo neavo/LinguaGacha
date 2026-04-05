@@ -30,6 +30,9 @@ export const en_us_task = {
         untranslated: 'Untranslated',
       },
       table: {
+        drag_handle: 'Drag',
+        drag_handle_aria: 'Drag to reorder',
+        index: 'No.',
         file_name: 'File Name',
         format: 'Format',
         line_count: 'Lines',
@@ -40,8 +43,8 @@ export const en_us_task = {
         add_file: 'Add File',
         export_translation: 'Generate Translation',
         close_project: 'Close Project',
-        replace: 'Replace',
-        reset: 'Reset',
+        replace: 'Replace File',
+        reset: 'Reset Translation Status',
         delete: 'Delete',
       },
       format: {
@@ -53,6 +56,9 @@ export const en_us_task = {
       },
       command: {
         description: 'The bottom command bar carries project-level quick actions.',
+      },
+      reorder: {
+        failed: 'Failed to save the file order. Please try again later.',
       },
       dialog: {
         cancel: 'Cancel',
@@ -85,6 +91,8 @@ export const en_us_task = {
       empty: {
         title: 'Project Not Loaded',
         description: 'Load a project before managing files, generating translation output, or closing the project.',
+        loaded_title: 'No Files Imported Yet',
+        loaded_description: 'Add files from the command bar below and the sortable workbench list will appear here.',
       },
     },
   },

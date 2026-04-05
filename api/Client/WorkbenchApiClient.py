@@ -45,6 +45,14 @@ class WorkbenchApiClient:
             {"rel_path": rel_path},
         )
 
+    def reorder_files(self, ordered_rel_paths: list[str]) -> dict[str, Any]:
+        """持久化工作台文件顺序，供拖拽排序后立即写回工程。"""
+
+        return self.api_client.post(
+            WorkbenchRoutes.REORDER_FILES_PATH,
+            {"ordered_rel_paths": ordered_rel_paths},
+        )
+
     def get_supported_extensions(self) -> list[str]:
         """读取工作台导入文件选择器支持的扩展名。"""
 

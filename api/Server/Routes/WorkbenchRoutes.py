@@ -10,6 +10,7 @@ class WorkbenchRoutes:
     REPLACE_FILE_PATH: str = "/api/workbench/replace-file"
     RESET_FILE_PATH: str = "/api/workbench/reset-file"
     DELETE_FILE_PATH: str = "/api/workbench/delete-file"
+    REORDER_FILES_PATH: str = "/api/workbench/reorder-files"
     EXTENSIONS_PATH: str = "/api/workbench/extensions"
 
     @classmethod
@@ -54,6 +55,14 @@ class WorkbenchRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=workbench_app_service.delete_file(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.REORDER_FILES_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=workbench_app_service.reorder_files(request),
             ),
         )
         core_api_server.add_json_route(

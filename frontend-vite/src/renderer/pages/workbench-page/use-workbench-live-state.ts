@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
+import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import type { LocaleKey } from '@/i18n'
+import { useI18n } from '@/i18n'
 import { api_fetch } from '@/app/desktop-api'
 import type {
   WorkbenchDialogState,
@@ -184,11 +186,14 @@ type UseWorkbenchLiveStateResult = {
   request_reset_file: (entry_id: string) => void
   request_delete_file: (entry_id: string) => void
   request_replace_file: (entry_id: string) => Promise<void>
+  request_reorder_entries: (ordered_entry_ids: string[]) => Promise<void>
   confirm_dialog: () => Promise<void>
   close_dialog: () => void
 }
 
 export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
+  const { t } = useI18n()
+  const { push_toast } = useDesktopToast()
   const {
     project_snapshot,
     refresh_task,
@@ -196,15 +201,18 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     task_snapshot,
   } = useDesktopRuntime()
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT)
+  const [entries, set_entries] = useState<WorkbenchFileEntry[]>([])
   const [supported_extensions, set_supported_extensions] = useState<string[]>([])
   const [selected_entry_id, set_selected_entry_id] = useState<string | null>(null)
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state())
   const [is_mutation_running, set_is_mutation_running] = useState(false)
   const previous_task_status_ref = useRef<WorkbenchTaskStatus>(task_snapshot.status)
+  const is_reorder_running_ref = useRef(false)
 
   const refresh_snapshot = useCallback(async (): Promise<WorkbenchSnapshot> => {
     if (!project_snapshot.loaded) {
       set_snapshot(EMPTY_SNAPSHOT)
+      set_entries([])
       set_selected_entry_id(null)
       return EMPTY_SNAPSHOT
     }
@@ -235,6 +243,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     async function load_workbench_data(): Promise<void> {
       if (!project_snapshot.loaded) {
         set_snapshot(EMPTY_SNAPSHOT)
+        set_entries([])
         set_supported_extensions([])
         set_selected_entry_id(null)
         set_dialog_state(close_dialog_state())
@@ -251,10 +260,12 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
         }
 
         const mapped_entries = map_snapshot_entries(next_snapshot.entries)
+        set_entries(mapped_entries)
         set_selected_entry_id((previous_entry_id) => select_after_snapshot([], mapped_entries, previous_entry_id))
       } catch {
         if (!cancelled) {
           set_snapshot(EMPTY_SNAPSHOT)
+          set_entries([])
           set_supported_extensions([])
           set_selected_entry_id(null)
         }
@@ -281,11 +292,17 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     }
   }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy, task_snapshot.status])
 
-  const entries = useMemo(() => map_snapshot_entries(snapshot.entries), [snapshot.entries])
-
   useEffect(() => {
     set_selected_entry_id((previous_entry_id) => select_after_snapshot(entries, entries, previous_entry_id))
   }, [entries])
+
+  useEffect(() => {
+    if (is_reorder_running_ref.current) {
+      return
+    }
+
+    set_entries(map_snapshot_entries(snapshot.entries))
+  }, [snapshot.entries])
 
   const stats = useMemo(() => {
     return build_stats(snapshot, task_snapshot.task_type, task_snapshot.status, task_snapshot.processed_line)
@@ -313,6 +330,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       }
 
       const next_entries = map_snapshot_entries(next_snapshot.entries)
+      set_entries(next_entries)
       set_selected_entry_id(select_after_snapshot(previous_entries, next_entries, preferred_rel_path))
     } catch {
       return
@@ -382,6 +400,57 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     })
   }
 
+  const request_reorder_entries = useCallback(async (ordered_entry_ids: string[]): Promise<void> => {
+    if (readonly) {
+      return
+    }
+
+    if (ordered_entry_ids.length !== entries.length) {
+      return
+    }
+    if (new Set(ordered_entry_ids).size !== ordered_entry_ids.length) {
+      return
+    }
+
+    const entry_map = new Map(entries.map((entry) => [entry.rel_path, entry]))
+    const next_entries: WorkbenchFileEntry[] = []
+    for (const entry_id of ordered_entry_ids) {
+      const entry = entry_map.get(entry_id)
+      if (entry === undefined) {
+        return
+      }
+      next_entries.push(entry)
+    }
+
+    if (next_entries.length !== entries.length) {
+      return
+    }
+
+    const previous_entries = entries
+    is_reorder_running_ref.current = true
+    set_is_mutation_running(true)
+    set_entries(next_entries)
+
+    try {
+      await api_fetch('/api/workbench/reorder-files', {
+        ordered_rel_paths: ordered_entry_ids,
+      })
+
+      try {
+        const next_snapshot = await refresh_snapshot()
+        set_entries(map_snapshot_entries(next_snapshot.entries))
+      } catch {
+        set_entries(next_entries)
+      }
+    } catch {
+      set_entries(previous_entries)
+      push_toast('error', t('task.page.workbench.reorder.failed'))
+    } finally {
+      is_reorder_running_ref.current = false
+      set_is_mutation_running(false)
+    }
+  }, [entries, push_toast, readonly, refresh_snapshot, t])
+
   async function confirm_dialog(): Promise<void> {
     const current_dialog_state = dialog_state
     set_dialog_state(close_dialog_state())
@@ -436,6 +505,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
           loaded: Boolean(payload.project?.loaded),
         })
         set_snapshot(EMPTY_SNAPSHOT)
+        set_entries([])
         set_selected_entry_id(null)
         await refresh_task()
       } catch {
@@ -468,6 +538,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     request_reset_file,
     request_delete_file,
     request_replace_file,
+    request_reorder_entries,
     confirm_dialog,
     close_dialog,
   }

@@ -26,6 +26,9 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         }}
         on_reset={workbench_state.request_reset_file}
         on_delete={workbench_state.request_delete_file}
+        on_reorder={(ordered_entry_ids) => {
+          void workbench_state.request_reorder_entries(ordered_entry_ids)
+        }}
       />
       <WorkbenchCommandBar
         can_edit_files={workbench_state.can_edit_files}

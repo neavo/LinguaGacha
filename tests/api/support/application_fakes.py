@@ -158,6 +158,7 @@ class FakeWorkbenchManager:
         self.replace_calls: list[tuple[str, str]] = []
         self.reset_calls: list[str] = []
         self.delete_calls: list[str] = []
+        self.reorder_calls: list[list[str]] = []
 
     def build_workbench_snapshot(self) -> "WorkbenchSnapshot":
         from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
@@ -196,6 +197,9 @@ class FakeWorkbenchManager:
 
     def schedule_delete_file(self, rel_path: str) -> None:
         self.delete_calls.append(rel_path)
+
+    def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
+        self.reorder_calls.append(list(ordered_rel_paths))
 
 
 class FakeSettingsConfig:

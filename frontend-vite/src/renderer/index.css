@@ -336,14 +336,8 @@ a,
     --table-header-bg-current: transparent;
   }
 
-  [data-slot='table'][data-variant='card'] {
+  [data-slot='card'][data-variant='table'] [data-slot='table'] {
     --table-header-bg-current: color-mix(in srgb, var(--ui-surface-card-bottom) 88%, var(--ui-surface-base));
-  }
-
-  [data-slot='table'][data-density='compact'] {
-    --table-head-height-current: 36px;
-    --table-row-height-current: 39px;
-    --table-cell-x-current: 12px;
   }
 
   [data-slot='table-header'] > [data-slot='table-row'] {

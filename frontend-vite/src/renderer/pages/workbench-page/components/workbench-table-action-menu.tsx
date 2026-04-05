@@ -1,4 +1,4 @@
-import { CircleEllipsis, Replace, RotateCcw, Trash2 } from 'lucide-react'
+import { CircleEllipsis, Recycle, Replace, Trash2 } from 'lucide-react'
 
 import { Button } from '@/ui/button'
 import {
@@ -19,6 +19,7 @@ import { useI18n } from '@/i18n'
 
 type WorkbenchTableActionMenuProps = {
   disabled: boolean
+  on_prepare_open: () => void
   on_replace: () => void
   on_reset: () => void
   on_delete: () => void
@@ -33,19 +34,20 @@ type WorkbenchTableActionMenuContentProps = {
 
 function WorkbenchTableActionMenuContent(props: WorkbenchTableActionMenuContentProps): JSX.Element {
   const { t } = useI18n()
+  const menu_item_class_name = 'whitespace-nowrap'
 
   return (
     <DropdownMenuGroup>
-      <DropdownMenuItem disabled={props.disabled} onClick={props.on_replace}>
+      <DropdownMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_replace}>
         <Replace />
         {t('task.page.workbench.action.replace')}
       </DropdownMenuItem>
-      <DropdownMenuItem disabled={props.disabled} onClick={props.on_reset}>
-        <RotateCcw />
+      <DropdownMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_reset}>
+        <Recycle />
         {t('task.page.workbench.action.reset')}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
-      <DropdownMenuItem disabled={props.disabled} variant="destructive" onClick={props.on_delete}>
+      <DropdownMenuItem className={menu_item_class_name} disabled={props.disabled} variant="destructive" onClick={props.on_delete}>
         <Trash2 />
         {t('task.page.workbench.action.delete')}
       </DropdownMenuItem>
@@ -55,11 +57,20 @@ function WorkbenchTableActionMenuContent(props: WorkbenchTableActionMenuContentP
 
 export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): JSX.Element {
   const { t } = useI18n()
+  const menu_content_class_name = 'w-auto min-w-max'
 
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(next_open) => {
+        if (next_open) {
+          props.on_prepare_open()
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
+          type="button"
           variant="ghost"
           size="icon-sm"
           disabled={props.disabled}
@@ -69,7 +80,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
           <CircleEllipsis />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
+      <DropdownMenuContent align="end" className={menu_content_class_name}>
         <WorkbenchTableActionMenuContent
           disabled={props.disabled}
           on_replace={props.on_replace}
@@ -83,22 +94,24 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
 
 export function WorkbenchTableContextMenuContent(props: WorkbenchTableActionMenuContentProps): JSX.Element {
   const { t } = useI18n()
+  const menu_item_class_name = 'whitespace-nowrap'
+  const menu_content_class_name = 'w-auto min-w-max'
 
   return (
-    <ContextMenuContent className="w-40">
+    <ContextMenuContent className={menu_content_class_name}>
       <ContextMenuGroup>
-        <ContextMenuItem disabled={props.disabled} onClick={props.on_replace}>
+        <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_replace}>
           <Replace />
           {t('task.page.workbench.action.replace')}
         </ContextMenuItem>
-        <ContextMenuItem disabled={props.disabled} onClick={props.on_reset}>
-          <RotateCcw />
+        <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_reset}>
+          <Recycle />
           {t('task.page.workbench.action.reset')}
         </ContextMenuItem>
       </ContextMenuGroup>
       <ContextMenuSeparator />
       <ContextMenuGroup>
-        <ContextMenuItem disabled={props.disabled} variant="destructive" onClick={props.on_delete}>
+        <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} variant="destructive" onClick={props.on_delete}>
           <Trash2 />
           {t('task.page.workbench.action.delete')}
         </ContextMenuItem>

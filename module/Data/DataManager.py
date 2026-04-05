@@ -1000,6 +1000,22 @@ class DataManager(Base):
             f"Failed to delete file: {rel_path}",
         )
 
+    def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
+        """同步重排工作台文件顺序，供前端拖拽后立即持久化。"""
+
+        from module.Engine.Engine import Engine
+
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            raise ValueError(Localizer.get().task_running)
+
+        if not self.try_begin_file_operation():
+            raise ValueError(Localizer.get().task_running)
+
+        try:
+            self.project_file_service.reorder_files(ordered_rel_paths)
+        finally:
+            self.finish_file_operation()
+
     def add_file(self, file_path: str) -> None:
         self.emit_project_file_update(self.project_file_service.add_file(file_path))
 
