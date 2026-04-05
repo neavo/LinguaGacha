@@ -14,9 +14,8 @@
   align-items: center;
   justify-content: space-between;
   height: 40px;
-  padding: 0 20px;
-  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
-  background: var(--background);
+  padding: 0 14px;
+  background: transparent;
 }
 
 .topbar__left,
@@ -83,18 +82,18 @@
   width: 256px;
   max-width: 256px;
   min-width: 256px;
-  border-right: 1px solid var(--sidebar-border);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--sidebar) 96%, var(--background)) 0%,
-    color-mix(in srgb, var(--sidebar) 92%, var(--background)) 100%
-  );
+  border-right: 0;
+  background: transparent;
   overflow: hidden;
   transition:
     width 260ms cubic-bezier(0.22, 1, 0.36, 1),
     max-width 260ms cubic-bezier(0.22, 1, 0.36, 1),
     min-width 260ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color 180ms ease;
+}
+
+.shell-sidebar [data-slot='sidebar-inner'] {
+  background: transparent;
 }
 
 .shell-sidebar__scroll {
@@ -114,7 +113,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 8px 10px;
-  background: color-mix(in srgb, var(--sidebar) 96%, var(--background));
+  background: transparent;
   transition: padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -356,9 +355,12 @@
 
 .sidebar-bottom-button__text,
 .sidebar-profile__text {
-  max-width: 140px;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
   font-size: 14px;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 1;
   transform: translateX(0);
@@ -391,11 +393,16 @@
 }
 
 .workspace-frame {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 22px 24px 24px;
+  padding: 12px 24px 24px;
   box-sizing: border-box;
+  border-top: 1px solid color-mix(in srgb, var(--sidebar-border) 92%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--sidebar-border) 92%, transparent);
+  border-top-left-radius: 8px;
+  background: transparent;
   transition: padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 

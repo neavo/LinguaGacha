@@ -1,4 +1,4 @@
-import { AlertTriangle, BadgeAlert, File, FilePlus, FolderOpen, ShieldAlert, X } from 'lucide-react'
+import { AlertTriangle, BadgeAlert, File, FolderOpen, ShieldAlert, SquareMousePointer, X } from 'lucide-react'
 import { forwardRef, type ComponentProps, type DragEvent, type MouseEvent, type MouseEventHandler, useState } from 'react'
 
 import {
@@ -309,7 +309,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
     className,
     ...button_props
   } = props
-  const Icon = icon === 'source' ? FilePlus : File
+  const Icon = SquareMousePointer
 
   return (
     <button
@@ -328,7 +328,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
       onDrop={on_drop}
     >
       <span className="project-home__dropzone-icon">
-        <Icon className="size-12 stroke-[1.8]" />
+        <Icon className="size-11 stroke-[1.8]" />
       </span>
       <p className="mt-2.5 text-[0.96rem] font-semibold tracking-[-0.018em] text-foreground">
         {title}
@@ -369,7 +369,7 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
               </span>
             </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="start" sideOffset={8} className="max-w-[32rem] break-all">
+          <TooltipContent side="top" align="start" sideOffset={8} className="max-w-[32rem] break-all">
             {props.path}
           </TooltipContent>
         </Tooltip>
@@ -772,7 +772,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 }}
               >
                 <span className="project-home__dropzone-icon">
-                  <FilePlus className="size-12 stroke-[1.85]" />
+                  <SquareMousePointer className="size-11 stroke-[1.85]" />
                 </span>
                 <div className="mx-auto flex w-full max-w-[18rem] flex-col items-center space-y-0.5 text-center">
                   <p className="w-full truncate text-[0.9rem] font-semibold tracking-[-0.02em] text-foreground">
@@ -846,7 +846,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             }}
           >
             <span className="project-home__dropzone-icon">
-              <File className="size-12 stroke-[1.85]" />
+              <SquareMousePointer className="size-11 stroke-[1.85]" />
             </span>
             <div className="mx-auto flex w-full max-w-[18rem] flex-col items-center space-y-0.5 text-center">
               <p className="w-full truncate text-[0.9rem] font-semibold tracking-[-0.02em] text-foreground">
