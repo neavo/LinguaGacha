@@ -8,6 +8,7 @@ import {
   IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH,
+  IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
 } from '../shared/ipc-channels'
@@ -447,6 +448,10 @@ app.whenReady().then(createWindow)
 
 ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (_event, theme_mode: ThemeMode) => {
   sync_title_bar_overlay(theme_mode)
+})
+
+ipcMain.handle(IPC_CHANNEL_QUIT_APP, async () => {
+  app.quit()
 })
 
 ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH, async () => {

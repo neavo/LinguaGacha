@@ -34,22 +34,3 @@
 .expert-settings-page__toggle-item {
   flex: 1 1 0;
 }
-
-@container (max-width: 760px) {
-  .expert-settings-page__menu-button {
-    width: min(100%, 300px);
-  }
-
-  .expert-settings-page__number-field {
-    width: 100%;
-  }
-
-  .expert-settings-page__number-input {
-    width: min(100%, 300px);
-    min-width: 0;
-  }
-
-  .expert-settings-page__toggle-group {
-    width: min(100%, 300px);
-  }
-}

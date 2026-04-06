@@ -1,4 +1,5 @@
 export const IPC_CHANNEL_TITLE_BAR_THEME = 'window:set-title-bar-theme'
+export const IPC_CHANNEL_QUIT_APP = 'window:quit-app'
 export const IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH = 'dialog:pick-project-source-file-path'
 export const IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH = 'dialog:pick-project-source-directory-path'
 export const IPC_CHANNEL_PICK_PROJECT_FILE_PATH = 'dialog:pick-project-file-path'

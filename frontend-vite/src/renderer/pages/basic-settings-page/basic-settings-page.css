@@ -34,18 +34,3 @@
   min-width: 120px;
   text-align: right;
 }
-
-@container (max-width: 760px) {
-  .basic-settings-page__select {
-    width: min(100%, 300px);
-  }
-
-  .basic-settings-page__number-field {
-    width: 100%;
-  }
-
-  .basic-settings-page__toggle-group {
-    width: min(100%, 300px);
-  }
-}
-

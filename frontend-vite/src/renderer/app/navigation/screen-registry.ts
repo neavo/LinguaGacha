@@ -1,4 +1,5 @@
 import { create_debug_panel_screen } from '@/pages/debug-panel-page/create-debug-panel-screen'
+import { AppSettingsPage } from '@/pages/app-settings-page/page'
 import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
 import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { ProjectPage } from '@/pages/project-page/page'
@@ -139,10 +140,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     summary_key: 'extra.page.toolbox.summary',
   },
   'app-settings': {
-    component: create_debug_panel_screen({
-      title_key: 'nav.action.app_settings',
-      summary_key: 'setting.page.app.summary',
-    }),
+    component: AppSettingsPage,
     title_key: 'nav.action.app_settings',
     summary_key: 'setting.page.app.summary',
   },

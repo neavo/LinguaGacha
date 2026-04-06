@@ -21,6 +21,7 @@ declare global {
         baseUrlCandidates: string[]
       }
       setTitleBarTheme: (theme_mode: ThemeMode) => void
+      quitApp: () => Promise<void>
       pickProjectSourceFilePath: () => Promise<DesktopPathPickResult>
       pickProjectSourceDirectoryPath: () => Promise<DesktopPathPickResult>
       pickProjectFilePath: () => Promise<DesktopPathPickResult>

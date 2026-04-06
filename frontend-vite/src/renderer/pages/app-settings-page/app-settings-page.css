@@ -1,0 +1,22 @@
+.app-settings-page {
+  min-height: 100%;
+}
+
+.app-settings-page__notice {
+  align-items: start;
+}
+
+.app-settings-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.app-settings-page__toggle-group {
+  min-width: 120px;
+  justify-content: stretch;
+}
+
+.app-settings-page__toggle-item {
+  flex: 1 1 0;
+}
