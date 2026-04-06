@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Check, Code, LoaderCircle, Plus, RotateCcw, Settings, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, GraduationCap, ListTodo, LoaderCircle, Plus, RotateCcw, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
 import '@/pages/model-page/model-page.css'
@@ -20,7 +20,6 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogMedia,
   AlertDialogTitle,
 } from '@/ui/alert-dialog'
 import { Button } from '@/ui/button'
@@ -54,9 +53,6 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogMedia>
-              <AlertTriangle />
-            </AlertDialogMedia>
             <AlertDialogTitle>
               {model_page_state.confirm_state.kind === 'delete'
                 ? t('model_page.confirm.delete.title')
@@ -203,7 +199,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                   drag_disabled={model_page_state.readonly}
                   drag_aria_label={t('workbench_page.table.drag_handle_aria')}
                   menu={(
-                    <DropdownMenuContent matchTriggerWidth={false} align="start">
+                    <DropdownMenuContent align="start">
                       <DropdownMenuGroup>
                         <DropdownMenuItem
                           onSelect={() => {
@@ -219,7 +215,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                             model_page_state.open_dialog('basic', model.id)
                           }}
                         >
-                          <Settings />
+                          <SlidersHorizontal />
                           {t('model_page.action.basic_settings')}
                         </DropdownMenuItem>
                         <DropdownMenuItem
@@ -227,7 +223,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                             model_page_state.open_dialog('task', model.id)
                           }}
                         >
-                          <Settings />
+                          <ListTodo />
                           {t('model_page.action.task_settings')}
                         </DropdownMenuItem>
                         <DropdownMenuItem
@@ -235,7 +231,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                             model_page_state.open_dialog('advanced', model.id)
                           }}
                         >
-                          <Code />
+                          <GraduationCap />
                           {t('model_page.action.advanced_settings')}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />

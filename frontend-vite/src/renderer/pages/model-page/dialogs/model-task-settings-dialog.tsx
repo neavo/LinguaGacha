@@ -4,13 +4,9 @@ import { Button } from '@/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '@/ui/dialog'
 import { Input } from '@/ui/input'
-import { ScrollArea } from '@/ui/scroll-area'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
 
 type ModelTaskSettingsDialogProps = {
@@ -47,19 +43,14 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
       }}
     >
       <DialogContent size="lg" className="model-page__dialog-shell">
-        <DialogHeader>
-          <DialogTitle>{t('model_page.dialog.task.title')}</DialogTitle>
-          <DialogDescription>{t('model_page.dialog.task.description')}</DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="model-page__dialog-scroll">
+        <div className="model-page__dialog-scroll">
           <div className="model-page__setting-list">
             <SettingCardRow
               title={t('model_page.fields.input_token_limit.title')}
               description={t('model_page.fields.input_token_limit.description')}
               action={(
                 <Input
-                  className="model-page__field model-page__field--sm"
+                  className="model-page__field"
                   type="number"
                   disabled={props.readonly}
                   value={props.model.threshold.input_token_limit}
@@ -79,7 +70,7 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
               description={t('model_page.fields.output_token_limit.description')}
               action={(
                 <Input
-                  className="model-page__field model-page__field--sm"
+                  className="model-page__field"
                   type="number"
                   disabled={props.readonly}
                   value={props.model.threshold.output_token_limit}
@@ -99,7 +90,7 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
               description={t('model_page.fields.rpm_limit.description')}
               action={(
                 <Input
-                  className="model-page__field model-page__field--sm"
+                  className="model-page__field"
                   type="number"
                   disabled={props.readonly}
                   value={props.model.threshold.rpm_limit}
@@ -119,7 +110,7 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
               description={t('model_page.fields.concurrency_limit.description')}
               action={(
                 <Input
-                  className="model-page__field model-page__field--sm"
+                  className="model-page__field"
                   type="number"
                   disabled={props.readonly}
                   value={props.model.threshold.concurrency_limit}
@@ -134,7 +125,7 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
               )}
             />
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={props.onClose}>

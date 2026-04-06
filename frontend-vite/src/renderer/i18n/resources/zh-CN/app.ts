@@ -6,13 +6,10 @@ export const zh_cn_app = {
     app_name: 'LinguaGacha',
   },
   action: {
-    start: '开始',
-    stop: '停止',
     cancel: '取消',
     close: '关闭',
     reset: '重置',
     retry: '重试',
-    timer: '定时器',
     loading: '加载中',
     select_file: '选择文件',
     select_folder: '选择文件夹',

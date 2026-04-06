@@ -61,16 +61,18 @@ export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
     <Card className="model-page__category-card">
       <CardContent className="model-page__category-card-content">
         <header className="model-page__category-header">
-          <div
-            className="model-page__category-accent"
-            style={{ backgroundColor: props.accent_color }}
-            aria-hidden="true"
-          />
-          <div className="model-page__category-copy">
-            <h2 className="model-page__category-title" data-ui-text="emphasis">
-              {props.title}
-            </h2>
-            <p className="model-page__category-description">{props.description}</p>
+          <div className="model-page__category-main">
+            <div
+              className="model-page__category-accent"
+              style={{ backgroundColor: props.accent_color }}
+              aria-hidden="true"
+            />
+            <div className="model-page__category-copy">
+              <h2 className="model-page__category-title" data-ui-text="emphasis">
+                {props.title}
+              </h2>
+              <p className="model-page__category-description">{props.description}</p>
+            </div>
           </div>
           <div className="model-page__category-action">
             {props.add_action}

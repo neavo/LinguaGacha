@@ -11,6 +11,15 @@ class ModelApiClient:
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
 
+    def post_data(
+        self,
+        path: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """统一发送模型接口请求，避免客户端方法重复拼装请求。"""
+
+        return self.api_client.post(path, payload)
+
     def post_snapshot(
         self,
         path: str,
@@ -18,7 +27,7 @@ class ModelApiClient:
     ) -> ModelPageSnapshot:
         """统一发送模型接口请求并解码快照，避免各动作重复反序列化。"""
 
-        response = self.api_client.post(path, payload)
+        response = self.post_data(path, payload)
         return ModelPageSnapshot.from_dict(response.get("snapshot", {}))
 
     def get_snapshot(self) -> ModelPageSnapshot:
@@ -74,7 +83,7 @@ class ModelApiClient:
         )
 
     def reorder_model(self, model_id: str, operation: str) -> ModelPageSnapshot:
-        """调整模型顺序并返回最新快照。"""
+        """兼容旧前端的离散排序动作，并返回最新快照。"""
 
         return self.post_snapshot(
             ModelRoutes.REORDER_PATH,
@@ -82,4 +91,34 @@ class ModelApiClient:
                 "model_id": model_id,
                 "operation": operation,
             },
+        )
+
+    def reorder_models(self, ordered_model_ids: list[str]) -> ModelPageSnapshot:
+        """提交分组内的最终模型顺序，并返回最新快照。"""
+
+        return self.post_snapshot(
+            ModelRoutes.REORDER_PATH,
+            {
+                "ordered_model_ids": ordered_model_ids,
+            },
+        )
+
+    def list_available_models(self, model_id: str) -> list[str]:
+        """获取当前模型可见的模型标识列表。"""
+
+        response = self.post_data(
+            ModelRoutes.LIST_AVAILABLE_PATH,
+            {"model_id": model_id},
+        )
+        models = response.get("models", [])
+        if not isinstance(models, list):
+            return []
+        return [str(model_name) for model_name in models]
+
+    def test_model(self, model_id: str) -> dict[str, Any]:
+        """触发模型测试，并返回稳定的结果载荷。"""
+
+        return self.post_data(
+            ModelRoutes.TEST_PATH,
+            {"model_id": model_id},
         )

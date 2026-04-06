@@ -22,7 +22,6 @@ export const en_us_workbench_page = {
   table: {
     drag_handle: 'Drag',
     drag_handle_aria: 'Drag to reorder',
-    index: 'No.',
     file_name: 'File Name',
     format: 'Format',
     line_count: 'Lines',

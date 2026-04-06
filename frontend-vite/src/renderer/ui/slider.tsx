@@ -40,10 +40,10 @@ function Slider({
           className="absolute h-full bg-primary"
         />
       </SliderPrimitive.Track>
-      {values.map((thumb_value, index) => {
+      {values.map((_, index) => {
         return (
           <SliderPrimitive.Thumb
-            key={`${index}-${thumb_value}`}
+            key={index}
             data-slot="slider-thumb"
             className="block size-4 rounded-full border border-border bg-background shadow-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
           />

@@ -35,11 +35,19 @@
   gap: 14px;
 }
 
+.model-page__category-main {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .model-page__category-accent {
   width: 4px;
-  min-height: 54px;
   border-radius: 999px;
   flex: 0 0 auto;
+  align-self: stretch;
 }
 
 .model-page__category-copy {
@@ -53,15 +61,15 @@
 .model-page__category-title {
   margin: 0;
   color: var(--foreground);
-  font-size: 18px;
-  line-height: 1.15;
+  font-size: 14px;
+  line-height: 1.25;
 }
 
 .model-page__category-description {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.25;
 }
 
 .model-page__category-action {
@@ -79,8 +87,8 @@
 
 .model-page__item-chip {
   display: inline-flex;
+  position: relative;
   align-items: center;
-  gap: 8px;
 }
 
 .model-page__item-chip[data-dragging='true'] {
@@ -88,7 +96,18 @@
 }
 
 .model-page__drag-handle {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 2;
   cursor: grab;
+  color: color-mix(in srgb, var(--foreground) 72%, transparent);
+  transform: translateY(-50%);
+}
+
+.model-page__drag-handle:hover {
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
 }
 
 .model-page__drag-handle:active {
@@ -96,14 +115,37 @@
 }
 
 .model-page__name-trigger {
+  width: auto;
   min-width: 192px;
-  justify-content: space-between;
+  max-width: none;
+  position: relative;
+  justify-content: center;
+  padding-left: 36px;
+  padding-right: 48px;
 }
 
 .model-page__name-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: block;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
+  text-align: center;
+}
+
+.model-page__name-trigger [data-icon='inline-end'] {
+  position: absolute;
+  right: 12px;
+}
+
+.model-page__item-chip[data-active='true'] .model-page__drag-handle {
+  color: color-mix(in srgb, var(--primary-foreground) 90%, transparent);
+}
+
+.model-page__item-chip[data-active='true'] .model-page__drag-handle:hover {
+  color: var(--primary-foreground);
 }
 
 .model-page__dialog-shell {
@@ -111,8 +153,12 @@
 }
 
 .model-page__dialog-scroll {
+  min-height: 0;
   max-height: calc(100vh - 220px);
-  padding: 0 18px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
 }
 
 .model-page__setting-list {
@@ -122,20 +168,23 @@
   padding: 0 0 6px;
 }
 
-.model-page__field {
-  width: 100%;
+.model-page__setting-list > .setting-card-row:not(.model-page__setting-card-row--block) .setting-card-row__copy {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.model-page__field--sm {
-  width: 128px;
+.model-page__field {
+  width: 100%;
+  min-width: min(128px, 100%);
+  max-width: 100%;
 }
 
 .model-page__field--md {
-  width: 256px;
+  min-width: 256px;
 }
 
 .model-page__field--lg {
-  width: 384px;
+  min-width: 384px;
 }
 
 .model-page__field--full {
@@ -152,35 +201,94 @@
 }
 
 .model-page__setting-card-row--block .setting-card-row__action {
+  flex: 0 0 auto;
   width: 100%;
+  align-items: stretch;
   justify-content: stretch;
-}
-
-.model-page__model-id-field {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
 }
 
 .model-page__inline-button-group {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+  justify-content: flex-end;
+  width: auto;
+}
+
+.model-page__inline-button-group > [data-slot='button'] {
+  min-width: 72px;
+}
+
+.model-page__advanced-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.model-page__advanced-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.model-page__advanced-card-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-page__advanced-toggle-group {
+  min-width: 128px;
+  justify-content: stretch;
+}
+
+.model-page__advanced-toggle-item {
+  flex: 1 1 0;
+}
+
+.model-page__advanced-inline-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.model-page__compact-dialog-shell {
+  max-width: 520px;
+}
+
+.model-page__compact-dialog-body {
+  padding: 24px 24px 12px;
+}
+
+.model-page__compact-dialog-footer {
+  border-top: 1px solid var(--border);
+  gap: 12px;
+}
+
+.model-page__compact-dialog-button {
+  min-width: 128px;
 }
 
 .model-page__slider-control {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 320px;
+  justify-content: flex-end;
 }
 
 .model-page__slider-wrap {
   display: flex;
+  width: min(320px, 100%);
+  max-width: 100%;
   align-items: center;
   gap: 10px;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
 }
 
 .model-page__slider-value {
@@ -198,29 +306,26 @@
   width: 100%;
 }
 
-.model-page__request-editor-head {
-  display: flex;
-  justify-content: flex-end;
-}
-
 .model-page__selector-body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 0 18px 0;
+  padding-top: 16px;
+  padding-bottom: 16px;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .model-page__selector-list {
-  height: 360px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  height: 384px;
+  background: transparent;
 }
 
 .model-page__selector-options {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 2px 0;
 }
 
 .model-page__selector-item {
@@ -260,46 +365,4 @@
 .model-page__selector-empty {
   min-height: 320px;
   margin: 12px;
-}
-
-@media (max-width: 960px) {
-  .model-page__category-header {
-    flex-wrap: wrap;
-  }
-
-  .model-page__category-action {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .model-page__slider-control {
-    width: 100%;
-  }
-
-  .model-page__field--lg {
-    width: 100%;
-  }
-}
-
-@media (max-width: 720px) {
-  .model-page__category-card-content {
-    padding: 14px;
-  }
-
-  .model-page__flow-list {
-    gap: 10px;
-  }
-
-  .model-page__item-chip {
-    width: 100%;
-  }
-
-  .model-page__name-trigger {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .model-page__dialog-scroll {
-    padding: 0 14px;
-  }
 }

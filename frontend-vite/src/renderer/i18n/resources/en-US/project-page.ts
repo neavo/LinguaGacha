@@ -2,7 +2,6 @@ import { zh_cn_project_page } from '@/i18n/resources/zh-CN/project-page'
 import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_project_page = {
-  eyebrow: 'Project Home / ProjectPage',
   title: 'Project Home',
   summary: 'This hidden landing screen mirrors the desktop fallback view with create, open, and recent project entry points.',
   create: {
@@ -10,7 +9,6 @@ export const en_us_project_page = {
     subtitle: 'Choose a file to create an .lg project for later work.',
     drop_title: 'Click or drag files',
     ready_status: '{COUNT} importable files found',
-    checking: 'Checking source files…',
     loading_toast: 'Creating project, please wait',
     unavailable: 'No importable files were found in this path. Please choose another one.',
     action: 'Create Project',

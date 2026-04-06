@@ -9,13 +9,10 @@ export const en_us_app = {
     app_name: 'LinguaGacha',
   },
   action: {
-    start: 'Start',
-    stop: 'Stop',
     cancel: 'Cancel',
     close: 'Close',
     reset: 'Reset',
     retry: 'Retry',
-    timer: 'Timer',
     loading: 'Loading',
     select_file: 'Select File',
     select_folder: 'Select Folder',

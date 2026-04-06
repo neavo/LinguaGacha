@@ -19,7 +19,6 @@ export const zh_cn_workbench_page = {
   table: {
     drag_handle: '拖拽',
     drag_handle_aria: '拖拽排序',
-    index: '序号',
     file_name: '文件名',
     format: '格式',
     line_count: '行数',

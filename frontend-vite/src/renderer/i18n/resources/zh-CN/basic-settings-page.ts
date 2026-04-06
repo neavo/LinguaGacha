@@ -1,11 +1,6 @@
 export const zh_cn_basic_settings_page = {
-  eyebrow: 'BASIC SETTINGS',
   title: '基础设置',
   summary: '把原文语言、译文语言、工程保存位置、输出文件夹行为与请求时限收进同一处，改完就立即生效。',
-  busy: {
-    title: '任务运行中',
-    description: '任务运行中，语言设置暂时锁定，等当前流程结束后再修改就好。',
-  },
   fields: {
     source_language: {
       title: '原文语言',
@@ -38,15 +33,10 @@ export const zh_cn_basic_settings_page = {
     },
   },
   feedback: {
-    saving: '保存中',
     retry: '重试',
     refresh_failed: '当前无法刷新基础设置，请稍后重试。',
     refresh_failed_title: '基础设置加载失败',
     update_failed: '设置保存失败，请稍后重试。',
     pick_directory_failed: '目录选择失败，请重新选择固定保存目录。',
-  },
-  footnote: {
-    title: '即时保存',
-    description: '每一项设置都会立即写回桌面配置；切换到固定目录时，取消选择会保留原值。',
   },
 } as const

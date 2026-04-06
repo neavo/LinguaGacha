@@ -38,6 +38,7 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
     <div
       ref={setNodeRef}
       className="model-page__item-chip"
+      data-active={props.active ? 'true' : undefined}
       data-dragging={isDragging ? 'true' : undefined}
       style={item_style}
     >

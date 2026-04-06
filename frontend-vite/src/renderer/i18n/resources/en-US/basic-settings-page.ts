@@ -2,13 +2,8 @@ import { zh_cn_basic_settings_page } from '@/i18n/resources/zh-CN/basic-settings
 import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_basic_settings_page = {
-  eyebrow: 'BASIC SETTINGS',
   title: 'Basic Settings',
   summary: 'Keep source language, target language, project save location, output-folder behavior, and request timeout in one place with instant persistence.',
-  busy: {
-    title: 'Task Running',
-    description: 'Language settings are temporarily locked while a task is running. Update them after the current flow finishes.',
-  },
   fields: {
     source_language: {
       title: 'Source Language',
@@ -44,15 +39,10 @@ export const en_us_basic_settings_page = {
     },
   },
   feedback: {
-    saving: 'Saving',
     retry: 'Retry',
     refresh_failed: 'Unable to refresh basic settings right now. Please try again later.',
     refresh_failed_title: 'Failed to Load Basic Settings',
     update_failed: 'Failed to save the setting. Please try again later.',
     pick_directory_failed: 'Directory selection failed. Please choose the fixed save directory again.',
-  },
-  footnote: {
-    title: 'Instant Save',
-    description: 'Each setting is written back to the desktop config immediately. Canceling the fixed-directory picker keeps the previous value.',
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_basic_settings_page>

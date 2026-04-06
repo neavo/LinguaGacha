@@ -46,7 +46,12 @@
 .setting-card-row__action {
   display: flex;
   flex: 0 0 auto;
+  min-width: 128px;
   align-items: center;
   justify-content: flex-end;
   align-self: center;
+}
+
+.setting-card-row__action > * {
+  min-width: inherit;
 }

@@ -1,5 +1,5 @@
 import { PencilLine, RefreshCw, Send } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import type { ModelEntrySnapshot, ModelThinkingLevel } from '@/pages/model-page/types'
@@ -7,13 +7,9 @@ import { Button } from '@/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '@/ui/dialog'
 import { Input } from '@/ui/input'
-import { ScrollArea } from '@/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -54,7 +50,7 @@ function resolve_thinking_label(
 
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { t } = useI18n()
-  const model_id_input_ref = useRef<HTMLInputElement | null>(null)
+  const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false)
   const [model_id_input_value, set_model_id_input_value] = useState('')
 
   useEffect(() => {
@@ -62,6 +58,12 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
       set_model_id_input_value(props.model.model_id)
     }
   }, [props.model])
+
+  useEffect(() => {
+    if (!props.open) {
+      set_is_model_id_editor_open(false)
+    }
+  }, [props.open])
 
   const thinking_level_options = useMemo(() => {
     return THINKING_LEVEL_VALUES.map((thinking_level) => {
@@ -76,98 +78,87 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
     return null
   }
 
+  const model = props.model
+
+  async function commit_model_id_input(): Promise<void> {
+    await props.onPatch({
+      model_id: model_id_input_value.trim(),
+    })
+    set_is_model_id_editor_open(false)
+  }
+
   return (
-    <Dialog
-      open={props.open}
-      onOpenChange={(next_open) => {
-        if (!next_open) {
-          props.onClose()
-        }
-      }}
-    >
-      <DialogContent size="lg" className="model-page__dialog-shell">
-        <DialogHeader>
-          <DialogTitle>{t('model_page.dialog.basic.title')}</DialogTitle>
-          <DialogDescription>{t('model_page.dialog.basic.description')}</DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="model-page__dialog-scroll">
-          <div className="model-page__setting-list">
-            <SettingCardRow
-              title={t('model_page.fields.name.title')}
-              description={t('model_page.fields.name.description')}
-              action={(
-                <Input
-                  className="model-page__field model-page__field--md"
-                  value={props.model.name}
-                  disabled={props.readonly}
-                  placeholder={t('model_page.fields.name.placeholder')}
-                  onChange={(event) => {
-                    void props.onPatch({
-                      name: event.target.value.trim(),
-                    })
-                  }}
-                />
-              )}
-            />
-
-            <SettingCardRow
-              title={t('model_page.fields.api_url.title')}
-              description={t('model_page.fields.api_url.description')}
-              action={(
-                <Input
-                  className="model-page__field model-page__field--lg"
-                  value={props.model.api_url}
-                  disabled={props.readonly}
-                  placeholder={t('model_page.fields.api_url.placeholder')}
-                  onChange={(event) => {
-                    void props.onPatch({
-                      api_url: event.target.value.trim(),
-                    })
-                  }}
-                />
-              )}
-            />
-
-            <SettingCardRow
-              className="model-page__setting-card-row--block"
-              title={t('model_page.fields.api_key.title')}
-              description={t('model_page.fields.api_key.description')}
-              action={(
-                <Textarea
-                  className="model-page__textarea"
-                  value={props.model.api_key}
-                  disabled={props.readonly}
-                  placeholder={t('model_page.fields.api_key.placeholder')}
-                  onChange={(event) => {
-                    void props.onPatch({
-                      api_key: event.target.value,
-                    })
-                  }}
-                />
-              )}
-            />
-
-            <SettingCardRow
-              className="model-page__setting-card-row--block"
-              title={t('model_page.fields.model_id.title')}
-              description={t('model_page.fields.model_id.description').replace('{MODEL}', props.model.model_id)}
-              action={(
-                <div className="model-page__model-id-field">
+    <>
+      <Dialog
+        open={props.open}
+        onOpenChange={(next_open) => {
+          if (!next_open) {
+            props.onClose()
+          }
+        }}
+      >
+        <DialogContent size="lg" className="model-page__dialog-shell">
+          <div className="model-page__dialog-scroll">
+            <div className="model-page__setting-list">
+              <SettingCardRow
+                title={t('model_page.fields.name.title')}
+                description={t('model_page.fields.name.description')}
+                action={(
                   <Input
-                    ref={model_id_input_ref}
-                    className="model-page__field model-page__field--lg"
-                    value={model_id_input_value}
+                    className="model-page__field model-page__field--md"
+                    value={model.name}
                     disabled={props.readonly}
-                    placeholder={t('model_page.fields.model_id.placeholder')}
+                    placeholder={t('model_page.fields.name.placeholder')}
                     onChange={(event) => {
-                      const next_value = event.target.value
-                      set_model_id_input_value(next_value)
                       void props.onPatch({
-                        model_id: next_value.trim(),
+                        name: event.target.value.trim(),
                       })
                     }}
                   />
+                )}
+              />
+
+              <SettingCardRow
+                title={t('model_page.fields.api_url.title')}
+                description={t('model_page.fields.api_url.description')}
+                action={(
+                  <Input
+                    className="model-page__field model-page__field--lg"
+                    value={model.api_url}
+                    disabled={props.readonly}
+                    placeholder={t('model_page.fields.api_url.placeholder')}
+                    onChange={(event) => {
+                      void props.onPatch({
+                        api_url: event.target.value.trim(),
+                      })
+                    }}
+                  />
+                )}
+              />
+
+              <SettingCardRow
+                className="model-page__setting-card-row--block"
+                title={t('model_page.fields.api_key.title')}
+                description={t('model_page.fields.api_key.description')}
+                action={(
+                  <Textarea
+                    className="model-page__textarea"
+                    value={model.api_key}
+                    disabled={props.readonly}
+                    placeholder={t('model_page.fields.api_key.placeholder')}
+                    onChange={(event) => {
+                      void props.onPatch({
+                        api_key: event.target.value,
+                      })
+                    }}
+                  />
+                )}
+              />
+
+              <SettingCardRow
+                title={t('model_page.fields.model_id.title')}
+                description={t('model_page.fields.model_id.description').replace('{MODEL}', model.model_id)}
+                action={(
                   <div className="model-page__inline-button-group">
                     <Button
                       type="button"
@@ -175,8 +166,8 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                       size="sm"
                       disabled={props.readonly}
                       onClick={() => {
-                        model_id_input_ref.current?.focus()
-                        model_id_input_ref.current?.select()
+                        set_model_id_input_value(model.model_id)
+                        set_is_model_id_editor_open(true)
                       }}
                     >
                       <PencilLine data-icon="inline-start" />
@@ -205,56 +196,108 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                       {t('model_page.action.test')}
                     </Button>
                   </div>
-                </div>
-              )}
-            />
+                )}
+              />
 
-            <SettingCardRow
-              title={t('model_page.fields.thinking.title')}
-              description={t('model_page.fields.thinking.description')}
-              action={(
-                <Select
-                  value={props.model.thinking.level}
-                  disabled={props.readonly}
-                  onValueChange={(next_value) => {
-                    if (
-                      next_value === 'OFF'
-                      || next_value === 'LOW'
-                      || next_value === 'MEDIUM'
-                      || next_value === 'HIGH'
-                    ) {
-                      void props.onPatch({
-                        thinking: {
-                          level: next_value,
-                        },
-                      })
-                    }
-                  }}
-                >
-                  <SelectTrigger className="model-page__field model-page__field--sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {thinking_level_options.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
+              <SettingCardRow
+                title={t('model_page.fields.thinking.title')}
+                description={t('model_page.fields.thinking.description')}
+                action={(
+                  <Select
+                    value={model.thinking.level}
+                    disabled={props.readonly}
+                    onValueChange={(next_value) => {
+                      if (
+                        next_value === 'OFF'
+                        || next_value === 'LOW'
+                        || next_value === 'MEDIUM'
+                        || next_value === 'HIGH'
+                      ) {
+                        void props.onPatch({
+                          thinking: {
+                            level: next_value,
+                          },
+                        })
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="model-page__field">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {thinking_level_options.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={props.onClose}>
+              {t('app.action.close')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={is_model_id_editor_open}
+        onOpenChange={(next_open) => {
+          set_is_model_id_editor_open(next_open)
+        }}
+      >
+        <DialogContent size="sm" className="model-page__compact-dialog-shell">
+          <div className="model-page__compact-dialog-body">
+            <Input
+              autoFocus
+              className="model-page__field model-page__field--full"
+              value={model_id_input_value}
+              disabled={props.readonly}
+              placeholder={t('model_page.fields.model_id.placeholder')}
+              onChange={(event) => {
+                set_model_id_input_value(event.target.value)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void commit_model_id_input()
+                }
+              }}
             />
           </div>
-        </ScrollArea>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={props.onClose}>
-            {t('app.action.close')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="model-page__compact-dialog-footer">
+            <Button
+              type="button"
+              variant="brand"
+              className="model-page__compact-dialog-button"
+              disabled={props.readonly}
+              onClick={() => {
+                void commit_model_id_input()
+              }}
+            >
+              {t('model_page.dialog.model_id_input.confirm')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="model-page__compact-dialog-button"
+              onClick={() => {
+                set_is_model_id_editor_open(false)
+              }}
+            >
+              {t('app.action.cancel')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

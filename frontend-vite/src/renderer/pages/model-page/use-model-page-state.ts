@@ -70,6 +70,41 @@ const MODEL_TYPE_ORDER: ModelType[] = [
   'CUSTOM_ANTHROPIC',
 ]
 
+const MODEL_CATEGORY_META: Record<ModelType, {
+  title_key:
+    | 'model_page.category.preset.title'
+    | 'model_page.category.custom_google.title'
+    | 'model_page.category.custom_openai.title'
+    | 'model_page.category.custom_anthropic.title'
+  description_key:
+    | 'model_page.category.preset.description'
+    | 'model_page.category.custom_google.description'
+    | 'model_page.category.custom_openai.description'
+    | 'model_page.category.custom_anthropic.description'
+  accent_color: string
+}> = {
+  PRESET: {
+    title_key: 'model_page.category.preset.title',
+    description_key: 'model_page.category.preset.description',
+    accent_color: 'var(--model-page-accent-preset)',
+  },
+  CUSTOM_GOOGLE: {
+    title_key: 'model_page.category.custom_google.title',
+    description_key: 'model_page.category.custom_google.description',
+    accent_color: 'var(--model-page-accent-google)',
+  },
+  CUSTOM_OPENAI: {
+    title_key: 'model_page.category.custom_openai.title',
+    description_key: 'model_page.category.custom_openai.description',
+    accent_color: 'var(--model-page-accent-openai)',
+  },
+  CUSTOM_ANTHROPIC: {
+    title_key: 'model_page.category.custom_anthropic.title',
+    description_key: 'model_page.category.custom_anthropic.description',
+    accent_color: 'var(--model-page-accent-anthropic)',
+  },
+}
+
 const DEFAULT_THRESHOLD_SNAPSHOT: ModelThresholdSnapshot = {
   input_token_limit: 512,
   output_token_limit: 4096,
@@ -371,42 +406,6 @@ function reorder_snapshot_group(snapshot: ModelPageSnapshot, model_type: ModelTy
   }
 }
 
-function get_category_title(t: (key: Parameters<ReturnType<typeof useI18n>['t']>[0]) => string, model_type: ModelType): string {
-  if (model_type === 'PRESET') {
-    return t('model_page.category.preset.title')
-  } else if (model_type === 'CUSTOM_GOOGLE') {
-    return t('model_page.category.custom_google.title')
-  } else if (model_type === 'CUSTOM_OPENAI') {
-    return t('model_page.category.custom_openai.title')
-  } else {
-    return t('model_page.category.custom_anthropic.title')
-  }
-}
-
-function get_category_description(t: (key: Parameters<ReturnType<typeof useI18n>['t']>[0]) => string, model_type: ModelType): string {
-  if (model_type === 'PRESET') {
-    return t('model_page.category.preset.description')
-  } else if (model_type === 'CUSTOM_GOOGLE') {
-    return t('model_page.category.custom_google.description')
-  } else if (model_type === 'CUSTOM_OPENAI') {
-    return t('model_page.category.custom_openai.description')
-  } else {
-    return t('model_page.category.custom_anthropic.description')
-  }
-}
-
-function get_category_accent_color(model_type: ModelType): string {
-  if (model_type === 'PRESET') {
-    return 'var(--model-page-accent-preset)'
-  } else if (model_type === 'CUSTOM_GOOGLE') {
-    return 'var(--model-page-accent-google)'
-  } else if (model_type === 'CUSTOM_OPENAI') {
-    return 'var(--model-page-accent-openai)'
-  } else {
-    return 'var(--model-page-accent-anthropic)'
-  }
-}
-
 export function useModelPageState(): UseModelPageStateResult {
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
@@ -451,11 +450,12 @@ export function useModelPageState(): UseModelPageStateResult {
 
   const grouped_categories = useMemo<ModelCategorySnapshot[]>(() => {
     return MODEL_TYPE_ORDER.map((model_type) => {
+      const category_meta = MODEL_CATEGORY_META[model_type]
       return {
         type: model_type,
-        title: get_category_title(t, model_type),
-        description: get_category_description(t, model_type),
-        accent_color: get_category_accent_color(model_type),
+        title: t(category_meta.title_key),
+        description: t(category_meta.description_key),
+        accent_color: category_meta.accent_color,
         can_add: model_type !== 'PRESET',
         models: snapshot.models.filter((model) => model.type === model_type),
       }
@@ -555,6 +555,10 @@ export function useModelPageState(): UseModelPageStateResult {
   }, [push_toast, readonly, t])
 
   const request_delete_model = useCallback((model_id: string): void => {
+    if (readonly) {
+      return
+    }
+
     const model = find_model(snapshot_ref.current, model_id)
     if (model === null) {
       return
@@ -569,14 +573,18 @@ export function useModelPageState(): UseModelPageStateResult {
         model_id,
       })
     }
-  }, [push_toast, t])
+  }, [push_toast, readonly, t])
 
   const request_reset_model = useCallback((model_id: string): void => {
+    if (readonly) {
+      return
+    }
+
     set_confirm_state({
       kind: 'reset',
       model_id,
     })
-  }, [])
+  }, [readonly])
 
   const request_reorder_models = useCallback(async (model_type: ModelType, ordered_model_ids: string[]): Promise<void> => {
     if (readonly) {

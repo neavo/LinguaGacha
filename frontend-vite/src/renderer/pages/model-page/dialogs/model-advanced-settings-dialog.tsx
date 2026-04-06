@@ -1,21 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import type { ModelEntrySnapshot } from '@/pages/model-page/types'
 import { Button } from '@/ui/button'
+import { Card, CardContent, CardDescription, CardTitle } from '@/ui/card'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '@/ui/dialog'
-import { ScrollArea } from '@/ui/scroll-area'
 import { Slider } from '@/ui/slider'
-import { Switch } from '@/ui/switch'
 import { Textarea } from '@/ui/textarea'
-import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
+import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 
 type ModelAdvancedSettingsDialogProps = {
   open: boolean
@@ -102,6 +98,11 @@ const SLIDER_FIELD_CONFIGS: SliderFieldConfig[] = [
   },
 ]
 
+const BOOLEAN_TOGGLE_VALUE = {
+  DISABLED: 'disabled',
+  ENABLED: 'enabled',
+} as const
+
 function parse_request_json_text(value: string): JsonParseResult {
   const trimmed_value = value.trim()
   if (trimmed_value === '') {
@@ -138,12 +139,41 @@ function format_request_json_text(value: Record<string, unknown>): string {
   }
 }
 
+function create_slider_value_state(model: ModelEntrySnapshot | null): Record<SliderFieldName, number> {
+  if (model === null) {
+    return {
+      top_p: 0,
+      temperature: 0,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+    }
+  } else {
+    return {
+      top_p: model.generation.top_p,
+      temperature: model.generation.temperature,
+      presence_penalty: model.generation.presence_penalty,
+      frequency_penalty: model.generation.frequency_penalty,
+    }
+  }
+}
+
+function resolve_boolean_toggle_value(current_value: boolean): string {
+  if (current_value) {
+    return BOOLEAN_TOGGLE_VALUE.ENABLED
+  } else {
+    return BOOLEAN_TOGGLE_VALUE.DISABLED
+  }
+}
+
 export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogProps): JSX.Element | null {
   const { t } = useI18n()
   const [headers_text, set_headers_text] = useState('')
   const [body_text, set_body_text] = useState('')
   const [headers_error, set_headers_error] = useState(false)
   const [body_error, set_body_error] = useState(false)
+  const [slider_values, set_slider_values] = useState<Record<SliderFieldName, number>>(
+    create_slider_value_state(props.model),
+  )
 
   useEffect(() => {
     if (props.model !== null) {
@@ -154,17 +184,8 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
     }
   }, [props.model])
 
-  const slider_values = useMemo(() => {
-    if (props.model === null) {
-      return new Map<SliderFieldName, number>()
-    } else {
-      return new Map<SliderFieldName, number>([
-        ['top_p', props.model.generation.top_p],
-        ['temperature', props.model.generation.temperature],
-        ['presence_penalty', props.model.generation.presence_penalty],
-        ['frequency_penalty', props.model.generation.frequency_penalty],
-      ])
-    }
+  useEffect(() => {
+    set_slider_values(create_slider_value_state(props.model))
   }, [props.model])
 
   if (props.model === null) {
@@ -183,80 +204,150 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
       }}
     >
       <DialogContent size="lg" className="model-page__dialog-shell">
-        <DialogHeader>
-          <DialogTitle>{t('model_page.dialog.advanced.title')}</DialogTitle>
-          <DialogDescription>{t('model_page.dialog.advanced.description')}</DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="model-page__dialog-scroll">
+        <div className="model-page__dialog-scroll">
           <div className="model-page__setting-list">
             {SLIDER_FIELD_CONFIGS.map((field_config) => {
-              const current_value = slider_values.get(field_config.field_name) ?? 0
+              const current_value = slider_values[field_config.field_name] ?? 0
               const current_enabled = Boolean(model.generation[field_config.enabled_key])
 
               return (
-                <SettingCardRow
-                  key={field_config.field_name}
-                  title={t(field_config.title_key)}
-                  description={t(field_config.description_key)}
-                  action={(
-                    <div className="model-page__slider-control">
-                      <Switch
-                        checked={current_enabled}
-                        disabled={props.readonly}
-                        onCheckedChange={(next_checked) => {
-                          void props.onPatch({
-                            generation: {
-                              [field_config.enabled_key]: next_checked,
-                            },
-                          })
-                        }}
-                      />
-                      <div className="model-page__slider-wrap">
-                        <span className="model-page__slider-value">{current_value.toFixed(2)}</span>
-                        <Slider
-                          min={field_config.min}
-                          max={field_config.max}
-                          step={field_config.step}
-                          disabled={props.readonly || !current_enabled}
-                          value={[current_value]}
-                          onValueCommit={(next_value) => {
-                            const committed_value = next_value[0]
-                            if (committed_value !== undefined) {
+                <Card key={field_config.field_name}>
+                  <CardContent className="model-page__advanced-card-content">
+                    <div className="model-page__advanced-card-head">
+                      <div className="model-page__advanced-card-copy">
+                        <CardTitle>{t(field_config.title_key)}</CardTitle>
+                        <CardDescription>{t(field_config.description_key)}</CardDescription>
+                      </div>
+
+                      <div className="model-page__advanced-inline-control">
+                        {current_enabled
+                          ? (
+                              <div className="model-page__slider-control">
+                                <div className="model-page__slider-wrap model-page__field--md">
+                                  <span className="model-page__slider-value">{current_value.toFixed(2)}</span>
+                                  <Slider
+                                    min={field_config.min}
+                                    max={field_config.max}
+                                    step={field_config.step}
+                                    disabled={props.readonly}
+                                    value={[current_value]}
+                                    onValueChange={(next_value) => {
+                                      const preview_value = next_value[0]
+                                      if (preview_value !== undefined) {
+                                        set_slider_values((previous_state) => {
+                                          return {
+                                            ...previous_state,
+                                            [field_config.field_name]: preview_value,
+                                          }
+                                        })
+                                      }
+                                    }}
+                                    onValueCommit={(next_value) => {
+                                      const committed_value = next_value[0]
+                                      if (committed_value !== undefined) {
+                                        void props.onPatch({
+                                          generation: {
+                                            [field_config.field_name]: committed_value,
+                                          },
+                                        })
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            )
+                          : null}
+
+                        <ToggleGroup
+                          type="single"
+                          variant="segmented"
+                          className="model-page__advanced-toggle-group"
+                          aria-label={t(field_config.title_key)}
+                          value={resolve_boolean_toggle_value(current_enabled)}
+                          disabled={props.readonly}
+                          onValueChange={(next_value) => {
+                            if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
                               void props.onPatch({
                                 generation: {
-                                  [field_config.field_name]: committed_value,
+                                  [field_config.enabled_key]: false,
+                                },
+                              })
+                            } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
+                              void props.onPatch({
+                                generation: {
+                                  [field_config.enabled_key]: true,
                                 },
                               })
                             }
                           }}
-                        />
+                        >
+                          <ToggleGroupItem
+                            className="model-page__advanced-toggle-item"
+                            value={BOOLEAN_TOGGLE_VALUE.DISABLED}
+                          >
+                            {t('app.toggle.disabled')}
+                          </ToggleGroupItem>
+                          <ToggleGroupItem
+                            className="model-page__advanced-toggle-item"
+                            value={BOOLEAN_TOGGLE_VALUE.ENABLED}
+                          >
+                            {t('app.toggle.enabled')}
+                          </ToggleGroupItem>
+                        </ToggleGroup>
                       </div>
                     </div>
-                  )}
-                />
+                  </CardContent>
+                </Card>
               )
             })}
 
-            <SettingCardRow
-              className="model-page__setting-card-row--block"
-              title={t('model_page.fields.extra_headers.title')}
-              description={t('model_page.fields.extra_headers.description')}
-              action={(
-                <div className="model-page__request-editor">
-                  <div className="model-page__request-editor-head">
-                    <Switch
-                      checked={model.request.extra_headers_custom_enable}
-                      disabled={props.readonly}
-                      onCheckedChange={(next_checked) => {
+            <Card>
+              <CardContent className="model-page__advanced-card-content">
+                <div className="model-page__advanced-card-head">
+                  <div className="model-page__advanced-card-copy">
+                    <CardTitle>{t('model_page.fields.extra_headers.title')}</CardTitle>
+                    <CardDescription>{t('model_page.fields.extra_headers.description')}</CardDescription>
+                  </div>
+
+                  <ToggleGroup
+                    type="single"
+                    variant="segmented"
+                    className="model-page__advanced-toggle-group"
+                    aria-label={t('model_page.fields.extra_headers.title')}
+                    value={resolve_boolean_toggle_value(model.request.extra_headers_custom_enable)}
+                    disabled={props.readonly}
+                    onValueChange={(next_value) => {
+                      if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
                         void props.onPatch({
                           request: {
-                            extra_headers_custom_enable: next_checked,
+                            extra_headers_custom_enable: false,
                           },
                         })
-                      }}
-                    />
-                  </div>
+                      } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
+                        void props.onPatch({
+                          request: {
+                            extra_headers_custom_enable: true,
+                          },
+                        })
+                      }
+                    }}
+                  >
+                    <ToggleGroupItem
+                      className="model-page__advanced-toggle-item"
+                      value={BOOLEAN_TOGGLE_VALUE.DISABLED}
+                    >
+                      {t('app.toggle.disabled')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      className="model-page__advanced-toggle-item"
+                      value={BOOLEAN_TOGGLE_VALUE.ENABLED}
+                    >
+                      {t('app.toggle.enabled')}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+
+                <div className="model-page__request-editor">
                   <Textarea
                     className="model-page__textarea"
                     value={headers_text}
@@ -282,28 +373,56 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     }}
                   />
                 </div>
-              )}
-            />
+              </CardContent>
+            </Card>
 
-            <SettingCardRow
-              className="model-page__setting-card-row--block"
-              title={t('model_page.fields.extra_body.title')}
-              description={t('model_page.fields.extra_body.description')}
-              action={(
-                <div className="model-page__request-editor">
-                  <div className="model-page__request-editor-head">
-                    <Switch
-                      checked={model.request.extra_body_custom_enable}
-                      disabled={props.readonly}
-                      onCheckedChange={(next_checked) => {
+            <Card>
+              <CardContent className="model-page__advanced-card-content">
+                <div className="model-page__advanced-card-head">
+                  <div className="model-page__advanced-card-copy">
+                    <CardTitle>{t('model_page.fields.extra_body.title')}</CardTitle>
+                    <CardDescription>{t('model_page.fields.extra_body.description')}</CardDescription>
+                  </div>
+
+                  <ToggleGroup
+                    type="single"
+                    variant="segmented"
+                    className="model-page__advanced-toggle-group"
+                    aria-label={t('model_page.fields.extra_body.title')}
+                    value={resolve_boolean_toggle_value(model.request.extra_body_custom_enable)}
+                    disabled={props.readonly}
+                    onValueChange={(next_value) => {
+                      if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
                         void props.onPatch({
                           request: {
-                            extra_body_custom_enable: next_checked,
+                            extra_body_custom_enable: false,
                           },
                         })
-                      }}
-                    />
-                  </div>
+                      } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
+                        void props.onPatch({
+                          request: {
+                            extra_body_custom_enable: true,
+                          },
+                        })
+                      }
+                    }}
+                  >
+                    <ToggleGroupItem
+                      className="model-page__advanced-toggle-item"
+                      value={BOOLEAN_TOGGLE_VALUE.DISABLED}
+                    >
+                      {t('app.toggle.disabled')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      className="model-page__advanced-toggle-item"
+                      value={BOOLEAN_TOGGLE_VALUE.ENABLED}
+                    >
+                      {t('app.toggle.enabled')}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+
+                <div className="model-page__request-editor">
                   <Textarea
                     className="model-page__textarea"
                     value={body_text}
@@ -329,10 +448,10 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     }}
                   />
                 </div>
-              )}
-            />
+              </CardContent>
+            </Card>
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={props.onClose}>

@@ -1,5 +1,4 @@
 export const zh_cn_project_page = {
-  eyebrow: '工程主页 / ProjectPage',
   title: '工程主页',
   summary: '这里承接未加载工程时的双栏入口，集中展示新建工程、打开工程与最近项目预览。',
   create: {
@@ -7,7 +6,6 @@ export const zh_cn_project_page = {
     subtitle: '选择源文件创建 .lg 工程文件，创建完成后即不再需要源文件。',
     drop_title: '点击或者拖拽文件',
     ready_status: '已发现 {COUNT} 个可导入文件',
-    checking: '正在校验源文件…',
     loading_toast: '正在创建工程，请稍候',
     unavailable: '这个路径里没有可导入文件，请重新选择。',
     action: '创建工程',

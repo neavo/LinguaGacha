@@ -1,5 +1,5 @@
 import { LoaderCircle } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { useI18n } from '@/i18n'
 import type { ModelEntrySnapshot } from '@/pages/model-page/types'
@@ -7,10 +7,7 @@ import { Button } from '@/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '@/ui/dialog'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/ui/empty'
 import { Input } from '@/ui/input'
@@ -30,6 +27,7 @@ type ModelSelectorDialogProps = {
 
 export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Element | null {
   const { t } = useI18n()
+  const requested_model_id_ref = useRef<string | null>(null)
   const {
     available_models,
     filter_text,
@@ -43,9 +41,17 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
   } = props
 
   useEffect(() => {
-    if (open && model !== null) {
-      void onLoadAvailableModels(model.id)
+    if (!open || model === null) {
+      requested_model_id_ref.current = null
+      return
     }
+
+    if (requested_model_id_ref.current === model.id) {
+      return
+    }
+
+    requested_model_id_ref.current = model.id
+    void onLoadAvailableModels(model.id)
   }, [model, onLoadAvailableModels, open])
 
   const filtered_models = useMemo(() => {
@@ -71,11 +77,6 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
       }}
     >
       <DialogContent size="md" className="model-page__dialog-shell">
-        <DialogHeader>
-          <DialogTitle>{t('model_page.dialog.selector.title')}</DialogTitle>
-          <DialogDescription>{t('model_page.dialog.selector.description')}</DialogDescription>
-        </DialogHeader>
-
         <div className="model-page__selector-body">
           <Input
             className="model-page__field model-page__field--full"
