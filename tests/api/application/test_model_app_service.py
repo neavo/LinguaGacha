@@ -1,9 +1,14 @@
+import pytest
+
+from api.Application.ModelAppService import ModelAppService
 from model.Api.ModelModels import ModelEntrySnapshot
 from model.Api.ModelModels import ModelGenerationSnapshot
 from model.Api.ModelModels import ModelPageSnapshot
 from model.Api.ModelModels import ModelRequestSnapshot
 from model.Api.ModelModels import ModelThinkingSnapshot
 from model.Api.ModelModels import ModelThresholdSnapshot
+from tests.api.support.application_fakes import FakeModelConfig
+from tests.api.support.application_fakes import FakeModelManager
 
 
 def test_model_page_snapshot_from_dict_builds_nested_objects() -> None:
@@ -55,3 +60,58 @@ def test_model_page_snapshot_from_dict_builds_nested_objects() -> None:
     assert isinstance(snapshot.models[0].thinking, ModelThinkingSnapshot)
     assert isinstance(snapshot.models[0].generation, ModelGenerationSnapshot)
     assert snapshot.models[0].generation.temperature == 0.3
+
+
+def test_model_app_service_update_model_rejects_forbidden_patch_key() -> None:
+    service = ModelAppService()
+    request = {
+        "model_id": "preset-1",
+        "patch": {
+            "type": "CUSTOM_OPENAI",
+        },
+    }
+
+    with pytest.raises(ValueError, match="forbidden model patch key"):
+        service.update_model(request)
+
+
+def test_model_app_service_snapshot_returns_active_model_and_models() -> None:
+    fake_config = FakeModelConfig()
+    service = ModelAppService(
+        config_loader=lambda: fake_config,
+        model_manager=FakeModelManager(),
+    )
+
+    data = service.get_snapshot({})
+
+    assert "snapshot" in data
+    snapshot = data["snapshot"]
+    assert snapshot["active_model_id"] == "preset-1"
+    assert isinstance(snapshot["models"], list)
+    assert len(snapshot["models"]) == 2
+
+
+def test_model_app_service_update_model_merges_nested_patch() -> None:
+    fake_config = FakeModelConfig()
+    service = ModelAppService(
+        config_loader=lambda: fake_config,
+        model_manager=FakeModelManager(),
+    )
+
+    data = service.update_model(
+        {
+            "model_id": "preset-1",
+            "patch": {
+                "generation": {
+                    "temperature": 0.9,
+                }
+            },
+        }
+    )
+
+    snapshot = data["snapshot"]
+    updated_model = next(
+        model for model in snapshot["models"] if model["id"] == "preset-1"
+    )
+    assert updated_model["generation"]["temperature"] == 0.9
+    assert updated_model["generation"]["top_p"] == 0.8

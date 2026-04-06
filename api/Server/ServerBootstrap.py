@@ -5,6 +5,7 @@ from http.server import ThreadingHTTPServer
 
 from api.Application.EventStreamService import EventStreamService
 from api.Application.ExtraAppService import ExtraAppService
+from api.Application.ModelAppService import ModelAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Application.QualityRuleAppService import QualityRuleAppService
@@ -15,6 +16,7 @@ from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.ExtraRoutes import ExtraRoutes
+from api.Server.Routes.ModelRoutes import ModelRoutes
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
 from api.Server.Routes.ProofreadingRoutes import ProofreadingRoutes
 from api.Server.Routes.QualityRoutes import QualityRoutes
@@ -46,6 +48,7 @@ class ServerBootstrap:
         workbench_app_service = WorkbenchAppService()
         settings_app_service = SettingsAppService()
         extra_app_service = ExtraAppService()
+        model_app_service = ModelAppService()
         return cls.start_for_test(
             project_app_service=project_app_service,
             proofreading_app_service=proofreading_app_service,
@@ -54,6 +57,7 @@ class ServerBootstrap:
             workbench_app_service=workbench_app_service,
             settings_app_service=settings_app_service,
             extra_app_service=extra_app_service,
+            model_app_service=model_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
             as_runtime=True,
         )
@@ -69,6 +73,7 @@ class ServerBootstrap:
         workbench_app_service: WorkbenchAppService | None = None,
         settings_app_service: SettingsAppService | None = None,
         extra_app_service: ExtraAppService | None = None,
+        model_app_service: ModelAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
@@ -88,6 +93,7 @@ class ServerBootstrap:
             workbench_app_service=workbench_app_service,
             settings_app_service=settings_app_service,
             extra_app_service=extra_app_service,
+            model_app_service=model_app_service,
         )
         serve_thread = threading.Thread(
             target=http_server.serve_forever,
@@ -123,6 +129,7 @@ class ServerBootstrap:
         workbench_app_service: WorkbenchAppService | None,
         settings_app_service: SettingsAppService | None,
         extra_app_service: ExtraAppService | None,
+        model_app_service: ModelAppService | None,
     ) -> ThreadingHTTPServer:
         """按候选端口顺序尝试绑定，确保前后端发现顺序一致。"""
 
@@ -145,6 +152,8 @@ class ServerBootstrap:
                 SettingsRoutes.register(core_api_server, settings_app_service)
             if extra_app_service is not None:
                 ExtraRoutes.register(core_api_server, extra_app_service)
+            if model_app_service is not None:
+                ModelRoutes.register(core_api_server, model_app_service)
 
             try:
                 return core_api_server.create_http_server()

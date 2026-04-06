@@ -13,6 +13,7 @@ from api.Client.WorkbenchApiClient import WorkbenchApiClient
 
 if TYPE_CHECKING:
     from api.Client.ExtraApiClient import ExtraApiClient
+    from api.Client.ModelApiClient import ModelApiClient
 
 
 @dataclass(frozen=True)
@@ -27,3 +28,4 @@ class AppClientContext:
     proofreading_api_client: ProofreadingApiClient
     api_state_store: ApiStateStore
     extra_api_client: "ExtraApiClient | None" = None
+    model_api_client: "ModelApiClient | None" = None

@@ -22,6 +22,7 @@ from api.Client.ApiClient import ApiClient
 from api.Client.AppClientContext import AppClientContext
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ExtraApiClient import ExtraApiClient
+from api.Client.ModelApiClient import ModelApiClient
 from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Client.QualityRuleApiClient import QualityRuleApiClient
@@ -279,6 +280,7 @@ if __name__ == "__main__":
             proofreading_api_client=ProofreadingApiClient(api_client),
             extra_api_client=ExtraApiClient(api_client),
             api_state_store=ApiStateStore(),
+            model_api_client=ModelApiClient(api_client),
         )
 
     # 注册应用退出清理（确保数据库连接正确关闭，WAL 文件被清理）

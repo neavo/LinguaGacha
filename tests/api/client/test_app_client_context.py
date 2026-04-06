@@ -4,6 +4,7 @@ from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.AppClientContext import AppClientContext
 from api.Client.ExtraApiClient import ExtraApiClient
+from api.Client.ModelApiClient import ModelApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from api.Client.QualityRuleApiClient import QualityRuleApiClient
@@ -22,6 +23,7 @@ def test_app_client_context_groups_real_clients() -> None:
         settings_api_client=SettingsApiClient(api_client),
         quality_rule_api_client=QualityRuleApiClient(api_client),
         proofreading_api_client=ProofreadingApiClient(api_client),
+        model_api_client=ModelApiClient(api_client),
         api_state_store=ApiStateStore(),
     )
 
@@ -46,6 +48,7 @@ def test_app_client_context_groups_extra_api_client() -> None:
         settings_api_client=SettingsApiClient(api_client),
         quality_rule_api_client=QualityRuleApiClient(api_client),
         proofreading_api_client=ProofreadingApiClient(api_client),
+        model_api_client=ModelApiClient(api_client),
         extra_api_client=extra_api_client,
         api_state_store=ApiStateStore(),
     )
@@ -93,3 +96,20 @@ def test_ui_bootstrap_imports_extra_api_client() -> None:
 
 def test_app_client_context_will_expose_extra_api_client() -> None:
     assert "extra_api_client" in AppClientContext.__annotations__
+
+
+def test_app_client_context_exposes_model_api_client() -> None:
+    api_client = ApiClient("http://testserver")
+    context = AppClientContext(
+        project_api_client=ProjectApiClient(api_client),
+        task_api_client=TaskApiClient(api_client),
+        workbench_api_client=WorkbenchApiClient(api_client),
+        settings_api_client=SettingsApiClient(api_client),
+        quality_rule_api_client=QualityRuleApiClient(api_client),
+        proofreading_api_client=ProofreadingApiClient(api_client),
+        model_api_client=ModelApiClient(api_client),
+        api_state_store=ApiStateStore(),
+        extra_api_client=ExtraApiClient(api_client),
+    )
+
+    assert isinstance(context.model_api_client, ModelApiClient)
