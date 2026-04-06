@@ -74,6 +74,8 @@ EXTRA_FRONTEND_FILES: tuple[str, ...] = (
     "frontend/Extra/LaboratoryPage.py",
 )
 
+MODEL_FRONTEND_FILES: tuple[str, ...] = ("frontend/Model/ModelPage.py",)
+
 EXTRA_FORBIDDEN_IMPORT_MODULES: tuple[str, ...] = (
     "module.Config",
     "module.Data.DataManager",
@@ -382,6 +384,22 @@ def test_phase_one_frontend_files_do_not_import_core_singletons_directly() -> No
         content = file_path.read_text(encoding="utf-8")
 
         for forbidden_import in FRONTEND_CORE_FORBIDDEN_IMPORTS:
+            assert forbidden_import not in content, (
+                f"{relative_path} 仍然直接依赖受限导入: {forbidden_import}"
+            )
+
+
+def test_model_frontend_files_do_not_import_core_singletons() -> None:
+    root_dir = Path(__file__).resolve().parents[2]
+    forbidden_imports = (
+        "from module.Config import Config",
+        "from module.Engine.Engine import Engine",
+        "from module.ModelManager import ModelManager",
+    )
+
+    for relative_path in MODEL_FRONTEND_FILES:
+        content = (root_dir / relative_path).read_text(encoding="utf-8")
+        for forbidden_import in forbidden_imports:
             assert forbidden_import not in content, (
                 f"{relative_path} 仍然直接依赖受限导入: {forbidden_import}"
             )

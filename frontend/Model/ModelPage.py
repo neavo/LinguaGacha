@@ -13,15 +13,17 @@ from qfluentwidgets import PushButton
 from qfluentwidgets import RoundMenu
 from qfluentwidgets import SingleDirectionScrollArea
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ModelApiClient import ModelApiClient
 from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Model.ModelAdvancedSettingPage import ModelAdvancedSettingPage
 from frontend.Model.ModelBasicSettingPage import ModelBasicSettingPage
 from frontend.Model.ModelTaskSettingPage import ModelTaskSettingPage
+from model.Api.ModelModels import ModelEntrySnapshot
+from model.Api.ModelModels import ModelPageSnapshot
 from model.Model import ModelType
-from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.ModelManager import ModelManager
 from widget.FlowCard import FlowCard
 
 # ==================== 图标常量 ====================
@@ -50,31 +52,32 @@ class ModelPage(Base, QWidget):
         ModelType.CUSTOM_OPENAI.value: "#10A37F",  # OpenAI 绿
         ModelType.CUSTOM_ANTHROPIC.value: "#D97757",  # Anthropic 橙
     }
+    REORDER_OPERATION_MOVE_UP: str = "MOVE_UP"
+    REORDER_OPERATION_MOVE_DOWN: str = "MOVE_DOWN"
+    REORDER_OPERATION_MOVE_TOP: str = "MOVE_TOP"
+    REORDER_OPERATION_MOVE_BOTTOM: str = "MOVE_BOTTOM"
 
-    def __init__(self, text: str, window: FluentWindow) -> None:
+    def __init__(
+        self,
+        text: str,
+        model_api_client: ModelApiClient,
+        api_state_store: ApiStateStore,
+        window: FluentWindow,
+    ) -> None:
         super().__init__(window)
         self.setObjectName(text.replace(" ", "-"))
         self.window = window
+        self.model_api_client = model_api_client
+        self.api_state_store = api_state_store
 
         # 存储各分类卡片的引用
         self.category_cards: dict[str, FlowCard] = {}
-
-        # 载入配置并初始化模型
-        config = Config().load()
-        migrated_count = config.initialize_models()
-        config.save()
-
-        if migrated_count > 0:
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.INFO,
-                    "message": Localizer.get().model_page_migrated_toast.replace("{COUNT}", str(migrated_count)),
-                },
-            )
+        self.current_snapshot: ModelPageSnapshot = self.model_api_client.get_snapshot()
 
         # 设置滚动区域
-        self.scroll_area = SingleDirectionScrollArea(self, orient=Qt.Orientation.Vertical)
+        self.scroll_area = SingleDirectionScrollArea(
+            self, orient=Qt.Orientation.Vertical
+        )
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.enableTransparentBackground()
         # self.scroll_area.setSmoothMode(SmoothMode.NO_SMOOTH)  # 禁用平滑滚动以提升性能
@@ -93,7 +96,7 @@ class ModelPage(Base, QWidget):
         main_layout.addWidget(self.scroll_area)
 
         # 添加4个分类卡片
-        self.add_category_cards(self.vbox, config, window)
+        self.add_category_cards(self.vbox, window)
 
         # 填充
         self.vbox.addStretch(1)
@@ -101,7 +104,7 @@ class ModelPage(Base, QWidget):
         # 完成事件
         self.subscribe(Base.Event.APITEST, self.model_test_done)
 
-    def add_category_cards(self, parent: QLayout, config: Config, window: FluentWindow) -> None:
+    def add_category_cards(self, parent: QLayout, window: FluentWindow) -> None:
         """添加4个分类卡片"""
 
         # 预设模型卡片
@@ -138,14 +141,16 @@ class ModelPage(Base, QWidget):
         )
 
         # 自定义 Anthropic 模型卡片
-        self.category_cards[ModelType.CUSTOM_ANTHROPIC.value] = self.create_category_card(
-            parent=parent,
-            model_type=ModelType.CUSTOM_ANTHROPIC,
-            title=Localizer.get().model_page_category_anthropic_title,
-            description=Localizer.get().model_page_category_anthropic_desc,
-            accent_color=self.BRAND_COLORS[ModelType.CUSTOM_ANTHROPIC.value],
-            window=window,
-            show_add_button=True,
+        self.category_cards[ModelType.CUSTOM_ANTHROPIC.value] = (
+            self.create_category_card(
+                parent=parent,
+                model_type=ModelType.CUSTOM_ANTHROPIC,
+                title=Localizer.get().model_page_category_anthropic_title,
+                description=Localizer.get().model_page_category_anthropic_desc,
+                accent_color=self.BRAND_COLORS[ModelType.CUSTOM_ANTHROPIC.value],
+                window=window,
+                show_add_button=True,
+            )
         )
 
         # 刷新所有分类的模型列表
@@ -183,11 +188,10 @@ class ModelPage(Base, QWidget):
 
     def refresh_all_categories(self) -> None:
         """刷新所有分类的模型列表"""
-        config = Config().load()
-        models = config.models or []
+        models = self.current_snapshot.models
 
         # 按类型分组
-        models_by_type: dict[str, list[dict]] = {
+        models_by_type: dict[str, list[ModelEntrySnapshot]] = {
             ModelType.PRESET.value: [],
             ModelType.CUSTOM_GOOGLE.value: [],
             ModelType.CUSTOM_OPENAI.value: [],
@@ -195,7 +199,7 @@ class ModelPage(Base, QWidget):
         }
 
         for model_data in models:
-            model_type = model_data.get("type", ModelType.PRESET.value)
+            model_type = model_data.type
             if model_type in models_by_type:
                 models_by_type[model_type].append(model_data)
 
@@ -205,22 +209,22 @@ class ModelPage(Base, QWidget):
                 card,
                 model_type,
                 models_by_type[model_type],
-                config.activate_model_id,
+                self.current_snapshot.active_model_id,
             )
 
     def update_category_card(
         self,
         card: FlowCard,
         model_type: str,
-        models: list[dict],
+        models: list[ModelEntrySnapshot],
         active_model_id: str,
     ) -> None:
         """更新单个分类卡片的模型列表"""
         card.take_all_widgets()
 
         for row_index, model_data in enumerate(models):
-            model_id = model_data.get("id", "")
-            model_name = model_data.get("name", "")
+            model_id = model_data.id
+            model_name = model_data.name
             is_active = model_id == active_model_id
 
             # 根据激活状态选择按钮类型
@@ -296,7 +300,6 @@ class ModelPage(Base, QWidget):
             menu.addSeparator()
             self.add_reorder_actions_to_menu(
                 menu=menu,
-                model_type=model_type,
                 model_id=model_id,
                 row_index=row_index,
                 total_count=len(models),
@@ -308,7 +311,6 @@ class ModelPage(Base, QWidget):
     def add_reorder_actions_to_menu(
         self,
         menu: RoundMenu,
-        model_type: str,
         model_id: str,
         row_index: int,
         total_count: int,
@@ -325,9 +327,8 @@ class ModelPage(Base, QWidget):
             Localizer.get().move_up,
             triggered=partial(
                 self.reorder_model_in_group,
-                model_type,
                 model_id,
-                ModelManager.ReorderOperation.MOVE_UP,
+                self.REORDER_OPERATION_MOVE_UP,
             ),
         )
         move_up_action.setEnabled(can_move_up)
@@ -338,9 +339,8 @@ class ModelPage(Base, QWidget):
             Localizer.get().move_down,
             triggered=partial(
                 self.reorder_model_in_group,
-                model_type,
                 model_id,
-                ModelManager.ReorderOperation.MOVE_DOWN,
+                self.REORDER_OPERATION_MOVE_DOWN,
             ),
         )
         move_down_action.setEnabled(can_move_down)
@@ -352,9 +352,8 @@ class ModelPage(Base, QWidget):
             Localizer.get().move_top,
             triggered=partial(
                 self.reorder_model_in_group,
-                model_type,
                 model_id,
-                ModelManager.ReorderOperation.MOVE_TOP,
+                self.REORDER_OPERATION_MOVE_TOP,
             ),
         )
         move_top_action.setEnabled(can_move_up)
@@ -365,30 +364,14 @@ class ModelPage(Base, QWidget):
             Localizer.get().move_bottom,
             triggered=partial(
                 self.reorder_model_in_group,
-                model_type,
                 model_id,
-                ModelManager.ReorderOperation.MOVE_BOTTOM,
+                self.REORDER_OPERATION_MOVE_BOTTOM,
             ),
         )
         move_bottom_action.setEnabled(can_move_down)
         reorder_menu.addAction(move_bottom_action)
 
         menu.addMenu(reorder_menu)
-
-    @staticmethod
-    def collect_group_model_ids(models: list[dict], model_type: str) -> list[str]:
-        """
-        提取指定分组的模型 ID 列表。
-        为什么要单独提取：后续重排只允许作用于单一分组。
-        """
-        result: list[str] = []
-        for model_data in models:
-            current_type = model_data.get("type", ModelType.PRESET.value)
-            if current_type == model_type:
-                model_id = model_data.get("id", "")
-                if model_id:
-                    result.append(model_id)
-        return result
 
     # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
     def model_test_start(self, model_id: str, checked: bool = False) -> None:
@@ -405,34 +388,16 @@ class ModelPage(Base, QWidget):
     # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
     def reorder_model_in_group(
         self,
-        model_type: str,
         model_id: str,
-        operation: ModelManager.ReorderOperation,
+        operation: str,
         checked: bool = False,
     ) -> None:
         """执行组内排序并持久化。"""
         del checked
-        config = Config().load()
-        models = config.models or []
-        group_ids = self.collect_group_model_ids(models, model_type)
-        reordered_group_ids = ModelManager.build_group_reordered_ids(
-            group_ids,
+        self.current_snapshot = self.model_api_client.reorder_model(
             model_id,
             operation,
         )
-        if reordered_group_ids == group_ids:
-            return
-
-        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
-            models,
-            model_type,
-            reordered_group_ids,
-        )
-        manager = ModelManager.get()
-        manager.set_models(models)
-        manager.reorder_models(ordered_ids)
-        config.models = manager.get_models_as_dict()
-        config.save()
         self.refresh_all_categories()
 
     def model_test_done(self, event: Base.Event, data: dict) -> None:
@@ -446,39 +411,32 @@ class ModelPage(Base, QWidget):
         self.emit(
             Base.Event.TOAST,
             {
-                "type": Base.ToastType.SUCCESS if data.get("result", True) else Base.ToastType.ERROR,
+                "type": Base.ToastType.SUCCESS
+                if data.get("result", True)
+                else Base.ToastType.ERROR,
                 "message": data.get("result_msg", ""),
             },
         )
 
     def add_model(self, model_type: ModelType, window: FluentWindow) -> None:
         """添加模型"""
-        config = Config().load()
-        manager = ModelManager.get()
-        manager.set_models(config.models or [])
-
-        # 添加新模型
-        manager.add_model(model_type)
-
-        # 同步回 Config
-        config.models = manager.get_models_as_dict()
-        config.save()
-
-        # 刷新显示
+        del window
+        self.current_snapshot = self.model_api_client.add_model(model_type.value)
         self.refresh_all_categories()
 
     def delete_model(self, model_id: str, checked: bool = False) -> None:
         """删除模型"""
-        config = Config().load()
-        manager = ModelManager.get()
-        manager.set_models(config.models or [])
-
-        # 检查是否为最后一个该类型的模型
-        target_model_data = config.get_model(model_id)
-        if target_model_data:
-            model_type = target_model_data.get("type", "")
-            # 统计同类型模型数量
-            same_type_count = sum(1 for m in (config.models or []) if m.get("type") == model_type)
+        del checked
+        target_model = next(
+            (model for model in self.current_snapshot.models if model.id == model_id),
+            None,
+        )
+        if target_model is not None:
+            same_type_count = sum(
+                1
+                for model in self.current_snapshot.models
+                if model.type == target_model.type
+            )
             if same_type_count <= 1:
                 self.emit(
                     Base.Event.TOAST,
@@ -488,6 +446,7 @@ class ModelPage(Base, QWidget):
                     },
                 )
                 return
+
         message_box = MessageBox(
             Localizer.get().confirm,
             Localizer.get().alert_confirm_delete_data,
@@ -498,53 +457,45 @@ class ModelPage(Base, QWidget):
         if not message_box.exec():
             return
 
-        # 删除模型
-        if manager.delete_model(model_id):
-            # 如果删除的是激活模型，更新激活 ID
-            if config.activate_model_id == model_id:
-                active_model = manager.get_active_model()
-                config.activate_model_id = active_model.id if active_model else ""
-
-            # 同步回 Config
-            config.models = manager.get_models_as_dict()
-            config.save()
-
-        # 刷新显示
+        self.current_snapshot = self.model_api_client.delete_model(model_id)
         self.refresh_all_categories()
 
     def activate_model(self, model_id: str, checked: bool = False) -> None:
         """激活模型"""
-        config = Config().load()
-        config.set_active_model_id(model_id)
-        config.save()
-
-        # 刷新显示
+        del checked
+        self.current_snapshot = self.model_api_client.activate_model(model_id)
         self.refresh_all_categories()
 
-    def show_model_basic_setting_page(self, model_id: str, checked: bool = False) -> None:
+    def show_model_basic_setting_page(
+        self, model_id: str, checked: bool = False
+    ) -> None:
         """显示基础设置对话框"""
+        del checked
         ModelBasicSettingPage(model_id, self.window).exec()
 
-        # 刷新显示
+        self.current_snapshot = self.model_api_client.get_snapshot()
         self.refresh_all_categories()
 
-    def show_model_task_setting_page(self, model_id: str, checked: bool = False) -> None:
+    def show_model_task_setting_page(
+        self, model_id: str, checked: bool = False
+    ) -> None:
         """显示任务设置对话框"""
+        del checked
         ModelTaskSettingPage(model_id, self.window).exec()
 
-        # 刷新显示
+        self.current_snapshot = self.model_api_client.get_snapshot()
         self.refresh_all_categories()
 
     def show_advanced_edit_page(self, model_id: str, checked: bool = False) -> None:
         """显示编辑参数对话框"""
+        del checked
         ModelAdvancedSettingPage(model_id, self.window).exec()
+        self.current_snapshot = self.model_api_client.get_snapshot()
+        self.refresh_all_categories()
 
     def reset_preset_model(self, model_id: str, checked: bool = False) -> None:
         """重置预设模型"""
         del checked
-        config = Config().load()
-        manager = ModelManager.get()
-        manager.set_models(config.models or [])
 
         message_box = MessageBox(
             Localizer.get().confirm,
@@ -556,19 +507,13 @@ class ModelPage(Base, QWidget):
         if not message_box.exec():
             return
 
-        # 重置模型
-        if manager.reset_preset_model(model_id):
-            # 同步回 Config
-            config.models = manager.get_models_as_dict()
-            config.save()
+        self.current_snapshot = self.model_api_client.reset_preset_model(model_id)
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.SUCCESS,
+                "message": Localizer.get().model_page_reset_success_toast,
+            },
+        )
 
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.SUCCESS,
-                    "message": Localizer.get().model_page_reset_success_toast,
-                },
-            )
-
-        # 刷新显示
         self.refresh_all_categories()

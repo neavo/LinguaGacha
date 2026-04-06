@@ -108,7 +108,10 @@ class AppFluentWindow(Base, FluentWindow):
         self.quality_rule_api_client = app_client_context.quality_rule_api_client
         self.proofreading_api_client = app_client_context.proofreading_api_client
         self.extra_api_client = app_client_context.extra_api_client
+        self.model_api_client = app_client_context.model_api_client
         self.api_state_store = app_client_context.api_state_store
+        if self.model_api_client is None:
+            raise ValueError("UI 模式必须提供 ModelApiClient")
 
         super().__init__()
 
@@ -659,7 +662,12 @@ class AppFluentWindow(Base, FluentWindow):
     def add_project_pages(self) -> None:
         # 模型管理
         self.addSubInterface(
-            ModelPage("model_page", self),
+            ModelPage(
+                "model_page",
+                self.model_api_client,
+                self.api_state_store,
+                self,
+            ),
             ICON_NAV_MODEL.qicon(),
             Localizer.get().app_model_page,
             NavigationItemPosition.SCROLL,
