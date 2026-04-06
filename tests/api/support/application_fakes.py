@@ -311,6 +311,38 @@ class FakeModelConfig:
             },
         },
         {
+            "id": "preset-2",
+            "type": "PRESET",
+            "name": "GPT-4.1 Mini",
+            "api_format": "OpenAI",
+            "api_url": "https://api.example.com/v1",
+            "api_key": "preset-key-2",
+            "model_id": "gpt-4.1-mini",
+            "request": {
+                "extra_headers": {},
+                "extra_headers_custom_enable": False,
+                "extra_body": {},
+                "extra_body_custom_enable": False,
+            },
+            "threshold": {
+                "input_token_limit": 1024,
+                "output_token_limit": 2048,
+                "rpm_limit": 60,
+                "concurrency_limit": 2,
+            },
+            "thinking": {"level": "LOW"},
+            "generation": {
+                "temperature": 0.4,
+                "temperature_custom_enable": True,
+                "top_p": 0.85,
+                "top_p_custom_enable": True,
+                "presence_penalty": 0.0,
+                "presence_penalty_custom_enable": False,
+                "frequency_penalty": 0.0,
+                "frequency_penalty_custom_enable": False,
+            },
+        },
+        {
             "id": "custom-openai-1",
             "type": "CUSTOM_OPENAI",
             "name": "Custom GPT",
@@ -392,6 +424,7 @@ class FakeModelManager:
 
     PRESET_MODEL_BY_ID: dict[str, dict[str, object]] = {
         "preset-1": deepcopy(FakeModelConfig.DEFAULT_MODELS[0]),
+        "preset-2": deepcopy(FakeModelConfig.DEFAULT_MODELS[1]),
     }
     TEMPLATE_BY_TYPE: dict[ModelType, dict[str, object]] = {
         ModelType.CUSTOM_GOOGLE: {

@@ -2,6 +2,7 @@ import { create_debug_panel_screen } from '@/pages/debug-panel-page/create-debug
 import { AppSettingsPage } from '@/pages/app-settings-page/page'
 import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
 import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
+import { ModelPage } from '@/pages/model-page/page'
 import { ProjectPage } from '@/pages/project-page/page'
 import { WorkbenchPage } from '@/pages/workbench-page/page'
 import type { ScreenRegistry } from '@/app/navigation/types'
@@ -13,10 +14,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     summary_key: 'project_page.summary',
   },
   model: {
-    component: create_debug_panel_screen({
-      title_key: 'model_page.title',
-      summary_key: 'model_page.summary',
-    }),
+    component: ModelPage,
     title_key: 'model_page.title',
     summary_key: 'model_page.summary',
   },

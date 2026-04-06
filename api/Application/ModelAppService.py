@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import copy
+import time
 from collections.abc import Callable
 from typing import Protocol
 
 from api.Contract.ModelPayloads import ModelPageSnapshotPayload
+from base.Base import Base
 from base.BaseLanguage import BaseLanguage
+from base.LogManager import LogManager
 from model.Api.ModelModels import ModelEntrySnapshot
 from model.Api.ModelModels import ModelPageSnapshot
 from model.Model import ModelType
@@ -57,6 +61,12 @@ class ModelManagerLike(Protocol):
 class ModelAppService:
     """把模型管理动作收口到应用服务，避免 UI 继续直连配置与模型管理器。"""
 
+    BROWSER_USER_AGENT: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/133.0.0.0 Safari/537.36"
+    )
+
     PATCH_ALLOWED_KEYS: tuple[str, ...] = (
         "name",
         "api_url",
@@ -78,12 +88,24 @@ class ModelAppService:
         self,
         config_loader: Callable[[], ModelConfigLike] | None = None,
         model_manager: ModelManagerLike | None = None,
+        available_models_loader: Callable[[dict[str, object]], list[str]] | None = None,
+        api_test_runner: Callable[[dict[str, object]], dict[str, object]] | None = None,
     ) -> None:
         self.config_loader = (
             config_loader if config_loader is not None else self.default_config_loader
         )
         self.model_manager = (
             model_manager if model_manager is not None else ModelManager.get()
+        )
+        self.available_models_loader = (
+            available_models_loader
+            if available_models_loader is not None
+            else self.default_available_models_loader
+        )
+        self.api_test_runner = (
+            api_test_runner
+            if api_test_runner is not None
+            else self.default_api_test_runner
         )
 
     def get_snapshot(
@@ -170,6 +192,46 @@ class ModelAppService:
     def reorder_model(self, request: dict[str, object]) -> dict[str, object]:
         """把排序规则留在 Core 侧，避免页面自己拼全局顺序。"""
 
+        ordered_model_ids_raw = request.get("ordered_model_ids")
+        if isinstance(ordered_model_ids_raw, list):
+            ordered_model_ids = [
+                str(model_id).strip()
+                for model_id in ordered_model_ids_raw
+                if str(model_id).strip() != ""
+            ]
+            if not ordered_model_ids:
+                raise ValueError("ordered_model_ids is empty")
+
+            config = self.load_config()
+            target_model = self.get_model_or_raise(config, ordered_model_ids[0])
+            target_type = str(target_model.get("type", ModelType.PRESET.value))
+            expected_group_ids = self.collect_group_model_ids(
+                config.models or [],
+                target_type,
+            )
+            if len(ordered_model_ids) != len(expected_group_ids) or set(
+                ordered_model_ids
+            ) != set(expected_group_ids):
+                raise ValueError("ordered_model_ids must match one model group exactly")
+
+            global_order_ids = ModelManager.build_global_ordered_ids_for_group(
+                config.models or [],
+                target_type,
+                ordered_model_ids,
+            )
+            self.prepare_manager(config)
+            self.model_manager.reorder_models(global_order_ids)
+            self.sync_config_from_manager(config)
+            return self.persist_config_and_build_snapshot(config)
+
+        return self.reorder_model_by_operation(request)
+
+    def reorder_model_by_operation(
+        self,
+        request: dict[str, object],
+    ) -> dict[str, object]:
+        """旧前端仍使用操作枚举重排，因此兼容逻辑单独收口。"""
+
         model_id = str(request.get("model_id", ""))
         operation_value = str(request.get("operation", ""))
         config = self.load_config()
@@ -200,6 +262,20 @@ class ModelAppService:
         self.model_manager.reorder_models(ordered_ids)
         self.sync_config_from_manager(config)
         return self.persist_config_and_build_snapshot(config)
+
+    def list_available_models(self, request: dict[str, object]) -> dict[str, object]:
+        """把可选模型列表查询留在 Core 侧，避免页面自行依赖各家 SDK。"""
+
+        config = self.load_config()
+        model = self.get_model_or_raise(config, str(request.get("model_id", "")))
+        return {"models": self.available_models_loader(model)}
+
+    def test_model(self, request: dict[str, object]) -> dict[str, object]:
+        """把模型连通性测试留在 Core 侧，保证页面只消费稳定结果。"""
+
+        config = self.load_config()
+        model = self.get_model_or_raise(config, str(request.get("model_id", "")))
+        return dict(self.api_test_runner(model))
 
     def build_snapshot(self, config: ModelConfigLike) -> ModelPageSnapshot:
         """把配置对象裁剪成模型页真正依赖的冻结快照。"""
@@ -237,6 +313,154 @@ class ModelAppService:
         """默认从真实配置创建读取对象。"""
 
         return Config()
+
+    def default_available_models_loader(self, model: dict[str, object]) -> list[str]:
+        """真实环境下复用各家 SDK 拉模型列表，页面只拿稳定字符串数组。"""
+
+        try:
+            api_key = self.get_primary_api_key(model)
+            api_url = str(model.get("api_url", ""))
+            api_format = str(model.get("api_format", Base.APIFormat.OPENAI))
+            headers = self.build_browser_headers(model)
+
+            if api_format == Base.APIFormat.GOOGLE:
+                from google import genai
+                from google.genai import types
+
+                normalized_url = api_url.strip().removesuffix("/")
+                api_version: str | None = None
+                if normalized_url.endswith("/v1beta"):
+                    api_version = "v1beta"
+                    normalized_url = normalized_url.removesuffix("/v1beta")
+                elif normalized_url.endswith("/v1"):
+                    api_version = "v1"
+                    normalized_url = normalized_url.removesuffix("/v1")
+
+                http_options_args: dict[str, object] = {"headers": headers}
+                if normalized_url != "":
+                    http_options_args["base_url"] = normalized_url
+                if api_version is not None:
+                    http_options_args["api_version"] = api_version
+
+                client = genai.Client(
+                    api_key=api_key,
+                    http_options=types.HttpOptions(**http_options_args),
+                )
+                return [str(item.name) for item in client.models.list()]
+
+            if api_format == Base.APIFormat.ANTHROPIC:
+                import anthropic
+
+                client = anthropic.Anthropic(
+                    api_key=api_key,
+                    base_url=api_url,
+                    default_headers=headers,
+                )
+                return [str(item.id) for item in client.models.list()]
+
+            import openai
+
+            client = openai.OpenAI(
+                base_url=api_url,
+                api_key=api_key,
+                default_headers=headers,
+            )
+            return [str(item.id) for item in client.models.list()]
+        except Exception as e:
+            LogManager.get().warning("获取模型列表失败。", e)
+            raise ValueError("获取模型列表失败，请检查接口配置。") from e
+
+    def default_api_test_runner(self, model: dict[str, object]) -> dict[str, object]:
+        """真实环境下复用请求器执行模型测试，并返回稳定的聚合结果。"""
+
+        from module.Engine.APITest.APITestResult import APITestResult
+        from module.Engine.APITest.APITestResult import KeyTestResult
+        from module.Engine.TaskRequester import TaskRequester
+        from module.Localizer.Localizer import Localizer
+
+        config = Config().load()
+        messages = self.build_api_test_messages(str(model.get("api_format", "")))
+        api_keys = self.collect_api_keys(model)
+        key_results: list[KeyTestResult] = []
+
+        TaskRequester.reset()
+        for api_key in api_keys:
+            model_for_test = copy.deepcopy(model)
+            model_for_test["api_key"] = api_key
+            requester = TaskRequester(config, model_for_test)
+            start_time_ns = time.perf_counter_ns()
+            (
+                exception,
+                _response_think,
+                _response_result,
+                input_tokens,
+                output_tokens,
+            ) = requester.request(messages)
+            response_time_ms = (time.perf_counter_ns() - start_time_ns) // 1_000_000
+
+            if exception is None:
+                key_results.append(
+                    KeyTestResult(
+                        masked_key=self.mask_api_key(api_key),
+                        success=True,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        response_time_ms=response_time_ms,
+                        error_reason="",
+                    )
+                )
+            else:
+                reason = self.build_api_test_error_reason(
+                    exception,
+                    int(config.request_timeout),
+                    Localizer.get().api_test_timeout,
+                )
+                key_results.append(
+                    KeyTestResult(
+                        masked_key=self.mask_api_key(api_key),
+                        success=False,
+                        input_tokens=0,
+                        output_tokens=0,
+                        response_time_ms=response_time_ms,
+                        error_reason=reason,
+                    )
+                )
+                LogManager.get().warning(
+                    Localizer.get().log_api_test_fail.replace("{REASON}", reason),
+                    exception,
+                )
+
+        success_results = [result for result in key_results if result.success]
+        failure_results = [result for result in key_results if not result.success]
+        result_msg = (
+            Localizer.get()
+            .api_test_result.replace("{COUNT}", str(len(api_keys)))
+            .replace("{SUCCESS}", str(len(success_results)))
+            .replace("{FAILURE}", str(len(failure_results)))
+        )
+        api_test_result = APITestResult(
+            success=len(failure_results) == 0,
+            result_msg=result_msg,
+            total_count=len(api_keys),
+            success_count=len(success_results),
+            failure_count=len(failure_results),
+            total_response_time_ms=sum(
+                result.response_time_ms for result in key_results
+            ),
+            key_results=tuple(key_results),
+        )
+        event_payload = api_test_result.to_event_dict()
+        return {
+            "success": bool(event_payload.get("result", False)),
+            "result_msg": str(event_payload.get("result_msg", "")),
+            "total_count": int(event_payload.get("total_count", 0)),
+            "success_count": int(event_payload.get("success_count", 0)),
+            "failure_count": int(event_payload.get("failure_count", 0)),
+            "total_response_time_ms": int(
+                event_payload.get("total_response_time_ms", 0)
+            ),
+            "key_results": list(event_payload.get("key_results", [])),
+        }
 
     def persist_config_and_build_snapshot(
         self,
@@ -326,3 +550,87 @@ class ModelAppService:
                 if model_id != "":
                     result.append(model_id)
         return result
+
+    def collect_api_keys(self, model: dict[str, object]) -> list[str]:
+        """统一按换行切分 API Key，保证测试与列表查询读同一份配置。"""
+
+        api_keys_raw = str(model.get("api_key", ""))
+        api_keys = [key.strip() for key in api_keys_raw.splitlines() if key.strip()]
+        if api_keys:
+            return api_keys
+        return ["no_key_required"]
+
+    def get_primary_api_key(self, model: dict[str, object]) -> str:
+        """列表查询只取首个 key，保持与旧模型选择器一致。"""
+
+        return self.collect_api_keys(model)[0]
+
+    def build_browser_headers(self, model: dict[str, object]) -> dict[str, str]:
+        """模型列表查询统一伪装浏览器 UA，降低部分网关对 SDK UA 的拦截。"""
+
+        headers = {"User-Agent": self.BROWSER_USER_AGENT}
+        request_config = model.get("request", {})
+        if isinstance(request_config, dict) and bool(
+            request_config.get("extra_headers_custom_enable", False)
+        ):
+            extra_headers = request_config.get("extra_headers", {})
+            if isinstance(extra_headers, dict):
+                for key, value in extra_headers.items():
+                    headers[str(key)] = str(value)
+        return headers
+
+    def build_api_test_messages(self, api_format: str) -> list[dict[str, str]]:
+        """模型测试统一复用旧测试入口的提示词，避免不同入口结论漂移。"""
+
+        if api_format == Base.APIFormat.SAKURALLM:
+            return [
+                {
+                    "role": "system",
+                    "content": "你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。",
+                },
+                {
+                    "role": "user",
+                    "content": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない",
+                },
+            ]
+
+        return [
+            {
+                "role": "system",
+                "content": "任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。",
+            },
+            {
+                "role": "user",
+                "content": '{"0":"魔導具師ダリヤはうつむかない"}',
+            },
+        ]
+
+    def build_api_test_error_reason(
+        self,
+        exception: Exception,
+        request_timeout: int,
+        timeout_template: str,
+    ) -> str:
+        """统一归一化测试失败原因，避免页面和日志看到不同口径。"""
+
+        from module.Engine.TaskRequestErrors import RequestHardTimeoutError
+
+        if isinstance(exception, RequestHardTimeoutError):
+            return timeout_template.replace("{SECONDS}", str(request_timeout))
+
+        exception_text = str(exception).strip()
+        if exception_text != "":
+            return f"{exception.__class__.__name__}: {exception_text}"
+        return exception.__class__.__name__
+
+    def mask_api_key(self, key: str) -> str:
+        """结果里只暴露脱敏后的密钥片段，避免测试反馈把敏感信息带回 UI。"""
+
+        normalized_key = key.strip()
+        if len(normalized_key) <= 16:
+            return normalized_key
+        return (
+            f"{normalized_key[:8]}"
+            f"{'*' * (len(normalized_key) - 16)}"
+            f"{normalized_key[-8:]}"
+        )

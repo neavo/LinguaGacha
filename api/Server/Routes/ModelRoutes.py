@@ -12,6 +12,8 @@ class ModelRoutes:
     DELETE_PATH: str = "/api/models/delete"
     RESET_PRESET_PATH: str = "/api/models/reset-preset"
     REORDER_PATH: str = "/api/models/reorder"
+    LIST_AVAILABLE_PATH: str = "/api/models/list-available"
+    TEST_PATH: str = "/api/models/test"
 
     @classmethod
     def register(
@@ -75,5 +77,21 @@ class ModelRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=model_app_service.reorder_model(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.LIST_AVAILABLE_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=model_app_service.list_available_models(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.TEST_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=model_app_service.test_model(request),
             ),
         )

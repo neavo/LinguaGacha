@@ -142,7 +142,27 @@
 | `POST` | `/api/models/add` | `{"model_type": "CUSTOM_OPENAI"}` | `{"snapshot": {...}}` |
 | `POST` | `/api/models/delete` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
 | `POST` | `/api/models/reset-preset` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/reorder` | `{"model_id": "...", "operation": "MOVE_UP"}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/reorder` | `{"ordered_model_ids": ["...", "..."]}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/list-available` | `{"model_id": "..."}` | `{"models": ["gpt-5.4", "gpt-5.4-mini"]}` |
+| `POST` | `/api/models/test` | `{"model_id": "..."}` | `{"success": true, "result_msg": "...", "total_count": 1, "success_count": 1, "failure_count": 0, "total_response_time_ms": 1234, "key_results": [...]}` |
+
+`/api/models/reorder` 当前统一接受 `ordered_model_ids` 作为 `frontend-vite` 的批量重排序载荷，并返回最新 `snapshot`。
+
+双前端并行期仍临时兼容旧载荷：
+
+```json
+{
+  "model_id": "preset-2",
+  "operation": "MOVE_UP"
+}
+```
+
+兼容约束如下：
+
+- `ordered_model_ids` 必须完整覆盖某一个模型分组，且不允许跨组混排
+- 旧 `operation` 载荷只作为迁移期兼容入口，新的 React 模型页统一使用 `ordered_model_ids`
+- `list-available` 会在 Core 侧根据模型配置查询供应商模型列表，渲染层只消费字符串数组
+- `test` 会在 Core 侧执行模型测试，并返回稳定的聚合结果，渲染层不再直接依赖旧事件链路
 
 ## 7. Quality 接口
 
