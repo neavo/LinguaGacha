@@ -10,10 +10,10 @@ from qfluentwidgets import Slider
 from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import SwitchButton
 
-from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ModelApiClient import ModelApiClient
 from base.Base import Base
 from model.Api.ModelModels import ModelEntrySnapshot
+from model.Api.ModelModels import ModelPageSnapshot
 from module.Localizer.Localizer import Localizer
 from module.Utils.JSONTool import JSONTool
 from widget.CustomTextEdit import CustomTextEdit
@@ -31,7 +31,6 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         self,
         model: ModelEntrySnapshot,
         model_api_client: ModelApiClient,
-        api_state_store: ApiStateStore,
         window: FluentWindow,
     ) -> None:
         super().__init__(window)
@@ -44,7 +43,6 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         # 获取模型配置
         self.model = model
         self.model_api_client = model_api_client
-        self.api_state_store = api_state_store
 
         # 设置主布局
         self.viewLayout.setContentsMargins(24, 24, 24, 24)
@@ -63,10 +61,34 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         self.viewLayout.addWidget(scroll_area)
 
         # 添加控件
-        self.add_widget_top_p(scroll_area_vbox)
-        self.add_widget_temperature(scroll_area_vbox)
-        self.add_widget_presence_penalty(scroll_area_vbox)
-        self.add_widget_frequency_penalty(scroll_area_vbox)
+        self.add_generation_slider_card(
+            scroll_area_vbox,
+            title=Localizer.get().model_advanced_setting_page_top_p_title,
+            field_name="top_p",
+            slider_max=100,
+            default_value=self.TOP_P_DEFAULT,
+        )
+        self.add_generation_slider_card(
+            scroll_area_vbox,
+            title=Localizer.get().model_advanced_setting_page_temperature_title,
+            field_name="temperature",
+            slider_max=200,
+            default_value=self.TEMPERATURE_DEFAULT,
+        )
+        self.add_generation_slider_card(
+            scroll_area_vbox,
+            title=Localizer.get().model_advanced_setting_page_presence_penalty_title,
+            field_name="presence_penalty",
+            slider_max=100,
+            default_value=self.PRESENCE_PENALTY_DEFAULT,
+        )
+        self.add_generation_slider_card(
+            scroll_area_vbox,
+            title=Localizer.get().model_advanced_setting_page_frequency_penalty_title,
+            field_name="frequency_penalty",
+            slider_max=100,
+            default_value=self.FREQUENCY_PENALTY_DEFAULT,
+        )
 
         # 自定义网络配置
         self.add_widget_request_config(scroll_area_vbox)
@@ -74,7 +96,7 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         # 填充
         scroll_area_vbox.addStretch(1)
 
-    def refresh_model_from_snapshot(self, snapshot) -> None:
+    def refresh_model_from_snapshot(self, snapshot: ModelPageSnapshot) -> None:
         """统一从最新快照回填当前模型，避免弹窗继续持有旧参数。"""
 
         self.model = next(
@@ -111,29 +133,38 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         slider: Slider,
         value_label: StrongBodyLabel,
         checked: bool,
-        arg: str,
+        field_name: str,
+        default_value: float,
     ) -> None:
         slider.setVisible(checked)
         value_label.setVisible(checked)
 
         # 重置为默认值
-        default_value = getattr(__class__, f"{arg.upper()}_DEFAULT")
         value_label.setText(f"{default_value:.2f}")
         slider.setValue(int(default_value * 100))
 
         self.update_model_fields(
             {
                 "generation": {
-                    arg: default_value,
-                    f"{arg}_custom_enable": checked,
+                    field_name: default_value,
+                    f"{field_name}_custom_enable": checked,
                 }
             }
         )
 
-    # top_p
-    def add_widget_top_p(self, parent: QLayout) -> None:
+    def add_generation_slider_card(
+        self,
+        parent: QLayout,
+        *,
+        title: str,
+        field_name: str,
+        slider_max: int,
+        default_value: float,
+    ) -> None:
+        """统一构建生成参数卡片，避免四组滑条逻辑持续分叉。"""
+
         card = SettingCard(
-            title=Localizer.get().model_advanced_setting_page_top_p_title,
+            title=title,
             description=Localizer.get().model_advanced_setting_page_param_caution,
             parent=self,
         )
@@ -154,60 +185,13 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         switch_button.setOnText("")
         switch_button.setOffText("")
 
-        value = self.get_generation_value("top_p", 0.95)
-        slider.setRange(0, 100)
+        value = self.get_generation_value(field_name, default_value)
+        slider.setRange(0, slider_max)
         slider.setValue(int(value * 100))
         value_label.setText(f"{value:.2f}")
 
         # 设置可见性
-        is_enabled = self.get_generation_enable("top_p")
-        slider.setVisible(is_enabled)
-        value_label.setVisible(is_enabled)
-        switch_button.setChecked(is_enabled)
-
-        # 最后注册事件，避免在页面初始化的过程中重置设置数据
-        switch_button.checkedChanged.connect(
-            lambda checked: self.checked_changed(slider, value_label, checked, "top_p")
-        )
-        slider.sliderReleased.connect(
-            lambda: self.slider_released(slider, value_label, "top_p")
-        )
-
-        card.add_right_widget(slider_container)
-        card.add_right_widget(switch_button)
-        parent.addWidget(card)
-
-    # temperature
-    def add_widget_temperature(self, parent: QLayout) -> None:
-        card = SettingCard(
-            title=Localizer.get().model_advanced_setting_page_temperature_title,
-            description=Localizer.get().model_advanced_setting_page_param_caution,
-            parent=self,
-        )
-        slider = Slider(Qt.Orientation.Horizontal)
-        slider.setFixedWidth(256)
-        value_label = StrongBodyLabel("", card)
-        value_label.setFixedWidth(48)
-        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        slider_container = QWidget(card)
-        slider_layout = QHBoxLayout(slider_container)
-        slider_layout.setContentsMargins(0, 0, 0, 0)
-        slider_layout.setSpacing(8)
-        slider_layout.addWidget(slider)
-        slider_layout.addWidget(value_label)
-
-        switch_button = SwitchButton(card)
-        switch_button.setOnText("")
-        switch_button.setOffText("")
-
-        value = self.get_generation_value("temperature", 0.95)
-        slider.setRange(0, 200)
-        slider.setValue(int(value * 100))
-        value_label.setText(f"{value:.2f}")
-
-        # 设置可见性
-        is_enabled = self.get_generation_enable("temperature")
+        is_enabled = self.get_generation_enable(field_name)
         slider.setVisible(is_enabled)
         value_label.setVisible(is_enabled)
         switch_button.setChecked(is_enabled)
@@ -215,321 +199,160 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         # 最后注册事件，避免在页面初始化的过程中重置设置数据
         switch_button.checkedChanged.connect(
             lambda checked: self.checked_changed(
-                slider, value_label, checked, "temperature"
+                slider,
+                value_label,
+                checked,
+                field_name,
+                default_value,
             )
         )
         slider.sliderReleased.connect(
-            lambda: self.slider_released(slider, value_label, "temperature")
+            lambda: self.slider_released(slider, value_label, field_name)
         )
 
         card.add_right_widget(slider_container)
         card.add_right_widget(switch_button)
         parent.addWidget(card)
 
-    # presence_penalty
-    def add_widget_presence_penalty(self, parent: QLayout) -> None:
-        card = SettingCard(
-            title=Localizer.get().model_advanced_setting_page_presence_penalty_title,
-            description=Localizer.get().model_advanced_setting_page_param_caution,
-            parent=self,
+    def emit_json_format_error_toast(self) -> None:
+        """统一提示 JSON 格式错误，避免 Headers 与 Body 分支各自拼事件。"""
+
+        self.emit(
+            Base.Event.TOAST,
+            {
+                "type": Base.ToastType.WARNING,
+                "message": Localizer.get().model_advanced_setting_page_json_format_error,
+            },
         )
-        slider = Slider(Qt.Orientation.Horizontal)
-        slider.setFixedWidth(256)
-        value_label = StrongBodyLabel("", card)
-        value_label.setFixedWidth(48)
-        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        slider_container = QWidget(card)
-        slider_layout = QHBoxLayout(slider_container)
-        slider_layout.setContentsMargins(0, 0, 0, 0)
-        slider_layout.setSpacing(8)
-        slider_layout.addWidget(slider)
-        slider_layout.addWidget(value_label)
+    def validate_and_save_request_field(
+        self,
+        plain_text_edit: CustomTextEdit,
+        field_name: str,
+    ) -> bool:
+        """校验并保存请求 JSON，保证 Headers/Body 走同一条规则。"""
 
-        switch_button = SwitchButton(card)
-        switch_button.setOnText("")
-        switch_button.setOffText("")
+        text = plain_text_edit.toPlainText().strip()
+        if text == "":
+            plain_text_edit.set_error(False)
+            self.save_request_field(field_name, {})
+            return True
 
-        value = self.get_generation_value("presence_penalty", 0.0)
-        slider.setRange(0, 100)
-        slider.setValue(int(value * 100))
-        value_label.setText(f"{value:.2f}")
+        if not self.is_valid_request_json_text(text):
+            plain_text_edit.set_error(True)
+            return False
 
-        # 设置可见性
-        is_enabled = self.get_generation_enable("presence_penalty")
-        slider.setVisible(is_enabled)
-        value_label.setVisible(is_enabled)
-        switch_button.setChecked(is_enabled)
+        parsed = JSONTool.loads(text)
+        plain_text_edit.set_error(False)
+        self.save_request_field(field_name, parsed)
+        return True
 
-        # 最后注册事件，避免在页面初始化的过程中重置设置数据
-        switch_button.checkedChanged.connect(
-            lambda checked: self.checked_changed(
-                slider, value_label, checked, "presence_penalty"
+    def is_valid_request_json_text(self, text: str) -> bool:
+        """统一判断请求 JSON 是否为对象，避免不同交互路径各自实现一遍。"""
+
+        try:
+            parsed = JSONTool.loads(text)
+        except Exception:
+            return False
+
+        return isinstance(parsed, dict)
+
+    def handle_request_field_focus_out(self, plain_text_edit: CustomTextEdit) -> None:
+        """失焦时只在内容非法时提示，避免输入过程中频繁打断。"""
+
+        text = plain_text_edit.toPlainText().strip()
+        if text == "":
+            return
+
+        if not self.is_valid_request_json_text(text):
+            self.emit_json_format_error_toast()
+
+    def add_request_json_group(
+        self,
+        parent: QLayout,
+        *,
+        title: str,
+        description: str,
+        placeholder: str,
+        field_name: str,
+        enabled_field_name: str,
+    ) -> None:
+        """统一构建请求配置分组，避免 Headers 与 Body 的结构再次分叉。"""
+
+        request_config = self.model.request
+
+        def switch_changed(checked: bool, plain_text_edit: CustomTextEdit) -> None:
+            plain_text_edit.setReadOnly(not checked)
+            self.update_model_fields(
+                {
+                    "request": {
+                        enabled_field_name: checked,
+                    }
+                }
+            )
+
+        def init(widget: GroupCard) -> None:
+            switch_button = SwitchButton()
+            switch_button.setOnText("")
+            switch_button.setOffText("")
+            is_enabled = bool(getattr(request_config, enabled_field_name))
+            switch_button.setChecked(is_enabled)
+            widget.add_header_widget(switch_button)
+
+            plain_text_edit = CustomTextEdit(self, monospace=True)
+            plain_text_edit.setFixedHeight(192)
+            request_field = getattr(request_config, field_name)
+            if request_field:
+                plain_text_edit.setPlainText(JSONTool.dumps(request_field, indent=4))
+            plain_text_edit.setPlaceholderText(placeholder)
+            plain_text_edit.setReadOnly(not is_enabled)
+            plain_text_edit.textChanged.connect(
+                lambda: self.validate_and_save_request_field(
+                    plain_text_edit,
+                    field_name,
+                )
+            )
+            plain_text_edit.set_on_focus_out(
+                lambda: self.handle_request_field_focus_out(plain_text_edit)
+            )
+            widget.add_widget(plain_text_edit)
+
+            switch_button.checkedChanged.connect(
+                lambda checked: switch_changed(checked, plain_text_edit)
+            )
+
+        parent.addWidget(
+            GroupCard(
+                parent=self,
+                title=title,
+                description=description,
+                init=init,
             )
         )
-        slider.sliderReleased.connect(
-            lambda: self.slider_released(slider, value_label, "presence_penalty")
-        )
-
-        card.add_right_widget(slider_container)
-        card.add_right_widget(switch_button)
-        parent.addWidget(card)
-
-    # frequency_penalty
-    def add_widget_frequency_penalty(self, parent: QLayout) -> None:
-        card = SettingCard(
-            title=Localizer.get().model_advanced_setting_page_frequency_penalty_title,
-            description=Localizer.get().model_advanced_setting_page_param_caution,
-            parent=self,
-        )
-        slider = Slider(Qt.Orientation.Horizontal)
-        slider.setFixedWidth(256)
-        value_label = StrongBodyLabel("", card)
-        value_label.setFixedWidth(48)
-        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        slider_container = QWidget(card)
-        slider_layout = QHBoxLayout(slider_container)
-        slider_layout.setContentsMargins(0, 0, 0, 0)
-        slider_layout.setSpacing(8)
-        slider_layout.addWidget(slider)
-        slider_layout.addWidget(value_label)
-
-        switch_button = SwitchButton(card)
-        switch_button.setOnText("")
-        switch_button.setOffText("")
-
-        value = self.get_generation_value("frequency_penalty", 0.0)
-        slider.setRange(0, 100)
-        slider.setValue(int(value * 100))
-        value_label.setText(f"{value:.2f}")
-
-        # 设置可见性
-        is_enabled = self.get_generation_enable("frequency_penalty")
-        slider.setVisible(is_enabled)
-        value_label.setVisible(is_enabled)
-        switch_button.setChecked(is_enabled)
-
-        # 最后注册事件，避免在页面初始化的过程中重置设置数据
-        switch_button.checkedChanged.connect(
-            lambda checked: self.checked_changed(
-                slider, value_label, checked, "frequency_penalty"
-            )
-        )
-        slider.sliderReleased.connect(
-            lambda: self.slider_released(slider, value_label, "frequency_penalty")
-        )
-
-        card.add_right_widget(slider_container)
-        card.add_right_widget(switch_button)
-        parent.addWidget(card)
 
     # 自定义请求配置
     def add_widget_request_config(self, parent: QLayout) -> None:
-        request_config = self.model.request
-
-        # 自定义 Headers
-        def switch_changed_headers(
-            checked: bool, plain_text_edit: CustomTextEdit
-        ) -> None:
-            plain_text_edit.setReadOnly(not checked)
-            self.update_model_fields(
-                {
-                    "request": {
-                        "extra_headers_custom_enable": checked,
-                    }
-                }
-            )
-
-        def validate_and_save_headers(plain_text_edit: CustomTextEdit) -> bool:
-            """校验 JSON 并保存，返回是否有效"""
-            text = plain_text_edit.toPlainText().strip()
-
-            # 空内容视为有效的空对象
-            if not text:
-                plain_text_edit.set_error(False)
-                self.save_request_field("extra_headers", {})
-                return True
-
-            try:
-                parsed = JSONTool.loads(text)
-                # 类型校验：必须是 dict
-                if not isinstance(parsed, dict):
-                    plain_text_edit.set_error(True)
-                    return False
-                plain_text_edit.set_error(False)
-                self.save_request_field("extra_headers", parsed)
-                return True
-            except Exception:
-                plain_text_edit.set_error(True)
-                return False
-
-        def focus_out_headers(plain_text_edit: CustomTextEdit) -> None:
-            """失去焦点时，如果内容有误则显示 Toast"""
-            text = plain_text_edit.toPlainText().strip()
-            if not text:
-                return
-
-            try:
-                parsed = JSONTool.loads(text)
-                if not isinstance(parsed, dict):
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.WARNING,
-                            "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                        },
-                    )
-            except Exception:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                    },
-                )
-
-        def init_headers(widget: GroupCard) -> None:
-            # 添加开关按钮到标题行右侧
-            switch_button = SwitchButton()
-            switch_button.setOnText("")
-            switch_button.setOffText("")
-            is_enabled = request_config.extra_headers_custom_enable
-            switch_button.setChecked(is_enabled)
-            widget.add_header_widget(switch_button)
-
-            # 添加文本编辑框
-            plain_text_edit = CustomTextEdit(self, monospace=True)
-            plain_text_edit.setFixedHeight(192)
-            headers = request_config.extra_headers
-            if headers:
-                plain_text_edit.setPlainText(JSONTool.dumps(headers, indent=4))
-            plain_text_edit.setPlaceholderText(
-                Localizer.get().model_advanced_setting_page_headers_placeholder
-            )
-            plain_text_edit.setReadOnly(not is_enabled)
-            # 输入时实时校验并更新红框状态
-            plain_text_edit.textChanged.connect(
-                lambda: validate_and_save_headers(plain_text_edit)
-            )
-            # 失去焦点时才显示 Toast 提示
-            plain_text_edit.set_on_focus_out(lambda: focus_out_headers(plain_text_edit))
-            widget.add_widget(plain_text_edit)
-
-            # 注册开关事件
-            switch_button.checkedChanged.connect(
-                lambda checked: switch_changed_headers(checked, plain_text_edit)
-            )
-
-        parent.addWidget(
-            GroupCard(
-                parent=self,
-                title=Localizer.get().model_advanced_setting_page_headers_title,
-                description=Localizer.get().model_advanced_setting_page_headers_content,
-                init=init_headers,
-            )
+        self.add_request_json_group(
+            parent,
+            title=Localizer.get().model_advanced_setting_page_headers_title,
+            description=Localizer.get().model_advanced_setting_page_headers_content,
+            placeholder=Localizer.get().model_advanced_setting_page_headers_placeholder,
+            field_name="extra_headers",
+            enabled_field_name="extra_headers_custom_enable",
+        )
+        self.add_request_json_group(
+            parent,
+            title=Localizer.get().model_advanced_setting_page_body_title,
+            description=Localizer.get().model_advanced_setting_page_body_content,
+            placeholder=Localizer.get().model_advanced_setting_page_body_placeholder,
+            field_name="extra_body",
+            enabled_field_name="extra_body_custom_enable",
         )
 
-        # 自定义 Body
-        def switch_changed_body(checked: bool, plain_text_edit: CustomTextEdit) -> None:
-            plain_text_edit.setReadOnly(not checked)
-            self.update_model_fields(
-                {
-                    "request": {
-                        "extra_body_custom_enable": checked,
-                    }
-                }
-            )
-
-        def validate_and_save_body(plain_text_edit: CustomTextEdit) -> bool:
-            """校验 JSON 并保存，返回是否有效"""
-            text = plain_text_edit.toPlainText().strip()
-
-            # 空内容视为有效的空对象
-            if not text:
-                plain_text_edit.set_error(False)
-                self.save_request_field("extra_body", {})
-                return True
-
-            try:
-                parsed = JSONTool.loads(text)
-                # 类型校验：必须是 dict
-                if not isinstance(parsed, dict):
-                    plain_text_edit.set_error(True)
-                    return False
-                plain_text_edit.set_error(False)
-                self.save_request_field("extra_body", parsed)
-                return True
-            except Exception:
-                plain_text_edit.set_error(True)
-                return False
-
-        def focus_out_body(plain_text_edit: CustomTextEdit) -> None:
-            """失去焦点时，如果内容有误则显示 Toast"""
-            text = plain_text_edit.toPlainText().strip()
-            if not text:
-                return
-
-            try:
-                parsed = JSONTool.loads(text)
-                if not isinstance(parsed, dict):
-                    self.emit(
-                        Base.Event.TOAST,
-                        {
-                            "type": Base.ToastType.WARNING,
-                            "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                        },
-                    )
-            except Exception:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().model_advanced_setting_page_json_format_error,
-                    },
-                )
-
-        def init_body(widget: GroupCard) -> None:
-            # 添加开关按钮到标题行右侧
-            switch_button = SwitchButton()
-            switch_button.setOnText("")
-            switch_button.setOffText("")
-            is_enabled = request_config.extra_body_custom_enable
-            switch_button.setChecked(is_enabled)
-            widget.add_header_widget(switch_button)
-
-            # 添加文本编辑框
-            plain_text_edit = CustomTextEdit(self, monospace=True)
-            plain_text_edit.setFixedHeight(192)
-            body = request_config.extra_body
-            if body:
-                plain_text_edit.setPlainText(JSONTool.dumps(body, indent=4))
-            plain_text_edit.setPlaceholderText(
-                Localizer.get().model_advanced_setting_page_body_placeholder
-            )
-            plain_text_edit.setReadOnly(not is_enabled)
-            # 输入时实时校验并更新红框状态
-            plain_text_edit.textChanged.connect(
-                lambda: validate_and_save_body(plain_text_edit)
-            )
-            # 失去焦点时才显示 Toast 提示
-            plain_text_edit.set_on_focus_out(lambda: focus_out_body(plain_text_edit))
-            widget.add_widget(plain_text_edit)
-
-            # 注册开关事件
-            switch_button.checkedChanged.connect(
-                lambda checked: switch_changed_body(checked, plain_text_edit)
-            )
-
-        parent.addWidget(
-            GroupCard(
-                parent=self,
-                title=Localizer.get().model_advanced_setting_page_body_title,
-                description=Localizer.get().model_advanced_setting_page_body_content,
-                init=init_body,
-            )
-        )
-
-    def save_request_field(self, field: str, value: dict) -> None:
+    def save_request_field(
+        self,
+        field: str,
+        value: dict[str, object],
+    ) -> None:
         """保存请求配置字段"""
         self.update_model_fields({"request": {field: value}})

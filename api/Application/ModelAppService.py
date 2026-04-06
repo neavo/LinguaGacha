@@ -1,14 +1,57 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Protocol
 
 from api.Contract.ModelPayloads import ModelPageSnapshotPayload
+from base.BaseLanguage import BaseLanguage
 from model.Api.ModelModels import ModelEntrySnapshot
 from model.Api.ModelModels import ModelPageSnapshot
 from model.Model import ModelType
 from module.Config import Config
 from module.ModelManager import ModelManager
+
+
+class ModelConfigLike(Protocol):
+    """约束模型应用服务依赖的最小配置接口，避免类型退化成 Any。"""
+
+    app_language: BaseLanguage.Enum
+    activate_model_id: str
+    models: list[dict[str, object]] | None
+
+    def load(self) -> object: ...
+
+    def save(self) -> object: ...
+
+    def initialize_models(self) -> int: ...
+
+    def get_model(self, model_id: str) -> dict[str, object] | None: ...
+
+    def set_model(self, model_data: dict[str, object]) -> None: ...
+
+    def set_active_model_id(self, model_id: str) -> None: ...
+
+
+class ModelManagerLike(Protocol):
+    """约束模型应用服务依赖的最小模型管理接口，保证真实对象与测试桩同构。"""
+
+    activate_model_id: str
+
+    def set_app_language(self, language: BaseLanguage.Enum) -> None: ...
+
+    def set_models(self, models_data: list[dict[str, object]]) -> None: ...
+
+    def set_active_model_id(self, model_id: str) -> None: ...
+
+    def get_models_as_dict(self) -> list[dict[str, object]]: ...
+
+    def add_model(self, model_type: ModelType) -> object: ...
+
+    def delete_model(self, model_id: str) -> bool: ...
+
+    def reset_preset_model(self, model_id: str) -> bool: ...
+
+    def reorder_models(self, ordered_ids: list[str]) -> None: ...
 
 
 class ModelAppService:
@@ -33,8 +76,8 @@ class ModelAppService:
 
     def __init__(
         self,
-        config_loader: Callable[[], Config] | None = None,
-        model_manager: Any | None = None,
+        config_loader: Callable[[], ModelConfigLike] | None = None,
+        model_manager: ModelManagerLike | None = None,
     ) -> None:
         self.config_loader = (
             config_loader if config_loader is not None else self.default_config_loader
@@ -64,9 +107,7 @@ class ModelAppService:
         model = self.get_model_or_raise(config, model_id)
         merged_model = self.apply_patch(model, validated_patch)
         config.set_model(merged_model)
-        config.save()
-
-        return self.build_snapshot_response(config)
+        return self.persist_config_and_build_snapshot(config)
 
     def activate_model(self, request: dict[str, object]) -> dict[str, object]:
         """把激活模型的唯一写入口留在 Core 侧，避免页面双写状态。"""
@@ -75,9 +116,7 @@ class ModelAppService:
         config = self.load_config()
         self.get_model_or_raise(config, model_id)
         config.set_active_model_id(model_id)
-        config.save()
-
-        return self.build_snapshot_response(config)
+        return self.persist_config_and_build_snapshot(config)
 
     def add_model(self, request: dict[str, object]) -> dict[str, object]:
         """统一由 Core 创建自定义模型，避免页面继续依赖模板细节。"""
@@ -92,9 +131,7 @@ class ModelAppService:
         self.prepare_manager(config)
         self.model_manager.add_model(model_type)
         self.sync_config_from_manager(config)
-        config.save()
-
-        return self.build_snapshot_response(config)
+        return self.persist_config_and_build_snapshot(config)
 
     def delete_model(self, request: dict[str, object]) -> dict[str, object]:
         """统一由 Core 删除模型，保证激活模型回退策略只有一份。"""
@@ -107,8 +144,7 @@ class ModelAppService:
 
         if deleted:
             self.sync_config_from_manager(config)
-            config.save()
-            return self.build_snapshot_response(config)
+            return self.persist_config_and_build_snapshot(config)
 
         if str(target_model.get("type", "")) == ModelType.PRESET.value:
             raise ValueError("preset model cannot be deleted")
@@ -129,8 +165,7 @@ class ModelAppService:
             raise ValueError("preset model not found")
 
         self.sync_config_from_manager(config)
-        config.save()
-        return self.build_snapshot_response(config)
+        return self.persist_config_and_build_snapshot(config)
 
     def reorder_model(self, request: dict[str, object]) -> dict[str, object]:
         """把排序规则留在 Core 侧，避免页面自己拼全局顺序。"""
@@ -140,19 +175,14 @@ class ModelAppService:
         config = self.load_config()
         target_model = self.get_model_or_raise(config, model_id)
 
-        reorder_operation_class = getattr(
-            self.model_manager,
-            "ReorderOperation",
-            ModelManager.ReorderOperation,
-        )
         try:
-            operation = reorder_operation_class(operation_value)
+            operation = ModelManager.ReorderOperation(operation_value)
         except ValueError as e:
             raise ValueError(f"unknown reorder operation: {operation_value}") from e
 
         model_type = str(target_model.get("type", ModelType.PRESET.value))
         group_model_ids = self.collect_group_model_ids(config.models or [], model_type)
-        reordered_group_ids = self.model_manager.__class__.build_group_reordered_ids(
+        reordered_group_ids = ModelManager.build_group_reordered_ids(
             group_model_ids,
             model_id,
             operation,
@@ -161,7 +191,7 @@ class ModelAppService:
         if reordered_group_ids == group_model_ids:
             return self.build_snapshot_response(config)
 
-        ordered_ids = self.model_manager.__class__.build_global_ordered_ids_for_group(
+        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
             config.models or [],
             model_type,
             reordered_group_ids,
@@ -169,11 +199,9 @@ class ModelAppService:
         self.prepare_manager(config)
         self.model_manager.reorder_models(ordered_ids)
         self.sync_config_from_manager(config)
-        config.save()
+        return self.persist_config_and_build_snapshot(config)
 
-        return self.build_snapshot_response(config)
-
-    def build_snapshot(self, config: Config) -> ModelPageSnapshot:
+    def build_snapshot(self, config: ModelConfigLike) -> ModelPageSnapshot:
         """把配置对象裁剪成模型页真正依赖的冻结快照。"""
 
         models = tuple(
@@ -189,13 +217,13 @@ class ModelAppService:
             models=models,
         )
 
-    def build_snapshot_response(self, config: Config) -> dict[str, object]:
+    def build_snapshot_response(self, config: ModelConfigLike) -> dict[str, object]:
         """统一收口 snapshot 响应结构，避免各动作重复拼字典。"""
 
         snapshot = self.build_snapshot(config)
         return {"snapshot": ModelPageSnapshotPayload.from_snapshot(snapshot).to_dict()}
 
-    def load_config(self, persist_defaults: bool = False) -> Config:
+    def load_config(self, persist_defaults: bool = False) -> ModelConfigLike:
         """统一加载配置并初始化模型，避免各入口分散补默认值。"""
 
         config = self.config_loader()
@@ -210,25 +238,33 @@ class ModelAppService:
 
         return Config()
 
-    def prepare_manager(self, config: Config) -> None:
+    def persist_config_and_build_snapshot(
+        self,
+        config: ModelConfigLike,
+    ) -> dict[str, object]:
+        """统一保存配置并返回最新快照，避免动作分支重复收尾。"""
+
+        config.save()
+        return self.build_snapshot_response(config)
+
+    def prepare_manager(self, config: ModelConfigLike) -> None:
         """在执行动作前先让模型管理器与配置真相对齐。"""
 
-        set_app_language = getattr(self.model_manager, "set_app_language", None)
-        if callable(set_app_language):
-            set_app_language(config.app_language)
-
+        self.model_manager.set_app_language(config.app_language)
         self.model_manager.set_models(config.models or [])
         self.model_manager.set_active_model_id(config.activate_model_id)
 
-    def sync_config_from_manager(self, config: Config) -> None:
+    def sync_config_from_manager(self, config: ModelConfigLike) -> None:
         """把模型管理器结果回写到配置，保持单一持久化入口。"""
 
         config.models = self.model_manager.get_models_as_dict()
-        config.activate_model_id = str(
-            getattr(self.model_manager, "activate_model_id", "")
-        )
+        config.activate_model_id = str(self.model_manager.activate_model_id)
 
-    def get_model_or_raise(self, config: Config, model_id: str) -> dict[str, object]:
+    def get_model_or_raise(
+        self,
+        config: ModelConfigLike,
+        model_id: str,
+    ) -> dict[str, object]:
         """统一处理模型不存在的错误，避免各动作散落空值判断。"""
 
         model = config.get_model(model_id)

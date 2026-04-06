@@ -15,6 +15,7 @@ from base.Base import Base
 from base.BaseIcon import BaseIcon
 from frontend.Model.ModelSelectorPage import ModelSelectorPage
 from model.Api.ModelModels import ModelEntrySnapshot
+from model.Api.ModelModels import ModelPageSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomLineEdit
 from widget.CustomTextEdit import CustomTextEdit
@@ -55,7 +56,6 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
 
         # 获取模型配置
         self.model = model
-        self.model_id = model.id
         self.model_api_client = model_api_client
         self.api_state_store = api_state_store
         self.model_id_test_button: PushButton | None = None
@@ -81,7 +81,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         self.scroll_area.setWidget(self.vbox_parent)
 
         # 模型名称
-        self.add_widget_name(self.vbox, window)
+        self.add_widget_name(self.vbox)
 
         # 模型地址
         api_format = self.model.api_format
@@ -91,7 +91,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
             Base.APIFormat.ANTHROPIC,
             Base.APIFormat.SAKURALLM,
         ):
-            self.add_widget_api_url(self.vbox, window)
+            self.add_widget_api_url(self.vbox)
 
         # 模型密钥
         if api_format in (
@@ -100,7 +100,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
             Base.APIFormat.ANTHROPIC,
             Base.APIFormat.SAKURALLM,
         ):
-            self.add_widget_api_key(self.vbox, window)
+            self.add_widget_api_key(self.vbox)
 
         # 模型标识
         if api_format in (
@@ -134,7 +134,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
             self.update_test_button_status,
         )
 
-    def refresh_model_from_snapshot(self, snapshot) -> None:
+    def refresh_model_from_snapshot(self, snapshot: ModelPageSnapshot) -> None:
         """统一从最新快照回填当前模型，避免弹窗继续持有过期对象。"""
 
         self.model = next(
@@ -148,52 +148,71 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         snapshot = self.model_api_client.update_model(self.model.id, patch)
         self.refresh_model_from_snapshot(snapshot)
 
-    # 模型名称
-    def add_widget_name(self, parent: QLayout, window: FluentWindow) -> None:
-        del window
+    def add_line_edit_setting_card(
+        self,
+        parent: QLayout,
+        *,
+        title: str,
+        description: str,
+        text: str,
+        width: int,
+        placeholder: str,
+        field_name: str,
+    ) -> None:
+        """统一构建简单文本设置卡片，避免名称与地址写法分叉。"""
 
-        def text_changed(text: str) -> None:
-            self.update_model_fields({"name": text.strip()})
+        def text_changed(value: str) -> None:
+            self.update_model_fields({field_name: value.strip()})
 
         card = SettingCard(
+            title=title,
+            description=description,
+            parent=self,
+        )
+        line_edit = CustomLineEdit(card)
+        line_edit.setText(text)
+        line_edit.setFixedWidth(width)
+        line_edit.setClearButtonEnabled(True)
+        line_edit.setPlaceholderText(placeholder)
+        line_edit.textChanged.connect(text_changed)
+        card.add_right_widget(line_edit)
+        parent.addWidget(card)
+
+    def update_model_id_description(self, card: SettingCard) -> None:
+        """统一刷新模型标识说明，避免编辑与同步两条路径各自拼文案。"""
+
+        card.set_description(
+            Localizer.get().model_basic_setting_page_model_id_content.replace(
+                "{MODEL}", self.model.model_id
+            )
+        )
+
+    # 模型名称
+    def add_widget_name(self, parent: QLayout) -> None:
+        self.add_line_edit_setting_card(
+            parent,
             title=Localizer.get().model_basic_setting_page_name_title,
             description=Localizer.get().model_basic_setting_page_name_content,
-            parent=self,
+            text=self.model.name,
+            width=256,
+            placeholder=Localizer.get().model_basic_setting_page_name,
+            field_name="name",
         )
-        line_edit = CustomLineEdit(card)
-        line_edit.setText(self.model.name)
-        line_edit.setFixedWidth(256)
-        line_edit.setClearButtonEnabled(True)
-        line_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_name)
-        line_edit.textChanged.connect(text_changed)
-        card.add_right_widget(line_edit)
-        parent.addWidget(card)
 
     # 模型地址
-    def add_widget_api_url(self, parent: QLayout, window: FluentWindow) -> None:
-        del window
-
-        def text_changed(text: str) -> None:
-            self.update_model_fields({"api_url": text.strip()})
-
-        card = SettingCard(
+    def add_widget_api_url(self, parent: QLayout) -> None:
+        self.add_line_edit_setting_card(
+            parent,
             title=Localizer.get().api_url,
             description=Localizer.get().model_basic_setting_page_api_url_content,
-            parent=self,
+            text=self.model.api_url,
+            width=384,
+            placeholder=Localizer.get().model_basic_setting_page_api_url,
+            field_name="api_url",
         )
-        line_edit = CustomLineEdit(card)
-        line_edit.setText(self.model.api_url)
-        line_edit.setFixedWidth(384)
-        line_edit.setClearButtonEnabled(True)
-        line_edit.setPlaceholderText(Localizer.get().model_basic_setting_page_api_url)
-        line_edit.textChanged.connect(text_changed)
-        card.add_right_widget(line_edit)
-        parent.addWidget(card)
 
     # 模型密钥
-    def add_widget_api_key(self, parent: QLayout, window: FluentWindow) -> None:
-        del window
-
+    def add_widget_api_key(self, parent: QLayout) -> None:
         def text_changed(widget: PlainTextEdit) -> None:
             self.update_model_fields({"api_key": widget.toPlainText().strip()})
 
@@ -224,13 +243,8 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         def message_box_close(widget: LineEditMessageBox, text: str) -> None:
             del widget
             self.update_model_fields({"model_id": text.strip()})
-
             if card is not None:
-                card.set_description(
-                    Localizer.get().model_basic_setting_page_model_id_content.replace(
-                        "{MODEL}", self.model.model_id
-                    )
-                )
+                self.update_model_id_description(card)
 
         def triggered_edit(checked: bool = False) -> None:
             del checked
@@ -251,11 +265,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
             # 更新 UI 文本
             self.model = selector.model
             if card is not None:
-                card.set_description(
-                    Localizer.get().model_basic_setting_page_model_id_content.replace(
-                        "{MODEL}", self.model.model_id
-                    )
-                )
+                self.update_model_id_description(card)
 
         card = SettingCard(
             Localizer.get().model_basic_setting_page_model_id_title,
@@ -272,7 +282,7 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
                 Base.Event.APITEST,
                 {
                     "sub_event": Base.SubEvent.REQUEST,
-                    "model_id": self.model_id,
+                    "model_id": self.model.id,
                 },
             )
 

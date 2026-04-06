@@ -96,7 +96,7 @@ class ModelPage(Base, QWidget):
         main_layout.addWidget(self.scroll_area)
 
         # 添加4个分类卡片
-        self.add_category_cards(self.vbox, window)
+        self.add_category_cards(self.vbox)
 
         # 填充
         self.vbox.addStretch(1)
@@ -104,7 +104,7 @@ class ModelPage(Base, QWidget):
         # 完成事件
         self.subscribe(Base.Event.APITEST, self.model_test_done)
 
-    def add_category_cards(self, parent: QLayout, window: FluentWindow) -> None:
+    def add_category_cards(self, parent: QLayout) -> None:
         """添加4个分类卡片"""
 
         # 预设模型卡片
@@ -114,7 +114,6 @@ class ModelPage(Base, QWidget):
             title=Localizer.get().model_page_category_preset_title,
             description=Localizer.get().model_page_category_preset_desc,
             accent_color=self.BRAND_COLORS[ModelType.PRESET.value],
-            window=window,
             show_add_button=False,  # 预设模型不能添加
         )
 
@@ -125,7 +124,6 @@ class ModelPage(Base, QWidget):
             title=Localizer.get().model_page_category_google_title,
             description=Localizer.get().model_page_category_google_desc,
             accent_color=self.BRAND_COLORS[ModelType.CUSTOM_GOOGLE.value],
-            window=window,
             show_add_button=True,
         )
 
@@ -136,7 +134,6 @@ class ModelPage(Base, QWidget):
             title=Localizer.get().model_page_category_openai_title,
             description=Localizer.get().model_page_category_openai_desc,
             accent_color=self.BRAND_COLORS[ModelType.CUSTOM_OPENAI.value],
-            window=window,
             show_add_button=True,
         )
 
@@ -148,7 +145,6 @@ class ModelPage(Base, QWidget):
                 title=Localizer.get().model_page_category_anthropic_title,
                 description=Localizer.get().model_page_category_anthropic_desc,
                 accent_color=self.BRAND_COLORS[ModelType.CUSTOM_ANTHROPIC.value],
-                window=window,
                 show_add_button=True,
             )
         )
@@ -163,7 +159,6 @@ class ModelPage(Base, QWidget):
         title: str,
         description: str,
         accent_color: str,
-        window: FluentWindow,
         show_add_button: bool,
     ) -> FlowCard:
         """创建单个分类卡片"""
@@ -173,7 +168,7 @@ class ModelPage(Base, QWidget):
                 add_button = PushButton(Localizer.get().add)
                 add_button.setIcon(ICON_ADD_MODEL)
                 add_button.setContentsMargins(4, 0, 4, 0)
-                add_button.clicked.connect(lambda: self.add_model(model_type, window))
+                add_button.clicked.connect(lambda: self.add_model(model_type))
                 widget.add_widget_to_head(add_button)
 
         card = FlowCard(
@@ -211,6 +206,23 @@ class ModelPage(Base, QWidget):
                 models_by_type[model_type],
                 self.current_snapshot.active_model_id,
             )
+
+    def refresh_snapshot(self, snapshot: ModelPageSnapshot | None = None) -> None:
+        """统一刷新页面快照，避免各动作重复写回与重绘。"""
+
+        if snapshot is None:
+            self.current_snapshot = self.model_api_client.get_snapshot()
+        else:
+            self.current_snapshot = snapshot
+        self.refresh_all_categories()
+
+    def find_model(self, model_id: str) -> ModelEntrySnapshot | None:
+        """从当前快照查找模型，保证各弹窗入口只读同一份页面状态。"""
+
+        return next(
+            (item for item in self.current_snapshot.models if item.id == model_id),
+            None,
+        )
 
     def update_category_card(
         self,
@@ -374,18 +386,6 @@ class ModelPage(Base, QWidget):
         menu.addMenu(reorder_menu)
 
     # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
-    def model_test_start(self, model_id: str, checked: bool = False) -> None:
-        """执行接口测试"""
-        del checked
-        self.emit(
-            Base.Event.APITEST,
-            {
-                "sub_event": Base.SubEvent.REQUEST,
-                "model_id": model_id,
-            },
-        )
-
-    # PySide6 下 QAction.triggered 会携带 checked 参数，回调需兼容以避免 TypeError。
     def reorder_model_in_group(
         self,
         model_id: str,
@@ -394,11 +394,12 @@ class ModelPage(Base, QWidget):
     ) -> None:
         """执行组内排序并持久化。"""
         del checked
-        self.current_snapshot = self.model_api_client.reorder_model(
-            model_id,
-            operation,
+        self.refresh_snapshot(
+            self.model_api_client.reorder_model(
+                model_id,
+                operation,
+            )
         )
-        self.refresh_all_categories()
 
     def model_test_done(self, event: Base.Event, data: dict) -> None:
         """接口测试完成"""
@@ -418,19 +419,14 @@ class ModelPage(Base, QWidget):
             },
         )
 
-    def add_model(self, model_type: ModelType, window: FluentWindow) -> None:
+    def add_model(self, model_type: ModelType) -> None:
         """添加模型"""
-        del window
-        self.current_snapshot = self.model_api_client.add_model(model_type.value)
-        self.refresh_all_categories()
+        self.refresh_snapshot(self.model_api_client.add_model(model_type.value))
 
     def delete_model(self, model_id: str, checked: bool = False) -> None:
         """删除模型"""
         del checked
-        target_model = next(
-            (model for model in self.current_snapshot.models if model.id == model_id),
-            None,
-        )
+        target_model = self.find_model(model_id)
         if target_model is not None:
             same_type_count = sum(
                 1
@@ -457,24 +453,19 @@ class ModelPage(Base, QWidget):
         if not message_box.exec():
             return
 
-        self.current_snapshot = self.model_api_client.delete_model(model_id)
-        self.refresh_all_categories()
+        self.refresh_snapshot(self.model_api_client.delete_model(model_id))
 
     def activate_model(self, model_id: str, checked: bool = False) -> None:
         """激活模型"""
         del checked
-        self.current_snapshot = self.model_api_client.activate_model(model_id)
-        self.refresh_all_categories()
+        self.refresh_snapshot(self.model_api_client.activate_model(model_id))
 
     def show_model_basic_setting_page(
         self, model_id: str, checked: bool = False
     ) -> None:
         """显示基础设置对话框"""
         del checked
-        model = next(
-            (item for item in self.current_snapshot.models if item.id == model_id),
-            None,
-        )
+        model = self.find_model(model_id)
         if model is None:
             return
         ModelBasicSettingPage(
@@ -484,47 +475,36 @@ class ModelPage(Base, QWidget):
             self.window,
         ).exec()
 
-        self.current_snapshot = self.model_api_client.get_snapshot()
-        self.refresh_all_categories()
+        self.refresh_snapshot()
 
     def show_model_task_setting_page(
         self, model_id: str, checked: bool = False
     ) -> None:
         """显示任务设置对话框"""
         del checked
-        model = next(
-            (item for item in self.current_snapshot.models if item.id == model_id),
-            None,
-        )
+        model = self.find_model(model_id)
         if model is None:
             return
         ModelTaskSettingPage(
             model,
             self.model_api_client,
-            self.api_state_store,
             self.window,
         ).exec()
 
-        self.current_snapshot = self.model_api_client.get_snapshot()
-        self.refresh_all_categories()
+        self.refresh_snapshot()
 
     def show_advanced_edit_page(self, model_id: str, checked: bool = False) -> None:
         """显示编辑参数对话框"""
         del checked
-        model = next(
-            (item for item in self.current_snapshot.models if item.id == model_id),
-            None,
-        )
+        model = self.find_model(model_id)
         if model is None:
             return
         ModelAdvancedSettingPage(
             model,
             self.model_api_client,
-            self.api_state_store,
             self.window,
         ).exec()
-        self.current_snapshot = self.model_api_client.get_snapshot()
-        self.refresh_all_categories()
+        self.refresh_snapshot()
 
     def reset_preset_model(self, model_id: str, checked: bool = False) -> None:
         """重置预设模型"""
@@ -540,7 +520,7 @@ class ModelPage(Base, QWidget):
         if not message_box.exec():
             return
 
-        self.current_snapshot = self.model_api_client.reset_preset_model(model_id)
+        snapshot = self.model_api_client.reset_preset_model(model_id)
         self.emit(
             Base.Event.TOAST,
             {
@@ -548,5 +528,4 @@ class ModelPage(Base, QWidget):
                 "message": Localizer.get().model_page_reset_success_toast,
             },
         )
-
-        self.refresh_all_categories()
+        self.refresh_snapshot(snapshot)

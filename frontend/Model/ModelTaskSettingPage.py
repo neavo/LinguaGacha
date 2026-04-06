@@ -7,10 +7,10 @@ from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SingleDirectionScrollArea
 from qfluentwidgets import SpinBox
 
-from api.Client.ApiStateStore import ApiStateStore
 from api.Client.ModelApiClient import ModelApiClient
 from base.Base import Base
 from model.Api.ModelModels import ModelEntrySnapshot
+from model.Api.ModelModels import ModelPageSnapshot
 from module.Localizer.Localizer import Localizer
 from widget.SettingCard import SettingCard
 
@@ -20,7 +20,6 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         self,
         model: ModelEntrySnapshot,
         model_api_client: ModelApiClient,
-        api_state_store: ApiStateStore,
         window: FluentWindow,
     ) -> None:
         super().__init__(window)
@@ -33,7 +32,6 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         # 获取模型配置
         self.model = model
         self.model_api_client = model_api_client
-        self.api_state_store = api_state_store
 
         # 设置主布局
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
@@ -60,7 +58,7 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         # 填充
         self.vbox.addStretch(1)
 
-    def refresh_model_from_snapshot(self, snapshot) -> None:
+    def refresh_model_from_snapshot(self, snapshot: ModelPageSnapshot) -> None:
         """统一从最新快照回填当前模型，避免弹窗继续持有旧阈值。"""
 
         self.model = next(
@@ -74,109 +72,73 @@ class ModelTaskSettingPage(Base, MessageBoxBase):
         snapshot = self.model_api_client.update_model(self.model.id, patch)
         self.refresh_model_from_snapshot(snapshot)
 
+    def add_threshold_setting_card(
+        self,
+        parent: QLayout,
+        *,
+        title: str,
+        description: str,
+        field_name: str,
+        value: int,
+    ) -> None:
+        """统一构建阈值输入卡片，避免四组 SpinBox 写法分叉。"""
+
+        def value_changed(spin_box: SpinBox) -> None:
+            self.update_model_fields(
+                {
+                    "threshold": {
+                        field_name: spin_box.value(),
+                    }
+                }
+            )
+
+        card = SettingCard(
+            title=title,
+            description=description,
+            parent=self,
+        )
+        spin_box = SpinBox(card)
+        spin_box.setRange(0, 9999999)
+        spin_box.setValue(value)
+        # 必须在 lambda 默认参数中绑定当前控件，避免循环内复用变量导致回调串写。
+        spin_box.valueChanged.connect(
+            lambda _value, target_spin_box=spin_box: value_changed(target_spin_box)
+        )
+        card.add_right_widget(spin_box)
+        parent.addWidget(card)
+
     # 阈值设置
     def add_widget_threshold(self, parent: QLayout) -> None:
         threshold = self.model.threshold
 
-        # 输入 Token 限制
-        def value_changed_input_token(spin_box: SpinBox) -> None:
-            self.update_model_fields(
-                {
-                    "threshold": {
-                        "input_token_limit": spin_box.value(),
-                    }
-                }
-            )
-
-        card = SettingCard(
+        self.add_threshold_setting_card(
+            parent,
             title=Localizer.get().model_basic_setting_page_input_token_title,
             description=Localizer.get().model_basic_setting_page_input_token_content,
-            parent=self,
+            field_name="input_token_limit",
+            value=threshold.input_token_limit,
         )
-        spin_box = SpinBox(card)
-        spin_box.setRange(0, 9999999)
-        spin_box.setValue(threshold.input_token_limit)
-        # 必须在 lambda 默认参数中绑定当前控件，避免循环内复用变量导致回调串写。
-        spin_box.valueChanged.connect(
-            lambda value, target_spin_box=spin_box: value_changed_input_token(
-                target_spin_box
-            )
-        )
-        card.add_right_widget(spin_box)
-        parent.addWidget(card)
 
-        # 输出 Token 限制
-        def value_changed_output_token(spin_box: SpinBox) -> None:
-            self.update_model_fields(
-                {
-                    "threshold": {
-                        "output_token_limit": spin_box.value(),
-                    }
-                }
-            )
-
-        card = SettingCard(
+        self.add_threshold_setting_card(
+            parent,
             title=Localizer.get().model_basic_setting_page_output_token_title,
             description=Localizer.get().model_basic_setting_page_output_token_content,
-            parent=self,
+            field_name="output_token_limit",
+            value=threshold.output_token_limit,
         )
-        spin_box = SpinBox(card)
-        spin_box.setRange(0, 9999999)
-        spin_box.setValue(threshold.output_token_limit)
-        spin_box.valueChanged.connect(
-            lambda value, target_spin_box=spin_box: value_changed_output_token(
-                target_spin_box
-            )
-        )
-        card.add_right_widget(spin_box)
-        parent.addWidget(card)
 
-        # 并发数限制
-        def value_changed_concurrency(spin_box: SpinBox) -> None:
-            self.update_model_fields(
-                {
-                    "threshold": {
-                        "concurrency_limit": spin_box.value(),
-                    }
-                }
-            )
-
-        card = SettingCard(
+        self.add_threshold_setting_card(
+            parent,
             title=Localizer.get().model_basic_setting_page_concurrency_title,
             description=Localizer.get().model_basic_setting_page_concurrency_content,
-            parent=self,
+            field_name="concurrency_limit",
+            value=threshold.concurrency_limit,
         )
-        spin_box = SpinBox(card)
-        spin_box.setRange(0, 9999999)
-        spin_box.setValue(threshold.concurrency_limit)
-        spin_box.valueChanged.connect(
-            lambda value, target_spin_box=spin_box: value_changed_concurrency(
-                target_spin_box
-            )
-        )
-        card.add_right_widget(spin_box)
-        parent.addWidget(card)
 
-        # RPM 限制
-        def value_changed_rpm(spin_box: SpinBox) -> None:
-            self.update_model_fields(
-                {
-                    "threshold": {
-                        "rpm_limit": spin_box.value(),
-                    }
-                }
-            )
-
-        card = SettingCard(
+        self.add_threshold_setting_card(
+            parent,
             title=Localizer.get().model_basic_setting_page_rpm_title,
             description=Localizer.get().model_basic_setting_page_rpm_content,
-            parent=self,
+            field_name="rpm_limit",
+            value=threshold.rpm_limit,
         )
-        spin_box = SpinBox(card)
-        spin_box.setRange(0, 9999999)
-        spin_box.setValue(threshold.rpm_limit)
-        spin_box.valueChanged.connect(
-            lambda value, target_spin_box=spin_box: value_changed_rpm(target_spin_box)
-        )
-        card.add_right_widget(spin_box)
-        parent.addWidget(card)

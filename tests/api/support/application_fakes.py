@@ -9,14 +9,12 @@
 from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING
-from enum import StrEnum
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from model.Model import Model
 from model.Model import ModelType
 from module.Config import Config
-from module.ModelManager import ModelManager
 
 if TYPE_CHECKING:
     from module.Data.Core.DataTypes import WorkbenchSnapshot
@@ -392,12 +390,6 @@ class FakeModelConfig:
 class FakeModelManager:
     """提供模型 API 测试使用的最小模型管理桩。"""
 
-    class ReorderOperation(StrEnum):
-        MOVE_UP = "MOVE_UP"
-        MOVE_DOWN = "MOVE_DOWN"
-        MOVE_TOP = "MOVE_TOP"
-        MOVE_BOTTOM = "MOVE_BOTTOM"
-
     PRESET_MODEL_BY_ID: dict[str, dict[str, object]] = {
         "preset-1": deepcopy(FakeModelConfig.DEFAULT_MODELS[0]),
     }
@@ -516,29 +508,3 @@ class FakeModelManager:
                 reordered_models.append(model_map[model_id])
 
         self.models = reordered_models
-
-    @classmethod
-    def build_group_reordered_ids(
-        cls,
-        model_ids: list[str],
-        model_id: str,
-        operation: "FakeModelManager.ReorderOperation",
-    ) -> list[str]:
-        return ModelManager.build_group_reordered_ids(
-            model_ids,
-            model_id,
-            ModelManager.ReorderOperation(operation),
-        )
-
-    @classmethod
-    def build_global_ordered_ids_for_group(
-        cls,
-        models_data: list[dict[str, object]],
-        model_type: str,
-        reordered_group_ids: list[str],
-    ) -> list[str]:
-        return ModelManager.build_global_ordered_ids_for_group(
-            models_data,
-            model_type,
-            reordered_group_ids,
-        )

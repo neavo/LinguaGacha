@@ -11,6 +11,16 @@ from tests.api.support.application_fakes import FakeModelConfig
 from tests.api.support.application_fakes import FakeModelManager
 
 
+def build_model_app_service() -> ModelAppService:
+    """统一构造模型应用服务测试桩，避免每个用例重复拼装依赖。"""
+
+    fake_config = FakeModelConfig()
+    return ModelAppService(
+        config_loader=lambda: fake_config,
+        model_manager=FakeModelManager(),
+    )
+
+
 def test_model_page_snapshot_from_dict_builds_nested_objects() -> None:
     snapshot = ModelPageSnapshot.from_dict(
         {
@@ -63,7 +73,7 @@ def test_model_page_snapshot_from_dict_builds_nested_objects() -> None:
 
 
 def test_model_app_service_update_model_rejects_forbidden_patch_key() -> None:
-    service = ModelAppService()
+    service = build_model_app_service()
     request = {
         "model_id": "preset-1",
         "patch": {
@@ -76,11 +86,7 @@ def test_model_app_service_update_model_rejects_forbidden_patch_key() -> None:
 
 
 def test_model_app_service_snapshot_returns_active_model_and_models() -> None:
-    fake_config = FakeModelConfig()
-    service = ModelAppService(
-        config_loader=lambda: fake_config,
-        model_manager=FakeModelManager(),
-    )
+    service = build_model_app_service()
 
     data = service.get_snapshot({})
 
@@ -92,11 +98,7 @@ def test_model_app_service_snapshot_returns_active_model_and_models() -> None:
 
 
 def test_model_app_service_update_model_merges_nested_patch() -> None:
-    fake_config = FakeModelConfig()
-    service = ModelAppService(
-        config_loader=lambda: fake_config,
-        model_manager=FakeModelManager(),
-    )
+    service = build_model_app_service()
 
     data = service.update_model(
         {
@@ -115,3 +117,10 @@ def test_model_app_service_update_model_merges_nested_patch() -> None:
     )
     assert updated_model["generation"]["temperature"] == 0.9
     assert updated_model["generation"]["top_p"] == 0.8
+
+
+def test_model_app_service_delete_preset_model_is_rejected() -> None:
+    service = build_model_app_service()
+
+    with pytest.raises(ValueError, match="preset model cannot be deleted"):
+        service.delete_model({"model_id": "preset-1"})
