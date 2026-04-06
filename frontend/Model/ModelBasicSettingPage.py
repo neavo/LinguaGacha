@@ -245,10 +245,11 @@ class ModelBasicSettingPage(Base, MessageBoxBase):
         def triggered_sync(checked: bool = False) -> None:
             del checked
             # 弹出页面
-            ModelSelectorPage(self.model_id, window).exec()
+            selector = ModelSelectorPage(self.model, self.model_api_client, window)
+            selector.exec()
 
             # 更新 UI 文本
-            self.refresh_model_from_snapshot(self.model_api_client.get_snapshot())
+            self.model = selector.model
             if card is not None:
                 card.set_description(
                     Localizer.get().model_basic_setting_page_model_id_content.replace(

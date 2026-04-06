@@ -20,9 +20,10 @@ from qfluentwidgets import ListWidget
 from qfluentwidgets import MessageBoxBase
 from qfluentwidgets import SubtitleLabel
 
+from api.Client.ModelApiClient import ModelApiClient
 from base.Base import Base
 from base.LogManager import LogManager
-from module.Config import Config
+from model.Api.ModelModels import ModelEntrySnapshot
 from module.Localizer.Localizer import Localizer
 from widget.CustomLineEdit import CustomSearchLineEdit
 from widget.Separator import Separator
@@ -42,11 +43,18 @@ class ModelSelectorPage(Base, MessageBoxBase):
         "Chrome/133.0.0.0 Safari/537.36"
     )
 
-    def __init__(self, model_id: str, window: FluentWindow) -> None:
+    def __init__(
+        self,
+        model: ModelEntrySnapshot,
+        model_api_client: ModelApiClient,
+        window: FluentWindow,
+    ) -> None:
         super().__init__(window)
 
         # 初始化数据
-        self.model_id: str = model_id
+        self.model = model
+        self.model_api_client = model_api_client
+        self.model_id: str = model.id
         self.available_models: list[str] = []
 
         # 连接信号
@@ -129,10 +137,9 @@ class ModelSelectorPage(Base, MessageBoxBase):
 
     def start_loading(self) -> None:
         """在后台线程中加载模型列表"""
-        model_data: dict = Config().load().get_model(self.model_id)
-        api_key = model_data.get("api_key", "").split("\n")[0].strip()  # 取第一个key
-        api_url = model_data.get("api_url", "")
-        api_format = model_data.get("api_format", "")
+        api_key = self.model.api_key.split("\n")[0].strip()  # 取第一个 key
+        api_url = self.model.api_url
+        api_format = self.model.api_format
 
         # 在后台线程中执行网络请求
         def fetch_models() -> None:
@@ -235,11 +242,16 @@ class ModelSelectorPage(Base, MessageBoxBase):
 
     def on_item_clicked(self, item: QListWidgetItem) -> None:
         """点击列表项选择模型"""
-        config = Config().load()
-        model = config.get_model(self.model_id)
-        model["model_id"] = item.text().strip()
-        config.set_model(model)
-        config.save()
+        snapshot = self.model_api_client.update_model(
+            self.model_id,
+            {"model_id": item.text().strip()},
+        )
+        refreshed_model = next(
+            (entry for entry in snapshot.models if entry.id == self.model_id),
+            None,
+        )
+        if refreshed_model is not None:
+            self.model = refreshed_model
 
         # 关闭窗口
         self.close()
