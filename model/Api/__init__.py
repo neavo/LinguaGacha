@@ -2,6 +2,12 @@ from model.Api.ExtraModels import ExtraToolEntry
 from model.Api.ExtraModels import ExtraToolSnapshot
 from model.Api.ExtraModels import ExtraTaskState
 from model.Api.ExtraModels import LaboratorySnapshot
+from model.Api.ModelModels import ModelEntrySnapshot
+from model.Api.ModelModels import ModelGenerationSnapshot
+from model.Api.ModelModels import ModelPageSnapshot
+from model.Api.ModelModels import ModelRequestSnapshot
+from model.Api.ModelModels import ModelThinkingSnapshot
+from model.Api.ModelModels import ModelThresholdSnapshot
 from model.Api.ExtraModels import NameFieldEntryDraft
 from model.Api.ExtraModels import NameFieldSnapshot
 from model.Api.ExtraModels import NameFieldTranslateResult
@@ -38,6 +44,12 @@ __all__ = [
     "ExtraToolSnapshot",
     "ExtraTaskState",
     "LaboratorySnapshot",
+    "ModelEntrySnapshot",
+    "ModelGenerationSnapshot",
+    "ModelPageSnapshot",
+    "ModelRequestSnapshot",
+    "ModelThinkingSnapshot",
+    "ModelThresholdSnapshot",
     "NameFieldEntryDraft",
     "NameFieldSnapshot",
     "NameFieldTranslateResult",

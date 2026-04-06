@@ -132,6 +132,18 @@
 - `auto_process_prefix_suffix_preserved_text`
 - `recent_projects`
 
+## 6.x Model 接口
+
+| 方法 | 路径 | 请求体 | 响应 `data` |
+| --- | --- | --- | --- |
+| `POST` | `/api/models/snapshot` | `{}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/update` | `{"model_id": "...", "patch": {...}}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/activate` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/add` | `{"model_type": "CUSTOM_OPENAI"}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/delete` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/reset-preset` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
+| `POST` | `/api/models/reorder` | `{"model_id": "...", "operation": "MOVE_UP"}` | `{"snapshot": {...}}` |
+
 ## 7. Quality 接口
 
 ### 7.1 质量规则
