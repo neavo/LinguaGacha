@@ -74,7 +74,12 @@ EXTRA_FRONTEND_FILES: tuple[str, ...] = (
     "frontend/Extra/LaboratoryPage.py",
 )
 
-MODEL_FRONTEND_FILES: tuple[str, ...] = ("frontend/Model/ModelPage.py",)
+MODEL_FRONTEND_FILES: tuple[str, ...] = (
+    "frontend/Model/ModelPage.py",
+    "frontend/Model/ModelBasicSettingPage.py",
+    "frontend/Model/ModelTaskSettingPage.py",
+    "frontend/Model/ModelAdvancedSettingPage.py",
+)
 
 EXTRA_FORBIDDEN_IMPORT_MODULES: tuple[str, ...] = (
     "module.Config",

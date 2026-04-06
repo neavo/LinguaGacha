@@ -10,8 +10,10 @@ from qfluentwidgets import Slider
 from qfluentwidgets import StrongBodyLabel
 from qfluentwidgets import SwitchButton
 
+from api.Client.ApiStateStore import ApiStateStore
+from api.Client.ModelApiClient import ModelApiClient
 from base.Base import Base
-from module.Config import Config
+from model.Api.ModelModels import ModelEntrySnapshot
 from module.Localizer.Localizer import Localizer
 from module.Utils.JSONTool import JSONTool
 from widget.CustomTextEdit import CustomTextEdit
@@ -25,11 +27,14 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
     PRESENCE_PENALTY_DEFAULT: float = 0.00
     FREQUENCY_PENALTY_DEFAULT: float = 0.00
 
-    def __init__(self, model_id: str, window: FluentWindow) -> None:
+    def __init__(
+        self,
+        model: ModelEntrySnapshot,
+        model_api_client: ModelApiClient,
+        api_state_store: ApiStateStore,
+        window: FluentWindow,
+    ) -> None:
         super().__init__(window)
-
-        # 载入并保存默认配置
-        config = Config().load().save()
 
         # 设置框体
         self.widget.setFixedSize(960, 720)
@@ -37,11 +42,9 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         self.cancelButton.hide()
 
         # 获取模型配置
-        self.model_id = model_id
-        self.model = config.get_model(model_id)
-
-        # 从 generation 中读取参数（兼容新数据结构）
-        self.generation = self.model.get("generation", {})
+        self.model = model
+        self.model_api_client = model_api_client
+        self.api_state_store = api_state_store
 
         # 设置主布局
         self.viewLayout.setContentsMargins(24, 24, 24, 24)
@@ -60,24 +63,38 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         self.viewLayout.addWidget(scroll_area)
 
         # 添加控件
-        self.add_widget_top_p(scroll_area_vbox, config, window)
-        self.add_widget_temperature(scroll_area_vbox, config, window)
-        self.add_widget_presence_penalty(scroll_area_vbox, config, window)
-        self.add_widget_frequency_penalty(scroll_area_vbox, config, window)
+        self.add_widget_top_p(scroll_area_vbox)
+        self.add_widget_temperature(scroll_area_vbox)
+        self.add_widget_presence_penalty(scroll_area_vbox)
+        self.add_widget_frequency_penalty(scroll_area_vbox)
 
         # 自定义网络配置
-        self.add_widget_request_config(scroll_area_vbox, config, window)
+        self.add_widget_request_config(scroll_area_vbox)
 
         # 填充
         scroll_area_vbox.addStretch(1)
 
+    def refresh_model_from_snapshot(self, snapshot) -> None:
+        """统一从最新快照回填当前模型，避免弹窗继续持有旧参数。"""
+
+        self.model = next(
+            (item for item in snapshot.models if item.id == self.model.id),
+            self.model,
+        )
+
+    def update_model_fields(self, patch: dict[str, object]) -> None:
+        """所有高级设置写入都通过同一 API 入口，保证状态源唯一。"""
+
+        snapshot = self.model_api_client.update_model(self.model.id, patch)
+        self.refresh_model_from_snapshot(snapshot)
+
     # 获取生成参数值
     def get_generation_value(self, key: str, default: float = 0.0) -> float:
-        return self.generation.get(key, default)
+        return float(getattr(self.model.generation, key, default))
 
     # 获取生成参数启用状态
     def get_generation_enable(self, key: str) -> bool:
-        return self.generation.get(f"{key}_custom_enable", False)
+        return bool(getattr(self.model.generation, f"{key}_custom_enable", False))
 
     # 滑动条释放事件
     def slider_released(
@@ -86,14 +103,7 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         value = slider.value()
         value_label.setText(f"{(value / 100):.2f}")
 
-        # 更新配置文件
-        config = Config().load()
-        self.model = config.get_model(self.model_id)
-        if "generation" not in self.model:
-            self.model["generation"] = {}
-        self.model["generation"][arg] = value / 100
-        config.set_model(self.model)
-        config.save()
+        self.update_model_fields({"generation": {arg: value / 100}})
 
     # 开关状态变化事件
     def checked_changed(
@@ -111,20 +121,17 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         value_label.setText(f"{default_value:.2f}")
         slider.setValue(int(default_value * 100))
 
-        # 更新配置文件
-        config = Config().load()
-        self.model = config.get_model(self.model_id)
-        if "generation" not in self.model:
-            self.model["generation"] = {}
-        self.model["generation"][arg] = default_value
-        self.model["generation"][f"{arg}_custom_enable"] = checked
-        config.set_model(self.model)
-        config.save()
+        self.update_model_fields(
+            {
+                "generation": {
+                    arg: default_value,
+                    f"{arg}_custom_enable": checked,
+                }
+            }
+        )
 
     # top_p
-    def add_widget_top_p(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_top_p(self, parent: QLayout) -> None:
         card = SettingCard(
             title=Localizer.get().model_advanced_setting_page_top_p_title,
             description=Localizer.get().model_advanced_setting_page_param_caution,
@@ -171,9 +178,7 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         parent.addWidget(card)
 
     # temperature
-    def add_widget_temperature(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_temperature(self, parent: QLayout) -> None:
         card = SettingCard(
             title=Localizer.get().model_advanced_setting_page_temperature_title,
             description=Localizer.get().model_advanced_setting_page_param_caution,
@@ -222,9 +227,7 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         parent.addWidget(card)
 
     # presence_penalty
-    def add_widget_presence_penalty(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_presence_penalty(self, parent: QLayout) -> None:
         card = SettingCard(
             title=Localizer.get().model_advanced_setting_page_presence_penalty_title,
             description=Localizer.get().model_advanced_setting_page_param_caution,
@@ -273,9 +276,7 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         parent.addWidget(card)
 
     # frequency_penalty
-    def add_widget_frequency_penalty(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
+    def add_widget_frequency_penalty(self, parent: QLayout) -> None:
         card = SettingCard(
             title=Localizer.get().model_advanced_setting_page_frequency_penalty_title,
             description=Localizer.get().model_advanced_setting_page_param_caution,
@@ -324,22 +325,21 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         parent.addWidget(card)
 
     # 自定义请求配置
-    def add_widget_request_config(
-        self, parent: QLayout, config: Config, window: FluentWindow
-    ) -> None:
-        request_config = self.model.get("request", {})
+    def add_widget_request_config(self, parent: QLayout) -> None:
+        request_config = self.model.request
 
         # 自定义 Headers
         def switch_changed_headers(
             checked: bool, plain_text_edit: CustomTextEdit
         ) -> None:
             plain_text_edit.setReadOnly(not checked)
-            config = Config().load()
-            if "request" not in self.model:
-                self.model["request"] = {}
-            self.model["request"]["extra_headers_custom_enable"] = checked
-            config.set_model(self.model)
-            config.save()
+            self.update_model_fields(
+                {
+                    "request": {
+                        "extra_headers_custom_enable": checked,
+                    }
+                }
+            )
 
         def validate_and_save_headers(plain_text_edit: CustomTextEdit) -> bool:
             """校验 JSON 并保存，返回是否有效"""
@@ -394,14 +394,14 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
             switch_button = SwitchButton()
             switch_button.setOnText("")
             switch_button.setOffText("")
-            is_enabled = request_config.get("extra_headers_custom_enable", False)
+            is_enabled = request_config.extra_headers_custom_enable
             switch_button.setChecked(is_enabled)
             widget.add_header_widget(switch_button)
 
             # 添加文本编辑框
             plain_text_edit = CustomTextEdit(self, monospace=True)
             plain_text_edit.setFixedHeight(192)
-            headers = request_config.get("extra_headers", {})
+            headers = request_config.extra_headers
             if headers:
                 plain_text_edit.setPlainText(JSONTool.dumps(headers, indent=4))
             plain_text_edit.setPlaceholderText(
@@ -433,12 +433,13 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
         # 自定义 Body
         def switch_changed_body(checked: bool, plain_text_edit: CustomTextEdit) -> None:
             plain_text_edit.setReadOnly(not checked)
-            config = Config().load()
-            if "request" not in self.model:
-                self.model["request"] = {}
-            self.model["request"]["extra_body_custom_enable"] = checked
-            config.set_model(self.model)
-            config.save()
+            self.update_model_fields(
+                {
+                    "request": {
+                        "extra_body_custom_enable": checked,
+                    }
+                }
+            )
 
         def validate_and_save_body(plain_text_edit: CustomTextEdit) -> bool:
             """校验 JSON 并保存，返回是否有效"""
@@ -493,14 +494,14 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
             switch_button = SwitchButton()
             switch_button.setOnText("")
             switch_button.setOffText("")
-            is_enabled = request_config.get("extra_body_custom_enable", False)
+            is_enabled = request_config.extra_body_custom_enable
             switch_button.setChecked(is_enabled)
             widget.add_header_widget(switch_button)
 
             # 添加文本编辑框
             plain_text_edit = CustomTextEdit(self, monospace=True)
             plain_text_edit.setFixedHeight(192)
-            body = request_config.get("extra_body", {})
+            body = request_config.extra_body
             if body:
                 plain_text_edit.setPlainText(JSONTool.dumps(body, indent=4))
             plain_text_edit.setPlaceholderText(
@@ -531,10 +532,4 @@ class ModelAdvancedSettingPage(Base, MessageBoxBase):
 
     def save_request_field(self, field: str, value: dict) -> None:
         """保存请求配置字段"""
-        config = Config().load()
-        if "request" not in self.model:
-            self.model["request"] = {}
-        self.model["request"][field] = value
-        config.set_model(self.model)
-        config.save()
-
+        self.update_model_fields({"request": {field: value}})

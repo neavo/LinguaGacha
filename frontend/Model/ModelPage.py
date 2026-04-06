@@ -471,7 +471,18 @@ class ModelPage(Base, QWidget):
     ) -> None:
         """显示基础设置对话框"""
         del checked
-        ModelBasicSettingPage(model_id, self.window).exec()
+        model = next(
+            (item for item in self.current_snapshot.models if item.id == model_id),
+            None,
+        )
+        if model is None:
+            return
+        ModelBasicSettingPage(
+            model,
+            self.model_api_client,
+            self.api_state_store,
+            self.window,
+        ).exec()
 
         self.current_snapshot = self.model_api_client.get_snapshot()
         self.refresh_all_categories()
@@ -481,7 +492,18 @@ class ModelPage(Base, QWidget):
     ) -> None:
         """显示任务设置对话框"""
         del checked
-        ModelTaskSettingPage(model_id, self.window).exec()
+        model = next(
+            (item for item in self.current_snapshot.models if item.id == model_id),
+            None,
+        )
+        if model is None:
+            return
+        ModelTaskSettingPage(
+            model,
+            self.model_api_client,
+            self.api_state_store,
+            self.window,
+        ).exec()
 
         self.current_snapshot = self.model_api_client.get_snapshot()
         self.refresh_all_categories()
@@ -489,7 +511,18 @@ class ModelPage(Base, QWidget):
     def show_advanced_edit_page(self, model_id: str, checked: bool = False) -> None:
         """显示编辑参数对话框"""
         del checked
-        ModelAdvancedSettingPage(model_id, self.window).exec()
+        model = next(
+            (item for item in self.current_snapshot.models if item.id == model_id),
+            None,
+        )
+        if model is None:
+            return
+        ModelAdvancedSettingPage(
+            model,
+            self.model_api_client,
+            self.api_state_store,
+            self.window,
+        ).exec()
         self.current_snapshot = self.model_api_client.get_snapshot()
         self.refresh_all_categories()
 
