@@ -571,6 +571,13 @@
   - `NameFieldEntryDraft`
   - `NameFieldSnapshot`
   - `NameFieldTranslateResult`
+- `model/Api/ModelModels.py`
+  - `ModelPageSnapshot`
+  - `ModelEntrySnapshot`
+  - `ModelRequestSnapshot`
+  - `ModelThresholdSnapshot`
+  - `ModelThinkingSnapshot`
+  - `ModelGenerationSnapshot`
 
 ### 12.2 客户端返回值约定
 
@@ -593,6 +600,7 @@
 - `ExtraApiClient.start_ts_conversion()` 返回 `TsConversionTaskAccepted`
 - `ExtraApiClient.extract_name_fields()` / `save_name_fields_to_glossary()` 返回 `NameFieldSnapshot`
 - `ExtraApiClient.translate_name_fields()` 返回 `NameFieldTranslateResult`
+- `ModelApiClient.get_snapshot()` / `update_model()` / `activate_model()` / `add_model()` / `delete_model()` / `reset_preset_model()` / `reorder_model()` 返回 `ModelPageSnapshot`
 
 ### 12.2.1 服务端载荷命名约定
 
@@ -670,7 +678,15 @@
 - `frontend/Extra/TSConversionPage.py`
 - `frontend/Extra/NameFieldExtractionPage.py`
 
-这些第二阶段文件同样不得直接导入上述 Core 单例；此外：
+第四阶段补充边界声明如下：
+
+- `frontend/Model/ModelPage.py`
+- `frontend/Model/ModelBasicSettingPage.py`
+- `frontend/Model/ModelTaskSettingPage.py`
+- `frontend/Model/ModelAdvancedSettingPage.py`
+- `frontend/Model/ModelSelectorPage.py`
+
+这些第二阶段与第四阶段文件同样不得直接导入上述 Core 单例；此外：
 
 - `frontend/Proofreading/ProofreadingLoadService.py` 与 `frontend/Proofreading/ProofreadingDomain.py` 不得直接导入 `module.ResultChecker.ResultChecker`
 - `frontend/Quality/QualityRulePageBase.py` 不得直接导入 `module.QualityRule.QualityRuleIO`

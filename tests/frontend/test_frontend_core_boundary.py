@@ -402,6 +402,11 @@ def test_model_frontend_files_do_not_import_core_singletons() -> None:
         "from module.Engine.Engine import Engine",
         "from module.ModelManager import ModelManager",
     )
+    assert "frontend/Model/ModelPage.py" in MODEL_FRONTEND_FILES
+    assert "frontend/Model/ModelBasicSettingPage.py" in MODEL_FRONTEND_FILES
+    assert "frontend/Model/ModelTaskSettingPage.py" in MODEL_FRONTEND_FILES
+    assert "frontend/Model/ModelAdvancedSettingPage.py" in MODEL_FRONTEND_FILES
+    assert "frontend/Model/ModelSelectorPage.py" in MODEL_FRONTEND_FILES
 
     for relative_path in MODEL_FRONTEND_FILES:
         content = (root_dir / relative_path).read_text(encoding="utf-8")

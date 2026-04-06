@@ -51,7 +51,7 @@ flowchart TD
 | 页面 | 文件 | 主要依赖 |
 | --- | --- | --- |
 | 工程页 | [`frontend/ProjectPage.py`](../frontend/ProjectPage.py) | 工程创建、最近项目、加载入口 |
-| 模型页 | [`frontend/Model/ModelPage.py`](../frontend/Model/ModelPage.py) | 模型配置与选择 |
+| 模型页 | [`frontend/Model/ModelPage.py`](../frontend/Model/ModelPage.py) | `api.Client.ModelApiClient`、`ApiStateStore`、模型配置与选择 |
 | 翻译页 | [`frontend/Translation/TranslationPage.py`](../frontend/Translation/TranslationPage.py) | `module/Engine/Translation/*`、`module/Data/DataManager.py` |
 | 分析页 | [`frontend/Analysis/AnalysisPage.py`](../frontend/Analysis/AnalysisPage.py) | `module/Engine/Analysis/*`、`module/Data/DataManager.py` |
 | 校对页 | [`frontend/Proofreading/ProofreadingPage.py`](../frontend/Proofreading/ProofreadingPage.py) | 校对任务与工程状态 |
@@ -67,6 +67,15 @@ flowchart TD
 3. 涉及全局 Toast、进度条或更新流程时，优先检查 `toast()`、`progress_toast_event()` 与应用更新相关事件处理函数。
 4. 涉及页面文案时，不要直接写字符串，统一改 `module/Localizer/`。
 5. 涉及后台任务触发 UI 刷新时，保持事件总线路径，避免后台线程直接碰界面控件。
+
+## 模型页边界
+以下模型相关页面已要求只通过 `api.Client` 与 `ApiStateStore` 访问 Core：
+
+- `frontend/Model/ModelPage.py`
+- `frontend/Model/ModelBasicSettingPage.py`
+- `frontend/Model/ModelTaskSettingPage.py`
+- `frontend/Model/ModelAdvancedSettingPage.py`
+- `frontend/Model/ModelSelectorPage.py`
 
 ## `frontend-vite` 阅读入口
 - `frontend-vite/` 已作为独立子工程维护，实现级目录结构、入口约束、样式边界与联调规则统一收敛在 [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md)。

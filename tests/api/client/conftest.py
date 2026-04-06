@@ -3,6 +3,7 @@ from collections.abc import Generator
 
 import pytest
 
+from api.Application.ModelAppService import ModelAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Application.QualityRuleAppService import QualityRuleAppService
@@ -17,8 +18,9 @@ from tests.api.support.application_fakes import FakeTaskDataManager
 from tests.api.support.application_fakes import FakeWorkbenchManager
 
 
-type ApiService = (
-    ProjectAppService
+type ServiceOverride = (
+    ModelAppService
+    | ProjectAppService
     | ProofreadingAppService
     | QualityRuleAppService
     | SettingsAppService
@@ -58,7 +60,7 @@ def fake_settings_config() -> FakeSettingsConfig:
 def start_api_server() -> Generator[StartApiServerFactory, None, None]:
     runtimes: list[Callable[[], None]] = []
 
-    def factory(**services: ApiService) -> str:
+    def factory(**services: ServiceOverride) -> str:
         # 这里按后进先出关闭测试服务，避免后创建的资源泄漏到后续用例。
         base_url, shutdown = ServerBootstrap.start_for_test(**services)
         runtimes.append(shutdown)
