@@ -29,33 +29,33 @@ type DialogCopy = {
 
 const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState['kind']>, DialogCopy> = {
   'replace-file': {
-    title_key: 'task.page.workbench.dialog.replace.title',
-    description_key: 'task.page.workbench.dialog.replace.description',
-    confirm_key: 'task.page.workbench.dialog.replace.confirm',
+    title_key: 'workbench_page.dialog.replace.title',
+    description_key: 'workbench_page.dialog.replace.description',
+    confirm_key: 'workbench_page.dialog.replace.confirm',
     is_destructive: false,
   },
   'reset-file': {
-    title_key: 'task.page.workbench.dialog.reset.title',
-    description_key: 'task.page.workbench.dialog.reset.description',
-    confirm_key: 'task.page.workbench.dialog.reset.confirm',
+    title_key: 'workbench_page.dialog.reset.title',
+    description_key: 'workbench_page.dialog.reset.description',
+    confirm_key: 'workbench_page.dialog.reset.confirm',
     is_destructive: false,
   },
   'delete-file': {
-    title_key: 'task.page.workbench.dialog.delete.title',
-    description_key: 'task.page.workbench.dialog.delete.description',
-    confirm_key: 'task.page.workbench.dialog.delete.confirm',
+    title_key: 'workbench_page.dialog.delete.title',
+    description_key: 'workbench_page.dialog.delete.description',
+    confirm_key: 'workbench_page.dialog.delete.confirm',
     is_destructive: true,
   },
   'export-translation': {
-    title_key: 'task.page.workbench.dialog.export.title',
-    description_key: 'task.page.workbench.dialog.export.description',
-    confirm_key: 'task.page.workbench.dialog.export.confirm',
+    title_key: 'workbench_page.dialog.export.title',
+    description_key: 'workbench_page.dialog.export.description',
+    confirm_key: 'workbench_page.dialog.export.confirm',
     is_destructive: false,
   },
   'close-project': {
-    title_key: 'task.page.workbench.dialog.close_project.title',
-    description_key: 'task.page.workbench.dialog.close_project.description',
-    confirm_key: 'task.page.workbench.dialog.close_project.confirm',
+    title_key: 'workbench_page.dialog.close_project.title',
+    description_key: 'workbench_page.dialog.close_project.description',
+    confirm_key: 'workbench_page.dialog.close_project.confirm',
     is_destructive: false,
   },
 }
@@ -95,7 +95,7 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('task.page.workbench.dialog.cancel')}</AlertDialogCancel>
+          <AlertDialogCancel>{t('app.action.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             variant={dialog_copy?.is_destructive ? 'destructive' : 'default'}
             onClick={props.on_confirm}
@@ -107,3 +107,4 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
     </AlertDialog>
   )
 }
+

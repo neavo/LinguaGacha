@@ -45,7 +45,7 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
           ? (
               <Alert variant="destructive" className="app-settings-page__notice">
                 <AlertCircle />
-                <AlertTitle>{t('setting.page.app.feedback.refresh_failed_title')}</AlertTitle>
+                <AlertTitle>{t('app_settings_page.feedback.refresh_failed_title')}</AlertTitle>
                 <AlertDescription>{app_settings_state.refresh_error}</AlertDescription>
                 <AlertAction>
                   <Button
@@ -60,26 +60,26 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
                       ? (
                           <>
                             <LoaderCircle className="animate-spin" data-icon="inline-start" />
-                            {t('common.action.loading')}
+                            {t('app.action.loading')}
                           </>
                         )
-                      : t('setting.page.app.feedback.retry')}
+                      : t('app_settings_page.feedback.retry')}
                   </Button>
                 </AlertAction>
               </Alert>
             )
           : null}
 
-        <section className="app-settings-page__list" aria-label={t('nav.action.app_settings')}>
+        <section className="app-settings-page__list" aria-label={t('app_settings_page.title')}>
           <SettingCardRow
-            title={t('setting.page.app.fields.expert_mode.title')}
-            description={t('setting.page.app.fields.expert_mode.description')}
+            title={t('app_settings_page.fields.expert_mode.title')}
+            description={t('app_settings_page.fields.expert_mode.description')}
             action={(
               <ToggleGroup
                 type="single"
                 variant="segmented"
                 className="app-settings-page__toggle-group"
-                aria-label={t('setting.page.app.fields.expert_mode.title')}
+                aria-label={t('app_settings_page.fields.expert_mode.title')}
                 value={expert_mode_toggle_value}
                 disabled={app_settings_state.pending_state.expert_mode}
                 onValueChange={(next_value) => {
@@ -94,13 +94,13 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
                   className="app-settings-page__toggle-item"
                   value={EXPERT_MODE_TOGGLE_VALUE.DISABLED}
                 >
-                  {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+                  {t('app.toggle.disabled')}
                 </ToggleGroupItem>
                 <ToggleGroupItem
                   className="app-settings-page__toggle-item"
                   value={EXPERT_MODE_TOGGLE_VALUE.ENABLED}
                 >
-                  {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+                  {t('app.toggle.enabled')}
                 </ToggleGroupItem>
               </ToggleGroup>
             )}
@@ -121,11 +121,11 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
             <AlertDialogMedia>
               <Info />
             </AlertDialogMedia>
-            <AlertDialogTitle>{t('setting.page.app.restart_confirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('setting.page.app.restart_confirm.description')}</AlertDialogDescription>
+            <AlertDialogTitle>{t('app_settings_page.restart_confirm.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('app_settings_page.restart_confirm.description')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('setting.page.app.restart_confirm.actions.cancel')}</AlertDialogCancel>
+            <AlertDialogCancel>{t('app_settings_page.restart_confirm.actions.cancel')}</AlertDialogCancel>
             <Button
               onClick={() => {
                 void app_settings_state.confirm_restart()
@@ -135,10 +135,10 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
                 ? (
                     <>
                       <LoaderCircle className="animate-spin" data-icon="inline-start" />
-                      {t('common.action.loading')}
+                      {t('app.action.loading')}
                     </>
                   )
-                : t('setting.page.app.restart_confirm.actions.confirm')}
+                : t('app_settings_page.restart_confirm.actions.confirm')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -146,3 +146,4 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
     </>
   )
 }
+

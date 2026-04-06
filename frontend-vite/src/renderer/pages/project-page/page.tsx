@@ -395,7 +395,7 @@ function RecentProjectEmptyState(): JSX.Element {
   return (
     <div className="project-home__recent-empty">
       <BadgeAlert className="project-home__recent-empty-icon size-16 stroke-[1.9]" />
-      <p className="project-home__recent-empty-text">{t('common.project.home.open.empty')}</p>
+      <p className="project-home__recent-empty-text">{t('project_page.open.empty')}</p>
     </div>
   )
 }
@@ -409,15 +409,15 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
 
   const stats = [
     {
-      label: t('common.project.home.preview.file_count'),
+      label: t('project_page.preview.file_count'),
       value: preview.file_count.toLocaleString(),
     },
     {
-      label: t('common.project.home.preview.created_at'),
+      label: t('project_page.preview.created_at'),
       value: preview.created_at,
     },
     {
-      label: t('common.project.home.preview.updated_at'),
+      label: t('project_page.preview.updated_at'),
       value: preview.last_updated_at,
     },
   ]
@@ -434,7 +434,7 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
 
         <div className="space-y-2.5 pt-1">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-[0.77rem] text-foreground">{t('common.project.home.preview.progress')}</span>
+            <span className="text-[0.77rem] text-foreground">{t('project_page.preview.progress')}</span>
             <span className="text-[0.77rem] text-foreground">{preview.progress_percent}%</span>
           </div>
           <Progress
@@ -443,12 +443,12 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
           />
           <div className="flex items-center justify-between gap-4 text-[0.77rem] text-foreground">
             <span>
-              {t('common.project.home.preview.translated')} {preview.translated_items.toLocaleString()}{' '}
-              {t('common.project.home.preview.rows_unit')}
+              {t('project_page.preview.translated')} {preview.translated_items.toLocaleString()}{' '}
+              {t('project_page.preview.rows_unit')}
             </span>
             <span>
-              {t('common.project.home.preview.total')} {preview.total_items.toLocaleString()}{' '}
-              {t('common.project.home.preview.rows_unit')}
+              {t('project_page.preview.total')} {preview.total_items.toLocaleString()}{' '}
+              {t('project_page.preview.rows_unit')}
             </span>
           </div>
         </div>
@@ -512,7 +512,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           name: fallback_name,
         })
       } else {
-        push_toast('warning', t('common.project.home.open.preview_unavailable'))
+        push_toast('warning', t('project_page.open.preview_unavailable'))
       }
 
       set_selected_project(null)
@@ -530,7 +530,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
       if (source_files.length === 0) {
         set_selected_source(null)
-        push_toast('warning', t('common.project.home.create.unavailable'))
+        push_toast('warning', t('project_page.create.unavailable'))
       } else {
         set_selected_source({
           path: source_path,
@@ -540,7 +540,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       }
     } catch {
       set_selected_source(null)
-      push_toast('warning', t('common.project.home.create.unavailable'))
+      push_toast('warning', t('project_page.create.unavailable'))
     } finally {
       set_is_source_checking(false)
     }
@@ -583,7 +583,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
     const dropped_path = resolve_dropped_path(event.dataTransfer)
     if (dropped_path.has_multiple_paths) {
-      push_toast('warning', t('common.project.home.drop_multiple_unavailable'))
+      push_toast('warning', t('project_page.drop_multiple_unavailable'))
       return
     }
     if (dropped_path.path === null || dropped_path.path === '') {
@@ -598,7 +598,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
     const dropped_path = resolve_dropped_path(event.dataTransfer)
     if (dropped_path.has_multiple_paths) {
-      push_toast('warning', t('common.project.home.drop_multiple_unavailable'))
+      push_toast('warning', t('project_page.drop_multiple_unavailable'))
       return
     }
     if (dropped_path.path === null || dropped_path.path === '') {
@@ -655,7 +655,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       const normalized_output_path = output_path.endsWith('.lg') ? output_path : `${output_path}.lg`
       // 创建工程会阻塞用户继续点击入口，用不定进度通知明确告知“正在处理”。
       progress_toast_id = push_progress_toast({
-        message: t('common.project.home.create.loading_toast'),
+        message: t('project_page.create.loading_toast'),
       })
 
       const payload = await api_fetch<ProjectSnapshotPayload>('/api/project/create', {
@@ -671,7 +671,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       clear_selected_source()
       clear_selected_project()
     } catch (error) {
-      push_toast('error', error instanceof Error ? error.message : t('common.project.home.create.unavailable'))
+      push_toast('error', error instanceof Error ? error.message : t('project_page.create.unavailable'))
       return
     } finally {
       if (progress_toast_id !== null) {
@@ -688,7 +688,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
     set_is_opening_project(true)
     const progress_toast_id = push_progress_toast({
-      message: t('common.project.home.open.loading_toast'),
+      message: t('project_page.open.loading_toast'),
     })
 
     try {
@@ -702,7 +702,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       })
       await Promise.all([refresh_recent_projects(), refresh_task()])
     } catch (error) {
-      push_toast('error', error instanceof Error ? error.message : t('common.project.home.open.preview_unavailable'))
+      push_toast('error', error instanceof Error ? error.message : t('project_page.open.preview_unavailable'))
       return
     } finally {
       dismiss_toast(progress_toast_id)
@@ -721,7 +721,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       })
       await refresh_recent_projects()
     } catch (error) {
-      push_toast('error', error instanceof Error ? error.message : t('common.project.home.open.remove_unavailable'))
+      push_toast('error', error instanceof Error ? error.message : t('project_page.open.remove_unavailable'))
     }
   }
 
@@ -732,7 +732,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             <DropZoneCard
               icon="source"
               tone="blue"
-              title={t('common.project.home.create.drop_title')}
+              title={t('project_page.create.drop_title')}
               disabled={is_source_checking || is_creating_project}
               on_click={open_context_menu_at_click_position}
               on_drag_over={handle_drop_over}
@@ -748,7 +748,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               }}
             >
               <File className="size-4" />
-              {t('common.action.select_file')}
+              {t('app.action.select_file')}
             </ContextMenuItem>
             <ContextMenuItem
               onSelect={() => {
@@ -756,7 +756,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               }}
             >
               <FolderOpen className="size-4" />
-              {t('common.action.select_folder')}
+              {t('app.action.select_folder')}
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
@@ -768,7 +768,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             size="icon-sm"
             className="project-home__selected-close h-[30px] w-[30px] p-0"
             onClick={clear_selected_source}
-            aria-label={t('common.action.reset')}
+            aria-label={t('app.action.reset')}
           >
             <X className="size-4" />
           </Button>
@@ -792,7 +792,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                     {selected_source.name}
                   </p>
                   <p className="w-full text-[0.76rem] text-[color:var(--project-home-subtitle)]">
-                    {t('common.project.home.create.ready_status').replace('{COUNT}', selected_source.source_file_count.toString())}
+                    {t('project_page.create.ready_status').replace('{COUNT}', selected_source.source_file_count.toString())}
                   </p>
                 </div>
               </button>
@@ -804,7 +804,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 }}
               >
                 <File className="size-4" />
-                {t('common.action.select_file')}
+                {t('app.action.select_file')}
               </ContextMenuItem>
               <ContextMenuItem
                 onSelect={() => {
@@ -812,7 +812,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 }}
               >
                 <FolderOpen className="size-4" />
-                {t('common.action.select_folder')}
+                {t('app.action.select_folder')}
               </ContextMenuItem>
             </ContextMenuContent>
           </ContextMenu>
@@ -824,7 +824,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         <DropZoneCard
           icon="project"
           tone="purple"
-          title={t('common.project.home.open.drop_title')}
+          title={t('project_page.open.drop_title')}
           disabled={is_preview_loading || is_opening_project}
           on_click={() => {
             void handle_select_project_file()
@@ -842,7 +842,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             size="icon-sm"
             className="project-home__selected-close h-[30px] w-[30px] p-0"
             onClick={clear_selected_project}
-            aria-label={t('common.action.reset')}
+            aria-label={t('app.action.reset')}
           >
             <X className="size-4" />
           </Button>
@@ -866,7 +866,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 {extract_file_name(selected_project.path)}
               </p>
               <p className="w-full text-[0.76rem] text-[color:var(--project-home-subtitle)]">
-                {t('common.project.home.open.ready_status')}
+                {t('project_page.open.ready_status')}
               </p>
             </div>
           </button>
@@ -888,7 +888,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 on_remove={() => {
                   void handle_recent_project_remove(project_item.path)
                 }}
-                remove_aria_label={t('common.project.home.open.remove_recent_project')}
+                remove_aria_label={t('project_page.open.remove_recent_project')}
               />
             ))}
           </div>
@@ -902,7 +902,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 <ShieldAlert className="size-7 stroke-[1.8]" />
               </EmptyMedia>
               <EmptyTitle>{selected_project.name}</EmptyTitle>
-              <EmptyDescription>{t('common.project.home.open.preview_loading')}</EmptyDescription>
+              <EmptyDescription>{t('project_page.open.preview_loading')}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )
@@ -915,7 +915,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                   <ShieldAlert className="size-7 stroke-[1.8]" />
                 </EmptyMedia>
                 <EmptyTitle>{selected_project.name}</EmptyTitle>
-                <EmptyDescription>{t('common.project.home.open.preview_unavailable')}</EmptyDescription>
+                <EmptyDescription>{t('project_page.open.preview_unavailable')}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           )
@@ -935,13 +935,13 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             <AlertDialogMedia>
               <AlertTriangle />
             </AlertDialogMedia>
-            <AlertDialogTitle>{t('common.project.home.open.missing_file_title')}</AlertDialogTitle>
+            <AlertDialogTitle>{t('project_page.open.missing_file_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('common.project.home.open.missing_file_description')}
+              {t('project_page.open.missing_file_description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('task.page.workbench.dialog.cancel')}</AlertDialogCancel>
+            <AlertDialogCancel>{t('app.action.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 const target_path = missing_recent_project?.path
@@ -958,7 +958,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 })()
               }}
             >
-              {t('common.project.home.open.missing_file_confirm')}
+              {t('project_page.open.missing_file_confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -972,8 +972,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           <Card variant="panel" className="project-home__panel">
           <PanelHeader
             accent_class_name="bg-[color:var(--project-home-blue)]"
-            title={t('common.project.home.create.title')}
-            subtitle={t('common.project.home.create.subtitle')}
+            title={t('project_page.create.title')}
+            subtitle={t('project_page.create.subtitle')}
           />
 
           <CardContent className="flex flex-1 flex-col gap-6 pt-0">
@@ -981,7 +981,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
             <section className="space-y-4 pt-4">
               <h3 className="text-[1rem] leading-none tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
-                {t('common.project.home.formats.title')}
+                {t('project_page.formats.title')}
               </h3>
               <div className="grid grid-cols-2 gap-2">
                 {PROJECT_FORMAT_SUPPORT_ITEMS.map((format_item) => (
@@ -1005,7 +1005,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 void handle_create_project()
               }}
             >
-              {is_creating_project ? t('common.action.loading') : t('common.project.home.create.action')}
+              {is_creating_project ? t('app.action.loading') : t('project_page.create.action')}
             </Button>
           </CardFooter>
           </Card>
@@ -1013,8 +1013,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           <Card variant="panel" className="project-home__panel">
             <PanelHeader
               accent_class_name="bg-[color:var(--project-home-purple)]"
-              title={t('common.project.home.open.title')}
-              subtitle={t('common.project.home.open.subtitle')}
+              title={t('project_page.open.title')}
+              subtitle={t('project_page.open.subtitle')}
             />
 
             <CardContent className="flex flex-1 flex-col gap-6 pt-0">
@@ -1022,7 +1022,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
               <section className="space-y-4 pt-4">
                 <h3 className="text-[1rem] leading-none tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
-                  {t('common.project.home.open.recent_title')}
+                  {t('project_page.open.recent_title')}
                 </h3>
 
                 <div>
@@ -1041,7 +1041,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                   void handle_open_project()
                 }}
               >
-                {is_opening_project ? t('common.action.loading') : t('common.project.home.open.action')}
+                {is_opening_project ? t('app.action.loading') : t('project_page.open.action')}
               </Button>
             </CardFooter>
           </Card>
@@ -1050,3 +1050,4 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     </>
   )
 }
+

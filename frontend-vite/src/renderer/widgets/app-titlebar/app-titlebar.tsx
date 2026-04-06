@@ -14,7 +14,7 @@ export function AppTitlebar(): JSX.Element {
       <div className="topbar__left">
         <button
           className="topbar__menu-button"
-          aria-label={t('common.aria.toggle_navigation')}
+          aria-label={t('app.aria.toggle_navigation')}
           onClick={() => {
             startTransition(() => {
               toggleSidebar()
@@ -31,3 +31,4 @@ export function AppTitlebar(): JSX.Element {
     </header>
   )
 }
+

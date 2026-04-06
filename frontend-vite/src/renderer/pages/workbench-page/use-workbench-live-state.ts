@@ -72,21 +72,21 @@ function close_dialog_state(): WorkbenchDialogState {
 
 function resolve_format_label_key(file_type: string, rel_path: string): LocaleKey | null {
   if (file_type === 'MD') {
-    return 'task.page.workbench.format.markdown'
+    return 'workbench_page.format.markdown'
   }
   if (file_type === 'XLSX') {
-    return 'task.page.workbench.format.translation_export'
+    return 'workbench_page.format.translation_export'
   }
   if (file_type === 'EPUB') {
-    return 'task.page.workbench.format.ebook'
+    return 'workbench_page.format.ebook'
   }
 
   const lowered_path = rel_path.toLowerCase()
   if (lowered_path.endsWith('.txt')) {
-    return 'task.page.workbench.format.text_file'
+    return 'workbench_page.format.text_file'
   }
   if (lowered_path.endsWith('.srt') || lowered_path.endsWith('.ass')) {
-    return 'task.page.workbench.format.subtitle_file'
+    return 'workbench_page.format.subtitle_file'
   }
 
   return null
@@ -444,7 +444,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       }
     } catch {
       set_entries(previous_entries)
-      push_toast('error', t('task.page.workbench.reorder.failed'))
+      push_toast('error', t('workbench_page.reorder.failed'))
     } finally {
       is_reorder_running_ref.current = false
       set_is_mutation_running(false)
@@ -543,3 +543,4 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     close_dialog,
   }
 }
+

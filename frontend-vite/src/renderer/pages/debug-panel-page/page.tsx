@@ -28,17 +28,17 @@ type ToastKind = 'info' | 'success' | 'warning' | 'error'
 type ToastIdentifier = string | number
 
 const TOAST_TITLE_KEYS: Readonly<Record<ToastKind, LocaleKey>> = {
-  info: 'common.debug_panel.toast.info.title',
-  success: 'common.debug_panel.toast.success.title',
-  warning: 'common.debug_panel.toast.warning.title',
-  error: 'common.debug_panel.toast.error.title',
+  info: 'debug_panel_page.toast.info.title',
+  success: 'debug_panel_page.toast.success.title',
+  warning: 'debug_panel_page.toast.warning.title',
+  error: 'debug_panel_page.toast.error.title',
 }
 
 const TOAST_BUTTON_KEYS: Readonly<Record<ToastKind, LocaleKey>> = {
-  info: 'common.debug_panel.toast.info.button',
-  success: 'common.debug_panel.toast.success.button',
-  warning: 'common.debug_panel.toast.warning.button',
-  error: 'common.debug_panel.toast.error.button',
+  info: 'debug_panel_page.toast.info.button',
+  success: 'debug_panel_page.toast.success.button',
+  warning: 'debug_panel_page.toast.warning.button',
+  error: 'debug_panel_page.toast.error.button',
 }
 
 // 统一图标映射，避免按钮文案变化时还要在 JSX 里重复判断视觉语义。
@@ -60,11 +60,11 @@ function resolve_toast_icon(kind: ToastKind): JSX.Element {
 
 function resolve_progress_inline_title(progress_percent: number, t: (key: LocaleKey) => string): string {
   if (progress_percent >= 60) {
-    return `${t('common.debug_panel.progress.toast_title')} · ${progress_percent}% · ${t('common.debug_panel.progress.status_inline_running')}`
+    return `${t('debug_panel_page.progress.toast_title')} · ${progress_percent}% · ${t('debug_panel_page.progress.status_inline_running')}`
   } else if (progress_percent > 0) {
-    return `${t('common.debug_panel.progress.toast_title')} · ${progress_percent}% · ${t('common.debug_panel.progress.status_inline_booting')}`
+    return `${t('debug_panel_page.progress.toast_title')} · ${progress_percent}% · ${t('debug_panel_page.progress.status_inline_booting')}`
   } else {
-    return `${t('common.debug_panel.progress.toast_title')} · ${t('common.debug_panel.progress.status_inline_idle')}`
+    return `${t('debug_panel_page.progress.toast_title')} · ${t('debug_panel_page.progress.status_inline_idle')}`
   }
 }
 
@@ -77,8 +77,8 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
   const title = t(props.title_key)
   const summary = t(props.summary_key)
   const sidebar_state = props.is_sidebar_collapsed
-    ? t('common.debug_panel.shell.sidebar_collapsed')
-    : t('common.debug_panel.shell.sidebar_expanded')
+    ? t('debug_panel_page.shell.sidebar_collapsed')
+    : t('debug_panel_page.shell.sidebar_expanded')
 
   function build_progress_toast_options(next_progress_percent: number, next_is_indeterminate: boolean): {
     message: string
@@ -87,7 +87,7 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
     return {
       // 进行中的进度 toast 改为单行标题，直接验证 Sonner 单行布局的真实视觉效果。
       message: next_is_indeterminate
-        ? `${t('common.debug_panel.progress.toast_title')} · ${t('common.debug_panel.progress.status_inline_indeterminate')}`
+        ? `${t('debug_panel_page.progress.toast_title')} · ${t('debug_panel_page.progress.status_inline_indeterminate')}`
         : resolve_progress_inline_title(next_progress_percent, t),
       progress_percent: next_is_indeterminate ? undefined : next_progress_percent,
     }
@@ -147,7 +147,7 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
     >
       <header className="debug-panel-page__hero">
         <div className="debug-panel-page__hero-copy">
-          <p className="debug-panel-page__eyebrow">{t('common.debug_panel.eyebrow')}</p>
+          <p className="debug-panel-page__eyebrow">{t('debug_panel_page.eyebrow')}</p>
           <h1 className="debug-panel-page__title">{title}</h1>
           <p className="debug-panel-page__summary">{summary}</p>
         </div>
@@ -160,7 +160,7 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
           </Badge>
           <Badge variant="brand" className="debug-panel-page__badge">
             <Gauge className="size-3.5" />
-            {t('common.debug_panel.live_badge')}
+            {t('debug_panel_page.live_badge')}
           </Badge>
         </div>
       </header>
@@ -168,8 +168,8 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
       <section className="debug-panel-page__grid">
         <Card variant="panel" className="debug-panel-page__card">
           <CardHeader className="debug-panel-page__card-header">
-            <CardTitle>{t('common.debug_panel.toast.section_title')}</CardTitle>
-            <CardDescription>{t('common.debug_panel.toast.section_description')}</CardDescription>
+            <CardTitle>{t('debug_panel_page.toast.section_title')}</CardTitle>
+            <CardDescription>{t('debug_panel_page.toast.section_description')}</CardDescription>
           </CardHeader>
           <CardContent className="debug-panel-page__card-content">
             <div className="debug-panel-page__button-grid">
@@ -187,25 +187,25 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
               ))}
             </div>
             <div className="debug-panel-page__note">
-              <p className="debug-panel-page__note-label">{t('common.debug_panel.toast.preview_label')}</p>
-              <p className="debug-panel-page__note-value">{t('common.debug_panel.toast.preview_value')}</p>
+              <p className="debug-panel-page__note-label">{t('debug_panel_page.toast.preview_label')}</p>
+              <p className="debug-panel-page__note-value">{t('debug_panel_page.toast.preview_value')}</p>
             </div>
             <Button variant="ghost" onClick={dismiss_all_toasts}>
               <X className="size-4" />
-              {t('common.debug_panel.toast.dismiss_all')}
+              {t('debug_panel_page.toast.dismiss_all')}
             </Button>
           </CardContent>
         </Card>
 
         <Card variant="panel" className="debug-panel-page__card">
           <CardHeader className="debug-panel-page__card-header">
-            <CardTitle>{t('common.debug_panel.progress.section_title')}</CardTitle>
-            <CardDescription>{t('common.debug_panel.progress.section_description')}</CardDescription>
+            <CardTitle>{t('debug_panel_page.progress.section_title')}</CardTitle>
+            <CardDescription>{t('debug_panel_page.progress.section_description')}</CardDescription>
           </CardHeader>
           <CardContent className="debug-panel-page__card-content debug-panel-page__progress-card">
             <div className="debug-panel-page__progress-head">
               <div>
-                <p className="debug-panel-page__progress-label">{t('common.debug_panel.progress.current_value')}</p>
+                <p className="debug-panel-page__progress-label">{t('debug_panel_page.progress.current_value')}</p>
                 <p className="debug-panel-page__progress-value">
                   {is_progress_indeterminate ? '...' : `${progress_percent}%`}
                 </p>
@@ -213,19 +213,19 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
               <div className="debug-panel-page__hero-badges">
                 <Badge variant={is_progress_indeterminate ? 'secondary' : 'outline'}>
                   {is_progress_indeterminate
-                    ? t('common.debug_panel.progress.indeterminate_badge')
-                    : t('common.debug_panel.progress.determinate_badge')}
+                    ? t('debug_panel_page.progress.indeterminate_badge')
+                    : t('debug_panel_page.progress.determinate_badge')}
                 </Badge>
                 <Badge variant={progress_toast_id === null ? 'outline' : 'brand'}>
                   {progress_toast_id === null
-                    ? t('common.debug_panel.progress.idle_badge')
-                    : t('common.debug_panel.progress.active_badge')}
+                    ? t('debug_panel_page.progress.idle_badge')
+                    : t('debug_panel_page.progress.active_badge')}
                 </Badge>
               </div>
             </div>
 
             <label className="debug-panel-page__slider-wrap">
-              <span className="debug-panel-page__slider-label">{t('common.debug_panel.progress.slider_label')}</span>
+              <span className="debug-panel-page__slider-label">{t('debug_panel_page.progress.slider_label')}</span>
               <input
                 className="debug-panel-page__slider"
                 type="range"
@@ -256,13 +256,13 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
 
             <div className="debug-panel-page__button-row">
               <Button variant="brand" onClick={start_progress_debug}>
-                {t('common.debug_panel.progress.start_button')}
+                {t('debug_panel_page.progress.start_button')}
               </Button>
               <Button
                 variant="outline"
                 onClick={switch_progress_toast_to_indeterminate}
               >
-                {t('common.debug_panel.progress.indeterminate_button')}
+                {t('debug_panel_page.progress.indeterminate_button')}
               </Button>
               <Button
                 variant="secondary"
@@ -270,10 +270,10 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
                   sync_progress_toast(0)
                 }}
               >
-                {t('common.debug_panel.progress.reset_button')}
+                {t('debug_panel_page.progress.reset_button')}
               </Button>
               <Button variant="ghost" onClick={dismiss_progress_debug} disabled={progress_toast_id === null}>
-                {t('common.debug_panel.progress.dismiss_button')}
+                {t('debug_panel_page.progress.dismiss_button')}
               </Button>
             </div>
           </CardContent>
@@ -281,39 +281,39 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
 
         <Card variant="panel" className="debug-panel-page__card debug-panel-page__card--wide">
           <CardHeader className="debug-panel-page__card-header">
-            <CardTitle>{t('common.debug_panel.shell.section_title')}</CardTitle>
-            <CardDescription>{t('common.debug_panel.shell.section_description')}</CardDescription>
+            <CardTitle>{t('debug_panel_page.shell.section_title')}</CardTitle>
+            <CardDescription>{t('debug_panel_page.shell.section_description')}</CardDescription>
           </CardHeader>
           <CardContent className="debug-panel-page__card-content">
             <dl className="debug-panel-page__meta-grid">
               <div className="debug-panel-page__meta-row">
-                <dt>{t('common.debug_panel.shell.route_title_label')}</dt>
+                <dt>{t('debug_panel_page.shell.route_title_label')}</dt>
                 <dd>{title}</dd>
               </div>
               <div className="debug-panel-page__meta-row">
-                <dt>{t('common.debug_panel.shell.route_summary_label')}</dt>
+                <dt>{t('debug_panel_page.shell.route_summary_label')}</dt>
                 <dd>{summary}</dd>
               </div>
               <div className="debug-panel-page__meta-row">
-                <dt>{t('common.debug_panel.shell.sidebar_label')}</dt>
+                <dt>{t('debug_panel_page.shell.sidebar_label')}</dt>
                 <dd>{sidebar_state}</dd>
               </div>
               <div className="debug-panel-page__meta-row">
-                <dt>{t('common.debug_panel.shell.toast_label')}</dt>
+                <dt>{t('debug_panel_page.shell.toast_label')}</dt>
                 <dd>
                   {progress_toast_id === null
-                    ? t('common.debug_panel.shell.toast_idle')
-                    : t('common.debug_panel.shell.toast_running')}
+                    ? t('debug_panel_page.shell.toast_idle')
+                    : t('debug_panel_page.shell.toast_running')}
                 </dd>
               </div>
               <div className="debug-panel-page__meta-row">
-                <dt>{t('common.debug_panel.shell.title_key_label')}</dt>
+                <dt>{t('debug_panel_page.shell.title_key_label')}</dt>
                 <dd>
                   <code>{props.title_key}</code>
                 </dd>
               </div>
               <div className="debug-panel-page__meta-row">
-                <dt>{t('common.debug_panel.shell.summary_key_label')}</dt>
+                <dt>{t('debug_panel_page.shell.summary_key_label')}</dt>
                 <dd>
                   <code>{props.summary_key}</code>
                 </dd>
@@ -325,3 +325,4 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
     </div>
   )
 }
+

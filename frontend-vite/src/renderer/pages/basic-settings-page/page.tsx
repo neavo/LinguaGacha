@@ -86,10 +86,10 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
   const project_save_mode_description = basic_settings_state.snapshot.project_save_mode === PROJECT_SAVE_MODE.FIXED
     && basic_settings_state.snapshot.project_fixed_path !== ''
     ? replace_placeholder(
-        t('setting.page.basic.fields.project_save_mode.description_fixed'),
+        t('basic_settings_page.fields.project_save_mode.description_fixed'),
         basic_settings_state.snapshot.project_fixed_path,
       )
-    : t('setting.page.basic.fields.project_save_mode.description')
+    : t('basic_settings_page.fields.project_save_mode.description')
 
   const language_locked = basic_settings_state.is_task_busy
   const output_folder_toggle_value = basic_settings_state.snapshot.output_folder_open_on_finish
@@ -105,7 +105,7 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
         ? (
             <Alert variant="destructive" className="basic-settings-page__notice">
               <AlertCircle />
-              <AlertTitle>{t('setting.page.basic.feedback.refresh_failed_title')}</AlertTitle>
+              <AlertTitle>{t('basic_settings_page.feedback.refresh_failed_title')}</AlertTitle>
               <AlertDescription>{basic_settings_state.refresh_error}</AlertDescription>
               <AlertAction>
                 <Button
@@ -120,20 +120,20 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
                     ? (
                         <>
                           <LoaderCircle className="animate-spin" data-icon="inline-start" />
-                          {t('common.action.loading')}
+                          {t('app.action.loading')}
                         </>
                       )
-                    : t('setting.page.basic.feedback.retry')}
+                    : t('basic_settings_page.feedback.retry')}
                 </Button>
               </AlertAction>
             </Alert>
           )
         : null}
 
-      <section className="basic-settings-page__list" aria-label={t('setting.page.basic.title')}>
+      <section className="basic-settings-page__list" aria-label={t('basic_settings_page.title')}>
         <SettingCardRow
-          title={t('setting.page.basic.fields.source_language.title')}
-          description={t('setting.page.basic.fields.source_language.description')}
+          title={t('basic_settings_page.fields.source_language.title')}
+          description={t('basic_settings_page.fields.source_language.description')}
           action={(
             <Select
               value={basic_settings_state.snapshot.source_language}
@@ -159,8 +159,8 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
         />
 
         <SettingCardRow
-          title={t('setting.page.basic.fields.target_language.title')}
-          description={t('setting.page.basic.fields.target_language.description')}
+          title={t('basic_settings_page.fields.target_language.title')}
+          description={t('basic_settings_page.fields.target_language.description')}
           action={(
             <Select
               value={basic_settings_state.snapshot.target_language}
@@ -186,7 +186,7 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
         />
 
         <SettingCardRow
-          title={t('setting.page.basic.fields.project_save_mode.title')}
+          title={t('basic_settings_page.fields.project_save_mode.title')}
           description={project_save_mode_description}
           action={(
             <Select
@@ -215,14 +215,14 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
         />
 
         <SettingCardRow
-          title={t('setting.page.basic.fields.output_folder_open_on_finish.title')}
-          description={t('setting.page.basic.fields.output_folder_open_on_finish.description')}
+          title={t('basic_settings_page.fields.output_folder_open_on_finish.title')}
+          description={t('basic_settings_page.fields.output_folder_open_on_finish.description')}
           action={(
             <ToggleGroup
               type="single"
               variant="segmented"
               className="basic-settings-page__toggle-group"
-              aria-label={t('setting.page.basic.fields.output_folder_open_on_finish.title')}
+              aria-label={t('basic_settings_page.fields.output_folder_open_on_finish.title')}
               value={output_folder_toggle_value}
               disabled={basic_settings_state.pending_state.output_folder_open_on_finish}
               onValueChange={(next_value) => {
@@ -237,21 +237,21 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
                 className="basic-settings-page__toggle-item"
                 value={OUTPUT_FOLDER_TOGGLE_VALUE.DISABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+                {t('app.toggle.disabled')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 className="basic-settings-page__toggle-item"
                 value={OUTPUT_FOLDER_TOGGLE_VALUE.ENABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+                {t('app.toggle.enabled')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
         />
 
         <SettingCardRow
-          title={t('setting.page.basic.fields.request_timeout.title')}
-          description={t('setting.page.basic.fields.request_timeout.description')}
+          title={t('basic_settings_page.fields.request_timeout.title')}
+          description={t('basic_settings_page.fields.request_timeout.description')}
           action={(
             <div className="basic-settings-page__number-field">
               <Input
@@ -272,3 +272,4 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
     </div>
   )
 }
+

@@ -61,7 +61,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
         ? (
             <Alert variant="destructive" className="expert-settings-page__notice">
               <AlertCircle />
-              <AlertTitle>{t('setting.page.expert.feedback.refresh_failed_title')}</AlertTitle>
+              <AlertTitle>{t('expert_settings_page.feedback.refresh_failed_title')}</AlertTitle>
               <AlertDescription>{expert_settings_state.refresh_error}</AlertDescription>
               <AlertAction>
                 <Button
@@ -76,20 +76,20 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                     ? (
                         <>
                           <LoaderCircle className="animate-spin" data-icon="inline-start" />
-                          {t('common.action.loading')}
+                          {t('app.action.loading')}
                         </>
                       )
-                    : t('setting.page.expert.feedback.retry')}
+                    : t('expert_settings_page.feedback.retry')}
                 </Button>
               </AlertAction>
             </Alert>
           )
         : null}
 
-      <section className="expert-settings-page__list" aria-label={t('nav.item.expert_settings')}>
+      <section className="expert-settings-page__list" aria-label={t('expert_settings_page.title')}>
         <SettingCardRow
-          title={t('setting.page.expert.fields.response_check_settings.title')}
-          description={t('setting.page.expert.fields.response_check_settings.description')}
+          title={t('expert_settings_page.fields.response_check_settings.title')}
+          description={t('expert_settings_page.fields.response_check_settings.description')}
           action={(
             <DropdownMenu
               open={is_response_check_menu_open}
@@ -105,7 +105,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                     void handle_response_check_menu_button_click(event)
                   }}
                 >
-                  {t('setting.page.expert.fields.response_check_settings.button')}
+                  {t('expert_settings_page.fields.response_check_settings.button')}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" matchTriggerWidth={false}>
@@ -119,7 +119,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                       }
                     }}
                   >
-                    {t('setting.page.expert.fields.response_check_settings.options.kana_residue')}
+                    {t('expert_settings_page.fields.response_check_settings.options.kana_residue')}
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={expert_settings_state.snapshot.check_hangeul_residue}
@@ -130,7 +130,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                       }
                     }}
                   >
-                    {t('setting.page.expert.fields.response_check_settings.options.hangeul_residue')}
+                    {t('expert_settings_page.fields.response_check_settings.options.hangeul_residue')}
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={expert_settings_state.snapshot.check_similarity}
@@ -141,7 +141,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                       }
                     }}
                   >
-                    {t('setting.page.expert.fields.response_check_settings.options.similarity')}
+                    {t('expert_settings_page.fields.response_check_settings.options.similarity')}
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
@@ -150,8 +150,8 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
         />
 
         <SettingCardRow
-          title={t('setting.page.expert.fields.preceding_lines_threshold.title')}
-          description={t('setting.page.expert.fields.preceding_lines_threshold.description')}
+          title={t('expert_settings_page.fields.preceding_lines_threshold.title')}
+          description={t('expert_settings_page.fields.preceding_lines_threshold.description')}
           action={(
             <div className="expert-settings-page__number-field">
               <Input
@@ -170,14 +170,14 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
         />
 
         <SettingCardRow
-          title={t('setting.page.expert.fields.clean_ruby.title')}
-          description={t('setting.page.expert.fields.clean_ruby.description')}
+          title={t('expert_settings_page.fields.clean_ruby.title')}
+          description={t('expert_settings_page.fields.clean_ruby.description')}
           action={(
             <ToggleGroup
               type="single"
               variant="segmented"
               className="expert-settings-page__toggle-group"
-              aria-label={t('setting.page.expert.fields.clean_ruby.title')}
+              aria-label={t('expert_settings_page.fields.clean_ruby.title')}
               value={resolve_boolean_toggle_value(expert_settings_state.snapshot.clean_ruby)}
               disabled={expert_settings_state.pending_state.clean_ruby}
               onValueChange={(next_value) => {
@@ -192,27 +192,27 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.DISABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+                {t('app.toggle.disabled')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.ENABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+                {t('app.toggle.enabled')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
         />
 
         <SettingCardRow
-          title={t('setting.page.expert.fields.deduplication_in_trans.title')}
-          description={t('setting.page.expert.fields.deduplication_in_trans.description')}
+          title={t('expert_settings_page.fields.deduplication_in_trans.title')}
+          description={t('expert_settings_page.fields.deduplication_in_trans.description')}
           action={(
             <ToggleGroup
               type="single"
               variant="segmented"
               className="expert-settings-page__toggle-group"
-              aria-label={t('setting.page.expert.fields.deduplication_in_trans.title')}
+              aria-label={t('expert_settings_page.fields.deduplication_in_trans.title')}
               value={resolve_boolean_toggle_value(expert_settings_state.snapshot.deduplication_in_trans)}
               disabled={expert_settings_state.pending_state.deduplication_in_trans}
               onValueChange={(next_value) => {
@@ -227,27 +227,27 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.DISABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+                {t('app.toggle.disabled')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.ENABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+                {t('app.toggle.enabled')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
         />
 
         <SettingCardRow
-          title={t('setting.page.expert.fields.deduplication_in_bilingual.title')}
-          description={t('setting.page.expert.fields.deduplication_in_bilingual.description')}
+          title={t('expert_settings_page.fields.deduplication_in_bilingual.title')}
+          description={t('expert_settings_page.fields.deduplication_in_bilingual.description')}
           action={(
             <ToggleGroup
               type="single"
               variant="segmented"
               className="expert-settings-page__toggle-group"
-              aria-label={t('setting.page.expert.fields.deduplication_in_bilingual.title')}
+              aria-label={t('expert_settings_page.fields.deduplication_in_bilingual.title')}
               value={resolve_boolean_toggle_value(expert_settings_state.snapshot.deduplication_in_bilingual)}
               disabled={expert_settings_state.pending_state.deduplication_in_bilingual}
               onValueChange={(next_value) => {
@@ -262,27 +262,27 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.DISABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+                {t('app.toggle.disabled')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.ENABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+                {t('app.toggle.enabled')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
         />
 
         <SettingCardRow
-          title={t('setting.page.expert.fields.write_translated_name_fields_to_file.title')}
-          description={t('setting.page.expert.fields.write_translated_name_fields_to_file.description')}
+          title={t('expert_settings_page.fields.write_translated_name_fields_to_file.title')}
+          description={t('expert_settings_page.fields.write_translated_name_fields_to_file.description')}
           action={(
             <ToggleGroup
               type="single"
               variant="segmented"
               className="expert-settings-page__toggle-group"
-              aria-label={t('setting.page.expert.fields.write_translated_name_fields_to_file.title')}
+              aria-label={t('expert_settings_page.fields.write_translated_name_fields_to_file.title')}
               value={resolve_boolean_toggle_value(expert_settings_state.snapshot.write_translated_name_fields_to_file)}
               disabled={expert_settings_state.pending_state.write_translated_name_fields_to_file}
               onValueChange={(next_value) => {
@@ -297,27 +297,27 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.DISABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+                {t('app.toggle.disabled')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.ENABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+                {t('app.toggle.enabled')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
         />
 
         <SettingCardRow
-          title={t('setting.page.expert.fields.auto_process_prefix_suffix_preserved_text.title')}
-          description={t('setting.page.expert.fields.auto_process_prefix_suffix_preserved_text.description')}
+          title={t('expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title')}
+          description={t('expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.description')}
           action={(
             <ToggleGroup
               type="single"
               variant="segmented"
               className="expert-settings-page__toggle-group"
-              aria-label={t('setting.page.expert.fields.auto_process_prefix_suffix_preserved_text.title')}
+              aria-label={t('expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title')}
               value={resolve_boolean_toggle_value(expert_settings_state.snapshot.auto_process_prefix_suffix_preserved_text)}
               disabled={expert_settings_state.pending_state.auto_process_prefix_suffix_preserved_text}
               onValueChange={(next_value) => {
@@ -332,13 +332,13 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.DISABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.disabled')}
+                {t('app.toggle.disabled')}
               </ToggleGroupItem>
               <ToggleGroupItem
                 className="expert-settings-page__toggle-item"
                 value={BOOLEAN_TOGGLE_VALUE.ENABLED}
               >
-                {t('setting.page.basic.fields.output_folder_open_on_finish.options.enabled')}
+                {t('app.toggle.enabled')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
@@ -347,3 +347,4 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
     </div>
   )
 }
+

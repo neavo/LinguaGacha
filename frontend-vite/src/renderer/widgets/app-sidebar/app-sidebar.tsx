@@ -176,11 +176,11 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
 
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="sidebar-profile" tooltip={t('common.profile.status')}>
+            <SidebarMenuButton className="sidebar-profile" tooltip={t('app.profile.status')}>
               <span className="sidebar-profile__avatar">
                 <img className="sidebar-profile__avatar-image" src="/icon.png" alt="LinguaGacha" />
               </span>
-              <span className="sidebar-profile__text" data-ui-text="emphasis">{t('common.profile.status')}</span>
+              <span className="sidebar-profile__text" data-ui-text="emphasis">{t('app.profile.status')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -188,3 +188,4 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
     </Sidebar>
   )
 }
+

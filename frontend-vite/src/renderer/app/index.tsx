@@ -98,7 +98,7 @@ function AppContent(): JSX.Element {
   const previous_project_path_ref = useRef<string>(project_snapshot.path)
   const active_screen = SCREEN_REGISTRY[selected_route]
   const ScreenComponent = active_screen.component
-  const document_title = `${t('common.metadata.app_name')} · ${t(active_screen.title_key)}`
+  const document_title = `${t('app.metadata.app_name')} · ${t(active_screen.title_key)}`
   const theme_mode: ThemeMode = resolvedTheme === 'dark'
     ? 'dark'
     : resolvedTheme === 'light'
@@ -305,3 +305,4 @@ function App(): JSX.Element {
 }
 
 export default App
+

@@ -82,7 +82,7 @@ export function useAppSettingsState(): UseAppSettingsStateResult {
       if (error instanceof Error) {
         set_refresh_error(error.message)
       } else {
-        set_refresh_error(t('setting.page.app.feedback.refresh_failed'))
+        set_refresh_error(t('app_settings_page.feedback.refresh_failed'))
       }
     } finally {
       set_is_refreshing(false)
@@ -126,7 +126,7 @@ export function useAppSettingsState(): UseAppSettingsStateResult {
         if (error instanceof Error) {
           push_toast('error', error.message)
         } else {
-          push_toast('error', t('setting.page.app.feedback.update_failed'))
+          push_toast('error', t('app_settings_page.feedback.update_failed'))
         }
 
         return false
@@ -177,7 +177,7 @@ export function useAppSettingsState(): UseAppSettingsStateResult {
       if (error instanceof Error) {
         push_toast('error', error.message)
       } else {
-        push_toast('error', t('setting.page.app.feedback.quit_failed'))
+        push_toast('error', t('app_settings_page.feedback.quit_failed'))
       }
     } finally {
       set_is_quit_pending(false)
@@ -212,3 +212,4 @@ export function useAppSettingsState(): UseAppSettingsStateResult {
 
   return value
 }
+

@@ -103,7 +103,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
       if (error instanceof Error) {
         set_refresh_error(error.message)
       } else {
-        set_refresh_error(t('setting.page.expert.feedback.refresh_failed'))
+        set_refresh_error(t('expert_settings_page.feedback.refresh_failed'))
       }
     } finally {
       set_is_refreshing(false)
@@ -170,7 +170,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
         if (error instanceof Error) {
           push_toast('error', error.message)
         } else {
-          push_toast('error', t('setting.page.expert.feedback.update_failed'))
+          push_toast('error', t('expert_settings_page.feedback.update_failed'))
         }
       } finally {
         set_pending(field, false)
@@ -378,3 +378,4 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
 
   return value
 }
+

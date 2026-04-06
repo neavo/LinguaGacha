@@ -27,21 +27,21 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     {
       id: 'add-file',
       icon: FilePlus2,
-      label_key: 'task.page.workbench.action.add_file',
+      label_key: 'workbench_page.action.add_file',
       disabled: !props.can_edit_files,
       on_click: props.on_add_file,
     },
     {
       id: 'export-translation',
       icon: FileInput,
-      label_key: 'task.page.workbench.action.export_translation',
+      label_key: 'workbench_page.action.export_translation',
       disabled: !props.can_export_translation,
       on_click: props.on_export_translation,
     },
     {
       id: 'close-project',
       icon: SquarePower,
-      label_key: 'task.page.workbench.action.close_project',
+      label_key: 'workbench_page.action.close_project',
       disabled: !props.can_close_project,
       on_click: props.on_close_project,
     },
@@ -49,8 +49,8 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
 
   return (
     <ActionBar
-      title={t('task.page.workbench.section.command_bar')}
-      description={t('task.page.workbench.command.description')}
+      title={t('workbench_page.section.command_bar')}
+      description={t('workbench_page.command.description')}
       actions={
         <>
           {actions.map((action, index) => {
@@ -71,3 +71,4 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     />
   )
 }
+

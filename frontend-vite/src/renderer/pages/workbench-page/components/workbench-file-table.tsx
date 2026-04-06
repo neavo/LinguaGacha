@@ -129,7 +129,7 @@ function WorkbenchFileTableRow(props: WorkbenchFileTableRowProps): JSX.Element {
               size="icon-sm"
               disabled={props.drag_disabled}
               className="workbench-page__drag-handle"
-              aria-label={t('task.page.workbench.table.drag_handle_aria')}
+              aria-label={t('workbench_page.table.drag_handle_aria')}
               onClick={(event) => {
                 event.stopPropagation()
               }}
@@ -255,8 +255,8 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
   return (
     <Card variant="table" className="workbench-page__table-card">
       <CardHeader className="sr-only">
-        <CardTitle>{t('task.page.workbench.section.file_list')}</CardTitle>
-        <CardDescription>{t('task.page.workbench.empty.description')}</CardDescription>
+        <CardTitle>{t('workbench_page.section.file_list')}</CardTitle>
+        <CardDescription>{t('workbench_page.empty.description')}</CardDescription>
       </CardHeader>
       <CardContent className="workbench-page__table-card-content">
         {!props.project_loaded ? (
@@ -266,8 +266,8 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                 <EmptyMedia>
                   <ShieldAlert />
                 </EmptyMedia>
-                <EmptyTitle>{t('task.page.workbench.empty.title')}</EmptyTitle>
-                <EmptyDescription>{t('task.page.workbench.empty.description')}</EmptyDescription>
+                <EmptyTitle>{t('workbench_page.empty.title')}</EmptyTitle>
+                <EmptyDescription>{t('workbench_page.empty.description')}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           </div>
@@ -278,8 +278,8 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                 <EmptyMedia>
                   <Files />
                 </EmptyMedia>
-                <EmptyTitle>{t('task.page.workbench.empty.loaded_title')}</EmptyTitle>
-                <EmptyDescription>{t('task.page.workbench.empty.loaded_description')}</EmptyDescription>
+                <EmptyTitle>{t('workbench_page.empty.loaded_title')}</EmptyTitle>
+                <EmptyDescription>{t('workbench_page.empty.loaded_description')}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           </div>
@@ -291,19 +291,19 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                 <TableHeader className="workbench-page__table-head">
                   <TableRow>
                     <TableHead className="workbench-page__table-drag-head">
-                      {t('task.page.workbench.table.drag_handle')}
+                      {t('workbench_page.table.drag_handle')}
                     </TableHead>
                     <TableHead className="workbench-page__table-file-head">
-                      {t('task.page.workbench.table.file_name')}
+                      {t('workbench_page.table.file_name')}
                     </TableHead>
                     <TableHead className="workbench-page__table-format-head">
-                      {t('task.page.workbench.table.format')}
+                      {t('workbench_page.table.format')}
                     </TableHead>
                     <TableHead className="workbench-page__table-line-head">
-                      {t('task.page.workbench.table.line_count')}
+                      {t('workbench_page.table.line_count')}
                     </TableHead>
                     <TableHead className="workbench-page__table-action-head">
-                      {t('task.page.workbench.table.actions')}
+                      {t('workbench_page.table.actions')}
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -358,3 +358,4 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
     </Card>
   )
 }
+

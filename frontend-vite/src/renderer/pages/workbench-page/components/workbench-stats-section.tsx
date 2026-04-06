@@ -10,29 +10,30 @@ export function WorkbenchStatsSection(props: WorkbenchStatsSectionProps): JSX.El
   const { t } = useI18n()
 
   return (
-    <section className="workbench-page__stats-grid" aria-label={t('task.page.workbench.section.stats')}>
+    <section className="workbench-page__stats-grid" aria-label={t('workbench_page.section.stats')}>
       <WorkbenchStatCard
-        title={t('task.page.workbench.stats.file_count')}
+        title={t('workbench_page.stats.file_count')}
         value={props.stats.file_count}
-        unit={t('task.page.workbench.unit.file')}
+        unit={t('workbench_page.unit.file')}
       />
       <WorkbenchStatCard
-        title={t('task.page.workbench.stats.total_lines')}
+        title={t('workbench_page.stats.total_lines')}
         value={props.stats.total_items}
-        unit={t('task.page.workbench.unit.line')}
+        unit={t('workbench_page.unit.line')}
       />
       <WorkbenchStatCard
-        title={t('task.page.workbench.stats.translated')}
+        title={t('workbench_page.stats.translated')}
         value={props.stats.translated}
-        unit={t('task.page.workbench.unit.line')}
+        unit={t('workbench_page.unit.line')}
         accent="success"
       />
       <WorkbenchStatCard
-        title={t('task.page.workbench.stats.untranslated')}
+        title={t('workbench_page.stats.untranslated')}
         value={props.stats.untranslated}
-        unit={t('task.page.workbench.unit.line')}
+        unit={t('workbench_page.unit.line')}
         accent="warning"
       />
     </section>
   )
 }
+

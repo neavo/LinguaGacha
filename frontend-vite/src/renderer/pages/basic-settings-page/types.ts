@@ -56,30 +56,30 @@ export type BasicSettingsSnapshot = Pick<
 >
 
 export const LANGUAGE_LABEL_KEYS: Readonly<Record<LanguageCode | typeof ALL_LANGUAGE_VALUE, LocaleKey>> = {
-  ALL: 'setting.language.ALL',
-  ZH: 'setting.language.ZH',
-  EN: 'setting.language.EN',
-  JA: 'setting.language.JA',
-  KO: 'setting.language.KO',
-  RU: 'setting.language.RU',
-  AR: 'setting.language.AR',
-  DE: 'setting.language.DE',
-  FR: 'setting.language.FR',
-  PL: 'setting.language.PL',
-  ES: 'setting.language.ES',
-  IT: 'setting.language.IT',
-  PT: 'setting.language.PT',
-  HU: 'setting.language.HU',
-  TR: 'setting.language.TR',
-  TH: 'setting.language.TH',
-  ID: 'setting.language.ID',
-  VI: 'setting.language.VI',
+  ALL: 'app.language.ALL',
+  ZH: 'app.language.ZH',
+  EN: 'app.language.EN',
+  JA: 'app.language.JA',
+  KO: 'app.language.KO',
+  RU: 'app.language.RU',
+  AR: 'app.language.AR',
+  DE: 'app.language.DE',
+  FR: 'app.language.FR',
+  PL: 'app.language.PL',
+  ES: 'app.language.ES',
+  IT: 'app.language.IT',
+  PT: 'app.language.PT',
+  HU: 'app.language.HU',
+  TR: 'app.language.TR',
+  TH: 'app.language.TH',
+  ID: 'app.language.ID',
+  VI: 'app.language.VI',
 }
 
 export const PROJECT_SAVE_MODE_LABEL_KEYS: Readonly<Record<ProjectSaveMode, LocaleKey>> = {
-  MANUAL: 'setting.page.basic.fields.project_save_mode.options.manual',
-  FIXED: 'setting.page.basic.fields.project_save_mode.options.fixed',
-  SOURCE: 'setting.page.basic.fields.project_save_mode.options.source',
+  MANUAL: 'basic_settings_page.fields.project_save_mode.options.manual',
+  FIXED: 'basic_settings_page.fields.project_save_mode.options.fixed',
+  SOURCE: 'basic_settings_page.fields.project_save_mode.options.source',
 }
 
 export function build_basic_settings_snapshot(settings_snapshot: SettingsSnapshot): BasicSettingsSnapshot {
@@ -96,3 +96,4 @@ export function build_basic_settings_snapshot(settings_snapshot: SettingsSnapsho
 export function is_project_save_mode(candidate: string): candidate is ProjectSaveMode {
   return Object.values(PROJECT_SAVE_MODE).includes(candidate as ProjectSaveMode)
 }
+
