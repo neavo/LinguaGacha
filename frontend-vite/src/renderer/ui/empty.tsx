@@ -9,7 +9,8 @@ const emptyVariants = cva(
     variants: {
       variant: {
         dashed: "border border-dashed border-border bg-card/70",
-        inset: "bg-[linear-gradient(180deg,var(--ui-surface-card-top),var(--ui-surface-card-bottom))] shadow-[var(--ui-shadow-card)]",
+        inset:
+          "border border-[color:var(--ui-card-default-border)] bg-[var(--ui-card-default-surface)] shadow-[var(--ui-card-default-shadow)]",
       },
     },
     defaultVariants: {

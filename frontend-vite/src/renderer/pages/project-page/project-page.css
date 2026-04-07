@@ -30,6 +30,10 @@
   min-height: 0;
 }
 
+.project-home__footer {
+  gap: 12px;
+}
+
 .project-home__layout {
   display: grid;
   flex: 1;
@@ -86,7 +90,11 @@
 }
 
 .project-home__format-card {
-  min-height: 58px;
+  min-height: 60px;
+}
+
+.project-home__preview-card {
+  min-height: 0;
 }
 
 .project-home__recent-row {

@@ -13,7 +13,7 @@ import {
   IPC_CHANNEL_TITLE_BAR_THEME,
 } from '../shared/ipc-channels'
 import {
-  DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
+  DESKTOP_TITLE_BAR_HEIGHT,
   uses_title_bar_overlay,
 } from '../shared/desktop-shell'
 import {
@@ -317,13 +317,13 @@ function build_title_bar_overlay(theme_mode: ThemeMode): Electron.TitleBarOverla
     return {
       color: DARK_TITLE_BAR_OVERLAY_COLOR,
       symbolColor: DARK_TITLE_BAR_SYMBOL_COLOR,
-      height: DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
+      height: DESKTOP_TITLE_BAR_HEIGHT,
     }
   } else {
     return {
       color: LIGHT_TITLE_BAR_OVERLAY_COLOR,
       symbolColor: LIGHT_TITLE_BAR_SYMBOL_COLOR,
-      height: DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
+      height: DESKTOP_TITLE_BAR_HEIGHT,
     }
   }
 }
@@ -360,8 +360,8 @@ function createWindowOptions(): BrowserWindowConstructorOptions {
   }
 
   if (process.platform === 'darwin') {
-    // macOS 在隐藏标题栏后仍会保留红绿灯按钮，适合桌面壳层继续自定义。
-    window_options.titleBarStyle = 'hidden'
+    // macOS 优先沿用系统原生 inset 布局，避免网页壳层再额外模拟右侧镜像留白。
+    window_options.titleBarStyle = 'hiddenInset'
   } else if (uses_title_bar_overlay(process.platform)) {
     // Windows 和 Linux 通过 Overlay 把原生控制按钮保留下来，避免沦为纯网页外壳。
     window_options.titleBarStyle = 'hidden'

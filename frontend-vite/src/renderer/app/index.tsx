@@ -8,7 +8,6 @@ import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import '@/app/shell/app-shell.css'
 import type { BottomActionId, RouteId } from '@/app/navigation/types'
 import { LocaleProvider, useI18n } from '@/i18n'
-import { cn } from '@/lib/utils'
 import { SidebarInset, SidebarProvider } from '@/ui/sidebar'
 import { Toaster } from '@/ui/sonner'
 import { TooltipProvider } from '@/ui/tooltip'
@@ -91,6 +90,7 @@ function AppContent(): JSX.Element {
   } = useDesktopRuntime()
   const { toggle_locale, t } = useI18n()
   const { resolvedTheme, setTheme } = useTheme()
+  const shell_info = window.desktopApp.shell
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID)
   const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set())
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() => read_sidebar_state())
@@ -259,7 +259,16 @@ function AppContent(): JSX.Element {
         } as CSSProperties
       }
     >
-      <main className={cn('app-shell', is_sidebar_collapsed && 'app-shell--sidebar-collapsed')}>
+      <main
+        className="app-shell"
+        style={
+          {
+            '--titlebar-height': `${shell_info.titleBarHeight}px`,
+            '--titlebar-safe-area-start': `${shell_info.titleBarSafeAreaStart}px`,
+            '--titlebar-safe-area-end': `${shell_info.titleBarSafeAreaEnd}px`,
+          } as CSSProperties
+        }
+      >
         <AppTitlebar />
         <section className="shell-body">
           <AppSidebar
@@ -268,7 +277,6 @@ function AppContent(): JSX.Element {
             selected_route={selected_route}
             expanded_items={expanded_items}
             disabled_route_ids={disabled_route_ids}
-            is_collapsed={is_sidebar_collapsed}
             on_select_route={handle_select_route}
             on_toggle_group={handle_toggle_group}
             on_bottom_action={handle_bottom_action}

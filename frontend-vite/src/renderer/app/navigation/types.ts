@@ -2,7 +2,7 @@ import type { LocaleKey } from '@/i18n'
 import type { LucideIcon } from 'lucide-react'
 import type { ComponentType } from 'react'
 
-const ROUTE_IDS = [
+export const ROUTE_IDS = [
   'project-home',
   'model',
   'translation',

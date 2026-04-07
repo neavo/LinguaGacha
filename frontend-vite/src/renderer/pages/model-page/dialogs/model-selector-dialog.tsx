@@ -77,50 +77,52 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
       }}
     >
       <DialogContent size="md" className="model-page__dialog-shell">
-        <div className="model-page__selector-body">
-          <Input
-            className="model-page__field model-page__field--full"
-            value={filter_text}
-            placeholder={t('model_page.dialog.selector.search_placeholder')}
-            onChange={(event) => {
-              onFilterTextChange(event.target.value)
-            }}
-          />
+        <div className="model-page__dialog-scroll">
+          <div className="model-page__selector-body">
+            <Input
+              className="model-page__field model-page__field--full"
+              value={filter_text}
+              placeholder={t('model_page.dialog.selector.search_placeholder')}
+              onChange={(event) => {
+                onFilterTextChange(event.target.value)
+              }}
+            />
 
-          <ScrollArea className="model-page__selector-list">
-            {is_loading
-              ? (
-                  <div className="model-page__selector-loading">
-                    <LoaderCircle className="animate-spin" />
-                    <span>{t('model_page.dialog.selector.loading')}</span>
-                  </div>
-                )
-              : filtered_models.length === 0
+            <ScrollArea className="model-page__selector-list">
+              {is_loading
                 ? (
-                    <Empty variant="dashed" className="model-page__selector-empty">
-                      <EmptyHeader>
-                        <EmptyTitle>{t('model_page.dialog.selector.empty')}</EmptyTitle>
-                        <EmptyDescription>{model.model_id}</EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  )
-                : (
-                    <div className="model-page__selector-options">
-                      {filtered_models.map((model_name) => (
-                        <button
-                          key={model_name}
-                          type="button"
-                          className="model-page__selector-item"
-                          onClick={() => {
-                            void onSelectModelId(model_name)
-                          }}
-                        >
-                          {model_name}
-                        </button>
-                      ))}
+                    <div className="model-page__selector-loading">
+                      <LoaderCircle className="animate-spin" />
+                      <span>{t('model_page.dialog.selector.loading')}</span>
                     </div>
-                  )}
-          </ScrollArea>
+                  )
+                : filtered_models.length === 0
+                  ? (
+                      <Empty variant="dashed" className="model-page__selector-empty">
+                        <EmptyHeader>
+                          <EmptyTitle>{t('model_page.dialog.selector.empty')}</EmptyTitle>
+                          <EmptyDescription>{model.model_id}</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    )
+                  : (
+                      <div className="model-page__selector-options">
+                        {filtered_models.map((model_name) => (
+                          <button
+                            key={model_name}
+                            type="button"
+                            className="model-page__selector-item"
+                            onClick={() => {
+                              void onSelectModelId(model_name)
+                            }}
+                          >
+                            {model_name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+            </ScrollArea>
+          </div>
         </div>
 
         <DialogFooter>

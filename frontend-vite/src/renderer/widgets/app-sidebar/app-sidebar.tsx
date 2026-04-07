@@ -15,6 +15,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarSeparator,
+  useSidebar,
 } from '@/ui/sidebar'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -25,7 +26,6 @@ type AppSidebarProps = {
   selected_route: RouteId
   expanded_items: ReadonlySet<RouteId>
   disabled_route_ids: ReadonlySet<RouteId>
-  is_collapsed: boolean
   on_select_route: (route_id: RouteId) => void
   on_toggle_group: (route_id: RouteId) => void
   on_bottom_action: (action_id: BottomActionId) => void
@@ -33,6 +33,8 @@ type AppSidebarProps = {
 
 export function AppSidebar(props: AppSidebarProps): JSX.Element {
   const { t } = useI18n()
+  const { state } = useSidebar()
+  const is_collapsed = state === 'collapsed'
 
   return (
     <Sidebar
@@ -59,7 +61,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                 const has_active_child = item.children?.some((child) => child.id === props.selected_route) ?? false
                 const is_active = props.selected_route === item.id
                 const is_expanded = has_children && props.expanded_items.has(item.id)
-                const is_subitems_open = !props.is_collapsed && is_expanded
+                const is_subitems_open = !is_collapsed && is_expanded
                 const is_disabled = props.disabled_route_ids.has(item.id)
 
                 return (
@@ -153,11 +155,13 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
         <SidebarMenu className="sidebar-bottom-actions">
           {props.bottom_actions.map((action) => {
             const ActionIcon = action.icon
+            const is_action_active = action.route_id === props.selected_route
 
             return (
               <SidebarMenuItem key={action.id}>
                 <SidebarMenuButton
-                  className="sidebar-bottom-button"
+                  className={cn('sidebar-bottom-button', is_action_active && 'sidebar-bottom-button--active')}
+                  isActive={is_action_active}
                   tooltip={t(action.label_key)}
                   aria-label={t(action.label_key)}
                   onClick={() => {

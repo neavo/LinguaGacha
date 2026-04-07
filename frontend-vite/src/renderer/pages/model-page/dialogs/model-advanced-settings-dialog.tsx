@@ -9,7 +9,7 @@ import {
   DialogContent,
   DialogFooter,
 } from '@/ui/dialog'
-import { Slider } from '@/ui/slider'
+import { Input } from '@/ui/input'
 import { Textarea } from '@/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 
@@ -157,6 +157,23 @@ function create_slider_value_state(model: ModelEntrySnapshot | null): Record<Sli
   }
 }
 
+function create_slider_text_state(model: ModelEntrySnapshot | null): Record<SliderFieldName, string> {
+  const slider_value_state = create_slider_value_state(model)
+
+  return {
+    top_p: slider_value_state.top_p.toFixed(2),
+    temperature: slider_value_state.temperature.toFixed(2),
+    presence_penalty: slider_value_state.presence_penalty.toFixed(2),
+    frequency_penalty: slider_value_state.frequency_penalty.toFixed(2),
+  }
+}
+
+function normalize_slider_value(field_config: SliderFieldConfig, raw_value: number): number {
+  const clamped_value = Math.min(field_config.max, Math.max(field_config.min, raw_value))
+  const step_count = Math.round((clamped_value - field_config.min) / field_config.step)
+  return Number((field_config.min + step_count * field_config.step).toFixed(2))
+}
+
 function resolve_boolean_toggle_value(current_value: boolean): string {
   if (current_value) {
     return BOOLEAN_TOGGLE_VALUE.ENABLED
@@ -174,6 +191,9 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
   const [slider_values, set_slider_values] = useState<Record<SliderFieldName, number>>(
     create_slider_value_state(props.model),
   )
+  const [slider_texts, set_slider_texts] = useState<Record<SliderFieldName, string>>(
+    create_slider_text_state(props.model),
+  )
 
   useEffect(() => {
     if (props.model !== null) {
@@ -186,6 +206,7 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
 
   useEffect(() => {
     set_slider_values(create_slider_value_state(props.model))
+    set_slider_texts(create_slider_text_state(props.model))
   }, [props.model])
 
   if (props.model === null) {
@@ -208,6 +229,7 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
           <div className="model-page__setting-list">
             {SLIDER_FIELD_CONFIGS.map((field_config) => {
               const current_value = slider_values[field_config.field_name] ?? 0
+              const current_text = slider_texts[field_config.field_name] ?? current_value.toFixed(2)
               const current_enabled = Boolean(model.generation[field_config.enabled_key])
 
               return (
@@ -222,38 +244,60 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                       <div className="model-page__advanced-inline-control">
                         {current_enabled
                           ? (
-                              <div className="model-page__slider-control">
-                                <div className="model-page__slider-wrap model-page__field--md">
-                                  <span className="model-page__slider-value">{current_value.toFixed(2)}</span>
-                                  <Slider
-                                    min={field_config.min}
-                                    max={field_config.max}
-                                    step={field_config.step}
-                                    disabled={props.readonly}
-                                    value={[current_value]}
-                                    onValueChange={(next_value) => {
-                                      const preview_value = next_value[0]
-                                      if (preview_value !== undefined) {
-                                        set_slider_values((previous_state) => {
-                                          return {
-                                            ...previous_state,
-                                            [field_config.field_name]: preview_value,
-                                          }
-                                        })
+                              <div className="model-page__advanced-number-field">
+                                <Input
+                                  className="model-page__advanced-number-input"
+                                  type="number"
+                                  min={field_config.min}
+                                  max={field_config.max}
+                                  step={field_config.step}
+                                  inputMode="decimal"
+                                  value={current_text}
+                                  disabled={props.readonly}
+                                  onChange={(event) => {
+                                    const next_text = event.target.value
+                                    set_slider_texts((previous_state) => {
+                                      return {
+                                        ...previous_state,
+                                        [field_config.field_name]: next_text,
                                       }
-                                    }}
-                                    onValueCommit={(next_value) => {
-                                      const committed_value = next_value[0]
-                                      if (committed_value !== undefined) {
+                                    })
+                                  }}
+                                  onBlur={() => {
+                                    const trimmed_text = current_text.trim()
+                                    const parsed_value = Number(trimmed_text)
+                                    if (trimmed_text !== '' && Number.isFinite(parsed_value)) {
+                                      const normalized_value = normalize_slider_value(field_config, parsed_value)
+                                      set_slider_values((previous_state) => {
+                                        return {
+                                          ...previous_state,
+                                          [field_config.field_name]: normalized_value,
+                                        }
+                                      })
+                                      set_slider_texts((previous_state) => {
+                                        return {
+                                          ...previous_state,
+                                          [field_config.field_name]: normalized_value.toFixed(2),
+                                        }
+                                      })
+
+                                      if (normalized_value !== current_value) {
                                         void props.onPatch({
                                           generation: {
-                                            [field_config.field_name]: committed_value,
+                                            [field_config.field_name]: normalized_value,
                                           },
                                         })
                                       }
-                                    }}
-                                  />
-                                </div>
+                                    } else {
+                                      set_slider_texts((previous_state) => {
+                                        return {
+                                          ...previous_state,
+                                          [field_config.field_name]: current_value.toFixed(2),
+                                        }
+                                      })
+                                    }
+                                  }}
+                                />
                               </div>
                             )
                           : null}

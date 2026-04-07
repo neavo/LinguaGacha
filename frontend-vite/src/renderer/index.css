@@ -86,31 +86,50 @@
   --sidebar-accent-foreground: #5a5550;
   --sidebar-border: #dddad6;
   --sidebar-ring: #c89c45;
-  --ui-surface-base: var(--background);
-  --ui-surface-card-top: color-mix(in srgb, white 74%, var(--card));
-  --ui-surface-card-bottom: color-mix(in srgb, var(--card) 96%, var(--background));
-  --ui-surface-panel-top: color-mix(in srgb, white 68%, var(--card));
-  --ui-surface-panel-bottom: color-mix(in srgb, var(--card) 92%, var(--background));
-  --ui-surface-elevated-top: color-mix(in srgb, white 78%, var(--card));
-  --ui-surface-elevated-bottom: color-mix(in srgb, var(--card) 94%, var(--background));
-  --ui-edge-soft: color-mix(in srgb, var(--border) 34%, white 66%);
-  --ui-edge-strong: color-mix(in srgb, var(--border) 50%, white 50%);
-  --ui-shadow-card:
-    inset 0 1px 0 color-mix(in srgb, white 76%, transparent),
-    0 0 0 1px var(--ui-edge-soft),
+  --ui-card-default-surface: color-mix(in srgb, var(--card) 95%, white 5%);
+  --ui-card-default-border: color-mix(in srgb, var(--border) 72%, white 28%);
+  --ui-card-default-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
+  --ui-card-default-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent),
+    0 14px 28px -24px color-mix(in srgb, var(--foreground) 16%, transparent);
+  --ui-card-default-shadow-hover:
+    0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 20px 36px -24px color-mix(in srgb, var(--foreground) 22%, transparent);
+  --ui-card-panel-surface: color-mix(in srgb, var(--card) 97%, white 3%);
+  --ui-card-panel-border: color-mix(in srgb, var(--border) 78%, white 22%);
+  --ui-card-panel-border-hover: color-mix(in srgb, var(--border) 74%, var(--primary) 26%);
+  --ui-card-panel-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent),
+    0 18px 32px -24px color-mix(in srgb, var(--foreground) 18%, transparent);
+  --ui-card-panel-shadow-hover:
+    0 3px 8px color-mix(in srgb, var(--foreground) 9%, transparent),
+    0 22px 40px -24px color-mix(in srgb, var(--foreground) 24%, transparent);
+  --ui-card-table-surface: color-mix(in srgb, var(--card) 88%, var(--background) 12%);
+  --ui-card-table-border: color-mix(in srgb, var(--border) 84%, white 16%);
+  --ui-card-table-border-hover: color-mix(in srgb, var(--border) 78%, var(--primary) 22%);
+  --ui-card-table-shadow:
     0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent),
-    0 16px 36px -30px color-mix(in srgb, var(--foreground) 14%, transparent);
-  --ui-shadow-raised:
-    inset 0 1px 0 color-mix(in srgb, white 80%, transparent),
-    0 0 0 1px var(--ui-edge-soft),
-    0 2px 4px color-mix(in srgb, var(--foreground) 6%, transparent),
-    0 24px 42px -32px color-mix(in srgb, var(--foreground) 22%, transparent);
+    0 10px 20px -24px color-mix(in srgb, var(--foreground) 12%, transparent);
+  --ui-card-table-shadow-hover:
+    0 2px 6px color-mix(in srgb, var(--foreground) 7%, transparent),
+    0 18px 32px -28px color-mix(in srgb, var(--foreground) 18%, transparent);
+  --ui-card-toolbar-surface: color-mix(in srgb, var(--card) 84%, var(--background) 16%);
+  --ui-card-toolbar-border: color-mix(in srgb, var(--border) 80%, white 20%);
+  --ui-card-toolbar-border-hover: color-mix(in srgb, var(--border) 74%, var(--primary) 26%);
+  --ui-card-toolbar-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent),
+    0 12px 24px -24px color-mix(in srgb, var(--foreground) 16%, transparent);
+  --ui-card-toolbar-shadow-hover:
+    0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 18px 32px -24px color-mix(in srgb, var(--foreground) 22%, transparent);
   --ui-shadow-overlay:
     0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent);
   --ui-space-card-x: 16px;
   --ui-space-card-y: 16px;
   --ui-space-panel-x: 24px;
   --ui-space-panel-y: 24px;
+  --ui-space-card-copy-gap: 4px;
+  --ui-space-card-footer-gap: 12px;
   --ui-page-pad-top: 16px;
   --ui-page-pad-x: 16px;
   --ui-page-pad-bottom: 16px;
@@ -120,11 +139,11 @@
   --ui-list-gap-dense: 8px;
   --ui-space-toolbar-x: 12px;
   --ui-space-toolbar-y: 0px;
-  --ui-toolbar-height: 60px;
+  --ui-toolbar-height: 56px;
   --ui-toolbar-button-height: 36px;
   --ui-toolbar-button-padding-x: 8px;
-  --ui-toolbar-group-gap: 0px;
-  --ui-toolbar-separator-height: 24px;
+  --ui-toolbar-group-gap: 2px;
+  --ui-toolbar-separator-height: 20px;
   --ui-toolbar-separator-gap: -3px;
   --ui-table-head-height: 36px;
   --ui-table-row-height: 39px;
@@ -248,23 +267,42 @@ a,
   --sidebar-accent-foreground: #eceae7;
   --sidebar-border: #2f2f2f;
   --sidebar-ring: #d4b06a;
-  --ui-surface-base: var(--background);
-  --ui-surface-card-top: color-mix(in srgb, var(--card) 98%, white 2%);
-  --ui-surface-card-bottom: color-mix(in srgb, var(--card) 94%, var(--background));
-  --ui-surface-panel-top: color-mix(in srgb, var(--card) 96%, white 2%);
-  --ui-surface-panel-bottom: color-mix(in srgb, var(--card) 92%, var(--background));
-  --ui-surface-elevated-top: color-mix(in srgb, var(--card) 99%, white 1%);
-  --ui-surface-elevated-bottom: color-mix(in srgb, var(--card) 95%, var(--background));
-  --ui-edge-soft: color-mix(in srgb, var(--border) 50%, white 4%);
-  --ui-edge-strong: color-mix(in srgb, var(--border) 62%, white 2%);
-  --ui-shadow-card:
-    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
-    0 0 0 1px var(--ui-edge-soft),
-    0 14px 32px -26px color-mix(in srgb, black 58%, transparent);
-  --ui-shadow-raised:
-    inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
-    0 0 0 1px var(--ui-edge-soft),
-    0 18px 36px -24px color-mix(in srgb, black 62%, transparent);
+  --ui-card-default-surface: color-mix(in srgb, var(--card) 96%, white 4%);
+  --ui-card-default-border: color-mix(in srgb, var(--border) 82%, white 18%);
+  --ui-card-default-border-hover: color-mix(in srgb, var(--border) 68%, var(--primary) 32%);
+  --ui-card-default-shadow:
+    0 1px 2px color-mix(in srgb, black 38%, transparent),
+    0 16px 28px -24px color-mix(in srgb, black 56%, transparent);
+  --ui-card-default-shadow-hover:
+    0 2px 6px color-mix(in srgb, black 46%, transparent),
+    0 22px 38px -24px color-mix(in srgb, black 64%, transparent);
+  --ui-card-panel-surface: color-mix(in srgb, var(--card) 98%, white 2%);
+  --ui-card-panel-border: color-mix(in srgb, var(--border) 88%, white 12%);
+  --ui-card-panel-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
+  --ui-card-panel-shadow:
+    0 1px 2px color-mix(in srgb, black 42%, transparent),
+    0 18px 32px -24px color-mix(in srgb, black 58%, transparent);
+  --ui-card-panel-shadow-hover:
+    0 3px 8px color-mix(in srgb, black 50%, transparent),
+    0 24px 42px -24px color-mix(in srgb, black 68%, transparent);
+  --ui-card-table-surface: color-mix(in srgb, var(--card) 90%, var(--background) 10%);
+  --ui-card-table-border: color-mix(in srgb, var(--border) 92%, white 8%);
+  --ui-card-table-border-hover: color-mix(in srgb, var(--border) 76%, var(--primary) 24%);
+  --ui-card-table-shadow:
+    0 1px 2px color-mix(in srgb, black 34%, transparent),
+    0 12px 22px -26px color-mix(in srgb, black 52%, transparent);
+  --ui-card-table-shadow-hover:
+    0 2px 6px color-mix(in srgb, black 44%, transparent),
+    0 18px 32px -28px color-mix(in srgb, black 60%, transparent);
+  --ui-card-toolbar-surface: color-mix(in srgb, var(--card) 86%, var(--background) 14%);
+  --ui-card-toolbar-border: color-mix(in srgb, var(--border) 88%, white 12%);
+  --ui-card-toolbar-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
+  --ui-card-toolbar-shadow:
+    0 1px 2px color-mix(in srgb, black 40%, transparent),
+    0 14px 26px -26px color-mix(in srgb, black 56%, transparent);
+  --ui-card-toolbar-shadow-hover:
+    0 2px 6px color-mix(in srgb, black 48%, transparent),
+    0 18px 34px -24px color-mix(in srgb, black 64%, transparent);
   --ui-shadow-overlay:
     0 24px 52px -20px color-mix(in srgb, black 72%, transparent);
   --ui-table-divider: color-mix(in srgb, var(--border) 80%, transparent);
@@ -275,48 +313,107 @@ a,
 
 @layer base {
   [data-slot='card'] {
-    --card-surface-top-current: var(--ui-surface-card-top);
-    --card-surface-bottom-current: var(--ui-surface-card-bottom);
-    --card-shadow-current: var(--ui-shadow-card);
+    --card-surface-current: var(--ui-card-default-surface);
+    --card-border-current: var(--ui-card-default-border);
+    --card-border-hover-current: var(--ui-card-default-border-hover);
+    --card-shadow-current: var(--ui-card-default-shadow);
+    --card-shadow-hover-current: var(--ui-card-default-shadow-hover);
+    --card-radius-current: var(--ui-radius-card);
     --card-padding-x: var(--ui-space-card-x);
     --card-header-top: var(--ui-space-card-y);
     --card-header-bottom: 0px;
-    --card-content-top: 0px;
+    --card-content-top: var(--ui-space-card-y);
     --card-content-bottom: var(--ui-space-card-y);
     --card-footer-top: 0px;
     --card-footer-bottom: var(--ui-space-card-y);
+    --card-header-gap: var(--ui-space-card-copy-gap);
+    --card-footer-gap: var(--ui-space-card-footer-gap);
   }
 
   [data-slot='card'][data-variant='panel'] {
-    --card-surface-top-current: var(--ui-surface-panel-top);
-    --card-surface-bottom-current: var(--ui-surface-panel-bottom);
+    --card-surface-current: var(--ui-card-panel-surface);
+    --card-border-current: var(--ui-card-panel-border);
+    --card-border-hover-current: var(--ui-card-panel-border-hover);
+    --card-shadow-current: var(--ui-card-panel-shadow);
+    --card-shadow-hover-current: var(--ui-card-panel-shadow-hover);
     --card-padding-x: var(--ui-space-panel-x);
     --card-header-top: var(--ui-space-panel-y);
-    --card-header-bottom: var(--ui-space-panel-y);
+    --card-header-bottom: 12px;
+    --card-content-top: var(--ui-space-panel-y);
     --card-content-bottom: var(--ui-space-panel-y);
+    --card-footer-top: 4px;
     --card-footer-bottom: var(--ui-space-panel-y);
   }
 
   [data-slot='card'][data-variant='table'] {
+    --card-surface-current: var(--ui-card-table-surface);
+    --card-border-current: var(--ui-card-table-border);
+    --card-border-hover-current: var(--ui-card-table-border-hover);
+    --card-shadow-current: var(--ui-card-table-shadow);
+    --card-shadow-hover-current: var(--ui-card-table-shadow-hover);
     --card-content-bottom: 0px;
     --card-padding-x: 0px;
   }
 
   [data-slot='card'][data-variant='toolbar'] {
-    --card-surface-top-current: var(--ui-surface-elevated-top);
-    --card-surface-bottom-current: var(--ui-surface-elevated-bottom);
-    --card-shadow-current: var(--ui-shadow-raised);
+    --card-surface-current: var(--ui-card-toolbar-surface);
+    --card-border-current: var(--ui-card-toolbar-border);
+    --card-border-hover-current: var(--ui-card-toolbar-border-hover);
+    --card-shadow-current: var(--ui-card-toolbar-shadow);
+    --card-shadow-hover-current: var(--ui-card-toolbar-shadow-hover);
+    --card-header-top: 0px;
+    --card-header-bottom: 0px;
+    --card-content-top: 0px;
     --card-content-bottom: 0px;
+    --card-footer-top: 0px;
+    --card-footer-bottom: 0px;
     --card-padding-x: 0px;
   }
 
   .card-surface {
-    background: linear-gradient(180deg, var(--card-surface-top-current) 0%, var(--card-surface-bottom-current) 100%);
-    background-clip: padding-box;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--card-surface-current);
     box-shadow: var(--card-shadow-current);
+    isolation: isolate;
+    transition:
+      background-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  .card-surface::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--card-border-current);
+    border-radius: inherit;
+    pointer-events: none;
+    transition: border-color 180ms ease;
+  }
+
+  [data-slot='card'][data-interactive='true'] {
+    cursor: pointer;
+  }
+
+  [data-slot='card'][data-interactive='true']:hover {
+    box-shadow: var(--card-shadow-hover-current);
+  }
+
+  [data-slot='card'][data-interactive='true']:hover::after {
+    border-color: var(--card-border-hover-current);
+  }
+
+  [data-slot='card'][data-interactive='true']:active {
+    transform: translateY(1px);
   }
 
   [data-slot='card-header'] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-header-gap);
     padding: var(--card-header-top) var(--card-padding-x) var(--card-header-bottom);
   }
 
@@ -324,7 +421,12 @@ a,
     padding: var(--card-content-top) var(--card-padding-x) var(--card-content-bottom);
   }
 
+  [data-slot='card-header'] + [data-slot='card-content'] {
+    padding-top: 0px;
+  }
+
   [data-slot='card-footer'] {
+    gap: var(--card-footer-gap);
     padding: var(--card-footer-top) var(--card-padding-x) var(--card-footer-bottom);
   }
 
@@ -340,7 +442,7 @@ a,
   }
 
   [data-slot='card'][data-variant='table'] [data-slot='table'] {
-    --table-header-bg-current: color-mix(in srgb, var(--ui-surface-card-bottom) 88%, var(--ui-surface-base));
+    --table-header-bg-current: color-mix(in srgb, var(--ui-card-table-surface) 94%, var(--background) 6%);
   }
 
   [data-slot='table-header'] > [data-slot='table-row'] {
@@ -378,7 +480,7 @@ a,
     min-height: var(--ui-toolbar-height);
     align-items: center;
     justify-content: space-between;
-    gap: 18px;
+    gap: 16px;
     padding: var(--ui-space-toolbar-y) var(--ui-space-toolbar-x);
   }
 
@@ -390,7 +492,8 @@ a,
   }
 
   [data-slot='toolbar-hint'] {
-    font-size: 13px;
+    font-size: 12px;
+    line-height: 1.4;
     color: var(--muted-foreground);
   }
 

@@ -341,7 +341,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
 function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
   return (
     <Card className="project-home__format-card">
-      <CardContent className="space-y-0.5 px-3 py-3">
+      <CardContent className="space-y-1">
         <h3 className="text-[0.78rem] leading-[1.35] tracking-[-0.015em] text-foreground" data-ui-text="emphasis">{props.title}</h3>
         <p className="text-[0.72rem] leading-[1.35] text-[color:var(--project-home-muted)]">{props.extensions}</p>
       </CardContent>
@@ -424,7 +424,7 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
 
   return (
     <Card className="project-home__preview-card">
-      <CardContent className="space-y-3 px-4 py-4">
+      <CardContent className="space-y-4">
         {stats.map((stat) => (
           <div key={stat.label} className="flex items-center justify-between gap-5">
             <span className="text-[0.77rem] text-foreground">{stat.label}</span>
@@ -475,8 +475,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const [missing_recent_project, set_missing_recent_project] = useState<MissingRecentProjectState>(null)
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5)
   const has_recent_projects = recent_projects.length > 0
-  const create_footer_class_name = 'project-home__footer mt-auto justify-center pt-4'
-  const open_footer_class_name = cn('project-home__footer mt-auto justify-center', selected_project === null ? 'pt-4' : 'pt-6')
+  const create_footer_class_name = 'project-home__footer mt-auto justify-center'
+  const open_footer_class_name = 'project-home__footer mt-auto justify-center'
 
   function clear_selected_project(): void {
     set_selected_project(null)
@@ -976,7 +976,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             subtitle={t('project_page.create.subtitle')}
           />
 
-          <CardContent className="flex flex-1 flex-col gap-6 pt-0">
+          <CardContent className="flex flex-1 flex-col gap-6">
             {source_dropzone}
 
             <section className="space-y-4 pt-4">
@@ -1017,7 +1017,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               subtitle={t('project_page.open.subtitle')}
             />
 
-            <CardContent className="flex flex-1 flex-col gap-6 pt-0">
+            <CardContent className="flex flex-1 flex-col gap-6">
               {open_dropzone}
 
               <section className="space-y-4 pt-4">
