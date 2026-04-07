@@ -31,6 +31,11 @@ const config = {
   renderer: {
     root: path.resolve(__dirname, 'src/renderer'),
     publicDir: path.resolve(__dirname, 'public'),
+    server: {
+      // 开发态 renderer 统一监听 IPv4 回环地址，避免主进程与 dev server 对本机地址的解析结果不一致。
+      // 这里定义的是唯一权威监听地址，不再依赖 localhost 或额外兼容回退。
+      host: '127.0.0.1',
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src/renderer'),

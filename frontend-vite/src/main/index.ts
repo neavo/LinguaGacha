@@ -47,15 +47,14 @@ const WINDOW_FONT_STACK = '"LGConsolas", "LGBaseFont", "Segoe UI", "Microsoft Ya
 // │
 process.env.APP_ROOT = path.join(__dirname, '..')
 
-// electron-vite 在开发态通过 ELECTRON_RENDERER_URL 暴露 renderer dev server 地址；
-// 这里顺带兼容旧的 VITE_DEV_SERVER_URL，避免仓库内其他脚本尚未同步时直接掉回生产分支。
-const VITE_DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] ?? process.env['VITE_DEV_SERVER_URL']
+// electron-vite 在开发态通过 ELECTRON_RENDERER_URL 暴露唯一权威的 renderer dev server 地址。
+const RENDERER_DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'] ?? null
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
-process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
+process.env.VITE_PUBLIC = RENDERER_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 const VITE_PUBLIC = process.env.VITE_PUBLIC ?? RENDERER_DIST
 
-if (VITE_DEV_SERVER_URL) {
+if (RENDERER_DEV_SERVER_URL) {
   // 开发态暴露 Chromium 调试端口，方便 Playwright 直接附着现有 Electron 实例。
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
@@ -65,7 +64,7 @@ let win: BrowserWindow | null
 function is_development_mode(): boolean {
   let development_mode = false
 
-  if (VITE_DEV_SERVER_URL) {
+  if (RENDERER_DEV_SERVER_URL) {
     development_mode = true
   } else {
     development_mode = false
@@ -384,10 +383,10 @@ function createWindow(): void {
     win?.show()
   })
 
-  if (VITE_DEV_SERVER_URL) {
+  if (RENDERER_DEV_SERVER_URL) {
     // 开发态优先让窗口可见，这样就算首屏挂掉也能直接看到错误页和 DevTools。
     show_window_if_hidden(win)
-    void win.loadURL(VITE_DEV_SERVER_URL)
+    void win.loadURL(RENDERER_DEV_SERVER_URL)
   } else {
     // win.loadFile('dist/index.html')
     void win.loadFile(path.join(RENDERER_DIST, 'index.html'))
