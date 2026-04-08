@@ -1,6 +1,8 @@
 .workbench-page {
   flex: 1;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   --workbench-unit: color-mix(in srgb, var(--foreground) 42%, transparent);
   --workbench-success: #22c55e;
   --workbench-warning: #f59e0b;
@@ -132,6 +134,13 @@
   flex: 1;
 }
 
+.workbench-page__table-scroll-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
 .workbench-page__table-scroll [data-slot='scroll-area-viewport'] {
   min-height: 100%;
 }
@@ -247,15 +256,44 @@
   position: relative;
 }
 
+.workbench-page__table-spacer-row {
+  height: 0;
+  border-bottom: 0;
+  pointer-events: none;
+}
+
 .workbench-page__table-placeholder-row {
   pointer-events: none;
+  user-select: none;
+}
+
+.workbench-page__table-spacer-cell {
+  height: 0;
+  padding: 0;
+  padding-inline: 0;
+  border-bottom: 0;
+  background: transparent;
+  font-size: 0;
+  line-height: 0;
+  vertical-align: top;
+  color: transparent;
+}
+
+.workbench-page__table-spacer-fill {
+  display: block;
+  width: 100%;
 }
 
 .workbench-page__table-placeholder-cell {
   color: transparent;
 }
 
-.workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row:nth-child(even) > [data-slot='table-cell'] {
+.workbench-page__table-placeholder-content,
+.workbench-page__table-placeholder-affordance {
+  visibility: hidden;
+}
+
+.workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row[data-zebra='even'] > [data-slot='table-cell'] {
   background: var(--workbench-table-zebra);
 }
 
@@ -290,6 +328,21 @@
 .workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row[data-dragging='true'] > .workbench-page__table-drag-cell::before {
   opacity: 1;
   transform: scaleY(1);
+}
+
+.workbench-page__table-row--overlay {
+  cursor: grabbing;
+}
+
+.workbench-page__table-drag-overlay {
+  overflow: hidden;
+  border-radius: var(--ui-radius-card);
+  box-shadow: var(--ui-card-default-shadow);
+}
+
+.workbench-page__table--overlay {
+  --table-hover-current: var(--workbench-table-selected);
+  --table-selected-current: var(--workbench-table-selected);
 }
 
 .workbench-page__row-action {
