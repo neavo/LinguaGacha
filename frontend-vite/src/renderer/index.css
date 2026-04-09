@@ -148,6 +148,7 @@
   --ui-table-head-height: 36px;
   --ui-table-row-height: 39px;
   --ui-table-cell-x: 12px;
+  --ui-selection-rail-width: 3px;
   --ui-font-stroke-emphasis: 0.2px;
   --ui-table-divider: color-mix(in srgb, var(--border) 72%, transparent);
   --ui-table-divider-soft: color-mix(in srgb, var(--border) 55%, transparent);

@@ -57,6 +57,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/ui/tooltip'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
 const GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT = 37
@@ -78,6 +83,10 @@ type GlossaryTableProps = {
   on_box_select: (next_entry_ids: GlossaryEntryId[]) => void
   on_open_edit: (entry_id: GlossaryEntryId) => void
   on_delete_selected: () => Promise<void>
+  on_toggle_entry_case_sensitive: (
+    entry_id: GlossaryEntryId,
+    next_value: boolean,
+  ) => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
   on_reorder: (
     active_entry_id: GlossaryEntryId,
@@ -111,6 +120,10 @@ type GlossarySortableRowProps = {
     options: { extend: boolean; range: boolean },
   ) => void
   on_delete_selected: () => Promise<void>
+  on_toggle_entry_case_sensitive: (
+    entry_id: GlossaryEntryId,
+    next_value: boolean,
+  ) => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
   should_ignore_click: () => boolean
 }
@@ -226,6 +239,56 @@ function build_glossary_table_placeholder_fill(
   }
 }
 
+type GlossaryRuleBadgeProps = {
+  enabled: boolean
+  interactive: boolean
+  tooltip: string
+  aria_label?: string
+  on_toggle?: () => void
+}
+
+function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
+  const badge = (
+    <span className="glossary-page__rule-badge-wrap">
+      <button
+        type="button"
+        data-state={props.enabled ? 'active' : 'inactive'}
+        data-interactive={props.interactive ? 'true' : 'false'}
+        data-glossary-ignore-box-select="true"
+        aria-label={props.aria_label}
+        tabIndex={props.interactive ? 0 : -1}
+        className="glossary-page__rule-badge"
+        onPointerDown={(event) => {
+          if (props.interactive) {
+            event.stopPropagation()
+          }
+        }}
+        onClick={(event) => {
+          if (!props.interactive || props.on_toggle === undefined) {
+            return
+          }
+
+          event.stopPropagation()
+          void props.on_toggle()
+        }}
+      >
+        Aa
+      </button>
+    </span>
+  )
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {badge}
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>
+        <p className="whitespace-pre-line">{props.tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function are_selection_box_states_equal(
   left_state: SelectionBoxState | null,
   right_state: SelectionBoxState | null,
@@ -250,6 +313,7 @@ function are_selection_box_states_equal(
 const GlossarySortableRow = memo(function GlossarySortableRow(
   props: GlossarySortableRowProps,
 ): JSX.Element {
+  const { t } = useI18n()
   const {
     attributes,
     isDragging,
@@ -268,6 +332,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
   const statistics_tooltip = props.subset_parent_labels.length === 0
     ? undefined
     : props.subset_parent_labels.join('\n')
+  const case_tooltip = `${t('glossary_page.rule.case_sensitive')}\n${t(props.entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`
 
   const set_row_element = (row_element: HTMLTableRowElement | null): void => {
     setNodeRef(row_element)
@@ -341,7 +406,18 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
             </span>
           </TableCell>
           <TableCell className="glossary-page__table-rule-cell">
-            {props.entry.case_sensitive ? 'Aa' : ''}
+            <GlossaryRuleBadge
+              enabled={props.entry.case_sensitive}
+              interactive
+              tooltip={case_tooltip}
+              aria_label={t('glossary_page.rule.toggle_case_sensitive')}
+              on_toggle={() => {
+                return props.on_toggle_entry_case_sensitive(
+                  props.entry_id,
+                  !props.entry.case_sensitive,
+                )
+              }}
+            />
           </TableCell>
           <TableCell
             className="glossary-page__table-status-cell"
@@ -373,6 +449,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     && previous_props.on_open_edit === next_props.on_open_edit
     && previous_props.on_select_entry === next_props.on_select_entry
     && previous_props.on_delete_selected === next_props.on_delete_selected
+    && previous_props.on_toggle_entry_case_sensitive === next_props.on_toggle_entry_case_sensitive
     && previous_props.on_toggle_case_sensitive === next_props.on_toggle_case_sensitive
     && previous_props.should_ignore_click === next_props.should_ignore_click
   )
@@ -872,6 +949,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                       on_open_edit={props.on_open_edit}
                       on_select_entry={props.on_select_entry}
                       on_delete_selected={props.on_delete_selected}
+                      on_toggle_entry_case_sensitive={props.on_toggle_entry_case_sensitive}
                       on_toggle_case_sensitive={props.on_toggle_case_sensitive}
                       should_ignore_click={should_ignore_click}
                     />
@@ -944,7 +1022,11 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                             </span>
                           </TableCell>
                           <TableCell className="glossary-page__table-rule-cell">
-                            {active_drag_entry.case_sensitive ? 'Aa' : ''}
+                            <GlossaryRuleBadge
+                              enabled={active_drag_entry.case_sensitive}
+                              interactive={false}
+                              tooltip={`${t('glossary_page.rule.case_sensitive')}\n${t(active_drag_entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`}
+                            />
                           </TableCell>
                           <TableCell className="glossary-page__table-status-cell" />
                         </TableRow>

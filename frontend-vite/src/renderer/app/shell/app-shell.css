@@ -195,7 +195,7 @@
   top: 7px;
   bottom: 7px;
   left: 0;
-  width: 2px;
+  width: var(--ui-selection-rail-width);
   background: var(--sidebar-primary);
   opacity: 0;
   transform: scaleY(0.4);
@@ -332,7 +332,7 @@
   top: 6px;
   bottom: 6px;
   left: 0;
-  width: 2px;
+  width: var(--ui-selection-rail-width);
   background: var(--sidebar-primary);
   opacity: 0;
   transform: scaleY(0.4);
@@ -411,7 +411,7 @@
   top: 6px;
   bottom: 6px;
   left: 0;
-  width: 2px;
+  width: var(--ui-selection-rail-width);
   background: var(--sidebar-primary);
   opacity: 0;
   transform: scaleY(0.4);

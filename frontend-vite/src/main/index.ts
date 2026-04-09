@@ -45,8 +45,16 @@ const PROJECT_FILE_FILTERS: Electron.FileFilter[] = [
 ]
 const GLOSSARY_FILE_FILTERS: Electron.FileFilter[] = [
   {
-    name: 'Glossary Files',
+    name: '支持的数据格式',
     extensions: ['json', 'xlsx'],
+  },
+  {
+    name: 'JSON 文件',
+    extensions: ['json'],
+  },
+  {
+    name: 'Excel 文件',
+    extensions: ['xlsx'],
   },
 ]
 

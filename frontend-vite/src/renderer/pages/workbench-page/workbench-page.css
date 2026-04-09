@@ -305,7 +305,7 @@
   top: 7px;
   left: 0;
   bottom: 7px;
-  width: 2px;
+  width: var(--ui-selection-rail-width);
   border-radius: 999px;
   background: var(--workbench-table-selection-rail);
   opacity: 0;

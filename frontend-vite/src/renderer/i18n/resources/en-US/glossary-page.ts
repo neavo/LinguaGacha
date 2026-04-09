@@ -26,6 +26,10 @@ export const en_us_glossary_page = {
     rule: 'Rule',
     status: 'Status',
   },
+  rule: {
+    case_sensitive: 'Case-sensitive',
+    toggle_case_sensitive: 'Toggle case-sensitive matching',
+  },
   search: {
     regex: 'Regex',
     placeholder: 'Search glossary …',

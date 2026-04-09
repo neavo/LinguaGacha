@@ -23,6 +23,10 @@ export const zh_cn_glossary_page = {
     rule: '规则',
     status: '状态',
   },
+  rule: {
+    case_sensitive: '区分大小写',
+    toggle_case_sensitive: '切换区分大小写',
+  },
   search: {
     regex: '正则',
     placeholder: '搜索术语表 …',
