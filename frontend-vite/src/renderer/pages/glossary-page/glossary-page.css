@@ -221,6 +221,7 @@
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+  --table-row-height-current: 35px;
   --table-header-bg-current: var(--glossary-table-header-bg);
   --table-hover-current: var(--glossary-table-hover);
   --table-selected-current: var(--glossary-table-selected);
@@ -244,10 +245,15 @@
 
 .glossary-page__table-head [data-slot='table-head'] {
   height: 42px;
-  font-size: 13px;
+  font-size: 12px;
   text-align: center;
   color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground) 10%);
   background: transparent;
+}
+
+.glossary-page__table [data-slot='table-cell'] {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--foreground) 92%, var(--muted-foreground) 8%);
 }
 
 .glossary-page__table-head [data-slot='table-row'],
@@ -423,50 +429,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
-  padding: 0 10px;
+  width: 28px;
+  height: 28px;
   border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
   border-radius: 999px;
   background: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
   color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
   transition:
     background-color 180ms ease,
     border-color 180ms ease,
-    color 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
+    color 180ms ease;
 }
 
 .glossary-page__rule-badge[data-state='active'] {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
-}
-
-.glossary-page__rule-badge[data-interactive='true'] {
-  cursor: pointer;
-}
-
-.glossary-page__rule-badge[data-interactive='true']:hover {
-  border-color: color-mix(in srgb, var(--primary) 58%, var(--border) 42%);
-  transform: translateY(-1px);
-}
-
-.glossary-page__rule-badge[data-interactive='true'][data-state='active']:hover {
-  border-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 92%, white 8%);
-}
-
-.glossary-page__rule-badge[data-interactive='true']:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 32%, transparent);
-}
-
-.glossary-page__rule-badge[data-interactive='false'] {
-  pointer-events: none;
 }
 
 .glossary-page__selection-box {

@@ -25,7 +25,6 @@ export const zh_cn_glossary_page = {
   },
   rule: {
     case_sensitive: '区分大小写',
-    toggle_case_sensitive: '切换区分大小写',
   },
   search: {
     regex: '正则',

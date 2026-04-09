@@ -13,6 +13,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { CSS } from '@dnd-kit/utilities'
 import { Files, GripVertical } from 'lucide-react'
 import {
@@ -30,6 +31,13 @@ import {
   are_glossary_entry_ids_equal,
   build_glossary_entry_id,
 } from '@/pages/glossary-page/components/glossary-selection'
+import {
+  GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
+  GLOSSARY_TABLE_VIRTUAL_OVERSCAN,
+  build_glossary_table_placeholder_fill,
+  build_glossary_table_spacer_heights,
+  resolve_glossary_table_row_zebra,
+} from '@/pages/glossary-page/components/glossary-table-virtualization'
 import { GlossaryContextMenuContent } from '@/pages/glossary-page/components/glossary-context-menu'
 import type {
   GlossaryEntry,
@@ -64,7 +72,6 @@ import {
 } from '@/ui/tooltip'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
-const GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT = 37
 const EMPTY_SUBSET_PARENT_LABELS: string[] = []
 
 type GlossaryTableProps = {
@@ -83,10 +90,6 @@ type GlossaryTableProps = {
   on_box_select: (next_entry_ids: GlossaryEntryId[]) => void
   on_open_edit: (entry_id: GlossaryEntryId) => void
   on_delete_selected: () => Promise<void>
-  on_toggle_entry_case_sensitive: (
-    entry_id: GlossaryEntryId,
-    next_value: boolean,
-  ) => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
   on_reorder: (
     active_entry_id: GlossaryEntryId,
@@ -120,12 +123,9 @@ type GlossarySortableRowProps = {
     options: { extend: boolean; range: boolean },
   ) => void
   on_delete_selected: () => Promise<void>
-  on_toggle_entry_case_sensitive: (
-    entry_id: GlossaryEntryId,
-    next_value: boolean,
-  ) => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
   should_ignore_click: () => boolean
+  on_measure_row: (row_element: HTMLTableRowElement) => void
 }
 
 type GlossaryTableSpacerRowProps = {
@@ -149,10 +149,6 @@ function render_table_colgroup(): JSX.Element {
       <col className="glossary-page__table-col glossary-page__table-col--status" />
     </colgroup>
   )
-}
-
-function resolve_glossary_table_row_zebra(row_index: number): 'odd' | 'even' {
-  return Math.abs(row_index) % 2 === 1 ? 'even' : 'odd'
 }
 
 function normalize_selection_box_style(
@@ -203,77 +199,22 @@ function intersects_selection_box(
   )
 }
 
-function build_glossary_table_placeholder_fill(
-  fill_height: number,
-  row_height: number,
-): {
-  placeholder_row_heights: number[]
-  residual_spacer_height: number
-} {
-  const normalized_fill_height = Number.isFinite(fill_height) && fill_height > 0
-    ? fill_height
-    : 0
-  const normalized_row_height = Number.isFinite(row_height) && row_height > 0
-    ? row_height
-    : 0
-
-  if (normalized_fill_height === 0 || normalized_row_height === 0) {
-    return {
-      placeholder_row_heights: [],
-      residual_spacer_height: normalized_fill_height,
-    }
-  }
-
-  const placeholder_row_count = Math.floor(
-    normalized_fill_height / normalized_row_height,
-  )
-  const residual_spacer_height = normalized_fill_height
-    - (placeholder_row_count * normalized_row_height)
-
-  return {
-    placeholder_row_heights: Array.from(
-      { length: placeholder_row_count },
-      () => normalized_row_height,
-    ),
-    residual_spacer_height,
-  }
-}
 
 type GlossaryRuleBadgeProps = {
   enabled: boolean
-  interactive: boolean
   tooltip: string
-  aria_label?: string
-  on_toggle?: () => void
 }
 
 function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
   const badge = (
     <span className="glossary-page__rule-badge-wrap">
-      <button
-        type="button"
+      <span
         data-state={props.enabled ? 'active' : 'inactive'}
-        data-interactive={props.interactive ? 'true' : 'false'}
         data-glossary-ignore-box-select="true"
-        aria-label={props.aria_label}
-        tabIndex={props.interactive ? 0 : -1}
         className="glossary-page__rule-badge"
-        onPointerDown={(event) => {
-          if (props.interactive) {
-            event.stopPropagation()
-          }
-        }}
-        onClick={(event) => {
-          if (!props.interactive || props.on_toggle === undefined) {
-            return
-          }
-
-          event.stopPropagation()
-          void props.on_toggle()
-        }}
       >
         Aa
-      </button>
+      </span>
     </span>
   )
 
@@ -337,6 +278,9 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
   const set_row_element = (row_element: HTMLTableRowElement | null): void => {
     setNodeRef(row_element)
     props.register_row_element(props.entry_id, row_element)
+    if (row_element !== null) {
+      props.on_measure_row(row_element)
+    }
   }
 
   return (
@@ -391,7 +335,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
             </Button>
           </TableCell>
           <TableCell className="glossary-page__table-source-cell">
-            <span className="glossary-page__table-text" data-ui-text="emphasis">
+            <span className="glossary-page__table-text">
               {props.entry.src}
             </span>
           </TableCell>
@@ -408,15 +352,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
           <TableCell className="glossary-page__table-rule-cell">
             <GlossaryRuleBadge
               enabled={props.entry.case_sensitive}
-              interactive
               tooltip={case_tooltip}
-              aria_label={t('glossary_page.rule.toggle_case_sensitive')}
-              on_toggle={() => {
-                return props.on_toggle_entry_case_sensitive(
-                  props.entry_id,
-                  !props.entry.case_sensitive,
-                )
-              }}
             />
           </TableCell>
           <TableCell
@@ -449,9 +385,9 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     && previous_props.on_open_edit === next_props.on_open_edit
     && previous_props.on_select_entry === next_props.on_select_entry
     && previous_props.on_delete_selected === next_props.on_delete_selected
-    && previous_props.on_toggle_entry_case_sensitive === next_props.on_toggle_entry_case_sensitive
     && previous_props.on_toggle_case_sensitive === next_props.on_toggle_case_sensitive
     && previous_props.should_ignore_click === next_props.should_ignore_click
+    && previous_props.on_measure_row === next_props.on_measure_row
   )
 })
 
@@ -505,7 +441,6 @@ function GlossaryTablePlaceholderRow(
       <TableCell className="glossary-page__table-source-cell glossary-page__table-placeholder-cell">
         <span
           className="glossary-page__table-text glossary-page__table-placeholder-content"
-          data-ui-text="emphasis"
         >
           {'\u00A0'}
         </span>
@@ -581,15 +516,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     table_scroll_host_ref.current,
     selection_box_visual,
   )
-  const viewport_fill_height = Math.max(
-    0,
-    viewport_height - (props.entries.length * measured_row_height),
-  )
-  const placeholder_fill = build_glossary_table_placeholder_fill(
-    viewport_fill_height,
-    measured_row_height,
-  )
-  const show_bottom_spacer = placeholder_fill.residual_spacer_height > 0.5
 
   useEffect(() => {
     latest_entry_ids_ref.current = entry_ids
@@ -639,6 +565,52 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       resize_observer.disconnect()
     }
   }, [viewport_element])
+
+  const virtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
+    count: props.entries.length,
+    getScrollElement: () => viewport_element,
+    estimateSize: () => GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
+    overscan: GLOSSARY_TABLE_VIRTUAL_OVERSCAN,
+    getItemKey: (index) => entry_ids[index] ?? index,
+    initialRect: {
+      width: 0,
+      height: Math.max(
+        viewport_height,
+        GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
+      ),
+    },
+  })
+
+  useEffect(() => {
+    virtualizer.measure()
+  }, [props.entries.length, viewport_height, virtualizer])
+
+  const virtual_rows = virtualizer.getVirtualItems()
+  const first_virtual_row = virtual_rows[0] ?? null
+  const last_virtual_row = virtual_rows.at(-1) ?? null
+  const spacer_heights = build_glossary_table_spacer_heights({
+    viewport_height,
+    total_size: virtualizer.getTotalSize(),
+    range_start: first_virtual_row?.start ?? 0,
+    range_end: last_virtual_row?.end ?? 0,
+  })
+  const placeholder_fill = build_glossary_table_placeholder_fill(
+    spacer_heights.viewport_fill_height,
+    measured_row_height,
+  )
+  const show_top_spacer = spacer_heights.top_spacer_height > 0.5
+  const bottom_spacer_height = spacer_heights.virtual_bottom_spacer_height
+    + placeholder_fill.residual_spacer_height
+  const show_bottom_spacer = bottom_spacer_height > 0.5
+
+  const measure_virtual_row = useCallback((row_element: HTMLTableRowElement): void => {
+    virtualizer.measureElement(row_element)
+
+    const next_row_height = Math.round(row_element.getBoundingClientRect().height)
+    if (next_row_height > 0 && next_row_height !== measured_row_height) {
+      set_measured_row_height(next_row_height)
+    }
+  }, [measured_row_height, virtualizer])
 
   const clear_selection_refs = useCallback((): void => {
     selection_box_ref.current = null
@@ -794,11 +766,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     }
 
     row_elements_ref.current.set(entry_id, row_element)
-    const next_row_height = Math.round(row_element.getBoundingClientRect().height)
-    if (next_row_height > 0 && next_row_height !== measured_row_height) {
-      set_measured_row_height(next_row_height)
-    }
-  }, [measured_row_height])
+  }, [])
 
   const should_ignore_click = useCallback((): boolean => {
     return suppress_click_ref.current
@@ -932,24 +900,37 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                 items={entry_ids}
                 strategy={verticalListSortingStrategy}
               >
-                {props.entries.map((entry, index) => {
-                  const entry_id = entry_ids[index] ?? `${index.toString()}`
+                {show_top_spacer
+                  ? (
+                      <GlossaryTableSpacerRow
+                        col_span={6}
+                        height={spacer_heights.top_spacer_height}
+                      />
+                    )
+                  : null}
+                {virtual_rows.map((virtual_row) => {
+                  const entry = props.entries[virtual_row.index]
+                  if (entry === undefined) {
+                    return null
+                  }
+
+                  const entry_id = entry_ids[virtual_row.index] ?? `${virtual_row.index.toString()}`
 
                   return (
                     <GlossarySortableRow
                       key={entry_id}
                       entry={entry}
                       entry_id={entry_id}
-                      row_index={index}
+                      row_index={virtual_row.index}
                       active={props.active_entry_id === entry_id}
                       selected={selected_entry_id_set.has(entry_id)}
                       matched_count={props.statistics_state.matched_count_by_entry_id[entry_id] ?? 0}
                       subset_parent_labels={props.statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? EMPTY_SUBSET_PARENT_LABELS}
                       register_row_element={register_row_element}
+                      on_measure_row={measure_virtual_row}
                       on_open_edit={props.on_open_edit}
                       on_select_entry={props.on_select_entry}
                       on_delete_selected={props.on_delete_selected}
-                      on_toggle_entry_case_sensitive={props.on_toggle_entry_case_sensitive}
                       on_toggle_case_sensitive={props.on_toggle_case_sensitive}
                       should_ignore_click={should_ignore_click}
                     />
@@ -968,7 +949,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                   ? (
                       <GlossaryTableSpacerRow
                         col_span={6}
-                        height={placeholder_fill.residual_spacer_height}
+                        height={bottom_spacer_height}
                       />
                     )
                   : null}
@@ -1007,7 +988,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                             </Button>
                           </TableCell>
                           <TableCell className="glossary-page__table-source-cell">
-                            <span className="glossary-page__table-text" data-ui-text="emphasis">
+                            <span className="glossary-page__table-text">
                               {active_drag_entry.src}
                             </span>
                           </TableCell>
@@ -1024,7 +1005,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                           <TableCell className="glossary-page__table-rule-cell">
                             <GlossaryRuleBadge
                               enabled={active_drag_entry.case_sensitive}
-                              interactive={false}
                               tooltip={`${t('glossary_page.rule.case_sensitive')}\n${t(active_drag_entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`}
                             />
                           </TableCell>

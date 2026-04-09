@@ -36,7 +36,6 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
           on_box_select={glossary_page_state.box_select_entries}
           on_open_edit={glossary_page_state.open_edit_dialog}
           on_delete_selected={glossary_page_state.delete_selected_entries}
-          on_toggle_entry_case_sensitive={glossary_page_state.toggle_entry_case_sensitive}
           on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
           on_reorder={glossary_page_state.reorder_selected_entries}
         />

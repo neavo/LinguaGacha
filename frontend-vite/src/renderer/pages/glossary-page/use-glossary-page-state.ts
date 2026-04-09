@@ -182,10 +182,6 @@ type UseGlossaryPageStateResult = {
   run_statistics: () => Promise<void>
   open_preset_menu: () => Promise<void>
   apply_preset: (virtual_id: string) => Promise<void>
-  toggle_entry_case_sensitive: (
-    entry_id: GlossaryEntryId,
-    next_value: boolean,
-  ) => Promise<void>
   select_entry: (
     entry_id: GlossaryEntryId,
     options: { extend: boolean; range: boolean },
@@ -583,34 +579,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
   }, [entries, entry_ids, save_entries_snapshot, selected_entry_ids])
 
-  const toggle_entry_case_sensitive = useCallback(async (
-    entry_id: GlossaryEntryId,
-    next_value: boolean,
-  ): Promise<void> => {
-    const target_index = entry_ids.indexOf(entry_id)
-    if (target_index < 0) {
-      return
-    }
-
-    const previous_entries = entries
-    const next_entries = entries.map((entry, index) => {
-      if (index !== target_index) {
-        return entry
-      }
-
-      return {
-        ...entry,
-        case_sensitive: next_value,
-      }
-    })
-
-    set_entries(next_entries)
-    const saved = await save_entries_snapshot(next_entries)
-    if (!saved) {
-      set_entries(previous_entries)
-    }
-  }, [entries, entry_ids, save_entries_snapshot])
-
   const reorder_selected_entries = useCallback(async (
     current_active_entry_id: GlossaryEntryId,
     over_entry_id: GlossaryEntryId,
@@ -911,7 +879,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       run_statistics,
       open_preset_menu,
       apply_preset,
-      toggle_entry_case_sensitive,
       select_entry,
       select_range,
       box_select_entries,
@@ -956,7 +923,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     select_range,
     selected_entry_ids,
     statistics_state,
-    toggle_entry_case_sensitive,
     toggle_case_sensitive_for_selected,
     update_dialog_draft,
     update_enabled,
