@@ -4,6 +4,8 @@ import path from 'node:path'
 
 import {
   IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
+  IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
+  IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
@@ -35,6 +37,18 @@ const DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY = 'i'
 const WINDOW_LOAD_FAILURE_TITLE = 'LinguaGacha Frontend 加载失败'
 const WINDOW_LOAD_FAILURE_BODY_MAX_LENGTH = 240
 const WINDOW_FONT_STACK = '"LGConsolas", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif'
+const PROJECT_FILE_FILTERS: Electron.FileFilter[] = [
+  {
+    name: 'LinguaGacha Project',
+    extensions: ['lg'],
+  },
+]
+const GLOSSARY_FILE_FILTERS: Electron.FileFilter[] = [
+  {
+    name: 'Glossary Files',
+    extensions: ['json', 'xlsx'],
+  },
+]
 
 // The built directory structure
 //
@@ -406,15 +420,13 @@ async function pick_open_path(
   }
 }
 
-async function pick_save_path(default_name: string): Promise<DesktopPathPickResult> {
+async function pick_save_path(
+  default_name: string,
+  filters: Electron.FileFilter[],
+): Promise<DesktopPathPickResult> {
   const dialog_options: Electron.SaveDialogOptions = {
     defaultPath: default_name,
-    filters: [
-      {
-        name: 'LinguaGacha Project',
-        extensions: ['lg'],
-      },
-    ],
+    filters,
   }
   const result = win === null
     ? await dialog.showSaveDialog(dialog_options)
@@ -468,17 +480,12 @@ ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH, async () => {
 ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_FILE_PATH, async () => {
   return pick_open_path({
     properties: ['openFile'],
-    filters: [
-      {
-        name: 'LinguaGacha Project',
-        extensions: ['lg'],
-      },
-    ],
+    filters: PROJECT_FILE_FILTERS,
   })
 })
 
 ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SAVE_PATH, async (_event, default_name: string) => {
-  return pick_save_path(default_name)
+  return pick_save_path(default_name, PROJECT_FILE_FILTERS)
 })
 
 ipcMain.handle(IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH, async () => {
@@ -492,4 +499,15 @@ ipcMain.handle(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, async (_event, default_
     defaultPath: typeof default_path === 'string' && default_path !== '' ? default_path : undefined,
     properties: ['openDirectory', 'createDirectory'],
   })
+})
+
+ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH, async () => {
+  return pick_open_path({
+    properties: ['openFile'],
+    filters: GLOSSARY_FILE_FILTERS,
+  })
+})
+
+ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, async (_event, default_name: string) => {
+  return pick_save_path(default_name, GLOSSARY_FILE_FILTERS)
 })

@@ -18,8 +18,8 @@ export const en_us_app = {
     select_folder: 'Select Folder',
   },
   toggle: {
-    disabled: 'Off',
-    enabled: 'On',
+    disabled: 'Disabled',
+    enabled: 'Enabled',
   },
   language: {
     ALL: 'All',

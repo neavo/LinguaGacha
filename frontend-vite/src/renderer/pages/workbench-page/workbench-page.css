@@ -103,13 +103,6 @@
   overflow: hidden;
 }
 
-.workbench-page__table-shell {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
 .workbench-page__table-head-wrap {
   position: relative;
   z-index: 1;

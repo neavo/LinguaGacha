@@ -23,7 +23,6 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/card'
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -39,6 +38,7 @@ import {
   TableRow,
 } from '@/ui/table'
 import { useI18n } from '@/i18n'
+import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 import {
   WorkbenchTableActionMenu,
   WorkbenchTableContextMenuContent,
@@ -578,26 +578,22 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
     props.on_reorder(next_entries.map((entry) => entry.rel_path))
   }
 
-  return (
-    <Card variant="table" className="workbench-page__table-card">
-      <CardHeader className="sr-only">
-        <CardTitle>{t('workbench_page.section.file_list')}</CardTitle>
-        <CardDescription>{t('workbench_page.empty.description')}</CardDescription>
-      </CardHeader>
-      <CardContent className="workbench-page__table-card-content">
-        {!props.project_loaded ? (
-          <div className="workbench-page__empty-wrap">
-            <Empty variant="inset" className="workbench-page__empty-state">
-              <EmptyHeader>
-                <EmptyMedia>
-                  <ShieldAlert />
-                </EmptyMedia>
-                <EmptyTitle>{t('workbench_page.empty.title')}</EmptyTitle>
-                <EmptyDescription>{t('workbench_page.empty.description')}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </div>
-        ) : props.entries.length === 0 ? (
+  const resolved_empty_state = !props.project_loaded
+    ? (
+        <div className="workbench-page__empty-wrap">
+          <Empty variant="inset" className="workbench-page__empty-state">
+            <EmptyHeader>
+              <EmptyMedia>
+                <ShieldAlert />
+              </EmptyMedia>
+              <EmptyTitle>{t('workbench_page.empty.title')}</EmptyTitle>
+              <EmptyDescription>{t('workbench_page.empty.description')}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </div>
+      )
+    : props.entries.length === 0
+      ? (
           <div className="workbench-page__empty-wrap">
             <Empty variant="inset" className="workbench-page__empty-state">
               <EmptyHeader>
@@ -609,110 +605,128 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
               </EmptyHeader>
             </Empty>
           </div>
-        ) : (
-          <div className="workbench-page__table-shell">
-            <div className="workbench-page__table-head-wrap">
-              <Table className="workbench-page__table">
-                {render_table_colgroup()}
-                <TableHeader className="workbench-page__table-head">
-                  <TableRow>
-                    <TableHead className="workbench-page__table-drag-head">
-                      {t('workbench_page.table.drag_handle')}
-                    </TableHead>
-                    <TableHead className="workbench-page__table-file-head">
-                      {t('workbench_page.table.file_name')}
-                    </TableHead>
-                    <TableHead className="workbench-page__table-format-head">
-                      {t('workbench_page.table.format')}
-                    </TableHead>
-                    <TableHead className="workbench-page__table-line-head">
-                      {t('workbench_page.table.line_count')}
-                    </TableHead>
-                    <TableHead className="workbench-page__table-action-head">
-                      {t('workbench_page.table.actions')}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-              </Table>
-            </div>
-            <div
-              ref={table_scroll_host_ref}
-              className="workbench-page__table-scroll-host"
-            >
-              <ScrollArea className="workbench-page__table-scroll">
-                <DndContext
-                  collisionDetection={closestCenter}
-                  sensors={sensors}
-                  onDragStart={handle_drag_start}
-                  onDragCancel={handle_drag_cancel}
-                  onDragEnd={handle_drag_end}
-                >
-                  <Table className="workbench-page__table workbench-page__table--body">
-                    {render_table_colgroup()}
-                    <TableBody ref={table_body_ref}>
-                      <SortableContext
-                        items={entry_ids}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {show_top_spacer ? (
-                          <WorkbenchFileTableSpacerRow
-                            height={spacer_heights.top_spacer_height}
-                          />
-                        ) : null}
-                        {virtual_rows.map((virtual_row) => {
-                          const entry = props.entries[virtual_row.index]
-                          if (entry === undefined) {
-                            return null
-                          }
+        )
+      : null
 
-                          return (
-                            <WorkbenchFileTableRow
-                              key={entry.rel_path}
-                              entry={entry}
-                              row_index={virtual_row.index}
-                              is_selected={entry.rel_path === props.selected_entry_id}
-                              drag_disabled={props.readonly}
-                              on_measure_row={measure_virtual_row}
-                              on_select={props.on_select}
-                              on_replace={props.on_replace}
-                              on_reset={props.on_reset}
-                              on_delete={props.on_delete}
-                            />
-                          )
-                        })}
-                        {placeholder_fill.placeholder_row_heights.map(
-                          (placeholder_height, placeholder_index) => (
-                            <WorkbenchFileTablePlaceholderRow
-                              key={`placeholder-row-${placeholder_index}`}
-                              row_index={props.entries.length + placeholder_index}
-                              height={placeholder_height}
-                            />
-                          ),
-                        )}
-                        {show_bottom_spacer ? (
-                          <WorkbenchFileTableSpacerRow
-                            height={bottom_spacer_height}
-                          />
-                        ) : null}
-                      </SortableContext>
-                    </TableBody>
-                  </Table>
-                  <DragOverlay>
-                    {active_drag_entry?.entry === null ||
-                    active_drag_entry === null ? null : (
-                      <WorkbenchFileTableDragOverlay
-                        entry={active_drag_entry.entry}
-                        row_index={active_drag_entry.row_index}
-                        width={drag_overlay_width}
+  const resolved_header = (
+    <div className="workbench-page__table-head-wrap">
+      <Table className="workbench-page__table">
+        {render_table_colgroup()}
+        <TableHeader className="workbench-page__table-head">
+          <TableRow>
+            <TableHead className="workbench-page__table-drag-head">
+              {t('workbench_page.table.drag_handle')}
+            </TableHead>
+            <TableHead className="workbench-page__table-file-head">
+              {t('workbench_page.table.file_name')}
+            </TableHead>
+            <TableHead className="workbench-page__table-format-head">
+              {t('workbench_page.table.format')}
+            </TableHead>
+            <TableHead className="workbench-page__table-line-head">
+              {t('workbench_page.table.line_count')}
+            </TableHead>
+            <TableHead className="workbench-page__table-action-head">
+              {t('workbench_page.table.actions')}
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+      </Table>
+    </div>
+  )
+
+  const resolved_body = (
+    <div
+      ref={table_scroll_host_ref}
+      className="workbench-page__table-scroll-host"
+    >
+      <ScrollArea className="workbench-page__table-scroll">
+        <DndContext
+          collisionDetection={closestCenter}
+          sensors={sensors}
+          onDragStart={handle_drag_start}
+          onDragCancel={handle_drag_cancel}
+          onDragEnd={handle_drag_end}
+        >
+          <Table className="workbench-page__table workbench-page__table--body">
+            {render_table_colgroup()}
+            <TableBody ref={table_body_ref}>
+              <SortableContext
+                items={entry_ids}
+                strategy={verticalListSortingStrategy}
+              >
+                {show_top_spacer
+                  ? (
+                      <WorkbenchFileTableSpacerRow
+                        height={spacer_heights.top_spacer_height}
                       />
-                    )}
-                  </DragOverlay>
-                </DndContext>
-              </ScrollArea>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                    )
+                  : null}
+                {virtual_rows.map((virtual_row) => {
+                  const entry = props.entries[virtual_row.index]
+                  if (entry === undefined) {
+                    return null
+                  }
+
+                  return (
+                    <WorkbenchFileTableRow
+                      key={entry.rel_path}
+                      entry={entry}
+                      row_index={virtual_row.index}
+                      is_selected={entry.rel_path === props.selected_entry_id}
+                      drag_disabled={props.readonly}
+                      on_measure_row={measure_virtual_row}
+                      on_select={props.on_select}
+                      on_replace={props.on_replace}
+                      on_reset={props.on_reset}
+                      on_delete={props.on_delete}
+                    />
+                  )
+                })}
+                {placeholder_fill.placeholder_row_heights.map(
+                  (placeholder_height, placeholder_index) => (
+                    <WorkbenchFileTablePlaceholderRow
+                      key={`placeholder-row-${placeholder_index}`}
+                      row_index={props.entries.length + placeholder_index}
+                      height={placeholder_height}
+                    />
+                  ),
+                )}
+                {show_bottom_spacer
+                  ? (
+                      <WorkbenchFileTableSpacerRow
+                        height={bottom_spacer_height}
+                      />
+                    )
+                  : null}
+              </SortableContext>
+            </TableBody>
+          </Table>
+          <DragOverlay>
+            {active_drag_entry?.entry === null || active_drag_entry === null
+              ? null
+              : (
+                  <WorkbenchFileTableDragOverlay
+                    entry={active_drag_entry.entry}
+                    row_index={active_drag_entry.row_index}
+                    width={drag_overlay_width}
+                  />
+                )}
+          </DragOverlay>
+        </DndContext>
+      </ScrollArea>
+    </div>
+  )
+
+  return (
+    <DataTableFrame
+      title={t('workbench_page.section.file_list')}
+      description={t('workbench_page.empty.description')}
+      className="workbench-page__table-card"
+      content_class_name="workbench-page__table-card-content"
+      empty_state={resolved_empty_state}
+      header={resolved_header}
+      body={resolved_body}
+    />
   )
 }

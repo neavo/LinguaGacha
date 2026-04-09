@@ -19,6 +19,7 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/alert'
 import { Button } from '@/ui/button'
 import { Input } from '@/ui/input'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
+import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
 import {
   Select,
   SelectContent,
@@ -27,16 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/ui/select'
-import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 
 type BasicSettingsPageProps = {
   is_sidebar_collapsed: boolean
 }
-
-const OUTPUT_FOLDER_TOGGLE_VALUE = {
-  DISABLED: 'disabled',
-  ENABLED: 'enabled',
-} as const
 
 function replace_placeholder(template: string, value: string): string {
   return template.replace('{PATH}', value)
@@ -92,10 +87,6 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
     : t('basic_settings_page.fields.project_save_mode.description')
 
   const language_locked = basic_settings_state.is_task_busy
-  const output_folder_toggle_value = basic_settings_state.snapshot.output_folder_open_on_finish
-    ? OUTPUT_FOLDER_TOGGLE_VALUE.ENABLED
-    : OUTPUT_FOLDER_TOGGLE_VALUE.DISABLED
-
   return (
     <div
       className="basic-settings-page page-shell page-shell--full"
@@ -218,34 +209,16 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
           title={t('basic_settings_page.fields.output_folder_open_on_finish.title')}
           description={t('basic_settings_page.fields.output_folder_open_on_finish.description')}
           action={(
-            <ToggleGroup
-              type="single"
-              variant="segmented"
+            <BooleanSegmentedToggle
+              aria_label={t('basic_settings_page.fields.output_folder_open_on_finish.title')}
+              value={basic_settings_state.snapshot.output_folder_open_on_finish}
               className="basic-settings-page__toggle-group"
-              aria-label={t('basic_settings_page.fields.output_folder_open_on_finish.title')}
-              value={output_folder_toggle_value}
+              item_class_name="basic-settings-page__toggle-item"
               disabled={basic_settings_state.pending_state.output_folder_open_on_finish}
-              onValueChange={(next_value) => {
-                if (next_value === OUTPUT_FOLDER_TOGGLE_VALUE.DISABLED) {
-                  void basic_settings_state.update_output_folder_open_on_finish(false)
-                } else if (next_value === OUTPUT_FOLDER_TOGGLE_VALUE.ENABLED) {
-                  void basic_settings_state.update_output_folder_open_on_finish(true)
-                }
+              on_value_change={(next_value) => {
+                void basic_settings_state.update_output_folder_open_on_finish(next_value)
               }}
-            >
-              <ToggleGroupItem
-                className="basic-settings-page__toggle-item"
-                value={OUTPUT_FOLDER_TOGGLE_VALUE.DISABLED}
-              >
-                {t('app.toggle.disabled')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                className="basic-settings-page__toggle-item"
-                value={OUTPUT_FOLDER_TOGGLE_VALUE.ENABLED}
-              >
-                {t('app.toggle.enabled')}
-              </ToggleGroupItem>
-            </ToggleGroup>
+            />
           )}
         />
 

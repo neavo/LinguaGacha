@@ -11,7 +11,7 @@ import {
 } from '@/ui/dialog'
 import { Input } from '@/ui/input'
 import { Textarea } from '@/ui/textarea'
-import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
+import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
 
 type ModelAdvancedSettingsDialogProps = {
   open: boolean
@@ -98,11 +98,6 @@ const SLIDER_FIELD_CONFIGS: SliderFieldConfig[] = [
   },
 ]
 
-const BOOLEAN_TOGGLE_VALUE = {
-  DISABLED: 'disabled',
-  ENABLED: 'enabled',
-} as const
-
 function parse_request_json_text(value: string): JsonParseResult {
   const trimmed_value = value.trim()
   if (trimmed_value === '') {
@@ -172,14 +167,6 @@ function normalize_slider_value(field_config: SliderFieldConfig, raw_value: numb
   const clamped_value = Math.min(field_config.max, Math.max(field_config.min, raw_value))
   const step_count = Math.round((clamped_value - field_config.min) / field_config.step)
   return Number((field_config.min + step_count * field_config.step).toFixed(2))
-}
-
-function resolve_boolean_toggle_value(current_value: boolean): string {
-  if (current_value) {
-    return BOOLEAN_TOGGLE_VALUE.ENABLED
-  } else {
-    return BOOLEAN_TOGGLE_VALUE.DISABLED
-  }
 }
 
 export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogProps): JSX.Element | null {
@@ -302,42 +289,20 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                             )
                           : null}
 
-                        <ToggleGroup
-                          type="single"
-                          variant="segmented"
+                        <BooleanSegmentedToggle
+                          aria_label={t(field_config.title_key)}
+                          value={current_enabled}
                           className="model-page__advanced-toggle-group"
-                          aria-label={t(field_config.title_key)}
-                          value={resolve_boolean_toggle_value(current_enabled)}
+                          item_class_name="model-page__advanced-toggle-item"
                           disabled={props.readonly}
-                          onValueChange={(next_value) => {
-                            if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                              void props.onPatch({
-                                generation: {
-                                  [field_config.enabled_key]: false,
-                                },
-                              })
-                            } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                              void props.onPatch({
-                                generation: {
-                                  [field_config.enabled_key]: true,
-                                },
-                              })
-                            }
+                          on_value_change={(next_value) => {
+                            void props.onPatch({
+                              generation: {
+                                [field_config.enabled_key]: next_value,
+                              },
+                            })
                           }}
-                        >
-                          <ToggleGroupItem
-                            className="model-page__advanced-toggle-item"
-                            value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-                          >
-                            {t('app.toggle.disabled')}
-                          </ToggleGroupItem>
-                          <ToggleGroupItem
-                            className="model-page__advanced-toggle-item"
-                            value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-                          >
-                            {t('app.toggle.enabled')}
-                          </ToggleGroupItem>
-                        </ToggleGroup>
+                        />
                       </div>
                     </div>
                   </CardContent>
@@ -353,42 +318,20 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     <CardDescription>{t('model_page.fields.extra_headers.description')}</CardDescription>
                   </div>
 
-                  <ToggleGroup
-                    type="single"
-                    variant="segmented"
+                  <BooleanSegmentedToggle
+                    aria_label={t('model_page.fields.extra_headers.title')}
+                    value={model.request.extra_headers_custom_enable}
                     className="model-page__advanced-toggle-group"
-                    aria-label={t('model_page.fields.extra_headers.title')}
-                    value={resolve_boolean_toggle_value(model.request.extra_headers_custom_enable)}
+                    item_class_name="model-page__advanced-toggle-item"
                     disabled={props.readonly}
-                    onValueChange={(next_value) => {
-                      if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                        void props.onPatch({
-                          request: {
-                            extra_headers_custom_enable: false,
-                          },
-                        })
-                      } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                        void props.onPatch({
-                          request: {
-                            extra_headers_custom_enable: true,
-                          },
-                        })
-                      }
+                    on_value_change={(next_value) => {
+                      void props.onPatch({
+                        request: {
+                          extra_headers_custom_enable: next_value,
+                        },
+                      })
                     }}
-                  >
-                    <ToggleGroupItem
-                      className="model-page__advanced-toggle-item"
-                      value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-                    >
-                      {t('app.toggle.disabled')}
-                    </ToggleGroupItem>
-                    <ToggleGroupItem
-                      className="model-page__advanced-toggle-item"
-                      value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-                    >
-                      {t('app.toggle.enabled')}
-                    </ToggleGroupItem>
-                  </ToggleGroup>
+                  />
                 </div>
 
                 <div className="model-page__request-editor">
@@ -428,42 +371,20 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     <CardDescription>{t('model_page.fields.extra_body.description')}</CardDescription>
                   </div>
 
-                  <ToggleGroup
-                    type="single"
-                    variant="segmented"
+                  <BooleanSegmentedToggle
+                    aria_label={t('model_page.fields.extra_body.title')}
+                    value={model.request.extra_body_custom_enable}
                     className="model-page__advanced-toggle-group"
-                    aria-label={t('model_page.fields.extra_body.title')}
-                    value={resolve_boolean_toggle_value(model.request.extra_body_custom_enable)}
+                    item_class_name="model-page__advanced-toggle-item"
                     disabled={props.readonly}
-                    onValueChange={(next_value) => {
-                      if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                        void props.onPatch({
-                          request: {
-                            extra_body_custom_enable: false,
-                          },
-                        })
-                      } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                        void props.onPatch({
-                          request: {
-                            extra_body_custom_enable: true,
-                          },
-                        })
-                      }
+                    on_value_change={(next_value) => {
+                      void props.onPatch({
+                        request: {
+                          extra_body_custom_enable: next_value,
+                        },
+                      })
                     }}
-                  >
-                    <ToggleGroupItem
-                      className="model-page__advanced-toggle-item"
-                      value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-                    >
-                      {t('app.toggle.disabled')}
-                    </ToggleGroupItem>
-                    <ToggleGroupItem
-                      className="model-page__advanced-toggle-item"
-                      value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-                    >
-                      {t('app.toggle.enabled')}
-                    </ToggleGroupItem>
-                  </ToggleGroup>
+                  />
                 </div>
 
                 <div className="model-page__request-editor">

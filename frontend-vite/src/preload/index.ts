@@ -1,6 +1,8 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import {
   IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
+  IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
+  IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
@@ -64,5 +66,11 @@ contextBridge.exposeInMainWorld('desktopApp', {
   },
   async pickFixedProjectDirectory(default_path?: string): Promise<DesktopPathPickResult> {
     return ipcRenderer.invoke(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, default_path)
+  },
+  async pickGlossaryImportFilePath(): Promise<DesktopPathPickResult> {
+    return ipcRenderer.invoke(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH)
+  },
+  async pickGlossaryExportPath(default_name: string): Promise<DesktopPathPickResult> {
+    return ipcRenderer.invoke(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, default_name)
   },
 })

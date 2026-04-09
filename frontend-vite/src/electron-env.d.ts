@@ -28,6 +28,8 @@ declare global {
       pickProjectSavePath: (default_name: string) => Promise<DesktopPathPickResult>
       pickWorkbenchFilePath: () => Promise<DesktopPathPickResult>
       pickFixedProjectDirectory: (default_path?: string) => Promise<DesktopPathPickResult>
+      pickGlossaryImportFilePath: () => Promise<DesktopPathPickResult>
+      pickGlossaryExportPath: (default_name: string) => Promise<DesktopPathPickResult>
     }
   }
 }

@@ -52,6 +52,7 @@ export const zh_cn_debug_panel_page = {
     toast_label: '进度通知状态',
     title_key_label: '标题键',
     summary_key_label: '摘要键',
+    proofreading_lookup_intent_label: '校对查询意图',
     sidebar_expanded: '导航宽度 256px',
     sidebar_collapsed: '导航宽度 72px',
     toast_idle: '当前没有挂载中的进度通知。',

@@ -6,3 +6,5 @@ export const IPC_CHANNEL_PICK_PROJECT_FILE_PATH = 'dialog:pick-project-file-path
 export const IPC_CHANNEL_PICK_PROJECT_SAVE_PATH = 'dialog:pick-project-save-path'
 export const IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH = 'dialog:pick-workbench-file-path'
 export const IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY = 'dialog:pick-fixed-project-directory'
+export const IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH = 'dialog:pick-glossary-import-file-path'
+export const IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH = 'dialog:pick-glossary-export-path'

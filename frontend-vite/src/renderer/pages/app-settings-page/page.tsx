@@ -17,23 +17,15 @@ import {
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/alert'
 import { Button } from '@/ui/button'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
-import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
+import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
 
 type AppSettingsPageProps = {
   is_sidebar_collapsed: boolean
 }
 
-const EXPERT_MODE_TOGGLE_VALUE = {
-  DISABLED: 'disabled',
-  ENABLED: 'enabled',
-} as const
-
 export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
   const { t } = useI18n()
   const app_settings_state = useAppSettingsState()
-  const expert_mode_toggle_value = app_settings_state.snapshot.expert_mode
-    ? EXPERT_MODE_TOGGLE_VALUE.ENABLED
-    : EXPERT_MODE_TOGGLE_VALUE.DISABLED
 
   return (
     <>
@@ -75,34 +67,16 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
             title={t('app_settings_page.fields.expert_mode.title')}
             description={t('app_settings_page.fields.expert_mode.description')}
             action={(
-              <ToggleGroup
-                type="single"
-                variant="segmented"
+              <BooleanSegmentedToggle
+                aria_label={t('app_settings_page.fields.expert_mode.title')}
+                value={app_settings_state.snapshot.expert_mode}
                 className="app-settings-page__toggle-group"
-                aria-label={t('app_settings_page.fields.expert_mode.title')}
-                value={expert_mode_toggle_value}
+                item_class_name="app-settings-page__toggle-item"
                 disabled={app_settings_state.pending_state.expert_mode}
-                onValueChange={(next_value) => {
-                  if (next_value === EXPERT_MODE_TOGGLE_VALUE.DISABLED) {
-                    void app_settings_state.update_expert_mode(false)
-                  } else if (next_value === EXPERT_MODE_TOGGLE_VALUE.ENABLED) {
-                    void app_settings_state.update_expert_mode(true)
-                  }
+                on_value_change={(next_value) => {
+                  void app_settings_state.update_expert_mode(next_value)
                 }}
-              >
-                <ToggleGroupItem
-                  className="app-settings-page__toggle-item"
-                  value={EXPERT_MODE_TOGGLE_VALUE.DISABLED}
-                >
-                  {t('app.toggle.disabled')}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  className="app-settings-page__toggle-item"
-                  value={EXPERT_MODE_TOGGLE_VALUE.ENABLED}
-                >
-                  {t('app.toggle.enabled')}
-                </ToggleGroupItem>
-              </ToggleGroup>
+              />
             )}
           />
         </section>
