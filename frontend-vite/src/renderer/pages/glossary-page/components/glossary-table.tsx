@@ -55,6 +55,8 @@ import {
 } from '@/ui/table'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
+const GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT = 37
+
 type GlossaryTableProps = {
   entries: GlossaryEntry[]
   selected_entry_ids: GlossaryEntryId[]
@@ -89,6 +91,7 @@ type SelectionBoxState = {
 type GlossarySortableRowProps = {
   entry: GlossaryEntry
   entry_id: GlossaryEntryId
+  row_index: number
   active: boolean
   selected: boolean
   matched_count: number
@@ -107,6 +110,16 @@ type GlossarySortableRowProps = {
   should_ignore_click: () => boolean
 }
 
+type GlossaryTableSpacerRowProps = {
+  col_span: number
+  height: number
+}
+
+type GlossaryTablePlaceholderRowProps = {
+  row_index: number
+  height: number
+}
+
 function render_table_colgroup(): JSX.Element {
   return (
     <colgroup>
@@ -118,6 +131,10 @@ function render_table_colgroup(): JSX.Element {
       <col className="glossary-page__table-col glossary-page__table-col--status" />
     </colgroup>
   )
+}
+
+function resolve_glossary_table_row_zebra(row_index: number): 'odd' | 'even' {
+  return Math.abs(row_index) % 2 === 1 ? 'even' : 'odd'
 }
 
 function normalize_selection_box_style(
@@ -168,6 +185,42 @@ function intersects_selection_box(
   )
 }
 
+function build_glossary_table_placeholder_fill(
+  fill_height: number,
+  row_height: number,
+): {
+  placeholder_row_heights: number[]
+  residual_spacer_height: number
+} {
+  const normalized_fill_height = Number.isFinite(fill_height) && fill_height > 0
+    ? fill_height
+    : 0
+  const normalized_row_height = Number.isFinite(row_height) && row_height > 0
+    ? row_height
+    : 0
+
+  if (normalized_fill_height === 0 || normalized_row_height === 0) {
+    return {
+      placeholder_row_heights: [],
+      residual_spacer_height: normalized_fill_height,
+    }
+  }
+
+  const placeholder_row_count = Math.floor(
+    normalized_fill_height / normalized_row_height,
+  )
+  const residual_spacer_height = normalized_fill_height
+    - (placeholder_row_count * normalized_row_height)
+
+  return {
+    placeholder_row_heights: Array.from(
+      { length: placeholder_row_count },
+      () => normalized_row_height,
+    ),
+    residual_spacer_height,
+  }
+}
+
 function GlossarySortableRow(props: GlossarySortableRowProps): JSX.Element {
   const {
     attributes,
@@ -199,6 +252,8 @@ function GlossarySortableRow(props: GlossarySortableRowProps): JSX.Element {
         <TableRow
           ref={set_row_element}
           data-active={props.active ? 'true' : undefined}
+          data-row-index={props.row_index}
+          data-zebra={resolve_glossary_table_row_zebra(props.row_index)}
           data-state={props.selected ? 'selected' : undefined}
           data-dragging={isDragging ? 'true' : undefined}
           className="glossary-page__table-row"
@@ -279,14 +334,102 @@ function GlossarySortableRow(props: GlossarySortableRowProps): JSX.Element {
   )
 }
 
+function GlossaryTableSpacerRow(props: GlossaryTableSpacerRowProps): JSX.Element {
+  return (
+    <TableRow
+      aria-hidden="true"
+      className="glossary-page__table-row glossary-page__table-spacer-row"
+    >
+      <TableCell
+        colSpan={props.col_span}
+        className="glossary-page__table-spacer-cell"
+      >
+        <div
+          className="glossary-page__table-spacer-fill"
+          style={{ height: props.height }}
+        />
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function GlossaryTablePlaceholderRow(
+  props: GlossaryTablePlaceholderRowProps,
+): JSX.Element {
+  const placeholder_style: CSSProperties = {
+    height: props.height,
+  }
+
+  return (
+    <TableRow
+      aria-hidden="true"
+      data-row-index={props.row_index}
+      data-zebra={resolve_glossary_table_row_zebra(props.row_index)}
+      className="glossary-page__table-row glossary-page__table-placeholder-row"
+      style={placeholder_style}
+    >
+      <TableCell className="glossary-page__table-drag-cell glossary-page__table-placeholder-cell">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled
+          tabIndex={-1}
+          aria-hidden="true"
+          className="glossary-page__drag-handle glossary-page__table-placeholder-affordance"
+        >
+          <GripVertical />
+        </Button>
+      </TableCell>
+      <TableCell className="glossary-page__table-source-cell glossary-page__table-placeholder-cell">
+        <span
+          className="glossary-page__table-text glossary-page__table-placeholder-content"
+          data-ui-text="emphasis"
+        >
+          {'\u00A0'}
+        </span>
+      </TableCell>
+      <TableCell className="glossary-page__table-translation-cell glossary-page__table-placeholder-cell">
+        <span className="glossary-page__table-placeholder-content">
+          {'\u00A0'}
+        </span>
+      </TableCell>
+      <TableCell className="glossary-page__table-description-cell glossary-page__table-placeholder-cell">
+        <span className="glossary-page__table-placeholder-content">
+          {'\u00A0'}
+        </span>
+      </TableCell>
+      <TableCell className="glossary-page__table-rule-cell glossary-page__table-placeholder-cell">
+        <span className="glossary-page__table-placeholder-content">
+          {'\u00A0'}
+        </span>
+      </TableCell>
+      <TableCell className="glossary-page__table-status-cell glossary-page__table-placeholder-cell">
+        <span className="glossary-page__table-placeholder-content">
+          {'\u00A0'}
+        </span>
+      </TableCell>
+    </TableRow>
+  )
+}
+
 export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const { t } = useI18n()
   const table_scroll_host_ref = useRef<HTMLDivElement | null>(null)
+  const table_body_ref = useRef<HTMLTableSectionElement | null>(null)
   const row_elements_ref = useRef(new Map<GlossaryEntryId, HTMLTableRowElement>())
   const selection_box_ref = useRef<SelectionBoxState | null>(null)
   const selection_box_ids_ref = useRef<GlossaryEntryId[]>([])
   const suppress_click_ref = useRef(false)
+  const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null)
+  const [viewport_height, set_viewport_height] = useState(
+    GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
+  )
+  const [measured_row_height, set_measured_row_height] = useState(
+    GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
+  )
   const [active_drag_entry_id, set_active_drag_entry_id] = useState<GlossaryEntryId | null>(null)
+  const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null)
   const [selection_box_visual, set_selection_box_visual] = useState<SelectionBoxState | null>(null)
   const selected_entry_id_set = useMemo(() => {
     return new Set(props.selected_entry_ids)
@@ -313,6 +456,55 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     table_scroll_host_ref.current,
     selection_box_visual,
   )
+  const viewport_fill_height = Math.max(
+    0,
+    viewport_height - (props.entries.length * measured_row_height),
+  )
+  const placeholder_fill = build_glossary_table_placeholder_fill(
+    viewport_fill_height,
+    measured_row_height,
+  )
+  const show_bottom_spacer = placeholder_fill.residual_spacer_height > 0.5
+
+  useEffect(() => {
+    const table_scroll_host_element = table_scroll_host_ref.current
+    if (table_scroll_host_element === null) {
+      set_viewport_element(null)
+      return
+    }
+
+    const next_viewport_element = table_scroll_host_element.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    set_viewport_element(next_viewport_element)
+  }, [props.entries.length])
+
+  useEffect(() => {
+    if (viewport_element === null) {
+      set_viewport_height(GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT)
+      return
+    }
+
+    const update_viewport_height = (): void => {
+      set_viewport_height(
+        Math.max(
+          viewport_element.clientHeight,
+          GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
+        ),
+      )
+    }
+
+    update_viewport_height()
+
+    const resize_observer = new ResizeObserver(() => {
+      update_viewport_height()
+    })
+    resize_observer.observe(viewport_element)
+
+    return () => {
+      resize_observer.disconnect()
+    }
+  }, [viewport_element])
 
   const clear_selection_refs = useCallback((): void => {
     selection_box_ref.current = null
@@ -422,7 +614,11 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     }
 
     row_elements_ref.current.set(entry_id, row_element)
-  }, [])
+    const next_row_height = Math.round(row_element.getBoundingClientRect().height)
+    if (next_row_height > 0 && next_row_height !== measured_row_height) {
+      set_measured_row_height(next_row_height)
+    }
+  }, [measured_row_height])
 
   const should_ignore_click = useCallback((): boolean => {
     return suppress_click_ref.current
@@ -458,14 +654,31 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
 
   function handle_drag_start(event: DragStartEvent): void {
     set_active_drag_entry_id(String(event.active.id))
+    const table_body_element = table_body_ref.current
+    if (table_body_element === null) {
+      set_drag_overlay_width(null)
+      return
+    }
+
+    const table_container_element = table_body_element.closest(
+      '[data-slot="table-container"]',
+    )
+    if (table_container_element instanceof HTMLElement) {
+      set_drag_overlay_width(table_container_element.getBoundingClientRect().width)
+      return
+    }
+
+    set_drag_overlay_width(null)
   }
 
   function handle_drag_cancel(): void {
     set_active_drag_entry_id(null)
+    set_drag_overlay_width(null)
   }
 
   function handle_drag_end(event: DragEndEvent): void {
     set_active_drag_entry_id(null)
+    set_drag_overlay_width(null)
 
     if (event.over === null || event.active.id === event.over.id) {
       return
@@ -534,7 +747,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         >
           <Table className="glossary-page__table glossary-page__table--body">
             {render_table_colgroup()}
-            <TableBody>
+            <TableBody ref={table_body_ref}>
               <SortableContext
                 items={entry_ids}
                 strategy={verticalListSortingStrategy}
@@ -547,6 +760,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                       key={entry_id}
                       entry={entry}
                       entry_id={entry_id}
+                      row_index={index}
                       active={props.active_entry_id === entry_id}
                       selected={selected_entry_id_set.has(entry_id)}
                       matched_count={props.statistics_state.matched_count_by_entry_id[entry_id] ?? 0}
@@ -560,6 +774,23 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                     />
                   )
                 })}
+                {placeholder_fill.placeholder_row_heights.map(
+                  (placeholder_height, placeholder_index) => (
+                    <GlossaryTablePlaceholderRow
+                      key={`glossary-placeholder-row-${placeholder_index}`}
+                      row_index={props.entries.length + placeholder_index}
+                      height={placeholder_height}
+                    />
+                  ),
+                )}
+                {show_bottom_spacer
+                  ? (
+                      <GlossaryTableSpacerRow
+                        col_span={6}
+                        height={placeholder_fill.residual_spacer_height}
+                      />
+                    )
+                  : null}
               </SortableContext>
             </TableBody>
           </Table>
@@ -568,11 +799,19 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
               ? null
               : (
                   <div className="glossary-page__table-drag-overlay">
-                    <Table className="glossary-page__table glossary-page__table--overlay">
+                    <Table
+                      className="glossary-page__table glossary-page__table--overlay"
+                      style={drag_overlay_width === null ? undefined : { width: drag_overlay_width }}
+                    >
                       {render_table_colgroup()}
                       <TableBody>
                         <TableRow
+                          data-row-index={entry_index_by_id.get(active_drag_entry_id ?? '') ?? 0}
+                          data-zebra={resolve_glossary_table_row_zebra(
+                            entry_index_by_id.get(active_drag_entry_id ?? '') ?? 0,
+                          )}
                           data-state="selected"
+                          data-dragging="true"
                           className="glossary-page__table-row"
                         >
                           <TableCell className="glossary-page__table-drag-cell">

@@ -99,6 +99,7 @@
   --glossary-table-header-border: color-mix(in srgb, var(--ui-card-default-border) 82%, var(--border) 18%);
   --glossary-table-header-divider: color-mix(in srgb, var(--ui-table-divider) 86%, var(--border) 14%);
   --glossary-table-column-divider: color-mix(in srgb, var(--ui-table-divider-soft) 74%, transparent);
+  --glossary-table-zebra: color-mix(in srgb, var(--accent) 30%, transparent);
   --glossary-table-hover: color-mix(in srgb, var(--ui-table-hover) 92%, var(--accent) 8%);
   --glossary-table-selected: color-mix(in srgb, var(--ui-table-selected) 94%, var(--accent) 6%);
   --glossary-table-selection-rail: color-mix(in srgb, var(--primary) 70%, white 30%);
@@ -110,6 +111,7 @@
   --glossary-table-header-border: color-mix(in srgb, var(--ui-card-default-border) 86%, white 14%);
   --glossary-table-header-divider: color-mix(in srgb, var(--ui-table-divider) 78%, white 2%);
   --glossary-table-column-divider: color-mix(in srgb, var(--ui-table-divider-soft) 88%, white 4%);
+  --glossary-table-zebra: color-mix(in srgb, white 5%, transparent);
   --glossary-table-hover: color-mix(in srgb, var(--ui-table-hover) 88%, white 12%);
   --glossary-table-selected: color-mix(in srgb, var(--ui-table-selected) 82%, white 18%);
   --glossary-table-selection-rail: color-mix(in srgb, var(--primary) 76%, white 24%);
@@ -171,6 +173,9 @@
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+  --table-header-bg-current: var(--glossary-table-header-bg);
+  --table-hover-current: var(--glossary-table-hover);
+  --table-selected-current: var(--glossary-table-selected);
 }
 
 .glossary-page__table [data-slot='table-container'] {
@@ -257,6 +262,43 @@
   position: relative;
 }
 
+.glossary-page__table-spacer-row {
+  height: 0;
+  border-bottom: 0;
+  pointer-events: none;
+}
+
+.glossary-page__table-placeholder-row {
+  pointer-events: none;
+  user-select: none;
+}
+
+.glossary-page__table-spacer-cell {
+  height: 0;
+  padding: 0;
+  padding-inline: 0;
+  border-bottom: 0;
+  background: transparent;
+  font-size: 0;
+  line-height: 0;
+  vertical-align: top;
+  color: transparent;
+}
+
+.glossary-page__table-spacer-fill {
+  display: block;
+  width: 100%;
+}
+
+.glossary-page__table-placeholder-cell {
+  color: transparent;
+}
+
+.glossary-page__table-placeholder-content,
+.glossary-page__table-placeholder-affordance {
+  visibility: hidden;
+}
+
 .glossary-page__table-text {
   display: block;
   overflow: hidden;
@@ -264,13 +306,17 @@
   white-space: nowrap;
 }
 
+.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-zebra='even'] > [data-slot='table-cell'] {
+  background: var(--glossary-table-zebra);
+}
+
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row:hover > [data-slot='table-cell'] {
-  background: var(--glossary-table-hover);
+  background: var(--table-hover-current);
 }
 
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] > [data-slot='table-cell'],
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] > [data-slot='table-cell'] {
-  background: var(--glossary-table-selected);
+  background: var(--table-selected-current);
 }
 
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row > .glossary-page__table-drag-cell::before {
@@ -303,8 +349,20 @@
   cursor: grab;
 }
 
+.glossary-page__drag-handle[data-slot='button'] {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+
 .glossary-page__drag-handle:active {
   cursor: grabbing;
+}
+
+.glossary-page__drag-handle:disabled {
+  cursor: default;
 }
 
 .glossary-page__selection-box {
@@ -319,6 +377,11 @@
   overflow: hidden;
   border-radius: var(--ui-radius-card);
   box-shadow: var(--ui-card-default-shadow);
+}
+
+.glossary-page__table--overlay {
+  --table-hover-current: var(--glossary-table-selected);
+  --table-selected-current: var(--glossary-table-selected);
 }
 
 .glossary-page__empty-wrap {
