@@ -11,7 +11,6 @@ import {
   ContextMenuContent,
   ContextMenuGroup,
   ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
@@ -39,22 +38,10 @@ export function GlossaryContextMenuContent(
           <PencilLine />
           {t('glossary_page.action.edit')}
         </ContextMenuItem>
-        <ContextMenuItem
-          variant="destructive"
-          onSelect={() => {
-            void props.on_delete_selected()
-          }}
-        >
-          <Trash2 />
-          {t('glossary_page.action.delete')}
-        </ContextMenuItem>
-      </ContextMenuGroup>
-      <ContextMenuSeparator />
-      <ContextMenuGroup>
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <CaseSensitive />
-            {t('glossary_page.fields.rule')}
+            {t('glossary_page.rule.case_sensitive')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent>
             <ContextMenuGroup>
@@ -77,6 +64,15 @@ export function GlossaryContextMenuContent(
             </ContextMenuGroup>
           </ContextMenuSubContent>
         </ContextMenuSub>
+        <ContextMenuItem
+          variant="destructive"
+          onSelect={() => {
+            void props.on_delete_selected()
+          }}
+        >
+          <Trash2 />
+          {t('glossary_page.action.delete')}
+        </ContextMenuItem>
       </ContextMenuGroup>
     </ContextMenuContent>
   )

@@ -52,26 +52,28 @@ export function GlossaryCommandBar(
             {t('glossary_page.action.create')}
           </Button>
           <ActionBarSeparator />
-          <Button
-            variant="ghost"
-            size="toolbar"
-            onClick={() => {
-              void props.on_import()
-            }}
-          >
-            <FileDown data-icon="inline-start" />
-            {t('glossary_page.action.import')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="toolbar"
-            onClick={() => {
-              void props.on_export()
-            }}
-          >
-            <FileUp data-icon="inline-start" />
-            {t('glossary_page.action.export')}
-          </Button>
+          <div className="glossary-page__command-pair">
+            <Button
+              variant="ghost"
+              size="toolbar"
+              onClick={() => {
+                void props.on_import()
+              }}
+            >
+              <FileDown data-icon="inline-start" />
+              {t('glossary_page.action.import')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="toolbar"
+              onClick={() => {
+                void props.on_export()
+              }}
+            >
+              <FileUp data-icon="inline-start" />
+              {t('glossary_page.action.export')}
+            </Button>
+          </div>
           <ActionBarSeparator />
           <Button
             variant="ghost"

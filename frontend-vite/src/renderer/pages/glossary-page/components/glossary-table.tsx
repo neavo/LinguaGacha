@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CSS } from '@dnd-kit/utilities'
-import { Files, GripVertical } from 'lucide-react'
+import { CaseSensitive, Files, GripVertical } from 'lucide-react'
 import {
   memo,
   useCallback,
@@ -44,7 +44,6 @@ import type {
   GlossaryEntryId,
   GlossaryStatisticsState,
 } from '@/pages/glossary-page/types'
-import { Button } from '@/ui/button'
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -203,6 +202,19 @@ function intersects_selection_box(
   )
 }
 
+function should_ignore_box_selection_target(
+  target_element: HTMLElement,
+): boolean {
+  return target_element.closest(
+    [
+      '[data-glossary-ignore-box-select="true"]',
+      '[data-slot="scroll-area-scrollbar"]',
+      '[data-slot="scroll-area-thumb"]',
+      '[data-slot="scroll-area-corner"]',
+    ].join(', '),
+  ) !== null
+}
+
 
 type GlossaryRuleBadgeProps = {
   enabled: boolean
@@ -217,7 +229,7 @@ function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
         data-glossary-ignore-box-select="true"
         className="glossary-page__rule-badge"
       >
-        Aa
+        <CaseSensitive aria-hidden="true" />
       </span>
     </span>
   )
@@ -324,26 +336,19 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
           }}
         >
           <TableCell className="glossary-page__table-drag-cell">
-            <div className="glossary-page__row-utility">
+            <div
+              className="glossary-page__row-utility"
+              title={t('glossary_page.fields.drag')}
+              data-glossary-ignore-box-select="true"
+              {...attributes}
+              {...listeners}
+            >
+              <span className="glossary-page__drag-handle" aria-hidden="true">
+                <GripVertical />
+              </span>
               <span className="glossary-page__row-index">
                 {row_number_label}
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="glossary-page__drag-handle"
-                aria-label={t('glossary_page.fields.drag')}
-                title={t('glossary_page.fields.drag')}
-                data-glossary-ignore-box-select="true"
-                onClick={(event) => {
-                  event.stopPropagation()
-                }}
-                {...attributes}
-                {...listeners}
-              >
-                <GripVertical />
-              </Button>
             </div>
           </TableCell>
           <TableCell className="glossary-page__table-source-cell">
@@ -441,21 +446,16 @@ function GlossaryTablePlaceholderRow(
         <div className="glossary-page__row-utility">
           <span
             aria-hidden="true"
+            className="glossary-page__drag-handle glossary-page__table-placeholder-affordance"
+          >
+            <GripVertical />
+          </span>
+          <span
+            aria-hidden="true"
             className="glossary-page__row-index glossary-page__table-placeholder-content"
           >
             {build_glossary_row_number_label(props.row_index)}
           </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled
-            tabIndex={-1}
-            aria-hidden="true"
-            className="glossary-page__drag-handle glossary-page__table-placeholder-affordance"
-          >
-            <GripVertical />
-          </Button>
         </div>
       </TableCell>
       <TableCell className="glossary-page__table-source-cell glossary-page__table-placeholder-cell">
@@ -809,7 +809,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       return
     }
 
-    if (event.target.closest('[data-glossary-ignore-box-select="true"]') !== null) {
+    if (should_ignore_box_selection_target(event.target)) {
       return
     }
 
@@ -884,7 +884,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         <TableHeader className="glossary-page__table-head">
           <TableRow>
             <TableHead className="glossary-page__table-drag-head">
-              {t('glossary_page.fields.index')}
+              {t('glossary_page.fields.drag')}
             </TableHead>
             <TableHead className="glossary-page__table-source-head">
               {t('glossary_page.fields.source')}
@@ -1006,19 +1006,12 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                         >
                           <TableCell className="glossary-page__table-drag-cell">
                             <div className="glossary-page__row-utility">
+                              <span className="glossary-page__drag-handle" aria-hidden="true">
+                                <GripVertical />
+                              </span>
                               <span className="glossary-page__row-index">
                                 {active_drag_row_number}
                               </span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                className="glossary-page__drag-handle"
-                                aria-hidden="true"
-                                disabled
-                              >
-                                <GripVertical />
-                              </Button>
                             </div>
                           </TableCell>
                           <TableCell className="glossary-page__table-source-cell">

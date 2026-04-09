@@ -144,7 +144,8 @@
   --ui-toolbar-button-padding-x: 8px;
   --ui-toolbar-group-gap: 2px;
   --ui-toolbar-separator-height: 20px;
-  --ui-toolbar-separator-gap: -3px;
+  --ui-toolbar-separator-padding-inline: 2px;
+  --ui-toolbar-separator-line-width: 1px;
   --ui-table-head-height: 36px;
   --ui-table-row-height: 39px;
   --ui-table-cell-x: 12px;
@@ -507,10 +508,18 @@ a,
 
   [data-slot='toolbar-separator'] {
     height: var(--ui-toolbar-separator-height);
+    width: calc(var(--ui-toolbar-separator-line-width) + (var(--ui-toolbar-separator-padding-inline) * 2));
     align-self: center !important;
     margin-block: auto;
-    margin-inline: var(--ui-toolbar-separator-gap);
-    opacity: 0.22;
+    margin-inline: 0;
+    background:
+      linear-gradient(
+        to right,
+        transparent 0 var(--ui-toolbar-separator-padding-inline),
+        var(--ui-table-divider-soft) var(--ui-toolbar-separator-padding-inline) calc(var(--ui-toolbar-separator-padding-inline) + var(--ui-toolbar-separator-line-width)),
+        transparent calc(var(--ui-toolbar-separator-padding-inline) + var(--ui-toolbar-separator-line-width)) 100%
+      );
+    opacity: 1;
   }
 
   [data-component='action-bar'] {
