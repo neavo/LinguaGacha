@@ -1,4 +1,4 @@
-export const WORKBENCH_TABLE_ESTIMATED_ROW_HEIGHT = 37
+export const WORKBENCH_TABLE_ESTIMATED_ROW_HEIGHT = 33
 export const WORKBENCH_TABLE_VIRTUAL_OVERSCAN = 8
 
 type BuildWorkbenchTableSpacerHeightsParams = {

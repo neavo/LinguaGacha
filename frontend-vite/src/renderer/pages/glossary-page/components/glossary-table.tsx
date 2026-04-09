@@ -857,7 +857,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         {render_table_colgroup()}
         <TableHeader className="glossary-page__table-head">
           <TableRow>
-            <TableHead className="glossary-page__table-drag-head" />
+            <TableHead className="glossary-page__table-drag-head">
+              {t('glossary_page.fields.drag')}
+            </TableHead>
             <TableHead className="glossary-page__table-source-head">
               {t('glossary_page.fields.source')}
             </TableHead>

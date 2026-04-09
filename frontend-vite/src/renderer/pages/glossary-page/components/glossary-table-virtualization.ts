@@ -1,4 +1,4 @@
-export const GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT = 35
+export const GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT = 33
 export const GLOSSARY_TABLE_VIRTUAL_OVERSCAN = 8
 
 type BuildGlossaryTableSpacerHeightsParams = {

@@ -13,6 +13,7 @@
   --workbench-table-zebra: color-mix(in srgb, var(--accent) 30%, transparent);
   --workbench-table-hover: color-mix(in srgb, var(--ui-table-hover) 90%, var(--accent) 10%);
   --workbench-table-selected: color-mix(in srgb, var(--ui-table-selected) 94%, var(--accent) 6%);
+  --workbench-table-state-inset: 1px;
   --workbench-table-selection-rail: color-mix(in srgb, var(--primary) 70%, white 30%);
 }
 
@@ -142,6 +143,7 @@
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+  --table-row-height-current: 33px;
   --table-header-bg-current: var(--workbench-table-header-bg);
   --table-hover-current: var(--workbench-table-hover);
   --table-selected-current: var(--workbench-table-selected);
@@ -173,6 +175,10 @@
   color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground) 10%);
   text-align: center;
   background: transparent;
+}
+
+.workbench-page__table [data-slot='table-cell'] {
+  padding-block: 0;
 }
 
 .workbench-page__table-head [data-slot='table-row'],
@@ -286,17 +292,33 @@
   visibility: hidden;
 }
 
+.workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row:not(.workbench-page__table-spacer-row) > [data-slot='table-cell'] {
+  --workbench-table-cell-base: transparent;
+  --workbench-table-cell-state: transparent;
+  background:
+    linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent var(--workbench-table-state-inset),
+      var(--workbench-table-cell-state) var(--workbench-table-state-inset),
+      var(--workbench-table-cell-state) calc(100% - var(--workbench-table-state-inset)),
+      transparent calc(100% - var(--workbench-table-state-inset)),
+      transparent 100%
+    ),
+    var(--workbench-table-cell-base);
+}
+
 .workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row[data-zebra='even'] > [data-slot='table-cell'] {
-  background: var(--workbench-table-zebra);
+  --workbench-table-cell-base: var(--workbench-table-zebra);
 }
 
 .workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row:hover > [data-slot='table-cell'] {
-  background: var(--table-hover-current);
+  --workbench-table-cell-state: var(--table-hover-current);
 }
 
 .workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row[data-state='selected'] > [data-slot='table-cell'],
 .workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row[data-dragging='true'] > [data-slot='table-cell'] {
-  background: var(--table-selected-current);
+  --workbench-table-cell-state: var(--table-selected-current);
 }
 
 .workbench-page__table--body [data-slot='table-body'] > .workbench-page__table-row > .workbench-page__table-drag-cell::before {
