@@ -138,6 +138,10 @@ type GlossaryTablePlaceholderRowProps = {
   height: number
 }
 
+function build_glossary_row_number_label(row_index: number): string {
+  return String(row_index + 1)
+}
+
 function render_table_colgroup(): JSX.Element {
   return (
     <colgroup>
@@ -274,6 +278,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     ? undefined
     : props.subset_parent_labels.join('\n')
   const case_tooltip = `${t('glossary_page.rule.case_sensitive')}\n${t(props.entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`
+  const row_number_label = build_glossary_row_number_label(props.row_index)
 
   const set_row_element = (row_element: HTMLTableRowElement | null): void => {
     setNodeRef(row_element)
@@ -319,20 +324,27 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
           }}
         >
           <TableCell className="glossary-page__table-drag-cell">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="glossary-page__drag-handle"
-              data-glossary-ignore-box-select="true"
-              onClick={(event) => {
-                event.stopPropagation()
-              }}
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical />
-            </Button>
+            <div className="glossary-page__row-utility">
+              <span className="glossary-page__row-index">
+                {row_number_label}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="glossary-page__drag-handle"
+                aria-label={t('glossary_page.fields.drag')}
+                title={t('glossary_page.fields.drag')}
+                data-glossary-ignore-box-select="true"
+                onClick={(event) => {
+                  event.stopPropagation()
+                }}
+                {...attributes}
+                {...listeners}
+              >
+                <GripVertical />
+              </Button>
+            </div>
           </TableCell>
           <TableCell className="glossary-page__table-source-cell">
             <span className="glossary-page__table-text">
@@ -426,17 +438,25 @@ function GlossaryTablePlaceholderRow(
       style={placeholder_style}
     >
       <TableCell className="glossary-page__table-drag-cell glossary-page__table-placeholder-cell">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          disabled
-          tabIndex={-1}
-          aria-hidden="true"
-          className="glossary-page__drag-handle glossary-page__table-placeholder-affordance"
-        >
-          <GripVertical />
-        </Button>
+        <div className="glossary-page__row-utility">
+          <span
+            aria-hidden="true"
+            className="glossary-page__row-index glossary-page__table-placeholder-content"
+          >
+            {build_glossary_row_number_label(props.row_index)}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled
+            tabIndex={-1}
+            aria-hidden="true"
+            className="glossary-page__drag-handle glossary-page__table-placeholder-affordance"
+          >
+            <GripVertical />
+          </Button>
+        </div>
       </TableCell>
       <TableCell className="glossary-page__table-source-cell glossary-page__table-placeholder-cell">
         <span
@@ -509,9 +529,15 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const entry_index_by_id = useMemo(() => {
     return new Map(entry_ids.map((entry_id, index) => [entry_id, index]))
   }, [entry_ids])
+  const active_drag_row_index = active_drag_entry_id === null
+    ? null
+    : entry_index_by_id.get(active_drag_entry_id) ?? null
   const active_drag_entry = active_drag_entry_id === null
     ? null
-    : props.entries[entry_index_by_id.get(active_drag_entry_id) ?? -1] ?? null
+    : props.entries[active_drag_row_index ?? -1] ?? null
+  const active_drag_row_number = active_drag_row_index === null
+    ? null
+    : build_glossary_row_number_label(active_drag_row_index)
   const selection_box_style = normalize_selection_box_style(
     table_scroll_host_ref.current,
     selection_box_visual,
@@ -858,7 +884,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         <TableHeader className="glossary-page__table-head">
           <TableRow>
             <TableHead className="glossary-page__table-drag-head">
-              {t('glossary_page.fields.drag')}
+              {t('glossary_page.fields.index')}
             </TableHead>
             <TableHead className="glossary-page__table-source-head">
               {t('glossary_page.fields.source')}
@@ -970,24 +996,30 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                       {render_table_colgroup()}
                       <TableBody>
                         <TableRow
-                          data-row-index={entry_index_by_id.get(active_drag_entry_id ?? '') ?? 0}
+                          data-row-index={active_drag_row_index ?? 0}
                           data-zebra={resolve_glossary_table_row_zebra(
-                            entry_index_by_id.get(active_drag_entry_id ?? '') ?? 0,
+                            active_drag_row_index ?? 0,
                           )}
                           data-state="selected"
                           data-dragging="true"
                           className="glossary-page__table-row"
                         >
                           <TableCell className="glossary-page__table-drag-cell">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              className="glossary-page__drag-handle"
-                              disabled
-                            >
-                              <GripVertical />
-                            </Button>
+                            <div className="glossary-page__row-utility">
+                              <span className="glossary-page__row-index">
+                                {active_drag_row_number}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="glossary-page__drag-handle"
+                                aria-hidden="true"
+                                disabled
+                              >
+                                <GripVertical />
+                              </Button>
+                            </div>
                           </TableCell>
                           <TableCell className="glossary-page__table-source-cell">
                             <span className="glossary-page__table-text">

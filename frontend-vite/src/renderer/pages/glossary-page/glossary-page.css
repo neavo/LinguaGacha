@@ -222,7 +222,7 @@
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
-  --table-row-height-current: 33px;
+  --table-row-height-current: 36px;
   --table-header-bg-current: var(--glossary-table-header-bg);
   --table-hover-current: var(--glossary-table-hover);
   --table-selected-current: var(--glossary-table-selected);
@@ -233,7 +233,7 @@
 }
 
 .glossary-page__table-col--drag {
-  width: 48px;
+  width: 64px;
 }
 
 .glossary-page__table-col--rule {
@@ -362,6 +362,23 @@
   white-space: nowrap;
 }
 
+.glossary-page__row-utility {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.glossary-page__row-index {
+  min-width: 3ch;
+  font-size: 11px;
+  line-height: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--foreground) 62%, var(--muted-foreground) 38%);
+  transition: color 180ms ease;
+}
+
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row:not(.glossary-page__table-spacer-row) > [data-slot='table-cell'] {
   --glossary-table-cell-base: transparent;
   --glossary-table-cell-state: transparent;
@@ -389,6 +406,12 @@
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] > [data-slot='table-cell'],
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] > [data-slot='table-cell'] {
   --glossary-table-cell-state: var(--table-selected-current);
+}
+
+.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row:hover .glossary-page__row-index,
+.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] .glossary-page__row-index,
+.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] .glossary-page__row-index {
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground) 22%);
 }
 
 .glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row > .glossary-page__table-drag-cell::before {
@@ -419,14 +442,30 @@
   color: var(--muted-foreground);
   border-radius: 999px;
   cursor: grab;
+  opacity: 0.4;
+  transition:
+    color 180ms ease,
+    opacity 180ms ease;
 }
 
 .glossary-page__drag-handle[data-slot='button'] {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  min-height: 24px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
   padding: 0;
+}
+
+.glossary-page__drag-handle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row:hover .glossary-page__drag-handle,
+.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] .glossary-page__drag-handle,
+.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] .glossary-page__drag-handle {
+  color: color-mix(in srgb, var(--foreground) 84%, var(--muted-foreground) 16%);
+  opacity: 0.88;
 }
 
 .glossary-page__drag-handle:active {
@@ -444,17 +483,16 @@
 }
 
 .glossary-page__rule-badge {
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
   border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
   border-radius: 999px;
   background: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
   color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
-  font-size: 12px;
-  line-height: 1;
+  font-size: 10px;
   transition:
     background-color 180ms ease,
     border-color 180ms ease,
