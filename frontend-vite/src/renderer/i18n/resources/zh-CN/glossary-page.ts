@@ -24,10 +24,13 @@ export const zh_cn_glossary_page = {
     status: '状态',
   },
   search: {
+    regex: '正则',
     placeholder: '搜索术语表 …',
+    execute: '定位匹配项',
     previous: '上一个',
     next: '下一个',
     empty: '没有找到匹配项',
+    invalid: '正则表达式无效',
   },
   empty: {
     title: '术语表为空',

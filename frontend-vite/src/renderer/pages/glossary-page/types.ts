@@ -21,8 +21,10 @@ export type GlossaryDialogState = {
 
 export type GlossarySearchState = {
   keyword: string
+  is_regex: boolean
   matched_entry_ids: GlossaryEntryId[]
   current_match_index: number
+  invalid_regex_message: string | null
 }
 
 export type GlossaryStatisticsState = {

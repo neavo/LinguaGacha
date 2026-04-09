@@ -18,24 +18,71 @@
   padding: 12px;
 }
 
+.glossary-page__search-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .glossary-page__search-bar {
   display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.glossary-page__search-toggle {
+  min-width: 64px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.glossary-page__search-input-group {
+  flex: 1;
+}
+
+.glossary-page__search-input {
+  min-width: 0;
+}
+
+.glossary-page__search-submit {
+  color: var(--muted-foreground);
+}
+
+.glossary-page__search-submit:hover {
+  color: var(--foreground);
+}
+
+.glossary-page__search-nav {
+  display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
 }
 
-.glossary-page__search-icon {
-  color: var(--muted-foreground);
-}
-
-.glossary-page__search-input {
-  flex: 1;
-}
-
 .glossary-page__search-status {
-  min-width: 96px;
+  margin: 0;
+  padding-inline: 4px;
   font-size: 12px;
   color: var(--muted-foreground);
+}
+
+.glossary-page__search-status[data-state='invalid'] {
+  color: var(--destructive);
+}
+
+@media (max-width: 1200px) {
+  .glossary-page__search-bar {
+    flex-wrap: wrap;
+  }
+
+  .glossary-page__search-input-group {
+    min-width: min(100%, 420px);
+  }
+
+  .glossary-page__search-nav {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .glossary-page__table-host {

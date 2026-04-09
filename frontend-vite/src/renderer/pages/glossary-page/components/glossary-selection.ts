@@ -34,6 +34,23 @@ export function collect_range_selection(
   return ordered_entry_ids.slice(start_index, end_index + 1)
 }
 
+export function are_glossary_entry_ids_equal(
+  left_entry_ids: GlossaryEntryId[],
+  right_entry_ids: GlossaryEntryId[],
+): boolean {
+  if (left_entry_ids === right_entry_ids) {
+    return true
+  }
+
+  if (left_entry_ids.length !== right_entry_ids.length) {
+    return false
+  }
+
+  return left_entry_ids.every((entry_id, index) => {
+    return entry_id === right_entry_ids[index]
+  })
+}
+
 export function reorder_selected_group(
   entries: GlossaryEntry[],
   ordered_entry_ids: GlossaryEntryId[],

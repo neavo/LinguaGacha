@@ -5,6 +5,7 @@ import { useAppNavigation } from '@/app/navigation/navigation-context'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
 import {
+  are_glossary_entry_ids_equal,
   build_glossary_entry_id,
   collect_range_selection,
   reorder_selected_group,
@@ -63,29 +64,68 @@ function clone_entry(entry: GlossaryEntry): GlossaryEntry {
 
 function build_search_state(
   keyword: string,
+  is_regex: boolean,
   entries: GlossaryEntry[],
   current_match_index: number,
 ): GlossarySearchState {
-  const normalized_keyword = keyword.trim().toLowerCase()
-  const matched_entry_ids = normalized_keyword === ''
-    ? []
-    : entries.flatMap((entry, index) => {
-        const haystack = [entry.src, entry.dst, entry.info].join('\n').toLowerCase()
-        return haystack.includes(normalized_keyword)
-          ? [build_glossary_entry_id(entry, index)]
-          : []
-      })
+  const normalized_keyword = keyword.trim()
+
+  if (normalized_keyword === '') {
+    return {
+      keyword,
+      is_regex,
+      matched_entry_ids: [],
+      current_match_index: -1,
+      invalid_regex_message: null,
+    }
+  }
+
+  let invalid_regex_message: string | null = null
+  let is_match = (text: string): boolean => {
+    return text.toLowerCase().includes(normalized_keyword.toLowerCase())
+  }
+
+  if (is_regex) {
+    try {
+      const pattern = new RegExp(keyword, 'i')
+      is_match = (text: string): boolean => {
+        return pattern.test(text)
+      }
+    } catch (error) {
+      invalid_regex_message = error instanceof Error
+        ? error.message
+        : 'Invalid regular expression'
+    }
+  }
+
+  if (invalid_regex_message !== null) {
+    return {
+      keyword,
+      is_regex,
+      matched_entry_ids: [],
+      current_match_index: -1,
+      invalid_regex_message,
+    }
+  }
+
+  const matched_entry_ids = entries.flatMap((entry, index) => {
+    const haystack = [entry.src, entry.dst, entry.info].join('\n')
+    return is_match(haystack)
+      ? [build_glossary_entry_id(entry, index)]
+      : []
+  })
   const normalized_match_index = matched_entry_ids.length === 0
     ? -1
-    : Math.min(
-        Math.max(current_match_index, 0),
-        matched_entry_ids.length - 1,
-      )
+    : current_match_index < 0
+      ? -1
+      : Math.min(current_match_index, matched_entry_ids.length - 1)
 
   return {
     keyword,
+    is_regex,
     matched_entry_ids,
     current_match_index: normalized_match_index,
+    invalid_regex_message,
   }
 }
 
@@ -130,6 +170,7 @@ type UseGlossaryPageStateResult = {
   statistics_state: GlossaryStatisticsState
   dialog_state: GlossaryDialogState
   update_search_keyword: (next_keyword: string) => void
+  update_search_regex: (next_is_regex: boolean) => void
   focus_previous_match: () => void
   focus_next_match: () => void
   update_enabled: (next_enabled: boolean) => Promise<void>
@@ -181,8 +222,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const [preset_menu_open, set_preset_menu_open] = useState(false)
   const [search_state, set_search_state] = useState<GlossarySearchState>({
     keyword: '',
+    is_regex: false,
     matched_entry_ids: [],
     current_match_index: -1,
+    invalid_regex_message: null,
   })
   const [statistics_state, set_statistics_state] = useState<GlossaryStatisticsState>(() => {
     return create_empty_statistics_state()
@@ -262,6 +305,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     set_search_state((previous_state) => {
       return build_search_state(
         previous_state.keyword,
+        previous_state.is_regex,
         entries,
         previous_state.current_match_index,
       )
@@ -289,6 +333,18 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     set_search_state((previous_state) => {
       return build_search_state(
         next_keyword,
+        previous_state.is_regex,
+        entries,
+        previous_state.current_match_index,
+      )
+    })
+  }, [entries])
+
+  const update_search_regex = useCallback((next_is_regex: boolean): void => {
+    set_search_state((previous_state) => {
+      return build_search_state(
+        previous_state.keyword,
+        next_is_regex,
         entries,
         previous_state.current_match_index,
       )
@@ -297,11 +353,16 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
   const focus_previous_match = useCallback((): void => {
     set_search_state((previous_state) => {
-      if (previous_state.matched_entry_ids.length === 0) {
+      if (
+        previous_state.invalid_regex_message !== null
+        || previous_state.matched_entry_ids.length === 0
+      ) {
         return previous_state
       }
 
-      const current_match_index = previous_state.current_match_index <= 0
+      const current_match_index = previous_state.current_match_index < 0
+        ? previous_state.matched_entry_ids.length - 1
+        : previous_state.current_match_index <= 0
         ? previous_state.matched_entry_ids.length - 1
         : previous_state.current_match_index - 1
       const next_active_entry_id = previous_state.matched_entry_ids[current_match_index] ?? null
@@ -321,11 +382,16 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
   const focus_next_match = useCallback((): void => {
     set_search_state((previous_state) => {
-      if (previous_state.matched_entry_ids.length === 0) {
+      if (
+        previous_state.invalid_regex_message !== null
+        || previous_state.matched_entry_ids.length === 0
+      ) {
         return previous_state
       }
 
-      const current_match_index = previous_state.current_match_index >= previous_state.matched_entry_ids.length - 1
+      const current_match_index = previous_state.current_match_index < 0
+        ? 0
+        : previous_state.current_match_index >= previous_state.matched_entry_ids.length - 1
         ? 0
         : previous_state.current_match_index + 1
       const next_active_entry_id = previous_state.matched_entry_ids[current_match_index] ?? null
@@ -459,9 +525,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [entry_ids])
 
   const box_select_entries = useCallback((next_entry_ids: GlossaryEntryId[]): void => {
-    set_selected_entry_ids(next_entry_ids)
-    set_active_entry_id(next_entry_ids.at(-1) ?? null)
-    set_selection_anchor_entry_id(next_entry_ids[0] ?? null)
+    set_selected_entry_ids((previous_ids) => {
+      return are_glossary_entry_ids_equal(previous_ids, next_entry_ids)
+        ? previous_ids
+        : next_entry_ids
+    })
   }, [])
 
   const delete_selected_entries = useCallback(async (): Promise<void> => {
@@ -799,6 +867,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       statistics_state,
       dialog_state,
       update_search_keyword,
+      update_search_regex,
       focus_previous_match,
       focus_next_match,
       update_enabled,
@@ -858,5 +927,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     update_dialog_draft,
     update_enabled,
     update_search_keyword,
+    update_search_regex,
   ])
 }

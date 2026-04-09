@@ -62,7 +62,6 @@ export function GlossaryCommandBar(
             <FileDown data-icon="inline-start" />
             {t('glossary_page.action.import')}
           </Button>
-          <ActionBarSeparator />
           <Button
             variant="ghost"
             size="toolbar"

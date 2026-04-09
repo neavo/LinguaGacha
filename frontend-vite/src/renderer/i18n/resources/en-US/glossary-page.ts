@@ -27,10 +27,13 @@ export const en_us_glossary_page = {
     status: 'Status',
   },
   search: {
+    regex: 'Regex',
     placeholder: 'Search glossary …',
+    execute: 'Focus match',
     previous: 'Previous',
     next: 'Next',
     empty: 'No matches found',
+    invalid: 'Invalid regular expression',
   },
   empty: {
     title: 'The glossary is empty',

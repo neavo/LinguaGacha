@@ -16,8 +16,12 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
     >
       <GlossarySearchBar
         keyword={glossary_page_state.search_state.keyword}
+        is_regex={glossary_page_state.search_state.is_regex}
         match_count={glossary_page_state.search_state.matched_entry_ids.length}
+        invalid_regex_message={glossary_page_state.search_state.invalid_regex_message}
         on_keyword_change={glossary_page_state.update_search_keyword}
+        on_regex_change={glossary_page_state.update_search_regex}
+        on_search={glossary_page_state.focus_next_match}
         on_previous_match={glossary_page_state.focus_previous_match}
         on_next_match={glossary_page_state.focus_next_match}
       />

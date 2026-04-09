@@ -16,6 +16,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { Files, GripVertical } from 'lucide-react'
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -25,7 +26,10 @@ import {
 } from 'react'
 
 import { useI18n } from '@/i18n'
-import { build_glossary_entry_id } from '@/pages/glossary-page/components/glossary-selection'
+import {
+  are_glossary_entry_ids_equal,
+  build_glossary_entry_id,
+} from '@/pages/glossary-page/components/glossary-selection'
 import { GlossaryContextMenuContent } from '@/pages/glossary-page/components/glossary-context-menu'
 import type {
   GlossaryEntry,
@@ -56,6 +60,7 @@ import {
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
 const GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT = 37
+const EMPTY_SUBSET_PARENT_LABELS: string[] = []
 
 type GlossaryTableProps = {
   entries: GlossaryEntry[]
@@ -221,7 +226,30 @@ function build_glossary_table_placeholder_fill(
   }
 }
 
-function GlossarySortableRow(props: GlossarySortableRowProps): JSX.Element {
+function are_selection_box_states_equal(
+  left_state: SelectionBoxState | null,
+  right_state: SelectionBoxState | null,
+): boolean {
+  if (left_state === right_state) {
+    return true
+  }
+
+  if (left_state === null || right_state === null) {
+    return false
+  }
+
+  return (
+    left_state.origin_x === right_state.origin_x
+    && left_state.origin_y === right_state.origin_y
+    && left_state.current_x === right_state.current_x
+    && left_state.current_y === right_state.current_y
+    && left_state.moved === right_state.moved
+  )
+}
+
+const GlossarySortableRow = memo(function GlossarySortableRow(
+  props: GlossarySortableRowProps,
+): JSX.Element {
   const {
     attributes,
     isDragging,
@@ -332,7 +360,23 @@ function GlossarySortableRow(props: GlossarySortableRowProps): JSX.Element {
       />
     </ContextMenu>
   )
-}
+}, (previous_props, next_props) => {
+  return (
+    previous_props.entry === next_props.entry
+    && previous_props.entry_id === next_props.entry_id
+    && previous_props.row_index === next_props.row_index
+    && previous_props.active === next_props.active
+    && previous_props.selected === next_props.selected
+    && previous_props.matched_count === next_props.matched_count
+    && previous_props.subset_parent_labels === next_props.subset_parent_labels
+    && previous_props.register_row_element === next_props.register_row_element
+    && previous_props.on_open_edit === next_props.on_open_edit
+    && previous_props.on_select_entry === next_props.on_select_entry
+    && previous_props.on_delete_selected === next_props.on_delete_selected
+    && previous_props.on_toggle_case_sensitive === next_props.on_toggle_case_sensitive
+    && previous_props.should_ignore_click === next_props.should_ignore_click
+  )
+})
 
 function GlossaryTableSpacerRow(props: GlossaryTableSpacerRowProps): JSX.Element {
   return (
@@ -420,6 +464,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const row_elements_ref = useRef(new Map<GlossaryEntryId, HTMLTableRowElement>())
   const selection_box_ref = useRef<SelectionBoxState | null>(null)
   const selection_box_ids_ref = useRef<GlossaryEntryId[]>([])
+  const selection_frame_id_ref = useRef<number | null>(null)
   const suppress_click_ref = useRef(false)
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null)
   const [viewport_height, set_viewport_height] = useState(
@@ -431,6 +476,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const [active_drag_entry_id, set_active_drag_entry_id] = useState<GlossaryEntryId | null>(null)
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null)
   const [selection_box_visual, set_selection_box_visual] = useState<SelectionBoxState | null>(null)
+  const latest_entry_ids_ref = useRef<GlossaryEntryId[]>([])
+  const latest_on_box_select_ref = useRef(props.on_box_select)
+  const latest_on_select_range_ref = useRef(props.on_select_range)
   const selected_entry_id_set = useMemo(() => {
     return new Set(props.selected_entry_ids)
   }, [props.selected_entry_ids])
@@ -465,6 +513,15 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     measured_row_height,
   )
   const show_bottom_spacer = placeholder_fill.residual_spacer_height > 0.5
+
+  useEffect(() => {
+    latest_entry_ids_ref.current = entry_ids
+  }, [entry_ids])
+
+  useEffect(() => {
+    latest_on_box_select_ref.current = props.on_box_select
+    latest_on_select_range_ref.current = props.on_select_range
+  }, [props.on_box_select, props.on_select_range])
 
   useEffect(() => {
     const table_scroll_host_element = table_scroll_host_ref.current
@@ -511,19 +568,72 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     selection_box_ids_ref.current = []
   }, [])
 
+  const cancel_selection_animation_frame = useCallback((): void => {
+    if (selection_frame_id_ref.current === null) {
+      return
+    }
+
+    window.cancelAnimationFrame(selection_frame_id_ref.current)
+    selection_frame_id_ref.current = null
+  }, [])
+
+  const flush_selection_box_update = useCallback((): void => {
+    cancel_selection_animation_frame()
+
+    const current_state = selection_box_ref.current
+    if (current_state === null) {
+      return
+    }
+
+    set_selection_box_visual((previous_state) => {
+      return are_selection_box_states_equal(previous_state, current_state)
+        ? previous_state
+        : current_state
+    })
+
+    if (!current_state.moved) {
+      return
+    }
+
+    suppress_click_ref.current = true
+    const next_entry_ids = latest_entry_ids_ref.current.filter((entry_id) => {
+      const row_element = row_elements_ref.current.get(entry_id)
+      if (row_element === undefined) {
+        return false
+      }
+
+      return intersects_selection_box(row_element, current_state)
+    })
+
+    if (are_glossary_entry_ids_equal(selection_box_ids_ref.current, next_entry_ids)) {
+      return
+    }
+
+    selection_box_ids_ref.current = next_entry_ids
+    latest_on_box_select_ref.current(next_entry_ids)
+  }, [cancel_selection_animation_frame])
+
+  const schedule_selection_box_update = useCallback((): void => {
+    if (selection_frame_id_ref.current !== null) {
+      return
+    }
+
+    selection_frame_id_ref.current = window.requestAnimationFrame(() => {
+      selection_frame_id_ref.current = null
+      flush_selection_box_update()
+    })
+  }, [flush_selection_box_update])
+
   const reset_selection_interaction = useCallback((): void => {
+    cancel_selection_animation_frame()
     clear_selection_refs()
     set_selection_box_visual(null)
     window.setTimeout(() => {
       suppress_click_ref.current = false
     }, 0)
-  }, [clear_selection_refs])
+  }, [cancel_selection_animation_frame, clear_selection_refs])
 
   useEffect(() => {
-    if (selection_box_visual === null) {
-      return
-    }
-
     function handle_pointer_move(event: PointerEvent): void {
       const previous_state = selection_box_ref.current
       if (previous_state === null) {
@@ -541,26 +651,12 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       }
 
       selection_box_ref.current = next_state
-      set_selection_box_visual(next_state)
-
-      if (!moved) {
-        return
-      }
-
-      suppress_click_ref.current = true
-      const next_entry_ids = entry_ids.filter((entry_id) => {
-        const row_element = row_elements_ref.current.get(entry_id)
-        if (row_element === undefined) {
-          return false
-        }
-
-        return intersects_selection_box(row_element, next_state)
-      })
-      selection_box_ids_ref.current = next_entry_ids
-      props.on_box_select(next_entry_ids)
+      schedule_selection_box_update()
     }
 
     function finalize_selection_interaction(): void {
+      flush_selection_box_update()
+
       const current_state = selection_box_ref.current
       const next_entry_ids = selection_box_ids_ref.current
 
@@ -572,7 +668,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         const first_entry_id = next_entry_ids[0]
         const last_entry_id = next_entry_ids.at(-1)
         if (first_entry_id !== undefined && last_entry_id !== undefined) {
-          props.on_select_range(first_entry_id, last_entry_id)
+          latest_on_select_range_ref.current(first_entry_id, last_entry_id)
         }
       }
       reset_selection_interaction()
@@ -591,18 +687,25 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     }
 
     window.addEventListener('pointermove', handle_pointer_move)
-    window.addEventListener('pointerup', handle_pointer_up, { once: true })
-    window.addEventListener('pointercancel', handle_pointer_cancel, { once: true })
-    window.addEventListener('blur', handle_window_blur, { once: true })
+    window.addEventListener('pointerup', handle_pointer_up)
+    window.addEventListener('pointercancel', handle_pointer_cancel)
+    window.addEventListener('blur', handle_window_blur)
 
     return () => {
       window.removeEventListener('pointermove', handle_pointer_move)
       window.removeEventListener('pointerup', handle_pointer_up)
       window.removeEventListener('pointercancel', handle_pointer_cancel)
       window.removeEventListener('blur', handle_window_blur)
+      cancel_selection_animation_frame()
       clear_selection_refs()
     }
-  }, [clear_selection_refs, entry_ids, props, reset_selection_interaction, selection_box_visual])
+  }, [
+    cancel_selection_animation_frame,
+    clear_selection_refs,
+    flush_selection_box_update,
+    reset_selection_interaction,
+    schedule_selection_box_update,
+  ])
 
   const register_row_element = useCallback((
     entry_id: GlossaryEntryId,
@@ -764,7 +867,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                       active={props.active_entry_id === entry_id}
                       selected={selected_entry_id_set.has(entry_id)}
                       matched_count={props.statistics_state.matched_count_by_entry_id[entry_id] ?? 0}
-                      subset_parent_labels={props.statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? []}
+                      subset_parent_labels={props.statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? EMPTY_SUBSET_PARENT_LABELS}
                       register_row_element={register_row_element}
                       on_open_edit={props.on_open_edit}
                       on_select_entry={props.on_select_entry}
