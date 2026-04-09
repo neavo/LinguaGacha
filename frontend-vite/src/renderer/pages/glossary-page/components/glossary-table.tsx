@@ -25,6 +25,7 @@ import {
 } from 'react'
 
 import { useI18n } from '@/i18n'
+import { build_glossary_entry_id } from '@/pages/glossary-page/components/glossary-selection'
 import { GlossaryContextMenuContent } from '@/pages/glossary-page/components/glossary-context-menu'
 import type {
   GlossaryEntry,
@@ -299,7 +300,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   )
   const entry_ids = useMemo<GlossaryEntryId[]>(() => {
     return props.entries.map((entry, index) => {
-      return entry.entry_id ?? `${entry.src.trim()}::${index.toString()}`
+      return build_glossary_entry_id(entry, index)
     })
   }, [props.entries])
   const entry_index_by_id = useMemo(() => {

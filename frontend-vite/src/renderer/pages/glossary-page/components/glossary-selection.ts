@@ -1,5 +1,16 @@
 import type { GlossaryEntry, GlossaryEntryId } from '@/pages/glossary-page/types'
 
+export function build_glossary_entry_id(
+  entry: GlossaryEntry,
+  index: number,
+): GlossaryEntryId {
+  if (typeof entry.entry_id === 'string' && entry.entry_id !== '') {
+    return entry.entry_id
+  }
+
+  return `${entry.src.trim()}::${index.toString()}`
+}
+
 export function collect_range_selection(
   ordered_entry_ids: GlossaryEntryId[],
   anchor_entry_id: GlossaryEntryId | null,

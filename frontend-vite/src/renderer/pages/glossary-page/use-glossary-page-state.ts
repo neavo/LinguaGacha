@@ -5,6 +5,7 @@ import { useAppNavigation } from '@/app/navigation/navigation-context'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
 import {
+  build_glossary_entry_id,
   collect_range_selection,
   reorder_selected_group,
 } from '@/pages/glossary-page/components/glossary-selection'
@@ -58,17 +59,6 @@ function clone_entry(entry: GlossaryEntry): GlossaryEntry {
     info: entry.info,
     case_sensitive: entry.case_sensitive,
   }
-}
-
-function build_glossary_entry_id(
-  entry: GlossaryEntry,
-  index: number,
-): GlossaryEntryId {
-  if (typeof entry.entry_id === 'string' && entry.entry_id !== '') {
-    return entry.entry_id
-  }
-
-  return `${entry.src.trim()}::${index.toString()}`
 }
 
 function build_search_state(
