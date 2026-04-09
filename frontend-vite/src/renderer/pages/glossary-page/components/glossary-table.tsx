@@ -313,6 +313,19 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     selection_box_visual,
   )
 
+  const clear_selection_refs = useCallback((): void => {
+    selection_box_ref.current = null
+    selection_box_ids_ref.current = []
+  }, [])
+
+  const reset_selection_interaction = useCallback((): void => {
+    clear_selection_refs()
+    set_selection_box_visual(null)
+    window.setTimeout(() => {
+      suppress_click_ref.current = false
+    }, 0)
+  }, [clear_selection_refs])
+
   useEffect(() => {
     if (selection_box_visual === null) {
       return
@@ -354,7 +367,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       props.on_box_select(next_entry_ids)
     }
 
-    function handle_pointer_up(): void {
+    function finalize_selection_interaction(): void {
       const current_state = selection_box_ref.current
       const next_entry_ids = selection_box_ids_ref.current
 
@@ -369,23 +382,34 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           props.on_select_range(first_entry_id, last_entry_id)
         }
       }
+      reset_selection_interaction()
+    }
 
-      selection_box_ref.current = null
-      selection_box_ids_ref.current = []
-      set_selection_box_visual(null)
-      window.setTimeout(() => {
-        suppress_click_ref.current = false
-      }, 0)
+    function handle_pointer_up(): void {
+      finalize_selection_interaction()
+    }
+
+    function handle_pointer_cancel(): void {
+      reset_selection_interaction()
+    }
+
+    function handle_window_blur(): void {
+      reset_selection_interaction()
     }
 
     window.addEventListener('pointermove', handle_pointer_move)
     window.addEventListener('pointerup', handle_pointer_up, { once: true })
+    window.addEventListener('pointercancel', handle_pointer_cancel, { once: true })
+    window.addEventListener('blur', handle_window_blur, { once: true })
 
     return () => {
       window.removeEventListener('pointermove', handle_pointer_move)
       window.removeEventListener('pointerup', handle_pointer_up)
+      window.removeEventListener('pointercancel', handle_pointer_cancel)
+      window.removeEventListener('blur', handle_window_blur)
+      clear_selection_refs()
     }
-  }, [entry_ids, props, selection_box_visual])
+  }, [clear_selection_refs, entry_ids, props, reset_selection_interaction, selection_box_visual])
 
   const register_row_element = useCallback((
     entry_id: GlossaryEntryId,
@@ -433,6 +457,10 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
 
   function handle_drag_start(event: DragStartEvent): void {
     set_active_drag_entry_id(String(event.active.id))
+  }
+
+  function handle_drag_cancel(): void {
+    set_active_drag_entry_id(null)
   }
 
   function handle_drag_end(event: DragEndEvent): void {
@@ -500,6 +528,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           collisionDetection={closestCenter}
           sensors={sensors}
           onDragStart={handle_drag_start}
+          onDragCancel={handle_drag_cancel}
           onDragEnd={handle_drag_end}
         >
           <Table className="glossary-page__table glossary-page__table--body">
