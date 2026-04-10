@@ -42,22 +42,14 @@ export const en_us_glossary_page = {
     disabled: 'Reordering is disabled while filters are active',
   },
   filter: {
-    placeholder: 'Filter source, translation, or notes…',
-    results: '{VISIBLE} / {TOTAL}',
+    placeholder: 'Enter keywords …',
     clear: 'Clear',
-    clear_all: 'Clear all filters',
-    advanced: 'Advanced',
     regex: 'Regex',
     empty: 'No filtered results',
     invalid: 'Invalid regular expression',
     scope: {
+      label: 'Scope',
       all: 'All',
-      source: 'Source',
-      translation: 'Translation',
-      description: 'Notes',
-    },
-    scope_chip: {
-      all: 'All fields',
       source: 'Source',
       translation: 'Translation',
       description: 'Notes',
@@ -67,17 +59,13 @@ export const en_us_glossary_page = {
     trigger: 'Filter {FIELD}',
     clear: 'Clear filter',
     operator: {
-      contains: 'Contains',
       empty: 'Empty',
     },
-    source: {
-      placeholder: 'Filter source…',
-    },
     translation: {
-      placeholder: 'Filter translation…',
+      empty_only: 'Only empty translations',
     },
     description: {
-      placeholder: 'Filter notes…',
+      empty_only: 'Only empty notes',
     },
     rule: {
       case_sensitive: 'Case-sensitive',

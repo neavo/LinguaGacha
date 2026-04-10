@@ -2,7 +2,6 @@ import '@/pages/glossary-page/glossary-page.css'
 import type { ScreenComponentProps } from '@/app/navigation/types'
 import { GlossaryCommandBar } from '@/pages/glossary-page/components/glossary-command-bar'
 import { GlossaryEditDialog } from '@/pages/glossary-page/components/glossary-edit-dialog'
-import { GlossaryFilterChips } from '@/pages/glossary-page/components/glossary-filter-chips'
 import { GlossarySearchBar } from '@/pages/glossary-page/components/glossary-search-bar'
 import { GlossaryTable } from '@/pages/glossary-page/components/glossary-table'
 import { useGlossaryPageState } from '@/pages/glossary-page/use-glossary-page-state'
@@ -22,16 +21,11 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         total_count={glossary_page_state.total_count}
         is_regex={glossary_page_state.filter_state.is_regex}
         invalid_filter_message={glossary_page_state.invalid_filter_message}
-        has_active_filters={glossary_page_state.filter_chips.length > 0}
+        has_active_filters={glossary_page_state.has_active_filters}
         on_keyword_change={glossary_page_state.update_filter_keyword}
         on_scope_change={glossary_page_state.update_filter_scope}
         on_regex_change={glossary_page_state.update_filter_regex}
         on_clear_filters={glossary_page_state.clear_all_filters}
-      />
-      <GlossaryFilterChips
-        chips={glossary_page_state.filter_chips}
-        on_remove_chip={glossary_page_state.clear_filter_chip}
-        on_clear_all={glossary_page_state.clear_all_filters}
       />
       <div className="glossary-page__table-host">
         <GlossaryTable

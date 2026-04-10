@@ -44,10 +44,12 @@ import type {
   GlossaryColumnFilters,
   GlossaryEntry,
   GlossaryEntryId,
+  GlossaryOptionalTextColumnFilter,
   GlossaryStatisticsBadgeState,
   GlossaryVisibleEntry,
 } from '@/pages/glossary-page/types'
 import { Badge } from '@/ui/badge'
+import { Button } from '@/ui/button'
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -66,7 +68,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/ui/empty'
-import { InputGroup, InputGroupInput } from '@/ui/input-group'
 import { ScrollArea } from '@/ui/scroll-area'
 import {
   Table,
@@ -165,40 +166,32 @@ function build_glossary_row_number_label(row_index: number): string {
   return String(row_index + 1)
 }
 
-function has_text_filter_value(filter: GlossaryColumnFilters['src']): boolean {
-  if (filter === null) {
-    return false
-  }
-
-  if (filter.mode === 'empty') {
-    return true
-  }
-
-  return filter.keyword.trim() !== ''
-}
-
-function build_text_filter_mode(
-  filter: GlossaryColumnFilters['dst'] | GlossaryColumnFilters['info'],
-): 'contains' | 'empty' {
-  if (filter?.mode === 'empty') {
-    return 'empty'
-  }
-
-  return 'contains'
+function has_text_filter_value(filter: GlossaryOptionalTextColumnFilter | null): boolean {
+  return filter !== null
 }
 
 function render_table_head_content(options: {
   label: string
   menu: JSX.Element | null
   class_name: string
+  compact?: boolean
 }): JSX.Element {
   return (
     <TableHead className={options.class_name}>
-      <div className="glossary-page__table-head-content">
+      <div
+        className="glossary-page__table-head-content"
+        data-compact={options.compact ? 'true' : undefined}
+      >
         <span className="glossary-page__table-head-label">
           {options.label}
         </span>
-        {options.menu}
+        {options.menu === null
+          ? null
+          : (
+              <span className="glossary-page__table-head-action">
+                {options.menu}
+              </span>
+            )}
       </div>
     </TableHead>
   )
@@ -1082,42 +1075,11 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     void props.on_reorder(String(event.active.id), String(event.over.id))
   }
 
-  const source_filter_active = has_text_filter_value(props.column_filters.src)
   const translation_filter_active = has_text_filter_value(props.column_filters.dst)
   const description_filter_active = has_text_filter_value(props.column_filters.info)
   const rule_filter_active = props.column_filters.rule !== null
   const statistics_filter_active = props.column_filters.statistics !== null
 
-  const source_filter_menu = (
-    <GlossaryColumnFilterMenu
-      label={t('glossary_page.fields.source')}
-      active={source_filter_active}
-      on_clear={() => {
-        props.on_update_column_filter('src', null)
-      }}
-    >
-      <InputGroup>
-        <InputGroupInput
-          value={props.column_filters.src?.mode === 'contains'
-            ? props.column_filters.src.keyword
-            : ''}
-          placeholder={t('glossary_page.column_filter.source.placeholder')}
-          onChange={(event) => {
-            const next_keyword = event.target.value
-            props.on_update_column_filter(
-              'src',
-              next_keyword.trim() === ''
-                ? null
-                : {
-                    mode: 'contains',
-                    keyword: next_keyword,
-                  },
-            )
-          }}
-        />
-      </InputGroup>
-    </GlossaryColumnFilterMenu>
-  )
   const translation_filter_menu = (
     <GlossaryColumnFilterMenu
       label={t('glossary_page.fields.translation')}
@@ -1126,54 +1088,22 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         props.on_update_column_filter('dst', null)
       }}
     >
-      <InputGroup>
-        <InputGroupInput
-          value={props.column_filters.dst?.mode === 'contains'
-            ? props.column_filters.dst.keyword
-            : ''}
-          disabled={build_text_filter_mode(props.column_filters.dst) === 'empty'}
-          placeholder={t('glossary_page.column_filter.translation.placeholder')}
-          onChange={(event) => {
-            const next_keyword = event.target.value
-            props.on_update_column_filter(
-              'dst',
-              next_keyword.trim() === ''
-                ? null
-                : {
-                    mode: 'contains',
-                    keyword: next_keyword,
-                  },
-            )
-          }}
-        />
-      </InputGroup>
-      <ToggleGroup
-        type="single"
+      <Button
+        type="button"
+        variant={translation_filter_active ? 'secondary' : 'outline'}
         size="sm"
-        variant="outline"
-        value={build_text_filter_mode(props.column_filters.dst)}
-        className="glossary-page__column-filter-toggle"
-        onValueChange={(next_value) => {
-          if (next_value === 'empty') {
-            props.on_update_column_filter('dst', { mode: 'empty' })
-            return
-          }
-
-          if (props.column_filters.dst?.mode === 'contains' && props.column_filters.dst.keyword.trim() !== '') {
-            props.on_update_column_filter('dst', props.column_filters.dst)
-            return
-          }
-
-          props.on_update_column_filter('dst', null)
+        className="glossary-page__column-filter-action"
+        onClick={() => {
+          props.on_update_column_filter(
+            'dst',
+            props.column_filters.dst === 'empty'
+              ? null
+              : 'empty',
+          )
         }}
       >
-        <ToggleGroupItem value="contains">
-          {t('glossary_page.column_filter.operator.contains')}
-        </ToggleGroupItem>
-        <ToggleGroupItem value="empty">
-          {t('glossary_page.column_filter.operator.empty')}
-        </ToggleGroupItem>
-      </ToggleGroup>
+        {t('glossary_page.column_filter.translation.empty_only')}
+      </Button>
     </GlossaryColumnFilterMenu>
   )
   const description_filter_menu = (
@@ -1184,54 +1114,22 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         props.on_update_column_filter('info', null)
       }}
     >
-      <InputGroup>
-        <InputGroupInput
-          value={props.column_filters.info?.mode === 'contains'
-            ? props.column_filters.info.keyword
-            : ''}
-          disabled={build_text_filter_mode(props.column_filters.info) === 'empty'}
-          placeholder={t('glossary_page.column_filter.description.placeholder')}
-          onChange={(event) => {
-            const next_keyword = event.target.value
-            props.on_update_column_filter(
-              'info',
-              next_keyword.trim() === ''
-                ? null
-                : {
-                    mode: 'contains',
-                    keyword: next_keyword,
-                  },
-            )
-          }}
-        />
-      </InputGroup>
-      <ToggleGroup
-        type="single"
+      <Button
+        type="button"
+        variant={description_filter_active ? 'secondary' : 'outline'}
         size="sm"
-        variant="outline"
-        value={build_text_filter_mode(props.column_filters.info)}
-        className="glossary-page__column-filter-toggle"
-        onValueChange={(next_value) => {
-          if (next_value === 'empty') {
-            props.on_update_column_filter('info', { mode: 'empty' })
-            return
-          }
-
-          if (props.column_filters.info?.mode === 'contains' && props.column_filters.info.keyword.trim() !== '') {
-            props.on_update_column_filter('info', props.column_filters.info)
-            return
-          }
-
-          props.on_update_column_filter('info', null)
+        className="glossary-page__column-filter-action"
+        onClick={() => {
+          props.on_update_column_filter(
+            'info',
+            props.column_filters.info === 'empty'
+              ? null
+              : 'empty',
+          )
         }}
       >
-        <ToggleGroupItem value="contains">
-          {t('glossary_page.column_filter.operator.contains')}
-        </ToggleGroupItem>
-        <ToggleGroupItem value="empty">
-          {t('glossary_page.column_filter.operator.empty')}
-        </ToggleGroupItem>
-      </ToggleGroup>
+        {t('glossary_page.column_filter.description.empty_only')}
+      </Button>
     </GlossaryColumnFilterMenu>
   )
   const rule_filter_menu = (
@@ -1344,10 +1242,11 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
               label: t('glossary_page.fields.drag'),
               menu: null,
               class_name: 'glossary-page__table-drag-head',
+              compact: true,
             })}
             {render_table_head_content({
               label: t('glossary_page.fields.source'),
-              menu: source_filter_menu,
+              menu: null,
               class_name: 'glossary-page__table-source-head',
             })}
             {render_table_head_content({

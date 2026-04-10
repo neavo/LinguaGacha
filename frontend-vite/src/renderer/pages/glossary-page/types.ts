@@ -44,14 +44,7 @@ export type GlossaryStatisticsBadgeState = {
   tooltip: string
 }
 
-export type GlossaryTextColumnFilter =
-  | {
-      mode: 'contains'
-      keyword: string
-    }
-  | {
-      mode: 'empty'
-    }
+export type GlossaryOptionalTextColumnFilter = 'empty'
 
 export type GlossaryRuleColumnFilter =
   | 'case-sensitive'
@@ -63,9 +56,8 @@ export type GlossaryStatisticsColumnFilter =
   | 'related'
 
 export type GlossaryColumnFilters = {
-  src: GlossaryTextColumnFilter | null
-  dst: GlossaryTextColumnFilter | null
-  info: GlossaryTextColumnFilter | null
+  dst: GlossaryOptionalTextColumnFilter | null
+  info: GlossaryOptionalTextColumnFilter | null
   rule: GlossaryRuleColumnFilter | null
   statistics: GlossaryStatisticsColumnFilter | null
 }
@@ -76,11 +68,6 @@ export type GlossaryVisibleEntry = {
   entry: GlossaryEntry
   entry_id: GlossaryEntryId
   source_index: number
-}
-
-export type GlossaryFilterChip = {
-  id: 'keyword' | 'regex' | GlossaryColumnFilterField
-  label: string
 }
 
 export type GlossaryPresetItem = {

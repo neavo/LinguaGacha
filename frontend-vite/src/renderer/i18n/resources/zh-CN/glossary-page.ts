@@ -39,22 +39,14 @@ export const zh_cn_glossary_page = {
     disabled: '筛选生效时无法拖拽排序',
   },
   filter: {
-    placeholder: '筛选原文、译文或备注…',
-    results: '{VISIBLE} / {TOTAL}',
+    placeholder: '请输入关键字 …',
     clear: '清空',
-    clear_all: '清除全部筛选',
-    advanced: '高级',
     regex: '正则',
     empty: '无筛选结果',
     invalid: '正则表达式无效',
     scope: {
+      label: '范围',
       all: '全部',
-      source: '原文',
-      translation: '译文',
-      description: '备注',
-    },
-    scope_chip: {
-      all: '全文',
       source: '原文',
       translation: '译文',
       description: '备注',
@@ -64,17 +56,13 @@ export const zh_cn_glossary_page = {
     trigger: '筛选 {FIELD}',
     clear: '清除条件',
     operator: {
-      contains: '包含',
       empty: '为空',
     },
-    source: {
-      placeholder: '筛选原文…',
-    },
     translation: {
-      placeholder: '筛选译文…',
+      empty_only: '只看空译文',
     },
     description: {
-      placeholder: '筛选备注…',
+      empty_only: '只看空备注',
     },
     rule: {
       case_sensitive: '大小写敏感',

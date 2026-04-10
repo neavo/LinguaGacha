@@ -3,9 +3,9 @@ import type {
   GlossaryEntry,
   GlossaryEntryId,
   GlossaryFilterState,
+  GlossaryOptionalTextColumnFilter,
   GlossaryStatisticsBadgeKind,
   GlossaryStatisticsState,
-  GlossaryTextColumnFilter,
   GlossaryVisibleEntry,
 } from '@/pages/glossary-page/types'
 
@@ -23,42 +23,15 @@ type BuildGlossaryFilterResult = {
   invalid_regex_message: string | null
 }
 
-function normalize_text_column_filter(
-  filter: GlossaryTextColumnFilter | null,
-): GlossaryTextColumnFilter | null {
-  if (filter === null) {
-    return null
-  }
-
-  if (filter.mode === 'empty') {
-    return filter
-  }
-
-  const normalized_keyword = filter.keyword.trim()
-  if (normalized_keyword === '') {
-    return null
-  }
-
-  return {
-    mode: 'contains',
-    keyword: normalized_keyword,
-  }
-}
-
 function match_text_column_filter(
   value: string,
-  filter: GlossaryTextColumnFilter | null,
+  filter: GlossaryOptionalTextColumnFilter | null,
 ): boolean {
-  const normalized_filter = normalize_text_column_filter(filter)
-  if (normalized_filter === null) {
+  if (filter === null) {
     return true
   }
 
-  if (normalized_filter.mode === 'empty') {
-    return value.trim() === ''
-  }
-
-  return value.toLowerCase().includes(normalized_filter.keyword.toLowerCase())
+  return value.trim() === ''
 }
 
 function build_keyword_matcher(
@@ -115,7 +88,6 @@ function build_keyword_matcher(
 
 export function create_empty_glossary_column_filters(): GlossaryColumnFilters {
   return {
-    src: null,
     dst: null,
     info: null,
     rule: null,
@@ -129,9 +101,8 @@ export function has_active_glossary_filters(
 ): boolean {
   return (
     filter_state.keyword.trim() !== ''
-    || normalize_text_column_filter(column_filters.src) !== null
-    || normalize_text_column_filter(column_filters.dst) !== null
-    || normalize_text_column_filter(column_filters.info) !== null
+    || column_filters.dst !== null
+    || column_filters.info !== null
     || column_filters.rule !== null
     || column_filters.statistics !== null
   )
@@ -170,10 +141,6 @@ export function build_glossary_filter_result(
     }
   }
 
-  const normalized_src_filter = normalize_text_column_filter(options.column_filters.src)
-  const normalized_dst_filter = normalize_text_column_filter(options.column_filters.dst)
-  const normalized_info_filter = normalize_text_column_filter(options.column_filters.info)
-
   const visible_entries = options.entries.flatMap((entry, source_index) => {
     const entry_id = options.entry_ids[source_index]
     if (entry_id === undefined) {
@@ -188,9 +155,8 @@ export function build_glossary_filter_result(
       || statistics_kind === options.column_filters.statistics
 
     const matches_entry = keyword_matcher.matches(entry)
-      && match_text_column_filter(entry.src, normalized_src_filter)
-      && match_text_column_filter(entry.dst, normalized_dst_filter)
-      && match_text_column_filter(entry.info, normalized_info_filter)
+      && match_text_column_filter(entry.dst, options.column_filters.dst)
+      && match_text_column_filter(entry.info, options.column_filters.info)
       && (
         options.column_filters.rule === null
         || (

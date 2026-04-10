@@ -38,24 +38,20 @@
   min-width: 0;
 }
 
-.glossary-page__search-scope {
+.glossary-page__search-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
   flex-shrink: 0;
 }
 
-.glossary-page__search-scope [data-slot='toggle-group-item'] {
-  white-space: nowrap;
+.glossary-page__search-action-trigger {
+  flex-shrink: 0;
 }
 
-.glossary-page__search-result-count {
-  flex-shrink: 0;
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.glossary-page__advanced-trigger {
-  flex-shrink: 0;
+.glossary-page__search-action-trigger[data-active='true'] {
+  background: var(--muted);
+  color: var(--foreground);
 }
 
 .glossary-page__search-status {
@@ -69,41 +65,6 @@
   color: var(--destructive);
 }
 
-.glossary-page__filter-chip-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.glossary-page__filter-chip-list {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.glossary-page__filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  background: none;
-  padding: 0;
-  cursor: pointer;
-}
-
-.glossary-page__filter-chip-label {
-  max-width: 28ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.glossary-page__filter-clear-all {
-  flex-shrink: 0;
-}
-
 @media (max-width: 1200px) {
   .glossary-page__search-bar {
     flex-wrap: wrap;
@@ -113,13 +74,8 @@
     min-width: min(100%, 360px);
   }
 
-  .glossary-page__search-result-count {
-    margin-left: auto;
-  }
-
-  .glossary-page__filter-chip-row {
-    flex-direction: column;
-    align-items: stretch;
+  .glossary-page__search-actions {
+    order: 2;
   }
 }
 
@@ -381,16 +337,34 @@
 }
 
 .glossary-page__table-head-content {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  justify-content: center;
+  width: 100%;
+  min-height: 20px;
+  padding-inline: 22px;
+}
+
+.glossary-page__table-head-content[data-compact='true'] {
+  padding-inline: 0;
 }
 
 .glossary-page__table-head-label {
+  display: block;
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
+}
+
+.glossary-page__table-head-action {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: inline-flex;
+  transform: translateY(-50%);
 }
 
 .glossary-page__column-filter-trigger {
@@ -441,6 +415,11 @@
 .glossary-page__column-filter-toggle {
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.glossary-page__column-filter-action {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .glossary-page__column-filter-hint {

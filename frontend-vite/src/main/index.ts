@@ -400,6 +400,9 @@ function createWindow(): void {
   win = new BrowserWindow(createWindowOptions())
   register_development_devtools_shortcut(win)
   register_window_runtime_events(win)
+  win.on('closed', () => {
+    log_app_quit_event('browser-window closed')
+  })
 
   win.once('ready-to-show', () => {
     win?.show()
@@ -413,6 +416,11 @@ function createWindow(): void {
     // win.loadFile('dist/index.html')
     void win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+}
+
+function log_app_quit_event(message: string): void {
+  // 开发态先把退出路径打进控制台，方便区分是显式退出还是窗口生命周期触发。
+  console.info(`[frontend-vite] ${message}`)
 }
 
 async function pick_open_path(
@@ -450,6 +458,7 @@ async function pick_save_path(
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
+  log_app_quit_event('window-all-closed')
   if (process.platform !== 'darwin') {
     app.quit()
     win = null
@@ -465,11 +474,20 @@ app.on('activate', () => {
 
 app.whenReady().then(createWindow)
 
+app.on('before-quit', () => {
+  log_app_quit_event('before-quit')
+})
+
+app.on('will-quit', () => {
+  log_app_quit_event('will-quit')
+})
+
 ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (_event, theme_mode: ThemeMode) => {
   sync_title_bar_overlay(theme_mode)
 })
 
 ipcMain.handle(IPC_CHANNEL_QUIT_APP, async () => {
+  log_app_quit_event('quit-app requested from renderer')
   app.quit()
 })
 

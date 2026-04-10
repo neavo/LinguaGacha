@@ -1,4 +1,4 @@
-import { SlidersHorizontal } from 'lucide-react'
+import { Eraser, ListFilter, Regex } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
 import type { GlossaryFilterScope } from '@/pages/glossary-page/types'
@@ -8,10 +8,10 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuTrigger,
 } from '@/ui/dropdown-menu'
 import { InputGroup, InputGroupInput } from '@/ui/input-group'
-import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 
 type GlossarySearchBarProps = {
   keyword: string
@@ -39,9 +39,13 @@ export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
     : show_empty_state
       ? t('glossary_page.filter.empty')
       : null
-  const result_count_label = t('glossary_page.filter.results')
-    .replace('{VISIBLE}', props.visible_count.toString())
-    .replace('{TOTAL}', props.total_count.toString())
+  const scope_label = props.scope === 'src'
+    ? t('glossary_page.filter.scope.source')
+    : props.scope === 'dst'
+      ? t('glossary_page.filter.scope.translation')
+      : props.scope === 'info'
+        ? t('glossary_page.filter.scope.description')
+        : t('glossary_page.filter.scope.label')
 
   return (
     <Card variant="toolbar" className="glossary-page__search-card">
@@ -59,73 +63,95 @@ export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
                 }}
               />
             </InputGroup>
-            <ToggleGroup
-              type="single"
-              size="sm"
-              variant="outline"
-              value={props.scope}
-              className="glossary-page__search-scope"
-              onValueChange={(next_value) => {
-                if (next_value === '') {
-                  return
-                }
-
-                props.on_scope_change(next_value as GlossaryFilterScope)
-              }}
-            >
-              <ToggleGroupItem value="all">
-                {t('glossary_page.filter.scope.all')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="src">
-                {t('glossary_page.filter.scope.source')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="dst">
-                {t('glossary_page.filter.scope.translation')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="info">
-                {t('glossary_page.filter.scope.description')}
-              </ToggleGroupItem>
-            </ToggleGroup>
-            <p className="glossary-page__search-result-count">
-              {result_count_label}
-            </p>
-            {props.has_active_filters
-              ? (
+            <div className="glossary-page__search-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                size="toolbar"
+                disabled={!props.has_active_filters}
+                className="glossary-page__search-action-trigger"
+                onClick={props.on_clear_filters}
+              >
+                <Eraser data-icon="inline-start" />
+                {t('glossary_page.filter.clear')}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
-                    size="xs"
-                    onClick={props.on_clear_filters}
+                    size="toolbar"
+                    className="glossary-page__search-action-trigger"
+                    data-active={props.scope === 'all' ? undefined : 'true'}
+                    aria-label={t('glossary_page.filter.scope.label')}
                   >
-                    {t('glossary_page.filter.clear')}
+                    <ListFilter data-icon="inline-start" />
+                    {scope_label}
                   </Button>
-                )
-              : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant={props.is_regex ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="glossary-page__advanced-trigger"
-                >
-                  <SlidersHorizontal data-icon="inline-start" />
-                  {t('glossary_page.filter.advanced')}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" matchTriggerWidth={false}>
-                <DropdownMenuCheckboxItem
-                  checked={props.is_regex}
-                  onCheckedChange={(next_checked) => {
-                    if (typeof next_checked === 'boolean') {
-                      props.on_regex_change(next_checked)
-                    }
-                  }}
-                >
-                  {t('glossary_page.filter.regex')}
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" matchTriggerWidth={false}>
+                  <DropdownMenuGroup>
+                    {(['all', 'src', 'dst', 'info'] satisfies GlossaryFilterScope[]).map((scope) => (
+                      <DropdownMenuCheckboxItem
+                        key={scope}
+                        checked={props.scope === scope}
+                        onCheckedChange={(next_checked) => {
+                          if (next_checked === true) {
+                            props.on_scope_change(scope)
+                          }
+                        }}
+                      >
+                        {scope === 'all'
+                          ? t('glossary_page.filter.scope.all')
+                          : scope === 'src'
+                            ? t('glossary_page.filter.scope.source')
+                            : scope === 'dst'
+                              ? t('glossary_page.filter.scope.translation')
+                              : t('glossary_page.filter.scope.description')}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="toolbar"
+                    className="glossary-page__search-action-trigger"
+                    data-active={props.is_regex ? 'true' : undefined}
+                  >
+                    <Regex data-icon="inline-start" />
+                    {t('glossary_page.filter.regex')}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" matchTriggerWidth={false}>
+                  <DropdownMenuGroup>
+                    <DropdownMenuCheckboxItem
+                      checked={props.is_regex}
+                      onCheckedChange={(next_checked) => {
+                        if (next_checked === true) {
+                          props.on_regex_change(true)
+                        }
+                      }}
+                    >
+                      {t('app.toggle.enabled')}
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                      checked={!props.is_regex}
+                      onCheckedChange={(next_checked) => {
+                        if (next_checked === true) {
+                          props.on_regex_change(false)
+                        }
+                      }}
+                    >
+                      {t('app.toggle.disabled')}
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           {filter_status === null
             ? null
