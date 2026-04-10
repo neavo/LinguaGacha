@@ -1,3 +1,5 @@
+import { CaseSensitive } from 'lucide-react'
+
 import { useI18n } from '@/i18n'
 import type {
   GlossaryDialogMode,
@@ -7,12 +9,9 @@ import { Button } from '@/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/ui/dialog'
-import { Input } from '@/ui/input'
 import { Textarea } from '@/ui/textarea'
 import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
 
@@ -20,11 +19,9 @@ type GlossaryEditDialogProps = {
   open: boolean
   mode: GlossaryDialogMode
   entry: GlossaryEntry
-  dirty: boolean
   saving: boolean
   on_change: (patch: Partial<GlossaryEntry>) => void
   on_save: () => Promise<void>
-  on_delete: () => Promise<void>
   on_close: () => Promise<void>
 }
 
@@ -45,78 +42,105 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
     >
       <DialogContent
         size="lg"
-        className="glossary-page__dialog-content"
+        className="glossary-page__dialog-shell"
         onPointerDownOutside={(event) => {
           event.preventDefault()
         }}
       >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{t('glossary_page.summary')}</DialogDescription>
-        </DialogHeader>
+        {/* 保留仅供辅助技术使用的标题，满足 Dialog 的可访问性要求。 */}
+        <DialogTitle className="sr-only">{title}</DialogTitle>
 
-        <div className="glossary-page__dialog-body">
-          <label className="glossary-page__dialog-field">
-            <span className="glossary-page__dialog-label">{t('glossary_page.fields.source')}</span>
-            <Input
-              value={props.entry.src}
-              disabled={props.saving}
-              placeholder={t('glossary_page.fields.source')}
-              onChange={(event) => {
-                props.on_change({ src: event.target.value })
-              }}
-            />
-          </label>
-          <label className="glossary-page__dialog-field">
-            <span className="glossary-page__dialog-label">{t('glossary_page.fields.translation')}</span>
-            <Input
-              value={props.entry.dst}
-              disabled={props.saving}
-              placeholder={t('glossary_page.fields.translation')}
-              onChange={(event) => {
-                props.on_change({ dst: event.target.value })
-              }}
-            />
-          </label>
-          <label className="glossary-page__dialog-field">
-            <span className="glossary-page__dialog-label">{t('glossary_page.fields.description')}</span>
-            <Textarea
-              className="glossary-page__dialog-textarea"
-              value={props.entry.info}
-              disabled={props.saving}
-              placeholder={t('glossary_page.fields.description')}
-              onChange={(event) => {
-                props.on_change({ info: event.target.value })
-              }}
-            />
-          </label>
-          <div className="glossary-page__dialog-field">
-            <span className="glossary-page__dialog-label">{t('glossary_page.fields.rule')}</span>
-            <BooleanSegmentedToggle
-              aria_label={t('glossary_page.fields.rule')}
-              value={props.entry.case_sensitive}
-              disabled={props.saving}
-              on_value_change={(next_value) => {
-                props.on_change({ case_sensitive: next_value })
-              }}
-            />
+        <div className="glossary-page__dialog-scroll">
+          <div className="glossary-page__dialog-form">
+            <div className="glossary-page__dialog-main-panel">
+              <div className="glossary-page__dialog-main-panel-content">
+                <label className="glossary-page__dialog-section">
+                  <span
+                    className="glossary-page__dialog-section-title"
+                    data-ui-text="emphasis"
+                  >
+                    {t('glossary_page.fields.source')}
+                  </span>
+                  <Textarea
+                    className="glossary-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                    value={props.entry.src}
+                    disabled={props.saving}
+                    placeholder={t('glossary_page.fields.source')}
+                    onChange={(event) => {
+                      props.on_change({ src: event.target.value })
+                    }}
+                  />
+                </label>
+
+                <label className="glossary-page__dialog-section">
+                  <span
+                    className="glossary-page__dialog-section-title"
+                    data-ui-text="emphasis"
+                  >
+                    {t('glossary_page.fields.translation')}
+                  </span>
+                  <Textarea
+                    className="glossary-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                    value={props.entry.dst}
+                    disabled={props.saving}
+                    placeholder={t('glossary_page.fields.translation')}
+                    onChange={(event) => {
+                      props.on_change({ dst: event.target.value })
+                    }}
+                  />
+                </label>
+
+                <label className="glossary-page__dialog-section">
+                  <span
+                    className="glossary-page__dialog-section-title"
+                    data-ui-text="emphasis"
+                  >
+                    {t('glossary_page.fields.description')}
+                  </span>
+                  <Textarea
+                    className="glossary-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                    value={props.entry.info}
+                    disabled={props.saving}
+                    placeholder={t('glossary_page.fields.description')}
+                    onChange={(event) => {
+                      props.on_change({ info: event.target.value })
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="glossary-page__dialog-rule-item">
+              <div className="glossary-page__dialog-rule-copy">
+                <span className="glossary-page__rule-badge-wrap" aria-hidden="true">
+                  <span
+                    data-state="inactive"
+                    className="glossary-page__rule-badge glossary-page__dialog-rule-badge"
+                  >
+                    <CaseSensitive />
+                  </span>
+                </span>
+                <span
+                  className="glossary-page__dialog-rule-title"
+                  data-ui-text="emphasis"
+                >
+                  {t('glossary_page.rule.case_sensitive')}
+                </span>
+              </div>
+              <BooleanSegmentedToggle
+                aria_label={t('glossary_page.rule.case_sensitive')}
+                value={props.entry.case_sensitive}
+                disabled={props.saving}
+                size="sm"
+                on_value_change={(next_value) => {
+                  props.on_change({ case_sensitive: next_value })
+                }}
+              />
+            </div>
           </div>
-          {props.dirty
-            ? <p className="glossary-page__dialog-dirty-tip">{t('glossary_page.toggle.tooltip')}</p>
-            : null}
         </div>
 
         <DialogFooter>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={props.saving}
-            onClick={() => {
-              void props.on_delete()
-            }}
-          >
-            {t('glossary_page.action.delete')}
-          </Button>
           <Button
             type="button"
             variant="outline"

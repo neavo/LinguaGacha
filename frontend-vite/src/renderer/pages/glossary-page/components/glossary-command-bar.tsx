@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Plus,
   Sigma,
+  Trash2,
 } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
@@ -28,9 +29,11 @@ type GlossaryCommandBarProps = {
   enabled: boolean
   preset_items: GlossaryPresetItem[]
   preset_menu_open: boolean
+  selected_entry_count: number
   statistics_running: boolean
   on_toggle_enabled: (next_value: boolean) => Promise<void>
   on_create: () => void
+  on_delete_selected: () => Promise<void>
   on_import: () => Promise<void>
   on_export: () => Promise<void>
   on_statistics: () => Promise<void>
@@ -43,6 +46,14 @@ export function GlossaryCommandBar(
   props: GlossaryCommandBarProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const toggle_state_key = props.enabled ? 'app.toggle.enabled' : 'app.toggle.disabled'
+  const toggle_tooltip_title = t('glossary_page.toggle.status').replace(
+    '{TITLE}',
+    t('glossary_page.title'),
+  ).replace(
+    '{STATE}',
+    t(toggle_state_key),
+  )
 
   return (
     <CommandBar
@@ -50,10 +61,23 @@ export function GlossaryCommandBar(
       description={t('glossary_page.summary')}
       actions={(
         <>
-          <Button variant="ghost" size="toolbar" onClick={props.on_create}>
-            <Plus data-icon="inline-start" />
-            {t('glossary_page.action.create')}
-          </Button>
+          <CommandBarGroup>
+            <Button variant="ghost" size="toolbar" onClick={props.on_create}>
+              <Plus data-icon="inline-start" />
+              {t('glossary_page.action.create')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="toolbar"
+              disabled={props.selected_entry_count === 0}
+              onClick={() => {
+                void props.on_delete_selected()
+              }}
+            >
+              <Trash2 data-icon="inline-start" />
+              {t('glossary_page.action.delete')}
+            </Button>
+          </CommandBarGroup>
           <CommandBarSeparator />
           <CommandBarGroup>
             <Button
@@ -132,12 +156,6 @@ export function GlossaryCommandBar(
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="glossary-page__toggle-cluster">
-              <span
-                className="glossary-page__toggle-title"
-                data-ui-text="emphasis"
-              >
-                {t('glossary_page.title')}
-              </span>
               <BooleanSegmentedToggle
                 aria_label={t('glossary_page.title')}
                 value={props.enabled}
@@ -153,7 +171,15 @@ export function GlossaryCommandBar(
             sideOffset={8}
             className="glossary-page__toggle-tooltip"
           >
-            <p>{t('glossary_page.toggle.tooltip')}</p>
+            <div className="glossary-page__toggle-tooltip-copy">
+              <p
+                className="glossary-page__toggle-tooltip-title"
+                data-ui-text="emphasis"
+              >
+                {toggle_tooltip_title}
+              </p>
+              <p>{t('glossary_page.toggle.tooltip')}</p>
+            </div>
           </TooltipContent>
         </Tooltip>
       )}

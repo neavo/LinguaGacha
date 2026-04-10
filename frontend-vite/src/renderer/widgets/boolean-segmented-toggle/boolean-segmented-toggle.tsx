@@ -1,5 +1,7 @@
 import { useI18n } from '@/i18n'
+import { cn } from '@/lib/utils'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
+import '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle.css'
 
 const BOOLEAN_SEGMENTED_VALUES = {
   disabled: 'disabled',
@@ -12,6 +14,9 @@ type BooleanSegmentedToggleProps = {
   disabled?: boolean
   className?: string
   item_class_name?: string
+  size?: 'default' | 'sm' | 'lg'
+  disabled_label?: string
+  enabled_label?: string
   on_value_change: (next_value: boolean) => void
 }
 
@@ -22,6 +27,12 @@ export function BooleanSegmentedToggle(
   const current_value = props.value
     ? BOOLEAN_SEGMENTED_VALUES.enabled
     : BOOLEAN_SEGMENTED_VALUES.disabled
+  const resolved_disabled_label = props.disabled_label ?? t('app.toggle.disabled')
+  const resolved_enabled_label = props.enabled_label ?? t('app.toggle.enabled')
+  const resolved_item_class_name = cn(
+    'boolean-segmented-toggle__item',
+    props.item_class_name,
+  )
 
   return (
     <ToggleGroup
@@ -29,6 +40,7 @@ export function BooleanSegmentedToggle(
       variant="segmented"
       aria-label={props.aria_label}
       className={props.className}
+      size={props.size}
       value={current_value}
       disabled={props.disabled}
       onValueChange={(next_value) => {
@@ -40,16 +52,16 @@ export function BooleanSegmentedToggle(
       }}
     >
       <ToggleGroupItem
-        className={props.item_class_name}
+        className={resolved_item_class_name}
         value={BOOLEAN_SEGMENTED_VALUES.disabled}
       >
-        {t('app.toggle.disabled')}
+        {resolved_disabled_label}
       </ToggleGroupItem>
       <ToggleGroupItem
-        className={props.item_class_name}
+        className={resolved_item_class_name}
         value={BOOLEAN_SEGMENTED_VALUES.enabled}
       >
-        {t('app.toggle.enabled')}
+        {resolved_enabled_label}
       </ToggleGroupItem>
     </ToggleGroup>
   )

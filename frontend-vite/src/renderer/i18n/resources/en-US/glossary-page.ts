@@ -16,6 +16,7 @@ export const en_us_glossary_page = {
     cancel: 'Cancel',
   },
   toggle: {
+    status: '{TITLE} - {STATE}',
     tooltip: 'Build a glossary into prompts to guide translation, keep terminology consistent, and correct character attributes.',
   },
   fields: {

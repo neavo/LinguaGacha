@@ -224,7 +224,6 @@ type UseGlossaryPageStateResult = {
   search_entry_relations_from_statistics: (entry_id: GlossaryEntryId) => void
   save_dialog_entry: () => Promise<void>
   request_close_dialog: () => Promise<void>
-  delete_dialog_entry: () => Promise<void>
   set_preset_menu_open: (next_open: boolean) => void
   refresh_snapshot: () => Promise<void>
 }
@@ -532,6 +531,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [apply_snapshot, enabled, push_toast, t])
 
   const open_create_dialog = useCallback((): void => {
+    // 新增态不再继承当前选中上下文，避免动作条删除与创建语义冲突。
+    set_selected_entry_ids([])
+    set_active_entry_id(null)
+    set_selection_anchor_entry_id(null)
     set_dialog_state({
       open: true,
       mode: 'create',
@@ -713,17 +716,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }))
 
     const next_entries = dialog_state.mode === 'create'
-      ? active_entry_id === null
-        ? [...entries, normalized_entry]
-        : (() => {
-            const insert_index = entry_ids.indexOf(active_entry_id)
-            const resolved_insert_index = insert_index < 0
-              ? entries.length
-              : insert_index + 1
-            const cloned_entries = [...entries]
-            cloned_entries.splice(resolved_insert_index, 0, normalized_entry)
-            return cloned_entries
-          })()
+      ? [...entries, normalized_entry]
       : entries.map((entry, index) => {
           return entry_ids[index] === dialog_state.target_entry_id
             ? {
@@ -744,7 +737,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       saving: false,
     }))
     return false
-  }, [active_entry_id, dialog_state, entries, entry_ids, push_toast, save_entries_snapshot, t])
+  }, [dialog_state, entries, entry_ids, push_toast, save_entries_snapshot, t])
 
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry()
@@ -788,27 +781,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
     }
   }, [entries, entry_index_by_id, navigate_to_route, push_proofreading_lookup_intent, push_toast, t])
-
-  const delete_dialog_entry = useCallback(async (): Promise<void> => {
-    if (dialog_state.mode === 'create') {
-      set_dialog_state(create_empty_dialog_state())
-      return
-    }
-
-    const previous_entries = entries
-    const next_entries = entries.filter((_entry, index) => {
-      return entry_ids[index] !== dialog_state.target_entry_id
-    })
-
-    set_entries(next_entries)
-    const saved = await save_entries_snapshot(next_entries)
-    if (saved) {
-      set_dialog_state(create_empty_dialog_state())
-      return
-    }
-
-    set_entries(previous_entries)
-  }, [dialog_state.mode, dialog_state.target_entry_id, entries, entry_ids, save_entries_snapshot])
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -990,7 +962,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       search_entry_relations_from_statistics,
       save_dialog_entry,
       request_close_dialog,
-      delete_dialog_entry,
       set_preset_menu_open,
       refresh_snapshot,
     }
@@ -998,7 +969,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     active_entry_id,
     apply_preset,
     box_select_entries,
-    delete_dialog_entry,
     delete_selected_entries,
     dialog_state,
     enabled,

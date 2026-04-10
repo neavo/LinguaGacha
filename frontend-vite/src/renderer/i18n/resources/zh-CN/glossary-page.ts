@@ -13,6 +13,7 @@ export const zh_cn_glossary_page = {
     cancel: '取消',
   },
   toggle: {
+    status: '{TITLE} - {STATE}',
     tooltip: '通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能',
   },
   fields: {
@@ -32,7 +33,7 @@ export const zh_cn_glossary_page = {
     },
   },
   rule: {
-    case_sensitive: '区分大小写',
+    case_sensitive: '大小写敏感',
   },
   search: {
     regex: '正则',

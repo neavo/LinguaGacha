@@ -46,9 +46,11 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         enabled={glossary_page_state.enabled}
         preset_items={glossary_page_state.preset_items}
         preset_menu_open={glossary_page_state.preset_menu_open}
+        selected_entry_count={glossary_page_state.selected_entry_ids.length}
         statistics_running={glossary_page_state.statistics_state.running}
         on_toggle_enabled={glossary_page_state.update_enabled}
         on_create={glossary_page_state.open_create_dialog}
+        on_delete_selected={glossary_page_state.delete_selected_entries}
         on_import={glossary_page_state.import_entries_from_picker}
         on_export={glossary_page_state.export_entries_from_picker}
         on_statistics={glossary_page_state.run_statistics}
@@ -60,11 +62,9 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         open={glossary_page_state.dialog_state.open}
         mode={glossary_page_state.dialog_state.mode}
         entry={glossary_page_state.dialog_state.draft_entry}
-        dirty={glossary_page_state.dialog_state.dirty}
         saving={glossary_page_state.dialog_state.saving}
         on_change={glossary_page_state.update_dialog_draft}
         on_save={glossary_page_state.save_dialog_entry}
-        on_delete={glossary_page_state.delete_dialog_entry}
         on_close={glossary_page_state.request_close_dialog}
       />
     </div>
