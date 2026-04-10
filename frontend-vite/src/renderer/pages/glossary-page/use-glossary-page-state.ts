@@ -17,6 +17,10 @@ import {
   reorder_selected_group,
 } from '@/pages/glossary-page/components/glossary-selection'
 import type {
+  AppTableSelectionChange,
+  AppTableSortState,
+} from '@/widgets/app-table/app-table-types'
+import type {
   GlossaryConfirmState,
   GlossaryDialogState,
   GlossaryEntry,
@@ -226,6 +230,7 @@ type UseGlossaryPageStateResult = {
   preset_items: GlossaryPresetItem[]
   selected_entry_ids: GlossaryEntryId[]
   active_entry_id: GlossaryEntryId | null
+  selection_anchor_entry_id: GlossaryEntryId | null
   preset_menu_open: boolean
   dialog_state: GlossaryDialogState
   confirm_state: GlossaryConfirmState
@@ -234,6 +239,8 @@ type UseGlossaryPageStateResult = {
   update_filter_scope: (next_scope: GlossaryFilterScope) => void
   update_filter_regex: (next_is_regex: boolean) => void
   cycle_column_sort: (field: GlossarySortField) => void
+  apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void
+  apply_table_selection: (payload: AppTableSelectionChange) => void
   clear_all_filters: () => void
   update_enabled: (next_enabled: boolean) => Promise<void>
   open_create_dialog: () => void
@@ -254,11 +261,6 @@ type UseGlossaryPageStateResult = {
     entry_id: GlossaryEntryId,
     options: { extend: boolean; range: boolean },
   ) => void
-  select_range: (
-    anchor_entry_id: GlossaryEntryId,
-    target_entry_id: GlossaryEntryId,
-  ) => void
-  box_select_entries: (next_entry_ids: GlossaryEntryId[]) => void
   delete_selected_entries: () => Promise<void>
   toggle_case_sensitive_for_selected: (next_value: boolean) => Promise<void>
   reorder_selected_entries: (
@@ -610,6 +612,36 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     })
   }, [])
 
+  const apply_table_sort_state = useCallback((next_sort_state: AppTableSortState | null): void => {
+    if (next_sort_state === null) {
+      set_sort_state(create_empty_sort_state())
+      return
+    }
+
+    set_sort_state({
+      field: next_sort_state.column_id as GlossarySortField,
+      direction: next_sort_state.direction,
+    })
+  }, [])
+
+  const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
+    set_selected_entry_ids((previous_ids) => {
+      return are_glossary_entry_ids_equal(previous_ids, payload.selected_row_ids)
+        ? previous_ids
+        : payload.selected_row_ids
+    })
+    set_active_entry_id((previous_entry_id) => {
+      return previous_entry_id === payload.active_row_id
+        ? previous_entry_id
+        : payload.active_row_id
+    })
+    set_selection_anchor_entry_id((previous_entry_id) => {
+      return previous_entry_id === payload.anchor_row_id
+        ? previous_entry_id
+        : payload.anchor_row_id
+    })
+  }, [])
+
   const clear_all_filters = useCallback((): void => {
     set_filter_state(create_empty_filter_state())
   }, [])
@@ -742,25 +774,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     set_selected_entry_ids([entry_id])
     set_selection_anchor_entry_id(entry_id)
   }, [selection_anchor_entry_id, visible_entry_ids])
-
-  const select_range = useCallback((
-    anchor_entry_id: GlossaryEntryId,
-    target_entry_id: GlossaryEntryId,
-  ): void => {
-    set_selected_entry_ids(
-      collect_range_selection(visible_entry_ids, anchor_entry_id, target_entry_id),
-    )
-    set_active_entry_id(target_entry_id)
-    set_selection_anchor_entry_id(anchor_entry_id)
-  }, [visible_entry_ids])
-
-  const box_select_entries = useCallback((next_entry_ids: GlossaryEntryId[]): void => {
-    set_selected_entry_ids((previous_ids) => {
-      return are_glossary_entry_ids_equal(previous_ids, next_entry_ids)
-        ? previous_ids
-        : next_entry_ids
-    })
-  }, [])
 
   const delete_selected_entries = useCallback(async (): Promise<void> => {
     if (selected_entry_ids.length === 0) {
@@ -1450,6 +1463,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       preset_items,
       selected_entry_ids,
       active_entry_id,
+      selection_anchor_entry_id,
       preset_menu_open,
       dialog_state,
       confirm_state,
@@ -1458,6 +1472,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       update_filter_scope,
       update_filter_regex,
       cycle_column_sort,
+      apply_table_sort_state,
+      apply_table_selection,
       clear_all_filters,
       update_enabled,
       open_create_dialog,
@@ -1475,8 +1491,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       set_default_preset,
       cancel_default_preset,
       select_entry,
-      select_range,
-      box_select_entries,
       delete_selected_entries,
       toggle_case_sensitive_for_selected,
       reorder_selected_entries,
@@ -1493,8 +1507,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
   }, [
     active_entry_id,
+    apply_table_selection,
+    apply_table_sort_state,
     apply_preset,
-    box_select_entries,
     cancel_default_preset,
     clear_all_filters,
     close_confirm_dialog,
@@ -1529,8 +1544,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     save_dialog_entry,
     search_entry_relations_from_statistics,
     select_entry,
-    select_range,
     selected_entry_ids,
+    selection_anchor_entry_id,
     set_default_preset,
     sort_state,
     statistics_badge_by_entry_id,

@@ -21,7 +21,6 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
       <WorkbenchFileTable
         entries={workbench_state.entries}
         selected_entry_id={workbench_state.selected_entry_id}
-        project_loaded={workbench_state.project_loaded}
         readonly={workbench_state.readonly}
         on_select={workbench_state.select_entry}
         on_replace={(entry_id) => {

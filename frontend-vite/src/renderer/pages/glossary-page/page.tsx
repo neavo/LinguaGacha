@@ -35,11 +35,10 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
           statistics_ready={glossary_page_state.statistics_ready}
           selected_entry_ids={glossary_page_state.selected_entry_ids}
           active_entry_id={glossary_page_state.active_entry_id}
+          anchor_entry_id={glossary_page_state.selection_anchor_entry_id}
           statistics_badge_by_entry_id={glossary_page_state.statistics_badge_by_entry_id}
-          on_cycle_column_sort={glossary_page_state.cycle_column_sort}
-          on_select_entry={glossary_page_state.select_entry}
-          on_select_range={glossary_page_state.select_range}
-          on_box_select={glossary_page_state.box_select_entries}
+          on_sort_change={glossary_page_state.apply_table_sort_state}
+          on_selection_change={glossary_page_state.apply_table_selection}
           on_open_edit={glossary_page_state.open_edit_dialog}
           on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
           on_reorder={glossary_page_state.reorder_selected_entries}
