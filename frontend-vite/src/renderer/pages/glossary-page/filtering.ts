@@ -16,6 +16,7 @@ type BuildGlossaryFilterResultOptions = {
   column_filters: GlossaryColumnFilters
   statistics_ready: boolean
   statistics_state: GlossaryStatisticsState
+  completed_statistics_entry_id_set: ReadonlySet<GlossaryEntryId>
 }
 
 type BuildGlossaryFilterResult = {
@@ -111,8 +112,9 @@ export function has_active_glossary_filters(
 export function resolve_glossary_statistics_badge_kind(
   entry_id: GlossaryEntryId,
   statistics_state: GlossaryStatisticsState,
+  completed_statistics_entry_id_set: ReadonlySet<GlossaryEntryId>,
 ): GlossaryStatisticsBadgeKind | null {
-  if (!statistics_state.completed_entry_ids.includes(entry_id)) {
+  if (!completed_statistics_entry_id_set.has(entry_id)) {
     return null
   }
 
@@ -149,7 +151,11 @@ export function build_glossary_filter_result(
 
     const statistics_kind = !options.statistics_ready
       ? null
-      : resolve_glossary_statistics_badge_kind(entry_id, options.statistics_state)
+      : resolve_glossary_statistics_badge_kind(
+          entry_id,
+          options.statistics_state,
+          options.completed_statistics_entry_id_set,
+        )
     const matches_statistics = !options.statistics_ready
       || options.column_filters.statistics === null
       || statistics_kind === options.column_filters.statistics

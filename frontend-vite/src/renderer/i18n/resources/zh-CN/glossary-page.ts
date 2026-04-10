@@ -43,7 +43,6 @@ export const zh_cn_glossary_page = {
     placeholder: '请输入关键字 …',
     clear: '清空',
     regex: '正则',
-    empty: '无筛选结果',
     invalid: '正则表达式无效',
     scope: {
       label: '范围',
@@ -56,9 +55,6 @@ export const zh_cn_glossary_page = {
   column_filter: {
     trigger: '筛选 {FIELD}',
     clear: '清除条件',
-    operator: {
-      empty: '为空',
-    },
     translation: {
       empty_only: '只看空译文',
     },
@@ -76,12 +72,6 @@ export const zh_cn_glossary_page = {
       unavailable: '请先运行统计',
     },
   },
-  empty: {
-    title: '术语表为空',
-    description: '点击“新增”创建第一条术语规则，或从文件导入已有术语表。',
-    filtered_title: '无筛选结果',
-    filtered_description: '试试调整关键词、范围或列头筛选条件。',
-  },
   dialog: {
     create_title: '新增术语',
     edit_title: '编辑术语',
@@ -93,8 +83,6 @@ export const zh_cn_glossary_page = {
     delete: '删除预设',
     set_default: '设为默认预设',
     cancel_default: '取消默认预设',
-    default_marker: '默认',
-    empty: '暂无可用预设',
     dialog: {
       save_title: '保存为预设',
       save_description: '将当前术语表保存为用户预设，便于后续快速导入。',
@@ -135,7 +123,6 @@ export const zh_cn_glossary_page = {
     export_failed: '术语表导出失败',
     export_success: '数据已导出 …',
     statistics_failed: '术语表统计失败',
-    statistics_progress: '正在统计规则 …',
     preset_failed: '术语表预设加载失败',
     preset_saved: '预设已保存 …',
     preset_renamed: '预设已重命名 …',

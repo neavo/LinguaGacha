@@ -734,7 +734,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const [active_drag_entry_id, set_active_drag_entry_id] = useState<GlossaryEntryId | null>(null)
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null)
   const [selection_box_visual, set_selection_box_visual] = useState<SelectionBoxState | null>(null)
-  const latest_entry_ids_ref = useRef<GlossaryEntryId[]>([])
   const latest_on_box_select_ref = useRef(props.on_box_select)
   const latest_on_select_range_ref = useRef(props.on_select_range)
   const selected_entry_id_set = useMemo(() => {
@@ -767,10 +766,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     table_scroll_host_ref.current,
     selection_box_visual,
   )
-
-  useEffect(() => {
-    latest_entry_ids_ref.current = entry_ids
-  }, [entry_ids])
 
   useEffect(() => {
     latest_on_box_select_ref.current = props.on_box_select
@@ -858,10 +853,14 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     virtualizer.measureElement(row_element)
 
     const next_row_height = Math.round(row_element.getBoundingClientRect().height)
-    if (next_row_height > 0 && next_row_height !== measured_row_height) {
-      set_measured_row_height(next_row_height)
+    if (next_row_height > 0) {
+      set_measured_row_height((previous_row_height) => {
+        return next_row_height === previous_row_height
+          ? previous_row_height
+          : next_row_height
+      })
     }
-  }, [measured_row_height, virtualizer])
+  }, [virtualizer])
 
   const clear_selection_refs = useCallback((): void => {
     selection_box_ref.current = null
@@ -896,14 +895,16 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     }
 
     suppress_click_ref.current = true
-    const next_entry_ids = latest_entry_ids_ref.current.filter((entry_id) => {
-      const row_element = row_elements_ref.current.get(entry_id)
-      if (row_element === undefined) {
-        return false
-      }
-
-      return intersects_selection_box(row_element, current_state)
-    })
+    // 框选命中只可能发生在当前渲染行，按可见 DOM 扫描能把每帧开销压到视口规模。
+    const next_entry_ids = [...row_elements_ref.current.entries()]
+      .filter(([, row_element]) => {
+        return intersects_selection_box(row_element, current_state)
+      })
+      .map(([entry_id]) => entry_id)
+      .sort((left_entry_id, right_entry_id) => {
+        return (entry_index_by_id.get(left_entry_id) ?? Number.MAX_SAFE_INTEGER)
+          - (entry_index_by_id.get(right_entry_id) ?? Number.MAX_SAFE_INTEGER)
+      })
 
     if (are_glossary_entry_ids_equal(selection_box_ids_ref.current, next_entry_ids)) {
       return
@@ -911,7 +912,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
 
     selection_box_ids_ref.current = next_entry_ids
     latest_on_box_select_ref.current(next_entry_ids)
-  }, [cancel_selection_animation_frame])
+  }, [cancel_selection_animation_frame, entry_index_by_id])
 
   const schedule_selection_box_update = useCallback((): void => {
     if (selection_frame_id_ref.current !== null) {

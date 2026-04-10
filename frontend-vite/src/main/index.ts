@@ -43,18 +43,24 @@ const PROJECT_FILE_FILTERS: Electron.FileFilter[] = [
     extensions: ['lg'],
   },
 ]
-const GLOSSARY_FILE_FILTERS: Electron.FileFilter[] = [
+const GLOSSARY_IMPORT_FILE_FILTERS: Electron.FileFilter[] = [
   {
-    name: '支持的数据格式',
+    name: '支持的数据格式 (*.json *.xlsx)',
     extensions: ['json', 'xlsx'],
   },
   {
-    name: 'JSON 文件',
+    name: 'JSON 文件 (*.json)',
     extensions: ['json'],
   },
   {
-    name: 'Excel 文件',
+    name: 'Excel 文件 (*.xlsx)',
     extensions: ['xlsx'],
+  },
+]
+const GLOSSARY_EXPORT_FILE_FILTERS: Electron.FileFilter[] = [
+  {
+    name: '支持的数据格式 (*.json *.xlsx)',
+    extensions: ['json', 'xlsx'],
   },
 ]
 
@@ -530,10 +536,10 @@ ipcMain.handle(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, async (_event, default_
 ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH, async () => {
   return pick_open_path({
     properties: ['openFile'],
-    filters: GLOSSARY_FILE_FILTERS,
+    filters: GLOSSARY_IMPORT_FILE_FILTERS,
   })
 })
 
 ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, async (_event, default_name: string) => {
-  return pick_save_path(default_name, GLOSSARY_FILE_FILTERS)
+  return pick_save_path(default_name, GLOSSARY_EXPORT_FILE_FILTERS)
 })

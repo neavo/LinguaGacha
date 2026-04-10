@@ -206,13 +206,8 @@ function build_statistics_badge_tooltip(
 }
 
 type UseGlossaryPageStateResult = {
-  revision: number
   enabled: boolean
-  entries: GlossaryEntry[]
-  entry_ids: GlossaryEntryId[]
   filtered_entries: GlossaryVisibleEntry[]
-  visible_entry_ids: GlossaryEntryId[]
-  visible_count: number
   total_count: number
   filter_state: GlossaryFilterState
   column_filters: GlossaryColumnFilters
@@ -277,7 +272,6 @@ type UseGlossaryPageStateResult = {
   submit_preset_input: () => Promise<void>
   close_preset_input_dialog: () => void
   set_preset_menu_open: (next_open: boolean) => void
-  refresh_snapshot: () => Promise<void>
 }
 
 export function useGlossaryPageState(): UseGlossaryPageStateResult {
@@ -344,6 +338,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return null
   }, [active_entry_id, entry_index_by_id, selected_entry_ids])
   const statistics_filter_available = statistics_state.completed_revision === revision
+  const completed_statistics_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
+    return new Set(statistics_state.completed_entry_ids)
+  }, [statistics_state.completed_entry_ids])
   const {
     visible_entries: filtered_entries,
     invalid_regex_message,
@@ -355,9 +352,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       column_filters,
       statistics_ready: statistics_filter_available,
       statistics_state,
+      completed_statistics_entry_id_set,
     })
   }, [
     column_filters,
+    completed_statistics_entry_id_set,
     entries,
     entry_ids,
     filter_state,
@@ -370,7 +369,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const visible_entry_id_set = useMemo(() => {
     return new Set(visible_entry_ids)
   }, [visible_entry_ids])
-  const visible_count = filtered_entries.length
   const total_count = entries.length
   const has_active_filters = has_active_glossary_filters(filter_state, column_filters)
   const drag_disabled = has_active_filters
@@ -386,7 +384,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return
       }
 
-      const kind = resolve_glossary_statistics_badge_kind(entry_id, statistics_state)
+      const kind = resolve_glossary_statistics_badge_kind(
+        entry_id,
+        statistics_state,
+        completed_statistics_entry_id_set,
+      )
       if (kind === null) {
         return
       }
@@ -408,7 +410,14 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     })
 
     return next_badge_by_entry_id
-  }, [entries, entry_ids, statistics_filter_available, statistics_state, t])
+  }, [
+    completed_statistics_entry_id_set,
+    entries,
+    entry_ids,
+    statistics_filter_available,
+    statistics_state,
+    t,
+  ])
   const apply_snapshot = useCallback((snapshot: GlossarySnapshot): void => {
     set_revision(snapshot.revision)
     set_enabled(snapshot.meta.enabled ?? true)
@@ -1424,13 +1433,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
   return useMemo<UseGlossaryPageStateResult>(() => {
     return {
-      revision,
       enabled,
-      entries,
-      entry_ids,
       filtered_entries,
-      visible_entry_ids,
-      visible_count,
       total_count,
       filter_state,
       column_filters,
@@ -1483,7 +1487,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       submit_preset_input,
       close_preset_input_dialog,
       set_preset_menu_open,
-      refresh_snapshot,
     }
   }, [
     active_entry_id,
@@ -1500,8 +1503,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     dialog_state,
     drag_disabled,
     enabled,
-    entries,
-    entry_ids,
     export_entries_from_picker,
     filter_state,
     filtered_entries,
@@ -1515,14 +1516,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     preset_input_state,
     preset_menu_open,
     query_entry_source_from_statistics,
-    refresh_snapshot,
     reorder_selected_entries,
     request_delete_preset,
     request_close_dialog,
     request_rename_preset,
     request_reset_entries,
     request_save_preset,
-    revision,
     run_statistics,
     save_dialog_entry,
     search_entry_relations_from_statistics,
@@ -1543,7 +1542,5 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     update_filter_regex,
     update_filter_scope,
     update_preset_input_value,
-    visible_count,
-    visible_entry_ids,
   ])
 }

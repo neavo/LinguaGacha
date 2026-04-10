@@ -148,7 +148,7 @@ export function GlossaryCommandBar(
                 {t('glossary_page.action.preset')}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="center">
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   onSelect={() => {

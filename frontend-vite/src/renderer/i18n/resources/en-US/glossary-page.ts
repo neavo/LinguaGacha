@@ -46,7 +46,6 @@ export const en_us_glossary_page = {
     placeholder: 'Enter keywords …',
     clear: 'Clear',
     regex: 'Regex',
-    empty: 'No filtered results',
     invalid: 'Invalid regular expression',
     scope: {
       label: 'Scope',
@@ -59,9 +58,6 @@ export const en_us_glossary_page = {
   column_filter: {
     trigger: 'Filter {FIELD}',
     clear: 'Clear filter',
-    operator: {
-      empty: 'Empty',
-    },
     translation: {
       empty_only: 'Only empty translations',
     },
@@ -79,12 +75,6 @@ export const en_us_glossary_page = {
       unavailable: 'Run statistics first',
     },
   },
-  empty: {
-    title: 'The glossary is empty',
-    description: 'Click "Create" to add the first glossary rule, or import an existing glossary file.',
-    filtered_title: 'No filtered results',
-    filtered_description: 'Try adjusting the keyword, scope, or column filters.',
-  },
   dialog: {
     create_title: 'Create glossary entry',
     edit_title: 'Edit glossary entry',
@@ -96,8 +86,6 @@ export const en_us_glossary_page = {
     delete: 'Delete Preset',
     set_default: 'Set as Default Preset',
     cancel_default: 'Cancel Default Preset',
-    default_marker: 'Default',
-    empty: 'No presets available',
     dialog: {
       save_title: 'Save as Preset',
       save_description: 'Save the current glossary as a user preset for quick import later.',
@@ -138,7 +126,6 @@ export const en_us_glossary_page = {
     export_failed: 'Failed to export the glossary.',
     export_success: 'Data exported …',
     statistics_failed: 'Failed to build glossary statistics.',
-    statistics_progress: 'Building glossary statistics …',
     preset_failed: 'Failed to load glossary presets.',
     preset_saved: 'Preset saved …',
     preset_renamed: 'Preset renamed …',

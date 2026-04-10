@@ -8,16 +8,16 @@ type BuildGlossaryTableSpacerHeightsParams = {
   range_end: number
 }
 
-export type GlossaryTableZebraTone = 'odd' | 'even'
+type GlossaryTableZebraTone = 'odd' | 'even'
 
-export type GlossaryTableSpacerHeights = {
+type GlossaryTableSpacerHeights = {
   top_spacer_height: number
   virtual_bottom_spacer_height: number
   viewport_fill_height: number
   bottom_spacer_height: number
 }
 
-export type GlossaryTablePlaceholderFill = {
+type GlossaryTablePlaceholderFill = {
   placeholder_row_heights: number[]
   residual_spacer_height: number
 }

@@ -11,13 +11,13 @@ type GlossaryMergeItem = {
   is_existing: boolean
 }
 
-export type GlossaryMergeReport = {
+type GlossaryMergeReport = {
   added: number
   updated: number
   deduped: number
 }
 
-export type GlossaryMergeResult = {
+type GlossaryMergeResult = {
   merged_entries: GlossaryEntry[]
   report: GlossaryMergeReport
 }
