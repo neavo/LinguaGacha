@@ -438,7 +438,8 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   }, [rows.length])
 
   useEffect(() => {
-    if (viewport_element === null) {
+    const table_scroll_host_element = table_scroll_host_ref.current
+    if (table_scroll_host_element === null) {
       set_viewport_height(estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT)
       return
     }
@@ -446,7 +447,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     const update_viewport_height = (): void => {
       set_viewport_height(
         Math.max(
-          viewport_element.clientHeight,
+          table_scroll_host_element.clientHeight,
           estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT,
         ),
       )
@@ -454,16 +455,16 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
 
     update_viewport_height()
 
-    // Why: 视口高度变化会直接影响 spacer 与占位行的高度，统一在这里收口能避免各页面各自监听。
+    // Why: 短表补位依赖“可用滚动区域高度”而不是首帧 viewport 内容高度，直接观察 scroll host 更稳定。
     const resize_observer = new ResizeObserver(() => {
       update_viewport_height()
     })
-    resize_observer.observe(viewport_element)
+    resize_observer.observe(table_scroll_host_element)
 
     return () => {
       resize_observer.disconnect()
     }
-  }, [estimated_row_height, viewport_element])
+  }, [estimated_row_height, rows.length])
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
     count: rows.length,

@@ -218,7 +218,6 @@ function build_statistics_badge_tooltip(
 type UseGlossaryPageStateResult = {
   enabled: boolean
   filtered_entries: GlossaryVisibleEntry[]
-  total_count: number
   filter_state: GlossaryFilterState
   sort_state: GlossarySortState
   has_active_filters: boolean
@@ -238,7 +237,6 @@ type UseGlossaryPageStateResult = {
   update_filter_keyword: (next_keyword: string) => void
   update_filter_scope: (next_scope: GlossaryFilterScope) => void
   update_filter_regex: (next_is_regex: boolean) => void
-  cycle_column_sort: (field: GlossarySortField) => void
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void
   apply_table_selection: (payload: AppTableSelectionChange) => void
   clear_all_filters: () => void
@@ -374,7 +372,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const visible_entry_id_set = useMemo(() => {
     return new Set(visible_entry_ids)
   }, [visible_entry_ids])
-  const total_count = entries.length
   const has_active_filters = has_active_glossary_filters(filter_state)
   const has_active_sort = sort_state.field !== null
   // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用。
@@ -589,26 +586,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         ...previous_state,
         is_regex: next_is_regex,
       }
-    })
-  }, [])
-
-  const cycle_column_sort = useCallback((field: GlossarySortField): void => {
-    set_sort_state((previous_state) => {
-      if (previous_state.field !== field) {
-        return {
-          field,
-          direction: 'ascending',
-        }
-      }
-
-      if (previous_state.direction === 'ascending') {
-        return {
-          field,
-          direction: 'descending',
-        }
-      }
-
-      return create_empty_sort_state()
     })
   }, [])
 
@@ -1451,7 +1428,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return {
       enabled,
       filtered_entries,
-      total_count,
       filter_state,
       sort_state,
       has_active_filters,
@@ -1471,7 +1447,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       update_filter_keyword,
       update_filter_scope,
       update_filter_regex,
-      cycle_column_sort,
       apply_table_sort_state,
       apply_table_selection,
       clear_all_filters,
@@ -1514,7 +1489,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     clear_all_filters,
     close_confirm_dialog,
     close_preset_input_dialog,
-    cycle_column_sort,
     confirm_pending_action,
     confirm_state,
     delete_selected_entries,
@@ -1553,7 +1527,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     statistics_state,
     submit_preset_input,
     toggle_case_sensitive_for_selected,
-    total_count,
     update_dialog_draft,
     update_enabled,
     update_filter_keyword,

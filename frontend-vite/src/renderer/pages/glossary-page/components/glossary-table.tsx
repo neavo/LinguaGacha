@@ -40,7 +40,6 @@ import type {
 
 type GlossaryTableProps = {
   entries: GlossaryVisibleEntry[]
-  total_count: number
   sort_state: GlossarySortState
   drag_disabled: boolean
   statistics_running: boolean
@@ -497,9 +496,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           ignore_row_click_target={should_ignore_row_click_target}
           ignore_box_select_target={should_ignore_box_selection_target}
           box_selection_enabled
-          estimated_row_height={33}
-          virtual_overscan={8}
-          placeholder_row_strategy="fill-viewport"
           table_class_name="glossary-page__table"
           row_class_name={() => 'glossary-page__table-row'}
         />

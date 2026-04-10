@@ -259,16 +259,6 @@
   }
 }
 
-.glossary-page {
-  --glossary-row-utility-surface: color-mix(in srgb, var(--card) 68%, transparent);
-  --glossary-row-utility-surface-active: color-mix(in srgb, var(--card) 84%, transparent);
-}
-
-.dark .glossary-page {
-  --glossary-row-utility-surface: color-mix(in srgb, white 7%, transparent);
-  --glossary-row-utility-surface-active: color-mix(in srgb, white 12%, transparent);
-}
-
 .glossary-page__table-card {
   display: flex;
   min-height: 0;
@@ -356,24 +346,6 @@
     opacity 180ms ease;
 }
 
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row:hover .glossary-page__row-index,
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] .glossary-page__row-index,
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] .glossary-page__row-index {
-  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground) 18%);
-  opacity: 0.92;
-}
-
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row:hover .glossary-page__row-utility,
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] .glossary-page__row-utility,
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] .glossary-page__row-utility {
-  background: var(--glossary-row-utility-surface);
-}
-
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] .glossary-page__row-utility,
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] .glossary-page__row-utility {
-  background: var(--glossary-row-utility-surface-active);
-}
-
 .glossary-page__drag-handle {
   display: inline-flex;
   align-items: center;
@@ -390,13 +362,6 @@
 .glossary-page__drag-handle svg {
   width: 10px;
   height: 10px;
-}
-
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row:hover .glossary-page__drag-handle,
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-state='selected'] .glossary-page__drag-handle,
-.glossary-page__table--body [data-slot='table-body'] > .glossary-page__table-row[data-dragging='true'] .glossary-page__drag-handle {
-  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground) 18%);
-  opacity: 0.92;
 }
 
 .glossary-page__rule-badge-wrap {

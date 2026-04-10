@@ -28,7 +28,6 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
       <div className="glossary-page__table-host">
         <GlossaryTable
           entries={glossary_page_state.filtered_entries}
-          total_count={glossary_page_state.total_count}
           sort_state={glossary_page_state.sort_state}
           drag_disabled={glossary_page_state.drag_disabled}
           statistics_running={glossary_page_state.statistics_state.running}

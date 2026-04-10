@@ -14,6 +14,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@/ui/card'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/ui/tooltip'
 import { AppTable } from '@/widgets/app-table/app-table'
 import type {
   AppTableColumn,
@@ -31,6 +36,10 @@ type WorkbenchFileTableProps = {
   on_reorder: (ordered_entry_ids: string[]) => void
 }
 
+function build_workbench_row_number_label(row_index: number): string {
+  return String(row_index + 1)
+}
+
 function should_ignore_workbench_row_click(target_element: HTMLElement): boolean {
   return target_element.closest('[data-workbench-ignore-row-click="true"]') !== null
 }
@@ -43,45 +52,53 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
       {
         kind: 'drag',
         id: 'drag',
-        width: 48,
+        width: 64,
         align: 'center',
         title: t('workbench_page.table.drag_handle'),
         aria_label: t('workbench_page.table.drag_handle_aria'),
         head_class_name: 'workbench-page__table-drag-head',
         cell_class_name: 'workbench-page__table-drag-cell',
         render_cell: (payload) => {
-          return (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled={payload.drag_handle?.disabled ?? true}
-              className="workbench-page__drag-handle"
-              aria-label={payload.aria_label}
+          const utility = (
+            <div
+              className="workbench-page__row-utility"
+              data-drag-disabled={payload.drag_handle?.disabled ?? true ? 'true' : undefined}
               data-workbench-ignore-row-click="true"
-              onClick={(event) => {
-                event.stopPropagation()
-              }}
-              {...(payload.drag_handle?.attributes ?? {})}
-              {...(payload.drag_handle?.listeners ?? {})}
+              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.attributes ?? {})}
+              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.listeners ?? {})}
             >
-              <GripVertical data-icon="inline-start" />
-            </Button>
+              <span className="workbench-page__drag-handle" aria-hidden="true">
+                <GripVertical />
+              </span>
+              <span className="workbench-page__row-index">
+                {build_workbench_row_number_label(payload.row_index)}
+              </span>
+            </div>
           )
+
+          return payload.drag_handle === null || payload.drag_handle.disabled
+            ? utility
+            : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {utility}
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={8}>
+                    <p>{payload.aria_label}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )
         },
         render_placeholder: () => {
           return (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled
-              tabIndex={-1}
-              aria-hidden="true"
-              className="workbench-page__drag-handle"
-            >
-              <GripVertical data-icon="inline-start" />
-            </Button>
+            <div className="workbench-page__row-utility">
+              <span className="workbench-page__drag-handle" aria-hidden="true">
+                <GripVertical />
+              </span>
+              <span className="workbench-page__row-index">
+                {'88'}
+              </span>
+            </div>
           )
         },
       },
@@ -143,7 +160,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         kind: 'data',
         id: 'action',
         title: t('workbench_page.table.actions'),
-        width: 64,
+        width: 88,
         align: 'center',
         head_class_name: 'workbench-page__table-action-head',
         cell_class_name: 'workbench-page__table-action-cell',
@@ -221,9 +238,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
             )
           }}
           ignore_row_click_target={should_ignore_workbench_row_click}
-          estimated_row_height={33}
-          virtual_overscan={8}
-          placeholder_row_strategy="fill-viewport"
           table_class_name="workbench-page__table"
           row_class_name={() => 'workbench-page__table-row'}
         />

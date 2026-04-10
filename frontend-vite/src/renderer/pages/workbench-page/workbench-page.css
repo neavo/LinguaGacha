@@ -6,12 +6,16 @@
   --workbench-unit: color-mix(in srgb, var(--foreground) 42%, transparent);
   --workbench-success: #22c55e;
   --workbench-warning: #f59e0b;
+  --workbench-row-utility-surface: color-mix(in srgb, var(--card) 68%, transparent);
+  --workbench-row-utility-surface-active: color-mix(in srgb, var(--card) 84%, transparent);
 }
 
 .dark .workbench-page {
   --workbench-unit: color-mix(in srgb, var(--foreground) 58%, transparent);
   --workbench-success: #4ade80;
   --workbench-warning: #fbbf24;
+  --workbench-row-utility-surface: color-mix(in srgb, white 7%, transparent);
+  --workbench-row-utility-surface-active: color-mix(in srgb, white 12%, transparent);
 }
 
 .workbench-page__stats-grid {
@@ -87,6 +91,11 @@
   overflow: hidden;
 }
 
+.workbench-page__table [data-slot='table-cell'] {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--foreground) 92%, var(--muted-foreground) 8%);
+}
+
 .workbench-page__table-drag-head,
 .workbench-page__table-drag-cell,
 .workbench-page__table-format-head,
@@ -119,6 +128,72 @@
   white-space: nowrap;
 }
 
+.workbench-page__row-utility {
+  display: grid;
+  grid-template-columns: 10px 3ch;
+  align-items: center;
+  justify-content: center;
+  column-gap: 2px;
+  width: max-content;
+  min-height: 18px;
+  margin: 0 auto;
+  padding: 0 4px 0 3px;
+  border-radius: 999px;
+  background: transparent;
+  cursor: grab;
+  user-select: none;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.workbench-page__row-utility[data-drag-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.workbench-page__row-utility:active {
+  cursor: grabbing;
+}
+
+.workbench-page__row-utility[data-drag-disabled='true']:active {
+  cursor: not-allowed;
+}
+
+.workbench-page__row-index {
+  justify-self: start;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--muted-foreground);
+  opacity: 0.56;
+  transition:
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row:hover .workbench-page__row-index,
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-state='selected'] .workbench-page__row-index,
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-dragging='true'] .workbench-page__row-index {
+  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground) 18%);
+  opacity: 0.92;
+}
+
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row:hover .workbench-page__row-utility,
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-state='selected'] .workbench-page__row-utility,
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-dragging='true'] .workbench-page__row-utility {
+  background: var(--workbench-row-utility-surface);
+}
+
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-state='selected'] .workbench-page__row-utility,
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-dragging='true'] .workbench-page__row-utility {
+  background: var(--workbench-row-utility-surface-active);
+}
+
 
 .workbench-page__row-action {
   color: var(--foreground);
@@ -134,24 +209,27 @@
 }
 
 .workbench-page__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
   color: var(--muted-foreground);
-  cursor: grab;
-  border-radius: 999px;
+  opacity: 0.52;
+  transition:
+    color 180ms ease,
+    opacity 180ms ease;
 }
 
-.workbench-page__drag-handle[data-slot='button'] {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  min-height: 24px;
-  padding: 0;
+.workbench-page__drag-handle svg {
+  width: 10px;
+  height: 10px;
 }
 
-.workbench-page__drag-handle:active {
-  cursor: grabbing;
-}
-
-.workbench-page__drag-handle:disabled {
-  cursor: default;
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row:hover .workbench-page__drag-handle,
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-state='selected'] .workbench-page__drag-handle,
+.app-table__table--body [data-slot='table-body'] > .workbench-page__table-row[data-dragging='true'] .workbench-page__drag-handle {
+  color: color-mix(in srgb, var(--foreground) 82%, var(--muted-foreground) 18%);
+  opacity: 0.92;
 }
 

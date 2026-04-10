@@ -166,6 +166,7 @@ export function AppTablePlaceholderRow<Row>(props: {
     <TableRow
       aria-hidden="true"
       data-row-index={props.row_index}
+      data-zebra={props.row_index % 2 === 1 ? 'even' : 'odd'}
       className="app-table__row app-table__placeholder-row"
       style={row_style}
     >
