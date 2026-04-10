@@ -21,19 +21,13 @@
 .glossary-page__search-shell {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .glossary-page__search-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.glossary-page__search-toggle {
-  min-width: 64px;
-  border-radius: 999px;
-  white-space: nowrap;
+  gap: 8px;
 }
 
 .glossary-page__search-input-group {
@@ -44,19 +38,24 @@
   min-width: 0;
 }
 
-.glossary-page__search-submit {
-  color: var(--muted-foreground);
-}
-
-.glossary-page__search-submit:hover {
-  color: var(--foreground);
-}
-
-.glossary-page__search-nav {
-  display: inline-flex;
+.glossary-page__search-scope {
   flex-shrink: 0;
-  align-items: center;
-  gap: 8px;
+}
+
+.glossary-page__search-scope [data-slot='toggle-group-item'] {
+  white-space: nowrap;
+}
+
+.glossary-page__search-result-count {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.glossary-page__advanced-trigger {
+  flex-shrink: 0;
 }
 
 .glossary-page__search-status {
@@ -70,18 +69,57 @@
   color: var(--destructive);
 }
 
+.glossary-page__filter-chip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.glossary-page__filter-chip-list {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.glossary-page__filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.glossary-page__filter-chip-label {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glossary-page__filter-clear-all {
+  flex-shrink: 0;
+}
+
 @media (max-width: 1200px) {
   .glossary-page__search-bar {
     flex-wrap: wrap;
   }
 
   .glossary-page__search-input-group {
-    min-width: min(100%, 420px);
+    min-width: min(100%, 360px);
   }
 
-  .glossary-page__search-nav {
-    width: 100%;
-    justify-content: flex-end;
+  .glossary-page__search-result-count {
+    margin-left: auto;
+  }
+
+  .glossary-page__filter-chip-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
@@ -342,6 +380,75 @@
   background: transparent;
 }
 
+.glossary-page__table-head-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.glossary-page__table-head-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glossary-page__column-filter-trigger {
+  opacity: 0.24;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.glossary-page__table-head [data-slot='table-head']:hover .glossary-page__column-filter-trigger,
+.glossary-page__column-filter-trigger[data-active='true'] {
+  opacity: 1;
+}
+
+.glossary-page__column-filter-trigger[data-active='true'] {
+  transform: translateY(-1px);
+}
+
+.glossary-page__column-filter-menu {
+  width: 280px;
+}
+
+.glossary-page__column-filter-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 10px;
+}
+
+.glossary-page__column-filter-menu-copy {
+  min-width: 0;
+}
+
+.glossary-page__column-filter-menu-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--foreground);
+}
+
+.glossary-page__column-filter-menu-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 4px 4px;
+}
+
+.glossary-page__column-filter-toggle {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.glossary-page__column-filter-hint {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
 .glossary-page__table [data-slot='table-cell'] {
   padding-block: 0;
   font-size: 12px;
@@ -472,8 +579,17 @@
     opacity 180ms ease;
 }
 
+.glossary-page__row-utility[data-drag-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
 .glossary-page__row-utility:active {
   cursor: grabbing;
+}
+
+.glossary-page__row-utility[data-drag-disabled='true']:active {
+  cursor: not-allowed;
 }
 
 .glossary-page__row-index {

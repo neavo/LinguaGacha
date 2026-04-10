@@ -38,18 +38,63 @@ export const en_us_glossary_page = {
   rule: {
     case_sensitive: 'Case-sensitive',
   },
-  search: {
+  drag: {
+    disabled: 'Reordering is disabled while filters are active',
+  },
+  filter: {
+    placeholder: 'Filter source, translation, or notes…',
+    results: '{VISIBLE} / {TOTAL}',
+    clear: 'Clear',
+    clear_all: 'Clear all filters',
+    advanced: 'Advanced',
     regex: 'Regex',
-    placeholder: 'Search glossary …',
-    execute: 'Focus match',
-    previous: 'Previous',
-    next: 'Next',
-    empty: 'No matches found',
+    empty: 'No filtered results',
     invalid: 'Invalid regular expression',
+    scope: {
+      all: 'All',
+      source: 'Source',
+      translation: 'Translation',
+      description: 'Notes',
+    },
+    scope_chip: {
+      all: 'All fields',
+      source: 'Source',
+      translation: 'Translation',
+      description: 'Notes',
+    },
+  },
+  column_filter: {
+    trigger: 'Filter {FIELD}',
+    clear: 'Clear filter',
+    operator: {
+      contains: 'Contains',
+      empty: 'Empty',
+    },
+    source: {
+      placeholder: 'Filter source…',
+    },
+    translation: {
+      placeholder: 'Filter translation…',
+    },
+    description: {
+      placeholder: 'Filter notes…',
+    },
+    rule: {
+      case_sensitive: 'Case-sensitive',
+      case_insensitive: 'Case-insensitive',
+    },
+    statistics: {
+      matched: 'Has matches',
+      unmatched: 'No matches',
+      related: 'Has relations',
+      unavailable: 'Run statistics first',
+    },
   },
   empty: {
     title: 'The glossary is empty',
     description: 'Click "Create" to add the first glossary rule, or import an existing glossary file.',
+    filtered_title: 'No filtered results',
+    filtered_description: 'Try adjusting the keyword, scope, or column filters.',
   },
   dialog: {
     create_title: 'Create glossary entry',

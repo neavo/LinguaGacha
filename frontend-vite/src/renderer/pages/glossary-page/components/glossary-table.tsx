@@ -29,8 +29,8 @@ import {
 import { useI18n } from '@/i18n'
 import {
   are_glossary_entry_ids_equal,
-  build_glossary_entry_id,
 } from '@/pages/glossary-page/components/glossary-selection'
+import { GlossaryColumnFilterMenu } from '@/pages/glossary-page/components/glossary-column-filter-menu'
 import {
   GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
   GLOSSARY_TABLE_VIRTUAL_OVERSCAN,
@@ -40,9 +40,12 @@ import {
 } from '@/pages/glossary-page/components/glossary-table-virtualization'
 import { GlossaryContextMenuContent } from '@/pages/glossary-page/components/glossary-context-menu'
 import type {
+  GlossaryColumnFilterField,
+  GlossaryColumnFilters,
   GlossaryEntry,
   GlossaryEntryId,
   GlossaryStatisticsBadgeState,
+  GlossaryVisibleEntry,
 } from '@/pages/glossary-page/types'
 import { Badge } from '@/ui/badge'
 import {
@@ -63,6 +66,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/ui/empty'
+import { InputGroup, InputGroupInput } from '@/ui/input-group'
 import { ScrollArea } from '@/ui/scroll-area'
 import {
   Table,
@@ -77,14 +81,23 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/ui/tooltip'
+import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
 type GlossaryTableProps = {
-  entries: GlossaryEntry[]
+  entries: GlossaryVisibleEntry[]
+  total_count: number
+  column_filters: GlossaryColumnFilters
+  drag_disabled: boolean
+  statistics_filter_available: boolean
   selected_entry_ids: GlossaryEntryId[]
   active_entry_id: GlossaryEntryId | null
   statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>
+  on_update_column_filter: (
+    field: GlossaryColumnFilterField,
+    next_filter: GlossaryColumnFilters[GlossaryColumnFilterField],
+  ) => void
   on_select_entry: (
     entry_id: GlossaryEntryId,
     options: { extend: boolean; range: boolean },
@@ -119,6 +132,7 @@ type GlossarySortableRowProps = {
   row_index: number
   active: boolean
   selected: boolean
+  drag_disabled: boolean
   statistics_badge_state: GlossaryStatisticsBadgeState | null
   register_row_element: (
     entry_id: GlossaryEntryId,
@@ -149,6 +163,45 @@ type GlossaryTablePlaceholderRowProps = {
 
 function build_glossary_row_number_label(row_index: number): string {
   return String(row_index + 1)
+}
+
+function has_text_filter_value(filter: GlossaryColumnFilters['src']): boolean {
+  if (filter === null) {
+    return false
+  }
+
+  if (filter.mode === 'empty') {
+    return true
+  }
+
+  return filter.keyword.trim() !== ''
+}
+
+function build_text_filter_mode(
+  filter: GlossaryColumnFilters['dst'] | GlossaryColumnFilters['info'],
+): 'contains' | 'empty' {
+  if (filter?.mode === 'empty') {
+    return 'empty'
+  }
+
+  return 'contains'
+}
+
+function render_table_head_content(options: {
+  label: string
+  menu: JSX.Element | null
+  class_name: string
+}): JSX.Element {
+  return (
+    <TableHead className={options.class_name}>
+      <div className="glossary-page__table-head-content">
+        <span className="glossary-page__table-head-label">
+          {options.label}
+        </span>
+        {options.menu}
+      </div>
+    </TableHead>
+  )
 }
 
 function render_table_colgroup(): JSX.Element {
@@ -412,6 +465,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     transition,
   } = useSortable({
     id: props.entry_id,
+    disabled: props.drag_disabled,
   })
 
   const row_style: CSSProperties = {
@@ -491,10 +545,13 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
           <TableCell className="glossary-page__table-drag-cell">
             <div
               className="glossary-page__row-utility"
-              title={t('glossary_page.fields.drag')}
+              title={props.drag_disabled
+                ? t('glossary_page.drag.disabled')
+                : t('glossary_page.fields.drag')}
+              data-drag-disabled={props.drag_disabled ? 'true' : undefined}
               data-glossary-ignore-box-select="true"
-              {...attributes}
-              {...listeners}
+              {...(props.drag_disabled ? {} : attributes)}
+              {...(props.drag_disabled ? {} : listeners)}
             >
               <span className="glossary-page__drag-handle" aria-hidden="true">
                 <GripVertical />
@@ -551,6 +608,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     && previous_props.row_index === next_props.row_index
     && previous_props.active === next_props.active
     && previous_props.selected === next_props.selected
+    && previous_props.drag_disabled === next_props.drag_disabled
     && previous_props.statistics_badge_state === next_props.statistics_badge_state
     && previous_props.register_row_element === next_props.register_row_element
     && previous_props.on_open_edit === next_props.on_open_edit
@@ -678,9 +736,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     }),
   )
   const entry_ids = useMemo<GlossaryEntryId[]>(() => {
-    return props.entries.map((entry, index) => {
-      return build_glossary_entry_id(entry, index)
-    })
+    return props.entries.map((entry) => entry.entry_id)
   }, [props.entries])
   const entry_index_by_id = useMemo(() => {
     return new Map(entry_ids.map((entry_id, index) => [entry_id, index]))
@@ -688,9 +744,10 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const active_drag_row_index = active_drag_entry_id === null
     ? null
     : entry_index_by_id.get(active_drag_entry_id) ?? null
-  const active_drag_entry = active_drag_entry_id === null
+  const active_drag_item = active_drag_entry_id === null
     ? null
     : props.entries[active_drag_row_index ?? -1] ?? null
+  const active_drag_entry = active_drag_item?.entry ?? null
   const active_drag_row_number = active_drag_row_index === null
     ? null
     : build_glossary_row_number_label(active_drag_row_index)
@@ -983,6 +1040,10 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   }, [])
 
   function handle_drag_start(event: DragStartEvent): void {
+    if (props.drag_disabled) {
+      return
+    }
+
     set_active_drag_entry_id(String(event.active.id))
     const table_body_element = table_body_ref.current
     if (table_body_element === null) {
@@ -1010,12 +1071,244 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     set_active_drag_entry_id(null)
     set_drag_overlay_width(null)
 
+    if (props.drag_disabled) {
+      return
+    }
+
     if (event.over === null || event.active.id === event.over.id) {
       return
     }
 
     void props.on_reorder(String(event.active.id), String(event.over.id))
   }
+
+  const source_filter_active = has_text_filter_value(props.column_filters.src)
+  const translation_filter_active = has_text_filter_value(props.column_filters.dst)
+  const description_filter_active = has_text_filter_value(props.column_filters.info)
+  const rule_filter_active = props.column_filters.rule !== null
+  const statistics_filter_active = props.column_filters.statistics !== null
+
+  const source_filter_menu = (
+    <GlossaryColumnFilterMenu
+      label={t('glossary_page.fields.source')}
+      active={source_filter_active}
+      on_clear={() => {
+        props.on_update_column_filter('src', null)
+      }}
+    >
+      <InputGroup>
+        <InputGroupInput
+          value={props.column_filters.src?.mode === 'contains'
+            ? props.column_filters.src.keyword
+            : ''}
+          placeholder={t('glossary_page.column_filter.source.placeholder')}
+          onChange={(event) => {
+            const next_keyword = event.target.value
+            props.on_update_column_filter(
+              'src',
+              next_keyword.trim() === ''
+                ? null
+                : {
+                    mode: 'contains',
+                    keyword: next_keyword,
+                  },
+            )
+          }}
+        />
+      </InputGroup>
+    </GlossaryColumnFilterMenu>
+  )
+  const translation_filter_menu = (
+    <GlossaryColumnFilterMenu
+      label={t('glossary_page.fields.translation')}
+      active={translation_filter_active}
+      on_clear={() => {
+        props.on_update_column_filter('dst', null)
+      }}
+    >
+      <InputGroup>
+        <InputGroupInput
+          value={props.column_filters.dst?.mode === 'contains'
+            ? props.column_filters.dst.keyword
+            : ''}
+          disabled={build_text_filter_mode(props.column_filters.dst) === 'empty'}
+          placeholder={t('glossary_page.column_filter.translation.placeholder')}
+          onChange={(event) => {
+            const next_keyword = event.target.value
+            props.on_update_column_filter(
+              'dst',
+              next_keyword.trim() === ''
+                ? null
+                : {
+                    mode: 'contains',
+                    keyword: next_keyword,
+                  },
+            )
+          }}
+        />
+      </InputGroup>
+      <ToggleGroup
+        type="single"
+        size="sm"
+        variant="outline"
+        value={build_text_filter_mode(props.column_filters.dst)}
+        className="glossary-page__column-filter-toggle"
+        onValueChange={(next_value) => {
+          if (next_value === 'empty') {
+            props.on_update_column_filter('dst', { mode: 'empty' })
+            return
+          }
+
+          if (props.column_filters.dst?.mode === 'contains' && props.column_filters.dst.keyword.trim() !== '') {
+            props.on_update_column_filter('dst', props.column_filters.dst)
+            return
+          }
+
+          props.on_update_column_filter('dst', null)
+        }}
+      >
+        <ToggleGroupItem value="contains">
+          {t('glossary_page.column_filter.operator.contains')}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="empty">
+          {t('glossary_page.column_filter.operator.empty')}
+        </ToggleGroupItem>
+      </ToggleGroup>
+    </GlossaryColumnFilterMenu>
+  )
+  const description_filter_menu = (
+    <GlossaryColumnFilterMenu
+      label={t('glossary_page.fields.description')}
+      active={description_filter_active}
+      on_clear={() => {
+        props.on_update_column_filter('info', null)
+      }}
+    >
+      <InputGroup>
+        <InputGroupInput
+          value={props.column_filters.info?.mode === 'contains'
+            ? props.column_filters.info.keyword
+            : ''}
+          disabled={build_text_filter_mode(props.column_filters.info) === 'empty'}
+          placeholder={t('glossary_page.column_filter.description.placeholder')}
+          onChange={(event) => {
+            const next_keyword = event.target.value
+            props.on_update_column_filter(
+              'info',
+              next_keyword.trim() === ''
+                ? null
+                : {
+                    mode: 'contains',
+                    keyword: next_keyword,
+                  },
+            )
+          }}
+        />
+      </InputGroup>
+      <ToggleGroup
+        type="single"
+        size="sm"
+        variant="outline"
+        value={build_text_filter_mode(props.column_filters.info)}
+        className="glossary-page__column-filter-toggle"
+        onValueChange={(next_value) => {
+          if (next_value === 'empty') {
+            props.on_update_column_filter('info', { mode: 'empty' })
+            return
+          }
+
+          if (props.column_filters.info?.mode === 'contains' && props.column_filters.info.keyword.trim() !== '') {
+            props.on_update_column_filter('info', props.column_filters.info)
+            return
+          }
+
+          props.on_update_column_filter('info', null)
+        }}
+      >
+        <ToggleGroupItem value="contains">
+          {t('glossary_page.column_filter.operator.contains')}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="empty">
+          {t('glossary_page.column_filter.operator.empty')}
+        </ToggleGroupItem>
+      </ToggleGroup>
+    </GlossaryColumnFilterMenu>
+  )
+  const rule_filter_menu = (
+    <GlossaryColumnFilterMenu
+      label={t('glossary_page.fields.rule')}
+      active={rule_filter_active}
+      on_clear={() => {
+        props.on_update_column_filter('rule', null)
+      }}
+    >
+      <ToggleGroup
+        type="single"
+        size="sm"
+        variant="outline"
+        value={props.column_filters.rule ?? ''}
+        className="glossary-page__column-filter-toggle"
+        onValueChange={(next_value) => {
+          props.on_update_column_filter(
+            'rule',
+            next_value === ''
+              ? null
+              : next_value as GlossaryColumnFilters['rule'],
+          )
+        }}
+      >
+        <ToggleGroupItem value="case-sensitive">
+          {t('glossary_page.column_filter.rule.case_sensitive')}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="case-insensitive">
+          {t('glossary_page.column_filter.rule.case_insensitive')}
+        </ToggleGroupItem>
+      </ToggleGroup>
+    </GlossaryColumnFilterMenu>
+  )
+  const statistics_filter_menu = (
+    <GlossaryColumnFilterMenu
+      label={t('glossary_page.fields.statistics')}
+      active={statistics_filter_active}
+      on_clear={() => {
+        props.on_update_column_filter('statistics', null)
+      }}
+    >
+      {props.statistics_filter_available
+        ? (
+            <ToggleGroup
+              type="single"
+              size="sm"
+              variant="outline"
+              value={props.column_filters.statistics ?? ''}
+              className="glossary-page__column-filter-toggle"
+              onValueChange={(next_value) => {
+                props.on_update_column_filter(
+                  'statistics',
+                  next_value === ''
+                    ? null
+                    : next_value as GlossaryColumnFilters['statistics'],
+                )
+              }}
+            >
+              <ToggleGroupItem value="matched">
+                {t('glossary_page.column_filter.statistics.matched')}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="unmatched">
+                {t('glossary_page.column_filter.statistics.unmatched')}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="related">
+                {t('glossary_page.column_filter.statistics.related')}
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )
+        : (
+            <p className="glossary-page__column-filter-hint">
+              {t('glossary_page.column_filter.statistics.unavailable')}
+            </p>
+          )}
+    </GlossaryColumnFilterMenu>
+  )
 
   const empty_state = props.entries.length === 0
     ? (
@@ -1025,8 +1318,16 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
               <EmptyMedia>
                 <Files />
               </EmptyMedia>
-              <EmptyTitle>{t('glossary_page.empty.title')}</EmptyTitle>
-              <EmptyDescription>{t('glossary_page.empty.description')}</EmptyDescription>
+              <EmptyTitle>
+                {props.total_count === 0
+                  ? t('glossary_page.empty.title')
+                  : t('glossary_page.empty.filtered_title')}
+              </EmptyTitle>
+              <EmptyDescription>
+                {props.total_count === 0
+                  ? t('glossary_page.empty.description')
+                  : t('glossary_page.empty.filtered_description')}
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         </div>
@@ -1039,24 +1340,36 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         {render_table_colgroup()}
         <TableHeader className="glossary-page__table-head">
           <TableRow>
-            <TableHead className="glossary-page__table-drag-head">
-              {t('glossary_page.fields.drag')}
-            </TableHead>
-            <TableHead className="glossary-page__table-source-head">
-              {t('glossary_page.fields.source')}
-            </TableHead>
-            <TableHead className="glossary-page__table-translation-head">
-              {t('glossary_page.fields.translation')}
-            </TableHead>
-            <TableHead className="glossary-page__table-description-head">
-              {t('glossary_page.fields.description')}
-            </TableHead>
-            <TableHead className="glossary-page__table-rule-head">
-              {t('glossary_page.fields.rule')}
-            </TableHead>
-            <TableHead className="glossary-page__table-statistics-head">
-              {t('glossary_page.fields.statistics')}
-            </TableHead>
+            {render_table_head_content({
+              label: t('glossary_page.fields.drag'),
+              menu: null,
+              class_name: 'glossary-page__table-drag-head',
+            })}
+            {render_table_head_content({
+              label: t('glossary_page.fields.source'),
+              menu: source_filter_menu,
+              class_name: 'glossary-page__table-source-head',
+            })}
+            {render_table_head_content({
+              label: t('glossary_page.fields.translation'),
+              menu: translation_filter_menu,
+              class_name: 'glossary-page__table-translation-head',
+            })}
+            {render_table_head_content({
+              label: t('glossary_page.fields.description'),
+              menu: description_filter_menu,
+              class_name: 'glossary-page__table-description-head',
+            })}
+            {render_table_head_content({
+              label: t('glossary_page.fields.rule'),
+              menu: rule_filter_menu,
+              class_name: 'glossary-page__table-rule-head',
+            })}
+            {render_table_head_content({
+              label: t('glossary_page.fields.statistics'),
+              menu: statistics_filter_menu,
+              class_name: 'glossary-page__table-statistics-head',
+            })}
           </TableRow>
         </TableHeader>
       </Table>
@@ -1072,7 +1385,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       <ScrollArea className="glossary-page__table-scroll">
         <DndContext
           collisionDetection={closestCenter}
-          sensors={sensors}
+          sensors={props.drag_disabled ? [] : sensors}
           onDragStart={handle_drag_start}
           onDragCancel={handle_drag_cancel}
           onDragEnd={handle_drag_end}
@@ -1093,8 +1406,8 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                     )
                   : null}
                 {virtual_rows.map((virtual_row) => {
-                  const entry = props.entries[virtual_row.index]
-                  if (entry === undefined) {
+                  const entry_item = props.entries[virtual_row.index]
+                  if (entry_item === undefined) {
                     return null
                   }
 
@@ -1103,11 +1416,12 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                   return (
                     <GlossarySortableRow
                       key={entry_id}
-                      entry={entry}
+                      entry={entry_item.entry}
                       entry_id={entry_id}
                       row_index={virtual_row.index}
                       active={props.active_entry_id === entry_id}
                       selected={selected_entry_id_set.has(entry_id)}
+                      drag_disabled={props.drag_disabled}
                       statistics_badge_state={props.statistics_badge_by_entry_id[entry_id] ?? null}
                       register_row_element={register_row_element}
                       on_measure_row={measure_virtual_row}

@@ -35,18 +35,63 @@ export const zh_cn_glossary_page = {
   rule: {
     case_sensitive: '大小写敏感',
   },
-  search: {
+  drag: {
+    disabled: '筛选生效时无法拖拽排序',
+  },
+  filter: {
+    placeholder: '筛选原文、译文或备注…',
+    results: '{VISIBLE} / {TOTAL}',
+    clear: '清空',
+    clear_all: '清除全部筛选',
+    advanced: '高级',
     regex: '正则',
-    placeholder: '搜索术语表 …',
-    execute: '定位匹配项',
-    previous: '上一个',
-    next: '下一个',
-    empty: '没有找到匹配项',
+    empty: '无筛选结果',
     invalid: '正则表达式无效',
+    scope: {
+      all: '全部',
+      source: '原文',
+      translation: '译文',
+      description: '备注',
+    },
+    scope_chip: {
+      all: '全文',
+      source: '原文',
+      translation: '译文',
+      description: '备注',
+    },
+  },
+  column_filter: {
+    trigger: '筛选 {FIELD}',
+    clear: '清除条件',
+    operator: {
+      contains: '包含',
+      empty: '为空',
+    },
+    source: {
+      placeholder: '筛选原文…',
+    },
+    translation: {
+      placeholder: '筛选译文…',
+    },
+    description: {
+      placeholder: '筛选备注…',
+    },
+    rule: {
+      case_sensitive: '大小写敏感',
+      case_insensitive: '大小写不敏感',
+    },
+    statistics: {
+      matched: '有命中',
+      unmatched: '无命中',
+      related: '有关联关系',
+      unavailable: '请先运行统计',
+    },
   },
   empty: {
     title: '术语表为空',
     description: '点击“新增”创建第一条术语规则，或从文件导入已有术语表。',
+    filtered_title: '无筛选结果',
+    filtered_description: '试试调整关键词、范围或列头筛选条件。',
   },
   dialog: {
     create_title: '新增术语',

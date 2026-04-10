@@ -2,6 +2,7 @@ import '@/pages/glossary-page/glossary-page.css'
 import type { ScreenComponentProps } from '@/app/navigation/types'
 import { GlossaryCommandBar } from '@/pages/glossary-page/components/glossary-command-bar'
 import { GlossaryEditDialog } from '@/pages/glossary-page/components/glossary-edit-dialog'
+import { GlossaryFilterChips } from '@/pages/glossary-page/components/glossary-filter-chips'
 import { GlossarySearchBar } from '@/pages/glossary-page/components/glossary-search-bar'
 import { GlossaryTable } from '@/pages/glossary-page/components/glossary-table'
 import { useGlossaryPageState } from '@/pages/glossary-page/use-glossary-page-state'
@@ -15,22 +16,34 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
       <GlossarySearchBar
-        keyword={glossary_page_state.search_state.keyword}
-        is_regex={glossary_page_state.search_state.is_regex}
-        match_count={glossary_page_state.search_state.matched_entry_ids.length}
-        invalid_regex_message={glossary_page_state.search_state.invalid_regex_message}
-        on_keyword_change={glossary_page_state.update_search_keyword}
-        on_regex_change={glossary_page_state.update_search_regex}
-        on_search={glossary_page_state.focus_next_match}
-        on_previous_match={glossary_page_state.focus_previous_match}
-        on_next_match={glossary_page_state.focus_next_match}
+        keyword={glossary_page_state.filter_state.keyword}
+        scope={glossary_page_state.filter_state.scope}
+        visible_count={glossary_page_state.visible_count}
+        total_count={glossary_page_state.total_count}
+        is_regex={glossary_page_state.filter_state.is_regex}
+        invalid_filter_message={glossary_page_state.invalid_filter_message}
+        has_active_filters={glossary_page_state.filter_chips.length > 0}
+        on_keyword_change={glossary_page_state.update_filter_keyword}
+        on_scope_change={glossary_page_state.update_filter_scope}
+        on_regex_change={glossary_page_state.update_filter_regex}
+        on_clear_filters={glossary_page_state.clear_all_filters}
+      />
+      <GlossaryFilterChips
+        chips={glossary_page_state.filter_chips}
+        on_remove_chip={glossary_page_state.clear_filter_chip}
+        on_clear_all={glossary_page_state.clear_all_filters}
       />
       <div className="glossary-page__table-host">
         <GlossaryTable
-          entries={glossary_page_state.entries}
+          entries={glossary_page_state.filtered_entries}
+          total_count={glossary_page_state.total_count}
+          column_filters={glossary_page_state.column_filters}
+          drag_disabled={glossary_page_state.drag_disabled}
+          statistics_filter_available={glossary_page_state.statistics_filter_available}
           selected_entry_ids={glossary_page_state.selected_entry_ids}
           active_entry_id={glossary_page_state.active_entry_id}
           statistics_badge_by_entry_id={glossary_page_state.statistics_badge_by_entry_id}
+          on_update_column_filter={glossary_page_state.update_column_filter}
           on_select_entry={glossary_page_state.select_entry}
           on_select_range={glossary_page_state.select_range}
           on_box_select={glossary_page_state.box_select_entries}
