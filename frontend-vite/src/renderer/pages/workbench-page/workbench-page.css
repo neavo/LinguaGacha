@@ -1,4 +1,5 @@
 .workbench-page {
+  --ui-page-gap: 12px;
   flex: 1;
   height: 100%;
   min-height: 0;
@@ -395,15 +396,3 @@
   cursor: default;
 }
 
-.workbench-page__empty-wrap {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.workbench-page__empty-state {
-  width: 100%;
-  min-height: 220px;
-}

@@ -14,6 +14,7 @@ export type GlossaryDialogState = {
   open: boolean
   mode: GlossaryDialogMode
   target_entry_id: GlossaryEntryId | null
+  insert_after_entry_id: GlossaryEntryId | null
   draft_entry: GlossaryEntry
   dirty: boolean
   saving: boolean
@@ -75,4 +76,41 @@ export type GlossaryPresetItem = {
   virtual_id: string
   type: 'builtin' | 'user'
   path?: string
+  is_default?: boolean
 }
+
+export type GlossaryConfirmState =
+  | {
+      open: false
+      kind: null
+      selection_count: number
+      preset_name: string
+      preset_input_value: string
+      submitting: boolean
+      target_virtual_id: string | null
+    }
+  | {
+      open: true
+      kind: 'delete-selection' | 'delete-preset' | 'reset' | 'overwrite-preset'
+      selection_count: number
+      preset_name: string
+      preset_input_value: string
+      submitting: boolean
+      target_virtual_id: string | null
+    }
+
+export type GlossaryPresetInputState =
+  | {
+      open: false
+      mode: null
+      value: string
+      submitting: boolean
+      target_virtual_id: string | null
+    }
+  | {
+      open: true
+      mode: 'save' | 'rename'
+      value: string
+      submitting: boolean
+      target_virtual_id: string | null
+    }

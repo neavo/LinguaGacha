@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { CircleEllipsis, Files, GripVertical, ShieldAlert } from 'lucide-react'
+import { CircleEllipsis, GripVertical } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -27,7 +27,6 @@ import {
   ContextMenu,
   ContextMenuTrigger,
 } from '@/ui/context-menu'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/empty'
 import { ScrollArea } from '@/ui/scroll-area'
 import {
   Table,
@@ -578,36 +577,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
     props.on_reorder(next_entries.map((entry) => entry.rel_path))
   }
 
-  const resolved_empty_state = !props.project_loaded
-    ? (
-        <div className="workbench-page__empty-wrap">
-          <Empty variant="inset" className="workbench-page__empty-state">
-            <EmptyHeader>
-              <EmptyMedia>
-                <ShieldAlert />
-              </EmptyMedia>
-              <EmptyTitle>{t('workbench_page.empty.title')}</EmptyTitle>
-              <EmptyDescription>{t('workbench_page.empty.description')}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </div>
-      )
-    : props.entries.length === 0
-      ? (
-          <div className="workbench-page__empty-wrap">
-            <Empty variant="inset" className="workbench-page__empty-state">
-              <EmptyHeader>
-                <EmptyMedia>
-                  <Files />
-                </EmptyMedia>
-                <EmptyTitle>{t('workbench_page.empty.loaded_title')}</EmptyTitle>
-                <EmptyDescription>{t('workbench_page.empty.loaded_description')}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </div>
-        )
-      : null
-
   const resolved_header = (
     <div className="workbench-page__table-head-wrap">
       <Table className="workbench-page__table">
@@ -724,7 +693,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
       description={t('workbench_page.empty.description')}
       className="workbench-page__table-card"
       content_class_name="workbench-page__table-card-content"
-      empty_state={resolved_empty_state}
+      empty_state={null}
       header={resolved_header}
       body={resolved_body}
     />

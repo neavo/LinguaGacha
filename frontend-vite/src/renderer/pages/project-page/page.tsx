@@ -1,4 +1,4 @@
-import { AlertTriangle, BadgeAlert, File, FolderOpen, ShieldAlert, SquareMousePointer, X } from 'lucide-react'
+import { AlertTriangle, BadgeAlert, File, FolderOpen, SquareMousePointer, X } from 'lucide-react'
 import { forwardRef, type ComponentProps, type DragEvent, type MouseEvent, type MouseEventHandler, useState } from 'react'
 
 import {
@@ -20,7 +20,6 @@ import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { Button } from '@/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/ui/context-menu'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/empty'
 import { Progress } from '@/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip'
 import { useI18n } from '@/i18n'
@@ -894,31 +893,9 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           </div>
         )
       : <RecentProjectEmptyState />
-    : is_preview_loading
-      ? (
-          <Empty variant="inset" className="project-home__empty-state">
-            <EmptyHeader>
-              <EmptyMedia>
-                <ShieldAlert className="size-7 stroke-[1.8]" />
-              </EmptyMedia>
-              <EmptyTitle>{selected_project.name}</EmptyTitle>
-              <EmptyDescription>{t('project_page.open.preview_loading')}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )
-      : selected_project.preview !== null
-        ? <ProjectPreviewPanel project={selected_project} />
-        : (
-            <Empty variant="inset" className="project-home__empty-state">
-              <EmptyHeader>
-                <EmptyMedia>
-                  <ShieldAlert className="size-7 stroke-[1.8]" />
-                </EmptyMedia>
-                <EmptyTitle>{selected_project.name}</EmptyTitle>
-                <EmptyDescription>{t('project_page.open.preview_unavailable')}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )
+    : selected_project.preview !== null
+      ? <ProjectPreviewPanel project={selected_project} />
+      : null
 
   return (
     <>

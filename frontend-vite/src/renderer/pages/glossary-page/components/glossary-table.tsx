@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CSS } from '@dnd-kit/utilities'
-import { CaseSensitive, Files, GripVertical } from 'lucide-react'
+import { CaseSensitive, GripVertical } from 'lucide-react'
 import {
   memo,
   useCallback,
@@ -61,13 +61,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/ui/dropdown-menu'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/ui/empty'
 import { ScrollArea } from '@/ui/scroll-area'
 import {
   Table,
@@ -82,6 +75,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/ui/tooltip'
+import { Spinner } from '@/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
@@ -91,6 +85,7 @@ type GlossaryTableProps = {
   total_count: number
   column_filters: GlossaryColumnFilters
   drag_disabled: boolean
+  statistics_running: boolean
   statistics_filter_available: boolean
   selected_entry_ids: GlossaryEntryId[]
   active_entry_id: GlossaryEntryId | null
@@ -109,7 +104,6 @@ type GlossaryTableProps = {
   ) => void
   on_box_select: (next_entry_ids: GlossaryEntryId[]) => void
   on_open_edit: (entry_id: GlossaryEntryId) => void
-  on_delete_selected: () => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
   on_reorder: (
     active_entry_id: GlossaryEntryId,
@@ -134,6 +128,7 @@ type GlossarySortableRowProps = {
   active: boolean
   selected: boolean
   drag_disabled: boolean
+  statistics_running: boolean
   statistics_badge_state: GlossaryStatisticsBadgeState | null
   register_row_element: (
     entry_id: GlossaryEntryId,
@@ -144,7 +139,6 @@ type GlossarySortableRowProps = {
     entry_id: GlossaryEntryId,
     options: { extend: boolean; range: boolean },
   ) => void
-  on_delete_selected: () => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
   should_ignore_click: () => boolean
   on_measure_row: (row_element: HTMLTableRowElement) => void
@@ -308,6 +302,7 @@ function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
 
 type GlossaryStatisticsBadgeProps = {
   entry_id: GlossaryEntryId
+  statistics_running: boolean
   badge_state: GlossaryStatisticsBadgeState | null
   on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>
   on_search_entry_relations: (entry_id: GlossaryEntryId) => void
@@ -315,6 +310,24 @@ type GlossaryStatisticsBadgeProps = {
 
 function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Element | null {
   const { t } = useI18n()
+
+  if (props.statistics_running) {
+    return (
+      <span
+        data-glossary-ignore-box-select="true"
+        data-glossary-ignore-row-click="true"
+        className="glossary-page__statistics-badge-wrap"
+      >
+        <Badge
+          variant="outline"
+          className="glossary-page__statistics-badge glossary-page__statistics-badge--running"
+        >
+          <Spinner data-icon="inline-start" />
+          <span className="sr-only">{t('glossary_page.statistics.running')}</span>
+        </Badge>
+      </span>
+    )
+  }
 
   if (props.badge_state === null) {
     return null
@@ -465,7 +478,13 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     transform: CSS.Transform.toString(transform),
     transition,
   }
-  const case_tooltip = `${t('glossary_page.rule.case_sensitive')}\n${t(props.entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`
+  const case_tooltip = t('glossary_page.toggle.status').replace(
+    '{TITLE}',
+    t('glossary_page.rule.case_sensitive'),
+  ).replace(
+    '{STATE}',
+    t(props.entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled'),
+  )
   const row_number_label = build_glossary_row_number_label(props.row_index)
 
   const set_row_element = (row_element: HTMLTableRowElement | null): void => {
@@ -578,6 +597,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
           <TableCell className="glossary-page__table-statistics-cell">
             <GlossaryStatisticsBadge
               entry_id={props.entry_id}
+              statistics_running={props.statistics_running}
               badge_state={props.statistics_badge_state}
               on_query_entry_source={props.on_query_entry_source}
               on_search_entry_relations={props.on_search_entry_relations}
@@ -589,7 +609,6 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
         on_open_edit={() => {
           props.on_open_edit(props.entry_id)
         }}
-        on_delete_selected={props.on_delete_selected}
         on_toggle_case_sensitive={props.on_toggle_case_sensitive}
       />
     </ContextMenu>
@@ -602,11 +621,11 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     && previous_props.active === next_props.active
     && previous_props.selected === next_props.selected
     && previous_props.drag_disabled === next_props.drag_disabled
+    && previous_props.statistics_running === next_props.statistics_running
     && previous_props.statistics_badge_state === next_props.statistics_badge_state
     && previous_props.register_row_element === next_props.register_row_element
     && previous_props.on_open_edit === next_props.on_open_edit
     && previous_props.on_select_entry === next_props.on_select_entry
-    && previous_props.on_delete_selected === next_props.on_delete_selected
     && previous_props.on_toggle_case_sensitive === next_props.on_toggle_case_sensitive
     && previous_props.should_ignore_click === next_props.should_ignore_click
     && previous_props.on_measure_row === next_props.on_measure_row
@@ -1143,6 +1162,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       <ToggleGroup
         type="single"
         size="sm"
+        spacing={1}
         variant="outline"
         value={props.column_filters.rule ?? ''}
         className="glossary-page__column-filter-toggle"
@@ -1177,6 +1197,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
             <ToggleGroup
               type="single"
               size="sm"
+              spacing={1}
               variant="outline"
               value={props.column_filters.statistics ?? ''}
               className="glossary-page__column-filter-toggle"
@@ -1207,30 +1228,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           )}
     </GlossaryColumnFilterMenu>
   )
-
-  const empty_state = props.entries.length === 0
-    ? (
-        <div className="glossary-page__empty-wrap">
-          <Empty variant="inset" className="glossary-page__empty-state">
-            <EmptyHeader>
-              <EmptyMedia>
-                <Files />
-              </EmptyMedia>
-              <EmptyTitle>
-                {props.total_count === 0
-                  ? t('glossary_page.empty.title')
-                  : t('glossary_page.empty.filtered_title')}
-              </EmptyTitle>
-              <EmptyDescription>
-                {props.total_count === 0
-                  ? t('glossary_page.empty.description')
-                  : t('glossary_page.empty.filtered_description')}
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </div>
-      )
-    : null
 
   const header = (
     <div className="glossary-page__table-head-wrap">
@@ -1321,12 +1318,12 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                       active={props.active_entry_id === entry_id}
                       selected={selected_entry_id_set.has(entry_id)}
                       drag_disabled={props.drag_disabled}
+                      statistics_running={props.statistics_running}
                       statistics_badge_state={props.statistics_badge_by_entry_id[entry_id] ?? null}
                       register_row_element={register_row_element}
                       on_measure_row={measure_virtual_row}
                       on_open_edit={props.on_open_edit}
                       on_select_entry={props.on_select_entry}
-                      on_delete_selected={props.on_delete_selected}
                       on_toggle_case_sensitive={props.on_toggle_case_sensitive}
                       should_ignore_click={should_ignore_click}
                       on_query_entry_source={props.on_query_entry_source}
@@ -1402,7 +1399,13 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                           <TableCell className="glossary-page__table-rule-cell">
                             <GlossaryRuleBadge
                               enabled={active_drag_entry.case_sensitive}
-                              tooltip={`${t('glossary_page.rule.case_sensitive')}\n${t(active_drag_entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`}
+                              tooltip={t('glossary_page.toggle.status').replace(
+                                '{TITLE}',
+                                t('glossary_page.rule.case_sensitive'),
+                              ).replace(
+                                '{STATE}',
+                                t(active_drag_entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled'),
+                              )}
                             />
                           </TableCell>
                           <TableCell className="glossary-page__table-statistics-cell" />
@@ -1431,7 +1434,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       description={t('glossary_page.summary')}
       className="glossary-page__table-card"
       content_class_name="glossary-page__table-card-content"
-      empty_state={empty_state}
+      empty_state={null}
       header={header}
       body={body}
     />

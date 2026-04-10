@@ -1,7 +1,9 @@
 import '@/pages/glossary-page/glossary-page.css'
 import type { ScreenComponentProps } from '@/app/navigation/types'
 import { GlossaryCommandBar } from '@/pages/glossary-page/components/glossary-command-bar'
+import { GlossaryConfirmDialog } from '@/pages/glossary-page/components/glossary-confirm-dialog'
 import { GlossaryEditDialog } from '@/pages/glossary-page/components/glossary-edit-dialog'
+import { GlossaryPresetInputDialog } from '@/pages/glossary-page/components/glossary-preset-input-dialog'
 import { GlossarySearchBar } from '@/pages/glossary-page/components/glossary-search-bar'
 import { GlossaryTable } from '@/pages/glossary-page/components/glossary-table'
 import { useGlossaryPageState } from '@/pages/glossary-page/use-glossary-page-state'
@@ -17,8 +19,6 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
       <GlossarySearchBar
         keyword={glossary_page_state.filter_state.keyword}
         scope={glossary_page_state.filter_state.scope}
-        visible_count={glossary_page_state.visible_count}
-        total_count={glossary_page_state.total_count}
         is_regex={glossary_page_state.filter_state.is_regex}
         invalid_filter_message={glossary_page_state.invalid_filter_message}
         has_active_filters={glossary_page_state.has_active_filters}
@@ -33,6 +33,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
           total_count={glossary_page_state.total_count}
           column_filters={glossary_page_state.column_filters}
           drag_disabled={glossary_page_state.drag_disabled}
+          statistics_running={glossary_page_state.statistics_state.running}
           statistics_filter_available={glossary_page_state.statistics_filter_available}
           selected_entry_ids={glossary_page_state.selected_entry_ids}
           active_entry_id={glossary_page_state.active_entry_id}
@@ -42,7 +43,6 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
           on_select_range={glossary_page_state.select_range}
           on_box_select={glossary_page_state.box_select_entries}
           on_open_edit={glossary_page_state.open_edit_dialog}
-          on_delete_selected={glossary_page_state.delete_selected_entries}
           on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
           on_reorder={glossary_page_state.reorder_selected_entries}
           on_query_entry_source={glossary_page_state.query_entry_source_from_statistics}
@@ -63,6 +63,12 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         on_statistics={glossary_page_state.run_statistics}
         on_open_preset_menu={glossary_page_state.open_preset_menu}
         on_apply_preset={glossary_page_state.apply_preset}
+        on_request_reset={glossary_page_state.request_reset_entries}
+        on_request_save_preset={glossary_page_state.request_save_preset}
+        on_request_rename_preset={glossary_page_state.request_rename_preset}
+        on_request_delete_preset={glossary_page_state.request_delete_preset}
+        on_set_default_preset={glossary_page_state.set_default_preset}
+        on_cancel_default_preset={glossary_page_state.cancel_default_preset}
         on_preset_menu_open_change={glossary_page_state.set_preset_menu_open}
       />
       <GlossaryEditDialog
@@ -73,6 +79,21 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         on_change={glossary_page_state.update_dialog_draft}
         on_save={glossary_page_state.save_dialog_entry}
         on_close={glossary_page_state.request_close_dialog}
+      />
+      <GlossaryConfirmDialog
+        state={glossary_page_state.confirm_state}
+        on_confirm={() => {
+          void glossary_page_state.confirm_pending_action()
+        }}
+        on_close={glossary_page_state.close_confirm_dialog}
+      />
+      <GlossaryPresetInputDialog
+        state={glossary_page_state.preset_input_state}
+        on_change={glossary_page_state.update_preset_input_value}
+        on_submit={() => {
+          void glossary_page_state.submit_preset_input()
+        }}
+        on_close={glossary_page_state.close_preset_input_dialog}
       />
     </div>
   )

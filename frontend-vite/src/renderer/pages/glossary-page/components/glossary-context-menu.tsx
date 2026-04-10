@@ -2,7 +2,6 @@ import {
   CaseSensitive,
   Check,
   PencilLine,
-  Trash2,
   X,
 } from 'lucide-react'
 
@@ -18,7 +17,6 @@ import {
 
 type GlossaryContextMenuContentProps = {
   on_open_edit: () => void
-  on_delete_selected: () => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
 }
 
@@ -64,15 +62,6 @@ export function GlossaryContextMenuContent(
             </ContextMenuGroup>
           </ContextMenuSubContent>
         </ContextMenuSub>
-        <ContextMenuItem
-          variant="destructive"
-          onSelect={() => {
-            void props.on_delete_selected()
-          }}
-        >
-          <Trash2 />
-          {t('glossary_page.action.delete')}
-        </ContextMenuItem>
       </ContextMenuGroup>
     </ContextMenuContent>
   )

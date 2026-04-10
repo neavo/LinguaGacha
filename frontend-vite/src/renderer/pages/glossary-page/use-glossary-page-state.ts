@@ -10,6 +10,7 @@ import {
   has_active_glossary_filters,
   resolve_glossary_statistics_badge_kind,
 } from '@/pages/glossary-page/filtering'
+import { merge_glossary_entries } from '@/pages/glossary-page/merge'
 import {
   are_glossary_entry_ids_equal,
   build_glossary_entry_id,
@@ -19,11 +20,13 @@ import {
 import type {
   GlossaryColumnFilterField,
   GlossaryColumnFilters,
+  GlossaryConfirmState,
   GlossaryDialogState,
   GlossaryEntry,
   GlossaryEntryId,
   GlossaryFilterScope,
   GlossaryFilterState,
+  GlossaryPresetInputState,
   GlossaryPresetItem,
   GlossaryStatisticsBadgeState,
   GlossaryStatisticsState,
@@ -54,6 +57,12 @@ type GlossaryStatisticsPayload = {
 type GlossaryPresetPayload = {
   builtin_presets: GlossaryPresetItem[]
   user_presets: GlossaryPresetItem[]
+}
+
+type GlossarySettingsPayload = {
+  settings?: {
+    glossary_default_preset?: string
+  }
 }
 
 const EMPTY_ENTRY: GlossaryEntry = {
@@ -96,19 +105,84 @@ function create_empty_dialog_state(): GlossaryDialogState {
     open: false,
     mode: 'create',
     target_entry_id: null,
+    insert_after_entry_id: null,
     draft_entry: clone_entry(EMPTY_ENTRY),
     dirty: false,
     saving: false,
   }
 }
 
+function create_empty_confirm_state(): GlossaryConfirmState {
+  return {
+    open: false,
+    kind: null,
+    selection_count: 0,
+    preset_name: '',
+    preset_input_value: '',
+    submitting: false,
+    target_virtual_id: null,
+  }
+}
+
+function create_empty_preset_input_state(): GlossaryPresetInputState {
+  return {
+    open: false,
+    mode: null,
+    value: '',
+    submitting: false,
+    target_virtual_id: null,
+  }
+}
+
 function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
+    entry_id: entry.entry_id,
     src: entry.src.trim(),
     dst: entry.dst.trim(),
     info: entry.info.trim(),
     case_sensitive: entry.case_sensitive,
   }
+}
+
+function build_user_preset_virtual_id(name: string): string {
+  return `user:${name}.json`
+}
+
+function normalize_preset_name(name: string): string {
+  return name.trim()
+}
+
+function has_casefold_duplicate_preset(
+  preset_items: GlossaryPresetItem[],
+  target_virtual_id: string,
+  current_virtual_id: string | null,
+): boolean {
+  const target_key = target_virtual_id.toLocaleLowerCase()
+
+  return preset_items.some((item) => {
+    if (item.type !== 'user') {
+      return false
+    }
+
+    if (current_virtual_id !== null && item.virtual_id === current_virtual_id) {
+      return false
+    }
+
+    return item.virtual_id.toLocaleLowerCase() === target_key
+  })
+}
+
+function decorate_preset_items(
+  builtin_presets: GlossaryPresetItem[],
+  user_presets: GlossaryPresetItem[],
+  default_virtual_id: string,
+): GlossaryPresetItem[] {
+  return [...builtin_presets, ...user_presets].map((item) => {
+    return {
+      ...item,
+      is_default: item.virtual_id === default_virtual_id,
+    }
+  })
 }
 
 function build_statistics_badge_tooltip(
@@ -153,6 +227,8 @@ type UseGlossaryPageStateResult = {
   active_entry_id: GlossaryEntryId | null
   preset_menu_open: boolean
   dialog_state: GlossaryDialogState
+  confirm_state: GlossaryConfirmState
+  preset_input_state: GlossaryPresetInputState
   update_filter_keyword: (next_keyword: string) => void
   update_filter_scope: (next_scope: GlossaryFilterScope) => void
   update_filter_regex: (next_is_regex: boolean) => void
@@ -170,6 +246,12 @@ type UseGlossaryPageStateResult = {
   run_statistics: () => Promise<void>
   open_preset_menu: () => Promise<void>
   apply_preset: (virtual_id: string) => Promise<void>
+  request_reset_entries: () => void
+  request_save_preset: () => void
+  request_rename_preset: (preset_item: GlossaryPresetItem) => void
+  request_delete_preset: (preset_item: GlossaryPresetItem) => void
+  set_default_preset: (virtual_id: string) => Promise<void>
+  cancel_default_preset: () => Promise<void>
   select_entry: (
     entry_id: GlossaryEntryId,
     options: { extend: boolean; range: boolean },
@@ -189,6 +271,11 @@ type UseGlossaryPageStateResult = {
   search_entry_relations_from_statistics: (entry_id: GlossaryEntryId) => void
   save_dialog_entry: () => Promise<void>
   request_close_dialog: () => Promise<void>
+  confirm_pending_action: () => Promise<void>
+  close_confirm_dialog: () => void
+  update_preset_input_value: (next_value: string) => void
+  submit_preset_input: () => Promise<void>
+  close_preset_input_dialog: () => void
   set_preset_menu_open: (next_open: boolean) => void
   refresh_snapshot: () => Promise<void>
 }
@@ -220,6 +307,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const [dialog_state, set_dialog_state] = useState<GlossaryDialogState>(() => {
     return create_empty_dialog_state()
   })
+  const [confirm_state, set_confirm_state] = useState<GlossaryConfirmState>(() => {
+    return create_empty_confirm_state()
+  })
+  const [preset_input_state, set_preset_input_state] = useState<GlossaryPresetInputState>(() => {
+    return create_empty_preset_input_state()
+  })
   const revision_ref = useRef(revision)
 
   useEffect(() => {
@@ -235,6 +328,21 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const entry_index_by_id = useMemo(() => {
     return new Map(entry_ids.map((entry_id, index) => [entry_id, index]))
   }, [entry_ids])
+
+  const resolve_create_insert_after_entry_id = useCallback((): GlossaryEntryId | null => {
+    if (active_entry_id !== null && entry_index_by_id.has(active_entry_id)) {
+      return active_entry_id
+    }
+
+    for (let index = selected_entry_ids.length - 1; index >= 0; index -= 1) {
+      const selected_entry_id = selected_entry_ids[index]
+      if (selected_entry_id !== undefined && entry_index_by_id.has(selected_entry_id)) {
+        return selected_entry_id
+      }
+    }
+
+    return null
+  }, [active_entry_id, entry_index_by_id, selected_entry_ids])
   const statistics_filter_available = statistics_state.completed_revision === revision
   const {
     visible_entries: filtered_entries,
@@ -311,6 +419,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     set_statistics_state(create_empty_statistics_state())
   }, [])
 
+  const clear_selection_state = useCallback((): void => {
+    // 规则导入、预设应用和重置都会重排/折叠条目，先清空选区能避免旧 id 误绑到新行。
+    set_selected_entry_ids([])
+    set_active_entry_id(null)
+    set_selection_anchor_entry_id(null)
+  }, [])
+
   const refresh_snapshot = useCallback(async (): Promise<void> => {
     try {
       const payload = await api_fetch<GlossarySnapshotPayload>(
@@ -352,6 +467,54 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       return false
     }
   }, [apply_snapshot, push_toast, t])
+
+  const persist_merged_entries = useCallback(async (
+    incoming_entries: GlossaryEntry[],
+    options: {
+      close_preset_menu: boolean
+    },
+  ): Promise<boolean> => {
+    const { merged_entries, report } = merge_glossary_entries(entries, incoming_entries)
+    const saved = await save_entries_snapshot(merged_entries)
+    if (!saved) {
+      return false
+    }
+
+    invalidate_statistics()
+    clear_selection_state()
+    push_toast('success', t('glossary_page.feedback.import_success'))
+
+    if (report.updated > 0 || report.deduped > 0) {
+      push_toast('warning', t('glossary_page.feedback.merge_warning'))
+    }
+
+    if (options.close_preset_menu) {
+      set_preset_menu_open(false)
+    }
+
+    return true
+  }, [clear_selection_state, entries, invalidate_statistics, push_toast, save_entries_snapshot, t])
+
+  const refresh_preset_menu = useCallback(async (): Promise<void> => {
+    const [preset_payload, settings_payload] = await Promise.all([
+      api_fetch<GlossaryPresetPayload>(
+        '/api/quality/rules/presets',
+        {
+          preset_dir_name: 'glossary',
+        },
+      ),
+      api_fetch<GlossarySettingsPayload>('/api/settings/app', {}),
+    ])
+    const default_virtual_id = String(settings_payload.settings?.glossary_default_preset ?? '')
+
+    set_preset_items(
+      decorate_preset_items(
+        preset_payload.builtin_presets,
+        preset_payload.user_presets,
+        default_virtual_id,
+      ),
+    )
+  }, [])
 
   useEffect(() => {
     void refresh_snapshot()
@@ -483,6 +646,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [apply_snapshot, enabled, push_toast, t])
 
   const open_create_dialog = useCallback((): void => {
+    const insert_after_entry_id = resolve_create_insert_after_entry_id()
+
     // 新增态不再继承当前选中上下文，避免动作条删除与创建语义冲突。
     set_selected_entry_ids([])
     set_active_entry_id(null)
@@ -491,11 +656,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       open: true,
       mode: 'create',
       target_entry_id: null,
+      insert_after_entry_id,
       draft_entry: clone_entry(EMPTY_ENTRY),
       dirty: false,
       saving: false,
     })
-  }, [])
+  }, [resolve_create_insert_after_entry_id])
 
   const open_edit_dialog = useCallback((entry_id: GlossaryEntryId): void => {
     const target_index = entry_index_by_id.get(entry_id)
@@ -514,6 +680,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       open: true,
       mode: 'edit',
       target_entry_id: entry_id,
+      insert_after_entry_id: null,
       draft_entry: clone_entry(target_entry),
       dirty: false,
       saving: false,
@@ -588,23 +755,55 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       return
     }
 
+    set_confirm_state({
+      open: true,
+      kind: 'delete-selection',
+      selection_count: selected_entry_ids.length,
+      preset_name: '',
+      preset_input_value: '',
+      submitting: false,
+      target_virtual_id: null,
+    })
+  }, [selected_entry_ids])
+
+  const commit_delete_selected_entries = useCallback(async (): Promise<boolean> => {
+    if (selected_entry_ids.length === 0) {
+      return true
+    }
+
     const selected_set = new Set(selected_entry_ids)
     const previous_entries = entries
+    const previous_selected_entry_ids = selected_entry_ids
+    const previous_active_entry_id = active_entry_id
+    const previous_anchor_entry_id = selection_anchor_entry_id
     const next_entries = entries.filter((_entry, index) => {
       return !selected_set.has(entry_ids[index] ?? '')
     })
 
     invalidate_statistics()
     set_entries(next_entries)
-    set_selected_entry_ids([])
-    set_active_entry_id(null)
-    set_selection_anchor_entry_id(null)
+    clear_selection_state()
 
     const saved = await save_entries_snapshot(next_entries)
     if (!saved) {
       set_entries(previous_entries)
+      set_selected_entry_ids(previous_selected_entry_ids)
+      set_active_entry_id(previous_active_entry_id)
+      set_selection_anchor_entry_id(previous_anchor_entry_id)
+      return false
     }
-  }, [entries, entry_ids, invalidate_statistics, save_entries_snapshot, selected_entry_ids])
+
+    return true
+  }, [
+    active_entry_id,
+    clear_selection_state,
+    entries,
+    entry_ids,
+    invalidate_statistics,
+    save_entries_snapshot,
+    selected_entry_ids,
+    selection_anchor_entry_id,
+  ])
 
   const toggle_case_sensitive_for_selected = useCallback(async (next_value: boolean): Promise<void> => {
     if (selected_entry_ids.length === 0) {
@@ -671,7 +870,18 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }))
 
     const next_entries = dialog_state.mode === 'create'
-      ? [...entries, normalized_entry]
+      ? (() => {
+          const insert_after_index = dialog_state.insert_after_entry_id === null
+            ? -1
+            : entry_ids.findIndex((entry_id) => entry_id === dialog_state.insert_after_entry_id)
+          const insert_index = insert_after_index < 0
+            ? entries.length
+            : insert_after_index + 1
+          const next_entries = [...entries]
+
+          next_entries.splice(insert_index, 0, normalized_entry)
+          return next_entries
+        })()
       : entries.map((entry, index) => {
           return entry_ids[index] === dialog_state.target_entry_id
             ? {
@@ -753,10 +963,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           path: pick_result.path,
         },
       )
-      const saved = await save_entries_snapshot(payload.entries)
-      if (saved) {
-        invalidate_statistics()
-      }
+      await persist_merged_entries(payload.entries, { close_preset_menu: false })
     } catch (error) {
       if (error instanceof Error) {
         push_toast('error', error.message)
@@ -764,7 +971,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast('error', t('glossary_page.feedback.import_failed'))
       }
     }
-  }, [invalidate_statistics, push_toast, save_entries_snapshot, t])
+  }, [persist_merged_entries, push_toast, t])
 
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -783,6 +990,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           }),
         },
       )
+      push_toast('success', t('glossary_page.feedback.export_success'))
     } catch (error) {
       if (error instanceof Error) {
         push_toast('error', error.message)
@@ -793,10 +1001,17 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [entries, push_toast, t])
 
   const run_statistics = useCallback(async (): Promise<void> => {
-    set_statistics_state((previous_state) => ({
-      ...previous_state,
+    if (statistics_state.running) {
+      return
+    }
+
+    set_statistics_state({
       running: true,
-    }))
+      completed_revision: null,
+      completed_entry_ids: [],
+      matched_count_by_entry_id: {},
+      subset_parent_labels_by_entry_id: {},
+    })
 
     try {
       const payload = await api_fetch<GlossaryStatisticsPayload>(
@@ -842,26 +1057,21 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast('error', t('glossary_page.feedback.statistics_failed'))
       }
     }
-  }, [entries, push_toast, t])
+  }, [entries, push_toast, statistics_state.running, t])
 
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
-      const payload = await api_fetch<GlossaryPresetPayload>(
-        '/api/quality/rules/presets',
-        {
-          preset_dir_name: 'glossary',
-        },
-      )
-      set_preset_items([...payload.builtin_presets, ...payload.user_presets])
+      await refresh_preset_menu()
       set_preset_menu_open(true)
     } catch (error) {
+      set_preset_menu_open(false)
       if (error instanceof Error) {
         push_toast('error', error.message)
       } else {
         push_toast('error', t('glossary_page.feedback.preset_failed'))
       }
     }
-  }, [push_toast, t])
+  }, [push_toast, refresh_preset_menu, t])
 
   const apply_preset = useCallback(async (virtual_id: string): Promise<void> => {
     try {
@@ -872,11 +1082,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           virtual_id,
         },
       )
-      const saved = await save_entries_snapshot(payload.entries)
-      if (saved) {
-        invalidate_statistics()
-        set_preset_menu_open(false)
-      }
+      await persist_merged_entries(payload.entries, { close_preset_menu: true })
     } catch (error) {
       if (error instanceof Error) {
         push_toast('error', error.message)
@@ -884,7 +1090,337 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast('error', t('glossary_page.feedback.preset_failed'))
       }
     }
-  }, [invalidate_statistics, push_toast, save_entries_snapshot, t])
+  }, [persist_merged_entries, push_toast, t])
+
+  const request_reset_entries = useCallback((): void => {
+    set_confirm_state({
+      open: true,
+      kind: 'reset',
+      selection_count: 0,
+      preset_name: '',
+      preset_input_value: '',
+      submitting: false,
+      target_virtual_id: null,
+    })
+  }, [])
+
+  const request_save_preset = useCallback((): void => {
+    set_preset_input_state({
+      open: true,
+      mode: 'save',
+      value: '',
+      submitting: false,
+      target_virtual_id: null,
+    })
+  }, [])
+
+  const request_rename_preset = useCallback((preset_item: GlossaryPresetItem): void => {
+    set_preset_input_state({
+      open: true,
+      mode: 'rename',
+      value: preset_item.name,
+      submitting: false,
+      target_virtual_id: preset_item.virtual_id,
+    })
+  }, [])
+
+  const request_delete_preset = useCallback((preset_item: GlossaryPresetItem): void => {
+    set_confirm_state({
+      open: true,
+      kind: 'delete-preset',
+      selection_count: 0,
+      preset_name: preset_item.name,
+      preset_input_value: '',
+      submitting: false,
+      target_virtual_id: preset_item.virtual_id,
+    })
+  }, [])
+
+  const save_preset = useCallback(async (name: string): Promise<boolean> => {
+    const normalized_name = normalize_preset_name(name)
+    if (normalized_name === '') {
+      push_toast('warning', t('glossary_page.feedback.preset_name_required'))
+      return false
+    }
+
+    try {
+      await api_fetch(
+        '/api/quality/rules/presets/save',
+        {
+          preset_dir_name: 'glossary',
+          name: normalized_name,
+          entries: entries
+            .map((entry) => {
+              return normalize_dialog_entry(entry)
+            })
+            .filter((entry) => entry.src !== ''),
+        },
+      )
+      await refresh_preset_menu()
+      push_toast('success', t('glossary_page.feedback.preset_saved'))
+      return true
+    } catch (error) {
+      if (error instanceof Error) {
+        push_toast('error', error.message)
+      } else {
+        push_toast('error', t('glossary_page.feedback.preset_failed'))
+      }
+      return false
+    }
+  }, [entries, push_toast, refresh_preset_menu, t])
+
+  const rename_preset = useCallback(async (
+    virtual_id: string,
+    name: string,
+  ): Promise<boolean> => {
+    const normalized_name = normalize_preset_name(name)
+    if (normalized_name === '') {
+      push_toast('warning', t('glossary_page.feedback.preset_name_required'))
+      return false
+    }
+
+    try {
+      const payload = await api_fetch<{ item?: GlossaryPresetItem }>(
+        '/api/quality/rules/presets/rename',
+        {
+          preset_dir_name: 'glossary',
+          virtual_id,
+          new_name: normalized_name,
+        },
+      )
+      const target_preset = preset_items.find((item) => item.virtual_id === virtual_id)
+      if (target_preset?.is_default) {
+        await api_fetch(
+          '/api/settings/update',
+          {
+            glossary_default_preset: String(payload.item?.virtual_id ?? ''),
+          },
+        )
+      }
+      await refresh_preset_menu()
+      push_toast('success', t('glossary_page.feedback.preset_renamed'))
+      return true
+    } catch (error) {
+      if (error instanceof Error) {
+        push_toast('error', error.message)
+      } else {
+        push_toast('error', t('glossary_page.feedback.preset_failed'))
+      }
+      return false
+    }
+  }, [preset_items, push_toast, refresh_preset_menu, t])
+
+  const set_default_preset = useCallback(async (virtual_id: string): Promise<void> => {
+    try {
+      await api_fetch(
+        '/api/settings/update',
+        {
+          glossary_default_preset: virtual_id,
+        },
+      )
+      await refresh_preset_menu()
+      push_toast('success', t('glossary_page.feedback.default_preset_set'))
+    } catch (error) {
+      if (error instanceof Error) {
+        push_toast('error', error.message)
+      } else {
+        push_toast('error', t('glossary_page.feedback.preset_failed'))
+      }
+    }
+  }, [push_toast, refresh_preset_menu, t])
+
+  const cancel_default_preset = useCallback(async (): Promise<void> => {
+    try {
+      await api_fetch(
+        '/api/settings/update',
+        {
+          glossary_default_preset: '',
+        },
+      )
+      await refresh_preset_menu()
+      push_toast('success', t('glossary_page.feedback.default_preset_cleared'))
+    } catch (error) {
+      if (error instanceof Error) {
+        push_toast('error', error.message)
+      } else {
+        push_toast('error', t('glossary_page.feedback.preset_failed'))
+      }
+    }
+  }, [push_toast, refresh_preset_menu, t])
+
+  const close_confirm_dialog = useCallback((): void => {
+    set_confirm_state(create_empty_confirm_state())
+  }, [])
+
+  const close_preset_input_dialog = useCallback((): void => {
+    set_preset_input_state(create_empty_preset_input_state())
+  }, [])
+
+  const update_preset_input_value = useCallback((next_value: string): void => {
+    set_preset_input_state((previous_state) => {
+      return {
+        ...previous_state,
+        value: next_value,
+      }
+    })
+  }, [])
+
+  const submit_preset_input = useCallback(async (): Promise<void> => {
+    if (!preset_input_state.open || preset_input_state.mode === null) {
+      return
+    }
+
+    const normalized_name = normalize_preset_name(preset_input_state.value)
+    if (normalized_name === '') {
+      push_toast('warning', t('glossary_page.feedback.preset_name_required'))
+      return
+    }
+
+    const next_virtual_id = build_user_preset_virtual_id(normalized_name)
+    if (
+      preset_input_state.mode === 'save'
+      && has_casefold_duplicate_preset(preset_items, next_virtual_id, null)
+    ) {
+      set_confirm_state({
+        open: true,
+        kind: 'overwrite-preset',
+        selection_count: 0,
+        preset_name: normalized_name,
+        preset_input_value: normalized_name,
+        submitting: false,
+        target_virtual_id: null,
+      })
+      return
+    }
+
+    if (
+      preset_input_state.mode === 'rename'
+      && has_casefold_duplicate_preset(
+        preset_items,
+        next_virtual_id,
+        preset_input_state.target_virtual_id,
+      )
+    ) {
+      push_toast('warning', t('glossary_page.feedback.preset_exists'))
+      return
+    }
+
+    set_preset_input_state((previous_state) => {
+      return {
+        ...previous_state,
+        submitting: true,
+      }
+    })
+
+    const succeeded = preset_input_state.mode === 'save'
+      ? await save_preset(normalized_name)
+      : preset_input_state.target_virtual_id === null
+        ? false
+        : await rename_preset(preset_input_state.target_virtual_id, normalized_name)
+
+    if (succeeded) {
+      set_preset_input_state(create_empty_preset_input_state())
+    } else {
+      set_preset_input_state((previous_state) => {
+        return {
+          ...previous_state,
+          submitting: false,
+        }
+      })
+    }
+  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t])
+
+  const reset_entries = useCallback(async (): Promise<boolean> => {
+    const saved = await save_entries_snapshot([])
+    if (!saved) {
+      return false
+    }
+
+    invalidate_statistics()
+    clear_selection_state()
+    push_toast('success', t('glossary_page.feedback.reset_success'))
+    set_preset_menu_open(false)
+    return true
+  }, [clear_selection_state, invalidate_statistics, push_toast, save_entries_snapshot, t])
+
+  const confirm_pending_action = useCallback(async (): Promise<void> => {
+    if (!confirm_state.open || confirm_state.kind === null) {
+      return
+    }
+
+    set_confirm_state((previous_state) => {
+      return {
+        ...previous_state,
+        submitting: true,
+      }
+    })
+
+    let succeeded = false
+
+    if (confirm_state.kind === 'delete-selection') {
+      succeeded = await commit_delete_selected_entries()
+    } else if (confirm_state.kind === 'reset') {
+      succeeded = await reset_entries()
+    } else if (confirm_state.kind === 'delete-preset') {
+      try {
+        if (confirm_state.target_virtual_id !== null) {
+          await api_fetch(
+            '/api/quality/rules/presets/delete',
+            {
+              preset_dir_name: 'glossary',
+              virtual_id: confirm_state.target_virtual_id,
+            },
+          )
+
+          const target_preset = preset_items.find((item) => {
+            return item.virtual_id === confirm_state.target_virtual_id
+          })
+          if (target_preset?.is_default) {
+            await api_fetch(
+              '/api/settings/update',
+              {
+                glossary_default_preset: '',
+              },
+            )
+          }
+          await refresh_preset_menu()
+          push_toast('success', t('glossary_page.feedback.preset_deleted'))
+          succeeded = true
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          push_toast('error', error.message)
+        } else {
+          push_toast('error', t('glossary_page.feedback.preset_failed'))
+        }
+      }
+    } else if (confirm_state.kind === 'overwrite-preset') {
+      succeeded = await save_preset(confirm_state.preset_input_value)
+      if (succeeded) {
+        set_preset_input_state(create_empty_preset_input_state())
+      }
+    }
+
+    if (succeeded) {
+      set_confirm_state(create_empty_confirm_state())
+    } else {
+      set_confirm_state((previous_state) => {
+        return {
+          ...previous_state,
+          submitting: false,
+        }
+      })
+    }
+  }, [
+    commit_delete_selected_entries,
+    confirm_state,
+    preset_items,
+    push_toast,
+    refresh_preset_menu,
+    reset_entries,
+    save_preset,
+    t,
+  ])
 
   return useMemo<UseGlossaryPageStateResult>(() => {
     return {
@@ -909,6 +1445,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       active_entry_id,
       preset_menu_open,
       dialog_state,
+      confirm_state,
+      preset_input_state,
       update_filter_keyword,
       update_filter_scope,
       update_filter_regex,
@@ -923,6 +1461,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       run_statistics,
       open_preset_menu,
       apply_preset,
+      request_reset_entries,
+      request_save_preset,
+      request_rename_preset,
+      request_delete_preset,
+      set_default_preset,
+      cancel_default_preset,
       select_entry,
       select_range,
       box_select_entries,
@@ -933,6 +1477,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       search_entry_relations_from_statistics,
       save_dialog_entry,
       request_close_dialog,
+      confirm_pending_action,
+      close_confirm_dialog,
+      update_preset_input_value,
+      submit_preset_input,
+      close_preset_input_dialog,
       set_preset_menu_open,
       refresh_snapshot,
     }
@@ -940,8 +1489,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     active_entry_id,
     apply_preset,
     box_select_entries,
+    cancel_default_preset,
     clear_all_filters,
+    close_confirm_dialog,
+    close_preset_input_dialog,
     column_filters,
+    confirm_pending_action,
+    confirm_state,
     delete_selected_entries,
     dialog_state,
     drag_disabled,
@@ -958,11 +1512,16 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     open_edit_dialog,
     open_preset_menu,
     preset_items,
+    preset_input_state,
     preset_menu_open,
     query_entry_source_from_statistics,
     refresh_snapshot,
     reorder_selected_entries,
+    request_delete_preset,
     request_close_dialog,
+    request_rename_preset,
+    request_reset_entries,
+    request_save_preset,
     revision,
     run_statistics,
     save_dialog_entry,
@@ -970,9 +1529,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     select_entry,
     select_range,
     selected_entry_ids,
+    set_default_preset,
     statistics_badge_by_entry_id,
     statistics_filter_available,
     statistics_state,
+    submit_preset_input,
     toggle_case_sensitive_for_selected,
     total_count,
     update_column_filter,
@@ -981,6 +1542,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     update_filter_keyword,
     update_filter_regex,
     update_filter_scope,
+    update_preset_input_value,
     visible_count,
     visible_entry_ids,
   ])

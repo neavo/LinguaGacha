@@ -16,8 +16,6 @@ import { InputGroup, InputGroupInput } from '@/ui/input-group'
 type GlossarySearchBarProps = {
   keyword: string
   scope: GlossaryFilterScope
-  visible_count: number
-  total_count: number
   is_regex: boolean
   invalid_filter_message: string | null
   has_active_filters: boolean
@@ -30,15 +28,9 @@ type GlossarySearchBarProps = {
 export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
   const { t } = useI18n()
   const show_invalid_state = props.invalid_filter_message !== null
-  const show_empty_state = !show_invalid_state
-    && props.has_active_filters
-    && props.total_count > 0
-    && props.visible_count === 0
   const filter_status = show_invalid_state
     ? t('glossary_page.filter.invalid')
-    : show_empty_state
-      ? t('glossary_page.filter.empty')
-      : null
+    : null
   const scope_label = props.scope === 'src'
     ? t('glossary_page.filter.scope.source')
     : props.scope === 'dst'
@@ -158,7 +150,7 @@ export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
             : (
                 <p
                   className="glossary-page__search-status"
-                  data-state={show_invalid_state ? 'invalid' : 'empty'}
+                  data-state="invalid"
                   title={props.invalid_filter_message ?? undefined}
                 >
                   {filter_status}

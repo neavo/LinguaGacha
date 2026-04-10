@@ -1,9 +1,16 @@
 import {
+  Heart,
+  HeartOff,
   FileDown,
   FileUp,
+  Folder,
+  FolderHeart,
   FolderOpen,
   Plus,
+  Recycle,
+  Save,
   Sigma,
+  PencilLine,
   Trash2,
 } from 'lucide-react'
 
@@ -15,6 +22,10 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip'
@@ -39,6 +50,12 @@ type GlossaryCommandBarProps = {
   on_statistics: () => Promise<void>
   on_open_preset_menu: () => Promise<void>
   on_apply_preset: (virtual_id: string) => Promise<void>
+  on_request_reset: () => void
+  on_request_save_preset: () => void
+  on_request_rename_preset: (preset_item: GlossaryPresetItem) => void
+  on_request_delete_preset: (preset_item: GlossaryPresetItem) => void
+  on_set_default_preset: (virtual_id: string) => Promise<void>
+  on_cancel_default_preset: () => Promise<void>
   on_preset_menu_open_change: (next_open: boolean) => void
 }
 
@@ -46,6 +63,8 @@ export function GlossaryCommandBar(
   props: GlossaryCommandBarProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const builtin_preset_items = props.preset_items.filter((item) => item.type === 'builtin')
+  const user_preset_items = props.preset_items.filter((item) => item.type === 'user')
   const toggle_state_key = props.enabled ? 'app.toggle.enabled' : 'app.toggle.disabled'
   const toggle_tooltip_title = t('glossary_page.toggle.status').replace(
     '{TITLE}',
@@ -131,23 +150,137 @@ export function GlossaryCommandBar(
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuGroup>
-                {props.preset_items.length > 0
-                  ? props.preset_items.map((item) => (
-                      <DropdownMenuItem
-                        key={item.virtual_id}
-                        onClick={() => {
-                          void props.on_apply_preset(item.virtual_id)
-                        }}
-                      >
-                        {item.name}
-                      </DropdownMenuItem>
-                    ))
-                  : (
-                      <DropdownMenuItem disabled>
-                        {t('glossary_page.preset.empty')}
-                      </DropdownMenuItem>
-                    )}
+                <DropdownMenuItem
+                  onSelect={() => {
+                    props.on_request_reset()
+                  }}
+                >
+                  <Recycle />
+                  {t('app.action.reset')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    props.on_request_save_preset()
+                  }}
+                >
+                  <Save />
+                  {t('glossary_page.preset.save')}
+                </DropdownMenuItem>
               </DropdownMenuGroup>
+              {(builtin_preset_items.length > 0 || user_preset_items.length > 0)
+                ? <DropdownMenuSeparator />
+                : null}
+              {builtin_preset_items.length > 0
+                ? (
+                    <DropdownMenuGroup>
+                      {builtin_preset_items.map((item) => (
+                        <DropdownMenuSub key={item.virtual_id}>
+                          <DropdownMenuSubTrigger>
+                            {item.is_default ? <FolderHeart /> : <Folder />}
+                            {item.name}
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                void props.on_apply_preset(item.virtual_id)
+                              }}
+                            >
+                              <FileDown />
+                              {t('glossary_page.preset.apply')}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {item.is_default
+                              ? (
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      void props.on_cancel_default_preset()
+                                    }}
+                                  >
+                                    <HeartOff />
+                                    {t('glossary_page.preset.cancel_default')}
+                                  </DropdownMenuItem>
+                                )
+                              : (
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      void props.on_set_default_preset(item.virtual_id)
+                                    }}
+                                  >
+                                    <Heart />
+                                    {t('glossary_page.preset.set_default')}
+                                  </DropdownMenuItem>
+                                )}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                      ))}
+                    </DropdownMenuGroup>
+                  )
+                : null}
+              {builtin_preset_items.length > 0 && user_preset_items.length > 0
+                ? <DropdownMenuSeparator />
+                : null}
+              {user_preset_items.length > 0
+                ? (
+                    <DropdownMenuGroup>
+                      {user_preset_items.map((item) => (
+                        <DropdownMenuSub key={item.virtual_id}>
+                          <DropdownMenuSubTrigger>
+                            {item.is_default ? <FolderHeart /> : <Folder />}
+                            {item.name}
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                void props.on_apply_preset(item.virtual_id)
+                              }}
+                            >
+                              <FileDown />
+                              {t('glossary_page.preset.apply')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                props.on_request_rename_preset(item)
+                              }}
+                            >
+                              <PencilLine />
+                              {t('glossary_page.preset.rename')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                props.on_request_delete_preset(item)
+                              }}
+                            >
+                              <Trash2 />
+                              {t('glossary_page.preset.delete')}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {item.is_default
+                              ? (
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      void props.on_cancel_default_preset()
+                                    }}
+                                  >
+                                    <HeartOff />
+                                    {t('glossary_page.preset.cancel_default')}
+                                  </DropdownMenuItem>
+                                )
+                              : (
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      void props.on_set_default_preset(item.virtual_id)
+                                    }}
+                                  >
+                                    <Heart />
+                                    {t('glossary_page.preset.set_default')}
+                                  </DropdownMenuItem>
+                                )}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                      ))}
+                    </DropdownMenuGroup>
+                  )
+                : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </>
