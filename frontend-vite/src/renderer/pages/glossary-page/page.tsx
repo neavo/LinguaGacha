@@ -31,14 +31,14 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         <GlossaryTable
           entries={glossary_page_state.filtered_entries}
           total_count={glossary_page_state.total_count}
-          column_filters={glossary_page_state.column_filters}
+          sort_state={glossary_page_state.sort_state}
           drag_disabled={glossary_page_state.drag_disabled}
           statistics_running={glossary_page_state.statistics_state.running}
-          statistics_filter_available={glossary_page_state.statistics_filter_available}
+          statistics_ready={glossary_page_state.statistics_ready}
           selected_entry_ids={glossary_page_state.selected_entry_ids}
           active_entry_id={glossary_page_state.active_entry_id}
           statistics_badge_by_entry_id={glossary_page_state.statistics_badge_by_entry_id}
-          on_update_column_filter={glossary_page_state.update_column_filter}
+          on_cycle_column_sort={glossary_page_state.cycle_column_sort}
           on_select_entry={glossary_page_state.select_entry}
           on_select_range={glossary_page_state.select_range}
           on_box_select={glossary_page_state.box_select_entries}

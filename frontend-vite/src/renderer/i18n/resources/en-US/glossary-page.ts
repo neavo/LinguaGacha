@@ -40,7 +40,7 @@ export const en_us_glossary_page = {
     case_sensitive: 'Case-sensitive',
   },
   drag: {
-    disabled: 'Reordering is disabled while filters are active',
+    enabled: 'Drag to reorder',
   },
   filter: {
     placeholder: 'Enter keywords …',
@@ -55,25 +55,10 @@ export const en_us_glossary_page = {
       description: 'Notes',
     },
   },
-  column_filter: {
-    trigger: 'Filter {FIELD}',
-    clear: 'Clear filter',
-    translation: {
-      empty_only: 'Only empty translations',
-    },
-    description: {
-      empty_only: 'Only empty notes',
-    },
-    rule: {
-      case_sensitive: 'Case-sensitive',
-      case_insensitive: 'Case-insensitive',
-    },
-    statistics: {
-      matched: 'Has matches',
-      unmatched: 'No matches',
-      related: 'Has relations',
-      unavailable: 'Run statistics first',
-    },
+  sort: {
+    ascending: 'Ascending',
+    descending: 'Descending',
+    clear: 'Clear',
   },
   dialog: {
     create_title: 'Create glossary entry',

@@ -6,7 +6,6 @@ import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import {
   build_glossary_filter_result,
-  create_empty_glossary_column_filters,
   has_active_glossary_filters,
   resolve_glossary_statistics_badge_kind,
 } from '@/pages/glossary-page/filtering'
@@ -18,8 +17,6 @@ import {
   reorder_selected_group,
 } from '@/pages/glossary-page/components/glossary-selection'
 import type {
-  GlossaryColumnFilterField,
-  GlossaryColumnFilters,
   GlossaryConfirmState,
   GlossaryDialogState,
   GlossaryEntry,
@@ -28,6 +25,8 @@ import type {
   GlossaryFilterState,
   GlossaryPresetInputState,
   GlossaryPresetItem,
+  GlossarySortField,
+  GlossarySortState,
   GlossaryStatisticsBadgeState,
   GlossaryStatisticsState,
   GlossaryVisibleEntry,
@@ -87,6 +86,13 @@ function create_empty_filter_state(): GlossaryFilterState {
     keyword: '',
     scope: 'all',
     is_regex: false,
+  }
+}
+
+function create_empty_sort_state(): GlossarySortState {
+  return {
+    field: null,
+    direction: null,
   }
 }
 
@@ -210,12 +216,12 @@ type UseGlossaryPageStateResult = {
   filtered_entries: GlossaryVisibleEntry[]
   total_count: number
   filter_state: GlossaryFilterState
-  column_filters: GlossaryColumnFilters
+  sort_state: GlossarySortState
   has_active_filters: boolean
   invalid_filter_message: string | null
   drag_disabled: boolean
   statistics_state: GlossaryStatisticsState
-  statistics_filter_available: boolean
+  statistics_ready: boolean
   statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>
   preset_items: GlossaryPresetItem[]
   selected_entry_ids: GlossaryEntryId[]
@@ -227,10 +233,7 @@ type UseGlossaryPageStateResult = {
   update_filter_keyword: (next_keyword: string) => void
   update_filter_scope: (next_scope: GlossaryFilterScope) => void
   update_filter_regex: (next_is_regex: boolean) => void
-  update_column_filter: (
-    field: GlossaryColumnFilterField,
-    next_filter: GlossaryColumnFilters[GlossaryColumnFilterField],
-  ) => void
+  cycle_column_sort: (field: GlossarySortField) => void
   clear_all_filters: () => void
   update_enabled: (next_enabled: boolean) => Promise<void>
   open_create_dialog: () => void
@@ -292,8 +295,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const [filter_state, set_filter_state] = useState<GlossaryFilterState>(() => {
     return create_empty_filter_state()
   })
-  const [column_filters, set_column_filters] = useState<GlossaryColumnFilters>(() => {
-    return create_empty_glossary_column_filters()
+  const [sort_state, set_sort_state] = useState<GlossarySortState>(() => {
+    return create_empty_sort_state()
   })
   const [statistics_state, set_statistics_state] = useState<GlossaryStatisticsState>(() => {
     return create_empty_statistics_state()
@@ -337,7 +340,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     return null
   }, [active_entry_id, entry_index_by_id, selected_entry_ids])
-  const statistics_filter_available = statistics_state.completed_revision === revision
+  const statistics_ready = statistics_state.completed_revision === revision
   const completed_statistics_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
     return new Set(statistics_state.completed_entry_ids)
   }, [statistics_state.completed_entry_ids])
@@ -349,18 +352,18 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       entries,
       entry_ids,
       filter_state,
-      column_filters,
-      statistics_ready: statistics_filter_available,
+      sort_state,
+      statistics_ready,
       statistics_state,
       completed_statistics_entry_id_set,
     })
   }, [
-    column_filters,
     completed_statistics_entry_id_set,
     entries,
     entry_ids,
     filter_state,
-    statistics_filter_available,
+    sort_state,
+    statistics_ready,
     statistics_state,
   ])
   const visible_entry_ids = useMemo<GlossaryEntryId[]>(() => {
@@ -370,11 +373,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return new Set(visible_entry_ids)
   }, [visible_entry_ids])
   const total_count = entries.length
-  const has_active_filters = has_active_glossary_filters(filter_state, column_filters)
-  const drag_disabled = has_active_filters
+  const has_active_filters = has_active_glossary_filters(filter_state)
+  const has_active_sort = sort_state.field !== null
+  // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用。
+  const drag_disabled = has_active_filters || has_active_sort
   const statistics_badge_by_entry_id = useMemo<Record<GlossaryEntryId, GlossaryStatisticsBadgeState>>(() => {
     const next_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState> = {}
-    if (!statistics_filter_available) {
+    if (!statistics_ready) {
       return next_badge_by_entry_id
     }
 
@@ -414,7 +419,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     completed_statistics_entry_id_set,
     entries,
     entry_ids,
-    statistics_filter_available,
+    statistics_ready,
     statistics_state,
     t,
   ])
@@ -530,21 +535,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [refresh_snapshot])
 
   useEffect(() => {
-    if (statistics_filter_available) {
+    if (statistics_ready || sort_state.field !== 'statistics') {
       return
     }
 
-    set_column_filters((previous_filters) => {
-      if (previous_filters.statistics === null) {
-        return previous_filters
-      }
-
-      return {
-        ...previous_filters,
-        statistics: null,
-      }
-    })
-  }, [statistics_filter_available])
+    // 统计结果一旦失效，就不能继续挂着旧统计排序，否则会出现“按钮禁用但顺序还在偷偷生效”的假象。
+    set_sort_state(create_empty_sort_state())
+  }, [sort_state.field, statistics_ready])
 
   useEffect(() => {
     // 筛选视图是当前页面的真实操作上下文，选中集必须与可见结果保持一致。
@@ -593,21 +590,28 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     })
   }, [])
 
-  const update_column_filter = useCallback((
-    field: GlossaryColumnFilterField,
-    next_filter: GlossaryColumnFilters[GlossaryColumnFilterField],
-  ): void => {
-    set_column_filters((previous_filters) => {
-      return {
-        ...previous_filters,
-        [field]: next_filter,
+  const cycle_column_sort = useCallback((field: GlossarySortField): void => {
+    set_sort_state((previous_state) => {
+      if (previous_state.field !== field) {
+        return {
+          field,
+          direction: 'ascending',
+        }
       }
+
+      if (previous_state.direction === 'ascending') {
+        return {
+          field,
+          direction: 'descending',
+        }
+      }
+
+      return create_empty_sort_state()
     })
   }, [])
 
   const clear_all_filters = useCallback((): void => {
     set_filter_state(create_empty_filter_state())
-    set_column_filters(create_empty_glossary_column_filters())
   }, [])
 
   const search_entry_relations_from_statistics = useCallback((entry_id: GlossaryEntryId): void => {
@@ -625,7 +629,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       scope: 'src',
       is_regex: false,
     })
-    set_column_filters(create_empty_glossary_column_filters())
   }, [entries, entry_index_by_id])
 
   const update_enabled = useCallback(async (next_enabled: boolean): Promise<void> => {
@@ -1437,12 +1440,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       filtered_entries,
       total_count,
       filter_state,
-      column_filters,
+      sort_state,
       has_active_filters,
       invalid_filter_message: invalid_regex_message,
       drag_disabled,
       statistics_state,
-      statistics_filter_available,
+      statistics_ready,
       statistics_badge_by_entry_id,
       preset_items,
       selected_entry_ids,
@@ -1454,7 +1457,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       update_filter_keyword,
       update_filter_scope,
       update_filter_regex,
-      update_column_filter,
+      cycle_column_sort,
       clear_all_filters,
       update_enabled,
       open_create_dialog,
@@ -1496,7 +1499,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     clear_all_filters,
     close_confirm_dialog,
     close_preset_input_dialog,
-    column_filters,
+    cycle_column_sort,
     confirm_pending_action,
     confirm_state,
     delete_selected_entries,
@@ -1529,13 +1532,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     select_range,
     selected_entry_ids,
     set_default_preset,
+    sort_state,
     statistics_badge_by_entry_id,
-    statistics_filter_available,
+    statistics_ready,
     statistics_state,
     submit_preset_input,
     toggle_case_sensitive_for_selected,
     total_count,
-    update_column_filter,
     update_dialog_draft,
     update_enabled,
     update_filter_keyword,

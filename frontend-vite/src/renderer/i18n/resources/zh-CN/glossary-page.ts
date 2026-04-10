@@ -37,7 +37,7 @@ export const zh_cn_glossary_page = {
     case_sensitive: '大小写敏感',
   },
   drag: {
-    disabled: '筛选生效时无法拖拽排序',
+    enabled: '拖拽排序',
   },
   filter: {
     placeholder: '请输入关键字 …',
@@ -52,25 +52,10 @@ export const zh_cn_glossary_page = {
       description: '备注',
     },
   },
-  column_filter: {
-    trigger: '筛选 {FIELD}',
-    clear: '清除条件',
-    translation: {
-      empty_only: '只看空译文',
-    },
-    description: {
-      empty_only: '只看空备注',
-    },
-    rule: {
-      case_sensitive: '大小写敏感',
-      case_insensitive: '大小写不敏感',
-    },
-    statistics: {
-      matched: '有命中',
-      unmatched: '无命中',
-      related: '有关联关系',
-      unavailable: '请先运行统计',
-    },
+  sort: {
+    ascending: '正序',
+    descending: '反序',
+    clear: '取消',
   },
   dialog: {
     create_title: '新增术语',

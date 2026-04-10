@@ -12,6 +12,11 @@ import {
   DropdownMenuTrigger,
 } from '@/ui/dropdown-menu'
 import { InputGroup, InputGroupInput } from '@/ui/input-group'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/ui/tooltip'
 
 type GlossarySearchBarProps = {
   keyword: string
@@ -148,13 +153,21 @@ export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
           {filter_status === null
             ? null
             : (
-                <p
-                  className="glossary-page__search-status"
-                  data-state="invalid"
-                  title={props.invalid_filter_message ?? undefined}
-                >
-                  {filter_status}
-                </p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p
+                      className="glossary-page__search-status"
+                      data-state="invalid"
+                    >
+                      {filter_status}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={8}>
+                    <p className="max-w-80 whitespace-pre-line break-words">
+                      {props.invalid_filter_message}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
               )}
         </div>
       </CardContent>

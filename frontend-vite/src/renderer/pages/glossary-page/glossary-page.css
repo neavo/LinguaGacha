@@ -383,68 +383,31 @@
   transform: translateY(-50%);
 }
 
-.glossary-page__column-filter-trigger {
+.glossary-page__column-sort-trigger {
   opacity: 0.24;
   transition:
     opacity 160ms ease,
+    color 160ms ease,
     transform 160ms ease;
 }
 
-.glossary-page__table-head [data-slot='table-head']:hover .glossary-page__column-filter-trigger,
-.glossary-page__column-filter-trigger[data-active='true'] {
+.glossary-page__table-head [data-slot='table-head']:hover .glossary-page__column-sort-trigger,
+.glossary-page__column-sort-trigger[data-active='true'] {
   opacity: 1;
 }
 
-.glossary-page__column-filter-trigger[data-active='true'] {
+.glossary-page__column-sort-trigger[data-active='true'] {
   transform: translateY(-1px);
 }
 
-.glossary-page__column-filter-menu {
-  width: 280px;
-}
-
-.glossary-page__column-filter-menu-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 4px 10px;
-}
-
-.glossary-page__column-filter-menu-copy {
-  min-width: 0;
-}
-
-.glossary-page__column-filter-menu-title {
-  margin: 0;
-  font-size: 12px;
+.glossary-page__column-sort-trigger[data-direction='ascending'],
+.glossary-page__column-sort-trigger[data-direction='descending'] {
   color: var(--foreground);
 }
 
-.glossary-page__column-filter-menu-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 0 4px 4px;
-}
-
-.glossary-page__column-filter-toggle {
-  width: 100%;
-  max-width: 100%;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.glossary-page__column-filter-action {
-  width: 100%;
-  justify-content: flex-start;
-}
-
-.glossary-page__column-filter-hint {
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 12px;
+.glossary-page__column-sort-trigger:disabled {
+  opacity: 0.16;
+  transform: none;
 }
 
 .glossary-page__table [data-slot='table-cell'] {

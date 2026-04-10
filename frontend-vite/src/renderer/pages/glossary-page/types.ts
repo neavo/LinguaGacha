@@ -45,25 +45,24 @@ export type GlossaryStatisticsBadgeState = {
   tooltip: string
 }
 
-export type GlossaryOptionalTextColumnFilter = 'empty'
+export type GlossarySortField =
+  | 'src'
+  | 'dst'
+  | 'info'
+  | 'rule'
+  | 'statistics'
 
-export type GlossaryRuleColumnFilter =
-  | 'case-sensitive'
-  | 'case-insensitive'
+export type GlossarySortDirection = 'ascending' | 'descending'
 
-export type GlossaryStatisticsColumnFilter =
-  | 'matched'
-  | 'unmatched'
-  | 'related'
-
-export type GlossaryColumnFilters = {
-  dst: GlossaryOptionalTextColumnFilter | null
-  info: GlossaryOptionalTextColumnFilter | null
-  rule: GlossaryRuleColumnFilter | null
-  statistics: GlossaryStatisticsColumnFilter | null
-}
-
-export type GlossaryColumnFilterField = keyof GlossaryColumnFilters
+export type GlossarySortState =
+  | {
+      field: null
+      direction: null
+    }
+  | {
+      field: GlossarySortField
+      direction: GlossarySortDirection
+    }
 
 export type GlossaryVisibleEntry = {
   entry: GlossaryEntry

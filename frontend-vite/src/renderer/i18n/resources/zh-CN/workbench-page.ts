@@ -73,10 +73,4 @@ export const zh_cn_workbench_page = {
       confirm: '确认关闭',
     },
   },
-  empty: {
-    title: '项目未加载',
-    description: '请先加载工程后再管理文件、导出译文或关闭项目。',
-    loaded_title: '还没有导入文件',
-    loaded_description: '先从下方命令栏添加文件，工作台就会在这里展示可排序的文件列表。',
-  },
 } as const

@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CSS } from '@dnd-kit/utilities'
-import { CaseSensitive, GripVertical } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, CaseSensitive, GripVertical } from 'lucide-react'
 import {
   memo,
   useCallback,
@@ -30,7 +30,6 @@ import { useI18n } from '@/i18n'
 import {
   are_glossary_entry_ids_equal,
 } from '@/pages/glossary-page/components/glossary-selection'
-import { GlossaryColumnFilterMenu } from '@/pages/glossary-page/components/glossary-column-filter-menu'
 import {
   GLOSSARY_TABLE_ESTIMATED_ROW_HEIGHT,
   GLOSSARY_TABLE_VIRTUAL_OVERSCAN,
@@ -40,11 +39,10 @@ import {
 } from '@/pages/glossary-page/components/glossary-table-virtualization'
 import { GlossaryContextMenuContent } from '@/pages/glossary-page/components/glossary-context-menu'
 import type {
-  GlossaryColumnFilterField,
-  GlossaryColumnFilters,
   GlossaryEntry,
   GlossaryEntryId,
-  GlossaryOptionalTextColumnFilter,
+  GlossarySortField,
+  GlossarySortState,
   GlossaryStatisticsBadgeState,
   GlossaryVisibleEntry,
 } from '@/pages/glossary-page/types'
@@ -76,24 +74,20 @@ import {
   TooltipTrigger,
 } from '@/ui/tooltip'
 import { Spinner } from '@/ui/spinner'
-import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
 type GlossaryTableProps = {
   entries: GlossaryVisibleEntry[]
   total_count: number
-  column_filters: GlossaryColumnFilters
+  sort_state: GlossarySortState
   drag_disabled: boolean
   statistics_running: boolean
-  statistics_filter_available: boolean
+  statistics_ready: boolean
   selected_entry_ids: GlossaryEntryId[]
   active_entry_id: GlossaryEntryId | null
   statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>
-  on_update_column_filter: (
-    field: GlossaryColumnFilterField,
-    next_filter: GlossaryColumnFilters[GlossaryColumnFilterField],
-  ) => void
+  on_cycle_column_sort: (field: GlossarySortField) => void
   on_select_entry: (
     entry_id: GlossaryEntryId,
     options: { extend: boolean; range: boolean },
@@ -160,8 +154,92 @@ function build_glossary_row_number_label(row_index: number): string {
   return String(row_index + 1)
 }
 
-function has_text_filter_value(filter: GlossaryOptionalTextColumnFilter | null): boolean {
-  return filter !== null
+function resolve_glossary_sort_direction(
+  sort_state: GlossarySortState,
+  field: GlossarySortField,
+): 'ascending' | 'descending' | null {
+  return sort_state.field === field
+    ? sort_state.direction
+    : null
+}
+
+function build_glossary_sort_action_label(
+  t: ReturnType<typeof useI18n>['t'],
+  direction: 'ascending' | 'descending' | null,
+  disabled: boolean,
+): string | null {
+  if (disabled) {
+    return null
+  }
+
+  if (direction === null) {
+    return t('glossary_page.sort.ascending')
+  }
+
+  if (direction === 'ascending') {
+    return t('glossary_page.sort.descending')
+  }
+
+  return t('glossary_page.sort.clear')
+}
+
+type GlossarySortTriggerProps = {
+  label: string
+  field: GlossarySortField
+  sort_state: GlossarySortState
+  disabled?: boolean
+  on_cycle: (field: GlossarySortField) => void
+}
+
+function GlossarySortTrigger(props: GlossarySortTriggerProps): JSX.Element {
+  const { t } = useI18n()
+  const direction = resolve_glossary_sort_direction(props.sort_state, props.field)
+  const Icon = direction === 'ascending'
+    ? ArrowUp
+    : direction === 'descending'
+      ? ArrowDown
+      : ArrowUpDown
+  const action_label = build_glossary_sort_action_label(
+    t,
+    direction,
+    props.disabled ?? false,
+  )
+  const aria_label = action_label === null
+    ? props.label
+    : `${props.label} ${action_label}`
+
+  const trigger = (
+    <span className="inline-flex">
+      <Button
+        type="button"
+        variant={direction === null ? 'ghost' : 'secondary'}
+        size="icon-xs"
+        disabled={props.disabled}
+        data-direction={direction ?? undefined}
+        data-active={direction === null ? undefined : 'true'}
+        className="glossary-page__column-sort-trigger"
+        aria-label={aria_label}
+        onClick={() => {
+          props.on_cycle(props.field)
+        }}
+      >
+        <Icon aria-hidden="true" />
+      </Button>
+    </span>
+  )
+
+  return action_label === null
+    ? trigger
+    : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {trigger}
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={8}>
+            <p>{action_label}</p>
+          </TooltipContent>
+        </Tooltip>
+      )
 }
 
 function render_table_head_content(options: {
@@ -485,7 +563,26 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     '{STATE}',
     t(props.entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled'),
   )
+  const drag_tooltip = props.drag_disabled
+    ? null
+    : t('glossary_page.drag.enabled')
   const row_number_label = build_glossary_row_number_label(props.row_index)
+  const drag_utility = (
+    <div
+      className="glossary-page__row-utility"
+      data-drag-disabled={props.drag_disabled ? 'true' : undefined}
+      data-glossary-ignore-box-select="true"
+      {...(props.drag_disabled ? {} : attributes)}
+      {...(props.drag_disabled ? {} : listeners)}
+    >
+      <span className="glossary-page__drag-handle" aria-hidden="true">
+        <GripVertical />
+      </span>
+      <span className="glossary-page__row-index">
+        {row_number_label}
+      </span>
+    </div>
+  )
 
   const set_row_element = (row_element: HTMLTableRowElement | null): void => {
     setNodeRef(row_element)
@@ -555,23 +652,18 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
           }}
         >
           <TableCell className="glossary-page__table-drag-cell">
-            <div
-              className="glossary-page__row-utility"
-              title={props.drag_disabled
-                ? t('glossary_page.drag.disabled')
-                : t('glossary_page.fields.drag')}
-              data-drag-disabled={props.drag_disabled ? 'true' : undefined}
-              data-glossary-ignore-box-select="true"
-              {...(props.drag_disabled ? {} : attributes)}
-              {...(props.drag_disabled ? {} : listeners)}
-            >
-              <span className="glossary-page__drag-handle" aria-hidden="true">
-                <GripVertical />
-              </span>
-              <span className="glossary-page__row-index">
-                {row_number_label}
-              </span>
-            </div>
+            {drag_tooltip === null
+              ? drag_utility
+              : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      {drag_utility}
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={8}>
+                      <p>{drag_tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
           </TableCell>
           <TableCell className="glossary-page__table-source-cell">
             <span className="glossary-page__table-text">
@@ -584,9 +676,26 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
             </span>
           </TableCell>
           <TableCell className="glossary-page__table-description-cell">
-            <span className="glossary-page__table-text" title={props.entry.info}>
-              {props.entry.info}
-            </span>
+            {props.entry.info.trim() === ''
+              ? (
+                  <span className="glossary-page__table-text">
+                    {props.entry.info}
+                  </span>
+                )
+              : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="glossary-page__table-text">
+                        {props.entry.info}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={8}>
+                      <p className="max-w-80 whitespace-pre-line break-words">
+                        {props.entry.info}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
           </TableCell>
           <TableCell className="glossary-page__table-rule-cell">
             <GlossaryRuleBadge
@@ -1095,139 +1204,46 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     void props.on_reorder(String(event.active.id), String(event.over.id))
   }
 
-  const translation_filter_active = has_text_filter_value(props.column_filters.dst)
-  const description_filter_active = has_text_filter_value(props.column_filters.info)
-  const rule_filter_active = props.column_filters.rule !== null
-  const statistics_filter_active = props.column_filters.statistics !== null
-
-  const translation_filter_menu = (
-    <GlossaryColumnFilterMenu
+  const source_sort_trigger = (
+    <GlossarySortTrigger
+      label={t('glossary_page.fields.source')}
+      field="src"
+      sort_state={props.sort_state}
+      on_cycle={props.on_cycle_column_sort}
+    />
+  )
+  const translation_sort_trigger = (
+    <GlossarySortTrigger
       label={t('glossary_page.fields.translation')}
-      active={translation_filter_active}
-      on_clear={() => {
-        props.on_update_column_filter('dst', null)
-      }}
-    >
-      <Button
-        type="button"
-        variant={translation_filter_active ? 'secondary' : 'outline'}
-        size="sm"
-        className="glossary-page__column-filter-action"
-        onClick={() => {
-          props.on_update_column_filter(
-            'dst',
-            props.column_filters.dst === 'empty'
-              ? null
-              : 'empty',
-          )
-        }}
-      >
-        {t('glossary_page.column_filter.translation.empty_only')}
-      </Button>
-    </GlossaryColumnFilterMenu>
+      field="dst"
+      sort_state={props.sort_state}
+      on_cycle={props.on_cycle_column_sort}
+    />
   )
-  const description_filter_menu = (
-    <GlossaryColumnFilterMenu
+  const description_sort_trigger = (
+    <GlossarySortTrigger
       label={t('glossary_page.fields.description')}
-      active={description_filter_active}
-      on_clear={() => {
-        props.on_update_column_filter('info', null)
-      }}
-    >
-      <Button
-        type="button"
-        variant={description_filter_active ? 'secondary' : 'outline'}
-        size="sm"
-        className="glossary-page__column-filter-action"
-        onClick={() => {
-          props.on_update_column_filter(
-            'info',
-            props.column_filters.info === 'empty'
-              ? null
-              : 'empty',
-          )
-        }}
-      >
-        {t('glossary_page.column_filter.description.empty_only')}
-      </Button>
-    </GlossaryColumnFilterMenu>
+      field="info"
+      sort_state={props.sort_state}
+      on_cycle={props.on_cycle_column_sort}
+    />
   )
-  const rule_filter_menu = (
-    <GlossaryColumnFilterMenu
+  const rule_sort_trigger = (
+    <GlossarySortTrigger
       label={t('glossary_page.fields.rule')}
-      active={rule_filter_active}
-      on_clear={() => {
-        props.on_update_column_filter('rule', null)
-      }}
-    >
-      <ToggleGroup
-        type="single"
-        size="sm"
-        spacing={1}
-        variant="outline"
-        value={props.column_filters.rule ?? ''}
-        className="glossary-page__column-filter-toggle"
-        onValueChange={(next_value) => {
-          props.on_update_column_filter(
-            'rule',
-            next_value === ''
-              ? null
-              : next_value as GlossaryColumnFilters['rule'],
-          )
-        }}
-      >
-        <ToggleGroupItem value="case-sensitive">
-          {t('glossary_page.column_filter.rule.case_sensitive')}
-        </ToggleGroupItem>
-        <ToggleGroupItem value="case-insensitive">
-          {t('glossary_page.column_filter.rule.case_insensitive')}
-        </ToggleGroupItem>
-      </ToggleGroup>
-    </GlossaryColumnFilterMenu>
+      field="rule"
+      sort_state={props.sort_state}
+      on_cycle={props.on_cycle_column_sort}
+    />
   )
-  const statistics_filter_menu = (
-    <GlossaryColumnFilterMenu
+  const statistics_sort_trigger = (
+    <GlossarySortTrigger
       label={t('glossary_page.fields.statistics')}
-      active={statistics_filter_active}
-      on_clear={() => {
-        props.on_update_column_filter('statistics', null)
-      }}
-    >
-      {props.statistics_filter_available
-        ? (
-            <ToggleGroup
-              type="single"
-              size="sm"
-              spacing={1}
-              variant="outline"
-              value={props.column_filters.statistics ?? ''}
-              className="glossary-page__column-filter-toggle"
-              onValueChange={(next_value) => {
-                props.on_update_column_filter(
-                  'statistics',
-                  next_value === ''
-                    ? null
-                    : next_value as GlossaryColumnFilters['statistics'],
-                )
-              }}
-            >
-              <ToggleGroupItem value="matched">
-                {t('glossary_page.column_filter.statistics.matched')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="unmatched">
-                {t('glossary_page.column_filter.statistics.unmatched')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="related">
-                {t('glossary_page.column_filter.statistics.related')}
-              </ToggleGroupItem>
-            </ToggleGroup>
-          )
-        : (
-            <p className="glossary-page__column-filter-hint">
-              {t('glossary_page.column_filter.statistics.unavailable')}
-            </p>
-          )}
-    </GlossaryColumnFilterMenu>
+      field="statistics"
+      sort_state={props.sort_state}
+      disabled={!props.statistics_ready}
+      on_cycle={props.on_cycle_column_sort}
+    />
   )
 
   const header = (
@@ -1244,27 +1260,27 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
             })}
             {render_table_head_content({
               label: t('glossary_page.fields.source'),
-              menu: null,
+              menu: source_sort_trigger,
               class_name: 'glossary-page__table-source-head',
             })}
             {render_table_head_content({
               label: t('glossary_page.fields.translation'),
-              menu: translation_filter_menu,
+              menu: translation_sort_trigger,
               class_name: 'glossary-page__table-translation-head',
             })}
             {render_table_head_content({
               label: t('glossary_page.fields.description'),
-              menu: description_filter_menu,
+              menu: description_sort_trigger,
               class_name: 'glossary-page__table-description-head',
             })}
             {render_table_head_content({
               label: t('glossary_page.fields.rule'),
-              menu: rule_filter_menu,
+              menu: rule_sort_trigger,
               class_name: 'glossary-page__table-rule-head',
             })}
             {render_table_head_content({
               label: t('glossary_page.fields.statistics'),
-              menu: statistics_filter_menu,
+              menu: statistics_sort_trigger,
               class_name: 'glossary-page__table-statistics-head',
             })}
           </TableRow>

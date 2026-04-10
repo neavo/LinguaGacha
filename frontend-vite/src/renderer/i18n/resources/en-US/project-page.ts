@@ -21,7 +21,6 @@ export const en_us_project_page = {
     empty: 'No valid data ...',
     ready_status: 'Project ready',
     loading_toast: 'Loading project, please wait',
-    preview_loading: 'Reading project preview…',
     preview_unavailable: 'The preview is unavailable right now. Please choose another .lg file.',
     action: 'Open Project',
     remove_recent_project: 'Remove recent project entry',

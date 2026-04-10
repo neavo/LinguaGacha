@@ -690,7 +690,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
   return (
     <DataTableFrame
       title={t('workbench_page.section.file_list')}
-      description={t('workbench_page.empty.description')}
       className="workbench-page__table-card"
       content_class_name="workbench-page__table-card-content"
       empty_state={null}
