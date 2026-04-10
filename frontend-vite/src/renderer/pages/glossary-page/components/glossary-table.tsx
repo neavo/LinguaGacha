@@ -77,6 +77,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/ui/tooltip'
+import { cn } from '@/lib/utils'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
 type GlossaryTableProps = {
@@ -273,11 +274,18 @@ function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Eleme
     return null
   }
 
+  const badge_color_class_name = props.badge_state.kind === 'matched'
+    ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400'
+    : props.badge_state.kind === 'related'
+      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400'
+      : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400'
+
   const badge = (
     <Badge
-      variant={props.badge_state.kind === 'unmatched' ? 'destructive' : 'outline'}
-      data-kind={props.badge_state.kind}
-      className="glossary-page__statistics-badge"
+      className={cn(
+        'glossary-page__statistics-badge',
+        badge_color_class_name,
+      )}
     >
       {props.badge_state.matched_count.toString()}
     </Badge>
@@ -426,6 +434,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
       <ContextMenuTrigger asChild>
         <TableRow
           ref={set_row_element}
+          data-index={props.row_index}
           data-active={props.active ? 'true' : undefined}
           data-row-index={props.row_index}
           data-zebra={resolve_glossary_table_row_zebra(props.row_index)}
