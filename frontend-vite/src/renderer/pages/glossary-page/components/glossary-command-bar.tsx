@@ -8,7 +8,6 @@ import {
 
 import { useI18n } from '@/i18n'
 import type { GlossaryPresetItem } from '@/pages/glossary-page/types'
-import { ActionBar, ActionBarSeparator } from '@/ui/action-bar'
 import { Button } from '@/ui/button'
 import {
   DropdownMenu,
@@ -19,6 +18,11 @@ import {
 } from '@/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip'
 import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+import {
+  CommandBar,
+  CommandBarGroup,
+  CommandBarSeparator,
+} from '@/widgets/command-bar/command-bar'
 
 type GlossaryCommandBarProps = {
   enabled: boolean
@@ -41,8 +45,7 @@ export function GlossaryCommandBar(
   const { t } = useI18n()
 
   return (
-    <ActionBar
-      className="glossary-page__command-bar"
+    <CommandBar
       title={t('glossary_page.title')}
       description={t('glossary_page.summary')}
       actions={(
@@ -51,8 +54,8 @@ export function GlossaryCommandBar(
             <Plus data-icon="inline-start" />
             {t('glossary_page.action.create')}
           </Button>
-          <ActionBarSeparator />
-          <div className="glossary-page__command-pair">
+          <CommandBarSeparator />
+          <CommandBarGroup>
             <Button
               variant="ghost"
               size="toolbar"
@@ -73,8 +76,8 @@ export function GlossaryCommandBar(
               <FileUp data-icon="inline-start" />
               {t('glossary_page.action.export')}
             </Button>
-          </div>
-          <ActionBarSeparator />
+          </CommandBarGroup>
+          <CommandBarSeparator />
           <Button
             variant="ghost"
             size="toolbar"
@@ -86,7 +89,7 @@ export function GlossaryCommandBar(
             <Sigma data-icon="inline-start" />
             {t('glossary_page.action.statistics')}
           </Button>
-          <ActionBarSeparator />
+          <CommandBarSeparator />
           <DropdownMenu
             open={props.preset_menu_open}
             onOpenChange={(next_open) => {

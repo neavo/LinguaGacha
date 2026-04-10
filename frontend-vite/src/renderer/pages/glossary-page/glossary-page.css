@@ -92,16 +92,6 @@
   overflow: hidden;
 }
 
-.glossary-page__command-bar {
-  flex-shrink: 0;
-}
-
-.glossary-page__command-pair {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-}
-
 .glossary-page__toggle-cluster {
   display: inline-flex;
   align-items: center;
