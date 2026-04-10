@@ -9,7 +9,6 @@ export const zh_cn_glossary_page = {
     preset: '预设',
     edit: '编辑',
     delete: '删除',
-    query: '查询',
     save: '保存',
     cancel: '取消',
   },
@@ -22,7 +21,15 @@ export const zh_cn_glossary_page = {
     translation: '译文',
     description: '描述',
     rule: '规则',
-    status: '状态',
+    statistics: '统计',
+  },
+  statistics: {
+    hit_count: '命中条目数：{COUNT}',
+    subset_relations: '存在包含关系：',
+    action: {
+      query_source: '查询出处',
+      search_relation: '查询包含关系',
+    },
   },
   rule: {
     case_sensitive: '区分大小写',

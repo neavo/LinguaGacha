@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api_fetch } from '@/app/desktop-api'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
-import { useI18n } from '@/i18n'
+import { useI18n, type LocaleKey } from '@/i18n'
 import {
   are_glossary_entry_ids_equal,
   build_glossary_entry_id,
@@ -15,6 +15,7 @@ import type {
   GlossaryEntry,
   GlossaryEntryId,
   GlossaryPresetItem,
+  GlossaryStatisticsBadgeState,
   GlossarySearchState,
   GlossaryStatisticsState,
 } from '@/pages/glossary-page/types'
@@ -132,6 +133,7 @@ function build_search_state(
 function create_empty_statistics_state(): GlossaryStatisticsState {
   return {
     running: false,
+    completed_entry_ids: [],
     matched_count_by_entry_id: {},
     subset_parent_labels_by_entry_id: {},
   }
@@ -157,6 +159,26 @@ function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   }
 }
 
+function build_statistics_badge_tooltip(
+  t: (key: LocaleKey) => string,
+  entry: GlossaryEntry,
+  matched_count: number,
+  subset_parent_labels: string[],
+): string {
+  const tooltip_lines = [
+    t('glossary_page.statistics.hit_count').replace('{COUNT}', matched_count.toString()),
+  ]
+
+  if (subset_parent_labels.length > 0) {
+    tooltip_lines.push(t('glossary_page.statistics.subset_relations'))
+    tooltip_lines.push(...subset_parent_labels.map((label) => {
+      return `${entry.src} -> ${label}`
+    }))
+  }
+
+  return tooltip_lines.join('\n')
+}
+
 type UseGlossaryPageStateResult = {
   revision: number
   enabled: boolean
@@ -168,6 +190,7 @@ type UseGlossaryPageStateResult = {
   preset_menu_open: boolean
   search_state: GlossarySearchState
   statistics_state: GlossaryStatisticsState
+  statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>
   dialog_state: GlossaryDialogState
   update_search_keyword: (next_keyword: string) => void
   update_search_regex: (next_is_regex: boolean) => void
@@ -197,9 +220,10 @@ type UseGlossaryPageStateResult = {
     active_entry_id: GlossaryEntryId,
     over_entry_id: GlossaryEntryId,
   ) => Promise<void>
+  query_entry_source_from_statistics: (entry_id: GlossaryEntryId) => Promise<void>
+  search_entry_relations_from_statistics: (entry_id: GlossaryEntryId) => void
   save_dialog_entry: () => Promise<void>
   request_close_dialog: () => Promise<void>
-  query_dialog_entry: () => Promise<void>
   delete_dialog_entry: () => Promise<void>
   set_preset_menu_open: (next_open: boolean) => void
   refresh_snapshot: () => Promise<void>
@@ -248,6 +272,45 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const entry_index_by_id = useMemo(() => {
     return new Map(entry_ids.map((entry_id, index) => [entry_id, index]))
   }, [entry_ids])
+  const statistics_badge_by_entry_id = useMemo<Record<GlossaryEntryId, GlossaryStatisticsBadgeState>>(() => {
+    const next_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState> = {}
+    const completed_entry_id_set = new Set(statistics_state.completed_entry_ids)
+
+    entries.forEach((entry, index) => {
+      const entry_id = entry_ids[index]
+      if (entry_id === undefined) {
+        return
+      }
+
+      if (!completed_entry_id_set.has(entry_id)) {
+        return
+      }
+
+      const matched_count = statistics_state.matched_count_by_entry_id[entry_id]
+      const subset_parent_labels = statistics_state.subset_parent_labels_by_entry_id[entry_id]
+      const normalized_matched_count = matched_count ?? 0
+      const normalized_subset_parent_labels = subset_parent_labels ?? []
+      const kind = normalized_matched_count === 0
+        ? 'unmatched'
+        : normalized_subset_parent_labels.length === 0
+          ? 'matched'
+          : 'related'
+
+      next_badge_by_entry_id[entry_id] = {
+        kind,
+        matched_count: normalized_matched_count,
+        subset_parent_labels: normalized_subset_parent_labels,
+        tooltip: build_statistics_badge_tooltip(
+          t,
+          entry,
+          normalized_matched_count,
+          normalized_subset_parent_labels,
+        ),
+      }
+    })
+
+    return next_badge_by_entry_id
+  }, [entries, entry_ids, statistics_state, t])
 
   const apply_snapshot = useCallback((snapshot: GlossarySnapshot): void => {
     set_revision(snapshot.revision)
@@ -350,6 +413,39 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       )
     })
   }, [entries])
+
+  const focus_search_result = useCallback((next_search_state: GlossarySearchState): void => {
+    if (
+      next_search_state.invalid_regex_message !== null
+      || next_search_state.matched_entry_ids.length === 0
+    ) {
+      return
+    }
+
+    const next_active_entry_id = next_search_state.matched_entry_ids[
+      Math.max(next_search_state.current_match_index, 0)
+    ] ?? null
+
+    if (next_active_entry_id !== null) {
+      set_active_entry_id(next_active_entry_id)
+      set_selected_entry_ids([next_active_entry_id])
+      set_selection_anchor_entry_id(next_active_entry_id)
+    }
+  }, [])
+
+  const search_entry_relations_from_statistics = useCallback((entry_id: GlossaryEntryId): void => {
+    const target_index = entry_index_by_id.get(entry_id)
+    const target_entry = target_index === undefined
+      ? null
+      : entries[target_index]
+    if (target_entry === null || target_entry === undefined) {
+      return
+    }
+
+    const next_search_state = build_search_state(target_entry.src, false, entries, 0)
+    set_search_state(next_search_state)
+    focus_search_result(next_search_state)
+  }, [entries, entry_index_by_id, focus_search_result])
 
   const focus_previous_match = useCallback((): void => {
     set_search_state((previous_state) => {
@@ -663,14 +759,15 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     await save_dialog_entry()
   }, [dialog_state.dirty, save_dialog_entry])
 
-  const query_dialog_entry = useCallback(async (): Promise<void> => {
-    const normalized_entry = normalize_dialog_entry(dialog_state.draft_entry)
-
-    if (dialog_state.dirty) {
-      const saved = await persist_dialog_entry()
-      if (!saved) {
-        return
-      }
+  const query_entry_source_from_statistics = useCallback(async (
+    entry_id: GlossaryEntryId,
+  ): Promise<void> => {
+    const target_index = entry_index_by_id.get(entry_id)
+    const target_entry = target_index === undefined
+      ? null
+      : entries[target_index]
+    if (target_entry === null || target_entry === undefined) {
+      return
     }
 
     try {
@@ -678,7 +775,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         '/api/quality/rules/query-proofreading',
         {
           rule_type: 'glossary',
-          entry: normalized_entry,
+          entry: normalize_dialog_entry(target_entry),
         },
       )
       push_proofreading_lookup_intent(payload.query)
@@ -690,7 +787,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast('error', t('glossary_page.feedback.query_failed'))
       }
     }
-  }, [dialog_state.dirty, dialog_state.draft_entry, navigate_to_route, persist_dialog_entry, push_proofreading_lookup_intent, push_toast, t])
+  }, [entries, entry_index_by_id, navigate_to_route, push_proofreading_lookup_intent, push_toast, t])
 
   const delete_dialog_entry = useCallback(async (): Promise<void> => {
     if (dialog_state.mode === 'create') {
@@ -791,6 +888,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       set_statistics_state({
         running: false,
+        completed_entry_ids: entries.map((entry, index) => {
+          return build_glossary_entry_id(entry, index)
+        }),
         matched_count_by_entry_id: Object.fromEntries(
           Object.entries(results).map(([entry_id, result]) => {
             return [entry_id, result.matched_item_count ?? 0]
@@ -865,6 +965,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       preset_menu_open,
       search_state,
       statistics_state,
+      statistics_badge_by_entry_id,
       dialog_state,
       update_search_keyword,
       update_search_regex,
@@ -885,9 +986,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       delete_selected_entries,
       toggle_case_sensitive_for_selected,
       reorder_selected_entries,
+      query_entry_source_from_statistics,
+      search_entry_relations_from_statistics,
       save_dialog_entry,
       request_close_dialog,
-      query_dialog_entry,
       delete_dialog_entry,
       set_preset_menu_open,
       refresh_snapshot,
@@ -911,7 +1013,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     open_preset_menu,
     preset_items,
     preset_menu_open,
-    query_dialog_entry,
+    query_entry_source_from_statistics,
     refresh_snapshot,
     reorder_selected_entries,
     request_close_dialog,
@@ -919,9 +1021,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     run_statistics,
     save_dialog_entry,
     search_state,
+    search_entry_relations_from_statistics,
     select_entry,
     select_range,
     selected_entry_ids,
+    statistics_badge_by_entry_id,
     statistics_state,
     toggle_case_sensitive_for_selected,
     update_dialog_draft,

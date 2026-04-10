@@ -25,7 +25,6 @@ type GlossaryEditDialogProps = {
   on_change: (patch: Partial<GlossaryEntry>) => void
   on_save: () => Promise<void>
   on_delete: () => Promise<void>
-  on_query: () => Promise<void>
   on_close: () => Promise<void>
 }
 
@@ -108,16 +107,6 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
         </div>
 
         <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={props.saving}
-            onClick={() => {
-              void props.on_query()
-            }}
-          >
-            {t('glossary_page.action.query')}
-          </Button>
           <Button
             type="button"
             variant="destructive"

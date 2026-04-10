@@ -151,6 +151,8 @@
   --glossary-row-utility-surface-active: color-mix(in srgb, var(--card) 84%, transparent);
   --glossary-table-selection-rail: color-mix(in srgb, var(--primary) 70%, white 30%);
   --glossary-selection-box: color-mix(in srgb, var(--primary) 18%, transparent);
+  --glossary-statistics-success: #22c55e;
+  --glossary-statistics-warning: #f59e0b;
 }
 
 .dark .glossary-page {
@@ -165,6 +167,8 @@
   --glossary-row-utility-surface: color-mix(in srgb, white 7%, transparent);
   --glossary-row-utility-surface-active: color-mix(in srgb, white 12%, transparent);
   --glossary-selection-box: color-mix(in srgb, var(--primary) 24%, transparent);
+  --glossary-statistics-success: #4ade80;
+  --glossary-statistics-warning: #fbbf24;
 }
 
 .glossary-page__table-card {
@@ -240,7 +244,7 @@
   width: 96px;
 }
 
-.glossary-page__table-col--status {
+.glossary-page__table-col--statistics {
   width: 92px;
 }
 
@@ -276,8 +280,8 @@
 .glossary-page__table-drag-cell,
 .glossary-page__table-rule-head,
 .glossary-page__table-rule-cell,
-.glossary-page__table-status-head,
-.glossary-page__table-status-cell {
+.glossary-page__table-statistics-head,
+.glossary-page__table-statistics-cell {
   text-align: center;
 }
 
@@ -530,6 +534,58 @@
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
+}
+
+.glossary-page__statistics-badge-wrap,
+.glossary-page__statistics-badge-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glossary-page__statistics-badge-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.glossary-page__statistics-badge {
+  min-width: 32px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  transition:
+    transform 180ms ease,
+    filter 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.glossary-page__statistics-badge[data-kind='matched'] {
+  border-color: color-mix(in srgb, var(--glossary-statistics-success) 44%, var(--border));
+  background: color-mix(in srgb, var(--glossary-statistics-success) 16%, transparent);
+  color: color-mix(in srgb, var(--glossary-statistics-success) 82%, var(--foreground) 18%);
+}
+
+.glossary-page__statistics-badge[data-kind='related'] {
+  border-color: color-mix(in srgb, var(--glossary-statistics-warning) 46%, var(--border));
+  background: color-mix(in srgb, var(--glossary-statistics-warning) 16%, transparent);
+  color: color-mix(in srgb, var(--glossary-statistics-warning) 80%, var(--foreground) 20%);
+}
+
+.glossary-page__statistics-badge[data-kind='unmatched'] {
+  border-color: color-mix(in srgb, var(--destructive) 42%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: color-mix(in srgb, var(--destructive) 86%, var(--foreground) 14%);
+}
+
+.glossary-page__statistics-badge-button:hover .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button:focus-visible .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button[data-state='open'] .glossary-page__statistics-badge {
+  transform: translateY(-1px);
+  filter: saturate(1.08);
 }
 
 .glossary-page__selection-box {

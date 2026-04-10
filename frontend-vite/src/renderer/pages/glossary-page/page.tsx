@@ -30,7 +30,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
           entries={glossary_page_state.entries}
           selected_entry_ids={glossary_page_state.selected_entry_ids}
           active_entry_id={glossary_page_state.active_entry_id}
-          statistics_state={glossary_page_state.statistics_state}
+          statistics_badge_by_entry_id={glossary_page_state.statistics_badge_by_entry_id}
           on_select_entry={glossary_page_state.select_entry}
           on_select_range={glossary_page_state.select_range}
           on_box_select={glossary_page_state.box_select_entries}
@@ -38,6 +38,8 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
           on_delete_selected={glossary_page_state.delete_selected_entries}
           on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
           on_reorder={glossary_page_state.reorder_selected_entries}
+          on_query_entry_source={glossary_page_state.query_entry_source_from_statistics}
+          on_search_entry_relations={glossary_page_state.search_entry_relations_from_statistics}
         />
       </div>
       <GlossaryCommandBar
@@ -63,7 +65,6 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         on_change={glossary_page_state.update_dialog_draft}
         on_save={glossary_page_state.save_dialog_entry}
         on_delete={glossary_page_state.delete_dialog_entry}
-        on_query={glossary_page_state.query_dialog_entry}
         on_close={glossary_page_state.request_close_dialog}
       />
     </div>

@@ -42,12 +42,20 @@ import { GlossaryContextMenuContent } from '@/pages/glossary-page/components/glo
 import type {
   GlossaryEntry,
   GlossaryEntryId,
-  GlossaryStatisticsState,
+  GlossaryStatisticsBadgeState,
 } from '@/pages/glossary-page/types'
+import { Badge } from '@/ui/badge'
 import {
   ContextMenu,
   ContextMenuTrigger,
 } from '@/ui/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/ui/dropdown-menu'
 import {
   Empty,
   EmptyDescription,
@@ -71,13 +79,11 @@ import {
 } from '@/ui/tooltip'
 import { DataTableFrame } from '@/widgets/data-table-frame/data-table-frame'
 
-const EMPTY_SUBSET_PARENT_LABELS: string[] = []
-
 type GlossaryTableProps = {
   entries: GlossaryEntry[]
   selected_entry_ids: GlossaryEntryId[]
   active_entry_id: GlossaryEntryId | null
-  statistics_state: GlossaryStatisticsState
+  statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>
   on_select_entry: (
     entry_id: GlossaryEntryId,
     options: { extend: boolean; range: boolean },
@@ -94,6 +100,8 @@ type GlossaryTableProps = {
     active_entry_id: GlossaryEntryId,
     over_entry_id: GlossaryEntryId,
   ) => Promise<void>
+  on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>
+  on_search_entry_relations: (entry_id: GlossaryEntryId) => void
 }
 
 type SelectionBoxState = {
@@ -110,8 +118,7 @@ type GlossarySortableRowProps = {
   row_index: number
   active: boolean
   selected: boolean
-  matched_count: number
-  subset_parent_labels: string[]
+  statistics_badge_state: GlossaryStatisticsBadgeState | null
   register_row_element: (
     entry_id: GlossaryEntryId,
     row_element: HTMLTableRowElement | null,
@@ -125,6 +132,8 @@ type GlossarySortableRowProps = {
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
   should_ignore_click: () => boolean
   on_measure_row: (row_element: HTMLTableRowElement) => void
+  on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>
+  on_search_entry_relations: (entry_id: GlossaryEntryId) => void
 }
 
 type GlossaryTableSpacerRowProps = {
@@ -149,7 +158,7 @@ function render_table_colgroup(): JSX.Element {
       <col className="glossary-page__table-col glossary-page__table-col--translation" />
       <col className="glossary-page__table-col glossary-page__table-col--description" />
       <col className="glossary-page__table-col glossary-page__table-col--rule" />
-      <col className="glossary-page__table-col glossary-page__table-col--status" />
+      <col className="glossary-page__table-col glossary-page__table-col--statistics" />
     </colgroup>
   )
 }
@@ -215,6 +224,10 @@ function should_ignore_box_selection_target(
   ) !== null
 }
 
+function should_ignore_row_click_target(target_element: HTMLElement): boolean {
+  return target_element.closest('[data-glossary-ignore-row-click="true"]') !== null
+}
+
 
 type GlossaryRuleBadgeProps = {
   enabled: boolean
@@ -243,6 +256,117 @@ function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
         <p className="whitespace-pre-line">{props.tooltip}</p>
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+type GlossaryStatisticsBadgeProps = {
+  entry_id: GlossaryEntryId
+  badge_state: GlossaryStatisticsBadgeState | null
+  on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>
+  on_search_entry_relations: (entry_id: GlossaryEntryId) => void
+}
+
+function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Element | null {
+  const { t } = useI18n()
+
+  if (props.badge_state === null) {
+    return null
+  }
+
+  const badge = (
+    <Badge
+      variant={props.badge_state.kind === 'unmatched' ? 'destructive' : 'outline'}
+      data-kind={props.badge_state.kind}
+      className="glossary-page__statistics-badge"
+    >
+      {props.badge_state.matched_count.toString()}
+    </Badge>
+  )
+
+  const tooltip_content = (
+    <TooltipContent side="top" sideOffset={8}>
+      <p className="whitespace-pre-line">{props.badge_state.tooltip}</p>
+    </TooltipContent>
+  )
+
+  if (props.badge_state.kind === 'unmatched') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-glossary-ignore-box-select="true"
+            data-glossary-ignore-row-click="true"
+            className="glossary-page__statistics-badge-wrap"
+          >
+            {badge}
+          </span>
+        </TooltipTrigger>
+        {tooltip_content}
+      </Tooltip>
+    )
+  }
+
+  if (props.badge_state.kind === 'matched') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-glossary-ignore-box-select="true"
+            data-glossary-ignore-row-click="true"
+            className="glossary-page__statistics-badge-button"
+            onClick={(event) => {
+              event.stopPropagation()
+              void props.on_query_entry_source(props.entry_id)
+            }}
+          >
+            {badge}
+          </button>
+        </TooltipTrigger>
+        {tooltip_content}
+      </Tooltip>
+    )
+  }
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              data-glossary-ignore-box-select="true"
+              data-glossary-ignore-row-click="true"
+              className="glossary-page__statistics-badge-button"
+              onClick={(event) => {
+                event.stopPropagation()
+              }}
+            >
+              {badge}
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        {tooltip_content}
+      </Tooltip>
+      <DropdownMenuContent align="center" matchTriggerWidth={false}>
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            onClick={() => {
+              void props.on_query_entry_source(props.entry_id)
+            }}
+          >
+            {t('glossary_page.statistics.action.query_source')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              props.on_search_entry_relations(props.entry_id)
+            }}
+          >
+            {t('glossary_page.statistics.action.search_relation')}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -286,9 +410,6 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     transform: CSS.Transform.toString(transform),
     transition,
   }
-  const statistics_tooltip = props.subset_parent_labels.length === 0
-    ? undefined
-    : props.subset_parent_labels.join('\n')
   const case_tooltip = `${t('glossary_page.rule.case_sensitive')}\n${t(props.entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`
   const row_number_label = build_glossary_row_number_label(props.row_index)
 
@@ -318,21 +439,44 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
               return
             }
 
+            if (
+              event.target instanceof HTMLElement
+              && should_ignore_row_click_target(event.target)
+            ) {
+              return
+            }
+
             props.on_select_entry(props.entry_id, {
               extend: event.ctrlKey || event.metaKey,
               range: event.shiftKey,
             })
           }}
-          onContextMenu={() => {
+          onContextMenu={(event) => {
+            if (
+              event.target instanceof HTMLElement
+              && should_ignore_row_click_target(event.target)
+            ) {
+              return
+            }
+
             props.on_select_entry(props.entry_id, {
               extend: false,
               range: false,
             })
           }}
-          onDoubleClick={() => {
-            if (!props.should_ignore_click()) {
-              props.on_open_edit(props.entry_id)
+          onDoubleClick={(event) => {
+            if (props.should_ignore_click()) {
+              return
             }
+
+            if (
+              event.target instanceof HTMLElement
+              && should_ignore_row_click_target(event.target)
+            ) {
+              return
+            }
+
+            props.on_open_edit(props.entry_id)
           }}
         >
           <TableCell className="glossary-page__table-drag-cell">
@@ -372,11 +516,13 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
               tooltip={case_tooltip}
             />
           </TableCell>
-          <TableCell
-            className="glossary-page__table-status-cell"
-            title={statistics_tooltip}
-          >
-            {props.matched_count > 0 ? String(props.matched_count) : ''}
+          <TableCell className="glossary-page__table-statistics-cell">
+            <GlossaryStatisticsBadge
+              entry_id={props.entry_id}
+              badge_state={props.statistics_badge_state}
+              on_query_entry_source={props.on_query_entry_source}
+              on_search_entry_relations={props.on_search_entry_relations}
+            />
           </TableCell>
         </TableRow>
       </ContextMenuTrigger>
@@ -396,8 +542,7 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     && previous_props.row_index === next_props.row_index
     && previous_props.active === next_props.active
     && previous_props.selected === next_props.selected
-    && previous_props.matched_count === next_props.matched_count
-    && previous_props.subset_parent_labels === next_props.subset_parent_labels
+    && previous_props.statistics_badge_state === next_props.statistics_badge_state
     && previous_props.register_row_element === next_props.register_row_element
     && previous_props.on_open_edit === next_props.on_open_edit
     && previous_props.on_select_entry === next_props.on_select_entry
@@ -405,6 +550,8 @@ const GlossarySortableRow = memo(function GlossarySortableRow(
     && previous_props.on_toggle_case_sensitive === next_props.on_toggle_case_sensitive
     && previous_props.should_ignore_click === next_props.should_ignore_click
     && previous_props.on_measure_row === next_props.on_measure_row
+    && previous_props.on_query_entry_source === next_props.on_query_entry_source
+    && previous_props.on_search_entry_relations === next_props.on_search_entry_relations
   )
 })
 
@@ -480,7 +627,7 @@ function GlossaryTablePlaceholderRow(
           {'\u00A0'}
         </span>
       </TableCell>
-      <TableCell className="glossary-page__table-status-cell glossary-page__table-placeholder-cell">
+      <TableCell className="glossary-page__table-statistics-cell glossary-page__table-placeholder-cell">
         <span className="glossary-page__table-placeholder-content">
           {'\u00A0'}
         </span>
@@ -898,8 +1045,8 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
             <TableHead className="glossary-page__table-rule-head">
               {t('glossary_page.fields.rule')}
             </TableHead>
-            <TableHead className="glossary-page__table-status-head">
-              {t('glossary_page.fields.status')}
+            <TableHead className="glossary-page__table-statistics-head">
+              {t('glossary_page.fields.statistics')}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -952,8 +1099,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                       row_index={virtual_row.index}
                       active={props.active_entry_id === entry_id}
                       selected={selected_entry_id_set.has(entry_id)}
-                      matched_count={props.statistics_state.matched_count_by_entry_id[entry_id] ?? 0}
-                      subset_parent_labels={props.statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? EMPTY_SUBSET_PARENT_LABELS}
+                      statistics_badge_state={props.statistics_badge_by_entry_id[entry_id] ?? null}
                       register_row_element={register_row_element}
                       on_measure_row={measure_virtual_row}
                       on_open_edit={props.on_open_edit}
@@ -961,6 +1107,8 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                       on_delete_selected={props.on_delete_selected}
                       on_toggle_case_sensitive={props.on_toggle_case_sensitive}
                       should_ignore_click={should_ignore_click}
+                      on_query_entry_source={props.on_query_entry_source}
+                      on_search_entry_relations={props.on_search_entry_relations}
                     />
                   )
                 })}
@@ -1035,7 +1183,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
                               tooltip={`${t('glossary_page.rule.case_sensitive')}\n${t(active_drag_entry.case_sensitive ? 'app.toggle.enabled' : 'app.toggle.disabled')}`}
                             />
                           </TableCell>
-                          <TableCell className="glossary-page__table-status-cell" />
+                          <TableCell className="glossary-page__table-statistics-cell" />
                         </TableRow>
                       </TableBody>
                     </Table>

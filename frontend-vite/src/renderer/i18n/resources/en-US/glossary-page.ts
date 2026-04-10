@@ -12,7 +12,6 @@ export const en_us_glossary_page = {
     preset: 'Presets',
     edit: 'Edit',
     delete: 'Delete',
-    query: 'Query',
     save: 'Save',
     cancel: 'Cancel',
   },
@@ -25,7 +24,15 @@ export const en_us_glossary_page = {
     translation: 'Translation',
     description: 'Description',
     rule: 'Rule',
-    status: 'Status',
+    statistics: 'Statistics',
+  },
+  statistics: {
+    hit_count: 'Matched item count: {COUNT}',
+    subset_relations: 'Contains subset relations:',
+    action: {
+      query_source: 'Query source',
+      search_relation: 'Query subset relations',
+    },
   },
   rule: {
     case_sensitive: 'Case-sensitive',
