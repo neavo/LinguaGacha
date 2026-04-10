@@ -27,7 +27,7 @@
 .glossary-page__search-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .glossary-page__search-input-group {
@@ -38,20 +38,41 @@
   min-width: 0;
 }
 
+.glossary-page__search-input-addon {
+  gap: 0;
+}
+
+.glossary-page__search-clear-button {
+  color: var(--muted-foreground);
+}
+
+.glossary-page__search-clear-button:hover {
+  color: var(--foreground);
+}
+
 .glossary-page__search-actions {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .glossary-page__search-action-trigger {
+  position: relative;
   flex-shrink: 0;
+  min-width: 76px;
+  padding-inline-end: calc(var(--ui-toolbar-button-padding-x) + 4px);
 }
 
-.glossary-page__search-action-trigger[data-active='true'] {
-  background: var(--muted);
-  color: var(--foreground);
+.glossary-page__search-action-trigger[data-active='true']::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 84%, white 16%);
 }
 
 .glossary-page__search-status {

@@ -43,9 +43,11 @@ export const zh_cn_glossary_page = {
     placeholder: '请输入关键字 …',
     clear: '清空',
     regex: '正则',
+    regex_tooltip_label: '正则模式',
     invalid: '正则表达式无效',
     scope: {
       label: '范围',
+      tooltip_label: '搜索范围',
       all: '全部',
       source: '原文',
       translation: '译文',

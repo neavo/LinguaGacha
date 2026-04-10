@@ -21,11 +21,9 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         scope={glossary_page_state.filter_state.scope}
         is_regex={glossary_page_state.filter_state.is_regex}
         invalid_filter_message={glossary_page_state.invalid_filter_message}
-        has_active_filters={glossary_page_state.has_active_filters}
         on_keyword_change={glossary_page_state.update_filter_keyword}
         on_scope_change={glossary_page_state.update_filter_scope}
         on_regex_change={glossary_page_state.update_filter_regex}
-        on_clear_filters={glossary_page_state.clear_all_filters}
       />
       <div className="glossary-page__table-host">
         <GlossaryTable

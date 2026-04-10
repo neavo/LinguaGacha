@@ -1,4 +1,4 @@
-import { Eraser, ListFilter, Regex } from 'lucide-react'
+import { ListFilter, Regex, X } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
 import type { GlossaryFilterScope } from '@/pages/glossary-page/types'
@@ -11,7 +11,12 @@ import {
   DropdownMenuGroup,
   DropdownMenuTrigger,
 } from '@/ui/dropdown-menu'
-import { InputGroup, InputGroupInput } from '@/ui/input-group'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@/ui/input-group'
 import {
   Tooltip,
   TooltipContent,
@@ -23,26 +28,41 @@ type GlossarySearchBarProps = {
   scope: GlossaryFilterScope
   is_regex: boolean
   invalid_filter_message: string | null
-  has_active_filters: boolean
   on_keyword_change: (next_keyword: string) => void
   on_scope_change: (next_scope: GlossaryFilterScope) => void
   on_regex_change: (next_is_regex: boolean) => void
-  on_clear_filters: () => void
 }
 
 export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
   const { t } = useI18n()
   const show_invalid_state = props.invalid_filter_message !== null
+  const show_clear_keyword = props.keyword !== ''
+  const regex_state_label = props.is_regex
+    ? t('app.toggle.enabled')
+    : t('app.toggle.disabled')
   const filter_status = show_invalid_state
     ? t('glossary_page.filter.invalid')
     : null
-  const scope_label = props.scope === 'src'
+  const scope_button_label = props.scope === 'src'
     ? t('glossary_page.filter.scope.source')
     : props.scope === 'dst'
       ? t('glossary_page.filter.scope.translation')
       : props.scope === 'info'
         ? t('glossary_page.filter.scope.description')
         : t('glossary_page.filter.scope.label')
+  const scope_state_label = props.scope === 'all'
+    ? t('glossary_page.filter.scope.all')
+    : props.scope === 'src'
+      ? t('glossary_page.filter.scope.source')
+      : props.scope === 'dst'
+        ? t('glossary_page.filter.scope.translation')
+        : t('glossary_page.filter.scope.description')
+  const scope_tooltip = t('glossary_page.toggle.status')
+    .replace('{TITLE}', t('glossary_page.filter.scope.tooltip_label'))
+    .replace('{STATE}', scope_state_label)
+  const regex_tooltip = t('glossary_page.toggle.status')
+    .replace('{TITLE}', t('glossary_page.filter.regex_tooltip_label'))
+    .replace('{STATE}', regex_state_label)
 
   return (
     <Card variant="toolbar" className="glossary-page__search-card">
@@ -59,33 +79,55 @@ export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
                   props.on_keyword_change(event.target.value)
                 }}
               />
+              {show_clear_keyword
+                ? (
+                    <InputGroupAddon
+                      align="inline-end"
+                      className="glossary-page__search-input-addon"
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <InputGroupButton
+                            size="icon-xs"
+                            aria-label={t('glossary_page.filter.clear')}
+                            className="glossary-page__search-clear-button"
+                            onClick={() => {
+                              props.on_keyword_change('')
+                            }}
+                          >
+                            <X />
+                          </InputGroupButton>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={8}>
+                          <p>{t('glossary_page.filter.clear')}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </InputGroupAddon>
+                  )
+                : null}
             </InputGroup>
             <div className="glossary-page__search-actions">
-              <Button
-                type="button"
-                variant="ghost"
-                size="toolbar"
-                disabled={!props.has_active_filters}
-                className="glossary-page__search-action-trigger"
-                onClick={props.on_clear_filters}
-              >
-                <Eraser data-icon="inline-start" />
-                {t('glossary_page.filter.clear')}
-              </Button>
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="toolbar"
-                    className="glossary-page__search-action-trigger"
-                    data-active={props.scope === 'all' ? undefined : 'true'}
-                    aria-label={t('glossary_page.filter.scope.label')}
-                  >
-                    <ListFilter data-icon="inline-start" />
-                    {scope_label}
-                  </Button>
-                </DropdownMenuTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="toolbar"
+                        className="glossary-page__search-action-trigger"
+                        data-active={props.scope === 'all' ? undefined : 'true'}
+                        aria-label={t('glossary_page.filter.scope.label')}
+                      >
+                        <ListFilter data-icon="inline-start" />
+                        {scope_button_label}
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" sideOffset={10}>
+                    <p>{scope_tooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent align="center" matchTriggerWidth={false}>
                   <DropdownMenuGroup>
                     {(['all', 'src', 'dst', 'info'] satisfies GlossaryFilterScope[]).map((scope) => (
@@ -111,18 +153,25 @@ export function GlossarySearchBar(props: GlossarySearchBarProps): JSX.Element {
                 </DropdownMenuContent>
               </DropdownMenu>
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="toolbar"
-                    className="glossary-page__search-action-trigger"
-                    data-active={props.is_regex ? 'true' : undefined}
-                  >
-                    <Regex data-icon="inline-start" />
-                    {t('glossary_page.filter.regex')}
-                  </Button>
-                </DropdownMenuTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="toolbar"
+                        className="glossary-page__search-action-trigger"
+                        data-active={props.is_regex ? 'true' : undefined}
+                      >
+                        <Regex data-icon="inline-start" />
+                        {t('glossary_page.filter.regex')}
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" sideOffset={10}>
+                    <p>{regex_tooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent align="center" matchTriggerWidth={false}>
                   <DropdownMenuGroup>
                     <DropdownMenuCheckboxItem
