@@ -53,7 +53,6 @@
 .search-bar__actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -73,14 +72,4 @@
   height: 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--primary) 84%, white 16%);
-}
-
-@media (max-width: 1200px) {
-  .search-bar__toolbar {
-    flex-wrap: wrap;
-  }
-
-  .search-bar__input-group {
-    min-width: min(100%, 360px);
-  }
 }

@@ -329,22 +329,3 @@
 .text-replacement-page__preset-dialog-button {
   min-width: 112px;
 }
-
-@media (max-width: 900px) {
-  .text-replacement-page__header-card-content,
-  .text-replacement-page__dialog-rule-item,
-  .text-replacement-page__dialog-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .text-replacement-page__dialog-main-panel-content,
-  .text-replacement-page__dialog-rule-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .text-replacement-page__dialog-footer-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-}

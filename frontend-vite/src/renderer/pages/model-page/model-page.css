@@ -246,10 +246,6 @@
   gap: 2px;
 }
 
-.model-page__advanced-toggle-group {
-  min-width: 128px;
-}
-
 .model-page__advanced-inline-control {
   display: flex;
   min-width: 0;

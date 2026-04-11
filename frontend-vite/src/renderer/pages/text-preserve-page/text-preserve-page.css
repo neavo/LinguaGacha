@@ -268,19 +268,3 @@
 .text-preserve-page__preset-dialog-button {
   min-width: 112px;
 }
-
-@media (max-width: 900px) {
-  .text-preserve-page__dialog-main-panel-content {
-    grid-template-columns: 1fr;
-  }
-
-  .text-preserve-page__dialog-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .text-preserve-page__dialog-footer-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-}

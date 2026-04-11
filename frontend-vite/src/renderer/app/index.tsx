@@ -27,10 +27,8 @@ const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   'workbench',
   'glossary',
   'text-preserve',
-  'text-replacement',
   'pre-translation-replacement',
   'post-translation-replacement',
-  'custom-prompt',
   'translation-prompt',
   'analysis-prompt',
   'laboratory',
@@ -40,10 +38,8 @@ const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
 const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
   'glossary',
   'text-preserve',
-  'text-replacement',
   'pre-translation-replacement',
   'post-translation-replacement',
-  'custom-prompt',
   'translation-prompt',
   'analysis-prompt',
   'laboratory',
@@ -54,6 +50,20 @@ const EXPERT_MODE_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   'expert-settings',
   'text-preserve',
 ])
+
+function resolve_selectable_route(route_id: RouteId): RouteId {
+  if (route_id === 'text-replacement') {
+    return 'pre-translation-replacement'
+  } else if (route_id === 'custom-prompt') {
+    return 'translation-prompt'
+  } else {
+    return route_id
+  }
+}
+
+function has_registered_screen(route_id: RouteId): boolean {
+  return SCREEN_REGISTRY[route_id] !== undefined
+}
 
 function read_sidebar_state(): boolean {
   const stored_sidebar_state = window.localStorage.getItem(SIDEBAR_STORAGE_KEY)
@@ -97,7 +107,7 @@ function AppContent(): JSX.Element {
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() => read_sidebar_state())
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded)
   const previous_project_path_ref = useRef<string>(project_snapshot.path)
-  const active_screen = SCREEN_REGISTRY[selected_route]
+  const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!
   const ScreenComponent = active_screen.component
   const document_title = `${t('app.metadata.app_name')} · ${t(active_screen.title_key)}`
   const theme_mode: ThemeMode = resolvedTheme === 'dark'
@@ -130,7 +140,7 @@ function AppContent(): JSX.Element {
 
     if (!was_loaded && project_snapshot.loaded) {
       if (pending_target_route !== null) {
-        set_selected_route(pending_target_route)
+        set_selected_route(resolve_selectable_route(pending_target_route))
         set_pending_target_route(null)
       } else {
         set_selected_route('workbench')
@@ -171,12 +181,24 @@ function AppContent(): JSX.Element {
 
   const visible_navigation_groups = useMemo(() => {
     return NAVIGATION_GROUPS.filter((group) => {
-      return group.items.some((item) => SCREEN_REGISTRY[item.id] !== undefined)
+      return group.items.some((item) => {
+        if ((item.children?.length ?? 0) > 0) {
+          return item.children?.some((child) => has_registered_screen(child.id)) ?? false
+        }
+
+        return has_registered_screen(item.id)
+      })
     }).map((group) => {
       return {
         ...group,
         items: group.items
-          .filter((item) => SCREEN_REGISTRY[item.id] !== undefined)
+          .filter((item) => {
+            if ((item.children?.length ?? 0) > 0) {
+              return item.children?.some((child) => has_registered_screen(child.id)) ?? false
+            }
+
+            return has_registered_screen(item.id)
+          })
           .filter((item) => settings_snapshot.expert_mode || !EXPERT_MODE_ROUTE_IDS.has(item.id))
           .map((item) => {
             if ((item.children?.length ?? 0) === 0) {
@@ -186,7 +208,10 @@ function AppContent(): JSX.Element {
             return {
               ...item,
               children: item.children?.filter((child) => {
-                return settings_snapshot.expert_mode || !EXPERT_MODE_ROUTE_IDS.has(child.id)
+                return (
+                  has_registered_screen(child.id)
+                  && (settings_snapshot.expert_mode || !EXPERT_MODE_ROUTE_IDS.has(child.id))
+                )
               }),
             }
           }),
@@ -195,17 +220,19 @@ function AppContent(): JSX.Element {
   }, [settings_snapshot.expert_mode])
 
   function handle_select_route(route_id: RouteId): void {
-    if (!project_snapshot.loaded && PROJECT_DEPENDENT_ROUTE_IDS.has(route_id)) {
-      set_pending_target_route(route_id)
+    const next_route = resolve_selectable_route(route_id)
+
+    if (!project_snapshot.loaded && PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)) {
+      set_pending_target_route(next_route)
       set_selected_route(DEFAULT_ROUTE_ID)
       return
     }
 
-    if (!PROJECT_DEPENDENT_ROUTE_IDS.has(route_id)) {
+    if (!PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)) {
       set_pending_target_route(null)
     }
 
-    set_selected_route(route_id)
+    set_selected_route(next_route)
   }
 
   function handle_toggle_group(route_id: RouteId): void {

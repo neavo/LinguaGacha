@@ -6,6 +6,8 @@ import {
   IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
   IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
   IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
+  IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH,
+  IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
@@ -61,6 +63,12 @@ const GLOSSARY_EXPORT_FILE_FILTERS: Electron.FileFilter[] = [
   {
     name: '支持的数据格式 (*.json *.xlsx)',
     extensions: ['json', 'xlsx'],
+  },
+]
+const PROMPT_FILE_FILTERS: Electron.FileFilter[] = [
+  {
+    name: '支持的文件 (*.txt)',
+    extensions: ['txt'],
   },
 ]
 
@@ -447,8 +455,10 @@ async function pick_save_path(
   filters: Electron.FileFilter[],
 ): Promise<DesktopPathPickResult> {
   const dialog_options: Electron.SaveDialogOptions = {
-    defaultPath: default_name,
     filters,
+  }
+  if (default_name !== '') {
+    dialog_options.defaultPath = default_name
   }
   const result = win === null
     ? await dialog.showSaveDialog(dialog_options)
@@ -542,4 +552,15 @@ ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH, async () => {
 
 ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, async (_event, default_name: string) => {
   return pick_save_path(default_name, GLOSSARY_EXPORT_FILE_FILTERS)
+})
+
+ipcMain.handle(IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH, async () => {
+  return pick_open_path({
+    properties: ['openFile'],
+    filters: PROMPT_FILE_FILTERS,
+  })
+})
+
+ipcMain.handle(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH, async () => {
+  return pick_save_path('', PROMPT_FILE_FILTERS)
 })

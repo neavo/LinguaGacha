@@ -58,4 +58,4 @@ type ScreenModule = {
   summary_key: LocaleKey
 }
 
-export type ScreenRegistry = Record<RouteId, ScreenModule>
+export type ScreenRegistry = Partial<Record<RouteId, ScreenModule>>

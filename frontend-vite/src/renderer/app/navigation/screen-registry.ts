@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import { create_debug_panel_screen } from '@/pages/debug-panel-page/create-debug-panel-screen'
 import { AppSettingsPage } from '@/pages/app-settings-page/page'
 import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
+import { CustomPromptPage } from '@/pages/custom-prompt-page/page'
 import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { GlossaryPage } from '@/pages/glossary-page/page'
 import { ModelPage } from '@/pages/model-page/page'
@@ -11,7 +12,6 @@ import { TextPreservePage } from '@/pages/text-preserve-page/page'
 import {
   TextReplacementPage,
 } from '@/pages/text-replacement-page/page'
-import { TextReplacementLandingPage } from '@/pages/text-replacement-page/text-replacement-landing-page'
 import { WorkbenchPage } from '@/pages/workbench-page/page'
 import type {
   ScreenComponentProps,
@@ -28,6 +28,18 @@ function PostTranslationReplacementScreen(
   props: ScreenComponentProps,
 ): ReturnType<typeof createElement> {
   return createElement(TextReplacementPage, { ...props, variant: 'post' })
+}
+
+function TranslationPromptScreen(
+  props: ScreenComponentProps,
+): ReturnType<typeof createElement> {
+  return createElement(CustomPromptPage, { ...props, variant: 'translation' })
+}
+
+function AnalysisPromptScreen(
+  props: ScreenComponentProps,
+): ReturnType<typeof createElement> {
+  return createElement(CustomPromptPage, { ...props, variant: 'analysis' })
 }
 
 export const SCREEN_REGISTRY: ScreenRegistry = {
@@ -90,11 +102,6 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     title_key: 'text_preserve_page.title',
     summary_key: 'text_preserve_page.summary',
   },
-  'text-replacement': {
-    component: TextReplacementLandingPage,
-    title_key: 'text_replacement_page.title',
-    summary_key: 'text_replacement_page.summary',
-  },
   'pre-translation-replacement': {
     component: PreTranslationReplacementScreen,
     title_key: 'pre_translation_replacement_page.title',
@@ -105,27 +112,13 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     title_key: 'post_translation_replacement_page.title',
     summary_key: 'post_translation_replacement_page.summary',
   },
-  'custom-prompt': {
-    component: create_debug_panel_screen({
-      title_key: 'custom_prompt_page.title',
-      summary_key: 'custom_prompt_page.summary',
-    }),
-    title_key: 'custom_prompt_page.title',
-    summary_key: 'custom_prompt_page.summary',
-  },
   'translation-prompt': {
-    component: create_debug_panel_screen({
-      title_key: 'translation_prompt_page.title',
-      summary_key: 'translation_prompt_page.summary',
-    }),
+    component: TranslationPromptScreen,
     title_key: 'translation_prompt_page.title',
     summary_key: 'translation_prompt_page.summary',
   },
   'analysis-prompt': {
-    component: create_debug_panel_screen({
-      title_key: 'analysis_prompt_page.title',
-      summary_key: 'analysis_prompt_page.summary',
-    }),
+    component: AnalysisPromptScreen,
     title_key: 'analysis_prompt_page.title',
     summary_key: 'analysis_prompt_page.summary',
   },

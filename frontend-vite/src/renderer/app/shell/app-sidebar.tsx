@@ -36,14 +36,6 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
   const { state } = useSidebar()
   const is_collapsed = state === 'collapsed'
 
-  function resolve_parent_click_route(route_id: RouteId): RouteId {
-    if (route_id === 'text-replacement') {
-      return 'pre-translation-replacement'
-    }
-
-    return route_id
-  }
-
   return (
     <Sidebar
       collapsible="icon"
@@ -71,6 +63,9 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                     const is_expanded = has_children && props.expanded_items.has(item.id)
                     const is_subitems_open = !is_collapsed && is_expanded
                     const is_disabled = props.disabled_route_ids.has(item.id)
+                      || (has_children && (item.children?.every((child) => {
+                        return props.disabled_route_ids.has(child.id)
+                      }) ?? false))
 
                     return (
                       <SidebarMenuItem key={item.id} className="sidebar-entry">
@@ -86,7 +81,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                           onClick={() => {
                             if (has_children) {
                               props.on_toggle_group(item.id)
-                              props.on_select_route(resolve_parent_click_route(item.id))
+                              props.on_select_route(item.id)
                             } else {
                               props.on_select_route(item.id)
                             }

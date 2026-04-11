@@ -161,22 +161,6 @@
   color: var(--foreground);
 }
 
-@media (max-width: 900px) {
-  .glossary-page__dialog-form {
-    min-height: auto;
-  }
-
-  .glossary-page__dialog-main-panel-content,
-  .glossary-page__dialog-rule-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .glossary-page__dialog-rule-item {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-
 .glossary-page__table-card {
   display: flex;
   min-height: 0;

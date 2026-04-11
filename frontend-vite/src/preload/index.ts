@@ -3,6 +3,8 @@ import {
   IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
   IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
   IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
+  IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH,
+  IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_FILE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
@@ -76,5 +78,11 @@ contextBridge.exposeInMainWorld('desktopApp', {
   },
   async pickGlossaryExportPath(default_name: string): Promise<DesktopPathPickResult> {
     return ipcRenderer.invoke(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, default_name)
+  },
+  async pickPromptImportFilePath(): Promise<DesktopPathPickResult> {
+    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH)
+  },
+  async pickPromptExportFilePath(): Promise<DesktopPathPickResult> {
+    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH)
   },
 })
