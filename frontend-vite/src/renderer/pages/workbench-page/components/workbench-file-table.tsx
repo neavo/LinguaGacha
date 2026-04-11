@@ -62,7 +62,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           const utility = (
             <div
               className="workbench-page__row-utility"
-              data-drag-disabled={payload.drag_handle?.disabled ?? true ? 'true' : undefined}
+              data-drag-disabled={!payload.can_drag ? 'true' : undefined}
               data-workbench-ignore-row-click="true"
               {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.attributes ?? {})}
               {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.listeners ?? {})}

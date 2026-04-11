@@ -70,15 +70,34 @@ export function reorder_selected_group(
   const moving_entries = indexed_entries.filter((item) => {
     return selected_id_set.has(item.entry_id)
   })
+
+  if (moving_entries.length === 0 || selected_id_set.has(over_entry_id)) {
+    return entries
+  }
+
   const remaining_entries = indexed_entries.filter((item) => {
     return !selected_id_set.has(item.entry_id)
+  })
+  const over_entry_index = ordered_entry_ids.findIndex((entry_id) => {
+    return entry_id === over_entry_id
   })
   const insert_index = remaining_entries.findIndex((item) => {
     return item.entry_id === over_entry_id
   })
+  let last_moving_index = -1
+
+  for (let index = ordered_entry_ids.length - 1; index >= 0; index -= 1) {
+    const entry_id = ordered_entry_ids[index]
+    if (entry_id !== undefined && selected_id_set.has(entry_id)) {
+      last_moving_index = index
+      break
+    }
+  }
+
+  const should_insert_after_over_entry = over_entry_index > last_moving_index
   const normalized_insert_index = insert_index < 0
     ? remaining_entries.length
-    : insert_index
+    : insert_index + (should_insert_after_over_entry ? 1 : 0)
   const next_entries = [...remaining_entries]
 
   next_entries.splice(normalized_insert_index, 0, ...moving_entries)
