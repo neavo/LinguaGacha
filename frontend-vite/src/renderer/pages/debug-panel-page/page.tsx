@@ -257,7 +257,7 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
             </div>
 
             <div className="debug-panel-page__button-row">
-              <Button variant="brand" onClick={start_progress_debug}>
+              <Button onClick={start_progress_debug}>
                 {t('debug_panel_page.progress.start_button')}
               </Button>
               <Button

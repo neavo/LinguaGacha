@@ -276,7 +276,6 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
           <DialogFooter className="model-page__compact-dialog-footer">
             <Button
               type="button"
-              variant="brand"
               className="model-page__compact-dialog-button"
               disabled={props.readonly}
               onClick={() => {

@@ -399,11 +399,18 @@
     background-color 180ms ease;
 }
 
+.sidebar-bottom-button__icon,
 .sidebar-bottom-button__text,
 .sidebar-profile__text,
 .sidebar-profile__avatar {
   position: relative;
   z-index: 2;
+}
+
+.sidebar-bottom-button__icon {
+  flex-shrink: 0;
+  color: currentColor;
+  stroke-width: 2;
 }
 
 .sidebar-bottom-button:hover::after,

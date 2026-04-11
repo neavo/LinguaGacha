@@ -1,4 +1,4 @@
-import { AlertTriangle, BadgeAlert, File, FolderOpen, SquareMousePointer, X } from 'lucide-react'
+import { AlertTriangle, BadgeAlert, File, FolderOpen, SquareMousePointer, X, type LucideIcon } from 'lucide-react'
 import { forwardRef, type ComponentProps, type DragEvent, type MouseEvent, type MouseEventHandler, useState } from 'react'
 
 import {
@@ -21,6 +21,7 @@ import { Button } from '@/shadcn/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/shadcn/card'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/shadcn/context-menu'
 import { Progress } from '@/shadcn/progress'
+import { Spinner } from '@/shadcn/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shadcn/tooltip'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -127,6 +128,15 @@ type RecentProjectRowProps = {
 
 type ProjectPreviewPanelProps = {
   project: SelectedProject
+}
+
+type ProjectActionButtonProps = {
+  icon: LucideIcon
+  label: string
+  loading_label: string
+  is_loading: boolean
+  disabled: boolean
+  on_click: () => void
 }
 
 type DroppedPathResult = {
@@ -485,6 +495,25 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
+  const Icon = props.icon
+
+  return (
+    <Button
+      type="button"
+      size="default"
+      className="min-w-[152px]"
+      disabled={props.disabled}
+      onClick={props.on_click}
+    >
+      {props.is_loading
+        ? <Spinner data-icon="inline-start" />
+        : <Icon data-icon="inline-start" />}
+      {props.is_loading ? props.loading_label : props.label}
+    </Button>
   )
 }
 
@@ -1061,17 +1090,16 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           </CardContent>
 
           <CardFooter className={create_footer_class_name}>
-            <Button
-              variant="brand"
-              size="lg"
-              className="project-home__action min-w-[160px]"
+            <ProjectActionButton
+              icon={File}
+              label={t('project_page.create.action')}
+              loading_label={t('app.action.loading')}
+              is_loading={is_creating_project}
               disabled={selected_source === null || is_source_checking || is_creating_project}
-              onClick={() => {
+              on_click={() => {
                 void handle_create_project()
               }}
-            >
-              {is_creating_project ? t('app.action.loading') : t('project_page.create.action')}
-            </Button>
+            />
           </CardFooter>
           </Card>
 
@@ -1097,17 +1125,16 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             </CardContent>
 
             <CardFooter className={open_footer_class_name}>
-              <Button
-                variant="brand"
-                size="lg"
-                className="project-home__action min-w-[160px]"
+              <ProjectActionButton
+                icon={FolderOpen}
+                label={t('project_page.open.action')}
+                loading_label={t('app.action.loading')}
+                is_loading={is_opening_project}
                 disabled={selected_project === null || selected_project.preview === null || is_preview_loading || is_opening_project}
-                onClick={() => {
+                on_click={() => {
                   void handle_open_project()
                 }}
-              >
-                {is_opening_project ? t('app.action.loading') : t('project_page.open.action')}
-              </Button>
+              />
             </CardFooter>
           </Card>
         </div>

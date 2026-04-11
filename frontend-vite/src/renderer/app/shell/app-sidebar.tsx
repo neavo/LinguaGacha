@@ -172,7 +172,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                     props.on_bottom_action(action.id)
                   }}
                 >
-                  <ActionIcon size={16} />
+                  <ActionIcon size={16} className="sidebar-bottom-button__icon" />
                   <span className="sidebar-bottom-button__text">{t(action.label_key)}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>

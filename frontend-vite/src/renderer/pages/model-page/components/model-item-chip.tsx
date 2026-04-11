@@ -62,7 +62,7 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant={props.active ? 'brand' : 'outline'}
+            variant={props.active ? 'default' : 'outline'}
             className={cn('model-page__name-trigger', props.active ? 'model-page__name-trigger--active' : undefined)}
           >
             <span className="model-page__name-text">{props.model.name}</span>

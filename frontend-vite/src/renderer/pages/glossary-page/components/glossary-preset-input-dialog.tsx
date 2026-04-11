@@ -85,7 +85,6 @@ export function GlossaryPresetInputDialog(
         <DialogFooter className="glossary-page__preset-dialog-footer">
           <Button
             type="button"
-            variant="brand"
             className="glossary-page__preset-dialog-button"
             disabled={props.state.submitting}
             onClick={() => {
