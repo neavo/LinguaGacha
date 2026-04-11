@@ -1,15 +1,33 @@
+import { createElement } from 'react'
+
 import { create_debug_panel_screen } from '@/pages/debug-panel-page/create-debug-panel-screen'
 import { AppSettingsPage } from '@/pages/app-settings-page/page'
 import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
 import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { GlossaryPage } from '@/pages/glossary-page/page'
 import { ModelPage } from '@/pages/model-page/page'
-import { PostTranslationReplacementPage } from '@/pages/post-translation-replacement-page/page'
-import { PreTranslationReplacementPage } from '@/pages/pre-translation-replacement-page/page'
 import { ProjectPage } from '@/pages/project-page/page'
+import {
+  TextReplacementPage,
+} from '@/pages/text-replacement-page/page'
 import { TextReplacementLandingPage } from '@/pages/text-replacement-page/text-replacement-landing-page'
 import { WorkbenchPage } from '@/pages/workbench-page/page'
-import type { ScreenRegistry } from '@/app/navigation/types'
+import type {
+  ScreenComponentProps,
+  ScreenRegistry,
+} from '@/app/navigation/types'
+
+function PreTranslationReplacementScreen(
+  props: ScreenComponentProps,
+): ReturnType<typeof createElement> {
+  return createElement(TextReplacementPage, { ...props, variant: 'pre' })
+}
+
+function PostTranslationReplacementScreen(
+  props: ScreenComponentProps,
+): ReturnType<typeof createElement> {
+  return createElement(TextReplacementPage, { ...props, variant: 'post' })
+}
 
 export const SCREEN_REGISTRY: ScreenRegistry = {
   'project-home': {
@@ -80,12 +98,12 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     summary_key: 'text_replacement_page.summary',
   },
   'pre-translation-replacement': {
-    component: PreTranslationReplacementPage,
+    component: PreTranslationReplacementScreen,
     title_key: 'pre_translation_replacement_page.title',
     summary_key: 'pre_translation_replacement_page.summary',
   },
   'post-translation-replacement': {
-    component: PostTranslationReplacementPage,
+    component: PostTranslationReplacementScreen,
     title_key: 'post_translation_replacement_page.title',
     summary_key: 'post_translation_replacement_page.summary',
   },

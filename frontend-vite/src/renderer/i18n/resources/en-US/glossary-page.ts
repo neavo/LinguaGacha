@@ -25,7 +25,7 @@ export const en_us_glossary_page = {
     translation: 'Translation',
     description: 'Description',
     rule: 'Rule',
-    statistics: 'Statistics',
+    statistics: 'Hits',
   },
   statistics: {
     hit_count: 'Matched item count: {COUNT}',

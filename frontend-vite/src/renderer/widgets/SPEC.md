@@ -39,6 +39,7 @@
 | --- | --- | --- |
 | `CommandBar` | [`./command-bar/command-bar.tsx`](./command-bar/command-bar.tsx) | 跨页面复用的业务动作条壳层与按钮编排 |
 | `AppTable` | [`./app-table/app-table.tsx`](./app-table/app-table.tsx) | 跨页面复用的表格交互骨架，统一排序、选择、拖拽、虚拟滚动与占位行 |
+| `SearchBar` | [`./search-bar/search-bar.tsx`](./search-bar/search-bar.tsx) | 规则页复用的顶部搜索与筛选条，统一关键字、范围与正则交互基线 |
 | `BooleanSegmentedToggle` | [`./boolean-segmented-toggle/boolean-segmented-toggle.tsx`](./boolean-segmented-toggle/boolean-segmented-toggle.tsx) | 业务语义明确的布尔分段开关 |
 | `SettingCardRow` | [`./setting-card-row/setting-card-row.tsx`](./setting-card-row/setting-card-row.tsx) | 设置页共用的“说明 + 操作”行 |
 | `AppSidebar` / `AppTitlebar` | [`./app-sidebar/app-sidebar.tsx`](./app-sidebar/app-sidebar.tsx) / [`./app-titlebar/app-titlebar.tsx`](./app-titlebar/app-titlebar.tsx) | 应用壳层可复用部件 |

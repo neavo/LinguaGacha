@@ -55,12 +55,8 @@ type TextReplacementTableProps = {
   on_sort_change: (sort_state: AppTableSortState | null) => void
   on_selection_change: (payload: AppTableSelectionChange) => void
   on_open_edit: (entry_id: TextReplacementEntryId) => void
-  on_request_delete: (entry_id: TextReplacementEntryId) => void
   on_toggle_regex: (next_value: boolean) => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
-  on_move_selected: (
-    direction: 'up' | 'down' | 'top' | 'bottom',
-  ) => Promise<void>
   on_reorder: (
     active_entry_id: TextReplacementEntryId,
     over_entry_id: TextReplacementEntryId,
@@ -460,12 +456,8 @@ export function TextReplacementTable(
               on_open_edit={() => {
                 props.on_open_edit(payload.row_id)
               }}
-              on_request_delete={() => {
-                props.on_request_delete(payload.row_id)
-              }}
               on_toggle_regex={props.on_toggle_regex}
               on_toggle_case_sensitive={props.on_toggle_case_sensitive}
-              on_move_selected={props.on_move_selected}
             />
           )}
           ignore_row_click_target={should_ignore_row_click_target}

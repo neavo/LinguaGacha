@@ -25,7 +25,7 @@ export const en_us_text_replacement_page = {
     source: 'Source',
     replacement: 'Replacement',
     rule: 'Rule',
-    statistics: 'Status',
+    statistics: 'Hits',
   },
   rule: {
     regex: 'Regular Expression',

@@ -1,0 +1,86 @@
+.search-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.search-bar__content {
+  padding: 10px 12px;
+}
+
+.search-bar__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-bar__input-group {
+  flex: 1;
+}
+
+.search-bar__input {
+  min-width: 0;
+}
+
+.search-bar__input-addon {
+  gap: 0;
+}
+
+.search-bar__clear-button {
+  color: var(--muted-foreground);
+}
+
+.search-bar__clear-button:hover {
+  color: var(--foreground);
+}
+
+.search-bar__invalid-button {
+  color: var(--destructive);
+}
+
+.search-bar__invalid-button:hover {
+  color: color-mix(in srgb, var(--destructive) 88%, var(--foreground) 12%);
+}
+
+.search-bar__invalid-tooltip {
+  max-width: 320px;
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.search-bar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.search-bar__action-trigger {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 92px;
+  padding-inline-end: calc(var(--ui-toolbar-button-padding-x) + 4px);
+}
+
+.search-bar__action-trigger[data-active='true']::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 84%, white 16%);
+}
+
+@media (max-width: 1200px) {
+  .search-bar__toolbar {
+    flex-wrap: wrap;
+  }
+
+  .search-bar__input-group {
+    min-width: min(100%, 360px);
+  }
+}

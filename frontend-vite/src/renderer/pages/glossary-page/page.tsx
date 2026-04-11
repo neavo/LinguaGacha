@@ -1,29 +1,79 @@
 import '@/pages/glossary-page/glossary-page.css'
 import type { ScreenComponentProps } from '@/app/navigation/types'
+import { useI18n, type LocaleKey } from '@/i18n'
 import { GlossaryCommandBar } from '@/pages/glossary-page/components/glossary-command-bar'
 import { GlossaryConfirmDialog } from '@/pages/glossary-page/components/glossary-confirm-dialog'
 import { GlossaryEditDialog } from '@/pages/glossary-page/components/glossary-edit-dialog'
 import { GlossaryPresetInputDialog } from '@/pages/glossary-page/components/glossary-preset-input-dialog'
-import { GlossarySearchBar } from '@/pages/glossary-page/components/glossary-search-bar'
+import type { GlossaryFilterScope } from '@/pages/glossary-page/types'
 import { GlossaryTable } from '@/pages/glossary-page/components/glossary-table'
 import { useGlossaryPageState } from '@/pages/glossary-page/use-glossary-page-state'
+import { SearchBar, type SearchBarScopeOption } from '@/widgets/search-bar/search-bar'
+
+const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
+  all: 'glossary_page.filter.scope.all',
+  src: 'glossary_page.filter.scope.source',
+  dst: 'glossary_page.filter.scope.translation',
+  info: 'glossary_page.filter.scope.description',
+} satisfies Record<GlossaryFilterScope, LocaleKey>
 
 export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
+  const { t } = useI18n()
   const glossary_page_state = useGlossaryPageState()
+  const regex_state_label = glossary_page_state.filter_state.is_regex
+    ? t('app.toggle.enabled')
+    : t('app.toggle.disabled')
+  const scope_button_label = glossary_page_state.filter_state.scope === 'all'
+    ? t('glossary_page.filter.scope.label')
+    : t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope])
+  const scope_state_label = t(
+    GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope],
+  )
+  const scope_tooltip = t('glossary_page.toggle.status')
+    .replace('{TITLE}', t('glossary_page.filter.scope.tooltip_label'))
+    .replace('{STATE}', scope_state_label)
+  const regex_tooltip = t('glossary_page.toggle.status')
+    .replace('{TITLE}', t('glossary_page.filter.regex_tooltip_label'))
+    .replace('{STATE}', regex_state_label)
+  const glossary_scope_options: SearchBarScopeOption<GlossaryFilterScope>[] = [
+    'all',
+    'src',
+    'dst',
+    'info',
+  ].map((scope) => {
+    return {
+      value: scope,
+      label: t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
+    }
+  })
 
   return (
     <div
       className="glossary-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
-      <GlossarySearchBar
+      <SearchBar
         keyword={glossary_page_state.filter_state.keyword}
-        scope={glossary_page_state.filter_state.scope}
-        is_regex={glossary_page_state.filter_state.is_regex}
-        invalid_filter_message={glossary_page_state.invalid_filter_message}
+        placeholder={t('glossary_page.filter.placeholder')}
+        clear_label={t('glossary_page.filter.clear')}
+        invalid_message={glossary_page_state.invalid_filter_message}
         on_keyword_change={glossary_page_state.update_filter_keyword}
-        on_scope_change={glossary_page_state.update_filter_scope}
-        on_regex_change={glossary_page_state.update_filter_regex}
+        scope={{
+          value: glossary_page_state.filter_state.scope,
+          button_label: scope_button_label,
+          aria_label: t('glossary_page.filter.scope.label'),
+          tooltip: scope_tooltip,
+          options: glossary_scope_options,
+          on_change: glossary_page_state.update_filter_scope,
+        }}
+        regex={{
+          value: glossary_page_state.filter_state.is_regex,
+          label: t('glossary_page.filter.regex'),
+          tooltip: regex_tooltip,
+          enabled_label: t('app.toggle.enabled'),
+          disabled_label: t('app.toggle.disabled'),
+          on_change: glossary_page_state.update_filter_regex,
+        }}
       />
       <div className="glossary-page__table-host">
         <GlossaryTable

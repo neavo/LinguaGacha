@@ -366,30 +366,11 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         },
         head_class_name: 'glossary-page__table-description-head',
         cell_class_name: 'glossary-page__table-description-cell',
-        render_cell: (payload) => {
-          if (payload.row.entry.info.trim() === '') {
-            return (
-              <span className="glossary-page__table-text">
-                {payload.row.entry.info}
-              </span>
-            )
-          }
-
-          return (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="glossary-page__table-text">
-                  {payload.row.entry.info}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={8}>
-                <p className="max-w-80 whitespace-pre-line break-words">
-                  {payload.row.entry.info}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )
-        },
+        render_cell: (payload) => (
+          <span className="glossary-page__table-text">
+            {payload.row.entry.info}
+          </span>
+        ),
       },
       {
         kind: 'data',

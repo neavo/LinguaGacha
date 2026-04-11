@@ -1,13 +1,8 @@
 import {
-  ArrowBigDown,
-  ArrowBigUp,
-  ArrowDown,
-  ArrowUp,
   CaseSensitive,
   Check,
   PencilLine,
   Regex,
-  Trash2,
   X,
 } from 'lucide-react'
 
@@ -23,12 +18,8 @@ import {
 
 type TextReplacementContextMenuContentProps = {
   on_open_edit: () => void
-  on_request_delete: () => void
   on_toggle_regex: (next_value: boolean) => Promise<void>
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>
-  on_move_selected: (
-    direction: 'up' | 'down' | 'top' | 'bottom',
-  ) => Promise<void>
 }
 
 export function TextReplacementContextMenuContent(
@@ -42,10 +33,6 @@ export function TextReplacementContextMenuContent(
         <ContextMenuItem onSelect={props.on_open_edit}>
           <PencilLine />
           {t('text_replacement_page.action.edit')}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={props.on_request_delete}>
-          <Trash2 />
-          {t('text_replacement_page.action.delete')}
         </ContextMenuItem>
         <ContextMenuSub>
           <ContextMenuSubTrigger>
@@ -95,48 +82,6 @@ export function TextReplacementContextMenuContent(
               >
                 <X />
                 {t('app.toggle.disabled')}
-              </ContextMenuItem>
-            </ContextMenuGroup>
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <ArrowUp />
-            {t('text_replacement_page.reorder.label')}
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent>
-            <ContextMenuGroup>
-              <ContextMenuItem
-                onSelect={() => {
-                  void props.on_move_selected('up')
-                }}
-              >
-                <ArrowUp />
-                {t('text_replacement_page.reorder.up')}
-              </ContextMenuItem>
-              <ContextMenuItem
-                onSelect={() => {
-                  void props.on_move_selected('down')
-                }}
-              >
-                <ArrowDown />
-                {t('text_replacement_page.reorder.down')}
-              </ContextMenuItem>
-              <ContextMenuItem
-                onSelect={() => {
-                  void props.on_move_selected('top')
-                }}
-              >
-                <ArrowBigUp />
-                {t('text_replacement_page.reorder.top')}
-              </ContextMenuItem>
-              <ContextMenuItem
-                onSelect={() => {
-                  void props.on_move_selected('bottom')
-                }}
-              >
-                <ArrowBigDown />
-                {t('text_replacement_page.reorder.bottom')}
               </ContextMenuItem>
             </ContextMenuGroup>
           </ContextMenuSubContent>

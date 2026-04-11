@@ -1,36 +1,84 @@
 import '@/pages/text-replacement-page/text-replacement-page.css'
 import type { ScreenComponentProps } from '@/app/navigation/types'
+import { useI18n, type LocaleKey } from '@/i18n'
 import type { TextReplacementVariant } from '@/pages/text-replacement-page/config'
 import { TextReplacementCommandBar } from '@/pages/text-replacement-page/components/text-replacement-command-bar'
 import { TextReplacementConfirmDialog } from '@/pages/text-replacement-page/components/text-replacement-confirm-dialog'
 import { TextReplacementEditDialog } from '@/pages/text-replacement-page/components/text-replacement-edit-dialog'
 import { TextReplacementPresetInputDialog } from '@/pages/text-replacement-page/components/text-replacement-preset-input-dialog'
-import { TextReplacementSearchCard } from '@/pages/text-replacement-page/components/text-replacement-search-card'
+import type { TextReplacementFilterScope } from '@/pages/text-replacement-page/types'
 import { TextReplacementTable } from '@/pages/text-replacement-page/components/text-replacement-table'
 import { useTextReplacementPageState } from '@/pages/text-replacement-page/use-text-replacement-page-state'
+import { SearchBar, type SearchBarScopeOption } from '@/widgets/search-bar/search-bar'
 
 type TextReplacementPageProps = ScreenComponentProps & {
   variant: TextReplacementVariant
 }
 
+const TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE = {
+  all: 'text_replacement_page.filter.scope.all',
+  src: 'text_replacement_page.filter.scope.source',
+  dst: 'text_replacement_page.filter.scope.replacement',
+} satisfies Record<TextReplacementFilterScope, LocaleKey>
+
 export function TextReplacementPage(
   props: TextReplacementPageProps,
 ): JSX.Element {
+  const { t } = useI18n()
   const page_state = useTextReplacementPageState(props.variant)
+  const regex_state_label = page_state.filter_state.is_regex
+    ? t('app.toggle.enabled')
+    : t('app.toggle.disabled')
+  const scope_button_label = page_state.filter_state.scope === 'all'
+    ? t('text_replacement_page.filter.scope.label')
+    : t(TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope])
+  const scope_state_label = t(
+    TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE[page_state.filter_state.scope],
+  )
+  const scope_tooltip = t('text_replacement_page.toggle.status')
+    .replace('{TITLE}', t('text_replacement_page.filter.scope.tooltip_label'))
+    .replace('{STATE}', scope_state_label)
+  const regex_tooltip = t('text_replacement_page.toggle.status')
+    .replace('{TITLE}', t('text_replacement_page.filter.regex_tooltip_label'))
+    .replace('{STATE}', regex_state_label)
+  const text_replacement_scope_options: SearchBarScopeOption<TextReplacementFilterScope>[] = [
+    'all',
+    'src',
+    'dst',
+  ].map((scope) => {
+    return {
+      value: scope,
+      label: t(TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
+    }
+  })
 
   return (
     <div
       className="text-replacement-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
-      <TextReplacementSearchCard
+      <SearchBar
         keyword={page_state.filter_state.keyword}
-        scope={page_state.filter_state.scope}
-        is_regex={page_state.filter_state.is_regex}
-        invalid_filter_message={page_state.invalid_filter_message}
+        placeholder={t('text_replacement_page.filter.placeholder')}
+        clear_label={t('text_replacement_page.filter.clear')}
+        invalid_message={page_state.invalid_filter_message}
         on_keyword_change={page_state.update_filter_keyword}
-        on_scope_change={page_state.update_filter_scope}
-        on_regex_change={page_state.update_filter_regex}
+        scope={{
+          value: page_state.filter_state.scope,
+          button_label: scope_button_label,
+          aria_label: t('text_replacement_page.filter.scope.label'),
+          tooltip: scope_tooltip,
+          options: text_replacement_scope_options,
+          on_change: page_state.update_filter_scope,
+        }}
+        regex={{
+          value: page_state.filter_state.is_regex,
+          label: t('text_replacement_page.filter.regex'),
+          tooltip: regex_tooltip,
+          enabled_label: t('app.toggle.enabled'),
+          disabled_label: t('app.toggle.disabled'),
+          on_change: page_state.update_filter_regex,
+        }}
       />
       <div className="text-replacement-page__table-host">
         <TextReplacementTable
@@ -48,10 +96,8 @@ export function TextReplacementPage(
           on_sort_change={page_state.apply_table_sort_state}
           on_selection_change={page_state.apply_table_selection}
           on_open_edit={page_state.open_edit_dialog}
-          on_request_delete={page_state.request_delete_entry}
           on_toggle_regex={page_state.toggle_regex_for_selected}
           on_toggle_case_sensitive={page_state.toggle_case_sensitive_for_selected}
-          on_move_selected={page_state.move_selected_entries}
           on_reorder={page_state.reorder_selected_entries}
           on_query_entry_source={page_state.query_entry_source}
           on_search_entry_relations={page_state.search_entry_relations_from_statistics}

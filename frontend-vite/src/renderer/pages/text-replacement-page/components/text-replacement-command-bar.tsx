@@ -304,7 +304,10 @@ export function TextReplacementCommandBar(
             className="text-replacement-page__toggle-tooltip"
           >
             <div className="text-replacement-page__toggle-tooltip-copy">
-              <p className="text-replacement-page__toggle-tooltip-title font-medium text-background">
+              <p
+                className="text-replacement-page__toggle-tooltip-title text-background"
+                data-ui-text="emphasis"
+              >
                 {toggle_tooltip_title}
               </p>
               <p className="text-background/90">

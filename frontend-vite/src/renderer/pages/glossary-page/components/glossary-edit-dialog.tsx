@@ -90,7 +90,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   />
                 </label>
 
-                <label className="glossary-page__dialog-section">
+                <label className="glossary-page__dialog-section glossary-page__dialog-section--description">
                   <span
                     className="glossary-page__dialog-section-title"
                     data-ui-text="emphasis"
@@ -110,32 +110,34 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
               </div>
             </div>
 
-            <div className="glossary-page__dialog-rule-item">
-              <div className="glossary-page__dialog-rule-copy">
-                <span className="glossary-page__rule-badge-wrap" aria-hidden="true">
-                  <span
-                    data-state="inactive"
-                    className="glossary-page__rule-badge glossary-page__dialog-rule-badge"
-                  >
-                    <CaseSensitive />
+            <div className="glossary-page__dialog-rule-grid">
+              <div className="glossary-page__dialog-rule-item">
+                <div className="glossary-page__dialog-rule-copy">
+                  <span className="glossary-page__rule-badge-wrap" aria-hidden="true">
+                    <span
+                      data-state="inactive"
+                      className="glossary-page__rule-badge glossary-page__dialog-rule-badge"
+                    >
+                      <CaseSensitive />
+                    </span>
                   </span>
-                </span>
-                <span
-                  className="glossary-page__dialog-rule-title"
-                  data-ui-text="emphasis"
-                >
-                  {t('glossary_page.rule.case_sensitive')}
-                </span>
+                  <span
+                    className="glossary-page__dialog-rule-title"
+                    data-ui-text="emphasis"
+                  >
+                    {t('glossary_page.rule.case_sensitive')}
+                  </span>
+                </div>
+                <BooleanSegmentedToggle
+                  aria_label={t('glossary_page.rule.case_sensitive')}
+                  value={props.entry.case_sensitive}
+                  disabled={props.saving}
+                  size="sm"
+                  on_value_change={(next_value) => {
+                    props.on_change({ case_sensitive: next_value })
+                  }}
+                />
               </div>
-              <BooleanSegmentedToggle
-                aria_label={t('glossary_page.rule.case_sensitive')}
-                value={props.entry.case_sensitive}
-                disabled={props.saving}
-                size="sm"
-                on_value_change={(next_value) => {
-                  props.on_change({ case_sensitive: next_value })
-                }}
-              />
             </div>
           </div>
         </div>

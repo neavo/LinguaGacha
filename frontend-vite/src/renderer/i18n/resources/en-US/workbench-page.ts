@@ -24,8 +24,8 @@ export const en_us_workbench_page = {
     drag_handle_aria: 'Drag to reorder',
     file_name: 'File Name',
     format: 'Format',
-    line_count: 'Lines',
-    actions: 'Actions',
+    line_count: 'Line',
+    actions: 'Menu',
     open_actions: 'Open actions menu',
   },
   action: {
