@@ -27,6 +27,7 @@ export const zh_cn_project_page = {
     missing_file_confirm: '移除记录',
   },
   preview: {
+    project_name: '项目名称',
     file_count: '文件数量',
     created_at: '创建时间',
     updated_at: '最后修改',
@@ -47,4 +48,5 @@ export const zh_cn_project_page = {
     wolf: 'WOLF 官方翻译工具游戏文本',
   },
   drop_multiple_unavailable: '暂不支持一次拖拽多个文件。',
+  drop_unavailable: '当前无法读取拖拽文件的本地路径，请换用点击选择。',
 } as const

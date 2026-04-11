@@ -30,6 +30,7 @@ export const en_us_project_page = {
     missing_file_confirm: 'Remove Entry',
   },
   preview: {
+    project_name: 'Project Name',
     file_count: 'File Count',
     created_at: 'Created At',
     updated_at: 'Last Modified',
@@ -50,4 +51,5 @@ export const en_us_project_page = {
     wolf: 'WOLF Offcial Tool Export',
   },
   drop_multiple_unavailable: 'Dropping multiple files at once is not supported.',
+  drop_unavailable: 'The local path of the dropped file is unavailable right now. Please use the picker instead.',
 } satisfies LocaleMessageSchema<typeof zh_cn_project_page>

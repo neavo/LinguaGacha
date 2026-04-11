@@ -27,6 +27,13 @@
 - 对所有消费者都必需的 widget 样式，优先由 widget 自己导入，避免每个页面重复记忆样式入口。
 - 页面如果还要额外补样式，只能补自己的布局与局部语义，不要重新接管 widget 的基础壳层。
 
+## 当前样式入口现状
+| 场景 | 当前事实 | 修改时要注意 |
+| --- | --- | --- |
+| 常规跨页 widget | `CommandBar`、`BooleanSegmentedToggle` 与 `AppTable` 已由组件入口自己导入私有 CSS | 新增同类 widget 时优先沿用这个模式 |
+| `SettingCardRow` | [`setting-card-row.css`](./setting-card-row/setting-card-row.css) 当前仍由页面入口统一引入 | 改动后同步检查 `basic-settings-page`、`expert-settings-page`、`app-settings-page` 与 `model-page` |
+| `AppSidebar` / `AppTitlebar` | 样式当前收敛在 [`../app/shell/app-shell.css`](../app/shell/app-shell.css) | 它们与应用壳层强耦合，修改时把 `widgets/` 与 `app/` 当作联动改动 |
+
 ## 当前部件示例
 | 部件 | 路径 | 定位 |
 | --- | --- | --- |

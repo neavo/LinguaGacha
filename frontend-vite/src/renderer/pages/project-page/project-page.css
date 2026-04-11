@@ -61,14 +61,16 @@
 }
 
 .project-home__dropzone:hover,
-.project-home__dropzone:focus-visible {
+.project-home__dropzone:focus-visible,
+.project-home__dropzone[data-drag-active='true'] {
   border-color: var(--project-home-interactive);
   background: var(--project-home-interactive-bg);
   box-shadow: none;
 }
 
 .project-home__selected-card:hover,
-.project-home__selected-card:focus-within {
+.project-home__selected-card:focus-within,
+.project-home__selected-card[data-drag-active='true'] {
   border-color: var(--project-home-interactive);
   background: var(--project-home-interactive-bg);
   box-shadow: none;

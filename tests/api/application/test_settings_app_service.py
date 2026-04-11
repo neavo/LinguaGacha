@@ -67,12 +67,14 @@ def test_add_recent_project_updates_recent_project_snapshot(
     settings_app_service,
 ) -> None:
     result = settings_app_service.add_recent_project(
-        {"path": "demo.lg", "name": "demo"}
+        {"path": "E:/Project/LinguaGacha/output/demo.lg", "name": "source-dir"}
     )
 
     recent_projects = result["settings"]["recent_projects"]
 
-    assert recent_projects == [{"path": "demo.lg", "name": "demo"}]
+    assert recent_projects == [
+        {"path": "E:/Project/LinguaGacha/output/demo.lg", "name": "demo"}
+    ]
     assert settings_app_service.emitted_events[-1] == (
         Base.Event.CONFIG_UPDATED,
         {"keys": ["recent_projects"]},
@@ -84,12 +86,16 @@ def test_remove_recent_project_updates_recent_project_snapshot(
     fake_settings_config,
 ) -> None:
     fake_settings_config.recent_projects = [
-        {"path": "demo.lg", "name": "demo"},
-        {"path": "other.lg", "name": "other"},
+        {"path": "E:/Project/LinguaGacha/output/demo.lg", "name": "legacy-demo"},
+        {"path": "E:/Project/LinguaGacha/output/other.lg", "name": "legacy-other"},
     ]
 
-    result = settings_app_service.remove_recent_project({"path": "demo.lg"})
+    result = settings_app_service.remove_recent_project(
+        {"path": "E:/Project/LinguaGacha/output/demo.lg"}
+    )
 
     recent_projects = result["settings"]["recent_projects"]
 
-    assert recent_projects == [{"path": "other.lg", "name": "other"}]
+    assert recent_projects == [
+        {"path": "E:/Project/LinguaGacha/output/other.lg", "name": "legacy-other"}
+    ]

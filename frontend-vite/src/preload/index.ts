@@ -1,4 +1,4 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import {
   IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
   IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('desktopApp', {
   shell: DESKTOP_SHELL_INFO,
   coreApi: {
     baseUrlCandidates: CORE_API_BASE_URL_CANDIDATES,
+  },
+  getPathForFile(file: File): string {
+    // Electron 41 已移除 renderer 侧的 File.path，这里统一通过 preload 桥接官方替代接口。
+    return webUtils.getPathForFile(file)
   },
   setTitleBarTheme(theme_mode: ThemeMode): void {
     if (!DESKTOP_SHELL_INFO.usesTitleBarOverlay) {

@@ -9,19 +9,19 @@
 | `package.json` | 子工程命令入口，集中声明 `dev`、`build`、`preview` 与 `ui:audit` 等脚本 |
 | `electron.vite.config.ts` | Electron / Vite 统一构建入口，集中声明 main、preload、renderer 的根目录、输出目录与渲染层插件 |
 | `electron-builder.json5` | Electron 桌面产物打包配置 |
-| `core-api-port-candidates.json` | 预加载默认暴露给渲染层的 Core API 候选端口列表 |
+| `core-api-port-candidates.json` | Core API 候选端口清单，供 `src/shared/core-api-base-url.ts` 组装默认 base URL 候选列表 |
 | `scripts/` | 子工程级检查脚本与辅助工具，例如 `check-ui-design-system.mjs` |
 | `src/main/` | Electron 主进程；只处理窗口创建、标题栏策略、原生对话框与 IPC 落地 |
 | `src/preload/` | `window.desktopApp` 安全桥接；只暴露渲染层必须使用的桌面能力 |
-| `src/shared/` | 主进程、预加载与渲染层类型声明共享的桌面契约 |
+| `src/shared/` | 主进程、预加载与渲染层共享的桌面契约、壳层常量与 Core API 地址解析规则 |
 | `src/renderer/` | React 渲染层入口、页面、导航、状态、共享组件与样式 |
 | `public/` | 必须以原始路径暴露给 HTML/Electron 的静态资源，例如 `icon.png` |
 
 ## Electron 侧边界
 - 主进程入口固定为 `src/main/index.ts`，不要把预加载、页面状态或渲染层工具塞进来。
 - 预加载入口固定为 `src/preload/index.ts`，只允许组织 `contextBridge` 暴露对象，不允许在这里写页面状态或业务请求流程。
-- IPC channel、桌面壳层信息、标题栏高度和桥接类型统一收敛在 `src/shared/`，按 `ipc-channels.ts`、`desktop-shell.ts` 与 `desktop-types.ts` 拆分，避免主进程、预加载和渲染层类型声明各自维护一套常量。
-- Core API 候选地址解析直接内聚在 `src/preload/index.ts`，因为它只服务预加载桥接，没必要再额外拆一个单一消费方文件。
+- IPC channel、桌面壳层信息、标题栏高度、桥接类型与 Core API 地址解析统一收敛在 `src/shared/`，当前按 `ipc-channels.ts`、`desktop-shell.ts`、`desktop-types.ts` 与 `core-api-base-url.ts` 拆分，避免主进程、预加载和渲染层各自维护一套常量或解析逻辑。
+- Core API 候选地址解析当前由 [`src/shared/core-api-base-url.ts`](./src/shared/core-api-base-url.ts) 负责；`src/preload/index.ts` 只桥接候选列表，[`src/renderer/app/desktop-api.ts`](./src/renderer/app/desktop-api.ts) 再负责探活、缓存和选择权威 base URL。
 
 ## 渲染层组织规则
 ### 入口与命名
@@ -68,10 +68,24 @@
 - 涉及 `widgets/` 提升、下沉、重命名或跨页面复用边界时，先读 `src/renderer/widgets/SPEC.md`。
 - `frontend-vite/SPEC.md` 提供子工程级地图；`src/renderer/ui/SPEC.md` 与 `src/renderer/widgets/SPEC.md` 分别描述各自目录的稳定规则。
 
+## 导航与页面入口
+| 关注点 | 权威来源 | 说明 |
+| --- | --- | --- |
+| 全量 route id | [`src/renderer/app/navigation/types.ts`](./src/renderer/app/navigation/types.ts) | `ROUTE_IDS` 是导航路由全集，新增或移除路由先改这里 |
+| 侧边栏分组与底部动作 | [`src/renderer/app/navigation/schema.ts`](./src/renderer/app/navigation/schema.ts) | 负责“怎么分组显示”和底部固定动作 |
+| route 到组件的映射 | [`src/renderer/app/navigation/screen-registry.ts`](./src/renderer/app/navigation/screen-registry.ts) | 负责“这个 route 实际渲染哪个页面组件” |
+| 调试占位页工厂 | [`src/renderer/pages/debug-panel-page/create-debug-panel-screen.tsx`](./src/renderer/pages/debug-panel-page/create-debug-panel-screen.tsx) | 尚未落地的 route 当前统一走这里 |
+
+当前状态：
+
+- 已落地真实页面的 route 为：`project-home`、`model`、`workbench`、`basic-settings`、`expert-settings`、`glossary` 与 `app-settings`。
+- 除上述 route 外，`screen-registry.ts` 里其余导航入口当前都接到调试占位页工厂，而不是独立 `page.tsx`。
+- 新页面真正落地时，先补 `pages/<page-name>/page.tsx` 及其局部模块，再把导航注册表从调试占位页切到真实页面组件。
+
 ## 改动入口建议
 1. 调整 Electron 入口或产物路径时，优先修改 `electron.vite.config.ts`，再同步检查 `package.json` 与 `electron-builder.json5`。
 2. 调整桌面桥接接口时，先改 `src/shared/` 下对应的契约模块，再同步 `src/preload/index.ts` 和渲染层消费代码；只在预加载层生效的辅助逻辑则直接留在 `src/preload/`。
-3. 调整 Core API 候选地址或桌面端 HTTP 访问策略时，串起来检查 `core-api-port-candidates.json`、`src/preload/index.ts` 与 `src/renderer/app/desktop-api.ts`。
+3. 调整 Core API 候选地址或桌面端 HTTP 访问策略时，串起来检查 `core-api-port-candidates.json`、`src/shared/core-api-base-url.ts`、`src/preload/index.ts` 与 `src/renderer/app/desktop-api.ts`。
 4. 调整主题源、全局通知、跨页面状态、第三方运行时适配或其他应用级服务时，优先改 `src/renderer/app/`，不要把这类规则散落到 `ui/` 或页面目录。
 5. 调整导航或页面注册时，优先改 `src/renderer/app/navigation/`，避免把页面注册逻辑散落到壳层组件内。
 6. 新增页面时，以 `pages/<page-name>/page.tsx` 为入口，再按需要并置 `<page-name>.css`、`mock.ts`、`types.ts` 或页面私有 hook / 辅助模块，并从导航注册表接入。

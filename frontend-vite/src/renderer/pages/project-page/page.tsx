@@ -104,9 +104,11 @@ type DropZoneCardProps = Omit<ComponentProps<'button'>, 'title' | 'onClick' | 'o
   icon: 'source' | 'project'
   title: string
   tone: 'blue' | 'purple'
+  is_active?: boolean
   disabled?: boolean
   on_click?: MouseEventHandler<HTMLButtonElement>
   on_drag_over?: (event: DragEvent<HTMLButtonElement>) => void
+  on_drag_leave?: (event: DragEvent<HTMLButtonElement>) => void
   on_drop?: (event: DragEvent<HTMLButtonElement>) => void
 }
 
@@ -131,6 +133,8 @@ type DroppedPathResult = {
   path: string | null
   has_multiple_paths: boolean
 }
+
+type ActiveDropzone = 'source' | 'project' | null
 
 function extract_file_name(file_path: string): string {
   const normalized_segments = file_path.split(/[\\/]+/u)
@@ -225,6 +229,19 @@ function normalize_dropped_file_uri_path(file_uri: string): string | null {
   }
 }
 
+function has_path_drop_payload(data_transfer: DataTransfer): boolean {
+  const payload_type_set = new Set(data_transfer.types)
+  let has_supported_payload = false
+
+  if (payload_type_set.has('Files') || payload_type_set.has('text/uri-list')) {
+    has_supported_payload = true
+  } else {
+    has_supported_payload = false
+  }
+
+  return has_supported_payload
+}
+
 function resolve_dropped_path(data_transfer: DataTransfer): DroppedPathResult {
   const dropped_files = Array.from(data_transfer.files)
   if (dropped_files.length > 1) {
@@ -234,11 +251,18 @@ function resolve_dropped_path(data_transfer: DataTransfer): DroppedPathResult {
     }
   }
 
-  const dropped_file = dropped_files[0] as (File & { path?: string }) | undefined
-  if (dropped_file !== undefined && typeof dropped_file.path === 'string' && dropped_file.path !== '') {
-    return {
-      path: dropped_file.path,
-      has_multiple_paths: false,
+  const dropped_file = dropped_files[0]
+  if (dropped_file !== undefined) {
+    try {
+      const normalized_file_path = window.desktopApp.getPathForFile(dropped_file)
+      if (normalized_file_path !== '') {
+        return {
+          path: normalized_file_path,
+          has_multiple_paths: false,
+        }
+      }
+    } catch {
+      // 某些拖拽源不会暴露可落盘文件，这里继续回退到 text/uri-list 解析。
     }
   }
 
@@ -301,9 +325,11 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
     icon,
     title,
     tone,
+    is_active,
     disabled,
     on_click,
     on_drag_over,
+    on_drag_leave,
     on_drop,
     className,
     ...button_props
@@ -323,8 +349,10 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
       )}
       type="button"
       disabled={disabled}
+      data-drag-active={is_active ? 'true' : undefined}
       onClick={on_click}
       onDragOver={on_drag_over}
+      onDragLeave={on_drag_leave}
       onDrop={on_drop}
     >
       <span className="project-home__dropzone-icon">
@@ -408,6 +436,10 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
 
   const stats = [
     {
+      label: t('project_page.preview.project_name'),
+      value: props.project.name,
+    },
+    {
       label: t('project_page.preview.file_count'),
       value: preview.file_count.toLocaleString(),
     },
@@ -427,7 +459,7 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
         {stats.map((stat) => (
           <div key={stat.label} className="flex items-center justify-between gap-5">
             <span className="text-[0.77rem] text-foreground">{stat.label}</span>
-            <span className="text-[0.77rem] text-foreground">{stat.value}</span>
+            <span className="max-w-[17rem] break-all text-right text-[0.77rem] text-foreground">{stat.value}</span>
           </div>
         ))}
 
@@ -471,6 +503,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const [is_preview_loading, set_is_preview_loading] = useState(false)
   const [is_creating_project, set_is_creating_project] = useState(false)
   const [is_opening_project, set_is_opening_project] = useState(false)
+  const [active_dropzone, set_active_dropzone] = useState<ActiveDropzone>(null)
   const [missing_recent_project, set_missing_recent_project] = useState<MissingRecentProjectState>(null)
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5)
   const has_recent_projects = recent_projects.length > 0
@@ -572,13 +605,37 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     await select_project_path(result.path)
   }
 
-  function handle_drop_over(event: DragEvent<HTMLButtonElement>): void {
+  function handle_drop_over(dropzone: Exclude<ActiveDropzone, null>, event: DragEvent<HTMLButtonElement>): void {
     event.preventDefault()
-    event.dataTransfer.dropEffect = 'copy'
+
+    if (has_path_drop_payload(event.dataTransfer)) {
+      set_active_dropzone(dropzone)
+      event.dataTransfer.dropEffect = 'copy'
+    } else {
+      set_active_dropzone((current_dropzone) => {
+        if (current_dropzone === dropzone) {
+          return null
+        } else {
+          return current_dropzone
+        }
+      })
+      event.dataTransfer.dropEffect = 'none'
+    }
+  }
+
+  function handle_drop_leave(dropzone: Exclude<ActiveDropzone, null>): void {
+    set_active_dropzone((current_dropzone) => {
+      if (current_dropzone === dropzone) {
+        return null
+      } else {
+        return current_dropzone
+      }
+    })
   }
 
   async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     event.preventDefault()
+    set_active_dropzone(null)
 
     const dropped_path = resolve_dropped_path(event.dataTransfer)
     if (dropped_path.has_multiple_paths) {
@@ -586,6 +643,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       return
     }
     if (dropped_path.path === null || dropped_path.path === '') {
+      push_toast('warning', t('project_page.drop_unavailable'))
       return
     }
 
@@ -594,6 +652,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
   async function handle_project_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     event.preventDefault()
+    set_active_dropzone(null)
 
     const dropped_path = resolve_dropped_path(event.dataTransfer)
     if (dropped_path.has_multiple_paths) {
@@ -601,6 +660,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       return
     }
     if (dropped_path.path === null || dropped_path.path === '') {
+      push_toast('warning', t('project_page.drop_unavailable'))
       return
     }
 
@@ -732,9 +792,15 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               icon="source"
               tone="blue"
               title={t('project_page.create.drop_title')}
+              is_active={active_dropzone === 'source'}
               disabled={is_source_checking || is_creating_project}
               on_click={open_context_menu_at_click_position}
-              on_drag_over={handle_drop_over}
+              on_drag_over={(event) => {
+                handle_drop_over('source', event)
+              }}
+              on_drag_leave={() => {
+                handle_drop_leave('source')
+              }}
               on_drop={(event) => {
                 void handle_source_drop(event)
               }}
@@ -761,7 +827,10 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         </ContextMenu>
       )
     : (
-        <div className="project-home__selected-card project-home__selected-card--blue relative">
+        <div
+          className="project-home__selected-card project-home__selected-card--blue relative"
+          data-drag-active={active_dropzone === 'source' ? 'true' : undefined}
+        >
           <Button
             variant="ghost"
             size="icon-sm"
@@ -778,7 +847,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 className="project-home__selected-content w-full"
                 type="button"
                 onClick={open_context_menu_at_click_position}
-                onDragOver={handle_drop_over}
+                onDragOver={(event) => {
+                  handle_drop_over('source', event)
+                }}
+                onDragLeave={() => {
+                  handle_drop_leave('source')
+                }}
                 onDrop={(event) => {
                   void handle_source_drop(event)
                 }}
@@ -824,18 +898,27 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           icon="project"
           tone="purple"
           title={t('project_page.open.drop_title')}
+          is_active={active_dropzone === 'project'}
           disabled={is_preview_loading || is_opening_project}
           on_click={() => {
             void handle_select_project_file()
           }}
-          on_drag_over={handle_drop_over}
+          on_drag_over={(event) => {
+            handle_drop_over('project', event)
+          }}
+          on_drag_leave={() => {
+            handle_drop_leave('project')
+          }}
           on_drop={(event) => {
             void handle_project_drop(event)
           }}
         />
       )
     : (
-        <div className="project-home__selected-card project-home__selected-card--purple relative">
+        <div
+          className="project-home__selected-card project-home__selected-card--purple relative"
+          data-drag-active={active_dropzone === 'project' ? 'true' : undefined}
+        >
           <Button
             variant="ghost"
             size="icon-sm"
@@ -852,7 +935,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             onClick={() => {
               void handle_select_project_file()
             }}
-            onDragOver={handle_drop_over}
+            onDragOver={(event) => {
+              handle_drop_over('project', event)
+            }}
+            onDragLeave={() => {
+              handle_drop_leave('project')
+            }}
             onDrop={(event) => {
               void handle_project_drop(event)
             }}

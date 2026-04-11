@@ -20,6 +20,7 @@ declare global {
       coreApi: {
         baseUrlCandidates: string[]
       }
+      getPathForFile: (file: File) => string
       setTitleBarTheme: (theme_mode: ThemeMode) => void
       quitApp: () => Promise<void>
       pickProjectSourceFilePath: () => Promise<DesktopPathPickResult>

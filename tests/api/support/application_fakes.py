@@ -262,10 +262,15 @@ class FakeSettingsConfig:
         self.auto_process_prefix_suffix_preserved_text = True
 
     def add_recent_project(self, path: str, name: str) -> None:
+        del name
+
         self.recent_projects = [
             project for project in self.recent_projects if project.get("path") != path
         ]
-        self.recent_projects.insert(0, {"path": path, "name": name})
+
+        file_name = path.replace("\\", "/").split("/")[-1]
+        stem = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+        self.recent_projects.insert(0, {"path": path, "name": stem})
         self.recent_projects = self.recent_projects[:10]
 
     def remove_recent_project(self, path: str) -> None:

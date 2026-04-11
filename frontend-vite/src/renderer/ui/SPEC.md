@@ -24,16 +24,19 @@
 约定：下文标记 `（门闩）` 的规则已经接入 `npm run ui:audit`。
 
 ## 全局 token、主题与中文强调
-所有 UI 语义 token 统一定义在 [`../index.css`](../index.css)，当前统一使用的语义前缀如下：
+所有 UI 语义 token 统一定义在 [`../index.css`](../index.css)，当前已经落地并持续使用的语义前缀如下：
 
+- `--ui-font-*`
 - `--ui-radius-*`
-- `--ui-surface-*`
-- `--ui-edge-*`
+- `--ui-card-*`
 - `--ui-shadow-*`
 - `--ui-space-*`
+- `--ui-page-*`
+- `--ui-section-*`
+- `--ui-list-*`
 - `--ui-toolbar-*`
 - `--ui-table-*`
-- `--ui-font-stroke-*`
+- `--ui-selection-*`
 
 约束：
 
@@ -81,49 +84,13 @@
 - 不要把复杂生命周期规则散落在页面层，例如延迟退场、状态接管、异步任务反馈、单实例协调等，都必须只有一个权威实现。
 
 ## 基础组件职责
-### Card
-[`card.tsx`](./card.tsx) 负责：
+下表只记录当前稳定契约；具体 token 值仍以 [`../index.css`](../index.css) 为准。
 
-- 卡片外轮廓
-- 表面层级
-- 软边界
-- 阴影
-- 统一 padding 规则
-
-允许变体：
-
-- `default`
-- `panel`
-- `table`
-- `toolbar`
-
-### Button
-[`button.tsx`](./button.tsx) 负责：
-
-- 按钮圆角
-- 高度
-- 内边距
-- 基础交互态
-
-当前约定：
-
-- 卡片圆角：`4px`
-- 按钮圆角：`8px`
-- 工具条按钮使用 `size="toolbar"`
-
-### Table
-[`table.tsx`](./table.tsx) 负责：
-
-- 表头高度
-- 行高
-- 分隔线强度
-- hover / selected 背景
-
-页面层只保留：
-
-- 列宽
-- 对齐方式
-- sticky / scroll 等布局能力
+| 基础组件 | `ui/` 层负责 | 当前稳定契约 | 页面层只保留 |
+| --- | --- | --- | --- |
+| [`Card`](./card.tsx) | 卡片外轮廓、表面层级、软边界、阴影与统一 padding 规则 | 当前支持 `default`、`panel`、`table`、`toolbar` 四种变体；卡片圆角统一来自 `--ui-radius-card` | 页面布局、信息密度与局部语义 |
+| [`Button`](./button.tsx) | 按钮圆角、高度、内边距与基础交互态 | 默认按钮圆角为 `8px`；工具条按钮统一使用 `size="toolbar"` | 页面动作编排、按钮组合关系与局部语义 |
+| [`Table`](./table.tsx) | 表头高度、行高、分隔线强度，以及 hover / selected 背景 | 表头、行高和单元格横向 padding 都通过 `data-slot` 契约消费全局 token | 列宽、对齐方式、sticky / scroll 等布局能力 |
 
 ## 页面层边界
 业务页面和部件层允许：
@@ -137,6 +104,7 @@
 
 | 基础组件 | 页面层不得重写 |
 | --- | --- |
+| `PageShell` | `padding`、`margin` 及其方向属性；当前已接入 `.basic-settings-page`、`.debug-panel-page`、`.project-home`、`.workbench-page` |
 | `Card` | `background`、`box-shadow`、`border-radius`、`border-color` |
 | `Button` | `border-radius`、`box-shadow`、`background` |
 | `Table` | `border-bottom`、`background`、`height`、`font-size`、`color` |
@@ -163,6 +131,7 @@ npm run ui:audit
 - `--ui-*` 是否只在 [`../index.css`](../index.css) 中定义
 - 中文强调相关写法是否回到 [`../index.css`](../index.css) 与统一强调入口
 - `font-weight: 500/600/700+` 与 Tailwind 粗体类是否重新出现在渲染层源码中
+- 已接入页面命名空间是否越权改写 `PageShell` 的 padding / margin 缩进契约
 - 已接入页面命名空间是否越权改写 `Card` / `Button` / `Table` 的基础视觉
 
 当前 `ui:audit` 不负责：
