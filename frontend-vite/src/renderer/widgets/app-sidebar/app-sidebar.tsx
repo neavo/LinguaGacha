@@ -35,6 +35,14 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
   const { state } = useSidebar()
   const is_collapsed = state === 'collapsed'
 
+  function resolve_parent_click_route(route_id: RouteId): RouteId {
+    if (route_id === 'text-replacement') {
+      return 'pre-translation-replacement'
+    }
+
+    return route_id
+  }
+
   return (
     <Sidebar
       collapsible="icon"
@@ -77,7 +85,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                       onClick={() => {
                         if (has_children) {
                           props.on_toggle_group(item.id)
-                          props.on_select_route(item.id)
+                          props.on_select_route(resolve_parent_click_route(item.id))
                         } else {
                           props.on_select_route(item.id)
                         }

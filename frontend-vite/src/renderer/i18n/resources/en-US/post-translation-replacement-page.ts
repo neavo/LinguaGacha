@@ -3,5 +3,5 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_post_translation_replacement_page = {
   title: 'Post-translation Replacement',
-  summary: 'Post-translation replacement will polish the output before write-back so the final result stays stable.',
+  summary: 'After translation, matched parts of the original text will be replaced by specified text, processed in top-down order',
 } satisfies LocaleMessageSchema<typeof zh_cn_post_translation_replacement_page>
