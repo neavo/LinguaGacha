@@ -21,6 +21,12 @@ const TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE = {
   dst: 'text_replacement_page.filter.scope.replacement',
 } satisfies Record<TextReplacementFilterScope, LocaleKey>
 
+const TEXT_REPLACEMENT_FILTER_SCOPES: TextReplacementFilterScope[] = [
+  'all',
+  'src',
+  'dst',
+]
+
 export function TextReplacementPage(
   props: TextReplacementPageProps,
 ): JSX.Element {
@@ -41,11 +47,7 @@ export function TextReplacementPage(
   const regex_tooltip = t('text_replacement_page.toggle.status')
     .replace('{TITLE}', t('text_replacement_page.filter.regex_tooltip_label'))
     .replace('{STATE}', regex_state_label)
-  const text_replacement_scope_options: SearchBarScopeOption<TextReplacementFilterScope>[] = [
-    'all',
-    'src',
-    'dst',
-  ].map((scope) => {
+  const text_replacement_scope_options: SearchBarScopeOption<TextReplacementFilterScope>[] = TEXT_REPLACEMENT_FILTER_SCOPES.map((scope) => {
     return {
       value: scope,
       label: t(TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE[scope]),

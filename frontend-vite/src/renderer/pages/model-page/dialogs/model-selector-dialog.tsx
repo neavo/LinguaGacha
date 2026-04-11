@@ -3,15 +3,15 @@ import { useEffect, useMemo, useRef } from 'react'
 
 import { useI18n } from '@/i18n'
 import type { ModelEntrySnapshot } from '@/pages/model-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
-} from '@/ui/dialog'
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/ui/empty'
-import { Input } from '@/ui/input'
-import { ScrollArea } from '@/ui/scroll-area'
+} from '@/shadcn/dialog'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shadcn/empty'
+import { Input } from '@/shadcn/input'
+import { ScrollArea } from '@/shadcn/scroll-area'
 
 type ModelSelectorDialogProps = {
   open: boolean
@@ -134,3 +134,4 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
     </Dialog>
   )
 }
+

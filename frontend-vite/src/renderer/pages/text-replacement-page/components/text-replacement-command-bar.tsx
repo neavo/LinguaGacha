@@ -16,7 +16,7 @@ import {
 
 import { useI18n, type LocaleKey } from '@/i18n'
 import type { TextReplacementPresetItem } from '@/pages/text-replacement-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,18 +27,18 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from '@/ui/dropdown-menu'
+} from '@/shadcn/dropdown-menu'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/ui/tooltip'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+} from '@/shadcn/tooltip'
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from '@/widgets/command-bar/command-bar'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type TextReplacementCommandBarProps = {
   title_key: LocaleKey
@@ -69,6 +69,16 @@ export function TextReplacementCommandBar(
   props: TextReplacementCommandBarProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
   const builtin_preset_items = props.preset_items.filter((item) => item.type === 'builtin')
   const user_preset_items = props.preset_items.filter((item) => item.type === 'user')
   const toggle_state_key = props.enabled ? 'app.toggle.enabled' : 'app.toggle.disabled'
@@ -288,11 +298,15 @@ export function TextReplacementCommandBar(
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="text-replacement-page__toggle-cluster">
-              <BooleanSegmentedToggle
+              <SegmentedToggle
                 aria_label={t(props.title_key)}
-                value={props.enabled}
+                size="sm"
+                value={props.enabled ? 'enabled' : 'disabled'}
+                options={boolean_segmented_options}
                 on_value_change={(next_value) => {
-                  void props.on_toggle_enabled(next_value)
+                  void props.on_toggle_enabled(
+                    next_value === 'enabled',
+                  )
                 }}
               />
             </div>
@@ -320,3 +334,4 @@ export function TextReplacementCommandBar(
     />
   )
 }
+

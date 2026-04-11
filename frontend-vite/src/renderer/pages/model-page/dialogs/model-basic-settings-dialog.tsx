@@ -3,13 +3,13 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import type { ModelEntrySnapshot, ModelThinkingLevel } from '@/pages/model-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
-} from '@/ui/dialog'
-import { Input } from '@/ui/input'
+} from '@/shadcn/dialog'
+import { Input } from '@/shadcn/input'
 import {
   Select,
   SelectContent,
@@ -17,8 +17,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/ui/select'
-import { Textarea } from '@/ui/textarea'
+} from '@/shadcn/select'
+import { Textarea } from '@/shadcn/textarea'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
 
 type ModelBasicSettingsDialogProps = {
@@ -301,3 +301,4 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
     </>
   )
 }
+

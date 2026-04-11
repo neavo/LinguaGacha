@@ -1,12 +1,12 @@
 import { useI18n } from '@/i18n'
 import type { ModelEntrySnapshot } from '@/pages/model-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
-} from '@/ui/dialog'
-import { Input } from '@/ui/input'
+} from '@/shadcn/dialog'
+import { Input } from '@/shadcn/input'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
 
 type ModelTaskSettingsDialogProps = {
@@ -136,3 +136,4 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
     </Dialog>
   )
 }
+

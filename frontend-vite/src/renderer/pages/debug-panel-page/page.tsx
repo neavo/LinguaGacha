@@ -4,9 +4,9 @@ import { useAppNavigation } from '@/app/navigation/navigation-context'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import '@/pages/debug-panel-page/debug-panel-page.css'
-import { Badge } from '@/ui/badge'
-import { Button } from '@/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/card'
+import { Badge } from '@/shadcn/badge'
+import { Button } from '@/shadcn/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shadcn/card'
 import {
   BellRing,
   CircleAlert,
@@ -337,4 +337,5 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
     </div>
   )
 }
+
 

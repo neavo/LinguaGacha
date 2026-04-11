@@ -5,15 +5,15 @@ import type {
   GlossaryDialogMode,
   GlossaryEntry,
 } from '@/pages/glossary-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogTitle,
-} from '@/ui/dialog'
-import { Textarea } from '@/ui/textarea'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+} from '@/shadcn/dialog'
+import { Textarea } from '@/shadcn/textarea'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type GlossaryEditDialogProps = {
   open: boolean
@@ -27,6 +27,16 @@ type GlossaryEditDialogProps = {
 
 export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n()
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
   const title = props.mode === 'create'
     ? t('glossary_page.dialog.create_title')
     : t('glossary_page.dialog.edit_title')
@@ -128,13 +138,17 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                     {t('glossary_page.rule.case_sensitive')}
                   </span>
                 </div>
-                <BooleanSegmentedToggle
+                <SegmentedToggle
                   aria_label={t('glossary_page.rule.case_sensitive')}
-                  value={props.entry.case_sensitive}
+                  value={props.entry.case_sensitive ? 'enabled' : 'disabled'}
+                  options={boolean_segmented_options}
                   disabled={props.saving}
                   size="sm"
                   on_value_change={(next_value) => {
-                    props.on_change({ case_sensitive: next_value })
+                    props.on_change({
+                      case_sensitive:
+                        next_value === 'enabled',
+                    })
                   }}
                 />
               </div>
@@ -167,3 +181,4 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
     </Dialog>
   )
 }
+

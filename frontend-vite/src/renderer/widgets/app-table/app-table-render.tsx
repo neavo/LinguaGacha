@@ -2,17 +2,17 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import type { CSSProperties } from 'react'
 
 import { cn } from '@/lib/utils'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   TableCell,
   TableHead,
   TableRow,
-} from '@/ui/table'
+} from '@/shadcn/table'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/ui/tooltip'
+} from '@/shadcn/tooltip'
 import type {
   AppTableColumn,
   AppTableDataColumn,
@@ -192,3 +192,4 @@ export function AppTablePlaceholderRow<Row>(props: {
     </TableRow>
   )
 }
+

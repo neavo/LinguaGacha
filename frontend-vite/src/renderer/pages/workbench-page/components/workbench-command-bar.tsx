@@ -1,6 +1,6 @@
 import { FileInput, FilePlus2, SquarePower, type LucideIcon } from 'lucide-react'
 
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import { useI18n, type LocaleKey } from '@/i18n'
 import {
   CommandBar,
@@ -74,4 +74,5 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     />
   )
 }
+
 

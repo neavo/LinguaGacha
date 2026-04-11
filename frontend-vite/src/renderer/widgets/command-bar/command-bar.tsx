@@ -8,8 +8,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/ui/card'
-import { Separator } from '@/ui/separator'
+} from '@/shadcn/card'
+import { Separator } from '@/shadcn/separator'
 
 type CommandBarProps = React.ComponentProps<'section'> & {
   title?: React.ReactNode
@@ -111,3 +111,4 @@ export function CommandBarGroup({
   // 统一提供零间距动作组，避免每个页面重复声明连体按钮样式。
   return <div className={cn('command-bar__group', className)} {...props} />
 }
+

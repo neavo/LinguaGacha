@@ -8,15 +8,15 @@ import type {
   TextReplacementDialogMode,
   TextReplacementEntry,
 } from '@/pages/text-replacement-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogTitle,
-} from '@/ui/dialog'
-import { Textarea } from '@/ui/textarea'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+} from '@/shadcn/dialog'
+import { Textarea } from '@/shadcn/textarea'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type TextReplacementEditDialogProps = {
   open: boolean
@@ -33,6 +33,16 @@ export function TextReplacementEditDialog(
   props: TextReplacementEditDialogProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
   const title = props.mode === 'create'
     ? t('text_replacement_page.dialog.create_title')
     : t('text_replacement_page.dialog.edit_title')
@@ -123,13 +133,16 @@ export function TextReplacementEditDialog(
                     {t('text_replacement_page.rule.regex')}
                   </span>
                 </div>
-                <BooleanSegmentedToggle
+                <SegmentedToggle
                   aria_label={t('text_replacement_page.rule.regex')}
-                  value={props.entry.regex}
+                  value={props.entry.regex ? 'enabled' : 'disabled'}
+                  options={boolean_segmented_options}
                   disabled={props.saving}
                   size="sm"
                   on_value_change={(next_value) => {
-                    props.on_change({ regex: next_value })
+                    props.on_change({
+                      regex: next_value === 'enabled',
+                    })
                   }}
                 />
               </div>
@@ -151,13 +164,17 @@ export function TextReplacementEditDialog(
                     {t('text_replacement_page.rule.case_sensitive')}
                   </span>
                 </div>
-                <BooleanSegmentedToggle
+                <SegmentedToggle
                   aria_label={t('text_replacement_page.rule.case_sensitive')}
-                  value={props.entry.case_sensitive}
+                  value={props.entry.case_sensitive ? 'enabled' : 'disabled'}
+                  options={boolean_segmented_options}
                   disabled={props.saving}
                   size="sm"
                   on_value_change={(next_value) => {
-                    props.on_change({ case_sensitive: next_value })
+                    props.on_change({
+                      case_sensitive:
+                        next_value === 'enabled',
+                    })
                   }}
                 />
               </div>
@@ -192,3 +209,4 @@ export function TextReplacementEditDialog(
     </Dialog>
   )
 }
+

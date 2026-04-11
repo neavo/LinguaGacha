@@ -9,11 +9,11 @@ import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import '@/app/shell/app-shell.css'
 import type { BottomActionId, RouteId } from '@/app/navigation/types'
 import { LocaleProvider, useI18n } from '@/i18n'
-import { SidebarInset, SidebarProvider } from '@/ui/sidebar'
-import { Toaster } from '@/ui/sonner'
-import { TooltipProvider } from '@/ui/tooltip'
-import { AppSidebar } from '@/widgets/app-sidebar/app-sidebar'
-import { AppTitlebar } from '@/widgets/app-titlebar/app-titlebar'
+import { SidebarInset, SidebarProvider } from '@/shadcn/sidebar'
+import { Toaster } from '@/shadcn/sonner'
+import { TooltipProvider } from '@/shadcn/tooltip'
+import { AppSidebar } from '@/app/shell/app-sidebar'
+import { AppTitlebar } from '@/app/shell/app-titlebar'
 
 const SIDEBAR_STORAGE_KEY = 'lg-sidebar-collapsed'
 const THEME_STORAGE_KEY = 'lg-theme-mode'
@@ -255,8 +255,8 @@ function AppContent(): JSX.Element {
       }}
       style={
         {
-          '--sidebar-width': '16rem',
-          '--sidebar-width-icon': '4.5rem',
+          '--sidebar-width': '256px',
+          '--sidebar-width-icon': '72px',
         } as CSSProperties
       }
     >
@@ -319,4 +319,5 @@ function App(): JSX.Element {
 }
 
 export default App
+
 

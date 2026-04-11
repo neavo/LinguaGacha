@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from '@/ui/alert-dialog'
+} from '@/shadcn/alert-dialog'
 
 type TextReplacementConfirmDialogProps = {
   state: TextReplacementConfirmState
@@ -111,3 +111,4 @@ export function TextReplacementConfirmDialog(
     </AlertDialog>
   )
 }
+

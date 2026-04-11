@@ -564,14 +564,14 @@ a,
     color: var(--foreground);
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.86rem;
+    font-size: 13.76px;
     line-height: 1.45;
   }
 
   .cn-toast__description {
     display: none;
     color: var(--muted-foreground);
-    font-size: 0.78rem;
+    font-size: 12.48px;
     line-height: 1.45;
   }
 
@@ -604,57 +604,5 @@ a,
   .cn-toast--progress .cn-toast__icon {
     width: 28px;
     height: 28px;
-  }
-
-  .cn-progress-ring {
-    display: inline-flex;
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
-    color: var(--primary);
-  }
-
-  .cn-progress-ring__svg {
-    width: 100%;
-    height: 100%;
-    transform: rotate(-90deg);
-  }
-
-  .cn-progress-ring__track,
-  .cn-progress-ring__stroke {
-    fill: none;
-    stroke-width: 2.5;
-  }
-
-  .cn-progress-ring__track {
-    stroke: color-mix(in srgb, var(--border) 78%, transparent);
-  }
-
-  .cn-progress-ring__stroke {
-    stroke: currentColor;
-    stroke-linecap: round;
-    transition: stroke-dashoffset 180ms ease;
-    transform-origin: center;
-  }
-
-  .cn-progress-ring--indeterminate .cn-progress-ring__svg {
-    animation: cn-progress-ring-rotate 0.95s linear infinite;
-  }
-
-  .cn-progress-ring--indeterminate .cn-progress-ring__stroke {
-    stroke-dasharray: 28 54;
-    stroke-dashoffset: 9;
-    transition: none;
-  }
-
-}
-
-@keyframes cn-progress-ring-rotate {
-  from {
-    transform: rotate(-90deg);
-  }
-
-  to {
-    transform: rotate(270deg);
   }
 }

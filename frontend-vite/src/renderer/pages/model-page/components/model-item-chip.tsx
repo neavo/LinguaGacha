@@ -5,8 +5,8 @@ import type { CSSProperties, ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import type { ModelEntrySnapshot } from '@/pages/model-page/types'
-import { Button } from '@/ui/button'
-import { DropdownMenu, DropdownMenuTrigger } from '@/ui/dropdown-menu'
+import { Button } from '@/shadcn/button'
+import { DropdownMenu, DropdownMenuTrigger } from '@/shadcn/dropdown-menu'
 
 type ModelItemChipProps = {
   model: ModelEntrySnapshot
@@ -74,3 +74,4 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
     </div>
   )
 }
+

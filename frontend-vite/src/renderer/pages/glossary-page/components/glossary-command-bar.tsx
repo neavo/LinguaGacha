@@ -16,7 +16,7 @@ import {
 
 import { useI18n } from '@/i18n'
 import type { GlossaryPresetItem } from '@/pages/glossary-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,14 +27,14 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from '@/ui/dropdown-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+} from '@/shadcn/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shadcn/tooltip'
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from '@/widgets/command-bar/command-bar'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type GlossaryCommandBarProps = {
   enabled: boolean
@@ -63,6 +63,16 @@ export function GlossaryCommandBar(
   props: GlossaryCommandBarProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
   const builtin_preset_items = props.preset_items.filter((item) => item.type === 'builtin')
   const user_preset_items = props.preset_items.filter((item) => item.type === 'user')
   const toggle_state_key = props.enabled ? 'app.toggle.enabled' : 'app.toggle.disabled'
@@ -289,11 +299,15 @@ export function GlossaryCommandBar(
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="glossary-page__toggle-cluster">
-              <BooleanSegmentedToggle
+              <SegmentedToggle
                 aria_label={t('glossary_page.title')}
-                value={props.enabled}
+                size="sm"
+                value={props.enabled ? 'enabled' : 'disabled'}
+                options={boolean_segmented_options}
                 on_value_change={(next_value) => {
-                  void props.on_toggle_enabled(next_value)
+                  void props.on_toggle_enabled(
+                    next_value === 'enabled',
+                  )
                 }}
               />
             </div>
@@ -319,3 +333,4 @@ export function GlossaryCommandBar(
     />
   )
 }
+

@@ -20,14 +20,6 @@
   align-items: center;
 }
 
-.basic-settings-page__toggle-group {
-  justify-content: stretch;
-}
-
-.basic-settings-page__toggle-item {
-  flex: 1 1 0;
-}
-
 .basic-settings-page__number-input {
   text-align: right;
 }

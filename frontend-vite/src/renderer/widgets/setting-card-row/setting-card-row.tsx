@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 
 import { render_rich_text, type RichTextComponentMap } from '@/i18n'
 import { cn } from '@/lib/utils'
-import { Card, CardContent } from '@/ui/card'
+import { Card, CardContent } from '@/shadcn/card'
+import '@/widgets/setting-card-row/setting-card-row.css'
 
 type SettingCardRowProps = {
   title: string
@@ -43,3 +44,4 @@ export function SettingCardRow(props: SettingCardRowProps): JSX.Element {
     </Card>
   )
 }
+

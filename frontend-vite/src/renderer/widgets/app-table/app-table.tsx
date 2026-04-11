@@ -34,15 +34,15 @@ import { cn } from '@/lib/utils'
 import {
   ContextMenu,
   ContextMenuTrigger,
-} from '@/ui/context-menu'
-import { ScrollArea } from '@/ui/scroll-area'
+} from '@/shadcn/context-menu'
+import { ScrollArea } from '@/shadcn/scroll-area'
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from '@/ui/table'
+} from '@/shadcn/table'
 import '@/widgets/app-table/app-table.css'
 import {
   build_app_table_reordered_row_ids,
@@ -1030,3 +1030,4 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     </div>
   )
 }
+

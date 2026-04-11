@@ -61,7 +61,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["src/renderer/ui/**/*.tsx"],
+    files: ["src/renderer/shadcn/**/*.tsx"],
     rules: {
       "react-refresh/only-export-components": "off",
     },

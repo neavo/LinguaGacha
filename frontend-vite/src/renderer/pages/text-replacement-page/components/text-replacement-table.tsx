@@ -9,27 +9,27 @@ import type {
   TextReplacementStatisticsBadgeState,
   TextReplacementVisibleEntry,
 } from '@/pages/text-replacement-page/types'
-import { Badge } from '@/ui/badge'
+import { Badge } from '@/shadcn/badge'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/ui/card'
+} from '@/shadcn/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/ui/dropdown-menu'
-import { Spinner } from '@/ui/spinner'
+} from '@/shadcn/dropdown-menu'
+import { Spinner } from '@/shadcn/spinner'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/ui/tooltip'
+} from '@/shadcn/tooltip'
 import { AppTable } from '@/widgets/app-table/app-table'
 import type {
   AppTableColumn,
@@ -65,8 +65,57 @@ type TextReplacementTableProps = {
   on_search_entry_relations: (entry_id: TextReplacementEntryId) => void
 }
 
+type TextReplacementRuleMenuState = 'enabled' | 'disabled' | 'mixed'
+
 function build_row_number_label(row_index: number): string {
   return String(row_index + 1)
+}
+
+function resolve_text_replacement_context_target_entry_ids(
+  row_id: TextReplacementEntryId,
+  selected_entry_ids: TextReplacementEntryId[],
+): TextReplacementEntryId[] {
+  if (selected_entry_ids.includes(row_id)) {
+    return selected_entry_ids
+  }
+
+  return [row_id]
+}
+
+function resolve_text_replacement_rule_menu_state(args: {
+  entry_by_id: Map<TextReplacementEntryId, TextReplacementVisibleEntry>
+  target_entry_ids: TextReplacementEntryId[]
+  pick_value: (entry: TextReplacementVisibleEntry) => boolean
+}): TextReplacementRuleMenuState {
+  let has_enabled = false
+  let has_disabled = false
+
+  for (const entry_id of args.target_entry_ids) {
+    const target_entry = args.entry_by_id.get(entry_id)
+    if (target_entry === undefined) {
+      continue
+    }
+
+    if (args.pick_value(target_entry)) {
+      has_enabled = true
+    } else {
+      has_disabled = true
+    }
+
+    if (has_enabled && has_disabled) {
+      return 'mixed'
+    }
+  }
+
+  if (has_enabled) {
+    return 'enabled'
+  }
+
+  if (has_disabled) {
+    return 'disabled'
+  }
+
+  return 'mixed'
 }
 
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
@@ -235,7 +284,7 @@ function TextReplacementStatisticsBadge(
         </TooltipTrigger>
         {tooltip_content}
       </Tooltip>
-      <DropdownMenuContent align="center" matchTriggerWidth={false}>
+      <DropdownMenuContent align="center">
         <DropdownMenuGroup>
           <DropdownMenuItem
             onClick={() => {
@@ -261,6 +310,11 @@ export function TextReplacementTable(
   props: TextReplacementTableProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const visible_entry_by_id = useMemo(() => {
+    return new Map(props.entries.map((entry) => {
+      return [entry.entry_id, entry] as const
+    }))
+  }, [props.entries])
 
   const columns = useMemo<AppTableColumn<TextReplacementVisibleEntry>[]>(() => {
     return [
@@ -451,15 +505,34 @@ export function TextReplacementTable(
           on_row_double_click={(payload) => {
             props.on_open_edit(payload.row_id)
           }}
-          render_row_context_menu={(payload) => (
-            <TextReplacementContextMenuContent
-              on_open_edit={() => {
-                props.on_open_edit(payload.row_id)
-              }}
-              on_toggle_regex={props.on_toggle_regex}
-              on_toggle_case_sensitive={props.on_toggle_case_sensitive}
-            />
-          )}
+          render_row_context_menu={(payload) => {
+            const target_entry_ids = resolve_text_replacement_context_target_entry_ids(
+              payload.row_id,
+              props.selected_entry_ids,
+            )
+            const regex_state = resolve_text_replacement_rule_menu_state({
+              entry_by_id: visible_entry_by_id,
+              target_entry_ids,
+              pick_value: (entry) => entry.entry.regex,
+            })
+            const case_sensitive_state = resolve_text_replacement_rule_menu_state({
+              entry_by_id: visible_entry_by_id,
+              target_entry_ids,
+              pick_value: (entry) => entry.entry.case_sensitive,
+            })
+
+            return (
+              <TextReplacementContextMenuContent
+                regex_state={regex_state}
+                case_sensitive_state={case_sensitive_state}
+                on_open_edit={() => {
+                  props.on_open_edit(payload.row_id)
+                }}
+                on_toggle_regex={props.on_toggle_regex}
+                on_toggle_case_sensitive={props.on_toggle_case_sensitive}
+              />
+            )
+          }}
           ignore_row_click_target={should_ignore_row_click_target}
           ignore_box_select_target={should_ignore_box_selection_target}
           box_selection_enabled
@@ -470,3 +543,4 @@ export function TextReplacementTable(
     </Card>
   )
 }
+

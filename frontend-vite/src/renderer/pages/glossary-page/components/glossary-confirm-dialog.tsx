@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from '@/ui/alert-dialog'
+} from '@/shadcn/alert-dialog'
 
 type GlossaryConfirmDialogProps = {
   state: GlossaryConfirmState
@@ -102,3 +102,4 @@ export function GlossaryConfirmDialog(
     </AlertDialog>
   )
 }
+

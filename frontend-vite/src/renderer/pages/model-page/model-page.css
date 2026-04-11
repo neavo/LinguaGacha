@@ -248,11 +248,6 @@
 
 .model-page__advanced-toggle-group {
   min-width: 128px;
-  justify-content: stretch;
-}
-
-.model-page__advanced-toggle-item {
-  flex: 1 1 0;
 }
 
 .model-page__advanced-inline-control {

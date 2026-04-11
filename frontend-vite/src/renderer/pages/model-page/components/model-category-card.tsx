@@ -16,7 +16,7 @@ import {
 import type { ReactNode } from 'react'
 
 import type { ModelEntrySnapshot } from '@/pages/model-page/types'
-import { Card, CardContent } from '@/ui/card'
+import { Card, CardContent } from '@/shadcn/card'
 
 type ModelCategoryCardProps = {
   title: string
@@ -97,3 +97,4 @@ export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
     </Card>
   )
 }
+

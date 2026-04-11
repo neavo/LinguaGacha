@@ -2,16 +2,16 @@ import { useEffect, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import type { ModelEntrySnapshot } from '@/pages/model-page/types'
-import { Button } from '@/ui/button'
-import { Card, CardContent, CardDescription, CardTitle } from '@/ui/card'
+import { Button } from '@/shadcn/button'
+import { Card, CardContent, CardDescription, CardTitle } from '@/shadcn/card'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
-} from '@/ui/dialog'
-import { Input } from '@/ui/input'
-import { Textarea } from '@/ui/textarea'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+} from '@/shadcn/dialog'
+import { Input } from '@/shadcn/input'
+import { Textarea } from '@/shadcn/textarea'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type ModelAdvancedSettingsDialogProps = {
   open: boolean
@@ -171,6 +171,16 @@ function normalize_slider_value(field_config: SliderFieldConfig, raw_value: numb
 
 export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogProps): JSX.Element | null {
   const { t } = useI18n()
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
   const [headers_text, set_headers_text] = useState('')
   const [body_text, set_body_text] = useState('')
   const [headers_error, set_headers_error] = useState(false)
@@ -289,16 +299,19 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                             )
                           : null}
 
-                        <BooleanSegmentedToggle
+                        <SegmentedToggle
                           aria_label={t(field_config.title_key)}
-                          value={current_enabled}
+                          size="sm"
+                          value={current_enabled ? 'enabled' : 'disabled'}
+                          options={boolean_segmented_options}
                           className="model-page__advanced-toggle-group"
-                          item_class_name="model-page__advanced-toggle-item"
+                          stretch
                           disabled={props.readonly}
                           on_value_change={(next_value) => {
                             void props.onPatch({
                               generation: {
-                                [field_config.enabled_key]: next_value,
+                                [field_config.enabled_key]:
+                                  next_value === 'enabled',
                               },
                             })
                           }}
@@ -318,16 +331,21 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     <CardDescription>{t('model_page.fields.extra_headers.description')}</CardDescription>
                   </div>
 
-                  <BooleanSegmentedToggle
+                  <SegmentedToggle
                     aria_label={t('model_page.fields.extra_headers.title')}
-                    value={model.request.extra_headers_custom_enable}
+                    size="sm"
+                    value={model.request.extra_headers_custom_enable
+                      ? 'enabled'
+                      : 'disabled'}
+                    options={boolean_segmented_options}
                     className="model-page__advanced-toggle-group"
-                    item_class_name="model-page__advanced-toggle-item"
+                    stretch
                     disabled={props.readonly}
                     on_value_change={(next_value) => {
                       void props.onPatch({
                         request: {
-                          extra_headers_custom_enable: next_value,
+                          extra_headers_custom_enable:
+                            next_value === 'enabled',
                         },
                       })
                     }}
@@ -371,16 +389,21 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     <CardDescription>{t('model_page.fields.extra_body.description')}</CardDescription>
                   </div>
 
-                  <BooleanSegmentedToggle
+                  <SegmentedToggle
                     aria_label={t('model_page.fields.extra_body.title')}
-                    value={model.request.extra_body_custom_enable}
+                    size="sm"
+                    value={model.request.extra_body_custom_enable
+                      ? 'enabled'
+                      : 'disabled'}
+                    options={boolean_segmented_options}
                     className="model-page__advanced-toggle-group"
-                    item_class_name="model-page__advanced-toggle-item"
+                    stretch
                     disabled={props.readonly}
                     on_value_change={(next_value) => {
                       void props.onPatch({
                         request: {
-                          extra_body_custom_enable: next_value,
+                          extra_body_custom_enable:
+                            next_value === 'enabled',
                         },
                       })
                     }}
@@ -427,3 +450,4 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
     </Dialog>
   )
 }
+

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 
 import { toast, type ExternalToast } from 'sonner'
-import { ProgressToastRing } from '@/ui/progress-toast-ring'
+import { ProgressToastRing } from '@/widgets/progress-toast-ring/progress-toast-ring'
 
 type DesktopToastKind = 'info' | 'warning' | 'error' | 'success'
 
@@ -193,3 +193,4 @@ export function useDesktopToast(): DesktopToastApi {
     update_progress_toast,
   ])
 }
+

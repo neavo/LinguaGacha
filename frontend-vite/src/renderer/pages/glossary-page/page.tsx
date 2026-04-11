@@ -17,6 +17,13 @@ const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
   info: 'glossary_page.filter.scope.description',
 } satisfies Record<GlossaryFilterScope, LocaleKey>
 
+const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = [
+  'all',
+  'src',
+  'dst',
+  'info',
+]
+
 export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n()
   const glossary_page_state = useGlossaryPageState()
@@ -35,12 +42,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
   const regex_tooltip = t('glossary_page.toggle.status')
     .replace('{TITLE}', t('glossary_page.filter.regex_tooltip_label'))
     .replace('{STATE}', regex_state_label)
-  const glossary_scope_options: SearchBarScopeOption<GlossaryFilterScope>[] = [
-    'all',
-    'src',
-    'dst',
-    'info',
-  ].map((scope) => {
+  const glossary_scope_options: SearchBarScopeOption<GlossaryFilterScope>[] = GLOSSARY_FILTER_SCOPES.map((scope) => {
     return {
       value: scope,
       label: t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[scope]),

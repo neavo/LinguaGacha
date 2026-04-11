@@ -23,11 +23,3 @@
 .expert-settings-page__number-input {
   text-align: right;
 }
-
-.expert-settings-page__toggle-group {
-  justify-content: stretch;
-}
-
-.expert-settings-page__toggle-item {
-  flex: 1 1 0;
-}

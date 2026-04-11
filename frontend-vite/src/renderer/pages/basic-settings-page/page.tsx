@@ -3,7 +3,6 @@ import { useMemo } from 'react'
 
 import { useI18n } from '@/i18n'
 import '@/pages/basic-settings-page/basic-settings-page.css'
-import '@/widgets/setting-card-row/setting-card-row.css'
 import {
   ALL_LANGUAGE_VALUE,
   LANGUAGE_CODES,
@@ -15,11 +14,11 @@ import {
   is_project_save_mode,
 } from '@/pages/basic-settings-page/types'
 import { useBasicSettingsState } from '@/pages/basic-settings-page/use-basic-settings-state'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/alert'
-import { Button } from '@/ui/button'
-import { Input } from '@/ui/input'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shadcn/alert'
+import { Button } from '@/shadcn/button'
+import { Input } from '@/shadcn/input'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 import {
   Select,
   SelectContent,
@@ -27,7 +26,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/ui/select'
+} from '@/shadcn/select'
 
 type BasicSettingsPageProps = {
   is_sidebar_collapsed: boolean
@@ -40,6 +39,16 @@ function replace_placeholder(template: string, value: string): string {
 export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
   const { t } = useI18n()
   const basic_settings_state = useBasicSettingsState()
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
 
   const source_language_options = useMemo(() => {
     return [
@@ -209,14 +218,19 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
           title={t('basic_settings_page.fields.output_folder_open_on_finish.title')}
           description={t('basic_settings_page.fields.output_folder_open_on_finish.description')}
           action={(
-            <BooleanSegmentedToggle
+            <SegmentedToggle
               aria_label={t('basic_settings_page.fields.output_folder_open_on_finish.title')}
-              value={basic_settings_state.snapshot.output_folder_open_on_finish}
-              className="basic-settings-page__toggle-group"
-              item_class_name="basic-settings-page__toggle-item"
+              size="sm"
+              value={basic_settings_state.snapshot.output_folder_open_on_finish
+                ? 'enabled'
+                : 'disabled'}
+              options={boolean_segmented_options}
+              stretch
               disabled={basic_settings_state.pending_state.output_folder_open_on_finish}
               on_value_change={(next_value) => {
-                void basic_settings_state.update_output_folder_open_on_finish(next_value)
+                void basic_settings_state.update_output_folder_open_on_finish(
+                  next_value === 'enabled',
+                )
               }}
             />
           )}
@@ -245,4 +259,5 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
     </div>
   )
 }
+
 

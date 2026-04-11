@@ -2,7 +2,6 @@ import { AlertCircle, Info, LoaderCircle } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
 import '@/pages/app-settings-page/app-settings-page.css'
-import '@/widgets/setting-card-row/setting-card-row.css'
 import { useAppSettingsState } from '@/pages/app-settings-page/use-app-settings-state'
 import {
   AlertDialog,
@@ -13,11 +12,11 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from '@/ui/alert-dialog'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/alert'
-import { Button } from '@/ui/button'
+} from '@/shadcn/alert-dialog'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shadcn/alert'
+import { Button } from '@/shadcn/button'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type AppSettingsPageProps = {
   is_sidebar_collapsed: boolean
@@ -26,6 +25,16 @@ type AppSettingsPageProps = {
 export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
   const { t } = useI18n()
   const app_settings_state = useAppSettingsState()
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
 
   return (
     <>
@@ -67,14 +76,17 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
             title={t('app_settings_page.fields.expert_mode.title')}
             description={t('app_settings_page.fields.expert_mode.description')}
             action={(
-              <BooleanSegmentedToggle
+              <SegmentedToggle
                 aria_label={t('app_settings_page.fields.expert_mode.title')}
-                value={app_settings_state.snapshot.expert_mode}
-                className="app-settings-page__toggle-group"
-                item_class_name="app-settings-page__toggle-item"
+                size="sm"
+                value={app_settings_state.snapshot.expert_mode ? 'enabled' : 'disabled'}
+                options={boolean_segmented_options}
+                stretch
                 disabled={app_settings_state.pending_state.expert_mode}
                 on_value_change={(next_value) => {
-                  void app_settings_state.update_expert_mode(next_value)
+                  void app_settings_state.update_expert_mode(
+                    next_value === 'enabled',
+                  )
                 }}
               />
             )}
@@ -120,4 +132,5 @@ export function AppSettingsPage(props: AppSettingsPageProps): JSX.Element {
     </>
   )
 }
+
 

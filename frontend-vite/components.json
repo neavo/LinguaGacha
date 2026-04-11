@@ -15,7 +15,7 @@
   "aliases": {
     "components": "@/widgets",
     "utils": "@/lib/utils",
-    "ui": "@/ui",
+    "ui": "@/shadcn",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },

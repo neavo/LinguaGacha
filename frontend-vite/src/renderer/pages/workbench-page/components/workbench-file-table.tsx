@@ -7,18 +7,18 @@ import {
   WorkbenchTableContextMenuContent,
 } from '@/pages/workbench-page/components/workbench-table-action-menu'
 import type { WorkbenchFileEntry } from '@/pages/workbench-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from '@/ui/card'
+} from '@/shadcn/card'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/ui/tooltip'
+} from '@/shadcn/tooltip'
 import { AppTable } from '@/widgets/app-table/app-table'
 import type {
   AppTableColumn,
@@ -245,3 +245,4 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
     </Card>
   )
 }
+

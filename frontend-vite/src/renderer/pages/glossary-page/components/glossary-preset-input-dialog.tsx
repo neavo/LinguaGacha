@@ -1,6 +1,6 @@
 import { useI18n, type LocaleKey } from '@/i18n'
 import type { GlossaryPresetInputState } from '@/pages/glossary-page/types'
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
@@ -8,8 +8,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/ui/dialog'
-import { Input } from '@/ui/input'
+} from '@/shadcn/dialog'
+import { Input } from '@/shadcn/input'
 
 type GlossaryPresetInputDialogProps = {
   state: GlossaryPresetInputState
@@ -108,3 +108,4 @@ export function GlossaryPresetInputDialog(
     </Dialog>
   )
 }
+

@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from '@/ui/alert-dialog'
+} from '@/shadcn/alert-dialog'
 import { useI18n, type LocaleKey } from '@/i18n'
 import type { WorkbenchDialogState } from '@/pages/workbench-page/types'
 
@@ -107,4 +107,5 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
     </AlertDialog>
   )
 }
+
 

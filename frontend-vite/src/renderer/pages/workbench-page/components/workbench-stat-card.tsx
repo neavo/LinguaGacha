@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shadcn/card'
 import { cn } from '@/lib/utils'
 
 type WorkbenchStatCardProps = {
@@ -31,3 +31,4 @@ export function WorkbenchStatCard(props: WorkbenchStatCardProps): JSX.Element {
     </Card>
   )
 }
+

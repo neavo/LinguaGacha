@@ -7,7 +7,7 @@
     "dev": "electron-vite dev",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && electron-builder",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
-    "ui:audit": "node ./scripts/check-ui-design-system.mjs",
+    "renderer:audit": "node ./scripts/check-renderer-design-system.mjs",
     "preview": "electron-vite preview"
   },
   "dependencies": {

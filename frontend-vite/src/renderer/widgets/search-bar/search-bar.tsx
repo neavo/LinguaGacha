@@ -3,26 +3,26 @@ import * as React from 'react'
 
 import '@/widgets/search-bar/search-bar.css'
 import { cn } from '@/lib/utils'
-import { Button } from '@/ui/button'
-import { Card, CardContent } from '@/ui/card'
+import { Button } from '@/shadcn/button'
+import { Card, CardContent } from '@/shadcn/card'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuGroup,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from '@/ui/dropdown-menu'
+} from '@/shadcn/dropdown-menu'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-} from '@/ui/input-group'
+} from '@/shadcn/input-group'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/ui/tooltip'
+} from '@/shadcn/tooltip'
 
 export type SearchBarScopeOption<scope_value extends string = string> = {
   value: scope_value
@@ -70,6 +70,7 @@ export function SearchBar<scope_value extends string = string>(
   const show_clear_keyword = keyword !== ''
   const show_invalid_state = invalid_message !== null
   const show_inline_controls = show_clear_keyword || show_invalid_state
+  const regex_menu_value = regex.value ? 'enabled' : 'disabled'
 
   return (
     <Card
@@ -163,22 +164,22 @@ export function SearchBar<scope_value extends string = string>(
                   <p>{scope.tooltip}</p>
                 </TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="center" matchTriggerWidth={false}>
-                <DropdownMenuGroup>
+              <DropdownMenuContent align="center">
+                <DropdownMenuRadioGroup
+                  value={scope.value}
+                  onValueChange={(next_value) => {
+                    scope.on_change(next_value as scope_value)
+                  }}
+                >
                   {scope.options.map((option) => (
-                    <DropdownMenuCheckboxItem
+                    <DropdownMenuRadioItem
                       key={option.value}
-                      checked={scope.value === option.value}
-                      onCheckedChange={(next_checked) => {
-                        if (next_checked === true) {
-                          scope.on_change(option.value)
-                        }
-                      }}
+                      value={option.value}
                     >
                       {option.label}
-                    </DropdownMenuCheckboxItem>
+                    </DropdownMenuRadioItem>
                   ))}
-                </DropdownMenuGroup>
+                </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
@@ -201,29 +202,24 @@ export function SearchBar<scope_value extends string = string>(
                   <p>{regex.tooltip}</p>
                 </TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="center" matchTriggerWidth={false}>
-                <DropdownMenuGroup>
-                  <DropdownMenuCheckboxItem
-                    checked={regex.value}
-                    onCheckedChange={(next_checked) => {
-                      if (next_checked === true) {
-                        regex.on_change(true)
-                      }
-                    }}
+              <DropdownMenuContent align="center">
+                <DropdownMenuRadioGroup
+                  value={regex_menu_value}
+                  onValueChange={(next_value) => {
+                    regex.on_change(next_value === 'enabled')
+                  }}
+                >
+                  <DropdownMenuRadioItem
+                    value="enabled"
                   >
                     {regex.enabled_label}
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={!regex.value}
-                    onCheckedChange={(next_checked) => {
-                      if (next_checked === true) {
-                        regex.on_change(false)
-                      }
-                    }}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem
+                    value="disabled"
                   >
                     {regex.disabled_label}
-                  </DropdownMenuCheckboxItem>
-                </DropdownMenuGroup>
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -232,3 +228,4 @@ export function SearchBar<scope_value extends string = string>(
     </Card>
   )
 }
+

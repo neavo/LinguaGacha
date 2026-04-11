@@ -1,12 +1,12 @@
 import { CircleEllipsis, Recycle, Replace, Trash2 } from 'lucide-react'
 
-import { Button } from '@/ui/button'
+import { Button } from '@/shadcn/button'
 import {
   ContextMenuContent,
   ContextMenuGroup,
   ContextMenuItem,
   ContextMenuSeparator,
-} from '@/ui/context-menu'
+} from '@/shadcn/context-menu'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/ui/dropdown-menu'
+} from '@/shadcn/dropdown-menu'
 import { useI18n } from '@/i18n'
 
 type WorkbenchTableActionMenuProps = {
@@ -57,7 +57,6 @@ function WorkbenchTableActionMenuContent(props: WorkbenchTableActionMenuContentP
 
 export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): JSX.Element {
   const { t } = useI18n()
-  const menu_content_class_name = 'w-auto min-w-max'
 
   return (
     <DropdownMenu
@@ -81,7 +80,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
           <CircleEllipsis data-icon="inline-start" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className={menu_content_class_name}>
+      <DropdownMenuContent align="center">
         <WorkbenchTableActionMenuContent
           disabled={props.disabled}
           on_replace={props.on_replace}
@@ -120,4 +119,5 @@ export function WorkbenchTableContextMenuContent(props: WorkbenchTableActionMenu
     </ContextMenuContent>
   )
 }
+
 

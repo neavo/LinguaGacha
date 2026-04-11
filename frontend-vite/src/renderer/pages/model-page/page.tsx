@@ -2,7 +2,6 @@ import { AlertCircle, Check, GraduationCap, ListTodo, LoaderCircle, Plus, Rotate
 
 import { useI18n } from '@/i18n'
 import '@/pages/model-page/model-page.css'
-import '@/widgets/setting-card-row/setting-card-row.css'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { ModelCategoryCard } from '@/pages/model-page/components/model-category-card'
 import { ModelItemChip } from '@/pages/model-page/components/model-item-chip'
@@ -11,7 +10,7 @@ import { ModelBasicSettingsDialog } from '@/pages/model-page/dialogs/model-basic
 import { ModelSelectorDialog } from '@/pages/model-page/dialogs/model-selector-dialog'
 import { ModelTaskSettingsDialog } from '@/pages/model-page/dialogs/model-task-settings-dialog'
 import { useModelPageState } from '@/pages/model-page/use-model-page-state'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/alert'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shadcn/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,14 +20,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/ui/alert-dialog'
-import { Button } from '@/ui/button'
+} from '@/shadcn/alert-dialog'
+import { Button } from '@/shadcn/button'
 import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from '@/ui/dropdown-menu'
+} from '@/shadcn/dropdown-menu'
 
 type ModelPageProps = {
   is_sidebar_collapsed: boolean
@@ -199,7 +198,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                   drag_disabled={model_page_state.readonly}
                   drag_aria_label={t('workbench_page.table.drag_handle_aria')}
                   menu={(
-                    <DropdownMenuContent align="start">
+                    <DropdownMenuContent align="center">
                       <DropdownMenuGroup>
                         <DropdownMenuItem
                           onSelect={() => {
@@ -269,3 +268,4 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
     </>
   )
 }
+

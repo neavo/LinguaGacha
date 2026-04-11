@@ -3,21 +3,20 @@ import { useState, type MouseEvent } from 'react'
 
 import { useI18n } from '@/i18n'
 import '@/pages/expert-settings-page/expert-settings-page.css'
-import '@/widgets/setting-card-row/setting-card-row.css'
 import { useExpertSettingsState } from '@/pages/expert-settings-page/use-expert-settings-state'
 import { PRECEDING_LINES_THRESHOLD_MAX, PRECEDING_LINES_THRESHOLD_MIN } from '@/pages/expert-settings-page/types'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/alert'
-import { Button } from '@/ui/button'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shadcn/alert'
+import { Button } from '@/shadcn/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuTrigger,
-} from '@/ui/dropdown-menu'
-import { Input } from '@/ui/input'
+} from '@/shadcn/dropdown-menu'
+import { Input } from '@/shadcn/input'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
-import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
+import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type ExpertSettingsPageProps = {
   is_sidebar_collapsed: boolean
@@ -27,6 +26,16 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
   const { t } = useI18n()
   const expert_settings_state = useExpertSettingsState()
   const [is_response_check_menu_open, set_is_response_check_menu_open] = useState<boolean>(false)
+  const boolean_segmented_options = [
+    {
+      value: 'disabled',
+      label: t('app.toggle.disabled'),
+    },
+    {
+      value: 'enabled',
+      label: t('app.toggle.enabled'),
+    },
+  ] as const
 
   function render_boolean_toggle(options: {
     title_key:
@@ -40,13 +49,18 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
     on_value_change: (next_value: boolean) => void
   }): JSX.Element {
     return (
-      <BooleanSegmentedToggle
+      <SegmentedToggle
         aria_label={t(options.title_key)}
-        value={options.value}
-        className="expert-settings-page__toggle-group"
-        item_class_name="expert-settings-page__toggle-item"
+        size="sm"
+        value={options.value ? 'enabled' : 'disabled'}
+        options={boolean_segmented_options}
+        stretch
         disabled={options.disabled}
-        on_value_change={options.on_value_change}
+        on_value_change={(next_value) => {
+          options.on_value_change(
+            next_value === 'enabled',
+          )
+        }}
       />
     )
   }
@@ -118,7 +132,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                   {t('expert_settings_page.fields.response_check_settings.button')}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" matchTriggerWidth={false}>
+              <DropdownMenuContent align="center">
                 <DropdownMenuGroup>
                   <DropdownMenuCheckboxItem
                     checked={expert_settings_state.snapshot.check_kana_residue}
@@ -257,4 +271,5 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
     </div>
   )
 }
+
 

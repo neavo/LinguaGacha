@@ -7,6 +7,7 @@ import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { GlossaryPage } from '@/pages/glossary-page/page'
 import { ModelPage } from '@/pages/model-page/page'
 import { ProjectPage } from '@/pages/project-page/page'
+import { TextPreservePage } from '@/pages/text-preserve-page/page'
 import {
   TextReplacementPage,
 } from '@/pages/text-replacement-page/page'
@@ -85,10 +86,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     summary_key: 'glossary_page.summary',
   },
   'text-preserve': {
-    component: create_debug_panel_screen({
-      title_key: 'text_preserve_page.title',
-      summary_key: 'text_preserve_page.summary',
-    }),
+    component: TextPreservePage,
     title_key: 'text_preserve_page.title',
     summary_key: 'text_preserve_page.summary',
   },
