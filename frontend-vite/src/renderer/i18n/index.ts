@@ -2,8 +2,10 @@ import {
   Fragment,
   createContext,
   createElement,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
@@ -216,20 +218,30 @@ export function LocaleProvider({ children }: { children: ReactNode }): ReactNode
     document.documentElement.setAttribute('data-locale', locale)
   }, [locale])
 
-  const context_value: LocaleContextValue = {
-    locale,
-    set_locale: set_locale_state,
-    toggle_locale: () => {
-      set_locale_state((previous_locale) => {
-        if (previous_locale === 'zh-CN') {
-          return 'en-US'
-        } else {
-          return 'zh-CN'
-        }
-      })
-    },
-    t: (key) => read_message_value(message_map, key),
-  }
+  const toggle_locale = useCallback((): void => {
+    set_locale_state((previous_locale) => {
+      if (previous_locale === 'zh-CN') {
+        return 'en-US'
+      } else {
+        return 'zh-CN'
+      }
+    })
+  }, [])
+
+  const t = useCallback((key: LocaleKey): string => {
+    return read_message_value(message_map, key)
+  }, [message_map])
+
+  // Why: 文案函数会进入很多页面级 callback/effect 的依赖数组，
+  // 这里必须稳定引用，避免页面在静置时持续重复刷新。
+  const context_value = useMemo<LocaleContextValue>(() => {
+    return {
+      locale,
+      set_locale: set_locale_state,
+      toggle_locale,
+      t,
+    }
+  }, [locale, t, toggle_locale])
 
   return createElement(LocaleContext.Provider, { value: context_value }, children)
 }

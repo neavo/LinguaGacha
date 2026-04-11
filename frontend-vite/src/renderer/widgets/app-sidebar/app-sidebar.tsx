@@ -1,5 +1,4 @@
 import { ChevronDown } from 'lucide-react'
-import { startTransition } from 'react'
 
 import type { BottomAction, BottomActionId, NavigationGroup, RouteId } from '@/app/navigation/types'
 import {
@@ -76,14 +75,12 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                       disabled={is_disabled}
                       tooltip={t(item.title_key)}
                       onClick={() => {
-                        startTransition(() => {
-                          if (has_children) {
-                            props.on_toggle_group(item.id)
-                            props.on_select_route(item.id)
-                          } else {
-                            props.on_select_route(item.id)
-                          }
-                        })
+                        if (has_children) {
+                          props.on_toggle_group(item.id)
+                          props.on_select_route(item.id)
+                        } else {
+                          props.on_select_route(item.id)
+                        }
                       }}
                       aria-label={t(item.title_key)}
                     >
@@ -119,9 +116,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                                   <button
                                     disabled={is_child_disabled}
                                     onClick={() => {
-                                      startTransition(() => {
-                                        props.on_select_route(child.id)
-                                      })
+                                      props.on_select_route(child.id)
                                     }}
                                     aria-label={t(child.title_key)}
                                     tabIndex={is_subitems_open ? 0 : -1}
@@ -165,9 +160,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                   tooltip={t(action.label_key)}
                   aria-label={t(action.label_key)}
                   onClick={() => {
-                    startTransition(() => {
-                      props.on_bottom_action(action.id)
-                    })
+                    props.on_bottom_action(action.id)
                   }}
                 >
                   <ActionIcon size={16} />

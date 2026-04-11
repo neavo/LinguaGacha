@@ -18,7 +18,6 @@ export const zh_cn_project_page = {
     empty: '没有有效数据 …',
     ready_status: '项目已就绪',
     loading_toast: '正在加载工程，请稍候',
-    preview_loading: '正在读取项目预览…',
     preview_unavailable: '当前无法读取这个工程的预览信息，请重新选择 .lg 文件。',
     action: '打开工程',
     remove_recent_project: '移除最近使用记录',

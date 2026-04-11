@@ -1,0 +1,440 @@
+.glossary-page {
+  --glossary-page-gap: 12px;
+  display: flex;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.glossary-page__search-card {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.glossary-page__search-card-content {
+  padding: 12px;
+}
+
+.glossary-page__search-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.glossary-page__search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.glossary-page__search-input-group {
+  flex: 1;
+}
+
+.glossary-page__search-input {
+  min-width: 0;
+}
+
+.glossary-page__search-input-addon {
+  gap: 0;
+}
+
+.glossary-page__search-clear-button {
+  color: var(--muted-foreground);
+}
+
+.glossary-page__search-clear-button:hover {
+  color: var(--foreground);
+}
+
+.glossary-page__search-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.glossary-page__search-action-trigger {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 76px;
+  padding-inline-end: calc(var(--ui-toolbar-button-padding-x) + 4px);
+}
+
+.glossary-page__search-action-trigger[data-active='true']::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 84%, white 16%);
+}
+
+.glossary-page__search-status {
+  margin: 0;
+  padding-inline: 4px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.glossary-page__search-status[data-state='invalid'] {
+  color: var(--destructive);
+}
+
+@media (max-width: 1200px) {
+  .glossary-page__search-bar {
+    flex-wrap: wrap;
+  }
+
+  .glossary-page__search-input-group {
+    min-width: min(100%, 360px);
+  }
+
+  .glossary-page__search-actions {
+    order: 2;
+  }
+}
+
+.glossary-page__table-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.glossary-page__toggle-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.glossary-page__toggle-tooltip {
+  max-width: 320px;
+}
+
+.glossary-page__toggle-tooltip-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.glossary-page__toggle-tooltip-copy p {
+  margin: 0;
+}
+
+.glossary-page__toggle-tooltip-title {
+  white-space: nowrap;
+}
+
+.glossary-page__dialog-shell {
+  padding: 0;
+  background: var(--popover);
+}
+
+.glossary-page__dialog-shell [data-slot='dialog-footer'] {
+  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
+}
+
+.glossary-page__preset-dialog-shell {
+  padding: 0;
+}
+
+.glossary-page__preset-dialog-body {
+  padding: 0 24px 12px;
+}
+
+.glossary-page__preset-dialog-footer {
+  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
+}
+
+.glossary-page__preset-dialog-button {
+  min-width: 112px;
+}
+
+.glossary-page__dialog-scroll {
+  min-height: 0;
+  max-height: calc(100vh - 220px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+
+.glossary-page__dialog-form {
+  display: grid;
+  min-height: min(600px, calc(100vh - 320px));
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.glossary-page__dialog-main-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+}
+
+.glossary-page__dialog-main-panel-content {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-rows: repeat(3, minmax(132px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.glossary-page__dialog-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.glossary-page__dialog-section-title {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.glossary-page__dialog-editor {
+  height: 100%;
+  background: var(--popover);
+  resize: none;
+}
+
+.glossary-page__dialog-rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  justify-self: start;
+  gap: 16px;
+  width: min(100%, 336px);
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 12px;
+}
+
+.glossary-page__dialog-rule-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.glossary-page__dialog-rule-badge {
+  width: 22px;
+  height: 22px;
+}
+
+.glossary-page__dialog-rule-badge svg {
+  width: 13px;
+  height: 13px;
+}
+
+.glossary-page__dialog-rule-title {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--foreground);
+}
+
+@media (max-width: 900px) {
+  .glossary-page__dialog-form {
+    min-height: auto;
+  }
+
+  .glossary-page__dialog-main-panel-content {
+    grid-template-rows: repeat(3, minmax(116px, auto));
+  }
+
+  .glossary-page__dialog-rule-item {
+    width: 100%;
+  }
+}
+
+.glossary-page__table-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.glossary-page__table-card-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+}
+
+.glossary-page__table-source-head,
+.glossary-page__table-source-cell,
+.glossary-page__table-translation-head,
+.glossary-page__table-translation-cell,
+.glossary-page__table-description-head,
+.glossary-page__table-description-cell {
+  text-align: left;
+}
+
+.glossary-page__table-drag-head,
+.glossary-page__table-drag-cell,
+.glossary-page__table-rule-head,
+.glossary-page__table-rule-cell,
+.glossary-page__table-statistics-head,
+.glossary-page__table-statistics-cell {
+  text-align: center;
+}
+
+.glossary-page__table-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glossary-page__row-utility {
+  display: grid;
+  grid-template-columns: 10px 3ch;
+  align-items: center;
+  justify-content: center;
+  column-gap: 2px;
+  width: max-content;
+  min-height: 18px;
+  margin: 0 auto;
+  padding: 0 4px 0 3px;
+  border-radius: 999px;
+  background: transparent;
+  cursor: grab;
+  user-select: none;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.glossary-page__row-utility[data-drag-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.glossary-page__row-utility:active {
+  cursor: grabbing;
+}
+
+.glossary-page__row-utility[data-drag-disabled='true']:active {
+  cursor: not-allowed;
+}
+
+.glossary-page__row-index {
+  justify-self: start;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--muted-foreground);
+  opacity: 0.56;
+  transition:
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.glossary-page__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  color: var(--muted-foreground);
+  opacity: 0.52;
+  transition:
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.glossary-page__drag-handle svg {
+  width: 10px;
+  height: 10px;
+}
+
+.glossary-page__rule-badge-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glossary-page__rule-badge {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
+  font-size: 10px;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.glossary-page__rule-badge svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.9;
+}
+
+.glossary-page__rule-badge[data-state='active'] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.glossary-page__statistics-badge-wrap,
+.glossary-page__statistics-badge-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glossary-page__statistics-badge-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.glossary-page__statistics-badge {
+  min-width: 32px;
+  justify-content: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  transition:
+    transform 180ms ease,
+    filter 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.glossary-page__statistics-badge--running {
+  padding-inline: 7px;
+}
+
+.glossary-page__statistics-badge-button:hover .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button:focus-visible .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button[data-state='open'] .glossary-page__statistics-badge {
+  transform: translateY(-1px);
+  filter: saturate(1.08);
+}
+

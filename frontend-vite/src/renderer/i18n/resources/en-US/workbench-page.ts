@@ -76,10 +76,4 @@ export const en_us_workbench_page = {
       confirm: 'Close Project',
     },
   },
-  empty: {
-    title: 'Project Not Loaded',
-    description: 'Load a project before managing files, generating translation output, or closing the project.',
-    loaded_title: 'No Files Imported Yet',
-    loaded_description: 'Add files from the command bar below and the sortable workbench list will appear here.',
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>

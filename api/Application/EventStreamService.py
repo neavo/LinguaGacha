@@ -79,8 +79,9 @@ class EventStreamService:
                 except Empty:
                     handler.wfile.write(self.KEEPALIVE_BYTES)
                 handler.wfile.flush()
-        except BrokenPipeError, ConnectionResetError:
-            # 客户端主动断开是预期行为，无需额外记录噪音日志。
+        except BrokenPipeError, ConnectionResetError, ConnectionAbortedError:
+            # 浏览器刷新、标签页关闭或 Windows 10053/10054 断连都属于预期收尾，
+            # 这里直接吞掉，避免把正常的 SSE 断线放大成控制台 traceback。
             pass
         finally:
             self.remove_subscriber(subscriber)

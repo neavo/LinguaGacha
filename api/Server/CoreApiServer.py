@@ -21,6 +21,11 @@ class CoreApiServer:
     ACCESS_CONTROL_ALLOW_ORIGIN: str = "*"
     ACCESS_CONTROL_ALLOW_METHODS: str = "GET,POST,OPTIONS"
     ACCESS_CONTROL_ALLOW_HEADERS: str = "Content-Type"
+    EXPECTED_CLIENT_DISCONNECT_ERRORS: tuple[type[OSError], ...] = (
+        BrokenPipeError,
+        ConnectionResetError,
+        ConnectionAbortedError,
+    )
 
     @dataclass(frozen=True)
     class RouteDefinition:
@@ -75,22 +80,30 @@ class CoreApiServer:
         """把标准库 HTTP 请求转换为统一 API 响应。"""
 
         if method == "OPTIONS":
-            self.write_empty_response(handler, status_code=204)
+            try:
+                self.write_empty_response(handler, status_code=204)
+            except OSError as e:
+                if not self.is_expected_client_disconnect_error(e):
+                    raise
             return
 
         route_definition = self.route_map.get((method, handler.path))
         if route_definition is None:
-            self.write_json(
-                handler,
-                status_code=404,
-                response=ApiResponse(
-                    ok=False,
-                    error=ApiError(
-                        code="not_found",
-                        message=f"Route not found: {method} {handler.path}",
-                    ).__dict__,
-                ),
-            )
+            try:
+                self.write_json(
+                    handler,
+                    status_code=404,
+                    response=ApiResponse(
+                        ok=False,
+                        error=ApiError(
+                            code="not_found",
+                            message=f"Route not found: {method} {handler.path}",
+                        ).__dict__,
+                    ),
+                )
+            except OSError as e:
+                if not self.is_expected_client_disconnect_error(e):
+                    raise
             return
 
         if route_definition.mode == "stream":
@@ -107,6 +120,11 @@ class CoreApiServer:
                     response=response,
                 )
             except Exception as e:
+                if isinstance(e, OSError) and self.is_expected_client_disconnect_error(
+                    e
+                ):
+                    return
+
                 error_code = "internal_error"
                 status_code = 500
                 if isinstance(e, FileNotFoundError):
@@ -116,14 +134,18 @@ class CoreApiServer:
                     error_code = "invalid_request"
                     status_code = 400
 
-                self.write_json(
-                    handler,
-                    status_code=status_code,
-                    response=ApiResponse(
-                        ok=False,
-                        error=ApiError(code=error_code, message=str(e)).__dict__,
-                    ),
-                )
+                try:
+                    self.write_json(
+                        handler,
+                        status_code=status_code,
+                        response=ApiResponse(
+                            ok=False,
+                            error=ApiError(code=error_code, message=str(e)).__dict__,
+                        ),
+                    )
+                except OSError as write_error:
+                    if not self.is_expected_client_disconnect_error(write_error):
+                        raise
 
     def handle_health(self) -> ApiResponse:
         """最小健康检查接口，用于验证服务已启动并可响应 JSON。"""
@@ -154,6 +176,11 @@ class CoreApiServer:
         """SSE 长连接需要直接接触原始 handler，因此单独登记。"""
 
         self.route_map[("GET", path)] = self.RouteDefinition("stream", handler)
+
+    def is_expected_client_disconnect_error(self, error: OSError) -> bool:
+        """把浏览器刷新导致的本地 socket 断开统一视为预期收尾。"""
+
+        return isinstance(error, self.EXPECTED_CLIENT_DISCONNECT_ERRORS)
 
     def write_json(
         self,

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { useAppNavigation } from '@/app/navigation/navigation-context'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import '@/pages/debug-panel-page/debug-panel-page.css'
@@ -70,6 +71,7 @@ function resolve_progress_inline_title(progress_percent: number, t: (key: Locale
 
 export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
   const { t } = useI18n()
+  const { proofreading_lookup_intent } = useAppNavigation()
   const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } = useDesktopToast()
   const [progress_percent, set_progress_percent] = useState<number>(35)
   const [is_progress_indeterminate, set_is_progress_indeterminate] = useState<boolean>(false)
@@ -318,6 +320,16 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
                   <code>{props.summary_key}</code>
                 </dd>
               </div>
+              {props.title_key === 'proofreading_page.title' && proofreading_lookup_intent !== null
+                ? (
+                    <div className="debug-panel-page__meta-row">
+                      <dt>{t('debug_panel_page.shell.proofreading_lookup_intent_label')}</dt>
+                      <dd>
+                        <code>{JSON.stringify(proofreading_lookup_intent)}</code>
+                      </dd>
+                    </div>
+                  )
+                : null}
             </dl>
           </CardContent>
         </Card>

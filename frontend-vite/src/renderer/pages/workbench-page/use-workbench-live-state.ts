@@ -20,10 +20,6 @@ type WorkbenchSnapshotPayload = {
   }
 }
 
-type WorkbenchExtensionsPayload = {
-  extensions?: string[]
-}
-
 const ACTIVE_TRANSLATION_STATUSES: ReadonlySet<WorkbenchTaskStatus> = new Set([
   'TRANSLATING',
   'STOPPING',
@@ -172,13 +168,11 @@ type UseWorkbenchLiveStateResult = {
   stats: WorkbenchStats
   entries: WorkbenchFileEntry[]
   selected_entry_id: string | null
-  project_loaded: boolean
   readonly: boolean
   can_edit_files: boolean
   can_export_translation: boolean
   can_close_project: boolean
   dialog_state: WorkbenchDialogState
-  supported_extensions: string[]
   select_entry: (entry_id: string) => void
   request_add_file: () => Promise<void>
   request_export_translation: () => void
@@ -202,7 +196,6 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   } = useDesktopRuntime()
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT)
   const [entries, set_entries] = useState<WorkbenchFileEntry[]>([])
-  const [supported_extensions, set_supported_extensions] = useState<string[]>([])
   const [selected_entry_id, set_selected_entry_id] = useState<string | null>(null)
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state())
   const [is_mutation_running, set_is_mutation_running] = useState(false)
@@ -223,20 +216,6 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     return next_snapshot
   }, [project_snapshot.loaded])
 
-  const refresh_supported_extensions = useCallback(async (): Promise<void> => {
-    if (!project_snapshot.loaded) {
-      set_supported_extensions([])
-      return
-    }
-
-    const payload = await api_fetch<WorkbenchExtensionsPayload>('/api/workbench/extensions', {})
-    if (Array.isArray(payload.extensions)) {
-      set_supported_extensions(payload.extensions.map((extension) => String(extension)))
-    } else {
-      set_supported_extensions([])
-    }
-  }, [project_snapshot.loaded])
-
   useEffect(() => {
     let cancelled = false
 
@@ -244,17 +223,13 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       if (!project_snapshot.loaded) {
         set_snapshot(EMPTY_SNAPSHOT)
         set_entries([])
-        set_supported_extensions([])
         set_selected_entry_id(null)
         set_dialog_state(close_dialog_state())
         return
       }
 
       try {
-        const [next_snapshot] = await Promise.all([
-          refresh_snapshot(),
-          refresh_supported_extensions(),
-        ])
+        const next_snapshot = await refresh_snapshot()
         if (cancelled) {
           return
         }
@@ -266,7 +241,6 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
         if (!cancelled) {
           set_snapshot(EMPTY_SNAPSHOT)
           set_entries([])
-          set_supported_extensions([])
           set_selected_entry_id(null)
         }
       }
@@ -277,7 +251,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     return () => {
       cancelled = true
     }
-  }, [project_snapshot.loaded, refresh_snapshot, refresh_supported_extensions])
+  }, [project_snapshot.loaded, refresh_snapshot])
 
   useEffect(() => {
     const previous_status = previous_task_status_ref.current
@@ -524,13 +498,11 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     stats,
     entries,
     selected_entry_id,
-    project_loaded: project_snapshot.loaded,
     readonly,
     can_edit_files,
     can_export_translation,
     can_close_project,
     dialog_state,
-    supported_extensions,
     select_entry,
     request_add_file,
     request_export_translation,

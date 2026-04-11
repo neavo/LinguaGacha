@@ -39,16 +39,16 @@ function WorkbenchTableActionMenuContent(props: WorkbenchTableActionMenuContentP
   return (
     <DropdownMenuGroup>
       <DropdownMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_replace}>
-        <Replace />
+        <Replace data-icon="inline-start" />
         {t('workbench_page.action.replace')}
       </DropdownMenuItem>
       <DropdownMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_reset}>
-        <Recycle />
+        <Recycle data-icon="inline-start" />
         {t('workbench_page.action.reset')}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem className={menu_item_class_name} disabled={props.disabled} variant="destructive" onClick={props.on_delete}>
-        <Trash2 />
+        <Trash2 data-icon="inline-start" />
         {t('workbench_page.action.delete')}
       </DropdownMenuItem>
     </DropdownMenuGroup>
@@ -76,8 +76,9 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
           disabled={props.disabled}
           className="workbench-page__row-action"
           aria-label={t('workbench_page.table.open_actions')}
+          data-workbench-ignore-row-click="true"
         >
-          <CircleEllipsis />
+          <CircleEllipsis data-icon="inline-start" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className={menu_content_class_name}>
@@ -101,18 +102,18 @@ export function WorkbenchTableContextMenuContent(props: WorkbenchTableActionMenu
     <ContextMenuContent className={menu_content_class_name}>
       <ContextMenuGroup>
         <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_replace}>
-          <Replace />
+          <Replace data-icon="inline-start" />
           {t('workbench_page.action.replace')}
         </ContextMenuItem>
         <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_reset}>
-          <Recycle />
+          <Recycle data-icon="inline-start" />
           {t('workbench_page.action.reset')}
         </ContextMenuItem>
       </ContextMenuGroup>
       <ContextMenuSeparator />
       <ContextMenuGroup>
         <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} variant="destructive" onClick={props.on_delete}>
-          <Trash2 />
+          <Trash2 data-icon="inline-start" />
           {t('workbench_page.action.delete')}
         </ContextMenuItem>
       </ContextMenuGroup>

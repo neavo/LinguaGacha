@@ -1,0 +1,297 @@
+.app-table {
+  --app-table-header-bg: color-mix(in srgb, var(--ui-card-default-surface) 88%, var(--ui-card-table-surface) 12%);
+  --app-table-header-border: color-mix(in srgb, var(--ui-card-default-border) 82%, var(--border) 18%);
+  --app-table-header-divider: color-mix(in srgb, var(--ui-table-divider) 86%, var(--border) 14%);
+  --app-table-column-divider: color-mix(in srgb, var(--ui-table-divider-soft) 74%, transparent);
+  --app-table-zebra: color-mix(in srgb, var(--accent) 30%, transparent);
+  --app-table-hover: color-mix(in srgb, var(--ui-table-hover) 92%, var(--accent) 8%);
+  --app-table-selected: color-mix(in srgb, var(--ui-table-selected) 94%, var(--accent) 6%);
+  --app-table-selection-rail: color-mix(in srgb, var(--primary) 70%, white 30%);
+  --app-table-selection-box: color-mix(in srgb, var(--primary) 18%, transparent);
+  --app-table-state-inset: 1px;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.dark .app-table {
+  --app-table-header-bg: color-mix(in srgb, var(--ui-card-default-surface) 82%, var(--ui-card-table-surface) 18%);
+  --app-table-header-border: color-mix(in srgb, var(--ui-card-default-border) 86%, white 14%);
+  --app-table-header-divider: color-mix(in srgb, var(--ui-table-divider) 78%, white 2%);
+  --app-table-column-divider: color-mix(in srgb, var(--ui-table-divider-soft) 88%, white 4%);
+  --app-table-zebra: color-mix(in srgb, white 5%, transparent);
+  --app-table-hover: color-mix(in srgb, var(--ui-table-hover) 88%, white 12%);
+  --app-table-selected: color-mix(in srgb, var(--ui-table-selected) 82%, white 18%);
+  --app-table-selection-rail: color-mix(in srgb, var(--primary) 76%, white 24%);
+  --app-table-selection-box: color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.app-table__head-wrap {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: var(--ui-radius-card) var(--ui-radius-card) 0 0;
+  background: var(--app-table-header-bg);
+  box-shadow: var(--ui-card-default-shadow);
+}
+
+.app-table__head-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--app-table-header-border);
+  border-bottom-color: var(--app-table-header-divider);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.app-table__scroll-host {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-table__scroll {
+  min-height: 0;
+  flex: 1;
+}
+
+.app-table__scroll [data-slot='scroll-area-viewport'] {
+  min-height: 100%;
+}
+
+.app-table__table {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  --table-row-height-current: 36px;
+  --table-header-bg-current: var(--app-table-header-bg);
+  --table-hover-current: var(--app-table-hover);
+  --table-selected-current: var(--app-table-selected);
+}
+
+.app-table__table [data-slot='table-container'] {
+  overflow: hidden;
+}
+
+.app-table__head [data-slot='table-head'] {
+  height: 42px;
+  color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground) 10%);
+  text-align: center;
+  background: transparent;
+}
+
+.app-table__head [data-slot='table-row'],
+.app-table__head [data-slot='table-row']:hover {
+  background: transparent;
+}
+
+.app-table__head-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 20px;
+  padding-inline: 22px;
+}
+
+.app-table__head-content--compact {
+  padding-inline: 0;
+}
+
+.app-table__head-label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.app-table__head-action {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: inline-flex;
+  transform: translateY(-50%);
+}
+
+.app-table__sort-trigger {
+  opacity: 0.24;
+  transition:
+    opacity 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.app-table__head [data-slot='table-head']:hover .app-table__sort-trigger,
+.app-table__sort-trigger[data-active='true'] {
+  opacity: 1;
+}
+
+.app-table__sort-trigger[data-active='true'] {
+  transform: translateY(-1px);
+}
+
+.app-table__sort-trigger[data-direction='ascending'],
+.app-table__sort-trigger[data-direction='descending'] {
+  color: var(--foreground);
+}
+
+.app-table__sort-trigger:disabled {
+  opacity: 0.16;
+  transform: none;
+}
+
+.app-table__table [data-slot='table-cell'] {
+  padding-block: 0;
+}
+
+.app-table__head-cell,
+.app-table__body-cell {
+  position: relative;
+}
+
+.app-table__head-cell[data-divider='true']::after,
+.app-table__body-cell[data-divider='true']::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 0;
+  bottom: 8px;
+  width: 1px;
+  background: var(--app-table-column-divider);
+  pointer-events: none;
+}
+
+.app-table__head-cell[data-align='left'],
+.app-table__body-cell[data-align='left'] {
+  text-align: left;
+}
+
+.app-table__head-cell[data-align='center'],
+.app-table__body-cell[data-align='center'] {
+  text-align: center;
+}
+
+.app-table__head-cell[data-align='right'],
+.app-table__body-cell[data-align='right'] {
+  text-align: right;
+}
+
+.app-table__row {
+  position: relative;
+}
+
+.app-table__spacer-row {
+  height: 0;
+  border-bottom: 0;
+  pointer-events: none;
+}
+
+.app-table__placeholder-row {
+  pointer-events: none;
+  user-select: none;
+}
+
+.app-table__spacer-cell {
+  height: 0;
+  padding: 0;
+  padding-inline: 0;
+  border-bottom: 0;
+  background: transparent;
+  font-size: 0;
+  line-height: 0;
+  vertical-align: top;
+  color: transparent;
+}
+
+.app-table__spacer-fill {
+  display: block;
+  width: 100%;
+}
+
+.app-table__placeholder-cell {
+  color: transparent;
+}
+
+.app-table__placeholder-content {
+  visibility: hidden;
+}
+
+.app-table__table--body [data-slot='table-body'] > .app-table__row:not(.app-table__spacer-row) > [data-slot='table-cell'] {
+  --app-table-cell-base: transparent;
+  --app-table-cell-state: transparent;
+  background:
+    linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent var(--app-table-state-inset),
+      var(--app-table-cell-state) var(--app-table-state-inset),
+      var(--app-table-cell-state) calc(100% - var(--app-table-state-inset)),
+      transparent calc(100% - var(--app-table-state-inset)),
+      transparent 100%
+    ),
+    var(--app-table-cell-base);
+}
+
+.app-table__table--body [data-slot='table-body'] > .app-table__row[data-zebra='even'] > [data-slot='table-cell'] {
+  --app-table-cell-base: var(--app-table-zebra);
+}
+
+.app-table__table--body [data-slot='table-body'] > .app-table__row:hover > [data-slot='table-cell'] {
+  --app-table-cell-state: var(--table-hover-current);
+}
+
+.app-table__table--body [data-slot='table-body'] > .app-table__row[data-state='selected'] > [data-slot='table-cell'],
+.app-table__table--body [data-slot='table-body'] > .app-table__row[data-dragging='true'] > [data-slot='table-cell'] {
+  --app-table-cell-state: var(--table-selected-current);
+}
+
+.app-table__table--body [data-slot='table-body'] > .app-table__row > .app-table__drag-cell::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 0;
+  bottom: 7px;
+  width: var(--ui-selection-rail-width);
+  border-radius: 999px;
+  background: var(--app-table-selection-rail);
+  opacity: 0;
+  transform: scaleY(0.4);
+  transform-origin: center;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.app-table__table--body [data-slot='table-body'] > .app-table__row[data-state='selected'] > .app-table__drag-cell::before,
+.app-table__table--body [data-slot='table-body'] > .app-table__row[data-dragging='true'] > .app-table__drag-cell::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.app-table__selection-box {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--primary);
+  background: var(--app-table-selection-box);
+  pointer-events: none;
+}
+
+.app-table__drag-overlay {
+  overflow: hidden;
+  border-radius: var(--ui-radius-card);
+  box-shadow: var(--ui-card-default-shadow);
+}
+
+.app-table__table--overlay {
+  --table-hover-current: var(--app-table-selected);
+  --table-selected-current: var(--app-table-selected);
+}

@@ -1,8 +1,11 @@
 import { FileInput, FilePlus2, SquarePower, type LucideIcon } from 'lucide-react'
 
-import { ActionBar, ActionBarSeparator } from '@/ui/action-bar'
 import { Button } from '@/ui/button'
 import { useI18n, type LocaleKey } from '@/i18n'
+import {
+  CommandBar,
+  CommandBarSeparator,
+} from '@/widgets/command-bar/command-bar'
 
 type WorkbenchCommandBarProps = {
   can_edit_files: boolean
@@ -48,7 +51,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   ]
 
   return (
-    <ActionBar
+    <CommandBar
       title={t('workbench_page.section.command_bar')}
       description={t('workbench_page.command.description')}
       actions={
@@ -58,7 +61,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
 
             return (
               <div key={action.id} className="contents">
-                {index > 0 ? <ActionBarSeparator /> : null}
+                {index > 0 ? <CommandBarSeparator /> : null}
                 <Button variant="ghost" size="toolbar" disabled={action.disabled} onClick={action.on_click}>
                   <Icon data-icon="inline-start" />
                   {t(action.label_key)}

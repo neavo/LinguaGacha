@@ -16,30 +16,40 @@ import {
   DropdownMenuTrigger,
 } from '@/ui/dropdown-menu'
 import { Input } from '@/ui/input'
-import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
+import { BooleanSegmentedToggle } from '@/widgets/boolean-segmented-toggle/boolean-segmented-toggle'
 
 type ExpertSettingsPageProps = {
   is_sidebar_collapsed: boolean
-}
-
-const BOOLEAN_TOGGLE_VALUE = {
-  DISABLED: 'disabled',
-  ENABLED: 'enabled',
-} as const
-
-function resolve_boolean_toggle_value(current_value: boolean): string {
-  if (current_value) {
-    return BOOLEAN_TOGGLE_VALUE.ENABLED
-  } else {
-    return BOOLEAN_TOGGLE_VALUE.DISABLED
-  }
 }
 
 export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element {
   const { t } = useI18n()
   const expert_settings_state = useExpertSettingsState()
   const [is_response_check_menu_open, set_is_response_check_menu_open] = useState<boolean>(false)
+
+  function render_boolean_toggle(options: {
+    title_key:
+      | 'expert_settings_page.fields.clean_ruby.title'
+      | 'expert_settings_page.fields.deduplication_in_trans.title'
+      | 'expert_settings_page.fields.deduplication_in_bilingual.title'
+      | 'expert_settings_page.fields.write_translated_name_fields_to_file.title'
+      | 'expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title'
+    value: boolean
+    disabled: boolean
+    on_value_change: (next_value: boolean) => void
+  }): JSX.Element {
+    return (
+      <BooleanSegmentedToggle
+        aria_label={t(options.title_key)}
+        value={options.value}
+        className="expert-settings-page__toggle-group"
+        item_class_name="expert-settings-page__toggle-item"
+        disabled={options.disabled}
+        on_value_change={options.on_value_change}
+      />
+    )
+  }
 
   async function handle_response_check_menu_button_click(event: MouseEvent<HTMLButtonElement>): Promise<void> {
     event.preventDefault()
@@ -173,34 +183,14 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
           title={t('expert_settings_page.fields.clean_ruby.title')}
           description={t('expert_settings_page.fields.clean_ruby.description')}
           action={(
-            <ToggleGroup
-              type="single"
-              variant="segmented"
-              className="expert-settings-page__toggle-group"
-              aria-label={t('expert_settings_page.fields.clean_ruby.title')}
-              value={resolve_boolean_toggle_value(expert_settings_state.snapshot.clean_ruby)}
-              disabled={expert_settings_state.pending_state.clean_ruby}
-              onValueChange={(next_value) => {
-                if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                  void expert_settings_state.update_clean_ruby(false)
-                } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                  void expert_settings_state.update_clean_ruby(true)
-                }
-              }}
-            >
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-              >
-                {t('app.toggle.disabled')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-              >
-                {t('app.toggle.enabled')}
-              </ToggleGroupItem>
-            </ToggleGroup>
+            render_boolean_toggle({
+              title_key: 'expert_settings_page.fields.clean_ruby.title',
+              value: expert_settings_state.snapshot.clean_ruby,
+              disabled: expert_settings_state.pending_state.clean_ruby,
+              on_value_change: (next_value) => {
+                void expert_settings_state.update_clean_ruby(next_value)
+              },
+            })
           )}
         />
 
@@ -208,34 +198,14 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
           title={t('expert_settings_page.fields.deduplication_in_trans.title')}
           description={t('expert_settings_page.fields.deduplication_in_trans.description')}
           action={(
-            <ToggleGroup
-              type="single"
-              variant="segmented"
-              className="expert-settings-page__toggle-group"
-              aria-label={t('expert_settings_page.fields.deduplication_in_trans.title')}
-              value={resolve_boolean_toggle_value(expert_settings_state.snapshot.deduplication_in_trans)}
-              disabled={expert_settings_state.pending_state.deduplication_in_trans}
-              onValueChange={(next_value) => {
-                if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                  void expert_settings_state.update_deduplication_in_trans(false)
-                } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                  void expert_settings_state.update_deduplication_in_trans(true)
-                }
-              }}
-            >
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-              >
-                {t('app.toggle.disabled')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-              >
-                {t('app.toggle.enabled')}
-              </ToggleGroupItem>
-            </ToggleGroup>
+            render_boolean_toggle({
+              title_key: 'expert_settings_page.fields.deduplication_in_trans.title',
+              value: expert_settings_state.snapshot.deduplication_in_trans,
+              disabled: expert_settings_state.pending_state.deduplication_in_trans,
+              on_value_change: (next_value) => {
+                void expert_settings_state.update_deduplication_in_trans(next_value)
+              },
+            })
           )}
         />
 
@@ -243,34 +213,14 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
           title={t('expert_settings_page.fields.deduplication_in_bilingual.title')}
           description={t('expert_settings_page.fields.deduplication_in_bilingual.description')}
           action={(
-            <ToggleGroup
-              type="single"
-              variant="segmented"
-              className="expert-settings-page__toggle-group"
-              aria-label={t('expert_settings_page.fields.deduplication_in_bilingual.title')}
-              value={resolve_boolean_toggle_value(expert_settings_state.snapshot.deduplication_in_bilingual)}
-              disabled={expert_settings_state.pending_state.deduplication_in_bilingual}
-              onValueChange={(next_value) => {
-                if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                  void expert_settings_state.update_deduplication_in_bilingual(false)
-                } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                  void expert_settings_state.update_deduplication_in_bilingual(true)
-                }
-              }}
-            >
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-              >
-                {t('app.toggle.disabled')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-              >
-                {t('app.toggle.enabled')}
-              </ToggleGroupItem>
-            </ToggleGroup>
+            render_boolean_toggle({
+              title_key: 'expert_settings_page.fields.deduplication_in_bilingual.title',
+              value: expert_settings_state.snapshot.deduplication_in_bilingual,
+              disabled: expert_settings_state.pending_state.deduplication_in_bilingual,
+              on_value_change: (next_value) => {
+                void expert_settings_state.update_deduplication_in_bilingual(next_value)
+              },
+            })
           )}
         />
 
@@ -278,34 +228,14 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
           title={t('expert_settings_page.fields.write_translated_name_fields_to_file.title')}
           description={t('expert_settings_page.fields.write_translated_name_fields_to_file.description')}
           action={(
-            <ToggleGroup
-              type="single"
-              variant="segmented"
-              className="expert-settings-page__toggle-group"
-              aria-label={t('expert_settings_page.fields.write_translated_name_fields_to_file.title')}
-              value={resolve_boolean_toggle_value(expert_settings_state.snapshot.write_translated_name_fields_to_file)}
-              disabled={expert_settings_state.pending_state.write_translated_name_fields_to_file}
-              onValueChange={(next_value) => {
-                if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                  void expert_settings_state.update_write_translated_name_fields_to_file(false)
-                } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                  void expert_settings_state.update_write_translated_name_fields_to_file(true)
-                }
-              }}
-            >
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-              >
-                {t('app.toggle.disabled')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-              >
-                {t('app.toggle.enabled')}
-              </ToggleGroupItem>
-            </ToggleGroup>
+            render_boolean_toggle({
+              title_key: 'expert_settings_page.fields.write_translated_name_fields_to_file.title',
+              value: expert_settings_state.snapshot.write_translated_name_fields_to_file,
+              disabled: expert_settings_state.pending_state.write_translated_name_fields_to_file,
+              on_value_change: (next_value) => {
+                void expert_settings_state.update_write_translated_name_fields_to_file(next_value)
+              },
+            })
           )}
         />
 
@@ -313,34 +243,14 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
           title={t('expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title')}
           description={t('expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.description')}
           action={(
-            <ToggleGroup
-              type="single"
-              variant="segmented"
-              className="expert-settings-page__toggle-group"
-              aria-label={t('expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title')}
-              value={resolve_boolean_toggle_value(expert_settings_state.snapshot.auto_process_prefix_suffix_preserved_text)}
-              disabled={expert_settings_state.pending_state.auto_process_prefix_suffix_preserved_text}
-              onValueChange={(next_value) => {
-                if (next_value === BOOLEAN_TOGGLE_VALUE.DISABLED) {
-                  void expert_settings_state.update_auto_process_prefix_suffix_preserved_text(false)
-                } else if (next_value === BOOLEAN_TOGGLE_VALUE.ENABLED) {
-                  void expert_settings_state.update_auto_process_prefix_suffix_preserved_text(true)
-                }
-              }}
-            >
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.DISABLED}
-              >
-                {t('app.toggle.disabled')}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                className="expert-settings-page__toggle-item"
-                value={BOOLEAN_TOGGLE_VALUE.ENABLED}
-              >
-                {t('app.toggle.enabled')}
-              </ToggleGroupItem>
-            </ToggleGroup>
+            render_boolean_toggle({
+              title_key: 'expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title',
+              value: expert_settings_state.snapshot.auto_process_prefix_suffix_preserved_text,
+              disabled: expert_settings_state.pending_state.auto_process_prefix_suffix_preserved_text,
+              on_value_change: (next_value) => {
+                void expert_settings_state.update_auto_process_prefix_suffix_preserved_text(next_value)
+              },
+            })
           )}
         />
       </section>

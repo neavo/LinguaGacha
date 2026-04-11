@@ -15,8 +15,8 @@ export const zh_cn_app = {
     select_folder: '选择文件夹',
   },
   toggle: {
-    disabled: '关闭',
-    enabled: '打开',
+    disabled: '禁用',
+    enabled: '启用',
   },
   language: {
     ALL: '全部',

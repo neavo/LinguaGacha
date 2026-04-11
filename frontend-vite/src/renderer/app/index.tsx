@@ -3,6 +3,7 @@ import { ThemeProvider, useTheme } from 'next-themes'
 
 import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from '@/app/navigation/schema'
 import { SCREEN_REGISTRY } from '@/app/navigation/screen-registry'
+import { AppNavigationProvider } from '@/app/navigation/navigation-context'
 import { DesktopRuntimeProvider } from '@/app/state/desktop-runtime-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import '@/app/shell/app-shell.css'
@@ -283,7 +284,12 @@ function AppContent(): JSX.Element {
           />
 
           <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
-            <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+            <AppNavigationProvider
+              selected_route={selected_route}
+              navigate_to_route={handle_select_route}
+            >
+              <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+            </AppNavigationProvider>
           </SidebarInset>
         </section>
       </main>
