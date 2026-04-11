@@ -2,6 +2,6 @@ import { zh_cn_pre_translation_replacement_page } from '@/i18n/resources/zh-CN/p
 import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_pre_translation_replacement_page = {
-  title: 'Pre-translation Replacement',
+  title: 'Pre-translation',
   summary: 'Before translation, matched parts of the original text will be replaced by specified text, processed in top-down order',
 } satisfies LocaleMessageSchema<typeof zh_cn_pre_translation_replacement_page>

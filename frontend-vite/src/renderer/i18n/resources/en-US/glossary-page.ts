@@ -47,7 +47,6 @@ export const en_us_glossary_page = {
     clear: 'Clear',
     regex: 'Regex',
     regex_tooltip_label: 'Regex Mode',
-    invalid: 'Invalid regular expression',
     scope: {
       label: 'Scope',
       tooltip_label: 'Search Scope',

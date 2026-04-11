@@ -1,6 +1,5 @@
 export const zh_cn_text_replacement_page = {
   title: '文本替换',
-  summary: '文本替换页会统一管理译前替换与译后替换规则。',
   action: {
     create: '新增',
     edit: '编辑',
@@ -11,7 +10,6 @@ export const zh_cn_text_replacement_page = {
     export: '导出',
     statistics: '统计',
     preset: '预设',
-    more: '更多',
     query: '查询',
   },
   toggle: {
@@ -36,7 +34,6 @@ export const zh_cn_text_replacement_page = {
     clear: '清空',
     regex: '正则',
     regex_tooltip_label: '正则模式',
-    invalid: '正则表达式无效',
     scope: {
       label: '范围',
       tooltip_label: '搜索范围',
@@ -70,13 +67,6 @@ export const zh_cn_text_replacement_page = {
       rename_confirm: '重命名',
       name_placeholder: '请输入预设名称 …',
     },
-  },
-  reorder: {
-    label: '排序',
-    up: '上移',
-    down: '下移',
-    top: '置顶',
-    bottom: '置底',
   },
   statistics: {
     hit_count: '命中条目数：{COUNT}',

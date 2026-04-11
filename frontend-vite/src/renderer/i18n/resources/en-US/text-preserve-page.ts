@@ -36,7 +36,7 @@ export const en_us_text_preserve_page = {
   fields: {
     drag: 'Drag',
     rule: 'Rule',
-    note: 'Remarks (For reference only, has no actual effect)',
+    note: 'Remarks (For reference only, no actual effect)',
     statistics: 'Status',
   },
   filter: {
@@ -44,7 +44,6 @@ export const en_us_text_preserve_page = {
     clear: 'Clear',
     regex: 'Regex',
     regex_tooltip_label: 'Regex Mode',
-    invalid: 'Invalid regular expression',
     scope: {
       label: 'Scope',
       tooltip_label: 'Search Scope',

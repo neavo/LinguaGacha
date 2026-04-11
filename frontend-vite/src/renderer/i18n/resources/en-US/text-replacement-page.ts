@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_text_replacement_page = {
   title: 'Text Replacement',
-  summary: 'Manage pre-translation and post-translation replacement rules in one place.',
   action: {
     create: 'Add',
     edit: 'Edit',
@@ -14,7 +13,6 @@ export const en_us_text_replacement_page = {
     export: 'Export',
     statistics: 'Statistics',
     preset: 'Preset',
-    more: 'More',
     query: 'Query',
   },
   toggle: {
@@ -39,7 +37,6 @@ export const en_us_text_replacement_page = {
     clear: 'Clear',
     regex: 'Regex',
     regex_tooltip_label: 'Regex Mode',
-    invalid: 'Invalid regular expression',
     scope: {
       label: 'Scope',
       tooltip_label: 'Search scope',
@@ -73,13 +70,6 @@ export const en_us_text_replacement_page = {
       rename_confirm: 'Rename',
       name_placeholder: 'Enter a preset name …',
     },
-  },
-  reorder: {
-    label: 'Reorder',
-    up: 'Move Up',
-    down: 'Move Down',
-    top: 'Move To Top',
-    bottom: 'Move To Bottom',
   },
   statistics: {
     hit_count: 'Matched item count: {COUNT}',

@@ -41,7 +41,6 @@ export const zh_cn_text_preserve_page = {
     clear: '清空',
     regex: '正则',
     regex_tooltip_label: '正则模式',
-    invalid: '正则表达式无效',
     scope: {
       label: '范围',
       tooltip_label: '搜索范围',

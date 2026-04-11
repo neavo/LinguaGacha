@@ -30,7 +30,6 @@ type NavigationNode = {
   id: RouteId
   icon: LucideIcon
   title_key: LocaleKey
-  summary_key: LocaleKey
   children?: NavigationNode[]
 }
 
