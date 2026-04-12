@@ -3,7 +3,6 @@ import {
   Ban,
   CircleCheck,
   CircleMinus,
-  GripVertical,
   History,
   PencilLine,
   Recycle,
@@ -45,6 +44,7 @@ import {
   TooltipTrigger,
 } from '@/shadcn/tooltip'
 import { AppTable } from '@/widgets/app-table/app-table'
+import { AppTableDragIndicator } from '@/widgets/app-table/app-table-drag-indicator'
 import type {
   AppTableColumn,
   AppTableSelectionChange,
@@ -65,10 +65,13 @@ type ProofreadingTableProps = {
   on_request_reset_row_ids: (row_ids: string[]) => void
 }
 
+type ProofreadingStatusIconTone = 'success' | 'warning' | 'failure' | 'neutral'
+
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return target_element.closest(
     [
       '[data-proofreading-ignore-box-select="true"]',
+      '[data-app-table-ignore-box-select="true"]',
       '[data-slot="scroll-area-scrollbar"]',
       '[data-slot="scroll-area-thumb"]',
       '[data-slot="scroll-area-corner"]',
@@ -77,7 +80,12 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
 }
 
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
-  return target_element.closest('[data-proofreading-ignore-row-click="true"]') !== null
+  return target_element.closest(
+    [
+      '[data-proofreading-ignore-row-click="true"]',
+      '[data-app-table-ignore-row-click="true"]',
+    ].join(', '),
+  ) !== null
 }
 
 function resolve_context_target_row_ids(row_id: string, selected_row_ids: string[]): string[] {
@@ -112,9 +120,34 @@ function resolve_status_icon(status: string): typeof AlertCircle | null {
   return null
 }
 
+function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
+  if (status === 'PROCESSED') {
+    return 'success'
+  }
+  if (status === 'PROCESSED_IN_PAST') {
+    return 'warning'
+  }
+  if (status === 'ERROR') {
+    return 'failure'
+  }
+
+  return 'neutral'
+}
+
+function build_compact_tooltip(
+  template: string,
+  title: string,
+  content: string,
+): string {
+  return template
+    .replace('{TITLE}', title)
+    .replace('{STATE}', content)
+}
+
 function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element | null {
   const { t } = useI18n()
   const StatusIcon = resolve_status_icon(props.item.status)
+  const status_icon_tone = resolve_status_icon_tone(props.item.status)
   const warning_label = props.item.warnings
     .map((warning) => {
       const label_key = PROOFREADING_WARNING_LABEL_KEY_BY_CODE[
@@ -127,6 +160,7 @@ function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element 
     props.item.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
   ]
   const status_label = status_label_key === undefined ? props.item.status : t(status_label_key)
+  const compact_tooltip_template = t('proofreading_page.toggle.status')
 
   if (StatusIcon === null && props.item.warnings.length === 0) {
     return null
@@ -140,7 +174,10 @@ function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element 
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
-                  className="proofreading-page__status-icon"
+                  className={[
+                    'proofreading-page__status-icon',
+                    `proofreading-page__status-icon--${status_icon_tone}`,
+                  ].join(' ')}
                   data-proofreading-ignore-box-select="true"
                   data-proofreading-ignore-row-click="true"
                 >
@@ -148,9 +185,7 @@ function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element 
                 </span>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
-                <p className="whitespace-pre-line">
-                  {`${t('proofreading_page.filter.status_title')}\n${t('proofreading_page.tooltip.status_prefix')}${status_label}`}
-                </p>
+                <p>{build_compact_tooltip(compact_tooltip_template, t('proofreading_page.fields.status'), status_label)}</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -169,9 +204,7 @@ function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element 
                 </span>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
-                <p className="whitespace-pre-line">
-                  {`${t('proofreading_page.result_check_title')}\n${t('proofreading_page.tooltip.status_prefix')}${warning_label}`}
-                </p>
+                <p>{build_compact_tooltip(compact_tooltip_template, t('proofreading_page.tooltip.warning_title'), warning_label)}</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -189,28 +222,17 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         width: 64,
         align: 'center',
         title: t('proofreading_page.fields.drag'),
-        aria_label: t('proofreading_page.fields.drag'),
         head_class_name: 'proofreading-page__table-drag-head',
         cell_class_name: 'proofreading-page__table-drag-cell',
         render_cell: (payload) => {
-          const utility = (
-            <div
-              className="proofreading-page__row-utility"
-              data-drag-disabled="true"
-              data-proofreading-ignore-box-select="true"
-              data-proofreading-ignore-row-click="true"
-            >
-              <span className="proofreading-page__drag-handle" aria-hidden="true">
-                <GripVertical />
-              </span>
-              <span className="proofreading-page__row-index">
-                {build_row_number_label(payload.row_index)}
-              </span>
-            </div>
-          )
-
           return (
-            utility
+            <AppTableDragIndicator
+              row_number={build_row_number_label(payload.row_index)}
+              can_drag={payload.can_drag}
+              dragging={payload.dragging}
+              drag_handle={payload.drag_handle}
+              show_tooltip={payload.presentation !== 'overlay'}
+            />
           )
         },
       },

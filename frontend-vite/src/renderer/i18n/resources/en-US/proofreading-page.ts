@@ -63,9 +63,17 @@ export const en_us_proofreading_page = {
     glossary: 'Glossary Not Applied',
     retry_threshold: 'Retry Threshold Reached',
   },
+  glossary: {
+    ok: 'Glossary Applied',
+    partial: 'Glossary Partially Applied',
+    miss: 'Glossary All Failed',
+    tooltip_applied: 'Applied',
+    tooltip_failed: 'Not Applied',
+  },
   result_check_title: 'Result Check',
   tooltip: {
     status_prefix: 'Current Status: ',
+    warning_title: 'Warning',
   },
   filter: {
     status_title: 'Translation Status',

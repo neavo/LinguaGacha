@@ -300,6 +300,7 @@
       "warnings": [
         "GLOSSARY"
       ],
+      "applied_glossary_terms": [],
       "failed_glossary_terms": [
         [
           "勇者",
@@ -342,6 +343,7 @@
       "warnings": [
         "GLOSSARY"
       ],
+      "applied_glossary_terms": [],
       "failed_glossary_terms": [
         [
           "勇者",

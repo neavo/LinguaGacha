@@ -18,6 +18,10 @@ export const zh_cn_app = {
     disabled: '禁用',
     enabled: '启用',
   },
+  drag: {
+    enabled: '拖拽排序',
+    disabled: '禁止拖拽',
+  },
   language: {
     ALL: '全部',
     ZH: '中文',

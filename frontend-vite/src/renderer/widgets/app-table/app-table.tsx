@@ -275,7 +275,6 @@ function AppTableSortableRow<Row>(
                 disabled: !props.drag_enabled || !props.can_drag,
               }
             : null,
-          aria_label: column.kind === 'drag' ? column.aria_label : '',
         }
 
         return (
@@ -901,7 +900,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                   const overlay_drag_payload: AppTableDragCellPayload<Row> = {
                     ...overlay_payload,
                     drag_handle: null,
-                    aria_label: column.kind === 'drag' ? column.aria_label : '',
                   }
 
                   return (

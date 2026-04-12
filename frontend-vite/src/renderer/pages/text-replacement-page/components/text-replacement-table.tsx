@@ -1,4 +1,4 @@
-import { CaseSensitive, GripVertical, Regex } from 'lucide-react'
+import { CaseSensitive, Regex } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { useI18n, type LocaleKey } from '@/i18n'
@@ -36,6 +36,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from '@/widgets/app-table/app-table-types'
+import { AppTableDragIndicator } from '@/widgets/app-table/app-table-drag-indicator'
 
 type TextReplacementTableProps = {
   title_key: LocaleKey
@@ -122,6 +123,7 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   return target_element.closest(
     [
       '[data-text-replacement-ignore-box-select="true"]',
+      '[data-app-table-ignore-box-select="true"]',
       '[data-slot="scroll-area-scrollbar"]',
       '[data-slot="scroll-area-thumb"]',
       '[data-slot="scroll-area-corner"]',
@@ -130,7 +132,12 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
 }
 
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
-  return target_element.closest('[data-text-replacement-ignore-row-click="true"]') !== null
+  return target_element.closest(
+    [
+      '[data-text-replacement-ignore-row-click="true"]',
+      '[data-app-table-ignore-row-click="true"]',
+    ].join(', '),
+  ) !== null
 }
 
 type TextReplacementRuleBadgeProps = {
@@ -324,40 +331,18 @@ export function TextReplacementTable(
         width: 64,
         align: 'center',
         title: t('text_replacement_page.fields.drag'),
-        aria_label: t('text_replacement_page.drag.enabled'),
         head_class_name: 'text-replacement-page__table-drag-head',
         cell_class_name: 'text-replacement-page__table-drag-cell',
         render_cell: (payload) => {
-          const utility = (
-            <div
-              className="text-replacement-page__row-utility"
-              data-drag-disabled={!payload.can_drag ? 'true' : undefined}
-              data-text-replacement-ignore-box-select="true"
-              data-text-replacement-ignore-row-click="true"
-              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.attributes ?? {})}
-              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.listeners ?? {})}
-            >
-              <span className="text-replacement-page__drag-handle" aria-hidden="true">
-                <GripVertical />
-              </span>
-              <span className="text-replacement-page__row-index">
-                {build_row_number_label(payload.row_index)}
-              </span>
-            </div>
+          return (
+            <AppTableDragIndicator
+              row_number={build_row_number_label(payload.row_index)}
+              can_drag={payload.can_drag}
+              dragging={payload.dragging}
+              drag_handle={payload.drag_handle}
+              show_tooltip={payload.presentation !== 'overlay'}
+            />
           )
-
-          return payload.drag_handle === null || payload.drag_handle.disabled
-            ? utility
-            : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {utility}
-                  </TooltipTrigger>
-                  <TooltipContent side="top" sideOffset={8}>
-                    <p>{payload.aria_label}</p>
-                  </TooltipContent>
-                </Tooltip>
-              )
         },
       },
       {

@@ -36,9 +36,6 @@ export const zh_cn_glossary_page = {
   rule: {
     case_sensitive: '大小写敏感',
   },
-  drag: {
-    enabled: '拖拽排序',
-  },
   filter: {
     placeholder: '查询 …',
     clear: '清空',

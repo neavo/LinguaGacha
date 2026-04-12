@@ -431,6 +431,24 @@ class ProofreadingAppService:
             if isinstance(term, (list, tuple)) and len(term) >= 2:
                 failed_terms.append([str(term[0]), str(term[1])])
 
+        applied_terms: list[list[str]] = []
+        checker = load_result.checker
+        get_replaced_text = getattr(checker, "get_replaced_text", None)
+        get_applied_terms = getattr(
+            checker,
+            "get_applied_glossary_terms_from_replaced",
+            None,
+        )
+        if callable(get_replaced_text) and callable(get_applied_terms):
+            src_repl, dst_repl = get_replaced_text(item)
+            applied_terms_raw = get_applied_terms(
+                src_repl,
+                dst_repl,
+            )
+            for term in applied_terms_raw:
+                if isinstance(term, (list, tuple)) and len(term) >= 2:
+                    applied_terms.append([str(term[0]), str(term[1])])
+
         status = item.get_status()
         status_value = getattr(status, "value", status)
         return {
@@ -441,6 +459,7 @@ class ProofreadingAppService:
             "dst": item.get_dst(),
             "status": str(status_value),
             "warnings": warnings,
+            "applied_glossary_terms": applied_terms,
             "failed_glossary_terms": failed_terms,
         }
 

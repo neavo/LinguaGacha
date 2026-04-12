@@ -1,4 +1,4 @@
-import { CircleEllipsis, GripVertical } from 'lucide-react'
+import { CircleEllipsis } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { useI18n } from '@/i18n'
@@ -14,12 +14,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/shadcn/card'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/shadcn/tooltip'
 import { AppTable } from '@/widgets/app-table/app-table'
+import { AppTableDragIndicator } from '@/widgets/app-table/app-table-drag-indicator'
 import type {
   AppTableColumn,
   AppTableSelectionChange,
@@ -41,7 +37,12 @@ function build_workbench_row_number_label(row_index: number): string {
 }
 
 function should_ignore_workbench_row_click(target_element: HTMLElement): boolean {
-  return target_element.closest('[data-workbench-ignore-row-click="true"]') !== null
+  return target_element.closest(
+    [
+      '[data-workbench-ignore-row-click="true"]',
+      '[data-app-table-ignore-row-click="true"]',
+    ].join(', '),
+  ) !== null
 }
 
 export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element {
@@ -55,50 +56,28 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         width: 64,
         align: 'center',
         title: t('workbench_page.table.drag_handle'),
-        aria_label: t('workbench_page.table.drag_handle_aria'),
         head_class_name: 'workbench-page__table-drag-head',
         cell_class_name: 'workbench-page__table-drag-cell',
         render_cell: (payload) => {
-          const utility = (
-            <div
-              className="workbench-page__row-utility"
-              data-drag-disabled={!payload.can_drag ? 'true' : undefined}
-              data-workbench-ignore-row-click="true"
-              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.attributes ?? {})}
-              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.listeners ?? {})}
-            >
-              <span className="workbench-page__drag-handle" aria-hidden="true">
-                <GripVertical />
-              </span>
-              <span className="workbench-page__row-index">
-                {build_workbench_row_number_label(payload.row_index)}
-              </span>
-            </div>
+          return (
+            <AppTableDragIndicator
+              row_number={build_workbench_row_number_label(payload.row_index)}
+              can_drag={payload.can_drag}
+              dragging={payload.dragging}
+              drag_handle={payload.drag_handle}
+              show_tooltip={payload.presentation !== 'overlay'}
+            />
           )
-
-          return payload.drag_handle === null || payload.drag_handle.disabled
-            ? utility
-            : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {utility}
-                  </TooltipTrigger>
-                  <TooltipContent side="top" sideOffset={8}>
-                    <p>{payload.aria_label}</p>
-                  </TooltipContent>
-                </Tooltip>
-              )
         },
         render_placeholder: () => {
           return (
-            <div className="workbench-page__row-utility">
-              <span className="workbench-page__drag-handle" aria-hidden="true">
-                <GripVertical />
-              </span>
-              <span className="workbench-page__row-index">
-                {'88'}
-              </span>
-            </div>
+            <AppTableDragIndicator
+              row_number={'88'}
+              can_drag
+              dragging={false}
+              drag_handle={null}
+              show_tooltip={false}
+            />
           )
         },
       },

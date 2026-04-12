@@ -26,9 +26,6 @@ export const zh_cn_text_replacement_page = {
     regex: '正则表达式',
     case_sensitive: '大小写敏感',
   },
-  drag: {
-    enabled: '拖拽排序',
-  },
   filter: {
     placeholder: '查询 …',
     clear: '清空',

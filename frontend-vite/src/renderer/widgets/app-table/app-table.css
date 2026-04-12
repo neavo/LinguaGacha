@@ -277,6 +277,67 @@
   transform: scaleY(1);
 }
 
+.app-table__drag-indicator {
+  display: grid;
+  grid-template-columns: 10px 3ch;
+  align-items: center;
+  justify-content: center;
+  column-gap: 2px;
+  width: max-content;
+  min-height: 18px;
+  margin: 0 auto;
+  padding: 0 4px 0 3px;
+  border-radius: 999px;
+  background: transparent;
+  user-select: none;
+  transition:
+    opacity 180ms ease,
+    color 180ms ease;
+}
+
+.app-table__drag-indicator[data-drag-state='enabled'] {
+  cursor: grab;
+}
+
+.app-table__drag-indicator[data-drag-state='dragging'] {
+  cursor: grabbing;
+}
+
+.app-table__drag-indicator[data-drag-state='disabled'] {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.app-table__drag-icon,
+.app-table__drag-row-index {
+  color: var(--muted-foreground);
+}
+
+.app-table__drag-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  opacity: 0.52;
+}
+
+.app-table__drag-icon svg {
+  width: 10px;
+  height: 10px;
+}
+
+.app-table__drag-row-index {
+  justify-self: start;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  opacity: 0.62;
+}
+
 .app-table__selection-box {
   position: absolute;
   z-index: 2;

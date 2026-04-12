@@ -147,6 +147,7 @@ class ProofreadingItemView:
     dst: str = ""
     status: str = ""
     warnings: tuple[str, ...] = ()
+    applied_glossary_terms: tuple[tuple[str, str], ...] = ()
     failed_glossary_terms: tuple[tuple[str, str], ...] = ()
 
     @classmethod
@@ -165,6 +166,19 @@ class ProofreadingItemView:
         warnings: tuple[str, ...] = ()
         if isinstance(warnings_raw, (list, tuple, set)):
             warnings = tuple(str(item) for item in warnings_raw)
+
+        applied_terms_raw = normalized.get("applied_glossary_terms", [])
+        applied_glossary_terms: tuple[tuple[str, str], ...] = ()
+        if isinstance(applied_terms_raw, (list, tuple, set)):
+            normalized_applied_terms: list[tuple[str, str]] = []
+            for term in applied_terms_raw:
+                if isinstance(term, dict):
+                    normalized_applied_terms.append(
+                        (str(term.get("src", "")), str(term.get("dst", "")))
+                    )
+                elif isinstance(term, (list, tuple)) and len(term) >= 2:
+                    normalized_applied_terms.append((str(term[0]), str(term[1])))
+            applied_glossary_terms = tuple(normalized_applied_terms)
 
         failed_terms_raw = normalized.get("failed_glossary_terms", [])
         failed_glossary_terms: tuple[tuple[str, str], ...] = ()
@@ -187,6 +201,7 @@ class ProofreadingItemView:
             dst=str(normalized.get("dst", "")),
             status=str(normalized.get("status", "")),
             warnings=warnings,
+            applied_glossary_terms=applied_glossary_terms,
             failed_glossary_terms=failed_glossary_terms,
         )
 
@@ -201,6 +216,9 @@ class ProofreadingItemView:
             "dst": self.dst,
             "status": self.status,
             "warnings": list(self.warnings),
+            "applied_glossary_terms": [
+                list(term) for term in self.applied_glossary_terms
+            ],
             "failed_glossary_terms": [
                 list(term) for term in self.failed_glossary_terms
             ],

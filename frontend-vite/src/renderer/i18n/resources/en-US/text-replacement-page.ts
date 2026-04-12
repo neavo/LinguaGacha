@@ -29,9 +29,6 @@ export const en_us_text_replacement_page = {
     regex: 'Regular Expression',
     case_sensitive: 'Case Sensitive',
   },
-  drag: {
-    enabled: 'Drag to reorder',
-  },
   filter: {
     placeholder: 'Query …',
     clear: 'Clear',

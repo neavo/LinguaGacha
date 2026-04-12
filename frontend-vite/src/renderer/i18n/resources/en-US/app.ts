@@ -21,6 +21,10 @@ export const en_us_app = {
     disabled: 'Disabled',
     enabled: 'Enabled',
   },
+  drag: {
+    enabled: 'Drag to reorder',
+    disabled: 'Drag disabled',
+  },
   language: {
     ALL: 'All',
     ZH: 'Chinese',

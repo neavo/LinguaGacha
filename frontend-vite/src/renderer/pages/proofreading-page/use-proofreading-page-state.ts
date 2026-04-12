@@ -106,9 +106,10 @@ function serialize_filter_options(filters: ProofreadingFilterOptions): Record<st
 
 function serialize_item(item: ProofreadingItem): Record<string, unknown> {
   return {
-    item_id: item.item_id,
+    // 为什么：校对接口落到 core 时会反序列化成 `Item`，这里必须传标准字段名，避免被误判成新条目。
+    id: item.item_id,
     file_path: item.file_path,
-    row_number: item.row_number,
+    row: item.row_number,
     src: item.src,
     dst: item.dst,
     status: item.status,
@@ -208,6 +209,11 @@ function compare_text(left: string, right: string): number {
   return left.localeCompare(right, 'zh-Hans-CN')
 }
 
+const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
+  column_id: 'file',
+  direction: 'ascending',
+}
+
 function compare_visible_items(
   left_item: ProofreadingVisibleItem,
   right_item: ProofreadingVisibleItem,
@@ -234,28 +240,12 @@ function compare_visible_items(
     return compare_text(left_item.item.status, right_item.item.status) * direction
   }
 
-  if (sort_state.column_id === 'warnings') {
-    const warning_count_result = left_item.item.warnings.length - right_item.item.warnings.length
-    if (warning_count_result !== 0) {
-      return warning_count_result * direction
-    }
-
-    return compare_text(
-      left_item.item.warnings.join('|'),
-      right_item.item.warnings.join('|'),
-    ) * direction
-  }
-
   if (sort_state.column_id === 'src') {
     return compare_text(left_item.item.src, right_item.item.src) * direction
   }
 
   if (sort_state.column_id === 'dst') {
     return compare_text(left_item.item.dst, right_item.item.dst) * direction
-  }
-
-  if (sort_state.column_id === 'row_number') {
-    return (left_item.item.row_number - right_item.item.row_number) * direction
   }
 
   return 0
@@ -265,14 +255,24 @@ function sort_visible_items(
   items: ProofreadingVisibleItem[],
   sort_state: AppTableSortState | null,
 ): ProofreadingVisibleItem[] {
-  if (sort_state === null) {
-    return items
-  }
+  const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE
 
   return [...items].sort((left_item, right_item) => {
-    const result = compare_visible_items(left_item, right_item, sort_state)
+    const result = compare_visible_items(left_item, right_item, effective_sort_state)
     if (result !== 0) {
       return result
+    }
+
+    // 为什么：校对页需要先回到文件内自然阅读顺序，否则已有译文可能被数据库插入顺序压到列表尾部。
+    if (effective_sort_state.column_id !== PROOFREADING_NATURAL_SORT_STATE.column_id) {
+      const natural_order_result = compare_visible_items(
+        left_item,
+        right_item,
+        PROOFREADING_NATURAL_SORT_STATE,
+      )
+      if (natural_order_result !== 0) {
+        return natural_order_result
+      }
     }
 
     return compare_text(left_item.row_id, right_item.row_id)

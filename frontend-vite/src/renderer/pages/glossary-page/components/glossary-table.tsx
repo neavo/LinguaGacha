@@ -1,4 +1,4 @@
-import { CaseSensitive, GripVertical } from 'lucide-react'
+import { CaseSensitive } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { useI18n } from '@/i18n'
@@ -37,6 +37,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from '@/widgets/app-table/app-table-types'
+import { AppTableDragIndicator } from '@/widgets/app-table/app-table-drag-indicator'
 
 type GlossaryTableProps = {
   entries: GlossaryVisibleEntry[]
@@ -119,6 +120,7 @@ function should_ignore_box_selection_target(
   return target_element.closest(
     [
       '[data-glossary-ignore-box-select="true"]',
+      '[data-app-table-ignore-box-select="true"]',
       '[data-slot="scroll-area-scrollbar"]',
       '[data-slot="scroll-area-thumb"]',
       '[data-slot="scroll-area-corner"]',
@@ -127,7 +129,12 @@ function should_ignore_box_selection_target(
 }
 
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
-  return target_element.closest('[data-glossary-ignore-row-click="true"]') !== null
+  return target_element.closest(
+    [
+      '[data-glossary-ignore-row-click="true"]',
+      '[data-app-table-ignore-row-click="true"]',
+    ].join(', '),
+  ) !== null
 }
 
 function map_glossary_sort_state(
@@ -326,40 +333,18 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         width: 64,
         align: 'center',
         title: t('glossary_page.fields.drag'),
-        aria_label: t('glossary_page.drag.enabled'),
         head_class_name: 'glossary-page__table-drag-head',
         cell_class_name: 'glossary-page__table-drag-cell',
         render_cell: (payload) => {
-          const utility = (
-            <div
-              className="glossary-page__row-utility"
-              data-drag-disabled={!payload.can_drag ? 'true' : undefined}
-              data-glossary-ignore-box-select="true"
-              data-glossary-ignore-row-click="true"
-              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.attributes ?? {})}
-              {...(payload.drag_handle?.disabled ?? true ? {} : payload.drag_handle?.listeners ?? {})}
-            >
-              <span className="glossary-page__drag-handle" aria-hidden="true">
-                <GripVertical />
-              </span>
-              <span className="glossary-page__row-index">
-                {build_glossary_row_number_label(payload.row_index)}
-              </span>
-            </div>
+          return (
+            <AppTableDragIndicator
+              row_number={build_glossary_row_number_label(payload.row_index)}
+              can_drag={payload.can_drag}
+              dragging={payload.dragging}
+              drag_handle={payload.drag_handle}
+              show_tooltip={payload.presentation !== 'overlay'}
+            />
           )
-
-          return payload.drag_handle === null || payload.drag_handle.disabled
-            ? utility
-            : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {utility}
-                  </TooltipTrigger>
-                  <TooltipContent side="top" sideOffset={8}>
-                    <p>{payload.aria_label}</p>
-                  </TooltipContent>
-                </Tooltip>
-              )
         },
       },
       {

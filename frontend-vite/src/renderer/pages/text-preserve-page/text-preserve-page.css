@@ -51,65 +51,6 @@
   white-space: nowrap;
 }
 
-.text-preserve-page__row-utility {
-  display: grid;
-  grid-template-columns: 10px 3ch;
-  align-items: center;
-  justify-content: center;
-  column-gap: 2px;
-  width: max-content;
-  min-height: 18px;
-  margin: 0 auto;
-  padding: 0 4px 0 3px;
-  border-radius: 999px;
-  background: transparent;
-  cursor: grab;
-  user-select: none;
-  transition:
-    background-color 180ms ease,
-    color 180ms ease,
-    opacity 180ms ease;
-}
-
-.text-preserve-page__row-utility[data-drag-disabled='true'] {
-  cursor: not-allowed;
-  opacity: 0.64;
-}
-
-.text-preserve-page__row-utility:active {
-  cursor: grabbing;
-}
-
-.text-preserve-page__drag-handle,
-.text-preserve-page__row-index {
-  color: var(--muted-foreground);
-}
-
-.text-preserve-page__drag-handle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 10px;
-  height: 10px;
-  opacity: 0.52;
-}
-
-.text-preserve-page__drag-handle svg {
-  width: 10px;
-  height: 10px;
-}
-
-.text-preserve-page__row-index {
-  justify-self: start;
-  min-width: 0;
-  font-size: 11px;
-  line-height: 1;
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  opacity: 0.56;
-}
-
 .text-preserve-page__statistics-badge-wrap,
 .text-preserve-page__statistics-badge-button {
   display: inline-flex;

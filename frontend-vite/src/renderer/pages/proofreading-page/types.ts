@@ -74,6 +74,7 @@ export type ProofreadingItem = {
   dst: string
   status: string
   warnings: string[]
+  applied_glossary_terms: ProofreadingGlossaryTerm[]
   failed_glossary_terms: ProofreadingGlossaryTerm[]
 }
 
@@ -107,6 +108,7 @@ export type ProofreadingSnapshotPayload = {
       glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
     }
     items?: Array<Partial<ProofreadingItem> & {
+      applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
       failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
     }>
   }
@@ -116,6 +118,7 @@ export type ProofreadingMutationPayload = {
   result?: Partial<ProofreadingMutationResult> & {
     summary?: Partial<ProofreadingSummary>
     items?: Array<Partial<ProofreadingItem> & {
+      applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
       failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
     }>
   }
@@ -167,6 +170,9 @@ export function clone_proofreading_item(item: ProofreadingItem): ProofreadingIte
     dst: item.dst,
     status: item.status,
     warnings: [...item.warnings],
+    applied_glossary_terms: item.applied_glossary_terms.map((term) => {
+      return [term[0], term[1]] as const
+    }),
     failed_glossary_terms: item.failed_glossary_terms.map((term) => {
       return [term[0], term[1]] as const
     }),
@@ -304,6 +310,7 @@ export function normalize_proofreading_filter_options(
 
 function normalize_proofreading_item(
   item: Partial<ProofreadingItem> & {
+    applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
     failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
   },
 ): ProofreadingItem {
@@ -317,6 +324,7 @@ function normalize_proofreading_item(
     warnings: Array.isArray(item.warnings)
       ? unique_strings(item.warnings.map((warning) => String(warning)))
       : [],
+    applied_glossary_terms: normalize_glossary_terms(item.applied_glossary_terms),
     failed_glossary_terms: normalize_glossary_terms(item.failed_glossary_terms),
   }
 }

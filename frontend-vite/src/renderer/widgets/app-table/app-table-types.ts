@@ -57,7 +57,6 @@ export type AppTableDragHandle = {
 
 export type AppTableDragCellPayload<Row> = AppTableCellPayload<Row> & {
   drag_handle: AppTableDragHandle | null
-  aria_label: string
 }
 
 type AppTableColumnBase = {
@@ -70,7 +69,6 @@ type AppTableColumnBase = {
 
 export type AppTableDragColumn<Row> = AppTableColumnBase & {
   kind: 'drag'
-  aria_label: string
   title?: ReactNode
   render_cell: (payload: AppTableDragCellPayload<Row>) => ReactNode
   render_placeholder?: () => ReactNode

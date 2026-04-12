@@ -60,9 +60,17 @@ export const zh_cn_proofreading_page = {
     glossary: '术语表未生效',
     retry_threshold: '重试次数达阈值',
   },
+  glossary: {
+    ok: '术语生效',
+    partial: '术语部分生效',
+    miss: '术语全部失效',
+    tooltip_applied: '生效',
+    tooltip_failed: '未生效',
+  },
   result_check_title: '结果检查',
   tooltip: {
     status_prefix: '当前状态：',
+    warning_title: '警告',
   },
   filter: {
     status_title: '翻译状态',

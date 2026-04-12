@@ -39,9 +39,6 @@ export const en_us_glossary_page = {
   rule: {
     case_sensitive: 'Case-sensitive',
   },
-  drag: {
-    enabled: 'Drag to reorder',
-  },
   filter: {
     placeholder: 'Query …',
     clear: 'Clear',
