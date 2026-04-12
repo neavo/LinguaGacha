@@ -1,4 +1,4 @@
-import { AlertCircle, Check, GraduationCap, ListTodo, LoaderCircle, Plus, RotateCcw, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, GraduationCap, ListTodo, LoaderCircle, Plus, Recycle, SlidersHorizontal, Trash2 } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
 import '@/pages/model-page/model-page.css'
@@ -241,7 +241,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                                   model_page_state.request_reset_model(model.id)
                                 }}
                               >
-                                <RotateCcw />
+                                <Recycle />
                                 {t('model_page.action.reset')}
                               </DropdownMenuItem>
                             )

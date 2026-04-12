@@ -1,0 +1,425 @@
+.proofreading-page {
+  --proofreading-page-gap: 12px;
+  display: flex;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  gap: var(--proofreading-page-gap);
+}
+
+.proofreading-page__notice {
+  margin: 0;
+}
+
+.proofreading-page__toolbar-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.proofreading-page__toolbar-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.proofreading-page__toolbar-field {
+  min-width: 0;
+}
+
+.proofreading-page__toolbar-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.proofreading-page__toolbar-error {
+  margin: 0;
+  color: var(--destructive);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.proofreading-page__table-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.proofreading-page__table-card,
+.proofreading-page__table-card-content,
+.proofreading-page__table-empty-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.proofreading-page__table-card-content {
+  overflow: hidden;
+  padding: 0;
+}
+
+.proofreading-page__table-empty-card {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 16px;
+}
+
+.proofreading-page__table-empty {
+  width: 100%;
+}
+
+.proofreading-page__table-drag-head,
+.proofreading-page__table-drag-cell,
+.proofreading-page__table-source-head,
+.proofreading-page__table-source-cell,
+.proofreading-page__table-translation-head,
+.proofreading-page__table-translation-cell {
+  text-align: left;
+}
+
+.proofreading-page__table-drag-head,
+.proofreading-page__table-drag-cell,
+.proofreading-page__table-status-head,
+.proofreading-page__table-status-cell {
+  text-align: center;
+}
+
+.proofreading-page__table-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proofreading-page__row-utility {
+  display: grid;
+  grid-template-columns: 10px 3ch;
+  align-items: center;
+  justify-content: center;
+  column-gap: 2px;
+  width: max-content;
+  min-height: 18px;
+  margin: 0 auto;
+  padding: 0 4px 0 3px;
+  border-radius: 999px;
+  background: transparent;
+  cursor: not-allowed;
+  user-select: none;
+  opacity: 0.64;
+}
+
+.proofreading-page__drag-handle,
+.proofreading-page__row-index {
+  color: var(--muted-foreground);
+}
+
+.proofreading-page__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  opacity: 0.52;
+}
+
+.proofreading-page__drag-handle svg {
+  width: 10px;
+  height: 10px;
+}
+
+.proofreading-page__row-index {
+  justify-self: start;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  opacity: 0.56;
+}
+
+.proofreading-page__status-icons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.proofreading-page__status-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
+}
+
+.proofreading-page__status-icon--warning {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  color: color-mix(in srgb, var(--primary) 76%, var(--foreground) 24%);
+}
+
+.proofreading-page__status-icon svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.9;
+}
+
+.proofreading-page__filter-dialog-shell,
+.proofreading-page__dialog-shell {
+  padding: 0;
+}
+
+.proofreading-page__filter-dialog-scroll,
+.proofreading-page__dialog-scroll {
+  min-height: 0;
+  max-height: calc(100vh - 220px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.proofreading-page__filter-dialog-scroll {
+  padding: 16px;
+}
+
+.proofreading-page__filter-layout {
+  display: grid;
+  min-height: min(560px, calc(100vh - 320px));
+  grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
+  gap: 12px;
+}
+
+.proofreading-page__filter-left-column {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.proofreading-page__filter-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 12px;
+}
+
+.proofreading-page__filter-section--stretch {
+  min-height: 0;
+}
+
+.proofreading-page__filter-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proofreading-page__filter-section-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.proofreading-page__filter-section-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.proofreading-page__filter-toggle-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proofreading-page__filter-toggle,
+.proofreading-page__filter-list-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 90%, var(--muted) 10%);
+  color: var(--foreground);
+  text-align: left;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.proofreading-page__filter-toggle {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.proofreading-page__filter-list-row {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.proofreading-page__filter-toggle[data-selected='true'],
+.proofreading-page__filter-list-row[data-selected='true'] {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+  background: color-mix(in srgb, var(--primary) 18%, var(--popover));
+  color: var(--foreground);
+}
+
+.proofreading-page__filter-toggle-label,
+.proofreading-page__filter-list-row-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__filter-toggle-count,
+.proofreading-page__filter-list-row-count {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.proofreading-page__filter-list {
+  min-height: 0;
+  flex: 1;
+}
+
+.proofreading-page__filter-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 8px;
+}
+
+.proofreading-page__filter-empty {
+  min-height: 180px;
+}
+
+.proofreading-page__dialog-scroll {
+  padding: 16px;
+}
+
+.proofreading-page__dialog-form {
+  display: flex;
+  min-height: min(520px, calc(100vh - 320px));
+  flex-direction: column;
+  gap: 12px;
+}
+
+.proofreading-page__dialog-file-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 10px 12px;
+}
+
+.proofreading-page__dialog-file-path {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__dialog-file-row {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--primary) 84%, var(--foreground) 16%);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.proofreading-page__dialog-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proofreading-page__dialog-editor-block {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.proofreading-page__dialog-editor-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proofreading-page__dialog-editor-title {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.proofreading-page__dialog-editor {
+  height: 100%;
+  min-height: 240px;
+  resize: none;
+  background: color-mix(in srgb, var(--popover) 92%, var(--muted) 8%);
+}
+
+.proofreading-page__dialog-editor--readonly {
+  color: var(--muted-foreground);
+}
+
+.proofreading-page__dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 1180px) {
+  .proofreading-page__toolbar-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .proofreading-page__toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .proofreading-page__filter-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .proofreading-page__dialog-editor-block {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

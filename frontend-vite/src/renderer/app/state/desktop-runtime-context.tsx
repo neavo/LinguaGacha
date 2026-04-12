@@ -66,6 +66,7 @@ type DesktopRuntimeContextValue = {
   settings_snapshot: SettingsSnapshot
   project_snapshot: ProjectSnapshot
   task_snapshot: TaskSnapshot
+  proofreading_invalidation_tick: number
   pending_target_route: RouteId | null
   set_settings_snapshot: (snapshot: SettingsSnapshot) => void
   set_project_snapshot: (snapshot: ProjectSnapshot) => void
@@ -275,6 +276,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [settings_snapshot, set_settings_snapshot] = useState<SettingsSnapshot>(DEFAULT_SETTINGS_SNAPSHOT)
   const [project_snapshot, set_project_snapshot] = useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT)
   const [task_snapshot, set_task_snapshot] = useState<TaskSnapshot>(DEFAULT_TASK_SNAPSHOT)
+  const [proofreading_invalidation_tick, set_proofreading_invalidation_tick] = useState(0)
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null)
 
   const refresh_settings = useCallback(async (): Promise<SettingsSnapshot> => {
@@ -364,6 +366,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       void refresh_settings()
     }
 
+    function handle_proofreading_snapshot_invalidated(): void {
+      set_proofreading_invalidation_tick((previous_tick) => previous_tick + 1)
+    }
+
+    function handle_workbench_snapshot_changed(): void {
+      set_proofreading_invalidation_tick((previous_tick) => previous_tick + 1)
+    }
+
     async function attach_event_stream(): Promise<void> {
       try {
         const next_event_source = await open_event_stream()
@@ -377,6 +387,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         event_source.addEventListener('task.status_changed', handle_task_status_changed as EventListener)
         event_source.addEventListener('task.progress_changed', handle_task_progress_changed as EventListener)
         event_source.addEventListener('settings.changed', handle_settings_changed as EventListener)
+        event_source.addEventListener(
+          'proofreading.snapshot_invalidated',
+          handle_proofreading_snapshot_invalidated as EventListener,
+        )
+        event_source.addEventListener(
+          'workbench.snapshot_changed',
+          handle_workbench_snapshot_changed as EventListener,
+        )
       } catch {
         return
       }
@@ -397,6 +415,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       settings_snapshot,
       project_snapshot,
       task_snapshot,
+      proofreading_invalidation_tick,
       pending_target_route,
       set_settings_snapshot,
       set_project_snapshot,
@@ -412,6 +431,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     settings_snapshot,
     project_snapshot,
     task_snapshot,
+    proofreading_invalidation_tick,
     pending_target_route,
     refresh_project,
     refresh_settings,

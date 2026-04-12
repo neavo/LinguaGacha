@@ -8,6 +8,7 @@ import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { GlossaryPage } from '@/pages/glossary-page/page'
 import { LaboratoryPage } from '@/pages/laboratory-page/page'
 import { ModelPage } from '@/pages/model-page/page'
+import { ProofreadingPage } from '@/pages/proofreading-page/page'
 import { ProjectPage } from '@/pages/project-page/page'
 import { TextPreservePage } from '@/pages/text-preserve-page/page'
 import {
@@ -71,10 +72,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     summary_key: 'analysis_page.summary',
   },
   proofreading: {
-    component: create_debug_panel_screen({
-      title_key: 'proofreading_page.title',
-      summary_key: 'proofreading_page.summary',
-    }),
+    component: ProofreadingPage,
     title_key: 'proofreading_page.title',
     summary_key: 'proofreading_page.summary',
   },
