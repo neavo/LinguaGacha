@@ -78,11 +78,18 @@ class ModelThresholdSnapshot:
         else:
             normalized = {}
 
+        def read_int_value(key: str, default: int) -> int:
+            value = normalized.get(key)
+            # 这里必须区分 None/空串 与 合法的 0，避免自动模式被默认值覆盖。
+            if value in (None, ""):
+                return default
+            return int(value)
+
         return cls(
-            input_token_limit=int(normalized.get("input_token_limit", 512) or 512),
-            output_token_limit=int(normalized.get("output_token_limit", 4096) or 4096),
-            rpm_limit=int(normalized.get("rpm_limit", 0) or 0),
-            concurrency_limit=int(normalized.get("concurrency_limit", 0) or 0),
+            input_token_limit=read_int_value("input_token_limit", 512),
+            output_token_limit=read_int_value("output_token_limit", 4096),
+            rpm_limit=read_int_value("rpm_limit", 0),
+            concurrency_limit=read_int_value("concurrency_limit", 0),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -143,18 +150,25 @@ class ModelGenerationSnapshot:
         else:
             normalized = {}
 
+        def read_float_value(key: str, default: float) -> float:
+            value = normalized.get(key)
+            # 生成参数允许显式设置为 0，不能再被 `or` 误判成缺省值。
+            if value in (None, ""):
+                return default
+            return float(value)
+
         return cls(
-            temperature=float(normalized.get("temperature", 0.95) or 0.95),
+            temperature=read_float_value("temperature", 0.95),
             temperature_custom_enable=bool(
                 normalized.get("temperature_custom_enable", False)
             ),
-            top_p=float(normalized.get("top_p", 0.95) or 0.95),
+            top_p=read_float_value("top_p", 0.95),
             top_p_custom_enable=bool(normalized.get("top_p_custom_enable", False)),
-            presence_penalty=float(normalized.get("presence_penalty", 0.0) or 0.0),
+            presence_penalty=read_float_value("presence_penalty", 0.0),
             presence_penalty_custom_enable=bool(
                 normalized.get("presence_penalty_custom_enable", False)
             ),
-            frequency_penalty=float(normalized.get("frequency_penalty", 0.0) or 0.0),
+            frequency_penalty=read_float_value("frequency_penalty", 0.0),
             frequency_penalty_custom_enable=bool(
                 normalized.get("frequency_penalty_custom_enable", False)
             ),

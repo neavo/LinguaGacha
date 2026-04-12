@@ -80,7 +80,7 @@ export const en_us_model_page = {
     },
     api_key: {
       title: 'API Key',
-      description: 'Enter API keys here. When multiple keys are used, put one key on each line',
+      description: 'Enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456. Multiple keys can be entered for polling, one key per line',
       placeholder: 'Please enter API Key …',
     },
     model_id: {
@@ -90,7 +90,7 @@ export const en_us_model_page = {
     },
     thinking: {
       title: 'Thinking Level',
-      description: 'Configure the model thinking behavior, which affects latency and cost',
+      description: 'Configure thinking level which will affect time and cost, click question icon for supported models',
       help_label: 'Open thinking level support documentation',
     },
     input_token_limit: {
@@ -127,12 +127,12 @@ export const en_us_model_page = {
     },
     extra_headers: {
       title: 'Custom Request Headers',
-      description: 'Please be careful, invalid values may cause errors',
+      description: 'Custom request header parameters, please set with caution, incorrect values may cause abnormal results or request errors',
       placeholder: 'Example: {"Authorization": "Bearer xxx"}',
     },
     extra_body: {
       title: 'Custom Request Body',
-      description: 'Please be careful, invalid values may cause errors',
+      description: 'Custom request body parameters, please set with caution, incorrect values may cause abnormal results or request errors',
       placeholder: 'Example: {"seed": 42}',
     },
   },

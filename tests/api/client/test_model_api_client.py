@@ -53,6 +53,24 @@ def test_model_api_client_update_model_returns_updated_snapshot(
     assert updated_model.name == "GPT-4.1 Updated"
 
 
+def test_model_api_client_update_model_preserves_zero_output_token_limit(
+    start_api_server: Callable[..., str],
+) -> None:
+    client = build_model_api_client(start_api_server)
+
+    snapshot = client.update_model(
+        "preset-1",
+        {
+            "threshold": {
+                "output_token_limit": 0,
+            },
+        },
+    )
+
+    updated_model = next(model for model in snapshot.models if model.id == "preset-1")
+    assert updated_model.threshold.output_token_limit == 0
+
+
 def test_model_api_client_add_model_returns_snapshot_with_new_model(
     start_api_server: Callable[..., str],
 ) -> None:

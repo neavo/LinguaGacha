@@ -77,7 +77,7 @@ export const zh_cn_model_page = {
     },
     api_key: {
       title: '接口密钥',
-      description: '请输入接口密钥，填入多个密钥时每行一个',
+      description: '请输入接口密钥，例如 sk-d0daba12345678fd8eb7b8d31c123456，填入多个密钥可以轮询使用，每行一个',
       placeholder: '请输入接口密钥 …',
     },
     model_id: {
@@ -87,7 +87,7 @@ export const zh_cn_model_page = {
     },
     thinking: {
       title: '思考等级',
-      description: '设置模型的思考行为，会影响思考时间和消耗',
+      description: '设置模型的思考行为，会影响思考的时间和消耗，点击问号图标查看支持的模型列表',
       help_label: '查看思考等级支持说明',
     },
     input_token_limit: {
@@ -124,12 +124,12 @@ export const zh_cn_model_page = {
     },
     extra_headers: {
       title: '自定义请求头',
-      description: '请谨慎设置，错误的值可能导致结果异常或者请求报错',
+      description: '自定义请求头参数，请谨慎设置，错误的值可能导致结果异常或者请求报错',
       placeholder: '例如：{"Authorization": "Bearer xxx"}',
     },
     extra_body: {
       title: '自定义请求体',
-      description: '请谨慎设置，错误的值可能导致结果异常或者请求报错',
+      description: '自定义请求体参数，请谨慎设置，错误的值可能导致结果异常或者请求报错',
       placeholder: '例如：{"seed": 42}',
     },
   },

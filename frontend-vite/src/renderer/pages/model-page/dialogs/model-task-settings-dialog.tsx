@@ -17,10 +17,14 @@ type ModelTaskSettingsDialogProps = {
   onClose: () => void
 }
 
+const THRESHOLD_INPUT_MIN = 0
+const THRESHOLD_INPUT_MAX = 9_999_999
+
 function normalize_number_input(value: string): number {
   const parsed_value = Number(value)
   if (Number.isFinite(parsed_value)) {
-    return parsed_value
+    const normalized_value = Math.trunc(parsed_value)
+    return Math.min(THRESHOLD_INPUT_MAX, Math.max(THRESHOLD_INPUT_MIN, normalized_value))
   } else {
     return 0
   }
@@ -52,6 +56,9 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
                 <Input
                   className="model-page__field"
                   type="number"
+                  min={THRESHOLD_INPUT_MIN}
+                  max={THRESHOLD_INPUT_MAX}
+                  step={1}
                   disabled={props.readonly}
                   value={props.model.threshold.input_token_limit}
                   onChange={(event) => {
@@ -72,6 +79,9 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
                 <Input
                   className="model-page__field"
                   type="number"
+                  min={THRESHOLD_INPUT_MIN}
+                  max={THRESHOLD_INPUT_MAX}
+                  step={1}
                   disabled={props.readonly}
                   value={props.model.threshold.output_token_limit}
                   onChange={(event) => {
@@ -86,18 +96,21 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
             />
 
             <SettingCardRow
-              title={t('model_page.fields.rpm_limit.title')}
-              description={t('model_page.fields.rpm_limit.description')}
+              title={t('model_page.fields.concurrency_limit.title')}
+              description={t('model_page.fields.concurrency_limit.description')}
               action={(
                 <Input
                   className="model-page__field"
                   type="number"
+                  min={THRESHOLD_INPUT_MIN}
+                  max={THRESHOLD_INPUT_MAX}
+                  step={1}
                   disabled={props.readonly}
-                  value={props.model.threshold.rpm_limit}
+                  value={props.model.threshold.concurrency_limit}
                   onChange={(event) => {
                     void props.onPatch({
                       threshold: {
-                        rpm_limit: normalize_number_input(event.target.value),
+                        concurrency_limit: normalize_number_input(event.target.value),
                       },
                     })
                   }}
@@ -106,18 +119,21 @@ export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JS
             />
 
             <SettingCardRow
-              title={t('model_page.fields.concurrency_limit.title')}
-              description={t('model_page.fields.concurrency_limit.description')}
+              title={t('model_page.fields.rpm_limit.title')}
+              description={t('model_page.fields.rpm_limit.description')}
               action={(
                 <Input
                   className="model-page__field"
                   type="number"
+                  min={THRESHOLD_INPUT_MIN}
+                  max={THRESHOLD_INPUT_MAX}
+                  step={1}
                   disabled={props.readonly}
-                  value={props.model.threshold.concurrency_limit}
+                  value={props.model.threshold.rpm_limit}
                   onChange={(event) => {
                     void props.onPatch({
                       threshold: {
-                        concurrency_limit: normalize_number_input(event.target.value),
+                        rpm_limit: normalize_number_input(event.target.value),
                       },
                     })
                   }}
