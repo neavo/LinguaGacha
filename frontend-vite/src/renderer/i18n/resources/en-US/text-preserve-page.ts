@@ -40,7 +40,7 @@ export const en_us_text_preserve_page = {
     statistics: 'Status',
   },
   filter: {
-    placeholder: 'Please enter keyword …',
+    placeholder: 'Query …',
     clear: 'Clear',
     regex: 'Regex',
     regex_tooltip_label: 'Regex Mode',

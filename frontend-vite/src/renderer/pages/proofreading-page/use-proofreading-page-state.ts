@@ -20,6 +20,7 @@ import {
   type ProofreadingItem,
   type ProofreadingMutationPayload,
   type ProofreadingPendingMutation,
+  type ProofreadingSearchScope,
   type ProofreadingSnapshot,
   type ProofreadingSnapshotPayload,
   type ProofreadingVisibleItem,
@@ -32,6 +33,7 @@ type UseProofreadingPageStateResult = {
   readonly: boolean
   search_keyword: string
   replace_text: string
+  search_scope: ProofreadingSearchScope
   is_regex: boolean
   invalid_regex_message: string | null
   full_snapshot: ProofreadingSnapshot
@@ -49,6 +51,7 @@ type UseProofreadingPageStateResult = {
   refresh_snapshot: () => Promise<void>
   update_search_keyword: (next_keyword: string) => void
   update_replace_text: (next_replace_text: string) => void
+  update_search_scope: (next_scope: ProofreadingSearchScope) => void
   update_regex: (next_is_regex: boolean) => void
   apply_table_selection: (payload: AppTableSelectionChange) => void
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void
@@ -147,6 +150,42 @@ function matches_search_pattern(
   }
 
   return text.toLocaleLowerCase().includes(normalized_keyword.toLocaleLowerCase())
+}
+
+function matches_proofreading_search_scope(args: {
+  item: ProofreadingItem
+  search_pattern: RegExp | null
+  keyword: string
+  is_regex: boolean
+  scope: ProofreadingSearchScope
+}): boolean {
+  if (args.scope === 'src') {
+    return matches_search_pattern(
+      args.item.src,
+      args.search_pattern,
+      args.keyword,
+      args.is_regex,
+    )
+  } else if (args.scope === 'dst') {
+    return matches_search_pattern(
+      args.item.dst,
+      args.search_pattern,
+      args.keyword,
+      args.is_regex,
+    )
+  } else {
+    return matches_search_pattern(
+      args.item.src,
+      args.search_pattern,
+      args.keyword,
+      args.is_regex,
+    ) || matches_search_pattern(
+      args.item.dst,
+      args.search_pattern,
+      args.keyword,
+      args.is_regex,
+    )
+  }
 }
 
 function replace_first_visible_match(
@@ -272,6 +311,7 @@ function filter_local_visible_items(args: {
   items: ProofreadingItem[]
   keyword: string
   is_regex: boolean
+  scope: ProofreadingSearchScope
 }): { items: ProofreadingItem[]; invalid_regex_message: string | null } {
   const trimmed_keyword = args.keyword.trim()
   if (trimmed_keyword === '') {
@@ -292,8 +332,13 @@ function filter_local_visible_items(args: {
   }
 
   const next_items = args.items.filter((item) => {
-    return matches_search_pattern(item.src, search_pattern, trimmed_keyword, args.is_regex)
-      || matches_search_pattern(item.dst, search_pattern, trimmed_keyword, args.is_regex)
+    return matches_proofreading_search_scope({
+      item,
+      search_pattern,
+      keyword: trimmed_keyword,
+      is_regex: args.is_regex,
+      scope: args.scope,
+    })
   })
 
   return {
@@ -326,6 +371,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [is_mutating, set_is_mutating] = useState(false)
   const [search_keyword, set_search_keyword] = useState('')
   const [replace_text, set_replace_text] = useState('')
+  const [search_scope, set_search_scope] = useState<ProofreadingSearchScope>('all')
   const [is_regex, set_is_regex] = useState(false)
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null)
   const [selected_row_ids, set_selected_row_ids] = useState<string[]>([])
@@ -372,6 +418,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_refresh_error(null)
     set_search_keyword('')
     set_replace_text('')
+    set_search_scope('all')
     set_is_regex(false)
     set_sort_state(null)
     set_selected_row_ids([])
@@ -398,8 +445,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       items: server_snapshot.items,
       keyword: search_keyword,
       is_regex,
+      scope: search_scope,
     })
-  }, [is_regex, search_keyword, server_snapshot.items])
+  }, [is_regex, search_keyword, search_scope, server_snapshot.items])
 
   const invalid_regex_message = visible_source_result.invalid_regex_message === null
     ? null
@@ -628,6 +676,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const update_replace_text = useCallback((next_replace_text: string): void => {
     set_replace_text(next_replace_text)
+  }, [])
+
+  const update_search_scope = useCallback((next_scope: ProofreadingSearchScope): void => {
+    set_search_scope(next_scope)
+    should_select_first_visible_ref.current = false
   }, [])
 
   const update_regex = useCallback((next_is_regex: boolean): void => {
@@ -1009,6 +1062,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     set_search_keyword(proofreading_lookup_intent.keyword)
+    set_search_scope('all')
     set_is_regex(proofreading_lookup_intent.is_regex)
     should_select_first_visible_ref.current = true
     clear_proofreading_lookup_intent()
@@ -1027,6 +1081,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     applied_filter_signature,
     is_regex,
     search_keyword,
+    search_scope,
     server_snapshot.revision,
     sort_signature,
     visible_row_signature,
@@ -1082,6 +1137,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       readonly,
       search_keyword,
       replace_text,
+      search_scope,
       is_regex,
       invalid_regex_message,
       full_snapshot,
@@ -1101,6 +1157,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       },
       update_search_keyword,
       update_replace_text,
+      update_search_scope,
       update_regex,
       apply_table_selection,
       apply_table_sort_state,
@@ -1125,6 +1182,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     readonly,
     search_keyword,
     replace_text,
+    search_scope,
     is_regex,
     invalid_regex_message,
     full_snapshot,
@@ -1142,6 +1200,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     refresh_snapshot,
     update_search_keyword,
     update_replace_text,
+    update_search_scope,
     update_regex,
     apply_table_selection,
     apply_table_sort_state,

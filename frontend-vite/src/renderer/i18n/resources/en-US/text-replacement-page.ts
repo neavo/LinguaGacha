@@ -33,7 +33,7 @@ export const en_us_text_replacement_page = {
     enabled: 'Drag to reorder',
   },
   filter: {
-    placeholder: 'Enter keyword …',
+    placeholder: 'Query …',
     clear: 'Clear',
     regex: 'Regex',
     regex_tooltip_label: 'Regex Mode',

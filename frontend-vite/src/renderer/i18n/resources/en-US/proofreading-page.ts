@@ -16,6 +16,9 @@ export const en_us_proofreading_page = {
     confirm: 'Confirm',
     more: 'More',
   },
+  toggle: {
+    status: '{TITLE} - {STATE}',
+  },
   fields: {
     drag: 'Drag',
     status: 'Status',
@@ -24,10 +27,20 @@ export const en_us_proofreading_page = {
   },
   search: {
     label: 'Search',
-    placeholder: 'Search',
+    placeholder: 'Query …',
+    clear: 'Clear',
     replace_label: 'Replace',
-    replace_placeholder: 'Replace with …',
+    replace_placeholder: 'Replace …',
+    replace_clear: 'Clear',
     regex: 'Regex',
+    regex_tooltip_label: 'Regex Mode',
+    scope: {
+      label: 'Scope',
+      tooltip_label: 'Search Scope',
+      all: 'All',
+      source: 'Source',
+      translation: 'Translation',
+    },
   },
   sort: {
     ascending: 'Ascending',

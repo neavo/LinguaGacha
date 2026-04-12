@@ -55,6 +55,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
       <SearchBar
+        variant="filter"
         keyword={glossary_page_state.filter_state.keyword}
         placeholder={t('glossary_page.filter.placeholder')}
         clear_label={t('glossary_page.filter.clear')}

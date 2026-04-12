@@ -43,7 +43,7 @@ export const en_us_glossary_page = {
     enabled: 'Drag to reorder',
   },
   filter: {
-    placeholder: 'Enter keywords …',
+    placeholder: 'Query …',
     clear: 'Clear',
     regex: 'Regex',
     regex_tooltip_label: 'Regex Mode',

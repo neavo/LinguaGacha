@@ -30,7 +30,7 @@ export const zh_cn_text_replacement_page = {
     enabled: '拖拽排序',
   },
   filter: {
-    placeholder: '请输入关键字 …',
+    placeholder: '查询 …',
     clear: '清空',
     regex: '正则',
     regex_tooltip_label: '正则模式',

@@ -13,6 +13,9 @@ export const zh_cn_proofreading_page = {
     confirm: '确认',
     more: '更多',
   },
+  toggle: {
+    status: '{TITLE} - {STATE}',
+  },
   fields: {
     drag: '拖拽',
     status: '状态',
@@ -21,10 +24,20 @@ export const zh_cn_proofreading_page = {
   },
   search: {
     label: '搜索',
-    placeholder: '搜索',
+    placeholder: '查询 …',
+    clear: '清空',
     replace_label: '替换',
-    replace_placeholder: '替换为 …',
+    replace_placeholder: '替换 …',
+    replace_clear: '清空',
     regex: '正则',
+    regex_tooltip_label: '正则模式',
+    scope: {
+      label: '范围',
+      tooltip_label: '搜索范围',
+      all: '全部',
+      source: '原文',
+      translation: '译文',
+    },
   },
   sort: {
     ascending: '正序',

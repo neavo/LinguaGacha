@@ -60,6 +60,7 @@ export function TextReplacementPage(
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
       <SearchBar
+        variant="filter"
         keyword={page_state.filter_state.keyword}
         placeholder={t('text_replacement_page.filter.placeholder')}
         clear_label={t('text_replacement_page.filter.clear')}

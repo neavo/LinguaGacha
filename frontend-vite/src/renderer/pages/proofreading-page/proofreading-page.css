@@ -13,39 +13,6 @@
   margin: 0;
 }
 
-.proofreading-page__toolbar-card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-}
-
-.proofreading-page__toolbar-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-}
-
-.proofreading-page__toolbar-field {
-  min-width: 0;
-}
-
-.proofreading-page__toolbar-actions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.proofreading-page__toolbar-error {
-  margin: 0;
-  color: var(--destructive);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
 .proofreading-page__table-host {
   display: flex;
   min-height: 0;
@@ -405,14 +372,6 @@
 }
 
 @media (max-width: 1180px) {
-  .proofreading-page__toolbar-main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .proofreading-page__toolbar-actions {
-    justify-content: flex-start;
-  }
-
   .proofreading-page__filter-layout {
     grid-template-columns: minmax(0, 1fr);
   }

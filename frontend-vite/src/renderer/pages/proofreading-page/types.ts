@@ -133,6 +133,11 @@ export type ProofreadingPendingMutationKind =
   | 'retranslate-items'
   | 'reset-items'
 
+export type ProofreadingSearchScope =
+  | 'all'
+  | 'src'
+  | 'dst'
+
 export type ProofreadingPendingMutation = {
   kind: ProofreadingPendingMutationKind
   target_row_ids: string[]

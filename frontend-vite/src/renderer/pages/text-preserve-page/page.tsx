@@ -55,6 +55,7 @@ export function TextPreservePage(
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
       <SearchBar
+        variant="filter"
         keyword={page_state.filter_state.keyword}
         placeholder={t('text_preserve_page.filter.placeholder')}
         clear_label={t('text_preserve_page.filter.clear')}
