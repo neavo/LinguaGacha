@@ -6,6 +6,7 @@ import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
 import { CustomPromptPage } from '@/pages/custom-prompt-page/page'
 import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { GlossaryPage } from '@/pages/glossary-page/page'
+import { LaboratoryPage } from '@/pages/laboratory-page/page'
 import { ModelPage } from '@/pages/model-page/page'
 import { ProjectPage } from '@/pages/project-page/page'
 import { TextPreservePage } from '@/pages/text-preserve-page/page'
@@ -123,10 +124,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     summary_key: 'analysis_prompt_page.summary',
   },
   laboratory: {
-    component: create_debug_panel_screen({
-      title_key: 'laboratory_page.title',
-      summary_key: 'laboratory_page.summary',
-    }),
+    component: LaboratoryPage,
     title_key: 'laboratory_page.title',
     summary_key: 'laboratory_page.summary',
   },

@@ -1,5 +1,6 @@
 import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import {
+  IPC_CHANNEL_OPEN_EXTERNAL_URL,
   IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
   IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
   IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
@@ -54,6 +55,9 @@ contextBridge.exposeInMainWorld('desktopApp', {
   },
   async quitApp(): Promise<void> {
     await ipcRenderer.invoke(IPC_CHANNEL_QUIT_APP)
+  },
+  async openExternalUrl(url: string): Promise<void> {
+    await ipcRenderer.invoke(IPC_CHANNEL_OPEN_EXTERNAL_URL, url)
   },
   async pickProjectSourceFilePath(): Promise<DesktopPathPickResult> {
     return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH)

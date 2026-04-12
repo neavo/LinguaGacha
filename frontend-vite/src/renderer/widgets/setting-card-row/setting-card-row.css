@@ -22,6 +22,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 4px;
 }
 
 .setting-card-row__title {
@@ -29,6 +30,12 @@
   color: var(--foreground);
   font-size: 14px;
   line-height: 1.25;
+}
+
+.setting-card-row__title-suffix {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
 }
 
 .setting-card-row__description {

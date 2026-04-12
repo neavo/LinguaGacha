@@ -331,25 +331,27 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     <CardDescription>{t('model_page.fields.extra_headers.description')}</CardDescription>
                   </div>
 
-                  <SegmentedToggle
-                    aria_label={t('model_page.fields.extra_headers.title')}
-                    size="sm"
-                    value={model.request.extra_headers_custom_enable
-                      ? 'enabled'
-                      : 'disabled'}
-                    options={boolean_segmented_options}
-                    className="model-page__advanced-toggle-group"
-                    stretch
-                    disabled={props.readonly}
-                    on_value_change={(next_value) => {
-                      void props.onPatch({
-                        request: {
-                          extra_headers_custom_enable:
-                            next_value === 'enabled',
-                        },
-                      })
-                    }}
-                  />
+                  <div className="model-page__advanced-inline-control">
+                    <SegmentedToggle
+                      aria_label={t('model_page.fields.extra_headers.title')}
+                      size="sm"
+                      value={model.request.extra_headers_custom_enable
+                        ? 'enabled'
+                        : 'disabled'}
+                      options={boolean_segmented_options}
+                      className="model-page__advanced-toggle-group"
+                      stretch
+                      disabled={props.readonly}
+                      on_value_change={(next_value) => {
+                        void props.onPatch({
+                          request: {
+                            extra_headers_custom_enable:
+                              next_value === 'enabled',
+                          },
+                        })
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div className="model-page__request-editor">
@@ -389,25 +391,27 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                     <CardDescription>{t('model_page.fields.extra_body.description')}</CardDescription>
                   </div>
 
-                  <SegmentedToggle
-                    aria_label={t('model_page.fields.extra_body.title')}
-                    size="sm"
-                    value={model.request.extra_body_custom_enable
-                      ? 'enabled'
-                      : 'disabled'}
-                    options={boolean_segmented_options}
-                    className="model-page__advanced-toggle-group"
-                    stretch
-                    disabled={props.readonly}
-                    on_value_change={(next_value) => {
-                      void props.onPatch({
-                        request: {
-                          extra_body_custom_enable:
-                            next_value === 'enabled',
-                        },
-                      })
-                    }}
-                  />
+                  <div className="model-page__advanced-inline-control">
+                    <SegmentedToggle
+                      aria_label={t('model_page.fields.extra_body.title')}
+                      size="sm"
+                      value={model.request.extra_body_custom_enable
+                        ? 'enabled'
+                        : 'disabled'}
+                      options={boolean_segmented_options}
+                      className="model-page__advanced-toggle-group"
+                      stretch
+                      disabled={props.readonly}
+                      on_value_change={(next_value) => {
+                        void props.onPatch({
+                          request: {
+                            extra_body_custom_enable:
+                              next_value === 'enabled',
+                          },
+                        })
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div className="model-page__request-editor">

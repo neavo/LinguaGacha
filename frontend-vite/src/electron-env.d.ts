@@ -23,6 +23,7 @@ declare global {
       getPathForFile: (file: File) => string
       setTitleBarTheme: (theme_mode: ThemeMode) => void
       quitApp: () => Promise<void>
+      openExternalUrl: (url: string) => Promise<void>
       pickProjectSourceFilePath: () => Promise<DesktopPathPickResult>
       pickProjectSourceDirectoryPath: () => Promise<DesktopPathPickResult>
       pickProjectFilePath: () => Promise<DesktopPathPickResult>

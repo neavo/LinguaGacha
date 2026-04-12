@@ -130,6 +130,8 @@
 - `check_similarity`
 - `write_translated_name_fields_to_file`
 - `auto_process_prefix_suffix_preserved_text`
+- `mtool_optimizer_enable`
+- `force_thinking_enable`
 - `recent_projects`
 
 ## 6.x Model 接口

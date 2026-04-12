@@ -37,3 +37,17 @@ def test_app_settings_snapshot_to_dict_restores_recent_projects() -> None:
     assert snapshot.to_dict()["recent_projects"] == [
         {"path": "demo.lg", "name": "Demo"}
     ]
+
+
+def test_app_settings_snapshot_handles_laboratory_fields() -> None:
+    snapshot = AppSettingsSnapshot.from_dict(
+        {
+            "mtool_optimizer_enable": True,
+            "force_thinking_enable": False,
+        }
+    )
+
+    assert snapshot.mtool_optimizer_enable is True
+    assert snapshot.force_thinking_enable is False
+    assert snapshot.to_dict()["mtool_optimizer_enable"] is True
+    assert snapshot.to_dict()["force_thinking_enable"] is False

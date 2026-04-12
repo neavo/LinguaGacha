@@ -254,6 +254,11 @@
   gap: 12px;
 }
 
+.model-page__advanced-toggle-group {
+  width: 200px;
+  flex: 0 0 200px;
+}
+
 .model-page__compact-dialog-shell {
   max-width: 520px;
 }

@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/shadcn/select'
 import { Textarea } from '@/shadcn/textarea'
+import { SettingHelpButton } from '@/widgets/setting-help-button/setting-help-button'
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
 
 type ModelBasicSettingsDialogProps = {
@@ -32,6 +33,10 @@ type ModelBasicSettingsDialogProps = {
 }
 
 const THINKING_LEVEL_VALUES: ModelThinkingLevel[] = ['OFF', 'LOW', 'MEDIUM', 'HIGH']
+const THINKING_SUPPORT_URL_BY_LOCALE = {
+  'zh-CN': 'https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport',
+  'en-US': 'https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN',
+} as const
 
 function resolve_thinking_label(
   t: ReturnType<typeof useI18n>['t'],
@@ -49,7 +54,7 @@ function resolve_thinking_label(
 }
 
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false)
   const [model_id_input_value, set_model_id_input_value] = useState('')
 
@@ -201,6 +206,12 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
 
               <SettingCardRow
                 title={t('model_page.fields.thinking.title')}
+                title_suffix={(
+                  <SettingHelpButton
+                    url={THINKING_SUPPORT_URL_BY_LOCALE[locale]}
+                    aria_label={t('model_page.fields.thinking.help_label')}
+                  />
+                )}
                 description={t('model_page.fields.thinking.description')}
                 action={(
                   <Select

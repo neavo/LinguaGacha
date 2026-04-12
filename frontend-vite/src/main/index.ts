@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 import {
+  IPC_CHANNEL_OPEN_EXTERNAL_URL,
   IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
   IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
   IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
@@ -470,6 +471,23 @@ async function pick_save_path(
   }
 }
 
+function resolve_external_url(url: string): string {
+  const normalized_url = url.trim()
+
+  if (normalized_url === '') {
+    throw new Error('外部链接不能为空。')
+  }
+
+  const parsed_url = new URL(normalized_url)
+  const protocol = parsed_url.protocol.toLowerCase()
+
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error('当前只支持通过系统浏览器打开 http 或 https 链接。')
+  }
+
+  return parsed_url.toString()
+}
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
@@ -505,6 +523,10 @@ ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (_event, theme_mode: ThemeMode) => {
 ipcMain.handle(IPC_CHANNEL_QUIT_APP, async () => {
   log_app_quit_event('quit-app requested from renderer')
   app.quit()
+})
+
+ipcMain.handle(IPC_CHANNEL_OPEN_EXTERNAL_URL, async (_event, url: string) => {
+  await shell.openExternal(resolve_external_url(url))
 })
 
 ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH, async () => {

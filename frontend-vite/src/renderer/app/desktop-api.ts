@@ -142,3 +142,13 @@ export async function open_event_stream(): Promise<EventSource> {
   const base_url = await resolve_core_api_base_url()
   return new EventSource(build_api_url(base_url, '/api/events/stream'))
 }
+
+export async function open_external_url(url: string): Promise<void> {
+  const normalized_url = url.trim()
+
+  if (normalized_url === '') {
+    return
+  }
+
+  await window.desktopApp.openExternalUrl(normalized_url)
+}

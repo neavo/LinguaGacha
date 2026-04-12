@@ -91,6 +91,7 @@ export const en_us_model_page = {
     thinking: {
       title: 'Thinking Level',
       description: 'Configure the model thinking behavior, which affects latency and cost',
+      help_label: 'Open thinking level support documentation',
     },
     input_token_limit: {
       title: 'Input Token Limit',

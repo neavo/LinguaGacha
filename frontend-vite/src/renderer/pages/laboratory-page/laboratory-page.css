@@ -1,0 +1,17 @@
+.laboratory-page {
+  min-height: 100%;
+}
+
+.laboratory-page__notice {
+  align-items: start;
+}
+
+.laboratory-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.laboratory-page__help-button {
+  margin-inline-start: -4px;
+}

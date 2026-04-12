@@ -33,6 +33,8 @@ export type SettingsSnapshot = {
   check_similarity: boolean
   write_translated_name_fields_to_file: boolean
   auto_process_prefix_suffix_preserved_text: boolean
+  mtool_optimizer_enable: boolean
+  force_thinking_enable: boolean
   recent_projects: RecentProjectEntry[]
 }
 
@@ -105,6 +107,8 @@ const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   check_similarity: true,
   write_translated_name_fields_to_file: true,
   auto_process_prefix_suffix_preserved_text: true,
+  mtool_optimizer_enable: false,
+  force_thinking_enable: true,
   recent_projects: [],
 }
 
@@ -183,6 +187,12 @@ export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): S
     auto_process_prefix_suffix_preserved_text: Boolean(
       snapshot.auto_process_prefix_suffix_preserved_text
       ?? DEFAULT_SETTINGS_SNAPSHOT.auto_process_prefix_suffix_preserved_text,
+    ),
+    mtool_optimizer_enable: Boolean(
+      snapshot.mtool_optimizer_enable ?? DEFAULT_SETTINGS_SNAPSHOT.mtool_optimizer_enable,
+    ),
+    force_thinking_enable: Boolean(
+      snapshot.force_thinking_enable ?? DEFAULT_SETTINGS_SNAPSHOT.force_thinking_enable,
     ),
     recent_projects: normalize_recent_projects(snapshot.recent_projects),
   }

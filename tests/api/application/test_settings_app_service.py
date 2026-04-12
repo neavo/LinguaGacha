@@ -50,6 +50,31 @@ def test_update_app_settings_persists_selected_keys(
     ]
 
 
+def test_update_app_settings_persists_laboratory_toggle_keys(
+    settings_app_service,
+    fake_settings_config,
+) -> None:
+    result = settings_app_service.update_app_settings(
+        {
+            "mtool_optimizer_enable": True,
+            "force_thinking_enable": False,
+        }
+    )
+
+    settings = result["settings"]
+
+    assert settings["mtool_optimizer_enable"] is True
+    assert settings["force_thinking_enable"] is False
+    assert fake_settings_config.mtool_optimizer_enable is True
+    assert fake_settings_config.force_thinking_enable is False
+    assert settings_app_service.emitted_events == [
+        (
+            Base.Event.CONFIG_UPDATED,
+            {"keys": ["mtool_optimizer_enable", "force_thinking_enable"]},
+        )
+    ]
+
+
 def test_update_expert_mode_resets_expert_settings_before_save(
     settings_app_service,
     fake_settings_config,
