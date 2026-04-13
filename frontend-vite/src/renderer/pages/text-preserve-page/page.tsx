@@ -81,7 +81,6 @@ export function TextPreservePage(
       <div className="text-preserve-page__table-host">
         <TextPreserveTable
           title_key={page_state.title_key}
-          summary_key={page_state.summary_key}
           entries={page_state.filtered_entries}
           sort_state={page_state.sort_state}
           drag_disabled={page_state.drag_disabled}
@@ -101,7 +100,6 @@ export function TextPreservePage(
       </div>
       <TextPreserveCommandBar
         title_key={page_state.title_key}
-        summary_key={page_state.summary_key}
         mode={page_state.mode}
         preset_items={page_state.preset_items}
         preset_menu_open={page_state.preset_menu_open}

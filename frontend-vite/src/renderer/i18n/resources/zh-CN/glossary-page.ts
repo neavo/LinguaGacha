@@ -1,6 +1,5 @@
 export const zh_cn_glossary_page = {
   title: '术语表',
-  summary: '通过在提示词中构建术语表来引导模型翻译，可实现统一翻译、矫正人称属性等功能',
   action: {
     create: '新增',
     import: '导入',
@@ -68,10 +67,8 @@ export const zh_cn_glossary_page = {
     cancel_default: '取消默认预设',
     dialog: {
       save_title: '保存为预设',
-      save_description: '将当前术语表保存为用户预设，便于后续快速导入。',
       save_confirm: '保存',
       rename_title: '重命名预设',
-      rename_description: '修改这个用户预设的名称。',
       rename_confirm: '重命名',
       name_placeholder: '请输入预设名称 …',
     },

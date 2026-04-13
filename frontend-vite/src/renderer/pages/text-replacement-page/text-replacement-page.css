@@ -142,6 +142,7 @@
 
 .text-replacement-page__dialog-shell {
   background: var(--popover);
+  height: 640px;
 }
 
 .text-replacement-page__dialog-shell [data-slot='dialog-footer'] {
@@ -149,17 +150,20 @@
 }
 
 .text-replacement-page__dialog-scroll {
+  display: flex;
+  flex: 1;
   min-height: 0;
-  max-height: calc(100vh - 220px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
   padding: 16px;
 }
 
 .text-replacement-page__dialog-form {
   display: grid;
-  min-height: min(520px, calc(100vh - 320px));
+  width: 100%;
+  min-height: 100%;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
 }
@@ -195,9 +199,7 @@
 }
 
 .text-replacement-page__dialog-editor {
-  height: 100%;
-  background: var(--popover);
-  resize: none;
+  min-height: 0;
 }
 
 .text-replacement-page__dialog-error {
@@ -260,7 +262,7 @@
 }
 
 .text-replacement-page__preset-dialog-body {
-  padding: 0 24px 12px;
+  padding: 24px 24px 12px;
 }
 
 .text-replacement-page__preset-dialog-footer {

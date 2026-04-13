@@ -53,6 +53,7 @@
   flex: 1;
   flex-direction: column;
   overflow: hidden;
+  outline: none;
 }
 
 .app-table__scroll {
@@ -251,6 +252,10 @@
 .app-table__table--body [data-slot='table-body'] > .app-table__row[data-state='selected'] > [data-slot='table-cell'],
 .app-table__table--body [data-slot='table-body'] > .app-table__row[data-dragging='true'] > [data-slot='table-cell'] {
   --app-table-cell-state: var(--table-selected-current);
+}
+
+.app-table__scroll-host:focus-visible .app-table__table--body [data-slot='table-body'] > .app-table__row[data-active='true'] > [data-slot='table-cell'] {
+  --app-table-cell-state: color-mix(in srgb, var(--table-selected-current) 84%, var(--primary) 16%);
 }
 
 .app-table__table--body [data-slot='table-body'] > .app-table__row > .app-table__drag-cell::before {

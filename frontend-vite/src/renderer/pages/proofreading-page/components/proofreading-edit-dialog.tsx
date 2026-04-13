@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
+import { useSaveShortcut } from '@/hooks/use-save-shortcut'
 import {
   ProofreadingCodeEditor,
   type ProofreadingCodeEditorHighlight,
@@ -22,6 +23,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/shadcn/dialog'
+import { Kbd } from '@/shadcn/kbd'
 
 type ProofreadingEditDialogProps = {
   open: boolean
@@ -212,18 +214,26 @@ export function ProofreadingEditDialog(
   props: ProofreadingEditDialogProps,
 ): JSX.Element | null {
   const { t } = useI18n()
+  const item = props.item
+  const save_label = t('proofreading_page.action.save')
+  const save_disabled = props.readonly || props.saving
 
-  if (props.item === null) {
+  useSaveShortcut({
+    enabled: props.open && !save_disabled,
+    on_save: () => {
+      void props.on_save()
+    },
+  })
+
+  if (item === null) {
     return null
   }
 
-  const item = props.item
   const status_label_key = PROOFREADING_STATUS_LABEL_KEY_BY_CODE[
     item.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
   ]
   const status_badge_tone = resolve_status_badge_tone(item.status)
   const status_label = status_label_key === undefined ? item.status : t(status_label_key)
-  const can_save = !props.readonly && !props.saving && props.draft_dst !== item.dst
   const glossary_badge_state = resolve_glossary_badge_state(item, props.draft_dst, t)
   const {
     source_highlights,
@@ -382,8 +392,9 @@ export function ProofreadingEditDialog(
             <Button type="button" variant="outline" disabled={props.saving} onClick={props.on_close}>
               {t('proofreading_page.action.cancel')}
             </Button>
-            <Button type="button" disabled={!can_save} onClick={() => { void props.on_save() }}>
-              {t('proofreading_page.action.save')}
+            <Button type="button" disabled={save_disabled} onClick={() => { void props.on_save() }}>
+              {save_label}
+              <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
             </Button>
           </div>
         </DialogFooter>

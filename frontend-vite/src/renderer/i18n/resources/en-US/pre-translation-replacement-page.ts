@@ -3,5 +3,4 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_pre_translation_replacement_page = {
   title: 'Pre-translation',
-  summary: 'Before translation, matched parts of the original text will be replaced by specified text, processed in top-down order',
 } satisfies LocaleMessageSchema<typeof zh_cn_pre_translation_replacement_page>

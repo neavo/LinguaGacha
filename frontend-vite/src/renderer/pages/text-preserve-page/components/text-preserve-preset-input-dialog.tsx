@@ -1,15 +1,15 @@
 import { useI18n, type LocaleKey } from '@/i18n'
+import { useSaveShortcut } from '@/hooks/use-save-shortcut'
 import type { TextPreservePresetInputState } from '@/pages/text-preserve-page/types'
 import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/shadcn/dialog'
 import { Input } from '@/shadcn/input'
+import { Kbd } from '@/shadcn/kbd'
 
 type TextPreservePresetInputDialogProps = {
   state: TextPreservePresetInputState
@@ -20,7 +20,6 @@ type TextPreservePresetInputDialogProps = {
 
 type PresetDialogCopy = {
   title_key: LocaleKey
-  description_key: LocaleKey
   confirm_key: LocaleKey
 }
 
@@ -30,12 +29,10 @@ const PRESET_DIALOG_COPY_BY_MODE: Record<
 > = {
   save: {
     title_key: 'text_preserve_page.preset.dialog.save_title',
-    description_key: 'text_preserve_page.preset.dialog.save_description',
     confirm_key: 'text_preserve_page.preset.dialog.save_confirm',
   },
   rename: {
     title_key: 'text_preserve_page.preset.dialog.rename_title',
-    description_key: 'text_preserve_page.preset.dialog.rename_description',
     confirm_key: 'text_preserve_page.preset.dialog.rename_confirm',
   },
 }
@@ -47,6 +44,15 @@ export function TextPreservePresetInputDialog(
   const dialog_copy = props.state.mode === null
     ? null
     : PRESET_DIALOG_COPY_BY_MODE[props.state.mode]
+  const is_save_mode = props.state.mode === 'save'
+  const confirm_label = dialog_copy === null ? '' : t(dialog_copy.confirm_key)
+
+  useSaveShortcut({
+    enabled: props.state.open && is_save_mode && !props.state.submitting,
+    on_save: () => {
+      props.on_submit()
+    },
+  })
 
   return (
     <Dialog
@@ -58,14 +64,9 @@ export function TextPreservePresetInputDialog(
       }}
     >
       <DialogContent size="sm" className="text-preserve-page__preset-dialog-shell">
-        <DialogHeader>
-          <DialogTitle>
-            {dialog_copy === null ? '' : t(dialog_copy.title_key)}
-          </DialogTitle>
-          <DialogDescription>
-            {dialog_copy === null ? '' : t(dialog_copy.description_key)}
-          </DialogDescription>
-        </DialogHeader>
+        <DialogTitle className="sr-only">
+          {dialog_copy === null ? '' : t(dialog_copy.title_key)}
+        </DialogTitle>
 
         <div className="text-preserve-page__preset-dialog-body">
           <Input
@@ -95,14 +96,28 @@ export function TextPreservePresetInputDialog(
           >
             {t('app.action.cancel')}
           </Button>
-          <Button
-            type="button"
-            className="text-preserve-page__preset-dialog-button"
-            disabled={props.state.submitting}
-            onClick={props.on_submit}
-          >
-            {dialog_copy === null ? '' : t(dialog_copy.confirm_key)}
-          </Button>
+          {is_save_mode
+            ? (
+                <Button
+                  type="button"
+                  className="text-preserve-page__preset-dialog-button text-primary-foreground"
+                  disabled={props.state.submitting}
+                  onClick={props.on_submit}
+                >
+                  {confirm_label}
+                  <Kbd className="border border-primary-foreground/16 bg-primary-foreground/18 text-primary-foreground">Ctrl+S</Kbd>
+                </Button>
+              )
+            : (
+                <Button
+                  type="button"
+                  className="text-preserve-page__preset-dialog-button"
+                  disabled={props.state.submitting}
+                  onClick={props.on_submit}
+                >
+                  {confirm_label}
+                </Button>
+              )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

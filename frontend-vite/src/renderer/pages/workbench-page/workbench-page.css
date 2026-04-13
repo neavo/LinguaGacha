@@ -88,7 +88,6 @@
 }
 
 .workbench-page__table [data-slot='table-cell'] {
-  font-size: 12px;
   color: color-mix(in srgb, var(--foreground) 92%, var(--muted-foreground) 8%);
 }
 
@@ -122,6 +121,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workbench-page__table-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-page__table-line-text {
+  display: inline-block;
+  min-width: 100%;
+  font-variant-numeric: tabular-nums;
 }
 
 .workbench-page__row-action {

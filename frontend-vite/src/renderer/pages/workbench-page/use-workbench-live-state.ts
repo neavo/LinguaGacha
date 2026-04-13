@@ -67,11 +67,27 @@ function close_dialog_state(): WorkbenchDialogState {
 }
 
 function resolve_format_label_key(file_type: string, rel_path: string): LocaleKey | null {
+  // 为什么：同一工程在 Qt 与 Vite 两套前端里都要看到同一套格式名称，避免工作台口径漂移。
   if (file_type === 'MD') {
     return 'workbench_page.format.markdown'
   }
+  if (file_type === 'RENPY') {
+    return 'workbench_page.format.renpy'
+  }
+  if (file_type === 'KVJSON') {
+    return 'workbench_page.format.mtool'
+  }
+  if (file_type === 'MESSAGEJSON') {
+    return 'workbench_page.format.sextractor'
+  }
+  if (file_type === 'TRANS') {
+    return 'workbench_page.format.trans_project'
+  }
   if (file_type === 'XLSX') {
     return 'workbench_page.format.translation_export'
+  }
+  if (file_type === 'WOLFXLSX') {
+    return 'workbench_page.format.wolf'
   }
   if (file_type === 'EPUB') {
     return 'workbench_page.format.ebook'

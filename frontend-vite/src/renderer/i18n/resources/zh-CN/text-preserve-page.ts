@@ -1,6 +1,5 @@
 export const zh_cn_text_preserve_page = {
   title: '文本保护',
-  summary: '文本保护页会约束不可翻译片段，守住格式与专有内容。',
   action: {
     create: '新增',
     edit: '编辑',
@@ -67,10 +66,8 @@ export const zh_cn_text_preserve_page = {
     cancel_default: '取消默认预设',
     dialog: {
       save_title: '保存为预设',
-      save_description: '将当前文本保护规则保存为用户预设，便于后续快速导入。',
       save_confirm: '保存',
       rename_title: '重命名预设',
-      rename_description: '修改这个用户预设的名称。',
       rename_confirm: '重命名',
       name_placeholder: '请输入预设名称 …',
     },

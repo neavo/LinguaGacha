@@ -1,6 +1,5 @@
 export const zh_cn_expert_settings_page = {
   title: '专家设置',
-  summary: '专家设置页会托管进阶开关和调试入口，避免主流程过载。',
   fields: {
     response_check_settings: {
       title: '结果检查规则',

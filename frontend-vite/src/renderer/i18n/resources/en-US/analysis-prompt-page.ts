@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_analysis_prompt_page = {
   title: 'Analysis Prompts',
-  summary: 'Adjust glossary analysis scope and output requirements through custom prompts',
   header: {
     title: 'Custom Analysis Prompts',
     description_html:

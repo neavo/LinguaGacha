@@ -350,6 +350,7 @@ type SearchBarReplaceFieldProps = {
   replace_next_label: string
   replace_all_label: string
   disabled?: boolean
+  replace_actions_disabled: boolean
   on_replace_text_change: (next_replace_text: string) => void
   on_replace_next: () => void | Promise<void>
   on_replace_all: () => void | Promise<void>
@@ -402,7 +403,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
           <TooltipTrigger asChild>
             <InputGroupButton
               size="icon-xs"
-              disabled={props.disabled}
+              disabled={props.replace_actions_disabled}
               aria-label={props.replace_next_label}
               className="search-bar__replace-button"
               onClick={() => {
@@ -420,7 +421,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
           <TooltipTrigger asChild>
             <InputGroupButton
               size="icon-xs"
-              disabled={props.disabled}
+              disabled={props.replace_actions_disabled}
               aria-label={props.replace_all_label}
               className="search-bar__replace-button"
               onClick={() => {
@@ -455,6 +456,14 @@ export function SearchBar<scope_value extends string = string>(
     regex,
   } = props
   const card_props = resolve_search_bar_card_props(props)
+  // 将替换动作的可用性收口在 SearchBar 内，避免页面层重复维护同一组前置条件。
+  const replace_actions_disabled = (
+    variant !== 'replace'
+    || disabled === true
+    || keyword === ''
+    || props.replace_text === ''
+    || invalid_message !== null
+  )
 
   return (
     <Card
@@ -490,6 +499,7 @@ export function SearchBar<scope_value extends string = string>(
                     replace_next_label={props.replace_next_label}
                     replace_all_label={props.replace_all_label}
                     disabled={disabled}
+                    replace_actions_disabled={replace_actions_disabled}
                     on_replace_text_change={props.on_replace_text_change}
                     on_replace_next={props.on_replace_next}
                     on_replace_all={props.on_replace_all}

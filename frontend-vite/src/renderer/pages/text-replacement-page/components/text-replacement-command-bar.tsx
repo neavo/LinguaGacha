@@ -42,7 +42,6 @@ import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type TextReplacementCommandBarProps = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   enabled: boolean
   preset_items: TextReplacementPresetItem[]
   preset_menu_open: boolean
@@ -89,12 +88,10 @@ export function TextReplacementCommandBar(
     '{STATE}',
     t(toggle_state_key),
   )
-  const toggle_tooltip_description = t(props.summary_key)
 
   return (
     <CommandBar
       title={t(props.title_key)}
-      description={t(props.summary_key)}
       actions={(
         <>
           <CommandBarGroup>
@@ -323,9 +320,6 @@ export function TextReplacementCommandBar(
                 data-ui-text="emphasis"
               >
                 {toggle_tooltip_title}
-              </p>
-              <p className="text-background/90">
-                {toggle_tooltip_description}
               </p>
             </div>
           </TooltipContent>

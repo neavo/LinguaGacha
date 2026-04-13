@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 
 import { useI18n, type LocaleKey } from '@/i18n'
+import { useSaveShortcut } from '@/hooks/use-save-shortcut'
 import type { CustomPromptPresetItem } from '@/pages/custom-prompt-page/types'
 import { Button } from '@/shadcn/button'
 import {
@@ -26,6 +27,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/shadcn/dropdown-menu'
+import { Kbd } from '@/shadcn/kbd'
 import {
   Tooltip,
   TooltipContent,
@@ -40,10 +42,10 @@ import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type CustomPromptCommandBarProps = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   header_title_key: LocaleKey
   header_description_key: LocaleKey
   enabled: boolean
+  save_shortcut_enabled: boolean
   preset_items: CustomPromptPresetItem[]
   preset_menu_open: boolean
   on_toggle_enabled: (next_value: boolean) => Promise<void>
@@ -65,6 +67,7 @@ export function CustomPromptCommandBar(
   props: CustomPromptCommandBarProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const save_label = t('custom_prompt_page.action.save')
   const boolean_segmented_options = [
     {
       value: 'disabled',
@@ -82,10 +85,16 @@ export function CustomPromptCommandBar(
     .replace('{TITLE}', t(props.header_title_key))
     .replace('{STATE}', t(toggle_state_key))
 
+  useSaveShortcut({
+    enabled: props.save_shortcut_enabled,
+    on_save: () => {
+      void props.on_save()
+    },
+  })
+
   return (
     <CommandBar
       title={t(props.title_key)}
-      description={t(props.summary_key)}
       actions={(
         <>
           <CommandBarGroup>
@@ -119,7 +128,8 @@ export function CustomPromptCommandBar(
             }}
           >
             <Save data-icon="inline-start" />
-            {t('custom_prompt_page.action.save')}
+            {save_label}
+            <Kbd>Ctrl+S</Kbd>
           </Button>
           <CommandBarSeparator />
           <DropdownMenu

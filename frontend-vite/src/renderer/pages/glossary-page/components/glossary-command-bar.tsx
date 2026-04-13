@@ -87,7 +87,6 @@ export function GlossaryCommandBar(
   return (
     <CommandBar
       title={t('glossary_page.title')}
-      description={t('glossary_page.summary')}
       actions={(
         <>
           <CommandBarGroup>

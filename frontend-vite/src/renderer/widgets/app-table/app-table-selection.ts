@@ -74,6 +74,37 @@ export function collect_app_table_range_selection(
   return ordered_row_ids.slice(start_index, end_index + 1)
 }
 
+type AppTableKeyboardNavigationAction = 'previous' | 'next' | 'first' | 'last'
+
+function resolve_keyboard_navigation_target_index(args: {
+  ordered_row_ids: string[]
+  current_state: AppTableSelectionState
+  action: AppTableKeyboardNavigationAction
+}): number {
+  const row_count = args.ordered_row_ids.length
+  const current_index = args.current_state.active_row_id === null
+    ? -1
+    : args.ordered_row_ids.indexOf(args.current_state.active_row_id)
+
+  if (row_count === 0) {
+    return -1
+  } else if (args.action === 'first') {
+    return 0
+  } else if (args.action === 'last') {
+    return row_count - 1
+  } else if (args.action === 'previous') {
+    if (current_index < 0) {
+      return row_count - 1
+    } else {
+      return Math.max(current_index - 1, 0)
+    }
+  } else if (current_index < 0) {
+    return 0
+  } else {
+    return Math.min(current_index + 1, row_count - 1)
+  }
+}
+
 export function build_app_table_click_selection_change(args: {
   selection_mode: AppTableSelectionMode
   ordered_row_ids: string[]
@@ -172,5 +203,70 @@ export function build_app_table_box_selection_change(args: {
     selected_row_ids: args.next_row_ids,
     active_row_id: next_active_row_id ?? args.current_state.active_row_id,
     anchor_row_id: next_anchor_row_id ?? args.current_state.anchor_row_id,
+  }
+}
+
+export function build_app_table_keyboard_selection_change(args: {
+  selection_mode: AppTableSelectionMode
+  ordered_row_ids: string[]
+  current_state: AppTableSelectionState
+  action: AppTableKeyboardNavigationAction
+  extend: boolean
+}): AppTableSelectionChange {
+  const target_index = resolve_keyboard_navigation_target_index({
+    ordered_row_ids: args.ordered_row_ids,
+    current_state: args.current_state,
+    action: args.action,
+  })
+  const target_row_id = args.ordered_row_ids[target_index] ?? null
+
+  if (target_row_id === null) {
+    return args.current_state
+  } else if (args.selection_mode === 'none') {
+    return {
+      selected_row_ids: [],
+      active_row_id: target_row_id,
+      anchor_row_id: null,
+    }
+  } else if (args.selection_mode === 'single') {
+    return {
+      selected_row_ids: [target_row_id],
+      active_row_id: target_row_id,
+      anchor_row_id: target_row_id,
+    }
+  } else if (args.extend) {
+    const anchor_row_id = args.current_state.anchor_row_id
+      ?? args.current_state.active_row_id
+      ?? target_row_id
+
+    return {
+      selected_row_ids: collect_app_table_range_selection(
+        args.ordered_row_ids,
+        anchor_row_id,
+        target_row_id,
+      ),
+      active_row_id: target_row_id,
+      anchor_row_id,
+    }
+  } else {
+    return {
+      selected_row_ids: [target_row_id],
+      active_row_id: target_row_id,
+      anchor_row_id: target_row_id,
+    }
+  }
+}
+
+export function build_app_table_select_all_selection_change(args: {
+  ordered_row_ids: string[]
+  current_state: AppTableSelectionState
+}): AppTableSelectionChange {
+  const fallback_anchor_row_id = args.ordered_row_ids[0] ?? null
+  const fallback_active_row_id = args.current_state.active_row_id ?? fallback_anchor_row_id
+
+  return {
+    selected_row_ids: args.ordered_row_ids,
+    active_row_id: fallback_active_row_id,
+    anchor_row_id: args.current_state.anchor_row_id ?? fallback_anchor_row_id,
   }
 }

@@ -70,7 +70,6 @@ const TEXT_PRESERVE_RULE_TYPE = 'text_preserve'
 const TEXT_PRESERVE_PRESET_DIR_NAME = 'text_preserve'
 const TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY = 'text_preserve_default_preset'
 const TEXT_PRESERVE_TITLE_KEY: LocaleKey = 'text_preserve_page.title'
-const TEXT_PRESERVE_SUMMARY_KEY: LocaleKey = 'text_preserve_page.summary'
 const TEXT_PRESERVE_EXPORT_FILE_NAME = 'text_preserve.json'
 const DEFAULT_MODE: TextPreserveMode = 'off'
 
@@ -1138,6 +1137,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     invalidate_statistics()
     const saved = await save_entries_snapshot(next_entries)
     if (saved) {
+      push_toast('success', t('app.feedback.save_success'))
       set_dialog_state(create_empty_dialog_state())
       return true
     }
@@ -1147,20 +1147,15 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       saving: false,
     }))
     return false
-  }, [dialog_state, entries, entry_ids, invalidate_statistics, push_toast, save_entries_snapshot, validate_entry])
+  }, [dialog_state, entries, entry_ids, invalidate_statistics, push_toast, save_entries_snapshot, t, validate_entry])
 
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry()
   }, [persist_dialog_entry])
 
   const request_close_dialog = useCallback(async (): Promise<void> => {
-    if (!dialog_state.dirty) {
-      set_dialog_state(create_empty_dialog_state())
-      return
-    }
-
-    await save_dialog_entry()
-  }, [dialog_state.dirty, save_dialog_entry])
+    set_dialog_state(create_empty_dialog_state())
+  }, [])
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state())
@@ -1334,7 +1329,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   return {
     title_key: TEXT_PRESERVE_TITLE_KEY,
-    summary_key: TEXT_PRESERVE_SUMMARY_KEY,
     mode,
     filtered_entries,
     filter_state,

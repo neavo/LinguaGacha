@@ -50,7 +50,6 @@ export type CustomPromptPresetInputState =
 
 export type UseCustomPromptPageStateResult = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   header_title_key: LocaleKey
   header_description_key: LocaleKey
   template: CustomPromptTemplate

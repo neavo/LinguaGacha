@@ -1,6 +1,5 @@
 export const zh_cn_workbench_page = {
   title: '工作台',
-  summary: '工作台会汇总文件列表、处理进度与工程级快捷操作。',
   section: {
     stats: '工作台统计',
     file_list: '文件列表',
@@ -25,6 +24,11 @@ export const zh_cn_workbench_page = {
     actions: '操作',
     open_actions: '打开操作菜单',
   },
+  sort: {
+    ascending: '按升序排序',
+    descending: '按降序排序',
+    clear: '清除排序',
+  },
   action: {
     add_file: '添加文件',
     export_translation: '生成译文',
@@ -35,10 +39,15 @@ export const zh_cn_workbench_page = {
   },
   format: {
     markdown: 'Markdown',
+    renpy: 'RenPy',
+    mtool: 'MTool',
+    sextractor: 'VNT/SExtractor',
+    trans_project: 'Translator++',
     text_file: '纯文本',
     subtitle_file: '字幕文件',
-    ebook: '电子书',
-    translation_export: '导出译文',
+    ebook: 'EPUB',
+    translation_export: 'Translator++ XLSX',
+    wolf: 'WOLF 官方工具 XLSX',
   },
   command: {
     description: '工作台底栏会承接工程级快捷操作。',
@@ -48,29 +57,29 @@ export const zh_cn_workbench_page = {
   },
   dialog: {
     replace: {
-      title: '确认替换文件',
-      description: '替换后会用新文件内容覆盖当前文件，并在刷新后尽量保持选中状态。',
-      confirm: '确认替换',
+      title: '确认',
+      description: '当前文件的翻译数据将尽可能的保留',
+      confirm: '确认',
     },
     reset: {
-      title: '确认重置文件',
-      description: '重置后会恢复该文件的初始工程内容，并重新计算统计数据。',
-      confirm: '确认重置',
+      title: '确认',
+      description: '确定要重置该文件的翻译状态吗 …?',
+      confirm: '确认',
     },
     delete: {
-      title: '确认删除文件',
-      description: '删除后会把该文件从当前工程移除，并在刷新后更新统计卡片。',
-      confirm: '确认删除',
+      title: '确认',
+      description: '确定要删除该文件及其所有翻译条目吗 …?',
+      confirm: '确认',
     },
     export: {
-      title: '确认生成译文',
-      description: '生成后会按当前工程设置导出真实译文文件。',
-      confirm: '确认生成',
+      title: '确认',
+      description: '确定要生成译文文件吗 …?',
+      confirm: '确认',
     },
     close_project: {
-      title: '确认关闭项目',
-      description: '关闭后会卸载当前工程，并返回工程主页。',
-      confirm: '确认关闭',
+      title: '确认',
+      description: '确定要关闭当前工程吗 …?',
+      confirm: '确认',
     },
   },
 } as const

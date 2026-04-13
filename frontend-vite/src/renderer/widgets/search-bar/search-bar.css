@@ -51,11 +51,11 @@
 }
 
 .search-bar__replace-button {
-  color: color-mix(in srgb, var(--primary) 78%, var(--foreground) 22%);
+  color: color-mix(in srgb, var(--foreground) 62%, var(--muted-foreground) 38%);
 }
 
 .search-bar__replace-button:hover {
-  color: color-mix(in srgb, var(--primary) 90%, var(--foreground) 10%);
+  color: var(--foreground);
 }
 
 .search-bar__invalid-tooltip {

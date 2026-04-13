@@ -1,6 +1,5 @@
 export const zh_cn_laboratory_page = {
   title: '实验室',
-  summary: '实验室会收纳仍在实验阶段的翻译增强能力，启用前请先理解各项功能的适用范围与风险。',
   fields: {
     mtool_optimizer_enable: {
       title: 'MTool 优化器',

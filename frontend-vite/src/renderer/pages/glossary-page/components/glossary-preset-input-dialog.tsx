@@ -1,15 +1,15 @@
 import { useI18n, type LocaleKey } from '@/i18n'
+import { useSaveShortcut } from '@/hooks/use-save-shortcut'
 import type { GlossaryPresetInputState } from '@/pages/glossary-page/types'
 import { Button } from '@/shadcn/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/shadcn/dialog'
 import { Input } from '@/shadcn/input'
+import { Kbd } from '@/shadcn/kbd'
 
 type GlossaryPresetInputDialogProps = {
   state: GlossaryPresetInputState
@@ -20,19 +20,16 @@ type GlossaryPresetInputDialogProps = {
 
 type PresetDialogCopy = {
   title_key: LocaleKey
-  description_key: LocaleKey
   confirm_key: LocaleKey
 }
 
 const PRESET_DIALOG_COPY_BY_MODE: Record<NonNullable<GlossaryPresetInputState['mode']>, PresetDialogCopy> = {
   save: {
     title_key: 'glossary_page.preset.dialog.save_title',
-    description_key: 'glossary_page.preset.dialog.save_description',
     confirm_key: 'glossary_page.preset.dialog.save_confirm',
   },
   rename: {
     title_key: 'glossary_page.preset.dialog.rename_title',
-    description_key: 'glossary_page.preset.dialog.rename_description',
     confirm_key: 'glossary_page.preset.dialog.rename_confirm',
   },
 }
@@ -44,6 +41,15 @@ export function GlossaryPresetInputDialog(
   const dialog_copy = props.state.mode === null
     ? null
     : PRESET_DIALOG_COPY_BY_MODE[props.state.mode]
+  const is_save_mode = props.state.mode === 'save'
+  const confirm_label = dialog_copy === null ? '' : t(dialog_copy.confirm_key)
+
+  useSaveShortcut({
+    enabled: props.state.open && is_save_mode && !props.state.submitting,
+    on_save: () => {
+      void props.on_submit()
+    },
+  })
 
   return (
     <Dialog
@@ -55,14 +61,9 @@ export function GlossaryPresetInputDialog(
       }}
     >
       <DialogContent size="sm" className="glossary-page__preset-dialog-shell">
-        <DialogHeader>
-          <DialogTitle>
-            {dialog_copy === null ? '' : t(dialog_copy.title_key)}
-          </DialogTitle>
-          <DialogDescription>
-            {dialog_copy === null ? '' : t(dialog_copy.description_key)}
-          </DialogDescription>
-        </DialogHeader>
+        <DialogTitle className="sr-only">
+          {dialog_copy === null ? '' : t(dialog_copy.title_key)}
+        </DialogTitle>
 
         <div className="glossary-page__preset-dialog-body">
           <Input
@@ -85,16 +86,6 @@ export function GlossaryPresetInputDialog(
         <DialogFooter className="glossary-page__preset-dialog-footer">
           <Button
             type="button"
-            className="glossary-page__preset-dialog-button"
-            disabled={props.state.submitting}
-            onClick={() => {
-              void props.on_submit()
-            }}
-          >
-            {dialog_copy === null ? '' : t(dialog_copy.confirm_key)}
-          </Button>
-          <Button
-            type="button"
             variant="outline"
             className="glossary-page__preset-dialog-button"
             disabled={props.state.submitting}
@@ -102,6 +93,32 @@ export function GlossaryPresetInputDialog(
           >
             {t('app.action.cancel')}
           </Button>
+          {is_save_mode
+            ? (
+                <Button
+                  type="button"
+                  className="glossary-page__preset-dialog-button"
+                  disabled={props.state.submitting}
+                  onClick={() => {
+                    void props.on_submit()
+                  }}
+                >
+                  {confirm_label}
+                  <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
+                </Button>
+              )
+            : (
+                <Button
+                  type="button"
+                  className="glossary-page__preset-dialog-button"
+                  disabled={props.state.submitting}
+                  onClick={() => {
+                    void props.on_submit()
+                  }}
+                >
+                  {confirm_label}
+                </Button>
+              )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -22,10 +22,8 @@ export const zh_cn_custom_prompt_page = {
     cancel_default: '取消默认预设',
     dialog: {
       save_title: '保存为预设',
-      save_description: '将当前提示词正文保存为用户预设，便于后续快速导入。',
       save_confirm: '保存',
       rename_title: '重命名预设',
-      rename_description: '修改这个用户预设的名称。',
       rename_confirm: '重命名',
       name_placeholder: '请输入预设名称 …',
     },
@@ -62,7 +60,6 @@ export const zh_cn_custom_prompt_page = {
     preset_exists: '文件已存在 …',
     default_preset_set: '已设置为默认预设 …',
     default_preset_cleared: '已取消默认预设 …',
-    save_success: '已保存 …',
     reset_success: '已重置 …',
   },
 } as const

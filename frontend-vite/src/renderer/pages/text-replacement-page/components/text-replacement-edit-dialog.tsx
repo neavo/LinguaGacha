@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
+import { useSaveShortcut } from '@/hooks/use-save-shortcut'
 import type {
   TextReplacementDialogMode,
   TextReplacementEntry,
@@ -15,7 +16,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/shadcn/dialog'
-import { Textarea } from '@/shadcn/textarea'
+import { Kbd } from '@/shadcn/kbd'
+import { AppEditor } from '@/widgets/app-editor/app-editor'
 import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type TextReplacementEditDialogProps = {
@@ -33,6 +35,7 @@ export function TextReplacementEditDialog(
   props: TextReplacementEditDialogProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const save_label = t('text_replacement_page.action.save')
   const boolean_segmented_options = [
     {
       value: 'disabled',
@@ -46,6 +49,13 @@ export function TextReplacementEditDialog(
   const title = props.mode === 'create'
     ? t('text_replacement_page.dialog.create_title')
     : t('text_replacement_page.dialog.edit_title')
+
+  useSaveShortcut({
+    enabled: props.open && !props.saving,
+    on_save: () => {
+      void props.on_save()
+    },
+  })
 
   return (
     <Dialog
@@ -76,14 +86,14 @@ export function TextReplacementEditDialog(
                   >
                     {t('text_replacement_page.fields.source')}
                   </span>
-                  <Textarea
-                    className="text-replacement-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                  <AppEditor
+                    class_name="text-replacement-page__dialog-editor"
                     value={props.entry.src}
-                    disabled={props.saving}
-                    aria-invalid={props.validation_message !== null}
-                    placeholder={t('text_replacement_page.fields.source')}
-                    onChange={(event) => {
-                      props.on_change({ src: event.target.value })
+                    aria_label={t('text_replacement_page.fields.source')}
+                    read_only={props.saving}
+                    invalid={props.validation_message !== null}
+                    on_change={(next_value) => {
+                      props.on_change({ src: next_value })
                     }}
                   />
                   {props.validation_message === null
@@ -102,13 +112,13 @@ export function TextReplacementEditDialog(
                   >
                     {t('text_replacement_page.fields.replacement')}
                   </span>
-                  <Textarea
-                    className="text-replacement-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                  <AppEditor
+                    class_name="text-replacement-page__dialog-editor"
                     value={props.entry.dst}
-                    disabled={props.saving}
-                    placeholder={t('text_replacement_page.fields.replacement')}
-                    onChange={(event) => {
-                      props.on_change({ dst: event.target.value })
+                    aria_label={t('text_replacement_page.fields.replacement')}
+                    read_only={props.saving}
+                    on_change={(next_value) => {
+                      props.on_change({ dst: next_value })
                     }}
                   />
                 </label>
@@ -201,7 +211,8 @@ export function TextReplacementEditDialog(
                 void props.on_save()
               }}
             >
-              {t('text_replacement_page.action.save')}
+              {save_label}
+              <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
             </Button>
           </div>
         </DialogFooter>

@@ -1,6 +1,5 @@
 export const zh_cn_app_settings_page = {
   title: '应用设置',
-  summary: '应用设置页会承接桌面级偏好、窗口行为和全局体验开关。',
   fields: {
     expert_mode: {
       title: '专家模式',

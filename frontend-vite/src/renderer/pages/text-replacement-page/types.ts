@@ -111,7 +111,6 @@ export type TextReplacementSortState = AppTableSortState | null
 
 export type UseTextReplacementPageStateResult = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   enabled: boolean
   entries: TextReplacementEntry[]
   filtered_entries: TextReplacementVisibleEntry[]

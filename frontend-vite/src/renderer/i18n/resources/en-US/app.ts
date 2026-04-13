@@ -17,6 +17,9 @@ export const en_us_app = {
     select_file: 'Select File',
     select_folder: 'Select Folder',
   },
+  feedback: {
+    save_success: 'Saved …',
+  },
   toggle: {
     disabled: 'Disabled',
     enabled: 'Enabled',

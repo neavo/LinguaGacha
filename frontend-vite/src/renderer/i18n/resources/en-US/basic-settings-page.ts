@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_basic_settings_page = {
   title: 'Basic Settings',
-  summary: 'Keep source language, target language, project save location, output-folder behavior, and request timeout in one place with instant persistence.',
   fields: {
     source_language: {
       title: 'Source Language',

@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_translation_prompt_page = {
   title: 'Translation Prompts',
-  summary: 'Add extra translation requirements such as story settings and writing styles via custom prompts',
   header: {
     title: 'Custom Translation Prompts (SakuraLLM model not supported)',
     description_html:

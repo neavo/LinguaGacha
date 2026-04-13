@@ -54,7 +54,6 @@ export type ScreenComponentProps = {
 type ScreenModule = {
   component: ComponentType<ScreenComponentProps>
   title_key: LocaleKey
-  summary_key: LocaleKey
 }
 
 export type ScreenRegistry = Partial<Record<RouteId, ScreenModule>>

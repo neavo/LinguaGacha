@@ -68,75 +68,9 @@
 }
 
 .custom-prompt-page__editor-host {
-  width: 100%;
-  min-width: 0;
-  min-height: 360px;
-  flex: 1;
-  box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--border) 84%, white 16%);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--popover) 90%, var(--background) 10%);
-  overflow: hidden;
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.custom-prompt-page__editor-host:has(.cm-editor.cm-focused) {
-  border-color: var(--ring);
-  background: var(--popover);
-}
-
-.custom-prompt-page__editor-host .cm-editor {
-  height: 100%;
-  font-family: var(--ui-font-family-base);
-  font-size: 13px;
-}
-
-.custom-prompt-page__editor-host .cm-editor.cm-focused {
-  outline: none;
-}
-
-.custom-prompt-page__editor-host .cm-scroller {
-  min-height: 360px;
-  font-family: var(--ui-font-family-base);
-  line-height: 1.7;
-}
-
-.custom-prompt-page__editor-host .cm-gutters {
-  border-inline-end: 1px solid color-mix(in srgb, var(--border) 72%, white 28%);
-}
-
-.custom-prompt-page__editor-host .cm-gutterElement {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  font-variant-numeric: tabular-nums;
-}
-
-.custom-prompt-page__editor-host .cm-lineNumbers .cm-gutterElement {
-  padding: 0 8px;
-  min-width: 32px;
-  text-align: center;
-}
-
-.custom-prompt-page__editor-host .cm-content {
-  min-height: 360px;
-  padding: 8px;
-  letter-spacing: 0.075em;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.custom-prompt-page__editor-host .cm-line {
-  padding: 0;
-}
-
-.custom-prompt-page__editor-host .cm-highlightSpace,
-.custom-prompt-page__editor-host .cm-highlightTab,
-.custom-prompt-page__editor-host .cm-specialChar {
-  color: color-mix(in srgb, var(--muted-foreground) 68%, transparent);
+  --app-editor-min-height: 360px;
+  --app-editor-scroller-min-height: 360px;
+  --app-editor-content-min-height: 360px;
 }
 
 .custom-prompt-page__readonly-tooltip {
@@ -201,7 +135,7 @@
 }
 
 .custom-prompt-page__preset-dialog-body {
-  padding: 0 24px 12px;
+  padding: 24px 24px 12px;
 }
 
 .custom-prompt-page__preset-dialog-footer {

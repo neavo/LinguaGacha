@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_text_preserve_page = {
   title: 'Text Preserve',
-  summary: 'The text preserve page will protect non-translatable segments so formatting and named content stay intact.',
   action: {
     create: 'Create',
     edit: 'Edit',
@@ -70,10 +69,8 @@ export const en_us_text_preserve_page = {
     cancel_default: 'Cancel Default Preset',
     dialog: {
       save_title: 'Save as Preset',
-      save_description: 'Save the current text preserve rules as a user preset for quick reuse later.',
       save_confirm: 'Save',
       rename_title: 'Rename Preset',
-      rename_description: 'Change the name of this user preset.',
       rename_confirm: 'Rename',
       name_placeholder: 'Please enter preset name …',
     },

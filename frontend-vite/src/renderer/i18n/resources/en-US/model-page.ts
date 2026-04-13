@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_model_page = {
   title: 'Model Management',
-  summary: 'Model management will host provider setup, switching policy, and runtime readiness as the entry point of the desktop workflow',
   category: {
     preset: {
       title: 'Preset Models',
@@ -127,12 +126,12 @@ export const en_us_model_page = {
     },
     extra_headers: {
       title: 'Custom Request Headers',
-      description: 'Custom request header parameters, please set with caution, incorrect values may cause abnormal results or request errors',
+      description: 'Please set with caution, incorrect values may cause abnormal results or request errors',
       placeholder: 'Example: {"Authorization": "Bearer xxx"}',
     },
     extra_body: {
       title: 'Custom Request Body',
-      description: 'Custom request body parameters, please set with caution, incorrect values may cause abnormal results or request errors',
+      description: 'Please set with caution, incorrect values may cause abnormal results or request errors',
       placeholder: 'Example: {"seed": 42}',
     },
   },

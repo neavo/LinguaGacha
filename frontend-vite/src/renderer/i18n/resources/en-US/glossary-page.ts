@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_glossary_page = {
   title: 'Glossary',
-  summary: 'Build a glossary into prompts to guide translation, keep terminology consistent, and correct character attributes.',
   action: {
     create: 'Create',
     import: 'Import',
@@ -71,10 +70,8 @@ export const en_us_glossary_page = {
     cancel_default: 'Cancel Default Preset',
     dialog: {
       save_title: 'Save as Preset',
-      save_description: 'Save the current glossary as a user preset for quick import later.',
       save_confirm: 'Save',
       rename_title: 'Rename Preset',
-      rename_description: 'Update the name of this user preset.',
       rename_confirm: 'Rename',
       name_placeholder: 'Enter a preset name …',
     },

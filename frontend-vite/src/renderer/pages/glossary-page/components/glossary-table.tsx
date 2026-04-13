@@ -14,7 +14,6 @@ import { Badge } from '@/shadcn/badge'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/shadcn/card'
@@ -482,7 +481,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     <Card variant="table" className="glossary-page__table-card">
       <CardHeader className="sr-only">
         <CardTitle>{t('glossary_page.title')}</CardTitle>
-        <CardDescription>{t('glossary_page.summary')}</CardDescription>
       </CardHeader>
       <CardContent className="glossary-page__table-card-content">
         <AppTable

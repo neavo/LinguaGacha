@@ -48,7 +48,6 @@ import {
 
 type TextPreserveCommandBarProps = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   mode: TextPreserveMode
   preset_items: TextPreservePresetItem[]
   preset_menu_open: boolean
@@ -104,7 +103,6 @@ export function TextPreserveCommandBar(
   return (
     <CommandBar
       title={t(props.title_key)}
-      description={t(props.summary_key)}
       actions={(
         <>
           <CommandBarGroup>

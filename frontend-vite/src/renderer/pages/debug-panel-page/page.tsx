@@ -20,7 +20,6 @@ import {
 
 type DebugPanelPageProps = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   is_sidebar_collapsed: boolean
 }
 
@@ -77,7 +76,6 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
   const [is_progress_indeterminate, set_is_progress_indeterminate] = useState<boolean>(false)
   const [progress_toast_id, set_progress_toast_id] = useState<ToastIdentifier | null>(null)
   const title = t(props.title_key)
-  const summary = t(props.summary_key)
   const sidebar_state = props.is_sidebar_collapsed
     ? t('debug_panel_page.shell.sidebar_collapsed')
     : t('debug_panel_page.shell.sidebar_expanded')
@@ -151,7 +149,6 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
         <div className="debug-panel-page__hero-copy">
           <p className="debug-panel-page__eyebrow">{t('debug_panel_page.eyebrow')}</p>
           <h1 className="debug-panel-page__title">{title}</h1>
-          <p className="debug-panel-page__summary">{summary}</p>
         </div>
         <div className="debug-panel-page__hero-badges">
           <Badge variant="outline" className="debug-panel-page__badge">
@@ -293,10 +290,6 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
                 <dd>{title}</dd>
               </div>
               <div className="debug-panel-page__meta-row">
-                <dt>{t('debug_panel_page.shell.route_summary_label')}</dt>
-                <dd>{summary}</dd>
-              </div>
-              <div className="debug-panel-page__meta-row">
                 <dt>{t('debug_panel_page.shell.sidebar_label')}</dt>
                 <dd>{sidebar_state}</dd>
               </div>
@@ -312,12 +305,6 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
                 <dt>{t('debug_panel_page.shell.title_key_label')}</dt>
                 <dd>
                   <code>{props.title_key}</code>
-                </dd>
-              </div>
-              <div className="debug-panel-page__meta-row">
-                <dt>{t('debug_panel_page.shell.summary_key_label')}</dt>
-                <dd>
-                  <code>{props.summary_key}</code>
                 </dd>
               </div>
               {props.title_key === 'proofreading_page.title' && proofreading_lookup_intent !== null

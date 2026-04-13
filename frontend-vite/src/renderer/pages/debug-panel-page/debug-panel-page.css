@@ -33,14 +33,6 @@
   color: var(--foreground);
 }
 
-.debug-panel-page__summary {
-  max-width: 72ch;
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--debug-panel-muted);
-}
-
 .debug-panel-page__hero-badges {
   display: flex;
   flex-wrap: wrap;

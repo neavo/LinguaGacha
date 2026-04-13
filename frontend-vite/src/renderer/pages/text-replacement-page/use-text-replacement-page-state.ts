@@ -1320,6 +1320,7 @@ export function useTextReplacementPageState(
     invalidate_statistics()
     const saved = await save_entries_snapshot(next_entries)
     if (saved) {
+      push_toast('success', t('app.feedback.save_success'))
       set_dialog_state(create_empty_dialog_state())
       return true
     }
@@ -1329,20 +1330,15 @@ export function useTextReplacementPageState(
       saving: false,
     }))
     return false
-  }, [dialog_state, entries, entry_ids, invalidate_statistics, push_toast, save_entries_snapshot, validate_entry])
+  }, [dialog_state, entries, entry_ids, invalidate_statistics, push_toast, save_entries_snapshot, t, validate_entry])
 
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry()
   }, [persist_dialog_entry])
 
   const request_close_dialog = useCallback(async (): Promise<void> => {
-    if (!dialog_state.dirty) {
-      set_dialog_state(create_empty_dialog_state())
-      return
-    }
-
-    await save_dialog_entry()
-  }, [dialog_state.dirty, save_dialog_entry])
+    set_dialog_state(create_empty_dialog_state())
+  }, [])
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state())
@@ -1525,7 +1521,6 @@ export function useTextReplacementPageState(
 
   return {
     title_key: config.title_key,
-    summary_key: config.summary_key,
     enabled,
     entries,
     filtered_entries,

@@ -22,7 +22,6 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/shadcn/card'
@@ -309,7 +308,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
       <Card variant="table" className="proofreading-page__table-card">
         <CardHeader className="sr-only">
           <CardTitle>{t('proofreading_page.title')}</CardTitle>
-          <CardDescription>{t('proofreading_page.summary')}</CardDescription>
         </CardHeader>
         <CardContent className="proofreading-page__table-empty-card">
           <Empty variant="inset" className="proofreading-page__table-empty">
@@ -330,7 +328,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     <Card variant="table" className="proofreading-page__table-card">
       <CardHeader className="sr-only">
         <CardTitle>{t('proofreading_page.title')}</CardTitle>
-        <CardDescription>{t('proofreading_page.summary')}</CardDescription>
       </CardHeader>
       <CardContent className="proofreading-page__table-card-content">
         <AppTable

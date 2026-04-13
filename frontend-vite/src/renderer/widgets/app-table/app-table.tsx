@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -58,6 +59,8 @@ import {
   build_app_table_box_selection_change,
   build_app_table_click_selection_change,
   build_app_table_context_selection_change,
+  build_app_table_keyboard_selection_change,
+  build_app_table_select_all_selection_change,
   normalize_app_table_selection_state,
 } from '@/widgets/app-table/app-table-selection'
 import type {
@@ -130,27 +133,6 @@ function intersects_selection_box(
   )
 }
 
-function are_selection_box_states_equal(
-  left_state: SelectionBoxState | null,
-  right_state: SelectionBoxState | null,
-): boolean {
-  if (left_state === right_state) {
-    return true
-  }
-
-  if (left_state === null || right_state === null) {
-    return false
-  }
-
-  return (
-    left_state.origin_x === right_state.origin_x
-    && left_state.origin_y === right_state.origin_y
-    && left_state.current_x === right_state.current_x
-    && left_state.current_y === right_state.current_y
-    && left_state.moved === right_state.moved
-  )
-}
-
 function normalize_selection_box_style(
   host_element: HTMLDivElement | null,
   selection_box: SelectionBoxState | null,
@@ -170,6 +152,47 @@ function normalize_selection_box_style(
     top: Math.min(start_y, end_y),
     width: Math.abs(end_x - start_x),
     height: Math.abs(end_y - start_y),
+  }
+}
+
+function sync_selection_box_element_style(args: {
+  host_element: HTMLDivElement | null
+  selection_box_element: HTMLDivElement | null
+  selection_box: SelectionBoxState | null
+}): void {
+  if (args.selection_box_element === null) {
+    return
+  }
+
+  const next_style = normalize_selection_box_style(
+    args.host_element,
+    args.selection_box,
+  )
+  if (next_style === undefined) {
+    args.selection_box_element.style.display = 'none'
+    return
+  }
+
+  args.selection_box_element.style.display = 'block'
+  args.selection_box_element.style.left = `${String(next_style.left ?? 0)}px`
+  args.selection_box_element.style.top = `${String(next_style.top ?? 0)}px`
+  args.selection_box_element.style.width = `${String(next_style.width ?? 0)}px`
+  args.selection_box_element.style.height = `${String(next_style.height ?? 0)}px`
+}
+
+function has_primary_keyboard_modifier(
+  event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey'>,
+): boolean {
+  return event.ctrlKey || event.metaKey
+}
+
+function should_handle_table_keydown(
+  event: ReactKeyboardEvent<HTMLDivElement>,
+): boolean {
+  if (event.nativeEvent.isComposing) {
+    return false
+  } else {
+    return event.target === event.currentTarget
   }
 }
 
@@ -346,9 +369,12 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   } = props
   const table_scroll_host_ref = useRef<HTMLDivElement | null>(null)
   const table_body_ref = useRef<HTMLTableSectionElement | null>(null)
+  const selection_box_element_ref = useRef<HTMLDivElement | null>(null)
   const row_elements_ref = useRef(new Map<string, HTMLTableRowElement>())
   const selection_box_ref = useRef<SelectionBoxState | null>(null)
   const selection_box_ids_ref = useRef<string[]>([])
+  const selection_origin_state_ref = useRef<AppTableSelectionState | null>(null)
+  const selection_preview_state_ref = useRef<AppTableSelectionState | null>(null)
   const selection_frame_id_ref = useRef<number | null>(null)
   const suppress_click_ref = useRef(false)
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null)
@@ -360,7 +386,8 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   )
   const [active_drag_row_id, set_active_drag_row_id] = useState<string | null>(null)
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null)
-  const [selection_box_visual, set_selection_box_visual] = useState<SelectionBoxState | null>(null)
+  const [selection_box_active, set_selection_box_active] = useState(false)
+  const [selection_preview_state, set_selection_preview_state] = useState<AppTableSelectionState | null>(null)
 
   const row_ids = useMemo(() => {
     return rows.map((row, index) => get_row_id(row, index))
@@ -375,9 +402,10 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       anchor_row_id,
     }, row_ids)
   }, [active_row_id, anchor_row_id, row_ids, selected_row_ids])
+  const rendered_selection_state = selection_preview_state ?? selection_state
   const selected_row_id_set = useMemo(() => {
-    return new Set(selection_state.selected_row_ids)
-  }, [selection_state.selected_row_ids])
+    return new Set(rendered_selection_state.selected_row_ids)
+  }, [rendered_selection_state.selected_row_ids])
   const drag_column_present = columns.some((column) => column.kind === 'drag')
   const drag_enabled = drag_enabled_prop && drag_column_present
   const box_selection_enabled = selection_mode === 'multiple'
@@ -506,11 +534,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const bottom_spacer_height = spacer_heights.virtual_bottom_spacer_height
     + placeholder_fill.residual_spacer_height
   const show_bottom_spacer = bottom_spacer_height > 0.5
-  const selection_box_style = normalize_selection_box_style(
-    table_scroll_host_ref.current,
-    selection_box_visual,
-  )
-
   const measure_virtual_row = useCallback((row_element: HTMLTableRowElement): void => {
     virtualizer.measureElement(row_element)
 
@@ -533,9 +556,59 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     row_elements_ref.current.set(row_id, row_element)
   }, [])
 
+  const focus_table_scroll_host = useCallback((): void => {
+    const table_scroll_host_element = table_scroll_host_ref.current
+
+    if (table_scroll_host_element !== null) {
+      table_scroll_host_element.focus({
+        preventScroll: true,
+      })
+    }
+  }, [])
+
+  const scroll_row_into_view = useCallback((row_id: string | null): void => {
+    if (row_id === null) {
+      return
+    }
+
+    const row_index = row_index_by_id.get(row_id)
+    if (row_index === undefined) {
+      return
+    }
+
+    const row_element = row_elements_ref.current.get(row_id)
+    if (row_element instanceof HTMLTableRowElement) {
+      row_element.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      })
+    } else {
+      // 为什么：虚拟列表里目标行可能还没挂到 DOM，上卷交给 virtualizer 才能稳定命中。
+      virtualizer.scrollToIndex(row_index, {
+        align: 'auto',
+      })
+    }
+  }, [row_index_by_id, virtualizer])
+
+  const apply_selection_preview_state = useCallback((next_state: AppTableSelectionState | null): void => {
+    selection_preview_state_ref.current = next_state
+    set_selection_preview_state((previous_state) => {
+      if (previous_state === next_state) {
+        return previous_state
+      } else if (previous_state !== null && next_state !== null) {
+        return are_app_table_selection_states_equal(previous_state, next_state)
+          ? previous_state
+          : next_state
+      } else {
+        return next_state
+      }
+    })
+  }, [])
+
   const clear_selection_refs = useCallback((): void => {
     selection_box_ref.current = null
     selection_box_ids_ref.current = []
+    selection_origin_state_ref.current = null
   }, [])
 
   const cancel_selection_animation_frame = useCallback((): void => {
@@ -549,16 +622,16 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
 
   const flush_selection_box_update = useCallback((): void => {
     cancel_selection_animation_frame()
-    
+
     const current_state = selection_box_ref.current
     if (current_state === null) {
       return
     }
 
-    set_selection_box_visual((previous_state) => {
-      return are_selection_box_states_equal(previous_state, current_state)
-        ? previous_state
-        : current_state
+    sync_selection_box_element_style({
+      host_element: table_scroll_host_ref.current,
+      selection_box_element: selection_box_element_ref.current,
+      selection_box: current_state,
     })
 
     if (!current_state.moved) {
@@ -585,11 +658,11 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     }
 
     selection_box_ids_ref.current = next_row_ids
-    emit_selection_change(build_app_table_box_selection_change({
-      current_state: selection_state,
+    apply_selection_preview_state(build_app_table_box_selection_change({
+      current_state: selection_origin_state_ref.current ?? selection_state,
       next_row_ids,
     }))
-  }, [cancel_selection_animation_frame, emit_selection_change, row_index_by_id, selection_state])
+  }, [apply_selection_preview_state, cancel_selection_animation_frame, row_index_by_id, selection_state])
 
   const schedule_selection_box_update = useCallback((): void => {
     if (selection_frame_id_ref.current !== null) {
@@ -602,14 +675,29 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     })
   }, [flush_selection_box_update])
 
-  const reset_selection_interaction = useCallback((): void => {
+  const reset_selection_interaction = useCallback((options?: {
+    commit_selection_preview?: boolean
+  }): void => {
     cancel_selection_animation_frame()
+    sync_selection_box_element_style({
+      host_element: table_scroll_host_ref.current,
+      selection_box_element: selection_box_element_ref.current,
+      selection_box: null,
+    })
+    if (options?.commit_selection_preview === true) {
+      const pending_selection_preview = selection_preview_state_ref.current
+      if (pending_selection_preview !== null) {
+        emit_selection_change(pending_selection_preview)
+      }
+    }
+
     clear_selection_refs()
-    set_selection_box_visual(null)
+    apply_selection_preview_state(null)
+    set_selection_box_active(false)
     window.setTimeout(() => {
       suppress_click_ref.current = false
     }, 0)
-  }, [cancel_selection_animation_frame, clear_selection_refs])
+  }, [apply_selection_preview_state, cancel_selection_animation_frame, clear_selection_refs, emit_selection_change])
 
   useEffect(() => {
     if (!box_selection_enabled) {
@@ -638,7 +726,9 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
 
     function handle_pointer_up(): void {
       flush_selection_box_update()
-      reset_selection_interaction()
+      reset_selection_interaction({
+        commit_selection_preview: selection_box_ref.current?.moved === true,
+      })
     }
 
     function handle_pointer_cancel(): void {
@@ -660,9 +750,12 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       window.removeEventListener('pointercancel', handle_pointer_cancel)
       window.removeEventListener('blur', handle_window_blur)
       cancel_selection_animation_frame()
+      apply_selection_preview_state(null)
+      set_selection_box_active(false)
       clear_selection_refs()
     }
   }, [
+    apply_selection_preview_state,
     box_selection_enabled,
     cancel_selection_animation_frame,
     clear_selection_refs,
@@ -688,6 +781,8 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       return
     }
 
+    focus_table_scroll_host()
+
     const next_state: SelectionBoxState = {
       origin_x: event.clientX,
       origin_y: event.clientY,
@@ -696,12 +791,26 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       moved: false,
     }
 
+    selection_origin_state_ref.current = selection_state
     selection_box_ref.current = next_state
     selection_box_ids_ref.current = []
-    set_selection_box_visual(next_state)
-  }, [box_selection_enabled, ignore_box_select_target])
+    apply_selection_preview_state(null)
+    set_selection_box_active(true)
+    sync_selection_box_element_style({
+      host_element: table_scroll_host_ref.current,
+      selection_box_element: selection_box_element_ref.current,
+      selection_box: next_state,
+    })
+  }, [
+    apply_selection_preview_state,
+    box_selection_enabled,
+    focus_table_scroll_host,
+    ignore_box_select_target,
+    selection_state,
+  ])
 
   const handle_row_click = useCallback((row_id: string, event: MouseEvent<HTMLTableRowElement>): void => {
+    focus_table_scroll_host()
     emit_selection_change(build_app_table_click_selection_change({
       selection_mode,
       ordered_row_ids: row_ids,
@@ -710,15 +819,94 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       extend: event.ctrlKey || event.metaKey,
       range: event.shiftKey,
     }))
-  }, [emit_selection_change, row_ids, selection_mode, selection_state])
+  }, [emit_selection_change, focus_table_scroll_host, row_ids, selection_mode, selection_state])
 
   const handle_row_context = useCallback((row_id: string): void => {
+    focus_table_scroll_host()
     emit_selection_change(build_app_table_context_selection_change({
       selection_mode,
       current_state: selection_state,
       target_row_id: row_id,
     }))
-  }, [emit_selection_change, selection_mode, selection_state])
+  }, [emit_selection_change, focus_table_scroll_host, selection_mode, selection_state])
+
+  const handle_table_keydown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const primary_modifier_pressed = has_primary_keyboard_modifier(event)
+    const pressed_key = event.key.toLowerCase()
+
+    if (!should_handle_table_keydown(event) || active_drag_row_id !== null) {
+      return
+    }
+
+    if (
+      selection_mode === 'multiple'
+      && primary_modifier_pressed
+      && !event.altKey
+      && !event.shiftKey
+      && pressed_key === 'a'
+    ) {
+      event.preventDefault()
+      emit_selection_change(build_app_table_select_all_selection_change({
+        ordered_row_ids: row_ids,
+        current_state: selection_state,
+      }))
+      return
+    }
+
+    if (event.altKey || primary_modifier_pressed) {
+      return
+    }
+
+    let next_selection_state: AppTableSelectionState | null = null
+
+    if (event.key === 'ArrowUp') {
+      next_selection_state = build_app_table_keyboard_selection_change({
+        selection_mode,
+        ordered_row_ids: row_ids,
+        current_state: selection_state,
+        action: 'previous',
+        extend: event.shiftKey,
+      })
+    } else if (event.key === 'ArrowDown') {
+      next_selection_state = build_app_table_keyboard_selection_change({
+        selection_mode,
+        ordered_row_ids: row_ids,
+        current_state: selection_state,
+        action: 'next',
+        extend: event.shiftKey,
+      })
+    } else if (event.key === 'Home') {
+      next_selection_state = build_app_table_keyboard_selection_change({
+        selection_mode,
+        ordered_row_ids: row_ids,
+        current_state: selection_state,
+        action: 'first',
+        extend: event.shiftKey,
+      })
+    } else if (event.key === 'End') {
+      next_selection_state = build_app_table_keyboard_selection_change({
+        selection_mode,
+        ordered_row_ids: row_ids,
+        current_state: selection_state,
+        action: 'last',
+        extend: event.shiftKey,
+      })
+    }
+
+    if (next_selection_state !== null) {
+      event.preventDefault()
+      // 为什么：键盘切换项目时要让虚拟表格主动把目标行滚进视口，否则选择状态会“跳”到屏幕外。
+      scroll_row_into_view(next_selection_state.active_row_id)
+      emit_selection_change(next_selection_state)
+    }
+  }, [
+    active_drag_row_id,
+    emit_selection_change,
+    row_ids,
+    scroll_row_into_view,
+    selection_mode,
+    selection_state,
+  ])
 
   const sync_drag_overlay_width = useCallback((): void => {
     const table_body_element = table_body_ref.current
@@ -891,7 +1079,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                 {columns.map((column, column_index) => {
                   const overlay_payload: AppTableCellPayload<Row> = {
                     ...active_drag_row,
-                    active: selection_state.active_row_id === active_drag_row.row_id,
+                    active: rendered_selection_state.active_row_id === active_drag_row.row_id,
                     selected: selected_row_id_set.has(active_drag_row.row_id),
                     dragging: true,
                     can_drag: resolve_row_can_drag(active_drag_row.row, active_drag_row.row_index),
@@ -931,6 +1119,8 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       <div
         ref={table_scroll_host_ref}
         className="app-table__scroll-host"
+        tabIndex={0}
+        onKeyDown={handle_table_keydown}
         onPointerDownCapture={handle_box_selection_start}
       >
         <ScrollArea className="app-table__scroll">
@@ -977,7 +1167,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                         row_index={virtual_row.index}
                         columns={columns}
                         selected={selected_row_id_set.has(row_id)}
-                        active={selection_state.active_row_id === row_id}
+                        active={rendered_selection_state.active_row_id === row_id}
                         drag_enabled={drag_enabled}
                         can_drag={resolve_row_can_drag(row, virtual_row.index)}
                         row_class_name={row_class_name?.(row_event)}
@@ -1016,14 +1206,14 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
             </DragOverlay>
           </DndContext>
         </ScrollArea>
-        {selection_box_style === undefined
-          ? null
-          : (
+        {selection_box_active
+          ? (
               <div
+                ref={selection_box_element_ref}
                 className="app-table__selection-box"
-                style={selection_box_style}
               />
-            )}
+            )
+          : null}
       </div>
     </div>
   )

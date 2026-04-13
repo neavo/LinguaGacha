@@ -1,6 +1,5 @@
 export const zh_cn_basic_settings_page = {
   title: '基础设置',
-  summary: '把原文语言、译文语言、工程保存位置、输出文件夹行为与请求时限收进同一处，改完就立即生效。',
   fields: {
     source_language: {
       title: '原文语言',

@@ -104,7 +104,6 @@ export type TextPreserveSortState = AppTableSortState | null
 
 export type UseTextPreservePageStateResult = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   mode: TextPreserveMode
   filtered_entries: TextPreserveVisibleEntry[]
   filter_state: TextPreserveFilterState

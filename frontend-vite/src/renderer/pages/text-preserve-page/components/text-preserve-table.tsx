@@ -12,7 +12,6 @@ import { Badge } from '@/shadcn/badge'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/shadcn/card'
@@ -39,7 +38,6 @@ import { AppTableDragIndicator } from '@/widgets/app-table/app-table-drag-indica
 
 type TextPreserveTableProps = {
   title_key: LocaleKey
-  summary_key: LocaleKey
   entries: TextPreserveVisibleEntry[]
   sort_state: AppTableSortState | null
   drag_disabled: boolean
@@ -333,7 +331,6 @@ export function TextPreserveTable(
     <Card variant="table" className="text-preserve-page__table-card">
       <CardHeader className="sr-only">
         <CardTitle>{t(props.title_key)}</CardTitle>
-        <CardDescription>{t(props.summary_key)}</CardDescription>
       </CardHeader>
       <CardContent className="text-preserve-page__table-card-content">
         <AppTable

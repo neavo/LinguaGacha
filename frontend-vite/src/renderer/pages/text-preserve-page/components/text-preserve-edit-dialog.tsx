@@ -1,4 +1,5 @@
 import { useI18n } from '@/i18n'
+import { useSaveShortcut } from '@/hooks/use-save-shortcut'
 import type {
   TextPreserveDialogMode,
   TextPreserveEntry,
@@ -10,7 +11,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/shadcn/dialog'
-import { Textarea } from '@/shadcn/textarea'
+import { Kbd } from '@/shadcn/kbd'
+import { AppEditor } from '@/widgets/app-editor/app-editor'
 
 type TextPreserveEditDialogProps = {
   open: boolean
@@ -27,9 +29,17 @@ export function TextPreserveEditDialog(
   props: TextPreserveEditDialogProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const save_label = t('text_preserve_page.action.save')
   const title = props.mode === 'create'
     ? t('text_preserve_page.dialog.create_title')
     : t('text_preserve_page.dialog.edit_title')
+
+  useSaveShortcut({
+    enabled: props.open && !props.saving,
+    on_save: () => {
+      void props.on_save()
+    },
+  })
 
   return (
     <Dialog
@@ -60,15 +70,14 @@ export function TextPreserveEditDialog(
                   >
                     {t('text_preserve_page.fields.rule')}
                   </span>
-                  <Textarea
-                    className="text-preserve-page__dialog-editor text-preserve-page__dialog-editor--rule min-h-0 h-full text-[13px] md:text-[13px]"
-                    style={{ backgroundColor: 'var(--popover)' }}
+                  <AppEditor
+                    class_name="text-preserve-page__dialog-editor"
                     value={props.entry.src}
-                    disabled={props.saving}
-                    aria-invalid={props.validation_message !== null}
-                    placeholder={t('text_preserve_page.fields.rule')}
-                    onChange={(event) => {
-                      props.on_change({ src: event.target.value })
+                    aria_label={t('text_preserve_page.fields.rule')}
+                    read_only={props.saving}
+                    invalid={props.validation_message !== null}
+                    on_change={(next_value) => {
+                      props.on_change({ src: next_value })
                     }}
                   />
                   {props.validation_message === null
@@ -87,14 +96,13 @@ export function TextPreserveEditDialog(
                   >
                     {t('text_preserve_page.fields.note')}
                   </span>
-                  <Textarea
-                    className="text-preserve-page__dialog-editor text-preserve-page__dialog-editor--note min-h-0 h-full text-[13px] md:text-[13px]"
-                    style={{ backgroundColor: 'var(--popover)' }}
+                  <AppEditor
+                    class_name="text-preserve-page__dialog-editor"
                     value={props.entry.info}
-                    disabled={props.saving}
-                    placeholder={t('text_preserve_page.fields.note')}
-                    onChange={(event) => {
-                      props.on_change({ info: event.target.value })
+                    aria_label={t('text_preserve_page.fields.note')}
+                    read_only={props.saving}
+                    on_change={(next_value) => {
+                      props.on_change({ info: next_value })
                     }}
                   />
                 </label>
@@ -122,7 +130,8 @@ export function TextPreserveEditDialog(
                 void props.on_save()
               }}
             >
-              {t('text_preserve_page.action.save')}
+              {save_label}
+              <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
             </Button>
           </div>
         </DialogFooter>

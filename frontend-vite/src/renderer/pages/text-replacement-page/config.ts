@@ -10,7 +10,6 @@ export type TextReplacementVariantConfig = {
     | 'pre_translation_replacement_default_preset'
     | 'post_translation_replacement_default_preset'
   title_key: LocaleKey
-  summary_key: LocaleKey
   export_file_name: string
 }
 
@@ -24,7 +23,6 @@ export const TEXT_REPLACEMENT_VARIANT_CONFIG: Record<
     preset_dir_name: 'pre_translation_replacement',
     default_preset_settings_key: 'pre_translation_replacement_default_preset',
     title_key: 'pre_translation_replacement_page.title',
-    summary_key: 'pre_translation_replacement_page.summary',
     export_file_name: 'pre_translation_replacement.json',
   },
   post: {
@@ -33,7 +31,6 @@ export const TEXT_REPLACEMENT_VARIANT_CONFIG: Record<
     preset_dir_name: 'post_translation_replacement',
     default_preset_settings_key: 'post_translation_replacement_default_preset',
     title_key: 'post_translation_replacement_page.title',
-    summary_key: 'post_translation_replacement_page.summary',
     export_file_name: 'post_translation_replacement.json',
   },
 }

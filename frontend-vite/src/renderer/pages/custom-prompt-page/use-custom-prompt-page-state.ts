@@ -361,7 +361,7 @@ export function useCustomPromptPageState(
     try {
       const snapshot = await save_prompt_request(prompt_text)
       apply_snapshot(snapshot)
-      push_toast('success', t('custom_prompt_page.feedback.save_success'))
+      push_toast('success', t('app.feedback.save_success'))
     } catch (error) {
       push_toast(
         'error',
@@ -841,7 +841,6 @@ export function useCustomPromptPageState(
   return useMemo<UseCustomPromptPageStateResult>(() => {
     return {
       title_key: config.title_key,
-      summary_key: config.summary_key,
       header_title_key: config.header_title_key,
       header_description_key: config.header_description_key,
       template,
@@ -878,7 +877,6 @@ export function useCustomPromptPageState(
     close_preset_input_dialog,
     config.header_description_key,
     config.header_title_key,
-    config.summary_key,
     config.title_key,
     confirm_pending_action,
     confirm_state,

@@ -25,10 +25,8 @@ export const en_us_custom_prompt_page = {
     cancel_default: 'Cancel Default Preset',
     dialog: {
       save_title: 'Save as Preset',
-      save_description: 'Save the current prompt body as a user preset for quick import later.',
       save_confirm: 'Save',
       rename_title: 'Rename Preset',
-      rename_description: 'Update the name of this user preset.',
       rename_confirm: 'Rename',
       name_placeholder: 'Enter a preset name …',
     },
@@ -65,7 +63,6 @@ export const en_us_custom_prompt_page = {
     preset_exists: 'File already exists …',
     default_preset_set: 'Default preset set …',
     default_preset_cleared: 'Default preset cancelled …',
-    save_success: 'Saved …',
     reset_success: 'Reseted …',
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_custom_prompt_page>

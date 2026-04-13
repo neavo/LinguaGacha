@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_expert_settings_page = {
   title: 'Expert Settings',
-  summary: 'Expert settings will host advanced switches and debugging entry points without overloading the main flow.',
   fields: {
     response_check_settings: {
       title: 'Result Check Rules',

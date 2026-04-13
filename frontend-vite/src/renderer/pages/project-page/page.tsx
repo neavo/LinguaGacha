@@ -192,6 +192,30 @@ function build_default_project_file_name(source_path: string): string {
   return `${base_name}_${build_timestamp_suffix()}.lg`
 }
 
+function format_project_error_message(args: {
+  template: string
+  generic_text: string
+  error: unknown
+}): string {
+  const error_detail = args.error instanceof Error
+    ? args.error.message.trim()
+    : ''
+
+  if (error_detail === '') {
+    return args.generic_text
+  } else {
+    return args.template.replace('{ERROR}', error_detail)
+  }
+}
+
+function append_optional_unit_label(text: string, unit_label: string): string {
+  if (unit_label === '') {
+    return text
+  } else {
+    return `${text} ${unit_label}`
+  }
+}
+
 function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
   return {
     path: String(payload.project?.path ?? ''),
@@ -443,6 +467,15 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
   if (preview === null) {
     return <></>
   }
+  const rows_unit = t('project_page.preview.rows_unit')
+  const translated_label = append_optional_unit_label(
+    `${t('project_page.preview.translated')} ${preview.translated_items.toLocaleString()}`,
+    rows_unit,
+  )
+  const total_label = append_optional_unit_label(
+    `${t('project_page.preview.total')} ${preview.total_items.toLocaleString()}`,
+    rows_unit,
+  )
 
   const stats = [
     {
@@ -483,14 +516,8 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
             className="h-1.5 bg-muted"
           />
           <div className="flex items-center justify-between gap-4 text-[12.32px] text-foreground">
-            <span>
-              {t('project_page.preview.translated')} {preview.translated_items.toLocaleString()}{' '}
-              {t('project_page.preview.rows_unit')}
-            </span>
-            <span>
-              {t('project_page.preview.total')} {preview.total_items.toLocaleString()}{' '}
-              {t('project_page.preview.rows_unit')}
-            </span>
+            <span>{translated_label}</span>
+            <span>{total_label}</span>
           </div>
         </div>
       </CardContent>
@@ -573,7 +600,11 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           name: fallback_name,
         })
       } else {
-        push_toast('warning', t('project_page.open.preview_unavailable'))
+        push_toast('warning', format_project_error_message({
+          template: t('project_page.open.preview_unavailable'),
+          generic_text: t('project_page.open.preview_unavailable_generic'),
+          error,
+        }))
       }
 
       set_selected_project(null)
@@ -759,7 +790,11 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       clear_selected_source()
       clear_selected_project()
     } catch (error) {
-      push_toast('error', error instanceof Error ? error.message : t('project_page.create.unavailable'))
+      push_toast('error', format_project_error_message({
+        template: t('project_page.create.failed'),
+        generic_text: t('project_page.create.failed_generic'),
+        error,
+      }))
       return
     } finally {
       if (progress_toast_id !== null) {
@@ -790,7 +825,11 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       })
       await Promise.all([refresh_recent_projects(), refresh_task()])
     } catch (error) {
-      push_toast('error', error instanceof Error ? error.message : t('project_page.open.preview_unavailable'))
+      push_toast('error', format_project_error_message({
+        template: t('project_page.open.failed'),
+        generic_text: t('project_page.open.failed_generic'),
+        error,
+      }))
       return
     } finally {
       dismiss_toast(progress_toast_id)
@@ -1013,6 +1052,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     : selected_project.preview !== null
       ? <ProjectPreviewPanel project={selected_project} />
       : null
+  const missing_recent_project_description = missing_recent_project === null
+    ? ''
+    : t('project_page.open.missing_file_description').replace(
+        '{PATH}',
+        missing_recent_project.path,
+      )
 
   return (
     <>
@@ -1030,8 +1075,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               <AlertTriangle />
             </AlertDialogMedia>
             <AlertDialogTitle>{t('project_page.open.missing_file_title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('project_page.open.missing_file_description')}
+            <AlertDialogDescription className="whitespace-pre-line">
+              {missing_recent_project_description}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

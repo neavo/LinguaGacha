@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_laboratory_page = {
   title: 'Laboratory',
-  summary: 'The laboratory collects translation enhancement capabilities that are still experimental, so review each option before enabling it.',
   fields: {
     mtool_optimizer_enable: {
       title: 'MTool Optimizer',

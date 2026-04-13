@@ -744,6 +744,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return
     }
 
+    if (dialog_state.draft_dst === target_item.dst) {
+      set_dialog_state(create_empty_dialog_state())
+      push_toast('success', t('app.feedback.save_success'))
+      return
+    }
+
     set_dialog_state((previous_state) => {
       return {
         ...previous_state,
@@ -761,6 +767,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         },
         fallback_error_key: 'proofreading_page.feedback.save_failed',
         preferred_row_id: dialog_state.target_row_id,
+        success_message_builder: () => t('app.feedback.save_success'),
         close_dialog: true,
       })
     } finally {
@@ -775,7 +782,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         }
       })
     }
-  }, [dialog_state, run_mutation, server_snapshot.revision, visible_item_by_id])
+  }, [dialog_state, push_toast, run_mutation, server_snapshot.revision, t, visible_item_by_id])
 
   const replace_next_visible_match = useCallback(async (): Promise<void> => {
     if (readonly || is_refreshing || is_mutating) {

@@ -5,9 +5,6 @@ import {
   CustomPromptCommandBar,
 } from '@/pages/custom-prompt-page/components/custom-prompt-command-bar'
 import {
-  CustomPromptCodeEditor,
-} from '@/pages/custom-prompt-page/components/custom-prompt-code-editor'
-import {
   CustomPromptConfirmDialog,
 } from '@/pages/custom-prompt-page/components/custom-prompt-confirm-dialog'
 import {
@@ -22,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/shadcn/tooltip'
+import { AppEditor } from '@/widgets/app-editor/app-editor'
 
 type CustomPromptPageProps = ScreenComponentProps & {
   variant: CustomPromptVariant
@@ -73,10 +71,13 @@ export function CustomPromptPage(
           </TooltipContent>
         </Tooltip>
 
-        <CustomPromptCodeEditor
+        <AppEditor
+          class_name="custom-prompt-page__editor-host"
+          mode="markdown"
           value={page_state.prompt_text}
-          onChange={page_state.update_prompt_text}
           aria_label={t(page_state.header_title_key)}
+          read_only={false}
+          on_change={page_state.update_prompt_text}
         />
 
         <Tooltip>
@@ -113,10 +114,14 @@ export function CustomPromptPage(
       <div className="custom-prompt-page__command-bar-shell">
         <CustomPromptCommandBar
           title_key={page_state.title_key}
-          summary_key={page_state.summary_key}
           header_title_key={page_state.header_title_key}
           header_description_key={page_state.header_description_key}
           enabled={page_state.enabled}
+          save_shortcut_enabled={
+            !page_state.confirm_state.open
+            && !page_state.preset_input_state.open
+            && !page_state.preset_menu_open
+          }
           preset_items={page_state.preset_items}
           preset_menu_open={page_state.preset_menu_open}
           on_toggle_enabled={page_state.update_enabled}

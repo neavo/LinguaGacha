@@ -14,6 +14,9 @@ export const zh_cn_app = {
     select_file: '选择文件',
     select_folder: '选择文件夹',
   },
+  feedback: {
+    save_success: '已保存 …',
+  },
   toggle: {
     disabled: '禁用',
     enabled: '启用',

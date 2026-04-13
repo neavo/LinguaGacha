@@ -60,10 +60,8 @@ export const en_us_text_replacement_page = {
     cancel_default: 'Cancel Default Preset',
     dialog: {
       save_title: 'Save as Preset',
-      save_description: 'Save the current replacement rules as a user preset for quick import later.',
       save_confirm: 'Save',
       rename_title: 'Rename Preset',
-      rename_description: 'Update the name of this user preset.',
       rename_confirm: 'Rename',
       name_placeholder: 'Enter a preset name …',
     },

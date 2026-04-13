@@ -896,6 +896,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     invalidate_statistics()
     const saved = await save_entries_snapshot(next_entries)
     if (saved) {
+      push_toast('success', t('app.feedback.save_success'))
       set_dialog_state(create_empty_dialog_state())
       return true
     }
@@ -912,13 +913,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [persist_dialog_entry])
 
   const request_close_dialog = useCallback(async (): Promise<void> => {
-    if (!dialog_state.dirty) {
-      set_dialog_state(create_empty_dialog_state())
-      return
-    }
-
-    await save_dialog_entry()
-  }, [dialog_state.dirty, save_dialog_entry])
+    set_dialog_state(create_empty_dialog_state())
+  }, [])
 
   const query_entry_source_from_statistics = useCallback(async (
     entry_id: GlossaryEntryId,

@@ -1,6 +1,7 @@
 import { CaseSensitive } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
+import { useSaveShortcut } from '@/hooks/use-save-shortcut'
 import type {
   GlossaryDialogMode,
   GlossaryEntry,
@@ -12,7 +13,8 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/shadcn/dialog'
-import { Textarea } from '@/shadcn/textarea'
+import { Kbd } from '@/shadcn/kbd'
+import { AppEditor } from '@/widgets/app-editor/app-editor'
 import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
 type GlossaryEditDialogProps = {
@@ -27,6 +29,7 @@ type GlossaryEditDialogProps = {
 
 export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n()
+  const save_label = t('glossary_page.action.save')
   const boolean_segmented_options = [
     {
       value: 'disabled',
@@ -40,6 +43,13 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
   const title = props.mode === 'create'
     ? t('glossary_page.dialog.create_title')
     : t('glossary_page.dialog.edit_title')
+
+  useSaveShortcut({
+    enabled: props.open && !props.saving,
+    on_save: () => {
+      void props.on_save()
+    },
+  })
 
   return (
     <Dialog
@@ -71,13 +81,13 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   >
                     {t('glossary_page.fields.source')}
                   </span>
-                  <Textarea
-                    className="glossary-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                  <AppEditor
+                    class_name="glossary-page__dialog-editor"
                     value={props.entry.src}
-                    disabled={props.saving}
-                    placeholder={t('glossary_page.fields.source')}
-                    onChange={(event) => {
-                      props.on_change({ src: event.target.value })
+                    aria_label={t('glossary_page.fields.source')}
+                    read_only={props.saving}
+                    on_change={(next_value) => {
+                      props.on_change({ src: next_value })
                     }}
                   />
                 </label>
@@ -89,13 +99,13 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   >
                     {t('glossary_page.fields.translation')}
                   </span>
-                  <Textarea
-                    className="glossary-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                  <AppEditor
+                    class_name="glossary-page__dialog-editor"
                     value={props.entry.dst}
-                    disabled={props.saving}
-                    placeholder={t('glossary_page.fields.translation')}
-                    onChange={(event) => {
-                      props.on_change({ dst: event.target.value })
+                    aria_label={t('glossary_page.fields.translation')}
+                    read_only={props.saving}
+                    on_change={(next_value) => {
+                      props.on_change({ dst: next_value })
                     }}
                   />
                 </label>
@@ -107,13 +117,13 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   >
                     {t('glossary_page.fields.description')}
                   </span>
-                  <Textarea
-                    className="glossary-page__dialog-editor min-h-0 h-full text-[13px] md:text-[13px]"
+                  <AppEditor
+                    class_name="glossary-page__dialog-editor"
                     value={props.entry.info}
-                    disabled={props.saving}
-                    placeholder={t('glossary_page.fields.description')}
-                    onChange={(event) => {
-                      props.on_change({ info: event.target.value })
+                    aria_label={t('glossary_page.fields.description')}
+                    read_only={props.saving}
+                    on_change={(next_value) => {
+                      props.on_change({ info: next_value })
                     }}
                   />
                 </label>
@@ -174,7 +184,8 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
               void props.on_save()
             }}
           >
-            {t('glossary_page.action.save')}
+            {save_label}
+            <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
           </Button>
         </DialogFooter>
       </DialogContent>

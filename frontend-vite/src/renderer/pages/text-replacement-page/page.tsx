@@ -86,7 +86,6 @@ export function TextReplacementPage(
       <div className="text-replacement-page__table-host">
         <TextReplacementTable
           title_key={page_state.title_key}
-          summary_key={page_state.summary_key}
           entries={page_state.filtered_entries}
           sort_state={page_state.sort_state}
           drag_disabled={page_state.drag_disabled}
@@ -108,7 +107,6 @@ export function TextReplacementPage(
       </div>
       <TextReplacementCommandBar
         title_key={page_state.title_key}
-        summary_key={page_state.summary_key}
         enabled={page_state.enabled}
         preset_items={page_state.preset_items}
         preset_menu_open={page_state.preset_menu_open}

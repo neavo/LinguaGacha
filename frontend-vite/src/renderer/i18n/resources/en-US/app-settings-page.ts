@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_app_settings_page = {
   title: 'App Settings',
-  summary: 'App settings will host desktop-level preferences, window behavior, and global experience switches.',
   fields: {
     expert_mode: {
       title: 'Expert Mode',

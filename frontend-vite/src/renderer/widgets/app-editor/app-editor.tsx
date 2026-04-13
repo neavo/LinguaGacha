@@ -29,22 +29,22 @@ import {
   lineNumbers,
 } from '@codemirror/view'
 
-type CustomPromptCodeEditorProps = {
+import { cn } from '@/lib/utils'
+import '@/widgets/app-editor/app-editor.css'
+
+type AppEditorMode = 'plain' | 'markdown'
+
+type AppEditorProps = {
   value: string
-  onChange: (next_value: string) => void
   aria_label: string
+  read_only: boolean
+  invalid?: boolean
+  mode?: AppEditorMode
+  class_name?: string
+  on_change?: (next_value: string) => void
 }
 
-const editor_theme_compartment = new Compartment()
-
-type EditorPalette = {
-  background: string
-  foreground: string
-  gutter_background: string
-  gutter_foreground: string
-  gutter_active_foreground: string
-  selection_background: string
-  active_line_background: string
+type MarkdownPalette = {
   marker: string
   heading: string
   strong: string
@@ -55,6 +55,21 @@ type EditorPalette = {
   separator: string
 }
 
+type EditorPalette = {
+  background: string
+  foreground: string
+  gutter_background: string
+  gutter_foreground: string
+  gutter_active_foreground: string
+  selection_background: string
+  active_line_background: string
+  markdown: MarkdownPalette
+}
+
+const editor_theme_compartment = new Compartment()
+const editor_readonly_compartment = new Compartment()
+const editor_mode_compartment = new Compartment()
+
 const light_editor_palette: EditorPalette = {
   background: '#ffffff',
   foreground: '#1f2328',
@@ -63,14 +78,16 @@ const light_editor_palette: EditorPalette = {
   gutter_active_foreground: '#4c5663',
   selection_background: '#e9eef9',
   active_line_background: '#f3f4f6',
-  marker: '#0451a5',
-  heading: '#003eaa',
-  strong: '#003eaa',
-  emphasis: '#2f5fb3',
-  inline_code: '#a31515',
-  link: '#0451a5',
-  quote: '#6e7781',
-  separator: '#9a6700',
+  markdown: {
+    marker: '#0451a5',
+    heading: '#003eaa',
+    strong: '#003eaa',
+    emphasis: '#2f5fb3',
+    inline_code: '#a31515',
+    link: '#0451a5',
+    quote: '#6e7781',
+    separator: '#9a6700',
+  },
 }
 
 const dark_editor_palette: EditorPalette = {
@@ -81,21 +98,23 @@ const dark_editor_palette: EditorPalette = {
   gutter_active_foreground: '#c6c6c6',
   selection_background: '#2a2d2e',
   active_line_background: '#2a2d2e',
-  marker: '#569cd6',
-  heading: '#4ea1ff',
-  strong: '#4ea1ff',
-  emphasis: '#78b7ff',
-  inline_code: '#ce9178',
-  link: '#569cd6',
-  quote: '#8b949e',
-  separator: '#d7ba7d',
+  markdown: {
+    marker: '#569cd6',
+    heading: '#4ea1ff',
+    strong: '#4ea1ff',
+    emphasis: '#78b7ff',
+    inline_code: '#ce9178',
+    link: '#569cd6',
+    quote: '#8b949e',
+    separator: '#d7ba7d',
+  },
 }
 
-function create_markdown_editor_theme(
+function create_editor_theme(
   palette: EditorPalette,
   dark: boolean,
 ): Extension {
-  const editor_theme = EditorView.theme({
+  return EditorView.theme({
     '&': {
       backgroundColor: palette.background,
       color: palette.foreground,
@@ -123,25 +142,37 @@ function create_markdown_editor_theme(
   }, {
     dark,
   })
+}
 
-  const highlight_style = HighlightStyle.define([
+function create_markdown_highlight_extension(
+  palette: EditorPalette,
+): Extension {
+  return syntaxHighlighting(HighlightStyle.define([
     {
       tag: tags.processingInstruction,
-      color: palette.marker,
+      color: palette.markdown.marker,
     },
     {
-      tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6, tags.heading],
-      color: palette.heading,
+      tag: [
+        tags.heading1,
+        tags.heading2,
+        tags.heading3,
+        tags.heading4,
+        tags.heading5,
+        tags.heading6,
+        tags.heading,
+      ],
+      color: palette.markdown.heading,
       fontWeight: '700',
     },
     {
       tag: tags.strong,
-      color: palette.strong,
+      color: palette.markdown.strong,
       fontWeight: '700',
     },
     {
       tag: tags.emphasis,
-      color: palette.emphasis,
+      color: palette.markdown.emphasis,
       fontStyle: 'italic',
     },
     {
@@ -151,44 +182,61 @@ function create_markdown_editor_theme(
     },
     {
       tag: tags.monospace,
-      color: palette.inline_code,
+      color: palette.markdown.inline_code,
     },
     {
       tag: [tags.link, tags.url, tags.labelName],
-      color: palette.link,
+      color: palette.markdown.link,
       textDecoration: 'underline',
     },
     {
       tag: tags.quote,
-      color: palette.quote,
+      color: palette.markdown.quote,
     },
     {
       tag: tags.contentSeparator,
-      color: palette.separator,
+      color: palette.markdown.separator,
     },
-  ])
-
-  return [editor_theme, syntaxHighlighting(highlight_style)]
+  ]))
 }
 
-const light_editor_theme = create_markdown_editor_theme(
-  light_editor_palette,
-  false,
-)
+function resolve_theme_extensions(
+  resolved_theme: string | undefined,
+  mode: AppEditorMode,
+): Extension {
+  const palette = resolved_theme === 'dark'
+    ? dark_editor_palette
+    : light_editor_palette
+  const base_theme = create_editor_theme(palette, resolved_theme === 'dark')
 
-const dark_editor_theme = create_markdown_editor_theme(
-  dark_editor_palette,
-  true,
-)
+  if (mode === 'markdown') {
+    return [
+      base_theme,
+      create_markdown_highlight_extension(palette),
+    ]
+  }
+
+  return base_theme
+}
+
+function resolve_mode_extensions(mode: AppEditorMode): Extension {
+  if (mode === 'markdown') {
+    // 为什么：提示词编辑器里常见的标题、链接、删除线都依赖 Markdown 语言扩展才能得到稳定高亮。
+    return markdown({ base: markdownLanguage })
+  }
+
+  return []
+}
 
 function clamp_selection_offset(offset: number, max_offset: number): number {
   if (offset < 0) {
     return 0
-  } else if (offset > max_offset) {
-    return max_offset
-  } else {
-    return offset
   }
+  if (offset > max_offset) {
+    return max_offset
+  }
+
+  return offset
 }
 
 function create_clamped_selection(
@@ -206,59 +254,53 @@ function create_clamped_selection(
   )
 }
 
-function resolve_editor_theme(resolved_theme: string | undefined): Extension {
-  if (resolved_theme === 'dark') {
-    return dark_editor_theme
-  } else {
-    return light_editor_theme
-  }
-}
-
-function create_editor_extensions(
-  theme_extension: Extension,
-  on_change: (next_value: string) => void,
-  suppress_change_ref: { current: boolean },
-): Extension[] {
+function create_editor_extensions(args: {
+  theme_extension: Extension
+  mode_extension: Extension
+  read_only: boolean
+  on_change: (next_value: string) => void
+  suppress_change_ref: { current: boolean }
+}): Extension[] {
   return [
-    editor_theme_compartment.of(theme_extension),
+    editor_theme_compartment.of(args.theme_extension),
+    editor_readonly_compartment.of(EditorState.readOnly.of(args.read_only)),
+    editor_mode_compartment.of(args.mode_extension),
     lineNumbers(),
-    highlightActiveLine(),
     highlightActiveLineGutter(),
+    highlightActiveLine(),
     highlightSpecialChars(),
     highlightWhitespace(),
-    // Why: 这里需要 GFM 语法基线，像 ~~删除线~~ 这类常见写法否则不会被解析，
-    // 看起来就像默认高亮完全失效了一样。
-    markdown({ base: markdownLanguage }),
     history(),
     keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
     EditorView.lineWrapping,
     EditorView.updateListener.of((update) => {
-      // Why: 外部导入、重置和预设替换会主动改写全文，这里必须跳过受控回写，
-      // 否则父层会收到重复 onChange，造成不必要的状态抖动。
-      if (!update.docChanged || suppress_change_ref.current) {
+      // 为什么：这是受控编辑器，外部同步 value 时不能再向上触发 on_change 形成回环。
+      if (!update.docChanged || args.suppress_change_ref.current) {
         return
       }
 
-      on_change(update.state.doc.toString())
+      args.on_change(update.state.doc.toString())
     }),
   ]
 }
 
-export function CustomPromptCodeEditor(
-  props: CustomPromptCodeEditorProps,
-): JSX.Element {
+export function AppEditor(props: AppEditorProps): JSX.Element {
   const { resolvedTheme } = useTheme()
+  const mode = props.mode ?? 'plain'
   const host_ref = useRef<HTMLDivElement | null>(null)
   const editor_view_ref = useRef<EditorView | null>(null)
-  const on_change_ref = useRef(props.onChange)
+  const on_change_ref = useRef(props.on_change)
   const suppress_change_ref = useRef(false)
   const initial_value_ref = useRef(props.value)
   const initial_aria_label_ref = useRef(props.aria_label)
-  const initial_theme_extension_ref = useRef(resolve_editor_theme(resolvedTheme))
+  const initial_invalid_ref = useRef(props.invalid === true)
+  const initial_read_only_ref = useRef(props.read_only)
+  const initial_mode_ref = useRef(mode)
+  const initial_theme_extension_ref = useRef(resolve_theme_extensions(resolvedTheme, mode))
 
   useEffect(() => {
-    on_change_ref.current = props.onChange
-  }, [props.onChange])
+    on_change_ref.current = props.on_change
+  }, [props.on_change])
 
   useEffect(() => {
     if (host_ref.current === null) {
@@ -267,21 +309,24 @@ export function CustomPromptCodeEditor(
 
     const editor_state = EditorState.create({
       doc: initial_value_ref.current,
-      extensions: create_editor_extensions(
-        initial_theme_extension_ref.current,
-        (next_value) => {
-          on_change_ref.current(next_value)
+      extensions: create_editor_extensions({
+        theme_extension: initial_theme_extension_ref.current,
+        mode_extension: resolve_mode_extensions(initial_mode_ref.current),
+        read_only: initial_read_only_ref.current,
+        on_change: (next_value) => {
+          on_change_ref.current?.(next_value)
         },
         suppress_change_ref,
-      ),
+      }),
     })
+
     const editor_view = new EditorView({
       state: editor_state,
       parent: host_ref.current,
     })
 
-    // Why: CodeMirror 的 content DOM 是运行时生成的，a11y 属性要在实例创建后补齐。
     editor_view.contentDOM.setAttribute('aria-label', initial_aria_label_ref.current)
+    editor_view.contentDOM.setAttribute('aria-invalid', initial_invalid_ref.current ? 'true' : 'false')
     editor_view.contentDOM.setAttribute('spellcheck', 'false')
     editor_view_ref.current = editor_view
 
@@ -293,39 +338,60 @@ export function CustomPromptCodeEditor(
 
   useEffect(() => {
     const editor_view = editor_view_ref.current
-
     if (editor_view === null) {
       return
     }
 
     editor_view.contentDOM.setAttribute('aria-label', props.aria_label)
-  }, [props.aria_label])
+    editor_view.contentDOM.setAttribute('aria-invalid', props.invalid === true ? 'true' : 'false')
+  }, [props.aria_label, props.invalid])
 
   useEffect(() => {
     const editor_view = editor_view_ref.current
-
     if (editor_view === null) {
       return
     }
 
-    // Why: 主题扩展必须通过 compartment 热切换，才能在亮暗模式切换时保住编辑器实例、
-    // 光标位置和撤销历史，而不是整棵重建。
     editor_view.dispatch({
       effects: editor_theme_compartment.reconfigure(
-        resolve_editor_theme(resolvedTheme),
+        resolve_theme_extensions(resolvedTheme, mode),
       ),
     })
-  }, [resolvedTheme])
+  }, [mode, resolvedTheme])
 
   useEffect(() => {
     const editor_view = editor_view_ref.current
+    if (editor_view === null) {
+      return
+    }
 
+    editor_view.dispatch({
+      effects: editor_mode_compartment.reconfigure(
+        resolve_mode_extensions(mode),
+      ),
+    })
+  }, [mode])
+
+  useEffect(() => {
+    const editor_view = editor_view_ref.current
+    if (editor_view === null) {
+      return
+    }
+
+    editor_view.dispatch({
+      effects: editor_readonly_compartment.reconfigure(
+        EditorState.readOnly.of(props.read_only),
+      ),
+    })
+  }, [props.read_only])
+
+  useEffect(() => {
+    const editor_view = editor_view_ref.current
     if (editor_view === null) {
       return
     }
 
     const current_value = editor_view.state.doc.toString()
-
     if (current_value === props.value) {
       return
     }
@@ -335,10 +401,7 @@ export function CustomPromptCodeEditor(
       props.value.length,
     )
 
-    // Why: 导入、应用预设和重置都会整段替换正文，这里尽量保住用户的选区位置，
-    // 避免内容一刷新就把光标硬弹回开头。
     suppress_change_ref.current = true
-
     try {
       editor_view.dispatch({
         changes: {
@@ -353,5 +416,17 @@ export function CustomPromptCodeEditor(
     }
   }, [props.value])
 
-  return <div ref={host_ref} className="custom-prompt-page__editor-host" />
+  return (
+    <div
+      ref={host_ref}
+      data-invalid={props.invalid === true ? 'true' : undefined}
+      data-readonly={props.read_only ? 'true' : undefined}
+      className={cn(
+        'app-editor',
+        props.read_only ? 'app-editor--readonly' : undefined,
+        props.invalid === true ? 'app-editor--invalid' : undefined,
+        props.class_name,
+      )}
+    />
+  )
 }

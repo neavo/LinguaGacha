@@ -1,6 +1,5 @@
 export const zh_cn_translation_prompt_page = {
   title: '翻译提示词',
-  summary: '通过自定义提示词追加故事设定、行文风格等额外翻译要求',
   header: {
     title: '自定义翻译提示词（不支持 SakuraLLM 模型）',
     description_html:

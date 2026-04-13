@@ -3,7 +3,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 
 export const en_us_proofreading_page = {
   title: 'Proofreading',
-  summary: 'The proofreading page will carry post-translation checks, diffs, and review pacing.',
   action: {
     filter: 'Filter',
     replace: 'Replace',
