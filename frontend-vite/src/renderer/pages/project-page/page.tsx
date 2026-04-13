@@ -24,6 +24,10 @@ import { Progress } from '@/shadcn/progress'
 import { Spinner } from '@/shadcn/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shadcn/tooltip'
 import { useI18n } from '@/i18n'
+import {
+  has_path_drop_payload,
+  resolve_dropped_path,
+} from '@/lib/file-drop'
 import { cn } from '@/lib/utils'
 import '@/pages/project-page/project-page.css'
 import { PROJECT_FORMAT_SUPPORT_ITEMS } from '@/pages/project-page/support-formats'
@@ -139,11 +143,6 @@ type ProjectActionButtonProps = {
   on_click: () => void
 }
 
-type DroppedPathResult = {
-  path: string | null
-  has_multiple_paths: boolean
-}
-
 type ActiveDropzone = 'source' | 'project' | null
 
 function extract_file_name(file_path: string): string {
@@ -238,88 +237,6 @@ function normalize_project_preview(project_path: string, fallback_name: string, 
       translated_items: Number(preview.translated_items ?? 0),
       total_items: Number(preview.total_items ?? 0),
     },
-  }
-}
-
-function normalize_dropped_file_uri_path(file_uri: string): string | null {
-  try {
-    const normalized_url = new URL(file_uri)
-    if (normalized_url.protocol !== 'file:') {
-      return null
-    }
-
-    let normalized_path = decodeURIComponent(normalized_url.pathname)
-    if (/^\/[A-Za-z]:\//u.test(normalized_path)) {
-      normalized_path = normalized_path.slice(1)
-    }
-
-    if (/^[A-Za-z]:\//u.test(normalized_path)) {
-      normalized_path = normalized_path.split('/').join('\\')
-    }
-
-    return normalized_path
-  } catch {
-    return null
-  }
-}
-
-function has_path_drop_payload(data_transfer: DataTransfer): boolean {
-  const payload_type_set = new Set(data_transfer.types)
-  let has_supported_payload = false
-
-  if (payload_type_set.has('Files') || payload_type_set.has('text/uri-list')) {
-    has_supported_payload = true
-  } else {
-    has_supported_payload = false
-  }
-
-  return has_supported_payload
-}
-
-function resolve_dropped_path(data_transfer: DataTransfer): DroppedPathResult {
-  const dropped_files = Array.from(data_transfer.files)
-  if (dropped_files.length > 1) {
-    return {
-      path: null,
-      has_multiple_paths: true,
-    }
-  }
-
-  const dropped_file = dropped_files[0]
-  if (dropped_file !== undefined) {
-    try {
-      const normalized_file_path = window.desktopApp.getPathForFile(dropped_file)
-      if (normalized_file_path !== '') {
-        return {
-          path: normalized_file_path,
-          has_multiple_paths: false,
-        }
-      }
-    } catch {
-      // 某些拖拽源不会暴露可落盘文件，这里继续回退到 text/uri-list 解析。
-    }
-  }
-
-  const raw_uri_list = data_transfer.getData('text/uri-list')
-  const normalized_uri_list = raw_uri_list
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '' && !line.startsWith('#'))
-
-  if (normalized_uri_list.length > 1) {
-    return {
-      path: null,
-      has_multiple_paths: true,
-    }
-  }
-
-  const normalized_path = normalized_uri_list.length === 1
-    ? normalize_dropped_file_uri_path(normalized_uri_list[0])
-    : null
-
-  return {
-    path: normalized_path,
-    has_multiple_paths: false,
   }
 }
 
@@ -693,7 +610,10 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     })
   }
 
-  async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
+  async function handle_path_drop(
+    event: DragEvent<HTMLButtonElement>,
+    on_resolved_path: (path: string) => Promise<void>,
+  ): Promise<void> {
     event.preventDefault()
     set_active_dropzone(null)
 
@@ -707,24 +627,15 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       return
     }
 
-    await handle_select_source_path(dropped_path.path)
+    await on_resolved_path(dropped_path.path)
+  }
+
+  async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
+    await handle_path_drop(event, handle_select_source_path)
   }
 
   async function handle_project_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
-    event.preventDefault()
-    set_active_dropzone(null)
-
-    const dropped_path = resolve_dropped_path(event.dataTransfer)
-    if (dropped_path.has_multiple_paths) {
-      push_toast('warning', t('project_page.drop_multiple_unavailable'))
-      return
-    }
-    if (dropped_path.path === null || dropped_path.path === '') {
-      push_toast('warning', t('project_page.drop_unavailable'))
-      return
-    }
-
-    await select_project_path(dropped_path.path)
+    await handle_path_drop(event, select_project_path)
   }
 
   async function resolve_project_output_path(source_path: string): Promise<string | null> {

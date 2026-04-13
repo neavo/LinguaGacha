@@ -16,6 +16,12 @@ export const zh_cn_app = {
   },
   feedback: {
     save_success: '已保存 …',
+    no_valid_data: '没有有效数据 …',
+  },
+  drop: {
+    multiple_unavailable: '一次只能拖拽一个文件',
+    unavailable: '当前无法读取拖拽文件的本地路径，请换用点击导入。',
+    import_here: '松手即可导入规则文件',
   },
   toggle: {
     disabled: '禁用',

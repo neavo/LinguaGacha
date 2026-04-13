@@ -956,22 +956,27 @@ export function useTextReplacementPageState(
     set_sort_state(null)
   }, [entries, entry_index_by_id])
 
-  const import_entries_from_picker = useCallback(async (): Promise<void> => {
+  const import_entries_from_path = useCallback(async (path: string): Promise<void> => {
     try {
-      const pick_result = await window.desktopApp.pickGlossaryImportFilePath()
-      if (pick_result.canceled || pick_result.path === null) {
+      if (path.trim() === '') {
         return
       }
 
-      const payload = await api_fetch<{ entries: TextReplacementEntry[] }>(
+      const payload = await api_fetch<{ entries?: TextReplacementEntry[] }>(
         '/api/quality/rules/import',
         {
           rule_type: config.rule_type,
           expected_revision: revision_ref.current,
-          path: pick_result.path,
+          path,
         },
       )
-      await persist_merged_entries(payload.entries, { close_preset_menu: false })
+      const imported_entries = Array.isArray(payload.entries) ? payload.entries : []
+      if (imported_entries.length === 0) {
+        push_toast('warning', t('app.feedback.no_valid_data'))
+        return
+      }
+
+      await persist_merged_entries(imported_entries, { close_preset_menu: false })
     } catch (error) {
       if (error instanceof Error) {
         push_toast('error', error.message)
@@ -980,6 +985,15 @@ export function useTextReplacementPageState(
       }
     }
   }, [config.rule_type, persist_merged_entries, push_toast, t])
+
+  const import_entries_from_picker = useCallback(async (): Promise<void> => {
+    const pick_result = await window.desktopApp.pickGlossaryImportFilePath()
+    if (pick_result.canceled || pick_result.path === null) {
+      return
+    }
+
+    await import_entries_from_path(pick_result.path)
+  }, [import_entries_from_path])
 
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -1549,6 +1563,7 @@ export function useTextReplacementPageState(
     open_create_dialog,
     open_edit_dialog,
     update_dialog_draft,
+    import_entries_from_path,
     import_entries_from_picker,
     export_entries_from_picker,
     run_statistics,

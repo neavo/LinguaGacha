@@ -19,6 +19,12 @@ export const en_us_app = {
   },
   feedback: {
     save_success: 'Saved …',
+    no_valid_data: 'No valid data …',
+  },
+  drop: {
+    multiple_unavailable: 'Only one file can be dropped at a time',
+    unavailable: 'The local path of the dropped file is unavailable right now. Please use the import picker instead.',
+    import_here: 'Release to import the rule file',
   },
   toggle: {
     disabled: 'Disabled',

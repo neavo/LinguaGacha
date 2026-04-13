@@ -1,5 +1,6 @@
 import '@/pages/text-preserve-page/text-preserve-page.css'
 import type { ScreenComponentProps } from '@/app/navigation/types'
+import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import { TextPreserveCommandBar } from '@/pages/text-preserve-page/components/text-preserve-command-bar'
 import { TextPreserveConfirmDialog } from '@/pages/text-preserve-page/components/text-preserve-confirm-dialog'
@@ -8,6 +9,7 @@ import { TextPreservePresetInputDialog } from '@/pages/text-preserve-page/compon
 import { TextPreserveTable } from '@/pages/text-preserve-page/components/text-preserve-table'
 import type { TextPreserveFilterScope } from '@/pages/text-preserve-page/types'
 import { useTextPreservePageState } from '@/pages/text-preserve-page/use-text-preserve-page-state'
+import { FileDropZone } from '@/widgets/file-drop-zone/file-drop-zone'
 import { SearchBar, type SearchBarScopeOption } from '@/widgets/search-bar/search-bar'
 
 const TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE = {
@@ -26,6 +28,7 @@ export function TextPreservePage(
   props: ScreenComponentProps,
 ): JSX.Element {
   const { t } = useI18n()
+  const { push_toast } = useDesktopToast()
   const page_state = useTextPreservePageState()
   const scope_button_label = page_state.filter_state.scope === 'all'
     ? t('text_preserve_page.filter.scope.label')
@@ -79,24 +82,39 @@ export function TextPreservePage(
         }}
       />
       <div className="text-preserve-page__table-host">
-        <TextPreserveTable
-          title_key={page_state.title_key}
-          entries={page_state.filtered_entries}
-          sort_state={page_state.sort_state}
-          drag_disabled={page_state.drag_disabled}
-          statistics_running={page_state.statistics_state.running}
-          statistics_ready={page_state.statistics_ready}
-          selected_entry_ids={page_state.selected_entry_ids}
-          active_entry_id={page_state.active_entry_id}
-          anchor_entry_id={page_state.selection_anchor_entry_id}
-          statistics_badge_by_entry_id={page_state.statistics_badge_by_entry_id}
-          on_sort_change={page_state.apply_table_sort_state}
-          on_selection_change={page_state.apply_table_selection}
-          on_open_edit={page_state.open_edit_dialog}
-          on_reorder={page_state.reorder_selected_entries}
-          on_query_entry_source={page_state.query_entry_source}
-          on_search_entry_relations={page_state.search_entry_relations_from_statistics}
-        />
+        <FileDropZone
+          label={t('app.drop.import_here')}
+          on_path_drop={(path) => {
+            void page_state.import_entries_from_path(path)
+          }}
+          on_drop_issue={(issue) => {
+            push_toast(
+              'warning',
+              issue === 'multiple'
+                ? t('app.drop.multiple_unavailable')
+                : t('app.drop.unavailable'),
+            )
+          }}
+        >
+          <TextPreserveTable
+            title_key={page_state.title_key}
+            entries={page_state.filtered_entries}
+            sort_state={page_state.sort_state}
+            drag_disabled={page_state.drag_disabled}
+            statistics_running={page_state.statistics_state.running}
+            statistics_ready={page_state.statistics_ready}
+            selected_entry_ids={page_state.selected_entry_ids}
+            active_entry_id={page_state.active_entry_id}
+            anchor_entry_id={page_state.selection_anchor_entry_id}
+            statistics_badge_by_entry_id={page_state.statistics_badge_by_entry_id}
+            on_sort_change={page_state.apply_table_sort_state}
+            on_selection_change={page_state.apply_table_selection}
+            on_open_edit={page_state.open_edit_dialog}
+            on_reorder={page_state.reorder_selected_entries}
+            on_query_entry_source={page_state.query_entry_source}
+            on_search_entry_relations={page_state.search_entry_relations_from_statistics}
+          />
+        </FileDropZone>
       </div>
       <TextPreserveCommandBar
         title_key={page_state.title_key}

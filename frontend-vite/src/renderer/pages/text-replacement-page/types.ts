@@ -144,6 +144,7 @@ export type UseTextReplacementPageStateResult = {
   open_create_dialog: () => void
   open_edit_dialog: (entry_id: TextReplacementEntryId) => void
   update_dialog_draft: (patch: Partial<TextReplacementEntry>) => void
+  import_entries_from_path: (path: string) => Promise<void>
   import_entries_from_picker: () => Promise<void>
   export_entries_from_picker: () => Promise<void>
   run_statistics: () => Promise<void>

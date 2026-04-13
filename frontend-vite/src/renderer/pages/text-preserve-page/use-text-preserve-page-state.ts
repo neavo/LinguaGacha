@@ -795,31 +795,47 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     set_sort_state(null)
   }, [entries, entry_index_by_id])
 
-  const import_entries_from_picker = useCallback(async (): Promise<void> => {
+  const import_entries_from_path = useCallback(async (path: string): Promise<void> => {
     try {
-      const pick_result = await window.desktopApp.pickGlossaryImportFilePath()
-      if (pick_result.canceled || pick_result.path === null) {
+      if (path.trim() === '') {
         return
       }
 
-      const payload = await api_fetch<{ entries: Array<Record<string, unknown>> }>(
+      const payload = await api_fetch<{ entries?: Array<Record<string, unknown>> }>(
         '/api/quality/rules/import',
         {
           rule_type: TEXT_PRESERVE_RULE_TYPE,
           expected_revision: revision_ref.current,
-          path: pick_result.path,
+          path,
         },
       )
+      const imported_entries = Array.isArray(payload.entries)
+        ? payload.entries.map((entry) => {
+            return normalize_imported_entry(entry)
+          })
+        : []
+      if (imported_entries.length === 0) {
+        push_toast('warning', t('app.feedback.no_valid_data'))
+        return
+      }
+
       await persist_merged_entries(
-        payload.entries.map((entry) => {
-          return normalize_imported_entry(entry)
-        }),
+        imported_entries,
         { close_preset_menu: false },
       )
     } catch (error) {
       push_action_error_toast(error)
     }
-  }, [persist_merged_entries, push_action_error_toast])
+  }, [persist_merged_entries, push_action_error_toast, push_toast, t])
+
+  const import_entries_from_picker = useCallback(async (): Promise<void> => {
+    const pick_result = await window.desktopApp.pickGlossaryImportFilePath()
+    if (pick_result.canceled || pick_result.path === null) {
+      return
+    }
+
+    await import_entries_from_path(pick_result.path)
+  }, [import_entries_from_path])
 
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -1355,6 +1371,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     open_create_dialog,
     open_edit_dialog,
     update_dialog_draft,
+    import_entries_from_path,
     import_entries_from_picker,
     export_entries_from_picker,
     run_statistics,

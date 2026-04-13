@@ -1,5 +1,6 @@
 import '@/pages/glossary-page/glossary-page.css'
 import type { ScreenComponentProps } from '@/app/navigation/types'
+import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import { GlossaryCommandBar } from '@/pages/glossary-page/components/glossary-command-bar'
 import { GlossaryConfirmDialog } from '@/pages/glossary-page/components/glossary-confirm-dialog'
@@ -8,6 +9,7 @@ import { GlossaryPresetInputDialog } from '@/pages/glossary-page/components/glos
 import type { GlossaryFilterScope } from '@/pages/glossary-page/types'
 import { GlossaryTable } from '@/pages/glossary-page/components/glossary-table'
 import { useGlossaryPageState } from '@/pages/glossary-page/use-glossary-page-state'
+import { FileDropZone } from '@/widgets/file-drop-zone/file-drop-zone'
 import { SearchBar, type SearchBarScopeOption } from '@/widgets/search-bar/search-bar'
 
 const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
@@ -26,6 +28,7 @@ const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = [
 
 export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n()
+  const { push_toast } = useDesktopToast()
   const glossary_page_state = useGlossaryPageState()
   const regex_state_label = glossary_page_state.filter_state.is_regex
     ? t('app.toggle.enabled')
@@ -79,24 +82,39 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         }}
       />
       <div className="glossary-page__table-host">
-        <GlossaryTable
-          entries={glossary_page_state.filtered_entries}
-          sort_state={glossary_page_state.sort_state}
-          drag_disabled={glossary_page_state.drag_disabled}
-          statistics_running={glossary_page_state.statistics_state.running}
-          statistics_ready={glossary_page_state.statistics_ready}
-          selected_entry_ids={glossary_page_state.selected_entry_ids}
-          active_entry_id={glossary_page_state.active_entry_id}
-          anchor_entry_id={glossary_page_state.selection_anchor_entry_id}
-          statistics_badge_by_entry_id={glossary_page_state.statistics_badge_by_entry_id}
-          on_sort_change={glossary_page_state.apply_table_sort_state}
-          on_selection_change={glossary_page_state.apply_table_selection}
-          on_open_edit={glossary_page_state.open_edit_dialog}
-          on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
-          on_reorder={glossary_page_state.reorder_selected_entries}
-          on_query_entry_source={glossary_page_state.query_entry_source_from_statistics}
-          on_search_entry_relations={glossary_page_state.search_entry_relations_from_statistics}
-        />
+        <FileDropZone
+          label={t('app.drop.import_here')}
+          on_path_drop={(path) => {
+            void glossary_page_state.import_entries_from_path(path)
+          }}
+          on_drop_issue={(issue) => {
+            push_toast(
+              'warning',
+              issue === 'multiple'
+                ? t('app.drop.multiple_unavailable')
+                : t('app.drop.unavailable'),
+            )
+          }}
+        >
+          <GlossaryTable
+            entries={glossary_page_state.filtered_entries}
+            sort_state={glossary_page_state.sort_state}
+            drag_disabled={glossary_page_state.drag_disabled}
+            statistics_running={glossary_page_state.statistics_state.running}
+            statistics_ready={glossary_page_state.statistics_ready}
+            selected_entry_ids={glossary_page_state.selected_entry_ids}
+            active_entry_id={glossary_page_state.active_entry_id}
+            anchor_entry_id={glossary_page_state.selection_anchor_entry_id}
+            statistics_badge_by_entry_id={glossary_page_state.statistics_badge_by_entry_id}
+            on_sort_change={glossary_page_state.apply_table_sort_state}
+            on_selection_change={glossary_page_state.apply_table_selection}
+            on_open_edit={glossary_page_state.open_edit_dialog}
+            on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
+            on_reorder={glossary_page_state.reorder_selected_entries}
+            on_query_entry_source={glossary_page_state.query_entry_source_from_statistics}
+            on_search_entry_relations={glossary_page_state.search_entry_relations_from_statistics}
+          />
+        </FileDropZone>
       </div>
       <GlossaryCommandBar
         enabled={glossary_page_state.enabled}
