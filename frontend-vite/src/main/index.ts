@@ -37,6 +37,19 @@ const DARK_TITLE_BAR_OVERLAY_COLOR = '#121212'
 const DARK_TITLE_BAR_SYMBOL_COLOR = '#EEF2F7'
 const DEVTOOLS_TOGGLE_KEY = 'F12'
 const DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY = 'i'
+const DEVTOOLS_INSPECT_WITH_MODIFIER_KEY = 'c'
+const DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT = `
+(() => {
+  const devtools_api = window.DevToolsAPI
+
+  if (devtools_api && typeof devtools_api.enterInspectElementMode === 'function') {
+    devtools_api.enterInspectElementMode()
+    return true
+  } else {
+    return false
+  }
+})()
+`
 const WINDOW_LOAD_FAILURE_TITLE = 'LinguaGacha Frontend 加载失败'
 const WINDOW_LOAD_FAILURE_BODY_MAX_LENGTH = 240
 const WINDOW_FONT_STACK = '"LGConsolas", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif'
@@ -130,6 +143,75 @@ function is_devtools_shortcut(input: Electron.Input): boolean {
   return devtools_shortcut
 }
 
+function is_devtools_inspect_shortcut(input: Electron.Input): boolean {
+  const inspect_shortcut =
+    input.type === 'keyDown' &&
+    input.key.toLowerCase() === DEVTOOLS_INSPECT_WITH_MODIFIER_KEY &&
+    input.shift &&
+    (input.control || input.meta)
+
+  return inspect_shortcut
+}
+
+async function wait_for_devtools_frontend(
+  target_window: BrowserWindow,
+): Promise<Electron.WebContents | null> {
+  const current_devtools_frontend = target_window.webContents.devToolsWebContents
+
+  if (current_devtools_frontend !== null) {
+    if (current_devtools_frontend.isLoadingMainFrame()) {
+      await new Promise<void>((resolve) => {
+        current_devtools_frontend.once('did-finish-load', () => {
+          resolve()
+        })
+      })
+    }
+  } else {
+    await new Promise<void>((resolve) => {
+      target_window.webContents.once('devtools-opened', () => {
+        resolve()
+      })
+      target_window.webContents.openDevTools()
+    })
+  }
+
+  const ready_devtools_frontend = target_window.webContents.devToolsWebContents
+
+  if (ready_devtools_frontend !== null) {
+    if (ready_devtools_frontend.isLoadingMainFrame()) {
+      await new Promise<void>((resolve) => {
+        ready_devtools_frontend.once('did-finish-load', () => {
+          resolve()
+        })
+      })
+    }
+  }
+
+  return ready_devtools_frontend
+}
+
+async function open_devtools_and_toggle_inspect_mode(
+  target_window: BrowserWindow,
+): Promise<void> {
+  const devtools_frontend = await wait_for_devtools_frontend(target_window)
+
+  if (devtools_frontend !== null) {
+    try {
+      // 直接调用 Chromium DevTools 前端提供的 API，复用浏览器自己的元素定位切换逻辑。
+      const inspect_mode_enabled = await devtools_frontend.executeJavaScript(
+        DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT,
+        true,
+      )
+
+      if (!inspect_mode_enabled) {
+        console.warn('[frontend-vite] DevToolsAPI.enterInspectElementMode is unavailable')
+      }
+    } catch (error) {
+      console.warn('[frontend-vite] failed to toggle inspect element mode', error)
+    }
+  }
+}
+
 function register_development_devtools_shortcut(target_window: BrowserWindow): void {
   if (is_development_mode()) {
     // 开发态窗口隐藏了菜单栏，需要显式补一个 DevTools 入口，避免调试能力只能靠默认菜单兜底。
@@ -137,6 +219,9 @@ function register_development_devtools_shortcut(target_window: BrowserWindow): v
       if (is_devtools_shortcut(input)) {
         event.preventDefault()
         target_window.webContents.toggleDevTools()
+      } else if (is_devtools_inspect_shortcut(input)) {
+        event.preventDefault()
+        void open_devtools_and_toggle_inspect_mode(target_window)
       }
     })
   }
