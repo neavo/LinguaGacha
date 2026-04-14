@@ -52,7 +52,7 @@ const DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT = `
 `
 const WINDOW_LOAD_FAILURE_TITLE = 'LinguaGacha Frontend 加载失败'
 const WINDOW_LOAD_FAILURE_BODY_MAX_LENGTH = 240
-const WINDOW_FONT_STACK = '"LGConsolas", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif'
+const WINDOW_FONT_STACK = '"LGMono", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif'
 const PROJECT_FILE_FILTERS: Electron.FileFilter[] = [
   {
     name: 'LinguaGacha Project',
@@ -255,39 +255,73 @@ function escape_html(raw_text: string): string {
 }
 
 function build_window_load_failure_font_face_css(): string {
-  const consolas_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'Consolas.ttf')).href
-  const base_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'LGBaseFont.ttf')).href
+  const mono_regular_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'UbuntuMono-Regular.woff2')).href
+  const mono_bold_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'UbuntuMono-Bold.woff2')).href
+  const base_regular_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'LGBaseFont-Regular.woff2')).href
+  const base_bold_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'LGBaseFont-Bold.woff2')).href
 
-  // data: 页面没有稳定的相对资源基址，这里直接注入 file URL，保证开发态和构建态都能命中同一份字体资源。
+  // data: 页面没有稳定的相对资源基址，这里直接注入 file URL，保证开发态和构建态都能命中同一组普通/粗体字体资源。
   return `
       @font-face {
-        font-family: "LGConsolas";
-        src: url("${consolas_font_url}") format("truetype");
-        font-weight: 400 700;
+        font-family: "LGMono";
+        src: url("${mono_regular_font_url}") format("woff2");
+        font-weight: 400;
         font-style: normal;
         font-display: swap;
       }
 
       @font-face {
-        font-family: "LGConsolas";
-        src: url("${consolas_font_url}") format("truetype");
-        font-weight: 400 700;
+        font-family: "LGMono";
+        src: url("${mono_bold_font_url}") format("woff2");
+        font-weight: 500 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "LGMono";
+        src: url("${mono_regular_font_url}") format("woff2");
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "LGMono";
+        src: url("${mono_bold_font_url}") format("woff2");
+        font-weight: 500 700;
         font-style: italic;
         font-display: swap;
       }
 
       @font-face {
         font-family: "LGBaseFont";
-        src: url("${base_font_url}") format("truetype");
-        font-weight: 400 700;
+        src: url("${base_regular_font_url}") format("woff2");
+        font-weight: 400;
         font-style: normal;
         font-display: swap;
       }
 
       @font-face {
         font-family: "LGBaseFont";
-        src: url("${base_font_url}") format("truetype");
-        font-weight: 400 700;
+        src: url("${base_regular_font_url}") format("woff2");
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "LGBaseFont";
+        src: url("${base_bold_font_url}") format("woff2");
+        font-weight: 500 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "LGBaseFont";
+        src: url("${base_bold_font_url}") format("woff2");
+        font-weight: 500 700;
         font-style: italic;
         font-display: swap;
       }

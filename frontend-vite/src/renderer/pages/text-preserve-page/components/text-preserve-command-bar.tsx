@@ -327,8 +327,7 @@ export function TextPreserveCommandBar(
           >
             <div className="text-preserve-page__mode-tooltip-copy">
               <p
-                className="text-preserve-page__mode-tooltip-title text-background"
-                data-ui-text="emphasis"
+                className="text-preserve-page__mode-tooltip-title font-medium text-background"
               >
                 {mode_tooltip_title}
               </p>

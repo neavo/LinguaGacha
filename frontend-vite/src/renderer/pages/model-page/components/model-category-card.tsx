@@ -68,7 +68,7 @@ export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
               aria-hidden="true"
             />
             <div className="model-page__category-copy">
-              <h2 className="model-page__category-title" data-ui-text="emphasis">
+              <h2 className="model-page__category-title font-medium">
                 {props.title}
               </h2>
               <p className="model-page__category-description">{props.description}</p>

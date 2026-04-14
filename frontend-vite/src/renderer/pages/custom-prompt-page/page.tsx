@@ -49,8 +49,7 @@ export function CustomPromptPage(
               tabIndex={0}
             >
               <p
-                className="custom-prompt-page__readonly-strip-label"
-                data-ui-text="emphasis"
+                className="custom-prompt-page__readonly-strip-label font-medium"
               >
                 {t('custom_prompt_page.section.prefix_label')}
               </p>
@@ -88,8 +87,7 @@ export function CustomPromptPage(
               tabIndex={0}
             >
               <p
-                className="custom-prompt-page__readonly-strip-label"
-                data-ui-text="emphasis"
+                className="custom-prompt-page__readonly-strip-label font-medium"
               >
                 {t('custom_prompt_page.section.suffix_label')}
               </p>

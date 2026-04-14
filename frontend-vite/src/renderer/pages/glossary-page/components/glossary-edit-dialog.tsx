@@ -76,8 +76,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
               <div className="glossary-page__dialog-main-panel-content">
                 <label className="glossary-page__dialog-section">
                   <span
-                    className="glossary-page__dialog-section-title"
-                    data-ui-text="emphasis"
+                    className="glossary-page__dialog-section-title font-medium"
                   >
                     {t('glossary_page.fields.source')}
                   </span>
@@ -94,8 +93,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
 
                 <label className="glossary-page__dialog-section">
                   <span
-                    className="glossary-page__dialog-section-title"
-                    data-ui-text="emphasis"
+                    className="glossary-page__dialog-section-title font-medium"
                   >
                     {t('glossary_page.fields.translation')}
                   </span>
@@ -112,8 +110,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
 
                 <label className="glossary-page__dialog-section glossary-page__dialog-section--description">
                   <span
-                    className="glossary-page__dialog-section-title"
-                    data-ui-text="emphasis"
+                    className="glossary-page__dialog-section-title font-medium"
                   >
                     {t('glossary_page.fields.description')}
                   </span>
@@ -142,8 +139,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                     </span>
                   </span>
                   <span
-                    className="glossary-page__dialog-rule-title"
-                    data-ui-text="emphasis"
+                    className="glossary-page__dialog-rule-title font-medium"
                   >
                     {t('glossary_page.rule.case_sensitive')}
                   </span>

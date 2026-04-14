@@ -272,8 +272,7 @@ export function ProofreadingEditDialog(
                 <section className="proofreading-page__dialog-editor-block">
                   <label className="proofreading-page__dialog-editor-section">
                     <span
-                      className="proofreading-page__dialog-editor-title"
-                      data-ui-text="emphasis"
+                      className="proofreading-page__dialog-editor-title font-medium"
                     >
                       {t('proofreading_page.fields.source')}
                     </span>
@@ -291,8 +290,7 @@ export function ProofreadingEditDialog(
 
                   <label className="proofreading-page__dialog-editor-section">
                     <span
-                      className="proofreading-page__dialog-editor-title"
-                      data-ui-text="emphasis"
+                      className="proofreading-page__dialog-editor-title font-medium"
                     >
                       {t('proofreading_page.fields.translation')}
                     </span>
@@ -311,8 +309,7 @@ export function ProofreadingEditDialog(
 
                 <section className="proofreading-page__dialog-status-section">
                   <h3
-                    className="proofreading-page__dialog-status-title"
-                    data-ui-text="emphasis"
+                    className="proofreading-page__dialog-status-title font-medium"
                   >
                     {t('proofreading_page.fields.status')}
                   </h3>

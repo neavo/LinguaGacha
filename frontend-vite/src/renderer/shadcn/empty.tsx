@@ -64,8 +64,7 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<"h3">) {
   return (
     <h3
       data-slot="empty-title"
-      data-ui-text="emphasis"
-      className={cn("text-sm text-foreground", className)}
+      className={cn("text-sm font-medium text-foreground", className)}
       {...props}
     />
   )

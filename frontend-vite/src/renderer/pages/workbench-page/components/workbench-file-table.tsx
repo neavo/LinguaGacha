@@ -164,7 +164,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           return (
             <span
               className="workbench-page__table-file-text"
-              data-ui-text="emphasis"
             >
               {payload.row.rel_path}
             </span>
@@ -174,7 +173,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
           return (
             <span
               className="workbench-page__table-file-text"
-              data-ui-text="emphasis"
             >
               {'\u00A0'}
             </span>

@@ -16,7 +16,7 @@ type SettingCardRowProps = {
 const DESCRIPTION_COMPONENT_MAP: RichTextComponentMap = {
   emphasis: (children) => {
     return (
-      <span className="setting-card-row__description-emphasis" data-ui-text="emphasis">
+      <span className="setting-card-row__description-emphasis font-medium">
         {children}
       </span>
     )
@@ -33,7 +33,7 @@ export function SettingCardRow(props: SettingCardRowProps): JSX.Element {
       <CardContent className="setting-card-row__content">
         <div className="setting-card-row__copy">
           <div className="setting-card-row__heading">
-            <h2 className="setting-card-row__title" data-ui-text="emphasis">{props.title}</h2>
+            <h2 className="setting-card-row__title font-medium">{props.title}</h2>
             {props.title_suffix !== undefined
               ? <div className="setting-card-row__title-suffix">{props.title_suffix}</div>
               : null}

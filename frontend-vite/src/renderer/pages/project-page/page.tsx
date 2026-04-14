@@ -309,7 +309,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(function D
       <span className="project-home__dropzone-icon">
         <Icon className="size-11 stroke-[1.8]" />
       </span>
-      <p className="mt-2.5 text-[15.36px] tracking-[-0.018em] text-foreground" data-ui-text="emphasis">
+      <p className="mt-2.5 text-[15.36px] tracking-[-0.018em] font-medium text-foreground">
         {title}
       </p>
     </button>
@@ -320,7 +320,7 @@ function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
   return (
     <Card className="project-home__format-card">
       <CardContent className="space-y-1">
-        <h3 className="text-[12.48px] leading-[1.35] tracking-[-0.015em] text-foreground" data-ui-text="emphasis">{props.title}</h3>
+        <h3 className="text-[12.48px] leading-[1.35] tracking-[-0.015em] font-medium text-foreground">{props.title}</h3>
         <p className="text-[11.52px] leading-[1.35] text-[color:var(--project-home-muted)]">{props.extensions}</p>
       </CardContent>
     </Card>
@@ -342,7 +342,7 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[12.16px] tracking-[-0.012em] text-foreground" data-ui-text="emphasis">{props.name}</span>
+              <span className="block truncate text-[12.16px] tracking-[-0.012em] font-medium text-foreground">{props.name}</span>
               <span className="mt-0.5 block truncate text-[10.56px] text-[color:var(--project-home-muted)]">
                 {props.path}
               </span>
@@ -840,7 +840,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                   <SquareMousePointer className="size-11 stroke-[1.85]" />
                 </span>
                 <div className="mx-auto flex w-full max-w-[288px] flex-col items-center space-y-0.5 text-center">
-                  <p className="w-full truncate text-[14.4px] tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
+                  <p className="w-full truncate text-[14.4px] tracking-[-0.02em] font-medium text-foreground">
                     {selected_source.name}
                   </p>
                   <p className="w-full text-[12.16px] text-[color:var(--project-home-subtitle)]">
@@ -928,7 +928,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               <SquareMousePointer className="size-11 stroke-[1.85]" />
             </span>
             <div className="mx-auto flex w-full max-w-[288px] flex-col items-center space-y-0.5 text-center">
-              <p className="w-full truncate text-[14.4px] tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
+              <p className="w-full truncate text-[14.4px] tracking-[-0.02em] font-medium text-foreground">
                 {extract_file_name(selected_project.path)}
               </p>
               <p className="w-full text-[12.16px] text-[color:var(--project-home-subtitle)]">
@@ -1030,7 +1030,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
             {source_dropzone}
 
             <section className="space-y-4 pt-4">
-              <h3 className="text-[16px] leading-none tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
+              <h3 className="text-[16px] leading-none tracking-[-0.02em] font-medium text-foreground">
                 {t('project_page.formats.title')}
               </h3>
               <div className="grid grid-cols-2 gap-2">
@@ -1070,7 +1070,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               {open_dropzone}
 
               <section className="space-y-4 pt-4">
-                <h3 className="text-[16px] leading-none tracking-[-0.02em] text-foreground" data-ui-text="emphasis">
+                <h3 className="text-[16px] leading-none tracking-[-0.02em] font-medium text-foreground">
                   {t('project_page.open.recent_title')}
                 </h3>
 

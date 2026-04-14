@@ -107,11 +107,11 @@
 - `%`、`vw`、`vh`、`svh`、`dvh`、`lvh` 仅用于容器占满、视口适配和比例关系，不替代常规视觉尺寸。
 - `shadcn/` 源码当前不纳入字面量 `px` 约束；若后续要收紧这层，必须单独立项评估影响范围。
 
-## 全局 token、主题与中文强调
+## 全局 token、主题与真实粗体
 - 所有 `--ui-*` token 只能在 [`index.css`](./index.css) 定义。
-- `.ui-text-emphasis` 与 `[data-ui-text='emphasis']` 是唯一允许的中文强调语义入口。
-- `-webkit-text-stroke` 只能出现在 [`index.css`](./index.css)。
-- 中文主字体不依赖原生粗体；渲染层禁止重新引入 `font-weight: 500/600/700+` 与 Tailwind 粗体类。
+- 渲染层默认使用真实字体字重表达强调；`shadcn` 组件跟随 upstream 当前基线，非 `shadcn` 组件默认优先使用 `font-medium`。
+- `data-ui-text`、`.ui-text-emphasis`、`--ui-font-stroke-emphasis` 与 `-webkit-text-stroke` 都属于已废弃的旧伪粗体入口，禁止重新引入。
+- `index.css` 负责注册中英文普通/粗体字体资源，并把 `400` 映射到 Regular、把 `500/600/700` 映射到 Bold。
 - 组件主题只能跟随应用根主题源；基础组件和组合组件都不得自建第二套并行主题状态。
 
 ## 渲染层审查命令
@@ -123,8 +123,6 @@ npm run renderer:audit
 
 `renderer:audit` 当前负责：
 - 检查 `--ui-*` 是否只在 `index.css` 中定义
-- 检查中文强调相关写法是否回到 `index.css` 与统一强调入口
-- 检查 `font-weight: 500/600/700+` 与 Tailwind 粗体类是否重新出现在渲染层源码中
 - 检查 `px-first` 作用域中的 `rem` 字面量回潮
 - 检查已接入页面命名空间是否越权改写 `PageShell` / `Card` / `Button` / `Table` 的基础视觉
 

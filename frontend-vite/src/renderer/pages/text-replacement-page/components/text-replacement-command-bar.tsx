@@ -316,8 +316,7 @@ export function TextReplacementCommandBar(
           >
             <div className="text-replacement-page__toggle-tooltip-copy">
               <p
-                className="text-replacement-page__toggle-tooltip-title text-background"
-                data-ui-text="emphasis"
+                className="text-replacement-page__toggle-tooltip-title font-medium text-background"
               >
                 {toggle_tooltip_title}
               </p>

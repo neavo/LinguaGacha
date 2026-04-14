@@ -12,9 +12,8 @@ const px_first_scope_directories = [
   path.join(project_root, "src/renderer/pages"),
   path.join(project_root, "src/renderer/widgets"),
 ]
-const forbidden_font_weight_values = new Set(["500", "600", "700", "800", "900"])
 
-// 为什么：这组规则对应渲染层规格里的“全局 token、主题与中文强调”，负责拦截可以稳定自动判定的硬违规。
+// 为什么：这组规则对应渲染层规格里的“全局 token 与主题”，负责拦截可以稳定自动判定的硬违规。
 const FILE_RULE_GROUPS = [
   {
     name: "渲染层尺寸字面量",
@@ -28,30 +27,13 @@ const FILE_RULE_GROUPS = [
     ],
   },
   {
-    name: "全局 token、主题与中文强调",
+    name: "全局 token 与主题",
     rules: [
       {
         should_skip: (file_path) => file_path === token_owner,
         find_matches: (content) => find_pattern_matches(content, /--ui-[a-z0-9-]+\s*:/, "--ui-* token"),
         build_error: (relative_path) =>
           `${relative_path} 违规定义了 --ui-* token，请改到 ${TOKEN_OWNER_RELATIVE_PATH}`,
-      },
-      {
-        should_skip: (file_path) => file_path === token_owner,
-        find_matches: (content) =>
-          find_pattern_matches(content, /-webkit-text-stroke\s*:/, "-webkit-text-stroke"),
-        build_error: (relative_path) =>
-          `${relative_path} 违规则私写了 -webkit-text-stroke，请改到 ${TOKEN_OWNER_RELATIVE_PATH}，并改用 .ui-text-emphasis 或 data-ui-text="emphasis"`,
-      },
-      {
-        find_matches: find_invalid_font_weight_values,
-        build_error: (relative_path, matches) =>
-          `${relative_path} 违规则使用了 font-weight: ${matches.join(", ")}；请改用 .ui-text-emphasis 或 data-ui-text="emphasis"`,
-      },
-      {
-        find_matches: find_forbidden_tailwind_font_tokens,
-        build_error: (relative_path, matches) =>
-          `${relative_path} 违规则使用了 ${matches.join(", ")}；请改用 .ui-text-emphasis 或 data-ui-text="emphasis"`,
       },
     ],
   },
@@ -206,20 +188,6 @@ function collect_unique_matches(find_matches, content) {
   return Array.from(new Set(find_matches(content)))
 }
 
-function find_invalid_font_weight_values(content) {
-  const matches = [...content.matchAll(/font-weight\s*:\s*([^;]+);/g)]
-
-  return matches
-    .map((match) => match[1].trim())
-    .filter((value) => forbidden_font_weight_values.has(value))
-}
-
-function find_forbidden_tailwind_font_tokens(content) {
-  const matches = [...content.matchAll(/(?:^|[\s"'`])(?:[a-z-]+:)*font-(medium|semibold|bold|extrabold|black)(?=$|[\s"'`])/gm)]
-
-  return matches.map((match) => `font-${match[1]}`)
-}
-
 function build_component_boundary_error(relative_path, component_name, selector, forbidden_matches) {
   return `${relative_path} 中的 ${selector} 不应定义 ${forbidden_matches.join(", ")}；请把 ${component_name} 基础视觉收回到 shadcn 组件或 ${TOKEN_OWNER_RELATIVE_PATH}`
 }
@@ -285,7 +253,7 @@ const errors = []
 const all_renderer_files = collect_files(path.join(project_root, "src/renderer"))
 const css_files = all_renderer_files.filter((file_path) => path.extname(file_path) === ".css")
 
-// 为什么：先跑文件级硬规则，集中处理 token、强调文本与粗体写法这类可以直接扫源码的违规。
+// 为什么：先跑文件级硬规则，集中处理 token 与主题这类可以直接扫源码的违规。
 for (const file_path of all_renderer_files) {
   const content = readFileSync(file_path, "utf8")
   errors.push(...audit_file_rule_groups(file_path, content))

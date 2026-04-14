@@ -65,8 +65,7 @@ export function TextPreserveEditDialog(
               <div className="text-preserve-page__dialog-main-panel-content">
                 <label className="text-preserve-page__dialog-section">
                   <span
-                    className="text-preserve-page__dialog-section-title"
-                    data-ui-text="emphasis"
+                    className="text-preserve-page__dialog-section-title font-medium"
                   >
                     {t('text_preserve_page.fields.rule')}
                   </span>
@@ -91,8 +90,7 @@ export function TextPreserveEditDialog(
 
                 <label className="text-preserve-page__dialog-section">
                   <span
-                    className="text-preserve-page__dialog-section-title"
-                    data-ui-text="emphasis"
+                    className="text-preserve-page__dialog-section-title font-medium"
                   >
                     {t('text_preserve_page.fields.note')}
                   </span>

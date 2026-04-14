@@ -319,8 +319,7 @@ export function GlossaryCommandBar(
           >
             <div className="glossary-page__toggle-tooltip-copy">
               <p
-                className="glossary-page__toggle-tooltip-title"
-                data-ui-text="emphasis"
+                className="glossary-page__toggle-tooltip-title font-medium"
               >
                 {toggle_tooltip_title}
               </p>

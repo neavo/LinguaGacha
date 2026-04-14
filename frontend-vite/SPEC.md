@@ -18,6 +18,11 @@
 | `src/renderer/` | React 渲染层；具体分层、样式边界、组件落位与审查规则见 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) |
 | `public/` | 以原始路径暴露给 HTML / Electron 的静态资源，例如 `icon.png` 与字体文件 |
 
+## 字体资源约束
+- `public/fonts/` 中的运行时字体资源统一使用压缩后的 `woff2`；当前 renderer / 主进程失败页共用 `LGBaseFont-Regular.woff2`、`LGBaseFont-Bold.woff2`、`UbuntuMono-Regular.woff2`、`UbuntuMono-Bold.woff2`。
+- `src/renderer/index.css` 与 `src/main/index.ts` 必须同步注册同一组字体资源，避免正常界面与失败页出现不同的粗体回退结果。
+- 渲染层真实粗体依赖显式字重映射：`400 -> Regular`，`500/600/700 -> Bold`；不要再把描边或自定义强调属性当作粗体兼容层。
+
 ## Electron / Shared 侧边界
 - `src/main/` 不承载页面状态、业务请求流程或渲染层工具。
 - `src/preload/` 只组织 `contextBridge` 暴露对象，不维护页面状态与 UI 逻辑。

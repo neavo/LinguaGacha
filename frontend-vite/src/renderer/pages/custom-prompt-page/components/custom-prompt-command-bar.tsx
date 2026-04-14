@@ -299,8 +299,7 @@ export function CustomPromptCommandBar(
           >
             <div className="custom-prompt-page__toggle-tooltip-copy">
               <p
-                className="custom-prompt-page__toggle-tooltip-title text-background"
-                data-ui-text="emphasis"
+                className="custom-prompt-page__toggle-tooltip-title font-medium text-background"
               >
                 {toggle_tooltip_title}
               </p>

@@ -3,24 +3,48 @@
 @import "shadcn/tailwind.css";
 
 @font-face {
-  font-family: "LGConsolas";
-  src: url("/fonts/Consolas.ttf") format("truetype");
+  font-family: "LGMono";
+  src: url("/fonts/UbuntuMono-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "LGConsolas";
-  src: url("/fonts/Consolas.ttf") format("truetype");
+  font-family: "LGMono";
+  src: url("/fonts/UbuntuMono-Bold.woff2") format("woff2");
+  font-weight: 500 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGMono";
+  src: url("/fonts/UbuntuMono-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
 }
 
 @font-face {
+  font-family: "LGMono";
+  src: url("/fonts/UbuntuMono-Bold.woff2") format("woff2");
+  font-weight: 500 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "LGBaseFont";
-  src: url("/fonts/LGBaseFont.ttf") format("truetype");
+  src: url("/fonts/LGBaseFont-Bold.woff2") format("woff2");
+  font-weight: 500 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -28,7 +52,15 @@
 
 @font-face {
   font-family: "LGBaseFont";
-  src: url("/fonts/LGBaseFont.ttf") format("truetype");
+  src: url("/fonts/LGBaseFont-Bold.woff2") format("woff2");
+  font-weight: 500 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -38,7 +70,7 @@
 
 :root {
   --ui-font-family-base:
-    "LGConsolas",
+    "LGMono",
     "LGBaseFont",
     "Segoe UI",
     "Microsoft YaHei UI",
@@ -150,7 +182,6 @@
   --ui-table-row-height: 39px;
   --ui-table-cell-x: 12px;
   --ui-selection-rail-width: 3px;
-  --ui-font-stroke-emphasis: 0.2px;
   --ui-table-divider: color-mix(in srgb, var(--border) 72%, transparent);
   --ui-table-divider-soft: color-mix(in srgb, var(--border) 55%, transparent);
   --ui-table-hover: color-mix(in srgb, var(--accent) 78%, transparent);
@@ -477,11 +508,8 @@ a,
     font-size: 13px;
   }
 
-  .ui-text-emphasis,
-  [data-ui-text='emphasis'],
   .cn-toast__title {
-    font-weight: 400;
-    -webkit-text-stroke: var(--ui-font-stroke-emphasis) currentColor;
+    font-weight: 500;
   }
 
   * {

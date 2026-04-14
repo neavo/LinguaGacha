@@ -32,7 +32,7 @@ export function AppTitlebar(): JSX.Element {
             <SidebarToggleIcon size={18} />
           </button>
           <div className="topbar__brand">
-            <strong data-ui-text="emphasis">LinguaGacha v0.60.1</strong>
+            <strong className="font-medium">LinguaGacha v0.60.1</strong>
           </div>
         </div>
       </div>

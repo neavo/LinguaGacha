@@ -89,7 +89,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                           aria-label={t(item.title_key)}
                         >
                           <Icon size={18} className="sidebar-item__icon" />
-                          <span className="sidebar-item__label" data-ui-text={is_active ? 'emphasis' : undefined}>
+                          <span className={cn('sidebar-item__label', is_active && 'font-medium')}>
                             {t(item.title_key)}
                           </span>
                           {has_children ? (
@@ -127,8 +127,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                                       >
                                         <ChildIcon size={16} className="sidebar-subitem__icon" />
                                         <span
-                                          className="sidebar-subitem__label"
-                                          data-ui-text={is_child_active ? 'emphasis' : undefined}
+                                          className={cn('sidebar-subitem__label', is_child_active && 'font-medium')}
                                         >
                                           {t(child.title_key)}
                                         </span>
@@ -181,7 +180,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
               <span className="sidebar-profile__avatar">
                 <img className="sidebar-profile__avatar-image" src="/icon.png" alt="LinguaGacha" />
               </span>
-              <span className="sidebar-profile__text" data-ui-text="emphasis">{t('app.profile.status')}</span>
+              <span className="sidebar-profile__text font-medium">{t('app.profile.status')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

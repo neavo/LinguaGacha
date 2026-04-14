@@ -81,8 +81,7 @@ export function TextReplacementEditDialog(
               <div className="text-replacement-page__dialog-main-panel-content">
                 <label className="text-replacement-page__dialog-section">
                   <span
-                    className="text-replacement-page__dialog-section-title"
-                    data-ui-text="emphasis"
+                    className="text-replacement-page__dialog-section-title font-medium"
                   >
                     {t('text_replacement_page.fields.source')}
                   </span>
@@ -107,8 +106,7 @@ export function TextReplacementEditDialog(
 
                 <label className="text-replacement-page__dialog-section">
                   <span
-                    className="text-replacement-page__dialog-section-title"
-                    data-ui-text="emphasis"
+                    className="text-replacement-page__dialog-section-title font-medium"
                   >
                     {t('text_replacement_page.fields.replacement')}
                   </span>
@@ -137,8 +135,7 @@ export function TextReplacementEditDialog(
                     </span>
                   </span>
                   <span
-                    className="text-replacement-page__dialog-rule-title"
-                    data-ui-text="emphasis"
+                    className="text-replacement-page__dialog-rule-title font-medium"
                   >
                     {t('text_replacement_page.rule.regex')}
                   </span>
@@ -168,8 +165,7 @@ export function TextReplacementEditDialog(
                     </span>
                   </span>
                   <span
-                    className="text-replacement-page__dialog-rule-title"
-                    data-ui-text="emphasis"
+                    className="text-replacement-page__dialog-rule-title font-medium"
                   >
                     {t('text_replacement_page.rule.case_sensitive')}
                   </span>
