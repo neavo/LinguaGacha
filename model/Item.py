@@ -46,6 +46,7 @@ class Item:
         TRANS = "TRANS"  # .trans Translator++
         KVJSON = "KVJSON"  # .json MTool
         MESSAGEJSON = "MESSAGEJSON"  # .json SExtractor
+        JAVHUBJSON = "JAVHUBJSON"  # .json JavHub 导出文件
 
     class TextType(StrEnum):
         NONE = "NONE"  # 无类型，即纯文本

@@ -11,6 +11,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.File.ASS import ASS
 from module.File.EPUB.EPUB import EPUB
+from module.File.JavHubJSON import JavHubJSON
 from module.File.KVJSON import KVJSON
 from module.File.MD import MD
 from module.File.MESSAGEJSON import MESSAGEJSON
@@ -116,13 +117,19 @@ class FileManager(Base):
             )
             items.extend(
                 KVJSON(self.config).read_from_path(
-                    [path for path in paths if path.lower().endswith(".json")],
+                    [path for path in paths if path.lower().endswith(".json") and not path.lower().endswith(".javhub.json")],
                     base_path,
                 )
             )
             items.extend(
                 MESSAGEJSON(self.config).read_from_path(
-                    [path for path in paths if path.lower().endswith(".json")],
+                    [path for path in paths if path.lower().endswith(".json") and not path.lower().endswith(".javhub.json")],
+                    base_path,
+                )
+            )
+            items.extend(
+                JavHubJSON(self.config).read_from_path(
+                    [path for path in paths if path.lower().endswith(".javhub.json")],
                     base_path,
                 )
             )
@@ -156,6 +163,8 @@ class FileManager(Base):
             items.extend(RenPy(self.config).read_from_stream(content, rel_path))
         elif path_lower.endswith(".trans"):
             items.extend(TRANS(self.config).read_from_stream(content, rel_path))
+        elif path_lower.endswith(".javhub.json"):
+            items.extend(JavHubJSON(self.config).read_from_stream(content, rel_path))
         elif path_lower.endswith(".json"):
             # 先尝试 KVJSON
             kv_items = KVJSON(self.config).read_from_stream(content, rel_path)
@@ -200,6 +209,7 @@ class FileManager(Base):
                 TRANS(self.config).write_to_path(items)
                 KVJSON(self.config).write_to_path(items)
                 MESSAGEJSON(self.config).write_to_path(items)
+                JavHubJSON(self.config).write_to_path(items)
 
                 # 在上下文内获取路径，确保包含时间戳后缀
                 output_path = dm.get_translated_path()
