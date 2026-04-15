@@ -7,6 +7,8 @@ class TaskRoutes:
 
     START_TRANSLATION_PATH: str = "/api/tasks/start-translation"
     STOP_TRANSLATION_PATH: str = "/api/tasks/stop-translation"
+    RESET_TRANSLATION_ALL_PATH: str = "/api/tasks/reset-translation-all"
+    RESET_TRANSLATION_FAILED_PATH: str = "/api/tasks/reset-translation-failed"
     START_ANALYSIS_PATH: str = "/api/tasks/start-analysis"
     STOP_ANALYSIS_PATH: str = "/api/tasks/stop-analysis"
     SNAPSHOT_PATH: str = "/api/tasks/snapshot"
@@ -30,6 +32,22 @@ class TaskRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=task_app_service.stop_translation(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.RESET_TRANSLATION_ALL_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=task_app_service.reset_translation_all(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.RESET_TRANSLATION_FAILED_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=task_app_service.reset_translation_failed(request),
             ),
         )
         core_api_server.add_json_route(

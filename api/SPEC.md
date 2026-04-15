@@ -35,6 +35,8 @@
 | --- | --- | --- | --- |
 | `POST` | `/api/tasks/start-translation` | `{"mode": "NEW" \| "CONTINUE"}` | `{"accepted": true, "task": {...}}` |
 | `POST` | `/api/tasks/stop-translation` | `{}` | `{"accepted": true, "task": {...}}` |
+| `POST` | `/api/tasks/reset-translation-all` | `{}` | `{"accepted": true, "task": {...}}` |
+| `POST` | `/api/tasks/reset-translation-failed` | `{}` | `{"accepted": true, "task": {...}}` |
 | `POST` | `/api/tasks/start-analysis` | `{"mode": "NEW" \| "CONTINUE" \| "RESET"}` | `{"accepted": true, "task": {...}}` |
 | `POST` | `/api/tasks/stop-analysis` | `{}` | `{"accepted": true, "task": {...}}` |
 | `POST` | `/api/tasks/snapshot` | `{}` 或 `{"task_type": "translation" \| "analysis"}` | `{"task": {...}}` |
@@ -527,6 +529,17 @@
   }
 }
 ```
+
+翻译 reset 进入终态后，同样会复用 `proofreading.snapshot_invalidated`，payload 额外包含：
+
+```json
+{
+  "reason": "translation_reset",
+  "reset_scope": "all"
+}
+```
+
+当 reset 失败时，`reason` 会切换为 `translation_reset_error`，`reset_scope` 仍区分 `all` / `failed`。
 
 `extra.ts_conversion_finished` 当前稳定 payload 为：
 

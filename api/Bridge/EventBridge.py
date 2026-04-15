@@ -33,6 +33,17 @@ class EventBridge:
                 EventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("translation", data, stopping=True),
             )
+        elif event in (
+            Base.Event.TRANSLATION_RESET_ALL,
+            Base.Event.TRANSLATION_RESET_FAILED,
+        ):
+            if self.is_terminal_translation_reset_event(data):
+                return (
+                    EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
+                    self.build_translation_reset_payload(event, data),
+                )
+            else:
+                return None, {}
         elif event == Base.Event.ANALYSIS_PROGRESS:
             return (
                 EventTopic.TASK_PROGRESS_CHANGED.value,
@@ -172,4 +183,33 @@ class EventBridge:
             "current": int(data.get("current", 0) or 0),
             "total": int(data.get("total", 0) or 0),
             "finished": finished,
+        }
+
+    def is_terminal_translation_reset_event(self, data: dict[str, Any]) -> bool:
+        """只在 reset 进入终态时通知校对失效，避免请求态触发无意义重刷。"""
+
+        sub_event = data.get("sub_event")
+        return sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR)
+
+    def build_translation_reset_payload(
+        self,
+        event: Base.Event,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """把翻译 reset 收口成稳定的 proofreading 失效原因，供 Electron 前端复用。"""
+
+        if event == Base.Event.TRANSLATION_RESET_ALL:
+            reset_scope = "all"
+        else:
+            reset_scope = "failed"
+
+        sub_event = data.get("sub_event")
+        if sub_event == Base.SubEvent.ERROR:
+            reason = "translation_reset_error"
+        else:
+            reason = "translation_reset"
+
+        return {
+            "reason": reason,
+            "reset_scope": reset_scope,
         }

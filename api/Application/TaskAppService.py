@@ -49,6 +49,22 @@ class TaskAppService:
             "task": self.build_command_ack("translation", "STOPPING", True),
         }
 
+    def reset_translation_all(self, request: dict[str, str]) -> dict[str, object]:
+        """请求重置整个项目的翻译进度。"""
+
+        return self.request_translation_reset(
+            request,
+            reset_event=Base.Event.TRANSLATION_RESET_ALL,
+        )
+
+    def reset_translation_failed(self, request: dict[str, str]) -> dict[str, object]:
+        """请求仅重置整个项目中失败的翻译条目。"""
+
+        return self.request_translation_reset(
+            request,
+            reset_event=Base.Event.TRANSLATION_RESET_FAILED,
+        )
+
     def start_analysis(self, request: dict[str, str]) -> dict[str, object]:
         """请求启动分析任务，并返回受理回执。"""
 
@@ -81,6 +97,24 @@ class TaskAppService:
         del request
         self.event_emitter(Base.Event.TRANSLATION_EXPORT, {})
         return {"accepted": True}
+
+    def request_translation_reset(
+        self,
+        request: dict[str, str],
+        *,
+        reset_event: Base.Event,
+    ) -> dict[str, object]:
+        """统一收口翻译 reset 入口，避免两条 HTTP 路由分叉出不同受理语义。"""
+
+        del request
+        self.event_emitter(
+            reset_event,
+            {"sub_event": Base.SubEvent.REQUEST},
+        )
+        return {
+            "accepted": True,
+            "task": self.build_task_snapshot("translation"),
+        }
 
     def get_task_snapshot(self, request: dict[str, str]) -> dict[str, object]:
         """显式查询当前任务快照。"""

@@ -7,11 +7,11 @@ import {
   FlaskConical,
   GraduationCap,
   Grid2x2Check,
-  Languages,
   LayoutDashboard,
   Radar,
   ReplaceAll,
   ScanText,
+  Languages,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -37,16 +37,6 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {
     id: 'task',
     items: [
-      {
-        id: 'translation',
-        icon: ScanText,
-        title_key: 'translation_page.title',
-      },
-      {
-        id: 'analysis',
-        icon: Radar,
-        title_key: 'analysis_page.title',
-      },
       {
         id: 'proofreading',
         icon: Grid2x2Check,

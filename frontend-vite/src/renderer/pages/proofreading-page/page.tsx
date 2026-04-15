@@ -4,6 +4,9 @@ import type { ScreenComponentProps } from '@/app/navigation/types'
 import '@/pages/proofreading-page/proofreading-page.css'
 import { useProofreadingPageState } from '@/pages/proofreading-page/use-proofreading-page-state'
 import { ProofreadingConfirmDialog } from '@/pages/proofreading-page/components/proofreading-confirm-dialog'
+import { ProofreadingTaskCommandBar } from '@/pages/proofreading-page/components/proofreading-task-command-bar'
+import { ProofreadingTaskConfirmDialog } from '@/pages/proofreading-page/components/proofreading-task-confirm-dialog'
+import { ProofreadingTaskDetailSheet } from '@/pages/proofreading-page/components/proofreading-task-detail-sheet'
 import { ProofreadingEditDialog } from '@/pages/proofreading-page/components/proofreading-edit-dialog'
 import { ProofreadingFilterDialog } from '@/pages/proofreading-page/components/proofreading-filter-dialog'
 import { ProofreadingTable } from '@/pages/proofreading-page/components/proofreading-table'
@@ -57,6 +60,7 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
       label: t(PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
     }
   })
+  const active_task_action_kind = proofreading_page_state.task_confirm_state?.kind ?? null
 
   return (
     <div
@@ -156,6 +160,18 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
         />
       </div>
 
+      <ProofreadingTaskCommandBar
+        translation_task_display_snapshot={proofreading_page_state.translation_task_display_snapshot}
+        translation_task_metrics={proofreading_page_state.translation_task_metrics}
+        translation_task_menu_disabled={proofreading_page_state.translation_task_menu_disabled}
+        translation_task_menu_busy={proofreading_page_state.translation_task_menu_busy}
+        can_open_translation_detail_sheet={proofreading_page_state.can_open_translation_detail_sheet}
+        active_task_action_kind={active_task_action_kind}
+        on_start_or_continue_translation={proofreading_page_state.request_start_or_continue_translation}
+        on_request_task_action_confirmation={proofreading_page_state.request_task_action_confirmation}
+        on_open_translation_detail_sheet={proofreading_page_state.open_translation_detail_sheet}
+      />
+
       <ProofreadingFilterDialog
         open={proofreading_page_state.filter_dialog_open}
         snapshot={proofreading_page_state.full_snapshot}
@@ -181,6 +197,23 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
         state={proofreading_page_state.pending_mutation}
         on_confirm={proofreading_page_state.confirm_pending_mutation}
         on_close={proofreading_page_state.close_pending_mutation}
+      />
+
+      <ProofreadingTaskConfirmDialog
+        state={proofreading_page_state.task_confirm_state}
+        on_confirm={proofreading_page_state.confirm_task_action}
+        on_close={proofreading_page_state.close_task_action_confirmation}
+      />
+
+      <ProofreadingTaskDetailSheet
+        open={proofreading_page_state.translation_detail_sheet_open}
+        translation_task_display_snapshot={proofreading_page_state.translation_task_display_snapshot}
+        translation_task_metrics={proofreading_page_state.translation_task_metrics}
+        translation_waveform_history={proofreading_page_state.translation_waveform_history}
+        on_close={proofreading_page_state.close_translation_detail_sheet}
+        on_request_stop_confirmation={() => {
+          proofreading_page_state.request_task_action_confirmation('stop-translation')
+        }}
       />
     </div>
   )

@@ -5,8 +5,6 @@ import type { ComponentType } from 'react'
 export const ROUTE_IDS = [
   'project-home',
   'model',
-  'translation',
-  'analysis',
   'proofreading',
   'workbench',
   'basic-settings',

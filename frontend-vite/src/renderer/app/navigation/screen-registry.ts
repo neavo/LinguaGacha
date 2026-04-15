@@ -53,18 +53,6 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     component: ModelPage,
     title_key: 'model_page.title',
   },
-  translation: {
-    component: create_debug_panel_screen({
-      title_key: 'translation_page.title',
-    }),
-    title_key: 'translation_page.title',
-  },
-  analysis: {
-    component: create_debug_panel_screen({
-      title_key: 'analysis_page.title',
-    }),
-    title_key: 'analysis_page.title',
-  },
   proofreading: {
     component: ProofreadingPage,
     title_key: 'proofreading_page.title',

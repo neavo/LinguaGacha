@@ -1,3 +1,5 @@
+import pytest
+
 from base.Base import Base
 from api.Bridge.EventBridge import EventBridge
 from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
@@ -95,3 +97,46 @@ def test_event_bridge_maps_extra_finished_topic() -> None:
     assert payload["phase"] == "FINISHED"
     assert payload["message"] == "done"
     assert payload["finished"] is True
+
+
+@pytest.mark.parametrize(
+    ("event", "sub_event", "expected_reason", "expected_scope"),
+    [
+        (
+            Base.Event.TRANSLATION_RESET_ALL,
+            Base.SubEvent.DONE,
+            "translation_reset",
+            "all",
+        ),
+        (
+            Base.Event.TRANSLATION_RESET_FAILED,
+            Base.SubEvent.ERROR,
+            "translation_reset_error",
+            "failed",
+        ),
+    ],
+)
+def test_translation_reset_terminal_event_invalidates_proofreading_snapshot(
+    event,
+    sub_event,
+    expected_reason,
+    expected_scope,
+) -> None:
+    topic, payload = EventBridge().map_event(
+        event,
+        {"sub_event": sub_event},
+    )
+
+    assert topic == "proofreading.snapshot_invalidated"
+    assert payload["reason"] == expected_reason
+    assert payload["reset_scope"] == expected_scope
+
+
+def test_translation_reset_request_is_not_exposed_before_terminal_state() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.TRANSLATION_RESET_ALL,
+        {"sub_event": Base.SubEvent.REQUEST},
+    )
+
+    assert topic is None
+    assert payload == {}

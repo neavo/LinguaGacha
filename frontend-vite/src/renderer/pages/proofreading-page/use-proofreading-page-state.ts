@@ -9,11 +9,18 @@ import type { AppTableSelectionChange, AppTableSortState } from '@/widgets/app-t
 import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
+  clone_translation_task_snapshot,
   compress_proofreading_text,
   create_empty_proofreading_snapshot,
+  create_empty_translation_task_snapshot,
+  has_translation_task_progress,
+  is_active_translation_task_status,
   normalize_proofreading_mutation_payload,
   normalize_proofreading_snapshot_payload,
+  normalize_translation_task_snapshot_payload,
   resolve_proofreading_status_sort_rank,
+  resolve_translation_task_display_snapshot,
+  resolve_translation_task_metrics,
   type ProofreadingDialogState,
   type ProofreadingFilterOptions,
   type ProofreadingGlossaryTerm,
@@ -23,6 +30,11 @@ import {
   type ProofreadingSearchScope,
   type ProofreadingSnapshot,
   type ProofreadingSnapshotPayload,
+  type ProofreadingTaskConfirmState,
+  type ProofreadingTranslationTaskActionKind,
+  type ProofreadingTranslationTaskMetrics,
+  type ProofreadingTranslationTaskPayload,
+  type ProofreadingTranslationTaskSnapshot,
   type ProofreadingVisibleItem,
 } from '@/pages/proofreading-page/types'
 
@@ -48,6 +60,16 @@ type UseProofreadingPageStateResult = {
   dialog_state: ProofreadingDialogState
   dialog_item: ProofreadingItem | null
   pending_mutation: ProofreadingPendingMutation | null
+  translation_task_snapshot: ProofreadingTranslationTaskSnapshot
+  last_translation_task_snapshot: ProofreadingTranslationTaskSnapshot | null
+  translation_task_display_snapshot: ProofreadingTranslationTaskSnapshot | null
+  translation_task_metrics: ProofreadingTranslationTaskMetrics
+  translation_waveform_history: number[]
+  translation_detail_sheet_open: boolean
+  task_confirm_state: ProofreadingTaskConfirmState | null
+  translation_task_menu_disabled: boolean
+  translation_task_menu_busy: boolean
+  can_open_translation_detail_sheet: boolean
   refresh_snapshot: () => Promise<void>
   update_search_keyword: (next_keyword: string) => void
   update_replace_text: (next_replace_text: string) => void
@@ -68,7 +90,21 @@ type UseProofreadingPageStateResult = {
   request_reset_row_ids: (row_ids: string[]) => void
   confirm_pending_mutation: () => Promise<void>
   close_pending_mutation: () => void
+  open_translation_detail_sheet: () => void
+  close_translation_detail_sheet: () => void
+  request_start_or_continue_translation: () => Promise<void>
+  request_task_action_confirmation: (kind: ProofreadingTranslationTaskActionKind) => void
+  confirm_task_action: () => Promise<void>
+  close_task_action_confirmation: () => void
 }
+
+type ProofreadingTaskCommandPayload = {
+  accepted?: boolean
+  task?: Partial<ProofreadingTranslationTaskSnapshot>
+}
+
+const TRANSLATION_TASK_LIVE_TICK_MS = 1000
+const TRANSLATION_WAVEFORM_MAX_POINTS = 72
 
 function create_empty_dialog_state(): ProofreadingDialogState {
   return {
@@ -347,6 +383,26 @@ function filter_local_visible_items(args: {
   }
 }
 
+function create_task_confirm_state(
+  kind: ProofreadingTranslationTaskActionKind,
+): ProofreadingTaskConfirmState {
+  return {
+    kind,
+    open: true,
+    submitting: false,
+    awaiting_refresh: false,
+  }
+}
+
+function append_waveform_sample(history: number[], sample: number): number[] {
+  const next_history = [...history, Number.isFinite(sample) ? sample : 0]
+  if (next_history.length > TRANSLATION_WAVEFORM_MAX_POINTS) {
+    return next_history.slice(next_history.length - TRANSLATION_WAVEFORM_MAX_POINTS)
+  }
+
+  return next_history
+}
+
 export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
@@ -356,6 +412,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   } = useAppNavigation()
   const {
     project_snapshot,
+    set_task_snapshot,
     task_snapshot,
     proofreading_invalidation_tick,
   } = useDesktopRuntime()
@@ -382,6 +439,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     return create_empty_dialog_state()
   })
   const [pending_mutation, set_pending_mutation] = useState<ProofreadingPendingMutation | null>(null)
+  const [translation_task_snapshot, set_translation_task_snapshot] = useState<ProofreadingTranslationTaskSnapshot>(() => {
+    return create_empty_translation_task_snapshot()
+  })
+  const [last_translation_task_snapshot, set_last_translation_task_snapshot] = useState<ProofreadingTranslationTaskSnapshot | null>(null)
+  const [translation_waveform_history, set_translation_waveform_history] = useState<number[]>([])
+  const [translation_detail_sheet_open, set_translation_detail_sheet_open] = useState(false)
+  const [task_confirm_state, set_task_confirm_state] = useState<ProofreadingTaskConfirmState | null>(null)
+  const [translation_live_now_seconds, set_translation_live_now_seconds] = useState(() => {
+    return Date.now() / 1000
+  })
   const refresh_request_id_ref = useRef(0)
   const applied_filters_ref = useRef<ProofreadingFilterOptions | null>(applied_filters)
   const preferred_row_id_ref = useRef<string | null>(null)
@@ -395,6 +462,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const previous_project_path_ref = useRef('')
   const previous_task_busy_ref = useRef(task_snapshot.busy)
   const previous_invalidation_tick_ref = useRef(proofreading_invalidation_tick)
+  const previous_translation_snapshot_signature_ref = useRef('')
 
   useEffect(() => {
     applied_filters_ref.current = applied_filters
@@ -427,10 +495,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_filter_dialog_open(false)
     set_dialog_state(create_empty_dialog_state())
     set_pending_mutation(null)
+    set_translation_task_snapshot(create_empty_translation_task_snapshot())
+    set_last_translation_task_snapshot(null)
+    set_translation_waveform_history([])
+    set_translation_detail_sheet_open(false)
+    set_task_confirm_state(null)
     replace_cursor_ref.current = 0
     pending_replace_cursor_ref.current = null
     preferred_row_id_ref.current = null
     should_select_first_visible_ref.current = false
+    previous_translation_snapshot_signature_ref.current = ''
   }, [])
 
   const clear_snapshot_state = useCallback((): void => {
@@ -492,6 +566,27 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     ? null
     : visible_item_by_id.get(dialog_state.target_row_id) ?? null
 
+  const translation_task_display_snapshot = useMemo(() => {
+    return resolve_translation_task_display_snapshot({
+      current_snapshot: translation_task_snapshot,
+      last_snapshot: last_translation_task_snapshot,
+    })
+  }, [last_translation_task_snapshot, translation_task_snapshot])
+
+  const translation_task_metrics = useMemo(() => {
+    return resolve_translation_task_metrics({
+      snapshot: translation_task_display_snapshot,
+      now_seconds: translation_live_now_seconds,
+    })
+  }, [translation_live_now_seconds, translation_task_display_snapshot])
+
+  const translation_task_menu_busy = task_confirm_state !== null
+    && (task_confirm_state.submitting || task_confirm_state.awaiting_refresh)
+  const translation_task_menu_disabled = !project_snapshot.loaded
+    || task_snapshot.busy
+    || translation_task_menu_busy
+  const can_open_translation_detail_sheet = project_snapshot.loaded
+
   const readonly = server_snapshot.readonly || task_snapshot.busy
   const current_filters = applied_filters ?? full_snapshot.filters
 
@@ -510,6 +605,203 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       }
     }
   }, [push_toast])
+
+  const apply_translation_task_snapshot = useCallback((
+    next_snapshot: ProofreadingTranslationTaskSnapshot,
+  ): void => {
+    const normalized_snapshot = clone_translation_task_snapshot(next_snapshot)
+    set_translation_task_snapshot(normalized_snapshot)
+
+    if (is_active_translation_task_status(normalized_snapshot.status)) {
+      return
+    }
+
+    if (has_translation_task_progress(normalized_snapshot)) {
+      set_last_translation_task_snapshot(clone_translation_task_snapshot(normalized_snapshot))
+    } else {
+      set_last_translation_task_snapshot(null)
+      set_translation_waveform_history([])
+      set_translation_detail_sheet_open(false)
+    }
+  }, [])
+
+  const sync_runtime_task_snapshot = useCallback((
+    next_snapshot: ProofreadingTranslationTaskSnapshot,
+  ): void => {
+    set_task_snapshot({
+      task_type: next_snapshot.task_type,
+      status: next_snapshot.status,
+      busy: next_snapshot.busy,
+      request_in_flight_count: next_snapshot.request_in_flight_count,
+      line: next_snapshot.line,
+      total_line: next_snapshot.total_line,
+      processed_line: next_snapshot.processed_line,
+      error_line: next_snapshot.error_line,
+      total_tokens: next_snapshot.total_tokens,
+      total_output_tokens: next_snapshot.total_output_tokens,
+      total_input_tokens: next_snapshot.total_input_tokens,
+      time: next_snapshot.time,
+      start_time: next_snapshot.start_time,
+      analysis_candidate_count: 0,
+    })
+  }, [set_task_snapshot])
+
+  const refresh_translation_task_snapshot = useCallback(async (): Promise<void> => {
+    if (!project_snapshot.loaded) {
+      set_translation_task_snapshot(create_empty_translation_task_snapshot())
+      set_last_translation_task_snapshot(null)
+      set_translation_waveform_history([])
+      set_translation_detail_sheet_open(false)
+      return
+    }
+
+    try {
+      const task_payload = await api_fetch<ProofreadingTranslationTaskPayload>(
+        '/api/tasks/snapshot',
+        { task_type: 'translation' },
+      )
+      apply_translation_task_snapshot(normalize_translation_task_snapshot_payload(task_payload))
+    } catch (error) {
+      push_toast(
+        'error',
+        resolve_error_message(error, t('proofreading_page.feedback.translation_task_refresh_failed')),
+      )
+    }
+  }, [apply_translation_task_snapshot, project_snapshot.loaded, push_toast, t])
+
+  const open_translation_detail_sheet = useCallback((): void => {
+    if (can_open_translation_detail_sheet) {
+      set_translation_detail_sheet_open(true)
+    }
+  }, [can_open_translation_detail_sheet])
+
+  const close_translation_detail_sheet = useCallback((): void => {
+    set_translation_detail_sheet_open(false)
+  }, [])
+
+  const request_start_or_continue_translation = useCallback(async (): Promise<void> => {
+    if (!project_snapshot.loaded || task_snapshot.busy || translation_task_menu_busy) {
+      return
+    }
+
+    const should_continue = has_translation_task_progress(translation_task_display_snapshot)
+
+    try {
+      const task_payload = await api_fetch<ProofreadingTaskCommandPayload>(
+        '/api/tasks/start-translation',
+        { mode: should_continue ? 'CONTINUE' : 'NEW' },
+      )
+      const next_snapshot = normalize_translation_task_snapshot_payload(task_payload)
+      apply_translation_task_snapshot(next_snapshot)
+      sync_runtime_task_snapshot(next_snapshot)
+
+      if (!should_continue) {
+        set_last_translation_task_snapshot(null)
+        set_translation_waveform_history([])
+      }
+    } catch (error) {
+      push_toast(
+        'error',
+        resolve_error_message(error, t('proofreading_page.feedback.translation_task_start_failed')),
+      )
+    }
+  }, [
+    apply_translation_task_snapshot,
+    project_snapshot.loaded,
+    push_toast,
+    sync_runtime_task_snapshot,
+    t,
+    task_snapshot.busy,
+    translation_task_display_snapshot,
+    translation_task_menu_busy,
+  ])
+
+  const request_task_action_confirmation = useCallback((
+    kind: ProofreadingTranslationTaskActionKind,
+  ): void => {
+    set_task_confirm_state(create_task_confirm_state(kind))
+  }, [])
+
+  const close_task_action_confirmation = useCallback((): void => {
+    set_task_confirm_state((previous_state) => {
+      if (previous_state === null) {
+        return null
+      }
+
+      if (previous_state.submitting || previous_state.awaiting_refresh) {
+        return {
+          ...previous_state,
+          open: false,
+        }
+      }
+
+      return null
+    })
+  }, [])
+
+  const confirm_task_action = useCallback(async (): Promise<void> => {
+    if (task_confirm_state === null) {
+      return
+    }
+
+    set_task_confirm_state((previous_state) => {
+      if (previous_state === null) {
+        return null
+      }
+
+      return {
+        ...previous_state,
+        submitting: true,
+      }
+    })
+
+    try {
+      if (task_confirm_state.kind === 'stop-translation') {
+        const task_payload = await api_fetch<ProofreadingTaskCommandPayload>(
+          '/api/tasks/stop-translation',
+          {},
+        )
+        const next_snapshot = normalize_translation_task_snapshot_payload(task_payload)
+        apply_translation_task_snapshot(next_snapshot)
+        sync_runtime_task_snapshot(next_snapshot)
+        set_task_confirm_state(null)
+      } else {
+        const reset_path = task_confirm_state.kind === 'reset-all'
+          ? '/api/tasks/reset-translation-all'
+          : '/api/tasks/reset-translation-failed'
+        await api_fetch<ProofreadingTaskCommandPayload>(reset_path, {})
+        set_task_confirm_state((previous_state) => {
+          if (previous_state === null) {
+            return null
+          }
+
+          return {
+            ...previous_state,
+            open: false,
+            submitting: false,
+            awaiting_refresh: true,
+          }
+        })
+      }
+    } catch (error) {
+      let fallback_message = t('proofreading_page.feedback.translation_task_stop_failed')
+
+      if (task_confirm_state.kind === 'reset-all') {
+        fallback_message = t('proofreading_page.feedback.translation_task_reset_all_failed')
+      } else if (task_confirm_state.kind === 'reset-failed') {
+        fallback_message = t('proofreading_page.feedback.translation_task_reset_failed_failed')
+      }
+
+      push_toast('error', resolve_error_message(error, fallback_message))
+      set_task_confirm_state(null)
+    }
+  }, [
+    apply_translation_task_snapshot,
+    push_toast,
+    sync_runtime_task_snapshot,
+    t,
+    task_confirm_state,
+  ])
 
   const refresh_snapshot = useCallback(async (
     options?: {
@@ -1024,10 +1316,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
       clear_transient_state_for_new_project()
-      void refresh_snapshot({
-        preferred_row_id: null,
-        reset_filters: true,
-      })
+      void Promise.all([
+        refresh_snapshot({
+          preferred_row_id: null,
+          reset_filters: true,
+        }),
+        refresh_translation_task_snapshot(),
+      ])
     }
   }, [
     project_snapshot.loaded,
@@ -1035,6 +1330,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     clear_snapshot_state,
     clear_transient_state_for_new_project,
     refresh_snapshot,
+    refresh_translation_task_snapshot,
   ])
 
   useEffect(() => {
@@ -1046,9 +1342,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     if (previous_task_busy && !task_snapshot.busy) {
-      void refresh_snapshot()
+      void Promise.all([
+        refresh_snapshot(),
+        refresh_translation_task_snapshot(),
+      ])
     }
-  }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy])
+  }, [project_snapshot.loaded, refresh_snapshot, refresh_translation_task_snapshot, task_snapshot.busy])
 
   useEffect(() => {
     const previous_tick = previous_invalidation_tick_ref.current
@@ -1059,9 +1358,89 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     if (previous_tick !== proofreading_invalidation_tick) {
-      void refresh_snapshot()
+      void (async (): Promise<void> => {
+        await Promise.all([
+          refresh_snapshot(),
+          refresh_translation_task_snapshot(),
+        ])
+        set_task_confirm_state((previous_state) => {
+          if (previous_state !== null && previous_state.awaiting_refresh) {
+            return null
+          }
+
+          return previous_state
+        })
+      })()
     }
-  }, [project_snapshot.loaded, proofreading_invalidation_tick, refresh_snapshot])
+  }, [
+    project_snapshot.loaded,
+    proofreading_invalidation_tick,
+    refresh_snapshot,
+    refresh_translation_task_snapshot,
+  ])
+
+  useEffect(() => {
+    if (task_snapshot.task_type !== 'translation') {
+      return
+    }
+
+    apply_translation_task_snapshot(normalize_translation_task_snapshot_payload({
+      task: task_snapshot,
+    }))
+  }, [apply_translation_task_snapshot, task_snapshot])
+
+  useEffect(() => {
+    if (!is_active_translation_task_status(translation_task_snapshot.status)) {
+      return
+    }
+
+    set_translation_live_now_seconds(Date.now() / 1000)
+    const timer_id = window.setInterval(() => {
+      set_translation_live_now_seconds(Date.now() / 1000)
+    }, TRANSLATION_TASK_LIVE_TICK_MS)
+
+    return () => {
+      window.clearInterval(timer_id)
+    }
+  }, [translation_task_snapshot.status])
+
+  useEffect(() => {
+    if (!is_active_translation_task_status(translation_task_snapshot.status)) {
+      previous_translation_snapshot_signature_ref.current = ''
+      return
+    }
+
+    const signature = [
+      translation_task_snapshot.status,
+      translation_task_snapshot.line.toString(),
+      translation_task_snapshot.total_line.toString(),
+      translation_task_snapshot.total_output_tokens.toString(),
+      translation_task_snapshot.request_in_flight_count.toString(),
+      Math.floor(translation_live_now_seconds).toString(),
+    ].join(':')
+
+    if (previous_translation_snapshot_signature_ref.current === signature) {
+      return
+    }
+
+    previous_translation_snapshot_signature_ref.current = signature
+    const next_metrics = resolve_translation_task_metrics({
+      snapshot: translation_task_snapshot,
+      now_seconds: translation_live_now_seconds,
+    })
+    set_translation_waveform_history((previous_history) => {
+      return append_waveform_sample(previous_history, next_metrics.average_output_speed)
+    })
+  }, [
+    translation_live_now_seconds,
+    translation_task_snapshot,
+  ])
+
+  useEffect(() => {
+    if (!can_open_translation_detail_sheet) {
+      set_translation_detail_sheet_open(false)
+    }
+  }, [can_open_translation_detail_sheet])
 
   useEffect(() => {
     if (proofreading_lookup_intent === null) {
@@ -1159,6 +1538,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       dialog_state,
       dialog_item,
       pending_mutation,
+      translation_task_snapshot,
+      last_translation_task_snapshot,
+      translation_task_display_snapshot,
+      translation_task_metrics,
+      translation_waveform_history,
+      translation_detail_sheet_open,
+      task_confirm_state,
+      translation_task_menu_disabled,
+      translation_task_menu_busy,
+      can_open_translation_detail_sheet,
       refresh_snapshot: async () => {
         await refresh_snapshot()
       },
@@ -1181,6 +1570,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       request_reset_row_ids,
       confirm_pending_mutation,
       close_pending_mutation,
+      open_translation_detail_sheet,
+      close_translation_detail_sheet,
+      request_start_or_continue_translation,
+      request_task_action_confirmation,
+      confirm_task_action,
+      close_task_action_confirmation,
     }
   }, [
     refresh_error,
@@ -1204,6 +1599,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     dialog_state,
     dialog_item,
     pending_mutation,
+    translation_task_snapshot,
+    last_translation_task_snapshot,
+    translation_task_display_snapshot,
+    translation_task_metrics,
+    translation_waveform_history,
+    translation_detail_sheet_open,
+    task_confirm_state,
+    translation_task_menu_disabled,
+    translation_task_menu_busy,
+    can_open_translation_detail_sheet,
     refresh_snapshot,
     update_search_keyword,
     update_replace_text,
@@ -1224,5 +1629,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     request_reset_row_ids,
     confirm_pending_mutation,
     close_pending_mutation,
+    open_translation_detail_sheet,
+    close_translation_detail_sheet,
+    request_start_or_continue_translation,
+    request_task_action_confirmation,
+    confirm_task_action,
+    close_task_action_confirmation,
   ])
 }

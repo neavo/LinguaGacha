@@ -21,8 +21,6 @@ const THEME_STORAGE_KEY = 'lg-theme-mode'
 type ThemeMode = 'light' | 'dark'
 
 const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  'translation',
-  'analysis',
   'proofreading',
   'workbench',
   'glossary',
