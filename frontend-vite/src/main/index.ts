@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, type BrowserWindowConstructorOptions } from 'electron'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import {
@@ -52,7 +52,6 @@ const DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT = `
 `
 const WINDOW_LOAD_FAILURE_TITLE = 'LinguaGacha Frontend 加载失败'
 const WINDOW_LOAD_FAILURE_BODY_MAX_LENGTH = 240
-const WINDOW_FONT_STACK = '"LGMono", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif'
 const PROJECT_FILE_FILTERS: Electron.FileFilter[] = [
   {
     name: 'LinguaGacha Project',
@@ -254,84 +253,9 @@ function escape_html(raw_text: string): string {
   })
 }
 
-function build_window_load_failure_font_face_css(): string {
-  const mono_regular_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'UbuntuMono-Regular.woff2')).href
-  const mono_bold_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'UbuntuMono-Bold.woff2')).href
-  const base_regular_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'LGBaseFont-Regular.woff2')).href
-  const base_bold_font_url = pathToFileURL(path.join(VITE_PUBLIC, 'fonts', 'LGBaseFont-Bold.woff2')).href
-
-  // data: 页面没有稳定的相对资源基址，这里直接注入 file URL，保证开发态和构建态都能命中同一组普通/粗体字体资源。
-  return `
-      @font-face {
-        font-family: "LGMono";
-        src: url("${mono_regular_font_url}") format("woff2");
-        font-weight: 400;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "LGMono";
-        src: url("${mono_bold_font_url}") format("woff2");
-        font-weight: 500 700;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "LGMono";
-        src: url("${mono_regular_font_url}") format("woff2");
-        font-weight: 400;
-        font-style: italic;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "LGMono";
-        src: url("${mono_bold_font_url}") format("woff2");
-        font-weight: 500 700;
-        font-style: italic;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "LGBaseFont";
-        src: url("${base_regular_font_url}") format("woff2");
-        font-weight: 400;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "LGBaseFont";
-        src: url("${base_regular_font_url}") format("woff2");
-        font-weight: 400;
-        font-style: italic;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "LGBaseFont";
-        src: url("${base_bold_font_url}") format("woff2");
-        font-weight: 500 700;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "LGBaseFont";
-        src: url("${base_bold_font_url}") format("woff2");
-        font-weight: 500 700;
-        font-style: italic;
-        font-display: swap;
-      }
-`
-}
-
 function build_window_load_failure_page(url: string, message: string): string {
   const escaped_url = escape_html(url)
   const escaped_message = escape_html(truncate_error_message(message))
-  const font_face_css = build_window_load_failure_font_face_css()
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -340,63 +264,50 @@ function build_window_load_failure_page(url: string, message: string): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${WINDOW_LOAD_FAILURE_TITLE}</title>
     <style>
-${font_face_css}
       :root {
         color-scheme: light dark;
-        font-family: ${WINDOW_FONT_STACK};
-        background: #f8f7f7;
-        color: #282522;
       }
 
       body {
         margin: 0;
         min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background:
-          radial-gradient(circle at top left, rgb(255 255 255 / 0.72), transparent 22%),
-          linear-gradient(180deg, #faf8f6 0%, #f2efeb 100%);
+        padding: 32px 24px;
+        font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+        background: #f8f7f7;
+        color: #282522;
       }
 
       main {
-        width: min(760px, calc(100vw - 64px));
-        padding: 28px 30px;
-        border: 1px solid #ddd8d3;
-        border-radius: 18px;
-        background: rgb(255 255 255 / 0.92);
-        box-shadow: 0 28px 60px -36px rgb(15 23 42 / 0.28);
+        max-width: 720px;
+        margin: 0 auto;
       }
 
       h1 {
-        margin: 0 0 10px;
-        font-size: 28px;
+        margin: 0 0 12px;
+        font-size: 24px;
         line-height: 1.2;
       }
 
       p {
-        margin: 0 0 18px;
+        margin: 0 0 16px;
         font-size: 15px;
-        line-height: 1.7;
-        color: #544f49;
+        line-height: 1.6;
+        color: #4f4943;
       }
 
       dl {
         margin: 0;
-        display: grid;
-        gap: 12px;
       }
 
       dt {
+        margin-top: 16px;
         font-size: 13px;
-        font-weight: 700;
-        color: #7c756e;
+        font-weight: 600;
+        color: #6f6861;
       }
 
       dd {
         margin: 6px 0 0;
-        padding: 12px 14px;
-        border-radius: 12px;
-        background: #f5f2ee;
         color: #282522;
         word-break: break-word;
         white-space: pre-wrap;

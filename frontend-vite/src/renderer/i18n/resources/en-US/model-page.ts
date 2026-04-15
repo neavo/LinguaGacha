@@ -79,7 +79,7 @@ export const en_us_model_page = {
     },
     api_key: {
       title: 'API Key',
-      description: 'Enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456. Multiple keys can be entered for polling, one key per line',
+      description: 'Enter API Key, e.g., sk-d0daba12345678fd8eb7b8d31c123456, multiple keys can be entered for polling, one key per line',
       placeholder: 'Please enter API Key …',
     },
     model_id: {

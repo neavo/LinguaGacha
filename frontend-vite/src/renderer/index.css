@@ -4,33 +4,22 @@
 
 @font-face {
   font-family: "LGMono";
-  src: url("/fonts/UbuntuMono-Regular.woff2") format("woff2");
-  font-weight: 400;
+  src: url("/fonts/MonaspaceNeon.woff2") format("woff2");
+  font-weight: 400 700;
   font-style: normal;
+  font-stretch: 100%;
+  size-adjust: 90%;
   font-display: swap;
 }
 
 @font-face {
   font-family: "LGMono";
-  src: url("/fonts/UbuntuMono-Bold.woff2") format("woff2");
-  font-weight: 500 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "LGMono";
-  src: url("/fonts/UbuntuMono-Regular.woff2") format("woff2");
-  font-weight: 400;
+  src: url("/fonts/MonaspaceNeon.woff2") format("woff2");
+  font-weight: 400 700;
   font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "LGMono";
-  src: url("/fonts/UbuntuMono-Bold.woff2") format("woff2");
-  font-weight: 500 700;
-  font-style: italic;
+  font-stretch: 100%;
+  font-variation-settings: "slnt" -11;
+  size-adjust: 90%;
   font-display: swap;
 }
 
