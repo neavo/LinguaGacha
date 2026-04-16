@@ -100,11 +100,8 @@ export const en_us_proofreading_page = {
   task: {
     summary: {
       empty: 'Idle',
-      recent: 'Idle',
       running: 'Translating',
       stopping: 'Stopping',
-      success: 'Successful Lines',
-      failed: 'Failed Lines',
       detail_tooltip: 'Click to view details',
     },
     menu: {
@@ -113,20 +110,14 @@ export const en_us_proofreading_page = {
     detail: {
       title: 'Translation Details',
       description: 'Review current translation statistics.',
-      progress_title: 'Progress',
-      waveform_title: 'Average Speed',
-      waveform_description: '',
+      waveform_title: 'Real-time Speed',
       metrics_title: 'Statistics',
       elapsed_time: 'Elapsed Time',
       remaining_time: 'Remaining Time',
-      processed_count: 'Successful Lines',
-      failed_count: 'Failed Lines',
-      remaining_count: 'Remaining Lines',
       average_speed: 'Average Speed',
       input_tokens: 'Input Tokens',
       output_tokens: 'Output Tokens',
       active_requests: 'Real Time Tasks',
-      empty_waveform: '0.00 T/S',
     },
     confirm: {
       reset_all_title: 'Reset All Translation',

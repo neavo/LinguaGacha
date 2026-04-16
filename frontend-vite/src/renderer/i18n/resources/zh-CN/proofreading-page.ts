@@ -97,11 +97,8 @@ export const zh_cn_proofreading_page = {
   task: {
     summary: {
       empty: '无任务',
-      recent: '无任务',
       running: '翻译中',
       stopping: '停止中',
-      success: '成功行数',
-      failed: '失败行数',
       detail_tooltip: '点击查看详情',
     },
     menu: {
@@ -110,20 +107,14 @@ export const zh_cn_proofreading_page = {
     detail: {
       title: '翻译详情',
       description: '查看当前翻译的实时统计。',
-      progress_title: '进度',
-      waveform_title: '平均速度',
-      waveform_description: '',
+      waveform_title: '实时速度',
       metrics_title: '统计信息',
       elapsed_time: '累计时间',
       remaining_time: '剩余时间',
-      processed_count: '成功行数',
-      failed_count: '失败行数',
-      remaining_count: '剩余行数',
       average_speed: '平均速度',
       input_tokens: '输入令牌',
       output_tokens: '输出令牌',
       active_requests: '实时任务数',
-      empty_waveform: '0.00 T/S',
     },
     confirm: {
       reset_all_title: '重置全部翻译',

@@ -87,6 +87,20 @@
   overflow: hidden;
 }
 
+.workbench-page__task-command-bar {
+  min-height: 0;
+}
+
+.workbench-page__task-command-bar .command-bar__hint {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.workbench-page__task-summary {
+  width: auto;
+  max-width: 100%;
+}
+
 .workbench-page__table [data-slot='table-cell'] {
   color: color-mix(in srgb, var(--foreground) 92%, var(--muted-foreground) 8%);
 }

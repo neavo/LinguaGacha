@@ -50,7 +50,7 @@ export const zh_cn_workbench_page = {
     wolf: 'WOLF 官方工具 XLSX',
   },
   command: {
-    description: '工作台底栏会承接工程级快捷操作。',
+    description: '工作台动作条承接工程级快捷操作。',
   },
   reorder: {
     failed: '文件顺序保存失败，请稍后再试。',

@@ -1,9 +1,7 @@
+import '@/widgets/translation-task/translation-task.css'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/i18n'
-import type {
-  ProofreadingTranslationTaskMetrics,
-  ProofreadingTranslationTaskSnapshot,
-} from '@/pages/proofreading-page/types'
+import type { TranslationTaskMetrics } from '@/lib/translation-task'
 import { Badge } from '@/shadcn/badge'
 import { Spinner } from '@/shadcn/spinner'
 import {
@@ -12,16 +10,15 @@ import {
   TooltipTrigger,
 } from '@/shadcn/tooltip'
 
-type ProofreadingTaskRuntimeSummaryProps = {
+type TranslationTaskRuntimeSummaryProps = {
   class_name?: string
-  translation_task_display_snapshot: ProofreadingTranslationTaskSnapshot | null
-  translation_task_metrics: ProofreadingTranslationTaskMetrics
+  translation_task_metrics: TranslationTaskMetrics
   can_open: boolean
   on_open: () => void
 }
 
 function resolve_summary_status_copy(
-  metrics: ProofreadingTranslationTaskMetrics,
+  metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>['t'],
 ): string {
   if (metrics.stopping) {
@@ -44,7 +41,7 @@ function format_summary_speed(value: number): string {
 }
 
 function resolve_summary_badge_tone_class_name(
-  metrics: ProofreadingTranslationTaskMetrics,
+  metrics: TranslationTaskMetrics,
 ): string {
   if (metrics.stopping) {
     return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400'
@@ -57,8 +54,8 @@ function resolve_summary_badge_tone_class_name(
   return 'border-border bg-background text-muted-foreground'
 }
 
-export function ProofreadingTaskRuntimeSummary(
-  props: ProofreadingTaskRuntimeSummaryProps,
+export function TranslationTaskRuntimeSummary(
+  props: TranslationTaskRuntimeSummaryProps,
 ): JSX.Element {
   const { t } = useI18n()
   const summary_status = resolve_summary_status_copy(
@@ -67,22 +64,22 @@ export function ProofreadingTaskRuntimeSummary(
   )
   const show_task_runtime = props.translation_task_metrics.active
     || props.translation_task_metrics.stopping
-  const show_spinner = props.translation_task_metrics.active || props.translation_task_metrics.stopping
   const summary_badge = (
     <Badge
       variant="outline"
       className={cn(
-        props.class_name ?? 'proofreading-page__task-summary',
-        'proofreading-page__task-summary-badge',
-        props.can_open ? 'proofreading-page__task-summary-badge--clickable' : null,
+        'translation-task__summary',
+        'translation-task__summary-badge',
+        props.class_name,
+        props.can_open ? 'translation-task__summary-badge--clickable' : null,
         resolve_summary_badge_tone_class_name(props.translation_task_metrics),
       )}
     >
-      {show_task_runtime && show_spinner ? <Spinner data-icon="inline-start" /> : null}
+      {show_task_runtime ? <Spinner data-icon="inline-start" /> : null}
       <span>{summary_status}</span>
       {show_task_runtime
         ? (
-            <span className="proofreading-page__task-summary-speed">
+            <span className="translation-task__summary-speed">
               {format_summary_speed(props.translation_task_metrics.average_output_speed)}
             </span>
           )
@@ -99,7 +96,7 @@ export function ProofreadingTaskRuntimeSummary(
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="proofreading-page__task-summary-trigger"
+          className="translation-task__summary-trigger"
           onClick={props.on_open}
         >
           {summary_badge}

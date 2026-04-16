@@ -6,13 +6,14 @@ import {
   ScanText,
 } from 'lucide-react'
 
+import '@/widgets/translation-task/translation-task.css'
 import { useI18n } from '@/i18n'
 import {
   has_translation_task_progress,
-  type ProofreadingTranslationTaskActionKind,
-  type ProofreadingTranslationTaskMetrics,
-  type ProofreadingTranslationTaskSnapshot,
-} from '@/pages/proofreading-page/types'
+  type TranslationTaskActionKind,
+  type TranslationTaskMetrics,
+  type TranslationTaskSnapshot,
+} from '@/lib/translation-task'
 import { Button } from '@/shadcn/button'
 import {
   DropdownMenu,
@@ -25,26 +26,26 @@ import {
 import { Progress } from '@/shadcn/progress'
 import { Spinner } from '@/shadcn/spinner'
 
-type ProofreadingTaskMenuProps = {
-  translation_task_display_snapshot: ProofreadingTranslationTaskSnapshot | null
-  translation_task_metrics: ProofreadingTranslationTaskMetrics
+type TranslationTaskMenuProps = {
+  translation_task_display_snapshot: TranslationTaskSnapshot | null
+  translation_task_metrics: TranslationTaskMetrics
   disabled: boolean
   busy: boolean
-  active_task_action_kind: ProofreadingTranslationTaskActionKind | null
+  active_task_action_kind: TranslationTaskActionKind | null
   on_start_or_continue: () => Promise<void>
-  on_request_confirmation: (kind: ProofreadingTranslationTaskActionKind) => void
+  on_request_confirmation: (kind: TranslationTaskActionKind) => void
 }
 
 function resolve_summary_progress_percent(
-  metrics: ProofreadingTranslationTaskMetrics,
+  metrics: TranslationTaskMetrics,
 ): number {
   return Number.isFinite(metrics.completion_percent)
     ? metrics.completion_percent
     : 0
 }
 
-export function ProofreadingTaskMenu(
-  props: ProofreadingTaskMenuProps,
+export function TranslationTaskMenu(
+  props: TranslationTaskMenuProps,
 ): JSX.Element {
   const { t } = useI18n()
   const has_progress = has_translation_task_progress(props.translation_task_display_snapshot)
@@ -72,13 +73,13 @@ export function ProofreadingTaskMenu(
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="proofreading-page__task-menu">
-        <div className="proofreading-page__task-menu-progress">
-          <div className="proofreading-page__task-menu-progress-head">
-            <span className="proofreading-page__task-menu-progress-label">
+      <DropdownMenuContent align="start" className="translation-task__menu">
+        <div className="translation-task__menu-progress">
+          <div className="translation-task__menu-progress-head">
+            <span className="translation-task__menu-progress-label">
               {t('proofreading_page.task.menu.progress')}
             </span>
-            <span className="proofreading-page__task-menu-progress-value">
+            <span className="translation-task__menu-progress-value">
               {progress_percent.toFixed(2)}
               %
             </span>

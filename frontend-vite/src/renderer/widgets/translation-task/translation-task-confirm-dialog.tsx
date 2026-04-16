@@ -1,7 +1,7 @@
 import { TriangleAlert } from 'lucide-react'
 
 import { useI18n } from '@/i18n'
-import type { ProofreadingTaskConfirmState } from '@/pages/proofreading-page/types'
+import type { TranslationTaskConfirmState } from '@/lib/translation-task'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,14 +15,14 @@ import {
 } from '@/shadcn/alert-dialog'
 import { Spinner } from '@/shadcn/spinner'
 
-type ProofreadingTaskConfirmDialogProps = {
-  state: ProofreadingTaskConfirmState | null
+type TranslationTaskConfirmDialogProps = {
+  state: TranslationTaskConfirmState | null
   on_confirm: () => Promise<void>
   on_close: () => void
 }
 
 function resolve_confirm_copy(
-  state: ProofreadingTaskConfirmState | null,
+  state: TranslationTaskConfirmState | null,
   t: ReturnType<typeof useI18n>['t'],
 ): {
   title: string
@@ -52,8 +52,8 @@ function resolve_confirm_copy(
   }
 }
 
-export function ProofreadingTaskConfirmDialog(
-  props: ProofreadingTaskConfirmDialogProps,
+export function TranslationTaskConfirmDialog(
+  props: TranslationTaskConfirmDialogProps,
 ): JSX.Element {
   const { t } = useI18n()
   const confirm_copy = resolve_confirm_copy(props.state, t)

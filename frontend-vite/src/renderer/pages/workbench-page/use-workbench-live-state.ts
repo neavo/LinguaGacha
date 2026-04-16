@@ -2,9 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
+import {
+  useTranslationTaskRuntime,
+  type TranslationTaskRuntime,
+} from '@/app/state/use-translation-task-runtime'
 import type { LocaleKey } from '@/i18n'
 import { useI18n } from '@/i18n'
 import { api_fetch } from '@/app/desktop-api'
+import { is_active_translation_task_status } from '@/lib/translation-task'
 import type {
   WorkbenchDialogState,
   WorkbenchFileEntry,
@@ -19,13 +24,6 @@ type WorkbenchSnapshotPayload = {
     entries?: Array<Partial<WorkbenchSnapshotEntry>>
   }
 }
-
-const ACTIVE_TRANSLATION_STATUSES: ReadonlySet<WorkbenchTaskStatus> = new Set([
-  'TRANSLATING',
-  'STOPPING',
-  'RUN',
-  'REQUEST',
-])
 
 const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   file_count: 0,
@@ -127,7 +125,7 @@ function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileE
 }
 
 function build_stats(snapshot: WorkbenchSnapshot, task_type: string, task_status: WorkbenchTaskStatus, processed_line: number): WorkbenchStats {
-  const translated = task_type === 'translation' && ACTIVE_TRANSLATION_STATUSES.has(task_status)
+  const translated = task_type === 'translation' && is_active_translation_task_status(task_status)
     ? Math.min(snapshot.total_items, snapshot.translated_in_past + processed_line)
     : snapshot.translated
 
@@ -182,6 +180,7 @@ function delay(milliseconds: number): Promise<void> {
 
 type UseWorkbenchLiveStateResult = {
   stats: WorkbenchStats
+  task_runtime: TranslationTaskRuntime
   entries: WorkbenchFileEntry[]
   selected_entry_id: string | null
   readonly: boolean
@@ -204,6 +203,7 @@ type UseWorkbenchLiveStateResult = {
 export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
+  const task_runtime = useTranslationTaskRuntime()
   const {
     project_snapshot,
     refresh_task,
@@ -512,6 +512,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
   return {
     stats,
+    task_runtime,
     entries,
     selected_entry_id,
     readonly,

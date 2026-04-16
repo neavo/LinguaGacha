@@ -53,7 +53,7 @@ export const en_us_workbench_page = {
     wolf: 'WOLF Official Tool XLSX',
   },
   command: {
-    description: 'The bottom command bar carries project-level quick actions.',
+    description: 'The workbench command bar carries project-level quick actions.',
   },
   reorder: {
     failed: 'Failed to save the file order. Please try again later.',
