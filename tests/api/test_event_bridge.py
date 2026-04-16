@@ -18,6 +18,7 @@ def test_translation_progress_is_mapped_to_task_progress() -> None:
             "total_output_tokens": 8,
             "total_input_tokens": 5,
             "start_time": 12.5,
+            "request_in_flight_count": 2,
         },
     )
 
@@ -28,6 +29,27 @@ def test_translation_progress_is_mapped_to_task_progress() -> None:
     assert payload["total_output_tokens"] == 8
     assert payload["total_input_tokens"] == 5
     assert payload["start_time"] == 12.5
+    assert payload["request_in_flight_count"] == 2
+
+
+def test_translation_progress_patch_does_not_force_missing_fields_to_zero() -> None:
+    # 准备
+    event_bridge = EventBridge()
+
+    # 执行
+    topic, payload = event_bridge.map_event(
+        Base.Event.TRANSLATION_PROGRESS,
+        {
+            "request_in_flight_count": 4,
+        },
+    )
+
+    # 断言
+    assert topic == "task.progress_changed"
+    assert payload == {
+        "task_type": "translation",
+        "request_in_flight_count": 4,
+    }
 
 
 def test_quality_rule_update_uses_proofreading_rule_impact_single_source(

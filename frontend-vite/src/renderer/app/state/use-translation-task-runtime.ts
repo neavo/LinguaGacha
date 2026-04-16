@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import { WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS } from '@/app/state/workbench-progress-constants'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
@@ -40,7 +48,6 @@ export type TranslationTaskRuntime = {
   close_task_action_confirmation: () => void
 }
 
-const TRANSLATION_TASK_LIVE_TICK_MS = 1000
 const TRANSLATION_WAVEFORM_MAX_POINTS = 256
 
 function resolve_error_message(error: unknown, fallback_message: string): string {
@@ -84,17 +91,19 @@ export function useTranslationTaskRuntime(): TranslationTaskRuntime {
     return create_empty_translation_task_snapshot()
   })
   const [last_translation_task_snapshot, set_last_translation_task_snapshot] = useState<TranslationTaskSnapshot | null>(null)
+  const [translation_task_metrics, set_translation_task_metrics] = useState<TranslationTaskMetrics>(() => {
+    return resolve_translation_task_metrics({
+      snapshot: null,
+      now_seconds: 0,
+    })
+  })
   const [translation_waveform_history, set_translation_waveform_history] = useState<number[]>([])
   const [translation_detail_sheet_open, set_translation_detail_sheet_open] = useState(false)
   const [task_confirm_state, set_task_confirm_state] = useState<TranslationTaskConfirmState | null>(null)
-  const [translation_live_now_seconds, set_translation_live_now_seconds] = useState(() => {
-    return Date.now() / 1000
-  })
   const previous_project_loaded_ref = useRef(false)
   const previous_project_path_ref = useRef('')
   const previous_task_busy_ref = useRef(task_snapshot.busy)
   const previous_invalidation_tick_ref = useRef(proofreading_invalidation_tick)
-  const previous_translation_snapshot_signature_ref = useRef('')
 
   const translation_task_display_snapshot = useMemo(() => {
     return resolve_translation_task_display_snapshot({
@@ -103,27 +112,44 @@ export function useTranslationTaskRuntime(): TranslationTaskRuntime {
     })
   }, [last_translation_task_snapshot, translation_task_snapshot])
 
-  const translation_task_metrics = useMemo(() => {
-    return resolve_translation_task_metrics({
-      snapshot: translation_task_display_snapshot,
-      now_seconds: translation_live_now_seconds,
-    })
-  }, [translation_live_now_seconds, translation_task_display_snapshot])
-
   const translation_task_menu_busy = task_confirm_state !== null
     && (task_confirm_state.submitting || task_confirm_state.awaiting_refresh)
   const translation_task_menu_disabled = !project_snapshot.loaded
     || task_snapshot.busy
     || translation_task_menu_busy
   const can_open_translation_detail_sheet = project_snapshot.loaded
+  const translation_task_active = is_active_translation_task_status(
+    translation_task_snapshot.status,
+  )
+
+  const append_translation_waveform_sample = useEffectEvent((): void => {
+    const next_now_seconds = Date.now() / 1000
+    const next_visual_snapshot = translation_task_display_snapshot === null
+      ? null
+      : clone_translation_task_snapshot(translation_task_display_snapshot)
+    const next_metrics = resolve_translation_task_metrics({
+      snapshot: next_visual_snapshot,
+      now_seconds: next_now_seconds,
+    })
+    set_translation_task_metrics(next_metrics)
+    set_translation_waveform_history((previous_history) => {
+      return append_waveform_sample(
+        previous_history,
+        next_metrics.average_output_speed,
+      )
+    })
+  })
 
   const clear_translation_task_state = useCallback((): void => {
     set_translation_task_snapshot(create_empty_translation_task_snapshot())
     set_last_translation_task_snapshot(null)
+    set_translation_task_metrics(resolve_translation_task_metrics({
+      snapshot: null,
+      now_seconds: 0,
+    }))
     set_translation_waveform_history([])
     set_translation_detail_sheet_open(false)
     set_task_confirm_state(null)
-    previous_translation_snapshot_signature_ref.current = ''
   }, [])
 
   const apply_translation_task_snapshot = useCallback((
@@ -393,51 +419,39 @@ export function useTranslationTaskRuntime(): TranslationTaskRuntime {
   }, [apply_translation_task_snapshot, task_snapshot])
 
   useEffect(() => {
-    if (!is_active_translation_task_status(translation_task_snapshot.status)) {
+    if (translation_task_active) {
       return
     }
 
-    set_translation_live_now_seconds(Date.now() / 1000)
+    // 为什么：空闲态下不需要继续走定时采样，但最后一次结果也要立刻对齐到显示层。
+    const next_now_seconds = Date.now() / 1000
+    const next_visual_snapshot = translation_task_display_snapshot === null
+      ? null
+      : clone_translation_task_snapshot(translation_task_display_snapshot)
+    set_translation_task_metrics(resolve_translation_task_metrics({
+      snapshot: next_visual_snapshot,
+      now_seconds: next_now_seconds,
+    }))
+  }, [
+    translation_task_active,
+    translation_task_display_snapshot,
+  ])
+
+  useEffect(() => {
+    if (!translation_task_active) {
+      return
+    }
+
+    // 为什么：工作台进度显示统一按 500ms 节拍采样，避免卡片、统计和波形图各跟各的。
+    append_translation_waveform_sample()
     const timer_id = window.setInterval(() => {
-      set_translation_live_now_seconds(Date.now() / 1000)
-    }, TRANSLATION_TASK_LIVE_TICK_MS)
+      append_translation_waveform_sample()
+    }, WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS)
 
     return () => {
       window.clearInterval(timer_id)
     }
-  }, [translation_task_snapshot.status])
-
-  useEffect(() => {
-    if (!is_active_translation_task_status(translation_task_snapshot.status)) {
-      previous_translation_snapshot_signature_ref.current = ''
-      return
-    }
-
-    const signature = [
-      translation_task_snapshot.status,
-      translation_task_snapshot.line.toString(),
-      translation_task_snapshot.total_line.toString(),
-      translation_task_snapshot.total_output_tokens.toString(),
-      translation_task_snapshot.request_in_flight_count.toString(),
-      Math.floor(translation_live_now_seconds).toString(),
-    ].join(':')
-
-    if (previous_translation_snapshot_signature_ref.current === signature) {
-      return
-    }
-
-    previous_translation_snapshot_signature_ref.current = signature
-    const next_metrics = resolve_translation_task_metrics({
-      snapshot: translation_task_snapshot,
-      now_seconds: translation_live_now_seconds,
-    })
-    set_translation_waveform_history((previous_history) => {
-      return append_waveform_sample(previous_history, next_metrics.average_output_speed)
-    })
-  }, [
-    translation_live_now_seconds,
-    translation_task_snapshot,
-  ])
+  }, [translation_task_active])
 
   useEffect(() => {
     if (!can_open_translation_detail_sheet) {

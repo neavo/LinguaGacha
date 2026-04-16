@@ -11,9 +11,10 @@ export const zh_cn_workbench_page = {
   },
   stats: {
     file_count: '文件总数',
-    total_lines: '总行数',
-    translated: '已翻译',
-    untranslated: '未翻译',
+    total_lines: '总计',
+    translated: '翻译成功',
+    untranslated: '等待翻译',
+    error_count: '翻译失败',
   },
   table: {
     drag_handle: '拖拽',

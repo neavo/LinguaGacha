@@ -89,6 +89,9 @@
   --accent: #ebe9e7;
   --accent-foreground: #5a5550;
   --destructive: oklch(0.61 0.18 28);
+  --ui-success: #22c55e;
+  --ui-warning: #f97316;
+  --ui-failure: var(--destructive);
   --border: #dddad6;
   --input: #dddad6;
   --ring: #c89c45;
@@ -232,7 +235,10 @@ a,
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
-  --color-destructive: var(--destructive);
+  --color-destructive: var(--ui-failure);
+  --color-success: var(--ui-success);
+  --color-warning: var(--ui-warning);
+  --color-failure: var(--ui-failure);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -273,6 +279,9 @@ a,
   --accent: #252525;
   --accent-foreground: #eceae7;
   --destructive: oklch(0.68 0.17 28);
+  --ui-success: #4ade80;
+  --ui-warning: #fb923c;
+  --ui-failure: var(--destructive);
   --border: #323232;
   --input: #323232;
   --ring: #d4b06a;
@@ -556,15 +565,15 @@ a,
   }
 
   .cn-toast--warning {
-    border-color: color-mix(in srgb, #f59e0b 38%, var(--border));
+    border-color: color-mix(in srgb, var(--ui-warning) 38%, var(--border));
   }
 
   .cn-toast--error {
-    border-color: color-mix(in srgb, #ef4444 42%, var(--border));
+    border-color: color-mix(in srgb, var(--ui-failure) 42%, var(--border));
   }
 
   .cn-toast--success {
-    border-color: color-mix(in srgb, #22c55e 42%, var(--border));
+    border-color: color-mix(in srgb, var(--ui-success) 42%, var(--border));
   }
 
   .cn-toast__content {
@@ -601,15 +610,15 @@ a,
   }
 
   .cn-toast--warning .cn-toast__icon {
-    color: #d39a31;
+    color: color-mix(in srgb, var(--ui-warning) 78%, var(--foreground) 22%);
   }
 
   .cn-toast--error .cn-toast__icon {
-    color: #de6458;
+    color: color-mix(in srgb, var(--ui-failure) 78%, var(--foreground) 22%);
   }
 
   .cn-toast--success .cn-toast__icon {
-    color: #4fa86f;
+    color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
   }
 
   .cn-toast--progress {

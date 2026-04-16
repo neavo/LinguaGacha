@@ -25,6 +25,7 @@ export type WorkbenchSnapshot = {
   total_items: number
   translated: number
   translated_in_past: number
+  error_count: number
   file_op_running: boolean
   entries: WorkbenchSnapshotEntry[]
 }
@@ -36,8 +37,8 @@ export type WorkbenchDialogState = {
 }
 
 export type WorkbenchStats = {
-  file_count: number
   total_items: number
   translated: number
+  error_count: number
   untranslated: number
 }

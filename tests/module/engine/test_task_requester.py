@@ -25,12 +25,23 @@ from module.Engine.TaskRequesterStream import StreamSession
 class FakeEngine:
     inc_calls: int = 0
     dec_calls: int = 0
+    request_in_flight_count: int = 0
+    active_task_type: str = "idle"
 
     def inc_request_in_flight(self) -> None:
         self.inc_calls += 1
+        self.request_in_flight_count += 1
 
     def dec_request_in_flight(self) -> None:
         self.dec_calls += 1
+        if self.request_in_flight_count > 0:
+            self.request_in_flight_count -= 1
+
+    def get_request_in_flight_count(self) -> int:
+        return self.request_in_flight_count
+
+    def get_active_task_type(self) -> str:
+        return self.active_task_type
 
 
 @dataclasses.dataclass
@@ -895,6 +906,45 @@ def test_request_routes_and_engine_counters_always_balance() -> None:
     assert captured["args"]["temperature"] == 0.7
     assert captured["args"]["presence_penalty"] == 1
     assert captured["args"]["frequency_penalty"] == 2
+
+
+def test_request_emits_translation_request_count_progress_patch() -> None:
+    engine = FakeEngine(active_task_type="translation")
+    requester = TaskRequester(
+        Config(),
+        {
+            "api_format": Base.APIFormat.OPENAI,
+            "api_key": "k",
+            "api_url": "https://example.invalid",
+            "model_id": "m",
+        },
+    )
+    emitted: list[tuple[Base.Event, dict[str, Any]]] = []
+
+    def fake_request_openai(
+        messages: list[dict], args: dict[str, Any], *, stop_checker: Any = None
+    ) -> Any:
+        del messages, args, stop_checker
+        return None, "T", "R", 1, 2
+
+    def fake_emit(event: Base.Event, payload: dict[str, Any]) -> None:
+        emitted.append((event, dict(payload)))
+
+    with patch("module.Engine.TaskRequester.Engine.get", return_value=engine):
+        with patch.object(requester, "request_openai", side_effect=fake_request_openai):
+            with patch.object(requester, "emit", side_effect=fake_emit):
+                requester.request([{"role": "user", "content": "U"}])
+
+    assert emitted == [
+        (
+            Base.Event.TRANSLATION_PROGRESS,
+            {"request_in_flight_count": 1},
+        ),
+        (
+            Base.Event.TRANSLATION_PROGRESS,
+            {"request_in_flight_count": 0},
+        ),
+    ]
 
 
 @pytest.mark.parametrize(

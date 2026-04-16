@@ -125,18 +125,36 @@ class EventBridge:
     ) -> dict[str, Any]:
         """任务进度只暴露 UI 真正需要的稳定快照字段。"""
 
-        return {
+        # 为什么：任务进度事件既可能是全量快照，也可能只是“实时任务数”补丁。
+        # 这里只转发真正存在的字段，避免补丁事件把其他统计误清零。
+        payload: dict[str, Any] = {
             "task_type": task_type,
-            "line": int(data.get("line", 0) or 0),
-            "total_line": int(data.get("total_line", 0) or 0),
-            "processed_line": int(data.get("processed_line", 0) or 0),
-            "error_line": int(data.get("error_line", 0) or 0),
-            "total_tokens": int(data.get("total_tokens", 0) or 0),
-            "total_output_tokens": int(data.get("total_output_tokens", 0) or 0),
-            "total_input_tokens": int(data.get("total_input_tokens", 0) or 0),
-            "start_time": float(data.get("start_time", 0.0) or 0.0),
-            "time": float(data.get("time", 0.0) or 0.0),
         }
+        if "request_in_flight_count" in data:
+            payload["request_in_flight_count"] = int(
+                data.get("request_in_flight_count", 0) or 0
+            )
+        if "line" in data:
+            payload["line"] = int(data.get("line", 0) or 0)
+        if "total_line" in data:
+            payload["total_line"] = int(data.get("total_line", 0) or 0)
+        if "processed_line" in data:
+            payload["processed_line"] = int(data.get("processed_line", 0) or 0)
+        if "error_line" in data:
+            payload["error_line"] = int(data.get("error_line", 0) or 0)
+        if "total_tokens" in data:
+            payload["total_tokens"] = int(data.get("total_tokens", 0) or 0)
+        if "total_output_tokens" in data:
+            payload["total_output_tokens"] = int(
+                data.get("total_output_tokens", 0) or 0
+            )
+        if "total_input_tokens" in data:
+            payload["total_input_tokens"] = int(data.get("total_input_tokens", 0) or 0)
+        if "start_time" in data:
+            payload["start_time"] = float(data.get("start_time", 0.0) or 0.0)
+        if "time" in data:
+            payload["time"] = float(data.get("time", 0.0) or 0.0)
+        return payload
 
     def build_task_status_payload(
         self,

@@ -4,14 +4,10 @@
   min-height: 0;
   overflow: hidden;
   --workbench-unit: color-mix(in srgb, var(--foreground) 42%, transparent);
-  --workbench-success: #22c55e;
-  --workbench-warning: #f59e0b;
 }
 
 .dark .workbench-page {
   --workbench-unit: color-mix(in srgb, var(--foreground) 58%, transparent);
-  --workbench-success: #4ade80;
-  --workbench-warning: #fbbf24;
 }
 
 .workbench-page__stats-grid {
@@ -61,11 +57,15 @@
 }
 
 .workbench-page__stat-card-value--success {
-  color: var(--workbench-success);
+  color: var(--ui-success);
 }
 
 .workbench-page__stat-card-value--warning {
-  color: var(--workbench-warning);
+  color: var(--ui-warning);
+}
+
+.workbench-page__stat-card-value--failure {
+  color: var(--ui-failure);
 }
 
 .workbench-page__stat-card-unit {

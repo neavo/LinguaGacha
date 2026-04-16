@@ -19,6 +19,7 @@ def test_workbench_api_client_get_snapshot_returns_snapshot(
     result = workbench_client.get_snapshot()
 
     assert isinstance(result, WorkbenchSnapshot)
+    assert result.error_count == 0
     assert result.entries[0].rel_path == "script/a.txt"
 
 

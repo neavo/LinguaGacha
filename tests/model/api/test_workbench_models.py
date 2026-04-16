@@ -17,6 +17,7 @@ def test_workbench_snapshot_from_dict_converts_entries_to_tuple() -> None:
             "total_items": 3,
             "translated": 1,
             "translated_in_past": 2,
+            "error_count": 1,
             "untranslated": 0,
             "file_op_running": True,
             "entries": [
@@ -30,6 +31,7 @@ def test_workbench_snapshot_from_dict_converts_entries_to_tuple() -> None:
     )
 
     assert snapshot.file_count == 1
+    assert snapshot.error_count == 1
     assert snapshot.file_op_running is True
     assert snapshot.entries == (
         WorkbenchFileEntry(

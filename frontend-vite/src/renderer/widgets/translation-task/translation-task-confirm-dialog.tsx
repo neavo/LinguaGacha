@@ -68,11 +68,11 @@ export function TranslationTaskConfirmDialog(
         }
       }}
     >
-      <AlertDialogContent size="sm">
-        <AlertDialogHeader>
-          <AlertDialogMedia>
-            <TriangleAlert />
-          </AlertDialogMedia>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10 text-destructive">
+              <TriangleAlert />
+            </AlertDialogMedia>
           <AlertDialogTitle>{confirm_copy.title}</AlertDialogTitle>
           <AlertDialogDescription>{confirm_copy.description}</AlertDialogDescription>
         </AlertDialogHeader>

@@ -5,7 +5,7 @@ type WorkbenchStatCardProps = {
   title: string
   value: number
   unit: string
-  accent?: 'success' | 'warning'
+  accent?: 'success' | 'warning' | 'failure'
 }
 
 export function WorkbenchStatCard(props: WorkbenchStatCardProps): JSX.Element {
@@ -21,6 +21,7 @@ export function WorkbenchStatCard(props: WorkbenchStatCardProps): JSX.Element {
               'workbench-page__stat-card-value',
               props.accent === 'success' && 'workbench-page__stat-card-value--success',
               props.accent === 'warning' && 'workbench-page__stat-card-value--warning',
+              props.accent === 'failure' && 'workbench-page__stat-card-value--failure',
             )}
           >
             {props.value.toLocaleString()}

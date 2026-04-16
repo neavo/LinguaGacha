@@ -44,6 +44,7 @@ class WorkbenchSnapshot:
     total_items: int = 0
     translated: int = 0
     translated_in_past: int = 0
+    error_count: int = 0
     untranslated: int = 0
     file_op_running: bool = False
     entries: tuple[WorkbenchFileEntry, ...] = ()
@@ -72,6 +73,7 @@ class WorkbenchSnapshot:
             total_items=int(normalized.get("total_items", 0) or 0),
             translated=int(normalized.get("translated", 0) or 0),
             translated_in_past=int(normalized.get("translated_in_past", 0) or 0),
+            error_count=int(normalized.get("error_count", 0) or 0),
             untranslated=int(normalized.get("untranslated", 0) or 0),
             file_op_running=bool(normalized.get("file_op_running", False)),
             entries=entries,
@@ -85,6 +87,7 @@ class WorkbenchSnapshot:
             "total_items": self.total_items,
             "translated": self.translated,
             "translated_in_past": self.translated_in_past,
+            "error_count": self.error_count,
             "untranslated": self.untranslated,
             "file_op_running": self.file_op_running,
             "entries": [entry.to_dict() for entry in self.entries],

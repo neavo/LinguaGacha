@@ -84,6 +84,7 @@ class WorkbenchAppService:
             total_items=int(snapshot.total_items),
             translated=int(snapshot.translated),
             translated_in_past=int(snapshot.translated_in_past),
+            error_count=int(snapshot.error_count),
             untranslated=int(snapshot.untranslated),
             file_op_running=bool(self.data_manager.is_file_op_running()),
             entries=entries,

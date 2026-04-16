@@ -9,7 +9,6 @@ import {
 import type { LocaleKey } from '@/i18n'
 import { useI18n } from '@/i18n'
 import { api_fetch } from '@/app/desktop-api'
-import { is_active_translation_task_status } from '@/lib/translation-task'
 import type {
   WorkbenchDialogState,
   WorkbenchFileEntry,
@@ -30,6 +29,7 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   total_items: 0,
   translated: 0,
   translated_in_past: 0,
+  error_count: 0,
   file_op_running: false,
   entries: [],
 }
@@ -51,6 +51,7 @@ function normalize_snapshot(payload: WorkbenchSnapshotPayload): WorkbenchSnapsho
     total_items: Number(snapshot.total_items ?? 0),
     translated: Number(snapshot.translated ?? 0),
     translated_in_past: Number(snapshot.translated_in_past ?? 0),
+    error_count: Number(snapshot.error_count ?? 0),
     file_op_running: Boolean(snapshot.file_op_running),
     entries,
   }
@@ -124,16 +125,24 @@ function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileE
   }))
 }
 
-function build_stats(snapshot: WorkbenchSnapshot, task_type: string, task_status: WorkbenchTaskStatus, processed_line: number): WorkbenchStats {
-  const translated = task_type === 'translation' && is_active_translation_task_status(task_status)
-    ? Math.min(snapshot.total_items, snapshot.translated_in_past + processed_line)
+function build_stats(
+  snapshot: WorkbenchSnapshot,
+  translation_active: boolean,
+  translated: number,
+  error_count: number,
+): WorkbenchStats {
+  const translated_count = translation_active
+    ? Math.min(snapshot.total_items, translated)
     : snapshot.translated
+  const error_total = translation_active
+    ? Math.min(snapshot.total_items, error_count)
+    : snapshot.error_count
 
   return {
-    file_count: snapshot.file_count,
     total_items: snapshot.total_items,
-    translated,
-    untranslated: Math.max(0, snapshot.total_items - translated),
+    translated: translated_count,
+    error_count: error_total,
+    untranslated: Math.max(0, snapshot.total_items - translated_count - error_total),
   }
 }
 
@@ -206,6 +215,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const task_runtime = useTranslationTaskRuntime()
   const {
     project_snapshot,
+    proofreading_invalidation_tick,
     refresh_task,
     set_project_snapshot,
     task_snapshot,
@@ -216,6 +226,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state())
   const [is_mutation_running, set_is_mutation_running] = useState(false)
   const previous_task_status_ref = useRef<WorkbenchTaskStatus>(task_snapshot.status)
+  const previous_invalidation_tick_ref = useRef(proofreading_invalidation_tick)
   const is_reorder_running_ref = useRef(false)
 
   const refresh_snapshot = useCallback(async (): Promise<WorkbenchSnapshot> => {
@@ -283,6 +294,25 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy, task_snapshot.status])
 
   useEffect(() => {
+    const previous_tick = previous_invalidation_tick_ref.current
+    previous_invalidation_tick_ref.current = proofreading_invalidation_tick
+
+    if (!project_snapshot.loaded) {
+      return
+    }
+
+    // 为什么：翻译重置和工作台快照失效都会走同一条 invalidation tick；
+    // 工作台不订阅这里的话，顶部统计卡片会停留在旧快照。
+    if (previous_tick !== proofreading_invalidation_tick) {
+      void refresh_snapshot()
+    }
+  }, [
+    project_snapshot.loaded,
+    proofreading_invalidation_tick,
+    refresh_snapshot,
+  ])
+
+  useEffect(() => {
     set_selected_entry_id((previous_entry_id) => select_after_snapshot(entries, entries, previous_entry_id))
   }, [entries])
 
@@ -295,8 +325,18 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   }, [snapshot.entries])
 
   const stats = useMemo(() => {
-    return build_stats(snapshot, task_snapshot.task_type, task_snapshot.status, task_snapshot.processed_line)
-  }, [snapshot, task_snapshot.processed_line, task_snapshot.status, task_snapshot.task_type])
+    return build_stats(
+      snapshot,
+      task_runtime.translation_task_metrics.active,
+      task_runtime.translation_task_metrics.processed_count,
+      task_runtime.translation_task_metrics.failed_count,
+    )
+  }, [
+    snapshot,
+    task_runtime.translation_task_metrics.active,
+    task_runtime.translation_task_metrics.failed_count,
+    task_runtime.translation_task_metrics.processed_count,
+  ])
 
   const readonly = !project_snapshot.loaded || task_snapshot.busy || snapshot.file_op_running || is_mutation_running
   const can_edit_files = !readonly

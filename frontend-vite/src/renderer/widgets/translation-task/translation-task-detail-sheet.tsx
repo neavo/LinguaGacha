@@ -4,6 +4,7 @@ import { CircleStop } from 'lucide-react'
 import '@/widgets/translation-task/translation-task.css'
 import { useI18n } from '@/i18n'
 import type { TranslationTaskMetrics } from '@/lib/translation-task'
+import { cn } from '@/lib/utils'
 import { Button } from '@/shadcn/button'
 import {
   Sheet,
@@ -171,6 +172,21 @@ function build_metric_entries(
   ]
 }
 
+function resolve_percent_pill_tone_class_name(
+  metrics: TranslationTaskMetrics,
+): string {
+  // 胶囊颜色跟随任务状态，避免进度百分比误导成固定主色语义。
+  if (metrics.stopping) {
+    return 'translation-task__percent-pill--warning'
+  }
+
+  if (metrics.active) {
+    return 'translation-task__percent-pill--success'
+  }
+
+  return 'translation-task__percent-pill--neutral'
+}
+
 function TaskWaveform(props: {
   history: number[]
 }): JSX.Element {
@@ -263,7 +279,12 @@ export function TranslationTaskDetailSheet(
               <h3 className="translation-task__section-title">
                 {t('proofreading_page.task.detail.waveform_title')}
               </h3>
-              <span className="translation-task__percent-pill">
+              <span
+                className={cn(
+                  'translation-task__percent-pill',
+                  resolve_percent_pill_tone_class_name(props.translation_task_metrics),
+                )}
+              >
                 {props.translation_task_metrics.completion_percent.toFixed(2)}
                 %
               </span>

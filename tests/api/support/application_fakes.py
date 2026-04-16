@@ -148,6 +148,7 @@ class FakeWorkbenchManager:
             "total_items": 2,
             "translated": 1,
             "translated_in_past": 0,
+            "error_count": 0,
             "untranslated": 1,
             "entries": (
                 {
@@ -179,6 +180,7 @@ class FakeWorkbenchManager:
             total_items=int(self.snapshot["total_items"]),
             translated=int(self.snapshot["translated"]),
             translated_in_past=int(self.snapshot["translated_in_past"]),
+            error_count=int(self.snapshot["error_count"]),
             untranslated=int(self.snapshot["untranslated"]),
             entries=(entry,),
         )

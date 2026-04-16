@@ -28,6 +28,7 @@ class WorkbenchSnapshotPayload:
     total_items: int
     translated: int
     translated_in_past: int
+    error_count: int
     untranslated: int
     file_op_running: bool
     entries: tuple[WorkbenchFileEntryPayload, ...]
@@ -40,6 +41,7 @@ class WorkbenchSnapshotPayload:
             "total_items": self.total_items,
             "translated": self.translated,
             "translated_in_past": self.translated_in_past,
+            "error_count": self.error_count,
             "untranslated": self.untranslated,
             "file_op_running": self.file_op_running,
             "entries": [entry.to_dict() for entry in self.entries],

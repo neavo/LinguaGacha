@@ -58,6 +58,24 @@
   cursor: pointer;
 }
 
+.translation-task__summary-badge--neutral {
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--muted-foreground);
+}
+
+.translation-task__summary-badge--success {
+  border-color: color-mix(in srgb, var(--ui-success) 24%, var(--border));
+  background: color-mix(in srgb, var(--ui-success) 12%, var(--background));
+  color: color-mix(in srgb, var(--ui-success) 74%, var(--foreground) 26%);
+}
+
+.translation-task__summary-badge--warning {
+  border-color: color-mix(in srgb, var(--ui-warning) 26%, var(--border));
+  background: color-mix(in srgb, var(--ui-warning) 12%, var(--background));
+  color: color-mix(in srgb, var(--ui-warning) 76%, var(--foreground) 24%);
+}
+
 .translation-task__summary-speed {
   color: currentColor;
   opacity: 0.82;
@@ -129,7 +147,6 @@
 .translation-task__percent-pill {
   display: inline-flex;
   align-items: center;
-  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
   border-radius: 999px;
   padding-top: 2px;
   padding-bottom: 2px;
@@ -138,8 +155,24 @@
   font-size: 11px;
   line-height: 1;
   font-weight: 600;
-  background: color-mix(in srgb, var(--primary) 10%, var(--popover));
-  color: color-mix(in srgb, var(--primary) 72%, var(--foreground) 28%);
+}
+
+.translation-task__percent-pill--neutral {
+  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
+  background: color-mix(in srgb, var(--background) 88%, var(--popover) 12%);
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground) 22%);
+}
+
+.translation-task__percent-pill--success {
+  border: 1px solid color-mix(in srgb, var(--ui-success) 24%, var(--border));
+  background: color-mix(in srgb, var(--ui-success) 12%, var(--popover));
+  color: color-mix(in srgb, var(--ui-success) 74%, var(--foreground) 26%);
+}
+
+.translation-task__percent-pill--warning {
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 26%, var(--border));
+  background: color-mix(in srgb, var(--ui-warning) 12%, var(--popover));
+  color: color-mix(in srgb, var(--ui-warning) 76%, var(--foreground) 24%);
 }
 
 .translation-task__metric {

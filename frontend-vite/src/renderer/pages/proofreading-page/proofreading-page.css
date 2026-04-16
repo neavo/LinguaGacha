@@ -423,27 +423,15 @@
 }
 
 .proofreading-page__status-icon--success {
-  color: color-mix(in srgb, #16a34a 82%, var(--foreground) 18%);
+  color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
 }
 
 .proofreading-page__status-icon--warning {
-  color: color-mix(in srgb, #d97706 84%, var(--foreground) 16%);
+  color: color-mix(in srgb, var(--ui-warning) 78%, var(--foreground) 22%);
 }
 
 .proofreading-page__status-icon--failure {
-  color: color-mix(in srgb, var(--destructive) 88%, var(--foreground) 12%);
-}
-
-.dark .proofreading-page__status-icon--success {
-  color: color-mix(in srgb, #86efac 82%, var(--foreground) 18%);
-}
-
-.dark .proofreading-page__status-icon--warning {
-  color: color-mix(in srgb, #fcd34d 82%, var(--foreground) 18%);
-}
-
-.dark .proofreading-page__status-icon--failure {
-  color: color-mix(in srgb, #fda4af 82%, var(--foreground) 18%);
+  color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground) 18%);
 }
 
 .proofreading-page__status-icon svg {
@@ -688,39 +676,21 @@
 }
 
 .proofreading-page__dialog-status-badge--tone-success {
-  border-color: color-mix(in srgb, #22c55e 36%, var(--border));
-  background: color-mix(in srgb, #22c55e 14%, var(--popover));
-  color: color-mix(in srgb, #166534 78%, var(--foreground) 22%);
-}
-
-.dark .proofreading-page__dialog-status-badge--tone-success {
-  border-color: color-mix(in srgb, #22c55e 42%, var(--border));
-  background: color-mix(in srgb, #22c55e 18%, var(--popover));
-  color: color-mix(in srgb, #86efac 72%, var(--foreground) 28%);
+  border-color: color-mix(in srgb, var(--ui-success) 36%, var(--border));
+  background: color-mix(in srgb, var(--ui-success) 14%, var(--popover));
+  color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
 }
 
 .proofreading-page__dialog-status-badge--tone-warning {
-  border-color: color-mix(in srgb, #f59e0b 42%, var(--border));
-  background: color-mix(in srgb, #f59e0b 14%, var(--popover));
-  color: color-mix(in srgb, #b45309 82%, var(--foreground) 18%);
-}
-
-.dark .proofreading-page__dialog-status-badge--tone-warning {
-  border-color: color-mix(in srgb, #f59e0b 48%, var(--border));
-  background: color-mix(in srgb, #f59e0b 20%, var(--popover));
-  color: color-mix(in srgb, #fcd34d 76%, var(--foreground) 24%);
+  border-color: color-mix(in srgb, var(--ui-warning) 40%, var(--border));
+  background: color-mix(in srgb, var(--ui-warning) 14%, var(--popover));
+  color: color-mix(in srgb, var(--ui-warning) 80%, var(--foreground) 20%);
 }
 
 .proofreading-page__dialog-status-badge--tone-failure {
-  border-color: color-mix(in srgb, var(--destructive) 52%, var(--border));
-  background: color-mix(in srgb, var(--destructive) 12%, var(--popover));
-  color: color-mix(in srgb, var(--destructive) 88%, var(--foreground) 12%);
-}
-
-.dark .proofreading-page__dialog-status-badge--tone-failure {
-  border-color: color-mix(in srgb, var(--destructive) 58%, var(--border));
-  background: color-mix(in srgb, var(--destructive) 18%, var(--popover));
-  color: color-mix(in srgb, #fda4af 78%, var(--foreground) 22%);
+  border-color: color-mix(in srgb, var(--ui-failure) 48%, var(--border));
+  background: color-mix(in srgb, var(--ui-failure) 12%, var(--popover));
+  color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground) 18%);
 }
 
 .proofreading-page__dialog-editor-title {

@@ -83,6 +83,7 @@
   "total_items": 2,
   "translated": 1,
   "translated_in_past": 0,
+  "error_count": 0,
   "untranslated": 1,
   "file_op_running": false,
   "entries": [

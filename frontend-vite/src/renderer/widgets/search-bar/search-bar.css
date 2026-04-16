@@ -43,11 +43,11 @@
 }
 
 .search-bar__invalid-button {
-  color: var(--destructive);
+  color: var(--ui-failure);
 }
 
 .search-bar__invalid-button:hover {
-  color: color-mix(in srgb, var(--destructive) 88%, var(--foreground) 12%);
+  color: color-mix(in srgb, var(--ui-failure) 88%, var(--foreground) 12%);
 }
 
 .search-bar__replace-button {

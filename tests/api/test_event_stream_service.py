@@ -19,6 +19,23 @@ def test_publish_event_creates_standardized_envelope() -> None:
     assert envelope.data["processed_line"] == 2
 
 
+def test_publish_event_keeps_progress_patch_shape() -> None:
+    service = EventStreamService()
+    subscriber = service.add_subscriber()
+
+    service.publish_internal_event(
+        Base.Event.TRANSLATION_PROGRESS,
+        {"request_in_flight_count": 3},
+    )
+
+    envelope = subscriber.get_nowait()
+    assert envelope.topic == "task.progress_changed"
+    assert envelope.data == {
+        "task_type": "translation",
+        "request_in_flight_count": 3,
+    }
+
+
 class FakeSseHandler:
     """用最小 HTTP 处理器桩模拟客户端主动断开后的写入失败。"""
 

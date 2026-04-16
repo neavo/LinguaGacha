@@ -14,9 +14,10 @@ export const en_us_workbench_page = {
   },
   stats: {
     file_count: 'Files',
-    total_lines: 'Total Lines',
-    translated: 'Translated',
-    untranslated: 'Untranslated',
+    total_lines: 'Total',
+    translated: 'Succeeded',
+    untranslated: 'Awaiting',
+    error_count: 'Failed',
   },
   table: {
     drag_handle: 'Drag',

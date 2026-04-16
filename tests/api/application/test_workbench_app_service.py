@@ -5,6 +5,7 @@ def test_build_workbench_snapshot_returns_serializable_payload(
 
     snapshot = result["snapshot"]
 
+    assert snapshot["error_count"] == 0
     assert "entries" in snapshot
     assert isinstance(snapshot["entries"], list)
     assert snapshot["entries"][0]["rel_path"] == "script/a.txt"

@@ -44,14 +44,14 @@ function resolve_summary_badge_tone_class_name(
   metrics: TranslationTaskMetrics,
 ): string {
   if (metrics.stopping) {
-    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400'
+    return 'translation-task__summary-badge--warning'
   }
 
   if (metrics.active) {
-    return 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400'
+    return 'translation-task__summary-badge--success'
   }
 
-  return 'border-border bg-background text-muted-foreground'
+  return 'translation-task__summary-badge--neutral'
 }
 
 export function TranslationTaskRuntimeSummary(
