@@ -96,6 +96,14 @@
   flex: 0 1 auto;
 }
 
+.workbench-page__task-summary-group {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .workbench-page__task-summary {
   width: auto;
   max-width: 100%;

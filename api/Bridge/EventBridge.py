@@ -154,6 +154,10 @@ class EventBridge:
             payload["start_time"] = float(data.get("start_time", 0.0) or 0.0)
         if "time" in data:
             payload["time"] = float(data.get("time", 0.0) or 0.0)
+        if "analysis_candidate_count" in data:
+            payload["analysis_candidate_count"] = int(
+                data.get("analysis_candidate_count", 0) or 0
+            )
         return payload
 
     def build_task_status_payload(

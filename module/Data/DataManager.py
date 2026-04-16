@@ -632,6 +632,9 @@ class DataManager(Base):
             self.emit_quality_rule_update(rule_types=[LGDatabase.RuleType.GLOSSARY])
         return imported
 
+    def sync_importable_analysis_candidate_count(self) -> int:
+        return self.analysis_service.sync_importable_analysis_candidate_count()
+
     def clear_analysis_progress(self) -> None:
         self.analysis_service.clear_analysis_progress()
 

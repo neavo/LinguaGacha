@@ -2,10 +2,10 @@ import { WorkbenchCommandBar } from '@/pages/workbench-page/components/workbench
 import { WorkbenchDialogs } from '@/pages/workbench-page/components/workbench-dialogs'
 import { WorkbenchFileTable } from '@/pages/workbench-page/components/workbench-file-table'
 import { WorkbenchStatsSection } from '@/pages/workbench-page/components/workbench-stats-section'
+import { TaskRuntimeConfirmDialog } from '@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog'
+import { TaskRuntimeDetailSheet } from '@/pages/workbench-page/components/task-runtime/task-runtime-detail-sheet'
 import '@/pages/workbench-page/workbench-page.css'
 import { useWorkbenchLiveState } from '@/pages/workbench-page/use-workbench-live-state'
-import { TranslationTaskConfirmDialog } from '@/widgets/translation-task/translation-task-confirm-dialog'
-import { TranslationTaskDetailSheet } from '@/widgets/translation-task/translation-task-detail-sheet'
 
 type WorkbenchPageProps = {
   is_sidebar_collapsed: boolean
@@ -35,7 +35,10 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         }}
       />
       <WorkbenchCommandBar
-        task_runtime={workbench_state.task_runtime}
+        translation_task_runtime={workbench_state.translation_task_runtime}
+        analysis_task_runtime={workbench_state.analysis_task_runtime}
+        active_workbench_task_view={workbench_state.active_workbench_task_view}
+        active_workbench_task_summary={workbench_state.active_workbench_task_summary}
         can_edit_files={workbench_state.can_edit_files}
         can_export_translation={workbench_state.can_export_translation}
         can_close_project={workbench_state.can_close_project}
@@ -52,20 +55,41 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         }}
         on_close={workbench_state.close_dialog}
       />
-      <TranslationTaskConfirmDialog
-        state={workbench_state.task_runtime.task_confirm_state}
-        on_confirm={workbench_state.task_runtime.confirm_task_action}
-        on_close={workbench_state.task_runtime.close_task_action_confirmation}
+      <TaskRuntimeConfirmDialog
+        view_model={workbench_state.translation_task_confirm_dialog}
+        on_confirm={workbench_state.translation_task_runtime.confirm_task_action}
+        on_close={workbench_state.translation_task_runtime.close_task_action_confirmation}
       />
-      <TranslationTaskDetailSheet
-        open={workbench_state.task_runtime.translation_detail_sheet_open}
-        translation_task_metrics={workbench_state.task_runtime.translation_task_metrics}
-        translation_waveform_history={workbench_state.task_runtime.translation_waveform_history}
-        on_close={workbench_state.task_runtime.close_translation_detail_sheet}
-        on_request_stop_confirmation={() => {
-          workbench_state.task_runtime.request_task_action_confirmation('stop-translation')
-        }}
+      <TaskRuntimeConfirmDialog
+        view_model={workbench_state.analysis_task_confirm_dialog}
+        on_confirm={workbench_state.analysis_task_runtime.confirm_analysis_task_action}
+        on_close={workbench_state.analysis_task_runtime.close_analysis_task_action_confirmation}
       />
+      {workbench_state.active_workbench_task_view.task_kind === 'analysis'
+        && workbench_state.active_workbench_task_detail !== null
+        ? (
+            <TaskRuntimeDetailSheet
+              open={workbench_state.analysis_task_runtime.analysis_detail_sheet_open}
+              view_model={workbench_state.active_workbench_task_detail}
+              on_close={workbench_state.analysis_task_runtime.close_analysis_detail_sheet}
+              on_request_stop_confirmation={() => {
+                workbench_state.analysis_task_runtime.request_analysis_task_action_confirmation('stop-analysis')
+              }}
+            />
+          )
+        : workbench_state.active_workbench_task_view.task_kind === 'translation'
+          && workbench_state.active_workbench_task_detail !== null
+          ? (
+            <TaskRuntimeDetailSheet
+              open={workbench_state.translation_task_runtime.translation_detail_sheet_open}
+              view_model={workbench_state.active_workbench_task_detail}
+              on_close={workbench_state.translation_task_runtime.close_translation_detail_sheet}
+              on_request_stop_confirmation={() => {
+                workbench_state.translation_task_runtime.request_task_action_confirmation('stop-translation')
+              }}
+            />
+            )
+          : null}
     </div>
   )
 }

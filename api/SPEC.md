@@ -39,6 +39,9 @@
 | `POST` | `/api/tasks/reset-translation-failed` | `{}` | `{"accepted": true, "task": {...}}` |
 | `POST` | `/api/tasks/start-analysis` | `{"mode": "NEW" \| "CONTINUE" \| "RESET"}` | `{"accepted": true, "task": {...}}` |
 | `POST` | `/api/tasks/stop-analysis` | `{}` | `{"accepted": true, "task": {...}}` |
+| `POST` | `/api/tasks/reset-analysis-all` | `{}` | `{"accepted": true, "task": {...}}` |
+| `POST` | `/api/tasks/reset-analysis-failed` | `{}` | `{"accepted": true, "task": {...}}` |
+| `POST` | `/api/tasks/import-analysis-glossary` | `{}` | `{"accepted": true, "imported_count": 0, "task": {...}}` |
 | `POST` | `/api/tasks/snapshot` | `{}` 或 `{"task_type": "translation" \| "analysis"}` | `{"task": {...}}` |
 
 `task` 快照当前包含以下稳定字段：
@@ -62,6 +65,12 @@
 ```
 
 分析任务在可用时会额外返回 `analysis_candidate_count`。
+
+其中：
+
+- `reset-analysis-all` 会同步清空分析进度与候选缓存，并返回最新分析快照。
+- `reset-analysis-failed` 会同步重置失败 checkpoint，并返回最新分析快照。
+- `import-analysis-glossary` 会在引擎空闲且工程已加载时把当前可导入候选写入术语表，并把 `imported_count` 与最新分析快照一起返回。
 
 ## 5. 工作台接口
 

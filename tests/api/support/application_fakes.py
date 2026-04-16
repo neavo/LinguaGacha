@@ -98,6 +98,8 @@ class FakeTaskDataManager:
     """提供任务快照所需的最小数据桩。"""
 
     def __init__(self) -> None:
+        self.loaded: bool = True
+        self.lg_path: str = "demo/project.lg"
         self.translation_extras: dict[str, int | float] = {
             "line": 0,
             "total_line": 0,
@@ -121,6 +123,18 @@ class FakeTaskDataManager:
             "start_time": 0.0,
         }
         self.analysis_candidate_count: int = 0
+        self.import_analysis_candidates_result: int | None = 0
+        self.translation_reset_items: list[object] = []
+        self.project_status: Base.ProjectStatus = Base.ProjectStatus.NONE
+        self.get_items_for_translation_calls: list[tuple[object, object]] = []
+        self.replace_all_items_calls: list[list[object]] = []
+        self.set_translation_extras_calls: list[dict[str, int | float]] = []
+        self.set_project_status_calls: list[Base.ProjectStatus] = []
+        self.run_project_prefilter_calls: list[tuple[object, str]] = []
+        self.reset_failed_translation_items_sync_calls: int = 0
+        self.clear_analysis_candidates_and_progress_calls: int = 0
+        self.reset_failed_analysis_checkpoints_calls: int = 0
+        self.refresh_analysis_progress_snapshot_cache_calls: int = 0
 
     def get_translation_extras(self) -> dict[str, int | float]:
         return dict(self.translation_extras)
@@ -133,7 +147,76 @@ class FakeTaskDataManager:
             return self.get_analysis_progress_snapshot()
         return self.get_translation_extras()
 
+    def is_loaded(self) -> bool:
+        return self.loaded
+
+    def get_lg_path(self) -> str:
+        return self.lg_path
+
     def get_analysis_candidate_count(self) -> int:
+        return self.analysis_candidate_count
+
+    def get_items_for_translation(
+        self,
+        config: object,
+        mode: object,
+    ) -> list[object]:
+        self.get_items_for_translation_calls.append((config, mode))
+        return list(self.translation_reset_items)
+
+    def replace_all_items(self, items: list[object]) -> list[int]:
+        self.replace_all_items_calls.append(list(items))
+        return list(range(1, len(items) + 1))
+
+    def set_translation_extras(self, extras: dict[str, int | float]) -> None:
+        normalized_extras = dict(extras)
+        self.set_translation_extras_calls.append(normalized_extras)
+        self.translation_extras = normalized_extras
+
+    def set_project_status(self, status: Base.ProjectStatus) -> None:
+        self.set_project_status_calls.append(status)
+        self.project_status = status
+
+    def run_project_prefilter(self, config: object, *, reason: str) -> None:
+        self.run_project_prefilter_calls.append((config, reason))
+
+    def clear_analysis_candidates_and_progress(self) -> None:
+        self.clear_analysis_candidates_and_progress_calls += 1
+        self.analysis_snapshot = {
+            "line": 0,
+            "total_line": 0,
+            "processed_line": 0,
+            "error_line": 0,
+            "total_tokens": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "time": 0.0,
+            "start_time": 0.0,
+        }
+        self.analysis_candidate_count = 0
+
+    def reset_failed_analysis_checkpoints(self) -> int:
+        self.reset_failed_analysis_checkpoints_calls += 1
+        self.analysis_snapshot["error_line"] = 0
+        return 0
+
+    def refresh_analysis_progress_snapshot_cache(self) -> dict[str, int | float]:
+        self.refresh_analysis_progress_snapshot_cache_calls += 1
+        return self.get_analysis_progress_snapshot()
+
+    def reset_failed_translation_items_sync(self) -> dict[str, int | float]:
+        self.reset_failed_translation_items_sync_calls += 1
+        self.translation_extras["error_line"] = 0
+        return dict(self.translation_extras)
+
+    def import_analysis_candidates(
+        self, expected_lg_path: str | None = None
+    ) -> int | None:
+        if expected_lg_path is not None and expected_lg_path != self.lg_path:
+            return None
+        return self.import_analysis_candidates_result
+
+    def sync_importable_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
 
 

@@ -891,39 +891,3 @@
   flex: 1 1 auto;
   justify-content: flex-start;
 }
-
-@media (max-width: 1180px) {
-  .proofreading-page__task-command-bar .command-bar__toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .proofreading-page__task-command-summary,
-  .proofreading-page__task-summary {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .proofreading-page__task-chart-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .proofreading-page__filter-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 900px) {
-  .proofreading-page__dialog-editor-block {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .proofreading-page__dialog-footer-actions--leading {
-    width: 100%;
-  }
-
-  .proofreading-page__task-metrics-grid,
-  .proofreading-page__task-summary-stats-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}

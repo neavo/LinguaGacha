@@ -1,16 +1,16 @@
-export const TRANSLATION_TASK_ACTIVE_STATUSES = [
+export const ANALYSIS_TASK_ACTIVE_STATUSES = [
   'REQUEST',
   'RUN',
-  'TRANSLATING',
+  'ANALYZING',
   'STOPPING',
 ] as const
 
-export type TranslationTaskActionKind =
+export type AnalysisTaskActionKind =
   | 'reset-all'
   | 'reset-failed'
-  | 'stop-translation'
+  | 'stop-analysis'
 
-export type TranslationTaskSnapshot = {
+export type AnalysisTaskSnapshot = {
   task_type: string
   status: string
   busy: boolean
@@ -24,19 +24,21 @@ export type TranslationTaskSnapshot = {
   total_input_tokens: number
   time: number
   start_time: number
+  analysis_candidate_count: number
 }
 
-export type TranslationTaskPayload = {
-  task?: Partial<TranslationTaskSnapshot>
+export type AnalysisTaskPayload = {
+  task?: Partial<AnalysisTaskSnapshot>
+  imported_count?: number
 }
 
-export type TranslationTaskConfirmState = {
-  kind: TranslationTaskActionKind
+export type AnalysisTaskConfirmState = {
+  kind: AnalysisTaskActionKind
   open: boolean
   submitting: boolean
 }
 
-export type TranslationTaskMetrics = {
+export type AnalysisTaskMetrics = {
   active: boolean
   stopping: boolean
   completion_percent: number
@@ -48,11 +50,12 @@ export type TranslationTaskMetrics = {
   input_tokens: number
   output_tokens: number
   request_in_flight_count: number
+  candidate_count: number
 }
 
-export function create_empty_translation_task_snapshot(): TranslationTaskSnapshot {
+export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
   return {
-    task_type: 'translation',
+    task_type: 'analysis',
     status: 'IDLE',
     busy: false,
     request_in_flight_count: 0,
@@ -65,12 +68,13 @@ export function create_empty_translation_task_snapshot(): TranslationTaskSnapsho
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
+    analysis_candidate_count: 0,
   }
 }
 
-export function clone_translation_task_snapshot(
-  snapshot: TranslationTaskSnapshot,
-): TranslationTaskSnapshot {
+export function clone_analysis_task_snapshot(
+  snapshot: AnalysisTaskSnapshot,
+): AnalysisTaskSnapshot {
   return {
     task_type: snapshot.task_type,
     status: snapshot.status,
@@ -85,15 +89,16 @@ export function clone_translation_task_snapshot(
     total_input_tokens: snapshot.total_input_tokens,
     time: snapshot.time,
     start_time: snapshot.start_time,
+    analysis_candidate_count: snapshot.analysis_candidate_count,
   }
 }
 
-export function normalize_translation_task_snapshot_payload(
-  payload: TranslationTaskPayload,
-): TranslationTaskSnapshot {
+export function normalize_analysis_task_snapshot_payload(
+  payload: AnalysisTaskPayload,
+): AnalysisTaskSnapshot {
   const snapshot = payload.task ?? {}
   return {
-    task_type: String(snapshot.task_type ?? 'translation'),
+    task_type: String(snapshot.task_type ?? 'analysis'),
     status: String(snapshot.status ?? 'IDLE'),
     busy: Boolean(snapshot.busy),
     request_in_flight_count: Number(snapshot.request_in_flight_count ?? 0),
@@ -106,17 +111,18 @@ export function normalize_translation_task_snapshot_payload(
     total_input_tokens: Number(snapshot.total_input_tokens ?? 0),
     time: Number(snapshot.time ?? 0),
     start_time: Number(snapshot.start_time ?? 0),
+    analysis_candidate_count: Number(snapshot.analysis_candidate_count ?? 0),
   }
 }
 
-export function is_active_translation_task_status(status: string): boolean {
-  return TRANSLATION_TASK_ACTIVE_STATUSES.includes(
-    status as (typeof TRANSLATION_TASK_ACTIVE_STATUSES)[number],
+export function is_active_analysis_task_status(status: string): boolean {
+  return ANALYSIS_TASK_ACTIVE_STATUSES.includes(
+    status as (typeof ANALYSIS_TASK_ACTIVE_STATUSES)[number],
   )
 }
 
-export function has_translation_task_progress(
-  snapshot: TranslationTaskSnapshot | null,
+export function has_analysis_task_progress(
+  snapshot: AnalysisTaskSnapshot | null,
 ): boolean {
   if (snapshot === null) {
     return false
@@ -127,7 +133,6 @@ export function has_translation_task_progress(
     : snapshot.line
 
   return snapshot.line > 0
-    || snapshot.total_line > 0
     || processed_count > 0
     || snapshot.error_line > 0
     || snapshot.total_output_tokens > 0
@@ -135,29 +140,39 @@ export function has_translation_task_progress(
     || snapshot.total_tokens > 0
 }
 
-export function resolve_translation_task_display_snapshot(args: {
-  current_snapshot: TranslationTaskSnapshot
-  last_snapshot: TranslationTaskSnapshot | null
-}): TranslationTaskSnapshot | null {
-  if (is_active_translation_task_status(args.current_snapshot.status)) {
+export function has_analysis_task_display_state(
+  snapshot: AnalysisTaskSnapshot | null,
+): boolean {
+  if (snapshot === null) {
+    return false
+  }
+
+  return has_analysis_task_progress(snapshot) || snapshot.analysis_candidate_count > 0
+}
+
+export function resolve_analysis_task_display_snapshot(args: {
+  current_snapshot: AnalysisTaskSnapshot
+  last_snapshot: AnalysisTaskSnapshot | null
+}): AnalysisTaskSnapshot | null {
+  if (is_active_analysis_task_status(args.current_snapshot.status)) {
     return args.current_snapshot
   }
 
-  if (has_translation_task_progress(args.last_snapshot)) {
+  if (has_analysis_task_display_state(args.last_snapshot)) {
     return args.last_snapshot
   }
 
-  if (has_translation_task_progress(args.current_snapshot)) {
+  if (has_analysis_task_display_state(args.current_snapshot)) {
     return args.current_snapshot
   }
 
   return null
 }
 
-export function resolve_translation_task_metrics(args: {
-  snapshot: TranslationTaskSnapshot | null
+export function resolve_analysis_task_metrics(args: {
+  snapshot: AnalysisTaskSnapshot | null
   now_seconds: number
-}): TranslationTaskMetrics {
+}): AnalysisTaskMetrics {
   if (args.snapshot === null) {
     return {
       active: false,
@@ -171,10 +186,11 @@ export function resolve_translation_task_metrics(args: {
       input_tokens: 0,
       output_tokens: 0,
       request_in_flight_count: 0,
+      candidate_count: 0,
     }
   }
 
-  const active = is_active_translation_task_status(args.snapshot.status)
+  const active = is_active_analysis_task_status(args.snapshot.status)
   const stopping = args.snapshot.status === 'STOPPING'
   const processed_count = args.snapshot.processed_line > 0
     ? args.snapshot.processed_line
@@ -213,5 +229,6 @@ export function resolve_translation_task_metrics(args: {
     input_tokens,
     output_tokens,
     request_in_flight_count: Math.max(0, args.snapshot.request_in_flight_count),
+    candidate_count: Math.max(0, args.snapshot.analysis_candidate_count),
   }
 }

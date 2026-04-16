@@ -52,6 +52,28 @@ def test_translation_progress_patch_does_not_force_missing_fields_to_zero() -> N
     }
 
 
+def test_analysis_progress_maps_candidate_count_to_task_progress() -> None:
+    # 准备
+    event_bridge = EventBridge()
+
+    # 执行
+    topic, payload = event_bridge.map_event(
+        Base.Event.ANALYSIS_PROGRESS,
+        {
+            "processed_line": 4,
+            "analysis_candidate_count": 7,
+            "request_in_flight_count": 1,
+        },
+    )
+
+    # 断言
+    assert topic == "task.progress_changed"
+    assert payload["task_type"] == "analysis"
+    assert payload["processed_line"] == 4
+    assert payload["analysis_candidate_count"] == 7
+    assert payload["request_in_flight_count"] == 1
+
+
 def test_quality_rule_update_uses_proofreading_rule_impact_single_source(
     monkeypatch,
 ) -> None:

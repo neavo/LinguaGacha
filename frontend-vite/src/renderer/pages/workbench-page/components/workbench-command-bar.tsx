@@ -1,19 +1,29 @@
-import { FileInput, FilePlus2, Radar, SquarePower, type LucideIcon } from 'lucide-react'
+import { FileInput, FilePlus2, SquarePower, type LucideIcon } from 'lucide-react'
 
-import { Button } from '@/shadcn/button'
-import { useI18n, type LocaleKey } from '@/i18n'
+import type { AnalysisTaskRuntime } from '@/app/state/use-analysis-task-runtime'
 import type { TranslationTaskRuntime } from '@/app/state/use-translation-task-runtime'
+import { useI18n, type LocaleKey } from '@/i18n'
+import type { AnalysisTaskActionKind } from '@/lib/analysis-task'
 import type { TranslationTaskActionKind } from '@/lib/translation-task'
+import type {
+  WorkbenchTaskSummaryViewModel,
+  WorkbenchTaskViewState,
+} from '@/pages/workbench-page/types'
+import { AnalysisTaskMenu } from '@/pages/workbench-page/components/analysis-task-menu'
+import { TaskRuntimeSummary } from '@/pages/workbench-page/components/task-runtime/task-runtime-summary'
+import { TranslationTaskMenu } from '@/pages/workbench-page/components/translation-task-menu'
+import { Button } from '@/shadcn/button'
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from '@/widgets/command-bar/command-bar'
-import { TranslationTaskMenu } from '@/widgets/translation-task/translation-task-menu'
-import { TranslationTaskRuntimeSummary } from '@/widgets/translation-task/translation-task-runtime-summary'
 
 type WorkbenchCommandBarProps = {
-  task_runtime: TranslationTaskRuntime
+  translation_task_runtime: TranslationTaskRuntime
+  analysis_task_runtime: AnalysisTaskRuntime
+  active_workbench_task_view: WorkbenchTaskViewState
+  active_workbench_task_summary: WorkbenchTaskSummaryViewModel
   can_edit_files: boolean
   can_export_translation: boolean
   can_close_project: boolean
@@ -32,7 +42,13 @@ type CommandAction = {
 
 export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Element {
   const { t } = useI18n()
-  const active_task_action_kind: TranslationTaskActionKind | null = props.task_runtime.task_confirm_state?.kind ?? null
+  const active_translation_task_action_kind: TranslationTaskActionKind | null = props.translation_task_runtime.task_confirm_state?.kind ?? null
+  const active_analysis_task_action_kind: AnalysisTaskActionKind | null = props.analysis_task_runtime.analysis_confirm_state?.kind ?? null
+  const handle_open_task_detail = props.active_workbench_task_view.task_kind === 'analysis'
+    ? props.analysis_task_runtime.open_analysis_detail_sheet
+    : props.active_workbench_task_view.task_kind === 'translation'
+      ? props.translation_task_runtime.open_translation_detail_sheet
+      : () => {}
   const actions: CommandAction[] = [
     {
       id: 'add-file',
@@ -66,23 +82,25 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         <>
           <CommandBarGroup>
             <TranslationTaskMenu
-              translation_task_display_snapshot={props.task_runtime.translation_task_display_snapshot}
-              translation_task_metrics={props.task_runtime.translation_task_metrics}
-              disabled={props.task_runtime.translation_task_menu_disabled}
-              busy={props.task_runtime.translation_task_menu_busy}
-              active_task_action_kind={active_task_action_kind}
-              on_start_or_continue={props.task_runtime.request_start_or_continue_translation}
-              on_request_confirmation={props.task_runtime.request_task_action_confirmation}
+              translation_task_display_snapshot={props.translation_task_runtime.translation_task_display_snapshot}
+              translation_task_metrics={props.translation_task_runtime.translation_task_metrics}
+              disabled={props.translation_task_runtime.translation_task_menu_disabled}
+              busy={props.translation_task_runtime.translation_task_menu_busy}
+              active_task_action_kind={active_translation_task_action_kind}
+              on_start_or_continue={props.translation_task_runtime.request_start_or_continue_translation}
+              on_request_confirmation={props.translation_task_runtime.request_task_action_confirmation}
             />
-            <Button
-              type="button"
-              size="toolbar"
-              variant="ghost"
-              disabled
-            >
-              <Radar data-icon="inline-start" />
-              {t('proofreading_page.action.analysis_task')}
-            </Button>
+            <AnalysisTaskMenu
+              analysis_task_display_snapshot={props.analysis_task_runtime.analysis_task_display_snapshot}
+              analysis_task_metrics={props.analysis_task_runtime.analysis_task_metrics}
+              disabled={props.analysis_task_runtime.analysis_task_menu_disabled}
+              busy={props.analysis_task_runtime.analysis_task_menu_busy}
+              importing={props.analysis_task_runtime.analysis_importing}
+              active_task_action_kind={active_analysis_task_action_kind}
+              on_start_or_continue={props.analysis_task_runtime.request_start_or_continue_analysis}
+              on_request_confirmation={props.analysis_task_runtime.request_analysis_task_action_confirmation}
+              on_import_glossary={props.analysis_task_runtime.request_import_analysis_glossary}
+            />
           </CommandBarGroup>
           <CommandBarSeparator />
           {actions.map((action, index) => {
@@ -101,15 +119,13 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         </>
       }
       hint={(
-        <TranslationTaskRuntimeSummary
+        <TaskRuntimeSummary
           class_name="workbench-page__task-summary"
-          translation_task_metrics={props.task_runtime.translation_task_metrics}
-          can_open={props.task_runtime.can_open_translation_detail_sheet}
-          on_open={props.task_runtime.open_translation_detail_sheet}
+          view_model={props.active_workbench_task_summary}
+          can_open={props.active_workbench_task_view.can_open_detail}
+          on_open={handle_open_task_detail}
         />
       )}
     />
   )
 }
-
-
