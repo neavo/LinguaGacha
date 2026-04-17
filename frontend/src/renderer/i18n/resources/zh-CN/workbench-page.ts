@@ -33,6 +33,10 @@ export const zh_cn_workbench_page = {
     descending: '按降序排序',
     clear: '清除排序',
   },
+  feedback: {
+    refresh_failed_title: '工作台刷新失败',
+    refresh_failed: '工作台刷新失败',
+  },
   action: {
     add_file: '添加文件',
     delete_file: '删除文件',

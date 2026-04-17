@@ -1,9 +1,8 @@
 @layer components {
   .cn-progress-ring {
     display: inline-flex;
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
+    width: 100%;
+    height: 100%;
     color: var(--primary);
   }
 
@@ -16,7 +15,7 @@
   .cn-progress-ring__track,
   .cn-progress-ring__stroke {
     fill: none;
-    stroke-width: 2.5;
+    stroke-width: 4px;
   }
 
   .cn-progress-ring__track {

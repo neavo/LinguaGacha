@@ -27,6 +27,11 @@ import {
 } from '@/pages/proofreading-page/types'
 
 type UseProofreadingPageStateResult = {
+  cache_status: 'idle' | 'refreshing' | 'ready' | 'error'
+  cache_stale: boolean
+  last_loaded_at: number | null
+  refresh_request_id: number
+  settled_project_path: string
   refresh_error: string | null
   is_refreshing: boolean
   is_mutating: boolean
@@ -367,6 +372,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [applied_filters, set_applied_filters] = useState<ProofreadingFilterOptions | null>(null)
   const [refresh_error, set_refresh_error] = useState<string | null>(null)
   const [is_refreshing, set_is_refreshing] = useState(false)
+  const [cache_status, set_cache_status] = useState<'idle' | 'refreshing' | 'ready' | 'error'>('idle')
+  const [cache_stale, set_cache_stale] = useState(false)
+  const [last_loaded_at, set_last_loaded_at] = useState<number | null>(null)
+  const [refresh_request_id, set_refresh_request_id] = useState(0)
+  const [settled_project_path, set_settled_project_path] = useState('')
   const [is_mutating, set_is_mutating] = useState(false)
   const [search_keyword, set_search_keyword] = useState('')
   const [replace_text, set_replace_text] = useState('')
@@ -415,6 +425,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     // 为什么：工程切换后旧筛选、旧搜索和旧选区都不再可信，直接清空才能避免跨工程串味。
     set_applied_filters(null)
     set_refresh_error(null)
+    set_cache_stale(false)
+    set_last_loaded_at(null)
+    set_refresh_request_id(0)
+    set_settled_project_path('')
     set_search_keyword('')
     set_replace_text('')
     set_search_scope('all')
@@ -436,6 +450,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_full_snapshot(create_empty_proofreading_snapshot())
     set_server_snapshot(create_empty_proofreading_snapshot())
     set_is_refreshing(false)
+    set_cache_status('idle')
     set_is_mutating(false)
   }, [])
 
@@ -524,7 +539,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     const request_id = refresh_request_id_ref.current + 1
     refresh_request_id_ref.current = request_id
+    set_refresh_request_id(request_id)
     set_is_refreshing(true)
+    set_cache_status('refreshing')
 
     try {
       const snapshot_payload = await api_fetch<ProofreadingSnapshotPayload>(
@@ -560,6 +577,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_server_snapshot(next_server_snapshot)
       set_applied_filters(next_applied_filters)
       set_refresh_error(null)
+      set_cache_status('ready')
+      set_cache_stale(false)
+      set_last_loaded_at(Date.now())
+      set_settled_project_path(project_snapshot.path)
     } catch (error) {
       if (request_id !== refresh_request_id_ref.current) {
         return
@@ -567,6 +588,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
       const message = resolve_error_message(error, t('proofreading_page.feedback.refresh_failed'))
       set_refresh_error(message)
+      set_cache_status('error')
+      set_cache_stale(true)
+      set_settled_project_path(project_snapshot.path)
       push_toast('error', message)
     } finally {
       if (request_id === refresh_request_id_ref.current) {
@@ -575,6 +599,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
   }, [
     project_snapshot.loaded,
+    project_snapshot.path,
     clear_snapshot_state,
     clear_transient_state_for_new_project,
     push_toast,
@@ -1018,11 +1043,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     if (!project_snapshot.loaded) {
       clear_transient_state_for_new_project()
       clear_snapshot_state()
+      set_cache_status('idle')
       return
     }
 
     if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
       clear_transient_state_for_new_project()
+      set_cache_status('refreshing')
       void refresh_snapshot({
         preferred_row_id: null,
         reset_filters: true,
@@ -1058,6 +1085,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     if (previous_tick !== proofreading_invalidation_tick) {
+      set_cache_stale(true)
       void refresh_snapshot()
     }
   }, [
@@ -1141,6 +1169,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   return useMemo<UseProofreadingPageStateResult>(() => {
     return {
+      cache_status,
+      cache_stale,
+      last_loaded_at,
+      refresh_request_id,
+      settled_project_path,
       refresh_error,
       is_refreshing,
       is_mutating,
@@ -1183,6 +1216,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       close_pending_mutation,
     }
   }, [
+    cache_status,
+    cache_stale,
+    last_loaded_at,
+    refresh_request_id,
+    settled_project_path,
     refresh_error,
     is_refreshing,
     is_mutating,

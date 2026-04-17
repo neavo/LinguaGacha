@@ -553,56 +553,41 @@ a,
   }
 
   .cn-toast {
-    border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--card) 94%, transparent);
-    box-shadow: 0 14px 34px rgb(15 23 42 / 0.12);
-    backdrop-filter: blur(14px);
-  }
-
-  .cn-toast--info {
-    border-color: color-mix(in srgb, var(--ring) 34%, var(--border));
-  }
-
-  .cn-toast--warning {
-    border-color: color-mix(in srgb, var(--ui-warning) 38%, var(--border));
-  }
-
-  .cn-toast--error {
-    border-color: color-mix(in srgb, var(--ui-failure) 42%, var(--border));
-  }
-
-  .cn-toast--success {
-    border-color: color-mix(in srgb, var(--ui-success) 42%, var(--border));
+    border: 1px solid var(--normal-border);
+    border-radius: var(--border-radius);
+    background: var(--normal-bg);
+    color: var(--normal-text);
+    box-shadow: 0px 4px 12px rgb(0 0 0 / 0.1);
   }
 
   .cn-toast__content {
-    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
 
   .cn-toast__icon {
-    color: var(--foreground);
+    color: inherit;
+    --toast-icon-margin-start: 0px;
+    --toast-icon-margin-end: 0px;
   }
 
   .cn-toast__title {
-    display: block;
-    overflow: hidden;
-    color: var(--foreground);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 13.76px;
-    line-height: 1.45;
+    color: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
   }
 
   .cn-toast__description {
-    display: none;
-    color: var(--muted-foreground);
-    font-size: 12.48px;
-    line-height: 1.45;
+    color: #3f3f3f;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.4;
   }
 
   .cn-toast__close {
-    color: var(--muted-foreground);
+    color: inherit;
   }
 
   .cn-toast--info .cn-toast__icon {
@@ -622,13 +607,25 @@ a,
   }
 
   .cn-toast--progress {
-    padding-inline-end: 16px;
     --toast-icon-margin-start: 0px;
-    --toast-icon-margin-end: 16px;
+    --toast-icon-margin-end: 0px;
   }
 
-  .cn-toast--progress .cn-toast__icon {
-    width: 28px;
-    height: 28px;
+  .cn-progress-toast-modal-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: rgb(0 0 0 / 0.1);
+    backdrop-filter: blur(4px);
+    cursor: wait;
+    pointer-events: auto;
+  }
+
+  .cn-toast--progress-modal {
+    z-index: 9999;
+  }
+
+  [data-sonner-toaster][data-sonner-theme='dark'] .cn-toast__description {
+    color: hsl(0 0% 91%);
   }
 }

@@ -145,7 +145,7 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
   const { push_toast } = useDesktopToast()
   const {
     project_snapshot,
-    proofreading_invalidation_tick,
+    workbench_invalidation_tick,
     set_task_snapshot,
     task_snapshot,
   } = useDesktopRuntime()
@@ -166,7 +166,7 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
   const previous_project_loaded_ref = useRef(false)
   const previous_project_path_ref = useRef('')
   const previous_task_busy_ref = useRef(task_snapshot.busy)
-  const previous_invalidation_tick_ref = useRef(proofreading_invalidation_tick)
+  const previous_invalidation_tick_ref = useRef(workbench_invalidation_tick)
   const previous_analysis_status_ref = useRef(create_empty_analysis_task_snapshot().status)
   const observed_analysis_waveform_snapshot_ref = useRef<AnalysisTaskSnapshot | null>(null)
   const observed_analysis_waveform_time_ref = useRef<number | null>(null)
@@ -546,18 +546,18 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
 
   useEffect(() => {
     const previous_tick = previous_invalidation_tick_ref.current
-    previous_invalidation_tick_ref.current = proofreading_invalidation_tick
+    previous_invalidation_tick_ref.current = workbench_invalidation_tick
 
     if (!project_snapshot.loaded) {
       return
     }
 
-    if (previous_tick !== proofreading_invalidation_tick) {
+    if (previous_tick !== workbench_invalidation_tick) {
       void refresh_analysis_task_snapshot()
     }
   }, [
     project_snapshot.loaded,
-    proofreading_invalidation_tick,
+    workbench_invalidation_tick,
     refresh_analysis_task_snapshot,
   ])
 
