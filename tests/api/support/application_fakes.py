@@ -310,7 +310,7 @@ class FakeSettingsConfig:
         self.check_similarity: bool = True
         self.write_translated_name_fields_to_file: bool = True
         self.auto_process_prefix_suffix_preserved_text: bool = True
-        self.mtool_optimizer_enable: bool = False
+        self.mtool_optimizer_enable: bool = True
         self.force_thinking_enable: bool = True
         self.glossary_default_preset: str = ""
         self.text_preserve_default_preset: str = ""
@@ -326,7 +326,8 @@ class FakeSettingsConfig:
         self.load_calls += 1
         return self
 
-    def save(self) -> "FakeSettingsConfig":
+    def save(self, *, raise_on_error: bool = False) -> "FakeSettingsConfig":
+        del raise_on_error
         self.save_calls += 1
         return self
 

@@ -52,6 +52,28 @@ def test_translation_progress_patch_does_not_force_missing_fields_to_zero() -> N
     }
 
 
+def test_config_updated_maps_settings_snapshot_when_available() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.CONFIG_UPDATED,
+        {
+            "keys": ["app_language"],
+            "settings": {
+                "app_language": "EN",
+                "recent_projects": [],
+            },
+        },
+    )
+
+    assert topic == "settings.changed"
+    assert payload == {
+        "keys": ["app_language"],
+        "settings": {
+            "app_language": "EN",
+            "recent_projects": [],
+        },
+    }
+
+
 def test_analysis_progress_maps_candidate_count_to_task_progress() -> None:
     # 准备
     event_bridge = EventBridge()

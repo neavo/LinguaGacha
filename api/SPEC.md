@@ -388,7 +388,7 @@
 
 ```json
 {
-  "mtool_optimizer_enabled": false,
+  "mtool_optimizer_enabled": true,
   "force_thinking_enabled": true
 }
 ```
@@ -520,6 +520,22 @@
   "timestamp": "2026-03-24T12:34:56+08:00",
   "payload": {
     "task_type": "translation"
+  }
+}
+```
+
+`settings.changed` 当前稳定 payload 为：
+
+```json
+{
+  "event_id": "evt_4",
+  "topic": "settings.changed",
+  "timestamp": "2026-03-24T12:35:30+08:00",
+  "payload": {
+    "keys": ["app_language"],
+    "settings": {
+      "app_language": "EN"
+    }
   }
 }
 ```

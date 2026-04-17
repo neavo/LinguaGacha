@@ -60,7 +60,7 @@ class Config:
 
     # LaboratoryPage
     force_thinking_enable: bool = True
-    mtool_optimizer_enable: bool = False
+    mtool_optimizer_enable: bool = True
 
     # GlossaryPage
     glossary_default_preset: str = ""
@@ -180,7 +180,12 @@ class Config:
 
         return self
 
-    def save(self, path: str | None = None) -> Self:
+    def save(
+        self,
+        path: str | None = None,
+        *,
+        raise_on_error: bool = False,
+    ) -> Self:
         path = __class__.resolve_path(path)
 
         # 按分类排序: 预设 - Google - OpenAI - Claude
@@ -198,6 +203,8 @@ class Config:
                     writer.write(JSONTool.dumps(dataclasses.asdict(self), indent=4))
             except Exception as e:
                 LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
+                if raise_on_error:
+                    raise
 
         return self
 

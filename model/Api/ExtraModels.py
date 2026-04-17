@@ -261,7 +261,7 @@ class NameFieldTranslateResult:
 class LaboratorySnapshot:
     """把实验室页开关状态对象化，避免 UI 继续直接读取配置。"""
 
-    mtool_optimizer_enabled: bool = False
+    mtool_optimizer_enabled: bool = True
     force_thinking_enabled: bool = False
 
     @classmethod
@@ -276,7 +276,7 @@ class LaboratorySnapshot:
 
         return cls(
             mtool_optimizer_enabled=bool(
-                normalized.get("mtool_optimizer_enabled", False)
+                normalized.get("mtool_optimizer_enabled", True)
             ),
             force_thinking_enabled=bool(
                 normalized.get("force_thinking_enabled", False)

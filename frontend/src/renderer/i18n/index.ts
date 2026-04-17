@@ -6,14 +6,13 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from 'react'
 
+import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { en_us_messages, zh_cn_messages } from '@/i18n/messages'
-import { LOCALE_VALUES, type Locale, type LocaleMessageSchema } from '@/i18n/types'
+import type { Locale, LocaleMessageSchema } from '@/i18n/types'
 
-const LOCALE_STORAGE_KEY = 'lg-locale'
 const DEFAULT_LOCALE: Locale = 'zh-CN'
 
 type JoinPath<prefix extends string, key extends string> = prefix extends '' ? key : `${prefix}.${key}`
@@ -33,52 +32,19 @@ export type RichTextComponentMap = Partial<Record<string, (children: ReactNode) 
 
 type LocaleContextValue = {
   locale: Locale
-  set_locale: (locale: Locale) => void
-  toggle_locale: () => void
   t: (key: LocaleKey) => string
 }
 
-const LOCALE_SET: ReadonlySet<Locale> = new Set(LOCALE_VALUES)
 const LocaleContext = createContext<LocaleContextValue | null>(null)
 const ELEMENT_NODE_TYPE = 1
 const TEXT_NODE_TYPE = 3
 
-// 统一在入口层兜底非法 locale，避免资源读取分散处理分支。
-function resolve_locale(candidate: string | null): Locale {
-  if (candidate !== null && LOCALE_SET.has(candidate as Locale)) {
-    return candidate as Locale
-  } else {
-    return DEFAULT_LOCALE
+function resolve_locale_from_app_language(app_language: string): Locale {
+  if (app_language === 'EN') {
+    return 'en-US'
   }
-}
 
-function read_stored_locale(): Locale {
-  try {
-    const stored_locale = window.localStorage.getItem(LOCALE_STORAGE_KEY)
-    if (stored_locale !== null) {
-      return resolve_locale(stored_locale)
-    } else {
-      return read_browser_locale()
-    }
-  } catch {
-    return DEFAULT_LOCALE
-  }
-}
-
-function read_browser_locale(): Locale {
-  if (typeof window.navigator.language === 'string') {
-    return resolve_locale(window.navigator.language)
-  } else {
-    return DEFAULT_LOCALE
-  }
-}
-
-function write_stored_locale(locale: Locale): void {
-  try {
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
-  } catch {
-    // 本地存储不可用时保持内存态即可，界面不需要为此中断。
-  }
+  return DEFAULT_LOCALE
 }
 
 function flatten_message_map(
@@ -206,27 +172,16 @@ const MESSAGE_MAP_BY_LOCALE: Readonly<Record<Locale, ReadonlyMap<LocaleKey, stri
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }): ReactNode {
-  const [locale, set_locale_state] = useState<Locale>(() => read_stored_locale())
+  const { settings_snapshot } = useDesktopRuntime()
+  const locale = useMemo<Locale>(() => {
+    return resolve_locale_from_app_language(settings_snapshot.app_language)
+  }, [settings_snapshot.app_language])
   const message_map = MESSAGE_MAP_BY_LOCALE[locale]
-
-  useEffect(() => {
-    write_stored_locale(locale)
-  }, [locale])
 
   useEffect(() => {
     document.documentElement.lang = locale
     document.documentElement.setAttribute('data-locale', locale)
   }, [locale])
-
-  const toggle_locale = useCallback((): void => {
-    set_locale_state((previous_locale) => {
-      if (previous_locale === 'zh-CN') {
-        return 'en-US'
-      } else {
-        return 'zh-CN'
-      }
-    })
-  }, [])
 
   const t = useCallback((key: LocaleKey): string => {
     return read_message_value(message_map, key)
@@ -237,11 +192,9 @@ export function LocaleProvider({ children }: { children: ReactNode }): ReactNode
   const context_value = useMemo<LocaleContextValue>(() => {
     return {
       locale,
-      set_locale: set_locale_state,
-      toggle_locale,
       t,
     }
-  }, [locale, t, toggle_locale])
+  }, [locale, t])
 
   return createElement(LocaleContext.Provider, { value: context_value }, children)
 }

@@ -7,24 +7,24 @@ export const en_us_laboratory_page = {
     mtool_optimizer_enable: {
       title: 'MTool Optimizer',
       description: (
-        'Can reduce translation time and Token usage by up to 40% when translating MTool text'
+        'When translating <emphasis>MTool</emphasis> text, reduce translation time and token usage by up to 40%, enabled by default'
         + '\n'
-        + 'May lead to issues like <emphasis>residual original text</emphasis> or <emphasis>incoherent sentences</emphasis>. Please <emphasis>decide for yourself</emphasis> whether to enable this feature, and it should <emphasis>only be enabled when translating MTool text</emphasis>'
+        + '◈ It may cause issues such as <emphasis>leftover source text</emphasis> or <emphasis>awkward sentence flow</emphasis>'
       ),
-      help_label: 'Open MTool Optimizer documentation',
+      help_label: 'View the MTool Optimizer guide',
     },
     force_thinking_enable: {
       title: 'Force Thinking',
       description: (
-        'When enabled, non-thinking models will also perform thinking before translation, enabled by default, and does not support SakuraLLM'
+        'When enabled, non-reasoning models will also think before translating, enabled by default'
         + '\n'
-        + '◈ Trade a slight increase in Token consumption for improved translation quality'
+        + '◈ Trades a slight increase in token usage for better translation quality'
         + '\n'
-        + '◈ Not recommended for reasoning models, as redundant reasoning provides little benefit'
+        + '◈ When it works, you can see the model reasoning output in the translation logs'
         + '\n'
-        + '◈ When functioning normally, model reasoning output will be visible in the translation logs'
+        + '◈ <emphasis>This feature does not support SakuraLLM models</emphasis>'
       ),
-      help_label: 'Open Force Thinking documentation',
+      help_label: 'View the Force Thinking guide',
     },
   },
   feedback: {
