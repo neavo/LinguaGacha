@@ -12,9 +12,6 @@
   gap: var(--ui-list-gap-dense);
 }
 
-.basic-settings-page__select {
-}
-
 .basic-settings-page__number-field {
   display: flex;
   align-items: center;

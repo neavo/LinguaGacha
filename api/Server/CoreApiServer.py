@@ -56,6 +56,24 @@ class CoreApiServer:
         class RequestHandler(BaseHTTPRequestHandler):
             """闭包处理器，保证请求仍由 CoreApiServer 统一分发。"""
 
+            def handle(self) -> None:
+                """浏览器刷新时的 socket 断连属于预期收尾，不应刷出 traceback。"""
+
+                try:
+                    super().handle()
+                except OSError as e:
+                    if not core_api_server.is_expected_client_disconnect_error(e):
+                        raise
+
+            def finish(self) -> None:
+                """收尾阶段若连接已被前端主动断开，也按正常关闭处理。"""
+
+                try:
+                    super().finish()
+                except OSError as e:
+                    if not core_api_server.is_expected_client_disconnect_error(e):
+                        raise
+
             def do_GET(self) -> None:  # noqa: N802
                 core_api_server.handle_http_request(self, "GET")
 
