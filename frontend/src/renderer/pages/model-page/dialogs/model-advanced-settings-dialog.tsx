@@ -243,7 +243,6 @@ export function ModelAdvancedSettingsDialog(props: ModelAdvancedSettingsDialogPr
                           ? (
                               <div className="model-page__advanced-number-field">
                                 <Input
-                                  className="model-page__advanced-number-input"
                                   type="number"
                                   min={field_config.min}
                                   max={field_config.max}

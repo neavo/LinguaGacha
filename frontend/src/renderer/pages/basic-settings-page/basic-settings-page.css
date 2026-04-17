@@ -16,7 +16,3 @@
   display: flex;
   align-items: center;
 }
-
-.basic-settings-page__number-input {
-  text-align: right;
-}

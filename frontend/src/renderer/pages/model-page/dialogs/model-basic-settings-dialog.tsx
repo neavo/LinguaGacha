@@ -180,6 +180,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                       />
 
                       <SettingCardRow
+                        className="model-page__setting-card-row--auto-action"
                         title={t('model_page.fields.model_id.title')}
                         description={t('model_page.fields.model_id.description').replace('{MODEL}', model.model_id)}
                         action={(

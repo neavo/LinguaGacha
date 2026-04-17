@@ -179,7 +179,6 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
           action={(
             <div className="expert-settings-page__number-field">
               <Input
-                className="expert-settings-page__number-input"
                 type="number"
                 min={PRECEDING_LINES_THRESHOLD_MIN}
                 max={PRECEDING_LINES_THRESHOLD_MAX}
