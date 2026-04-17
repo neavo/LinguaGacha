@@ -1,79 +1,94 @@
-# LinguaGacha 仓库结构说明
+# LinguaGacha 仓库结构
 
 ## 一句话总览
-LinguaGacha 以 `app.py -> base / frontend / module` 作为主应用分层，同时维护 `frontend-vite/` Electron + React 子工程与 `api/` 本地 Core API 契约：`app.py` 负责启动与退出清理，`base/` 提供事件、日志和运行时基础设施，`frontend/` 组织 Qt 页面与导航，`module/` 承担核心业务，`model/` 与 `widget/` 分别承载数据对象和通用控件。
-
-## 推荐阅读路径
-1. 从 `app.py` 进入，确认 GUI / CLI 分流、启动顺序和退出清理。
-2. 再读 `base/Base.py`、`base/EventManager.py`、`base/LogManager.py`，理解事件总线和基础能力。
-3. 然后看 `frontend/AppFluentWindow.py`，把页面导航、工程加载态和全局交互串起来。
-4. 如果任务落在 Electron / React 子工程，转去看 [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md)。
-5. 数据与工程状态相关问题继续读 `module/Data/DataManager.py`。
-6. 任务调度与请求生命周期问题继续读 `module/Engine/Engine.py`。
-7. 文件格式支持、导入导出问题继续读 `module/File/FileManager.py`。
-8. HTTP / SSE 契约与 UI / Core 边界问题继续读 [`api/SPEC.md`](../api/SPEC.md)。
-
-## 仓库结构
-| 路径 | 职责 |
-| --- | --- |
-| `app.py` | 应用入口、启动顺序、CLI / GUI 分流、退出清理 |
-| `api/` | 本地 Core API、HTTP / SSE 契约与 UI / Core 边界 |
-| `base/` | 事件、日志、路径、版本、命令行等基础设施 |
-| `frontend/` | Qt / QFluentWidgets 页面、导航和界面交互 |
-| `frontend-vite/` | Electron + React 前端子工程、桌面桥接与渲染层设计系统 |
-| `module/` | 数据层、任务引擎、文件层、本地化与其他业务模块 |
-| `model/` | `Item`、`Project` 等核心数据对象 |
-| `widget/` | 可复用界面组件 |
-| `resource/` | 图标、提示词模板、预设与更新脚本资源 |
-| `buildtools/` | 构建流程与辅助脚本 |
-| `tests/` | 自动化测试 |
+LinguaGacha 当前由无头 Python Core 与 Electron 前端组成：`app.py` 负责运行时入口、CLI 分流与本地 Core API 启停，`api/` 暴露 HTTP / SSE 契约，`frontend/` 承载桌面前端，`module/` 承担核心业务实现。
 
 ## 核心模块关系
 ```mermaid
 flowchart TD
-    A["app.py"] --> B["base/"]
-    A --> C["frontend/AppFluentWindow.py"]
-    A --> D["module/Config.py"]
-    A --> E["module/Data/DataManager.py"]
-    A --> F["module/Engine/Engine.py"]
-    C --> E
-    C --> D
-    E --> G["module/Data/*"]
-    F --> H["module/Engine/Analysis/*"]
-    F --> I["module/Engine/Translation/*"]
-    G --> J["module/File/FileManager.py"]
-    C --> K["module/Localizer/*"]
+    A["frontend"] --> B["api/"]
+    B --> C["app.py"]
+    C --> D["base/"]
+    C --> E["module/"]
+    E --> F["model/"]
 ```
 
-说明：`frontend-vite/` 与 `api/` 是独立子工程 / 契约层，这张图只展开当前 PySide 主应用调用链；相关局部结构请分别阅读 [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md) 与 [`api/SPEC.md`](../api/SPEC.md)。
-
-## 模块入口速查
-| 关注问题 | 优先阅读 |
+## 仓库结构
+| 路径 | 职责 |
 | --- | --- |
-| 应用怎么启动、何时清理工程状态 | `app.py` |
-| 事件怎么发、状态怎么共享 | `base/Base.py`、`base/EventManager.py` |
-| 日志、异常、版本与路径 | `base/LogManager.py`、`base/VersionManager.py`、`base/BasePath.py` |
-| 主窗口导航与页面跳转 | `frontend/AppFluentWindow.py` |
-| Electron / React 子工程如何分层与落位 | [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md) |
-| 工程加载、规则、分析、工作台数据如何汇总 | `module/Data/DataManager.py` |
-| 任务引擎如何初始化与判断忙碌态 | `module/Engine/Engine.py` |
-| 文件导入、资产解析、导出格式支持 | `module/File/FileManager.py` |
-| 本地 HTTP / SSE 契约与 UI / Core 边界 | [`api/SPEC.md`](../api/SPEC.md) |
-| 用户可见文本如何统一管理 | `module/Localizer/` |
+| `app.py` | Python Core 入口、CLI 分流、Core API 启停与退出清理 |
+| `api/` | 本地 Core API、HTTP / SSE 契约与前后端边界 |
+| `base/` | 事件、日志、路径、版本、命令行等基础设施 |
+| `frontend/` | Electron + React 前端子工程、桌面桥接与渲染层实现 |
+| `module/` | 数据层、任务引擎、文件处理、本地化与其他业务模块 |
+| `model/` | 核心数据对象与 API 响应模型 |
+| `resource/` | 预设、模板、图标与运行时资源 |
+| `buildtools/` | 构建流程与辅助脚本 |
+| `tests/` | 自动化测试 |
 
-## 模块局部说明入口
-- [`frontend-vite/SPEC.md`](../frontend-vite/SPEC.md)：Electron + React 子工程的目录结构、分层边界与改动入口。
-- [`api/SPEC.md`](../api/SPEC.md)：本地 Core API 的 HTTP / SSE 契约与 UI / Core 边界。
-- [`module/Data/SPEC.md`](../module/Data/SPEC.md)：数据层的公开入口、内部拆分与主流程说明。
-- `module/Engine/SPEC.md`：当前尚未补齐，后续需要时新增并从本文链接。
-- `module/File/SPEC.md`：当前尚未补齐，后续需要时新增并从本文链接。
+## 文档入口
+```mermaid
+flowchart TD
+    A["AGENTS.md"] --> B["docs/ARCHITECTURE.md"]
+    B --> C["frontend/SPEC.md"]
+    B --> D["api/SPEC.md"]
+    B --> E["module/Data/SPEC.md"]
+    C --> F["frontend/src/renderer/SPEC.md"]
+    C --> D
+```
 
-## 设计文档入口
-- [`docs/DESIGN.md`](./DESIGN.md)：LinguaGacha 的全局设计语言、组件基线与 UI 约束。
-- `docs/design/*.md`：后续按功能或方案沉淀单次设计决策与取舍记录。
+规则：
+- `AGENTS.md` 只给出规则和仓库级入口。
+- 本文负责分发现有模块文档，并作为文档索引、阅读路径与同步矩阵的唯一权威来源。
+- 模块 `SPEC.md` 只继续链接更下游的局部说明或真实依赖方向上的文档，不反向回链本文。
+
+## 推荐阅读路径
+| 场景 | 阅读顺序 |
+| --- | --- |
+| 仓库整体结构 | `docs/ARCHITECTURE.md` -> `app.py` -> `base/*` |
+| Electron / React 前端 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) |
+| HTTP / SSE 契约 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> `api/Application/*` / `api/Server/*` |
+| 工程加载、规则、分析、工作台数据 | `docs/ARCHITECTURE.md` -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) -> `module/Data/DataManager.py` |
+| 任务调度与请求生命周期 | `docs/ARCHITECTURE.md` -> `module/Engine/Engine.py` -> `module/Engine/*` |
+| 文件导入、资产解析、导出格式 | `docs/ARCHITECTURE.md` -> `module/File/FileManager.py` -> `module/File/*` |
+
+## 模块文档索引
+| 文档 | 对应目录 | 说明 |
+| --- | --- | --- |
+| [`frontend/SPEC.md`](../frontend/SPEC.md) | `frontend/` | Electron 子工程根目录、主进程、预加载、共享契约与改动入口 |
+| [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) | `frontend/src/renderer/` | 渲染层页面结构、状态组织、组件落位与样式边界 |
+| [`api/SPEC.md`](../api/SPEC.md) | `api/` | 本地 Core API 的 HTTP / SSE 契约、Python 侧对象化客户端边界与前端运行时接入规则 |
+| [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `module/Data/` | 数据层公开入口、内部拆分与主流程 |
+
+## 文档放置规则
+| 文档类型 | 位置 | 用途 |
+| --- | --- | --- |
+| `AGENTS.md` | 仓库根目录 | 规则、约束、仓库级入口 |
+| `docs/ARCHITECTURE.md` | `docs/` | 仓库结构总览与模块文档索引 |
+| `*/SPEC.md` | 模块目录内 | 当前模块的结构、边界、主流程和改动建议 |
+| `docs/design/*.md` | `docs/design/` | 设计方案与取舍记录 |
+
+## 更新规则
+| 变更类型 | 必须同步的文档 |
+| --- | --- |
+| 仓库结构、阅读路径或文档引用规则变化 | `docs/ARCHITECTURE.md` |
+| 前端子工程入口、桥接边界或阅读顺序变化 | `frontend/SPEC.md` |
+| 渲染层页面结构、状态组织或样式边界变化 | `frontend/src/renderer/SPEC.md` |
+| API 契约、Python 侧客户端边界或前端接入规则变化 | `api/SPEC.md` |
+| 数据层职责、主流程或公开入口变化 | `module/Data/SPEC.md` |
+| 设计方案与取舍记录 | `docs/design/*.md` |
+
+## 新增文档时怎么判断位置
+```mermaid
+flowchart TD
+    A["准备新增文档"] --> B{"描述当前模块<br/>还是某次方案"}
+    B -->|当前模块| C["放到对应目录/SPEC.md"]
+    B -->|设计方案| D["放到 docs/design/"]
+    C --> E["更新 docs/ARCHITECTURE.md 索引"]
+    D --> E
+```
 
 ## 维护约束
-- 仓库级文档负责导航与总览，不复制模块 `SPEC.md` 的正文。
-- 模块职责、边界或阅读顺序发生变化时，优先更新对应模块的 `SPEC.md`，再检查本文链接与概览是否需要同步。
-- 新增模块级说明时，先把 `SPEC.md` 放到模块目录内，再回到本文补入口。
-
+- 本文只写仓库级总览和真实存在的文档入口，不为不存在的局部说明预留占位条目。
+- 模块文档只写当前代码与资源现状，不记录对开发没有帮助的历史叙述。
+- 代码改动如果会让文档失真，应在同一任务内同步修正文档。

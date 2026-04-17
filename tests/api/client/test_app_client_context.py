@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from api.Client.ApiClient import ApiClient
 from api.Client.ApiStateStore import ApiStateStore
 from api.Client.AppClientContext import AppClientContext
@@ -63,44 +61,6 @@ def test_app_client_context_groups_extra_api_client() -> None:
     # 断言
     assert isinstance(grouped_extra_api_client, ExtraApiClient)
     assert grouped_extra_api_client is extra_api_client
-
-
-def test_ui_bootstrap_imports_required_api_clients() -> None:
-    # 准备
-    root_dir = Path(__file__).resolve().parents[3]
-    app_content = (root_dir / "app.py").read_text(encoding="utf-8")
-    window_content = (root_dir / "frontend" / "AppFluentWindow.py").read_text(
-        encoding="utf-8"
-    )
-
-    # 执行
-    proofreading_page_uses_client_context = (
-        "self.proofreading_api_client = app_client_context.proofreading_api_client"
-        in window_content
-    )
-
-    # 断言
-    assert "from api.Client.AppClientContext import AppClientContext" in app_content
-    assert "from api.Client.AppClientContext import AppClientContext" in window_content
-    assert "from api.Client.ExtraApiClient import ExtraApiClient" in app_content
-    assert "from api.Client.ModelApiClient import ModelApiClient" in app_content
-    assert "from api.Application.AppContext import AppContext" not in app_content
-    assert "from api.Application.AppContext import AppContext" not in window_content
-    assert "quality_rule_api_client=QualityRuleApiClient(api_client)" in app_content
-    assert "proofreading_api_client=ProofreadingApiClient(api_client)" in app_content
-    assert "extra_api_client=ExtraApiClient(api_client)" in app_content
-    assert "model_api_client=ModelApiClient(api_client)" in app_content
-    assert (
-        "self.quality_rule_api_client = app_client_context.quality_rule_api_client"
-        in window_content
-    )
-    assert (
-        "self.extra_api_client = app_client_context.extra_api_client" in window_content
-    )
-    assert (
-        "self.model_api_client = app_client_context.model_api_client" in window_content
-    )
-    assert proofreading_page_uses_client_context
 
 
 def test_app_client_context_will_expose_extra_api_client() -> None:

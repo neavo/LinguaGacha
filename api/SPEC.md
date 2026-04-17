@@ -1,14 +1,24 @@
-# API SPEC
+# `api/` 规格
 
 ## 1. 范围
 
-本文档描述第一阶段已经落地的本地 Core API 契约、第二阶段 `Quality` / `Proofreading` 分离后已经稳定的 HTTP / SSE / UI 边界，以及第三阶段 `Extra` UI/Core 分离完成后的最终收口契约。
+本文档描述当前本地 Core API 的 HTTP / SSE 契约、客户端对象边界，以及 Electron 前端接入 Core 的调用规则。
 
-- 运行方式：UI 模式下由 `app.py` 启动 `ServerBootstrap`，在同一进程内开启本地 HTTP 服务线程
-- CLI 模式：不启动本地 API 服务
+- 运行方式：默认由 `app.py` 以无头 Core 方式启动 `ServerBootstrap`，在同一进程内开启本地 HTTP 服务线程
+- CLI 模式：执行 `CLIManager` 命令时不启动本地 API 服务
 - 调用风格：除事件流与健康检查外，统一使用 `POST + JSON body`
 - 统一响应：`{"ok": true, "data": {...}}`
-- 客户端边界：`api.Client` 在收到 HTTP JSON 后，会立即反序列化为 `model/Api/` 下的冻结对象；`ApiStateStore` 只缓存对象，不再缓存 `dict`
+- 客户端边界：`api/Client/` 与 `ApiStateStore` 负责 Python 侧的对象化客户端与状态仓库；Electron 渲染层运行时统一经由 `frontend/src/renderer/app/desktop-api.ts`、SSE 事件流与桌面桥接能力访问 Core
+
+### 1.1 目录入口
+
+| 目录 | 职责 |
+| --- | --- |
+| `api/Server/` | 本地 HTTP 服务、路由注册、端口选择与服务生命周期 |
+| `api/Application/` | 面向路由的用例层，把 Core 状态整理成稳定响应载荷 |
+| `api/Contract/` | HTTP 响应壳、错误对象、SSE 事件与各领域 payload |
+| `api/Client/` | Python 侧对象化客户端、状态仓库与契约消费封装，不等同于 TS 渲染层运行时入口 |
+| `api/Bridge/` | Core 事件到 SSE topic 的桥接与影响面判断 |
 
 ## 2. 基础接口
 
@@ -119,7 +129,7 @@
 | `POST` | `/api/settings/recent-projects/add` | `{"path": "...", "name": "..."}` | `{"settings": {...}}` |
 | `POST` | `/api/settings/recent-projects/remove` | `{"path": "..."}` | `{"settings": {...}}` |
 
-`settings` 快照当前覆盖第一阶段页面需要的字段：
+`settings` 快照当前覆盖以下字段：
 
 - `theme`
 - `app_language`
@@ -160,23 +170,13 @@
 | `POST` | `/api/models/list-available` | `{"model_id": "..."}` | `{"models": ["gpt-5.4", "gpt-5.4-mini"]}` |
 | `POST` | `/api/models/test` | `{"model_id": "..."}` | `{"success": true, "result_msg": "...", "total_count": 1, "success_count": 1, "failure_count": 0, "total_response_time_ms": 1234, "key_results": [...]}` |
 
-`/api/models/reorder` 当前统一接受 `ordered_model_ids` 作为 `frontend-vite` 的批量重排序载荷，并返回最新 `snapshot`。
+`/api/models/reorder` 当前统一接受 `ordered_model_ids` 作为模型页的批量重排序载荷，并返回最新 `snapshot`。
 
-双前端并行期仍临时兼容旧载荷：
-
-```json
-{
-  "model_id": "preset-2",
-  "operation": "MOVE_UP"
-}
-```
-
-兼容约束如下：
+约束如下：
 
 - `ordered_model_ids` 必须完整覆盖某一个模型分组，且不允许跨组混排
-- 旧 `operation` 载荷只作为迁移期兼容入口，新的 React 模型页统一使用 `ordered_model_ids`
 - `list-available` 会在 Core 侧根据模型配置查询供应商模型列表，渲染层只消费字符串数组
-- `test` 会在 Core 侧执行模型测试，并返回稳定的聚合结果，渲染层不再直接依赖旧事件链路
+- `test` 会在 Core 侧执行模型测试，并返回稳定的聚合结果
 
 ## 7. Quality 接口
 
@@ -374,7 +374,7 @@
 
 ## 9. Extra 接口
 
-第三阶段 `Extra` 当前覆盖工具箱、实验室、繁简转换与姓名字段提取能力；这些页面只通过 `ExtraApiClient`、`ApiStateStore` 与 SSE topic 访问 Core，不再直连配置、数据管理器或引擎单例。
+`Extra` 当前覆盖工具箱、实验室、繁简转换与姓名字段提取能力。Python 侧对象化契约与状态合并统一通过 `ExtraApiClient`、`ApiStateStore` 与 SSE topic 组织；Electron 渲染层运行时仍通过 `desktop-api.ts` 与事件流访问 Core。
 
 ### 9.1 工具箱与实验室
 
@@ -420,7 +420,7 @@
 }
 ```
 
-繁简转换启动后，后续进度与完成态统一只通过 `extra.ts_conversion_progress` 与 `extra.ts_conversion_finished` 推送；客户端读取口径固定为 `ApiStateStore.get_extra_task_state("extra_ts_conversion")`。
+繁简转换启动后，后续进度与完成态统一只通过 `extra.ts_conversion_progress` 与 `extra.ts_conversion_finished` 推送；Python 侧状态仓库读取口径固定为 `ApiStateStore.get_extra_task_state("extra_ts_conversion")`。
 
 ### 9.3 姓名字段
 
@@ -453,7 +453,7 @@
 
 ## 10. 错误码与冲突约定
 
-第二阶段 `Quality` / `Proofreading` 写入命令统一保留 `expected_revision` 字段，当前文档锁定以下错误码语义，避免后续实现与页面提示发生漂移：
+`Quality` / `Proofreading` 写入命令统一保留 `expected_revision` 字段，当前文档锁定以下错误码语义：
 
 | 错误码 | 说明 |
 | --- | --- |
@@ -470,7 +470,7 @@
 
 都使用 `expected_revision` 作为并发写入保护字段。
 
-第三阶段 `Extra` 不新增新的错误码，只显式收口已有的 `NO_PROJECT` 与 `TASK_RUNNING`，并继续沿用统一响应壳与 `not_found` 基础错误码。
+`Extra` 使用 `NO_PROJECT`、`TASK_RUNNING` 与统一响应壳中的 `not_found` 基础错误码。
 
 其中：
 
@@ -571,15 +571,15 @@
 
 `extra.ts_conversion_progress` 与 `extra.ts_conversion_finished` 的 payload 结构一致，差异仅在 `phase` 与 `finished` 字段取值。
 
-## 12. 客户端对象边界
+## 12. Python 侧对象化客户端边界
 
-本地 HTTP API 仍然以 JSON / `dict` 作为边界协议，但客户端内部已经统一切换到对象化响应。
+本地 HTTP API 以 JSON 作为边界协议，Python 侧契约消费统一以对象化响应消费这些数据。
 
 服务端 `api/Application` 层负责把内部状态收口为 `api/Contract/*Payloads.py` 中的响应载荷对象，再经 `ApiResponse` 序列化为 JSON。
 
 ### 12.1 模型目录
 
-客户端内部新增以下冻结对象：
+Python 侧客户端内部新增以下冻结对象：
 
 - `model/Api/SettingsModels.py`
   - `AppSettingsSnapshot`
@@ -626,7 +626,7 @@
   - `ModelThinkingSnapshot`
   - `ModelGenerationSnapshot`
 
-### 12.2 客户端返回值约定
+### 12.2 Python 侧客户端返回值约定
 
 - `SettingsApiClient` 对外返回 `AppSettingsSnapshot`
 - `ProjectApiClient` 对外返回 `ProjectSnapshot` / `ProjectPreview`
@@ -634,7 +634,7 @@
 - `TaskApiClient` 对外返回 `TaskSnapshot`
 - `ProjectPreview` 需要显式建模当前摘要字段：`path`、`name`、`source_language`、`target_language`、`file_count`、`created_at`、`updated_at`、`total_items`、`translated_items`、`progress`
 
-第二阶段补充约定：
+补充约定：
 
 - `QualityRuleApiClient.get_rule_snapshot()` / `save_entries()` / `update_meta()` 返回 `QualityRuleSnapshot`
 - `QualityRuleApiClient.query_proofreading()` 返回 `ProofreadingLookupQuery`
@@ -664,7 +664,7 @@
   - `ProofreadingSearchResultPayload`
   - `ProofreadingMutationResultPayload`
 
-### 12.3 状态仓库约定
+### 12.3 Python 侧状态仓库约定
 
 - `ApiStateStore.project_snapshot` 只缓存 `ProjectSnapshot`
 - `ApiStateStore.task_snapshot` 只缓存 `TaskSnapshot`
@@ -672,78 +672,35 @@
 - SSE 增量事件进入 `ApiStateStore` 后，会先解码为 `TaskStatusUpdate` / `TaskProgressUpdate` 再合并
 - `ApiStateStore.get_extra_task_state(task_id)` 只返回 `ExtraTaskState | None`，不返回 `dict`
 - `extra_ts_conversion` 的进度与完成态都通过 `ExtraTaskState` 合并，页面只读取 `task_id`、`phase`、`message`、`current`、`total`、`finished`
-- 页面层不得再直接依赖 `response.get(...)`、`snapshot.get(...)` 读取 API 响应
-- 页面层不得通过 `to_dict().get(...)`、`payload.get(...)` 回退为字典式读取对象字段
+- 页面层直接按对象字段读取 API 响应，不通过 `response.get(...)`、`snapshot.get(...)` 或 `payload.get(...)` 这类字典式访问消费数据
 
-## 13. UI 边界
+## 13. 前端边界
 
-以下页面已要求只通过 `api.Client` 与 `ApiStateStore` 访问 Core：
+当前 Electron 前端运行时只通过 `frontend/src/renderer/app/desktop-api.ts`、SSE 事件流与桌面桥接能力访问 Core。`api/Client/` 与 `ApiStateStore` 属于 Python 侧契约消费边界，用于对象化响应、状态仓库与测试/桥接场景。
 
-- `frontend/AppFluentWindow.py`
-- `frontend/ProjectPage.py`
-- `frontend/Translation/TranslationPage.py`
-- `frontend/Analysis/AnalysisPage.py`
-- `frontend/Workbench/WorkbenchPage.py`
-- `frontend/AppSettingsPage.py`
-- `frontend/Setting/BasicSettingsPage.py`
-- `frontend/Setting/ExpertSettingsPage.py`
+### 13.1 渲染层
 
-这些页面不得再直接导入：
+以下目录中的页面、状态 hook 与页面辅助模块，统一通过 `desktop-api.ts`、SSE 事件流与应用级状态封装消费 Core：
 
+- `frontend/src/renderer/app/state/`
+- `frontend/src/renderer/pages/`
+
+这些模块不得直接导入或调用：
+
+- `module.Config`
 - `module.Data.DataManager`
 - `module.Engine.Engine`
 - `base.EventManager`
-- `module.Config`
-
-第二阶段补充边界声明如下：
-
-- `frontend/Quality/CustomPromptPage.py`
-- `frontend/Quality/GlossaryEditPanel.py`
-- `frontend/Quality/GlossaryPage.py`
-- `frontend/Quality/QualityRuleEditPanelBase.py`
-- `frontend/Quality/QualityRuleIconHelper.py`
-- `frontend/Quality/QualityRulePageBase.py`
-- `frontend/Quality/QualityRulePresetManager.py`
-- `frontend/Quality/TextPreserveEditPanel.py`
-- `frontend/Quality/TextPreservePage.py`
-- `frontend/Quality/TextReplacementEditPanel.py`
-- `frontend/Quality/TextReplacementPage.py`
-- `frontend/Proofreading/FilterDialog.py`
-- `frontend/Proofreading/ProofreadingDomain.py`
-- `frontend/Proofreading/ProofreadingEditPanel.py`
-- `frontend/Proofreading/ProofreadingLabels.py`
-- `frontend/Proofreading/ProofreadingLoadService.py`
-- `frontend/Proofreading/ProofreadingPage.py`
-- `frontend/Proofreading/ProofreadingStatusDelegate.py`
-- `frontend/Proofreading/ProofreadingTableModel.py`
-- `frontend/Proofreading/ProofreadingTableWidget.py`
-
-第三阶段补充边界声明如下：
-
-- `frontend/Extra/ToolBoxPage.py`
-- `frontend/Extra/LaboratoryPage.py`
-- `frontend/Extra/TSConversionPage.py`
-- `frontend/Extra/NameFieldExtractionPage.py`
-
-第四阶段补充边界声明如下：
-
-- `frontend/Model/ModelPage.py`
-- `frontend/Model/ModelBasicSettingPage.py`
-- `frontend/Model/ModelTaskSettingPage.py`
-- `frontend/Model/ModelAdvancedSettingPage.py`
-- `frontend/Model/ModelSelectorPage.py`
-
-这些第二阶段与第四阶段文件同样不得直接导入上述 Core 单例；此外：
-
-- `frontend/Proofreading/ProofreadingLoadService.py` 与 `frontend/Proofreading/ProofreadingDomain.py` 不得直接导入 `module.ResultChecker.ResultChecker`
-- `frontend/Quality/QualityRulePageBase.py` 不得直接导入 `module.QualityRule.QualityRuleIO`
-- `frontend/Quality/QualityRulePresetManager.py` 不得直接导入 `module.QualityRulePathResolver`
-
-这些第三阶段 `Extra` 文件同样不得直接导入或调用以下直连语义：
-
-- `module.Config`
-- `module.Data.DataManager`
-- `module.Engine.Engine`
 - `Config().load()`
 - `DataManager.get()`
 - `Engine.get()`
+
+### 13.2 Electron 壳层
+
+以下目录负责桌面宿主、预加载桥接与共享桌面契约：
+
+- `frontend/src/main/`
+- `frontend/src/preload/`
+- `frontend/src/shared/`
+
+这些模块可以处理窗口、文件对话框、标题栏、Core API 地址解析与桥接暴露，但不直接导入 Python 业务模块。

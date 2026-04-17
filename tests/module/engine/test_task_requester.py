@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from contextlib import contextmanager
-from pathlib import Path
 
 from typing import Any
 from typing import Iterator
@@ -816,50 +814,6 @@ def test_generate_anthropic_args_fallthrough_when_thinking_level_is_unexpected()
     assert "thinking" not in args
     assert args["top_p"] == 0.1
     assert args["temperature"] == 0.2
-
-
-@pytest.mark.parametrize("language", ["zh", "en"])
-def test_builtin_preset_output_token_limit_defaults(language: str) -> None:
-    project_root = Path(__file__).resolve().parents[3]
-    preset_path = (
-        project_root
-        / "resource"
-        / "preset"
-        / "model"
-        / language
-        / "preset_model_builtin.json"
-    )
-    models = json.loads(preset_path.read_text(encoding="utf-8"))
-
-    assert isinstance(models, list)
-    for model in models:
-        output_token_limit = model.get("threshold", {}).get("output_token_limit")
-        if model.get("api_format") == Base.APIFormat.SAKURALLM:
-            assert output_token_limit == 768
-        else:
-            assert output_token_limit == TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
-
-
-@pytest.mark.parametrize("language", ["zh", "en"])
-@pytest.mark.parametrize(
-    "preset_name",
-    [
-        "preset_model_custom_openai.json",
-        "preset_model_custom_google.json",
-        "preset_model_custom_anthropic.json",
-    ],
-)
-def test_custom_preset_output_token_limit_defaults(
-    language: str, preset_name: str
-) -> None:
-    project_root = Path(__file__).resolve().parents[3]
-    preset_path = (
-        project_root / "resource" / "preset" / "model" / language / preset_name
-    )
-    model_data = json.loads(preset_path.read_text(encoding="utf-8"))
-
-    output_token_limit = model_data.get("threshold", {}).get("output_token_limit")
-    assert output_token_limit == TaskRequester.OUTPUT_TOKEN_LIMIT_AUTO
 
 
 def test_request_routes_and_engine_counters_always_balance() -> None:

@@ -7,7 +7,7 @@ class CoreApiPortCatalog:
 
     PORT_CANDIDATE_FILE_PATH: Path = (
         Path(__file__).resolve().parents[2]
-        / "frontend-vite"
+        / "frontend"
         / "core-api-port-candidates.json"
     )
 

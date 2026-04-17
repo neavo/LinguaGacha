@@ -6,8 +6,6 @@ readme = "README.md"
 requires-python = "==3.14.*"
 dependencies = [
     # System
-    "PySide6",
-    "PySide6-Fluent-Widgets[full]",
     "openai",
     "anthropic",
     "google-genai",

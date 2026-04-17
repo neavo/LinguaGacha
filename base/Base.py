@@ -185,7 +185,8 @@ class Base:
     )
 
     # 构造函数
-    # Base 作为 mixin 使用：需要支持 Qt 组件的协作式多继承初始化。
+    # Base 作为 mixin 使用：统一暴露应用级事件总线入口，
+    # 不再依赖任何 Qt 对象或主线程语义。
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
 
@@ -193,11 +194,11 @@ class Base:
     def emit(self, signal: object, *args: object) -> bool:
         """统一的 emit 入口。
 
-        说明：Qt 的 QObject 也定义了 emit()（旧式信号接口）。Base 作为 mixin
-        需要与 Qt 的多继承共存，因此这里提供一个兼容签名：
+        说明：Base 统一拦截应用事件；若上层类也定义了 emit，则继续委派，
+        这样不同宿主对象仍能复用同一份 mixin 入口：
 
         - 若 signal 是 Base.Event：走应用事件总线
-        - 否则：尝试委派给 Qt 的 QObject.emit
+        - 否则：尝试委派给父类 emit
         """
 
         if isinstance(signal, Base.Event):

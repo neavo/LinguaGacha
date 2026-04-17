@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -121,7 +122,6 @@ def patch_cli_runtime(monkeypatch: pytest.MonkeyPatch) -> FakeLogManager:
         "get",
         staticmethod(lambda: localizer),
     )
-    monkeypatch.setattr(cli_manager_module.QCoreApplication, "instance", lambda: None)
     return logger
 
 
@@ -880,7 +880,10 @@ def test_run_warns_for_deprecated_cli_flags(
     monkeypatch.setattr(
         manager,
         "execute_task_plan",
-        lambda cfg, qs, execution_plan: executed_targets.append(execution_plan),
+        lambda cfg, qs, execution_plan: (
+            executed_targets.append(execution_plan),
+            manager.request_process_exit(CLIManager.EXIT_CODE_SUCCESS),
+        ),
     )
 
     result = manager.run()
@@ -927,7 +930,9 @@ def test_run_routes_to_expected_cli_target(
     monkeypatch.setattr(
         manager,
         "execute_task_plan",
-        lambda cfg, qs, execution_plan: None,
+        lambda cfg, qs, execution_plan: manager.request_process_exit(
+            CLIManager.EXIT_CODE_SUCCESS
+        ),
     )
 
     result = manager.run()
@@ -973,29 +978,25 @@ def test_run_logs_quality_snapshot_error_and_requests_failed_exit(
     assert isinstance(patch_cli_runtime.error_exceptions[0], RuntimeError)
 
 
-def test_request_process_exit_sets_exit_code_once_and_queues_quit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_request_process_exit_sets_exit_code_once_and_releases_waiter() -> None:
     manager = CLIManager()
-    fake_app = object()
-    invoke_calls: list[tuple[object, str, object]] = []
-
-    monkeypatch.setattr(
-        cli_manager_module.QCoreApplication, "instance", lambda: fake_app
-    )
-    monkeypatch.setattr(
-        cli_manager_module.QMetaObject,
-        "invokeMethod",
-        lambda app, method, connection: invoke_calls.append((app, method, connection)),
-    )
 
     manager.request_process_exit(CLIManager.EXIT_CODE_SUCCESS)
     manager.request_process_exit(CLIManager.EXIT_CODE_FAILED)
 
     assert manager.get_exit_code() == CLIManager.EXIT_CODE_SUCCESS
-    assert invoke_calls == [
-        (fake_app, "quit", cli_manager_module.Qt.ConnectionType.QueuedConnection),
-    ]
+    assert manager.wait_for_process_exit(timeout=0.01) == CLIManager.EXIT_CODE_SUCCESS
+
+
+def test_wait_for_process_exit_returns_after_background_signal() -> None:
+    manager = CLIManager()
+
+    threading.Thread(
+        target=lambda: manager.request_process_exit(CLIManager.EXIT_CODE_STOPPED),
+        daemon=True,
+    ).start()
+
+    assert manager.wait_for_process_exit(timeout=1.0) == CLIManager.EXIT_CODE_STOPPED
 
 
 @pytest.mark.parametrize(
