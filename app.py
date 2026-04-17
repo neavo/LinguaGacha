@@ -22,7 +22,6 @@ from module.Localizer.Localizer import Localizer
 from module.Migration.UserDataMigrationService import UserDataMigrationService
 
 APP_VERSION_FILE_NAME: str = "version.txt"
-PROXY_ENV_NAMES: tuple[str, ...] = ("http_proxy", "https_proxy")
 
 
 def start_local_api_server_if_needed(
@@ -93,18 +92,6 @@ def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
         pass
 
 
-def configure_proxy_environment(config: Config, logger: LogManager) -> None:
-    """统一维护代理环境变量，避免启动流程里散落重复的赋值逻辑。"""
-    if not config.proxy_enable or config.proxy_url == "":
-        for proxy_env_name in PROXY_ENV_NAMES:
-            os.environ.pop(proxy_env_name, None)
-        return
-
-    logger.info(Localizer.get().log_proxy)
-    for proxy_env_name in PROXY_ENV_NAMES:
-        os.environ[proxy_env_name] = config.proxy_url
-
-
 def disable_windows_quick_edit_mode() -> None:
     """无头运行时仍复用旧终端保护，避免误选中文本卡住进程。"""
     if os.name == "nt" and Console().color_system != "truecolor":
@@ -148,11 +135,8 @@ def bootstrap_runtime() -> LogManager:
         version = reader.read().strip()
 
     logger.info(f"{Base.APP_NAME} {version}")
-    if logger.is_expert_mode():
-        logger.info(Localizer.get().log_expert_mode)
     logger.print("")
 
-    configure_proxy_environment(config, logger)
     Engine.get().run()
     VersionManager.get().set_version(version)
 

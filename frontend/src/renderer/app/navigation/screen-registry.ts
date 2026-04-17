@@ -1,7 +1,6 @@
 import { createElement } from 'react'
 
 import { create_debug_panel_screen } from '@/pages/debug-panel-page/create-debug-panel-screen'
-import { AppSettingsPage } from '@/pages/app-settings-page/page'
 import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
 import { CustomPromptPage } from '@/pages/custom-prompt-page/page'
 import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
@@ -102,10 +101,6 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
       title_key: 'toolbox_page.title',
     }),
     title_key: 'toolbox_page.title',
-  },
-  'app-settings': {
-    component: AppSettingsPage,
-    title_key: 'app_settings_page.title',
   },
 }
 

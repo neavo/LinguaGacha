@@ -17,7 +17,6 @@ type RecentProjectEntry = {
 }
 
 export type SettingsSnapshot = {
-  expert_mode: boolean
   source_language: string
   target_language: string
   project_save_mode: string
@@ -92,7 +91,6 @@ type TaskSnapshotPayload = {
 }
 
 const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
-  expert_mode: false,
   source_language: 'JA',
   target_language: 'ZH',
   project_save_mode: 'MANUAL',
@@ -155,7 +153,6 @@ function normalize_recent_projects(
 export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
   const snapshot = payload.settings ?? {}
   return {
-    expert_mode: Boolean(snapshot.expert_mode),
     source_language: String(snapshot.source_language ?? DEFAULT_SETTINGS_SNAPSHOT.source_language),
     target_language: String(snapshot.target_language ?? DEFAULT_SETTINGS_SNAPSHOT.target_language),
     project_save_mode: String(snapshot.project_save_mode ?? DEFAULT_SETTINGS_SNAPSHOT.project_save_mode),

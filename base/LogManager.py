@@ -176,7 +176,6 @@ class LogManager:
         self.console_progress: Progress | None = None
         self.progress_session_states: dict[int, LogManager.ProgressSession] = {}
         self.progress_lock = threading.RLock()
-        self.expert_mode: bool | None = None
         self.async_enabled: bool = False
         self.shutdown_complete: bool = False
 
@@ -210,7 +209,7 @@ class LogManager:
             log_time_format="[%X]",
             omit_repeated_times=False,
         )
-        self.structured_console_handler.setLevel(logging.INFO)
+        self.structured_console_handler.setLevel(logging.DEBUG)
         self.structured_console_handler.addFilter(
             LogTargetFilter(
                 emit_key="emit_console",
@@ -269,18 +268,6 @@ class LogManager:
             cls.__instance__ = cls()
 
         return cls.__instance__
-
-    def is_expert_mode(self) -> bool:
-        """专家模式只影响控制台细节，文件日志始终保留完整信息。"""
-        if self.expert_mode is None:
-            from module.Config import Config
-
-            self.expert_mode = Config().load().expert_mode
-
-        self.structured_console_handler.setLevel(
-            logging.DEBUG if self.expert_mode else logging.INFO
-        )
-        return self.expert_mode
 
     def get_console(self) -> Console:
         """所有 rich 终端输出都必须走同一个 Console，避免 live 渲染互相打架。"""
@@ -427,18 +414,14 @@ class LogManager:
         msg: str,
         e: Exception | BaseException | None,
     ) -> tuple[str, str]:
-        """文件永远保留完整堆栈，控制台按专家模式裁剪细节。"""
+        """文件与控制台默认都保留完整堆栈，避免排障信息再被隐藏。"""
         if e is None:
             return msg, msg
 
         message_with_error = f"{msg}\n{e}" if msg != "" else f"{e}"
         traceback_text = self.get_traceback(e)
         file_message = f"{message_with_error}\n{traceback_text}\n"
-
-        if self.is_expert_mode():
-            return file_message, file_message
-
-        return file_message, message_with_error
+        return file_message, file_message
 
     def dispatch(
         self,

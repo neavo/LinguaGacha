@@ -36,7 +36,6 @@ class TestConfigBehavior:
         del fs
         config = Config().load("/workspace/config/missing.json")
 
-        assert config.theme == Config.Theme.LIGHT
         assert config.force_thinking_enable is True
         assert config.recent_projects == []
 
@@ -45,13 +44,20 @@ class TestConfigBehavior:
         path = Path("/workspace/config/config.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps({"expert_mode": True, "unknown_field": "ignored"}),
+            json.dumps(
+                {
+                    "force_thinking_enable": False,
+                    "expert_mode": True,
+                    "unknown_field": "ignored",
+                }
+            ),
             encoding="utf-8",
         )
 
         config = Config().load(str(path))
 
-        assert config.expert_mode is True
+        assert config.force_thinking_enable is False
+        assert not hasattr(config, "expert_mode")
         assert not hasattr(config, "unknown_field")
 
     def test_load_ignores_removed_auto_glossary_field(self, fs) -> None:
@@ -103,8 +109,6 @@ class TestConfigBehavior:
 
         config = Config().load(str(path))
 
-        assert config.expert_mode is False
-        assert config.theme == Config.Theme.LIGHT
         assert config.force_thinking_enable is True
 
     def test_load_reads_normalized_quality_preset_virtual_ids(self, fs) -> None:
@@ -194,8 +198,7 @@ class TestConfigBehavior:
     def test_save_serializes_core_fields(self, fs) -> None:
         del fs
         config = Config(
-            expert_mode=True,
-            proxy_enable=True,
+            force_thinking_enable=False,
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.ZH,
             models=[{"id": "m1", "type": "PRESET"}],
@@ -207,13 +210,14 @@ class TestConfigBehavior:
         config.save(str(path))
         saved = json.loads(path.read_text(encoding="utf-8"))
 
-        assert saved["expert_mode"] is True
-        assert saved["proxy_enable"] is True
+        assert saved["force_thinking_enable"] is False
         assert saved["source_language"] == "JA"
         assert saved["target_language"] == "ZH"
         assert saved["models"][0]["id"] == "m1"
         assert saved["recent_projects"][0]["path"] == "/a"
         assert "auto_glossary_enable" not in saved
+        assert "expert_mode" not in saved
+        assert "proxy_enable" not in saved
 
     def test_recent_projects_deduplicate_and_limit_to_ten(self) -> None:
         config = Config()
@@ -255,41 +259,18 @@ class TestConfigBehavior:
 
 
 class TestConfigModels:
-    def test_reset_expert_settings_resets_fields(self) -> None:
-        config = Config(
-            preceding_lines_threshold=123,
-            clean_ruby=False,
-            deduplication_in_trans=False,
-            deduplication_in_bilingual=False,
-            check_kana_residue=False,
-            check_hangeul_residue=False,
-            check_similarity=False,
-            write_translated_name_fields_to_file=False,
-            auto_process_prefix_suffix_preserved_text=False,
-        )
-
-        config.reset_expert_settings()
-
-        assert config.preceding_lines_threshold == 0
-        assert config.clean_ruby is True
-        assert config.deduplication_in_trans is True
-        assert config.deduplication_in_bilingual is True
-        assert config.check_kana_residue is True
-        assert config.check_hangeul_residue is True
-        assert config.check_similarity is True
-        assert config.write_translated_name_fields_to_file is True
-        assert config.auto_process_prefix_suffix_preserved_text is True
-
     def test_save_uses_default_path_when_path_is_none(self, fs, monkeypatch) -> None:
         del fs
         BasePath.reset_for_test()
         BasePath.initialize("/workspace/app", False)
 
-        Config(expert_mode=True).save()
+        Config(force_thinking_enable=False).save()
 
         saved_path = Path("/workspace/app/userdata/config.json")
         assert saved_path.exists() is True
-        assert json.loads(saved_path.read_text(encoding="utf-8"))["expert_mode"] is True
+        saved = json.loads(saved_path.read_text(encoding="utf-8"))
+        assert saved["force_thinking_enable"] is False
+        assert "expert_mode" not in saved
 
     def test_load_copies_legacy_resource_config_to_userdata(self, fs) -> None:
         del fs
@@ -298,7 +279,7 @@ class TestConfigModels:
         legacy_path = Path("/workspace/app/resource/config.json")
         legacy_path.parent.mkdir(parents=True, exist_ok=True)
         legacy_path.write_text(
-            json.dumps({"expert_mode": True}),
+            json.dumps({"clean_ruby": True}),
             encoding="utf-8",
         )
 
@@ -306,7 +287,7 @@ class TestConfigModels:
         config = Config().load()
         migrated_path = Path("/workspace/app/userdata/config.json")
 
-        assert config.expert_mode is True
+        assert config.clean_ruby is True
         assert migrated_path.exists() is True
         assert legacy_path.exists() is True
 
@@ -316,7 +297,7 @@ class TestConfigModels:
         BasePath.initialize("/workspace/app", False)
         legacy_path = Path("/workspace/app/config.json")
         legacy_path.write_text(
-            json.dumps({"proxy_enable": True}),
+            json.dumps({"clean_ruby": True}),
             encoding="utf-8",
         )
 
@@ -324,7 +305,7 @@ class TestConfigModels:
         config = Config().load()
         migrated_path = Path("/workspace/app/userdata/config.json")
 
-        assert config.proxy_enable is True
+        assert config.clean_ruby is True
         assert migrated_path.exists() is True
         assert legacy_path.exists() is True
 
@@ -335,12 +316,12 @@ class TestConfigModels:
         root_legacy_path = Path("/workspace/app/config.json")
         resource_legacy_path = Path("/workspace/app/resource/config.json")
         root_legacy_path.write_text(
-            json.dumps({"expert_mode": False}),
+            json.dumps({"clean_ruby": False}),
             encoding="utf-8",
         )
         resource_legacy_path.parent.mkdir(parents=True, exist_ok=True)
         resource_legacy_path.write_text(
-            json.dumps({"expert_mode": True}),
+            json.dumps({"clean_ruby": True}),
             encoding="utf-8",
         )
 
@@ -348,7 +329,7 @@ class TestConfigModels:
         config = Config().load()
         migrated_path = Path("/workspace/app/userdata/config.json")
 
-        assert config.expert_mode is True
+        assert config.clean_ruby is True
         assert migrated_path.exists() is True
         assert root_legacy_path.exists() is True
         assert resource_legacy_path.exists() is True
@@ -364,15 +345,15 @@ class TestConfigModels:
         data_legacy_path.parent.mkdir(parents=True, exist_ok=True)
         resource_legacy_path.parent.mkdir(parents=True, exist_ok=True)
         root_legacy_path.write_text(
-            json.dumps({"expert_mode": False}),
+            json.dumps({"clean_ruby": False}),
             encoding="utf-8",
         )
         resource_legacy_path.write_text(
-            json.dumps({"expert_mode": False}),
+            json.dumps({"clean_ruby": False}),
             encoding="utf-8",
         )
         data_legacy_path.write_text(
-            json.dumps({"expert_mode": True}),
+            json.dumps({"clean_ruby": True}),
             encoding="utf-8",
         )
 
@@ -380,7 +361,7 @@ class TestConfigModels:
         config = Config().load()
         migrated_path = Path("/workspace/data/userdata/config.json")
 
-        assert config.expert_mode is True
+        assert config.clean_ruby is True
         assert migrated_path.exists() is True
         assert data_legacy_path.exists() is True
         assert resource_legacy_path.exists() is True
@@ -395,18 +376,18 @@ class TestConfigModels:
         new_path.parent.mkdir(parents=True, exist_ok=True)
         legacy_path.parent.mkdir(parents=True, exist_ok=True)
         new_path.write_text(
-            json.dumps({"expert_mode": False}),
+            json.dumps({"clean_ruby": False}),
             encoding="utf-8",
         )
         legacy_path.write_text(
-            json.dumps({"expert_mode": True}),
+            json.dumps({"clean_ruby": True}),
             encoding="utf-8",
         )
 
         config = Config().load()
 
-        assert config.expert_mode is False
-        assert json.loads(new_path.read_text(encoding="utf-8"))["expert_mode"] is False
+        assert config.clean_ruby is False
+        assert json.loads(new_path.read_text(encoding="utf-8"))["clean_ruby"] is False
         assert legacy_path.exists() is True
 
     def test_save_skips_model_sort_when_models_is_none(self, fs) -> None:

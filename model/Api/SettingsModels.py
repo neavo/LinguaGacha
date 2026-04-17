@@ -37,12 +37,7 @@ class RecentProjectEntry:
 class AppSettingsSnapshot:
     """应用设置快照统一收口页面依赖的设置字段。"""
 
-    theme: str = "LIGHT"
     app_language: str = "ZH"
-    expert_mode: bool = False
-    proxy_url: str = ""
-    proxy_enable: bool = False
-    scale_factor: str = ""
     source_language: str = "JA"
     target_language: str = "ZH"
     project_save_mode: str = "MANUAL"
@@ -88,12 +83,7 @@ class AppSettingsSnapshot:
             )
 
         return cls(
-            theme=str(normalized.get("theme", "LIGHT")),
             app_language=str(normalized.get("app_language", "ZH")),
-            expert_mode=bool(normalized.get("expert_mode", False)),
-            proxy_url=str(normalized.get("proxy_url", "")),
-            proxy_enable=bool(normalized.get("proxy_enable", False)),
-            scale_factor=str(normalized.get("scale_factor", "")),
             source_language=str(normalized.get("source_language", "JA")),
             target_language=str(normalized.get("target_language", "ZH")),
             project_save_mode=str(normalized.get("project_save_mode", "MANUAL")),
@@ -146,12 +136,7 @@ class AppSettingsSnapshot:
         """把冻结设置快照转换回边界层可发送的 JSON 字典。"""
 
         return {
-            "theme": self.theme,
             "app_language": self.app_language,
-            "expert_mode": self.expert_mode,
-            "proxy_url": self.proxy_url,
-            "proxy_enable": self.proxy_enable,
-            "scale_factor": self.scale_factor,
             "source_language": self.source_language,
             "target_language": self.target_language,
             "project_save_mode": self.project_save_mode,

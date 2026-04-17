@@ -232,12 +232,9 @@ class TranslationTask(Base):
             file_log.append(
                 Localizer.get().engine_task_response_result + "\n" + response_result_log
             )
-            if LogManager.get().is_expert_mode():
-                console_log.append(
-                    Localizer.get().engine_task_response_result
-                    + "\n"
-                    + response_result_log
-                )
+            console_log.append(
+                Localizer.get().engine_task_response_result + "\n" + response_result_log
+            )
 
         updated_count = 0
         if any(v == ResponseChecker.Error.NONE for v in checks):

@@ -18,15 +18,11 @@ from tests.module.engine.analysis.support import stub_glossary_request
 
 
 class FakePipelineLogger:
-    def __init__(self, *, expert_mode: bool = False) -> None:
-        self.expert_mode = expert_mode
+    def __init__(self) -> None:
         self.info_messages: list[str] = []
         self.warning_messages: list[str] = []
         self.print_messages: list[str] = []
         self.rich_messages: list[object] = []
-
-    def is_expert_mode(self) -> bool:
-        return self.expert_mode
 
     def info(self, msg: str, *args, **kwargs) -> None:
         del args, kwargs
@@ -250,6 +246,66 @@ def test_analysis_task_print_chunk_log_summary_mode_omits_candidate_count(
     combined = "\n".join(str(output) for output in console_outputs)
     assert Localizer.get().engine_task_simple_log_prefix in combined
     assert "候选术语" not in combined
+
+
+def test_analysis_task_print_chunk_log_always_includes_result_log_in_console_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = build_request_task()
+    captured: dict[str, list[str]] = {}
+
+    def capture_rows(
+        srcs: list[str],
+        glossary_entries: list[dict[str, object]],
+        extra: list[str],
+        *,
+        console: bool,
+    ) -> list[str]:
+        del srcs, glossary_entries
+        captured["console" if console else "file"] = list(extra)
+        return ["ROW"]
+
+    monkeypatch.setattr(
+        analysis_task_module.LogManager,
+        "get",
+        lambda: FakePipelineLogger(),
+    )
+    monkeypatch.setattr(
+        analysis_task_module.Engine,
+        "get",
+        lambda: SimpleNamespace(get_running_task_count=lambda: 1),
+    )
+    monkeypatch.setattr(
+        task,
+        "generate_log_rows",
+        capture_rows,
+    )
+    monkeypatch.setattr(
+        task,
+        "generate_log_table",
+        lambda rows, style: {"rows": rows, "style": style},
+    )
+
+    task.print_chunk_log(
+        start=time.time() - 1.0,
+        pt=12,
+        ct=34,
+        srcs=["圣女艾琳在教堂祈祷。"],
+        glossary_entries=[],
+        response_think="",
+        response_result='{"terms":[]}',
+        status_text="",
+        log_func=lambda *args, **kwargs: None,
+        style="green",
+    )
+
+    assert any(
+        Localizer.get().engine_task_response_result in row for row in captured["file"]
+    )
+    assert any(
+        Localizer.get().engine_task_response_result in row
+        for row in captured["console"]
+    )
 
 
 @pytest.mark.parametrize(

@@ -89,7 +89,6 @@ type ProjectSnapshotPayload = {
 
 type SettingsPayload = {
   settings?: {
-    expert_mode?: boolean
     project_save_mode?: string
     project_fixed_path?: string
     recent_projects?: Array<{

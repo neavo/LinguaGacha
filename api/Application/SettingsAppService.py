@@ -9,12 +9,7 @@ class SettingsAppService:
     """应用设置用例层，统一收口设置快照读取与局部更新。"""
 
     SETTING_KEYS: tuple[str, ...] = (
-        "theme",
         "app_language",
-        "expert_mode",
-        "proxy_url",
-        "proxy_enable",
-        "scale_factor",
         "source_language",
         "target_language",
         "project_save_mode",
@@ -70,11 +65,7 @@ class SettingsAppService:
             if key not in self.SETTING_KEYS:
                 continue
 
-            if key == "expert_mode":
-                config.reset_expert_settings()
-                setattr(config, key, bool(value))
-            elif key in (
-                "proxy_enable",
+            if key in (
                 "output_folder_open_on_finish",
                 "mtool_optimizer_enable",
                 "force_thinking_enable",

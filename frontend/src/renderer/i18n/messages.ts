@@ -1,6 +1,5 @@
 import { en_us_analysis_prompt_page } from '@/i18n/resources/en-US/analysis-prompt-page'
 import { en_us_app } from '@/i18n/resources/en-US/app'
-import { en_us_app_settings_page } from '@/i18n/resources/en-US/app-settings-page'
 import { en_us_basic_settings_page } from '@/i18n/resources/en-US/basic-settings-page'
 import { en_us_custom_prompt_page } from '@/i18n/resources/en-US/custom-prompt-page'
 import { en_us_debug_panel_page } from '@/i18n/resources/en-US/debug-panel-page'
@@ -19,7 +18,6 @@ import { en_us_translation_prompt_page } from '@/i18n/resources/en-US/translatio
 import { en_us_workbench_page } from '@/i18n/resources/en-US/workbench-page'
 import { zh_cn_analysis_prompt_page } from '@/i18n/resources/zh-CN/analysis-prompt-page'
 import { zh_cn_app } from '@/i18n/resources/zh-CN/app'
-import { zh_cn_app_settings_page } from '@/i18n/resources/zh-CN/app-settings-page'
 import { zh_cn_basic_settings_page } from '@/i18n/resources/zh-CN/basic-settings-page'
 import { zh_cn_custom_prompt_page } from '@/i18n/resources/zh-CN/custom-prompt-page'
 import { zh_cn_debug_panel_page } from '@/i18n/resources/zh-CN/debug-panel-page'
@@ -41,7 +39,6 @@ import type { LocaleMessageSchema } from '@/i18n/types'
 export const zh_cn_messages = {
   app: zh_cn_app,
   analysis_prompt_page: zh_cn_analysis_prompt_page,
-  app_settings_page: zh_cn_app_settings_page,
   basic_settings_page: zh_cn_basic_settings_page,
   custom_prompt_page: zh_cn_custom_prompt_page,
   debug_panel_page: zh_cn_debug_panel_page,
@@ -63,7 +60,6 @@ export const zh_cn_messages = {
 export const en_us_messages = {
   app: en_us_app,
   analysis_prompt_page: en_us_analysis_prompt_page,
-  app_settings_page: en_us_app_settings_page,
   basic_settings_page: en_us_basic_settings_page,
   custom_prompt_page: en_us_custom_prompt_page,
   debug_panel_page: en_us_debug_panel_page,

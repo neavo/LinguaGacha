@@ -156,7 +156,7 @@ def test_run_startup_migrations_copies_legacy_config_and_normalizes_values(
     legacy_path.write_text(
         json.dumps(
             {
-                "expert_mode": True,
+                "clean_ruby": True,
                 "glossary_default_preset": "resource/preset/glossary/zh/01_demo.json",
             }
         ),
@@ -167,7 +167,7 @@ def test_run_startup_migrations_copies_legacy_config_and_normalizes_values(
 
     config_path = migration_root / "userdata" / "config.json"
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    assert saved["expert_mode"] is True
+    assert saved["clean_ruby"] is True
     assert saved["glossary_default_preset"] == "builtin:01_demo.json"
 
 

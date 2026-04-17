@@ -12,7 +12,6 @@ import {
   ReplaceAll,
   ScanText,
   Languages,
-  Settings,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -140,12 +139,6 @@ export const BOTTOM_ACTIONS: BottomAction[] = [
     id: 'language',
     label_key: 'app.navigation_action.language',
     icon: Languages,
-  },
-  {
-    id: 'app-settings',
-    label_key: 'app_settings_page.title',
-    icon: Settings,
-    route_id: 'app-settings',
   },
 ]
 

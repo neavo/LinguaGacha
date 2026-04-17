@@ -332,8 +332,7 @@ class AnalysisTask:
                 Localizer.get().engine_task_response_result + "\n" + normalized_result
             )
             file_logs.append(result_log)
-            if LogManager.get().is_expert_mode():
-                console_logs.append(result_log)
+            console_logs.append(result_log)
 
         file_rows = self.generate_log_rows(
             srcs,
