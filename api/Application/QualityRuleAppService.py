@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from base.BaseLanguage import BaseLanguage
 from api.Contract.QualityPayloads import ProofreadingLookupPayload
 from api.Contract.QualityPayloads import QualityRuleSnapshotPayload
 from model.Api.QualityRuleModels import ProofreadingLookupQuery
@@ -267,7 +266,7 @@ class QualityRuleAppService:
 
         task_type = str(request.get("task_type", ""))
         builder = PromptBuilder(Config().load())
-        language = self.resolve_prompt_template_language(request, builder)
+        language = builder.get_prompt_ui_language()
         if task_type == "translation":
             default_text = builder.get_base(language)
             prefix_text = builder.get_prefix(language)
@@ -284,24 +283,6 @@ class QualityRuleAppService:
                 "suffix_text": suffix_text,
             }
         }
-
-    def resolve_prompt_template_language(
-        self,
-        request: dict[str, Any],
-        builder: PromptBuilder,
-    ) -> BaseLanguage.Enum:
-        """优先使用页面显式传入的 UI 语言，缺失时回退到当前应用语言。"""
-
-        app_language = str(request.get("app_language", "")).strip().upper()
-
-        # Why: Electron 渲染层的语言切换先发生在前端本地状态里，
-        # 模板接口必须允许页面显式传入 UI 语言，才能在不重启 Core 的情况下立即刷新前后缀。
-        if app_language == BaseLanguage.Enum.EN:
-            return BaseLanguage.Enum.EN
-        elif app_language == BaseLanguage.Enum.ZH:
-            return BaseLanguage.Enum.ZH
-        else:
-            return builder.get_prompt_ui_language()
 
     def save_prompt(self, request: dict[str, Any]) -> dict[str, object]:
         """保存提示词正文与启用状态。"""

@@ -86,9 +86,13 @@ class EventBridge:
             normalized_keys = (
                 [str(key) for key in keys] if isinstance(keys, list) else []
             )
+            payload: dict[str, Any] = {"keys": normalized_keys}
+            settings = data.get("settings")
+            if isinstance(settings, dict):
+                payload["settings"] = settings
             return (
                 EventTopic.SETTINGS_CHANGED.value,
-                {"keys": normalized_keys},
+                payload,
             )
         elif event == Base.Event.EXTRA_TS_CONVERSION_PROGRESS:
             return (

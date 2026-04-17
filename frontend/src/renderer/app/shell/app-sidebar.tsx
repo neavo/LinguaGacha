@@ -26,6 +26,7 @@ type AppSidebarProps = {
   selected_route: RouteId
   expanded_items: ReadonlySet<RouteId>
   disabled_route_ids: ReadonlySet<RouteId>
+  disabled_bottom_action_ids: ReadonlySet<BottomActionId>
   on_select_route: (route_id: RouteId) => void
   on_toggle_group: (route_id: RouteId) => void
   on_bottom_action: (action_id: BottomActionId) => void
@@ -154,12 +155,14 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
           {props.bottom_actions.map((action) => {
             const ActionIcon = action.icon
             const is_action_active = action.route_id === props.selected_route
+            const is_action_disabled = props.disabled_bottom_action_ids.has(action.id)
 
             return (
               <SidebarMenuItem key={action.id}>
                 <SidebarMenuButton
                   className={cn('sidebar-bottom-button', is_action_active && 'sidebar-bottom-button--active')}
                   isActive={is_action_active}
+                  disabled={is_action_disabled}
                   tooltip={t(action.label_key)}
                   aria-label={t(action.label_key)}
                   onClick={() => {

@@ -96,7 +96,7 @@ def test_extra_models_expose_minimal_laboratory_and_tool_contract() -> None:
     tool_snapshot = ExtraToolSnapshot()
 
     # Assert
-    assert laboratory_snapshot.mtool_optimizer_enabled is False
+    assert laboratory_snapshot.mtool_optimizer_enabled is True
     assert laboratory_snapshot.force_thinking_enabled is False
     assert tool_entry.tool_id == ""
     assert tool_snapshot.entries == ()

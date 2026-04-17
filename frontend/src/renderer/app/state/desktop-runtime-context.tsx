@@ -16,7 +16,10 @@ type RecentProjectEntry = {
   name: string
 }
 
+export type AppLanguage = 'ZH' | 'EN'
+
 export type SettingsSnapshot = {
+  app_language: AppLanguage
   source_language: string
   target_language: string
   project_save_mode: string
@@ -67,10 +70,12 @@ type DesktopRuntimeContextValue = {
   task_snapshot: TaskSnapshot
   proofreading_invalidation_tick: number
   pending_target_route: RouteId | null
+  is_app_language_updating: boolean
   set_settings_snapshot: (snapshot: SettingsSnapshot) => void
   set_project_snapshot: (snapshot: ProjectSnapshot) => void
   set_task_snapshot: (snapshot: TaskSnapshot) => void
   set_pending_target_route: (route_id: RouteId | null) => void
+  update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>
   refresh_settings: () => Promise<SettingsSnapshot>
   refresh_project: () => Promise<ProjectSnapshot>
   refresh_task: () => Promise<TaskSnapshot>
@@ -90,7 +95,15 @@ type TaskSnapshotPayload = {
   task?: Partial<TaskSnapshot>
 }
 
+type SettingsChangedEventPayload = {
+  keys?: unknown
+  settings?: Partial<SettingsSnapshot> & {
+    recent_projects?: Array<Partial<RecentProjectEntry>>
+  }
+}
+
 const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
+  app_language: 'ZH',
   source_language: 'JA',
   target_language: 'ZH',
   project_save_mode: 'MANUAL',
@@ -106,7 +119,7 @@ const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   check_similarity: true,
   write_translated_name_fields_to_file: true,
   auto_process_prefix_suffix_preserved_text: true,
-  mtool_optimizer_enable: false,
+  mtool_optimizer_enable: true,
   force_thinking_enable: true,
   recent_projects: [],
 }
@@ -135,6 +148,14 @@ const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
 
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null)
 
+function normalize_app_language(app_language: unknown): AppLanguage {
+  if (String(app_language ?? '').trim().toUpperCase() === 'EN') {
+    return 'EN'
+  }
+
+  return 'ZH'
+}
+
 function normalize_recent_projects(
   recent_projects: Array<Partial<RecentProjectEntry>> | undefined,
 ): RecentProjectEntry[] {
@@ -153,6 +174,7 @@ function normalize_recent_projects(
 export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
   const snapshot = payload.settings ?? {}
   return {
+    app_language: normalize_app_language(snapshot.app_language),
     source_language: String(snapshot.source_language ?? DEFAULT_SETTINGS_SNAPSHOT.source_language),
     target_language: String(snapshot.target_language ?? DEFAULT_SETTINGS_SNAPSHOT.target_language),
     project_save_mode: String(snapshot.project_save_mode ?? DEFAULT_SETTINGS_SNAPSHOT.project_save_mode),
@@ -275,13 +297,18 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [task_snapshot, set_task_snapshot] = useState<TaskSnapshot>(DEFAULT_TASK_SNAPSHOT)
   const [proofreading_invalidation_tick, set_proofreading_invalidation_tick] = useState(0)
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null)
+  const [is_app_language_updating, set_is_app_language_updating] = useState(false)
 
-  const refresh_settings = useCallback(async (): Promise<SettingsSnapshot> => {
-    const payload = await api_fetch<SettingsSnapshotPayload>('/api/settings/app', {})
+  const apply_settings_snapshot = useCallback((payload: SettingsSnapshotPayload): SettingsSnapshot => {
     const next_snapshot = normalize_settings_snapshot(payload)
     set_settings_snapshot(next_snapshot)
     return next_snapshot
   }, [])
+
+  const refresh_settings = useCallback(async (): Promise<SettingsSnapshot> => {
+    const payload = await api_fetch<SettingsSnapshotPayload>('/api/settings/app', {})
+    return apply_settings_snapshot(payload)
+  }, [apply_settings_snapshot])
 
   const refresh_project = useCallback(async (): Promise<ProjectSnapshot> => {
     const payload = await api_fetch<ProjectSnapshotPayload>('/api/project/snapshot', {})
@@ -296,6 +323,26 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     set_task_snapshot(next_snapshot)
     return next_snapshot
   }, [])
+
+  const update_app_language = useCallback(async (language: AppLanguage): Promise<SettingsSnapshot> => {
+    if (is_app_language_updating || settings_snapshot.app_language === language) {
+      return settings_snapshot
+    }
+
+    set_is_app_language_updating(true)
+    try {
+      const payload = await api_fetch<SettingsSnapshotPayload>('/api/settings/update', {
+        app_language: language,
+      })
+      return apply_settings_snapshot(payload)
+    } finally {
+      set_is_app_language_updating(false)
+    }
+  }, [
+    apply_settings_snapshot,
+    is_app_language_updating,
+    settings_snapshot,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -313,7 +360,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           return
         }
 
-        set_settings_snapshot(normalize_settings_snapshot(next_settings))
+        apply_settings_snapshot(next_settings)
         set_project_snapshot(normalize_project_snapshot(next_project))
         set_task_snapshot(normalize_task_snapshot(next_task))
         set_hydration_error(null)
@@ -334,7 +381,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [apply_settings_snapshot])
 
   useEffect(() => {
     let event_source: EventSource | null = null
@@ -359,8 +406,16 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       set_task_snapshot((previous_snapshot) => merge_task_progress_update(previous_snapshot, payload))
     }
 
-    function handle_settings_changed(): void {
-      void refresh_settings()
+    function handle_settings_changed(event: MessageEvent<string>): void {
+      const payload = parse_event_payload(event) as SettingsChangedEventPayload
+
+      if (typeof payload.settings === 'object' && payload.settings !== null) {
+        apply_settings_snapshot({
+          settings: payload.settings,
+        })
+      } else {
+        void refresh_settings()
+      }
     }
 
     function handle_proofreading_snapshot_invalidated(): void {
@@ -403,7 +458,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       cancelled = true
       event_source?.close()
     }
-  }, [refresh_settings, refresh_task])
+  }, [apply_settings_snapshot, refresh_settings, refresh_task])
 
   const context_value = useMemo<DesktopRuntimeContextValue>(() => {
     return {
@@ -414,10 +469,12 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       task_snapshot,
       proofreading_invalidation_tick,
       pending_target_route,
+      is_app_language_updating,
       set_settings_snapshot,
       set_project_snapshot,
       set_task_snapshot,
       set_pending_target_route,
+      update_app_language,
       refresh_settings,
       refresh_project,
       refresh_task,
@@ -430,9 +487,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     task_snapshot,
     proofreading_invalidation_tick,
     pending_target_route,
+    is_app_language_updating,
     refresh_project,
     refresh_settings,
     refresh_task,
+    update_app_language,
   ])
 
   return (

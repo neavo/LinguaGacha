@@ -17,6 +17,7 @@ export const zh_cn_app = {
   feedback: {
     save_success: '已保存 …',
     no_valid_data: '没有有效数据 …',
+    update_failed: '更新失败 …',
   },
   drop: {
     multiple_unavailable: '一次只能拖拽一个文件',

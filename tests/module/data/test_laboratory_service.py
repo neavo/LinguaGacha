@@ -6,7 +6,7 @@ from tests.api.support.application_fakes import FakeSettingsConfig
 @pytest.fixture
 def fake_config() -> FakeSettingsConfig:
     config = FakeSettingsConfig()
-    config.mtool_optimizer_enable = False
+    config.mtool_optimizer_enable = True
     config.force_thinking_enable = True
     return config
 
@@ -21,5 +21,5 @@ def test_laboratory_service_returns_snapshot(fake_config: FakeSettingsConfig) ->
     snapshot = service.get_snapshot()
 
     # Assert
-    assert snapshot["mtool_optimizer_enabled"] is False
+    assert snapshot["mtool_optimizer_enabled"] is True
     assert snapshot["force_thinking_enabled"] is True

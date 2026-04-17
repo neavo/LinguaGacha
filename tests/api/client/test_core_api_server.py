@@ -53,6 +53,27 @@ def test_settings_snapshot_endpoint_returns_ok(fake_settings_config) -> None:
         shutdown()
 
 
+def test_settings_update_endpoint_rejects_unsupported_app_language(
+    fake_settings_config,
+) -> None:
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        settings_app_service=SettingsAppService(
+            config_loader=lambda: fake_settings_config
+        )
+    )
+    try:
+        response = httpx.post(
+            f"{base_url}/api/settings/update",
+            json={"app_language": "JA"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["ok"] is False
+        assert response.json()["error"]["code"] == "invalid_request"
+    finally:
+        shutdown()
+
+
 def test_core_api_server_binds_next_candidate_port_when_previous_is_occupied() -> None:
     # 准备
     occupied_socket = reserve_tcp_socket()

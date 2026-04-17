@@ -4,7 +4,6 @@ import { api_fetch } from '@/app/desktop-api'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
-import type { Locale } from '@/i18n/types'
 import {
   CUSTOM_PROMPT_VARIANT_CONFIG,
   type CustomPromptVariant,
@@ -170,21 +169,13 @@ function resolve_error_message(
   return fallback_message
 }
 
-function resolve_prompt_template_language(locale: Locale): 'ZH' | 'EN' {
-  if (locale === 'en-US') {
-    return 'EN'
-  } else {
-    return 'ZH'
-  }
-}
-
 export function useCustomPromptPageState(
   variant: CustomPromptVariant,
 ): UseCustomPromptPageStateResult {
   const config = CUSTOM_PROMPT_VARIANT_CONFIG[variant]
-  const { locale, t } = useI18n()
+  const { t } = useI18n()
   const { push_toast } = useDesktopToast()
-  const { project_snapshot } = useDesktopRuntime()
+  const { project_snapshot, settings_snapshot } = useDesktopRuntime()
 
   const [template, set_template] = useState<CustomPromptTemplate>(() => {
     return create_empty_prompt_template()
@@ -203,7 +194,7 @@ export function useCustomPromptPageState(
   const revision_ref = useRef(revision)
   const template_ref = useRef(template)
   const refresh_snapshot_ref = useRef<() => Promise<void>>(async () => {})
-  const previous_locale_ref = useRef(locale)
+  const previous_app_language_ref = useRef(settings_snapshot.app_language)
 
   useEffect(() => {
     revision_ref.current = revision
@@ -246,12 +237,11 @@ export function useCustomPromptPageState(
       '/api/quality/prompts/template',
       {
         task_type: config.task_type,
-        app_language: resolve_prompt_template_language(locale),
       },
     )
 
     return normalize_prompt_template(payload.template)
-  }, [config.task_type, locale])
+  }, [config.task_type])
 
   const refresh_snapshot = useCallback(async (): Promise<void> => {
     try {
@@ -316,19 +306,19 @@ export function useCustomPromptPageState(
 
   useEffect(() => {
     if (!project_snapshot.loaded) {
-      previous_locale_ref.current = locale
+      previous_app_language_ref.current = settings_snapshot.app_language
       return
     }
 
-    if (previous_locale_ref.current === locale) {
+    if (previous_app_language_ref.current === settings_snapshot.app_language) {
       return
     }
 
-    previous_locale_ref.current = locale
+    previous_app_language_ref.current = settings_snapshot.app_language
 
     // Why: UI 语言切换只需要刷新模板片段，不能顺手重拉快照覆盖用户尚未保存的正文草稿。
     void refresh_template()
-  }, [locale, project_snapshot.loaded, refresh_template])
+  }, [project_snapshot.loaded, refresh_template, settings_snapshot.app_language])
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const [preset_payload, settings_payload] = await Promise.all([

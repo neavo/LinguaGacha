@@ -274,6 +274,7 @@ def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
     dm.schedule_prefilter_if_needed = MagicMock()
 
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["ignored_key"]})
+    dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["app_language"]})
     dm.session.db = None
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
 

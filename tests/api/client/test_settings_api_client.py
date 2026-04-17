@@ -25,7 +25,7 @@ def test_settings_api_client_get_app_settings_returns_snapshot(
     assert result.request_timeout == 120
     assert result.target_language == "ZH"
     assert result.force_thinking_enable is True
-    assert result.mtool_optimizer_enable is False
+    assert result.mtool_optimizer_enable is True
 
 
 def test_settings_api_client_add_recent_project_returns_snapshot(

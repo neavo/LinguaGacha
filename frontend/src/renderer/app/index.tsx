@@ -6,6 +6,7 @@ import { SCREEN_REGISTRY } from '@/app/navigation/screen-registry'
 import { AppNavigationProvider } from '@/app/navigation/navigation-context'
 import { DesktopRuntimeProvider } from '@/app/state/desktop-runtime-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
+import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import '@/app/shell/app-shell.css'
 import type { BottomActionId, RouteId } from '@/app/navigation/types'
 import { LocaleProvider, useI18n } from '@/i18n'
@@ -43,6 +44,14 @@ const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
   'laboratory',
   'toolbox',
 ])
+
+function resolve_toggled_app_language(app_language: 'ZH' | 'EN'): 'ZH' | 'EN' {
+  if (app_language === 'EN') {
+    return 'ZH'
+  }
+
+  return 'EN'
+}
 
 function resolve_selectable_route(route_id: RouteId): RouteId {
   if (route_id === 'text-replacement') {
@@ -88,10 +97,14 @@ function AppContent(): JSX.Element {
   const {
     hydration_ready,
     pending_target_route,
+    is_app_language_updating,
     project_snapshot,
+    settings_snapshot,
     set_pending_target_route,
+    update_app_language,
   } = useDesktopRuntime()
-  const { toggle_locale, t } = useI18n()
+  const { push_toast } = useDesktopToast()
+  const { t } = useI18n()
   const { resolvedTheme, setTheme } = useTheme()
   const shell_info = window.desktopApp.shell
   const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID)
@@ -254,7 +267,13 @@ function AppContent(): JSX.Element {
         setTheme('light')
       }
     } else {
-      toggle_locale()
+      void update_app_language(resolve_toggled_app_language(settings_snapshot.app_language)).catch((error: unknown) => {
+        if (error instanceof Error) {
+          push_toast('error', error.message)
+        } else {
+          push_toast('error', t('app.feedback.update_failed'))
+        }
+      })
     }
   }
 
@@ -284,15 +303,16 @@ function AppContent(): JSX.Element {
       >
         <AppTitlebar />
         <section className="shell-body">
-          <AppSidebar
-            groups={visible_navigation_groups}
-            bottom_actions={BOTTOM_ACTIONS}
-            selected_route={selected_route}
-            expanded_items={expanded_items}
-            disabled_route_ids={disabled_route_ids}
-            on_select_route={handle_select_route}
-            on_toggle_group={handle_toggle_group}
-            on_bottom_action={handle_bottom_action}
+            <AppSidebar
+              groups={visible_navigation_groups}
+              bottom_actions={BOTTOM_ACTIONS}
+              selected_route={selected_route}
+              expanded_items={expanded_items}
+              disabled_route_ids={disabled_route_ids}
+              disabled_bottom_action_ids={is_app_language_updating ? new Set<BottomActionId>(['language']) : new Set()}
+              on_select_route={handle_select_route}
+              on_toggle_group={handle_toggle_group}
+              on_bottom_action={handle_bottom_action}
           />
 
           <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
@@ -311,22 +331,22 @@ function AppContent(): JSX.Element {
 
 function App(): JSX.Element {
   return (
-    <LocaleProvider>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme={read_theme_mode()}
-        enableSystem={false}
-        storageKey={THEME_STORAGE_KEY}
-        themes={['light', 'dark']}
-      >
-        <DesktopRuntimeProvider>
+    <DesktopRuntimeProvider>
+      <LocaleProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme={read_theme_mode()}
+          enableSystem={false}
+          storageKey={THEME_STORAGE_KEY}
+          themes={['light', 'dark']}
+        >
           <TooltipProvider delayDuration={120}>
             <AppContent />
             <Toaster />
           </TooltipProvider>
-        </DesktopRuntimeProvider>
-      </ThemeProvider>
-    </LocaleProvider>
+        </ThemeProvider>
+      </LocaleProvider>
+    </DesktopRuntimeProvider>
   )
 }
 

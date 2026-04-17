@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from api.Application.QualityRuleAppService import QualityRuleAppService
+from base.BaseLanguage import BaseLanguage
 from model.Api.QualityRuleModels import ProofreadingLookupQuery
 from model.Api.QualityRuleModels import QualityRuleSnapshot
+
+quality_rule_app_service_module = import_module(
+    "api.Application.QualityRuleAppService"
+)
 
 
 def build_fake_quality_rule_facade() -> SimpleNamespace:
@@ -183,6 +189,51 @@ def test_query_proofreading_for_text_preserve_forces_regex_lookup() -> None:
 
     assert query.keyword == "[勇者]"
     assert query.is_regex is True
+
+
+def test_get_prompt_template_uses_current_localizer_language(
+    monkeypatch,
+) -> None:
+    app_service = QualityRuleAppService(build_fake_quality_rule_facade())
+
+    monkeypatch.setattr(
+        quality_rule_app_service_module.Config,
+        "load",
+        lambda config: config,
+    )
+    monkeypatch.setattr(
+        quality_rule_app_service_module.PromptBuilder,
+        "get_prompt_ui_language",
+        lambda builder: BaseLanguage.Enum.EN,
+    )
+    monkeypatch.setattr(
+        quality_rule_app_service_module.PromptBuilder,
+        "get_base",
+        lambda builder, language: f"base:{language}",
+    )
+    monkeypatch.setattr(
+        quality_rule_app_service_module.PromptBuilder,
+        "get_prefix",
+        lambda builder, language: f"prefix:{language}",
+    )
+    monkeypatch.setattr(
+        quality_rule_app_service_module.PromptBuilder,
+        "get_suffix",
+        lambda builder, language: f"suffix:{language}",
+    )
+
+    result = app_service.get_prompt_template(
+        {
+            "task_type": "translation",
+            "app_language": "ZH",
+        }
+    )
+
+    assert result["template"] == {
+        "default_text": "base:EN",
+        "prefix_text": "prefix:EN",
+        "suffix_text": "suffix:EN",
+    }
 
 
 def test_import_rules_returns_entries_payload() -> None:

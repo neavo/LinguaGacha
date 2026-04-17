@@ -20,6 +20,7 @@ export const en_us_app = {
   feedback: {
     save_success: 'Saved …',
     no_valid_data: 'No valid data …',
+    update_failed: 'Update failed …',
   },
   drop: {
     multiple_unavailable: 'Only one file can be dropped at a time',

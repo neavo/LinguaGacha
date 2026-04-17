@@ -82,6 +82,7 @@
 - `app/navigation/` 是导航权威来源：`types.ts` 定义 route id，`schema.ts` 组织显示分组，`screen-registry.ts` 定义 route 到页面组件的映射。
 - `app/shell/` 只承载应用壳层组件与壳层布局样式；例如 `AppSidebar`、`AppTitlebar` 这类只被壳层消费的组件必须留在这里。
 - 应用级通知、桌面运行时上下文、跨页面状态和与 Electron 桥接强耦合的适配逻辑统一收口在 `app/`。
+- 应用语言的唯一写入口固定在 `app/state/desktop-runtime-context.tsx`；`i18n/` 只允许根据 `settings_snapshot.app_language` 派生渲染语言，不得再维护独立可写 locale 状态。
 
 ### `pages/`
 - 页面目录固定以 `page.tsx` 为入口；同目录可并置 `<page-name>.css`、`components/`、`types.ts`、`use-*.ts`、`mock.ts` 和页面私有辅助模块。
