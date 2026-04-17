@@ -225,8 +225,24 @@ class TestConfigBehavior:
 
         assert len(config.recent_projects) == 10
         assert config.recent_projects[0]["path"] == "/p/5"
-        assert config.recent_projects[0]["name"] == "latest"
+        assert config.recent_projects[0]["name"] == "5"
         assert len([v for v in config.recent_projects if v.get("path") == "/p/5"]) == 1
+
+    def test_recent_projects_name_uses_project_path_stem(self) -> None:
+        config = Config()
+
+        config.add_recent_project(
+            path="E:/Project/LinguaGacha/output/input_20260410_225647.lg",
+            name="legacy-source-name",
+        )
+
+        assert config.recent_projects == [
+            {
+                "path": "E:/Project/LinguaGacha/output/input_20260410_225647.lg",
+                "name": "input_20260410_225647",
+                "updated_at": config.recent_projects[0]["updated_at"],
+            }
+        ]
 
     def test_remove_recent_project(self) -> None:
         config = Config()

@@ -1,0 +1,64 @@
+.setting-card-row {
+  overflow: hidden;
+}
+
+.setting-card-row__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  container-type: inline-size;
+}
+
+.setting-card-row__copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting-card-row__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.setting-card-row__title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.setting-card-row__title-suffix {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.setting-card-row__description {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.setting-card-row__description-emphasis {
+  color: var(--primary);
+}
+
+.setting-card-row__action {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 132px;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+.setting-card-row__action > * {
+  min-width: inherit;
+}

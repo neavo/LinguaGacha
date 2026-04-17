@@ -205,6 +205,28 @@ class AnalysisService:
             self.get_analysis_candidate_aggregate()
         )
 
+    def build_importable_analysis_glossary_from_candidates(
+        self,
+    ) -> list[dict[str, Any]]:
+        """候选数在导入闭环里要按“当前仍可导入”口径回写缓存。"""
+
+        glossary_entries = self.build_analysis_glossary_from_candidates()
+        if not glossary_entries:
+            return []
+
+        preview = self.build_analysis_glossary_import_preview(glossary_entries)
+        return self.filter_analysis_glossary_import_candidates(
+            glossary_entries,
+            preview,
+        )
+
+    def sync_importable_analysis_candidate_count(self) -> int:
+        """显式重算当前仍可导入的候选数，并回写缓存。"""
+
+        return self.set_analysis_candidate_count_cache(
+            len(self.build_importable_analysis_glossary_from_candidates())
+        )
+
     def build_analysis_glossary_import_preview(
         self,
         glossary_entries: list[dict[str, Any]],
@@ -261,7 +283,7 @@ class AnalysisService:
             rules={LGDatabase.RuleType.GLOSSARY: merged},
             meta=None,
         )
-        self.set_analysis_candidate_count_cache(self.get_analysis_candidate_count())
+        self.sync_importable_analysis_candidate_count()
         return int(report.added) + int(report.filled)
 
     def clear_analysis_progress(self) -> None:

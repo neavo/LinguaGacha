@@ -632,6 +632,9 @@ class DataManager(Base):
             self.emit_quality_rule_update(rule_types=[LGDatabase.RuleType.GLOSSARY])
         return imported
 
+    def sync_importable_analysis_candidate_count(self) -> int:
+        return self.analysis_service.sync_importable_analysis_candidate_count()
+
     def clear_analysis_progress(self) -> None:
         self.analysis_service.clear_analysis_progress()
 
@@ -646,6 +649,13 @@ class DataManager(Base):
 
     def get_analysis_progress_snapshot(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_progress_snapshot()
+
+    def get_task_progress_snapshot(self, task_type: str) -> dict[str, Any]:
+        """任务 API 统一从这里读取进度快照，避免调用方自己分支。"""
+
+        if task_type == "analysis":
+            return self.get_analysis_progress_snapshot()
+        return self.get_translation_extras()
 
     def refresh_analysis_progress_snapshot_cache(self) -> dict[str, Any]:
         return self.analysis_service.refresh_analysis_progress_snapshot_cache()
@@ -992,6 +1002,22 @@ class DataManager(Base):
             lambda: self.project_file_service.delete_file(rel_path),
             f"Failed to delete file: {rel_path}",
         )
+
+    def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
+        """同步重排工作台文件顺序，供前端拖拽后立即持久化。"""
+
+        from module.Engine.Engine import Engine
+
+        if Engine.get().get_status() != Base.TaskStatus.IDLE:
+            raise ValueError(Localizer.get().task_running)
+
+        if not self.try_begin_file_operation():
+            raise ValueError(Localizer.get().task_running)
+
+        try:
+            self.project_file_service.reorder_files(ordered_rel_paths)
+        finally:
+            self.finish_file_operation()
 
     def add_file(self, file_path: str) -> None:
         self.emit_project_file_update(self.project_file_service.add_file(file_path))

@@ -1,0 +1,634 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@font-face {
+  font-family: "LGMono";
+  src: url("/fonts/MonaspaceNeon.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-stretch: 100%;
+  size-adjust: 90%;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGMono";
+  src: url("/fonts/MonaspaceNeon.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: italic;
+  font-stretch: 100%;
+  font-variation-settings: "slnt" -11;
+  size-adjust: 90%;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont-Bold.woff2") format("woff2");
+  font-weight: 500 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont-Bold.woff2") format("woff2");
+  font-weight: 500 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LGBaseFont";
+  src: url("/fonts/LGBaseFont-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --ui-font-family-base:
+    "LGMono",
+    "LGBaseFont",
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "PingFang SC",
+    system-ui,
+    sans-serif;
+  font-family:
+    var(--ui-font-family-base);
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --background: #f8f7f7;
+  --foreground: #282522;
+  --card: #fefdfe;
+  --card-foreground: #282522;
+  --popover: #fefdfe;
+  --popover-foreground: #282522;
+  --primary: #b8892f;
+  --primary-foreground: #f9f2ec;
+  --secondary: #f1efed;
+  --secondary-foreground: #524d48;
+  --muted: #efedec;
+  --muted-foreground: #7b7670;
+  --accent: #ebe9e7;
+  --accent-foreground: #5a5550;
+  --destructive: oklch(0.61 0.18 28);
+  --ui-success: #22c55e;
+  --ui-warning: #f97316;
+  --ui-failure: var(--destructive);
+  --border: #dddad6;
+  --input: #dddad6;
+  --ring: #c89c45;
+  --chart-1: #b8892f;
+  --chart-2: #cda25a;
+  --chart-3: #d2b29c;
+  --chart-4: #8e6a58;
+  --chart-5: #bfa88f;
+  --ui-radius-card: 4px;
+  --ui-radius-button: 8px;
+  --sidebar: #f5f4f2;
+  --sidebar-foreground: #282522;
+  --sidebar-primary: #bc9140;
+  --sidebar-primary-foreground: #f9f2ec;
+  --sidebar-accent: #ebe9e7;
+  --sidebar-accent-foreground: #5a5550;
+  --sidebar-border: #dddad6;
+  --sidebar-ring: #c89c45;
+  --ui-card-default-surface: color-mix(in srgb, var(--card) 95%, white 5%);
+  --ui-card-default-border: color-mix(in srgb, var(--border) 72%, white 28%);
+  --ui-card-default-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
+  --ui-card-default-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent),
+    0 14px 28px -24px color-mix(in srgb, var(--foreground) 16%, transparent);
+  --ui-card-default-shadow-hover:
+    0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 20px 36px -24px color-mix(in srgb, var(--foreground) 22%, transparent);
+  --ui-card-panel-surface: color-mix(in srgb, var(--card) 97%, white 3%);
+  --ui-card-panel-border: color-mix(in srgb, var(--border) 78%, white 22%);
+  --ui-card-panel-border-hover: color-mix(in srgb, var(--border) 74%, var(--primary) 26%);
+  --ui-card-panel-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent),
+    0 18px 32px -24px color-mix(in srgb, var(--foreground) 18%, transparent);
+  --ui-card-panel-shadow-hover:
+    0 3px 8px color-mix(in srgb, var(--foreground) 9%, transparent),
+    0 22px 40px -24px color-mix(in srgb, var(--foreground) 24%, transparent);
+  --ui-card-table-surface: color-mix(in srgb, var(--card) 88%, var(--background) 12%);
+  --ui-card-table-border: color-mix(in srgb, var(--border) 84%, white 16%);
+  --ui-card-table-border-hover: color-mix(in srgb, var(--border) 78%, var(--primary) 22%);
+  --ui-card-table-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent),
+    0 10px 20px -24px color-mix(in srgb, var(--foreground) 12%, transparent);
+  --ui-card-table-shadow-hover:
+    0 2px 6px color-mix(in srgb, var(--foreground) 7%, transparent),
+    0 18px 32px -28px color-mix(in srgb, var(--foreground) 18%, transparent);
+  --ui-card-toolbar-surface: color-mix(in srgb, var(--card) 84%, var(--background) 16%);
+  --ui-card-toolbar-border: color-mix(in srgb, var(--border) 80%, white 20%);
+  --ui-card-toolbar-border-hover: color-mix(in srgb, var(--border) 74%, var(--primary) 26%);
+  --ui-card-toolbar-shadow:
+    0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent),
+    0 12px 24px -24px color-mix(in srgb, var(--foreground) 16%, transparent);
+  --ui-card-toolbar-shadow-hover:
+    0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 18px 32px -24px color-mix(in srgb, var(--foreground) 22%, transparent);
+  --ui-shadow-overlay:
+    0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent);
+  --ui-space-card-x: 16px;
+  --ui-space-card-y: 16px;
+  --ui-space-panel-x: 24px;
+  --ui-space-panel-y: 24px;
+  --ui-space-card-copy-gap: 4px;
+  --ui-space-card-footer-gap: 12px;
+  --ui-page-pad-top: 16px;
+  --ui-page-pad-x: 16px;
+  --ui-page-pad-bottom: 16px;
+  --ui-page-gap: 16px;
+  --ui-section-gap: 16px;
+  --ui-section-gap-dense: 12px;
+  --ui-list-gap-dense: 8px;
+  --ui-space-toolbar-x: 12px;
+  --ui-space-toolbar-y: 0px;
+  --ui-toolbar-height: 56px;
+  --ui-toolbar-button-height: 36px;
+  --ui-toolbar-button-padding-x: 8px;
+  --ui-toolbar-group-gap: 2px;
+  --ui-toolbar-separator-height: 20px;
+  --ui-toolbar-separator-padding-inline: 2px;
+  --ui-toolbar-separator-line-width: 1px;
+  --ui-table-head-height: 36px;
+  --ui-table-row-height: 39px;
+  --ui-table-cell-x: 12px;
+  --ui-selection-rail-width: 3px;
+  --ui-table-divider: color-mix(in srgb, var(--border) 72%, transparent);
+  --ui-table-divider-soft: color-mix(in srgb, var(--border) 55%, transparent);
+  --ui-table-hover: color-mix(in srgb, var(--accent) 78%, transparent);
+  --ui-table-selected: color-mix(in srgb, var(--accent) 96%, transparent);
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  user-select: none;
+  background: var(--background);
+  color: var(--foreground);
+  font-synthesis: none;
+}
+
+img,
+svg {
+  -webkit-user-drag: none;
+}
+
+button,
+input,
+textarea,
+select,
+a,
+[role='button'],
+[data-slot='button'] {
+  -webkit-app-region: no-drag;
+}
+
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--ui-font-family-base);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--ui-failure);
+  --color-success: var(--ui-success);
+  --color-warning: var(--ui-warning);
+  --color-failure: var(--ui-failure);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius: var(--ui-radius-card);
+  --radius-sm: calc(var(--ui-radius-card) * 0.6);
+  --radius-md: calc(var(--ui-radius-card) * 0.8);
+  --radius-lg: var(--ui-radius-card);
+  --radius-xl: calc(var(--ui-radius-card) * 1.4);
+  --radius-2xl: calc(var(--ui-radius-card) * 1.8);
+  --radius-3xl: calc(var(--ui-radius-card) * 2.2);
+  --radius-4xl: calc(var(--ui-radius-card) * 2.6);
+}
+
+.dark {
+  --background: #121212;
+  --foreground: #eceae7;
+  --card: #191919;
+  --card-foreground: #eceae7;
+  --popover: #191919;
+  --popover-foreground: #eceae7;
+  --primary: #c9aa92;
+  --primary-foreground: #33241d;
+  --secondary: #222222;
+  --secondary-foreground: #eceae7;
+  --muted: #202020;
+  --muted-foreground: #b8b4af;
+  --accent: #252525;
+  --accent-foreground: #eceae7;
+  --destructive: oklch(0.68 0.17 28);
+  --ui-success: #4ade80;
+  --ui-warning: #fb923c;
+  --ui-failure: var(--destructive);
+  --border: #323232;
+  --input: #323232;
+  --ring: #d4b06a;
+  --chart-1: #c9aa92;
+  --chart-2: #b58d74;
+  --chart-3: #9d7a68;
+  --chart-4: #d8c1b1;
+  --chart-5: #8d6f63;
+  --sidebar: #161616;
+  --sidebar-foreground: #eceae7;
+  --sidebar-primary: #c7a462;
+  --sidebar-primary-foreground: #33241d;
+  --sidebar-accent: #232323;
+  --sidebar-accent-foreground: #eceae7;
+  --sidebar-border: #2f2f2f;
+  --sidebar-ring: #d4b06a;
+  --ui-card-default-surface: color-mix(in srgb, var(--card) 96%, white 4%);
+  --ui-card-default-border: color-mix(in srgb, var(--border) 82%, white 18%);
+  --ui-card-default-border-hover: color-mix(in srgb, var(--border) 68%, var(--primary) 32%);
+  --ui-card-default-shadow:
+    0 1px 2px color-mix(in srgb, black 38%, transparent),
+    0 16px 28px -24px color-mix(in srgb, black 56%, transparent);
+  --ui-card-default-shadow-hover:
+    0 2px 6px color-mix(in srgb, black 46%, transparent),
+    0 22px 38px -24px color-mix(in srgb, black 64%, transparent);
+  --ui-card-panel-surface: color-mix(in srgb, var(--card) 98%, white 2%);
+  --ui-card-panel-border: color-mix(in srgb, var(--border) 88%, white 12%);
+  --ui-card-panel-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
+  --ui-card-panel-shadow:
+    0 1px 2px color-mix(in srgb, black 42%, transparent),
+    0 18px 32px -24px color-mix(in srgb, black 58%, transparent);
+  --ui-card-panel-shadow-hover:
+    0 3px 8px color-mix(in srgb, black 50%, transparent),
+    0 24px 42px -24px color-mix(in srgb, black 68%, transparent);
+  --ui-card-table-surface: color-mix(in srgb, var(--card) 90%, var(--background) 10%);
+  --ui-card-table-border: color-mix(in srgb, var(--border) 92%, white 8%);
+  --ui-card-table-border-hover: color-mix(in srgb, var(--border) 76%, var(--primary) 24%);
+  --ui-card-table-shadow:
+    0 1px 2px color-mix(in srgb, black 34%, transparent),
+    0 12px 22px -26px color-mix(in srgb, black 52%, transparent);
+  --ui-card-table-shadow-hover:
+    0 2px 6px color-mix(in srgb, black 44%, transparent),
+    0 18px 32px -28px color-mix(in srgb, black 60%, transparent);
+  --ui-card-toolbar-surface: color-mix(in srgb, var(--card) 86%, var(--background) 14%);
+  --ui-card-toolbar-border: color-mix(in srgb, var(--border) 88%, white 12%);
+  --ui-card-toolbar-border-hover: color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
+  --ui-card-toolbar-shadow:
+    0 1px 2px color-mix(in srgb, black 40%, transparent),
+    0 14px 26px -26px color-mix(in srgb, black 56%, transparent);
+  --ui-card-toolbar-shadow-hover:
+    0 2px 6px color-mix(in srgb, black 48%, transparent),
+    0 18px 34px -24px color-mix(in srgb, black 64%, transparent);
+  --ui-shadow-overlay:
+    0 24px 52px -20px color-mix(in srgb, black 72%, transparent);
+  --ui-table-divider: color-mix(in srgb, var(--border) 80%, transparent);
+  --ui-table-divider-soft: color-mix(in srgb, var(--border) 62%, transparent);
+  --ui-table-hover: color-mix(in srgb, var(--accent) 86%, transparent);
+  --ui-table-selected: color-mix(in srgb, var(--accent) 100%, transparent);
+}
+
+@layer base {
+  [data-slot='card'] {
+    --card-surface-current: var(--ui-card-default-surface);
+    --card-border-current: var(--ui-card-default-border);
+    --card-border-hover-current: var(--ui-card-default-border-hover);
+    --card-shadow-current: var(--ui-card-default-shadow);
+    --card-shadow-hover-current: var(--ui-card-default-shadow-hover);
+    --card-radius-current: var(--ui-radius-card);
+    --card-padding-x: var(--ui-space-card-x);
+    --card-header-top: var(--ui-space-card-y);
+    --card-header-bottom: 0px;
+    --card-content-top: var(--ui-space-card-y);
+    --card-content-bottom: var(--ui-space-card-y);
+    --card-footer-top: 0px;
+    --card-footer-bottom: var(--ui-space-card-y);
+    --card-header-gap: var(--ui-space-card-copy-gap);
+    --card-footer-gap: var(--ui-space-card-footer-gap);
+  }
+
+  [data-slot='card'][data-variant='panel'] {
+    --card-surface-current: var(--ui-card-panel-surface);
+    --card-border-current: var(--ui-card-panel-border);
+    --card-border-hover-current: var(--ui-card-panel-border-hover);
+    --card-shadow-current: var(--ui-card-panel-shadow);
+    --card-shadow-hover-current: var(--ui-card-panel-shadow-hover);
+    --card-padding-x: var(--ui-space-panel-x);
+    --card-header-top: var(--ui-space-panel-y);
+    --card-header-bottom: 12px;
+    --card-content-top: var(--ui-space-panel-y);
+    --card-content-bottom: var(--ui-space-panel-y);
+    --card-footer-top: 4px;
+    --card-footer-bottom: var(--ui-space-panel-y);
+  }
+
+  [data-slot='card'][data-variant='table'] {
+    --card-surface-current: var(--ui-card-table-surface);
+    --card-border-current: var(--ui-card-table-border);
+    --card-border-hover-current: var(--ui-card-table-border-hover);
+    --card-shadow-current: var(--ui-card-table-shadow);
+    --card-shadow-hover-current: var(--ui-card-table-shadow-hover);
+    --card-content-bottom: 0px;
+    --card-padding-x: 0px;
+  }
+
+  [data-slot='card'][data-variant='toolbar'] {
+    --card-surface-current: var(--ui-card-toolbar-surface);
+    --card-border-current: var(--ui-card-toolbar-border);
+    --card-border-hover-current: var(--ui-card-toolbar-border-hover);
+    --card-shadow-current: var(--ui-card-toolbar-shadow);
+    --card-shadow-hover-current: var(--ui-card-toolbar-shadow-hover);
+    --card-header-top: 0px;
+    --card-header-bottom: 0px;
+    --card-content-top: 0px;
+    --card-content-bottom: 0px;
+    --card-footer-top: 0px;
+    --card-footer-bottom: 0px;
+    --card-padding-x: 0px;
+  }
+
+  .card-surface {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--card-surface-current);
+    box-shadow: var(--card-shadow-current);
+    isolation: isolate;
+    transition:
+      background-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  .card-surface::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--card-border-current);
+    border-radius: inherit;
+    pointer-events: none;
+    transition: border-color 180ms ease;
+  }
+
+  [data-slot='card'][data-interactive='true'] {
+    cursor: pointer;
+  }
+
+  [data-slot='card'][data-interactive='true']:hover {
+    box-shadow: var(--card-shadow-hover-current);
+  }
+
+  [data-slot='card'][data-interactive='true']:hover::after {
+    border-color: var(--card-border-hover-current);
+  }
+
+  [data-slot='card'][data-interactive='true']:active {
+    transform: translateY(1px);
+  }
+
+  [data-slot='card-header'] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-header-gap);
+    padding: var(--card-header-top) var(--card-padding-x) var(--card-header-bottom);
+  }
+
+  [data-slot='card-content'] {
+    padding: var(--card-content-top) var(--card-padding-x) var(--card-content-bottom);
+  }
+
+  [data-slot='card-header'] + [data-slot='card-content'] {
+    padding-top: 0px;
+  }
+
+  [data-slot='card-footer'] {
+    gap: var(--card-footer-gap);
+    padding: var(--card-footer-top) var(--card-padding-x) var(--card-footer-bottom);
+  }
+
+  [data-slot='table'] {
+    --table-divider-current: var(--ui-table-divider);
+    --table-divider-soft-current: var(--ui-table-divider-soft);
+    --table-head-height-current: var(--ui-table-head-height);
+    --table-row-height-current: var(--ui-table-row-height);
+    --table-cell-x-current: var(--ui-table-cell-x);
+    --table-hover-current: var(--ui-table-hover);
+    --table-selected-current: var(--ui-table-selected);
+    --table-header-bg-current: transparent;
+  }
+
+  [data-slot='card'][data-variant='table'] [data-slot='table'] {
+    --table-header-bg-current: color-mix(in srgb, var(--ui-card-table-surface) 94%, var(--background) 6%);
+  }
+
+  [data-slot='table-header'] > [data-slot='table-row'] {
+    border-bottom: 1px solid var(--table-divider-current);
+  }
+
+  [data-slot='table-head'] {
+    height: var(--table-head-height-current);
+    padding-inline: var(--table-cell-x-current);
+    font-size: 12px;
+    color: var(--muted-foreground);
+    background: var(--table-header-bg-current);
+  }
+
+  [data-slot='table-body'] > [data-slot='table-row'] {
+    border-bottom: 1px solid var(--table-divider-current);
+  }
+
+  [data-slot='table-body'] > [data-slot='table-row']:hover > [data-slot='table-cell'] {
+    background: var(--table-hover-current);
+  }
+
+  [data-slot='table-body'] > [data-slot='table-row'][data-state='selected'] > [data-slot='table-cell'] {
+    background: var(--table-selected-current);
+  }
+
+  [data-slot='table-cell'] {
+    height: var(--table-row-height-current);
+    padding-inline: var(--table-cell-x-current);
+    font-size: 13px;
+  }
+
+  .cn-toast__title {
+    font-weight: 500;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    @apply font-sans;
+  }
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--primary) 34%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  [data-sonner-toaster] {
+    font-family: var(--ui-font-family-base);
+  }
+
+  [data-sonner-toast] {
+    font-family: var(--ui-font-family-base);
+  }
+
+  .cn-toast {
+    border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    box-shadow: 0 14px 34px rgb(15 23 42 / 0.12);
+    backdrop-filter: blur(14px);
+  }
+
+  .cn-toast--info {
+    border-color: color-mix(in srgb, var(--ring) 34%, var(--border));
+  }
+
+  .cn-toast--warning {
+    border-color: color-mix(in srgb, var(--ui-warning) 38%, var(--border));
+  }
+
+  .cn-toast--error {
+    border-color: color-mix(in srgb, var(--ui-failure) 42%, var(--border));
+  }
+
+  .cn-toast--success {
+    border-color: color-mix(in srgb, var(--ui-success) 42%, var(--border));
+  }
+
+  .cn-toast__content {
+    gap: 10px;
+  }
+
+  .cn-toast__icon {
+    color: var(--foreground);
+  }
+
+  .cn-toast__title {
+    display: block;
+    overflow: hidden;
+    color: var(--foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13.76px;
+    line-height: 1.45;
+  }
+
+  .cn-toast__description {
+    display: none;
+    color: var(--muted-foreground);
+    font-size: 12.48px;
+    line-height: 1.45;
+  }
+
+  .cn-toast__close {
+    color: var(--muted-foreground);
+  }
+
+  .cn-toast--info .cn-toast__icon {
+    color: #5f8db8;
+  }
+
+  .cn-toast--warning .cn-toast__icon {
+    color: color-mix(in srgb, var(--ui-warning) 78%, var(--foreground) 22%);
+  }
+
+  .cn-toast--error .cn-toast__icon {
+    color: color-mix(in srgb, var(--ui-failure) 78%, var(--foreground) 22%);
+  }
+
+  .cn-toast--success .cn-toast__icon {
+    color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
+  }
+
+  .cn-toast--progress {
+    padding-inline-end: 16px;
+    --toast-icon-margin-start: 0px;
+    --toast-icon-margin-end: 16px;
+  }
+
+  .cn-toast--progress .cn-toast__icon {
+    width: 28px;
+    height: 28px;
+  }
+}

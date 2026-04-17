@@ -37,6 +37,7 @@ def build_service() -> tuple[ProjectFileService, ProjectSession]:
         delete_asset=MagicMock(),
         update_asset=MagicMock(),
         update_asset_path=MagicMock(),
+        update_asset_sort_orders=MagicMock(),
         asset_path_exists=MagicMock(return_value=False),
         get_all_asset_paths=MagicMock(return_value=[]),
         connection=MagicMock(
@@ -161,6 +162,33 @@ def test_delete_file_removes_asset_and_items() -> None:
     assert "a.txt" not in session.asset_decompress_cache
     service.item_service.clear_item_cache.assert_called_once()
     service.analysis_service.clear_analysis_progress.assert_called_once()
+
+
+def test_reorder_files_updates_asset_sort_orders() -> None:
+    service, session = build_service()
+    session.db.get_all_asset_paths = MagicMock(
+        return_value=["script/a.txt", "script/b.txt"]
+    )
+    connection_ctx = session.db.connection.return_value
+    with connection_ctx as conn:
+        expected_conn = conn
+
+    service.reorder_files(["script/b.txt", "script/a.txt"])
+
+    session.db.update_asset_sort_orders.assert_called_once_with(
+        ["script/b.txt", "script/a.txt"],
+        conn=expected_conn,
+    )
+
+
+def test_reorder_files_rejects_missing_or_extra_paths() -> None:
+    service, session = build_service()
+    session.db.get_all_asset_paths = MagicMock(
+        return_value=["script/a.txt", "script/b.txt"]
+    )
+
+    with pytest.raises(ValueError, match="顺序无效"):
+        service.reorder_files(["script/a.txt"])
 
 
 def test_replace_file_returns_mutation_stats(fs, monkeypatch) -> None:

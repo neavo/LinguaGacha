@@ -1,28 +1,34 @@
 from base.BaseLanguage import BaseLanguage
 
-class PunctuationFixer():
 
+class PunctuationFixer:
     # 数量匹配规则
     RULE_SAME_COUNT_A: dict[str, tuple[str]] = {
-        "　": (" ", ),                                      # 全角空格和半角空格之间的转换
-        "：": (":", ),
-        "・": ("·", ),
-        "？": ("?", ),
-        "！": ("!", ),
-        "\u2014": ("\u002d", "\u2015"),                     # 破折号之间的转换，\u002d = - ，\u2014 = ― ，\u2015 = —
-        "\u2015": ("\u002d", "\u2014"),                     # 破折号之间的转换，\u002d = - ，\u2014 = ― ，\u2015 = —
+        "　": (" ",),  # 全角空格和半角空格之间的转换
+        "：": (":",),
+        "・": ("·",),
+        "？": ("?",),
+        "！": ("!",),
+        "\u2014": (
+            "\u002d",
+            "\u2015",
+        ),  # 破折号之间的转换，\u002d = - ，\u2014 = ― ，\u2015 = —
+        "\u2015": (
+            "\u002d",
+            "\u2014",
+        ),  # 破折号之间的转换，\u002d = - ，\u2014 = ― ，\u2015 = —
         "<": ("＜", "《"),
         ">": ("＞", "》"),
         "＜": ("<", "《"),
         "＞": (">", "》"),
-        "[": ("【", ),
-        "]": ("】", ),
-        "【": ("[", ),
-        "】": ("]", ),
-        "(": ("（", ),
-        ")": ("）", ),
-        "（": ("(", ),
-        "）": (")", ),
+        "[": ("【",),
+        "]": ("】",),
+        "【": ("[",),
+        "】": ("]",),
+        "(": ("（",),
+        ")": ("）",),
+        "（": ("(",),
+        "）": (")",),
         "「": ("‘", "“", "『"),
         "」": ("’", "”", "』"),
         "『": ("‘", "“", "「"),
@@ -35,12 +41,15 @@ class PunctuationFixer():
 
     # 数量匹配规则
     RULE_SAME_COUNT_B: dict[str, tuple[str]] = {
-        " ": ("　", ),                                      # 全角空格和半角空格之间的转换
-        ":": ("：", ),
-        "·": ("・", ),
-        "?": ("？", ),
-        "!": ("！", ),
-        "\u002d": ("\u2014", "\u2015"),                     # 破折号之间的转换，\u002d = - ，\u2014 = ― ，\u2015 = —
+        " ": ("　",),  # 全角空格和半角空格之间的转换
+        ":": ("：",),
+        "·": ("・",),
+        "?": ("？",),
+        "!": ("！",),
+        "\u002d": (
+            "\u2014",
+            "\u2015",
+        ),  # 破折号之间的转换，\u002d = - ，\u2014 = ― ，\u2015 = —
     }
 
     # 强制替换规则
@@ -55,7 +64,13 @@ class PunctuationFixer():
 
     # 检查并替换
     @classmethod
-    def fix(cls, src: str, dst: str, source_language: BaseLanguage.Enum, target_language: BaseLanguage.Enum) -> str:
+    def fix(
+        cls,
+        src: str,
+        dst: str,
+        source_language: BaseLanguage.Enum,
+        target_language: BaseLanguage.Enum,
+    ) -> str:
         # 首尾标点修正
         dst = cls.fix_start_end(src, dst, target_language)
 
@@ -63,13 +78,19 @@ class PunctuationFixer():
         # CJK To 非CJK = A + B
         # 非CJK To CJK = A
         # 非CJK To 非CJK = A + B
-        if BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(target_language):
+        if BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(
+            target_language
+        ):
             dst = cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_A)
             dst = cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_B)
-        elif BaseLanguage.is_cjk(source_language) and not BaseLanguage.is_cjk(target_language):
+        elif BaseLanguage.is_cjk(source_language) and not BaseLanguage.is_cjk(
+            target_language
+        ):
             dst = cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_A)
             dst = cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_B)
-        elif not BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(target_language):
+        elif not BaseLanguage.is_cjk(source_language) and BaseLanguage.is_cjk(
+            target_language
+        ):
             dst = cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_A)
         else:
             dst = cls.apply_fix_rules(src, dst, cls.RULE_SAME_COUNT_A)
@@ -94,13 +115,18 @@ class PunctuationFixer():
         # 然后，原文中目标符号和错误符号的数量不应相等，否则无法确定哪个符号是正确的
         # 然后，原文中的目标符号的数量应大于译文中的目标符号的数量，否则表示没有需要修复的标点
         # 最后，如果原文中目标符号的数量等于译文中目标符号与错误符号的数量之和，则判断为需要修复
-        return num_s_x > 0 and num_s_x != num_s_y and num_s_x > num_t_x and num_s_x == num_t_x + num_t_y
+        return (
+            num_s_x > 0
+            and num_s_x != num_s_y
+            and num_s_x > num_t_x
+            and num_s_x == num_t_x + num_t_y
+        )
 
     # 应用修复规则
     @classmethod
     def apply_fix_rules(cls, src: str, dst: str, rules: dict) -> str:
         for key, value in rules.items():
-            if cls.check(src, dst, key, value) == True:
+            if cls.check(src, dst, key, value):
                 dst = cls.apply_replace_rules(dst, key, value)
 
         return dst
@@ -115,14 +141,16 @@ class PunctuationFixer():
 
     # 首尾标点修正
     @classmethod
-    def fix_start_end(self, src: str, dst: str, target_language: BaseLanguage.Enum) -> str:
+    def fix_start_end(
+        self, src: str, dst: str, target_language: BaseLanguage.Enum
+    ) -> str:
         # 纠正首尾错误的引号
-        if dst.startswith(("'", "\"", "‘", "“", "「", "『")):
+        if dst.startswith(("'", '"', "‘", "“", "「", "『")):
             if src.startswith(("「", "『")):
                 dst = f"{src[0]}{dst[1:]}"
             elif BaseLanguage.is_cjk(target_language) and src.startswith(("‘", "“")):
                 dst = f"{src[0]}{dst[1:]}"
-        if dst.endswith(("'", "\"", "’", "”", "」", "』")):
+        if dst.endswith(("'", '"', "’", "”", "」", "』")):
             if src.endswith(("」", "』")):
                 dst = f"{dst[:-1]}{src[-1]}"
             elif BaseLanguage.is_cjk(target_language) and src.endswith(("’", "”")):

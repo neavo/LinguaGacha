@@ -38,6 +38,7 @@ class WorkbenchSnapshot:
     total_items: int
     translated: int
     translated_in_past: int
+    error_count: int
     untranslated: int
     entries: tuple[WorkbenchFileEntrySnapshot, ...]
 

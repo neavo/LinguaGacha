@@ -1,0 +1,13 @@
+.app-settings-page {
+  min-height: 100%;
+}
+
+.app-settings-page__notice {
+  align-items: start;
+}
+
+.app-settings-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}

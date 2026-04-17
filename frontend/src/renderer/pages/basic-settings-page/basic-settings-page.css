@@ -1,0 +1,25 @@
+.basic-settings-page {
+  min-height: 100%;
+}
+
+.basic-settings-page__notice {
+  align-items: start;
+}
+
+.basic-settings-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.basic-settings-page__select {
+}
+
+.basic-settings-page__number-field {
+  display: flex;
+  align-items: center;
+}
+
+.basic-settings-page__number-input {
+  text-align: right;
+}

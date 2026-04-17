@@ -1,295 +1,145 @@
 # `module/Data` 规范说明
 
 ## 一句话总览
-`module/Data` 是项目级数据层，**外部只能通过 `DataManager` 读写项目数据**；内部再按会话、存储、工程业务、质量规则、分析、翻译分层拆开。
+`module/Data` 承担项目数据、规则、分析、校对与 Extra 工具等“以数据为中心”的服务实现。`DataManager` 仍是工程加载、工作台、质量规则、分析和翻译链路的主入口；`Proofreading/` 与 `Extra/` 则由 `api/Application` 直接组合成用例层能力。
 
-## 适合 AGENT 的阅读顺序
-如果任务刚好碰到这个模块，按下面顺序读，通常不用再遍历整个目录：
-
-1. 先读 `DataManager.py`
-2. 再看你碰到的是哪条业务线
-3. 只补读对应子包
-
-```text
-入口层
-  DataManager.py
-
-基础层
-  Core/ProjectSession.py
-  Storage/LGDatabase.py
-
-业务层
-  Project/*
-  Quality/*
-  Analysis/*
-  Translation/*
-```
-
-### 任务到模块的最短定位
+## 阅读顺序
 | 任务类型 | 优先阅读 |
 | --- | --- |
-| 工程加载/卸载 | `DataManager.py` + `Project/ProjectLifecycleService.py` |
-| 新建工程/导入源文件 | `DataManager.py` + `Project/ProjectService.py` |
-| 工作台文件增删改 | `DataManager.py` + `Project/ProjectFileService.py` |
-| 预过滤重跑 | `DataManager.py` + `Project/ProjectPrefilterService.py` |
-| 规则页、提示词、文本保护 | `DataManager.py` + `Quality/QualityRuleService.py` |
-| 分析进度、候选池、导入术语 | `DataManager.py` + `Analysis/AnalysisService.py` |
-| 翻译任务取条目 | `DataManager.py` + `Translation/TranslationItemService.py` |
-| 缓存、meta、rules、items、assets | `Core/*` |
+| 工程加载/卸载 | `DataManager.py` -> `Project/ProjectLifecycleService.py` |
+| 新建工程、导入源文件、工作台文件操作 | `DataManager.py` -> `Project/ProjectService.py` / `Project/ProjectFileService.py` / `Project/WorkbenchService.py` |
+| 预过滤重跑 | `DataManager.py` -> `Project/ProjectPrefilterService.py` |
+| 规则页、提示词、预设 | `DataManager.py` -> `Quality/QualityRuleService.py` -> `Quality/QualityRuleFacadeService.py` / `PromptService.py` / `QualityRulePresetService.py` |
+| 分析进度、候选池、导入术语 | `DataManager.py` -> `Analysis/AnalysisService.py` |
+| 翻译条目准备与重置 | `DataManager.py` -> `Translation/TranslationItemService.py` / `Translation/TranslationResetService.py` |
+| 校对页快照、筛选、保存、重翻 | `api/Application/ProofreadingAppService.py` -> `Proofreading/*` |
+| 实验室、繁简转换、姓名字段 | `api/Application/ExtraAppService.py` -> `Extra/*` |
+| 会话缓存、meta、rules、items、assets | `Core/*` |
 | SQL、schema、事务细节 | `Storage/LGDatabase.py` |
 
 ## 目录结构
-```text
-module/Data/
-├─ DataManager.py                 # 对外唯一公开入口
-├─ SPEC.md                        # 本说明文件
-├─ Core/                          # 基础数据能力
-│  ├─ DataEnums.py
-│  ├─ DataTypes.py
-│  ├─ ProjectSession.py
-│  ├─ MetaService.py
-│  ├─ RuleService.py
-│  ├─ ItemService.py
-│  ├─ AssetService.py
-│  └─ BatchService.py
-├─ Storage/                       # 持久化存储
-│  └─ LGDatabase.py
-├─ Project/                       # 工程生命周期与文件操作
-│  ├─ ProjectService.py
-│  ├─ ProjectLifecycleService.py
-│  ├─ ProjectPrefilterService.py
-│  ├─ ProjectFileService.py
-│  ├─ ExportPathService.py
-│  └─ WorkbenchService.py
-├─ Quality/                       # 质量规则业务
-│  └─ QualityRuleService.py
-├─ Analysis/                      # 分析业务
-│  ├─ AnalysisService.py
-│  ├─ AnalysisRepository.py
-│  ├─ AnalysisCandidateService.py
-│  └─ AnalysisProgressService.py
-└─ Translation/                   # 翻译条目准备
-   ├─ TranslationItemService.py
-   └─ TranslationResetService.py
-```
+| 路径 | 职责 |
+| --- | --- |
+| `DataManager.py` | 工程级数据入口；协调会话、规则、分析、翻译、工作台事件与跨 service 流程 |
+| `Core/` | `ProjectSession` 以及 `Meta/Rule/Item/Asset/Batch` 基础能力 |
+| `Storage/LGDatabase.py` | `.lg` 的 schema、SQL、事务与序列化实现 |
+| `Project/` | 工程创建/加载/卸载、文件操作、预过滤、导出路径与工作台快照 |
+| `Quality/` | 规则快照、变更、预设、提示词与分析候选导入术语的规则侧逻辑 |
+| `Analysis/` | 分析进度、候选聚合、checkpoint 与分析结果写回 |
+| `Proofreading/` | 校对页快照、筛选、revision 冲突、保存、重检与重翻 |
+| `Extra/` | 实验室设置、繁简转换、姓名字段提取与导入术语 |
+| `Translation/` | 翻译任务取条目与翻译失败/重置后的数据整理 |
 
-## 模块边界
-这里最重要，后面改代码时先对照这一节。
-
-### 对外规则
-- 外部模块只依赖 `DataManager`
-- 外部模块不要直接 import 内部 service
-- 外部模块不要直接碰 `ProjectSession`
-- 外部模块不要直接写 `LGDatabase`
-
-### 对内规则
-- `DataManager` 负责：
-  - 组装内部 service
-  - 提供稳定公开方法
-  - 发事件
-  - 管线程协调、忙碌态、任务前后置动作
-- `ProjectSession` 负责：
-  - 保存当前工程内存态
-  - 保存缓存
-  - 作为 service 间共享状态容器
-- `LGDatabase` 负责：
-  - schema
-  - SQL
-  - 序列化/反序列化
-  - 数据库事务
-- 各个 service 负责：
-  - 单一业务面的规则整理和数据编排
-  - 不直接承担 UI 事件职责
+## 边界与入口
+- `DataManager` 持有 `ProjectSession`，负责工程加载态、规则/条目缓存、事件发射和跨 service 编排。
+- `Project/`、`Quality/`、`Analysis/`、`Translation/` 这四条主链路以 `DataManager` 为入口，不在 API 层绕过它直接拼装内部依赖。
+- `Proofreading/` 由 `api/Application/ProofreadingAppService.py` 组合使用；它依赖 `DataManager` 读取当前工程、提交 mutation，并自行维护筛选、revision 与重检逻辑。
+- `Extra/` 由 `api/Application/ExtraAppService.py` 组合使用；它直接提供实验室设置、繁简转换与姓名字段能力，不承担工程生命周期管理。
+- `ProjectSession` 只做当前工程会话状态容器；`LGDatabase` 只做 SQL、schema 和事务，不承担业务流程。
+- 新增数据链路时，先判断它属于工程编排、规则/分析/翻译、校对，还是 Extra 工具，不要把所有逻辑都压回 `DataManager`。
 
 ### 明确禁止
-- 禁止把 SQL 散到 `LGDatabase` 之外
-- 禁止把新的项目级状态再塞回 `DataManager`
-- 禁止跨模块传可变对象引用，尤其是跨线程
-- 禁止为了方便把新文件继续平铺回 `module/Data` 根目录
+- 禁止把 SQL 散到 `Storage/LGDatabase.py` 之外。
+- 禁止在 API 层直接持有 `ProjectSession` 或自己操作数据库连接。
+- 禁止把新的项目级状态随手塞回 `DataManager`，先判断它是不是 `ProjectSession`、某个领域 service 或 API 状态仓库的职责。
+- 禁止为了图省事把新 service 平铺回 `module/Data` 根目录。
 
-## 核心对象分工
-### `DataManager`
-这是总门口。
-
-- 角色：Facade + Orchestrator
-- 关键词：唯一入口、事件、线程、流程编排
-- 可以做：
-  - `load_project`
-  - `update_batch`
-  - `set_glossary`
-  - `schedule_add_file`
-  - `commit_analysis_task_result`
-- 不该做：
-  - 写 SQL
-  - 持有重复缓存
-  - 藏复杂业务状态
-
-### `Core/ProjectSession.py`
-这是当前工程的内存快照中心。
-
-- 单一来源：
-  - `db`
-  - `lg_path`
-  - `meta_cache`
-  - `rule_cache`
-  - `rule_text_cache`
-  - `item_cache`
-  - `asset_decompress_cache`
-- 判断标准：
-  - 如果某个状态只在当前工程加载期间有效，优先考虑放这里
-  - 如果某个状态是纯流程控制而不是工程事实，别放这里
-
-### `Storage/LGDatabase.py`
-这是唯一持久化实现。
-
-- 这里能看到：
-  - `.lg` schema
-  - item/rule/meta/assets 的真实存储方式
-  - 分析 checkpoint / observation / aggregate 的真实落库方式
-- 如果需求涉及：
-  - 表结构
-  - SQL 性能
-  - 事务一致性
-  - 兼容旧数据
-  就必须看它
-
-## 主流程脑图
-### 1. 工程创建
-```text
-外部入口
-  -> DataManager.create_project()
-    -> ProjectService.create()
-      -> LGDatabase.create()
-      -> FileManager.parse_asset()
-      -> ProjectPrefilter.apply()
-      -> LGDatabase 写入初始数据
+## 关键链路
+```mermaid
+flowchart TD
+    A["Project / Workbench / Task API"] --> B["DataManager"]
+    B --> C["Project/*"]
+    B --> D["Quality/*"]
+    B --> E["Analysis/*"]
+    B --> F["Translation/*"]
+    C --> G["Core/*"]
+    D --> G
+    E --> G
+    F --> G
+    G --> H["Storage/LGDatabase"]
+    I["ProofreadingAppService"] --> J["Proofreading/*"]
+    J --> B
+    K["ExtraAppService"] --> L["Extra/*"]
 ```
 
-### 2. 工程加载
-```text
-外部入口
-  -> DataManager.load_project()
-    -> ProjectLifecycleService.load_project()
-      -> ProjectSession 切换 db / lg_path
-      -> MetaService 刷新缓存
-      -> 迁移旧字段
-    -> DataManager 发 PROJECT_LOADED
-```
-
-### 3. 规则读写
-```text
-规则页 / 业务模块
-  -> DataManager.set_xxx()
-    -> QualityRuleService / MetaService
-      -> RuleService / BatchService
-        -> LGDatabase
-    -> DataManager 发 QUALITY_RULE_UPDATE
-```
-
-### 4. 文件增删改
-```text
-Workbench
-  -> DataManager.schedule_xxx_file()
-    -> ProjectFileService
-      -> LGDatabase 修改 assets / items
-      -> AnalysisService.clear_analysis_progress()
-    -> DataManager 发 PROJECT_FILE_UPDATE
-    -> DataManager 触发预过滤补跑
-```
-
-### 5. 分析结果提交
-```text
-Analyzer
-  -> DataManager.commit_analysis_task_result()
-    -> AnalysisService
-      -> LGDatabase 写 checkpoints / observations / aggregates / meta
-```
-
-### 6. 分析候选导入术语表
-```text
-AnalysisPage
-  -> DataManager.import_analysis_candidates()
-    -> AnalysisService
-      -> QualityRuleService 合并术语
-      -> BatchService.update_batch()
-    -> DataManager 发 QUALITY_RULE_UPDATE
-```
+| 场景 | 真实入口 |
+| --- | --- |
+| 工程创建/加载/卸载 | `DataManager` -> `ProjectService` / `ProjectLifecycleService` |
+| 工作台文件增删改与快照 | `DataManager` -> `ProjectFileService` / `WorkbenchService` |
+| 规则、提示词、预设 | `DataManager` -> `QualityRuleService` / `PromptService` / `QualityRulePresetService` |
+| 分析进度、候选导入 | `DataManager` -> `AnalysisService` / `QualityRuleGlossaryImportService` |
+| 翻译取条目、翻译重置 | `DataManager` -> `TranslationItemService` / `TranslationResetService` |
+| 校对页快照、筛选、保存、重翻 | `ProofreadingAppService` -> `ProofreadingSnapshotService` / `ProofreadingMutationService` / `ProofreadingRetranslateService` |
+| 实验室、繁简转换、姓名字段 | `ExtraAppService` -> `LaboratoryService` / `TsConversionService` / `NameFieldExtractionService` |
 
 ## 子包职责速查
 ### `Core`
-放“基础能力”，不是“业务流程”。
-
-- `MetaService`：meta 缓存读写
-- `RuleService`：rules 缓存读写
-- `ItemService`：items 缓存、`Item` 转换
-- `AssetService`：asset 读取、解压缓存
-- `BatchService`：`items/rules/meta` 统一事务写回
-- `DataTypes`：跨层传递的冻结快照类型
-- `DataEnums`：数据层通用枚举
+- `ProjectSession`：当前工程会话状态与缓存权威来源
+- `MetaService` / `RuleService` / `ItemService` / `AssetService`：基础数据读写与缓存整理
+- `BatchService`：`items / rules / meta` 的统一事务写回
+- `DataTypes` / `DataEnums`：跨层冻结快照类型与通用枚举
 
 ### `Project`
-放工程级业务动作。
-
 - `ProjectService`：创建工程、收集源文件、预览工程
-- `ProjectLifecycleService`：加载/卸载工程、旧字段迁移
-- `ProjectPrefilterService`：预过滤调度状态和单次执行
+- `ProjectLifecycleService`：加载/卸载工程与加载后整理
+- `ProjectPrefilterService`：预过滤是否需要重跑与实际执行
 - `ProjectFileService`：文件导入、更新、重置、删除
-- `ExportPathService`：导出目录后缀和路径
+- `ExportPathService`：导出路径规则
 - `WorkbenchService`：工作台聚合快照
 
 ### `Quality`
-放质量规则业务，不碰 UI 事件。
-
-- 规则归一化
-- 各种 enable 开关与 prompt/meta 收口
-- 规则统计输入快照
+- `QualityRuleService`：规则领域总门面
+- `QualityRuleFacadeService` / `QualityRuleSnapshotService` / `QualityRuleMutationService`：规则读写与快照整理
+- `QualityRulePresetService`：规则预设读写
+- `PromptService`：自定义提示词读写与模板
 - `QualityRuleGlossaryImportService`：分析候选导入术语前的预演与过滤
 
 ### `Analysis`
-放分析业务，不承担项目生命周期管理。
+- `AnalysisService`：分析链路对外门面
+- `AnalysisRepository`：分析表读写与事务内 meta 同步
+- `AnalysisCandidateService`：候选聚合、去重与转术语
+- `AnalysisProgressService`：checkpoint、覆盖率与待分析项整理
 
-- `AnalysisService`：对外门面，只负责装配内部服务和保持公开接口稳定
-- `AnalysisRepository`：分析表读写、事务内 meta 同步
-- `AnalysisCandidateService`：observation 去重、aggregate 合并、候选转术语
-- `AnalysisProgressService`：checkpoint 规整、覆盖率汇总、待分析项筛选
+### `Proofreading`
+- `ProofreadingSnapshotService`：校对页整页快照与加载结果
+- `ProofreadingFilterService`：筛选、搜索与术语命中过滤
+- `ProofreadingMutationService`：单条/批量保存与 revision 冲突保护
+- `ProofreadingRecheckService`：单条重检
+- `ProofreadingRetranslateService`：批量重翻
+- `ProofreadingRevisionService`：校对页 revision 管理
+
+### `Extra`
+- `LaboratoryService`：实验室设置快照与局部更新
+- `TsConversionService`：繁简转换选项与任务启动
+- `NameFieldExtractionService`：姓名字段提取、整表翻译与导入术语
 
 ### `Translation`
-只管“翻译前把什么条目交给翻译器”和“翻译失败条目的重置”。
+- `TranslationItemService`：翻译任务取条目
+- `TranslationResetService`：翻译失败/重置后的进度整理与状态回写
 
 ## 修改建议
-### 新需求要放哪
-- 如果是缓存或基础读写：放 `Core`
-- 如果是 SQL 或 schema：放 `Storage`
-- 如果是工程动作：放 `Project`
-- 如果是规则业务：放 `Quality`
-- 如果是分析链路：放 `Analysis`
-- 如果是翻译取条目：放 `Translation`
+| 变更类型 | 优先落点 |
+| --- | --- |
+| 会话缓存、meta/rule/item/asset 基础读写 | `Core/` |
+| 表结构、SQL、事务 | `Storage/LGDatabase.py` |
+| 工程创建、加载、工作台文件流转 | `Project/` |
+| 规则、提示词、预设、规则统计 | `Quality/` |
+| 分析 checkpoint、候选池、导入术语 | `Analysis/` |
+| 校对页快照、筛选、保存、重翻 | `Proofreading/` |
+| 实验室、繁简转换、姓名字段 | `Extra/` |
+| 翻译取条目与重置 | `Translation/` |
 
-### 什么时候要改 `DataManager`
-只有下面几种情况才改：
+### 什么时候改 `DataManager`
+- 需要新增对外公开方法时
+- 需要新增 `Base.Event` 发射点时
+- 需要跨 `Project / Quality / Analysis / Translation` 组合多个 service 时
+- 需要统一新的后台线程入口时
 
-- 需要新增对外公开方法
-- 需要新增事件发射
-- 需要新增跨 service 的流程编排
-- 需要统一一个新的线程入口
+如果只是某个子领域内部逻辑变化，优先改对应 service，不要先动 `DataManager`。
 
-如果只是某个子领域内部逻辑变化，优先改对应 service，不要先动 `DataManager`
-
-## 最容易踩坑的地方
-- `DataManager` 是公开入口，不等于“大杂烩”
-- `ProjectSession` 是会话状态，不等于随手缓存一切
-- `BatchService.update_batch()` 只覆盖 `items/rules/meta`，不要把所有写操作都硬塞进去
-- `AnalysisService` 会碰专用分析表，这部分事务还是要走它自己的落库逻辑
-- `ProjectFileService` 改文件后，别忘了清分析进度并补跑预过滤
-- 改规则数据后，真正对 UI 刷新负责的是 `DataManager.emit_quality_rule_update()`
-
-## 给未来 AGENT 的工作准则
-如果你只想快速了解这个模块，记住下面 6 句话就够了：
-
-1. 外部只认 `DataManager`
-2. `ProjectSession` 是工程内存态
-3. `LGDatabase` 是唯一 SQL 层
-4. `Core` 放基础能力，`Project/Quality/Analysis/Translation` 放业务
-5. service 不直接发 UI 事件，事件统一由 `DataManager` 发
-6. 新需求先判断归属，再落到对应子包，不要回到根目录平铺
+## 维护约束
+- `DataManager` 是工程级门面，不是任意逻辑的回收站。
+- `ProjectSession` 只保存当前工程会话状态；流程控制状态不要随手塞进去。
+- `Proofreading/` 与 `Extra/` 已经有独立服务分层，不要为了省事回退成页面或 API 直接拼数据。
+- 代码改动如果改变了阅读入口、目录职责或主链路，要同步更新本文。
 

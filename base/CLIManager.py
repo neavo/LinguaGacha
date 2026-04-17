@@ -1,13 +1,10 @@
 import argparse
 import os
+import threading
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 from typing import Self
-
-from PySide6.QtCore import QCoreApplication
-from PySide6.QtCore import QMetaObject
-from PySide6.QtCore import Qt
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -78,6 +75,8 @@ class CLIManager(Base):
     def __init__(self) -> None:
         super().__init__()
         self.exit_code: int | None = None
+        self.exit_lock = threading.Lock()
+        self.exit_requested = threading.Event()
         self.cli_task: CLIManager.Task | None = None
         self.waiting_analysis_export: bool = False
 
@@ -92,20 +91,22 @@ class CLIManager(Base):
         return self.exit_code
 
     def request_process_exit(self, exit_code: int) -> None:
-        """CLI 统一走事件循环退出，避免后台线程直接强杀进程。"""
-        if self.exit_code is not None:
-            return
+        """CLI 统一收口退出码，并唤醒等待中的主线程。"""
+        with self.exit_lock:
+            if self.exit_code is not None:
+                return
+            self.exit_code = int(exit_code)
 
-        self.exit_code = int(exit_code)
-        app = QCoreApplication.instance()
-        if app is None:
-            return
+        self.exit_requested.set()
 
-        QMetaObject.invokeMethod(
-            app,
-            "quit",
-            Qt.ConnectionType.QueuedConnection,
-        )
+    def wait_for_process_exit(self, timeout: float | None = None) -> int:
+        """CLI 主线程等待最终任务终态，避免无头模式提前退出。"""
+        finished = self.exit_requested.wait(timeout)
+        if not finished:
+            raise TimeoutError("CLI 任务退出等待超时")
+        if self.exit_code is None:
+            return self.EXIT_CODE_FAILED
+        return self.exit_code
 
     def map_final_status_to_exit_code(self, final_status: str) -> int:
         if final_status == "SUCCESS":
@@ -814,6 +815,10 @@ class CLIManager(Base):
         if not args.cli:
             return False
 
+        self.exit_code = None
+        self.exit_requested.clear()
+        self.waiting_analysis_export = False
+
         self.warn_deprecated_cli_flags(args)
         self.cli_task = (
             self.Task(args.task)
@@ -844,6 +849,8 @@ class CLIManager(Base):
 
         execution_plan = self.build_task_execution_plan(args, DataManager.get(), config)
         self.execute_task_plan(config, quality_snapshot, execution_plan)
+        if self.exit_code is None:
+            self.wait_for_process_exit()
 
         return True
 

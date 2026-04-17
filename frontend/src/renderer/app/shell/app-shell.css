@@ -1,0 +1,60 @@
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--card) 78%, transparent), transparent 22%),
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 92%, var(--card)) 0%, var(--background) 100%);
+}
+
+.shell-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace-frame {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--ui-page-pad-top) var(--ui-page-pad-x) var(--ui-page-pad-bottom);
+  box-sizing: border-box;
+  border-top: 1px solid color-mix(in srgb, var(--sidebar-border) 92%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--sidebar-border) 92%, transparent);
+  border-top-left-radius: 8px;
+  background: transparent;
+  transition: padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.page-shell,
+.workspace-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-page-gap);
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.page-shell--full {
+  max-width: none;
+}
+
+.page-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-section-gap);
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-section-gap);
+}
+
+.page-stack--dense {
+  gap: var(--ui-section-gap-dense);
+}

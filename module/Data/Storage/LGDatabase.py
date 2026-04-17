@@ -31,7 +31,7 @@ class LGDatabase(Base):
         ANALYSIS_PROMPT = "ANALYSIS_PROMPT"  # 分析提示词
 
     # 数据库版本号，用于未来的 schema 迁移
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, db_path: str) -> None:
         super().__init__()
@@ -108,6 +108,7 @@ class LGDatabase(Base):
             CREATE TABLE IF NOT EXISTS assets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 path TEXT NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
                 data BLOB NOT NULL,
                 original_size INTEGER NOT NULL,
                 compressed_size INTEGER NOT NULL
@@ -167,11 +168,48 @@ class LGDatabase(Base):
         target_conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path)"
         )
+        self.ensure_asset_sort_order_schema(target_conn)
         target_conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type)")
         target_conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status)"
         )
         target_conn.commit()
+
+    def ensure_asset_sort_order_schema(self, conn: sqlite3.Connection) -> None:
+        """确保 assets.sort_order 存在，并把旧工程按原 id 顺序回填。"""
+
+        cursor = conn.execute("PRAGMA table_info(assets)")
+        columns = [str(row["name"]) for row in cursor.fetchall()]
+        if "sort_order" in columns:
+            return
+
+        conn.execute(
+            "ALTER TABLE assets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+        )
+
+        asset_rows = conn.execute("SELECT id FROM assets ORDER BY id").fetchall()
+        for sort_order, row in enumerate(asset_rows):
+            conn.execute(
+                "UPDATE assets SET sort_order = ? WHERE id = ?",
+                (sort_order, int(row["id"])),
+            )
+
+    def get_next_asset_sort_order(
+        self,
+        conn: sqlite3.Connection,
+    ) -> int:
+        """为新导入文件分配稳定尾部顺序，避免默认值把它插到顶部。"""
+
+        row = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_sort_order FROM assets"
+        )
+        if not hasattr(row, "fetchone"):
+            return 0
+
+        row = row.fetchone()
+        if row is None:
+            return 0
+        return int(row["next_sort_order"])
 
     # ========== 元数据操作 ==========
 
@@ -513,9 +551,14 @@ class LGDatabase(Base):
     def add_asset(self, path: str, data: bytes, original_size: int) -> int:
         """添加资产（已压缩的数据）"""
         with self.connection() as conn:
+            sort_order = self.get_next_asset_sort_order(conn)
             cursor = conn.execute(
-                "INSERT INTO assets (path, data, original_size, compressed_size) VALUES (?, ?, ?, ?)",
-                (path, data, original_size, len(data)),
+                """
+                INSERT INTO assets (
+                    path, sort_order, data, original_size, compressed_size
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (path, sort_order, data, original_size, len(data)),
             )
             conn.commit()
             if cursor.lastrowid is None:
@@ -601,9 +644,30 @@ class LGDatabase(Base):
     def get_all_asset_paths(self) -> list[str]:
         """获取所有资产路径"""
         with self.connection() as conn:
-            # 用 id 保持“插入顺序”稳定：更新文件名(path)不会导致工作台列表位置跳动。
-            cursor = conn.execute("SELECT path FROM assets ORDER BY id")
+            # 先按显式排序字段读取；同序值时再退回 id，保证旧工程升级也稳定。
+            cursor = conn.execute(
+                "SELECT path FROM assets ORDER BY sort_order ASC, id ASC"
+            )
             return [row["path"] for row in cursor.fetchall()]
+
+    def update_asset_sort_orders(
+        self,
+        ordered_paths: list[str],
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        """按调用方给定顺序批量更新 assets.sort_order。"""
+
+        params = [(sort_order, path) for sort_order, path in enumerate(ordered_paths)]
+        if conn is not None:
+            conn.executemany(
+                "UPDATE assets SET sort_order = ? WHERE path = ?",
+                params,
+            )
+            return
+
+        with self.connection() as local_conn:
+            self.update_asset_sort_orders(ordered_paths, conn=local_conn)
+            local_conn.commit()
 
     def get_asset_count(self) -> int:
         """获取资产数量"""
