@@ -256,42 +256,6 @@ class NameFieldTranslateResult:
             "failed_count": self.failed_count,
         }
 
-
-@dataclass(frozen=True)
-class LaboratorySnapshot:
-    """把实验室页开关状态对象化，避免 UI 继续直接读取配置。"""
-
-    mtool_optimizer_enabled: bool = True
-    force_thinking_enabled: bool = False
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> Self:
-        """把实验室快照归一化为冻结对象，避免客户端自己兜默认值。"""
-
-        normalized: dict[str, Any]
-        if isinstance(data, dict):
-            normalized = data
-        else:
-            normalized = {}
-
-        return cls(
-            mtool_optimizer_enabled=bool(
-                normalized.get("mtool_optimizer_enabled", True)
-            ),
-            force_thinking_enabled=bool(
-                normalized.get("force_thinking_enabled", False)
-            ),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """把冻结快照恢复成 JSON 字典，供边界层直接发送。"""
-
-        return {
-            "mtool_optimizer_enabled": self.mtool_optimizer_enabled,
-            "force_thinking_enabled": self.force_thinking_enabled,
-        }
-
-
 @dataclass(frozen=True)
 class ExtraToolEntry:
     """把 Extra 工具箱条目冻结，避免工具列表继续散落为匿名字典。"""

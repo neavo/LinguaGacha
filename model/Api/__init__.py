@@ -1,7 +1,6 @@
 from model.Api.ExtraModels import ExtraToolEntry
 from model.Api.ExtraModels import ExtraToolSnapshot
 from model.Api.ExtraModels import ExtraTaskState
-from model.Api.ExtraModels import LaboratorySnapshot
 from model.Api.ModelModels import ModelEntrySnapshot
 from model.Api.ModelModels import ModelGenerationSnapshot
 from model.Api.ModelModels import ModelPageSnapshot
@@ -43,7 +42,6 @@ __all__ = [
     "ExtraToolEntry",
     "ExtraToolSnapshot",
     "ExtraTaskState",
-    "LaboratorySnapshot",
     "ModelEntrySnapshot",
     "ModelGenerationSnapshot",
     "ModelPageSnapshot",

@@ -1,12 +1,10 @@
 from base.Base import Base
 from base.EventManager import EventManager
-from api.Contract.ExtraPayloads import LaboratorySnapshotPayload
 from api.Contract.ExtraPayloads import NameFieldSnapshotPayload
 from api.Contract.ExtraPayloads import NameFieldTranslateResultPayload
 from api.Contract.ExtraPayloads import TsConversionOptionsPayload
 from api.Contract.ExtraPayloads import TsConversionTaskPayload
 from model.Api.ExtraModels import ExtraTaskState
-from module.Data.Extra.LaboratoryService import LaboratoryService
 from module.Data.Extra.NameFieldExtractionService import NameFieldExtractionService
 from module.Data.Extra.TsConversionService import TsConversionService
 
@@ -16,15 +14,9 @@ class ExtraAppService:
 
     def __init__(
         self,
-        laboratory_service: LaboratoryService | None = None,
         ts_conversion_service: TsConversionService | None = None,
         name_field_extraction_service: NameFieldExtractionService | None = None,
     ) -> None:
-        self.laboratory_service = (
-            laboratory_service
-            if laboratory_service is not None
-            else LaboratoryService()
-        )
         self.ts_conversion_service = (
             ts_conversion_service
             if ts_conversion_service is not None
@@ -35,25 +27,6 @@ class ExtraAppService:
             if name_field_extraction_service is not None
             else NameFieldExtractionService()
         )
-
-    def get_laboratory_snapshot(
-        self,
-        request: dict[str, object] | None = None,
-    ) -> dict[str, object]:
-        """提供实验室首屏快照，避免页面直接读取配置单例。"""
-
-        del request
-        snapshot = self.laboratory_service.get_snapshot()
-        return LaboratorySnapshotPayload.from_dict(snapshot).to_dict()
-
-    def update_laboratory_settings(
-        self,
-        request: dict[str, object],
-    ) -> dict[str, object]:
-        """提供实验室局部写入入口，避免页面自己决定配置持久化方式。"""
-
-        snapshot = self.laboratory_service.update_settings(request)
-        return LaboratorySnapshotPayload.from_dict(snapshot).to_dict()
 
     def get_ts_conversion_options(
         self,

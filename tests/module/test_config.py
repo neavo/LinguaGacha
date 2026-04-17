@@ -36,10 +36,11 @@ class TestConfigBehavior:
         del fs
         config = Config().load("/workspace/config/missing.json")
 
-        assert config.force_thinking_enable is True
+        assert config.mtool_optimizer_enable is True
+        assert not hasattr(config, "force_thinking_enable")
         assert config.recent_projects == []
 
-    def test_load_applies_known_fields_only(self, fs) -> None:
+    def test_load_ignores_removed_force_thinking_and_unknown_fields(self, fs) -> None:
         del fs
         path = Path("/workspace/config/config.json")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +57,7 @@ class TestConfigBehavior:
 
         config = Config().load(str(path))
 
-        assert config.force_thinking_enable is False
+        assert not hasattr(config, "force_thinking_enable")
         assert not hasattr(config, "expert_mode")
         assert not hasattr(config, "unknown_field")
 
@@ -71,7 +72,7 @@ class TestConfigBehavior:
 
         config = Config().load(str(path))
 
-        assert config.force_thinking_enable is False
+        assert not hasattr(config, "force_thinking_enable")
         assert not hasattr(config, "auto_glossary_enable")
 
     def test_load_logs_error_when_file_corrupted(
@@ -109,7 +110,7 @@ class TestConfigBehavior:
 
         config = Config().load(str(path))
 
-        assert config.force_thinking_enable is True
+        assert config.mtool_optimizer_enable is True
 
     def test_load_reads_normalized_quality_preset_virtual_ids(self, fs) -> None:
         del fs
@@ -198,7 +199,6 @@ class TestConfigBehavior:
     def test_save_serializes_core_fields(self, fs) -> None:
         del fs
         config = Config(
-            force_thinking_enable=False,
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.ZH,
             models=[{"id": "m1", "type": "PRESET"}],
@@ -210,11 +210,11 @@ class TestConfigBehavior:
         config.save(str(path))
         saved = json.loads(path.read_text(encoding="utf-8"))
 
-        assert saved["force_thinking_enable"] is False
         assert saved["source_language"] == "JA"
         assert saved["target_language"] == "ZH"
         assert saved["models"][0]["id"] == "m1"
         assert saved["recent_projects"][0]["path"] == "/a"
+        assert "force_thinking_enable" not in saved
         assert "auto_glossary_enable" not in saved
         assert "expert_mode" not in saved
         assert "proxy_enable" not in saved
@@ -264,12 +264,12 @@ class TestConfigModels:
         BasePath.reset_for_test()
         BasePath.initialize("/workspace/app", False)
 
-        Config(force_thinking_enable=False).save()
+        Config().save()
 
         saved_path = Path("/workspace/app/userdata/config.json")
         assert saved_path.exists() is True
         saved = json.loads(saved_path.read_text(encoding="utf-8"))
-        assert saved["force_thinking_enable"] is False
+        assert "force_thinking_enable" not in saved
         assert "expert_mode" not in saved
 
     def test_load_copies_legacy_resource_config_to_userdata(self, fs) -> None:

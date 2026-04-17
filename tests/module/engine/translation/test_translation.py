@@ -1081,7 +1081,7 @@ def test_start_handles_no_active_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    config = Config()
+    config = Config(mtool_optimizer_enable=False)
     setattr(config, "get_active_model", lambda: None)
     engine = create_engine()
     dm = create_data_manager(loaded=True, items=[Item(src="a")])
@@ -1114,7 +1114,7 @@ def test_start_emits_warning_when_items_are_empty(
     translation = create_translation_stub()
     setattr(translation, "finalize_translation_run", MagicMock())
     setattr(translation, "cleanup_translation_run", MagicMock())
-    config = Config()
+    config = Config(mtool_optimizer_enable=False)
     setattr(
         config,
         "get_active_model",
@@ -1172,7 +1172,7 @@ def test_start_success_flow_triggers_auto_export(
         "capture",
         staticmethod(lambda: object()),
     )
-    config = Config()
+    config = Config(mtool_optimizer_enable=False)
     setattr(
         config,
         "get_active_model",
@@ -1236,7 +1236,7 @@ def test_start_continue_mode_handles_stop_and_failed_states(
         "capture",
         staticmethod(lambda: object()),
     )
-    config = Config()
+    config = Config(mtool_optimizer_enable=False)
     setattr(
         config,
         "get_active_model",

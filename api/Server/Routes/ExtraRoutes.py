@@ -6,8 +6,6 @@ from api.Server.CoreApiServer import CoreApiServer
 class ExtraRoutes:
     """集中注册 Extra 页面的最小路由，逐步把工具页迁到 API 边界。"""
 
-    SNAPSHOT_PATH: str = "/api/extra/laboratory/snapshot"
-    UPDATE_PATH: str = "/api/extra/laboratory/update"
     TS_CONVERSION_OPTIONS_PATH: str = "/api/extra/ts-conversion/options"
     TS_CONVERSION_START_PATH: str = "/api/extra/ts-conversion/start"
     NAME_FIELD_SNAPSHOT_PATH: str = "/api/extra/name-fields/snapshot"
@@ -23,22 +21,6 @@ class ExtraRoutes:
     ) -> None:
         """Extra 页面统一走路由层，避免 UI 继续直连 Core 单例。"""
 
-        core_api_server.add_json_route(
-            "POST",
-            cls.SNAPSHOT_PATH,
-            lambda request: ApiResponse(
-                ok=True,
-                data=extra_app_service.get_laboratory_snapshot(request),
-            ),
-        )
-        core_api_server.add_json_route(
-            "POST",
-            cls.UPDATE_PATH,
-            lambda request: ApiResponse(
-                ok=True,
-                data=extra_app_service.update_laboratory_settings(request),
-            ),
-        )
         core_api_server.add_json_route(
             "POST",
             cls.TS_CONVERSION_OPTIONS_PATH,

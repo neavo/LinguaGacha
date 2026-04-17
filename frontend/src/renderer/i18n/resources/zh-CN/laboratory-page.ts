@@ -10,19 +10,6 @@ export const zh_cn_laboratory_page = {
       ),
       help_label: '查看 MTool 优化器说明',
     },
-    force_thinking_enable: {
-      title: '强制思考',
-      description: (
-        '启用后，非思考模型在翻译前也会进行思考，默认启用'
-        + '\n'
-        + '◈ 通过略微增加词元消耗换取翻译效果的提升'
-        + '\n'
-        + '◈ 生效时，会在翻译日志中观察到模型思考内容的输出'
-        + '\n'
-        + '◈ <emphasis>此功能不支持 SakuraLLM 模型</emphasis>'
-      ),
-      help_label: '查看强制思考说明',
-    },
   },
   feedback: {
     retry: '重试',
