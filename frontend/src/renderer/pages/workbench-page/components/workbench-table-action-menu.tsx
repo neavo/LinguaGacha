@@ -5,7 +5,6 @@ import {
   ContextMenuContent,
   ContextMenuGroup,
   ContextMenuItem,
-  ContextMenuSeparator,
 } from '@/shadcn/context-menu'
 import {
   DropdownMenu,
@@ -25,10 +24,13 @@ type WorkbenchTableActionMenuProps = {
   on_delete: () => void
 }
 
-type WorkbenchTableActionMenuContentProps = {
+type WorkbenchTableMenuActionProps = {
   disabled: boolean
   on_replace: () => void
   on_reset: () => void
+}
+
+type WorkbenchTableActionMenuContentProps = WorkbenchTableMenuActionProps & {
   on_delete: () => void
 }
 
@@ -76,6 +78,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
           className="workbench-page__row-action"
           aria-label={t('workbench_page.table.open_actions')}
           data-workbench-ignore-row-click="true"
+          data-workbench-ignore-box-select="true"
         >
           <CircleEllipsis data-icon="inline-start" />
         </Button>
@@ -92,7 +95,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
   )
 }
 
-export function WorkbenchTableContextMenuContent(props: WorkbenchTableActionMenuContentProps): JSX.Element {
+export function WorkbenchTableContextMenuContent(props: WorkbenchTableMenuActionProps): JSX.Element {
   const { t } = useI18n()
   const menu_item_class_name = 'whitespace-nowrap'
   const menu_content_class_name = 'w-auto min-w-max'
@@ -107,13 +110,6 @@ export function WorkbenchTableContextMenuContent(props: WorkbenchTableActionMenu
         <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} onClick={props.on_reset}>
           <Recycle data-icon="inline-start" />
           {t('workbench_page.action.reset')}
-        </ContextMenuItem>
-      </ContextMenuGroup>
-      <ContextMenuSeparator />
-      <ContextMenuGroup>
-        <ContextMenuItem className={menu_item_class_name} disabled={props.disabled} variant="destructive" onClick={props.on_delete}>
-          <Trash2 data-icon="inline-start" />
-          {t('workbench_page.action.delete')}
         </ContextMenuItem>
       </ContextMenuGroup>
     </ContextMenuContent>

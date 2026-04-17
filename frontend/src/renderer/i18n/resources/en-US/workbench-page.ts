@@ -18,12 +18,15 @@ export const en_us_workbench_page = {
     translated: 'Succeeded',
     untranslated: 'Awaiting',
     error_count: 'Failed',
+    analysis_completed: 'Analyzed',
+    analysis_failed: 'Analysis Failed',
+    analysis_pending: 'Awaiting Analysis',
+    toggle_tooltip: 'Click to switch',
   },
   table: {
     drag_handle: 'Drag',
     drag_handle_aria: 'Drag to reorder',
     file_name: 'File Name',
-    format: 'Format',
     line_count: 'Lines',
     actions: 'Actions',
     open_actions: 'Open actions menu',
@@ -35,6 +38,7 @@ export const en_us_workbench_page = {
   },
   action: {
     add_file: 'Add File',
+    delete_file: 'Delete File',
     export_translation: 'Generate',
     close_project: 'Close Project',
     replace: 'Replace File',
@@ -91,18 +95,6 @@ export const en_us_workbench_page = {
       import_success: 'Imported {COUNT} candidate terms',
     },
   },
-  format: {
-    markdown: 'Markdown',
-    renpy: 'RenPy',
-    mtool: 'MTool',
-    sextractor: 'VNT/SExtractor',
-    trans_project: 'Translator++',
-    text_file: 'Plain Text',
-    subtitle_file: 'Subtitle File',
-    ebook: 'EPUB',
-    translation_export: 'Translator++ XLSX',
-    wolf: 'WOLF Official Tool XLSX',
-  },
   command: {
     description: 'The workbench command bar carries project-level quick actions.',
   },
@@ -122,7 +114,7 @@ export const en_us_workbench_page = {
     },
     delete: {
       title: 'Confirm',
-      description: 'Delete this file and all its translation items …?',
+      description: 'Delete the selected files and all their translation items …?',
       confirm: 'Confirm',
     },
     export: {

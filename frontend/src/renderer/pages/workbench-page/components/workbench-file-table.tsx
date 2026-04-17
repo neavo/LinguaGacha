@@ -24,9 +24,12 @@ import type {
 
 type WorkbenchFileTableProps = {
   entries: WorkbenchFileEntry[]
-  selected_entry_id: string | null
+  selected_entry_ids: string[]
+  active_entry_id: string | null
+  anchor_entry_id: string | null
   readonly: boolean
-  on_select: (entry_id: string) => void
+  on_selection_change: (payload: AppTableSelectionChange) => void
+  on_prepare_entry_action: (entry_id: string) => void
   on_replace: (entry_id: string) => void
   on_reset: (entry_id: string) => void
   on_delete: (entry_id: string) => void
@@ -37,23 +40,9 @@ function build_workbench_row_number_label(row_index: number): string {
   return String(row_index + 1)
 }
 
-type WorkbenchTranslate = ReturnType<typeof useI18n>['t']
-
-function resolve_workbench_format_display_text(
-  entry: WorkbenchFileEntry,
-  t: WorkbenchTranslate,
-): string {
-  if (entry.format_label_key === null) {
-    return entry.format_fallback_label ?? '-'
-  }
-
-  return t(entry.format_label_key)
-}
-
 function sort_workbench_entries(
   entries: WorkbenchFileEntry[],
   sort_state: AppTableSortState | null,
-  t: WorkbenchTranslate,
 ): WorkbenchFileEntry[] {
   if (sort_state === null) {
     return entries
@@ -69,11 +58,6 @@ function sort_workbench_entries(
 
     if (sort_state.column_id === 'file') {
       compare_result = collator.compare(left_entry.rel_path, right_entry.rel_path)
-    } else if (sort_state.column_id === 'format') {
-      compare_result = collator.compare(
-        resolve_workbench_format_display_text(left_entry, t),
-        resolve_workbench_format_display_text(right_entry, t),
-      )
     } else if (sort_state.column_id === 'line') {
       compare_result = left_entry.item_count - right_entry.item_count
     }
@@ -101,6 +85,18 @@ function should_ignore_workbench_row_click(target_element: HTMLElement): boolean
   ) !== null
 }
 
+function should_ignore_workbench_box_selection_target(target_element: HTMLElement): boolean {
+  return target_element.closest(
+    [
+      '[data-workbench-ignore-box-select="true"]',
+      '[data-app-table-ignore-box-select="true"]',
+      '[data-slot="scroll-area-scrollbar"]',
+      '[data-slot="scroll-area-thumb"]',
+      '[data-slot="scroll-area-corner"]',
+    ].join(', '),
+  ) !== null
+}
+
 export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element {
   const { t } = useI18n()
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null)
@@ -112,8 +108,8 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
     }
   }, [t])
   const sorted_entries = useMemo(() => {
-    return sort_workbench_entries(props.entries, sort_state, t)
-  }, [props.entries, sort_state, t])
+    return sort_workbench_entries(props.entries, sort_state)
+  }, [props.entries, sort_state])
   // 为什么：排序视图展示的是临时顺序，不再等于工程真实文件顺序，此时继续拖拽会误导用户。
   const drag_enabled = !props.readonly && sort_state === null
 
@@ -181,29 +177,9 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
       },
       {
         kind: 'data',
-        id: 'format',
-        title: t('workbench_page.table.format'),
-        width: 170,
-        align: 'center',
-        sortable: {
-          action_labels: sort_action_labels,
-        },
-        head_class_name: 'workbench-page__table-format-head',
-        cell_class_name: 'workbench-page__table-format-cell',
-        render_cell: (payload) => {
-          return (
-            <span className="workbench-page__table-text">
-              {resolve_workbench_format_display_text(payload.row, t)}
-            </span>
-          )
-        },
-        render_placeholder: () => <span className="workbench-page__table-text">{'\u00A0'}</span>,
-      },
-      {
-        kind: 'data',
         id: 'line',
         title: t('workbench_page.table.line_count'),
-        width: 92,
+        width: 108,
         align: 'center',
         sortable: {
           action_labels: sort_action_labels,
@@ -222,7 +198,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         kind: 'data',
         id: 'action',
         title: t('workbench_page.table.actions'),
-        width: 88,
+        width: 108,
         align: 'center',
         head_class_name: 'workbench-page__table-action-head',
         cell_class_name: 'workbench-page__table-action-cell',
@@ -247,7 +223,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
             <WorkbenchTableActionMenu
               disabled={props.readonly}
               on_prepare_open={() => {
-                props.on_select(payload.row_id)
+                props.on_prepare_entry_action(payload.row_id)
               }}
               on_replace={() => props.on_replace(payload.row_id)}
               on_reset={() => props.on_reset(payload.row_id)}
@@ -259,15 +235,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
     ]
   }, [props, sort_action_labels, t])
 
-  const handle_selection_change = (payload: AppTableSelectionChange): void => {
-    const next_selected_row_id = payload.active_row_id ?? payload.selected_row_ids[0] ?? null
-    if (next_selected_row_id === null || next_selected_row_id === props.selected_entry_id) {
-      return
-    }
-
-    props.on_select(next_selected_row_id)
-  }
-
   return (
     <Card variant="table" className="workbench-page__table-card">
       <CardHeader className="sr-only">
@@ -277,14 +244,14 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         <AppTable
           rows={sorted_entries}
           columns={columns}
-          selection_mode="single"
-          selected_row_ids={props.selected_entry_id === null ? [] : [props.selected_entry_id]}
-          active_row_id={props.selected_entry_id}
-          anchor_row_id={props.selected_entry_id}
+          selection_mode="multiple"
+          selected_row_ids={props.selected_entry_ids}
+          active_row_id={props.active_entry_id}
+          anchor_row_id={props.anchor_entry_id}
           sort_state={sort_state}
           drag_enabled={drag_enabled}
           get_row_id={(entry) => entry.rel_path}
-          on_selection_change={handle_selection_change}
+          on_selection_change={props.on_selection_change}
           on_sort_change={set_sort_state}
           on_reorder={(payload) => {
             props.on_reorder(payload.ordered_row_ids)
@@ -295,11 +262,12 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                 disabled={props.readonly}
                 on_replace={() => props.on_replace(payload.row_id)}
                 on_reset={() => props.on_reset(payload.row_id)}
-                on_delete={() => props.on_delete(payload.row_id)}
               />
             )
           }}
           ignore_row_click_target={should_ignore_workbench_row_click}
+          ignore_box_select_target={should_ignore_workbench_box_selection_target}
+          box_selection_enabled
           table_class_name="workbench-page__table"
           row_class_name={() => 'workbench-page__table-row'}
         />

@@ -1,4 +1,4 @@
-import { FileInput, FilePlus2, SquarePower, type LucideIcon } from 'lucide-react'
+import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from 'lucide-react'
 
 import type { AnalysisTaskRuntime } from '@/app/state/use-analysis-task-runtime'
 import type { TranslationTaskRuntime } from '@/app/state/use-translation-task-runtime'
@@ -25,15 +25,17 @@ type WorkbenchCommandBarProps = {
   active_workbench_task_view: WorkbenchTaskViewState
   active_workbench_task_summary: WorkbenchTaskSummaryViewModel
   can_edit_files: boolean
+  selected_entry_count: number
   can_export_translation: boolean
   can_close_project: boolean
   on_add_file: () => void
+  on_delete_selected: () => void
   on_export_translation: () => void
   on_close_project: () => void
 }
 
 type CommandAction = {
-  id: 'add-file' | 'export-translation' | 'close-project'
+  id: 'add-file' | 'delete-file' | 'export-translation' | 'close-project'
   icon: LucideIcon
   label_key: LocaleKey
   disabled: boolean
@@ -56,6 +58,13 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       label_key: 'workbench_page.action.add_file',
       disabled: !props.can_edit_files,
       on_click: props.on_add_file,
+    },
+    {
+      id: 'delete-file',
+      icon: Trash2,
+      label_key: 'workbench_page.action.delete_file',
+      disabled: !props.can_edit_files || props.selected_entry_count === 0,
+      on_click: props.on_delete_selected,
     },
     {
       id: 'export-translation',
@@ -105,10 +114,11 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
           <CommandBarSeparator />
           {actions.map((action, index) => {
             const Icon = action.icon
+            const should_render_separator = index > 0 && action.id !== 'delete-file'
 
             return (
               <div key={action.id} className="contents">
-                {index > 0 ? <CommandBarSeparator /> : null}
+                {should_render_separator ? <CommandBarSeparator /> : null}
                 <Button variant="ghost" size="toolbar" disabled={action.disabled} onClick={action.on_click}>
                   <Icon data-icon="inline-start" />
                   {t(action.label_key)}

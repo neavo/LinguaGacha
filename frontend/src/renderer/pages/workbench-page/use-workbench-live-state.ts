@@ -10,17 +10,20 @@ import {
   useTranslationTaskRuntime,
   type TranslationTaskRuntime,
 } from '@/app/state/use-translation-task-runtime'
-import type { LocaleKey } from '@/i18n'
 import { useI18n } from '@/i18n'
 import { api_fetch } from '@/app/desktop-api'
 import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,
+  AnalysisTaskSnapshot,
 } from '@/lib/analysis-task'
 import type {
   TranslationTaskConfirmState,
   TranslationTaskMetrics,
 } from '@/lib/translation-task'
+import type {
+  AppTableSelectionChange,
+} from '@/widgets/app-table/app-table-types'
 import type {
   WorkbenchTaskConfirmDialogViewModel,
   WorkbenchTaskDetailViewModel,
@@ -30,6 +33,7 @@ import type {
   WorkbenchSnapshot,
   WorkbenchSnapshotEntry,
   WorkbenchStats,
+  WorkbenchStatsMode,
   WorkbenchTaskKind,
   WorkbenchTaskSummaryViewModel,
   WorkbenchTaskTone,
@@ -79,72 +83,44 @@ function normalize_snapshot(payload: WorkbenchSnapshotPayload): WorkbenchSnapsho
 function close_dialog_state(): WorkbenchDialogState {
   return {
     kind: null,
-    target_rel_path: null,
+    target_rel_paths: [],
     pending_path: null,
   }
 }
 
-function resolve_format_label_key(file_type: string, rel_path: string): LocaleKey | null {
-  // 为什么：同一工程在 Qt 与 Vite 两套前端里都要看到同一套格式名称，避免工作台口径漂移。
-  if (file_type === 'MD') {
-    return 'workbench_page.format.markdown'
-  }
-  if (file_type === 'RENPY') {
-    return 'workbench_page.format.renpy'
-  }
-  if (file_type === 'KVJSON') {
-    return 'workbench_page.format.mtool'
-  }
-  if (file_type === 'MESSAGEJSON') {
-    return 'workbench_page.format.sextractor'
-  }
-  if (file_type === 'TRANS') {
-    return 'workbench_page.format.trans_project'
-  }
-  if (file_type === 'XLSX') {
-    return 'workbench_page.format.translation_export'
-  }
-  if (file_type === 'WOLFXLSX') {
-    return 'workbench_page.format.wolf'
-  }
-  if (file_type === 'EPUB') {
-    return 'workbench_page.format.ebook'
-  }
-
-  const lowered_path = rel_path.toLowerCase()
-  if (lowered_path.endsWith('.txt')) {
-    return 'workbench_page.format.text_file'
-  }
-  if (lowered_path.endsWith('.srt') || lowered_path.endsWith('.ass')) {
-    return 'workbench_page.format.subtitle_file'
-  }
-
-  return null
-}
-
-function resolve_format_fallback_label(file_type: string, rel_path: string): string | null {
-  const format_label_key = resolve_format_label_key(file_type, rel_path)
-  if (format_label_key !== null) {
-    return null
-  }
-
-  const dot_index = rel_path.lastIndexOf('.')
-  if (dot_index < 0) {
-    return file_type === '' ? '-' : file_type
-  }
-
-  return rel_path.slice(dot_index + 1).toUpperCase()
-}
-
 function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
-  return entries.map((entry) => ({
-    ...entry,
-    format_label_key: resolve_format_label_key(entry.file_type, entry.rel_path),
-    format_fallback_label: resolve_format_fallback_label(entry.file_type, entry.rel_path),
-  }))
+  return entries.map((entry) => ({ ...entry }))
 }
 
-function build_stats(
+type WorkbenchSelectionState = {
+  selected_entry_ids: string[]
+  active_entry_id: string | null
+  anchor_entry_id: string | null
+}
+
+function create_empty_selection_state(): WorkbenchSelectionState {
+  return {
+    selected_entry_ids: [],
+    active_entry_id: null,
+    anchor_entry_id: null,
+  }
+}
+
+function dedupe_workbench_entry_ids(entry_ids: string[]): string[] {
+  return Array.from(new Set(entry_ids))
+}
+
+function are_workbench_entry_ids_equal(left_entry_ids: string[], right_entry_ids: string[]): boolean {
+  if (left_entry_ids.length !== right_entry_ids.length) {
+    return false
+  }
+
+  return left_entry_ids.every((entry_id, index) => {
+    return entry_id === right_entry_ids[index]
+  })
+}
+
+function build_translation_stats(
   snapshot: WorkbenchSnapshot,
   translation_active: boolean,
   translated: number,
@@ -159,9 +135,33 @@ function build_stats(
 
   return {
     total_items: snapshot.total_items,
-    translated: translated_count,
-    error_count: error_total,
-    untranslated: Math.max(0, snapshot.total_items - translated_count - error_total),
+    completed_count: translated_count,
+    failed_count: error_total,
+    pending_count: Math.max(0, snapshot.total_items - translated_count - error_total),
+  }
+}
+
+function build_analysis_stats(
+  snapshot: WorkbenchSnapshot,
+  analysis_display_snapshot: AnalysisTaskSnapshot | null,
+  processed_count: number,
+  failed_count: number,
+): WorkbenchStats {
+  const total_items = Math.max(
+    snapshot.total_items,
+    analysis_display_snapshot?.total_line ?? 0,
+  )
+  const completed_total = Math.min(total_items, Math.max(0, processed_count))
+  const failed_total = Math.min(
+    Math.max(0, total_items - completed_total),
+    Math.max(0, failed_count),
+  )
+
+  return {
+    total_items,
+    completed_count: completed_total,
+    failed_count: failed_total,
+    pending_count: Math.max(0, total_items - completed_total - failed_total),
   }
 }
 
@@ -198,6 +198,74 @@ function select_after_snapshot(
   }
 
   return next_entries[0]?.rel_path ?? null
+}
+
+function normalize_workbench_selection_state(
+  selection_state: WorkbenchSelectionState,
+  entries: WorkbenchFileEntry[],
+): WorkbenchSelectionState {
+  const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path))
+  const selected_entry_ids = dedupe_workbench_entry_ids(selection_state.selected_entry_ids).filter((entry_id) => {
+    return visible_entry_id_set.has(entry_id)
+  })
+  const active_entry_id = selection_state.active_entry_id !== null && visible_entry_id_set.has(selection_state.active_entry_id)
+    ? selection_state.active_entry_id
+    : null
+  const anchor_entry_id = selection_state.anchor_entry_id !== null && visible_entry_id_set.has(selection_state.anchor_entry_id)
+    ? selection_state.anchor_entry_id
+    : null
+
+  return {
+    selected_entry_ids,
+    active_entry_id,
+    anchor_entry_id,
+  }
+}
+
+function resolve_workbench_selection_after_snapshot(args: {
+  previous_entries: WorkbenchFileEntry[]
+  next_entries: WorkbenchFileEntry[]
+  previous_selection_state: WorkbenchSelectionState
+  preferred_active_entry_id: string | null
+}): WorkbenchSelectionState {
+  const normalized_selection_state = normalize_workbench_selection_state(
+    args.previous_selection_state,
+    args.next_entries,
+  )
+
+  if (normalized_selection_state.selected_entry_ids.length > 0) {
+    const active_entry_id = normalized_selection_state.active_entry_id
+      ?? normalized_selection_state.selected_entry_ids.at(-1)
+      ?? null
+    const anchor_entry_id = normalized_selection_state.anchor_entry_id
+      ?? normalized_selection_state.selected_entry_ids[0]
+      ?? active_entry_id
+
+    return {
+      selected_entry_ids: normalized_selection_state.selected_entry_ids,
+      active_entry_id,
+      anchor_entry_id,
+    }
+  }
+
+  const fallback_entry_id = select_after_snapshot(
+    args.previous_entries,
+    args.next_entries,
+    args.preferred_active_entry_id
+      ?? args.previous_selection_state.active_entry_id
+      ?? args.previous_selection_state.selected_entry_ids.at(-1)
+      ?? null,
+  )
+
+  if (fallback_entry_id === null) {
+    return create_empty_selection_state()
+  }
+
+  return {
+    selected_entry_ids: [fallback_entry_id],
+    active_entry_id: fallback_entry_id,
+    anchor_entry_id: fallback_entry_id,
+  }
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -424,7 +492,7 @@ function build_empty_task_summary_view_model(
     trailing_text: null,
     tone: 'neutral',
     show_spinner: false,
-    detail_tooltip_text: '',
+    detail_tooltip_text: t('proofreading_page.task.summary.detail_tooltip'),
   }
 }
 
@@ -601,6 +669,7 @@ function build_analysis_task_confirm_dialog_view_model(
 
 type UseWorkbenchLiveStateResult = {
   stats: WorkbenchStats
+  stats_mode: WorkbenchStatsMode
   translation_task_runtime: TranslationTaskRuntime
   analysis_task_runtime: AnalysisTaskRuntime
   active_workbench_task_view: WorkbenchTaskViewState
@@ -609,18 +678,23 @@ type UseWorkbenchLiveStateResult = {
   translation_task_confirm_dialog: WorkbenchTaskConfirmDialogViewModel | null
   analysis_task_confirm_dialog: WorkbenchTaskConfirmDialogViewModel | null
   entries: WorkbenchFileEntry[]
-  selected_entry_id: string | null
+  selected_entry_ids: string[]
+  active_entry_id: string | null
+  anchor_entry_id: string | null
   readonly: boolean
   can_edit_files: boolean
   can_export_translation: boolean
   can_close_project: boolean
   dialog_state: WorkbenchDialogState
-  select_entry: (entry_id: string) => void
+  toggle_stats_mode: () => void
+  apply_table_selection: (payload: AppTableSelectionChange) => void
+  prepare_entry_action: (entry_id: string) => void
   request_add_file: () => Promise<void>
   request_export_translation: () => void
   request_close_project: () => void
   request_reset_file: (entry_id: string) => void
   request_delete_file: (entry_id: string) => void
+  request_delete_selected_files: () => void
   request_replace_file: (entry_id: string) => Promise<void>
   request_reorder_entries: (ordered_entry_ids: string[]) => Promise<void>
   confirm_dialog: () => Promise<void>
@@ -641,21 +715,55 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   } = useDesktopRuntime()
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT)
   const [entries, set_entries] = useState<WorkbenchFileEntry[]>([])
-  const [selected_entry_id, set_selected_entry_id] = useState<string | null>(null)
+  const [selected_entry_ids, set_selected_entry_ids] = useState<string[]>([])
+  const [active_entry_id, set_active_entry_id] = useState<string | null>(null)
+  const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null)
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state())
   const [is_mutation_running, set_is_mutation_running] = useState(false)
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] = useState<WorkbenchTaskKind | null>(null)
+  const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>('translation')
   const previous_task_status_ref = useRef<WorkbenchTaskStatus>(task_snapshot.status)
   const previous_invalidation_tick_ref = useRef(proofreading_invalidation_tick)
   const previous_project_loaded_ref = useRef(project_snapshot.loaded)
   const previous_project_path_ref = useRef(project_snapshot.path)
   const is_reorder_running_ref = useRef(false)
+  const selection_state_ref = useRef<WorkbenchSelectionState>(create_empty_selection_state())
+
+  const current_selection_state = useMemo<WorkbenchSelectionState>(() => {
+    return {
+      selected_entry_ids,
+      active_entry_id,
+      anchor_entry_id,
+    }
+  }, [active_entry_id, anchor_entry_id, selected_entry_ids])
+
+  const apply_selection_state = useCallback((next_selection_state: WorkbenchSelectionState): void => {
+    set_selected_entry_ids((previous_entry_ids) => {
+      return are_workbench_entry_ids_equal(previous_entry_ids, next_selection_state.selected_entry_ids)
+        ? previous_entry_ids
+        : next_selection_state.selected_entry_ids
+    })
+    set_active_entry_id((previous_entry_id) => {
+      return previous_entry_id === next_selection_state.active_entry_id
+        ? previous_entry_id
+        : next_selection_state.active_entry_id
+    })
+    set_anchor_entry_id((previous_entry_id) => {
+      return previous_entry_id === next_selection_state.anchor_entry_id
+        ? previous_entry_id
+        : next_selection_state.anchor_entry_id
+    })
+  }, [])
+
+  useEffect(() => {
+    selection_state_ref.current = current_selection_state
+  }, [current_selection_state])
 
   const refresh_snapshot = useCallback(async (): Promise<WorkbenchSnapshot> => {
     if (!project_snapshot.loaded) {
       set_snapshot(EMPTY_SNAPSHOT)
       set_entries([])
-      set_selected_entry_id(null)
+      apply_selection_state(create_empty_selection_state())
       return EMPTY_SNAPSHOT
     }
 
@@ -663,7 +771,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     const next_snapshot = normalize_snapshot(payload)
     set_snapshot(next_snapshot)
     return next_snapshot
-  }, [project_snapshot.loaded])
+  }, [apply_selection_state, project_snapshot.loaded])
 
   useEffect(() => {
     let cancelled = false
@@ -672,7 +780,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       if (!project_snapshot.loaded) {
         set_snapshot(EMPTY_SNAPSHOT)
         set_entries([])
-        set_selected_entry_id(null)
+        apply_selection_state(create_empty_selection_state())
         set_dialog_state(close_dialog_state())
         return
       }
@@ -685,12 +793,17 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
         const mapped_entries = map_snapshot_entries(next_snapshot.entries)
         set_entries(mapped_entries)
-        set_selected_entry_id((previous_entry_id) => select_after_snapshot([], mapped_entries, previous_entry_id))
+        apply_selection_state(resolve_workbench_selection_after_snapshot({
+          previous_entries: [],
+          next_entries: mapped_entries,
+          previous_selection_state: selection_state_ref.current,
+          preferred_active_entry_id: null,
+        }))
       } catch {
         if (!cancelled) {
           set_snapshot(EMPTY_SNAPSHOT)
           set_entries([])
-          set_selected_entry_id(null)
+          apply_selection_state(create_empty_selection_state())
         }
       }
     }
@@ -700,7 +813,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     return () => {
       cancelled = true
     }
-  }, [project_snapshot.loaded, refresh_snapshot])
+  }, [apply_selection_state, project_snapshot.loaded, refresh_snapshot])
 
   useEffect(() => {
     const previous_status = previous_task_status_ref.current
@@ -735,8 +848,13 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   ])
 
   useEffect(() => {
-    set_selected_entry_id((previous_entry_id) => select_after_snapshot(entries, entries, previous_entry_id))
-  }, [entries])
+    apply_selection_state(resolve_workbench_selection_after_snapshot({
+      previous_entries: entries,
+      next_entries: entries,
+      previous_selection_state: selection_state_ref.current,
+      preferred_active_entry_id: null,
+    }))
+  }, [apply_selection_state, entries])
 
   useEffect(() => {
     if (is_reorder_running_ref.current) {
@@ -746,8 +864,8 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     set_entries(map_snapshot_entries(snapshot.entries))
   }, [snapshot.entries])
 
-  const stats = useMemo(() => {
-    return build_stats(
+  const translation_stats = useMemo(() => {
+    return build_translation_stats(
       snapshot,
       raw_translation_task_runtime.translation_task_metrics.active,
       raw_translation_task_runtime.translation_task_metrics.processed_count,
@@ -760,6 +878,20 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     raw_translation_task_runtime.translation_task_metrics.processed_count,
   ])
 
+  const analysis_stats = useMemo(() => {
+    return build_analysis_stats(
+      snapshot,
+      raw_analysis_task_runtime.analysis_task_display_snapshot,
+      raw_analysis_task_runtime.analysis_task_metrics.processed_count,
+      raw_analysis_task_runtime.analysis_task_metrics.failed_count,
+    )
+  }, [
+    raw_analysis_task_runtime.analysis_task_display_snapshot,
+    raw_analysis_task_runtime.analysis_task_metrics.failed_count,
+    raw_analysis_task_runtime.analysis_task_metrics.processed_count,
+    snapshot,
+  ])
+
   useEffect(() => {
     const previous_project_loaded = previous_project_loaded_ref.current
     const previous_project_path = previous_project_path_ref.current
@@ -769,11 +901,13 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
     if (!project_snapshot.loaded) {
       set_recent_workbench_task_kind(null)
+      set_stats_mode('translation')
       return
     }
 
     if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
       set_recent_workbench_task_kind(null)
+      set_stats_mode('translation')
     }
   }, [project_snapshot.loaded, project_snapshot.path])
 
@@ -797,6 +931,23 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     return null
   }, [task_snapshot.task_type])
 
+  useEffect(() => {
+    if (running_workbench_task_kind !== null) {
+      // 为什么：任务一旦开始，顶部卡片就该马上切到对应语义，避免统计视角和底部状态栏互相打架。
+      set_stats_mode(running_workbench_task_kind)
+    }
+  }, [running_workbench_task_kind])
+
+  const toggle_stats_mode = useCallback((): void => {
+    set_stats_mode((previous_mode) => {
+      return previous_mode === 'translation' ? 'analysis' : 'translation'
+    })
+  }, [])
+
+  const stats = useMemo<WorkbenchStats>(() => {
+    return stats_mode === 'analysis' ? analysis_stats : translation_stats
+  }, [analysis_stats, stats_mode, translation_stats])
+
   const has_translation_display = raw_translation_task_runtime.translation_task_display_snapshot !== null
   const has_analysis_display = raw_analysis_task_runtime.analysis_task_display_snapshot !== null
 
@@ -816,12 +967,14 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     running_workbench_task_kind,
   ])
 
+  const display_workbench_task_kind = active_workbench_task_kind ?? 'translation'
+
   const active_workbench_task_view = useMemo<WorkbenchTaskViewState>(() => {
     return {
-      task_kind: active_workbench_task_kind,
-      can_open_detail: active_workbench_task_kind !== null,
+      task_kind: display_workbench_task_kind,
+      can_open_detail: true,
     }
-  }, [active_workbench_task_kind])
+  }, [display_workbench_task_kind])
 
   const active_workbench_task_summary = useMemo<WorkbenchTaskSummaryViewModel>(() => {
     if (active_workbench_task_kind === 'translation') {
@@ -847,7 +1000,8 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   ])
 
   const active_workbench_task_detail = useMemo<WorkbenchTaskDetailViewModel | null>(() => {
-    if (active_workbench_task_kind === 'translation') {
+    // 为什么：工作台空态也要保留可点击的详情胶囊，默认沿用翻译任务模板展示基础指标。
+    if (display_workbench_task_kind === 'translation') {
       return build_translation_task_detail_view_model({
         metrics: raw_translation_task_runtime.translation_task_metrics,
         waveform_history: raw_translation_task_runtime.translation_waveform_history,
@@ -855,7 +1009,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       })
     }
 
-    if (active_workbench_task_kind === 'analysis') {
+    if (display_workbench_task_kind === 'analysis') {
       return build_analysis_task_detail_view_model({
         metrics: raw_analysis_task_runtime.analysis_task_metrics,
         waveform_history: raw_analysis_task_runtime.analysis_waveform_history,
@@ -865,7 +1019,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
     return null
   }, [
-    active_workbench_task_kind,
+    display_workbench_task_kind,
     raw_analysis_task_runtime.analysis_task_metrics,
     raw_analysis_task_runtime.analysis_waveform_history,
     raw_translation_task_runtime.translation_task_metrics,
@@ -919,9 +1073,10 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
   const run_file_mutation = useCallback(async (
     action: () => Promise<void>,
-    preferred_rel_path: string | null,
+    preferred_active_entry_id: string | null,
   ): Promise<void> => {
     const previous_entries = entries
+    const previous_selection_state = selection_state_ref.current
     set_is_mutation_running(true)
 
     try {
@@ -935,18 +1090,105 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
       const next_entries = map_snapshot_entries(next_snapshot.entries)
       set_entries(next_entries)
-      set_selected_entry_id(select_after_snapshot(previous_entries, next_entries, preferred_rel_path))
+      apply_selection_state(resolve_workbench_selection_after_snapshot({
+        previous_entries,
+        next_entries,
+        previous_selection_state,
+        preferred_active_entry_id,
+      }))
       await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
     } catch {
       return
     } finally {
       set_is_mutation_running(false)
     }
-  }, [entries, raw_analysis_task_runtime, refresh_snapshot])
+  }, [apply_selection_state, entries, raw_analysis_task_runtime, refresh_snapshot])
 
-  function select_entry(entry_id: string): void {
-    set_selected_entry_id(entry_id)
-  }
+  const run_serial_delete_mutation = useCallback(async (
+    target_rel_paths: string[],
+    preferred_active_entry_id: string | null,
+  ): Promise<void> => {
+    const previous_entries = entries
+    const previous_selection_state = selection_state_ref.current
+    let next_snapshot: WorkbenchSnapshot | null = null
+    set_is_mutation_running(true)
+
+    try {
+      // 为什么：工作台文件操作是串行门闩，必须等上一次删除彻底落盘后才能安全发下一次删除。
+      for (const target_rel_path of target_rel_paths) {
+        await api_fetch('/api/workbench/delete-file', {
+          rel_path: target_rel_path,
+        })
+
+        next_snapshot = await refresh_snapshot()
+        while (next_snapshot.file_op_running) {
+          await delay(500)
+          next_snapshot = await refresh_snapshot()
+        }
+      }
+
+      if (next_snapshot === null) {
+        return
+      }
+
+      const next_entries = map_snapshot_entries(next_snapshot.entries)
+      set_entries(next_entries)
+      apply_selection_state(resolve_workbench_selection_after_snapshot({
+        previous_entries,
+        next_entries,
+        previous_selection_state,
+        preferred_active_entry_id,
+      }))
+      await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
+    } catch {
+      return
+    } finally {
+      set_is_mutation_running(false)
+    }
+  }, [apply_selection_state, entries, raw_analysis_task_runtime, refresh_snapshot])
+
+  const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
+    apply_selection_state({
+      selected_entry_ids: payload.selected_row_ids,
+      active_entry_id: payload.active_row_id,
+      anchor_entry_id: payload.anchor_row_id,
+    })
+  }, [apply_selection_state])
+
+  const prepare_entry_action = useCallback((entry_id: string): void => {
+    const current_state = selection_state_ref.current
+    if (current_state.selected_entry_ids.includes(entry_id)) {
+      apply_selection_state({
+        selected_entry_ids: current_state.selected_entry_ids,
+        active_entry_id: entry_id,
+        anchor_entry_id: current_state.anchor_entry_id ?? entry_id,
+      })
+      return
+    }
+
+    apply_selection_state({
+      selected_entry_ids: [entry_id],
+      active_entry_id: entry_id,
+      anchor_entry_id: entry_id,
+    })
+  }, [apply_selection_state])
+
+  const request_delete_entries = useCallback((entry_ids: string[]): void => {
+    const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path))
+    const target_rel_paths = dedupe_workbench_entry_ids(entry_ids).filter((entry_id) => {
+      return visible_entry_id_set.has(entry_id)
+    })
+
+    if (target_rel_paths.length === 0) {
+      return
+    }
+
+    set_dialog_state({
+      kind: 'delete-file',
+      target_rel_paths,
+      pending_path: null,
+    })
+  }, [entries])
 
   async function request_add_file(): Promise<void> {
     const result = await window.desktopApp.pickWorkbenchFilePath()
@@ -963,7 +1205,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   function request_export_translation(): void {
     set_dialog_state({
       kind: 'export-translation',
-      target_rel_path: null,
+      target_rel_paths: [],
       pending_path: null,
     })
   }
@@ -971,7 +1213,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   function request_close_project(): void {
     set_dialog_state({
       kind: 'close-project',
-      target_rel_path: null,
+      target_rel_paths: [],
       pending_path: null,
     })
   }
@@ -979,17 +1221,17 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   function request_reset_file(entry_id: string): void {
     set_dialog_state({
       kind: 'reset-file',
-      target_rel_path: entry_id,
+      target_rel_paths: [entry_id],
       pending_path: null,
     })
   }
 
   function request_delete_file(entry_id: string): void {
-    set_dialog_state({
-      kind: 'delete-file',
-      target_rel_path: entry_id,
-      pending_path: null,
-    })
+    request_delete_entries([entry_id])
+  }
+
+  function request_delete_selected_files(): void {
+    request_delete_entries(selection_state_ref.current.selected_entry_ids)
   }
 
   async function request_replace_file(entry_id: string): Promise<void> {
@@ -1000,7 +1242,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
     set_dialog_state({
       kind: 'replace-file',
-      target_rel_path: entry_id,
+      target_rel_paths: [entry_id],
       pending_path: result.path,
     })
   }
@@ -1059,36 +1301,37 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   async function confirm_dialog(): Promise<void> {
     const current_dialog_state = dialog_state
     set_dialog_state(close_dialog_state())
+    const target_rel_path = current_dialog_state.target_rel_paths[0] ?? null
 
     if (current_dialog_state.kind === 'replace-file') {
-      if (current_dialog_state.target_rel_path === null || current_dialog_state.pending_path === null) {
+      if (target_rel_path === null || current_dialog_state.pending_path === null) {
         return
       }
 
       await run_file_mutation(async () => {
         await api_fetch('/api/workbench/replace-file', {
-          rel_path: current_dialog_state.target_rel_path,
+          rel_path: target_rel_path,
           path: current_dialog_state.pending_path,
         })
-      }, build_replace_target_rel_path(current_dialog_state.target_rel_path, current_dialog_state.pending_path))
+      }, build_replace_target_rel_path(target_rel_path, current_dialog_state.pending_path))
       return
     }
 
-    if (current_dialog_state.kind === 'reset-file' && current_dialog_state.target_rel_path !== null) {
+    if (current_dialog_state.kind === 'reset-file' && target_rel_path !== null) {
       await run_file_mutation(async () => {
         await api_fetch('/api/workbench/reset-file', {
-          rel_path: current_dialog_state.target_rel_path,
+          rel_path: target_rel_path,
         })
-      }, current_dialog_state.target_rel_path)
+      }, target_rel_path)
       return
     }
 
-    if (current_dialog_state.kind === 'delete-file' && current_dialog_state.target_rel_path !== null) {
-      await run_file_mutation(async () => {
-        await api_fetch('/api/workbench/delete-file', {
-          rel_path: current_dialog_state.target_rel_path,
-        })
-      }, selected_entry_id === current_dialog_state.target_rel_path ? null : selected_entry_id)
+    if (current_dialog_state.kind === 'delete-file' && current_dialog_state.target_rel_paths.length > 0) {
+      const deleted_entry_id_set = new Set(current_dialog_state.target_rel_paths)
+      await run_serial_delete_mutation(
+        current_dialog_state.target_rel_paths,
+        active_entry_id !== null && !deleted_entry_id_set.has(active_entry_id) ? active_entry_id : null,
+      )
       return
     }
 
@@ -1111,7 +1354,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
         })
         set_snapshot(EMPTY_SNAPSHOT)
         set_entries([])
-        set_selected_entry_id(null)
+        apply_selection_state(create_empty_selection_state())
         await refresh_task()
         await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
       } catch {
@@ -1148,6 +1391,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
   return {
     stats,
+    stats_mode,
     translation_task_runtime,
     analysis_task_runtime,
     active_workbench_task_view,
@@ -1156,18 +1400,23 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     translation_task_confirm_dialog,
     analysis_task_confirm_dialog,
     entries,
-    selected_entry_id,
+    selected_entry_ids,
+    active_entry_id,
+    anchor_entry_id,
     readonly,
     can_edit_files,
     can_export_translation,
     can_close_project,
     dialog_state,
-    select_entry,
+    toggle_stats_mode,
+    apply_table_selection,
+    prepare_entry_action,
     request_add_file,
     request_export_translation,
     request_close_project,
     request_reset_file,
     request_delete_file,
+    request_delete_selected_files,
     request_replace_file,
     request_reorder_entries,
     confirm_dialog,

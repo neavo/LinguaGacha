@@ -17,28 +17,59 @@
 }
 
 .workbench-page__stat-card {
-  min-height: 136px;
-  --card-header-bottom: 10px;
-  --card-content-top: 0px;
-  --card-content-bottom: 18px;
+  height: 150px;
 }
 
-.workbench-page__stat-card-header {
-  min-height: 40px;
+.workbench-page__stat-card-trigger {
+  display: block;
+  min-width: 0;
 }
 
 .workbench-page__stat-card-content {
   display: flex;
   flex: 1 1 auto;
+  min-height: 0;
+}
+
+.workbench-page__stat-card-stack {
+  display: flex;
+  min-height: 0;
+  width: 100%;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.workbench-page__stat-card-frame {
+  display: flex;
+  min-height: 0;
+}
+
+.workbench-page__stat-card-frame--title {
   align-items: center;
+}
+
+.workbench-page__stat-card-frame--value {
+  flex: 1 1 auto;
+  align-items: center;
+}
+
+.workbench-page__stat-card-frame--unit {
+  align-items: center;
+}
+
+.workbench-page__stat-card-unit-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .workbench-page__stat-card-metric {
   display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  justify-content: center;
-  gap: 10px;
+  min-height: 0;
+  width: 100%;
+  align-items: center;
 }
 
 .workbench-page__stat-card-title {
@@ -49,10 +80,9 @@
   margin: 0;
   display: flex;
   align-items: center;
-  min-height: 44px;
-  font-size: 44px;
-  line-height: 0.96;
-  letter-spacing: -0.045em;
+  font-size: 42px;
+  line-height: 1;
+  letter-spacing: -0.025em;
   color: var(--foreground);
 }
 
@@ -69,7 +99,16 @@
 }
 
 .workbench-page__stat-card-unit {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--workbench-unit);
+}
+
+.workbench-page__stat-card-toggle-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
   color: var(--workbench-unit);
 }
 
@@ -115,8 +154,6 @@
 
 .workbench-page__table-drag-head,
 .workbench-page__table-drag-cell,
-.workbench-page__table-format-head,
-.workbench-page__table-format-cell,
 .workbench-page__table-line-head,
 .workbench-page__table-line-cell,
 .workbench-page__table-action-head,

@@ -15,12 +15,15 @@ export const zh_cn_workbench_page = {
     translated: '翻译成功',
     untranslated: '等待翻译',
     error_count: '翻译失败',
+    analysis_completed: '分析完成',
+    analysis_failed: '分析失败',
+    analysis_pending: '等待分析',
+    toggle_tooltip: '点击切换',
   },
   table: {
     drag_handle: '拖拽',
     drag_handle_aria: '拖拽排序',
     file_name: '文件名',
-    format: '格式',
     line_count: '行数',
     actions: '操作',
     open_actions: '打开操作菜单',
@@ -32,6 +35,7 @@ export const zh_cn_workbench_page = {
   },
   action: {
     add_file: '添加文件',
+    delete_file: '删除文件',
     export_translation: '生成译文',
     close_project: '关闭项目',
     replace: '替换文件',
@@ -88,18 +92,6 @@ export const zh_cn_workbench_page = {
       import_success: '已导入 {COUNT} 条候选术语',
     },
   },
-  format: {
-    markdown: 'Markdown',
-    renpy: 'RenPy',
-    mtool: 'MTool',
-    sextractor: 'VNT/SExtractor',
-    trans_project: 'Translator++',
-    text_file: '纯文本',
-    subtitle_file: '字幕文件',
-    ebook: 'EPUB',
-    translation_export: 'Translator++ XLSX',
-    wolf: 'WOLF 官方工具 XLSX',
-  },
   command: {
     description: '工作台动作条承接工程级快捷操作。',
   },
@@ -119,7 +111,7 @@ export const zh_cn_workbench_page = {
     },
     delete: {
       title: '确认',
-      description: '确定要删除该文件及其所有翻译条目吗 …?',
+      description: '确定要删除所选文件及其所有翻译条目吗 …?',
       confirm: '确认',
     },
     export: {

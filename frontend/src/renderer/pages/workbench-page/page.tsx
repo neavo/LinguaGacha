@@ -19,12 +19,19 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
       className="workbench-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
-      <WorkbenchStatsSection stats={workbench_state.stats} />
+      <WorkbenchStatsSection
+        stats={workbench_state.stats}
+        stats_mode={workbench_state.stats_mode}
+        on_toggle_stats_mode={workbench_state.toggle_stats_mode}
+      />
       <WorkbenchFileTable
         entries={workbench_state.entries}
-        selected_entry_id={workbench_state.selected_entry_id}
+        selected_entry_ids={workbench_state.selected_entry_ids}
+        active_entry_id={workbench_state.active_entry_id}
+        anchor_entry_id={workbench_state.anchor_entry_id}
         readonly={workbench_state.readonly}
-        on_select={workbench_state.select_entry}
+        on_selection_change={workbench_state.apply_table_selection}
+        on_prepare_entry_action={workbench_state.prepare_entry_action}
         on_replace={(entry_id) => {
           void workbench_state.request_replace_file(entry_id)
         }}
@@ -40,11 +47,13 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         active_workbench_task_view={workbench_state.active_workbench_task_view}
         active_workbench_task_summary={workbench_state.active_workbench_task_summary}
         can_edit_files={workbench_state.can_edit_files}
+        selected_entry_count={workbench_state.selected_entry_ids.length}
         can_export_translation={workbench_state.can_export_translation}
         can_close_project={workbench_state.can_close_project}
         on_add_file={() => {
           void workbench_state.request_add_file()
         }}
+        on_delete_selected={workbench_state.request_delete_selected_files}
         on_export_translation={workbench_state.request_export_translation}
         on_close_project={workbench_state.request_close_project}
       />
