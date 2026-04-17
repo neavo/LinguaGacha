@@ -13,7 +13,7 @@
 | 分析进度、候选池、导入术语 | `DataManager.py` -> `Analysis/AnalysisService.py` |
 | 翻译条目准备与重置 | `DataManager.py` -> `Translation/TranslationItemService.py` / `Translation/TranslationResetService.py` |
 | 校对页快照、筛选、保存、重翻 | `api/Application/ProofreadingAppService.py` -> `Proofreading/*` |
-| 实验室、繁简转换、姓名字段 | `api/Application/ExtraAppService.py` -> `Extra/*` |
+| 繁简转换、姓名字段 | `api/Application/ExtraAppService.py` -> `Extra/*` |
 | 会话缓存、meta、rules、items、assets | `Core/*` |
 | SQL、schema、事务细节 | `Storage/LGDatabase.py` |
 
@@ -27,14 +27,14 @@
 | `Quality/` | 规则快照、变更、预设、提示词与分析候选导入术语的规则侧逻辑 |
 | `Analysis/` | 分析进度、候选聚合、checkpoint 与分析结果写回 |
 | `Proofreading/` | 校对页快照、筛选、revision 冲突、保存、重检与重翻 |
-| `Extra/` | 实验室设置、繁简转换、姓名字段提取与导入术语 |
+| `Extra/` | 繁简转换、姓名字段提取与导入术语 |
 | `Translation/` | 翻译任务取条目与翻译失败/重置后的数据整理 |
 
 ## 边界与入口
 - `DataManager` 持有 `ProjectSession`，负责工程加载态、规则/条目缓存、事件发射和跨 service 编排。
 - `Project/`、`Quality/`、`Analysis/`、`Translation/` 这四条主链路以 `DataManager` 为入口，不在 API 层绕过它直接拼装内部依赖。
 - `Proofreading/` 由 `api/Application/ProofreadingAppService.py` 组合使用；它依赖 `DataManager` 读取当前工程、提交 mutation，并自行维护筛选、revision 与重检逻辑。
-- `Extra/` 由 `api/Application/ExtraAppService.py` 组合使用；它直接提供实验室设置、繁简转换与姓名字段能力，不承担工程生命周期管理。
+- `Extra/` 由 `api/Application/ExtraAppService.py` 组合使用；它直接提供繁简转换与姓名字段能力，不承担工程生命周期管理。
 - `ProjectSession` 只做当前工程会话状态容器；`LGDatabase` 只做 SQL、schema 和事务，不承担业务流程。
 - 新增数据链路时，先判断它属于工程编排、规则/分析/翻译、校对，还是 Extra 工具，不要把所有逻辑都压回 `DataManager`。
 
@@ -70,7 +70,7 @@ flowchart TD
 | 分析进度、候选导入 | `DataManager` -> `AnalysisService` / `QualityRuleGlossaryImportService` |
 | 翻译取条目、翻译重置 | `DataManager` -> `TranslationItemService` / `TranslationResetService` |
 | 校对页快照、筛选、保存、重翻 | `ProofreadingAppService` -> `ProofreadingSnapshotService` / `ProofreadingMutationService` / `ProofreadingRetranslateService` |
-| 实验室、繁简转换、姓名字段 | `ExtraAppService` -> `LaboratoryService` / `TsConversionService` / `NameFieldExtractionService` |
+| 繁简转换、姓名字段 | `ExtraAppService` -> `TsConversionService` / `NameFieldExtractionService` |
 
 ## 子包职责速查
 ### `Core`
@@ -109,7 +109,6 @@ flowchart TD
 - `ProofreadingRevisionService`：校对页 revision 管理
 
 ### `Extra`
-- `LaboratoryService`：实验室设置快照与局部更新
 - `TsConversionService`：繁简转换选项与任务启动
 - `NameFieldExtractionService`：姓名字段提取、整表翻译与导入术语
 
@@ -126,7 +125,7 @@ flowchart TD
 | 规则、提示词、预设、规则统计 | `Quality/` |
 | 分析 checkpoint、候选池、导入术语 | `Analysis/` |
 | 校对页快照、筛选、保存、重翻 | `Proofreading/` |
-| 实验室、繁简转换、姓名字段 | `Extra/` |
+| 繁简转换、姓名字段 | `Extra/` |
 | 翻译取条目与重置 | `Translation/` |
 
 ### 什么时候改 `DataManager`

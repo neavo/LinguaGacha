@@ -13,19 +13,6 @@ export const en_us_laboratory_page = {
       ),
       help_label: 'View the MTool Optimizer guide',
     },
-    force_thinking_enable: {
-      title: 'Force Thinking',
-      description: (
-        'When enabled, non-reasoning models will also think before translating, enabled by default'
-        + '\n'
-        + '◈ Trades a slight increase in token usage for better translation quality'
-        + '\n'
-        + '◈ When it works, you can see the model reasoning output in the translation logs'
-        + '\n'
-        + '◈ <emphasis>This feature does not support SakuraLLM models</emphasis>'
-      ),
-      help_label: 'View the Force Thinking guide',
-    },
   },
   feedback: {
     retry: 'Retry',

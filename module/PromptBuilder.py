@@ -239,12 +239,10 @@ class PromptBuilder(Base):
             # 主体
             base = self.resolve_translation_prompt_base(prompt_language)
 
-            # 思考块：与输出块分离，避免自动术语表切换时互相覆盖
-            thinking = ""
-            if self.config.force_thinking_enable:
-                thinking = __class__.get_suffix_thinking(prompt_language)
+            # 强制思考
+            thinking = __class__.get_suffix_thinking(prompt_language)
 
-            # 输出块
+            # 后缀
             suffix_output = __class__.get_suffix(prompt_language)
 
         full_prompt = self.join_prompt_sections(prefix, base, thinking, suffix_output)
@@ -262,12 +260,10 @@ class PromptBuilder(Base):
         with __class__.LOCK:
             prefix = __class__.get_analysis_prefix(prompt_language)
             base = self.resolve_analysis_prompt_base(prompt_language)
-            thinking = ""
-            if self.config.force_thinking_enable:
-                thinking = __class__.get_analysis_thinking(prompt_language)
+            thinking = __class__.get_analysis_thinking(prompt_language)
             suffix = __class__.get_analysis_suffix(prompt_language)
 
-        # 分析任务与翻译任务保持同样的三段式结构，避免 thinking 规则重新混回 base。
+        # 分析任务与翻译任务保持同样的三段式结构
         full_prompt = self.join_prompt_sections(prefix, base, thinking, suffix)
         return full_prompt.replace("{target_language}", target_language)
 

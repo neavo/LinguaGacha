@@ -54,7 +54,6 @@ class AppSettingsSnapshot:
     write_translated_name_fields_to_file: bool = True
     auto_process_prefix_suffix_preserved_text: bool = True
     mtool_optimizer_enable: bool = True
-    force_thinking_enable: bool = True
     glossary_default_preset: str = ""
     text_preserve_default_preset: str = ""
     pre_translation_replacement_default_preset: str = ""
@@ -110,7 +109,6 @@ class AppSettingsSnapshot:
                 normalized.get("auto_process_prefix_suffix_preserved_text", True)
             ),
             mtool_optimizer_enable=bool(normalized.get("mtool_optimizer_enable", True)),
-            force_thinking_enable=bool(normalized.get("force_thinking_enable", True)),
             glossary_default_preset=str(normalized.get("glossary_default_preset", "")),
             text_preserve_default_preset=str(
                 normalized.get("text_preserve_default_preset", "")
@@ -155,7 +153,6 @@ class AppSettingsSnapshot:
                 self.auto_process_prefix_suffix_preserved_text
             ),
             "mtool_optimizer_enable": self.mtool_optimizer_enable,
-            "force_thinking_enable": self.force_thinking_enable,
             "glossary_default_preset": self.glossary_default_preset,
             "text_preserve_default_preset": self.text_preserve_default_preset,
             "pre_translation_replacement_default_preset": (

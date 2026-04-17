@@ -25,13 +25,11 @@ type UseLaboratoryPageStateResult = {
   is_task_busy: boolean
   refresh_snapshot: () => Promise<void>
   update_mtool_optimizer_enable: (next_checked: boolean) => Promise<void>
-  update_force_thinking_enable: (next_checked: boolean) => Promise<void>
 }
 
 function create_pending_state(): LaboratoryPendingState {
   return {
     mtool_optimizer_enable: false,
-    force_thinking_enable: false,
   }
 }
 
@@ -120,15 +118,12 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
             ...current_snapshot,
           }
 
-          if ('mtool_optimizer_enable' in request) {
-            reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable
-          }
-          if ('force_thinking_enable' in request) {
-            reverted_snapshot.force_thinking_enable = previous_snapshot.force_thinking_enable
-          }
+        if ('mtool_optimizer_enable' in request) {
+          reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable
+        }
 
-          return reverted_snapshot
-        })
+        return reverted_snapshot
+      })
 
         if (error instanceof Error) {
           push_toast('error', error.message)
@@ -160,24 +155,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     [commit_update, is_task_busy],
   )
 
-  const update_force_thinking_enable = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current
-
-      if (is_task_busy || previous_snapshot.force_thinking_enable === next_checked) {
-        return
-      }
-
-      await commit_update('force_thinking_enable', {
-        force_thinking_enable: next_checked,
-      }, {
-        ...previous_snapshot,
-        force_thinking_enable: next_checked,
-      })
-    },
-    [commit_update, is_task_busy],
-  )
-
   const value = useMemo<UseLaboratoryPageStateResult>(() => {
     return {
       snapshot,
@@ -187,7 +164,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       is_task_busy,
       refresh_snapshot,
       update_mtool_optimizer_enable,
-      update_force_thinking_enable,
     }
   }, [
     is_refreshing,
@@ -196,7 +172,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     refresh_error,
     refresh_snapshot,
     snapshot,
-    update_force_thinking_enable,
     update_mtool_optimizer_enable,
   ])
 

@@ -148,7 +148,6 @@
 - `write_translated_name_fields_to_file`
 - `auto_process_prefix_suffix_preserved_text`
 - `mtool_optimizer_enable`
-- `force_thinking_enable`
 - `glossary_default_preset`
 - `text_preserve_default_preset`
 - `pre_translation_replacement_default_preset`
@@ -377,21 +376,7 @@
 
 `Extra` 当前覆盖工具箱、实验室、繁简转换与姓名字段提取能力。Python 侧对象化契约与状态合并统一通过 `ExtraApiClient`、`ApiStateStore` 与 SSE topic 组织；Electron 渲染层运行时仍通过 `desktop-api.ts` 与事件流访问 Core。
 
-### 9.1 工具箱与实验室
-
-| 方法 | 路径 | 请求体 | 响应 `data` |
-| --- | --- | --- | --- |
-| `POST` | `/api/extra/laboratory/snapshot` | `{}` | `{"snapshot": {...}}` |
-| `POST` | `/api/extra/laboratory/update` | `{"mtool_optimizer_enabled": true}` 或 `{"force_thinking_enabled": true}` | `{"snapshot": {...}}` |
-
-`snapshot` 当前包含以下稳定字段：
-
-```json
-{
-  "mtool_optimizer_enabled": true,
-  "force_thinking_enabled": true
-}
-```
+### 9.1 工具箱
 
 工具箱页当前只承担页面导航，不定义独立 HTTP 路由；工具元数据仍由前端导航层维护。
 
@@ -624,9 +609,8 @@ Python 侧客户端内部新增以下冻结对象：
   - `ProofreadingItemView`
   - `ProofreadingFilterOptionsSnapshot`
   - `ProofreadingSearchResult`
-  - `ProofreadingMutationResult`
+- `ProofreadingMutationResult`
 - `model/Api/ExtraModels.py`
-  - `LaboratorySnapshot`
   - `ExtraToolEntry`
   - `ExtraToolSnapshot`
   - `TsConversionOptionsSnapshot`
@@ -659,7 +643,6 @@ Python 侧客户端内部新增以下冻结对象：
 - `ProofreadingApiClient.get_snapshot()` / `filter_items()` 返回 `ProofreadingSnapshot`
 - `ProofreadingApiClient.search()` 返回 `ProofreadingSearchResult`
 - `ProofreadingApiClient.save_item()` / `save_all()` / `replace_all()` / `recheck_item()` / `retranslate_items()` 返回 `ProofreadingMutationResult`
-- `ExtraApiClient.get_laboratory_snapshot()` / `update_laboratory_settings()` 返回 `LaboratorySnapshot`
 - `ExtraApiClient.get_ts_conversion_options()` 返回 `TsConversionOptionsSnapshot`
 - `ExtraApiClient.start_ts_conversion()` 返回 `TsConversionTaskAccepted`
 - `ExtraApiClient.extract_name_fields()` / `save_name_fields_to_glossary()` 返回 `NameFieldSnapshot`

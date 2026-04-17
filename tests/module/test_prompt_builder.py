@@ -53,11 +53,15 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
         )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_suffix_thinking",
+            classmethod(lambda cls, language: ""),
+        )
 
         config = Config(
             source_language=BaseLanguage.ALL,
             target_language=BaseLanguage.Enum.EN,
-            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             translation_prompt_enable=False,
@@ -123,12 +127,16 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
         )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_suffix_thinking",
+            classmethod(lambda cls, language: ""),
+        )
 
         result = PromptBuilder(
             config=Config(
                 source_language=BaseLanguage.Enum.JA,
                 target_language=BaseLanguage.Enum.ZH,
-                force_thinking_enable=False,
             ),
             quality_snapshot=cast(Any, FakeQualitySnapshot()),
         ).build_main()
@@ -147,11 +155,15 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
         )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_suffix_thinking",
+            classmethod(lambda cls, language: ""),
+        )
 
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.ZH,
-            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             translation_prompt_enable=True,
@@ -168,7 +180,7 @@ class TestPromptBuilder:
             == f"PREFIX\nRULE: {BaseLanguage.get_name_zh(BaseLanguage.Enum.ZH)}\n\nSUFFIX"
         )
 
-    def test_build_main_appends_thinking_block_when_enabled(
+    def test_build_main_appends_thinking_block(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
@@ -189,7 +201,6 @@ class TestPromptBuilder:
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.ZH,
-            force_thinking_enable=True,
         )
         snapshot = FakeQualitySnapshot(
             translation_prompt_enable=False,
@@ -441,19 +452,19 @@ class TestPromptBuilder:
         BasePath.DATA_DIR = str(root)
 
         builder = PromptBuilder(
-            config=Config(
-                target_language=BaseLanguage.Enum.ZH,
-                force_thinking_enable=False,
-            ),
+            config=Config(target_language=BaseLanguage.Enum.ZH),
             quality_snapshot=cast(Any, FakeQualitySnapshot()),
         )
 
         result = builder.build_glossary_analysis_main()
 
-        assert result == "ANALYSIS_PREFIX\nANALYSIS_BASE\n\nANALYSIS_SUFFIX 中文"
+        assert (
+            result
+            == "ANALYSIS_PREFIX\nANALYSIS_BASE\n\nANALYSIS_THINKING\n\nANALYSIS_SUFFIX 中文"
+        )
         assert "TRANSLATION_PREFIX" not in result
 
-    def test_build_glossary_analysis_main_appends_thinking_block_when_enabled(
+    def test_build_glossary_analysis_main_appends_thinking_block(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
@@ -478,10 +489,7 @@ class TestPromptBuilder:
         )
 
         result = PromptBuilder(
-            config=Config(
-                target_language=BaseLanguage.Enum.ZH,
-                force_thinking_enable=True,
-            ),
+            config=Config(target_language=BaseLanguage.Enum.ZH),
             quality_snapshot=cast(Any, FakeQualitySnapshot()),
         ).build_glossary_analysis_main()
 
@@ -553,10 +561,7 @@ class TestPromptBuilder:
         )
 
         result = PromptBuilder(
-            config=Config(
-                target_language=BaseLanguage.Enum.ZH,
-                force_thinking_enable=False,
-            ),
+            config=Config(target_language=BaseLanguage.Enum.ZH),
             quality_snapshot=cast(
                 Any,
                 FakeQualitySnapshot(
@@ -566,7 +571,10 @@ class TestPromptBuilder:
             ),
         ).build_glossary_analysis_main()
 
-        assert result == "ANALYSIS_PREFIX\nCUSTOM_ANALYSIS\n\nANALYSIS_SUFFIX"
+        assert (
+            result
+            == "ANALYSIS_PREFIX\nCUSTOM_ANALYSIS\n\nANALYSIS_THINKING\n\nANALYSIS_SUFFIX"
+        )
 
     def test_get_analysis_prompt_files_read_and_cache_reset(
         self, fs, monkeypatch: pytest.MonkeyPatch
@@ -671,10 +679,14 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
         )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_suffix_thinking",
+            classmethod(lambda cls, language: ""),
+        )
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.EN,
-            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             translation_prompt_enable=False,
@@ -804,11 +816,15 @@ class TestPromptBuilder:
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
         )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_suffix_thinking",
+            classmethod(lambda cls, language: ""),
+        )
 
         config = Config(
             source_language=BaseLanguage.Enum.JA,
             target_language=BaseLanguage.Enum.EN,
-            force_thinking_enable=False,
         )
         snapshot = FakeQualitySnapshot(
             translation_prompt_enable=True,
@@ -839,6 +855,11 @@ class TestPromptBuilder:
         )
         monkeypatch.setattr(
             PromptBuilder, "get_suffix", classmethod(lambda cls, language: "SUFFIX")
+        )
+        monkeypatch.setattr(
+            PromptBuilder,
+            "get_suffix_thinking",
+            classmethod(lambda cls, language: ""),
         )
 
         config = Config(

@@ -10,16 +10,14 @@ import { SettingHelpButton } from '@/widgets/setting-help-button/setting-help-bu
 import { SettingCardRow } from '@/widgets/setting-card-row/setting-card-row'
 import { SegmentedToggle } from '@/widgets/segmented-toggle/segmented-toggle'
 
-type LaboratoryHelpField = 'mtool_optimizer_enable' | 'force_thinking_enable'
+type LaboratoryHelpField = 'mtool_optimizer_enable'
 
 const HELP_URL_BY_FIELD = {
   'zh-CN': {
     mtool_optimizer_enable: 'https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer',
-    force_thinking_enable: 'https://github.com/neavo/LinguaGacha/wiki/ForceThinking',
   },
   'en-US': {
     mtool_optimizer_enable: 'https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN',
-    force_thinking_enable: 'https://github.com/neavo/LinguaGacha/wiki/ForceThinkingEN',
   },
 } as const satisfies Record<'zh-CN' | 'en-US', Record<LaboratoryHelpField, string>>
 
@@ -50,9 +48,7 @@ export function LaboratoryPage(props: ScreenComponentProps): JSX.Element {
   }
 
   function render_boolean_toggle(options: {
-    title_key:
-      | 'laboratory_page.fields.mtool_optimizer_enable.title'
-      | 'laboratory_page.fields.force_thinking_enable.title'
+    title_key: 'laboratory_page.fields.mtool_optimizer_enable.title'
     value: boolean
     disabled: boolean
     on_value_change: (next_value: boolean) => void
@@ -118,22 +114,6 @@ export function LaboratoryPage(props: ScreenComponentProps): JSX.Element {
               disabled: laboratory_page_state.is_task_busy || laboratory_page_state.pending_state.mtool_optimizer_enable,
               on_value_change: (next_value) => {
                 void laboratory_page_state.update_mtool_optimizer_enable(next_value)
-              },
-            })
-          )}
-        />
-
-        <SettingCardRow
-          title={t('laboratory_page.fields.force_thinking_enable.title')}
-          title_suffix={render_help_button('force_thinking_enable')}
-          description={t('laboratory_page.fields.force_thinking_enable.description')}
-          action={(
-            render_boolean_toggle({
-              title_key: 'laboratory_page.fields.force_thinking_enable.title',
-              value: laboratory_page_state.snapshot.force_thinking_enable,
-              disabled: laboratory_page_state.is_task_busy || laboratory_page_state.pending_state.force_thinking_enable,
-              on_value_change: (next_value) => {
-                void laboratory_page_state.update_force_thinking_enable(next_value)
               },
             })
           )}

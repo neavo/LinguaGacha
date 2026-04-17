@@ -47,8 +47,6 @@ PHASE_THREE_EXTRA_ROUTE_PATHS: tuple[str, ...] = (
     "/api/extra/name-fields/extract",
     "/api/extra/name-fields/translate",
     "/api/extra/name-fields/save-to-glossary",
-    "/api/extra/laboratory/snapshot",
-    "/api/extra/laboratory/update",
 )
 
 PHASE_THREE_EXTRA_TOPIC_NAMES: tuple[str, ...] = (
