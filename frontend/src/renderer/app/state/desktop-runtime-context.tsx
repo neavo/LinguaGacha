@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -61,6 +62,8 @@ type TaskSnapshot = {
   analysis_candidate_count: number
 }
 
+export type ProjectWarmupStatus = 'idle' | 'warming' | 'ready'
+
 type DesktopRuntimeContextValue = {
   hydration_ready: boolean
   hydration_error: string | null
@@ -68,12 +71,16 @@ type DesktopRuntimeContextValue = {
   project_snapshot: ProjectSnapshot
   task_snapshot: TaskSnapshot
   proofreading_invalidation_tick: number
+  workbench_invalidation_tick: number
+  project_warmup_status: ProjectWarmupStatus
   pending_target_route: RouteId | null
   is_app_language_updating: boolean
   set_settings_snapshot: (snapshot: SettingsSnapshot) => void
   set_project_snapshot: (snapshot: ProjectSnapshot) => void
   set_task_snapshot: (snapshot: TaskSnapshot) => void
+  set_project_warmup_status: (status: ProjectWarmupStatus) => void
   set_pending_target_route: (route_id: RouteId | null) => void
+  wait_for_project_warmup: (project_path: string) => Promise<void>
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>
   refresh_settings: () => Promise<SettingsSnapshot>
   refresh_project: () => Promise<ProjectSnapshot>
@@ -291,8 +298,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [project_snapshot, set_project_snapshot] = useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT)
   const [task_snapshot, set_task_snapshot] = useState<TaskSnapshot>(DEFAULT_TASK_SNAPSHOT)
   const [proofreading_invalidation_tick, set_proofreading_invalidation_tick] = useState(0)
+  const [workbench_invalidation_tick, set_workbench_invalidation_tick] = useState(0)
+  const [project_warmup_status, set_project_warmup_status] = useState<ProjectWarmupStatus>('idle')
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null)
   const [is_app_language_updating, set_is_app_language_updating] = useState(false)
+  const project_warmup_waiters_ref = useRef<Map<string, Set<() => void>>>(new Map())
 
   const apply_settings_snapshot = useCallback((payload: SettingsSnapshotPayload): SettingsSnapshot => {
     const next_snapshot = normalize_settings_snapshot(payload)
@@ -337,6 +347,74 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     apply_settings_snapshot,
     is_app_language_updating,
     settings_snapshot,
+  ])
+
+  const resolve_project_warmup_waiters = useCallback((project_path: string): void => {
+    const normalized_project_path = project_path.trim()
+    if (normalized_project_path === '') {
+      return
+    }
+
+    const waiters = project_warmup_waiters_ref.current.get(normalized_project_path)
+    if (waiters === undefined) {
+      return
+    }
+
+    project_warmup_waiters_ref.current.delete(normalized_project_path)
+    for (const resolve of waiters) {
+      resolve()
+    }
+  }, [])
+
+  const resolve_all_project_warmup_waiters = useCallback((): void => {
+    for (const waiters of project_warmup_waiters_ref.current.values()) {
+      for (const resolve of waiters) {
+        resolve()
+      }
+    }
+    project_warmup_waiters_ref.current.clear()
+  }, [])
+
+  const wait_for_project_warmup = useCallback((project_path: string): Promise<void> => {
+    const normalized_project_path = project_path.trim()
+    if (normalized_project_path === '') {
+      return Promise.resolve()
+    }
+
+    if (
+      project_snapshot.loaded
+      && project_snapshot.path === normalized_project_path
+      && project_warmup_status === 'ready'
+    ) {
+      return Promise.resolve()
+    }
+
+    return new Promise((resolve) => {
+      const waiters = project_warmup_waiters_ref.current.get(normalized_project_path) ?? new Set()
+      waiters.add(resolve)
+      project_warmup_waiters_ref.current.set(normalized_project_path, waiters)
+    })
+  }, [
+    project_snapshot.loaded,
+    project_snapshot.path,
+    project_warmup_status,
+  ])
+
+  useEffect(() => {
+    if (!project_snapshot.loaded) {
+      resolve_all_project_warmup_waiters()
+      return
+    }
+
+    if (project_warmup_status === 'ready') {
+      resolve_project_warmup_waiters(project_snapshot.path)
+    }
+  }, [
+    project_snapshot.loaded,
+    project_snapshot.path,
+    project_warmup_status,
+    resolve_all_project_warmup_waiters,
+    resolve_project_warmup_waiters,
   ])
 
   useEffect(() => {
@@ -418,7 +496,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     }
 
     function handle_workbench_snapshot_changed(): void {
-      set_proofreading_invalidation_tick((previous_tick) => previous_tick + 1)
+      set_workbench_invalidation_tick((previous_tick) => previous_tick + 1)
     }
 
     async function attach_event_stream(): Promise<void> {
@@ -463,12 +541,16 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       project_snapshot,
       task_snapshot,
       proofreading_invalidation_tick,
+      workbench_invalidation_tick,
+      project_warmup_status,
       pending_target_route,
       is_app_language_updating,
       set_settings_snapshot,
       set_project_snapshot,
       set_task_snapshot,
+      set_project_warmup_status,
       set_pending_target_route,
+      wait_for_project_warmup,
       update_app_language,
       refresh_settings,
       refresh_project,
@@ -481,8 +563,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     project_snapshot,
     task_snapshot,
     proofreading_invalidation_tick,
+    workbench_invalidation_tick,
+    project_warmup_status,
     pending_target_route,
     is_app_language_updating,
+    wait_for_project_warmup,
     refresh_project,
     refresh_settings,
     refresh_task,

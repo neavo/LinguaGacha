@@ -464,6 +464,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const {
     settings_snapshot,
     set_project_snapshot,
+    wait_for_project_warmup,
     refresh_settings,
     refresh_task,
   } = useDesktopRuntime()
@@ -685,6 +686,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       // 创建工程会阻塞用户继续点击入口，用不定进度通知明确告知“正在处理”。
       progress_toast_id = push_progress_toast({
         message: t('project_page.create.loading_toast'),
+        presentation: 'modal',
       })
 
       const payload = await api_fetch<ProjectSnapshotPayload>('/api/project/create', {
@@ -692,11 +694,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         path: normalized_output_path,
       })
       set_project_snapshot(normalize_project_snapshot(payload))
+      const wait_for_warmup = wait_for_project_warmup(normalized_output_path)
       await api_fetch<SettingsPayload>('/api/settings/recent-projects/add', {
         path: normalized_output_path,
         name: extract_stem(extract_file_name(normalized_output_path)),
       })
-      await Promise.all([refresh_recent_projects(), refresh_task()])
+      await Promise.all([refresh_recent_projects(), refresh_task(), wait_for_warmup])
       clear_selected_source()
       clear_selected_project()
     } catch (error) {
@@ -722,6 +725,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     set_is_opening_project(true)
     const progress_toast_id = push_progress_toast({
       message: t('project_page.open.loading_toast'),
+      presentation: 'modal',
     })
 
     try {
@@ -729,11 +733,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         path: selected_project.path,
       })
       set_project_snapshot(normalize_project_snapshot(payload))
+      const wait_for_warmup = wait_for_project_warmup(selected_project.path)
       await api_fetch<SettingsPayload>('/api/settings/recent-projects/add', {
         path: selected_project.path,
         name: selected_project.name,
       })
-      await Promise.all([refresh_recent_projects(), refresh_task()])
+      await Promise.all([refresh_recent_projects(), refresh_task(), wait_for_warmup])
     } catch (error) {
       push_toast('error', format_project_error_message({
         template: t('project_page.open.failed'),

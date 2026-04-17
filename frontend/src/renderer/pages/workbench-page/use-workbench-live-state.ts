@@ -57,6 +57,14 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   entries: [],
 }
 
+function resolve_error_message(error: unknown, fallback_message: string): string {
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message
+  }
+
+  return fallback_message
+}
+
 function normalize_snapshot(payload: WorkbenchSnapshotPayload): WorkbenchSnapshot {
   const snapshot = payload.snapshot ?? {}
   const entries = Array.isArray(snapshot.entries)
@@ -668,6 +676,13 @@ function build_analysis_task_confirm_dialog_view_model(
 }
 
 type UseWorkbenchLiveStateResult = {
+  cache_status: 'idle' | 'refreshing' | 'ready' | 'error'
+  cache_stale: boolean
+  last_loaded_at: number | null
+  refresh_request_id: number
+  settled_project_path: string
+  refresh_error: string | null
+  is_refreshing: boolean
   stats: WorkbenchStats
   stats_mode: WorkbenchStatsMode
   translation_task_runtime: TranslationTaskRuntime
@@ -686,6 +701,7 @@ type UseWorkbenchLiveStateResult = {
   can_export_translation: boolean
   can_close_project: boolean
   dialog_state: WorkbenchDialogState
+  refresh_snapshot: () => Promise<WorkbenchSnapshot>
   toggle_stats_mode: () => void
   apply_table_selection: (payload: AppTableSelectionChange) => void
   prepare_entry_action: (entry_id: string) => void
@@ -708,13 +724,20 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const raw_analysis_task_runtime = useAnalysisTaskRuntime()
   const {
     project_snapshot,
-    proofreading_invalidation_tick,
+    workbench_invalidation_tick,
     refresh_task,
     set_project_snapshot,
     task_snapshot,
   } = useDesktopRuntime()
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT)
   const [entries, set_entries] = useState<WorkbenchFileEntry[]>([])
+  const [cache_status, set_cache_status] = useState<'idle' | 'refreshing' | 'ready' | 'error'>('idle')
+  const [cache_stale, set_cache_stale] = useState(false)
+  const [last_loaded_at, set_last_loaded_at] = useState<number | null>(null)
+  const [refresh_request_id, set_refresh_request_id] = useState(0)
+  const [settled_project_path, set_settled_project_path] = useState('')
+  const [refresh_error, set_refresh_error] = useState<string | null>(null)
+  const [is_refreshing, set_is_refreshing] = useState(false)
   const [selected_entry_ids, set_selected_entry_ids] = useState<string[]>([])
   const [active_entry_id, set_active_entry_id] = useState<string | null>(null)
   const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null)
@@ -723,10 +746,13 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] = useState<WorkbenchTaskKind | null>(null)
   const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>('translation')
   const previous_task_status_ref = useRef<WorkbenchTaskStatus>(task_snapshot.status)
-  const previous_invalidation_tick_ref = useRef(proofreading_invalidation_tick)
+  const previous_invalidation_tick_ref = useRef(workbench_invalidation_tick)
   const previous_project_loaded_ref = useRef(project_snapshot.loaded)
   const previous_project_path_ref = useRef(project_snapshot.path)
   const is_reorder_running_ref = useRef(false)
+  const refresh_request_id_ref = useRef(0)
+  const snapshot_ref = useRef(snapshot)
+  const entries_ref = useRef<WorkbenchFileEntry[]>(entries)
   const selection_state_ref = useRef<WorkbenchSelectionState>(create_empty_selection_state())
 
   const current_selection_state = useMemo<WorkbenchSelectionState>(() => {
@@ -756,22 +782,94 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   }, [])
 
   useEffect(() => {
+    snapshot_ref.current = snapshot
+  }, [snapshot])
+
+  useEffect(() => {
+    entries_ref.current = entries
+  }, [entries])
+
+  useEffect(() => {
     selection_state_ref.current = current_selection_state
   }, [current_selection_state])
 
-  const refresh_snapshot = useCallback(async (): Promise<WorkbenchSnapshot> => {
+  const apply_refreshed_entries = useCallback((
+    next_snapshot: WorkbenchSnapshot,
+    preferred_active_entry_id: string | null,
+  ): void => {
+    const previous_entries = entries_ref.current
+    const previous_selection_state = selection_state_ref.current
+    const next_entries = map_snapshot_entries(next_snapshot.entries)
+
+    set_entries(next_entries)
+    apply_selection_state(resolve_workbench_selection_after_snapshot({
+      previous_entries,
+      next_entries,
+      previous_selection_state,
+      preferred_active_entry_id,
+    }))
+  }, [apply_selection_state])
+
+  const refresh_snapshot = useCallback(async (
+    preferred_active_entry_id: string | null = null,
+  ): Promise<WorkbenchSnapshot> => {
     if (!project_snapshot.loaded) {
+      refresh_request_id_ref.current = 0
+      set_refresh_request_id(0)
+      snapshot_ref.current = EMPTY_SNAPSHOT
       set_snapshot(EMPTY_SNAPSHOT)
       set_entries([])
       apply_selection_state(create_empty_selection_state())
+      set_refresh_error(null)
+      set_is_refreshing(false)
+      set_cache_status('idle')
+      set_cache_stale(false)
+      set_last_loaded_at(null)
+      set_settled_project_path('')
       return EMPTY_SNAPSHOT
     }
 
-    const payload = await api_fetch<WorkbenchSnapshotPayload>('/api/workbench/snapshot', {})
-    const next_snapshot = normalize_snapshot(payload)
-    set_snapshot(next_snapshot)
-    return next_snapshot
-  }, [apply_selection_state, project_snapshot.loaded])
+    const request_id = refresh_request_id_ref.current + 1
+    refresh_request_id_ref.current = request_id
+    set_refresh_request_id(request_id)
+    set_is_refreshing(true)
+    set_cache_status('refreshing')
+
+    try {
+      const payload = await api_fetch<WorkbenchSnapshotPayload>('/api/workbench/snapshot', {})
+      const next_snapshot = normalize_snapshot(payload)
+
+      if (request_id !== refresh_request_id_ref.current) {
+        return next_snapshot
+      }
+
+      snapshot_ref.current = next_snapshot
+      set_snapshot(next_snapshot)
+      apply_refreshed_entries(next_snapshot, preferred_active_entry_id)
+      set_refresh_error(null)
+      set_cache_status('ready')
+      set_cache_stale(false)
+      set_last_loaded_at(Date.now())
+      set_settled_project_path(project_snapshot.path)
+      return next_snapshot
+    } catch (error) {
+      if (request_id !== refresh_request_id_ref.current) {
+        return EMPTY_SNAPSHOT
+      }
+
+      const message = resolve_error_message(error, t('workbench_page.feedback.refresh_failed'))
+      set_refresh_error(message)
+      set_cache_status('error')
+      set_cache_stale(true)
+      set_settled_project_path(project_snapshot.path)
+      push_toast('error', message)
+      return snapshot_ref.current
+    } finally {
+      if (request_id === refresh_request_id_ref.current) {
+        set_is_refreshing(false)
+      }
+    }
+  }, [apply_refreshed_entries, apply_selection_state, project_snapshot.loaded, project_snapshot.path, push_toast, t])
 
   useEffect(() => {
     let cancelled = false
@@ -782,29 +880,18 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
         set_entries([])
         apply_selection_state(create_empty_selection_state())
         set_dialog_state(close_dialog_state())
+        set_refresh_error(null)
+        set_is_refreshing(false)
+        set_cache_status('idle')
+        set_cache_stale(false)
+        set_last_loaded_at(null)
+        set_settled_project_path('')
         return
       }
 
-      try {
-        const next_snapshot = await refresh_snapshot()
-        if (cancelled) {
-          return
-        }
-
-        const mapped_entries = map_snapshot_entries(next_snapshot.entries)
-        set_entries(mapped_entries)
-        apply_selection_state(resolve_workbench_selection_after_snapshot({
-          previous_entries: [],
-          next_entries: mapped_entries,
-          previous_selection_state: selection_state_ref.current,
-          preferred_active_entry_id: null,
-        }))
-      } catch {
-        if (!cancelled) {
-          set_snapshot(EMPTY_SNAPSHOT)
-          set_entries([])
-          apply_selection_state(create_empty_selection_state())
-        }
+      await refresh_snapshot()
+      if (cancelled) {
+        return
       }
     }
 
@@ -824,45 +911,28 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     }
 
     if (previous_status !== task_snapshot.status && previous_status !== 'IDLE' && !task_snapshot.busy) {
-      void refresh_snapshot()
+      void refresh_snapshot().catch(() => {})
     }
   }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy, task_snapshot.status])
 
   useEffect(() => {
     const previous_tick = previous_invalidation_tick_ref.current
-    previous_invalidation_tick_ref.current = proofreading_invalidation_tick
+    previous_invalidation_tick_ref.current = workbench_invalidation_tick
 
     if (!project_snapshot.loaded) {
       return
     }
 
-    // 为什么：翻译重置和工作台快照失效都会走同一条 invalidation tick；
-    // 工作台不订阅这里的话，顶部统计卡片会停留在旧快照。
-    if (previous_tick !== proofreading_invalidation_tick) {
-      void refresh_snapshot()
+    // 为什么：工作台快照变更后，需要在常驻缓存层里后台刷新，顶部统计与文件列表才能保持同一份权威视图。
+    if (previous_tick !== workbench_invalidation_tick) {
+      set_cache_stale(true)
+      void refresh_snapshot().catch(() => {})
     }
   }, [
     project_snapshot.loaded,
-    proofreading_invalidation_tick,
+    workbench_invalidation_tick,
     refresh_snapshot,
   ])
-
-  useEffect(() => {
-    apply_selection_state(resolve_workbench_selection_after_snapshot({
-      previous_entries: entries,
-      next_entries: entries,
-      previous_selection_state: selection_state_ref.current,
-      preferred_active_entry_id: null,
-    }))
-  }, [apply_selection_state, entries])
-
-  useEffect(() => {
-    if (is_reorder_running_ref.current) {
-      return
-    }
-
-    set_entries(map_snapshot_entries(snapshot.entries))
-  }, [snapshot.entries])
 
   const translation_stats = useMemo(() => {
     return build_translation_stats(
@@ -1075,41 +1145,28 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     action: () => Promise<void>,
     preferred_active_entry_id: string | null,
   ): Promise<void> => {
-    const previous_entries = entries
-    const previous_selection_state = selection_state_ref.current
     set_is_mutation_running(true)
 
     try {
       await action()
-      let next_snapshot = await refresh_snapshot()
+      let next_snapshot = await refresh_snapshot(preferred_active_entry_id)
 
       while (next_snapshot.file_op_running) {
         await delay(500)
-        next_snapshot = await refresh_snapshot()
+        next_snapshot = await refresh_snapshot(preferred_active_entry_id)
       }
-
-      const next_entries = map_snapshot_entries(next_snapshot.entries)
-      set_entries(next_entries)
-      apply_selection_state(resolve_workbench_selection_after_snapshot({
-        previous_entries,
-        next_entries,
-        previous_selection_state,
-        preferred_active_entry_id,
-      }))
       await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
     } catch {
       return
     } finally {
       set_is_mutation_running(false)
     }
-  }, [apply_selection_state, entries, raw_analysis_task_runtime, refresh_snapshot])
+  }, [raw_analysis_task_runtime, refresh_snapshot])
 
   const run_serial_delete_mutation = useCallback(async (
     target_rel_paths: string[],
     preferred_active_entry_id: string | null,
   ): Promise<void> => {
-    const previous_entries = entries
-    const previous_selection_state = selection_state_ref.current
     let next_snapshot: WorkbenchSnapshot | null = null
     set_is_mutation_running(true)
 
@@ -1120,32 +1177,23 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
           rel_path: target_rel_path,
         })
 
-        next_snapshot = await refresh_snapshot()
+        next_snapshot = await refresh_snapshot(preferred_active_entry_id)
         while (next_snapshot.file_op_running) {
           await delay(500)
-          next_snapshot = await refresh_snapshot()
+          next_snapshot = await refresh_snapshot(preferred_active_entry_id)
         }
       }
 
       if (next_snapshot === null) {
         return
       }
-
-      const next_entries = map_snapshot_entries(next_snapshot.entries)
-      set_entries(next_entries)
-      apply_selection_state(resolve_workbench_selection_after_snapshot({
-        previous_entries,
-        next_entries,
-        previous_selection_state,
-        preferred_active_entry_id,
-      }))
       await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
     } catch {
       return
     } finally {
       set_is_mutation_running(false)
     }
-  }, [apply_selection_state, entries, raw_analysis_task_runtime, refresh_snapshot])
+  }, [raw_analysis_task_runtime, refresh_snapshot])
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
     apply_selection_state({
@@ -1284,8 +1332,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       })
 
       try {
-        const next_snapshot = await refresh_snapshot()
-        set_entries(map_snapshot_entries(next_snapshot.entries))
+        await refresh_snapshot(active_entry_id)
       } catch {
         set_entries(next_entries)
       }
@@ -1296,7 +1343,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       is_reorder_running_ref.current = false
       set_is_mutation_running(false)
     }
-  }, [entries, push_toast, readonly, refresh_snapshot, t])
+  }, [active_entry_id, entries, push_toast, readonly, refresh_snapshot, t])
 
   async function confirm_dialog(): Promise<void> {
     const current_dialog_state = dialog_state
@@ -1390,6 +1437,13 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   }, [raw_analysis_task_runtime, raw_translation_task_runtime])
 
   return {
+    cache_status,
+    cache_stale,
+    last_loaded_at,
+    refresh_request_id,
+    settled_project_path,
+    refresh_error,
+    is_refreshing,
     stats,
     stats_mode,
     translation_task_runtime,
@@ -1408,6 +1462,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     can_export_translation,
     can_close_project,
     dialog_state,
+    refresh_snapshot,
     toggle_stats_mode,
     apply_table_selection,
     prepare_entry_action,

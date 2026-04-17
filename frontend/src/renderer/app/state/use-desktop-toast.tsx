@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from 'react'
+/* eslint-disable react-refresh/only-export-components */
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 
 import { toast, type ExternalToast } from 'sonner'
 import { ProgressToastRing } from '@/widgets/progress-toast-ring/progress-toast-ring'
@@ -7,15 +8,19 @@ type DesktopToastKind = 'info' | 'warning' | 'error' | 'success'
 
 type DesktopToastId = string | number
 
+type ProgressToastPresentation = 'inline' | 'modal'
+
 type ProgressToastOptions = {
   message: string
   progress_percent?: number
+  presentation?: ProgressToastPresentation
 }
 
 type ProgressToastState = {
   owner_token: DesktopToastId
   message: string
   progress_percent?: number
+  presentation: ProgressToastPresentation
   dismiss_timer: ReturnType<typeof setTimeout> | null
 }
 
@@ -29,6 +34,7 @@ type DesktopToastApi = {
 const PROGRESS_TOAST_DISMISS_DELAY_MS = 1500
 const PROGRESS_TOAST_SONNER_ID = 'desktop-progress-toast'
 const regular_toast_id_set = new Set<DesktopToastId>()
+const progress_toast_modal_listener_set = new Set<() => void>()
 let progress_toast_state: ProgressToastState | null = null
 let progress_toast_owner_token_seed = 0
 
@@ -53,7 +59,26 @@ function normalize_toast_message(message: string): string {
   return message.replaceAll(/\s*[\r\n]+\s*/g, ' ').trim()
 }
 
+function emit_progress_toast_modal_change(): void {
+  for (const listener of progress_toast_modal_listener_set) {
+    listener()
+  }
+}
+
+function read_progress_toast_modal_active(): boolean {
+  return progress_toast_state?.presentation === 'modal'
+}
+
+function subscribe_progress_toast_modal(listener: () => void): () => void {
+  progress_toast_modal_listener_set.add(listener)
+
+  return () => {
+    progress_toast_modal_listener_set.delete(listener)
+  }
+}
+
 function build_progress_toast_config(options: ProgressToastOptions, toast_id?: DesktopToastId): ExternalToast {
+  const presentation = options.presentation ?? 'inline'
   return {
     id: toast_id,
     description: undefined,
@@ -63,7 +88,11 @@ function build_progress_toast_config(options: ProgressToastOptions, toast_id?: D
     dismissible: false,
     closeButton: false,
     classNames: {
-      toast: 'cn-toast cn-toast--progress',
+      toast: [
+        'cn-toast',
+        'cn-toast--progress',
+        presentation === 'modal' ? 'cn-toast--progress-modal' : null,
+      ].filter((value) => value !== null).join(' '),
     },
   }
 }
@@ -84,16 +113,21 @@ function sync_progress_toast_state(owner_token: DesktopToastId, options: Progres
     clearTimeout(previous_state.dismiss_timer)
   }
 
+  const normalized_message = normalize_toast_message(options.message)
+  const presentation = options.presentation ?? 'inline'
   progress_toast_state = {
     owner_token,
-    message: normalize_toast_message(options.message),
+    message: normalized_message,
     progress_percent: options.progress_percent,
+    presentation,
     dismiss_timer: null,
   }
   render_progress_toast({
-    message: normalize_toast_message(options.message),
+    message: normalized_message,
     progress_percent: options.progress_percent,
+    presentation,
   })
+  emit_progress_toast_modal_change()
 }
 
 function schedule_progress_toast_dismiss(owner_token: DesktopToastId): void {
@@ -107,10 +141,18 @@ function schedule_progress_toast_dismiss(owner_token: DesktopToastId): void {
     clearTimeout(current_progress_state.dismiss_timer)
   }
 
+  if (current_progress_state.presentation === 'modal') {
+    progress_toast_state = null
+    toast.dismiss(PROGRESS_TOAST_SONNER_ID)
+    emit_progress_toast_modal_change()
+    return
+  }
+
   if (current_progress_state.progress_percent !== undefined) {
     render_progress_toast({
       message: current_progress_state.message,
       progress_percent: undefined,
+      presentation: current_progress_state.presentation,
     })
     current_progress_state.progress_percent = undefined
   }
@@ -122,7 +164,27 @@ function schedule_progress_toast_dismiss(owner_token: DesktopToastId): void {
 
     progress_toast_state = null
     toast.dismiss(PROGRESS_TOAST_SONNER_ID)
+    emit_progress_toast_modal_change()
   }, PROGRESS_TOAST_DISMISS_DELAY_MS)
+}
+
+export function DesktopProgressToastModalLayer(): JSX.Element | null {
+  const modal_active = useSyncExternalStore(
+    subscribe_progress_toast_modal,
+    read_progress_toast_modal_active,
+    () => false,
+  )
+
+  if (!modal_active) {
+    return null
+  }
+
+  return (
+    <div
+      className="cn-progress-toast-modal-layer"
+      aria-hidden="true"
+    />
+  )
 }
 
 export function useDesktopToast(): DesktopToastApi {
@@ -138,6 +200,7 @@ export function useDesktopToast(): DesktopToastApi {
     const normalized_options: ProgressToastOptions = {
       message: normalize_toast_message(options.message),
       progress_percent: options.progress_percent,
+      presentation: options.presentation,
     }
     sync_progress_toast_state(owner_token, normalized_options)
     return owner_token
@@ -154,6 +217,7 @@ export function useDesktopToast(): DesktopToastApi {
     const normalized_options: ProgressToastOptions = {
       message: normalize_toast_message(options.message),
       progress_percent: options.progress_percent,
+      presentation: options.presentation,
     }
     sync_progress_toast_state(toast_id, normalized_options)
     return toast_id

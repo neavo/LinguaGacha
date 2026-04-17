@@ -356,6 +356,7 @@
 .app-table__selection-box {
   position: absolute;
   z-index: 2;
+  display: none;
   border: 1px solid var(--primary);
   background: var(--app-table-selection-box);
   pointer-events: none;

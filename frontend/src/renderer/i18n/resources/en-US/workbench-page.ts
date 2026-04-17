@@ -36,6 +36,10 @@ export const en_us_workbench_page = {
     descending: 'Sort descending',
     clear: 'Clear sort',
   },
+  feedback: {
+    refresh_failed_title: 'Failed to refresh workbench.',
+    refresh_failed: 'Failed to refresh workbench.',
+  },
   action: {
     add_file: 'Add File',
     delete_file: 'Delete File',

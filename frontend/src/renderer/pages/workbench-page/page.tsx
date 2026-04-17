@@ -1,3 +1,6 @@
+import { AlertCircle, LoaderCircle } from 'lucide-react'
+
+import { useCachedWorkbenchLiveState } from '@/app/state/project-pages-context'
 import { WorkbenchCommandBar } from '@/pages/workbench-page/components/workbench-command-bar'
 import { WorkbenchDialogs } from '@/pages/workbench-page/components/workbench-dialogs'
 import { WorkbenchFileTable } from '@/pages/workbench-page/components/workbench-file-table'
@@ -5,20 +8,57 @@ import { WorkbenchStatsSection } from '@/pages/workbench-page/components/workben
 import { TaskRuntimeConfirmDialog } from '@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog'
 import { TaskRuntimeDetailSheet } from '@/pages/workbench-page/components/task-runtime/task-runtime-detail-sheet'
 import '@/pages/workbench-page/workbench-page.css'
-import { useWorkbenchLiveState } from '@/pages/workbench-page/use-workbench-live-state'
+import { useI18n } from '@/i18n'
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from '@/shadcn/alert'
+import { Button } from '@/shadcn/button'
 
 type WorkbenchPageProps = {
   is_sidebar_collapsed: boolean
 }
 
 export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
-  const workbench_state = useWorkbenchLiveState()
+  const { t } = useI18n()
+  const workbench_state = useCachedWorkbenchLiveState()
 
   return (
     <div
       className="workbench-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
+      {workbench_state.refresh_error === null
+        ? null
+        : (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertTitle>{t('workbench_page.feedback.refresh_failed_title')}</AlertTitle>
+              <AlertDescription>{workbench_state.refresh_error}</AlertDescription>
+              <AlertAction>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={workbench_state.is_refreshing}
+                  onClick={() => {
+                    void workbench_state.refresh_snapshot()
+                  }}
+                >
+                  {workbench_state.is_refreshing
+                    ? (
+                        <>
+                          <LoaderCircle className="animate-spin" data-icon="inline-start" />
+                          {t('app.action.loading')}
+                        </>
+                      )
+                    : t('app.action.retry')}
+                </Button>
+              </AlertAction>
+            </Alert>
+          )}
       <WorkbenchStatsSection
         stats={workbench_state.stats}
         stats_mode={workbench_state.stats_mode}
