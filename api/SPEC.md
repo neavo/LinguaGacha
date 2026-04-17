@@ -131,12 +131,7 @@
 
 `settings` 快照当前覆盖以下字段：
 
-- `theme`
 - `app_language`
-- `expert_mode`
-- `proxy_url`
-- `proxy_enable`
-- `scale_factor`
 - `source_language`
 - `target_language`
 - `project_save_mode`
@@ -154,6 +149,12 @@
 - `auto_process_prefix_suffix_preserved_text`
 - `mtool_optimizer_enable`
 - `force_thinking_enable`
+- `glossary_default_preset`
+- `text_preserve_default_preset`
+- `pre_translation_replacement_default_preset`
+- `post_translation_replacement_default_preset`
+- `translation_custom_prompt_default_preset`
+- `analysis_custom_prompt_default_preset`
 - `recent_projects`
 
 ## 6.x Model 接口

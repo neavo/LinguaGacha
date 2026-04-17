@@ -69,7 +69,6 @@ def build_log_manager(
     )
 
     manager = log_manager_module.LogManager()
-    manager.expert_mode = False
     structured_handler = CapturingStructuredHandler.instances[0]
     plain_handler = CapturingPlainHandler.instances[0]
     return manager, structured_handler, plain_handler
@@ -102,6 +101,27 @@ def test_error_flushes_async_file_log(
         text = read_log_text(log_dir)
         assert "任务失败" in text
         assert "RuntimeError: boom" in text
+    finally:
+        manager.shutdown()
+
+
+def test_error_routes_full_traceback_to_console_by_default(
+    fs: FakeFilesystem,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """控制台默认也应保留完整异常堆栈，避免详细排障信息再被隐藏。"""
+    log_dir = create_log_dir(fs)
+    manager, structured_handler, _ = build_log_manager(monkeypatch, log_dir)
+
+    try:
+        manager.error("任务失败", RuntimeError("boom"), file=False, console=True)
+        manager.shutdown()
+
+        assert len(structured_handler.records) == 1
+        console_message = structured_handler.records[0].getMessage()
+        assert "任务失败" in console_message
+        assert "RuntimeError: boom" in console_message
+        assert console_message.endswith("RuntimeError: boom\n")
     finally:
         manager.shutdown()
 

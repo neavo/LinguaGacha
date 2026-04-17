@@ -95,7 +95,6 @@ def build_log_manager(
     )
     monkeypatch.setattr(log_manager_module, "Progress", FakeProgress)
     manager = log_manager_module.LogManager()
-    manager.expert_mode = False
     return manager
 
 

@@ -44,11 +44,6 @@ const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
   'toolbox',
 ])
 
-const EXPERT_MODE_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  'expert-settings',
-  'text-preserve',
-])
-
 function resolve_selectable_route(route_id: RouteId): RouteId {
   if (route_id === 'text-replacement') {
     return 'pre-translation-replacement'
@@ -94,7 +89,6 @@ function AppContent(): JSX.Element {
     hydration_ready,
     pending_target_route,
     project_snapshot,
-    settings_snapshot,
     set_pending_target_route,
   } = useDesktopRuntime()
   const { toggle_locale, t } = useI18n()
@@ -197,7 +191,6 @@ function AppContent(): JSX.Element {
 
             return has_registered_screen(item.id)
           })
-          .filter((item) => settings_snapshot.expert_mode || !EXPERT_MODE_ROUTE_IDS.has(item.id))
           .map((item) => {
             if ((item.children?.length ?? 0) === 0) {
               return item
@@ -206,16 +199,13 @@ function AppContent(): JSX.Element {
             return {
               ...item,
               children: item.children?.filter((child) => {
-                return (
-                  has_registered_screen(child.id)
-                  && (settings_snapshot.expert_mode || !EXPERT_MODE_ROUTE_IDS.has(child.id))
-                )
+                return has_registered_screen(child.id)
               }),
             }
           }),
       }
     })
-  }, [settings_snapshot.expert_mode])
+  }, [])
 
   function handle_select_route(route_id: RouteId): void {
     const next_route = resolve_selectable_route(route_id)
@@ -263,11 +253,8 @@ function AppContent(): JSX.Element {
       } else {
         setTheme('light')
       }
-    } else if (action_id === 'language') {
-      toggle_locale()
     } else {
-      set_pending_target_route(null)
-      set_selected_route('app-settings')
+      toggle_locale()
     }
   }
 

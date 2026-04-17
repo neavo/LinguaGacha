@@ -19,7 +19,6 @@ export const ROUTE_IDS = [
   'analysis-prompt',
   'laboratory',
   'toolbox',
-  'app-settings',
 ] as const
 
 export type RouteId = (typeof ROUTE_IDS)[number]
@@ -36,7 +35,7 @@ export type NavigationGroup = {
   items: NavigationNode[]
 }
 
-export type BottomActionId = 'theme' | 'language' | 'app-settings'
+export type BottomActionId = 'theme' | 'language'
 
 export type BottomAction = {
   id: BottomActionId

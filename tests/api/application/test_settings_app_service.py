@@ -10,7 +10,6 @@ def test_get_app_settings_returns_serializable_snapshot(
 
     settings = result["settings"]
 
-    assert settings["theme"] == Config.Theme.LIGHT
     assert settings["app_language"] == BaseLanguage.Enum.ZH
     assert settings["project_save_mode"] == Config.ProjectSaveMode.MANUAL
 
@@ -23,8 +22,6 @@ def test_update_app_settings_persists_selected_keys(
         {
             "target_language": BaseLanguage.Enum.EN,
             "request_timeout": 300,
-            "proxy_enable": True,
-            "proxy_url": "http://127.0.0.1:7890",
         }
     )
 
@@ -32,8 +29,6 @@ def test_update_app_settings_persists_selected_keys(
 
     assert settings["target_language"] == BaseLanguage.Enum.EN
     assert settings["request_timeout"] == 300
-    assert settings["proxy_enable"] is True
-    assert settings["proxy_url"] == "http://127.0.0.1:7890"
     assert fake_settings_config.save_calls == 1
     assert settings_app_service.emitted_events == [
         (
@@ -42,8 +37,6 @@ def test_update_app_settings_persists_selected_keys(
                 "keys": [
                     "target_language",
                     "request_timeout",
-                    "proxy_enable",
-                    "proxy_url",
                 ]
             },
         )
@@ -75,17 +68,25 @@ def test_update_app_settings_persists_laboratory_toggle_keys(
     ]
 
 
-def test_update_expert_mode_resets_expert_settings_before_save(
+def test_update_app_settings_ignores_removed_legacy_keys(
     settings_app_service,
     fake_settings_config,
 ) -> None:
-    fake_settings_config.clean_ruby = False
+    result = settings_app_service.update_app_settings(
+        {
+            "expert_mode": True,
+            "proxy_enable": True,
+            "proxy_url": "http://127.0.0.1:7890",
+            "scale_factor": "1.25",
+        }
+    )
 
-    result = settings_app_service.update_app_settings({"expert_mode": True})
-
-    assert result["settings"]["expert_mode"] is True
-    assert fake_settings_config.reset_calls == 1
-    assert fake_settings_config.clean_ruby is True
+    assert "expert_mode" not in result["settings"]
+    assert "proxy_enable" not in result["settings"]
+    assert "proxy_url" not in result["settings"]
+    assert "scale_factor" not in result["settings"]
+    assert fake_settings_config.save_calls == 0
+    assert settings_app_service.emitted_events == []
 
 
 def test_add_recent_project_updates_recent_project_snapshot(

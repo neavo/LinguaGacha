@@ -8,6 +8,7 @@ from base.Base import Base
 from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Localizer.Localizer import Localizer
 from module.Engine.TaskRequestErrors import RequestCancelledError
 from module.Engine.TaskRequestErrors import RequestHardTimeoutError
 from module.Engine.TaskRequestErrors import StreamDegradationError
@@ -87,13 +88,9 @@ class FakeResponseChecker:
 
 
 class FakeLogManager:
-    def __init__(self, *, expert_mode: bool = False) -> None:
-        self.expert_mode = expert_mode
+    def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
         self.rich_messages: list[Any] = []
-
-    def is_expert_mode(self) -> bool:
-        return self.expert_mode
 
     def info(
         self,
@@ -558,11 +555,11 @@ class TestTranslationTaskApplyResponseData:
         ]
         assert [item.get_retry_count() for item in task.items] == [0, 0]
 
-    def test_apply_response_data_non_expert_mode_keeps_console_result_log_unchanged(
+    def test_apply_response_data_default_console_log_includes_result_log(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         task = create_task(skip_response_check=True)
-        fake_log = FakeLogManager(expert_mode=False)
+        fake_log = FakeLogManager()
         monkeypatch.setattr(
             "module.Engine.Translation.TranslationTask.LogManager.get",
             lambda: fake_log,
@@ -597,8 +594,11 @@ class TestTranslationTaskApplyResponseData:
         )
 
         assert result["row_count"] == 1
-        assert captured["console_log"] == ["BASE"]
-        assert len(captured["file_log"]) == len(captured["console_log"]) + 1
+        assert captured["console_log"] == [
+            "BASE",
+            Localizer.get().engine_task_response_result + '\n{"0":"ok"}',
+        ]
+        assert captured["file_log"] == captured["console_log"]
 
     def test_apply_response_data_partially_updates_when_some_checks_fail(
         self, monkeypatch: pytest.MonkeyPatch

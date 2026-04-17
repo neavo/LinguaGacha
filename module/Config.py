@@ -25,28 +25,17 @@ class Config:
         "CUSTOM_ANTHROPIC": 3,
     }
 
-    class Theme(StrEnum):
-        DARK = "DARK"
-        LIGHT = "LIGHT"
-
     class ProjectSaveMode(StrEnum):
         MANUAL = "MANUAL"
         SOURCE = "SOURCE"
         FIXED = "FIXED"
 
     # Application
-    theme: str = Theme.LIGHT
     app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 
     # ModelPage - 模型管理系统
     activate_model_id: str = ""
     models: list[dict[str, Any]] | None = None
-
-    # AppSettingsPage
-    expert_mode: bool = False
-    proxy_url: str = ""
-    proxy_enable: bool = False
-    scale_factor: str = ""
 
     # BasicSettingsPage
     # 配置文件持久化为字符串，因此运行时也允许 str（例如 target_language="ZH"）。
@@ -211,19 +200,6 @@ class Config:
                 LogManager.get().error(f"{Localizer.get().log_write_file_fail}", e)
 
         return self
-
-    # 重置专家模式
-    def reset_expert_settings(self) -> None:
-        # ExpertSettingsPage
-        self.preceding_lines_threshold: int = 0
-        self.clean_ruby: bool = True
-        self.deduplication_in_trans: bool = True
-        self.deduplication_in_bilingual: bool = True
-        self.check_kana_residue: bool = True
-        self.check_hangeul_residue: bool = True
-        self.check_similarity: bool = True
-        self.write_translated_name_fields_to_file: bool = True
-        self.auto_process_prefix_suffix_preserved_text: bool = True
 
     # 初始化模型管理器
     def initialize_models(self) -> int:

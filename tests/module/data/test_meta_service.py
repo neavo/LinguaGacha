@@ -62,6 +62,6 @@ def test_get_meta_returns_default_when_db_missing_and_cache_miss() -> None:
 def test_set_meta_updates_cache_when_db_missing() -> None:
     service, session = build_service(None)
 
-    service.set_meta("theme", "light")
+    service.set_meta("sample_key", "light")
 
-    assert session.meta_cache["theme"] == "light"
+    assert session.meta_cache["sample_key"] == "light"
