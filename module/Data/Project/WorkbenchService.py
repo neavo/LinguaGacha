@@ -35,6 +35,7 @@ class WorkbenchService:
         total_items = 0
         translated = 0
         translated_in_past = 0
+        error_count = 0
         count_by_path: dict[str, int] = defaultdict(int)
         file_type_by_path: dict[str, Item.FileType] = {}
 
@@ -61,6 +62,9 @@ class WorkbenchService:
             count_by_path[rel_path] += 1
             if status in self.TRANSLATED_STATUSES:
                 translated += 1
+            elif status == Base.ProjectStatus.ERROR:
+                error_count += 1
+
             if status == Base.ProjectStatus.PROCESSED_IN_PAST:
                 translated_in_past += 1
 
@@ -79,7 +83,8 @@ class WorkbenchService:
             total_items=total_items,
             translated=translated,
             translated_in_past=translated_in_past,
-            untranslated=max(0, total_items - translated),
+            error_count=error_count,
+            untranslated=max(0, total_items - translated - error_count),
             entries=tuple(entries),
         )
 

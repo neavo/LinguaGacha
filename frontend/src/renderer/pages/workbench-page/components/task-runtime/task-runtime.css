@@ -1,0 +1,251 @@
+.task-runtime__menu {
+  width: 280px;
+}
+
+.task-runtime__menu-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.task-runtime__menu-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-runtime__menu-progress-label,
+.task-runtime__menu-progress-value {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.task-runtime__menu-progress-label {
+  color: var(--muted-foreground);
+}
+
+.task-runtime__menu-progress-value {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.task-runtime__summary {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.task-runtime__summary-trigger {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.task-runtime__summary-badge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-runtime__summary-badge--clickable {
+  cursor: pointer;
+}
+
+.task-runtime__summary-badge--neutral {
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--muted-foreground);
+}
+
+.task-runtime__summary-badge--success {
+  border-color: color-mix(in srgb, var(--ui-success) 24%, var(--border));
+  background: color-mix(in srgb, var(--ui-success) 12%, var(--background));
+  color: color-mix(in srgb, var(--ui-success) 74%, var(--foreground) 26%);
+}
+
+.task-runtime__summary-badge--warning {
+  border-color: color-mix(in srgb, var(--ui-warning) 26%, var(--border));
+  background: color-mix(in srgb, var(--ui-warning) 12%, var(--background));
+  color: color-mix(in srgb, var(--ui-warning) 76%, var(--foreground) 24%);
+}
+
+.task-runtime__summary-trailing {
+  color: currentColor;
+  opacity: 0.82;
+  white-space: nowrap;
+}
+
+.task-runtime__sheet {
+  top: 0;
+  width: min(520px, 100vw);
+  height: 100%;
+  max-width: min(520px, 100vw);
+  gap: 0;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--card) 78%, transparent), transparent 22%),
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 92%, var(--card)) 0%, var(--background) 100%);
+}
+
+.task-runtime__sheet-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: calc(var(--titlebar-height, 40px) + 16px) 16px 16px;
+}
+
+.task-runtime__sheet-footer {
+  display: flex;
+  justify-content: stretch;
+  padding: 12px 16px 16px;
+}
+
+.task-runtime__sheet-footer [data-slot='button'] {
+  width: 100%;
+}
+
+.task-runtime__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 14px;
+}
+
+.task-runtime__section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-runtime__section-head--inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-runtime__section-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.task-runtime__percent-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-left: 8px;
+  padding-right: 8px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.task-runtime__percent-pill--neutral {
+  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
+  background: color-mix(in srgb, var(--background) 88%, var(--popover) 12%);
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground) 22%);
+}
+
+.task-runtime__percent-pill--success {
+  border: 1px solid color-mix(in srgb, var(--ui-success) 24%, var(--border));
+  background: color-mix(in srgb, var(--ui-success) 12%, var(--popover));
+  color: color-mix(in srgb, var(--ui-success) 74%, var(--foreground) 26%);
+}
+
+.task-runtime__percent-pill--warning {
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 26%, var(--border));
+  background: color-mix(in srgb, var(--ui-warning) 12%, var(--popover));
+  color: color-mix(in srgb, var(--ui-warning) 76%, var(--foreground) 24%);
+}
+
+.task-runtime__metric {
+  display: flex;
+  min-width: 0;
+  min-height: 138px;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
+  border-radius: calc(var(--ui-radius-card) + 2px);
+  background: color-mix(in srgb, var(--popover) 92%, var(--muted) 8%);
+  padding: 14px 16px;
+}
+
+.task-runtime__metric-head {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+}
+
+.task-runtime__metric-label {
+  color: color-mix(in srgb, var(--foreground) 92%, var(--primary) 8%);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.task-runtime__metric-main {
+  display: inline-flex;
+  min-height: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-content: center;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-runtime__metric-value {
+  color: var(--foreground);
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.050em;
+  white-space: nowrap;
+}
+
+.task-runtime__metric-unit {
+  color: color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground) 12%);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.task-runtime__waveform {
+  display: flex;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.task-runtime__waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 96px;
+  image-rendering: crisp-edges;
+}
+
+.task-runtime__metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 10px;
+}

@@ -162,6 +162,18 @@ class TaskRequester(Base):
         hard_timeout_s = max(1, int(self.config.request_timeout))
         return hard_timeout_s + self.SDK_TIMEOUT_BUFFER_S
 
+    def emit_request_in_flight_progress(self, engine: Engine) -> None:
+        # 为什么：实时任务数的权威来源在 Engine，请求增减时立刻补丁广播才能让前端真正实时。
+        task_type = engine.get_active_task_type()
+        payload = {
+            "request_in_flight_count": engine.get_request_in_flight_count(),
+        }
+
+        if task_type == "translation":
+            self.emit(Base.Event.TRANSLATION_PROGRESS, payload)
+        elif task_type == "analysis":
+            self.emit(Base.Event.ANALYSIS_PROGRESS, payload)
+
     def request(
         self,
         messages: list[dict],
@@ -181,7 +193,9 @@ class TaskRequester(Base):
         if self.generation.get("frequency_penalty_custom_enable"):
             args["frequency_penalty"] = self.generation.get("frequency_penalty")
 
-        Engine.get().inc_request_in_flight()
+        engine = Engine.get()
+        engine.inc_request_in_flight()
+        self.emit_request_in_flight_progress(engine)
         try:
             if self.api_format == Base.APIFormat.SAKURALLM:
                 return self.request_sakura(messages, args, stop_checker=stop_checker)
@@ -191,7 +205,8 @@ class TaskRequester(Base):
                 return self.request_anthropic(messages, args, stop_checker=stop_checker)
             return self.request_openai(messages, args, stop_checker=stop_checker)
         finally:
-            Engine.get().dec_request_in_flight()
+            engine.dec_request_in_flight()
+            self.emit_request_in_flight_progress(engine)
 
     def build_extra_headers(self) -> dict:
         headers = TaskRequesterClientPool.get_default_headers()

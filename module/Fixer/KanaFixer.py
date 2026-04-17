@@ -1,7 +1,7 @@
 from module.Text.TextHelper import TextHelper
 
-class KanaFixer():
 
+class KanaFixer:
     # 拟声词
     RULE_ONOMATOPOEIA = (
         "ッ",
@@ -33,11 +33,17 @@ class KanaFixer():
                 prev_char = dst[i - 1] if i > 0 else None
                 next_char = dst[i + 1] if i < length - 1 else None
 
-                is_prev_kana = prev_char is not None and (TextHelper.JA.hiragana(prev_char) or TextHelper.JA.katakana(prev_char))
-                is_next_kana = next_char is not None and (TextHelper.JA.hiragana(next_char) or TextHelper.JA.katakana(next_char))
+                is_prev_kana = prev_char is not None and (
+                    TextHelper.JA.hiragana(prev_char)
+                    or TextHelper.JA.katakana(prev_char)
+                )
+                is_next_kana = next_char is not None and (
+                    TextHelper.JA.hiragana(next_char)
+                    or TextHelper.JA.katakana(next_char)
+                )
 
                 # 如果前后字符中有假名，则保留当前字符
-                if is_prev_kana == True or is_next_kana == True :
+                if is_prev_kana or is_next_kana:
                     result.append(char)
             else:
                 # 非拟声词字符直接保留

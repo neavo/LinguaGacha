@@ -1,0 +1,274 @@
+.text-replacement-page {
+  --text-replacement-page-gap: 12px;
+  display: flex;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  gap: var(--text-replacement-page-gap);
+}
+
+.text-replacement-page__toggle-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.text-replacement-page__toggle-tooltip {
+  max-width: 360px;
+}
+
+.text-replacement-page__toggle-tooltip-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.text-replacement-page__toggle-tooltip-copy p {
+  margin: 0;
+}
+
+.text-replacement-page__toggle-tooltip-title {
+  white-space: nowrap;
+}
+
+.text-replacement-page__table-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.text-replacement-page__table-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.text-replacement-page__table-card-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+}
+
+.text-replacement-page__table-source-head,
+.text-replacement-page__table-source-cell,
+.text-replacement-page__table-replacement-head,
+.text-replacement-page__table-replacement-cell {
+  text-align: left;
+}
+
+.text-replacement-page__table-drag-head,
+.text-replacement-page__table-drag-cell,
+.text-replacement-page__table-rule-head,
+.text-replacement-page__table-rule-cell,
+.text-replacement-page__table-statistics-head,
+.text-replacement-page__table-statistics-cell {
+  text-align: center;
+}
+
+.text-replacement-page__table-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-replacement-page__rule-badge-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.text-replacement-page__rule-badge-wrap,
+.text-replacement-page__statistics-badge-wrap,
+.text-replacement-page__statistics-badge-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.text-replacement-page__rule-badge {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
+  font-size: 10px;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.text-replacement-page__rule-badge svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.9;
+}
+
+.text-replacement-page__rule-badge[data-state='active'] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.text-replacement-page__statistics-badge-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.text-replacement-page__statistics-badge {
+  min-width: 32px;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.text-replacement-page__preset-dialog-shell,
+.text-replacement-page__dialog-shell {
+  padding: 0;
+}
+
+.text-replacement-page__dialog-shell {
+  background: var(--popover);
+  height: 640px;
+}
+
+.text-replacement-page__dialog-shell [data-slot='dialog-footer'] {
+  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
+}
+
+.text-replacement-page__dialog-scroll {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.text-replacement-page__dialog-form {
+  display: grid;
+  width: 100%;
+  min-height: 100%;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.text-replacement-page__dialog-main-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+}
+
+.text-replacement-page__dialog-main-panel-content {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.text-replacement-page__dialog-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.text-replacement-page__dialog-section-title {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.text-replacement-page__dialog-editor {
+  min-height: 0;
+}
+
+.text-replacement-page__dialog-error {
+  font-size: 12px;
+  color: var(--destructive);
+}
+
+.text-replacement-page__dialog-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.text-replacement-page__dialog-rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 12px;
+}
+
+.text-replacement-page__dialog-rule-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.text-replacement-page__dialog-rule-badge {
+  width: 22px;
+  height: 22px;
+}
+
+.text-replacement-page__dialog-rule-badge svg {
+  width: 13px;
+  height: 13px;
+}
+
+.text-replacement-page__dialog-rule-title {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--foreground);
+}
+
+.text-replacement-page__dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.text-replacement-page__dialog-footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.text-replacement-page__preset-dialog-body {
+  padding: 24px 24px 12px;
+}
+
+.text-replacement-page__preset-dialog-footer {
+  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
+}
+
+.text-replacement-page__preset-dialog-button {
+  min-width: 112px;
+}

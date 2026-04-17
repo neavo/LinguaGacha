@@ -272,6 +272,16 @@ def test_get_all_asset_paths_and_count_preserve_insert_order(
     assert database.get_all_asset_paths() == ["c.txt", "b.txt"]
 
 
+def test_add_asset_appends_after_reordered_sort_order(database: LGDatabase) -> None:
+    database.add_asset("a.txt", b"1", 1)
+    database.add_asset("b.txt", b"2", 1)
+    database.update_asset_sort_orders(["b.txt", "a.txt"])
+
+    database.add_asset("c.txt", b"3", 1)
+
+    assert database.get_all_asset_paths() == ["b.txt", "a.txt", "c.txt"]
+
+
 def test_connection_reuses_keep_alive_connection(database: LGDatabase) -> None:
     database.open()
     try:
@@ -303,6 +313,52 @@ def test_short_connection_context_creates_schema_and_closes(fs) -> None:
 
         with pytest.raises(sqlite3.ProgrammingError):
             conn.execute("SELECT 1")
+
+
+def test_ensure_schema_backfills_asset_sort_order_for_legacy_db(fs) -> None:
+    with real_db_path(fs, "legacy_sort_order") as db_path:
+        if db_path.exists():
+            db_path.unlink()
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute(
+                """
+                CREATE TABLE assets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT NOT NULL UNIQUE,
+                    data BLOB NOT NULL,
+                    original_size INTEGER NOT NULL,
+                    compressed_size INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO assets (path, data, original_size, compressed_size)
+                VALUES ('b.txt', X'31', 1, 1)
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO assets (path, data, original_size, compressed_size)
+                VALUES ('a.txt', X'32', 1, 1)
+                """
+            )
+            conn.commit()
+
+        db = LGDatabase(str(db_path))
+        db.open()
+        try:
+            with db.connection() as conn:
+                rows = conn.execute(
+                    "SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC"
+                ).fetchall()
+            assert [(row["path"], row["sort_order"]) for row in rows] == [
+                ("b.txt", 0),
+                ("a.txt", 1),
+            ]
+        finally:
+            db.close()
 
 
 def test_get_and_set_rule_text_roundtrip(database: LGDatabase) -> None:

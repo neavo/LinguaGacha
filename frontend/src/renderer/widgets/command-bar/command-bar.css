@@ -1,0 +1,54 @@
+.command-bar {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.command-bar__toolbar {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ui-toolbar-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: var(--ui-space-toolbar-y) var(--ui-space-toolbar-x);
+}
+
+.command-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-toolbar-group-gap);
+  min-width: 0;
+  flex: 1;
+}
+
+.command-bar__hint {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  text-align: right;
+}
+
+.command-bar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.command-bar__separator {
+  height: var(--ui-toolbar-separator-height);
+  width: calc(var(--ui-toolbar-separator-line-width) + (var(--ui-toolbar-separator-padding-inline) * 2));
+  align-self: center !important;
+  margin-block: auto;
+  margin-inline: 0;
+  background:
+    linear-gradient(
+      to right,
+      transparent 0 var(--ui-toolbar-separator-padding-inline),
+      var(--ui-table-divider-soft) var(--ui-toolbar-separator-padding-inline) calc(var(--ui-toolbar-separator-padding-inline) + var(--ui-toolbar-separator-line-width)),
+      transparent calc(var(--ui-toolbar-separator-padding-inline) + var(--ui-toolbar-separator-line-width)) 100%
+    );
+  opacity: 1;
+}

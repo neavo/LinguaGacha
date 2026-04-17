@@ -1,0 +1,25 @@
+.expert-settings-page {
+  min-height: 100%;
+}
+
+.expert-settings-page__notice {
+  align-items: start;
+}
+
+.expert-settings-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.expert-settings-page__menu-button {
+}
+
+.expert-settings-page__number-field {
+  display: flex;
+  align-items: center;
+}
+
+.expert-settings-page__number-input {
+  text-align: right;
+}

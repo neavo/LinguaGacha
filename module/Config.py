@@ -108,6 +108,18 @@ class Config:
         return path
 
     @classmethod
+    def build_recent_project_display_name(cls, path: str) -> str:
+        """统一从工程文件路径推导最近项目标题，避免混入源目录或预览名。"""
+
+        file_name = os.path.basename(path)
+        stem, _ = os.path.splitext(file_name)
+
+        if stem:
+            return stem
+        else:
+            return file_name
+
+    @classmethod
     def get_legacy_default_paths(cls) -> list[str]:
         """收口旧版默认配置位置，便于启动时做一次性迁移。"""
 
@@ -286,6 +298,9 @@ class Config:
         """添加最近打开的工程"""
         from datetime import datetime
 
+        del name
+        normalized_name = self.build_recent_project_display_name(path)
+
         # 移除已存在的同路径条目
         self.recent_projects = [
             p for p in self.recent_projects if p.get("path") != path
@@ -296,7 +311,8 @@ class Config:
             0,
             {
                 "path": path,
-                "name": name,
+                # 最近使用列表代表的是工程文件本身，因此标题统一由 .lg 路径推导。
+                "name": normalized_name,
                 "updated_at": datetime.now().isoformat(),
             },
         )

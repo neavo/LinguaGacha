@@ -73,6 +73,39 @@ def test_analysis_progress_tracker_runtime_uses_memory_snapshot_only(
     assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
+def test_analysis_progress_tracker_emits_candidate_count_from_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    analysis = Analysis()
+    analysis.extras = build_analysis_runtime_extras(
+        total_line=9,
+        processed_line=2,
+        total_output_tokens=6,
+        total_input_tokens=3,
+        total_tokens=9,
+    )
+    fake_data_manager.analysis_candidate_count = 5
+    emitted: list[tuple[Base.Event, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        analysis_progress_module.DataManager,
+        "get",
+        lambda: fake_data_manager,
+    )
+    monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
+    monkeypatch.setattr(
+        analysis,
+        "emit",
+        lambda event, data: emitted.append((event, data)),
+    )
+
+    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=False)
+
+    assert snapshot["analysis_candidate_count"] == 5
+    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+
+
 def test_analysis_progress_tracker_updates_bound_console_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,

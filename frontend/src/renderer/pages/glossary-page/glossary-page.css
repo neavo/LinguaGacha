@@ -1,0 +1,278 @@
+.glossary-page {
+  --glossary-page-gap: 12px;
+  display: flex;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.glossary-page__table-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.glossary-page__toggle-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.glossary-page__toggle-tooltip {
+  max-width: 320px;
+}
+
+.glossary-page__toggle-tooltip-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.glossary-page__toggle-tooltip-copy p {
+  margin: 0;
+}
+
+.glossary-page__toggle-tooltip-title {
+  white-space: nowrap;
+}
+
+.glossary-page__dialog-shell {
+  padding: 0;
+  background: var(--popover);
+  height: 640px;
+}
+
+.glossary-page__dialog-shell [data-slot='dialog-footer'] {
+  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
+}
+
+.glossary-page__preset-dialog-shell {
+  padding: 0;
+}
+
+.glossary-page__preset-dialog-body {
+  padding: 24px 24px 12px;
+}
+
+.glossary-page__preset-dialog-footer {
+  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
+}
+
+.glossary-page__preset-dialog-button {
+  min-width: 112px;
+}
+
+.glossary-page__dialog-scroll {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.glossary-page__dialog-form {
+  display: grid;
+  width: 100%;
+  min-height: 100%;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.glossary-page__dialog-main-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+}
+
+.glossary-page__dialog-main-panel-content {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.glossary-page__dialog-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.glossary-page__dialog-section--description {
+  grid-column: 1 / -1;
+}
+
+.glossary-page__dialog-section-title {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.glossary-page__dialog-editor {
+  min-height: 0;
+  flex: 1 1 0;
+}
+
+.glossary-page__dialog-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.glossary-page__dialog-rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 12px;
+}
+
+.glossary-page__dialog-rule-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.glossary-page__dialog-rule-badge {
+  width: 22px;
+  height: 22px;
+}
+
+.glossary-page__dialog-rule-badge svg {
+  width: 13px;
+  height: 13px;
+}
+
+.glossary-page__dialog-rule-title {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--foreground);
+}
+
+.glossary-page__table-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.glossary-page__table-card-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+}
+
+.glossary-page__table-source-head,
+.glossary-page__table-source-cell,
+.glossary-page__table-translation-head,
+.glossary-page__table-translation-cell,
+.glossary-page__table-description-head,
+.glossary-page__table-description-cell {
+  text-align: left;
+}
+
+.glossary-page__table-drag-head,
+.glossary-page__table-drag-cell,
+.glossary-page__table-rule-head,
+.glossary-page__table-rule-cell,
+.glossary-page__table-statistics-head,
+.glossary-page__table-statistics-cell {
+  text-align: center;
+}
+
+.glossary-page__table-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glossary-page__rule-badge-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glossary-page__rule-badge {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
+  font-size: 10px;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.glossary-page__rule-badge svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.9;
+}
+
+.glossary-page__rule-badge[data-state='active'] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.glossary-page__statistics-badge-wrap,
+.glossary-page__statistics-badge-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glossary-page__statistics-badge-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.glossary-page__statistics-badge {
+  justify-content: center;
+  font-size: 10px;
+  transition:
+    transform 180ms ease,
+    filter 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.glossary-page__statistics-badge--running {
+  padding-inline: 7px;
+}
+
+.glossary-page__statistics-badge-button:hover .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button:focus-visible .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button[data-state='open'] .glossary-page__statistics-badge {
+  transform: translateY(-1px);
+  filter: saturate(1.08);
+}
+

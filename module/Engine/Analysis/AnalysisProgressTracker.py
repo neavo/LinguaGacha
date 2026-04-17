@@ -215,9 +215,9 @@ class AnalysisProgressTracker:
         refresh_cache: bool = False,
     ) -> dict[str, Any]:
         """分析进度统一经由这个入口发事件；普通保存只写缓存，边界阶段再显式校准。"""
+        dm = DataManager.get()
         snapshot = self.build_runtime_progress_snapshot()
         if save_state:
-            dm = DataManager.get()
             if dm.is_loaded():
                 snapshot = TaskProgressSnapshot.from_dict(
                     dm.update_analysis_progress_snapshot(snapshot.to_dict())
@@ -226,6 +226,9 @@ class AnalysisProgressTracker:
             snapshot = self.refresh_progress_snapshot_cache()
 
         snapshot_dict = self.analysis.set_progress_snapshot(snapshot)
+        snapshot_dict["analysis_candidate_count"] = int(
+            dm.get_analysis_candidate_count() or 0
+        )
         self.update_console_progress(snapshot_dict)
         self.analysis.emit(Base.Event.ANALYSIS_PROGRESS, snapshot_dict)
         return snapshot_dict

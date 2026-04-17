@@ -189,6 +189,24 @@ class ProjectFileService:
         self.analysis_service.clear_analysis_progress()
         return ProjectFileMutationResult(rel_path=rel_path)
 
+    def reorder_files(self, ordered_rel_paths: list[str]) -> None:
+        """按工作台给定顺序重排工程内文件。"""
+
+        db = self.get_loaded_db()
+        existing_paths = db.get_all_asset_paths()
+
+        if len(ordered_rel_paths) != len(existing_paths):
+            raise ValueError("工作台文件顺序无效")
+
+        ordered_path_set = set(ordered_rel_paths)
+        existing_path_set = set(existing_paths)
+        if ordered_path_set != existing_path_set:
+            raise ValueError("工作台文件顺序无效")
+
+        with db.connection() as conn:
+            db.update_asset_sort_orders(ordered_rel_paths, conn=conn)
+            conn.commit()
+
     def get_loaded_db(self) -> Any:
         """读取已加载数据库，未加载时统一抛错。"""
 

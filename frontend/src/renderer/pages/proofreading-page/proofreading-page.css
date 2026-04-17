@@ -1,0 +1,893 @@
+.proofreading-page {
+  --proofreading-page-gap: 12px;
+  display: flex;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  gap: var(--proofreading-page-gap);
+}
+
+.proofreading-page__notice {
+  margin: 0;
+}
+
+.proofreading-page__task-command-bar {
+  min-height: 0;
+}
+
+.proofreading-page__task-command-bar .command-bar__hint {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.proofreading-page__task-command-summary {
+  width: auto;
+  max-width: 100%;
+}
+
+.proofreading-page__task-menu {
+  width: 280px;
+}
+
+.proofreading-page__task-menu-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.proofreading-page__task-menu-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proofreading-page__task-menu-progress-label,
+.proofreading-page__task-menu-progress-value {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__task-menu-progress-label {
+  color: var(--muted-foreground);
+}
+
+.proofreading-page__task-menu-progress-value {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.proofreading-page__task-summary {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.proofreading-page__task-summary-trigger {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.proofreading-page__task-summary-badge {
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.proofreading-page__task-summary-badge {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.proofreading-page__task-summary-badge--clickable {
+  cursor: pointer;
+}
+
+.proofreading-page__task-summary-speed {
+  color: currentColor;
+  opacity: 0.82;
+  white-space: nowrap;
+}
+
+.proofreading-page__task-sheet {
+  top: 0;
+  width: min(520px, 100vw);
+  height: 100%;
+  max-width: min(520px, 100vw);
+  gap: 0;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--card) 78%, transparent), transparent 22%),
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 92%, var(--card)) 0%, var(--background) 100%);
+}
+
+.proofreading-page__task-sheet-header {
+  gap: 6px;
+  padding-bottom: 12px;
+}
+
+.proofreading-page__task-sheet-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: calc(var(--titlebar-height, 40px) + 16px) 16px 16px;
+}
+
+.proofreading-page__task-sheet-footer {
+  display: flex;
+  justify-content: stretch;
+  padding: 12px 16px 16px;
+}
+
+.proofreading-page__task-sheet-footer [data-slot='button'] {
+  width: 100%;
+}
+
+.proofreading-page__task-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 14px;
+}
+
+.proofreading-page__task-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proofreading-page__task-section-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.proofreading-page__task-section-description {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.proofreading-page__task-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proofreading-page__task-status-pill,
+.proofreading-page__task-percent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.proofreading-page__task-status-pill {
+  background: color-mix(in srgb, var(--muted) 48%, var(--popover));
+  color: var(--foreground);
+}
+
+.proofreading-page__task-percent-pill {
+  background: color-mix(in srgb, var(--primary) 10%, var(--popover));
+  color: color-mix(in srgb, var(--primary) 72%, var(--foreground) 28%);
+}
+
+.proofreading-page__task-summary-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.proofreading-page__task-summary-stat,
+.proofreading-page__task-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 92%, var(--muted) 8%);
+  padding: 10px 12px;
+}
+
+.proofreading-page__task-summary-stat span,
+.proofreading-page__task-metric-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.proofreading-page__task-summary-stat strong,
+.proofreading-page__task-metric-value {
+  color: var(--foreground);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.proofreading-page__task-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 12px;
+}
+
+.proofreading-page__task-section--ring {
+  justify-content: center;
+}
+
+.proofreading-page__task-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+}
+
+.proofreading-page__task-ring-svg {
+  width: 164px;
+  height: 164px;
+  transform: rotate(-90deg);
+}
+
+.proofreading-page__task-ring-track,
+.proofreading-page__task-ring-indicator {
+  fill: none;
+  stroke-width: 12;
+}
+
+.proofreading-page__task-ring-track {
+  stroke: color-mix(in srgb, var(--border) 84%, var(--muted) 16%);
+}
+
+.proofreading-page__task-ring-indicator {
+  stroke: color-mix(in srgb, var(--primary) 82%, var(--foreground) 18%);
+  stroke-linecap: round;
+}
+
+.proofreading-page__task-ring-copy {
+  position: absolute;
+  display: flex;
+  width: 120px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.proofreading-page__task-ring-status {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__task-ring-percent {
+  color: var(--foreground);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.proofreading-page__task-waveform {
+  display: flex;
+  min-height: 220px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proofreading-page__task-waveform-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proofreading-page__task-waveform-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__task-waveform-title svg {
+  width: 14px;
+  height: 14px;
+}
+
+.proofreading-page__task-waveform-svg {
+  width: 100%;
+  min-height: 170px;
+  flex: 1;
+  border-radius: var(--ui-radius-card);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--primary) 8%, transparent),
+      transparent 42%
+    ),
+    color-mix(in srgb, var(--popover) 92%, var(--background) 8%);
+}
+
+.proofreading-page__task-waveform-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--primary) 78%, var(--foreground) 22%);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+}
+
+.proofreading-page__task-section--metrics {
+  gap: 10px;
+}
+
+.proofreading-page__task-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.proofreading-page__table-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.proofreading-page__table-card,
+.proofreading-page__table-card-content,
+.proofreading-page__table-empty-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.proofreading-page__table-card-content {
+  overflow: hidden;
+  padding: 0;
+}
+
+.proofreading-page__table-empty-card {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 16px;
+}
+
+.proofreading-page__table-empty {
+  width: 100%;
+}
+
+.proofreading-page__table-drag-head,
+.proofreading-page__table-drag-cell,
+.proofreading-page__table-source-head,
+.proofreading-page__table-source-cell,
+.proofreading-page__table-translation-head,
+.proofreading-page__table-translation-cell {
+  text-align: left;
+}
+
+.proofreading-page__table-drag-head,
+.proofreading-page__table-drag-cell,
+.proofreading-page__table-status-head,
+.proofreading-page__table-status-cell {
+  text-align: center;
+}
+
+.proofreading-page__table-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proofreading-page__status-icons {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.proofreading-page__status-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
+}
+
+.proofreading-page__status-icon--success {
+  color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
+}
+
+.proofreading-page__status-icon--warning {
+  color: color-mix(in srgb, var(--ui-warning) 78%, var(--foreground) 22%);
+}
+
+.proofreading-page__status-icon--failure {
+  color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground) 18%);
+}
+
+.proofreading-page__status-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.9;
+}
+
+.proofreading-page__filter-dialog-shell,
+.proofreading-page__dialog-shell {
+  padding: 0;
+}
+
+.proofreading-page__dialog-shell {
+  background: var(--popover);
+  height: 640px;
+}
+
+.proofreading-page__dialog-shell [data-slot='dialog-footer'] {
+  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
+}
+
+.proofreading-page__filter-dialog-scroll,
+.proofreading-page__dialog-scroll {
+  min-height: 0;
+}
+
+.proofreading-page__filter-dialog-scroll {
+  padding: 16px;
+}
+
+.proofreading-page__filter-layout {
+  display: grid;
+  min-height: min(560px, calc(100vh - 320px));
+  grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
+  gap: 12px;
+}
+
+.proofreading-page__filter-left-column {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.proofreading-page__filter-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 12px;
+}
+
+.proofreading-page__filter-section--stretch {
+  min-height: 0;
+}
+
+.proofreading-page__filter-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proofreading-page__filter-section-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.proofreading-page__filter-section-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.proofreading-page__filter-toggle-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proofreading-page__filter-toggle,
+.proofreading-page__filter-list-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, white 12%);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 90%, var(--muted) 10%);
+  color: var(--foreground);
+  text-align: left;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.proofreading-page__filter-toggle {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.proofreading-page__filter-list-row {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.proofreading-page__filter-toggle[data-selected='true'],
+.proofreading-page__filter-list-row[data-selected='true'] {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+  background: color-mix(in srgb, var(--primary) 18%, var(--popover));
+  color: var(--foreground);
+}
+
+.proofreading-page__filter-toggle-label,
+.proofreading-page__filter-list-row-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__filter-toggle-count,
+.proofreading-page__filter-list-row-count {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.proofreading-page__filter-list {
+  min-height: 0;
+  flex: 1;
+}
+
+.proofreading-page__filter-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 8px;
+}
+
+.proofreading-page__filter-empty {
+  min-height: 180px;
+}
+
+.proofreading-page__dialog-scroll {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.proofreading-page__dialog-form {
+  display: grid;
+  width: 100%;
+  min-height: 100%;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.proofreading-page__dialog-main-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+}
+
+.proofreading-page__dialog-main-panel-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.proofreading-page__dialog-file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  padding: 10px 12px;
+}
+
+.proofreading-page__dialog-file-path {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__dialog-status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proofreading-page__dialog-status-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.proofreading-page__dialog-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proofreading-page__dialog-status-badge {
+  min-height: 22px;
+  border-color: color-mix(in srgb, var(--border) 90%, white 10%);
+}
+
+.proofreading-page__dialog-status-badge--tone-neutral {
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground) 22%);
+}
+
+.proofreading-page__dialog-status-badge--tone-success {
+  border-color: color-mix(in srgb, var(--ui-success) 36%, var(--border));
+  background: color-mix(in srgb, var(--ui-success) 14%, var(--popover));
+  color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
+}
+
+.proofreading-page__dialog-status-badge--tone-warning {
+  border-color: color-mix(in srgb, var(--ui-warning) 40%, var(--border));
+  background: color-mix(in srgb, var(--ui-warning) 14%, var(--popover));
+  color: color-mix(in srgb, var(--ui-warning) 80%, var(--foreground) 20%);
+}
+
+.proofreading-page__dialog-status-badge--tone-failure {
+  border-color: color-mix(in srgb, var(--ui-failure) 48%, var(--border));
+  background: color-mix(in srgb, var(--ui-failure) 12%, var(--popover));
+  color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground) 18%);
+}
+
+.proofreading-page__dialog-editor-title {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.proofreading-page__dialog-editor-block {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.proofreading-page__dialog-editor-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proofreading-page__dialog-editor-host {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, white 16%);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--popover) 90%, var(--background) 10%);
+  overflow: hidden;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.proofreading-page__dialog-editor-host:has(.cm-editor.cm-focused) {
+  border-color: var(--ring);
+  background: var(--popover);
+}
+
+.proofreading-page__dialog-editor-host .cm-editor {
+  height: 100%;
+  font-family: var(--ui-font-family-base);
+  font-size: 13px;
+}
+
+.proofreading-page__dialog-editor-host .cm-editor.cm-focused {
+  outline: none;
+}
+
+.proofreading-page__dialog-editor-host .cm-scroller {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  font-family: var(--ui-font-family-base);
+  line-height: 1.7;
+}
+
+.proofreading-page__dialog-editor-host .cm-gutters {
+  border-inline-end: 1px solid color-mix(in srgb, var(--border) 72%, white 28%);
+}
+
+.proofreading-page__dialog-editor-host .cm-gutterElement {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.proofreading-page__dialog-editor-host .cm-lineNumbers .cm-gutterElement {
+  min-width: 32px;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.proofreading-page__dialog-editor-host .cm-content {
+  min-height: 100%;
+  padding: 8px;
+  letter-spacing: 0.075em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.proofreading-page__dialog-editor-host .cm-lineWrapping {
+  width: 100%;
+}
+
+.proofreading-page__dialog-editor-host .cm-line {
+  padding: 0;
+}
+
+.proofreading-page__dialog-editor-host .cm-highlightSpace,
+.proofreading-page__dialog-editor-host .cm-highlightTab,
+.proofreading-page__dialog-editor-host .cm-specialChar {
+  color: color-mix(in srgb, var(--muted-foreground) 68%, transparent);
+}
+
+.proofreading-page__dialog-editor-host--readonly {
+  border-color: color-mix(in srgb, var(--border) 88%, white 12%);
+  background: color-mix(in srgb, var(--muted) 36%, var(--popover) 64%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+}
+
+.proofreading-page__dialog-editor-host--readonly:has(.cm-editor.cm-focused) {
+  border-color: color-mix(in srgb, var(--border) 88%, white 12%);
+  background: color-mix(in srgb, var(--muted) 36%, var(--popover) 64%);
+}
+
+.proofreading-page__dialog-editor-host--readonly .cm-editor,
+.proofreading-page__dialog-editor-host--readonly .cm-gutters {
+  background: color-mix(in srgb, var(--muted) 36%, var(--popover) 64%);
+}
+
+.proofreading-page__dialog-editor-host--readonly .cm-activeLine,
+.proofreading-page__dialog-editor-host--readonly .cm-activeLineGutter {
+  background: color-mix(in srgb, var(--muted) 48%, var(--popover) 52%);
+}
+
+.proofreading-page__dialog-editor-host--readonly .cm-content {
+  color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
+  caret-color: transparent;
+}
+
+.proofreading-page__dialog-editor-host--readonly .cm-cursor,
+.proofreading-page__dialog-editor-host--readonly .cm-dropCursor {
+  display: none;
+}
+
+.proofreading-page__glossary-mark--success {
+  cursor: help;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: color-mix(in srgb, #22c55e 78%, var(--foreground) 22%);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.dark .proofreading-page__glossary-mark--success {
+  text-decoration-color: color-mix(in srgb, #86efac 76%, var(--foreground) 24%);
+}
+
+.proofreading-page__glossary-mark--warning {
+  cursor: help;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: color-mix(in srgb, #f59e0b 84%, var(--foreground) 16%);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.dark .proofreading-page__glossary-mark--warning {
+  text-decoration-color: color-mix(in srgb, #fcd34d 82%, var(--foreground) 18%);
+}
+
+.cm-tooltip:has(.proofreading-page__glossary-hover-tooltip) {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  z-index: 60;
+}
+
+.proofreading-page__glossary-hover-tooltip {
+  display: inline-flex;
+  max-width: min(320px, calc(100vw - 64px));
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  background: var(--foreground);
+  color: var(--background);
+  box-shadow: 0 10px 28px color-mix(in srgb, black 14%, transparent);
+}
+
+.proofreading-page__glossary-hover-tooltip-copy {
+  padding: 6px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.proofreading-page__dialog-footer {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.proofreading-page__dialog-footer-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.proofreading-page__dialog-footer-actions--leading {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+}
