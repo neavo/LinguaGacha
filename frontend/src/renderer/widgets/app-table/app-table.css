@@ -6,9 +6,11 @@
   --app-table-zebra: color-mix(in srgb, var(--accent) 30%, transparent);
   --app-table-hover: color-mix(in srgb, var(--ui-table-hover) 92%, var(--accent) 8%);
   --app-table-selected: color-mix(in srgb, var(--ui-table-selected) 94%, var(--accent) 6%);
-  --app-table-selection-rail: color-mix(in srgb, var(--primary) 70%, white 30%);
+  --app-table-selection-rail: var(--sidebar-primary);
   --app-table-selection-box: color-mix(in srgb, var(--primary) 18%, transparent);
-  --app-table-state-inset: 1px;
+  --app-table-selected-gap-fill: var(--ui-card-default-surface);
+  --app-table-hover-state-inset-block: 0px;
+  --app-table-selected-state-inset-block: 1px;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -23,8 +25,8 @@
   --app-table-zebra: color-mix(in srgb, white 5%, transparent);
   --app-table-hover: color-mix(in srgb, var(--ui-table-hover) 88%, white 12%);
   --app-table-selected: color-mix(in srgb, var(--ui-table-selected) 82%, white 18%);
-  --app-table-selection-rail: color-mix(in srgb, var(--primary) 76%, white 24%);
   --app-table-selection-box: color-mix(in srgb, var(--primary) 24%, transparent);
+  --app-table-selected-gap-fill: color-mix(in srgb, var(--ui-card-default-surface) 92%, white 8%);
 }
 
 .app-table__head-wrap {
@@ -228,15 +230,17 @@
 .app-table__table--body [data-slot='table-body'] > .app-table__row:not(.app-table__spacer-row) > [data-slot='table-cell'] {
   --app-table-cell-base: transparent;
   --app-table-cell-state: transparent;
+  --app-table-cell-state-gap-fill: transparent;
+  --app-table-cell-state-inset-block: 0px;
   background:
     linear-gradient(
       to bottom,
-      transparent 0,
-      transparent var(--app-table-state-inset),
-      var(--app-table-cell-state) var(--app-table-state-inset),
-      var(--app-table-cell-state) calc(100% - var(--app-table-state-inset)),
-      transparent calc(100% - var(--app-table-state-inset)),
-      transparent 100%
+      var(--app-table-cell-state-gap-fill) 0,
+      var(--app-table-cell-state-gap-fill) var(--app-table-cell-state-inset-block),
+      var(--app-table-cell-state) var(--app-table-cell-state-inset-block),
+      var(--app-table-cell-state) calc(100% - var(--app-table-cell-state-inset-block)),
+      var(--app-table-cell-state-gap-fill) calc(100% - var(--app-table-cell-state-inset-block)),
+      var(--app-table-cell-state-gap-fill) 100%
     ),
     var(--app-table-cell-base);
 }
@@ -247,15 +251,20 @@
 
 .app-table__table--body [data-slot='table-body'] > .app-table__row:hover > [data-slot='table-cell'] {
   --app-table-cell-state: var(--table-hover-current);
+  --app-table-cell-state-inset-block: var(--app-table-hover-state-inset-block);
 }
 
 .app-table__table--body [data-slot='table-body'] > .app-table__row[data-state='selected'] > [data-slot='table-cell'],
 .app-table__table--body [data-slot='table-body'] > .app-table__row[data-dragging='true'] > [data-slot='table-cell'] {
   --app-table-cell-state: var(--table-selected-current);
+  --app-table-cell-state-gap-fill: var(--app-table-selected-gap-fill);
+  --app-table-cell-state-inset-block: var(--app-table-selected-state-inset-block);
 }
 
 .app-table__scroll-host:focus-visible .app-table__table--body [data-slot='table-body'] > .app-table__row[data-active='true'] > [data-slot='table-cell'] {
   --app-table-cell-state: color-mix(in srgb, var(--table-selected-current) 84%, var(--primary) 16%);
+  --app-table-cell-state-gap-fill: var(--app-table-selected-gap-fill);
+  --app-table-cell-state-inset-block: var(--app-table-selected-state-inset-block);
 }
 
 .app-table__table--body [data-slot='table-body'] > .app-table__row > .app-table__drag-cell::before {
@@ -264,8 +273,9 @@
   top: 7px;
   left: 0;
   bottom: 7px;
+  z-index: 1;
   width: var(--ui-selection-rail-width);
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--app-table-selection-rail);
   opacity: 0;
   transform: scaleY(0.4);

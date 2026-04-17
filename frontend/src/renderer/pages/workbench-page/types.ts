@@ -1,5 +1,3 @@
-import type { LocaleKey } from '@/i18n'
-
 type WorkbenchActionKind =
   | 'replace-file'
   | 'reset-file'
@@ -15,10 +13,7 @@ export type WorkbenchSnapshotEntry = {
   item_count: number
 }
 
-export type WorkbenchFileEntry = WorkbenchSnapshotEntry & {
-  format_label_key: LocaleKey | null
-  format_fallback_label: string | null
-}
+export type WorkbenchFileEntry = WorkbenchSnapshotEntry
 
 export type WorkbenchSnapshot = {
   file_count: number
@@ -32,11 +27,12 @@ export type WorkbenchSnapshot = {
 
 export type WorkbenchDialogState = {
   kind: WorkbenchActionKind | null
-  target_rel_path: string | null
+  target_rel_paths: string[]
   pending_path: string | null
 }
 
 export type WorkbenchTaskKind = 'translation' | 'analysis'
+export type WorkbenchStatsMode = WorkbenchTaskKind
 
 export type WorkbenchTaskViewState = {
   task_kind: WorkbenchTaskKind | null
@@ -84,7 +80,7 @@ export type WorkbenchTaskConfirmDialogViewModel = {
 
 export type WorkbenchStats = {
   total_items: number
-  translated: number
-  error_count: number
-  untranslated: number
+  completed_count: number
+  failed_count: number
+  pending_count: number
 }
