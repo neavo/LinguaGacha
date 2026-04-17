@@ -211,6 +211,16 @@
   justify-content: stretch;
 }
 
+.model-page__setting-card-row--auto-action .setting-card-row__action {
+  width: auto;
+  min-width: 0;
+}
+
+.model-page__setting-card-row--auto-action .setting-card-row__action > * {
+  width: auto;
+  max-width: 100%;
+}
+
 .model-page__inline-button-group {
   display: flex;
   flex-wrap: wrap;
@@ -218,6 +228,7 @@
   min-width: 0;
   justify-content: flex-end;
   width: auto;
+  max-width: 100%;
 }
 
 .model-page__inline-button-group > [data-slot='button'] {
@@ -281,10 +292,6 @@
   width: 112px;
   flex: 0 0 auto;
   align-items: center;
-}
-
-.model-page__advanced-number-input {
-  text-align: right;
 }
 
 .model-page__request-editor {

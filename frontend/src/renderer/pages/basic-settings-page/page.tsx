@@ -242,7 +242,6 @@ export function BasicSettingsPage(props: BasicSettingsPageProps): JSX.Element {
           action={(
             <div className="basic-settings-page__number-field">
               <Input
-                className="basic-settings-page__number-input"
                 type="number"
                 min={REQUEST_TIMEOUT_MIN}
                 max={REQUEST_TIMEOUT_MAX}
