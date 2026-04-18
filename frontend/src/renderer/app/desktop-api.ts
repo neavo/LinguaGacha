@@ -35,10 +35,14 @@ function normalize_base_url(base_url: string): string {
   return base_url.trim().replace(/\/+$/u, '')
 }
 
-function list_core_api_base_url_candidates(): string[] {
-  return window.desktopApp.coreApi.baseUrlCandidates
-    .map((base_url) => normalize_base_url(base_url))
-    .filter((base_url) => base_url !== '')
+function read_core_api_base_url(): string {
+  const base_url = normalize_base_url(window.desktopApp.coreApi.baseUrl)
+
+  if (base_url === '') {
+    throw new DesktopApiError('Core API 地址未配置。', 'missing_core_api_base_url', 500)
+  }
+
+  return base_url
 }
 
 function build_api_url(base_url: string, path: string): string {
@@ -91,18 +95,12 @@ async function resolve_core_api_base_url(): Promise<string> {
     return pending_core_api_base_url_resolution
   }
 
-  const base_url_candidates = list_core_api_base_url_candidates()
-  if (base_url_candidates.length === 0) {
-    throw new DesktopApiError('Core API 地址未配置。', 'missing_core_api_base_url', 500)
-  }
-
   pending_core_api_base_url_resolution = (async () => {
-    for (const base_url of base_url_candidates) {
-      const is_available = await probe_core_api_candidate(base_url)
-      if (is_available) {
-        cached_core_api_base_url = base_url
-        return base_url
-      }
+    const base_url = read_core_api_base_url()
+    const is_available = await probe_core_api_candidate(base_url)
+    if (is_available) {
+      cached_core_api_base_url = base_url
+      return base_url
     }
 
     throw new DesktopApiError('Core API 不可用。', 'core_api_unavailable', 503)

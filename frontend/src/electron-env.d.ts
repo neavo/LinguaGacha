@@ -18,7 +18,7 @@ declare global {
     desktopApp: {
       shell: DesktopShellInfo
       coreApi: {
-        baseUrlCandidates: string[]
+        baseUrl: string
       }
       getPathForFile: (file: File) => string
       setTitleBarTheme: (theme_mode: ThemeMode) => void

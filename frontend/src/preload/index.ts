@@ -14,7 +14,7 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
 } from '../shared/ipc-channels'
-import { resolve_core_api_base_url_candidates } from '../shared/core-api-base-url'
+import { resolve_core_api_base_url } from '../shared/core-api-base-url'
 import {
   DESKTOP_TITLE_BAR_HEIGHT,
   resolve_title_bar_control_side,
@@ -35,12 +35,12 @@ const DESKTOP_SHELL_INFO: DesktopShellInfo = {
   titleBarSafeAreaStart: resolve_title_bar_safe_area_start(process.platform),
   titleBarSafeAreaEnd: resolve_title_bar_safe_area_end(process.platform),
 }
-const CORE_API_BASE_URL_CANDIDATES = resolve_core_api_base_url_candidates()
+const CORE_API_BASE_URL = resolve_core_api_base_url()
 
 contextBridge.exposeInMainWorld('desktopApp', {
   shell: DESKTOP_SHELL_INFO,
   coreApi: {
-    baseUrlCandidates: CORE_API_BASE_URL_CANDIDATES,
+    baseUrl: CORE_API_BASE_URL,
   },
   getPathForFile(file: File): string {
     // Electron 41 已移除 renderer 侧的 File.path，这里统一通过 preload 桥接官方替代接口。
