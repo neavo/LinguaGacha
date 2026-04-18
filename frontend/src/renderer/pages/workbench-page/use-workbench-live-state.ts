@@ -47,6 +47,24 @@ type WorkbenchSnapshotPayload = {
   }
 }
 
+type WorkbenchFilePatch = {
+  summary: Omit<WorkbenchSnapshot, 'entries'>
+  ordered_rel_paths: string[]
+  removed_rel_paths: string[]
+  entries: WorkbenchSnapshotEntry[]
+}
+
+type WorkbenchFilePatchPayload = {
+  patch?: {
+    summary?: Partial<Omit<WorkbenchSnapshot, 'entries'>> & {
+      entries?: Array<Partial<WorkbenchSnapshotEntry>>
+    }
+    ordered_rel_paths?: unknown
+    removed_rel_paths?: unknown
+    entries?: Array<Partial<WorkbenchSnapshotEntry>>
+  }
+}
+
 const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   file_count: 0,
   total_items: 0,
@@ -96,8 +114,89 @@ function close_dialog_state(): WorkbenchDialogState {
   }
 }
 
+function normalize_rel_paths(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((entry) => String(entry ?? '').trim())
+    .filter((entry) => entry !== '')
+}
+
+function normalize_file_patch(payload: WorkbenchFilePatchPayload): WorkbenchFilePatch {
+  const patch = payload.patch ?? {}
+  const summary = patch.summary ?? {}
+  const entries = Array.isArray(patch.entries)
+    ? patch.entries
+      .filter((entry) => typeof entry?.rel_path === 'string' && entry.rel_path !== '')
+      .map((entry) => ({
+        rel_path: String(entry.rel_path),
+        file_type: String(entry.file_type ?? ''),
+        item_count: Number(entry.item_count ?? 0),
+      }))
+    : []
+
+  return {
+    summary: {
+      file_count: Number(summary.file_count ?? 0),
+      total_items: Number(summary.total_items ?? 0),
+      translated: Number(summary.translated ?? 0),
+      translated_in_past: Number(summary.translated_in_past ?? 0),
+      error_count: Number(summary.error_count ?? 0),
+      file_op_running: Boolean(summary.file_op_running),
+    },
+    ordered_rel_paths: normalize_rel_paths(patch.ordered_rel_paths),
+    removed_rel_paths: normalize_rel_paths(patch.removed_rel_paths),
+    entries,
+  }
+}
+
 function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
   return entries.map((entry) => ({ ...entry }))
+}
+
+function merge_workbench_entries(args: {
+  previous_entries: WorkbenchFileEntry[]
+  patch: WorkbenchFilePatch
+}): WorkbenchFileEntry[] | null {
+  const affected_rel_path_set = new Set<string>([
+    ...args.patch.removed_rel_paths,
+    ...args.patch.entries.map((entry) => entry.rel_path),
+  ])
+  const merged_entry_map = new Map<string, WorkbenchFileEntry>()
+
+  for (const previous_entry of args.previous_entries) {
+    if (affected_rel_path_set.has(previous_entry.rel_path)) {
+      continue
+    }
+    merged_entry_map.set(previous_entry.rel_path, previous_entry)
+  }
+
+  for (const patched_entry of args.patch.entries) {
+    merged_entry_map.set(patched_entry.rel_path, { ...patched_entry })
+  }
+
+  const ordered_rel_paths = args.patch.ordered_rel_paths
+  if (ordered_rel_paths.length === 0) {
+    return Array.from(merged_entry_map.values())
+  }
+
+  const next_entries: WorkbenchFileEntry[] = []
+  for (const rel_path of ordered_rel_paths) {
+    const entry = merged_entry_map.get(rel_path)
+    if (entry === undefined) {
+      return null
+    }
+    next_entries.push(entry)
+    merged_entry_map.delete(rel_path)
+  }
+
+  if (merged_entry_map.size > 0) {
+    return null
+  }
+
+  return next_entries
 }
 
 type WorkbenchSelectionState = {
@@ -171,17 +270,6 @@ function build_analysis_stats(
     failed_count: failed_total,
     pending_count: Math.max(0, total_items - completed_total - failed_total),
   }
-}
-
-function build_replace_target_rel_path(previous_rel_path: string, next_file_path: string): string {
-  const normalized_segments = next_file_path.split(/[\\/]+/u)
-  const next_file_name = normalized_segments.at(-1) ?? next_file_path
-  const separator_index = Math.max(previous_rel_path.lastIndexOf('/'), previous_rel_path.lastIndexOf('\\'))
-  if (separator_index < 0) {
-    return next_file_name
-  }
-
-  return `${previous_rel_path.slice(0, separator_index + 1)}${next_file_name}`
 }
 
 function select_after_snapshot(
@@ -274,12 +362,6 @@ function resolve_workbench_selection_after_snapshot(args: {
     active_entry_id: fallback_entry_id,
     anchor_entry_id: fallback_entry_id,
   }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, milliseconds)
-  })
 }
 
 function is_workbench_task_kind(value: string): value is WorkbenchTaskKind {
@@ -724,7 +806,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const raw_analysis_task_runtime = useAnalysisTaskRuntime()
   const {
     project_snapshot,
-    workbench_invalidation_tick,
+    workbench_change_signal,
     refresh_task,
     set_project_snapshot,
     task_snapshot,
@@ -746,10 +828,9 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] = useState<WorkbenchTaskKind | null>(null)
   const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>('translation')
   const previous_task_status_ref = useRef<WorkbenchTaskStatus>(task_snapshot.status)
-  const previous_invalidation_tick_ref = useRef(workbench_invalidation_tick)
+  const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq)
   const previous_project_loaded_ref = useRef(project_snapshot.loaded)
   const previous_project_path_ref = useRef(project_snapshot.path)
-  const is_reorder_running_ref = useRef(false)
   const refresh_request_id_ref = useRef(0)
   const snapshot_ref = useRef(snapshot)
   const entries_ref = useRef<WorkbenchFileEntry[]>(entries)
@@ -809,6 +890,51 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       preferred_active_entry_id,
     }))
   }, [apply_selection_state])
+
+  const apply_file_patch = useCallback(async (): Promise<void> => {
+    const payload = await api_fetch<WorkbenchFilePatchPayload>('/api/workbench/file-patch', {
+      rel_paths: workbench_change_signal.rel_paths,
+      removed_rel_paths: workbench_change_signal.removed_rel_paths,
+      include_order: true,
+    })
+    const patch = normalize_file_patch(payload)
+    const previous_entries = entries_ref.current
+    const previous_selection_state = selection_state_ref.current
+    const next_entries = merge_workbench_entries({
+      previous_entries,
+      patch,
+    })
+
+    if (next_entries === null) {
+      throw new Error('工作台文件补丁无法安全合并。')
+    }
+
+    const next_snapshot: WorkbenchSnapshot = {
+      ...snapshot_ref.current,
+      ...patch.summary,
+      entries: next_entries,
+    }
+
+    snapshot_ref.current = next_snapshot
+    set_snapshot(next_snapshot)
+    set_entries(next_entries)
+    apply_selection_state(resolve_workbench_selection_after_snapshot({
+      previous_entries,
+      next_entries,
+      previous_selection_state,
+      preferred_active_entry_id: previous_selection_state.active_entry_id,
+    }))
+    set_refresh_error(null)
+    set_cache_status('ready')
+    set_cache_stale(false)
+    set_last_loaded_at(Date.now())
+    set_settled_project_path(project_snapshot.path)
+  }, [
+    apply_selection_state,
+    project_snapshot.path,
+    workbench_change_signal.rel_paths,
+    workbench_change_signal.removed_rel_paths,
+  ])
 
   const refresh_snapshot = useCallback(async (
     preferred_active_entry_id: string | null = null,
@@ -916,21 +1042,30 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy, task_snapshot.status])
 
   useEffect(() => {
-    const previous_tick = previous_invalidation_tick_ref.current
-    previous_invalidation_tick_ref.current = workbench_invalidation_tick
+    const previous_seq = previous_workbench_change_seq_ref.current
+    previous_workbench_change_seq_ref.current = workbench_change_signal.seq
 
     if (!project_snapshot.loaded) {
       return
     }
 
-    // 为什么：工作台快照变更后，需要在常驻缓存层里后台刷新，顶部统计与文件列表才能保持同一份权威视图。
-    if (previous_tick !== workbench_invalidation_tick) {
+    // 为什么：工作台收到结构化变更后，优先走文件补丁；只有全局或补丁失败时才退回整页刷新。
+    if (previous_seq !== workbench_change_signal.seq) {
       set_cache_stale(true)
-      void refresh_snapshot().catch(() => {})
+      if (workbench_change_signal.scope === 'global') {
+        void refresh_snapshot().catch(() => {})
+        return
+      }
+
+      void apply_file_patch().catch(() => {
+        void refresh_snapshot().catch(() => {})
+      })
     }
   }, [
+    apply_file_patch,
     project_snapshot.loaded,
-    workbench_invalidation_tick,
+    workbench_change_signal.scope,
+    workbench_change_signal.seq,
     refresh_snapshot,
   ])
 
@@ -1143,57 +1278,25 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
 
   const run_file_mutation = useCallback(async (
     action: () => Promise<void>,
-    preferred_active_entry_id: string | null,
   ): Promise<void> => {
     set_is_mutation_running(true)
 
     try {
       await action()
-      let next_snapshot = await refresh_snapshot(preferred_active_entry_id)
-
-      while (next_snapshot.file_op_running) {
-        await delay(500)
-        next_snapshot = await refresh_snapshot(preferred_active_entry_id)
-      }
-      await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
-    } catch {
-      return
-    } finally {
-      set_is_mutation_running(false)
-    }
-  }, [raw_analysis_task_runtime, refresh_snapshot])
-
-  const run_serial_delete_mutation = useCallback(async (
-    target_rel_paths: string[],
-    preferred_active_entry_id: string | null,
-  ): Promise<void> => {
-    let next_snapshot: WorkbenchSnapshot | null = null
-    set_is_mutation_running(true)
-
-    try {
-      // 为什么：工作台文件操作是串行门闩，必须等上一次删除彻底落盘后才能安全发下一次删除。
-      for (const target_rel_path of target_rel_paths) {
-        await api_fetch('/api/workbench/delete-file', {
-          rel_path: target_rel_path,
-        })
-
-        next_snapshot = await refresh_snapshot(preferred_active_entry_id)
-        while (next_snapshot.file_op_running) {
-          await delay(500)
-          next_snapshot = await refresh_snapshot(preferred_active_entry_id)
+      set_snapshot((previous_snapshot) => {
+        const next_snapshot = {
+          ...previous_snapshot,
+          file_op_running: true,
         }
-      }
-
-      if (next_snapshot === null) {
-        return
-      }
-      await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
+        snapshot_ref.current = next_snapshot
+        return next_snapshot
+      })
     } catch {
       return
     } finally {
       set_is_mutation_running(false)
     }
-  }, [raw_analysis_task_runtime, refresh_snapshot])
+  }, [])
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
     apply_selection_state({
@@ -1244,10 +1347,9 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       return
     }
 
-    const next_selected_rel_path = result.path.split(/[\\/]+/u).at(-1) ?? null
     await run_file_mutation(async () => {
       await api_fetch('/api/workbench/add-file', { path: result.path })
-    }, next_selected_rel_path)
+    })
   }
 
   function request_export_translation(): void {
@@ -1322,7 +1424,6 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
     }
 
     const previous_entries = entries
-    is_reorder_running_ref.current = true
     set_is_mutation_running(true)
     set_entries(next_entries)
 
@@ -1330,20 +1431,13 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       await api_fetch('/api/workbench/reorder-files', {
         ordered_rel_paths: ordered_entry_ids,
       })
-
-      try {
-        await refresh_snapshot(active_entry_id)
-      } catch {
-        set_entries(next_entries)
-      }
     } catch {
       set_entries(previous_entries)
       push_toast('error', t('workbench_page.reorder.failed'))
     } finally {
-      is_reorder_running_ref.current = false
       set_is_mutation_running(false)
     }
-  }, [active_entry_id, entries, push_toast, readonly, refresh_snapshot, t])
+  }, [entries, push_toast, readonly, t])
 
   async function confirm_dialog(): Promise<void> {
     const current_dialog_state = dialog_state
@@ -1360,7 +1454,7 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
           rel_path: target_rel_path,
           path: current_dialog_state.pending_path,
         })
-      }, build_replace_target_rel_path(target_rel_path, current_dialog_state.pending_path))
+      })
       return
     }
 
@@ -1369,16 +1463,25 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
         await api_fetch('/api/workbench/reset-file', {
           rel_path: target_rel_path,
         })
-      }, target_rel_path)
+      })
       return
     }
 
     if (current_dialog_state.kind === 'delete-file' && current_dialog_state.target_rel_paths.length > 0) {
-      const deleted_entry_id_set = new Set(current_dialog_state.target_rel_paths)
-      await run_serial_delete_mutation(
-        current_dialog_state.target_rel_paths,
-        active_entry_id !== null && !deleted_entry_id_set.has(active_entry_id) ? active_entry_id : null,
-      )
+      if (current_dialog_state.target_rel_paths.length === 1) {
+        await run_file_mutation(async () => {
+          await api_fetch('/api/workbench/delete-file', {
+            rel_path: current_dialog_state.target_rel_paths[0],
+          })
+        })
+        return
+      }
+
+      await run_file_mutation(async () => {
+        await api_fetch('/api/workbench/delete-file-batch', {
+          rel_paths: current_dialog_state.target_rel_paths,
+        })
+      })
       return
     }
 
@@ -1403,7 +1506,6 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
         set_entries([])
         apply_selection_state(create_empty_selection_state())
         await refresh_task()
-        await raw_analysis_task_runtime.refresh_analysis_task_snapshot()
       } catch {
         return
       } finally {

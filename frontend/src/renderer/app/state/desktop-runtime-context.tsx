@@ -62,6 +62,25 @@ type TaskSnapshot = {
   analysis_candidate_count: number
 }
 
+export type SnapshotChangeScope = 'global' | 'file' | 'order'
+
+export type ProofreadingChangeSignal = {
+  seq: number
+  reason: string
+  scope: SnapshotChangeScope
+  rel_paths: string[]
+  removed_rel_paths: string[]
+}
+
+export type WorkbenchChangeSignal = {
+  seq: number
+  reason: string
+  scope: SnapshotChangeScope
+  rel_paths: string[]
+  removed_rel_paths: string[]
+  order_changed: boolean
+}
+
 export type ProjectWarmupStatus = 'idle' | 'warming' | 'ready'
 
 type DesktopRuntimeContextValue = {
@@ -70,8 +89,8 @@ type DesktopRuntimeContextValue = {
   settings_snapshot: SettingsSnapshot
   project_snapshot: ProjectSnapshot
   task_snapshot: TaskSnapshot
-  proofreading_invalidation_tick: number
-  workbench_invalidation_tick: number
+  proofreading_change_signal: ProofreadingChangeSignal
+  workbench_change_signal: WorkbenchChangeSignal
   project_warmup_status: ProjectWarmupStatus
   pending_target_route: RouteId | null
   is_app_language_updating: boolean
@@ -106,6 +125,21 @@ type SettingsChangedEventPayload = {
   settings?: Partial<SettingsSnapshot> & {
     recent_projects?: Array<Partial<RecentProjectEntry>>
   }
+}
+
+type ProofreadingSnapshotInvalidatedEventPayload = {
+  reason?: unknown
+  scope?: unknown
+  rel_paths?: unknown
+  removed_rel_paths?: unknown
+}
+
+type WorkbenchSnapshotChangedEventPayload = {
+  reason?: unknown
+  scope?: unknown
+  rel_paths?: unknown
+  removed_rel_paths?: unknown
+  order_changed?: unknown
 }
 
 const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
@@ -149,6 +183,23 @@ const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
   time: 0,
   start_time: 0,
   analysis_candidate_count: 0,
+}
+
+const DEFAULT_PROOFREADING_CHANGE_SIGNAL: ProofreadingChangeSignal = {
+  seq: 0,
+  reason: '',
+  scope: 'global',
+  rel_paths: [],
+  removed_rel_paths: [],
+}
+
+const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
+  seq: 0,
+  reason: '',
+  scope: 'global',
+  rel_paths: [],
+  removed_rel_paths: [],
+  order_changed: false,
 }
 
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null)
@@ -291,14 +342,36 @@ function parse_event_payload(event: MessageEvent<string>): Record<string, unknow
   }
 }
 
+function normalize_string_array(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((entry) => String(entry ?? '').trim())
+    .filter((entry) => entry !== '')
+}
+
+function normalize_snapshot_change_scope(value: unknown): SnapshotChangeScope {
+  if (value === 'file' || value === 'order') {
+    return value
+  }
+
+  return 'global'
+}
+
 export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Element {
   const [hydration_ready, set_hydration_ready] = useState(false)
   const [hydration_error, set_hydration_error] = useState<string | null>(null)
   const [settings_snapshot, set_settings_snapshot] = useState<SettingsSnapshot>(DEFAULT_SETTINGS_SNAPSHOT)
   const [project_snapshot, set_project_snapshot] = useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT)
   const [task_snapshot, set_task_snapshot] = useState<TaskSnapshot>(DEFAULT_TASK_SNAPSHOT)
-  const [proofreading_invalidation_tick, set_proofreading_invalidation_tick] = useState(0)
-  const [workbench_invalidation_tick, set_workbench_invalidation_tick] = useState(0)
+  const [proofreading_change_signal, set_proofreading_change_signal] = useState<ProofreadingChangeSignal>(
+    DEFAULT_PROOFREADING_CHANGE_SIGNAL,
+  )
+  const [workbench_change_signal, set_workbench_change_signal] = useState<WorkbenchChangeSignal>(
+    DEFAULT_WORKBENCH_CHANGE_SIGNAL,
+  )
   const [project_warmup_status, set_project_warmup_status] = useState<ProjectWarmupStatus>('idle')
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null)
   const [is_app_language_updating, set_is_app_language_updating] = useState(false)
@@ -491,12 +564,27 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       }
     }
 
-    function handle_proofreading_snapshot_invalidated(): void {
-      set_proofreading_invalidation_tick((previous_tick) => previous_tick + 1)
+    function handle_proofreading_snapshot_invalidated(event: MessageEvent<string>): void {
+      const payload = parse_event_payload(event) as ProofreadingSnapshotInvalidatedEventPayload
+      set_proofreading_change_signal((previous_signal) => ({
+        seq: previous_signal.seq + 1,
+        reason: String(payload.reason ?? ''),
+        scope: normalize_snapshot_change_scope(payload.scope),
+        rel_paths: normalize_string_array(payload.rel_paths),
+        removed_rel_paths: normalize_string_array(payload.removed_rel_paths),
+      }))
     }
 
-    function handle_workbench_snapshot_changed(): void {
-      set_workbench_invalidation_tick((previous_tick) => previous_tick + 1)
+    function handle_workbench_snapshot_changed(event: MessageEvent<string>): void {
+      const payload = parse_event_payload(event) as WorkbenchSnapshotChangedEventPayload
+      set_workbench_change_signal((previous_signal) => ({
+        seq: previous_signal.seq + 1,
+        reason: String(payload.reason ?? ''),
+        scope: normalize_snapshot_change_scope(payload.scope),
+        rel_paths: normalize_string_array(payload.rel_paths),
+        removed_rel_paths: normalize_string_array(payload.removed_rel_paths),
+        order_changed: Boolean(payload.order_changed),
+      }))
     }
 
     async function attach_event_stream(): Promise<void> {
@@ -540,8 +628,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       settings_snapshot,
       project_snapshot,
       task_snapshot,
-      proofreading_invalidation_tick,
-      workbench_invalidation_tick,
+      proofreading_change_signal,
+      workbench_change_signal,
       project_warmup_status,
       pending_target_route,
       is_app_language_updating,
@@ -562,8 +650,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     settings_snapshot,
     project_snapshot,
     task_snapshot,
-    proofreading_invalidation_tick,
-    workbench_invalidation_tick,
+    proofreading_change_signal,
+    workbench_change_signal,
     project_warmup_status,
     pending_target_route,
     is_app_language_updating,

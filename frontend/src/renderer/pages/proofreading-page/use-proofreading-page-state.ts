@@ -12,9 +12,11 @@ import {
   compress_proofreading_text,
   create_empty_proofreading_snapshot,
   normalize_proofreading_mutation_payload,
+  normalize_proofreading_file_patch_payload,
   normalize_proofreading_snapshot_payload,
   resolve_proofreading_status_sort_rank,
   type ProofreadingDialogState,
+  type ProofreadingFilePatchPayload,
   type ProofreadingFilterOptions,
   type ProofreadingGlossaryTerm,
   type ProofreadingItem,
@@ -423,6 +425,22 @@ function reconcile_proofreading_filter_options(args: {
   }
 }
 
+function merge_snapshot_items_by_file_paths(args: {
+  previous_items: ProofreadingItem[]
+  next_items: ProofreadingItem[]
+  removed_file_paths: string[]
+}): ProofreadingItem[] {
+  const affected_file_paths = new Set<string>([
+    ...args.removed_file_paths,
+    ...args.next_items.map((item) => item.file_path),
+  ])
+
+  return [
+    ...args.previous_items.filter((item) => !affected_file_paths.has(item.file_path)),
+    ...args.next_items,
+  ]
+}
+
 function filter_local_visible_items(args: {
   items: ProofreadingItem[]
   keyword: string
@@ -473,7 +491,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const {
     project_snapshot,
     task_snapshot,
-    proofreading_invalidation_tick,
+    proofreading_change_signal,
   } = useDesktopRuntime()
   const [full_snapshot, set_full_snapshot] = useState<ProofreadingSnapshot>(() => {
     return create_empty_proofreading_snapshot()
@@ -516,7 +534,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const previous_project_loaded_ref = useRef(false)
   const previous_project_path_ref = useRef('')
   const previous_task_busy_ref = useRef(task_snapshot.busy)
-  const previous_invalidation_tick_ref = useRef(proofreading_invalidation_tick)
+  const previous_proofreading_change_seq_ref = useRef(proofreading_change_signal.seq)
 
   useEffect(() => {
     applied_filters_ref.current = applied_filters
@@ -759,6 +777,59 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_is_refreshing(false)
     }
   }, [full_snapshot, handle_api_error, project_snapshot.loaded, t])
+
+  const apply_file_patch = useCallback(async (): Promise<void> => {
+    if (!project_snapshot.loaded) {
+      return
+    }
+
+    const payload = await api_fetch<ProofreadingFilePatchPayload>(
+      '/api/proofreading/file-patch',
+      {
+        filter_options: serialize_filter_options(
+          applied_filters_ref.current ?? full_snapshot_ref.current.filters,
+        ),
+        rel_paths: proofreading_change_signal.rel_paths,
+        removed_rel_paths: proofreading_change_signal.removed_rel_paths,
+      },
+    )
+    const patch = normalize_proofreading_file_patch_payload(payload)
+
+    set_full_snapshot((previous_snapshot) => {
+      return {
+        revision: patch.revision,
+        project_id: patch.project_id,
+        readonly: patch.readonly,
+        summary: patch.full_summary,
+        filters: clone_proofreading_filter_options(patch.default_filters),
+        items: merge_snapshot_items_by_file_paths({
+          previous_items: previous_snapshot.items,
+          next_items: patch.full_items,
+          removed_file_paths: patch.removed_file_paths,
+        }),
+      }
+    })
+    set_server_snapshot((previous_snapshot) => {
+      return {
+        revision: patch.revision,
+        project_id: patch.project_id,
+        readonly: patch.readonly,
+        summary: patch.filtered_summary,
+        filters: clone_proofreading_filter_options(patch.applied_filters),
+        items: merge_snapshot_items_by_file_paths({
+          previous_items: previous_snapshot.items,
+          next_items: patch.filtered_items,
+          removed_file_paths: patch.removed_file_paths,
+        }),
+      }
+    })
+    set_applied_filters(clone_proofreading_filter_options(patch.applied_filters))
+    set_refresh_error(null)
+    set_cache_status('ready')
+    set_cache_stale(false)
+    set_last_loaded_at(Date.now())
+    set_settled_project_path(project_snapshot.path)
+  }, [project_snapshot.loaded, project_snapshot.path, proofreading_change_signal.rel_paths, proofreading_change_signal.removed_rel_paths])
 
   const run_mutation = useCallback(async (args: {
     path: string
@@ -1196,20 +1267,29 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy])
 
   useEffect(() => {
-    const previous_tick = previous_invalidation_tick_ref.current
-    previous_invalidation_tick_ref.current = proofreading_invalidation_tick
+    const previous_seq = previous_proofreading_change_seq_ref.current
+    previous_proofreading_change_seq_ref.current = proofreading_change_signal.seq
 
     if (!project_snapshot.loaded) {
       return
     }
 
-    if (previous_tick !== proofreading_invalidation_tick) {
+    if (previous_seq !== proofreading_change_signal.seq) {
       set_cache_stale(true)
-      void refresh_snapshot()
+      if (proofreading_change_signal.scope === 'global') {
+        void refresh_snapshot()
+        return
+      }
+
+      void apply_file_patch().catch(() => {
+        void refresh_snapshot()
+      })
     }
   }, [
+    apply_file_patch,
     project_snapshot.loaded,
-    proofreading_invalidation_tick,
+    proofreading_change_signal.scope,
+    proofreading_change_signal.seq,
     refresh_snapshot,
   ])
 

@@ -468,3 +468,30 @@ def test_proofreading_retranslate_items_returns_mutation_result() -> None:
     retranslate_service.retranslate_items.assert_called_once()
     assert result["result"]["revision"] == 9
     assert result["result"]["changed_item_ids"] == [1, 2]
+
+
+def test_proofreading_file_patch_returns_filtered_and_full_file_slices() -> None:
+    app_service, snapshot_service = build_real_filter_app_service()
+
+    result = app_service.get_file_patch(
+        {
+            "rel_paths": ["script/a.txt"],
+            "removed_rel_paths": ["script/old.txt"],
+            "filter_options": {
+                "warning_types": ["GLOSSARY"],
+                "statuses": ["PROCESSED"],
+                "file_paths": ["script/a.txt"],
+                "glossary_terms": [["勇者", "Hero"]],
+            },
+        }
+    )
+
+    snapshot_service.load_snapshot.assert_called_once()
+    patch = result["patch"]
+    assert patch["removed_file_paths"] == ["script/old.txt"]
+    assert patch["default_filters"]["file_paths"] == ["script/a.txt"]
+    assert patch["applied_filters"]["file_paths"] == ["script/a.txt"]
+    assert patch["full_summary"]["total_items"] == 2
+    assert patch["filtered_summary"]["filtered_items"] == 1
+    assert patch["full_items"][0]["file_path"] == "script/a.txt"
+    assert patch["filtered_items"][0]["item_id"] == 1

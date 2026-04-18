@@ -23,6 +23,7 @@ class RouteRecorder:
 def test_proofreading_routes_paths_match_boundary_contract() -> None:
     actual_paths = (
         ProofreadingRoutes.SNAPSHOT_PATH,
+        ProofreadingRoutes.FILE_PATCH_PATH,
         ProofreadingRoutes.FILTER_PATH,
         ProofreadingRoutes.SEARCH_PATH,
         ProofreadingRoutes.SAVE_ITEM_PATH,

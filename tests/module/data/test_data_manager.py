@@ -9,6 +9,7 @@ import pytest
 
 from base.Base import Base
 from module.Data.DataManager import DataManager
+from module.Data.Core.DataTypes import ProjectFileMutationResult
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Localizer.Localizer import Localizer
 
@@ -124,7 +125,10 @@ def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
     assert emitted_events == [
         (
             Base.Event.WORKBENCH_REFRESH,
-            {"reason": Base.Event.TRANSLATION_TASK.value},
+            {
+                "reason": Base.Event.TRANSLATION_TASK.value,
+                "scope": "global",
+            },
         )
     ]
 
@@ -229,7 +233,12 @@ def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
-    request = SimpleNamespace(reason="file_op", lg_path="demo/project.lg", token=7)
+    request = SimpleNamespace(
+        reason="file_op",
+        lg_path="demo/project.lg",
+        token=7,
+        emit_refresh_events=True,
+    )
     dm.prefilter_service = SimpleNamespace(
         pop_pending_request=MagicMock(side_effect=[request, None]),
         mark_request_handled=MagicMock(),
@@ -245,25 +254,75 @@ def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
     dm.prefilter_service.finish_worker.assert_called_once()
     assert (
         Base.Event.WORKBENCH_REFRESH,
-        {"reason": "file_op"},
+        {"reason": "file_op", "scope": "global"},
     ) in emitted_events
-    assert (
-        Base.Event.PROOFREADING_REFRESH,
-        {
-            "reason": "project_prefilter_updated",
-            "source_event": Base.Event.PROJECT_PREFILTER.value,
-            "trigger_reason": "file_op",
-        },
-    ) in emitted_events
-    assert (
-        Base.Event.PROJECT_PREFILTER,
-        {
-            "sub_event": Base.ProjectPrefilterSubEvent.UPDATED,
-            "reason": "file_op",
-            "token": 7,
-            "lg_path": "demo/project.lg",
-        },
-    ) in emitted_events
+
+
+def test_project_prefilter_worker_can_skip_page_refresh_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    request = SimpleNamespace(
+        reason="file_op",
+        lg_path="demo/project.lg",
+        token=7,
+        emit_refresh_events=False,
+    )
+    dm.prefilter_service = SimpleNamespace(
+        pop_pending_request=MagicMock(side_effect=[request, None]),
+        mark_request_handled=MagicMock(),
+        finish_worker=MagicMock(),
+    )
+    dm.apply_project_prefilter_once = MagicMock(return_value=SimpleNamespace())
+    dm.log_prefilter_result = MagicMock()
+
+    dm.project_prefilter_worker(token=7)
+
+    assert all(event != Base.Event.WORKBENCH_REFRESH for event, _data in emitted_events)
+    assert all(event != Base.Event.PROOFREADING_REFRESH for event, _data in emitted_events)
+
+
+def test_emit_project_file_update_emits_single_structured_batch_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+
+    dm.emit_project_file_update(
+        ProjectFileMutationResult(
+            rel_paths=("script/a.txt", "script/b.txt"),
+            removed_rel_paths=("script/old.txt",),
+        )
+    )
+
+    assert emitted_events == [
+        (
+            Base.Event.PROJECT_FILE_UPDATE,
+            {
+                "rel_paths": ["script/a.txt", "script/b.txt"],
+                "removed_rel_paths": ["script/old.txt"],
+                "order_changed": False,
+            },
+        ),
+        (
+            Base.Event.WORKBENCH_REFRESH,
+            {
+                "reason": "project_file_update",
+                "scope": "file",
+                "rel_paths": ["script/a.txt", "script/b.txt"],
+                "removed_rel_paths": ["script/old.txt"],
+            },
+        ),
+        (
+            Base.Event.PROOFREADING_REFRESH,
+            {
+                "reason": "project_file_update",
+                "scope": "file",
+                "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
+                "rel_paths": ["script/a.txt", "script/b.txt"],
+                "removed_rel_paths": ["script/old.txt"],
+            },
+        ),
+    ]
 
 
 def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
@@ -308,6 +367,7 @@ def test_on_config_updated_schedules_prefilter_for_relevant_keys(
             Base.Event.PROOFREADING_REFRESH,
             {
                 "reason": "config_updated",
+                "scope": "global",
                 "source_event": Base.Event.CONFIG_UPDATED.value,
                 "keys": ["source_language", "unrelated_key"],
             },
@@ -378,24 +438,38 @@ def test_emit_project_file_update_also_invalidates_proofreading(
     dm, emitted_events = build_data_manager(monkeypatch)
 
     dm.emit_project_file_update(
-        SimpleNamespace(rel_path="chapter/a.txt", old_rel_path="chapter/b.txt")
+        ProjectFileMutationResult(
+            rel_paths=("chapter/a.txt",),
+            removed_rel_paths=("chapter/b.txt",),
+        )
     )
 
     assert emitted_events == [
         (
             Base.Event.PROJECT_FILE_UPDATE,
             {
-                "rel_path": "chapter/a.txt",
-                "old_rel_path": "chapter/b.txt",
+                "rel_paths": ["chapter/a.txt"],
+                "removed_rel_paths": ["chapter/b.txt"],
+                "order_changed": False,
+            },
+        ),
+        (
+            Base.Event.WORKBENCH_REFRESH,
+            {
+                "reason": "project_file_update",
+                "scope": "file",
+                "rel_paths": ["chapter/a.txt"],
+                "removed_rel_paths": ["chapter/b.txt"],
             },
         ),
         (
             Base.Event.PROOFREADING_REFRESH,
             {
                 "reason": "project_file_update",
+                "scope": "file",
                 "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
-                "rel_path": "chapter/a.txt",
-                "old_rel_path": "chapter/b.txt",
+                "rel_paths": ["chapter/a.txt"],
+                "removed_rel_paths": ["chapter/b.txt"],
             },
         ),
     ]

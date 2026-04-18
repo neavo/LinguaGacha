@@ -66,7 +66,7 @@ flowchart TD
 | 场景 | 真实入口 |
 | --- | --- |
 | 工程创建/加载/卸载 | `DataManager` -> `ProjectService` / `ProjectLifecycleService` |
-| 工作台文件增删改与快照 | `DataManager` -> `ProjectFileService` / `WorkbenchService` |
+| 工作台文件增删改、批量文件操作与文件级补丁 | `DataManager` -> `ProjectFileService` / `WorkbenchService` |
 | 规则、提示词、预设 | `DataManager` -> `QualityRuleService` / `PromptService` / `QualityRulePresetService` |
 | 分析进度、候选导入 | `DataManager` -> `AnalysisService` / `QualityRuleGlossaryImportService` |
 | 翻译取条目、翻译重置 | `DataManager` -> `TranslationItemService` / `TranslationResetService` |
@@ -83,10 +83,10 @@ flowchart TD
 ### `Project`
 - `ProjectService`：创建工程、收集源文件、预览工程
 - `ProjectLifecycleService`：加载/卸载工程与加载后整理
-- `ProjectPrefilterService`：预过滤是否需要重跑与实际执行；当前比较口径只依赖 `source_language` 与 `mtool_optimizer_enable`
-- `ProjectFileService`：文件导入、更新、重置、删除
+- `ProjectPrefilterService`：预过滤是否需要重跑与实际执行；当前比较口径只依赖 `source_language` 与 `mtool_optimizer_enable`，并支持由调用方控制是否补发整页刷新事件
+- `ProjectFileService`：文件导入、更新、重置、删除，以及批量 `replace/reset/delete` 的单事务提交
 - `ExportPathService`：导出路径规则
-- `WorkbenchService`：工作台聚合快照
+- `WorkbenchService`：工作台聚合快照与按文件路径裁切 entry patch
 
 ### `Quality`
 - `QualityRuleService`：规则领域总门面
@@ -116,6 +116,14 @@ flowchart TD
 ### `Translation`
 - `TranslationItemService`：翻译任务取条目
 - `TranslationResetService`：翻译失败/重置后的进度整理与状态回写
+
+## 当前已落地的文件级刷新事实
+- `DataManager` 当前负责把文件操作统一收口到稳定态后再发结构化刷新事件，避免前端在预过滤未完成时读取半成品快照。
+- `DataManager.emit_workbench_refresh()` / `emit_proofreading_refresh()` 是当前文件级刷新事件的唯一拼装入口。
+- `ProjectFileMutationResult` 已从单文件结果扩成批量结果，统一携带 `rel_paths`、`removed_rel_paths` 与 `order_changed`。
+- `WorkbenchService.build_entry_patch()` 负责从最新工作台快照中裁出受影响文件的 entry 列表。
+- 批量 `replace/reset/delete` 当前都按“一次事务 + 一次事件”的语义落地；前端多选操作不再需要逐个文件排队触发刷新。
+- 文件重排当前只触发工作台 `scope="order"` 刷新；文件增删改则同时触发工作台和校对页 `scope="file"` 刷新。
 
 ## 修改建议
 | 变更类型 | 优先落点 |

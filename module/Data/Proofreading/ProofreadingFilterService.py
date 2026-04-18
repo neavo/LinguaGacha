@@ -55,7 +55,14 @@ class ProofreadingFilterOptions:
 
         glossary_terms: set[tuple[str, str]] | None = None
         if glossary_terms_raw is not None:
-            glossary_terms = set(glossary_terms_raw)
+            glossary_terms = set()
+            for term in glossary_terms_raw:
+                if isinstance(term, dict):
+                    glossary_terms.add(
+                        (str(term.get("src", "")), str(term.get("dst", "")))
+                    )
+                elif isinstance(term, (list, tuple)) and len(term) >= 2:
+                    glossary_terms.add((str(term[0]), str(term[1])))
 
         return cls(
             warning_types=warning_types,

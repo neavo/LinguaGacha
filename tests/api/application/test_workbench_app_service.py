@@ -32,3 +32,57 @@ def test_reorder_files_routes_through_workbench_manager(
 
     assert result["accepted"] is True
     assert fake_workbench_manager.reorder_calls == [["script/b.txt", "script/a.txt"]]
+
+
+def test_delete_file_batch_routes_through_workbench_manager(
+    workbench_app_service,
+    fake_workbench_manager,
+) -> None:
+    result = workbench_app_service.delete_file_batch(
+        {"rel_paths": ["script/a.txt", "script/b.txt"]}
+    )
+
+    assert result["accepted"] is True
+    assert fake_workbench_manager.delete_batch_calls == [
+        ["script/a.txt", "script/b.txt"]
+    ]
+
+
+def test_replace_file_batch_routes_through_workbench_manager(
+    workbench_app_service,
+    fake_workbench_manager,
+) -> None:
+    result = workbench_app_service.replace_file_batch(
+        {
+            "operations": [
+                {"rel_path": "script/a.txt", "path": "C:/next/a.txt"},
+                {"rel_path": "script/b.txt", "path": "C:/next/b.txt"},
+            ]
+        }
+    )
+
+    assert result["accepted"] is True
+    assert fake_workbench_manager.replace_batch_calls == [
+        [
+            ("script/a.txt", "C:/next/a.txt"),
+            ("script/b.txt", "C:/next/b.txt"),
+        ]
+    ]
+
+
+def test_get_file_patch_returns_summary_order_and_entries(
+    workbench_app_service,
+) -> None:
+    result = workbench_app_service.get_file_patch(
+        {
+            "rel_paths": ["script/a.txt"],
+            "removed_rel_paths": ["script/old.txt"],
+            "include_order": True,
+        }
+    )
+
+    patch = result["patch"]
+    assert patch["summary"]["file_count"] == 1
+    assert patch["ordered_rel_paths"] == ["script/a.txt"]
+    assert patch["removed_rel_paths"] == ["script/old.txt"]
+    assert patch["entries"][0]["rel_path"] == "script/a.txt"

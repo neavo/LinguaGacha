@@ -124,6 +124,40 @@ export type ProofreadingMutationPayload = {
   }
 }
 
+export type ProofreadingFilePatch = {
+  revision: number
+  project_id: string
+  readonly: boolean
+  removed_file_paths: string[]
+  default_filters: ProofreadingFilterOptions
+  applied_filters: ProofreadingFilterOptions
+  full_summary: ProofreadingSummary
+  filtered_summary: ProofreadingSummary
+  full_items: ProofreadingItem[]
+  filtered_items: ProofreadingItem[]
+}
+
+export type ProofreadingFilePatchPayload = {
+  patch?: Partial<ProofreadingFilePatch> & {
+    default_filters?: Partial<ProofreadingFilterOptions> & {
+      glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+    }
+    applied_filters?: Partial<ProofreadingFilterOptions> & {
+      glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+    }
+    full_summary?: Partial<ProofreadingSummary>
+    filtered_summary?: Partial<ProofreadingSummary>
+    full_items?: Array<Partial<ProofreadingItem> & {
+      applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+      failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+    }>
+    filtered_items?: Array<Partial<ProofreadingItem> & {
+      applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+      failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+    }>
+  }
+}
+
 export type ProofreadingDialogState = {
   open: boolean
   target_row_id: string | null
@@ -593,6 +627,41 @@ export function normalize_proofreading_mutation_payload(
       ? result.items.map((item) => normalize_proofreading_item(item))
       : [],
     summary: normalize_proofreading_summary(result.summary),
+  }
+}
+
+export function normalize_proofreading_file_patch_payload(
+  payload: ProofreadingFilePatchPayload,
+): ProofreadingFilePatch {
+  const patch = payload.patch ?? {}
+
+  return {
+    revision: Number(patch.revision ?? 0),
+    project_id: String(patch.project_id ?? ''),
+    readonly: Boolean(patch.readonly),
+    removed_file_paths: Array.isArray(patch.removed_file_paths)
+      ? unique_strings(patch.removed_file_paths.map((file_path) => String(file_path)))
+      : [],
+    default_filters: normalize_proofreading_filter_options(
+      patch.default_filters,
+      Array.isArray(patch.full_items)
+        ? patch.full_items.map((item) => normalize_proofreading_item(item))
+        : [],
+    ),
+    applied_filters: normalize_proofreading_filter_options(
+      patch.applied_filters,
+      Array.isArray(patch.filtered_items)
+        ? patch.filtered_items.map((item) => normalize_proofreading_item(item))
+        : [],
+    ),
+    full_summary: normalize_proofreading_summary(patch.full_summary),
+    filtered_summary: normalize_proofreading_summary(patch.filtered_summary),
+    full_items: Array.isArray(patch.full_items)
+      ? patch.full_items.map((item) => normalize_proofreading_item(item))
+      : [],
+    filtered_items: Array.isArray(patch.filtered_items)
+      ? patch.filtered_items.map((item) => normalize_proofreading_item(item))
+      : [],
   }
 }
 

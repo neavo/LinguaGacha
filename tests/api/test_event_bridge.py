@@ -84,6 +84,7 @@ def test_workbench_refresh_maps_to_workbench_snapshot_changed() -> None:
     assert topic == "workbench.snapshot_changed"
     assert payload == {
         "reason": "config_updated",
+        "scope": "global",
     }
 
 
@@ -92,7 +93,9 @@ def test_proofreading_refresh_maps_to_snapshot_invalidated() -> None:
         Base.Event.PROOFREADING_REFRESH,
         {
             "reason": "project_file_update",
-            "rel_path": "chapter/a.txt",
+            "scope": "file",
+            "rel_paths": ["chapter/a.txt"],
+            "removed_rel_paths": ["chapter/old.txt"],
             "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
         },
     )
@@ -100,8 +103,32 @@ def test_proofreading_refresh_maps_to_snapshot_invalidated() -> None:
     assert topic == "proofreading.snapshot_invalidated"
     assert payload == {
         "reason": "project_file_update",
-        "rel_path": "chapter/a.txt",
+        "scope": "file",
+        "rel_paths": ["chapter/a.txt"],
+        "removed_rel_paths": ["chapter/old.txt"],
         "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
+    }
+
+
+def test_workbench_refresh_maps_file_scope_payload() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.WORKBENCH_REFRESH,
+        {
+            "reason": "project_file_update",
+            "scope": "file",
+            "rel_paths": ["chapter/a.txt", "chapter/b.txt"],
+            "removed_rel_paths": ["chapter/old.txt"],
+            "order_changed": False,
+        },
+    )
+
+    assert topic == "workbench.snapshot_changed"
+    assert payload == {
+        "reason": "project_file_update",
+        "scope": "file",
+        "rel_paths": ["chapter/a.txt", "chapter/b.txt"],
+        "removed_rel_paths": ["chapter/old.txt"],
+        "order_changed": False,
     }
 
 

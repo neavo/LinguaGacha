@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
     from module.Data.Core.DataTypes import ProjectFileMutationResult
     from module.Data.Core.DataTypes import ProjectPrefilterRequest
+    from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
     from module.Data.Core.DataTypes import WorkbenchSnapshot
 
 
@@ -232,7 +233,7 @@ class DataManager(Base):
             )
 
         if should_emit_refresh and self.is_loaded():
-            self.emit(Base.Event.WORKBENCH_REFRESH, {"reason": event.value})
+            self.emit_workbench_refresh(reason=event.value)
 
     def handle_project_loaded_post_actions(self) -> None:
         """在工程真正对外可见前完成加载后补处理与语言镜像同步。"""
@@ -262,6 +263,7 @@ class DataManager(Base):
         ):
             self.emit_proofreading_refresh(
                 reason="config_updated",
+                scope="global",
                 keys=normalized_keys,
                 source_event=Base.Event.CONFIG_UPDATED,
             )
@@ -296,7 +298,13 @@ class DataManager(Base):
             config,
         )
 
-    def schedule_project_prefilter(self, config: Config, *, reason: str) -> None:
+    def schedule_project_prefilter(
+        self,
+        config: Config,
+        *,
+        reason: str,
+        emit_refresh_events: bool = True,
+    ) -> None:
         """后台触发预过滤。"""
 
         from module.Engine.Engine import Engine
@@ -311,6 +319,7 @@ class DataManager(Base):
             config,
             reason=reason,
             lg_path=lg_path,
+            emit_refresh_events=emit_refresh_events,
         )
         if not start_worker:
             return
@@ -322,7 +331,13 @@ class DataManager(Base):
             daemon=True,
         ).start()
 
-    def run_project_prefilter(self, config: Config, *, reason: str) -> None:
+    def run_project_prefilter(
+        self,
+        config: Config,
+        *,
+        reason: str,
+        emit_refresh_events: bool = True,
+    ) -> None:
         """同步执行预过滤。"""
 
         from module.Engine.Engine import Engine
@@ -337,6 +352,7 @@ class DataManager(Base):
             config,
             reason=reason,
             lg_path=lg_path,
+            emit_refresh_events=emit_refresh_events,
         )
         if not should_run or request is None:
             return
@@ -379,17 +395,16 @@ class DataManager(Base):
                 if request is None:
                     if updated and last_request is not None and last_result is not None:
                         self.refresh_analysis_progress_snapshot_cache()
-                        # 为什么：预过滤真正写回后，工作台统计与文件列表依赖的条目状态已经变了，
-                        # 必须补发一次失效信号，页面缓存层才能重新拉取最新快照。
-                        self.emit(
-                            Base.Event.WORKBENCH_REFRESH,
-                            {"reason": last_request.reason},
-                        )
-                        self.emit_proofreading_refresh(
-                            reason="project_prefilter_updated",
-                            trigger_reason=last_request.reason,
-                            source_event=Base.Event.PROJECT_PREFILTER,
-                        )
+                        if last_request.emit_refresh_events:
+                            # 为什么：预过滤真正写回后，工作台统计与文件列表依赖的条目状态已经变了，
+                            # 必须补发一次失效信号，页面缓存层才能重新拉取最新快照。
+                            self.emit_workbench_refresh(reason=last_request.reason)
+                            self.emit_proofreading_refresh(
+                                reason="project_prefilter_updated",
+                                scope="global",
+                                trigger_reason=last_request.reason,
+                                source_event=Base.Event.PROJECT_PREFILTER,
+                            )
                         self.log_prefilter_result(last_request, last_result)
                         self.emit(
                             Base.Event.PROJECT_PREFILTER,
@@ -975,6 +990,7 @@ class DataManager(Base):
             return
 
         def worker() -> None:
+            result: ProjectFileMutationResult | None = None
             self.emit(
                 Base.Event.PROGRESS_TOAST,
                 {
@@ -985,8 +1001,11 @@ class DataManager(Base):
             )
             try:
                 result = action()
-                self.emit_project_file_update(result)
-                self.run_project_prefilter(Config().load(), reason="file_op")
+                self.run_project_prefilter(
+                    Config().load(),
+                    reason="file_op",
+                    emit_refresh_events=False,
+                )
             except ValueError as e:
                 self.emit(
                     Base.Event.TOAST,
@@ -1002,44 +1021,90 @@ class DataManager(Base):
                 self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
                 self.finish_file_operation()
 
+            if result is not None:
+                self.emit_project_file_update(result)
+
         threading.Thread(target=worker, daemon=True).start()
 
     def emit_project_file_update(self, result: ProjectFileMutationResult) -> None:
         """统一发工程文件更新事件。"""
 
-        payload: dict[str, Any] = {"rel_path": result.rel_path}
-        if result.old_rel_path:
-            payload["old_rel_path"] = result.old_rel_path
+        payload: dict[str, Any] = {
+            "rel_paths": list(result.rel_paths),
+            "removed_rel_paths": list(result.removed_rel_paths),
+            "order_changed": bool(result.order_changed),
+        }
         self.emit(Base.Event.PROJECT_FILE_UPDATE, payload)
+
+        if result.order_changed:
+            self.emit_workbench_refresh(
+                reason="project_file_reorder",
+                scope="order",
+                order_changed=True,
+            )
+            return
+
+        self.emit_workbench_refresh(
+            reason="project_file_update",
+            scope="file",
+            rel_paths=list(result.rel_paths),
+            removed_rel_paths=list(result.removed_rel_paths),
+        )
         self.emit_proofreading_refresh(
             reason="project_file_update",
-            rel_path=result.rel_path,
-            old_rel_path=result.old_rel_path,
+            scope="file",
+            rel_paths=list(result.rel_paths),
+            removed_rel_paths=list(result.removed_rel_paths),
             source_event=Base.Event.PROJECT_FILE_UPDATE,
         )
+
+    def emit_workbench_refresh(
+        self,
+        *,
+        reason: str,
+        scope: str = "global",
+        rel_paths: list[str] | None = None,
+        removed_rel_paths: list[str] | None = None,
+        order_changed: bool = False,
+    ) -> None:
+        """统一发工作台刷新事件，避免调用方自己拼结构。"""
+
+        payload: dict[str, Any] = {
+            "reason": reason,
+            "scope": scope,
+        }
+        if rel_paths:
+            payload["rel_paths"] = list(rel_paths)
+        if removed_rel_paths:
+            payload["removed_rel_paths"] = list(removed_rel_paths)
+        if order_changed:
+            payload["order_changed"] = True
+        self.emit(Base.Event.WORKBENCH_REFRESH, payload)
 
     def emit_proofreading_refresh(
         self,
         *,
         reason: str,
+        scope: str = "global",
         source_event: Base.Event,
         keys: list[str] | None = None,
-        rel_path: str | None = None,
-        old_rel_path: str | None = None,
+        rel_paths: list[str] | None = None,
+        removed_rel_paths: list[str] | None = None,
         trigger_reason: str | None = None,
     ) -> None:
         """统一发校对页快照失效事件，避免各个入口各拼一套 payload。"""
 
         payload: dict[str, Any] = {
             "reason": reason,
+            "scope": scope,
             "source_event": source_event.value,
         }
         if keys:
             payload["keys"] = list(keys)
-        if rel_path:
-            payload["rel_path"] = rel_path
-        if old_rel_path:
-            payload["old_rel_path"] = old_rel_path
+        if rel_paths:
+            payload["rel_paths"] = list(rel_paths)
+        if removed_rel_paths:
+            payload["removed_rel_paths"] = list(removed_rel_paths)
         if trigger_reason:
             payload["trigger_reason"] = trigger_reason
         self.emit(Base.Event.PROOFREADING_REFRESH, payload)
@@ -1058,6 +1123,15 @@ class DataManager(Base):
             self.get_all_item_dicts(),
         )
 
+    def build_workbench_entry_patch(
+        self,
+        rel_paths: list[str],
+    ) -> tuple["WorkbenchFileEntrySnapshot", ...]:
+        """按文件路径构建工作台局部文件行补丁。"""
+
+        snapshot = self.build_workbench_snapshot()
+        return self.workbench_service.build_entry_patch(snapshot, rel_paths)
+
     def schedule_add_file(self, file_path: str) -> None:
         self.schedule_guarded_file_operation(
             Localizer.get().workbench_progress_adding_file,
@@ -1072,6 +1146,16 @@ class DataManager(Base):
             f"Failed to replace file: {rel_path} -> {new_file_path}",
         )
 
+    def schedule_replace_file_batch(
+        self,
+        operations: list[tuple[str, str]],
+    ) -> None:
+        self.schedule_guarded_file_operation(
+            Localizer.get().toast_processing,
+            lambda: self.project_file_service.replace_file_batch(operations),
+            "Failed to replace files in batch",
+        )
+
     def schedule_reset_file(self, rel_path: str) -> None:
         self.schedule_guarded_file_operation(
             Localizer.get().workbench_progress_resetting_file,
@@ -1079,11 +1163,25 @@ class DataManager(Base):
             f"Failed to reset file: {rel_path}",
         )
 
+    def schedule_reset_file_batch(self, rel_paths: list[str]) -> None:
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_resetting_file,
+            lambda: self.project_file_service.reset_file_batch(rel_paths),
+            "Failed to reset files in batch",
+        )
+
     def schedule_delete_file(self, rel_path: str) -> None:
         self.schedule_guarded_file_operation(
             Localizer.get().workbench_progress_deleting_file,
             lambda: self.project_file_service.delete_file(rel_path),
             f"Failed to delete file: {rel_path}",
+        )
+
+    def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_deleting_file,
+            lambda: self.project_file_service.delete_file_batch(rel_paths),
+            "Failed to delete files in batch",
         )
 
     def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
@@ -1098,15 +1196,27 @@ class DataManager(Base):
             raise ValueError(Localizer.get().task_running)
 
         try:
-            self.project_file_service.reorder_files(ordered_rel_paths)
+            result = self.project_file_service.reorder_files(ordered_rel_paths)
         finally:
             self.finish_file_operation()
+        self.emit_project_file_update(result)
 
     def add_file(self, file_path: str) -> None:
-        self.emit_project_file_update(self.project_file_service.add_file(file_path))
+        result = self.project_file_service.add_file(file_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
 
     def replace_file(self, rel_path: str, new_file_path: str) -> dict[str, int]:
         result = self.project_file_service.replace_file(rel_path, new_file_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
         self.emit_project_file_update(result)
         return {
             "matched": result.matched,
@@ -1115,10 +1225,57 @@ class DataManager(Base):
         }
 
     def reset_file(self, rel_path: str) -> None:
-        self.emit_project_file_update(self.project_file_service.reset_file(rel_path))
+        result = self.project_file_service.reset_file(rel_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
 
     def delete_file(self, rel_path: str) -> None:
-        self.emit_project_file_update(self.project_file_service.delete_file(rel_path))
+        result = self.project_file_service.delete_file(rel_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
+
+    def replace_file_batch(
+        self,
+        operations: list[tuple[str, str]],
+    ) -> dict[str, int]:
+        result = self.project_file_service.replace_file_batch(operations)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
+        return {
+            "matched": result.matched,
+            "new": result.new,
+            "total": result.total,
+        }
+
+    def reset_file_batch(self, rel_paths: list[str]) -> None:
+        result = self.project_file_service.reset_file_batch(rel_paths)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
+
+    def delete_file_batch(self, rel_paths: list[str]) -> None:
+        result = self.project_file_service.delete_file_batch(rel_paths)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
 
     def timestamp_suffix_context(self) -> AbstractContextManager[None]:
         return self.export_path_service.timestamp_suffix_context(

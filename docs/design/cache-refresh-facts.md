@@ -66,60 +66,62 @@
 
 ### 总体行为
 
-截至当前实现，两页都没有真正意义上的差异刷新机制。
+截至当前实现，**文件级场景已经具备差异刷新机制**，但覆盖范围仍然是“文件级”，不是“条目级”。
 
-- 失效后，前端通常会把缓存标记为过期
-- 随后重新请求整份快照
-- 再用返回结果全量重建页面缓存
+- 文件新增、替换、重置、删除，以及文件重排时，后端会先完成文件操作和预过滤收尾，再发结构化 SSE 事件
+- 前端收到事件后，会按 `scope` 决定优先走 `/api/workbench/file-patch` 或 `/api/proofreading/file-patch`
+- 只有 `scope = global`、本地缓存未就绪、补丁引用不完整，或补丁请求失败时，页面才会退回整页快照刷新
 
 对应代码见：
 
-- 工作台：[use-workbench-live-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts:813)
-- 校对页：[use-proofreading-page-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts:645)
+- 工作台补丁入口：[use-workbench-live-state.ts](../../frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts)
+- 校对页补丁入口：[use-proofreading-page-state.ts](../../frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts)
+- 数据层发射点：[DataManager.py](../../module/Data/DataManager.py)
 
 ### 运行时失效信号
 
-渲染层运行时目前只维护两个整页失效 tick：
+渲染层运行时目前不再只维护裸 tick，而是维护两个结构化页面变更信号：
 
-- `workbench_invalidation_tick`
-- `proofreading_invalidation_tick`
+- `workbench_change_signal`
+- `proofreading_change_signal`
 
-对应代码见 [desktop-runtime-context.tsx](/E:/Project/LinguaGacha/frontend/src/renderer/app/state/desktop-runtime-context.tsx:456)。
+对应代码见 [desktop-runtime-context.tsx](../../frontend/src/renderer/app/state/desktop-runtime-context.tsx)。
 
 由此可确认：
 
-- 当前失效模型是“页面级别”的，而不是“文件级别”或“条目级别”的。
-- 即使后端事件 payload 中携带了 `keys`、`rel_path`、`rule_types` 等差异线索，当前页面缓存层也没有消费这些差异信息做局部 patch。
+- 运行时信号的权威字段已经变成 `seq + payload`，而不是单纯的“递增次数”。
+- `payload` 当前稳定字段为：
+  - 工作台：`reason`、`scope`、`rel_paths`、`removed_rel_paths`、`order_changed`
+  - 校对页：`reason`、`scope`、`rel_paths`、`removed_rel_paths`
+- 当前失效模型已经支持“文件级”与“顺序级”，但还不支持“条目级 patch”。
 
 ### 页面主动刷新路径
 
-除失效 tick 外，页面还会在以下时机主动重拉整页快照：
+除结构化变更信号外，页面仍会在以下时机主动重拉整页快照：
 
 #### 工作台
 
 - 工程加载后
 - 工程切换后
 - 任意任务从忙碌态回到空闲态后
-- 工作台内文件操作完成后
+- 收到 `scope = global` 的工作台变更信号后
+- 文件级补丁合并失败后
 
 对应代码见：
 
-- [use-workbench-live-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts:877)
-- [use-workbench-live-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts:905)
-- [use-workbench-live-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts:1144)
+- [use-workbench-live-state.ts](../../frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts)
 
 #### 校对页
 
 - 工程加载后
 - 工程切换后
 - 任意任务从忙碌态回到空闲态后
-- 收到校对页失效 tick 后
+- 收到 `scope = global` 的校对页变更信号后
+- 文件级补丁合并失败后
 
 对应代码见：
 
-- [use-proofreading-page-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts:1156)
-- [use-proofreading-page-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts:1185)
-- [use-proofreading-page-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts:1198)
+- [use-proofreading-page-state.ts](../../frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts)
 
 ## 业务影响范围事实
 
@@ -142,11 +144,12 @@
 | 后置替换启用开关变化 | 无 | 条目级 | 当前整页失效后全量重建 | 只影响命中相关模式的条目 |
 | 文本保护条目内容变化 | 无 | 条目级 | 当前整页失效后全量重建 | 只影响命中相关保护规则的条目 |
 | 文本保护模式变化 | 无 | 全局 | 当前整页失效后全量重建 | 会整体改变检查器行为 |
-| 新增文件 | 文件级 | 文件级 | 工作台页主动整页重拉；校对页整页失效后重拉 | 影响单文件条目集 |
-| 替换文件 | 文件级 | 文件级 | 工作台页主动整页重拉；校对页整页失效后重拉 | 影响单文件条目集 |
-| 重置文件 | 文件级 | 文件级 | 工作台页主动整页重拉；校对页整页失效后重拉 | 影响单文件状态回滚 |
-| 删除文件 | 文件级 | 文件级 | 工作台页主动整页重拉；校对页整页失效后重拉 | 影响文件集合与该文件下条目 |
-| 文件重排 | 文件级 | 无 | 工作台页主动整页重拉 | 只影响工作台文件顺序 |
+| 新增文件 | 文件级 | 文件级 | 工作台与校对页都先收结构化事件，再各自请求一次文件补丁 | 影响单文件条目集 |
+| 替换文件 | 文件级 | 文件级 | 工作台与校对页都先收结构化事件，再各自请求一次文件补丁 | 影响单文件条目集 |
+| 重置文件 | 文件级 | 文件级 | 工作台与校对页都先收结构化事件，再各自请求一次文件补丁 | 影响单文件状态回滚 |
+| 删除文件 | 文件级 | 文件级 | 工作台与校对页都先收结构化事件，再各自请求一次文件补丁 | 影响文件集合与该文件下条目 |
+| 多文件删除 / 重置 / 替换 | 文件级 | 文件级 | 前端走批量接口；后端只发一次事件；两页各自只请求一次文件补丁 | 当前默认全成或全败 |
+| 文件重排 | 文件级 | 无 | 工作台收 `scope = order` 事件后请求一次文件补丁；校对页不刷新 | 只影响工作台文件顺序 |
 | 校对页单条保存 | 条目级 | 条目级 | 校对页整页重拉；工作台未统一联动 | 可能改变条目 `status` |
 | 校对页批量保存 | 条目级 | 条目级 | 校对页整页重拉；工作台未统一联动 | 可能改变多个条目 `status` |
 | 校对页批量替换 | 条目级 | 条目级 | 校对页整页重拉；工作台未统一联动 | 可能改变多个条目 `status` |
@@ -162,18 +165,18 @@
 
 ## 已确认的不一致与实现偏差
 
-### 1. 当前实现存在明显的整页过刷
+### 1. 当前实现仍然保留部分整页刷新
 
-已确认的过刷包括：
+当前仍会整页重拉的场景包括：
 
-- 当前两页没有差异刷新，默认都是整页重拉。
 - 工作台会在任意任务从忙碌态回到空闲态后整页刷新，即使该任务结果与工作台快照无关。
 - 校对页也会在任意任务从忙碌态回到空闲态后整页刷新，即使该任务结果与校对快照无关。
+- 文件级补丁合并失败时，两页都会直接退回整页快照刷新。
 
 对应代码见：
 
-- [use-workbench-live-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts:905)
-- [use-proofreading-page-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts:1185)
+- [use-workbench-live-state.ts](../../frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts)
+- [use-proofreading-page-state.ts](../../frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts)
 
 ### 2. 当前实现存在工作台联动缺口
 
@@ -224,21 +227,21 @@
 
 ### 工作台
 
-- 快照构建：[WorkbenchService.py](/E:/Project/LinguaGacha/module/Data/Project/WorkbenchService.py:16)
-- 页面缓存刷新：[use-workbench-live-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts:813)
-- 文件操作写入：[ProjectFileService.py](/E:/Project/LinguaGacha/module/Data/Project/ProjectFileService.py:42)
+- 快照构建与 entry patch：[WorkbenchService.py](../../module/Data/Project/WorkbenchService.py)
+- 页面缓存刷新与补丁合并：[use-workbench-live-state.ts](../../frontend/src/renderer/pages/workbench-page/use-workbench-live-state.ts)
+- 文件操作写入：[ProjectFileService.py](../../module/Data/Project/ProjectFileService.py)
 
 ### 校对页
 
-- 快照构建：[ProofreadingSnapshotService.py](/E:/Project/LinguaGacha/module/Data/Proofreading/ProofreadingSnapshotService.py:93)
-- 条目筛选：[ProofreadingFilterService.py](/E:/Project/LinguaGacha/module/Data/Proofreading/ProofreadingFilterService.py:121)
-- 批量检查：[ResultChecker.py](/E:/Project/LinguaGacha/module/ResultChecker.py:211)
-- 页面缓存刷新：[use-proofreading-page-state.ts](/E:/Project/LinguaGacha/frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts:645)
-- 校对写入：[ProofreadingMutationService.py](/E:/Project/LinguaGacha/module/Data/Proofreading/ProofreadingMutationService.py:105)
-- 校对重译：[ProofreadingRetranslateService.py](/E:/Project/LinguaGacha/module/Data/Proofreading/ProofreadingRetranslateService.py:57)
+- 快照构建：[ProofreadingSnapshotService.py](../../module/Data/Proofreading/ProofreadingSnapshotService.py)
+- 条目筛选：[ProofreadingFilterService.py](../../module/Data/Proofreading/ProofreadingFilterService.py)
+- 批量检查：[ResultChecker.py](../../module/ResultChecker.py)
+- 页面缓存刷新与补丁合并：[use-proofreading-page-state.ts](../../frontend/src/renderer/pages/proofreading-page/use-proofreading-page-state.ts)
+- 校对写入：[ProofreadingMutationService.py](../../module/Data/Proofreading/ProofreadingMutationService.py)
+- 校对重译：[ProofreadingRetranslateService.py](../../module/Data/Proofreading/ProofreadingRetranslateService.py)
 
 ### 事件与运行时
 
-- 事件桥接：[EventBridge.py](/E:/Project/LinguaGacha/api/Bridge/EventBridge.py:13)
-- 运行时失效 tick：[desktop-runtime-context.tsx](/E:/Project/LinguaGacha/frontend/src/renderer/app/state/desktop-runtime-context.tsx:456)
-- 数据层刷新发射点：[DataManager.py](/E:/Project/LinguaGacha/module/Data/DataManager.py:212)
+- 事件桥接：[EventBridge.py](../../api/Bridge/EventBridge.py)
+- 运行时结构化变更信号：[desktop-runtime-context.tsx](../../frontend/src/renderer/app/state/desktop-runtime-context.tsx)
+- 数据层刷新发射点：[DataManager.py](../../module/Data/DataManager.py)

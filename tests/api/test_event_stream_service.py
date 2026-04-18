@@ -49,6 +49,7 @@ def test_publish_workbench_refresh_creates_workbench_invalidation_envelope() -> 
     assert envelope.topic == "workbench.snapshot_changed"
     assert envelope.data == {
         "reason": "config_updated",
+        "scope": "global",
     }
 
 
@@ -70,6 +71,7 @@ def test_publish_proofreading_refresh_creates_proofreading_invalidation_envelope
     assert envelope.topic == "proofreading.snapshot_invalidated"
     assert envelope.data == {
         "reason": "project_prefilter_updated",
+        "scope": "global",
         "trigger_reason": "config_updated",
     }
 

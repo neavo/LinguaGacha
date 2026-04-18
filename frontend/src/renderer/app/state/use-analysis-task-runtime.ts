@@ -145,7 +145,7 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
   const { push_toast } = useDesktopToast()
   const {
     project_snapshot,
-    workbench_invalidation_tick,
+    workbench_change_signal,
     set_task_snapshot,
     task_snapshot,
   } = useDesktopRuntime()
@@ -166,7 +166,7 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
   const previous_project_loaded_ref = useRef(false)
   const previous_project_path_ref = useRef('')
   const previous_task_busy_ref = useRef(task_snapshot.busy)
-  const previous_invalidation_tick_ref = useRef(workbench_invalidation_tick)
+  const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq)
   const previous_analysis_status_ref = useRef(create_empty_analysis_task_snapshot().status)
   const observed_analysis_waveform_snapshot_ref = useRef<AnalysisTaskSnapshot | null>(null)
   const observed_analysis_waveform_time_ref = useRef<number | null>(null)
@@ -545,19 +545,19 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
   }, [project_snapshot.loaded, refresh_analysis_task_snapshot, task_snapshot.busy])
 
   useEffect(() => {
-    const previous_tick = previous_invalidation_tick_ref.current
-    previous_invalidation_tick_ref.current = workbench_invalidation_tick
+    const previous_seq = previous_workbench_change_seq_ref.current
+    previous_workbench_change_seq_ref.current = workbench_change_signal.seq
 
     if (!project_snapshot.loaded) {
       return
     }
 
-    if (previous_tick !== workbench_invalidation_tick) {
+    if (previous_seq !== workbench_change_signal.seq) {
       void refresh_analysis_task_snapshot()
     }
   }, [
     project_snapshot.loaded,
-    workbench_invalidation_tick,
+    workbench_change_signal.seq,
     refresh_analysis_task_snapshot,
   ])
 

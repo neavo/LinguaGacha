@@ -78,9 +78,7 @@ class EventBridge:
         elif event == Base.Event.WORKBENCH_REFRESH:
             return (
                 EventTopic.WORKBENCH_SNAPSHOT_CHANGED.value,
-                {
-                    "reason": str(data.get("reason", "")),
-                },
+                self.build_workbench_refresh_payload(data),
             )
         elif event == Base.Event.WORKBENCH_SNAPSHOT:
             snapshot = data.get("snapshot", {})
@@ -260,19 +258,22 @@ class EventBridge:
 
         payload: dict[str, Any] = {
             "reason": str(data.get("reason", "")),
+            "scope": str(data.get("scope", "global") or "global"),
         }
 
         keys = data.get("keys")
         if isinstance(keys, list):
             payload["keys"] = [str(key) for key in keys]
 
-        rel_path = str(data.get("rel_path", ""))
-        if rel_path != "":
-            payload["rel_path"] = rel_path
+        rel_paths = data.get("rel_paths")
+        if isinstance(rel_paths, list):
+            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
 
-        old_rel_path = str(data.get("old_rel_path", ""))
-        if old_rel_path != "":
-            payload["old_rel_path"] = old_rel_path
+        removed_rel_paths = data.get("removed_rel_paths")
+        if isinstance(removed_rel_paths, list):
+            payload["removed_rel_paths"] = [
+                str(rel_path) for rel_path in removed_rel_paths
+            ]
 
         source_event = data.get("source_event")
         if source_event is not None:
@@ -281,5 +282,31 @@ class EventBridge:
         trigger_reason = str(data.get("trigger_reason", ""))
         if trigger_reason != "":
             payload["trigger_reason"] = trigger_reason
+
+        return payload
+
+    def build_workbench_refresh_payload(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """把工作台刷新事件裁成稳定的结构化载荷。"""
+
+        payload: dict[str, Any] = {
+            "reason": str(data.get("reason", "")),
+            "scope": str(data.get("scope", "global") or "global"),
+        }
+
+        rel_paths = data.get("rel_paths")
+        if isinstance(rel_paths, list):
+            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
+
+        removed_rel_paths = data.get("removed_rel_paths")
+        if isinstance(removed_rel_paths, list):
+            payload["removed_rel_paths"] = [
+                str(rel_path) for rel_path in removed_rel_paths
+            ]
+
+        if "order_changed" in data:
+            payload["order_changed"] = bool(data.get("order_changed"))
 
         return payload

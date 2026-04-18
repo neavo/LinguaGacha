@@ -97,8 +97,75 @@ class ProofreadingAppService:
 
         load_result = self.snapshot_service.load_snapshot(self.resolve_lg_path(request))
         filtered_items = self.filter_items_from_request(request, load_result)
-        snapshot_dict = self.build_snapshot_dict(load_result, filtered_items)
+        snapshot_dict = self.build_snapshot_dict(
+            load_result,
+            filtered_items,
+            filters=self.resolve_filter_options(request, load_result),
+        )
         return ProofreadingSnapshotPayload.from_dict(snapshot_dict).to_dict()
+
+    def get_file_patch(self, request: dict[str, Any]) -> dict[str, object]:
+        """按受影响文件返回校对页局部补丁。"""
+
+        load_result = self.snapshot_service.load_snapshot(self.resolve_lg_path(request))
+        applied_filters = self.resolve_filter_options(request, load_result)
+        filtered_items = self.filter_items_from_request(request, load_result)
+
+        rel_paths_raw = request.get("rel_paths", [])
+        rel_paths = (
+            [str(rel_path) for rel_path in rel_paths_raw]
+            if isinstance(rel_paths_raw, list)
+            else []
+        )
+        removed_rel_paths_raw = request.get("removed_rel_paths", [])
+        removed_rel_paths = (
+            [str(rel_path) for rel_path in removed_rel_paths_raw]
+            if isinstance(removed_rel_paths_raw, list)
+            else []
+        )
+        target_file_paths = {
+            rel_path
+            for rel_path in [*rel_paths, *removed_rel_paths]
+            if rel_path != ""
+        }
+
+        full_items = [
+            item
+            for item in load_result.items
+            if item.get_file_path() in target_file_paths
+        ]
+        filtered_patch_items = [
+            item
+            for item in filtered_items
+            if item.get_file_path() in target_file_paths
+        ]
+
+        return {
+            "patch": {
+                "revision": int(load_result.revision or 0),
+                "project_id": str(load_result.lg_path or ""),
+                "readonly": load_result.kind != ProofreadingLoadKind.OK,
+                "removed_file_paths": [
+                    rel_path for rel_path in removed_rel_paths if rel_path != ""
+                ],
+                "default_filters": self.load_result_filter_options_to_dict(
+                    load_result.filter_options
+                ),
+                "applied_filters": self.load_result_filter_options_to_dict(
+                    applied_filters
+                ),
+                "full_summary": self.build_summary_dict(load_result, load_result.items),
+                "filtered_summary": self.build_summary_dict(
+                    load_result,
+                    filtered_items,
+                ),
+                "full_items": self.build_items_dict(full_items, load_result),
+                "filtered_items": self.build_items_dict(
+                    filtered_patch_items,
+                    load_result,
+                ),
+            }
+        }
 
     def search(self, request: dict[str, Any]) -> dict[str, object]:
         """执行校对页搜索，并只返回匹配项 id 列表。"""
@@ -503,31 +570,22 @@ class ProofreadingAppService:
         self,
         load_result: ProofreadingLoadResult,
         items: list[Item] | None = None,
+        *,
+        filters: ProofreadingFilterOptions | None = None,
     ) -> dict[str, Any]:
         """把当前快照整理成稳定字典，供 payload 统一序列化。"""
 
         target_items = items if items is not None else load_result.items
-        item_dicts: list[dict[str, Any]] = [
-            self.build_item_dict(item, load_result) for item in target_items
-        ]
-        warning_item_count = 0
-        for item in target_items:
-            if load_result.warning_map.get(id(item)):
-                warning_item_count += 1
-
-        summary = dict(load_result.summary)
-        summary["total_items"] = int(
-            summary.get("total_items", len(load_result.items_all))
-        )
-        summary["filtered_items"] = len(target_items)
-        summary["warning_items"] = warning_item_count
+        item_dicts = self.build_items_dict(target_items, load_result)
 
         payload: dict[str, Any] = {
             "revision": int(load_result.revision or 0),
             "project_id": str(load_result.lg_path or ""),
             "readonly": load_result.kind != ProofreadingLoadKind.OK,
-            "summary": summary,
-            "filters": load_result.filter_options.to_dict(),
+            "summary": self.build_summary_dict(load_result, target_items),
+            "filters": self.load_result_filter_options_to_dict(
+                filters if filters is not None else load_result.filter_options
+            ),
             "items": item_dicts,
         }
         if load_result.kind == ProofreadingLoadKind.OK:
@@ -545,3 +603,49 @@ class ProofreadingAppService:
         for item in items:
             item_dicts.append(self.build_item_dict(item, load_result))
         return item_dicts
+
+    def build_summary_dict(
+        self,
+        load_result: ProofreadingLoadResult,
+        items: list[Item],
+    ) -> dict[str, Any]:
+        """按给定条目集生成统一摘要，供整页和局部补丁共用。"""
+
+        warning_item_count = 0
+        for item in items:
+            if load_result.warning_map.get(id(item)):
+                warning_item_count += 1
+
+        summary = dict(load_result.summary)
+        summary["total_items"] = int(
+            summary.get("total_items", len(load_result.items_all))
+        )
+        summary["filtered_items"] = len(items)
+        summary["warning_items"] = warning_item_count
+        return summary
+
+    def load_result_filter_options_to_dict(
+        self,
+        filter_options: ProofreadingFilterOptions,
+    ) -> dict[str, Any]:
+        """把筛选对象统一转换成边界层稳定字典。"""
+
+        return {
+            "warning_types": sorted(
+                str(value) for value in (filter_options.warning_types or set())
+            ),
+            "statuses": sorted(
+                str(getattr(value, "value", value))
+                for value in (filter_options.statuses or set())
+            ),
+            "file_paths": sorted(
+                str(value) for value in (filter_options.file_paths or set())
+            ),
+            "glossary_terms": sorted(
+                [
+                    [str(term[0]), str(term[1])]
+                    for term in (filter_options.glossary_terms or set())
+                ],
+                key=lambda term: f"{term[0]}->{term[1]}",
+            ),
+        }

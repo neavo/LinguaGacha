@@ -140,9 +140,9 @@ data: {"task_type":"translation","line":3}
 | `project.changed` | `loaded`、`path` |
 | `task.status_changed` | `task_type`、`status`、`busy` |
 | `task.progress_changed` | `task_type` 以及当前事件中实际出现的进度字段；不会强行补齐缺失字段 |
-| `workbench.snapshot_changed` | 可能是 `{"reason": str}`，也可能是 `{"snapshot": dict}` |
+| `workbench.snapshot_changed` | `reason`、`scope`，以及按文件场景可选的 `rel_paths`、`removed_rel_paths`、`order_changed`；仍兼容 `snapshot` 全量载荷 |
 | `settings.changed` | `keys`，以及可选的 `settings` 子集 |
-| `proofreading.snapshot_invalidated` | `reason`，以及按来源可选的 `rule_types`、`meta_keys`、`reset_scope`、`keys`、`rel_path`、`old_rel_path`、`source_event`、`trigger_reason` |
+| `proofreading.snapshot_invalidated` | `reason`、`scope`，以及按来源可选的 `rule_types`、`meta_keys`、`reset_scope`、`keys`、`rel_paths`、`removed_rel_paths`、`source_event`、`trigger_reason` |
 | `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | `task_id`、`phase`、`message`、`current`、`total`、`finished` |
 
 ### 3.5 Python 侧 SSE 消费现状
@@ -249,9 +249,13 @@ data: {"task_type":"translation","line":3}
 | `/api/workbench/snapshot` | `{}` | `{"snapshot": WorkbenchSnapshotPayload}` | 读取工作台快照 |
 | `/api/workbench/add-file` | `{"path": str}` | `{"accepted": true}` | 调度新增文件 |
 | `/api/workbench/replace-file` | `{"rel_path": str, "path": str}` | `{"accepted": true}` | 调度替换文件 |
+| `/api/workbench/replace-file-batch` | `{"operations": list[{"rel_path": str, "path": str}]}` | `{"accepted": true}` | 调度批量替换文件 |
 | `/api/workbench/reset-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度重置文件 |
+| `/api/workbench/reset-file-batch` | `{"rel_paths": list[str]}` | `{"accepted": true}` | 调度批量重置文件 |
 | `/api/workbench/delete-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度删除文件 |
+| `/api/workbench/delete-file-batch` | `{"rel_paths": list[str]}` | `{"accepted": true}` | 调度批量删除文件 |
 | `/api/workbench/reorder-files` | `{"ordered_rel_paths": list[str]}` | `{"accepted": true}` | 持久化文件顺序 |
+| `/api/workbench/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str], "include_order": bool}` | `{"patch": WorkbenchFilePatchPayload}` | 读取工作台文件级补丁 |
 | `/api/workbench/extensions` | `{}` | `{"extensions": list[str]}` | 读取工作台导入支持扩展名 |
 
 `WorkbenchSnapshotPayload` 当前稳定字段：
@@ -271,10 +275,19 @@ data: {"task_type":"translation","line":3}
 - `item_count`
 - `file_type`
 
+`WorkbenchFilePatchPayload` 当前稳定字段：
+
+- `summary`
+- `ordered_rel_paths`
+- `removed_rel_paths`
+- `entries`
+
 补充说明：
 
 - `reorder-files` 的后端校验落在 `ProjectFileService.reorder_files()`：`ordered_rel_paths` 必须与当前工程文件集合完全一致，长度和元素集合都要匹配。
-- 工作台命令接口当前只返回 `accepted`，调用方需要主动刷新 `/api/workbench/snapshot` 获取最新状态。
+- `replace-file-batch`、`reset-file-batch`、`delete-file-batch` 当前都是一次请求内完成一次事务、一次缓存失效和一次结构化刷新事件。
+- 批量文件操作默认是“全成或全败”；其中 `replace-file-batch` 还会拒绝同批源路径与目标路径发生重名链冲突的情况。
+- 工作台文件命令接口仍只返回 `accepted`；页面运行时现在依赖 `workbench.snapshot_changed` 的结构化 payload 再调用 `/api/workbench/file-patch` 合并本地缓存。
 
 ### 4.5 Settings
 
@@ -433,6 +446,7 @@ data: {"task_type":"translation","line":3}
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
 | `/api/proofreading/snapshot` | `{}`、`{"lg_path": str}`、`{"path": str}` 或 `{"project_id": str}` | `{"snapshot": ProofreadingSnapshotPayload}` | 读取校对页快照 |
+| `/api/proofreading/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingFilePatchPayload}` | 按受影响文件读取校对页局部补丁 |
 | `/api/proofreading/filter` | `{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"snapshot": ProofreadingSnapshotPayload}` | 按筛选条件重建快照 |
 | `/api/proofreading/search` | `{"keyword": str, "is_regex": bool}` 并可叠加筛选字段 | `{"search_result": ProofreadingSearchResultPayload}` | 在当前筛选口径下搜索 |
 | `/api/proofreading/save-item` | `{"item": dict, "new_dst": str, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 保存单条条目 |
@@ -463,9 +477,24 @@ data: {"task_type":"translation","line":3}
 - `items`
 - `summary`
 
+`ProofreadingFilePatchPayload` 当前稳定字段：
+
+- `revision`
+- `project_id`
+- `readonly`
+- `removed_file_paths`
+- `default_filters`
+- `applied_filters`
+- `full_summary`
+- `filtered_summary`
+- `full_items`
+- `filtered_items`
+
 补充说明：
 
 - `snapshot` 会优先解析 `lg_path`，再回退到 `path` / `project_id` / 当前工程路径。
+- `file-patch` 与 `filter` 共用同一套筛选解析入口：优先取 `filters`，其次取 `filter_options`，最后回退到请求顶层扁平字段。
+- `file-patch` 会同时返回两套文件切片：默认筛选口径下的 `full_items` / `full_summary`，以及当前已应用筛选口径下的 `filtered_items` / `filtered_summary`。
 - 当前工程未加载或请求里的工程路径已经过期时，API 会返回 `readonly` 快照，而不是专门的业务错误码。
 - `filters` 当前稳定字段为：`warning_types`、`statuses`、`file_paths`、`glossary_terms`。
 - `save-item`、`save-all`、`replace-all`、`retranslate-items` 当前都使用 `expected_revision` 做乐观锁保护；但冲突异常在 API 边界仍未标准化成独立错误码。
@@ -530,11 +559,11 @@ data: {"task_type":"translation","line":3}
 | --- | --- | --- |
 | `ProjectApiClient` | `load/create/snapshot/unload -> ProjectSnapshot`、`preview -> ProjectPreview` | `extensions -> list[str]`、`source-files -> list[str]` |
 | `TaskApiClient` | 所有任务快照命令 -> `TaskSnapshot`、`import_analysis_glossary -> AnalysisGlossaryImportResult` | `export_translation -> dict[str, Any]` |
-| `WorkbenchApiClient` | `snapshot -> WorkbenchSnapshot` | `add/replace/reset/delete/reorder -> dict[str, Any]`、`extensions -> list[str]` |
+| `WorkbenchApiClient` | `snapshot -> WorkbenchSnapshot` | `add/replace/replace_batch/reset/reset_batch/delete/delete_batch/reorder -> dict[str, Any]`、`file_patch -> dict[str, Any]`、`extensions -> list[str]` |
 | `SettingsApiClient` | 全部返回 `AppSettingsSnapshot` | 无 |
 | `ModelApiClient` | `snapshot/update/activate/add/delete/reset/reorder -> ModelPageSnapshot` | `list_available_models -> list[str]`、`test_model -> dict[str, Any]` |
 | `QualityRuleApiClient` | `snapshot/save_entries/update_meta -> QualityRuleSnapshot`、`query_proofreading -> ProofreadingLookupQuery`、`statistics -> QualityRuleStatisticsSnapshot` | 规则导入导出 / preset 全家桶 / prompt 全家桶仍是 `dict`、`list`、`tuple`、`str` |
-| `ProofreadingApiClient` | 全部对象化为 `ProofreadingSnapshot`、`ProofreadingSearchResult`、`ProofreadingMutationResult` | 无 |
+| `ProofreadingApiClient` | `snapshot/filter -> ProofreadingSnapshot`、`search -> ProofreadingSearchResult`、`save/recheck/retranslate -> ProofreadingMutationResult` | `/api/proofreading/file-patch` 当前尚未在 Python 客户端封装 |
 | `ExtraApiClient` | 全部当前公开路由都已对象化 | 无 |
 
 ### 5.3 `ApiStateStore` 当前缓存口径
@@ -585,6 +614,10 @@ data: {"task_type":"translation","line":3}
 
 - 渲染层在真正发请求前，会校验 `/api/health` 返回的 `service === "linguagacha-core"` 且 `status === "ok"`。
 - 渲染层大量接口当前使用本地 TypeScript payload 类型，而不是复用 Python 侧 `api/Client` 的冻结模型。
+- `DesktopRuntimeContext` 当前把 `workbench.snapshot_changed` 与 `proofreading.snapshot_invalidated` 收口成结构化变更信号：
+  - `workbench_change_signal = { seq, reason, scope, rel_paths, removed_rel_paths, order_changed }`
+  - `proofreading_change_signal = { seq, reason, scope, rel_paths, removed_rel_paths }`
+- 工作台页与校对页在收到 `scope == "file"` 或 `scope == "order"` 的信号后，会优先请求对应的 `/file-patch` 接口做本地合并；只有 `scope == "global"`、本地缓存未就绪或补丁失败时才回退整页 `/snapshot`。
 - `api/Client/*` 与 `ApiStateStore` 主要服务于 Python 侧测试、桥接和对象化消费场景，不是 Electron 渲染层运行时入口。
 
 ## 7. 维护与同步要求

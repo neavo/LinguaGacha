@@ -243,8 +243,11 @@ class FakeWorkbenchManager:
         }
         self.add_calls: list[str] = []
         self.replace_calls: list[tuple[str, str]] = []
+        self.replace_batch_calls: list[list[tuple[str, str]]] = []
         self.reset_calls: list[str] = []
+        self.reset_batch_calls: list[list[str]] = []
         self.delete_calls: list[str] = []
+        self.delete_batch_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
 
     def build_workbench_snapshot(self) -> "WorkbenchSnapshot":
@@ -271,6 +274,14 @@ class FakeWorkbenchManager:
     def is_file_op_running(self) -> bool:
         return self.file_op_running
 
+    def build_workbench_entry_patch(self, rel_paths: list[str]):
+        from module.Data.Project.WorkbenchService import WorkbenchService
+
+        return WorkbenchService().build_entry_patch(
+            self.build_workbench_snapshot(),
+            rel_paths,
+        )
+
     def get_supported_extensions(self) -> set[str]:
         return set(self.supported_extensions)
 
@@ -280,11 +291,20 @@ class FakeWorkbenchManager:
     def schedule_replace_file(self, rel_path: str, path: str) -> None:
         self.replace_calls.append((rel_path, path))
 
+    def schedule_replace_file_batch(self, operations: list[tuple[str, str]]) -> None:
+        self.replace_batch_calls.append(list(operations))
+
     def schedule_reset_file(self, rel_path: str) -> None:
         self.reset_calls.append(rel_path)
 
+    def schedule_reset_file_batch(self, rel_paths: list[str]) -> None:
+        self.reset_batch_calls.append(list(rel_paths))
+
     def schedule_delete_file(self, rel_path: str) -> None:
         self.delete_calls.append(rel_path)
+
+    def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
+        self.delete_batch_calls.append(list(rel_paths))
 
     def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
         self.reorder_calls.append(list(ordered_rel_paths))
