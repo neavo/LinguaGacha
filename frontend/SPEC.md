@@ -37,8 +37,7 @@ flowchart LR
 | `components.json` | shadcn CLI 配置权威来源，定义 `style`、`base`、全局 CSS 和 `@/shadcn` / `@/widgets` 等别名 |
 | `electron.vite.config.ts` | Electron / Vite 构建入口与 renderer 别名配置 |
 | `electron-builder.json5` | Electron 打包配置 |
-| `core-api-port-candidates.json` | Core API 候选端口清单 |
-| `scripts/` | 子工程级脚本与审查工具，例如 `check-renderer-design-system.mjs` |
+| `scripts/` | 子工程级脚本与审查工具，例如 `check-renderer-design-system.mjs` 与 `dev-launcher.mjs` |
 | `src/main/` | Electron 主进程；只处理窗口创建、原生对话框、标题栏策略与 IPC 落地 |
 | `src/preload/` | `window.desktopApp` 桥接层；只暴露渲染层必须消费的桌面能力 |
 | `src/shared/` | 主进程、预加载与渲染层共享的桌面契约、壳层常量和 Core API 地址解析规则 |
@@ -49,11 +48,10 @@ flowchart LR
 - `src/main/` 不承载页面状态、业务请求流程或渲染层工具。
 - `src/preload/` 只组织 `contextBridge` 暴露对象，不维护页面状态与 UI 逻辑。
 - IPC channel、桌面壳层信息、桥接类型、标题栏高度和 Core API 地址解析统一收敛在 `src/shared/`。
-- Core API 候选地址解析由 [`src/shared/core-api-base-url.ts`](./src/shared/core-api-base-url.ts) 负责；`src/preload/index.ts` 只桥接候选列表，渲染层再负责探活、缓存和选择权威 base URL。
+- Core API 地址解析由 [`src/shared/core-api-base-url.ts`](./src/shared/core-api-base-url.ts) 负责；`src/preload/index.ts` 只桥接单一权威地址，渲染层再负责探活与缓存。
 
 ## 与 Python Core 的边界
 - Electron 前端与 Python Core 的运行时通信统一走 `api/` 暴露的 HTTP / SSE 契约，不直接 import Python 模块。
-- `core-api-port-candidates.json` 是桌面端与 Python Core 共享的候选端口清单；读取逻辑分别收口在 `src/shared/` 与 `api/Server/CoreApiPortCatalog.py`。
 - 前端只消费标准化快照、事件与命令响应；业务状态权威来源始终在 Python Core。
 - 若需要新增桥接能力，优先判断它属于桌面壳层能力、前端状态编排还是 Core API 契约，避免把职责堆进单个目录。
 
@@ -65,7 +63,7 @@ flowchart LR
 ## 命令与审查
 | 命令 | 用途 |
 | --- | --- |
-| `npm run dev` | 启动 Electron + renderer 开发环境 |
+| `npm run dev` | 启动开发环境 |
 | `npm run build` | 类型检查、构建 renderer 与 Electron 产物并执行打包 |
 | `npm run lint` | ESLint 检查 |
 | `npm run renderer:audit` | 渲染层设计系统与样式边界硬规则审查 |
