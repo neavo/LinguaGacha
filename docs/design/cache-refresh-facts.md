@@ -32,9 +32,12 @@
 - 条目列表中的 `file_path`
 - 条目列表中的 `file_type`
 - 条目列表中的 `status`
-- 文件操作运行态 `file_op_running`
+- 文件操作运行态 `file_op_running`（由 API 响应层补入）
 
-当前工作台快照聚合逻辑见 [WorkbenchService.py](/E:/Project/LinguaGacha/module/Data/Project/WorkbenchService.py:16)。
+当前工作台相关聚合逻辑见：
+
+- [WorkbenchService.py](/E:/Project/LinguaGacha/module/Data/Project/WorkbenchService.py:16)
+- [WorkbenchAppService.py](/E:/Project/LinguaGacha/api/Application/WorkbenchAppService.py:173)
 
 由此可确认：
 
@@ -69,7 +72,7 @@
 截至当前实现，**文件级与条目级场景都已经具备差异刷新机制**。
 
 - 文件新增、替换、重置、删除，以及文件重排时，后端会先完成文件操作和预过滤收尾，再发结构化 SSE 事件
-- 校对保存、批量替换、重译、翻译批量提交、`translation_reset_failed` 与可精确收敛的规则变更，后端当前会发条目级或文件级结构化 SSE 事件
+- 校对保存、批量替换、重译、翻译批量提交、`translation_reset_failed` 与可精确收敛的规则变更（包括分析候选导入术语表）当前都会发条目级或文件级结构化 SSE 事件
 - 前端收到事件后，会按 `scope` 决定优先走 `/api/workbench/file-patch`、`/api/proofreading/file-patch` 或 `/api/proofreading/entry-patch`
 - 只有 `scope = global`、本地缓存未就绪、补丁引用不完整，或补丁请求失败时，页面才会退回整页快照刷新
 
@@ -129,13 +132,13 @@
 | 操作 | 工作台影响范围 | 校对页影响范围 | 当前实现行为 | 备注 |
 | --- | --- | --- | --- | --- |
 | 工程加载 / 切换 / 卸载 | 全局 | 全局 | 两页都清空并重拉 | 工程身份变更 |
-| `source_language` 变化 | 全局 | 全局 | 当前走整页刷新 | 会影响预过滤结果与校对检查语义 |
+| `source_language` 变化 | 全局 | 全局 | 当前优先等待预过滤写回后统一整页刷新；只有预过滤未成功接管时，才退回即时校对整页刷新 | 会影响预过滤结果与校对检查语义 |
 | `mtool_optimizer_enable` 变化 | 全局 | 全局 | 当前走整页刷新 | 会改变大量 `RULE_SKIPPED` 状态 |
 | `target_language` 变化 | 无 | 无 | 当前只同步工程语言 meta，不触发页面刷新或预过滤 | 当前工作台/校对快照计算并不真实依赖它 |
 | `check_kana_residue` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
 | `check_hangeul_residue` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
 | `check_similarity` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
-| 术语表内容变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中相关术语的条目 |
+| 术语表内容变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file`，分析候选导入术语表也已走同一口径 | 只影响命中相关术语的条目 |
 | 术语表启用开关变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中术语检查的条目 |
 | 前置替换规则内容变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中相关模式的条目 |
 | 前置替换启用开关变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中相关模式的条目 |

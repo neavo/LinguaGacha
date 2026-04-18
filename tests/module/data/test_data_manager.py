@@ -10,6 +10,7 @@ import pytest
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Data.Core.DataTypes import ProjectFileMutationResult
+from module.Data.Core.DataTypes import ProjectPrefilterScheduleResult
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Localizer.Localizer import Localizer
 
@@ -335,7 +336,9 @@ def test_project_prefilter_worker_can_skip_page_refresh_events(
     dm.project_prefilter_worker(token=7)
 
     assert all(event != Base.Event.WORKBENCH_REFRESH for event, _data in emitted_events)
-    assert all(event != Base.Event.PROOFREADING_REFRESH for event, _data in emitted_events)
+    assert all(
+        event != Base.Event.PROOFREADING_REFRESH for event, _data in emitted_events
+    )
 
 
 def test_emit_project_file_update_emits_single_structured_batch_refresh(
@@ -407,11 +410,13 @@ def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
     ]
 
 
-def test_on_config_updated_schedules_prefilter_for_relevant_keys(
+def test_on_config_updated_defers_proofreading_refresh_when_prefilter_accepts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed = MagicMock()
+    dm.schedule_prefilter_if_needed_with_result = MagicMock(
+        return_value=ProjectPrefilterScheduleResult(needed=True, accepted=True)
+    )
     dm.sync_project_language_meta = MagicMock()
 
     dm.on_config_updated(
@@ -420,7 +425,30 @@ def test_on_config_updated_schedules_prefilter_for_relevant_keys(
     )
 
     dm.sync_project_language_meta.assert_called_once_with()
-    dm.schedule_prefilter_if_needed.assert_called_once_with(reason="config_updated")
+    dm.schedule_prefilter_if_needed_with_result.assert_called_once_with(
+        reason="config_updated"
+    )
+    assert emitted_events == []
+
+
+def test_on_config_updated_falls_back_to_proofreading_refresh_when_prefilter_not_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    dm.schedule_prefilter_if_needed_with_result = MagicMock(
+        return_value=ProjectPrefilterScheduleResult(needed=True, accepted=False)
+    )
+    dm.sync_project_language_meta = MagicMock()
+
+    dm.on_config_updated(
+        Base.Event.CONFIG_UPDATED,
+        {"keys": ["source_language", "unrelated_key"]},
+    )
+
+    dm.sync_project_language_meta.assert_called_once_with()
+    dm.schedule_prefilter_if_needed_with_result.assert_called_once_with(
+        reason="config_updated"
+    )
     assert emitted_events == [
         (
             Base.Event.PROOFREADING_REFRESH,
@@ -447,7 +475,7 @@ def test_on_config_updated_ignores_checker_toggle_keys_for_page_refresh(
     changed_key: str,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed = MagicMock()
+    dm.schedule_prefilter_if_needed_with_result = MagicMock()
     dm.sync_project_language_meta = MagicMock()
 
     dm.on_config_updated(
@@ -455,7 +483,7 @@ def test_on_config_updated_ignores_checker_toggle_keys_for_page_refresh(
         {"keys": [changed_key]},
     )
 
-    dm.schedule_prefilter_if_needed.assert_not_called()
+    dm.schedule_prefilter_if_needed_with_result.assert_not_called()
     dm.sync_project_language_meta.assert_not_called()
     assert emitted_events == []
 
@@ -464,7 +492,7 @@ def test_on_config_updated_syncs_target_language_without_triggering_page_refresh
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed = MagicMock()
+    dm.schedule_prefilter_if_needed_with_result = MagicMock()
     dm.sync_project_language_meta = MagicMock()
 
     dm.on_config_updated(
@@ -473,7 +501,7 @@ def test_on_config_updated_syncs_target_language_without_triggering_page_refresh
     )
 
     dm.sync_project_language_meta.assert_called_once_with()
-    dm.schedule_prefilter_if_needed.assert_not_called()
+    dm.schedule_prefilter_if_needed_with_result.assert_not_called()
     assert emitted_events == []
 
 
@@ -481,14 +509,14 @@ def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, _events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed = MagicMock()
+    dm.schedule_prefilter_if_needed_with_result = MagicMock()
 
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["ignored_key"]})
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["app_language"]})
     dm.session.db = None
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
 
-    dm.schedule_prefilter_if_needed.assert_not_called()
+    dm.schedule_prefilter_if_needed_with_result.assert_not_called()
 
 
 def test_emit_project_file_update_also_invalidates_proofreading(
@@ -534,11 +562,21 @@ def test_emit_project_file_update_also_invalidates_proofreading(
     ]
 
 
-def test_import_analysis_candidates_emits_quality_rule_update_only_when_imported(
+def test_import_analysis_candidates_emits_precise_quality_rule_update_when_impact_is_known(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
     dm.analysis_service.import_analysis_candidates = MagicMock(side_effect=[2, 0, None])
+    dm.build_quality_rule_snapshot_payload = MagicMock(
+        return_value={"entries": [], "meta": {}}
+    )
+    dm.analyze_quality_rule_update_impact = MagicMock(
+        return_value=SimpleNamespace(
+            scope="entry",
+            item_ids=(11, 12),
+            rel_paths=("script/a.txt",),
+        )
+    )
 
     assert dm.import_analysis_candidates() == 2
     assert dm.import_analysis_candidates() == 0
@@ -548,7 +586,9 @@ def test_import_analysis_candidates_emits_quality_rule_update_only_when_imported
             Base.Event.QUALITY_RULE_UPDATE,
             {
                 "rule_types": [LGDatabase.RuleType.GLOSSARY.value],
-                "scope": "global",
+                "scope": "entry",
+                "item_ids": [11, 12],
+                "rel_paths": ["script/a.txt"],
             },
         )
     ]

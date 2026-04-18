@@ -22,6 +22,18 @@ class ProjectPrefilterRequest:
 
 
 @dataclass(frozen=True)
+class ProjectPrefilterScheduleResult:
+    """预过滤调度结果。
+
+    `needed` 表示当前配置语义上是否需要重跑预过滤。
+    `accepted` 表示本次是否已经成功把刷新职责交给预过滤链。
+    """
+
+    needed: bool = False
+    accepted: bool = False
+
+
+@dataclass(frozen=True)
 class WorkbenchFileEntrySnapshot:
     """工作台文件行快照。"""
 

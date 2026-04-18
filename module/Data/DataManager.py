@@ -15,6 +15,7 @@ from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.AssetService import AssetService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.DataEnums import TextPreserveMode as DataTextPreserveMode
+from module.Data.Core.DataTypes import ProjectPrefilterScheduleResult
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
@@ -24,6 +25,9 @@ from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
 from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
 from module.Data.Project.WorkbenchService import WorkbenchService
+from module.Data.Quality.ProofreadingImpactAnalyzer import ProofreadingImpactAnalyzer
+from module.Data.Quality.ProofreadingImpactAnalyzer import ProofreadingImpactResult
+from module.Data.Quality.QualityRuleSnapshotService import QualityRuleSnapshotService
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Translation.TranslationResetService import TranslationResetService
@@ -237,10 +241,9 @@ class DataManager(Base):
 
         self.item_service.clear_item_cache()
 
-        should_emit_refresh = (
-            event == Base.Event.TRANSLATION_RESET_ALL
-            and data.get("sub_event") in (Base.SubEvent.DONE, Base.SubEvent.ERROR)
-        )
+        should_emit_refresh = event == Base.Event.TRANSLATION_RESET_ALL and data.get(
+            "sub_event"
+        ) in (Base.SubEvent.DONE, Base.SubEvent.ERROR)
         if should_emit_refresh and self.is_loaded():
             self.emit_workbench_refresh(reason=event.value)
 
@@ -319,8 +322,17 @@ class DataManager(Base):
         if any(key in self.PROJECT_LANGUAGE_META_KEYS for key in normalized_keys):
             self.sync_project_language_meta()
 
-        if any(
-            key in self.PROOFREADING_RELEVANT_CONFIG_KEYS for key in normalized_keys
+        prefilter_schedule_result = ProjectPrefilterScheduleResult()
+        if any(key in self.PREFILTER_RELEVANT_CONFIG_KEYS for key in normalized_keys):
+            prefilter_schedule_result = self.schedule_prefilter_if_needed_with_result(
+                reason="config_updated"
+            )
+
+        if (
+            any(
+                key in self.PROOFREADING_RELEVANT_CONFIG_KEYS for key in normalized_keys
+            )
+            and not prefilter_schedule_result.accepted
         ):
             self.emit_proofreading_refresh(
                 reason="config_updated",
@@ -328,9 +340,6 @@ class DataManager(Base):
                 keys=normalized_keys,
                 source_event=Base.Event.CONFIG_UPDATED,
             )
-
-        if any(key in self.PREFILTER_RELEVANT_CONFIG_KEYS for key in normalized_keys):
-            self.schedule_prefilter_if_needed(reason="config_updated")
 
     def sync_project_language_meta(self) -> None:
         """把当前运行时语言镜像回已加载工程，避免项目摘要长期滞后。"""
@@ -345,11 +354,24 @@ class DataManager(Base):
     def schedule_prefilter_if_needed(self, *, reason: str) -> bool:
         """按当前配置判断是否需要补跑预过滤。"""
 
+        schedule_result = self.schedule_prefilter_if_needed_with_result(reason=reason)
+        return schedule_result.needed
+
+    def schedule_prefilter_if_needed_with_result(
+        self,
+        *,
+        reason: str,
+    ) -> ProjectPrefilterScheduleResult:
+        """返回预过滤是否需要、以及本次是否已成功接管刷新职责。"""
+
         config = Config().load()
-        if self.is_prefilter_needed(config):
-            self.schedule_project_prefilter(config, reason=reason)
-            return True
-        return False
+        if not self.is_prefilter_needed(config):
+            return ProjectPrefilterScheduleResult()
+
+        return ProjectPrefilterScheduleResult(
+            needed=True,
+            accepted=self.schedule_project_prefilter(config, reason=reason),
+        )
 
     def is_prefilter_needed(self, config: Config) -> bool:
         """判断当前工程是否需要重跑预过滤。"""
@@ -365,16 +387,16 @@ class DataManager(Base):
         *,
         reason: str,
         emit_refresh_events: bool = True,
-    ) -> None:
+    ) -> bool:
         """后台触发预过滤。"""
 
         from module.Engine.Engine import Engine
 
         lg_path = self.get_lg_path()
         if not lg_path or not self.is_loaded():
-            return
+            return False
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            return
+            return False
 
         request, start_worker = self.prefilter_service.enqueue_request(
             config,
@@ -383,7 +405,7 @@ class DataManager(Base):
             emit_refresh_events=emit_refresh_events,
         )
         if not start_worker:
-            return
+            return True
 
         self.emit_prefilter_run(request)
         threading.Thread(
@@ -391,6 +413,7 @@ class DataManager(Base):
             args=(request.token,),
             daemon=True,
         ).start()
+        return True
 
     def run_project_prefilter(
         self,
@@ -398,16 +421,16 @@ class DataManager(Base):
         *,
         reason: str,
         emit_refresh_events: bool = True,
-    ) -> None:
+    ) -> bool:
         """同步执行预过滤。"""
 
         from module.Engine.Engine import Engine
 
         lg_path = self.get_lg_path()
         if not lg_path or not self.is_loaded():
-            return
+            return False
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            return
+            return False
 
         request, should_run = self.prefilter_service.enqueue_sync_request(
             config,
@@ -416,10 +439,11 @@ class DataManager(Base):
             emit_refresh_events=emit_refresh_events,
         )
         if not should_run or request is None:
-            return
+            return True
 
         self.emit_prefilter_run(request)
         self.project_prefilter_worker(request.token)
+        return True
 
     def emit_prefilter_run(self, request: ProjectPrefilterRequest) -> None:
         """预过滤开始时统一发 RUN 事件。"""
@@ -754,10 +778,86 @@ class DataManager(Base):
         self,
         expected_lg_path: str | None = None,
     ) -> int | None:
+        old_glossary_snapshot: dict[str, object] | None = None
+        if self.is_loaded():
+            old_glossary_snapshot = self.build_quality_rule_snapshot_payload(
+                QualityRuleSnapshotService.RuleType.GLOSSARY
+            )
+
         imported = self.analysis_service.import_analysis_candidates(expected_lg_path)
         if imported and imported > 0:
-            self.emit_quality_rule_update(rule_types=[LGDatabase.RuleType.GLOSSARY])
+            impact_scope = "global"
+            impacted_item_ids: list[int] | None = None
+            impacted_rel_paths: list[str] | None = None
+
+            if old_glossary_snapshot is not None and self.is_loaded():
+                new_glossary_snapshot = self.build_quality_rule_snapshot_payload(
+                    QualityRuleSnapshotService.RuleType.GLOSSARY
+                )
+                impact = self.analyze_quality_rule_update_impact(
+                    rule_type=QualityRuleSnapshotService.RuleType.GLOSSARY,
+                    old_snapshot=old_glossary_snapshot,
+                    new_snapshot=new_glossary_snapshot,
+                )
+                if impact is not None:
+                    impact_scope = impact.scope
+                    impacted_item_ids = list(impact.item_ids)
+                    impacted_rel_paths = list(impact.rel_paths)
+
+            self.emit_quality_rule_update(
+                rule_types=[LGDatabase.RuleType.GLOSSARY],
+                scope=impact_scope,
+                item_ids=impacted_item_ids,
+                rel_paths=impacted_rel_paths,
+            )
         return imported
+
+    def build_quality_rule_snapshot_payload(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+    ) -> dict[str, object]:
+        """读取当前质量规则快照，供跨链路写入后复用同一份影响分析口径。"""
+
+        snapshot_service = QualityRuleSnapshotService(
+            self.quality_rule_service,
+            self.meta_service,
+        )
+        with self.state_lock:
+            return snapshot_service.build_rule_snapshot_payload(rule_type)
+
+    def analyze_quality_rule_update_impact(
+        self,
+        *,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        old_snapshot: dict[str, object],
+        new_snapshot: dict[str, object],
+    ) -> ProofreadingImpactResult | None:
+        """复用质量规则 impact 分析，避免不同写入口各自推一套范围。"""
+
+        impact_analyzer = ProofreadingImpactAnalyzer(self)
+        old_entries_raw = old_snapshot.get("entries", [])
+        new_entries_raw = new_snapshot.get("entries", [])
+        old_meta_raw = old_snapshot.get("meta", {})
+        new_meta_raw = new_snapshot.get("meta", {})
+        old_entries = (
+            [dict(entry) for entry in old_entries_raw if isinstance(entry, dict)]
+            if isinstance(old_entries_raw, list)
+            else []
+        )
+        new_entries = (
+            [dict(entry) for entry in new_entries_raw if isinstance(entry, dict)]
+            if isinstance(new_entries_raw, list)
+            else []
+        )
+        old_meta = dict(old_meta_raw) if isinstance(old_meta_raw, dict) else {}
+        new_meta = dict(new_meta_raw) if isinstance(new_meta_raw, dict) else {}
+        return impact_analyzer.analyze_rule_update(
+            rule_type=str(getattr(rule_type, "value", rule_type)),
+            old_entries=old_entries,
+            new_entries=new_entries,
+            old_meta=old_meta,
+            new_meta=new_meta,
+        )
 
     def sync_importable_analysis_candidate_count(self) -> int:
         return self.analysis_service.sync_importable_analysis_candidate_count()
