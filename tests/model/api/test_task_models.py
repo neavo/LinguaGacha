@@ -1,3 +1,4 @@
+from model.Api.TaskModels import AnalysisGlossaryImportResult
 from model.Api.TaskModels import TaskProgressUpdate
 from model.Api.TaskModels import TaskSnapshot
 from model.Api.TaskModels import TaskStatusUpdate
@@ -49,3 +50,43 @@ def test_task_snapshot_merge_status_preserves_progress_fields() -> None:
     assert merged.status == "STOPPING"
     assert merged.line == 4
     assert merged.processed_line == 2
+
+
+def test_analysis_glossary_import_result_from_dict_keeps_import_count_and_task() -> None:
+    result = AnalysisGlossaryImportResult.from_dict(
+        {
+            "accepted": True,
+            "imported_count": 7,
+            "task": {
+                "task_type": "analysis",
+                "status": "IDLE",
+                "analysis_candidate_count": 2,
+            },
+        }
+    )
+
+    assert result.accepted is True
+    assert result.imported_count == 7
+    assert result.task.task_type == "analysis"
+    assert result.task.analysis_candidate_count == 2
+
+
+def test_analysis_glossary_import_result_to_dict_keeps_nested_snapshot() -> None:
+    result = AnalysisGlossaryImportResult.from_dict(
+        {
+            "accepted": True,
+            "imported_count": 3,
+            "task": {
+                "task_type": "analysis",
+                "status": "IDLE",
+                "busy": False,
+            },
+        }
+    )
+
+    payload = result.to_dict()
+
+    assert payload["accepted"] is True
+    assert payload["imported_count"] == 3
+    assert payload["task"]["task_type"] == "analysis"
+    assert payload["task"]["status"] == "IDLE"
