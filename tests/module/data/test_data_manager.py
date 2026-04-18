@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from unittest.mock import call
 
 import pytest
 
@@ -144,6 +145,29 @@ def test_set_meta_emits_quality_rule_update_for_rule_meta_keys(
     ]
 
 
+def test_sync_project_language_meta_updates_current_project_meta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+
+    class FakeConfig:
+        source_language = "JA"
+        target_language = "EN"
+
+    monkeypatch.setattr(
+        "module.Data.DataManager.Config.load",
+        lambda self: FakeConfig(),
+    )
+
+    dm.sync_project_language_meta()
+
+    assert dm.meta_service.set_meta.call_args_list == [
+        call("source_language", "JA"),
+        call("target_language", "EN"),
+    ]
+    assert emitted_events == []
+
+
 def test_load_project_runs_post_actions_before_emitting_loaded_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -270,12 +294,14 @@ def test_on_config_updated_schedules_prefilter_for_relevant_keys(
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
     dm.schedule_prefilter_if_needed = MagicMock()
+    dm.sync_project_language_meta = MagicMock()
 
     dm.on_config_updated(
         Base.Event.CONFIG_UPDATED,
         {"keys": ["source_language", "unrelated_key"]},
     )
 
+    dm.sync_project_language_meta.assert_called_once_with()
     dm.schedule_prefilter_if_needed.assert_called_once_with(reason="config_updated")
     assert emitted_events == [
         (
@@ -289,28 +315,47 @@ def test_on_config_updated_schedules_prefilter_for_relevant_keys(
     ]
 
 
-def test_on_config_updated_emits_proofreading_refresh_for_checker_keys(
+@pytest.mark.parametrize(
+    ("changed_key"),
+    [
+        ("check_similarity"),
+        ("check_kana_residue"),
+        ("check_hangeul_residue"),
+    ],
+)
+def test_on_config_updated_ignores_checker_toggle_keys_for_page_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    changed_key: str,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    dm.schedule_prefilter_if_needed = MagicMock()
+    dm.sync_project_language_meta = MagicMock()
+
+    dm.on_config_updated(
+        Base.Event.CONFIG_UPDATED,
+        {"keys": [changed_key]},
+    )
+
+    dm.schedule_prefilter_if_needed.assert_not_called()
+    dm.sync_project_language_meta.assert_not_called()
+    assert emitted_events == []
+
+
+def test_on_config_updated_syncs_target_language_without_triggering_page_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
     dm.schedule_prefilter_if_needed = MagicMock()
+    dm.sync_project_language_meta = MagicMock()
 
     dm.on_config_updated(
         Base.Event.CONFIG_UPDATED,
-        {"keys": ["check_similarity"]},
+        {"keys": ["target_language"]},
     )
 
+    dm.sync_project_language_meta.assert_called_once_with()
     dm.schedule_prefilter_if_needed.assert_not_called()
-    assert emitted_events == [
-        (
-            Base.Event.PROOFREADING_REFRESH,
-            {
-                "reason": "config_updated",
-                "source_event": Base.Event.CONFIG_UPDATED.value,
-                "keys": ["check_similarity"],
-            },
-        )
-    ]
+    assert emitted_events == []
 
 
 def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(

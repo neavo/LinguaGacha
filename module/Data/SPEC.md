@@ -32,6 +32,7 @@
 
 ## 边界与入口
 - `DataManager` 持有 `ProjectSession`，负责工程加载态、规则/条目缓存、事件发射和跨 service 编排。
+- 运行时 `Config` 是语言设置的权威来源；当前工程 `.lg` 中的 `source_language` / `target_language` meta 只做镜像摘要，由 `DataManager` 在工程加载后与设置变更时同步。
 - `Project/`、`Quality/`、`Analysis/`、`Translation/` 这四条主链路以 `DataManager` 为入口，不在 API 层绕过它直接拼装内部依赖。
 - `Proofreading/` 由 `api/Application/ProofreadingAppService.py` 组合使用；它依赖 `DataManager` 读取当前工程、提交 mutation，并自行维护筛选、revision 与重检逻辑。
 - `Extra/` 由 `api/Application/ExtraAppService.py` 组合使用；它直接提供繁简转换与姓名字段能力，不承担工程生命周期管理。
@@ -82,7 +83,7 @@ flowchart TD
 ### `Project`
 - `ProjectService`：创建工程、收集源文件、预览工程
 - `ProjectLifecycleService`：加载/卸载工程与加载后整理
-- `ProjectPrefilterService`：预过滤是否需要重跑与实际执行
+- `ProjectPrefilterService`：预过滤是否需要重跑与实际执行；当前比较口径只依赖 `source_language` 与 `mtool_optimizer_enable`
 - `ProjectFileService`：文件导入、更新、重置、删除
 - `ExportPathService`：导出路径规则
 - `WorkbenchService`：工作台聚合快照

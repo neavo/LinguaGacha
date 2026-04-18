@@ -20,7 +20,6 @@ def test_project_prefilter_request_and_workbench_snapshots_are_frozen() -> None:
         lg_path="demo/project.lg",
         reason="project_loaded",
         source_language="JA",
-        target_language="ZH",
         mtool_optimizer_enable=True,
     )
     entry = WorkbenchFileEntrySnapshot(

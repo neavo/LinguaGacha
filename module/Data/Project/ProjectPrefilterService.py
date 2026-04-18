@@ -46,7 +46,6 @@ class ProjectPrefilterService:
 
         expected = {
             "source_language": str(config.source_language),
-            "target_language": str(config.target_language),
             "mtool_optimizer_enable": bool(config.mtool_optimizer_enable),
         }
         return current_config != expected
@@ -141,7 +140,6 @@ class ProjectPrefilterService:
             lg_path=lg_path,
             reason=reason,
             source_language=str(config.source_language),
-            target_language=str(config.target_language),
             mtool_optimizer_enable=bool(config.mtool_optimizer_enable),
         )
 
@@ -189,7 +187,6 @@ class ProjectPrefilterService:
         result = ProjectPrefilter.apply(
             items=items,
             source_language=request.source_language,
-            target_language=request.target_language,
             mtool_optimizer_enable=request.mtool_optimizer_enable,
             progress_cb=progress_cb,
         )
@@ -200,8 +197,6 @@ class ProjectPrefilterService:
 
         meta = {
             "prefilter_config": result.prefilter_config,
-            "source_language": request.source_language,
-            "target_language": request.target_language,
             "analysis_extras": {},
             "analysis_candidate_count": 0,
         }

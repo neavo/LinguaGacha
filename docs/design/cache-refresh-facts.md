@@ -130,10 +130,10 @@
 | 工程加载 / 切换 / 卸载 | 全局 | 全局 | 两页都清空并重拉 | 工程身份变更 |
 | `source_language` 变化 | 全局 | 全局 | 当前走整页刷新 | 会影响预过滤结果与校对检查语义 |
 | `mtool_optimizer_enable` 变化 | 全局 | 全局 | 当前走整页刷新 | 会改变大量 `RULE_SKIPPED` 状态 |
-| `target_language` 变化 | 无 | 无 | 当前被纳入刷新链 | 当前工作台/校对快照计算并不真实依赖它 |
-| `check_kana_residue` 变化 | 无 | 全局 | 当前会触发校对失效 | 业务语义上是校对检查开关 |
-| `check_hangeul_residue` 变化 | 无 | 全局 | 当前会触发校对失效 | 业务语义上是校对检查开关 |
-| `check_similarity` 变化 | 无 | 全局 | 当前会触发校对失效 | 业务语义上是校对检查开关 |
+| `target_language` 变化 | 无 | 无 | 当前只同步工程语言 meta，不触发页面刷新或预过滤 | 当前工作台/校对快照计算并不真实依赖它 |
+| `check_kana_residue` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
+| `check_hangeul_residue` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
+| `check_similarity` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
 | 术语表内容变化 | 无 | 条目级 | 当前整页失效后全量重建 | 只影响命中相关术语的条目 |
 | 术语表启用开关变化 | 无 | 条目级 | 当前整页失效后全量重建 | 只影响命中术语检查的条目 |
 | 前置替换规则内容变化 | 无 | 条目级 | 当前整页失效后全量重建 | 只影响命中相关模式的条目 |
@@ -189,40 +189,36 @@
 - 业务上这些操作会影响工作台统计。
 - 当前实现中，工作台并没有通过统一失效事件稳定感知这类变化。
 
-### 3. `target_language` 当前被纳入高影响配置，但真实计算并未使用它
+### 3. `target_language` 已从页面刷新链和预过滤比较口径中剥离
 
-当前 `target_language` 被纳入：
+当前已确认：
 
-- 预过滤相关配置键
-- 校对相关配置键
-
-见 [DataManager.py](/E:/Project/LinguaGacha/module/Data/DataManager.py:67)。
-
-但当前已确认：
-
-- `ProjectPrefilter.apply()` 实际过滤判定只使用 `source_language` 与 `mtool_optimizer_enable`，见 [ProjectPrefilter.py](/E:/Project/LinguaGacha/module/Filter/ProjectPrefilter.py:50)
-- `ResultChecker` 的当前校对检查逻辑不以 `target_language` 作为主要判断输入，见 [ResultChecker.py](/E:/Project/LinguaGacha/module/ResultChecker.py:91)
+- `ProjectPrefilter.apply()` 实际过滤判定只使用 `source_language` 与 `mtool_optimizer_enable`
+- `ResultChecker` 的当前校对检查逻辑不以 `target_language` 作为主要判断输入
+- `DataManager` 当前只会把 `target_language` 同步回已加载工程的语言 meta 镜像，不再因为它触发页面刷新或预过滤
 
 由此可确认：
 
-- `target_language` 目前被纳入刷新链，并不是基于两页当前真实依赖得出的。
+- `target_language` 仍是合法的工程摘要字段。
+- 但它不再属于工作台/校对页缓存的高影响配置。
 
-### 4. 部分校对开关在刷新链中被视为高影响项，但当前检查器未实际消费
+### 4. 部分校对开关已从校对页刷新链移除
 
-当前以下开关会触发校对页失效：
+当前以下开关不会再触发校对页失效：
 
 - `check_kana_residue`
 - `check_hangeul_residue`
 - `check_similarity`
 
-见 [DataManager.py](/E:/Project/LinguaGacha/module/Data/DataManager.py:74)。
+同时已确认：
 
-但当前 `ResultChecker` 代码本身并未直接读取这些配置开关，见 [ResultChecker.py](/E:/Project/LinguaGacha/module/ResultChecker.py:91)。
+- 当前 `ResultChecker` 代码本身并未直接读取这些配置开关
+- 它们虽然仍属于配置项，但不构成当前校对页快照的真实依赖
 
 由此可确认：
 
-- 当前“触发刷新”与“刷新后结果是否真实变化”之间存在实现偏差。
-- 即使发生整页重建，这些开关也不一定会改变当前校对结果。
+- 当前“配置变更 -> 页面刷新”的判定口径已经收紧到真实依赖。
+- 这些开关后续若要重新进入刷新链，前提应当是校对快照计算链真实消费了它们。
 
 ## 关键代码入口
 

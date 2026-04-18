@@ -67,17 +67,18 @@ class DataManager(Base):
     PREFILTER_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
             "source_language",
-            "target_language",
             "mtool_optimizer_enable",
         }
     )
     PROOFREADING_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
             "source_language",
+        }
+    )
+    PROJECT_LANGUAGE_META_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "source_language",
             "target_language",
-            "check_kana_residue",
-            "check_hangeul_residue",
-            "check_similarity",
         }
     )
     TextPreserveMode = DataTextPreserveMode
@@ -234,13 +235,15 @@ class DataManager(Base):
             self.emit(Base.Event.WORKBENCH_REFRESH, {"reason": event.value})
 
     def handle_project_loaded_post_actions(self) -> None:
-        """在工程真正对外可见前完成加载后补处理。"""
+        """在工程真正对外可见前完成加载后补处理与语言镜像同步。"""
+
+        self.sync_project_language_meta()
         if self.schedule_prefilter_if_needed(reason="project_loaded"):
             return
         self.refresh_analysis_progress_snapshot_cache()
 
     def on_config_updated(self, event: Base.Event, data: dict) -> None:
-        """关键配置变化后补跑预过滤。"""
+        """关键配置变化后同步工程镜像，并按真实依赖补发刷新。"""
 
         del event
 
@@ -251,6 +254,9 @@ class DataManager(Base):
             return
 
         normalized_keys = [str(key) for key in keys if isinstance(key, str)]
+        if any(key in self.PROJECT_LANGUAGE_META_KEYS for key in normalized_keys):
+            self.sync_project_language_meta()
+
         if any(
             key in self.PROOFREADING_RELEVANT_CONFIG_KEYS for key in normalized_keys
         ):
@@ -262,6 +268,16 @@ class DataManager(Base):
 
         if any(key in self.PREFILTER_RELEVANT_CONFIG_KEYS for key in normalized_keys):
             self.schedule_prefilter_if_needed(reason="config_updated")
+
+    def sync_project_language_meta(self) -> None:
+        """把当前运行时语言镜像回已加载工程，避免项目摘要长期滞后。"""
+
+        if not self.is_loaded():
+            return
+
+        config = Config().load()
+        self.set_meta("source_language", str(config.source_language))
+        self.set_meta("target_language", str(config.target_language))
 
     def schedule_prefilter_if_needed(self, *, reason: str) -> bool:
         """按当前配置判断是否需要补跑预过滤。"""

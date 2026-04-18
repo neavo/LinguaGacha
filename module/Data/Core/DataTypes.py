@@ -17,7 +17,6 @@ class ProjectPrefilterRequest:
     lg_path: str
     reason: str
     source_language: str
-    target_language: str
     mtool_optimizer_enable: bool
 
 
