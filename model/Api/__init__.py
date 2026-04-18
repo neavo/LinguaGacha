@@ -30,6 +30,7 @@ from model.Api.QualityRuleModels import QualityRuleStatisticsResult
 from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
 from model.Api.SettingsModels import AppSettingsSnapshot
 from model.Api.SettingsModels import RecentProjectEntry
+from model.Api.TaskModels import AnalysisGlossaryImportResult
 from model.Api.TaskModels import TaskProgressUpdate
 from model.Api.TaskModels import TaskSnapshot
 from model.Api.TaskModels import TaskStatusUpdate
@@ -38,6 +39,7 @@ from model.Api.WorkbenchModels import WorkbenchSnapshot
 
 __all__ = [
     "AppSettingsSnapshot",
+    "AnalysisGlossaryImportResult",
     "CustomPromptSnapshot",
     "ExtraToolEntry",
     "ExtraToolSnapshot",

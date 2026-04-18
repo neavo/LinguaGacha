@@ -2,134 +2,290 @@
 
 ## 1. 范围
 
-本文档描述当前本地 Core API 的 HTTP / SSE 契约、客户端对象边界，以及 Electron 前端接入 Core 的调用规则。
+本文档描述 `api/` 目录当前已经落地的本地 Core API 事实，包括：
 
-- 运行方式：默认由 `app.py` 以无头 Core 方式启动 `ServerBootstrap`，在同一进程内开启本地 HTTP 服务线程
-- CLI 模式：执行 `CLIManager` 命令时不启动本地 API 服务
-- 调用风格：除事件流与健康检查外，统一使用 `POST + JSON body`
-- 统一响应：`{"ok": true, "data": {...}}`
-- 客户端边界：`api/Client/` 与 `ApiStateStore` 负责 Python 侧的对象化客户端与状态仓库；Electron 渲染层运行时统一经由 `frontend/src/renderer/app/desktop-api.ts`、SSE 事件流与桌面桥接能力访问 Core
+- 本地 HTTP / SSE 边界与运行时结构
+- 路由分组、请求入口、响应载荷与关键约束
+- Python 侧 `api/Client` / `ApiStateStore` 的对象化消费边界
+- Electron 渲染层接入 Core 的运行时入口
 
-### 1.1 目录入口
+本文只记录当前代码已经实现并可验证的行为，不记录“计划中”或“理应如此”的未来状态。
+
+### 1.1 权威来源
+
+| 关注点 | 代码权威来源 |
+| --- | --- |
+| 路径、HTTP 方法、服务启动 | `api/Server/CoreApiServer.py`、`api/Server/ServerBootstrap.py`、`api/Server/Routes/*.py` |
+| 请求归一化、业务约束、响应语义 | `api/Application/*.py` |
+| HTTP `data` 载荷包装 | `api/Contract/*.py` |
+| Python 侧对象化消费 | `api/Client/*.py`、`model/Api/*.py` |
+| Electron 运行时接入 | `frontend/src/renderer/app/desktop-api.ts` |
+
+### 1.2 阅读顺序
+
+1. 先看本文第 2 节和第 3 节，确认边界、协议和错误口径。
+2. 再看第 4 节，定位具体接口族与稳定载荷。
+3. 如果要改 Python 客户端对象化边界，继续看第 5 节。
+4. 如果要改 Electron 运行时接入方式，继续看第 6 节。
+
+## 2. 运行时结构
+
+```mermaid
+flowchart LR
+    A["app.py / ServerBootstrap"] --> B["CoreApiServer"]
+    B --> C["Routes"]
+    C --> D["Application"]
+    D --> E["Contract / JSON"]
+
+    F["frontend/src/renderer/app/desktop-api.ts"] --> B
+    G["frontend EventSource"] --> B
+    H["api/Client/* + ApiStateStore"] --> B
+```
+
+### 2.1 目录职责
 
 | 目录 | 职责 |
 | --- | --- |
-| `api/Server/` | 本地 HTTP 服务、路由注册、端口选择与服务生命周期 |
-| `api/Application/` | 面向路由的用例层，把 Core 状态整理成稳定响应载荷 |
-| `api/Contract/` | HTTP 响应壳、错误对象、SSE 事件与各领域 payload |
-| `api/Client/` | Python 侧对象化客户端、状态仓库与契约消费封装，不等同于 TS 渲染层运行时入口 |
-| `api/Bridge/` | Core 事件到 SSE topic 的桥接与影响面判断 |
+| `api/Server/` | 启动本地 HTTP 服务、注册路由、处理基础响应壳与错误映射 |
+| `api/Server/Routes/` | 按领域声明路径常量并把请求分发到对应 Application 服务 |
+| `api/Application/` | 读取 Core 状态、归一化请求、组织稳定响应语义 |
+| `api/Contract/` | 把内部对象收口为 HTTP `data` 载荷 |
+| `api/Bridge/` | 把内部事件裁剪成对外稳定的 SSE topic 与 payload |
+| `api/Client/` | Python 侧薄客户端、SSE 消费器与状态仓库，主要用于测试和桥接场景 |
 
-## 2. 基础接口
+### 2.2 启动与注册
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/api/health` | 健康检查 |
-| `GET` | `/api/events/stream` | SSE 事件流 |
+- `ServerBootstrap.start()` 负责组装各个 `*AppService`，再统一注册到 `CoreApiServer`。
+- `CoreApiServer.register_routes()` 只注册基础健康检查；业务路由由 `api/Server/Routes/*.py` 追加注册。
+- `EventRoutes` 把 `EventStreamService.stream_to_handler()` 暴露为唯一 SSE 入口。
 
-## 3. 工程接口
+## 3. 通用协议
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
-| --- | --- | --- | --- |
-| `POST` | `/api/project/load` | `{"path": "..."}` | `{"project": {"path": "...", "loaded": true}}` |
-| `POST` | `/api/project/create` | `{"source_path": "...", "output_path": "..."}` | `{"project": {...}}` |
-| `POST` | `/api/project/snapshot` | `{}` | `{"project": {"path": "...", "loaded": bool}}` |
-| `POST` | `/api/project/unload` | `{}` | `{"project": {"path": "", "loaded": false}}` |
-| `POST` | `/api/project/extensions` | `{}` | `{"extensions": [".txt", ".json"]}` |
-| `POST` | `/api/project/source-files` | `{"path": "..."}` | `{"source_files": ["..."]}` |
-| `POST` | `/api/project/preview` | `{"path": "..."}` | `{"preview": {...}}` |
+### 3.1 HTTP 约定
 
-## 4. 任务接口
+- `GET /api/health` 与 `GET /api/events/stream` 是仅有的 `GET` 接口。
+- 其余公开接口统一使用 `POST + JSON body`。
+- `OPTIONS` 由 `CoreApiServer` 统一返回 `204`，无需各路由单独处理。
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
-| --- | --- | --- | --- |
-| `POST` | `/api/tasks/start-translation` | `{"mode": "NEW" \| "CONTINUE"}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/stop-translation` | `{}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/reset-translation-all` | `{}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/reset-translation-failed` | `{}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/start-analysis` | `{"mode": "NEW" \| "CONTINUE" \| "RESET"}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/stop-analysis` | `{}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/reset-analysis-all` | `{}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/reset-analysis-failed` | `{}` | `{"accepted": true, "task": {...}}` |
-| `POST` | `/api/tasks/import-analysis-glossary` | `{}` | `{"accepted": true, "imported_count": 0, "task": {...}}` |
-| `POST` | `/api/tasks/snapshot` | `{}` 或 `{"task_type": "translation" \| "analysis"}` | `{"task": {...}}` |
-
-`task` 快照当前包含以下稳定字段：
+成功响应壳固定为：
 
 ```json
 {
-  "task_type": "translation",
-  "status": "IDLE",
-  "busy": false,
-  "request_in_flight_count": 0,
-  "line": 0,
-  "total_line": 0,
-  "processed_line": 0,
-  "error_line": 0,
-  "total_tokens": 0,
-  "total_output_tokens": 0,
-  "total_input_tokens": 0,
-  "time": 0.0,
-  "start_time": 0.0
+  "ok": true,
+  "data": {}
 }
 ```
 
-分析任务在可用时会额外返回 `analysis_candidate_count`。
-
-其中：
-
-- `reset-analysis-all` 会同步清空分析进度与候选缓存，并返回最新分析快照。
-- `reset-analysis-failed` 会同步重置失败 checkpoint，并返回最新分析快照。
-- `import-analysis-glossary` 会在引擎空闲且工程已加载时把当前可导入候选写入术语表，并把 `imported_count` 与最新分析快照一起返回。
-
-## 5. 工作台接口
-
-| 方法 | 路径 | 请求体 | 响应 `data` |
-| --- | --- | --- | --- |
-| `POST` | `/api/workbench/snapshot` | `{}` | `{"snapshot": {...}}` |
-| `POST` | `/api/workbench/add-file` | `{"path": "..."}` | `{"accepted": true}` |
-| `POST` | `/api/workbench/replace-file` | `{"rel_path": "...", "path": "..."}` | `{"accepted": true}` |
-| `POST` | `/api/workbench/reset-file` | `{"rel_path": "..."}` | `{"accepted": true}` |
-| `POST` | `/api/workbench/delete-file` | `{"rel_path": "..."}` | `{"accepted": true}` |
-| `POST` | `/api/workbench/reorder-files` | `{"ordered_rel_paths": ["...", "..."]}` | `{"accepted": true}` |
-| `POST` | `/api/workbench/extensions` | `{}` | `{"extensions": [".txt", ".json"]}` |
-
-`snapshot` 当前包含：
+失败响应壳固定为：
 
 ```json
 {
-  "file_count": 1,
-  "total_items": 2,
-  "translated": 1,
-  "translated_in_past": 0,
-  "error_count": 0,
-  "untranslated": 1,
-  "file_op_running": false,
-  "entries": [
-    {
-      "rel_path": "script/a.txt",
-      "item_count": 2,
-      "file_type": "TXT"
-    }
-  ]
+  "ok": false,
+  "error": {
+    "code": "invalid_request",
+    "message": "..."
+  }
 }
 ```
 
-`/api/workbench/reorder-files` 额外约束：
+### 3.2 当前错误码现实
 
-- `ordered_rel_paths` 必须完整覆盖当前工作台文件，且不允许重复路径
-- 成功后新的文件顺序会写回当前 `.lg` 工程，并在后续快照中保持一致
+`CoreApiServer` 当前只在边界层统一保证以下错误码：
 
-## 6. 设置接口
+| `error.code` | 触发条件 |
+| --- | --- |
+| `not_found` | 路由不存在，或处理过程中抛出 `FileNotFoundError` |
+| `invalid_request` | 处理过程中抛出 `ValueError` |
+| `internal_error` | 其他未捕获异常 |
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
+需要特别注意：
+
+- 质量规则、提示词、校对等模块在数据层已经存在 revision 冲突异常类型，但 API 边界当前**没有**把它们翻译成独立 HTTP 错误码。
+- 任务重置、分析术语导入、Extra 命令的“工程未加载”与“任务执行中”目前通常表现为 `invalid_request + 本地化 message`，而不是稳定的 `NO_PROJECT` / `TASK_RUNNING` 代码。
+
+### 3.3 SSE 约定
+
+SSE 真实线格式由 `EventEnvelope.to_sse_payload()` 生成，当前协议是：
+
+```text
+event: task.progress_changed
+data: {"task_type":"translation","line":3}
+
+```
+
+当前实现特点：
+
+- `event:` 直接承载 topic 名称。
+- `data:` 直接承载 payload JSON。
+- **没有** `event_id`、`timestamp`、`topic` 回显等额外包裹字段。
+- 服务端空闲时会发送 `: keepalive` 注释帧保活。
+
+### 3.4 当前公开 topic
+
+| topic | 载荷用途 |
+| --- | --- |
+| `project.changed` | 通知工程加载态和当前路径变化 |
+| `task.status_changed` | 通知翻译 / 分析任务生命周期变化 |
+| `task.progress_changed` | 通知翻译 / 分析任务进度字段变化 |
+| `workbench.snapshot_changed` | 通知工作台快照或刷新原因变化 |
+| `settings.changed` | 通知设置字段变化 |
+| `proofreading.snapshot_invalidated` | 通知校对快照失效，需要重新拉取 |
+| `extra.ts_conversion_progress` | 通知繁简转换长任务进度 |
+| `extra.ts_conversion_finished` | 通知繁简转换长任务终态 |
+
+当前 payload 摘要：
+
+| topic | 当前稳定字段 |
+| --- | --- |
+| `project.changed` | `loaded`、`path` |
+| `task.status_changed` | `task_type`、`status`、`busy` |
+| `task.progress_changed` | `task_type` 以及当前事件中实际出现的进度字段；不会强行补齐缺失字段 |
+| `workbench.snapshot_changed` | 可能是 `{"reason": str}`，也可能是 `{"snapshot": dict}` |
+| `settings.changed` | `keys`，以及可选的 `settings` 子集 |
+| `proofreading.snapshot_invalidated` | `reason`，以及按来源可选的 `rule_types`、`meta_keys`、`reset_scope`、`keys`、`rel_path`、`old_rel_path`、`source_event`、`trigger_reason` |
+| `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | `task_id`、`phase`、`message`、`current`、`total`、`finished` |
+
+### 3.5 Python 侧 SSE 消费现状
+
+- `SseClient` 解析 `event:` / `data:` 帧后，把 payload 直接交给 `ApiStateStore.apply_event()`。
+- `SseClient` 当前没有自动重连策略，发生 `httpx.HTTPError` 时会静默结束线程。
+- `ApiStateStore` 当前只合并以下状态：
+  - `project.changed`
+  - `task.status_changed`
+  - `task.progress_changed`
+  - `proofreading.snapshot_invalidated`
+  - `extra.ts_conversion_progress`
+  - `extra.ts_conversion_finished`
+- `settings.changed` 与 `workbench.snapshot_changed` 当前属于通知型事件，`ApiStateStore` 不缓存完整快照。
+
+## 4. HTTP 接口目录
+
+除第 4.1 节外，下列接口默认都是 `POST`。
+
+### 4.1 基础接口
+
+| 方法 | 路径 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `POST` | `/api/settings/app` | `{}` | `{"settings": {...}}` |
-| `POST` | `/api/settings/update` | 任意允许的局部字段 | `{"settings": {...}}` |
-| `POST` | `/api/settings/recent-projects/add` | `{"path": "...", "name": "..."}` | `{"settings": {...}}` |
-| `POST` | `/api/settings/recent-projects/remove` | `{"path": "..."}` | `{"settings": {...}}` |
+| `GET` | `/api/health` | `{"status": "ok", "service": "linguagacha-core"}` | 渲染层探活与 base URL 确认入口 |
+| `GET` | `/api/events/stream` | SSE 流 | 唯一事件流入口 |
 
-`settings` 快照当前覆盖以下字段：
+### 4.2 Project
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
+| --- | --- | --- | --- |
+| `/api/project/load` | `{"path": str}` | `{"project": ProjectSnapshotPayload}` | 加载已有工程 |
+| `/api/project/create` | `{"source_path": str, "output_path": str}` | `{"project": ProjectSnapshotPayload}` | 创建新工程 |
+| `/api/project/snapshot` | `{}` | `{"project": ProjectSnapshotPayload}` | 读取当前工程快照 |
+| `/api/project/unload` | `{}` | `{"project": ProjectSnapshotPayload}` | 卸载当前工程 |
+| `/api/project/extensions` | `{}` | `{"extensions": list[str]}` | 读取导入支持的文件扩展名 |
+| `/api/project/source-files` | `{"path": str}` | `{"source_files": list[str]}` | 扫描给定路径下可导入源文件 |
+| `/api/project/preview` | `{"path": str}` | `{"preview": ProjectPreviewPayload}` | 读取指定工程的摘要 |
+
+`ProjectSnapshotPayload` 当前稳定字段：
+
+- `path`
+- `loaded`
+
+`ProjectPreviewPayload` 当前稳定字段：
+
+- `path`
+- `name`
+- `source_language`
+- `target_language`
+- `file_count`
+- `created_at`
+- `updated_at`
+- `total_items`
+- `translated_items`
+- `progress`
+
+补充说明：
+
+- Python 侧 `ProjectPreview` 额外提供派生字段 `has_progress`，它不是 HTTP 线上的字段。
+
+### 4.3 Task
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
+| --- | --- | --- | --- |
+| `/api/tasks/start-translation` | `{"mode": "NEW" \| "CONTINUE"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理翻译任务 |
+| `/api/tasks/stop-translation` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止翻译任务 |
+| `/api/tasks/reset-translation-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步重置全部翻译进度 |
+| `/api/tasks/reset-translation-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败翻译条目 |
+| `/api/tasks/start-analysis` | `{"mode": "NEW" \| "CONTINUE" \| "RESET"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理分析任务 |
+| `/api/tasks/stop-analysis` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止分析任务 |
+| `/api/tasks/reset-analysis-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步清空分析进度与候选 |
+| `/api/tasks/reset-analysis-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败分析进度 |
+| `/api/tasks/import-analysis-glossary` | `{}` | `{"accepted": true, "imported_count": int, "task": TaskSnapshotPayload}` | 把分析候选导入术语表 |
+| `/api/tasks/snapshot` | `{}` 或 `{"task_type": "translation" \| "analysis"}` | `{"task": TaskSnapshotPayload}` | 读取当前任务快照 |
+| `/api/tasks/export-translation` | `{}` | `{"accepted": true}` | 请求导出当前工程译文 |
+
+`TaskSnapshotPayload` 当前稳定字段：
+
+- `task_type`
+- `status`
+- `busy`
+- `request_in_flight_count`
+- `line`
+- `total_line`
+- `processed_line`
+- `error_line`
+- `total_tokens`
+- `total_output_tokens`
+- `total_input_tokens`
+- `time`
+- `start_time`
+
+补充说明：
+
+- 分析任务快照在可用时会额外带上 `analysis_candidate_count`。
+- `reset-*` 与 `import-analysis-glossary` 当前都要求“工程已加载且引擎空闲”；失败时通常会落成 `invalid_request`。
+- `import-analysis-glossary` 的 Python 客户端返回值已经对象化为 `AnalysisGlossaryImportResult`。
+- `export-translation` 当前只有最小 `accepted` 回执，还没有对应的冻结返回模型。
+
+### 4.4 Workbench
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
+| --- | --- | --- | --- |
+| `/api/workbench/snapshot` | `{}` | `{"snapshot": WorkbenchSnapshotPayload}` | 读取工作台快照 |
+| `/api/workbench/add-file` | `{"path": str}` | `{"accepted": true}` | 调度新增文件 |
+| `/api/workbench/replace-file` | `{"rel_path": str, "path": str}` | `{"accepted": true}` | 调度替换文件 |
+| `/api/workbench/reset-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度重置文件 |
+| `/api/workbench/delete-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度删除文件 |
+| `/api/workbench/reorder-files` | `{"ordered_rel_paths": list[str]}` | `{"accepted": true}` | 持久化文件顺序 |
+| `/api/workbench/extensions` | `{}` | `{"extensions": list[str]}` | 读取工作台导入支持扩展名 |
+
+`WorkbenchSnapshotPayload` 当前稳定字段：
+
+- `file_count`
+- `total_items`
+- `translated`
+- `translated_in_past`
+- `error_count`
+- `untranslated`
+- `file_op_running`
+- `entries`
+
+`WorkbenchFileEntryPayload` 当前稳定字段：
+
+- `rel_path`
+- `item_count`
+- `file_type`
+
+补充说明：
+
+- `reorder-files` 的后端校验落在 `ProjectFileService.reorder_files()`：`ordered_rel_paths` 必须与当前工程文件集合完全一致，长度和元素集合都要匹配。
+- 工作台命令接口当前只返回 `accepted`，调用方需要主动刷新 `/api/workbench/snapshot` 获取最新状态。
+
+### 4.5 Settings
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
+| --- | --- | --- | --- |
+| `/api/settings/app` | `{}` | `{"settings": AppSettingsSnapshot}` | 读取应用设置 |
+| `/api/settings/update` | 允许的局部字段 | `{"settings": AppSettingsSnapshot}` | 局部更新设置 |
+| `/api/settings/recent-projects/add` | `{"path": str, "name": str}` | `{"settings": AppSettingsSnapshot}` | 追加最近工程 |
+| `/api/settings/recent-projects/remove` | `{"path": str}` | `{"settings": AppSettingsSnapshot}` | 删除最近工程 |
+
+`AppSettingsSnapshot` 当前稳定字段：
 
 - `app_language`
 - `source_language`
@@ -156,551 +312,293 @@
 - `analysis_custom_prompt_default_preset`
 - `recent_projects`
 
-## 6.x Model 接口
+补充说明：
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
+- `update` 只会处理 `SettingsAppService.SETTING_KEYS` 白名单中的字段，未知字段会被忽略。
+- `app_language` 当前只接受 `ZH` 与 `EN`。
+
+### 4.6 Model
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `POST` | `/api/models/snapshot` | `{}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/update` | `{"model_id": "...", "patch": {...}}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/activate` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/add` | `{"model_type": "CUSTOM_OPENAI"}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/delete` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/reset-preset` | `{"model_id": "..."}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/reorder` | `{"ordered_model_ids": ["...", "..."]}` | `{"snapshot": {...}}` |
-| `POST` | `/api/models/list-available` | `{"model_id": "..."}` | `{"models": ["gpt-5.4", "gpt-5.4-mini"]}` |
-| `POST` | `/api/models/test` | `{"model_id": "..."}` | `{"success": true, "result_msg": "...", "total_count": 1, "success_count": 1, "failure_count": 0, "total_response_time_ms": 1234, "key_results": [...]}` |
+| `/api/models/snapshot` | `{}` | `{"snapshot": ModelPageSnapshotPayload}` | 读取模型页完整快照 |
+| `/api/models/update` | `{"model_id": str, "patch": dict}` | `{"snapshot": ModelPageSnapshotPayload}` | 局部更新模型配置 |
+| `/api/models/activate` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 切换激活模型 |
+| `/api/models/add` | `{"model_type": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 新增模型 |
+| `/api/models/delete` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 删除模型 |
+| `/api/models/reset-preset` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 重置预设模型 |
+| `/api/models/reorder` | `{"ordered_model_ids": list[str]}` 或兼容 `{"model_id": str, "operation": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 模型排序 |
+| `/api/models/list-available` | `{"model_id": str}` | `{"models": list[str]}` | 查询供应商可用模型列表 |
+| `/api/models/test` | `{"model_id": str}` | 原始测试结果字典 | 执行模型连通性 / 配置测试 |
 
-`/api/models/reorder` 当前统一接受 `ordered_model_ids` 作为模型页的批量重排序载荷，并返回最新 `snapshot`。
+`ModelPageSnapshotPayload` 当前稳定字段：
 
-约束如下：
+- `active_model_id`
+- `models`
 
-- `ordered_model_ids` 必须完整覆盖某一个模型分组，且不允许跨组混排
-- `list-available` 会在 Core 侧根据模型配置查询供应商模型列表，渲染层只消费字符串数组
-- `test` 会在 Core 侧执行模型测试，并返回稳定的聚合结果
+`models` 中每个条目当前稳定字段：
 
-## 7. Quality 接口
+- `id`
+- `type`
+- `name`
+- `api_format`
+- `api_url`
+- `api_key`
+- `model_id`
+- `request`
+- `threshold`
+- `thinking`
+- `generation`
 
-### 7.1 质量规则
+补充说明：
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
+- `update.patch` 当前只允许以下顶层键：`name`、`api_url`、`api_key`、`model_id`、`thinking`、`threshold`、`generation`、`request`。
+- `thinking`、`threshold`、`generation`、`request` 这四个 patch 字段必须是对象。
+- `add.model_type` 当前来自 `ModelType`，实际可新增的是自定义类型：`CUSTOM_GOOGLE`、`CUSTOM_OPENAI`、`CUSTOM_ANTHROPIC`。
+- `reorder` 现在优先使用整组 `ordered_model_ids`；旧前端仍可用 `model_id + operation` 兼容调用。
+- `ordered_model_ids` 必须完整匹配某一个模型分组，不能跨组混排。
+
+### 4.7 Quality
+
+#### 4.7.1 质量规则
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `POST` | `/api/quality/rules/snapshot` | `{"rule_type": "glossary"}` | `{"snapshot": {...}}` |
-| `POST` | `/api/quality/rules/update-meta` | `{"rule_type": "glossary", "expected_revision": 2, "meta": {"enabled": false}}` | `{"snapshot": {...}}` |
-| `POST` | `/api/quality/rules/save-entries` | `{"rule_type": "glossary", "expected_revision": 2, "entries": [{...}]}` | `{"snapshot": {...}}` |
-| `POST` | `/api/quality/rules/import` | `{"rule_type": "glossary", "expected_revision": 2, "path": "..."}` | `{"entries": [{...}]}` |
-| `POST` | `/api/quality/rules/export` | `{"rule_type": "glossary", "path": "...", "entries": [{...}]}` | `{"path": "..."}` |
-| `POST` | `/api/quality/rules/presets` | `{"preset_dir_name": "glossary"}` | `{"builtin_presets": [{...}], "user_presets": [{...}]}` |
-| `POST` | `/api/quality/rules/presets/read` | `{"preset_dir_name": "glossary", "virtual_id": "builtin:base.json"}` | `{"entries": [{...}]}` |
-| `POST` | `/api/quality/rules/presets/save` | `{"preset_dir_name": "glossary", "name": "...", "entries": [{...}]}` | `{"item": {...}}` |
-| `POST` | `/api/quality/rules/presets/rename` | `{"preset_dir_name": "glossary", "virtual_id": "user:mine.json", "new_name": "..."}` | `{"item": {...}}` |
-| `POST` | `/api/quality/rules/presets/delete` | `{"preset_dir_name": "glossary", "virtual_id": "user:mine.json"}` | `{"path": "..."}` |
-| `POST` | `/api/quality/rules/query-proofreading` | `{"rule_type": "glossary", "entry": {"src": "勇者", "regex": false}}` | `{"query": {"keyword": "勇者", "is_regex": false}}` |
-| `POST` | `/api/quality/rules/statistics` | `{"rules": [{...}], "relation_candidates": [{...}]}` | `{"statistics": {...}}` |
+| `/api/quality/rules/snapshot` | `{"rule_type": str}` | `{"snapshot": QualityRuleSnapshotPayload}` | 读取规则快照 |
+| `/api/quality/rules/update-meta` | `{"rule_type": str, "expected_revision": int, "meta": dict}` | `{"snapshot": QualityRuleSnapshotPayload}` | 更新规则元信息 |
+| `/api/quality/rules/save-entries` | `{"rule_type": str, "expected_revision": int, "entries": list[dict]}` | `{"snapshot": QualityRuleSnapshotPayload}` | 保存规则条目 |
+| `/api/quality/rules/import` | `{"rule_type": str, "expected_revision": int, "path": str}` | `{"entries": list[dict]}` | 从本地文件导入规则条目 |
+| `/api/quality/rules/export` | `{"rule_type": str, "path": str, "entries": list[dict]}` | `{"path": str}` | 导出规则条目 |
+| `/api/quality/rules/presets` | `{"preset_dir_name": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出规则预设 |
+| `/api/quality/rules/presets/read` | `{"preset_dir_name": str, "virtual_id": str}` | `{"entries": list[dict]}` | 读取规则预设正文 |
+| `/api/quality/rules/presets/save` | `{"preset_dir_name": str, "name": str, "entries": list[dict]}` | `{"item": dict}` | 保存规则用户预设 |
+| `/api/quality/rules/presets/rename` | `{"preset_dir_name": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名规则用户预设 |
+| `/api/quality/rules/presets/delete` | `{"preset_dir_name": str, "virtual_id": str}` | `{"path": str}` | 删除规则用户预设 |
+| `/api/quality/rules/query-proofreading` | `{"rule_type": str, "entry": dict}` | `{"query": ProofreadingLookupPayload}` | 把规则条目转换成校对查询 |
+| `/api/quality/rules/statistics` | `{"rules": list[dict], "relation_candidates": list[dict]}` | `{"statistics": QualityRuleStatisticsSnapshot}` | 构建规则统计快照 |
 
-`snapshot` 当前包含以下稳定字段：
+`rule_type` 当前实际使用值：
 
-```json
-{
-  "rule_type": "glossary",
-  "revision": 2,
-  "meta": {
-    "enabled": true
-  },
-  "statistics": {
-    "available": false,
-    "results": {}
-  },
-  "entries": [
-    {
-      "entry_id": "glossary:0",
-      "src": "勇者",
-      "dst": "Hero",
-      "info": "",
-      "regex": false,
-      "case_sensitive": false
-    }
-  ]
-}
-```
+- `glossary`
+- `pre_replacement`
+- `post_replacement`
+- `text_preserve`
+
+`QualityRuleSnapshot` 当前稳定字段：
+
+- `rule_type`
+- `revision`
+- `meta`
+- `statistics`
+- `entries`
+
+需要特别注意的差异：
+
+- `glossary` / `pre_replacement` / `post_replacement` 的 `meta` 形状是 `{"enabled": bool}`。
+- `text_preserve` 的 `meta` 形状是 `{"mode": str}`，不是 `enabled`。
+- 规则 preset 列表项当前稳定字段是：`name`、`file_name`、`virtual_id`、`path`、`type`。
+- `query-proofreading` 在 `rule_type == "text_preserve"` 时会强制把 `is_regex` 设为 `true`。
+- `statistics.results` 的 value 当前稳定字段是：`matched_item_count`、`subset_parents`。
+
+#### 4.7.2 自定义提示词
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
+| --- | --- | --- | --- |
+| `/api/quality/prompts/snapshot` | `{"task_type": "translation" \| "analysis"}` | `{"prompt": dict}` | 读取提示词快照 |
+| `/api/quality/prompts/template` | `{"task_type": "translation" \| "analysis"}` | `{"template": {"default_text": str, "prefix_text": str, "suffix_text": str}}` | 读取提示词模板文本 |
+| `/api/quality/prompts/save` | `{"task_type": str, "expected_revision": int, "text": str, "enabled": bool \| null}` | `{"prompt": dict}` | 保存提示词 |
+| `/api/quality/prompts/import` | `{"task_type": str, "path": str, "expected_revision": int, "enabled": bool \| null}` | `{"prompt": dict}` | 从本地文件导入提示词 |
+| `/api/quality/prompts/export` | `{"task_type": str, "path": str}` | `{"path": str}` | 导出提示词 |
+| `/api/quality/prompts/presets` | `{"task_type": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出提示词预设 |
+| `/api/quality/prompts/presets/read` | `{"task_type": str, "virtual_id": str}` | `{"text": str}` | 读取提示词预设正文 |
+| `/api/quality/prompts/presets/save` | `{"task_type": str, "name": str, "text": str}` | `{"path": str}` | 保存提示词用户预设 |
+| `/api/quality/prompts/presets/rename` | `{"task_type": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名提示词用户预设 |
+| `/api/quality/prompts/presets/delete` | `{"task_type": str, "virtual_id": str}` | `{"path": str}` | 删除提示词用户预设 |
+
+`prompt` 快照当前稳定字段：
+
+- `task_type`
+- `revision`
+- `meta`
+- `text`
 
 其中：
 
-- `rule_type` 当前稳定值包括 `glossary`、`text_preserve`、`text_replacement`
-- `meta.enabled` 表示该规则集是否启用
-- `statistics.results` 的值按规则 key 返回 `matched_item_count` 与 `subset_parents`
-- `item` / `builtin_presets` / `user_presets` 当前稳定字段为 `name`、`virtual_id`、`path`、`type`
+- `meta` 当前只稳定包含 `enabled`。
+- `template` 当前只稳定包含 `default_text`、`prefix_text`、`suffix_text`。
+- 提示词 preset 列表项和质量规则 preset 列表项使用同一套字段：`name`、`file_name`、`virtual_id`、`path`、`type`。
 
-### 7.2 自定义提示词
+### 4.8 Proofreading
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
+| 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `POST` | `/api/quality/prompts/snapshot` | `{"task_type": "translation" \| "analysis"}` | `{"prompt": {...}}` |
-| `POST` | `/api/quality/prompts/template` | `{"task_type": "translation" \| "analysis"}` | `{"template": {"default_text": "...", "prefix_text": "...", "suffix_text": "..."}}` |
-| `POST` | `/api/quality/prompts/save` | `{"task_type": "translation", "expected_revision": 1, "text": "...", "enabled": true}` | `{"prompt": {...}}` |
-| `POST` | `/api/quality/prompts/import` | `{"task_type": "analysis", "path": "...", "expected_revision": 1, "enabled": true}` | `{"prompt": {...}}` |
-| `POST` | `/api/quality/prompts/export` | `{"task_type": "translation", "path": "..."}` | `{"path": "..."}` |
-| `POST` | `/api/quality/prompts/presets` | `{"task_type": "translation" \| "analysis"}` | `{"builtin_presets": [{...}], "user_presets": [{...}]}` |
-| `POST` | `/api/quality/prompts/presets/read` | `{"task_type": "translation", "virtual_id": "builtin:default.txt"}` | `{"text": "..."}` |
-| `POST` | `/api/quality/prompts/presets/save` | `{"task_type": "translation", "name": "...", "text": "..."}` | `{"path": "..."}` |
-| `POST` | `/api/quality/prompts/presets/rename` | `{"task_type": "translation", "virtual_id": "user:mine.txt", "new_name": "..."}` | `{"item": {...}}` |
-| `POST` | `/api/quality/prompts/presets/delete` | `{"task_type": "translation", "virtual_id": "user:mine.txt"}` | `{"path": "..."}` |
+| `/api/proofreading/snapshot` | `{}`、`{"lg_path": str}`、`{"path": str}` 或 `{"project_id": str}` | `{"snapshot": ProofreadingSnapshotPayload}` | 读取校对页快照 |
+| `/api/proofreading/filter` | `{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"snapshot": ProofreadingSnapshotPayload}` | 按筛选条件重建快照 |
+| `/api/proofreading/search` | `{"keyword": str, "is_regex": bool}` 并可叠加筛选字段 | `{"search_result": ProofreadingSearchResultPayload}` | 在当前筛选口径下搜索 |
+| `/api/proofreading/save-item` | `{"item": dict, "new_dst": str, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 保存单条条目 |
+| `/api/proofreading/save-all` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量保存 |
+| `/api/proofreading/replace-all` | `{"items": list[dict], "search_text": str, "replace_text": str, "is_regex": bool, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量替换 |
+| `/api/proofreading/recheck-item` | `{"item": dict}` | `{"result": ProofreadingMutationResultPayload}` | 重查单条条目 |
+| `/api/proofreading/retranslate-items` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 重新翻译条目 |
 
-`prompt` 当前包含以下稳定字段：
+`ProofreadingSnapshot` 当前稳定字段：
 
-```json
-{
-  "task_type": "translation",
-  "revision": 1,
-  "meta": {
-    "enabled": true
-  },
-  "text": "请翻译以下内容。"
-}
-```
+- `revision`
+- `project_id`
+- `readonly`
+- `summary`
+- `filters`
+- `items`
 
-## 8. Proofreading 接口
+`ProofreadingSearchResult` 当前稳定字段：
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
+- `keyword`
+- `is_regex`
+- `matched_item_ids`
+
+`ProofreadingMutationResult` 当前稳定字段：
+
+- `revision`
+- `changed_item_ids`
+- `items`
+- `summary`
+
+补充说明：
+
+- `snapshot` 会优先解析 `lg_path`，再回退到 `path` / `project_id` / 当前工程路径。
+- 当前工程未加载或请求里的工程路径已经过期时，API 会返回 `readonly` 快照，而不是专门的业务错误码。
+- `filters` 当前稳定字段为：`warning_types`、`statuses`、`file_paths`、`glossary_terms`。
+- `save-item`、`save-all`、`replace-all`、`retranslate-items` 当前都使用 `expected_revision` 做乐观锁保护；但冲突异常在 API 边界仍未标准化成独立错误码。
+
+### 4.9 Extra
+
+#### 4.9.1 繁简转换
+
+| 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `POST` | `/api/proofreading/snapshot` | `{}` 或 `{"lg_path": "..."}` | `{"snapshot": {...}}` |
-| `POST` | `/api/proofreading/filter` | `{"filters": {...}}`、`{"filter_options": {...}}` 或包含扁平筛选字段的请求体 | `{"snapshot": {...}}` |
-| `POST` | `/api/proofreading/search` | `{"keyword": "...", "is_regex": false}`，并可附带筛选字段 | `{"search_result": {...}}` |
-| `POST` | `/api/proofreading/save-item` | `{"item": {...}, "new_dst": "...", "expected_revision": 7}` | `{"result": {...}}` |
-| `POST` | `/api/proofreading/save-all` | `{"items": [{...}], "expected_revision": 7}` | `{"result": {...}}` |
-| `POST` | `/api/proofreading/replace-all` | `{"items": [{...}], "search_text": "...", "replace_text": "...", "is_regex": false, "expected_revision": 7}` | `{"result": {...}}` |
-| `POST` | `/api/proofreading/recheck-item` | `{"item": {...}}` | `{"result": {...}}` |
-| `POST` | `/api/proofreading/retranslate-items` | `{"items": [{...}], "expected_revision": 7}` | `{"result": {...}}` |
+| `/api/extra/ts-conversion/options` | `{}` | `{"options": TsConversionOptionsSnapshot}` | 读取繁简转换默认选项 |
+| `/api/extra/ts-conversion/start` | `{"direction": str, "preserve_text": bool, "convert_name": bool}` | `{"task": TsConversionTaskAccepted}` | 启动繁简转换任务 |
 
-`snapshot` 当前包含以下稳定字段：
+`TsConversionOptionsSnapshot` 当前稳定字段：
 
-```json
-{
-  "revision": 7,
-  "project_id": "demo/project.lg",
-  "readonly": false,
-  "summary": {
-    "total_items": 2,
-    "filtered_items": 2,
-    "warning_items": 1
-  },
-  "filters": {
-    "warning_types": [
-      "GLOSSARY"
-    ],
-    "statuses": [
-      "NONE",
-      "PROCESSED"
-    ],
-    "file_paths": [
-      "script/a.txt"
-    ],
-    "glossary_terms": [
-      [
-        "勇者",
-        "Hero"
-      ]
-    ]
-  },
-  "items": [
-    {
-      "item_id": 1,
-      "file_path": "script/a.txt",
-      "row_number": 12,
-      "src": "勇者が来た",
-      "dst": "Hero arrived",
-      "status": "PROCESSED",
-      "warnings": [
-        "GLOSSARY"
-      ],
-      "applied_glossary_terms": [],
-      "failed_glossary_terms": [
-        [
-          "勇者",
-          "Hero"
-        ]
-      ]
-    }
-  ]
-}
-```
+- `default_direction`
+- `preserve_text_enabled`
+- `convert_name_enabled`
 
-`search_result` 当前包含：
+`TsConversionTaskAccepted` 当前稳定字段：
 
-```json
-{
-  "keyword": "勇者",
-  "is_regex": false,
-  "matched_item_ids": [
-    1
-  ]
-}
-```
+- `accepted`
+- `task_id`
 
-`result` 当前包含：
+补充说明：
 
-```json
-{
-  "revision": 9,
-  "changed_item_ids": [
-    1
-  ],
-  "items": [
-    {
-      "item_id": 1,
-      "file_path": "script/a.txt",
-      "row_number": 12,
-      "src": "勇者が来た",
-      "dst": "Heroine arrived refreshed",
-      "status": "PROCESSED",
-      "warnings": [
-        "GLOSSARY"
-      ],
-      "applied_glossary_terms": [],
-      "failed_glossary_terms": [
-        [
-          "勇者",
-          "Hero"
-        ]
-      ]
-    }
-  ],
-  "summary": {
-    "total_items": 2,
-    "filtered_items": 2,
-    "warning_items": 1
-  }
-}
-```
+- 启动成功后，进度与终态都通过 SSE 的 `extra.ts_conversion_progress` / `extra.ts_conversion_finished` 推送。
+- Python 侧 `ApiStateStore` 统一通过 `get_extra_task_state("extra_ts_conversion")` 读取当前任务状态。
 
-## 9. Extra 接口
+#### 4.9.2 姓名字段
 
-`Extra` 当前覆盖工具箱、实验室、繁简转换与姓名字段提取能力。Python 侧对象化契约与状态合并统一通过 `ExtraApiClient`、`ApiStateStore` 与 SSE topic 组织；Electron 渲染层运行时仍通过 `desktop-api.ts` 与事件流访问 Core。
-
-### 9.1 工具箱
-
-工具箱页当前只承担页面导航，不定义独立 HTTP 路由；工具元数据仍由前端导航层维护。
-
-### 9.2 繁简转换
-
-| 方法 | 路径 | 请求体 | 响应 `data` |
+| 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `POST` | `/api/extra/ts-conversion/options` | `{}` | `{"options": {...}}` |
-| `POST` | `/api/extra/ts-conversion/start` | `{"direction": "TO_SIMPLIFIED" \| "TO_TRADITIONAL", "preserve_text": true, "convert_name": false}` | `{"task": {...}}` |
+| `/api/extra/name-fields/snapshot` | `{}` | `{"snapshot": NameFieldSnapshot}` | 读取当前姓名字段快照 |
+| `/api/extra/name-fields/extract` | `{}` | `{"snapshot": NameFieldSnapshot}` | 重新提取姓名字段 |
+| `/api/extra/name-fields/translate` | `{"items": list[dict]}` | `{"result": NameFieldTranslateResult}` | 翻译姓名字段列表 |
+| `/api/extra/name-fields/save-to-glossary` | `{"items": list[dict]}` | `{"snapshot": NameFieldSnapshot}` | 把姓名字段写回术语表 |
 
-`options` 当前包含以下稳定字段：
+姓名字段条目当前稳定字段：
 
-```json
-{
-  "default_direction": "TO_TRADITIONAL",
-  "preserve_text_enabled": true,
-  "convert_name_enabled": true
-}
-```
+- `src`
+- `dst`
+- `context`
+- `status`
 
-`task` 当前包含以下稳定字段：
+`NameFieldTranslateResult` 当前额外稳定字段：
 
-```json
-{
-  "accepted": true,
-  "task_id": "extra_ts_conversion"
-}
-```
+- `success_count`
+- `failed_count`
 
-繁简转换启动后，后续进度与完成态统一只通过 `extra.ts_conversion_progress` 与 `extra.ts_conversion_finished` 推送；Python 侧状态仓库读取口径固定为 `ApiStateStore.get_extra_task_state("extra_ts_conversion")`。
+## 5. Python 客户端与对象化现状
 
-### 9.3 姓名字段
+### 5.1 客户端边界
 
-| 方法 | 路径 | 请求体 | 响应 `data` |
-| --- | --- | --- | --- |
-| `POST` | `/api/extra/name-fields/snapshot` | `{}` | `{"snapshot": {...}}` |
-| `POST` | `/api/extra/name-fields/extract` | `{}` | `{"snapshot": {...}}` |
-| `POST` | `/api/extra/name-fields/translate` | `{"items": [{...}]}` | `{"result": {...}}` |
-| `POST` | `/api/extra/name-fields/save-to-glossary` | `{"items": [{...}]}` | `{"snapshot": {...}}` |
+- `ApiClient` 是一个非常薄的 HTTP 包装器：它只返回响应里的 `data` 字段，当前不会主动抛出 HTTP 错误，也不会保留 `error` 壳。
+- `AppClientContext` 把允许给 Python UI / 测试消费的客户端对象收口到一个不可变容器里。
+- Electron 渲染层运行时**不依赖**这些 Python 客户端；它走的是 `desktop-api.ts + EventSource`。
 
-`snapshot` / `result.items` 当前稳定条目字段为：
+### 5.2 对象化覆盖一览
 
-```json
-{
-  "src": "勇者",
-  "dst": "Hero",
-  "context": "勇者が来た",
-  "status": "翻译完成"
-}
-```
+| 客户端 | 已对象化返回 | 仍返回原始结构 |
+| --- | --- | --- |
+| `ProjectApiClient` | `load/create/snapshot/unload -> ProjectSnapshot`、`preview -> ProjectPreview` | `extensions -> list[str]`、`source-files -> list[str]` |
+| `TaskApiClient` | 所有任务快照命令 -> `TaskSnapshot`、`import_analysis_glossary -> AnalysisGlossaryImportResult` | `export_translation -> dict[str, Any]` |
+| `WorkbenchApiClient` | `snapshot -> WorkbenchSnapshot` | `add/replace/reset/delete/reorder -> dict[str, Any]`、`extensions -> list[str]` |
+| `SettingsApiClient` | 全部返回 `AppSettingsSnapshot` | 无 |
+| `ModelApiClient` | `snapshot/update/activate/add/delete/reset/reorder -> ModelPageSnapshot` | `list_available_models -> list[str]`、`test_model -> dict[str, Any]` |
+| `QualityRuleApiClient` | `snapshot/save_entries/update_meta -> QualityRuleSnapshot`、`query_proofreading -> ProofreadingLookupQuery`、`statistics -> QualityRuleStatisticsSnapshot` | 规则导入导出 / preset 全家桶 / prompt 全家桶仍是 `dict`、`list`、`tuple`、`str` |
+| `ProofreadingApiClient` | 全部对象化为 `ProofreadingSnapshot`、`ProofreadingSearchResult`、`ProofreadingMutationResult` | 无 |
+| `ExtraApiClient` | 全部当前公开路由都已对象化 | 无 |
 
-`translate` 的 `result` 当前额外包含：
+### 5.3 `ApiStateStore` 当前缓存口径
 
-```json
-{
-  "success_count": 1,
-  "failed_count": 0
-}
-```
+`ApiStateStore` 当前只缓存以下状态：
 
-## 10. 错误码与冲突约定
+- `project_snapshot: ProjectSnapshot`
+- `task_snapshot: TaskSnapshot`
+- `proofreading_snapshot_invalidated: bool`
+- `extra_task_states: dict[str, ExtraTaskState]`
 
-`Quality` / `Proofreading` 写入命令统一保留 `expected_revision` 字段，当前文档锁定以下错误码语义：
+不会缓存的内容包括：
 
-| 错误码 | 说明 |
-| --- | --- |
-| `REVISION_CONFLICT` | 页面持有的规则/校对快照版本已过期，请重新拉取快照后再重试 |
-| `NO_PROJECT` | 命令依赖已加载工程，但当前没有有效工程上下文 |
-| `TASK_RUNNING` | 同一入口已有任务正在执行中，当前命令被拒绝重复触发 |
-| `not_found` | 请求的 HTTP 路径不存在；这是 `CoreApiServer` 当前统一保证的基础错误码 |
+- 设置快照
+- 工作台完整快照
+- 质量规则快照
+- 校对完整快照
+- 模型页快照
 
-其中：
+### 5.4 当前未接线或仅占位的模型
 
-- `Quality` 的 `update-meta`、`save-entries`、`import`
-- `Quality Prompt` 的 `save`、`import`
-- `Proofreading` 的 `save-item`、`save-all`、`replace-all`、`retranslate-items`
+以下模型文件虽然存在，但还不是当前 Python 客户端真实返回面的权威来源：
 
-都使用 `expected_revision` 作为并发写入保护字段。
-
-`Extra` 使用 `NO_PROJECT`、`TASK_RUNNING` 与统一响应壳中的 `not_found` 基础错误码。
-
-其中：
-
-- `NO_PROJECT`
-  - `/api/extra/ts-conversion/start` 在未加载工程时拒绝启动，语义与页面当前“请先加载工程后再执行”保持一致
-  - `/api/extra/name-fields/snapshot`、`/api/extra/name-fields/extract`、`/api/extra/name-fields/save-to-glossary` 在缺少当前工程上下文时同样使用该错误码，避免把“未加载工程”误判为普通空结果
-- `TASK_RUNNING`
-  - `/api/extra/ts-conversion/start` 在同一 `extra_ts_conversion` 任务仍在运行或仍等待首个状态快照时，拒绝重复启动
-  - `/api/extra/name-fields/extract` 与 `/api/extra/name-fields/save-to-glossary` 在页面已有同类请求执行中时，语义上收口为同一错误码，保持与当前 `task_running` 提示一致
-
-繁简转换的运行期失败仍由页面通过任务终态与 Toast 提示处理，不额外定义新的 HTTP `error.code`。
-
-统一错误响应格式：
-
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "REVISION_CONFLICT",
-    "message": "proofreading snapshot is stale"
-  }
-}
-```
-
-## 11. SSE Topic
-
-当前对外暴露以下 topic：
-
-| topic | 说明 |
-| --- | --- |
-| `project.changed` | 工程加载态变化 |
-| `task.status_changed` | 翻译/分析任务状态变化 |
-| `task.progress_changed` | 翻译/分析任务进度变化 |
-| `workbench.snapshot_changed` | 工作台快照变化 |
-| `settings.changed` | 设置更新通知 |
-| `proofreading.snapshot_invalidated` | 质量规则变化导致校对快照失效 |
-| `extra.ts_conversion_progress` | Extra 繁简转换任务进度变化 |
-| `extra.ts_conversion_finished` | Extra 繁简转换任务进入终态 |
-
-统一事件包格式：
-
-```json
-{
-  "event_id": "evt_1",
-  "topic": "task.progress_changed",
-  "timestamp": "2026-03-24T12:34:56+08:00",
-  "payload": {
-    "task_type": "translation"
-  }
-}
-```
-
-`settings.changed` 当前稳定 payload 为：
-
-```json
-{
-  "event_id": "evt_4",
-  "topic": "settings.changed",
-  "timestamp": "2026-03-24T12:35:30+08:00",
-  "payload": {
-    "keys": ["app_language"],
-    "settings": {
-      "app_language": "EN"
-    }
-  }
-}
-```
-
-`proofreading.snapshot_invalidated` 当前由 `QUALITY_RULE_UPDATE` 事件映射，稳定 payload 为：
-
-```json
-{
-  "event_id": "evt_2",
-  "topic": "proofreading.snapshot_invalidated",
-  "timestamp": "2026-03-24T12:35:00+08:00",
-  "payload": {
-    "reason": "quality_rule_update",
-    "rule_types": [
-      "glossary"
-    ],
-    "meta_keys": []
-  }
-}
-```
-
-翻译 reset 进入终态后，同样会复用 `proofreading.snapshot_invalidated`，payload 额外包含：
-
-```json
-{
-  "reason": "translation_reset",
-  "reset_scope": "all"
-}
-```
-
-当 reset 失败时，`reason` 会切换为 `translation_reset_error`，`reset_scope` 仍区分 `all` / `failed`。
-
-`extra.ts_conversion_finished` 当前稳定 payload 为：
-
-```json
-{
-  "event_id": "evt_3",
-  "topic": "extra.ts_conversion_finished",
-  "timestamp": "2026-03-24T12:36:00+08:00",
-  "payload": {
-    "task_id": "extra_ts_conversion",
-    "phase": "FINISHED",
-    "message": "finished",
-    "current": 10,
-    "total": 10,
-    "finished": true
-  }
-}
-```
-
-`extra.ts_conversion_progress` 与 `extra.ts_conversion_finished` 的 payload 结构一致，差异仅在 `phase` 与 `finished` 字段取值。
-
-## 12. Python 侧对象化客户端边界
-
-本地 HTTP API 以 JSON 作为边界协议，Python 侧契约消费统一以对象化响应消费这些数据。
-
-服务端 `api/Application` 层负责把内部状态收口为 `api/Contract/*Payloads.py` 中的响应载荷对象，再经 `ApiResponse` 序列化为 JSON。
-
-### 12.1 模型目录
-
-Python 侧客户端内部新增以下冻结对象：
-
-- `model/Api/SettingsModels.py`
-  - `AppSettingsSnapshot`
-  - `RecentProjectEntry`
-- `model/Api/ProjectModels.py`
-  - `ProjectSnapshot`
-  - `ProjectPreview`
-- `model/Api/WorkbenchModels.py`
-  - `WorkbenchSnapshot`
-  - `WorkbenchFileEntry`
-- `model/Api/TaskModels.py`
-  - `TaskSnapshot`
-  - `TaskStatusUpdate`
-  - `TaskProgressUpdate`
-- `model/Api/QualityRuleModels.py`
-  - `QualityRuleSnapshot`
-  - `QualityRuleEntry`
-  - `QualityRuleStatisticsSnapshot`
-  - `ProofreadingLookupQuery`
 - `model/Api/PromptModels.py`
   - `CustomPromptSnapshot`
   - `PromptPresetEntry`
-- `model/Api/ProofreadingModels.py`
-  - `ProofreadingSnapshot`
-  - `ProofreadingItemView`
-  - `ProofreadingFilterOptionsSnapshot`
-  - `ProofreadingSearchResult`
-- `ProofreadingMutationResult`
+  - 当前 `QualityRuleApiClient` 的 prompt 系列接口仍返回原始 `dict` / `str` / `tuple`
 - `model/Api/ExtraModels.py`
   - `ExtraToolEntry`
   - `ExtraToolSnapshot`
-  - `TsConversionOptionsSnapshot`
-  - `TsConversionTaskAccepted`
-  - `ExtraTaskState`
-  - `NameFieldEntryDraft`
-  - `NameFieldSnapshot`
-  - `NameFieldTranslateResult`
-- `model/Api/ModelModels.py`
-  - `ModelPageSnapshot`
-  - `ModelEntrySnapshot`
-  - `ModelRequestSnapshot`
-  - `ModelThresholdSnapshot`
-  - `ModelThinkingSnapshot`
-  - `ModelGenerationSnapshot`
+  - 当前没有对应 HTTP 路由输出这两个对象
+- `api/Contract/PromptPayloads.py`
+  - 当前只有一个通用 `PromptSnapshotPayload.payload: dict[str, Any]`
+  - 还没有像 `Project` / `Task` / `Proofreading` 那样字段化的 prompt 载荷对象
 
-### 12.2 Python 侧客户端返回值约定
+## 6. 前端运行时边界
 
-- `SettingsApiClient` 对外返回 `AppSettingsSnapshot`
-- `ProjectApiClient` 对外返回 `ProjectSnapshot` / `ProjectPreview`
-- `WorkbenchApiClient` 对外返回 `WorkbenchSnapshot`
-- `TaskApiClient` 对外返回 `TaskSnapshot`
-- `ProjectPreview` 需要显式建模当前摘要字段：`path`、`name`、`source_language`、`target_language`、`file_count`、`created_at`、`updated_at`、`total_items`、`translated_items`、`progress`
+当前 Electron 渲染层运行时只通过以下入口接入 Core：
 
-补充约定：
+- `frontend/src/renderer/app/desktop-api.ts`
+  - `api_fetch()`：统一发 `POST`
+  - `open_event_stream()`：统一打开 SSE
+  - `probe_core_api_candidate()`：用 `/api/health` 做探活
+- `frontend/src/renderer/app/state/*`
+- `frontend/src/renderer/pages/*`
 
-- `QualityRuleApiClient.get_rule_snapshot()` / `save_entries()` / `update_meta()` 返回 `QualityRuleSnapshot`
-- `QualityRuleApiClient.query_proofreading()` 返回 `ProofreadingLookupQuery`
-- `QualityRuleApiClient.build_rule_statistics()` 返回 `QualityRuleStatisticsSnapshot`
-- `ProofreadingApiClient.get_snapshot()` / `filter_items()` 返回 `ProofreadingSnapshot`
-- `ProofreadingApiClient.search()` 返回 `ProofreadingSearchResult`
-- `ProofreadingApiClient.save_item()` / `save_all()` / `replace_all()` / `recheck_item()` / `retranslate_items()` 返回 `ProofreadingMutationResult`
-- `ExtraApiClient.get_ts_conversion_options()` 返回 `TsConversionOptionsSnapshot`
-- `ExtraApiClient.start_ts_conversion()` 返回 `TsConversionTaskAccepted`
-- `ExtraApiClient.extract_name_fields()` / `save_name_fields_to_glossary()` 返回 `NameFieldSnapshot`
-- `ExtraApiClient.translate_name_fields()` 返回 `NameFieldTranslateResult`
-- `ModelApiClient.get_snapshot()` / `update_model()` / `activate_model()` / `add_model()` / `delete_model()` / `reset_preset_model()` / `reorder_model()` 返回 `ModelPageSnapshot`
+当前约束如下：
 
-### 12.2.1 服务端载荷命名约定
+- 渲染层在真正发请求前，会校验 `/api/health` 返回的 `service === "linguagacha-core"` 且 `status === "ok"`。
+- 渲染层大量接口当前使用本地 TypeScript payload 类型，而不是复用 Python 侧 `api/Client` 的冻结模型。
+- `api/Client/*` 与 `ApiStateStore` 主要服务于 Python 侧测试、桥接和对象化消费场景，不是 Electron 渲染层运行时入口。
 
-- `api/Contract` 中面向 HTTP `data` 载荷的对象统一使用 `*Payload` 命名，避免继续使用语义过泛的 `*Dto`
-- 当前服务端载荷对象包括：
-  - `ProjectSnapshotPayload`
-  - `ProjectPreviewPayload`
-  - `TaskSnapshotPayload`
-  - `WorkbenchSnapshotPayload`
-  - `WorkbenchFileEntryPayload`
-  - `QualityRuleSnapshotPayload`
-  - `ProofreadingLookupPayload`
-  - `ProofreadingSnapshotPayload`
-  - `ProofreadingSearchResultPayload`
-  - `ProofreadingMutationResultPayload`
+## 7. 维护与同步要求
 
-### 12.3 Python 侧状态仓库约定
+出现以下变化时，必须同步更新本文：
 
-- `ApiStateStore.project_snapshot` 只缓存 `ProjectSnapshot`
-- `ApiStateStore.task_snapshot` 只缓存 `TaskSnapshot`
-- `ApiStateStore` 不缓存完整 `ProofreadingSnapshot`，只缓存 `proofreading_snapshot_invalidated` 过期标记
-- SSE 增量事件进入 `ApiStateStore` 后，会先解码为 `TaskStatusUpdate` / `TaskProgressUpdate` 再合并
-- `ApiStateStore.get_extra_task_state(task_id)` 只返回 `ExtraTaskState | None`，不返回 `dict`
-- `extra_ts_conversion` 的进度与完成态都通过 `ExtraTaskState` 合并，页面只读取 `task_id`、`phase`、`message`、`current`、`total`、`finished`
-- 页面层直接按对象字段读取 API 响应，不通过 `response.get(...)`、`snapshot.get(...)` 或 `payload.get(...)` 这类字典式访问消费数据
+- 路径、HTTP 方法、请求键或 `data` 字段发生变化
+- SSE topic 或 payload 发生变化
+- `CoreApiServer` 的错误映射策略发生变化
+- `api/Client` 的对象化覆盖范围发生变化
+- Electron 渲染层接入 Core 的唯一入口发生变化
 
-## 13. 前端边界
+维护原则：
 
-当前 Electron 前端运行时只通过 `frontend/src/renderer/app/desktop-api.ts`、SSE 事件流与桌面桥接能力访问 Core。`api/Client/` 与 `ApiStateStore` 属于 Python 侧契约消费边界，用于对象化响应、状态仓库与测试/桥接场景。
-
-### 13.1 渲染层
-
-以下目录中的页面、状态 hook 与页面辅助模块，统一通过 `desktop-api.ts`、SSE 事件流与应用级状态封装消费 Core：
-
-- `frontend/src/renderer/app/state/`
-- `frontend/src/renderer/pages/`
-
-这些模块不得直接导入或调用：
-
-- `module.Config`
-- `module.Data.DataManager`
-- `module.Engine.Engine`
-- `base.EventManager`
-- `Config().load()`
-- `DataManager.get()`
-- `Engine.get()`
-
-### 13.2 Electron 壳层
-
-以下目录负责桌面宿主、预加载桥接与共享桌面契约：
-
-- `frontend/src/main/`
-- `frontend/src/preload/`
-- `frontend/src/shared/`
-
-这些模块可以处理窗口、文件对话框、标题栏、Core API 地址解析与桥接暴露，但不直接导入 Python 业务模块。
+- 只写当前代码已经兑现的事实，不在规格里预支未来设计。
+- 优先记录“开发会依赖的稳定信息”，例如路径、字段、白名单、兼容请求形态、真实错误边界。
+- 不把页面临时实现细节、历史遗留原因或与开发无关的示例堆进本文。
