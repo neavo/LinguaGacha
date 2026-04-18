@@ -36,6 +36,44 @@ def test_publish_event_keeps_progress_patch_shape() -> None:
     }
 
 
+def test_publish_workbench_refresh_creates_workbench_invalidation_envelope() -> None:
+    service = EventStreamService()
+    subscriber = service.add_subscriber()
+
+    service.publish_internal_event(
+        Base.Event.WORKBENCH_REFRESH,
+        {"reason": "config_updated"},
+    )
+
+    envelope = subscriber.get_nowait()
+    assert envelope.topic == "workbench.snapshot_changed"
+    assert envelope.data == {
+        "reason": "config_updated",
+    }
+
+
+def test_publish_proofreading_refresh_creates_proofreading_invalidation_envelope() -> (
+    None
+):
+    service = EventStreamService()
+    subscriber = service.add_subscriber()
+
+    service.publish_internal_event(
+        Base.Event.PROOFREADING_REFRESH,
+        {
+            "reason": "project_prefilter_updated",
+            "trigger_reason": "config_updated",
+        },
+    )
+
+    envelope = subscriber.get_nowait()
+    assert envelope.topic == "proofreading.snapshot_invalidated"
+    assert envelope.data == {
+        "reason": "project_prefilter_updated",
+        "trigger_reason": "config_updated",
+    }
+
+
 class FakeSseHandler:
     """用最小 HTTP 处理器桩模拟客户端主动断开后的写入失败。"""
 

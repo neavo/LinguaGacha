@@ -65,6 +65,9 @@ class Base:
         PROJECT_PREFILTER = "PROJECT_PREFILTER"  # 工程 - 预过滤生命周期事件
         WORKBENCH_REFRESH = "WORKBENCH_REFRESH"  # 工作台 - 刷新请求（无需携带快照）
         WORKBENCH_SNAPSHOT = "WORKBENCH_SNAPSHOT"  # 工作台 - 快照更新（跨线程回到 UI）
+        PROOFREADING_REFRESH = (
+            "PROOFREADING_REFRESH"  # 校对 - 快照失效，需要页面重新拉取
+        )
         CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
         QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
         EXTRA_TS_CONVERSION_PROGRESS = (
@@ -172,7 +175,9 @@ class Base:
         Event.ANALYSIS_TASK,
         Event.ANALYSIS_REQUEST_STOP,
         Event.ANALYSIS_PROGRESS,
+        Event.WORKBENCH_REFRESH,
         Event.WORKBENCH_SNAPSHOT,
+        Event.PROOFREADING_REFRESH,
         Event.CONFIG_UPDATED,
         Event.QUALITY_RULE_UPDATE,
         Event.EXTRA_TS_CONVERSION_PROGRESS,
