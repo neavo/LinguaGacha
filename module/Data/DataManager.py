@@ -33,6 +33,7 @@ from module.Localizer.Localizer import Localizer
 
 if TYPE_CHECKING:
     from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
+    from module.Data.Core.DataTypes import ProjectItemChange
     from module.Data.Core.DataTypes import ProjectFileMutationResult
     from module.Data.Core.DataTypes import ProjectPrefilterRequest
     from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
@@ -63,6 +64,22 @@ class DataManager(Base):
             "post_translation_replacement_enable",
             "translation_prompt_enable",
             "analysis_prompt_enable",
+        }
+    )
+    PROOFREADING_RULE_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "glossary",
+            "pre_replacement",
+            "post_replacement",
+            "text_preserve",
+        }
+    )
+    PROOFREADING_RULE_META_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "glossary_enable",
+            "text_preserve_mode",
+            "pre_translation_replacement_enable",
+            "post_translation_replacement_enable",
         }
     )
     PREFILTER_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
@@ -152,6 +169,7 @@ class DataManager(Base):
             Base.Event.TRANSLATION_RESET_FAILED,
             self.on_translation_activity,
         )
+        self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
         self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
 
     @classmethod
@@ -219,21 +237,64 @@ class DataManager(Base):
 
         self.item_service.clear_item_cache()
 
-        should_emit_refresh = False
-        if event == Base.Event.TRANSLATION_TASK:
-            should_emit_refresh = data.get("sub_event") == Base.SubEvent.DONE
-        elif event in (
-            Base.Event.TRANSLATION_RESET_ALL,
-            Base.Event.TRANSLATION_RESET_FAILED,
-        ):
-            sub_event = data["sub_event"]
-            should_emit_refresh = sub_event in (
-                Base.SubEvent.DONE,
-                Base.SubEvent.ERROR,
-            )
-
+        should_emit_refresh = (
+            event == Base.Event.TRANSLATION_RESET_ALL
+            and data.get("sub_event") in (Base.SubEvent.DONE, Base.SubEvent.ERROR)
+        )
         if should_emit_refresh and self.is_loaded():
             self.emit_workbench_refresh(reason=event.value)
+
+    def on_quality_rule_update(self, event: Base.Event, data: dict) -> None:
+        """把规则更新对工作台的影响收口成结构化刷新。"""
+
+        del event
+
+        raw_rule_types = data.get("rule_types", [])
+        rule_types = (
+            [str(rule_type).strip().casefold() for rule_type in raw_rule_types]
+            if isinstance(raw_rule_types, list)
+            else []
+        )
+        raw_meta_keys = data.get("meta_keys", [])
+        meta_keys = (
+            [str(meta_key).strip() for meta_key in raw_meta_keys]
+            if isinstance(raw_meta_keys, list)
+            else []
+        )
+
+        rule_type_relevant = any(
+            rule_type in self.PROOFREADING_RULE_TYPES for rule_type in rule_types
+        )
+        meta_key_relevant = any(
+            meta_key in self.PROOFREADING_RULE_META_KEYS for meta_key in meta_keys
+        )
+        if not (rule_type_relevant or meta_key_relevant):
+            return
+
+        scope = str(data.get("scope", "global") or "global")
+        rel_paths_raw = data.get("rel_paths", [])
+        rel_paths = (
+            [str(rel_path) for rel_path in rel_paths_raw if str(rel_path) != ""]
+            if isinstance(rel_paths_raw, list)
+            else []
+        )
+        if scope == "entry" and rel_paths:
+            self.emit_workbench_refresh(
+                reason="quality_rule_update",
+                scope="file",
+                rel_paths=rel_paths,
+            )
+            return
+
+        if scope == "file" and rel_paths:
+            self.emit_workbench_refresh(
+                reason="quality_rule_update",
+                scope="file",
+                rel_paths=rel_paths,
+            )
+            return
+
+        self.emit_workbench_refresh(reason="quality_rule_update", scope="global")
 
     def handle_project_loaded_post_actions(self) -> None:
         """在工程真正对外可见前完成加载后补处理与语言镜像同步。"""
@@ -745,7 +806,9 @@ class DataManager(Base):
             progress_snapshot=progress_snapshot,
         )
 
-    def reset_failed_translation_items_sync(self) -> dict[str, Any] | None:
+    def reset_failed_translation_items_sync(
+        self,
+    ) -> tuple["ProjectItemChange", dict[str, Any]] | None:
         """翻译域统一入口，避免继续从分析服务借道。"""
 
         return self.translation_reset_service.reset_failed_translation_items_sync()
@@ -784,12 +847,22 @@ class DataManager(Base):
         self,
         rule_types: list[LGDatabase.RuleType] | None = None,
         meta_keys: list[str] | None = None,
+        scope: str = "global",
+        item_ids: list[int] | None = None,
+        rel_paths: list[str] | None = None,
     ) -> None:
         payload: dict[str, Any] = {}
         if rule_types:
-            payload["rule_types"] = [rule_type.value for rule_type in rule_types]
+            payload["rule_types"] = [
+                getattr(rule_type, "value", str(rule_type)) for rule_type in rule_types
+            ]
         if meta_keys:
             payload["meta_keys"] = meta_keys
+        payload["scope"] = scope
+        if item_ids:
+            payload["item_ids"] = list(item_ids)
+        if rel_paths:
+            payload["rel_paths"] = list(rel_paths)
         self.emit(Base.Event.QUALITY_RULE_UPDATE, payload)
 
     def get_glossary(self) -> list[dict[str, Any]]:
@@ -928,6 +1001,89 @@ class DataManager(Base):
             keys = [key for key in meta.keys() if key in self.RULE_META_KEYS]
             if keys:
                 self.emit_quality_rule_update(meta_keys=keys)
+
+    def build_project_item_change(
+        self,
+        values: list[Item] | list[dict[str, Any]],
+        *,
+        reason: str,
+    ) -> "ProjectItemChange":
+        """把条目对象或条目字典整理成稳定影响范围。"""
+
+        from module.Data.Core.DataTypes import ProjectItemChange
+
+        item_ids: list[int] = []
+        rel_paths: list[str] = []
+        seen_item_ids: set[int] = set()
+        seen_rel_paths: set[str] = set()
+        for value in values:
+            if isinstance(value, Item):
+                item_id = value.get_id()
+                rel_path = str(value.get_file_path() or "")
+            elif isinstance(value, dict):
+                raw_item_id = value.get("id", value.get("item_id"))
+                item_id = raw_item_id if isinstance(raw_item_id, int) else None
+                rel_path = str(value.get("file_path", "") or "")
+            else:
+                continue
+
+            if isinstance(item_id, int) and item_id not in seen_item_ids:
+                seen_item_ids.add(item_id)
+                item_ids.append(item_id)
+            if rel_path != "" and rel_path not in seen_rel_paths:
+                seen_rel_paths.add(rel_path)
+                rel_paths.append(rel_path)
+
+        return ProjectItemChange(
+            item_ids=tuple(item_ids),
+            rel_paths=tuple(rel_paths),
+            reason=reason,
+        )
+
+    def emit_project_item_change_refresh(
+        self,
+        change: "ProjectItemChange",
+        *,
+        source_event: Base.Event | None = None,
+    ) -> None:
+        """把条目级变更统一映射成工作台与校对页刷新。"""
+
+        if change.rel_paths:
+            self.emit_workbench_refresh(
+                reason=change.reason,
+                scope="file",
+                rel_paths=list(change.rel_paths),
+            )
+
+        if change.item_ids:
+            self.emit_proofreading_refresh(
+                reason=change.reason,
+                scope="entry",
+                source_event=source_event,
+                item_ids=list(change.item_ids),
+                rel_paths=list(change.rel_paths),
+            )
+
+    def apply_translation_batch_update(
+        self,
+        finalized_items: list[dict[str, Any]],
+        extras_snapshot: dict[str, Any],
+    ) -> "ProjectItemChange":
+        """翻译提交统一走数据层显式入口，保证落库和刷新顺序一致。"""
+
+        self.update_batch(
+            items=finalized_items,
+            meta={
+                "translation_extras": extras_snapshot,
+                "project_status": Base.ProjectStatus.PROCESSING,
+            },
+        )
+        change = self.build_project_item_change(
+            finalized_items,
+            reason="translation_batch_update",
+        )
+        self.emit_project_item_change_refresh(change)
+        return change
 
     def get_items_for_translation(
         self,
@@ -1086,8 +1242,9 @@ class DataManager(Base):
         *,
         reason: str,
         scope: str = "global",
-        source_event: Base.Event,
+        source_event: Base.Event | None = None,
         keys: list[str] | None = None,
+        item_ids: list[int] | None = None,
         rel_paths: list[str] | None = None,
         removed_rel_paths: list[str] | None = None,
         trigger_reason: str | None = None,
@@ -1097,10 +1254,13 @@ class DataManager(Base):
         payload: dict[str, Any] = {
             "reason": reason,
             "scope": scope,
-            "source_event": source_event.value,
         }
+        if source_event is not None:
+            payload["source_event"] = source_event.value
         if keys:
             payload["keys"] = list(keys)
+        if item_ids:
+            payload["item_ids"] = list(item_ids)
         if rel_paths:
             payload["rel_paths"] = list(rel_paths)
         if removed_rel_paths:

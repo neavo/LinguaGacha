@@ -196,7 +196,13 @@ class TaskAppService:
                     reason="translation_reset",
                 )
             else:
-                self.data_manager.reset_failed_translation_items_sync()
+                reset_result = self.data_manager.reset_failed_translation_items_sync()
+                if reset_result is not None:
+                    change, _extras = reset_result
+                    self.emit_project_item_change_refresh(
+                        change,
+                        source_event=reset_event,
+                    )
 
             # 为什么：重置完成后要沿用现有工程检查链，确保后续页面看到的项目状态与预过滤结果一致。
             self.event_emitter(
@@ -213,6 +219,40 @@ class TaskAppService:
             "accepted": True,
             "task": self.build_task_snapshot("translation"),
         }
+
+    def emit_project_item_change_refresh(
+        self,
+        change: Any,
+        *,
+        source_event: Base.Event,
+    ) -> None:
+        """把条目级变化统一映射成工作台/校对页刷新。"""
+
+        item_ids = getattr(change, "item_ids", ())
+        rel_paths = getattr(change, "rel_paths", ())
+        reason = str(getattr(change, "reason", "") or "")
+
+        if rel_paths:
+            self.event_emitter(
+                Base.Event.WORKBENCH_REFRESH,
+                {
+                    "reason": reason,
+                    "scope": "file",
+                    "rel_paths": list(rel_paths),
+                },
+            )
+
+        if item_ids:
+            self.event_emitter(
+                Base.Event.PROOFREADING_REFRESH,
+                {
+                    "reason": reason,
+                    "scope": "entry",
+                    "source_event": source_event,
+                    "item_ids": list(item_ids),
+                    "rel_paths": list(rel_paths),
+                },
+            )
 
     def request_analysis_reset(
         self,

@@ -122,15 +122,7 @@ def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
     )
 
     dm.item_service.clear_item_cache.assert_called_once()
-    assert emitted_events == [
-        (
-            Base.Event.WORKBENCH_REFRESH,
-            {
-                "reason": Base.Event.TRANSLATION_TASK.value,
-                "scope": "global",
-            },
-        )
-    ]
+    assert emitted_events == []
 
 
 def test_set_meta_emits_quality_rule_update_for_rule_meta_keys(
@@ -144,8 +136,72 @@ def test_set_meta_emits_quality_rule_update_for_rule_meta_keys(
     assert emitted_events == [
         (
             Base.Event.QUALITY_RULE_UPDATE,
-            {"meta_keys": ["glossary_enable"]},
+            {"meta_keys": ["glossary_enable"], "scope": "global"},
         )
+    ]
+
+
+def test_on_quality_rule_update_emits_file_scoped_workbench_refresh_for_entry_impact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+
+    dm.on_quality_rule_update(
+        Base.Event.QUALITY_RULE_UPDATE,
+        {
+            "rule_types": ["glossary"],
+            "scope": "entry",
+            "rel_paths": ["script/a.txt"],
+        },
+    )
+
+    assert emitted_events == [
+        (
+            Base.Event.WORKBENCH_REFRESH,
+            {
+                "reason": "quality_rule_update",
+                "scope": "file",
+                "rel_paths": ["script/a.txt"],
+            },
+        )
+    ]
+
+
+def test_emit_project_item_change_refresh_emits_workbench_and_proofreading_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from module.Data.Core.DataTypes import ProjectItemChange
+
+    dm, emitted_events = build_data_manager(monkeypatch)
+
+    dm.emit_project_item_change_refresh(
+        ProjectItemChange(
+            item_ids=(1, 2),
+            rel_paths=("script/a.txt",),
+            reason="translation_batch_update",
+        ),
+        source_event=Base.Event.TRANSLATION_TASK,
+    )
+
+    assert emitted_events == [
+        (
+            Base.Event.WORKBENCH_REFRESH,
+            {
+                "reason": "translation_batch_update",
+                "scope": "file",
+                "rel_paths": ["script/a.txt"],
+            },
+        ),
+        (
+            Base.Event.PROOFREADING_REFRESH,
+            {
+                "reason": "translation_batch_update",
+                "scope": "entry",
+                "source_event": Base.Event.TRANSLATION_TASK.value,
+                "item_ids": [1, 2],
+                "rel_paths": ["script/a.txt"],
+            },
+        ),
     ]
 
 
@@ -339,11 +395,14 @@ def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
     assert emitted_events == [
         (
             Base.Event.QUALITY_RULE_UPDATE,
-            {"rule_types": [LGDatabase.RuleType.GLOSSARY.value]},
+            {
+                "rule_types": [LGDatabase.RuleType.GLOSSARY.value],
+                "scope": "global",
+            },
         ),
         (
             Base.Event.QUALITY_RULE_UPDATE,
-            {"meta_keys": ["glossary_enable"]},
+            {"meta_keys": ["glossary_enable"], "scope": "global"},
         ),
     ]
 
@@ -487,7 +546,10 @@ def test_import_analysis_candidates_emits_quality_rule_update_only_when_imported
     assert emitted_events == [
         (
             Base.Event.QUALITY_RULE_UPDATE,
-            {"rule_types": [LGDatabase.RuleType.GLOSSARY.value]},
+            {
+                "rule_types": [LGDatabase.RuleType.GLOSSARY.value],
+                "scope": "global",
+            },
         )
     ]
 

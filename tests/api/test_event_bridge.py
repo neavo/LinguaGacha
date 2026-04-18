@@ -93,7 +93,8 @@ def test_proofreading_refresh_maps_to_snapshot_invalidated() -> None:
         Base.Event.PROOFREADING_REFRESH,
         {
             "reason": "project_file_update",
-            "scope": "file",
+            "scope": "entry",
+            "item_ids": [1, "2", "x"],
             "rel_paths": ["chapter/a.txt"],
             "removed_rel_paths": ["chapter/old.txt"],
             "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
@@ -103,7 +104,8 @@ def test_proofreading_refresh_maps_to_snapshot_invalidated() -> None:
     assert topic == "proofreading.snapshot_invalidated"
     assert payload == {
         "reason": "project_file_update",
-        "scope": "file",
+        "scope": "entry",
+        "item_ids": [1, 2],
         "rel_paths": ["chapter/a.txt"],
         "removed_rel_paths": ["chapter/old.txt"],
         "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
@@ -180,6 +182,7 @@ def test_quality_rule_update_uses_proofreading_rule_impact_single_source(
     assert observed == [{"rule_types": ["glossary"]}]
     assert topic == "proofreading.snapshot_invalidated"
     assert payload["reason"] == "quality_rule_update"
+    assert payload["scope"] == "global"
     assert payload["rule_types"] == ["glossary"]
     assert payload["meta_keys"] == []
 
@@ -197,8 +200,31 @@ def test_quality_rule_update_maps_uppercase_rule_type_values_to_proofreading_inv
     assert topic == "proofreading.snapshot_invalidated"
     assert payload == {
         "reason": "quality_rule_update",
+        "scope": "global",
         "rule_types": ["glossary"],
         "meta_keys": [],
+    }
+
+
+def test_quality_rule_update_preserves_entry_scope_item_ids_and_rel_paths() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.QUALITY_RULE_UPDATE,
+        {
+            "rule_types": ["glossary"],
+            "scope": "entry",
+            "item_ids": ["1", 2, "oops"],
+            "rel_paths": ["script/a.txt"],
+        },
+    )
+
+    assert topic == "proofreading.snapshot_invalidated"
+    assert payload == {
+        "reason": "quality_rule_update",
+        "scope": "entry",
+        "rule_types": ["glossary"],
+        "meta_keys": [],
+        "item_ids": [1, 2],
+        "rel_paths": ["script/a.txt"],
     }
 
 
@@ -272,6 +298,16 @@ def test_translation_reset_terminal_event_invalidates_proofreading_snapshot(
     assert topic == "proofreading.snapshot_invalidated"
     assert payload["reason"] == expected_reason
     assert payload["reset_scope"] == expected_scope
+
+
+def test_translation_reset_failed_done_is_not_exposed_by_event_bridge() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.TRANSLATION_RESET_FAILED,
+        {"sub_event": Base.SubEvent.DONE},
+    )
+
+    assert topic is None
+    assert payload == {}
 
 
 def test_translation_reset_request_is_not_exposed_before_terminal_state() -> None:

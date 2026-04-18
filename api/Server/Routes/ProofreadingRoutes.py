@@ -7,6 +7,7 @@ class ProofreadingRoutes:
 
     SNAPSHOT_PATH: str = "/api/proofreading/snapshot"
     FILE_PATCH_PATH: str = "/api/proofreading/file-patch"
+    ENTRY_PATCH_PATH: str = "/api/proofreading/entry-patch"
     FILTER_PATH: str = "/api/proofreading/filter"
     SEARCH_PATH: str = "/api/proofreading/search"
     SAVE_ITEM_PATH: str = "/api/proofreading/save-item"
@@ -37,6 +38,14 @@ class ProofreadingRoutes:
             lambda request: ApiResponse(
                 ok=True,
                 data=proofreading_app_service.get_file_patch(request),
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.ENTRY_PATCH_PATH,
+            lambda request: ApiResponse(
+                ok=True,
+                data=proofreading_app_service.get_entry_patch(request),
             ),
         )
         core_api_server.add_json_route(

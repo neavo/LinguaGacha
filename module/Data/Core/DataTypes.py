@@ -92,3 +92,12 @@ class ProjectFileMutationResult:
         if self.rel_paths and self.removed_rel_paths:
             return self.removed_rel_paths[0]
         return None
+
+
+@dataclass(frozen=True)
+class ProjectItemChange:
+    """条目级影响范围快照。"""
+
+    item_ids: tuple[int, ...] = ()
+    rel_paths: tuple[str, ...] = ()
+    reason: str = ""

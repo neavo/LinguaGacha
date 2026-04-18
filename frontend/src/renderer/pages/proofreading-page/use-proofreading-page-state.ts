@@ -10,10 +10,13 @@ import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
   compress_proofreading_text,
+  clone_proofreading_item,
   create_empty_proofreading_snapshot,
+  normalize_proofreading_entry_patch_payload,
   normalize_proofreading_mutation_payload,
   normalize_proofreading_file_patch_payload,
   normalize_proofreading_snapshot_payload,
+  type ProofreadingEntryPatchPayload,
   resolve_proofreading_status_sort_rank,
   type ProofreadingDialogState,
   type ProofreadingFilePatchPayload,
@@ -441,6 +444,49 @@ function merge_snapshot_items_by_file_paths(args: {
   ]
 }
 
+function compare_proofreading_snapshot_items(
+  left_item: ProofreadingItem,
+  right_item: ProofreadingItem,
+): number {
+  const file_result = compare_text(left_item.file_path, right_item.file_path)
+  if (file_result !== 0) {
+    return file_result
+  }
+
+  const row_number_result = left_item.row_number - right_item.row_number
+  if (row_number_result !== 0) {
+    return row_number_result
+  }
+
+  return compare_text(String(left_item.item_id), String(right_item.item_id))
+}
+
+function merge_snapshot_items_by_item_ids(args: {
+  previous_items: ProofreadingItem[]
+  next_items: ProofreadingItem[]
+  target_item_ids: Array<number | string>
+}): ProofreadingItem[] {
+  const target_item_id_set = new Set(args.target_item_ids.map((item_id) => String(item_id)))
+  const merged_items = [
+    ...args.previous_items
+      .filter((item) => !target_item_id_set.has(String(item.item_id)))
+      .map((item) => clone_proofreading_item(item)),
+    ...args.next_items.map((item) => clone_proofreading_item(item)),
+  ]
+
+  return merged_items.sort(compare_proofreading_snapshot_items)
+}
+
+function build_entry_patch_signature(args: {
+  item_ids: Array<number | string>
+  rel_paths: string[]
+}): string {
+  return JSON.stringify({
+    item_ids: [...new Set(args.item_ids.map((item_id) => String(item_id)))].sort(),
+    rel_paths: [...new Set(args.rel_paths)].sort(),
+  })
+}
+
 function filter_local_visible_items(args: {
   items: ProofreadingItem[]
   keyword: string
@@ -531,9 +577,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const selected_row_ids_ref = useRef<string[]>(selected_row_ids)
   const active_row_id_ref = useRef<string | null>(active_row_id)
   const anchor_row_id_ref = useRef<string | null>(anchor_row_id)
+  const pending_local_entry_patch_signature_ref = useRef<string | null>(null)
   const previous_project_loaded_ref = useRef(false)
   const previous_project_path_ref = useRef('')
-  const previous_task_busy_ref = useRef(task_snapshot.busy)
   const previous_proofreading_change_seq_ref = useRef(proofreading_change_signal.seq)
 
   useEffect(() => {
@@ -579,6 +625,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     pending_replace_cursor_ref.current = null
     preferred_row_id_ref.current = null
     should_select_first_visible_ref.current = false
+    pending_local_entry_patch_signature_ref.current = null
   }, [])
 
   const clear_snapshot_state = useCallback((): void => {
@@ -831,6 +878,79 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_settled_project_path(project_snapshot.path)
   }, [project_snapshot.loaded, project_snapshot.path, proofreading_change_signal.rel_paths, proofreading_change_signal.removed_rel_paths])
 
+  const apply_entry_patch = useCallback(async (
+    options?: {
+      item_ids?: Array<number | string>
+      rel_paths?: string[]
+    },
+  ): Promise<void> => {
+    if (!project_snapshot.loaded) {
+      return
+    }
+
+    const target_item_ids = options?.item_ids ?? proofreading_change_signal.item_ids
+    if (target_item_ids.length === 0) {
+      await refresh_snapshot()
+      return
+    }
+
+    const payload = await api_fetch<ProofreadingEntryPatchPayload>(
+      '/api/proofreading/entry-patch',
+      {
+        filter_options: serialize_filter_options(
+          applied_filters_ref.current ?? full_snapshot_ref.current.filters,
+        ),
+        item_ids: target_item_ids,
+        rel_paths: options?.rel_paths ?? proofreading_change_signal.rel_paths,
+      },
+    )
+    const patch = normalize_proofreading_entry_patch_payload(payload)
+    const merge_target_item_ids = patch.target_item_ids.length > 0
+      ? patch.target_item_ids
+      : target_item_ids
+
+    set_full_snapshot((previous_snapshot) => {
+      return {
+        revision: patch.revision,
+        project_id: patch.project_id,
+        readonly: patch.readonly,
+        summary: patch.full_summary,
+        filters: clone_proofreading_filter_options(patch.default_filters),
+        items: merge_snapshot_items_by_item_ids({
+          previous_items: previous_snapshot.items,
+          next_items: patch.full_items,
+          target_item_ids: merge_target_item_ids,
+        }),
+      }
+    })
+    set_server_snapshot((previous_snapshot) => {
+      return {
+        revision: patch.revision,
+        project_id: patch.project_id,
+        readonly: patch.readonly,
+        summary: patch.filtered_summary,
+        filters: clone_proofreading_filter_options(patch.applied_filters),
+        items: merge_snapshot_items_by_item_ids({
+          previous_items: previous_snapshot.items,
+          next_items: patch.filtered_items,
+          target_item_ids: merge_target_item_ids,
+        }),
+      }
+    })
+    set_applied_filters(clone_proofreading_filter_options(patch.applied_filters))
+    set_refresh_error(null)
+    set_cache_status('ready')
+    set_cache_stale(false)
+    set_last_loaded_at(Date.now())
+    set_settled_project_path(project_snapshot.path)
+  }, [
+    project_snapshot.loaded,
+    project_snapshot.path,
+    proofreading_change_signal.item_ids,
+    proofreading_change_signal.rel_paths,
+    refresh_snapshot,
+  ])
+
   const run_mutation = useCallback(async (args: {
     path: string
     body: Record<string, unknown>
@@ -873,15 +993,32 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         set_dialog_state(create_empty_dialog_state())
       }
 
-      await refresh_snapshot({
-        preferred_row_id: args.preferred_row_id ?? active_row_id_ref.current,
+      const patch_rel_paths = [...new Set(mutation_result.items
+        .map((item) => item.file_path)
+        .filter((file_path) => file_path !== ''))]
+      preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current
+      pending_local_entry_patch_signature_ref.current = build_entry_patch_signature({
+        item_ids: mutation_result.changed_item_ids,
+        rel_paths: patch_rel_paths,
       })
+
+      try {
+        await apply_entry_patch({
+          item_ids: mutation_result.changed_item_ids,
+          rel_paths: patch_rel_paths,
+        })
+      } catch {
+        pending_local_entry_patch_signature_ref.current = null
+        await refresh_snapshot({
+          preferred_row_id: args.preferred_row_id ?? active_row_id_ref.current,
+        })
+      }
     } catch (error) {
       await handle_api_error(error, t(args.fallback_error_key))
     } finally {
       set_is_mutating(false)
     }
-  }, [handle_api_error, push_toast, refresh_snapshot, t])
+  }, [apply_entry_patch, handle_api_error, push_toast, refresh_snapshot, t])
 
   const update_search_keyword = useCallback((next_keyword: string): void => {
     set_search_keyword(next_keyword)
@@ -1254,19 +1391,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   ])
 
   useEffect(() => {
-    const previous_task_busy = previous_task_busy_ref.current
-    previous_task_busy_ref.current = task_snapshot.busy
-
-    if (!project_snapshot.loaded) {
-      return
-    }
-
-    if (previous_task_busy && !task_snapshot.busy) {
-      void refresh_snapshot()
-    }
-  }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy])
-
-  useEffect(() => {
     const previous_seq = previous_proofreading_change_seq_ref.current
     previous_proofreading_change_seq_ref.current = proofreading_change_signal.seq
 
@@ -1275,9 +1399,27 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     if (previous_seq !== proofreading_change_signal.seq) {
+      if (proofreading_change_signal.scope === 'entry') {
+        const next_signature = build_entry_patch_signature({
+          item_ids: proofreading_change_signal.item_ids,
+          rel_paths: proofreading_change_signal.rel_paths,
+        })
+        if (pending_local_entry_patch_signature_ref.current === next_signature) {
+          pending_local_entry_patch_signature_ref.current = null
+          return
+        }
+      }
+
       set_cache_stale(true)
       if (proofreading_change_signal.scope === 'global') {
         void refresh_snapshot()
+        return
+      }
+
+      if (proofreading_change_signal.scope === 'entry') {
+        void apply_entry_patch().catch(() => {
+          void refresh_snapshot()
+        })
         return
       }
 
@@ -1286,10 +1428,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       })
     }
   }, [
+    apply_entry_patch,
     apply_file_patch,
     project_snapshot.loaded,
+    proofreading_change_signal.item_ids,
     proofreading_change_signal.scope,
     proofreading_change_signal.seq,
+    proofreading_change_signal.rel_paths,
     refresh_snapshot,
   ])
 

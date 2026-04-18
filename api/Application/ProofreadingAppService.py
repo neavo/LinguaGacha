@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from api.Contract.ProofreadingPayloads import ProofreadingEntryPatchPayload
 from api.Contract.ProofreadingPayloads import ProofreadingSnapshotPayload
 from api.Contract.ProofreadingPayloads import build_mutation_result_payload
 from api.Contract.ProofreadingPayloads import build_search_result_payload
+from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
+from model.Api.ProofreadingModels import ProofreadingItemView
+from model.Api.ProofreadingModels import ProofreadingSummary
 from model.Item import Item
 from module.Data.DataManager import DataManager
+from module.Data.Proofreading.ProofreadingEntryPatchService import (
+    ProofreadingEntryPatchService,
+)
 from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterOptions
 from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterService
 from module.Data.Proofreading.ProofreadingMutationService import (
@@ -38,6 +45,7 @@ class ProofreadingAppService:
         data_manager: Any | None = None,
         snapshot_service: ProofreadingSnapshotService | None = None,
         filter_service: ProofreadingFilterService | None = None,
+        entry_patch_service: ProofreadingEntryPatchService | None = None,
         mutation_service: ProofreadingMutationService | None = None,
         recheck_service: ProofreadingRecheckService | None = None,
         retranslate_service: ProofreadingRetranslateService | None = None,
@@ -56,6 +64,14 @@ class ProofreadingAppService:
             self.filter_service = ProofreadingFilterService()
         else:
             self.filter_service = filter_service
+
+        if entry_patch_service is None:
+            self.entry_patch_service = ProofreadingEntryPatchService(
+                self.snapshot_service,
+                self.filter_service,
+            )
+        else:
+            self.entry_patch_service = entry_patch_service
 
         if mutation_service is None:
             self.mutation_service = ProofreadingMutationService(self.data_manager)
@@ -167,6 +183,54 @@ class ProofreadingAppService:
             }
         }
 
+    def get_entry_patch(self, request: dict[str, Any]) -> dict[str, object]:
+        """按条目 id 返回校对页局部补丁。"""
+
+        patch_result = self.entry_patch_service.get_patch(
+            lg_path=self.resolve_lg_path(request),
+            request=request,
+        )
+        load_result = patch_result.load_result
+
+        full_item_dicts = self.build_items_dict(list(patch_result.full_items), load_result)
+        filtered_item_dicts = self.build_items_dict(
+            list(patch_result.filtered_items),
+            load_result,
+        )
+        payload = ProofreadingEntryPatchPayload(
+            revision=int(load_result.revision or 0),
+            project_id=str(load_result.lg_path or ""),
+            readonly=load_result.kind != ProofreadingLoadKind.OK,
+            target_item_ids=tuple(patch_result.target_item_ids),
+            default_filters=ProofreadingFilterOptionsSnapshot.from_dict(
+                self.load_result_filter_options_to_dict(load_result.filter_options)
+            ),
+            applied_filters=ProofreadingFilterOptionsSnapshot.from_dict(
+                self.load_result_filter_options_to_dict(patch_result.applied_filters)
+            ),
+            full_summary=ProofreadingSummary.from_dict(
+                self.build_summary_dict(
+                    load_result,
+                    list(patch_result.full_items),
+                )
+            ),
+            filtered_summary=ProofreadingSummary.from_dict(
+                self.build_summary_dict(
+                    load_result,
+                    list(patch_result.filtered_items),
+                )
+            ),
+            full_items=tuple(
+                ProofreadingItemView.from_dict(item_dict)
+                for item_dict in full_item_dicts
+            ),
+            filtered_items=tuple(
+                ProofreadingItemView.from_dict(item_dict)
+                for item_dict in filtered_item_dicts
+            ),
+        )
+        return {"patch": payload.to_dict()}
+
     def search(self, request: dict[str, Any]) -> dict[str, object]:
         """执行校对页搜索，并只返回匹配项 id 列表。"""
 
@@ -205,11 +269,12 @@ class ProofreadingAppService:
         item = self.resolve_request_item(request)
         new_dst = self.resolve_new_dst(request, item)
         expected_revision = int(request.get("expected_revision", 0) or 0)
-        saved_item_id = self.mutation_service.apply_manual_edit(
+        change = self.mutation_service.apply_manual_edit(
             item,
             new_dst,
             expected_revision=expected_revision,
         )
+        saved_item_id = change.item_ids[0] if change.item_ids else int(item.get_id() or 0)
         refreshed_result = self.snapshot_service.load_snapshot(
             self.resolve_lg_path(request)
         )
@@ -237,10 +302,11 @@ class ProofreadingAppService:
 
         items = self.resolve_request_items(request)
         expected_revision = int(request.get("expected_revision", 0) or 0)
-        changed_item_ids = self.mutation_service.save_all(
+        change = self.mutation_service.save_all(
             items,
             expected_revision=expected_revision,
         )
+        changed_item_ids = list(change.item_ids)
         refreshed_result = self.snapshot_service.load_snapshot(
             self.resolve_lg_path(request)
         )
@@ -260,14 +326,13 @@ class ProofreadingAppService:
     def replace_all(self, request: dict[str, Any]) -> dict[str, object]:
         """批量替换所有命中项，并把写入结果统一收口成 mutation payload。"""
 
-        load_result = self.snapshot_service.load_snapshot(self.resolve_lg_path(request))
         items = self.resolve_request_items(request)
         search_text = str(request.get("search_text", ""))
         replace_text = str(request.get("replace_text", ""))
         is_regex = bool(request.get("is_regex", False))
         expected_revision = int(request.get("expected_revision", 0) or 0)
 
-        mutation_result = self.mutation_service.replace_all(
+        change = self.mutation_service.replace_all(
             items,
             search_text=search_text,
             replace_text=replace_text,
@@ -277,26 +342,16 @@ class ProofreadingAppService:
         refreshed_result = self.snapshot_service.load_snapshot(
             self.resolve_lg_path(request)
         )
-        if isinstance(mutation_result, dict):
-            payload = dict(mutation_result)
-        else:
-            payload = {
-                "revision": load_result.revision,
-                "changed_item_ids": [],
-                "items": [],
-                "summary": load_result.summary,
-            }
-
-        refreshed_items = self.build_items_dict(
-            refreshed_result.items,
+        refreshed_items = self.find_items_in_snapshot(
             refreshed_result,
+            list(change.item_ids),
         )
 
         return {
             "result": build_mutation_result_payload(
                 revision=refreshed_result.revision,
-                changed_item_ids=list(payload.get("changed_item_ids", [])),
-                items=refreshed_items,
+                changed_item_ids=list(change.item_ids),
+                items=self.build_items_dict(refreshed_items, refreshed_result),
                 summary=refreshed_result.summary,
             )["result"],
         }
@@ -335,11 +390,11 @@ class ProofreadingAppService:
 
         items = self.resolve_request_items(request)
         expected_revision = int(request.get("expected_revision", 0) or 0)
-        raw_result = self.retranslate_service.retranslate_items(
+        change = self.retranslate_service.retranslate_items(
             items,
             expected_revision=expected_revision,
         )
-        changed_item_ids = list(raw_result.get("changed_item_ids", []))
+        changed_item_ids = list(change.item_ids)
         refreshed_result = self.snapshot_service.load_snapshot(
             self.resolve_lg_path(request)
         )
@@ -347,10 +402,9 @@ class ProofreadingAppService:
             refreshed_result,
             changed_item_ids,
         )
-        revision_raw = raw_result.get("revision", refreshed_result.revision)
         return {
             "result": build_mutation_result_payload(
-                revision=int(revision_raw or 0),
+                revision=int(refreshed_result.revision or 0),
                 changed_item_ids=changed_item_ids,
                 items=self.build_items_dict(refreshed_items, refreshed_result),
                 summary=refreshed_result.summary,

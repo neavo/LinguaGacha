@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from typing import Any
 
 from base.Base import Base
+from module.Data.Core.DataTypes import ProjectItemChange
 from model.Item import Item
 from module.Data.Proofreading.ProofreadingFilterService import (
     ProofreadingFilterOptions,
@@ -178,19 +179,19 @@ def build_app_service() -> tuple[
         build_lookup_filter_options=MagicMock(return_value=load_result.filter_options),
     )
     mutation_service = SimpleNamespace(
-        apply_manual_edit=MagicMock(return_value=1),
+        apply_manual_edit=MagicMock(
+            return_value=ProjectItemChange(
+                item_ids=(1,),
+                rel_paths=("script/a.txt",),
+                reason="proofreading_save_item",
+            )
+        ),
         replace_all=MagicMock(
-            return_value={
-                "revision": 8,
-                "changed_item_ids": [1],
-                "items": [
-                    {
-                        "id": 1,
-                        "dst": "Hero arrived again",
-                        "status": Base.ProjectStatus.PROCESSED,
-                    }
-                ],
-            }
+            return_value=ProjectItemChange(
+                item_ids=(1,),
+                rel_paths=("script/a.txt",),
+                reason="proofreading_replace_all",
+            )
         ),
     )
     recheck_service = SimpleNamespace(
@@ -203,10 +204,11 @@ def build_app_service() -> tuple[
     )
     retranslate_service = SimpleNamespace(
         retranslate_items=MagicMock(
-            return_value={
-                "revision": 9,
-                "changed_item_ids": [1, 2],
-            }
+            return_value=ProjectItemChange(
+                item_ids=(1, 2),
+                rel_paths=("script/a.txt", "script/b.txt"),
+                reason="proofreading_retranslate_items",
+            )
         )
     )
 
@@ -367,6 +369,57 @@ def test_proofreading_save_item_uses_refreshed_snapshot_item() -> None:
 
 def test_proofreading_replace_all_returns_mutation_result() -> None:
     app_service, snapshot_service, _, mutation_service, _, _ = build_app_service()
+    snapshot_service.load_snapshot = MagicMock(
+        return_value=ProofreadingLoadResult(
+            kind=ProofreadingLoadKind.OK,
+            lg_path="demo/project.lg",
+            revision=9,
+            config=SimpleNamespace(),
+            items_all=[
+                build_item(
+                    item_id=1,
+                    src="勇者が来た",
+                    dst="Heroine arrived refreshed",
+                    file_path="script/a.txt",
+                    row=12,
+                    status=Base.ProjectStatus.PROCESSED,
+                ),
+                build_item(
+                    item_id=2,
+                    src="旁白",
+                    dst="Narration refreshed",
+                    file_path="script/b.txt",
+                    status=Base.ProjectStatus.NONE,
+                ),
+            ],
+            items=[
+                build_item(
+                    item_id=1,
+                    src="勇者が来た",
+                    dst="Heroine arrived refreshed",
+                    file_path="script/a.txt",
+                    row=12,
+                    status=Base.ProjectStatus.PROCESSED,
+                ),
+                build_item(
+                    item_id=2,
+                    src="旁白",
+                    dst="Narration refreshed",
+                    file_path="script/b.txt",
+                    status=Base.ProjectStatus.NONE,
+                ),
+            ],
+            warning_map={id(build_item(item_id=1, src="勇者が来た", dst="Heroine arrived refreshed", file_path="script/a.txt")): ["GLOSSARY"]},
+            checker=SimpleNamespace(),
+            failed_terms_by_item_key={},
+            filter_options=ProofreadingFilterOptions(),
+            summary={
+                "total_items": 2,
+                "filtered_items": 2,
+                "warning_items": 1,
+            },
+        )
+    )
 
     result = app_service.replace_all(
         {
@@ -383,7 +436,7 @@ def test_proofreading_replace_all_returns_mutation_result() -> None:
         }
     )
 
-    assert snapshot_service.load_snapshot.call_count == 2
+    assert snapshot_service.load_snapshot.call_count == 1
     mutation_service.replace_all.assert_called_once()
     assert result["result"]["revision"] == 9
     assert result["result"]["changed_item_ids"] == [1]
@@ -413,7 +466,13 @@ def test_proofreading_recheck_item_returns_mutation_result() -> None:
 
 def test_proofreading_save_all_returns_mutation_result() -> None:
     app_service, snapshot_service, _, mutation_service, _, _ = build_app_service()
-    mutation_service.save_all = MagicMock(return_value=[1, 2])
+    mutation_service.save_all = MagicMock(
+        return_value=ProjectItemChange(
+            item_ids=(1, 2),
+            rel_paths=("script/a.txt", "script/b.txt"),
+            reason="proofreading_save_all",
+        )
+    )
 
     result = app_service.save_all(
         {
@@ -441,6 +500,57 @@ def test_proofreading_save_all_returns_mutation_result() -> None:
 
 def test_proofreading_retranslate_items_returns_mutation_result() -> None:
     app_service, snapshot_service, _, _, _, retranslate_service = build_app_service()
+    snapshot_service.load_snapshot = MagicMock(
+        return_value=ProofreadingLoadResult(
+            kind=ProofreadingLoadKind.OK,
+            lg_path="demo/project.lg",
+            revision=9,
+            config=SimpleNamespace(),
+            items_all=[
+                build_item(
+                    item_id=1,
+                    src="勇者が来た",
+                    dst="Heroine arrived refreshed",
+                    file_path="script/a.txt",
+                    row=12,
+                    status=Base.ProjectStatus.PROCESSED,
+                ),
+                build_item(
+                    item_id=2,
+                    src="旁白",
+                    dst="Narration refreshed",
+                    file_path="script/b.txt",
+                    status=Base.ProjectStatus.NONE,
+                ),
+            ],
+            items=[
+                build_item(
+                    item_id=1,
+                    src="勇者が来た",
+                    dst="Heroine arrived refreshed",
+                    file_path="script/a.txt",
+                    row=12,
+                    status=Base.ProjectStatus.PROCESSED,
+                ),
+                build_item(
+                    item_id=2,
+                    src="旁白",
+                    dst="Narration refreshed",
+                    file_path="script/b.txt",
+                    status=Base.ProjectStatus.NONE,
+                ),
+            ],
+            warning_map={},
+            checker=SimpleNamespace(),
+            failed_terms_by_item_key={},
+            filter_options=ProofreadingFilterOptions(),
+            summary={
+                "total_items": 2,
+                "filtered_items": 2,
+                "warning_items": 0,
+            },
+        )
+    )
 
     result = app_service.retranslate_items(
         {
@@ -494,4 +604,28 @@ def test_proofreading_file_patch_returns_filtered_and_full_file_slices() -> None
     assert patch["full_summary"]["total_items"] == 2
     assert patch["filtered_summary"]["filtered_items"] == 1
     assert patch["full_items"][0]["file_path"] == "script/a.txt"
+    assert patch["filtered_items"][0]["item_id"] == 1
+
+
+def test_proofreading_entry_patch_returns_target_item_ids_and_dual_views() -> None:
+    app_service, snapshot_service = build_real_filter_app_service()
+
+    result = app_service.get_entry_patch(
+        {
+            "item_ids": [1, "2"],
+            "filter_options": {
+                "warning_types": ["GLOSSARY"],
+                "statuses": ["PROCESSED"],
+                "file_paths": ["script/a.txt"],
+                "glossary_terms": [["勇者", "Hero"]],
+            },
+        }
+    )
+
+    snapshot_service.load_snapshot.assert_called_once()
+    patch = result["patch"]
+    assert patch["target_item_ids"] == [1, 2]
+    assert patch["default_filters"]["file_paths"] == ["script/a.txt"]
+    assert patch["applied_filters"]["file_paths"] == ["script/a.txt"]
+    assert patch["full_items"][0]["item_id"] == 1
     assert patch["filtered_items"][0]["item_id"] == 1

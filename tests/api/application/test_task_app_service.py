@@ -80,6 +80,24 @@ def test_reset_translation_failed_returns_latest_snapshot_and_emits_terminal_eve
     assert result["task"]["error_line"] == 0
     assert task_app_service.emitted_events == [
         (
+            Base.Event.WORKBENCH_REFRESH,
+            {
+                "reason": "translation_reset_failed",
+                "scope": "file",
+                "rel_paths": ["script/a.txt", "script/b.txt"],
+            },
+        ),
+        (
+            Base.Event.PROOFREADING_REFRESH,
+            {
+                "reason": "translation_reset_failed",
+                "scope": "entry",
+                "source_event": Base.Event.TRANSLATION_RESET_FAILED,
+                "item_ids": [1, 2],
+                "rel_paths": ["script/a.txt", "script/b.txt"],
+            },
+        ),
+        (
             Base.Event.PROJECT_CHECK,
             {"sub_event": Base.SubEvent.REQUEST},
         ),

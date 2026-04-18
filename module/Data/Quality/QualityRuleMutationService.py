@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from module.Data.Core.DataEnums import TextPreserveMode
+from module.Data.Quality.ProofreadingImpactAnalyzer import (
+    ProofreadingImpactAnalyzer,
+)
+from module.Data.Quality.ProofreadingImpactAnalyzer import (
+    ProofreadingImpactResult,
+)
 from module.Data.Quality.QualityRuleSnapshotService import (
     QualityRuleSnapshotService,
 )
@@ -26,6 +32,8 @@ class QualityRuleMutationService:
         quality_rule_service: Any,
         meta_service: Any,
         snapshot_service: QualityRuleSnapshotService | None = None,
+        event_emitter: Any | None = None,
+        impact_analyzer: ProofreadingImpactAnalyzer | None = None,
     ) -> None:
         self.quality_rule_service = quality_rule_service
         self.meta_service = meta_service
@@ -36,6 +44,8 @@ class QualityRuleMutationService:
             )
         else:
             self.snapshot_service = snapshot_service
+        self.event_emitter = event_emitter
+        self.impact_analyzer = impact_analyzer
 
     def _get_state_lock(self) -> Any:
         """复用工程会话锁，让检查、写入与 bump 落在同一临界区。"""
@@ -132,6 +142,90 @@ class QualityRuleMutationService:
         info = str(entry.get("info", "")).strip().casefold()
         return src, dst, info
 
+    def _normalize_rule_type_value(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+    ) -> str:
+        """把规则类型统一收口成对外稳定字符串。"""
+
+        normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
+        return str(getattr(normalized_rule_type, "value", normalized_rule_type))
+
+    def _build_meta_key_for_rule_enabled(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+    ) -> str | None:
+        """把布尔启用切换映射回稳定 meta key。"""
+
+        normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
+        if normalized_rule_type == self.snapshot_service.RuleType.GLOSSARY:
+            return "glossary_enable"
+        if normalized_rule_type == self.snapshot_service.RuleType.PRE_REPLACEMENT:
+            return "pre_translation_replacement_enable"
+        if normalized_rule_type == self.snapshot_service.RuleType.POST_REPLACEMENT:
+            return "post_translation_replacement_enable"
+        return None
+
+    def _build_impact_result(
+        self,
+        *,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        old_snapshot: dict[str, object],
+        new_snapshot: dict[str, object],
+    ) -> ProofreadingImpactResult | None:
+        """根据旧快照和新快照计算校对页精确影响范围。"""
+
+        if self.impact_analyzer is None:
+            return None
+
+        old_entries_raw = old_snapshot.get("entries", [])
+        if isinstance(old_entries_raw, list):
+            old_entries = [dict(entry) for entry in old_entries_raw if isinstance(entry, dict)]
+        else:
+            old_entries = []
+        new_entries_raw = new_snapshot.get("entries", [])
+        if isinstance(new_entries_raw, list):
+            new_entries = [dict(entry) for entry in new_entries_raw if isinstance(entry, dict)]
+        else:
+            new_entries = []
+        old_meta = dict(old_snapshot.get("meta", {})) if isinstance(old_snapshot.get("meta"), dict) else {}
+        new_meta = dict(new_snapshot.get("meta", {})) if isinstance(new_snapshot.get("meta"), dict) else {}
+        return self.impact_analyzer.analyze_rule_update(
+            rule_type=self._normalize_rule_type_value(rule_type),
+            old_entries=old_entries,
+            new_entries=new_entries,
+            old_meta=old_meta,
+            new_meta=new_meta,
+        )
+
+    def _emit_quality_rule_update(
+        self,
+        *,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        meta_keys: list[str] | None = None,
+        impact: ProofreadingImpactResult | None = None,
+    ) -> None:
+        """统一发规则更新事件，避免底层 setter 隐式补发。"""
+
+        if impact is None or self.event_emitter is None:
+            return
+
+        emit_quality_rule_update = getattr(
+            self.event_emitter,
+            "emit_quality_rule_update",
+            None,
+        )
+        if not callable(emit_quality_rule_update):
+            return
+
+        emit_quality_rule_update(
+            rule_types=[self._normalize_rule_type_value(rule_type)],
+            meta_keys=meta_keys,
+            scope=impact.scope,
+            item_ids=list(impact.item_ids),
+            rel_paths=list(impact.rel_paths),
+        )
+
     def save_entries(
         self,
         rule_type: str | QualityRuleSnapshotService.RuleType,
@@ -142,13 +236,24 @@ class QualityRuleMutationService:
         """保存完整条目列表，并推进 revision。"""
 
         with self._get_state_lock():
+            old_snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type)
             self._assert_revision(rule_type, expected_revision)
             current_revision = self.get_revision(rule_type)
             self._save_entries(rule_type, entries)
             new_revision = self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.build_rule_snapshot_payload(rule_type) | {
+            new_snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type) | {
                 "revision": new_revision
             }
+            impact = self._build_impact_result(
+                rule_type=rule_type,
+                old_snapshot=old_snapshot,
+                new_snapshot=new_snapshot,
+            )
+        self._emit_quality_rule_update(
+            rule_type=rule_type,
+            impact=impact,
+        )
+        return new_snapshot
 
     def delete_entry(
         self,
@@ -203,6 +308,7 @@ class QualityRuleMutationService:
         """切换规则启用状态，并推进 revision。"""
 
         with self._get_state_lock():
+            old_snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type)
             self._assert_revision(rule_type, expected_revision)
             normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
             if normalized_rule_type == self.snapshot_service.RuleType.GLOSSARY:
@@ -218,7 +324,19 @@ class QualityRuleMutationService:
 
             current_revision = self.get_revision(rule_type)
             self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.build_rule_snapshot_payload(rule_type)
+            new_snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type)
+            impact = self._build_impact_result(
+                rule_type=rule_type,
+                old_snapshot=old_snapshot,
+                new_snapshot=new_snapshot,
+            )
+        meta_key = self._build_meta_key_for_rule_enabled(rule_type)
+        self._emit_quality_rule_update(
+            rule_type=rule_type,
+            meta_keys=[meta_key] if meta_key is not None else None,
+            impact=impact,
+        )
+        return new_snapshot
 
     def _normalize_text_preserve_mode(
         self,
@@ -250,6 +368,7 @@ class QualityRuleMutationService:
         """
 
         with self._get_state_lock():
+            old_snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type)
             self._assert_revision(rule_type, expected_revision)
             normalized_rule_type = self.snapshot_service.normalize_rule_type(rule_type)
             if (
@@ -265,4 +384,15 @@ class QualityRuleMutationService:
 
             current_revision = self.get_revision(rule_type)
             self._bump_revision(rule_type, current_revision)
-            return self.snapshot_service.build_rule_snapshot_payload(rule_type)
+            new_snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type)
+            impact = self._build_impact_result(
+                rule_type=rule_type,
+                old_snapshot=old_snapshot,
+                new_snapshot=new_snapshot,
+            )
+        self._emit_quality_rule_update(
+            rule_type=rule_type,
+            meta_keys=[meta_key],
+            impact=impact,
+        )
+        return new_snapshot

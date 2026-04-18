@@ -103,6 +103,7 @@ flowchart TD
 
 ### `Proofreading`
 - `ProofreadingSnapshotService`：校对页整页快照与加载结果
+- `ProofreadingEntryPatchService`：校对页按 `item_id` 裁切双视图补丁
 - `ProofreadingFilterService`：筛选、搜索与术语命中过滤
 - `ProofreadingMutationService`：单条/批量保存与 revision 冲突保护
 - `ProofreadingRecheckService`：单条重检
@@ -120,10 +121,15 @@ flowchart TD
 ## 当前已落地的文件级刷新事实
 - `DataManager` 当前负责把文件操作统一收口到稳定态后再发结构化刷新事件，避免前端在预过滤未完成时读取半成品快照。
 - `DataManager.emit_workbench_refresh()` / `emit_proofreading_refresh()` 是当前文件级刷新事件的唯一拼装入口。
+- `DataManager.emit_project_item_change_refresh()` 当前负责把条目级写入统一映射成 `workbench scope=file + proofreading scope=entry`。
 - `ProjectFileMutationResult` 已从单文件结果扩成批量结果，统一携带 `rel_paths`、`removed_rel_paths` 与 `order_changed`。
+- `ProjectItemChange` 当前统一承载条目级刷新所需的 `item_ids`、`rel_paths` 与 `reason`。
 - `WorkbenchService.build_entry_patch()` 负责从最新工作台快照中裁出受影响文件的 entry 列表。
+- `ProofreadingEntryPatchService` 当前负责从最新校对快照中按 `target_item_ids` 裁出 `full_items / filtered_items`。
+- 翻译批量提交、校对保存/替换/重译，以及 `translation_reset_failed` 当前都已经改成条目级差异刷新，不再依赖任务终态后的整页兜底刷新。
 - 批量 `replace/reset/delete` 当前都按“一次事务 + 一次事件”的语义落地；前端多选操作不再需要逐个文件排队触发刷新。
 - 文件重排当前只触发工作台 `scope="order"` 刷新；文件增删改则同时触发工作台和校对页 `scope="file"` 刷新。
+- 质量规则写入当前由 `QualityRuleMutationService` 先取旧/新快照，再通过 `ProofreadingImpactAnalyzer` 计算精确条目范围；EventBridge 负责把同一条 `QUALITY_RULE_UPDATE` 裁成 `proofreading.snapshot_invalidated`，DataManager 则补发工作台 `scope=file/global` 刷新。
 
 ## 修改建议
 | 变更类型 | 优先落点 |

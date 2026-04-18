@@ -15,6 +15,7 @@ from base.BaseLanguage import BaseLanguage
 from model.Model import Model
 from model.Model import ModelType
 from module.Config import Config
+from module.Data.Core.DataTypes import ProjectItemChange
 
 if TYPE_CHECKING:
     from module.Data.Core.DataTypes import WorkbenchSnapshot
@@ -132,6 +133,7 @@ class FakeTaskDataManager:
         self.set_project_status_calls: list[Base.ProjectStatus] = []
         self.run_project_prefilter_calls: list[tuple[object, str]] = []
         self.reset_failed_translation_items_sync_calls: int = 0
+        self.project_item_change_refresh_calls: list[tuple[ProjectItemChange, Base.Event | None]] = []
         self.clear_analysis_candidates_and_progress_calls: int = 0
         self.reset_failed_analysis_checkpoints_calls: int = 0
         self.refresh_analysis_progress_snapshot_cache_calls: int = 0
@@ -204,10 +206,27 @@ class FakeTaskDataManager:
         self.refresh_analysis_progress_snapshot_cache_calls += 1
         return self.get_analysis_progress_snapshot()
 
-    def reset_failed_translation_items_sync(self) -> dict[str, int | float]:
+    def reset_failed_translation_items_sync(
+        self,
+    ) -> tuple[ProjectItemChange, dict[str, int | float]]:
         self.reset_failed_translation_items_sync_calls += 1
         self.translation_extras["error_line"] = 0
-        return dict(self.translation_extras)
+        return (
+            ProjectItemChange(
+                item_ids=(1, 2),
+                rel_paths=("script/a.txt", "script/b.txt"),
+                reason="translation_reset_failed",
+            ),
+            dict(self.translation_extras),
+        )
+
+    def emit_project_item_change_refresh(
+        self,
+        change: ProjectItemChange,
+        *,
+        source_event: Base.Event | None = None,
+    ) -> None:
+        self.project_item_change_refresh_calls.append((change, source_event))
 
     def import_analysis_candidates(
         self, expected_lg_path: str | None = None

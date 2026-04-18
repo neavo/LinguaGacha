@@ -37,7 +37,6 @@ import type {
   WorkbenchTaskKind,
   WorkbenchTaskSummaryViewModel,
   WorkbenchTaskTone,
-  WorkbenchTaskStatus,
   WorkbenchTaskViewState,
 } from '@/pages/workbench-page/types'
 
@@ -827,7 +826,6 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
   const [is_mutation_running, set_is_mutation_running] = useState(false)
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] = useState<WorkbenchTaskKind | null>(null)
   const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>('translation')
-  const previous_task_status_ref = useRef<WorkbenchTaskStatus>(task_snapshot.status)
   const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq)
   const previous_project_loaded_ref = useRef(project_snapshot.loaded)
   const previous_project_path_ref = useRef(project_snapshot.path)
@@ -1027,19 +1025,6 @@ export function useWorkbenchLiveState(): UseWorkbenchLiveStateResult {
       cancelled = true
     }
   }, [apply_selection_state, project_snapshot.loaded, refresh_snapshot])
-
-  useEffect(() => {
-    const previous_status = previous_task_status_ref.current
-    previous_task_status_ref.current = task_snapshot.status
-
-    if (!project_snapshot.loaded) {
-      return
-    }
-
-    if (previous_status !== task_snapshot.status && previous_status !== 'IDLE' && !task_snapshot.busy) {
-      void refresh_snapshot().catch(() => {})
-    }
-  }, [project_snapshot.loaded, refresh_snapshot, task_snapshot.busy, task_snapshot.status])
 
   useEffect(() => {
     const previous_seq = previous_workbench_change_seq_ref.current

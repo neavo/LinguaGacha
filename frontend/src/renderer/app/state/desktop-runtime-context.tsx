@@ -62,12 +62,14 @@ type TaskSnapshot = {
   analysis_candidate_count: number
 }
 
-export type SnapshotChangeScope = 'global' | 'file' | 'order'
+export type ProofreadingChangeScope = 'global' | 'file' | 'entry'
+export type WorkbenchChangeScope = 'global' | 'file' | 'order'
 
 export type ProofreadingChangeSignal = {
   seq: number
   reason: string
-  scope: SnapshotChangeScope
+  scope: ProofreadingChangeScope
+  item_ids: number[]
   rel_paths: string[]
   removed_rel_paths: string[]
 }
@@ -75,7 +77,7 @@ export type ProofreadingChangeSignal = {
 export type WorkbenchChangeSignal = {
   seq: number
   reason: string
-  scope: SnapshotChangeScope
+  scope: WorkbenchChangeScope
   rel_paths: string[]
   removed_rel_paths: string[]
   order_changed: boolean
@@ -130,6 +132,7 @@ type SettingsChangedEventPayload = {
 type ProofreadingSnapshotInvalidatedEventPayload = {
   reason?: unknown
   scope?: unknown
+  item_ids?: unknown
   rel_paths?: unknown
   removed_rel_paths?: unknown
 }
@@ -189,6 +192,7 @@ const DEFAULT_PROOFREADING_CHANGE_SIGNAL: ProofreadingChangeSignal = {
   seq: 0,
   reason: '',
   scope: 'global',
+  item_ids: [],
   rel_paths: [],
   removed_rel_paths: [],
 }
@@ -352,7 +356,33 @@ function normalize_string_array(value: unknown): string[] {
     .filter((entry) => entry !== '')
 }
 
-function normalize_snapshot_change_scope(value: unknown): SnapshotChangeScope {
+function normalize_item_id_array(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const item_ids: number[] = []
+  for (const entry of value) {
+    const next_item_id = Number(entry)
+    if (!Number.isInteger(next_item_id)) {
+      continue
+    }
+    if (!item_ids.includes(next_item_id)) {
+      item_ids.push(next_item_id)
+    }
+  }
+  return item_ids
+}
+
+function normalize_proofreading_change_scope(value: unknown): ProofreadingChangeScope {
+  if (value === 'file' || value === 'entry') {
+    return value
+  }
+
+  return 'global'
+}
+
+function normalize_workbench_change_scope(value: unknown): WorkbenchChangeScope {
   if (value === 'file' || value === 'order') {
     return value
   }
@@ -569,7 +599,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       set_proofreading_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: String(payload.reason ?? ''),
-        scope: normalize_snapshot_change_scope(payload.scope),
+        scope: normalize_proofreading_change_scope(payload.scope),
+        item_ids: normalize_item_id_array(payload.item_ids),
         rel_paths: normalize_string_array(payload.rel_paths),
         removed_rel_paths: normalize_string_array(payload.removed_rel_paths),
       }))
@@ -580,7 +611,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       set_workbench_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: String(payload.reason ?? ''),
-        scope: normalize_snapshot_change_scope(payload.scope),
+        scope: normalize_workbench_change_scope(payload.scope),
         rel_paths: normalize_string_array(payload.rel_paths),
         removed_rel_paths: normalize_string_array(payload.removed_rel_paths),
         order_changed: Boolean(payload.order_changed),

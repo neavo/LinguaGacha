@@ -142,7 +142,7 @@ data: {"task_type":"translation","line":3}
 | `task.progress_changed` | `task_type` 以及当前事件中实际出现的进度字段；不会强行补齐缺失字段 |
 | `workbench.snapshot_changed` | `reason`、`scope`，以及按文件场景可选的 `rel_paths`、`removed_rel_paths`、`order_changed`；仍兼容 `snapshot` 全量载荷 |
 | `settings.changed` | `keys`，以及可选的 `settings` 子集 |
-| `proofreading.snapshot_invalidated` | `reason`、`scope`，以及按来源可选的 `rule_types`、`meta_keys`、`reset_scope`、`keys`、`rel_paths`、`removed_rel_paths`、`source_event`、`trigger_reason` |
+| `proofreading.snapshot_invalidated` | `reason`、`scope`，以及按来源可选的 `item_ids`、`rule_types`、`meta_keys`、`reset_scope`、`keys`、`rel_paths`、`removed_rel_paths`、`source_event`、`trigger_reason` |
 | `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | `task_id`、`phase`、`message`、`current`、`total`、`finished` |
 
 ### 3.5 Python 侧 SSE 消费现状
@@ -447,6 +447,7 @@ data: {"task_type":"translation","line":3}
 | --- | --- | --- | --- |
 | `/api/proofreading/snapshot` | `{}`、`{"lg_path": str}`、`{"path": str}` 或 `{"project_id": str}` | `{"snapshot": ProofreadingSnapshotPayload}` | 读取校对页快照 |
 | `/api/proofreading/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingFilePatchPayload}` | 按受影响文件读取校对页局部补丁 |
+| `/api/proofreading/entry-patch` | `{"item_ids": list[int], "rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingEntryPatchPayload}` | 按受影响条目读取校对页局部补丁 |
 | `/api/proofreading/filter` | `{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"snapshot": ProofreadingSnapshotPayload}` | 按筛选条件重建快照 |
 | `/api/proofreading/search` | `{"keyword": str, "is_regex": bool}` 并可叠加筛选字段 | `{"search_result": ProofreadingSearchResultPayload}` | 在当前筛选口径下搜索 |
 | `/api/proofreading/save-item` | `{"item": dict, "new_dst": str, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 保存单条条目 |
@@ -490,14 +491,29 @@ data: {"task_type":"translation","line":3}
 - `full_items`
 - `filtered_items`
 
+`ProofreadingEntryPatchPayload` 当前稳定字段：
+
+- `revision`
+- `project_id`
+- `readonly`
+- `target_item_ids`
+- `default_filters`
+- `applied_filters`
+- `full_summary`
+- `filtered_summary`
+- `full_items`
+- `filtered_items`
+
 补充说明：
 
 - `snapshot` 会优先解析 `lg_path`，再回退到 `path` / `project_id` / 当前工程路径。
-- `file-patch` 与 `filter` 共用同一套筛选解析入口：优先取 `filters`，其次取 `filter_options`，最后回退到请求顶层扁平字段。
+- `file-patch`、`entry-patch` 与 `filter` 共用同一套筛选解析入口：优先取 `filters`，其次取 `filter_options`，最后回退到请求顶层扁平字段。
 - `file-patch` 会同时返回两套文件切片：默认筛选口径下的 `full_items` / `full_summary`，以及当前已应用筛选口径下的 `filtered_items` / `filtered_summary`。
+- `entry-patch` 会按 `target_item_ids` 返回双视图补丁：旧列表先移除这些条目，再由前端插回 `full_items` / `filtered_items`。
 - 当前工程未加载或请求里的工程路径已经过期时，API 会返回 `readonly` 快照，而不是专门的业务错误码。
 - `filters` 当前稳定字段为：`warning_types`、`statuses`、`file_paths`、`glossary_terms`。
 - `save-item`、`save-all`、`replace-all`、`retranslate-items` 当前都使用 `expected_revision` 做乐观锁保护；但冲突异常在 API 边界仍未标准化成独立错误码。
+- 上述 mutation 路由的主响应壳未变化；渲染层当前会结合 `result.changed_item_ids + result.items[*].file_path` 立即请求一次 `/api/proofreading/entry-patch`，而不是再整页重拉。
 
 ### 4.9 Extra
 
@@ -616,8 +632,9 @@ data: {"task_type":"translation","line":3}
 - 渲染层大量接口当前使用本地 TypeScript payload 类型，而不是复用 Python 侧 `api/Client` 的冻结模型。
 - `DesktopRuntimeContext` 当前把 `workbench.snapshot_changed` 与 `proofreading.snapshot_invalidated` 收口成结构化变更信号：
   - `workbench_change_signal = { seq, reason, scope, rel_paths, removed_rel_paths, order_changed }`
-  - `proofreading_change_signal = { seq, reason, scope, rel_paths, removed_rel_paths }`
-- 工作台页与校对页在收到 `scope == "file"` 或 `scope == "order"` 的信号后，会优先请求对应的 `/file-patch` 接口做本地合并；只有 `scope == "global"`、本地缓存未就绪或补丁失败时才回退整页 `/snapshot`。
+  - `proofreading_change_signal = { seq, reason, scope, item_ids, rel_paths, removed_rel_paths }`
+- 工作台页当前只响应 `scope == "file" | "order" | "global"`；校对页额外支持 `scope == "entry"`，收到后会优先请求 `/api/proofreading/entry-patch` 做本地合并。
+- 两页当前都不再因为“任意任务从 busy 回到 idle”而主动整页刷新；只有项目加载/切换、显式 `scope == "global"`，或补丁失败时才回退整页 `/snapshot`。
 - `api/Client/*` 与 `ApiStateStore` 主要服务于 Python 侧测试、桥接和对象化消费场景，不是 Electron 渲染层运行时入口。
 
 ## 7. 维护与同步要求
