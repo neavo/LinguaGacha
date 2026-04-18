@@ -24,9 +24,9 @@ class ProofreadingRuleImpact:
         """把单值或序列统一收口成字符串列表，方便做相关性判断。"""
 
         if isinstance(value, str):
-            return [value]
+            return [value.strip().casefold()]
         elif isinstance(value, (list, tuple, set)):
-            return [str(item) for item in value]
+            return [str(item).strip().casefold() for item in value]
         else:
             return []
 
@@ -66,7 +66,5 @@ class ProofreadingRuleImpact:
     def is_rule_update_relevant(cls, data: dict[str, Any] | None) -> bool:
         """给桥接层和前端页共享的统一判断入口。"""
 
-        relevant_rule_types, relevant_meta_keys = cls.extract_relevant_rule_update(
-            data
-        )
+        relevant_rule_types, relevant_meta_keys = cls.extract_relevant_rule_update(data)
         return bool(relevant_rule_types or relevant_meta_keys)

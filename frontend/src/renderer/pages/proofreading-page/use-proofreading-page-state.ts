@@ -311,6 +311,118 @@ function are_filter_options_equal(
   return build_filter_signature(left_filters) === build_filter_signature(right_filters)
 }
 
+type ProofreadingFilterValueKeyResolver<T> = (value: T) => string
+
+function create_filter_value_key_set<T>(
+  values: T[],
+  resolve_key: ProofreadingFilterValueKeyResolver<T>,
+): Set<string> {
+  return new Set(values.map((value) => resolve_key(value)))
+}
+
+function are_filter_value_key_sets_equal(
+  left_keys: Set<string>,
+  right_keys: Set<string>,
+): boolean {
+  if (left_keys.size !== right_keys.size) {
+    return false
+  }
+
+  for (const key of left_keys) {
+    if (!right_keys.has(key)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
+  return `${term[0]}→${term[1]}`
+}
+
+function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossaryTerm {
+  return [term[0], term[1]] as const
+}
+
+function reconcile_filter_dimension<T>(args: {
+  previous_applied: T[]
+  previous_default: T[]
+  next_default: T[]
+  resolve_key: ProofreadingFilterValueKeyResolver<T>
+  clone_value: (value: T) => T
+}): T[] {
+  const previous_applied_keys = create_filter_value_key_set(
+    args.previous_applied,
+    args.resolve_key,
+  )
+  const previous_default_keys = create_filter_value_key_set(
+    args.previous_default,
+    args.resolve_key,
+  )
+
+  if (are_filter_value_key_sets_equal(previous_applied_keys, previous_default_keys)) {
+    return args.next_default.map((value) => args.clone_value(value))
+  }
+
+  const next_default_by_key = new Map(args.next_default.map((value) => {
+    return [args.resolve_key(value), value] as const
+  }))
+
+  const reconciled_values: T[] = []
+  for (const value of args.previous_applied) {
+    const next_value = next_default_by_key.get(args.resolve_key(value))
+    if (next_value !== undefined) {
+      reconciled_values.push(args.clone_value(next_value))
+    }
+  }
+
+  return reconciled_values
+}
+
+function reconcile_proofreading_filter_options(args: {
+  previous_applied: ProofreadingFilterOptions | null
+  previous_default: ProofreadingFilterOptions
+  next_default: ProofreadingFilterOptions
+}): ProofreadingFilterOptions {
+  if (args.previous_applied === null) {
+    return clone_proofreading_filter_options(args.next_default)
+  }
+
+  // 为什么：如果当前维度仍保持“上一版默认全选”，刷新后要自动接住新出现的选项；
+  // 只有用户真的改过这个维度时，才继续保留他们的子集选择。
+  return {
+    warning_types: reconcile_filter_dimension({
+      previous_applied: args.previous_applied.warning_types,
+      previous_default: args.previous_default.warning_types,
+      next_default: args.next_default.warning_types,
+      resolve_key: (value) => value,
+      clone_value: (value) => value,
+    }),
+    statuses: reconcile_filter_dimension({
+      previous_applied: args.previous_applied.statuses,
+      previous_default: args.previous_default.statuses,
+      next_default: args.next_default.statuses,
+      resolve_key: (value) => value,
+      clone_value: (value) => value,
+    }),
+    file_paths: reconcile_filter_dimension({
+      previous_applied: args.previous_applied.file_paths,
+      previous_default: args.previous_default.file_paths,
+      next_default: args.next_default.file_paths,
+      resolve_key: (value) => value,
+      clone_value: (value) => value,
+    }),
+    glossary_terms: reconcile_filter_dimension({
+      previous_applied: args.previous_applied.glossary_terms,
+      previous_default: args.previous_default.glossary_terms,
+      next_default: args.next_default.glossary_terms,
+      resolve_key: build_glossary_term_key,
+      clone_value: clone_glossary_term,
+    }),
+  }
+}
+
 function filter_local_visible_items(args: {
   items: ProofreadingItem[]
   keyword: string
@@ -393,6 +505,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [pending_mutation, set_pending_mutation] = useState<ProofreadingPendingMutation | null>(null)
   const refresh_request_id_ref = useRef(0)
   const applied_filters_ref = useRef<ProofreadingFilterOptions | null>(applied_filters)
+  const full_snapshot_ref = useRef<ProofreadingSnapshot>(full_snapshot)
   const preferred_row_id_ref = useRef<string | null>(null)
   const should_select_first_visible_ref = useRef(false)
   const replace_cursor_ref = useRef(0)
@@ -408,6 +521,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   useEffect(() => {
     applied_filters_ref.current = applied_filters
   }, [applied_filters])
+
+  useEffect(() => {
+    full_snapshot_ref.current = full_snapshot
+  }, [full_snapshot])
 
   useEffect(() => {
     selected_row_ids_ref.current = selected_row_ids
@@ -551,9 +668,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const next_full_snapshot = normalize_proofreading_snapshot_payload(snapshot_payload)
       const next_applied_filters = options?.reset_filters === true
         ? clone_proofreading_filter_options(next_full_snapshot.filters)
-        : clone_proofreading_filter_options(
-            applied_filters_ref.current ?? next_full_snapshot.filters,
-          )
+        : reconcile_proofreading_filter_options({
+            previous_applied: applied_filters_ref.current,
+            previous_default: full_snapshot_ref.current.filters,
+            next_default: next_full_snapshot.filters,
+          })
 
       let next_server_snapshot = next_full_snapshot
 

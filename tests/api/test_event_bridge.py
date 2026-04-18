@@ -3,6 +3,7 @@ import pytest
 from base.Base import Base
 from api.Bridge.EventBridge import EventBridge
 from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
+from module.Data.Storage.LGDatabase import LGDatabase
 
 
 def test_translation_progress_is_mapped_to_task_progress() -> None:
@@ -74,6 +75,36 @@ def test_config_updated_maps_settings_snapshot_when_available() -> None:
     }
 
 
+def test_workbench_refresh_maps_to_workbench_snapshot_changed() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.WORKBENCH_REFRESH,
+        {"reason": "config_updated"},
+    )
+
+    assert topic == "workbench.snapshot_changed"
+    assert payload == {
+        "reason": "config_updated",
+    }
+
+
+def test_proofreading_refresh_maps_to_snapshot_invalidated() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.PROOFREADING_REFRESH,
+        {
+            "reason": "project_file_update",
+            "rel_path": "chapter/a.txt",
+            "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
+        },
+    )
+
+    assert topic == "proofreading.snapshot_invalidated"
+    assert payload == {
+        "reason": "project_file_update",
+        "rel_path": "chapter/a.txt",
+        "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
+    }
+
+
 def test_analysis_progress_maps_candidate_count_to_task_progress() -> None:
     # 准备
     event_bridge = EventBridge()
@@ -124,6 +155,24 @@ def test_quality_rule_update_uses_proofreading_rule_impact_single_source(
     assert payload["reason"] == "quality_rule_update"
     assert payload["rule_types"] == ["glossary"]
     assert payload["meta_keys"] == []
+
+
+def test_quality_rule_update_maps_uppercase_rule_type_values_to_proofreading_invalidation() -> (
+    None
+):
+    # 准备
+    topic, payload = EventBridge().map_event(
+        Base.Event.QUALITY_RULE_UPDATE,
+        {"rule_types": [LGDatabase.RuleType.GLOSSARY.value]},
+    )
+
+    # 断言
+    assert topic == "proofreading.snapshot_invalidated"
+    assert payload == {
+        "reason": "quality_rule_update",
+        "rule_types": ["glossary"],
+        "meta_keys": [],
+    }
 
 
 def test_event_bridge_maps_extra_progress_topic() -> None:

@@ -220,6 +220,18 @@ def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
     dm.prefilter_service.mark_request_handled.assert_called_once_with(request)
     dm.prefilter_service.finish_worker.assert_called_once()
     assert (
+        Base.Event.WORKBENCH_REFRESH,
+        {"reason": "file_op"},
+    ) in emitted_events
+    assert (
+        Base.Event.PROOFREADING_REFRESH,
+        {
+            "reason": "project_prefilter_updated",
+            "source_event": Base.Event.PROJECT_PREFILTER.value,
+            "trigger_reason": "file_op",
+        },
+    ) in emitted_events
+    assert (
         Base.Event.PROJECT_PREFILTER,
         {
             "sub_event": Base.ProjectPrefilterSubEvent.UPDATED,
@@ -256,7 +268,7 @@ def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
 def test_on_config_updated_schedules_prefilter_for_relevant_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dm, _events = build_data_manager(monkeypatch)
+    dm, emitted_events = build_data_manager(monkeypatch)
     dm.schedule_prefilter_if_needed = MagicMock()
 
     dm.on_config_updated(
@@ -265,6 +277,40 @@ def test_on_config_updated_schedules_prefilter_for_relevant_keys(
     )
 
     dm.schedule_prefilter_if_needed.assert_called_once_with(reason="config_updated")
+    assert emitted_events == [
+        (
+            Base.Event.PROOFREADING_REFRESH,
+            {
+                "reason": "config_updated",
+                "source_event": Base.Event.CONFIG_UPDATED.value,
+                "keys": ["source_language", "unrelated_key"],
+            },
+        )
+    ]
+
+
+def test_on_config_updated_emits_proofreading_refresh_for_checker_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    dm.schedule_prefilter_if_needed = MagicMock()
+
+    dm.on_config_updated(
+        Base.Event.CONFIG_UPDATED,
+        {"keys": ["check_similarity"]},
+    )
+
+    dm.schedule_prefilter_if_needed.assert_not_called()
+    assert emitted_events == [
+        (
+            Base.Event.PROOFREADING_REFRESH,
+            {
+                "reason": "config_updated",
+                "source_event": Base.Event.CONFIG_UPDATED.value,
+                "keys": ["check_similarity"],
+            },
+        )
+    ]
 
 
 def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
@@ -279,6 +325,35 @@ def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
     dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
 
     dm.schedule_prefilter_if_needed.assert_not_called()
+
+
+def test_emit_project_file_update_also_invalidates_proofreading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+
+    dm.emit_project_file_update(
+        SimpleNamespace(rel_path="chapter/a.txt", old_rel_path="chapter/b.txt")
+    )
+
+    assert emitted_events == [
+        (
+            Base.Event.PROJECT_FILE_UPDATE,
+            {
+                "rel_path": "chapter/a.txt",
+                "old_rel_path": "chapter/b.txt",
+            },
+        ),
+        (
+            Base.Event.PROOFREADING_REFRESH,
+            {
+                "reason": "project_file_update",
+                "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
+                "rel_path": "chapter/a.txt",
+                "old_rel_path": "chapter/b.txt",
+            },
+        ),
+    ]
 
 
 def test_import_analysis_candidates_emits_quality_rule_update_only_when_imported(

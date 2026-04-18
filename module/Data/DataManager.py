@@ -64,6 +64,22 @@ class DataManager(Base):
             "analysis_prompt_enable",
         }
     )
+    PREFILTER_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "source_language",
+            "target_language",
+            "mtool_optimizer_enable",
+        }
+    )
+    PROOFREADING_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "source_language",
+            "target_language",
+            "check_kana_residue",
+            "check_hangeul_residue",
+            "check_similarity",
+        }
+    )
     TextPreserveMode = DataTextPreserveMode
 
     def __init__(self) -> None:
@@ -231,13 +247,21 @@ class DataManager(Base):
         keys = data.get("keys", [])
         if not isinstance(keys, list):
             keys = []
-        relevant = {"source_language", "target_language", "mtool_optimizer_enable"}
-        if not any(isinstance(key, str) and key in relevant for key in keys):
-            return
         if not self.is_loaded():
             return
 
-        self.schedule_prefilter_if_needed(reason="config_updated")
+        normalized_keys = [str(key) for key in keys if isinstance(key, str)]
+        if any(
+            key in self.PROOFREADING_RELEVANT_CONFIG_KEYS for key in normalized_keys
+        ):
+            self.emit_proofreading_refresh(
+                reason="config_updated",
+                keys=normalized_keys,
+                source_event=Base.Event.CONFIG_UPDATED,
+            )
+
+        if any(key in self.PREFILTER_RELEVANT_CONFIG_KEYS for key in normalized_keys):
+            self.schedule_prefilter_if_needed(reason="config_updated")
 
     def schedule_prefilter_if_needed(self, *, reason: str) -> bool:
         """按当前配置判断是否需要补跑预过滤。"""
@@ -339,6 +363,17 @@ class DataManager(Base):
                 if request is None:
                     if updated and last_request is not None and last_result is not None:
                         self.refresh_analysis_progress_snapshot_cache()
+                        # 为什么：预过滤真正写回后，工作台统计与文件列表依赖的条目状态已经变了，
+                        # 必须补发一次失效信号，页面缓存层才能重新拉取最新快照。
+                        self.emit(
+                            Base.Event.WORKBENCH_REFRESH,
+                            {"reason": last_request.reason},
+                        )
+                        self.emit_proofreading_refresh(
+                            reason="project_prefilter_updated",
+                            trigger_reason=last_request.reason,
+                            source_event=Base.Event.PROJECT_PREFILTER,
+                        )
                         self.log_prefilter_result(last_request, last_result)
                         self.emit(
                             Base.Event.PROJECT_PREFILTER,
@@ -960,6 +995,38 @@ class DataManager(Base):
         if result.old_rel_path:
             payload["old_rel_path"] = result.old_rel_path
         self.emit(Base.Event.PROJECT_FILE_UPDATE, payload)
+        self.emit_proofreading_refresh(
+            reason="project_file_update",
+            rel_path=result.rel_path,
+            old_rel_path=result.old_rel_path,
+            source_event=Base.Event.PROJECT_FILE_UPDATE,
+        )
+
+    def emit_proofreading_refresh(
+        self,
+        *,
+        reason: str,
+        source_event: Base.Event,
+        keys: list[str] | None = None,
+        rel_path: str | None = None,
+        old_rel_path: str | None = None,
+        trigger_reason: str | None = None,
+    ) -> None:
+        """统一发校对页快照失效事件，避免各个入口各拼一套 payload。"""
+
+        payload: dict[str, Any] = {
+            "reason": reason,
+            "source_event": source_event.value,
+        }
+        if keys:
+            payload["keys"] = list(keys)
+        if rel_path:
+            payload["rel_path"] = rel_path
+        if old_rel_path:
+            payload["old_rel_path"] = old_rel_path
+        if trigger_reason:
+            payload["trigger_reason"] = trigger_reason
+        self.emit(Base.Event.PROOFREADING_REFRESH, payload)
 
     def require_loaded_lg_path(self) -> str:
         """读取当前工程路径；未加载工程时统一抛出同一条错误。"""

@@ -75,11 +75,23 @@ class EventBridge:
                     "path": str(data.get("path", "")),
                 },
             )
+        elif event == Base.Event.WORKBENCH_REFRESH:
+            return (
+                EventTopic.WORKBENCH_SNAPSHOT_CHANGED.value,
+                {
+                    "reason": str(data.get("reason", "")),
+                },
+            )
         elif event == Base.Event.WORKBENCH_SNAPSHOT:
             snapshot = data.get("snapshot", {})
             return (
                 EventTopic.WORKBENCH_SNAPSHOT_CHANGED.value,
                 {"snapshot": snapshot if isinstance(snapshot, dict) else {}},
+            )
+        elif event == Base.Event.PROOFREADING_REFRESH:
+            return (
+                EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
+                self.build_proofreading_refresh_payload(data),
             )
         elif event == Base.Event.CONFIG_UPDATED:
             keys = data.get("keys", [])
@@ -239,3 +251,35 @@ class EventBridge:
             "reason": reason,
             "reset_scope": reset_scope,
         }
+
+    def build_proofreading_refresh_payload(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """把校对刷新请求裁成稳定的最小失效载荷。"""
+
+        payload: dict[str, Any] = {
+            "reason": str(data.get("reason", "")),
+        }
+
+        keys = data.get("keys")
+        if isinstance(keys, list):
+            payload["keys"] = [str(key) for key in keys]
+
+        rel_path = str(data.get("rel_path", ""))
+        if rel_path != "":
+            payload["rel_path"] = rel_path
+
+        old_rel_path = str(data.get("old_rel_path", ""))
+        if old_rel_path != "":
+            payload["old_rel_path"] = old_rel_path
+
+        source_event = data.get("source_event")
+        if source_event is not None:
+            payload["source_event"] = str(getattr(source_event, "value", source_event))
+
+        trigger_reason = str(data.get("trigger_reason", ""))
+        if trigger_reason != "":
+            payload["trigger_reason"] = trigger_reason
+
+        return payload
