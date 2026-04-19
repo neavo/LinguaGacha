@@ -3,7 +3,7 @@ from collections.abc import Callable
 from api.Application.ModelAppService import ModelAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ModelApiClient import ModelApiClient
-from model.Api.ModelModels import ModelPageSnapshot
+from api.Models.Model import ModelPageSnapshot
 from tests.api.support.application_fakes import FakeModelConfig
 from tests.api.support.application_fakes import FakeModelManager
 

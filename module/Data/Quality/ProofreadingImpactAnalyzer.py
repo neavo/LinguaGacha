@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Core.DataEnums import TextPreserveMode
 
 

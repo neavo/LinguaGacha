@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.ResultChecker import WarningType
 
 

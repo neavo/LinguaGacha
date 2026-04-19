@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from model.Api.ExtraModels import ExtraTaskState
+from api.Models.Extra import ExtraTaskState
 
 
 class TsConversionService:

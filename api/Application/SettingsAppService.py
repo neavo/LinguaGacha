@@ -5,7 +5,7 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.ModelManager import ModelManager
+from module.Model.Manager import ModelManager
 
 
 class SettingsAppService:

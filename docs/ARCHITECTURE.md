@@ -7,10 +7,12 @@ LinguaGacha 当前由无头 Python Core 与 Electron 前端组成：`app.py` 负
 ```mermaid
 flowchart TD
     A["frontend"] --> B["api/"]
-    B --> C["app.py"]
-    C --> D["base/"]
-    C --> E["module/"]
-    E --> F["model/"]
+    B --> C["api/Models"]
+    B --> D["app.py"]
+    D --> E["base/"]
+    D --> F["module/"]
+    F --> G["module/Data/Core"]
+    F --> H["module/Model"]
 ```
 
 ## 仓库结构
@@ -18,10 +20,11 @@ flowchart TD
 | --- | --- |
 | `app.py` | Python Core 入口、CLI 分流、Core API 启停与退出清理 |
 | `api/` | 本地 Core API、HTTP / SSE 契约与前后端边界 |
+| `api/Models/` | Python 侧冻结 DTO、SSE patch 与客户端对象化消费模型 |
 | `base/` | 事件、日志、路径、版本、命令行等基础设施 |
 | `frontend/` | Electron + React 前端子工程、桌面桥接与渲染层实现 |
 | `module/` | 数据层、任务引擎、文件处理、本地化与其他业务模块 |
-| `model/` | 核心数据对象与 API 响应模型 |
+| `module/Model/` | 模型配置领域对象与模型管理流程 |
 | `resource/` | 预设、模板、图标与运行时资源 |
 | `buildtools/` | 构建流程与辅助脚本 |
 | `tests/` | 自动化测试 |
@@ -49,6 +52,7 @@ flowchart TD
 | Electron / React 前端 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) |
 | HTTP / SSE 契约 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> `api/Application/*` / `api/Server/*` |
 | 工程加载、规则、分析、工作台数据 | `docs/ARCHITECTURE.md` -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) -> `module/Data/DataManager.py` |
+| 模型页与模型配置 | `docs/ARCHITECTURE.md` -> [`module/Model/SPEC.md`](../module/Model/SPEC.md) -> `module/Model/Manager.py` |
 | 任务调度与请求生命周期 | `docs/ARCHITECTURE.md` -> `module/Engine/Engine.py` -> `module/Engine/*` |
 | 文件导入、资产解析、导出格式 | `docs/ARCHITECTURE.md` -> `module/File/FileManager.py` -> `module/File/*` |
 
@@ -59,6 +63,7 @@ flowchart TD
 | [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) | `frontend/src/renderer/` | 渲染层页面结构、状态组织、组件落位与样式边界 |
 | [`api/SPEC.md`](../api/SPEC.md) | `api/` | 本地 Core API 的 HTTP / SSE 契约、Python 侧对象化客户端边界与前端运行时接入规则 |
 | [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `module/Data/` | 数据层公开入口、内部拆分与主流程 |
+| [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置领域对象、模型预设管理与模型页后端入口 |
 
 ## 文档放置规则
 | 文档类型 | 位置 | 用途 |
@@ -76,6 +81,7 @@ flowchart TD
 | 渲染层页面结构、状态组织或样式边界变化 | `frontend/src/renderer/SPEC.md` |
 | API 契约、Python 侧客户端边界或前端接入规则变化 | `api/SPEC.md` |
 | 数据层职责、主流程或公开入口变化 | `module/Data/SPEC.md` |
+| 模型配置对象、模型管理器或模型页后端入口变化 | `module/Model/SPEC.md` |
 | 设计方案与取舍记录 | `docs/design/*.md` |
 
 ## 新增文档时怎么判断位置

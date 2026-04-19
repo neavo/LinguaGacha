@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any
 from typing import Callable
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterOptions

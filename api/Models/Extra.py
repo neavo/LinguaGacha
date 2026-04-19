@@ -256,6 +256,7 @@ class NameFieldTranslateResult:
             "failed_count": self.failed_count,
         }
 
+
 @dataclass(frozen=True)
 class ExtraToolEntry:
     """把 Extra 工具箱条目冻结，避免工具列表继续散落为匿名字典。"""

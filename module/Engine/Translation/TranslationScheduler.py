@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Engine.TaskModeStrategy import TaskModeStrategy
 from module.Engine.TaskScheduler import TaskScheduler

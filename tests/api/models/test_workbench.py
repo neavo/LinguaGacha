@@ -1,5 +1,5 @@
-from model.Api.WorkbenchModels import WorkbenchFileEntry
-from model.Api.WorkbenchModels import WorkbenchSnapshot
+from api.Models.Workbench import WorkbenchFileEntry
+from api.Models.Workbench import WorkbenchSnapshot
 
 
 def test_workbench_file_entry_from_dict_uses_safe_defaults() -> None:

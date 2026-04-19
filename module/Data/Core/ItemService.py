@@ -1,6 +1,6 @@
 from typing import Any
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Utils.GapTool import GapTool
 

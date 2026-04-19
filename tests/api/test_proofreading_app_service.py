@@ -6,7 +6,7 @@ from typing import Any
 
 from base.Base import Base
 from module.Data.Core.DataTypes import ProjectItemChange
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Proofreading.ProofreadingFilterService import (
     ProofreadingFilterOptions,
 )
@@ -409,7 +409,16 @@ def test_proofreading_replace_all_returns_mutation_result() -> None:
                     status=Base.ProjectStatus.NONE,
                 ),
             ],
-            warning_map={id(build_item(item_id=1, src="勇者が来た", dst="Heroine arrived refreshed", file_path="script/a.txt")): ["GLOSSARY"]},
+            warning_map={
+                id(
+                    build_item(
+                        item_id=1,
+                        src="勇者が来た",
+                        dst="Heroine arrived refreshed",
+                        file_path="script/a.txt",
+                    )
+                ): ["GLOSSARY"]
+            },
             checker=SimpleNamespace(),
             failed_terms_by_item_key={},
             filter_options=ProofreadingFilterOptions(),

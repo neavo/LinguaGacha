@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ItemService import ItemService
 from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService

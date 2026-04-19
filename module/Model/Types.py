@@ -4,8 +4,10 @@ from dataclasses import field
 from enum import StrEnum
 from typing import Any
 
+
 class ModelType(StrEnum):
     """模型类型枚举"""
+
     PRESET = "PRESET"
     CUSTOM_GOOGLE = "CUSTOM_GOOGLE"
     CUSTOM_OPENAI = "CUSTOM_OPENAI"
@@ -14,6 +16,7 @@ class ModelType(StrEnum):
 
 class ThinkingLevel(StrEnum):
     """思考挡位枚举"""
+
     OFF = "OFF"
     LOW = "LOW"
     MEDIUM = "MEDIUM"
@@ -23,6 +26,7 @@ class ThinkingLevel(StrEnum):
 @dataclass
 class RequestConfig:
     """自定义请求配置"""
+
     extra_headers: dict[str, str] = field(default_factory=dict)
     extra_headers_custom_enable: bool = False
     extra_body: dict[str, Any] = field(default_factory=dict)
@@ -49,10 +53,11 @@ class RequestConfig:
 @dataclass
 class ThresholdConfig:
     """阈值配置"""
+
     input_token_limit: int = 512
     output_token_limit: int = 4096
-    rpm_limit: int = 0           # 0 = 无限制
-    concurrency_limit: int = 0   # 0 = 自动
+    rpm_limit: int = 0  # 0 = 无限制
+    concurrency_limit: int = 0  # 0 = 自动
 
     def to_dict(self) -> dict:
         return {
@@ -75,6 +80,7 @@ class ThresholdConfig:
 @dataclass
 class ThinkingConfig:
     """思考配置"""
+
     level: ThinkingLevel = ThinkingLevel.OFF
 
     def to_dict(self) -> dict:
@@ -93,6 +99,7 @@ class ThinkingConfig:
 @dataclass
 class GenerationConfig:
     """生成参数配置"""
+
     temperature: float = 0.95
     temperature_custom_enable: bool = False
     top_p: float = 0.95
@@ -122,15 +129,20 @@ class GenerationConfig:
             top_p=data.get("top_p", 0.95),
             top_p_custom_enable=data.get("top_p_custom_enable", False),
             presence_penalty=data.get("presence_penalty", 0.0),
-            presence_penalty_custom_enable=data.get("presence_penalty_custom_enable", False),
+            presence_penalty_custom_enable=data.get(
+                "presence_penalty_custom_enable", False
+            ),
             frequency_penalty=data.get("frequency_penalty", 0.0),
-            frequency_penalty_custom_enable=data.get("frequency_penalty_custom_enable", False),
+            frequency_penalty_custom_enable=data.get(
+                "frequency_penalty_custom_enable", False
+            ),
         )
 
 
 @dataclass
 class Model:
     """模型配置数据类"""
+
     id: str
     type: ModelType
     name: str
@@ -193,4 +205,8 @@ class Model:
 
     def is_custom(self) -> bool:
         """判断是否为自定义模型"""
-        return self.type in (ModelType.CUSTOM_GOOGLE, ModelType.CUSTOM_OPENAI, ModelType.CUSTOM_ANTHROPIC)
+        return self.type in (
+            ModelType.CUSTOM_GOOGLE,
+            ModelType.CUSTOM_OPENAI,
+            ModelType.CUSTOM_ANTHROPIC,
+        )

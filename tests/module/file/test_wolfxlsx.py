@@ -11,7 +11,7 @@ from openpyxl.cell.cell import Cell
 from openpyxl.worksheet.worksheet import Worksheet
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.File.WOLFXLSX import WOLFXLSX
 from tests.module.file.conftest import DummyDataManager

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Utils.GapTool import GapTool
 
 

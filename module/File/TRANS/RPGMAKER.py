@@ -2,7 +2,7 @@ import re
 from typing import Pattern
 
 from module.File.TRANS.NONE import NONE
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 
 class RPGMAKER(NONE):

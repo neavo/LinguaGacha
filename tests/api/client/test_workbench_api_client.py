@@ -3,7 +3,7 @@ from collections.abc import Callable
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
-from model.Api.WorkbenchModels import WorkbenchSnapshot
+from api.Models.Workbench import WorkbenchSnapshot
 from tests.api.support.application_fakes import FakeWorkbenchManager
 
 

@@ -1,5 +1,5 @@
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.File.RenPy.RenPyAst import BlockKind
 from module.File.RenPy.RenPyAst import RenPyDocument
 from module.File.RenPy.RenPyAst import Slot

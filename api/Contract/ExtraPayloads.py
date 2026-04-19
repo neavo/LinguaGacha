@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Self
 
-from model.Api.ExtraModels import NameFieldSnapshot
-from model.Api.ExtraModels import NameFieldTranslateResult
-from model.Api.ExtraModels import TsConversionOptionsSnapshot
-from model.Api.ExtraModels import TsConversionTaskAccepted
+from api.Models.Extra import NameFieldSnapshot
+from api.Models.Extra import NameFieldTranslateResult
+from api.Models.Extra import TsConversionOptionsSnapshot
+from api.Models.Extra import TsConversionTaskAccepted
 
 
 @dataclass(frozen=True)

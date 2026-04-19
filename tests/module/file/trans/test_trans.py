@@ -22,7 +22,7 @@ from module.File.TRANS.WOLF import WOLF
 
 from pathlib import Path
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 from tests.module.file.conftest import DummyDataManager
 

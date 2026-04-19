@@ -3,7 +3,7 @@ from typing import Any
 from api.Bridge.EventTopic import EventTopic
 from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
 from base.Base import Base
-from model.Api.ExtraModels import ExtraTaskState
+from api.Models.Extra import ExtraTaskState
 
 
 class EventBridge:
@@ -328,7 +328,7 @@ class EventBridge:
                 continue
             try:
                 item_id = int(raw_item_id)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             if item_id in seen_item_ids:
                 continue

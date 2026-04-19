@@ -18,7 +18,7 @@
 | 路径、HTTP 方法、服务启动 | `api/Server/CoreApiServer.py`、`api/Server/ServerBootstrap.py`、`api/Server/Routes/*.py` |
 | 请求归一化、业务约束、响应语义 | `api/Application/*.py` |
 | HTTP `data` 载荷包装 | `api/Contract/*.py` |
-| Python 侧对象化消费 | `api/Client/*.py`、`model/Api/*.py` |
+| Python 侧对象化消费 | `api/Client/*.py`、`api/Models/*.py` |
 | Electron 运行时接入 | `frontend/src/renderer/app/desktop-api.ts` |
 
 ### 1.2 阅读顺序
@@ -36,10 +36,12 @@ flowchart LR
     B --> C["Routes"]
     C --> D["Application"]
     D --> E["Contract / JSON"]
+    D --> I["Models / DTO"]
 
     F["frontend/src/renderer/app/desktop-api.ts"] --> B
     G["frontend EventSource"] --> B
     H["api/Client/* + ApiStateStore"] --> B
+    I --> H
 ```
 
 ### 2.1 目录职责
@@ -49,6 +51,7 @@ flowchart LR
 | `api/Server/` | 启动本地 HTTP 服务、注册路由、处理基础响应壳与错误映射 |
 | `api/Server/Routes/` | 按领域声明路径常量并把请求分发到对应 Application 服务 |
 | `api/Application/` | 读取 Core 状态、归一化请求、组织稳定响应语义 |
+| `api/Models/` | 冻结 DTO、增量 patch 与 Python 侧对象化消费共享模型 |
 | `api/Contract/` | 把内部对象收口为 HTTP `data` 载荷 |
 | `api/Bridge/` | 把内部事件裁剪成对外稳定的 SSE topic 与 payload |
 | `api/Client/` | Python 侧薄客户端、SSE 消费器与状态仓库，主要用于测试和桥接场景 |
@@ -605,11 +608,11 @@ data: {"task_type":"translation","line":3}
 
 以下模型文件虽然存在，但还不是当前 Python 客户端真实返回面的权威来源：
 
-- `model/Api/PromptModels.py`
+- `api/Models/Prompt.py`
   - `CustomPromptSnapshot`
   - `PromptPresetEntry`
   - 当前 `QualityRuleApiClient` 的 prompt 系列接口仍返回原始 `dict` / `str` / `tuple`
-- `model/Api/ExtraModels.py`
+- `api/Models/Extra.py`
   - `ExtraToolEntry`
   - `ExtraToolSnapshot`
   - 当前没有对应 HTTP 路由输出这两个对象

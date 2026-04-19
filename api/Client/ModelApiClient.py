@@ -2,7 +2,7 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.ModelRoutes import ModelRoutes
-from model.Api.ModelModels import ModelPageSnapshot
+from api.Models.Model import ModelPageSnapshot
 
 
 class ModelApiClient:

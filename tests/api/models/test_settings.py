@@ -1,5 +1,5 @@
-from model.Api.SettingsModels import AppSettingsSnapshot
-from model.Api.SettingsModels import RecentProjectEntry
+from api.Models.Settings import AppSettingsSnapshot
+from api.Models.Settings import RecentProjectEntry
 
 
 def test_recent_project_entry_from_dict_uses_safe_defaults() -> None:

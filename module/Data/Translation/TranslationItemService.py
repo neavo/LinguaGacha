@@ -2,7 +2,7 @@ from typing import Any
 
 from base.Base import Base
 from base.LogManager import LogManager
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Core.ProjectSession import ProjectSession
 from module.File.FileManager import FileManager

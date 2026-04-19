@@ -1,8 +1,8 @@
-from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
-from model.Api.ProofreadingModels import ProofreadingItemView
-from model.Api.ProofreadingModels import ProofreadingMutationResult
-from model.Api.ProofreadingModels import ProofreadingSnapshot
-from model.Api.ProofreadingModels import ProofreadingSummary
+from api.Models.Proofreading import ProofreadingFilterOptionsSnapshot
+from api.Models.Proofreading import ProofreadingItemView
+from api.Models.Proofreading import ProofreadingMutationResult
+from api.Models.Proofreading import ProofreadingSnapshot
+from api.Models.Proofreading import ProofreadingSummary
 import pytest
 
 
@@ -264,8 +264,8 @@ def test_proofreading_mutation_result_round_trip_keeps_items_and_summary() -> No
 
 
 def test_proofreading_model_package_exports_match_module_contract() -> None:
-    from model.Api import ProofreadingSearchResult
-    from model.Api import ProofreadingWarningSummary
+    from api.Models import ProofreadingSearchResult
+    from api.Models import ProofreadingWarningSummary
 
     warning_summary = ProofreadingWarningSummary.from_dict(
         {"warning_type": "GLOSSARY", "count": 4}

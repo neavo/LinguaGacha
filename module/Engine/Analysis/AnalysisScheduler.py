@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext

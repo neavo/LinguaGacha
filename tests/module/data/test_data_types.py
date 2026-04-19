@@ -2,7 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreviewEntry
 from module.Data.Core.DataTypes import ProjectFileMutationResult

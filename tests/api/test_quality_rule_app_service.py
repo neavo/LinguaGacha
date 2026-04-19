@@ -6,12 +6,10 @@ from unittest.mock import MagicMock
 
 from api.Application.QualityRuleAppService import QualityRuleAppService
 from base.BaseLanguage import BaseLanguage
-from model.Api.QualityRuleModels import ProofreadingLookupQuery
-from model.Api.QualityRuleModels import QualityRuleSnapshot
+from api.Models.QualityRule import ProofreadingLookupQuery
+from api.Models.QualityRule import QualityRuleSnapshot
 
-quality_rule_app_service_module = import_module(
-    "api.Application.QualityRuleAppService"
-)
+quality_rule_app_service_module = import_module("api.Application.QualityRuleAppService")
 
 
 def build_fake_quality_rule_facade() -> SimpleNamespace:

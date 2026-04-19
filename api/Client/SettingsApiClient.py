@@ -2,7 +2,7 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.SettingsRoutes import SettingsRoutes
-from model.Api.SettingsModels import AppSettingsSnapshot
+from api.Models.Settings import AppSettingsSnapshot
 
 
 class SettingsApiClient:

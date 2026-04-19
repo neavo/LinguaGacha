@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Config import Config
 from module.Data.Core.DataTypes import ProjectFileMutationResult
@@ -145,9 +145,7 @@ class ProjectFileService:
         return ProjectFileMutationResult(
             rel_paths=(target_rel_path,),
             removed_rel_paths=(
-                (rel_path,)
-                if target_rel_path.casefold() != rel_path.casefold()
-                else ()
+                (rel_path,) if target_rel_path.casefold() != rel_path.casefold() else ()
             ),
             matched=matched,
             new=max(0, len(new_item_dicts) - matched),
@@ -249,7 +247,9 @@ class ProjectFileService:
         db = self.get_loaded_db()
         existing_paths = db.get_all_asset_paths()
         existing_path_casefolds = {path.casefold() for path in existing_paths}
-        source_path_casefolds = {rel_path.casefold() for rel_path, _ in normalized_operations}
+        source_path_casefolds = {
+            rel_path.casefold() for rel_path, _ in normalized_operations
+        }
         target_path_casefolds: set[str] = set()
         prepared_operations: list[dict[str, Any]] = []
 
@@ -257,7 +257,9 @@ class ProjectFileService:
             if rel_path.casefold() not in existing_path_casefolds:
                 raise ValueError(Localizer.get().workbench_msg_file_not_found)
 
-            target_rel_path = self.build_replace_target_rel_path(rel_path, new_file_path)
+            target_rel_path = self.build_replace_target_rel_path(
+                rel_path, new_file_path
+            )
             if target_rel_path.casefold() == rel_path.casefold():
                 target_rel_path = rel_path
 
@@ -353,7 +355,10 @@ class ProjectFileService:
                 )
                 for operation in prepared_operations
             ),
-            total=sum(len(list(operation["new_item_dicts"])) for operation in prepared_operations),
+            total=sum(
+                len(list(operation["new_item_dicts"]))
+                for operation in prepared_operations
+            ),
         )
 
     def reorder_files(self, ordered_rel_paths: list[str]) -> ProjectFileMutationResult:

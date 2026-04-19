@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Proofreading.ProofreadingRetranslateService import (
     ProofreadingRetranslateService,
@@ -42,7 +42,9 @@ def test_retranslate_items_returns_project_item_change_and_emits_refresh() -> No
         data_manager=data_manager,
         config_loader=lambda: Config(),
         revision_service=revision_service,
-        translate_item_runner=lambda target_item, config, callback: callback(target_item, True),
+        translate_item_runner=lambda target_item, config, callback: callback(
+            target_item, True
+        ),
     )
 
     change = service.retranslate_items([item], expected_revision=3)
@@ -72,7 +74,9 @@ def test_retranslate_items_marks_failed_items_as_error() -> None:
         data_manager=data_manager,
         config_loader=lambda: Config(),
         revision_service=revision_service,
-        translate_item_runner=lambda target_item, config, callback: callback(target_item, False),
+        translate_item_runner=lambda target_item, config, callback: callback(
+            target_item, False
+        ),
     )
 
     change = service.retranslate_items([item])

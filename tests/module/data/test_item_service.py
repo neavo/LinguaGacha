@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.ProjectSession import ProjectSession
 

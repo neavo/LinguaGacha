@@ -10,7 +10,7 @@ from rich.table import Table
 
 from base.Base import Base
 from base.LogManager import LogManager
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequestExecutor import TaskRequestExecutor

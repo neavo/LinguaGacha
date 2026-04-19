@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 
 def build_item(

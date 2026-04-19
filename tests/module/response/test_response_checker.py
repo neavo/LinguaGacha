@@ -3,7 +3,7 @@ import re
 import pytest
 
 from base.BaseLanguage import BaseLanguage
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Response.ResponseChecker import ResponseChecker
 

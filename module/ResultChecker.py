@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Response.ResponseChecker import ResponseChecker

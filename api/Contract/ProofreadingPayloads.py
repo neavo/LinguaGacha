@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Self
 
-from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
-from model.Api.ProofreadingModels import ProofreadingItemView
-from model.Api.ProofreadingModels import ProofreadingMutationResult
-from model.Api.ProofreadingModels import ProofreadingSearchResult
-from model.Api.ProofreadingModels import ProofreadingSnapshot
-from model.Api.ProofreadingModels import ProofreadingSummary
+from api.Models.Proofreading import ProofreadingFilterOptionsSnapshot
+from api.Models.Proofreading import ProofreadingItemView
+from api.Models.Proofreading import ProofreadingMutationResult
+from api.Models.Proofreading import ProofreadingSearchResult
+from api.Models.Proofreading import ProofreadingSnapshot
+from api.Models.Proofreading import ProofreadingSummary
 
 
 @dataclass(frozen=True)

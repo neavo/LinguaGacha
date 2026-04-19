@@ -2,8 +2,8 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.TaskRoutes import TaskRoutes
-from model.Api.TaskModels import AnalysisGlossaryImportResult
-from model.Api.TaskModels import TaskSnapshot
+from api.Models.Task import AnalysisGlossaryImportResult
+from api.Models.Task import TaskSnapshot
 
 
 class TaskApiClient:

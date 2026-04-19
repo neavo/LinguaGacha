@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Core.DataTypes import ProjectItemChange
 from module.Data.DataManager import DataManager
 from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterService
@@ -145,7 +145,9 @@ class ProofreadingMutationService:
     def emit_project_item_change(self, change: ProjectItemChange) -> None:
         """把条目写入后的精确刷新统一补发出去。"""
 
-        emit_change = getattr(self.data_manager, "emit_project_item_change_refresh", None)
+        emit_change = getattr(
+            self.data_manager, "emit_project_item_change_refresh", None
+        )
         if callable(emit_change):
             emit_change(change)
             return

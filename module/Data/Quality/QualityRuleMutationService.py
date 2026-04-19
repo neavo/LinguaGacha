@@ -180,16 +180,28 @@ class QualityRuleMutationService:
 
         old_entries_raw = old_snapshot.get("entries", [])
         if isinstance(old_entries_raw, list):
-            old_entries = [dict(entry) for entry in old_entries_raw if isinstance(entry, dict)]
+            old_entries = [
+                dict(entry) for entry in old_entries_raw if isinstance(entry, dict)
+            ]
         else:
             old_entries = []
         new_entries_raw = new_snapshot.get("entries", [])
         if isinstance(new_entries_raw, list):
-            new_entries = [dict(entry) for entry in new_entries_raw if isinstance(entry, dict)]
+            new_entries = [
+                dict(entry) for entry in new_entries_raw if isinstance(entry, dict)
+            ]
         else:
             new_entries = []
-        old_meta = dict(old_snapshot.get("meta", {})) if isinstance(old_snapshot.get("meta"), dict) else {}
-        new_meta = dict(new_snapshot.get("meta", {})) if isinstance(new_snapshot.get("meta"), dict) else {}
+        old_meta = (
+            dict(old_snapshot.get("meta", {}))
+            if isinstance(old_snapshot.get("meta"), dict)
+            else {}
+        )
+        new_meta = (
+            dict(new_snapshot.get("meta", {}))
+            if isinstance(new_snapshot.get("meta"), dict)
+            else {}
+        )
         return self.impact_analyzer.analyze_rule_update(
             rule_type=self._normalize_rule_type_value(rule_type),
             old_entries=old_entries,
@@ -241,9 +253,9 @@ class QualityRuleMutationService:
             current_revision = self.get_revision(rule_type)
             self._save_entries(rule_type, entries)
             new_revision = self._bump_revision(rule_type, current_revision)
-            new_snapshot = self.snapshot_service.build_rule_snapshot_payload(rule_type) | {
-                "revision": new_revision
-            }
+            new_snapshot = self.snapshot_service.build_rule_snapshot_payload(
+                rule_type
+            ) | {"revision": new_revision}
             impact = self._build_impact_result(
                 rule_type=rule_type,
                 old_snapshot=old_snapshot,

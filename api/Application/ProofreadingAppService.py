@@ -6,10 +6,10 @@ from api.Contract.ProofreadingPayloads import ProofreadingEntryPatchPayload
 from api.Contract.ProofreadingPayloads import ProofreadingSnapshotPayload
 from api.Contract.ProofreadingPayloads import build_mutation_result_payload
 from api.Contract.ProofreadingPayloads import build_search_result_payload
-from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
-from model.Api.ProofreadingModels import ProofreadingItemView
-from model.Api.ProofreadingModels import ProofreadingSummary
-from model.Item import Item
+from api.Models.Proofreading import ProofreadingFilterOptionsSnapshot
+from api.Models.Proofreading import ProofreadingItemView
+from api.Models.Proofreading import ProofreadingSummary
+from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
 from module.Data.Proofreading.ProofreadingEntryPatchService import (
     ProofreadingEntryPatchService,

@@ -1,7 +1,7 @@
-from model.Api.TaskModels import AnalysisGlossaryImportResult
-from model.Api.TaskModels import TaskProgressUpdate
-from model.Api.TaskModels import TaskSnapshot
-from model.Api.TaskModels import TaskStatusUpdate
+from api.Models.Task import AnalysisGlossaryImportResult
+from api.Models.Task import TaskProgressUpdate
+from api.Models.Task import TaskSnapshot
+from api.Models.Task import TaskStatusUpdate
 
 
 def test_task_snapshot_from_dict_keeps_analysis_specific_fields() -> None:
@@ -52,7 +52,9 @@ def test_task_snapshot_merge_status_preserves_progress_fields() -> None:
     assert merged.processed_line == 2
 
 
-def test_analysis_glossary_import_result_from_dict_keeps_import_count_and_task() -> None:
+def test_analysis_glossary_import_result_from_dict_keeps_import_count_and_task() -> (
+    None
+):
     result = AnalysisGlossaryImportResult.from_dict(
         {
             "accepted": True,

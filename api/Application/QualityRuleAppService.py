@@ -4,8 +4,8 @@ from typing import Any
 
 from api.Contract.QualityPayloads import ProofreadingLookupPayload
 from api.Contract.QualityPayloads import QualityRuleSnapshotPayload
-from model.Api.QualityRuleModels import ProofreadingLookupQuery
-from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
+from api.Models.QualityRule import ProofreadingLookupQuery
+from api.Models.QualityRule import QualityRuleStatisticsSnapshot
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.Quality.ProofreadingImpactAnalyzer import (

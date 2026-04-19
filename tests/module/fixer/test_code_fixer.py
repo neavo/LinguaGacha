@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Fixer.CodeFixer import CodeFixer
 

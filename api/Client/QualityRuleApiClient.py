@@ -4,9 +4,9 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.QualityRoutes import QualityRoutes
-from model.Api.QualityRuleModels import ProofreadingLookupQuery
-from model.Api.QualityRuleModels import QualityRuleSnapshot
-from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
+from api.Models.QualityRule import ProofreadingLookupQuery
+from api.Models.QualityRule import QualityRuleSnapshot
+from api.Models.QualityRule import QualityRuleStatisticsSnapshot
 
 
 class QualityRuleApiClient:

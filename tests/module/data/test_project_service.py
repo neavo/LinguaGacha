@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from base.BasePath import BasePath
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Project.ProjectService import ProjectService
 
 

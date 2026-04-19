@@ -4,7 +4,7 @@ import pytest
 
 from lxml import etree
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 from module.Config import Config
 
@@ -17,7 +17,6 @@ import io
 import zipfile
 
 from pathlib import Path
-
 
 
 def build_item_for_block(

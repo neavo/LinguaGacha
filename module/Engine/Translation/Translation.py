@@ -10,7 +10,7 @@ from rich.progress import TaskID
 
 from base.Base import Base
 from base.LogManager import LogManager
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot

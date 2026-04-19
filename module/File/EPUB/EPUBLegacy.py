@@ -7,7 +7,7 @@ import zipfile
 from bs4 import BeautifulSoup
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 
 

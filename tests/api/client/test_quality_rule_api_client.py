@@ -4,8 +4,8 @@ from unittest.mock import Mock
 from api.Application.QualityRuleAppService import QualityRuleAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.QualityRuleApiClient import QualityRuleApiClient
-from model.Api.QualityRuleModels import ProofreadingLookupQuery
-from model.Api.QualityRuleModels import QualityRuleSnapshot
+from api.Models.QualityRule import ProofreadingLookupQuery
+from api.Models.QualityRule import QualityRuleSnapshot
 
 
 def build_quality_rule_facade() -> Mock:

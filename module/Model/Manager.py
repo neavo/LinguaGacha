@@ -6,8 +6,8 @@ from typing import ClassVar
 from base.BasePath import BasePath
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
-from model.Model import Model
-from model.Model import ModelType
+from module.Model.Types import Model
+from module.Model.Types import ModelType
 from module.Utils.JSONTool import JSONTool
 
 

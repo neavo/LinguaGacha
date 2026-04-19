@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from base.Base import Base
-from model.Model import ThinkingLevel
+from module.Model.Types import ThinkingLevel
 from module.Config import Config
 from module.Engine.TaskRequester import TaskRequester
 from module.Engine.TaskRequestErrors import RequestCancelledError

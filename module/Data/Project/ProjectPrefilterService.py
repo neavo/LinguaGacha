@@ -4,7 +4,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.DataTypes import ProjectPrefilterRequest

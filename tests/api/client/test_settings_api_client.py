@@ -3,8 +3,8 @@ from collections.abc import Callable
 from api.Application.SettingsAppService import SettingsAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.SettingsApiClient import SettingsApiClient
-from model.Api.SettingsModels import AppSettingsSnapshot
-from model.Api.SettingsModels import RecentProjectEntry
+from api.Models.Settings import AppSettingsSnapshot
+from api.Models.Settings import RecentProjectEntry
 from tests.api.support.application_fakes import FakeSettingsConfig
 
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Engine.TaskModeStrategy import TaskModeStrategy
 
 

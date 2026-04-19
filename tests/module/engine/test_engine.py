@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Engine.Engine import Engine
 
