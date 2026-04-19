@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import { useProjectPagesBarrier } from '@/app/state/project-pages-context'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
@@ -247,7 +248,8 @@ function resolve_text_preserve_error_message(
 
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n()
-  const { push_toast } = useDesktopToast()
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier()
+  const { push_toast, run_modal_progress_toast } = useDesktopToast()
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation()
 
   const [revision, set_revision] = useState(0)
@@ -589,24 +591,41 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const update_mode = useCallback(async (next_mode: TextPreserveMode): Promise<void> => {
     const previous_mode = mode
     set_mode(next_mode)
+    const barrier_checkpoint = create_barrier_checkpoint()
 
     try {
-      const payload = await api_fetch<TextPreserveSnapshotPayload>(
-        '/api/quality/rules/update-meta',
-        {
-          rule_type: TEXT_PRESERVE_RULE_TYPE,
-          expected_revision: revision_ref.current,
-          meta: {
-            mode: next_mode,
-          },
+      await run_modal_progress_toast({
+        message: t('text_preserve_page.mode.loading_toast'),
+        task: async () => {
+          const payload = await api_fetch<TextPreserveSnapshotPayload>(
+            '/api/quality/rules/update-meta',
+            {
+              rule_type: TEXT_PRESERVE_RULE_TYPE,
+              expected_revision: revision_ref.current,
+              meta: {
+                mode: next_mode,
+              },
+            },
+          )
+          apply_snapshot(payload.snapshot)
+          await wait_for_barrier('proofreading_cache_refresh', {
+            checkpoint: barrier_checkpoint,
+          })
         },
-      )
-      apply_snapshot(payload.snapshot)
+      })
     } catch (error) {
       set_mode(previous_mode)
       push_action_error_toast(error)
     }
-  }, [apply_snapshot, mode, push_action_error_toast])
+  }, [
+    apply_snapshot,
+    create_barrier_checkpoint,
+    mode,
+    push_action_error_toast,
+    run_modal_progress_toast,
+    t,
+    wait_for_barrier,
+  ])
 
   const open_create_dialog = useCallback((): void => {
     const insert_after_entry_id = resolve_create_insert_after_entry_id()

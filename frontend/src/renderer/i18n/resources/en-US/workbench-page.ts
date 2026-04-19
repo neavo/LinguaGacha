@@ -39,6 +39,10 @@ export const en_us_workbench_page = {
   feedback: {
     refresh_failed_title: 'Failed to refresh workbench.',
     refresh_failed: 'Failed to refresh workbench.',
+    add_file_loading_toast: 'Adding file and refreshing cache …',
+    file_action_failed: 'File operation failed. Please try again later.',
+    export_failed: 'Failed to generate translations. Please try again later.',
+    close_project_failed: 'Failed to close the project. Please try again later.',
   },
   action: {
     add_file: 'Add File',
@@ -95,6 +99,7 @@ export const en_us_workbench_page = {
       stopped: 'Stopped …',
       reset_all_failed: 'Failed to reset all analysis progress',
       reset_failed_failed: 'Failed to reset failed analysis progress',
+      import_loading_toast: 'Importing candidate terms and refreshing proofreading cache …',
       import_failed: 'Failed to import candidate terms',
       import_success: 'Imported {COUNT} candidate terms',
     },

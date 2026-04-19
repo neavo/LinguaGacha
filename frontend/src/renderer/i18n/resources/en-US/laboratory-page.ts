@@ -19,5 +19,6 @@ export const en_us_laboratory_page = {
     refresh_failed: 'Unable to refresh laboratory settings right now. Please try again later.',
     refresh_failed_title: 'Failed to load laboratory settings',
     update_failed: 'Failed to save laboratory settings. Please try again later.',
+    mtool_optimizer_loading_toast: 'Refreshing project cache …',
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>

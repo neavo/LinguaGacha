@@ -43,5 +43,6 @@ export const en_us_basic_settings_page = {
     refresh_failed_title: 'Failed to Load Basic Settings',
     update_failed: 'Failed to save the setting. Please try again later.',
     pick_directory_failed: 'Directory selection failed. Please choose the fixed save directory again.',
+    source_language_loading_toast: 'Refreshing project cache …',
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_basic_settings_page>

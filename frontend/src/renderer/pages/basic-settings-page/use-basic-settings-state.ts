@@ -5,6 +5,7 @@ import {
   normalize_settings_snapshot,
   type SettingsSnapshotPayload,
 } from '@/app/state/desktop-runtime-context'
+import { useProjectPagesBarrier } from '@/app/state/project-pages-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
@@ -56,7 +57,8 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     set_settings_snapshot,
     refresh_settings,
   } = useDesktopRuntime()
-  const { push_toast } = useDesktopToast()
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier()
+  const { push_toast, run_modal_progress_toast } = useDesktopToast()
   const { t } = useI18n()
   const [snapshot, set_snapshot] = useState<BasicSettingsSnapshot>(() => {
     return build_basic_settings_snapshot(settings_snapshot)
@@ -117,7 +119,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       field: BasicSettingsPendingField,
       request: SettingsUpdateRequest,
       next_snapshot: BasicSettingsSnapshot,
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       const previous_snapshot = snapshot_ref.current
       set_snapshot(next_snapshot)
       set_pending(field, true)
@@ -128,6 +130,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         set_settings_snapshot(next_settings_snapshot)
         set_snapshot(build_basic_settings_snapshot(next_settings_snapshot))
         set_refresh_error(null)
+        return true
       } catch (error) {
         set_snapshot((current_snapshot) => {
           const reverted_snapshot = {
@@ -161,6 +164,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         } else {
           push_toast('error', t('basic_settings_page.feedback.update_failed'))
         }
+        return false
       } finally {
         set_pending(field, false)
       }
@@ -176,14 +180,34 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         return
       }
 
-      await commit_update('source_language', {
-        source_language: next_language,
-      }, {
-        ...previous_snapshot,
-        source_language: next_language,
+      const barrier_checkpoint = create_barrier_checkpoint()
+
+      await run_modal_progress_toast({
+        message: t('basic_settings_page.feedback.source_language_loading_toast'),
+        task: async () => {
+          const succeeded = await commit_update('source_language', {
+            source_language: next_language,
+          }, {
+            ...previous_snapshot,
+            source_language: next_language,
+          })
+
+          if (succeeded) {
+            await wait_for_barrier('project_cache_refresh', {
+              checkpoint: barrier_checkpoint,
+            })
+          }
+        },
       })
     },
-    [commit_update, is_task_busy],
+    [
+      commit_update,
+      create_barrier_checkpoint,
+      is_task_busy,
+      run_modal_progress_toast,
+      t,
+      wait_for_barrier,
+    ],
   )
 
   const update_target_language = useCallback(

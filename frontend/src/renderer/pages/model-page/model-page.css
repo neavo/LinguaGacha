@@ -90,7 +90,7 @@
   align-items: center;
 }
 
-.model-page__item-chip[data-dragging='true'] {
+.model-page__item-chip[data-dragging="true"] {
   opacity: 0.9;
 }
 
@@ -134,26 +134,17 @@
   text-align: center;
 }
 
-.model-page__name-trigger [data-icon='inline-end'] {
+.model-page__name-trigger [data-icon="inline-end"] {
   position: absolute;
   right: 12px;
 }
 
-.model-page__item-chip[data-active='true'] .model-page__drag-handle {
+.model-page__item-chip[data-active="true"] .model-page__drag-handle {
   color: color-mix(in srgb, var(--primary-foreground) 90%, transparent);
 }
 
-.model-page__item-chip[data-active='true'] .model-page__drag-handle:hover {
+.model-page__item-chip[data-active="true"] .model-page__drag-handle:hover {
   color: var(--primary-foreground);
-}
-
-.model-page__dialog-shell {
-  padding: 0;
-  background: var(--popover);
-}
-
-.model-page__dialog-shell [data-slot='dialog-footer'] {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
 }
 
 .model-page__dialog-scroll {
@@ -172,7 +163,9 @@
   padding: 0 0 6px;
 }
 
-.model-page__setting-list > .setting-card-row:not(.model-page__setting-card-row--block) .setting-card-row__copy {
+.model-page__setting-list
+  > .setting-card-row:not(.model-page__setting-card-row--block)
+  .setting-card-row__copy {
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -231,7 +224,7 @@
   max-width: 100%;
 }
 
-.model-page__inline-button-group > [data-slot='button'] {
+.model-page__inline-button-group > [data-slot="button"] {
   min-width: 72px;
 }
 
@@ -268,23 +261,6 @@
 .model-page__advanced-toggle-group {
   width: 200px;
   flex: 0 0 200px;
-}
-
-.model-page__compact-dialog-shell {
-  max-width: 520px;
-}
-
-.model-page__compact-dialog-body {
-  padding: 24px 24px 12px;
-}
-
-.model-page__compact-dialog-footer {
-  border-top: 1px solid var(--border);
-  gap: 12px;
-}
-
-.model-page__compact-dialog-button {
-  min-width: 128px;
 }
 
 .model-page__advanced-number-field {
@@ -329,7 +305,9 @@
   line-height: 1.35;
   padding: 10px 12px;
   text-align: left;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 
 .model-page__selector-item:hover {
