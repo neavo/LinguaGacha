@@ -125,7 +125,6 @@ class ProofreadingAppService:
 
         load_result = self.snapshot_service.load_snapshot(self.resolve_lg_path(request))
         applied_filters = self.resolve_filter_options(request, load_result)
-        filtered_items = self.filter_items_from_request(request, load_result)
 
         rel_paths_raw = request.get("rel_paths", [])
         rel_paths = (
@@ -140,21 +139,40 @@ class ProofreadingAppService:
             else []
         )
         target_file_paths = {
-            rel_path
-            for rel_path in [*rel_paths, *removed_rel_paths]
-            if rel_path != ""
+            rel_path for rel_path in [*rel_paths, *removed_rel_paths] if rel_path != ""
         }
+        ordered_target_file_paths = list(
+            dict.fromkeys([*rel_paths, *removed_rel_paths])
+        )
+        search_keyword, search_is_regex, search_dst_only = self.resolve_search_options(
+            request
+        )
 
-        full_items = [
-            item
-            for item in load_result.items
-            if item.get_file_path() in target_file_paths
-        ]
-        filtered_patch_items = [
-            item
-            for item in filtered_items
-            if item.get_file_path() in target_file_paths
-        ]
+        filtered_scan_result = self.filter_service.scan_filtered_items(
+            load_result.items,
+            load_result.warning_map,
+            applied_filters,
+            load_result.checker,
+            failed_terms_by_item_key=load_result.failed_terms_by_item_key,
+            search_keyword=search_keyword,
+            search_is_regex=search_is_regex,
+            search_dst_only=search_dst_only,
+            enable_search_filter=bool(
+                request.get(
+                    "enable_search_filter",
+                    search_keyword != "",
+                )
+            ),
+            enable_glossary_term_filter=bool(
+                request.get("enable_glossary_term_filter", True)
+            ),
+            collect_when=lambda item: item.get_file_path() in target_file_paths,
+        )
+
+        full_items = self.get_items_for_file_paths(
+            load_result,
+            ordered_target_file_paths,
+        )
 
         return {
             "patch": {
@@ -171,13 +189,14 @@ class ProofreadingAppService:
                     applied_filters
                 ),
                 "full_summary": self.build_summary_dict(load_result, load_result.items),
-                "filtered_summary": self.build_summary_dict(
+                "filtered_summary": self.build_summary_dict_from_counts(
                     load_result,
-                    filtered_items,
+                    filtered_item_count=filtered_scan_result.filtered_item_count,
+                    warning_item_count=filtered_scan_result.warning_item_count,
                 ),
                 "full_items": self.build_items_dict(full_items, load_result),
                 "filtered_items": self.build_items_dict(
-                    filtered_patch_items,
+                    list(filtered_scan_result.items),
                     load_result,
                 ),
             }
@@ -192,7 +211,9 @@ class ProofreadingAppService:
         )
         load_result = patch_result.load_result
 
-        full_item_dicts = self.build_items_dict(list(patch_result.full_items), load_result)
+        full_item_dicts = self.build_items_dict(
+            list(patch_result.full_items), load_result
+        )
         filtered_item_dicts = self.build_items_dict(
             list(patch_result.filtered_items),
             load_result,
@@ -215,9 +236,10 @@ class ProofreadingAppService:
                 )
             ),
             filtered_summary=ProofreadingSummary.from_dict(
-                self.build_summary_dict(
+                self.build_summary_dict_from_counts(
                     load_result,
-                    list(patch_result.filtered_items),
+                    filtered_item_count=patch_result.filtered_item_count,
+                    warning_item_count=patch_result.filtered_warning_item_count,
                 )
             ),
             full_items=tuple(
@@ -274,7 +296,9 @@ class ProofreadingAppService:
             new_dst,
             expected_revision=expected_revision,
         )
-        saved_item_id = change.item_ids[0] if change.item_ids else int(item.get_id() or 0)
+        saved_item_id = (
+            change.item_ids[0] if change.item_ids else int(item.get_id() or 0)
+        )
         refreshed_result = self.snapshot_service.load_snapshot(
             self.resolve_lg_path(request)
         )
@@ -361,10 +385,22 @@ class ProofreadingAppService:
 
         load_result = self.snapshot_service.load_snapshot(self.resolve_lg_path(request))
         item = self.resolve_request_item(request)
-        warnings, failed_terms = self.recheck_service.check_item(
-            load_result.config,
-            item,
+        check_item_with_snapshot = getattr(
+            self.recheck_service,
+            "check_item_with_snapshot",
+            None,
         )
+        if callable(check_item_with_snapshot):
+            recheck_snapshot = check_item_with_snapshot(load_result.config, item)
+            warnings = list(recheck_snapshot.warnings)
+            failed_terms = recheck_snapshot.failed_glossary_terms
+            applied_terms = recheck_snapshot.applied_glossary_terms
+        else:
+            warnings, failed_terms = self.recheck_service.check_item(
+                load_result.config,
+                item,
+            )
+            applied_terms = ()
         item_dict = self.build_item_dict(item, load_result)
         item_dict["warnings"] = [
             str(getattr(warning, "value", warning)) for warning in warnings
@@ -375,6 +411,9 @@ class ProofreadingAppService:
             item_dict["failed_glossary_terms"] = [
                 [str(term[0]), str(term[1])] for term in failed_terms
             ]
+        item_dict["applied_glossary_terms"] = [
+            [str(term[0]), str(term[1])] for term in applied_terms
+        ]
 
         return {
             "result": build_mutation_result_payload(
@@ -553,22 +592,10 @@ class ProofreadingAppService:
                 failed_terms.append([str(term[0]), str(term[1])])
 
         applied_terms: list[list[str]] = []
-        checker = load_result.checker
-        get_replaced_text = getattr(checker, "get_replaced_text", None)
-        get_applied_terms = getattr(
-            checker,
-            "get_applied_glossary_terms_from_replaced",
-            None,
-        )
-        if callable(get_replaced_text) and callable(get_applied_terms):
-            src_repl, dst_repl = get_replaced_text(item)
-            applied_terms_raw = get_applied_terms(
-                src_repl,
-                dst_repl,
-            )
-            for term in applied_terms_raw:
-                if isinstance(term, (list, tuple)) and len(term) >= 2:
-                    applied_terms.append([str(term[0]), str(term[1])])
+        applied_terms_raw = load_result.applied_terms_by_item_key.get(id(item), ())
+        for term in applied_terms_raw:
+            if isinstance(term, (list, tuple)) and len(term) >= 2:
+                applied_terms.append([str(term[0]), str(term[1])])
 
         status = item.get_status()
         status_value = getattr(status, "value", status)
@@ -594,11 +621,11 @@ class ProofreadingAppService:
         if not isinstance(item_id, int):
             return None
 
-        for snapshot_item in load_result.items:
-            if snapshot_item.get_id() == item_id:
-                return snapshot_item
+        indexed_item = load_result.items_by_id.get(item_id)
+        if indexed_item is not None:
+            return indexed_item
 
-        for snapshot_item in load_result.items_all:
+        for snapshot_item in load_result.items:
             if snapshot_item.get_id() == item_id:
                 return snapshot_item
 
@@ -615,7 +642,9 @@ class ProofreadingAppService:
         for item_id in item_ids:
             if not isinstance(item_id, int):
                 continue
-            snapshot_item = self.find_item_in_snapshot(load_result, item_id)
+            snapshot_item = load_result.items_by_id.get(item_id)
+            if snapshot_item is None:
+                snapshot_item = self.find_item_in_snapshot(load_result, item_id)
             if snapshot_item is not None:
                 found_items.append(snapshot_item)
         return found_items
@@ -658,6 +687,28 @@ class ProofreadingAppService:
             item_dicts.append(self.build_item_dict(item, load_result))
         return item_dicts
 
+    def build_summary_dict_from_counts(
+        self,
+        load_result: ProofreadingLoadResult,
+        *,
+        filtered_item_count: int,
+        warning_item_count: int,
+    ) -> dict[str, Any]:
+        """按已有计数构建摘要，避免 patch 再次遍历整表。"""
+
+        summary = dict(load_result.summary)
+        total_items = int(summary.get("total_items", 0) or 0)
+        if total_items <= 0:
+            if load_result.total_item_count > 0:
+                total_items = load_result.total_item_count
+            else:
+                total_items = len(load_result.items_all)
+
+        summary["total_items"] = total_items
+        summary["filtered_items"] = filtered_item_count
+        summary["warning_items"] = warning_item_count
+        return summary
+
     def build_summary_dict(
         self,
         load_result: ProofreadingLoadResult,
@@ -670,13 +721,37 @@ class ProofreadingAppService:
             if load_result.warning_map.get(id(item)):
                 warning_item_count += 1
 
-        summary = dict(load_result.summary)
-        summary["total_items"] = int(
-            summary.get("total_items", len(load_result.items_all))
+        return self.build_summary_dict_from_counts(
+            load_result,
+            filtered_item_count=len(items),
+            warning_item_count=warning_item_count,
         )
-        summary["filtered_items"] = len(items)
-        summary["warning_items"] = warning_item_count
-        return summary
+
+    def get_items_for_file_paths(
+        self,
+        load_result: ProofreadingLoadResult,
+        file_paths: list[str],
+    ) -> list[Item]:
+        """按文件路径从快照索引里恢复条目，并保留请求顺序。"""
+
+        if load_result.items_by_file_path:
+            collected_items: list[Item] = []
+            for file_path in file_paths:
+                if file_path == "":
+                    continue
+                collected_items.extend(
+                    load_result.items_by_file_path.get(file_path, ())
+                )
+            return collected_items
+
+        target_file_path_set = {
+            file_path for file_path in file_paths if file_path != ""
+        }
+        return [
+            item
+            for item in load_result.items
+            if item.get_file_path() in target_file_path_set
+        ]
 
     def load_result_filter_options_to_dict(
         self,

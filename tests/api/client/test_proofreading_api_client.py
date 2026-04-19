@@ -189,8 +189,17 @@ def build_proofreading_app_service() -> ProofreadingAppService:
             return [WarningType.GLOSSARY], (("勇者", "Hero"),)
         return [], None
 
+    def check_item_with_snapshot(config: object, item: Item) -> SimpleNamespace:
+        warnings, failed_terms = check_item(config, item)
+        return SimpleNamespace(
+            warnings=tuple(warnings),
+            failed_glossary_terms=failed_terms or (),
+            applied_glossary_terms=(),
+        )
+
     recheck_service = Mock()
     recheck_service.check_item.side_effect = check_item
+    recheck_service.check_item_with_snapshot.side_effect = check_item_with_snapshot
     retranslate_service = Mock()
     retranslate_service.retranslate_items.side_effect = lambda items, **kwargs: (
         mutation_state.__setitem__("mutated", True)

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from typing import Callable
 
 from model.Item import Item
+from module.Data.Proofreading.ProofreadingFilterService import (
+    ProofreadingFilterScanResult,
+)
 from module.Data.Proofreading.ProofreadingFilterService import (
     ProofreadingFilterOptions,
 )
@@ -27,6 +31,8 @@ class ProofreadingEntryPatchResult:
     applied_filters: ProofreadingFilterOptions
     full_items: tuple[Item, ...]
     filtered_items: tuple[Item, ...]
+    filtered_item_count: int
+    filtered_warning_item_count: int
 
 
 class ProofreadingEntryPatchService:
@@ -50,29 +56,40 @@ class ProofreadingEntryPatchService:
 
         load_result = self.snapshot_service.load_snapshot(lg_path)
         applied_filters = self.resolve_filter_options(request, load_result)
-        filtered_items = self.filter_items_from_request(request, load_result)
 
         item_ids_raw = request.get("item_ids", [])
         normalized_item_ids = self.normalize_item_ids(item_ids_raw)
         target_item_id_set = set(normalized_item_ids)
 
-        full_items = tuple(
-            item
-            for item in load_result.items
-            if isinstance(item.get_id(), int) and item.get_id() in target_item_id_set
+        scan_result = self.filter_items_from_request(
+            request,
+            load_result,
+            collect_when=lambda item: (
+                isinstance(item.get_id(), int) and item.get_id() in target_item_id_set
+            ),
         )
-        filtered_patch_items = tuple(
-            item
-            for item in filtered_items
-            if isinstance(item.get_id(), int) and item.get_id() in target_item_id_set
-        )
+        if load_result.items_by_id:
+            full_items = tuple(
+                load_result.items_by_id[item_id]
+                for item_id in normalized_item_ids
+                if item_id in load_result.items_by_id
+            )
+        else:
+            full_items = tuple(
+                item
+                for item in load_result.items
+                if isinstance(item.get_id(), int)
+                and item.get_id() in target_item_id_set
+            )
 
         return ProofreadingEntryPatchResult(
             load_result=load_result,
             target_item_ids=tuple(normalized_item_ids),
             applied_filters=applied_filters,
             full_items=full_items,
-            filtered_items=filtered_patch_items,
+            filtered_items=scan_result.items,
+            filtered_item_count=scan_result.filtered_item_count,
+            filtered_warning_item_count=scan_result.warning_item_count,
         )
 
     def resolve_filter_options(
@@ -124,7 +141,9 @@ class ProofreadingEntryPatchService:
         self,
         request: dict[str, Any],
         load_result: ProofreadingLoadResult,
-    ) -> list[Item]:
+        *,
+        collect_when: Callable[[Item], bool] | None = None,
+    ) -> ProofreadingFilterScanResult:
         """在当前筛选与搜索口径下重建可见条目集。"""
 
         options = self.resolve_filter_options(request, load_result)
@@ -137,7 +156,7 @@ class ProofreadingEntryPatchService:
         enable_glossary_term_filter = bool(
             request.get("enable_glossary_term_filter", True)
         )
-        return self.filter_service.filter_items(
+        return self.filter_service.scan_filtered_items(
             load_result.items,
             load_result.warning_map,
             options,
@@ -148,6 +167,7 @@ class ProofreadingEntryPatchService:
             search_dst_only=search_dst_only,
             enable_search_filter=enable_search_filter,
             enable_glossary_term_filter=enable_glossary_term_filter,
+            collect_when=collect_when,
         )
 
     def resolve_search_options(
@@ -177,7 +197,7 @@ class ProofreadingEntryPatchService:
                 continue
             try:
                 item_id = int(raw_item_id)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             if item_id in seen_item_ids:
                 continue

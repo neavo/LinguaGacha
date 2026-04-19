@@ -9,13 +9,13 @@ import type { AppTableSelectionChange, AppTableSortState } from '@/widgets/app-t
 import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
-  compress_proofreading_text,
   clone_proofreading_item,
   create_empty_proofreading_snapshot,
   normalize_proofreading_entry_patch_payload,
   normalize_proofreading_mutation_payload,
   normalize_proofreading_file_patch_payload,
   normalize_proofreading_snapshot_payload,
+  type ProofreadingClientItem,
   type ProofreadingEntryPatchPayload,
   resolve_proofreading_status_sort_rank,
   type ProofreadingDialogState,
@@ -224,46 +224,46 @@ const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
 }
 
 function compare_visible_items(
-  left_item: ProofreadingVisibleItem,
-  right_item: ProofreadingVisibleItem,
+  left_item: ProofreadingClientItem,
+  right_item: ProofreadingClientItem,
   sort_state: AppTableSortState,
 ): number {
   const direction = normalize_sort_direction(sort_state.direction)
 
   if (sort_state.column_id === 'file') {
-    const file_path_result = compare_text(left_item.item.file_path, right_item.item.file_path)
+    const file_path_result = compare_text(left_item.file_path, right_item.file_path)
     if (file_path_result !== 0) {
       return file_path_result * direction
     }
 
-    return (left_item.item.row_number - right_item.item.row_number) * direction
+    return (left_item.row_number - right_item.row_number) * direction
   }
 
   if (sort_state.column_id === 'status') {
-    const status_rank_result = resolve_proofreading_status_sort_rank(left_item.item.status)
-      - resolve_proofreading_status_sort_rank(right_item.item.status)
+    const status_rank_result = resolve_proofreading_status_sort_rank(left_item.status)
+      - resolve_proofreading_status_sort_rank(right_item.status)
     if (status_rank_result !== 0) {
       return status_rank_result * direction
     }
 
-    return compare_text(left_item.item.status, right_item.item.status) * direction
+    return compare_text(left_item.status, right_item.status) * direction
   }
 
   if (sort_state.column_id === 'src') {
-    return compare_text(left_item.item.src, right_item.item.src) * direction
+    return compare_text(left_item.src, right_item.src) * direction
   }
 
   if (sort_state.column_id === 'dst') {
-    return compare_text(left_item.item.dst, right_item.item.dst) * direction
+    return compare_text(left_item.dst, right_item.dst) * direction
   }
 
   return 0
 }
 
 function sort_visible_items(
-  items: ProofreadingVisibleItem[],
+  items: ProofreadingClientItem[],
   sort_state: AppTableSortState | null,
-): ProofreadingVisibleItem[] {
+): ProofreadingClientItem[] {
   const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE
 
   return [...items].sort((left_item, right_item) => {
@@ -429,24 +429,26 @@ function reconcile_proofreading_filter_options(args: {
 }
 
 function merge_snapshot_items_by_file_paths(args: {
-  previous_items: ProofreadingItem[]
-  next_items: ProofreadingItem[]
+  previous_items: ProofreadingClientItem[]
+  next_items: ProofreadingClientItem[]
   removed_file_paths: string[]
-}): ProofreadingItem[] {
+}): ProofreadingClientItem[] {
   const affected_file_paths = new Set<string>([
     ...args.removed_file_paths,
     ...args.next_items.map((item) => item.file_path),
   ])
 
   return [
-    ...args.previous_items.filter((item) => !affected_file_paths.has(item.file_path)),
-    ...args.next_items,
+    ...args.previous_items
+      .filter((item) => !affected_file_paths.has(item.file_path))
+      .map((item) => clone_proofreading_item(item)),
+    ...args.next_items.map((item) => clone_proofreading_item(item)),
   ]
 }
 
 function compare_proofreading_snapshot_items(
-  left_item: ProofreadingItem,
-  right_item: ProofreadingItem,
+  left_item: ProofreadingClientItem,
+  right_item: ProofreadingClientItem,
 ): number {
   const file_result = compare_text(left_item.file_path, right_item.file_path)
   if (file_result !== 0) {
@@ -462,10 +464,10 @@ function compare_proofreading_snapshot_items(
 }
 
 function merge_snapshot_items_by_item_ids(args: {
-  previous_items: ProofreadingItem[]
-  next_items: ProofreadingItem[]
+  previous_items: ProofreadingClientItem[]
+  next_items: ProofreadingClientItem[]
   target_item_ids: Array<number | string>
-}): ProofreadingItem[] {
+}): ProofreadingClientItem[] {
   const target_item_id_set = new Set(args.target_item_ids.map((item_id) => String(item_id)))
   const merged_items = [
     ...args.previous_items
@@ -488,11 +490,11 @@ function build_entry_patch_signature(args: {
 }
 
 function filter_local_visible_items(args: {
-  items: ProofreadingItem[]
+  items: ProofreadingClientItem[]
   keyword: string
   is_regex: boolean
   scope: ProofreadingSearchScope
-}): { items: ProofreadingItem[]; invalid_regex_message: string | null } {
+}): { items: ProofreadingClientItem[]; invalid_regex_message: string | null } {
   const trimmed_keyword = args.keyword.trim()
   if (trimmed_keyword === '') {
     return {
@@ -649,26 +651,24 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     ? null
     : `${t('proofreading_page.feedback.regex_invalid')}: ${visible_source_result.invalid_regex_message}`
 
-  const visible_items = useMemo<ProofreadingVisibleItem[]>(() => {
-    const base_visible_items = visible_source_result.items.map((item) => {
-      return {
-        row_id: build_proofreading_row_id(item.item_id),
-        item,
-        compressed_src: compress_proofreading_text(item.src),
-        compressed_dst: compress_proofreading_text(item.dst),
-      }
-    })
-
-    return sort_visible_items(base_visible_items, sort_state)
+  const visible_client_items = useMemo(() => {
+    return sort_visible_items(visible_source_result.items, sort_state)
   }, [sort_state, visible_source_result.items])
 
-  const visible_row_ids = useMemo(() => {
-    return visible_items.map((item) => item.row_id)
-  }, [visible_items])
+  const visible_items = useMemo<ProofreadingVisibleItem[]>(() => {
+    return visible_client_items.map((item) => {
+      return {
+        row_id: item.row_id,
+        item,
+        compressed_src: item.compressed_src,
+        compressed_dst: item.compressed_dst,
+      }
+    })
+  }, [visible_client_items])
 
-  const visible_row_signature = useMemo(() => {
-    return visible_row_ids.join('|')
-  }, [visible_row_ids])
+  const visible_row_ids = useMemo(() => {
+    return visible_client_items.map((item) => item.row_id)
+  }, [visible_client_items])
 
   const applied_filter_signature = useMemo(() => {
     return build_filter_signature(applied_filters)
@@ -679,10 +679,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [sort_state])
 
   const visible_item_by_id = useMemo(() => {
-    return new Map(visible_items.map((item) => {
-      return [item.row_id, item.item] as const
+    return new Map(visible_client_items.map((item) => {
+      return [item.row_id, item] as const
     }))
-  }, [visible_items])
+  }, [visible_client_items])
 
   const dialog_item = dialog_state.target_row_id === null
     ? null
@@ -1315,7 +1315,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     const target_items = pending_mutation.target_row_ids
       .map((row_id) => visible_item_by_id.get(row_id) ?? null)
-      .filter((item): item is ProofreadingItem => item !== null)
+      .filter((item): item is ProofreadingClientItem => item !== null)
     if (target_items.length === 0) {
       set_pending_mutation(null)
       return
@@ -1466,7 +1466,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     search_scope,
     server_snapshot.revision,
     sort_signature,
-    visible_row_signature,
+    visible_client_items,
   ])
 
   useEffect(() => {

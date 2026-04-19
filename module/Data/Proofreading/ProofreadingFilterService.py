@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
+from typing import Callable
 from typing import ClassVar
 
 from base.Base import Base
@@ -80,6 +81,15 @@ class ProofreadingFilterOptions:
             self.KEY_FILE_PATHS: self.file_paths,
             self.KEY_GLOSSARY_TERMS: self.glossary_terms,
         }
+
+
+@dataclass(frozen=True)
+class ProofreadingFilterScanResult:
+    """筛选扫描结果。"""
+
+    items: tuple[Item, ...]
+    filtered_item_count: int
+    warning_item_count: int
 
 
 class ProofreadingFilterService:
@@ -186,6 +196,35 @@ class ProofreadingFilterService:
             review_items.append(item)
         return review_items
 
+    def should_include_review_item_dict(self, item_dict: dict[str, Any]) -> bool:
+        """用原始 dict 预筛校对页条目，避免无意义构造 Item 对象。"""
+
+        src = str(item_dict.get("src", "") or "")
+        if src.strip() == "":
+            return False
+
+        status_raw = item_dict.get("status")
+        status_value = getattr(status_raw, "value", status_raw)
+        return status_value not in (
+            Base.ProjectStatus.DUPLICATED,
+            Base.ProjectStatus.DUPLICATED.value,
+            Base.ProjectStatus.RULE_SKIPPED,
+            Base.ProjectStatus.RULE_SKIPPED.value,
+        )
+
+    def build_review_items_from_dicts(
+        self,
+        item_dicts: list[dict[str, Any]],
+    ) -> list[Item]:
+        """从原始 dict 列表构建校对页条目。"""
+
+        review_items: list[Item] = []
+        for item_dict in item_dicts:
+            if not self.should_include_review_item_dict(item_dict):
+                continue
+            review_items.append(Item.from_dict(item_dict))
+        return review_items
+
     def build_default_filter_options(
         self,
         items: list[Item],
@@ -259,11 +298,131 @@ class ProofreadingFilterService:
     ) -> list[Item]:
         """按筛选、搜索与术语条件过滤条目。"""
 
-        resolved = self.normalize_filter_options(options, items)
+        scan_result = self.scan_filtered_items(
+            items,
+            warning_map,
+            options,
+            checker,
+            failed_terms_by_item_key=failed_terms_by_item_key,
+            search_keyword=search_keyword,
+            search_is_regex=search_is_regex,
+            search_dst_only=search_dst_only,
+            enable_search_filter=enable_search_filter,
+            enable_glossary_term_filter=enable_glossary_term_filter,
+        )
+        return list(scan_result.items)
+
+    def resolve_item_failed_glossary_terms(
+        self,
+        item: Item,
+        item_warnings: list[WarningType],
+        checker: ResultChecker | None,
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None,
+    ) -> tuple[tuple[str, str], ...]:
+        """统一解析条目的失败术语，避免各调用点回退口径不一致。"""
+
+        if WarningType.GLOSSARY not in item_warnings:
+            return ()
+
+        item_key = self.get_warning_key(item)
+        if failed_terms_by_item_key is not None:
+            return failed_terms_by_item_key.get(item_key, ())
+
+        if checker is None:
+            return ()
+
+        return tuple(checker.get_failed_glossary_terms(item))
+
+    def item_matches_filters(
+        self,
+        item: Item,
+        item_warnings: list[WarningType],
+        resolved: ProofreadingFilterOptions,
+        checker: ResultChecker | None,
+        *,
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None,
+        search_pattern: re.Pattern[str] | None,
+        keyword_lower: str,
+        search_keyword: str,
+        search_dst_only: bool,
+        enable_search_filter: bool,
+        enable_glossary_term_filter: bool,
+    ) -> bool:
+        """判断单条条目是否命中过滤条件。"""
+
         warning_types = resolved.warning_types or set()
         statuses = resolved.statuses or set()
         file_paths = resolved.file_paths or set()
         glossary_terms = resolved.glossary_terms or set()
+
+        if item_warnings:
+            if not any(warning in warning_types for warning in item_warnings):
+                return False
+        else:
+            if ProofreadingFilterOptions.NO_WARNING_TAG not in warning_types:
+                return False
+
+        if enable_glossary_term_filter:
+            if (
+                WarningType.GLOSSARY in item_warnings
+                and WarningType.GLOSSARY in warning_types
+            ):
+                item_terms = self.resolve_item_failed_glossary_terms(
+                    item,
+                    item_warnings,
+                    checker,
+                    failed_terms_by_item_key,
+                )
+                if glossary_terms:
+                    if not any(term in glossary_terms for term in item_terms):
+                        return False
+                else:
+                    return False
+
+        if item.get_status() not in statuses:
+            return False
+        if item.get_file_path() not in file_paths:
+            return False
+
+        if enable_search_filter and search_keyword:
+            src = item.get_src()
+            dst = item.get_dst()
+            if search_pattern is not None:
+                if search_dst_only:
+                    if not search_pattern.search(dst):
+                        return False
+                elif not (search_pattern.search(src) or search_pattern.search(dst)):
+                    return False
+            elif keyword_lower:
+                if search_dst_only:
+                    if keyword_lower not in dst.lower():
+                        return False
+                elif (
+                    keyword_lower not in src.lower()
+                    and keyword_lower not in dst.lower()
+                ):
+                    return False
+
+        return True
+
+    def scan_filtered_items(
+        self,
+        items: list[Item],
+        warning_map: dict[int, list[WarningType]],
+        options: ProofreadingFilterOptions | dict[str, Any] | None,
+        checker: ResultChecker | None,
+        *,
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
+        search_keyword: str = "",
+        search_is_regex: bool = False,
+        search_dst_only: bool = False,
+        enable_search_filter: bool = False,
+        enable_glossary_term_filter: bool = True,
+        collect_when: Callable[[Item], bool] | None = None,
+    ) -> ProofreadingFilterScanResult:
+        """单次扫描完成筛选摘要统计，并按需收集目标条目。"""
+
+        resolved = self.normalize_filter_options(options, items)
 
         search_pattern: re.Pattern[str] | None = None
         keyword_lower = ""
@@ -274,6 +433,8 @@ class ProofreadingFilterService:
                 keyword_lower = search_keyword.lower()
 
         filtered: list[Item] = []
+        filtered_item_count = 0
+        warning_item_count = 0
         for item in items:
             if item.get_status() in (
                 Base.ProjectStatus.DUPLICATED,
@@ -282,61 +443,32 @@ class ProofreadingFilterService:
                 continue
 
             item_warnings = self.get_item_warnings(item, warning_map)
+            if not self.item_matches_filters(
+                item,
+                item_warnings,
+                resolved,
+                checker,
+                failed_terms_by_item_key=failed_terms_by_item_key,
+                search_pattern=search_pattern,
+                keyword_lower=keyword_lower,
+                search_keyword=search_keyword,
+                search_dst_only=search_dst_only,
+                enable_search_filter=enable_search_filter,
+                enable_glossary_term_filter=enable_glossary_term_filter,
+            ):
+                continue
+
+            filtered_item_count += 1
             if item_warnings:
-                if not any(warning in warning_types for warning in item_warnings):
-                    continue
-            else:
-                if ProofreadingFilterOptions.NO_WARNING_TAG not in warning_types:
-                    continue
+                warning_item_count += 1
+            if collect_when is None or collect_when(item):
+                filtered.append(item)
 
-            if enable_glossary_term_filter:
-                if (
-                    checker is not None
-                    and WarningType.GLOSSARY in item_warnings
-                    and WarningType.GLOSSARY in warning_types
-                ):
-                    item_key = self.get_warning_key(item)
-                    if failed_terms_by_item_key is not None:
-                        item_terms = failed_terms_by_item_key.get(item_key)
-                    else:
-                        item_terms = None
-
-                    if item_terms is None:
-                        item_terms = tuple(checker.get_failed_glossary_terms(item))
-
-                    if glossary_terms:
-                        if not any(term in glossary_terms for term in item_terms):
-                            continue
-                    else:
-                        continue
-
-            if item.get_status() not in statuses:
-                continue
-            if item.get_file_path() not in file_paths:
-                continue
-
-            if enable_search_filter and search_keyword:
-                src = item.get_src()
-                dst = item.get_dst()
-                if search_pattern is not None:
-                    if search_dst_only:
-                        if not search_pattern.search(dst):
-                            continue
-                    elif not (search_pattern.search(src) or search_pattern.search(dst)):
-                        continue
-                elif keyword_lower:
-                    if search_dst_only:
-                        if keyword_lower not in dst.lower():
-                            continue
-                    elif (
-                        keyword_lower not in src.lower()
-                        and keyword_lower not in dst.lower()
-                    ):
-                        continue
-
-            filtered.append(item)
-
-        return filtered
+        return ProofreadingFilterScanResult(
+            items=tuple(filtered),
+            filtered_item_count=filtered_item_count,
+            warning_item_count=warning_item_count,
+        )
 
     def build_failed_glossary_terms_cache(
         self,
