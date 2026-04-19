@@ -7,6 +7,7 @@ import {
   type ProofreadingCodeEditorHighlight,
 } from "@/pages/proofreading-page/components/proofreading-code-editor";
 import {
+  format_proofreading_glossary_term,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
   type ProofreadingGlossaryTerm,
@@ -55,7 +56,7 @@ function resolve_badge_tone_class_name(tone: ProofreadingBadgeTone): string {
 }
 
 function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
-  return `${term[0]}→${term[1]}`;
+  return format_proofreading_glossary_term(term);
 }
 
 function dedupe_glossary_terms(

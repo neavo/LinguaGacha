@@ -23,12 +23,14 @@ class ProofreadingFilterOptions:
     KEY_STATUSES: ClassVar[str] = "statuses"
     KEY_FILE_PATHS: ClassVar[str] = "file_paths"
     KEY_GLOSSARY_TERMS: ClassVar[str] = "glossary_terms"
+    KEY_INCLUDE_WITHOUT_GLOSSARY_MISS: ClassVar[str] = "include_without_glossary_miss"
     NO_WARNING_TAG: ClassVar[str] = "NO_WARNING"
 
     warning_types: set[WarningType | str] | None = None
     statuses: set[Base.ProjectStatus] | None = None
     file_paths: set[str] | None = None
     glossary_terms: set[tuple[str, str]] | None = None
+    include_without_glossary_miss: bool | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ProofreadingFilterOptions":
@@ -65,11 +67,25 @@ class ProofreadingFilterOptions:
                 elif isinstance(term, (list, tuple)) and len(term) >= 2:
                     glossary_terms.add((str(term[0]), str(term[1])))
 
+        include_without_glossary_miss_raw = data.get(
+            cls.KEY_INCLUDE_WITHOUT_GLOSSARY_MISS
+        )
+        include_without_glossary_miss: bool | None = None
+        if include_without_glossary_miss_raw is not None:
+            if isinstance(include_without_glossary_miss_raw, str):
+                include_without_glossary_miss = (
+                    include_without_glossary_miss_raw.strip().lower()
+                    not in ("", "0", "false", "no", "off")
+                )
+            else:
+                include_without_glossary_miss = bool(include_without_glossary_miss_raw)
+
         return cls(
             warning_types=warning_types,
             statuses=statuses,
             file_paths=file_paths,
             glossary_terms=glossary_terms,
+            include_without_glossary_miss=include_without_glossary_miss,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -80,6 +96,9 @@ class ProofreadingFilterOptions:
             self.KEY_STATUSES: self.statuses,
             self.KEY_FILE_PATHS: self.file_paths,
             self.KEY_GLOSSARY_TERMS: self.glossary_terms,
+            self.KEY_INCLUDE_WITHOUT_GLOSSARY_MISS: (
+                self.include_without_glossary_miss
+            ),
         }
 
 
@@ -159,11 +178,17 @@ class ProofreadingFilterService:
         else:
             glossary_terms = set(resolved.glossary_terms)
 
+        if resolved.include_without_glossary_miss is None:
+            include_without_glossary_miss = True
+        else:
+            include_without_glossary_miss = resolved.include_without_glossary_miss
+
         return ProofreadingFilterOptions(
             warning_types=warning_types,
             statuses=statuses,
             file_paths=file_paths,
             glossary_terms=glossary_terms,
+            include_without_glossary_miss=include_without_glossary_miss,
         )
 
     @staticmethod
@@ -253,6 +278,7 @@ class ProofreadingFilterService:
             statuses=set(self.DEFAULT_STATUSES),
             file_paths=file_paths,
             glossary_terms=glossary_terms,
+            include_without_glossary_miss=True,
         )
 
     def build_lookup_filter_options(
@@ -280,6 +306,7 @@ class ProofreadingFilterService:
             statuses=statuses,
             file_paths=set(base_options.file_paths or set()),
             glossary_terms=set(base_options.glossary_terms or set()),
+            include_without_glossary_miss=base_options.include_without_glossary_miss,
         )
 
     def filter_items(
@@ -354,6 +381,9 @@ class ProofreadingFilterService:
         statuses = resolved.statuses or set()
         file_paths = resolved.file_paths or set()
         glossary_terms = resolved.glossary_terms or set()
+        include_without_glossary_miss = (
+            resolved.include_without_glossary_miss is not False
+        )
 
         if item_warnings:
             if not any(warning in warning_types for warning in item_warnings):
@@ -363,10 +393,7 @@ class ProofreadingFilterService:
                 return False
 
         if enable_glossary_term_filter:
-            if (
-                WarningType.GLOSSARY in item_warnings
-                and WarningType.GLOSSARY in warning_types
-            ):
+            if WarningType.GLOSSARY in item_warnings:
                 item_terms = self.resolve_item_failed_glossary_terms(
                     item,
                     item_warnings,
@@ -378,6 +405,8 @@ class ProofreadingFilterService:
                         return False
                 else:
                     return False
+            elif not include_without_glossary_miss:
+                return False
 
         if item.get_status() not in statuses:
             return False

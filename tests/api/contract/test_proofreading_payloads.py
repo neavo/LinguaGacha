@@ -25,6 +25,7 @@ def test_proofreading_snapshot_payload_wraps_snapshot_fields() -> None:
             "statuses": ["PROCESSED"],
             "file_paths": ["script/a.txt"],
             "glossary_terms": [["勇者", "Hero"]],
+            "include_without_glossary_miss": False,
         },
         "items": [
             {
@@ -58,6 +59,7 @@ def test_proofreading_snapshot_payload_wraps_snapshot_fields() -> None:
                 "statuses": ["PROCESSED"],
                 "file_paths": ["script/a.txt"],
                 "glossary_terms": [["勇者", "Hero"]],
+                "include_without_glossary_miss": False,
             },
             "items": [
                 {
@@ -136,10 +138,16 @@ def test_proofreading_entry_patch_payload_to_dict_keeps_dual_views() -> None:
         readonly=False,
         target_item_ids=(1, 2),
         default_filters=ProofreadingFilterOptionsSnapshot.from_dict(
-            {"file_paths": ["script/a.txt"]}
+            {
+                "file_paths": ["script/a.txt"],
+                "include_without_glossary_miss": True,
+            }
         ),
         applied_filters=ProofreadingFilterOptionsSnapshot.from_dict(
-            {"warning_types": ["GLOSSARY"]}
+            {
+                "warning_types": ["GLOSSARY"],
+                "include_without_glossary_miss": False,
+            }
         ),
         full_summary=ProofreadingSummary(
             total_items=2,
@@ -192,12 +200,14 @@ def test_proofreading_entry_patch_payload_to_dict_keeps_dual_views() -> None:
             "statuses": [],
             "file_paths": ["script/a.txt"],
             "glossary_terms": [],
+            "include_without_glossary_miss": True,
         },
         "applied_filters": {
             "warning_types": ["GLOSSARY"],
             "statuses": [],
             "file_paths": [],
             "glossary_terms": [],
+            "include_without_glossary_miss": False,
         },
         "full_summary": {
             "total_items": 2,

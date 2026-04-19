@@ -145,6 +145,172 @@ def test_filter_items_uses_failed_term_cache_as_authoritative_source() -> None:
     assert result == []
 
 
+def test_filter_items_treats_all_selected_glossary_entries_as_no_filter() -> None:
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterOptions,
+    )
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterService,
+    )
+
+    service = ProofreadingFilterService()
+    glossary_item_a = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="Hero arrived",
+        file_path="script/a.txt",
+    )
+    glossary_item_b = build_item(
+        item_id=2,
+        src="魔王が来た",
+        dst="Demon King arrived",
+        file_path="script/b.txt",
+    )
+    plain_item = build_item(
+        item_id=3,
+        src="旁白",
+        dst="Narration",
+        file_path="script/c.txt",
+    )
+    warning_map = {
+        id(glossary_item_a): [WarningType.GLOSSARY],
+        id(glossary_item_b): [WarningType.GLOSSARY],
+    }
+    options = ProofreadingFilterOptions(
+        warning_types={
+            WarningType.GLOSSARY,
+            ProofreadingFilterOptions.NO_WARNING_TAG,
+        },
+        statuses={Base.ProjectStatus.PROCESSED},
+        file_paths={"script/a.txt", "script/b.txt", "script/c.txt"},
+        glossary_terms={("勇者", "Hero"), ("魔王", "Demon King")},
+        include_without_glossary_miss=True,
+    )
+
+    result = service.filter_items(
+        items=[glossary_item_a, glossary_item_b, plain_item],
+        warning_map=warning_map,
+        options=options,
+        checker=None,
+        failed_terms_by_item_key={
+            id(glossary_item_a): (("勇者", "Hero"),),
+            id(glossary_item_b): (("魔王", "Demon King"),),
+        },
+    )
+
+    assert result == [glossary_item_a, glossary_item_b, plain_item]
+
+
+def test_filter_items_keeps_only_selected_failed_glossary_terms() -> None:
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterOptions,
+    )
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterService,
+    )
+
+    service = ProofreadingFilterService()
+    glossary_item_a = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="Hero arrived",
+        file_path="script/a.txt",
+    )
+    glossary_item_b = build_item(
+        item_id=2,
+        src="魔王が来た",
+        dst="Demon King arrived",
+        file_path="script/b.txt",
+    )
+    plain_item = build_item(
+        item_id=3,
+        src="旁白",
+        dst="Narration",
+        file_path="script/c.txt",
+    )
+    warning_map = {
+        id(glossary_item_a): [WarningType.GLOSSARY],
+        id(glossary_item_b): [WarningType.GLOSSARY],
+    }
+    options = ProofreadingFilterOptions(
+        warning_types={
+            WarningType.GLOSSARY,
+            ProofreadingFilterOptions.NO_WARNING_TAG,
+        },
+        statuses={Base.ProjectStatus.PROCESSED},
+        file_paths={"script/a.txt", "script/b.txt", "script/c.txt"},
+        glossary_terms={("勇者", "Hero")},
+        include_without_glossary_miss=False,
+    )
+
+    result = service.filter_items(
+        items=[glossary_item_a, glossary_item_b, plain_item],
+        warning_map=warning_map,
+        options=options,
+        checker=None,
+        failed_terms_by_item_key={
+            id(glossary_item_a): (("勇者", "Hero"),),
+            id(glossary_item_b): (("魔王", "Demon King"),),
+        },
+    )
+
+    assert result == [glossary_item_a]
+
+
+def test_filter_items_keeps_only_rows_without_glossary_miss_when_requested() -> None:
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterOptions,
+    )
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterService,
+    )
+
+    service = ProofreadingFilterService()
+    glossary_item = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="Hero arrived",
+        file_path="script/a.txt",
+    )
+    applied_item = build_item(
+        item_id=2,
+        src="守护者が来た",
+        dst="Guardian arrived",
+        file_path="script/b.txt",
+    )
+    plain_item = build_item(
+        item_id=3,
+        src="旁白",
+        dst="Narration",
+        file_path="script/c.txt",
+    )
+    warning_map = {
+        id(glossary_item): [WarningType.GLOSSARY],
+    }
+    options = ProofreadingFilterOptions(
+        warning_types={
+            WarningType.GLOSSARY,
+            ProofreadingFilterOptions.NO_WARNING_TAG,
+        },
+        statuses={Base.ProjectStatus.PROCESSED},
+        file_paths={"script/a.txt", "script/b.txt", "script/c.txt"},
+        glossary_terms=set(),
+        include_without_glossary_miss=True,
+    )
+
+    result = service.filter_items(
+        items=[glossary_item, applied_item, plain_item],
+        warning_map=warning_map,
+        options=options,
+        checker=None,
+        failed_terms_by_item_key={
+            id(glossary_item): (("勇者", "Hero"),),
+        },
+    )
+
+    assert result == [applied_item, plain_item]
+
+
 def test_resolve_status_after_manual_edit_promotes_finished_rows() -> None:
     from module.Data.Proofreading.ProofreadingFilterService import (
         ProofreadingFilterService,

@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/i18n";
 import {
   PROOFREADING_NO_WARNING_CODE,
+  PROOFREADING_STATUS_ORDER,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_CODES,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
   clone_proofreading_filter_options,
+  format_proofreading_glossary_term,
   normalize_proofreading_filter_options,
   resolve_proofreading_filter_source_items,
   resolve_proofreading_status_sort_rank,
@@ -15,6 +17,7 @@ import {
   type ProofreadingItem,
   type ProofreadingSnapshot,
 } from "@/pages/proofreading-page/types";
+import { Badge } from "@/shadcn/badge";
 import { Button } from "@/shadcn/button";
 import {
   Empty,
@@ -34,8 +37,208 @@ type ProofreadingFilterDialogProps = {
   on_close: () => void;
 };
 
+type ProofreadingFilterDimension =
+  | "warning_types"
+  | "statuses"
+  | "file_paths"
+  | "glossary_terms";
+
+type ProofreadingTermCountEntry = {
+  term: ProofreadingGlossaryTerm;
+  count: number;
+};
+
 function build_term_key(term: ProofreadingGlossaryTerm): string {
-  return `${term[0]}→${term[1]}`;
+  return format_proofreading_glossary_term(term);
+}
+
+function item_has_glossary_miss(item: ProofreadingItem): boolean {
+  return item.failed_glossary_terms.length > 0;
+}
+
+function item_matches_glossary_filter(
+  item: ProofreadingItem,
+  filters: ProofreadingFilterOptions,
+): boolean {
+  if (!item_has_glossary_miss(item)) {
+    return filters.include_without_glossary_miss;
+  }
+
+  const selected_term_key_set = new Set(
+    filters.glossary_terms.map((term) => build_term_key(term)),
+  );
+  if (selected_term_key_set.size === 0) {
+    return false;
+  }
+
+  return item.failed_glossary_terms.some((term) => {
+    return selected_term_key_set.has(build_term_key(term));
+  });
+}
+
+function filter_items_by_context(args: {
+  items: ProofreadingItem[];
+  filters: ProofreadingFilterOptions;
+  ignored_dimensions?: ProofreadingFilterDimension[];
+}): ProofreadingItem[] {
+  const ignored_dimension_set = new Set(args.ignored_dimensions ?? []);
+  const selected_warning_set = ignored_dimension_set.has("warning_types")
+    ? null
+    : new Set(args.filters.warning_types);
+  const selected_status_set = ignored_dimension_set.has("statuses")
+    ? null
+    : new Set(args.filters.statuses);
+  const selected_file_path_set = ignored_dimension_set.has("file_paths")
+    ? null
+    : new Set(args.filters.file_paths);
+  const glossary_filter_enabled = !ignored_dimension_set.has("glossary_terms");
+
+  return args.items.filter((item) => {
+    const item_warning_codes =
+      item.warnings.length > 0 ? item.warnings : [PROOFREADING_NO_WARNING_CODE];
+
+    if (
+      selected_warning_set !== null
+      && !item_warning_codes.some((warning) => selected_warning_set.has(warning))
+    ) {
+      return false;
+    }
+
+    if (
+      selected_status_set !== null
+      && !selected_status_set.has(item.status)
+    ) {
+      return false;
+    }
+
+    if (
+      selected_file_path_set !== null
+      && !selected_file_path_set.has(item.file_path)
+    ) {
+      return false;
+    }
+
+    if (
+      glossary_filter_enabled
+      && !item_matches_glossary_filter(item, args.filters)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function build_status_values(args: {
+  items: ProofreadingItem[];
+  filters: ProofreadingFilterOptions;
+}): string[] {
+  const known_statuses: string[] = [...PROOFREADING_STATUS_ORDER];
+  const known_status_set = new Set(known_statuses);
+  const extra_statuses = [...new Set([
+    ...args.items.map((item) => item.status),
+    ...args.filters.statuses,
+  ])].filter((status) => !known_status_set.has(status));
+
+  extra_statuses.sort((left_status, right_status) => {
+    const left_rank = resolve_proofreading_status_sort_rank(left_status);
+    const right_rank = resolve_proofreading_status_sort_rank(right_status);
+    if (left_rank !== right_rank) {
+      return left_rank - right_rank;
+    }
+
+    return left_status.localeCompare(right_status);
+  });
+
+  return [...known_statuses, ...extra_statuses];
+}
+
+function build_warning_values(args: {
+  items: ProofreadingItem[];
+  filters: ProofreadingFilterOptions;
+}): string[] {
+  const known_warnings: string[] = [...PROOFREADING_WARNING_CODES];
+  const known_warning_set = new Set(known_warnings);
+  const dynamic_warnings = args.items.flatMap((item) => {
+    return item.warnings.length > 0 ? item.warnings : [PROOFREADING_NO_WARNING_CODE];
+  });
+  const extra_warnings = [...new Set([
+    ...dynamic_warnings,
+    ...args.filters.warning_types,
+  ])].filter((warning) => !known_warning_set.has(warning));
+
+  extra_warnings.sort((left_warning, right_warning) => {
+    return left_warning.localeCompare(right_warning);
+  });
+
+  return [...known_warnings, ...extra_warnings];
+}
+
+function build_status_count_by_code(items: ProofreadingItem[]): Record<string, number> {
+  const next_count_by_code: Record<string, number> = {};
+  items.forEach((item) => {
+    next_count_by_code[item.status] = (next_count_by_code[item.status] ?? 0) + 1;
+  });
+  return next_count_by_code;
+}
+
+function build_warning_count_by_code(items: ProofreadingItem[]): Record<string, number> {
+  const next_count_by_code: Record<string, number> = {
+    [PROOFREADING_NO_WARNING_CODE]: 0,
+  };
+
+  items.forEach((item) => {
+    if (item.warnings.length === 0) {
+      next_count_by_code[PROOFREADING_NO_WARNING_CODE] =
+        (next_count_by_code[PROOFREADING_NO_WARNING_CODE] ?? 0) + 1;
+      return;
+    }
+
+    item.warnings.forEach((warning) => {
+      next_count_by_code[warning] = (next_count_by_code[warning] ?? 0) + 1;
+    });
+  });
+
+  return next_count_by_code;
+}
+
+function build_file_count_by_path(items: ProofreadingItem[]): Record<string, number> {
+  const next_count_by_path: Record<string, number> = {};
+  items.forEach((item) => {
+    next_count_by_path[item.file_path] = (next_count_by_path[item.file_path] ?? 0) + 1;
+  });
+  return next_count_by_path;
+}
+
+function build_term_count_entries(args: {
+  items: ProofreadingItem[];
+}): ProofreadingTermCountEntry[] {
+  const next_term_count_map = new Map<string, ProofreadingTermCountEntry>();
+
+  args.items.forEach((item) => {
+    if (!item.warnings.includes("GLOSSARY")) {
+      return;
+    }
+
+    item.failed_glossary_terms.forEach((term) => {
+      const term_key = build_term_key(term);
+      const previous_entry = next_term_count_map.get(term_key);
+      next_term_count_map.set(term_key, {
+        term,
+        count: (previous_entry?.count ?? 0) + 1,
+      });
+    });
+  });
+
+  return [...next_term_count_map.values()].sort((left_entry, right_entry) => {
+    if (left_entry.count !== right_entry.count) {
+      return right_entry.count - left_entry.count;
+    }
+
+    return build_term_key(left_entry.term).localeCompare(
+      build_term_key(right_entry.term),
+    );
+  });
 }
 
 function toggle_string(values: string[], target_value: string): string[] {
@@ -56,58 +259,6 @@ function toggle_term(
   return [...glossary_terms, target_term];
 }
 
-function filter_items_by_options(args: {
-  items: ProofreadingItem[];
-  filters: ProofreadingFilterOptions;
-  apply_glossary_terms: boolean;
-}): ProofreadingItem[] {
-  const selected_warning_set = new Set(args.filters.warning_types);
-  const selected_status_set = new Set(args.filters.statuses);
-  const selected_file_path_set = new Set(args.filters.file_paths);
-  const selected_term_key_set = new Set(
-    args.filters.glossary_terms.map((term) => build_term_key(term)),
-  );
-
-  return args.items.filter((item) => {
-    if (
-      selected_file_path_set.size > 0 &&
-      !selected_file_path_set.has(item.file_path)
-    ) {
-      return false;
-    }
-
-    if (selected_status_set.size > 0 && !selected_status_set.has(item.status)) {
-      return false;
-    }
-
-    if (item.warnings.length > 0) {
-      const matched_warning = item.warnings.some((warning) =>
-        selected_warning_set.has(warning),
-      );
-      if (selected_warning_set.size > 0 && !matched_warning) {
-        return false;
-      }
-    } else if (
-      selected_warning_set.size > 0 &&
-      !selected_warning_set.has(PROOFREADING_NO_WARNING_CODE)
-    ) {
-      return false;
-    }
-
-    if (!args.apply_glossary_terms || !item.warnings.includes("GLOSSARY")) {
-      return true;
-    }
-
-    if (selected_term_key_set.size === 0) {
-      return false;
-    }
-
-    return item.failed_glossary_terms.some((term) =>
-      selected_term_key_set.has(build_term_key(term)),
-    );
-  });
-}
-
 function FilterToggleButton(props: {
   label: string;
   count: number;
@@ -115,19 +266,25 @@ function FilterToggleButton(props: {
   onClick: () => void;
 }): JSX.Element {
   return (
-    <button
+    <Button
       type="button"
-      className="proofreading-page__filter-toggle"
+      size="xs"
+      variant="outline"
+      className="proofreading-page__filter-toggle font-normal"
       data-selected={props.selected ? "true" : undefined}
+      aria-pressed={props.selected}
       onClick={props.onClick}
     >
       <span className="proofreading-page__filter-toggle-label">
         {props.label}
       </span>
-      <span className="proofreading-page__filter-toggle-count">
+      <Badge
+        variant="secondary"
+        className="proofreading-page__filter-count-badge proofreading-page__filter-count-badge--toggle justify-center font-mono tabular-nums"
+      >
         {props.count.toString()}
-      </span>
-    </button>
+      </Badge>
+    </Button>
   );
 }
 
@@ -147,9 +304,12 @@ function FilterListRow(props: {
       <span className="proofreading-page__filter-list-row-copy">
         {props.label}
       </span>
-      <span className="proofreading-page__filter-list-row-count">
+      <Badge
+        variant="secondary"
+        className="proofreading-page__filter-count-badge min-w-5 justify-center font-mono tabular-nums"
+      >
         {props.count.toString()}
-      </span>
+      </Badge>
     </button>
   );
 }
@@ -192,129 +352,90 @@ export function ProofreadingFilterDialog(
     return resolve_proofreading_filter_source_items(props.snapshot.items);
   }, [props.snapshot.items]);
 
-  const linked_filters = useMemo<ProofreadingFilterOptions>(() => {
-    return {
-      ...draft_filters,
-      glossary_terms: [],
-    };
-  }, [draft_filters]);
-
-  const linked_filtered_items = useMemo(() => {
-    return filter_items_by_options({
-      items: filter_source_items,
-      filters: linked_filters,
-      apply_glossary_terms: false,
-    });
-  }, [filter_source_items, linked_filters]);
-
   const available_statuses = useMemo(() => {
-    return [...new Set(filter_source_items.map((item) => item.status))].sort(
-      (left_status, right_status) => {
-        const left_rank = resolve_proofreading_status_sort_rank(left_status);
-        const right_rank = resolve_proofreading_status_sort_rank(right_status);
-        if (left_rank !== right_rank) {
-          return left_rank - right_rank;
-        }
+    return build_status_values({
+      items: filter_source_items,
+      filters: draft_filters,
+    });
+  }, [draft_filters, filter_source_items]);
 
-        return left_status.localeCompare(right_status);
-      },
-    );
-  }, [filter_source_items]);
+  const status_scope_items = useMemo(() => {
+    return filter_items_by_context({
+      items: filter_source_items,
+      filters: draft_filters,
+      ignored_dimensions: ["statuses"],
+    });
+  }, [draft_filters, filter_source_items]);
 
   const available_warning_types = useMemo(() => {
-    const warning_type_set = new Set<string>([PROOFREADING_NO_WARNING_CODE]);
-    filter_source_items.forEach((item) => {
-      if (item.warnings.length === 0) {
-        warning_type_set.add(PROOFREADING_NO_WARNING_CODE);
-        return;
-      }
-
-      item.warnings.forEach((warning) => {
-        warning_type_set.add(warning);
-      });
+    return build_warning_values({
+      items: filter_source_items,
+      filters: draft_filters,
     });
+  }, [draft_filters, filter_source_items]);
 
-    return PROOFREADING_WARNING_CODES.filter((warning) =>
-      warning_type_set.has(warning),
-    );
-  }, [filter_source_items]);
+  const warning_scope_items = useMemo(() => {
+    return filter_items_by_context({
+      items: filter_source_items,
+      filters: draft_filters,
+      ignored_dimensions: ["warning_types", "glossary_terms"],
+    });
+  }, [draft_filters, filter_source_items]);
 
-  const available_file_paths = useMemo(() => {
+  const all_file_paths = useMemo(() => {
     return [...new Set(filter_source_items.map((item) => item.file_path))].sort(
       (left_path, right_path) => left_path.localeCompare(right_path),
     );
   }, [filter_source_items]);
 
   const status_count_by_code = useMemo(() => {
-    const next_count_by_code: Record<string, number> = {};
-    linked_filtered_items.forEach((item) => {
-      next_count_by_code[item.status] =
-        (next_count_by_code[item.status] ?? 0) + 1;
-    });
-    return next_count_by_code;
-  }, [linked_filtered_items]);
+    return build_status_count_by_code(status_scope_items);
+  }, [status_scope_items]);
 
   const warning_count_by_code = useMemo(() => {
-    const next_count_by_code: Record<string, number> = {
-      [PROOFREADING_NO_WARNING_CODE]: 0,
-    };
-    linked_filtered_items.forEach((item) => {
-      if (item.warnings.length === 0) {
-        next_count_by_code[PROOFREADING_NO_WARNING_CODE] =
-          (next_count_by_code[PROOFREADING_NO_WARNING_CODE] ?? 0) + 1;
-        return;
-      }
+    return build_warning_count_by_code(warning_scope_items);
+  }, [warning_scope_items]);
 
-      item.warnings.forEach((warning) => {
-        next_count_by_code[warning] = (next_count_by_code[warning] ?? 0) + 1;
-      });
+  const file_scope_items = useMemo(() => {
+    return filter_items_by_context({
+      items: filter_source_items,
+      filters: draft_filters,
+      ignored_dimensions: ["file_paths"],
     });
-    return next_count_by_code;
-  }, [linked_filtered_items]);
+  }, [draft_filters, filter_source_items]);
 
   const file_count_by_path = useMemo(() => {
-    const next_count_by_path: Record<string, number> = {};
-    linked_filtered_items.forEach((item) => {
-      next_count_by_path[item.file_path] =
-        (next_count_by_path[item.file_path] ?? 0) + 1;
-    });
-    return next_count_by_path;
-  }, [linked_filtered_items]);
+    return build_file_count_by_path(file_scope_items);
+  }, [file_scope_items]);
+
+  const available_file_paths = useMemo(() => {
+    return [...new Set([
+      ...Object.keys(file_count_by_path),
+      ...draft_filters.file_paths,
+    ])].sort((left_path, right_path) => left_path.localeCompare(right_path));
+  }, [draft_filters.file_paths, file_count_by_path]);
 
   const term_count_entries = useMemo(() => {
-    if (!draft_filters.warning_types.includes("GLOSSARY")) {
-      return [];
-    }
-
-    const next_term_count_map = new Map<
-      string,
-      { term: ProofreadingGlossaryTerm; count: number }
-    >();
-    linked_filtered_items.forEach((item) => {
-      if (!item.warnings.includes("GLOSSARY")) {
-        return;
-      }
-
-      item.failed_glossary_terms.forEach((term) => {
-        const term_key = build_term_key(term);
-        const previous_entry = next_term_count_map.get(term_key);
-        next_term_count_map.set(term_key, {
-          term,
-          count: (previous_entry?.count ?? 0) + 1,
-        });
-      });
+    const term_scope_items = filter_items_by_context({
+      items: filter_source_items,
+      filters: draft_filters,
+      ignored_dimensions: ["glossary_terms"],
     });
 
-    return [...next_term_count_map.values()].sort((left_entry, right_entry) => {
-      if (left_entry.count !== right_entry.count) {
-        return right_entry.count - left_entry.count;
-      }
-
-      return build_term_key(left_entry.term).localeCompare(
-        build_term_key(right_entry.term),
-      );
+    return build_term_count_entries({
+      items: term_scope_items,
     });
-  }, [draft_filters.warning_types, linked_filtered_items]);
+  }, [draft_filters, filter_source_items]);
+
+  const without_glossary_miss_count = useMemo(() => {
+    const term_scope_items = filter_items_by_context({
+      items: filter_source_items,
+      filters: draft_filters,
+      ignored_dimensions: ["glossary_terms"],
+    });
+
+    return term_scope_items.filter((item) => !item_has_glossary_miss(item)).length;
+  }, [draft_filters, filter_source_items]);
 
   const visible_file_paths = useMemo(() => {
     const normalized_keyword = file_keyword.trim().toLocaleLowerCase();
@@ -356,6 +477,7 @@ export function ProofreadingFilterDialog(
       size="xl"
       dismissBehavior={submitting ? "blocked" : "default"}
       onClose={props.on_close}
+      contentClassName="h-[720px] max-h-[calc(100vh-32px)] sm:max-w-[1180px]"
       bodyClassName="overflow-hidden p-0"
       footer={
         <>
@@ -384,7 +506,7 @@ export function ProofreadingFilterDialog(
       <div className="proofreading-page__filter-dialog-scroll">
         <div className="proofreading-page__filter-layout">
           <div className="proofreading-page__filter-left-column">
-            <section className="proofreading-page__filter-section">
+            <section className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles">
               <div className="proofreading-page__filter-section-head">
                 <h3 className="proofreading-page__filter-section-title">
                   {t("proofreading_page.filter.status_title")}
@@ -419,7 +541,7 @@ export function ProofreadingFilterDialog(
               </div>
             </section>
 
-            <section className="proofreading-page__filter-section">
+            <section className="proofreading-page__filter-section proofreading-page__filter-section--compact-toggles">
               <div className="proofreading-page__filter-section-head">
                 <h3 className="proofreading-page__filter-section-title">
                   {t("proofreading_page.result_check_title")}
@@ -468,7 +590,7 @@ export function ProofreadingFilterDialog(
                       set_draft_filters((previous_filters) => {
                         return {
                           ...previous_filters,
-                          file_paths: [...available_file_paths],
+                          file_paths: [...all_file_paths],
                         };
                       });
                     }}
@@ -478,7 +600,7 @@ export function ProofreadingFilterDialog(
                   <Button
                     type="button"
                     size="xs"
-                    variant="ghost"
+                    variant="outline"
                     onClick={() => {
                       set_draft_filters((previous_filters) => {
                         return {
@@ -494,15 +616,16 @@ export function ProofreadingFilterDialog(
               </div>
 
               <Input
+                className="h-[30px] px-2 text-xs leading-none md:text-xs placeholder:text-xs"
                 value={file_keyword}
-                placeholder={t("proofreading_page.filter.search_file")}
+                placeholder={t("proofreading_page.filter.search_placeholder")}
                 onChange={(event) => {
                   set_file_keyword(event.target.value);
                 }}
               />
 
-              <ScrollArea className="proofreading-page__filter-list">
-                <div className="proofreading-page__filter-list-body">
+              <ScrollArea className="proofreading-page__filter-list proofreading-page__filter-list--compact">
+                <div className="proofreading-page__filter-list-body proofreading-page__filter-list-body--compact">
                   {visible_file_paths.map((file_path) => (
                     <FilterListRow
                       key={file_path}
@@ -537,7 +660,6 @@ export function ProofreadingFilterDialog(
                   type="button"
                   size="xs"
                   variant="outline"
-                  disabled={term_count_entries.length === 0}
                   onClick={() => {
                     set_draft_filters((previous_filters) => {
                       return {
@@ -545,6 +667,7 @@ export function ProofreadingFilterDialog(
                         glossary_terms: term_count_entries.map(
                           (entry) => entry.term,
                         ),
+                        include_without_glossary_miss: true,
                       };
                     });
                   }}
@@ -554,13 +677,13 @@ export function ProofreadingFilterDialog(
                 <Button
                   type="button"
                   size="xs"
-                  variant="ghost"
-                  disabled={term_count_entries.length === 0}
+                  variant="outline"
                   onClick={() => {
                     set_draft_filters((previous_filters) => {
                       return {
                         ...previous_filters,
                         glossary_terms: [],
+                        include_without_glossary_miss: false,
                       };
                     });
                   }}
@@ -571,15 +694,31 @@ export function ProofreadingFilterDialog(
             </div>
 
             <Input
+              className="h-[30px] px-2 text-xs leading-none md:text-xs placeholder:text-xs"
               value={term_keyword}
-              placeholder={t("proofreading_page.filter.search_term")}
+              placeholder={t("proofreading_page.filter.search_placeholder")}
               onChange={(event) => {
                 set_term_keyword(event.target.value);
               }}
             />
 
-            <ScrollArea className="proofreading-page__filter-list proofreading-page__filter-list--terms">
-              <div className="proofreading-page__filter-list-body">
+            <ScrollArea className="proofreading-page__filter-list proofreading-page__filter-list--compact">
+              <div className="proofreading-page__filter-list-body proofreading-page__filter-list-body--compact">
+                <FilterListRow
+                  key="without_glossary_miss"
+                  label={t("proofreading_page.filter.without_glossary_miss")}
+                  count={without_glossary_miss_count}
+                  selected={draft_filters.include_without_glossary_miss}
+                  onClick={() => {
+                    set_draft_filters((previous_filters) => {
+                      return {
+                        ...previous_filters,
+                        include_without_glossary_miss:
+                          !previous_filters.include_without_glossary_miss,
+                      };
+                    });
+                  }}
+                />
                 {visible_term_entries.length > 0 ? (
                   visible_term_entries.map((entry) => (
                     <FilterListRow
@@ -607,7 +746,7 @@ export function ProofreadingFilterDialog(
                 ) : (
                   <Empty
                     variant="dashed"
-                    className="proofreading-page__filter-empty"
+                    className="proofreading-page__filter-empty proofreading-page__filter-empty--compact"
                   >
                     <EmptyHeader>
                       <EmptyTitle>

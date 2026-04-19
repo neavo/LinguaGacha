@@ -23,6 +23,7 @@ def test_proofreading_filter_options_snapshot_from_dict_normalizes_collections()
     assert options.statuses == ("NONE", "PROCESSED")
     assert options.file_paths == ("chapter-1.txt",)
     assert options.glossary_terms == (("HP", "生命值"),)
+    assert options.include_without_glossary_miss is True
 
 
 def test_proofreading_filter_options_snapshot_accepts_dict_terms() -> None:
@@ -36,7 +37,9 @@ def test_proofreading_filter_options_snapshot_accepts_dict_terms() -> None:
     )
 
     assert options.glossary_terms == (("勇者", "Hero"), ("HP", "生命值"))
+    assert options.include_without_glossary_miss is True
     assert options.to_dict()["glossary_terms"] == [["勇者", "Hero"], ["HP", "生命值"]]
+    assert options.to_dict()["include_without_glossary_miss"] is True
 
 
 def test_proofreading_filter_options_snapshot_ignores_invalid_collection_payloads() -> (
@@ -55,6 +58,7 @@ def test_proofreading_filter_options_snapshot_ignores_invalid_collection_payload
     assert options.statuses == ()
     assert options.file_paths == ()
     assert options.glossary_terms == ()
+    assert options.include_without_glossary_miss is True
 
 
 def test_proofreading_summary_from_dict_keeps_all_stable_totals() -> None:
@@ -148,6 +152,7 @@ def test_proofreading_snapshot_from_dict_keeps_filters_and_items_contract() -> N
                 "statuses": ["NONE", "PROCESSED", "ERROR"],
                 "file_paths": ["script/a.txt"],
                 "glossary_terms": [["勇者", "Hero"]],
+                "include_without_glossary_miss": False,
             },
             "items": [
                 {
@@ -174,6 +179,7 @@ def test_proofreading_snapshot_from_dict_keeps_filters_and_items_contract() -> N
     assert snapshot.filters.statuses == ("NONE", "PROCESSED", "ERROR")
     assert snapshot.filters.file_paths == ("script/a.txt",)
     assert snapshot.filters.glossary_terms == (("勇者", "Hero"),)
+    assert snapshot.filters.include_without_glossary_miss is False
     assert snapshot.items[0].item_id == 123
     assert snapshot.items[0].row_number == 45
     assert snapshot.items[0].failed_glossary_terms == (("勇者", "Hero"),)
@@ -186,6 +192,7 @@ def test_proofreading_snapshot_accepts_prebuilt_objects() -> None:
         statuses=("PROCESSED",),
         file_paths=("chapter-1.txt",),
         glossary_terms=(("HP", "生命值"),),
+        include_without_glossary_miss=False,
     )
     item = ProofreadingItemView(
         item_id="item-1",
@@ -224,6 +231,7 @@ def test_proofreading_snapshot_round_trip_keeps_stable_contract_keys() -> None:
                 "statuses": ["PROCESSED"],
                 "file_paths": ["chapter-1.txt"],
                 "glossary_terms": [["HP", "生命值"]],
+                "include_without_glossary_miss": False,
             },
             "items": [
                 {
@@ -255,6 +263,7 @@ def test_proofreading_snapshot_round_trip_keeps_stable_contract_keys() -> None:
         "statuses": ["PROCESSED"],
         "file_paths": ["chapter-1.txt"],
         "glossary_terms": [["HP", "生命值"]],
+        "include_without_glossary_miss": False,
     }
     assert payload["items"][0]["item_id"] == "item-12"
     assert payload["items"][0]["row_number"] == 12
@@ -398,6 +407,7 @@ def test_proofreading_models_use_safe_defaults_for_invalid_payloads() -> None:
         "statuses": [],
         "file_paths": [],
         "glossary_terms": [],
+        "include_without_glossary_miss": True,
     }
     assert warning_summary.to_dict() == {
         "warning_type": "",
@@ -438,6 +448,7 @@ def test_proofreading_models_use_safe_defaults_for_invalid_payloads() -> None:
             "statuses": [],
             "file_paths": [],
             "glossary_terms": [],
+            "include_without_glossary_miss": True,
         },
         "items": [],
     }

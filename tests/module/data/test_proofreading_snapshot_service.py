@@ -131,6 +131,7 @@ def test_load_snapshot_builds_complete_payload_for_review_items() -> None:
                 statuses={Base.ProjectStatus.PROCESSED},
                 file_paths={"script/a.txt"},
                 glossary_terms={("勇者", "Hero")},
+                include_without_glossary_miss=True,
             )
         ),
     )
@@ -173,6 +174,7 @@ def test_load_snapshot_builds_complete_payload_for_review_items() -> None:
     assert result.failed_terms_by_item_key[id(review_item)] == (("勇者", "Hero"),)
     assert result.applied_terms_by_item_key[id(review_item)] == (("勇者", "Hero"),)
     assert result.filter_options.warning_types == {WarningType.GLOSSARY}
+    assert result.filter_options.include_without_glossary_miss is True
     assert result.summary == {
         "total_items": 1,
         "filtered_items": 1,
