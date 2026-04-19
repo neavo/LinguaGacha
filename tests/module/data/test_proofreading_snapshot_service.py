@@ -47,6 +47,7 @@ def build_fake_data_manager(
         is_loaded=MagicMock(return_value=loaded),
         get_lg_path=MagicMock(return_value=lg_path),
         get_all_items=MagicMock(return_value=items),
+        get_all_item_dicts=MagicMock(return_value=[item.to_dict() for item in items]),
         get_meta=MagicMock(
             side_effect=lambda key, default=None: meta_store.get(key, default)
         ),
@@ -123,7 +124,7 @@ def test_load_snapshot_builds_complete_payload_for_review_items() -> None:
         revision=7,
     )
     fake_filter_service = SimpleNamespace(
-        build_review_items=MagicMock(return_value=[review_item]),
+        build_review_items_from_dicts=MagicMock(return_value=[review_item]),
         build_default_filter_options=MagicMock(
             return_value=ProofreadingFilterOptions(
                 warning_types={WarningType.GLOSSARY},
@@ -133,10 +134,21 @@ def test_load_snapshot_builds_complete_payload_for_review_items() -> None:
             )
         ),
     )
-    fake_checker = SimpleNamespace(name="fake-checker")
+    fake_checker = SimpleNamespace(
+        name="fake-checker",
+        get_replaced_text=MagicMock(return_value=("勇者が来た", "Hero arrived")),
+        get_applied_glossary_terms_from_replaced=MagicMock(
+            return_value=[("勇者", "Hero")]
+        ),
+    )
     fake_recheck_service = SimpleNamespace(
-        check_items=MagicMock(
-            return_value=(fake_checker, {id(review_item): [WarningType.GLOSSARY]})
+        check_items_with_caches=MagicMock(
+            return_value=SimpleNamespace(
+                checker=fake_checker,
+                warning_map={id(review_item): [WarningType.GLOSSARY]},
+                failed_terms_by_item_key={id(review_item): (("勇者", "Hero"),)},
+                applied_terms_by_item_key={id(review_item): (("勇者", "Hero"),)},
+            )
         ),
         build_failed_glossary_terms_cache=MagicMock(
             return_value={id(review_item): (("勇者", "Hero"),)}
@@ -159,6 +171,7 @@ def test_load_snapshot_builds_complete_payload_for_review_items() -> None:
     assert result.checker is fake_checker
     assert result.warning_map[id(review_item)] == [WarningType.GLOSSARY]
     assert result.failed_terms_by_item_key[id(review_item)] == (("勇者", "Hero"),)
+    assert result.applied_terms_by_item_key[id(review_item)] == (("勇者", "Hero"),)
     assert result.filter_options.warning_types == {WarningType.GLOSSARY}
     assert result.summary == {
         "total_items": 1,

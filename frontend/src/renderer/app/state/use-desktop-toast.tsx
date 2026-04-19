@@ -29,6 +29,11 @@ type DesktopToastApi = {
   push_progress_toast: (options: ProgressToastOptions) => DesktopToastId
   update_progress_toast: (toast_id: DesktopToastId, options: ProgressToastOptions) => DesktopToastId
   dismiss_toast: (toast_id?: DesktopToastId) => void
+  run_modal_progress_toast: <T>(args: {
+    message: string
+    task: () => Promise<T>
+    timeout_ms?: number
+  }) => Promise<T>
 }
 
 const PROGRESS_TOAST_DISMISS_DELAY_MS = 1500
@@ -241,6 +246,38 @@ export function useDesktopToast(): DesktopToastApi {
     }
   }, [])
 
+  const run_modal_progress_toast = useCallback(async <T,>(args: {
+    message: string
+    task: () => Promise<T>
+    timeout_ms?: number
+  }): Promise<T> => {
+    const progress_toast_id = push_progress_toast({
+      message: args.message,
+      presentation: 'modal',
+    })
+    let timeout_id: number | null = null
+
+    try {
+      if (args.timeout_ms === undefined) {
+        return await args.task()
+      }
+
+      return await Promise.race([
+        args.task(),
+        new Promise<T>((_resolve, reject) => {
+          timeout_id = window.setTimeout(() => {
+            reject(new Error('模态进度通知等待超时。'))
+          }, args.timeout_ms)
+        }),
+      ])
+    } finally {
+      if (timeout_id !== null) {
+        window.clearTimeout(timeout_id)
+      }
+      dismiss_toast(progress_toast_id)
+    }
+  }, [dismiss_toast, push_progress_toast])
+
   // Why: 页面里的 useEffect / useCallback 会把 toast API 放进依赖数组，
   // 如果这里每次渲染都返回新函数，就会把“首次刷新”误变成持续重跑。
   return useMemo<DesktopToastApi>(() => {
@@ -249,11 +286,13 @@ export function useDesktopToast(): DesktopToastApi {
       push_progress_toast,
       update_progress_toast,
       dismiss_toast,
+      run_modal_progress_toast,
     }
   }, [
     dismiss_toast,
     push_progress_toast,
     push_toast,
+    run_modal_progress_toast,
     update_progress_toast,
   ])
 }

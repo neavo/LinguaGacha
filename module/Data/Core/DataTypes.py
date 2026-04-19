@@ -17,8 +17,20 @@ class ProjectPrefilterRequest:
     lg_path: str
     reason: str
     source_language: str
-    target_language: str
     mtool_optimizer_enable: bool
+    emit_refresh_events: bool = True
+
+
+@dataclass(frozen=True)
+class ProjectPrefilterScheduleResult:
+    """预过滤调度结果。
+
+    `needed` 表示当前配置语义上是否需要重跑预过滤。
+    `accepted` 表示本次是否已经成功把刷新职责交给预过滤链。
+    """
+
+    needed: bool = False
+    accepted: bool = False
 
 
 @dataclass(frozen=True)
@@ -68,8 +80,36 @@ class AnalysisGlossaryImportPreview:
 class ProjectFileMutationResult:
     """工程文件变更结果。"""
 
-    rel_path: str
-    old_rel_path: str | None = None
+    rel_paths: tuple[str, ...] = ()
+    removed_rel_paths: tuple[str, ...] = ()
     matched: int = 0
     new: int = 0
     total: int = 0
+    order_changed: bool = False
+
+    @property
+    def rel_path(self) -> str:
+        """兼容旧调用方读取单文件主路径。"""
+
+        if self.rel_paths:
+            return self.rel_paths[0]
+        if self.removed_rel_paths:
+            return self.removed_rel_paths[0]
+        return ""
+
+    @property
+    def old_rel_path(self) -> str | None:
+        """兼容旧调用方读取被替换前的旧路径。"""
+
+        if self.rel_paths and self.removed_rel_paths:
+            return self.removed_rel_paths[0]
+        return None
+
+
+@dataclass(frozen=True)
+class ProjectItemChange:
+    """条目级影响范围快照。"""
+
+    item_ids: tuple[int, ...] = ()
+    rel_paths: tuple[str, ...] = ()
+    reason: str = ""

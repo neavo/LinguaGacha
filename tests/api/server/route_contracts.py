@@ -26,6 +26,8 @@ PHASE_TWO_QUALITY_ROUTE_PATHS: tuple[str, ...] = (
 
 PHASE_TWO_PROOFREADING_ROUTE_PATHS: tuple[str, ...] = (
     "/api/proofreading/snapshot",
+    "/api/proofreading/file-patch",
+    "/api/proofreading/entry-patch",
     "/api/proofreading/filter",
     "/api/proofreading/search",
     "/api/proofreading/save-item",

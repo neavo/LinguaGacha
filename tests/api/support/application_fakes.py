@@ -15,6 +15,7 @@ from base.BaseLanguage import BaseLanguage
 from model.Model import Model
 from model.Model import ModelType
 from module.Config import Config
+from module.Data.Core.DataTypes import ProjectItemChange
 
 if TYPE_CHECKING:
     from module.Data.Core.DataTypes import WorkbenchSnapshot
@@ -130,8 +131,11 @@ class FakeTaskDataManager:
         self.replace_all_items_calls: list[list[object]] = []
         self.set_translation_extras_calls: list[dict[str, int | float]] = []
         self.set_project_status_calls: list[Base.ProjectStatus] = []
-        self.run_project_prefilter_calls: list[tuple[object, str]] = []
+        self.run_project_prefilter_calls: list[tuple[object, str, bool]] = []
         self.reset_failed_translation_items_sync_calls: int = 0
+        self.project_item_change_refresh_calls: list[
+            tuple[ProjectItemChange, Base.Event | None]
+        ] = []
         self.clear_analysis_candidates_and_progress_calls: int = 0
         self.reset_failed_analysis_checkpoints_calls: int = 0
         self.refresh_analysis_progress_snapshot_cache_calls: int = 0
@@ -177,8 +181,14 @@ class FakeTaskDataManager:
         self.set_project_status_calls.append(status)
         self.project_status = status
 
-    def run_project_prefilter(self, config: object, *, reason: str) -> None:
-        self.run_project_prefilter_calls.append((config, reason))
+    def run_project_prefilter(
+        self,
+        config: object,
+        *,
+        reason: str,
+        emit_refresh_events: bool = True,
+    ) -> None:
+        self.run_project_prefilter_calls.append((config, reason, emit_refresh_events))
 
     def clear_analysis_candidates_and_progress(self) -> None:
         self.clear_analysis_candidates_and_progress_calls += 1
@@ -204,10 +214,27 @@ class FakeTaskDataManager:
         self.refresh_analysis_progress_snapshot_cache_calls += 1
         return self.get_analysis_progress_snapshot()
 
-    def reset_failed_translation_items_sync(self) -> dict[str, int | float]:
+    def reset_failed_translation_items_sync(
+        self,
+    ) -> tuple[ProjectItemChange, dict[str, int | float]]:
         self.reset_failed_translation_items_sync_calls += 1
         self.translation_extras["error_line"] = 0
-        return dict(self.translation_extras)
+        return (
+            ProjectItemChange(
+                item_ids=(1, 2),
+                rel_paths=("script/a.txt", "script/b.txt"),
+                reason="translation_reset_failed",
+            ),
+            dict(self.translation_extras),
+        )
+
+    def emit_project_item_change_refresh(
+        self,
+        change: ProjectItemChange,
+        *,
+        source_event: Base.Event | None = None,
+    ) -> None:
+        self.project_item_change_refresh_calls.append((change, source_event))
 
     def import_analysis_candidates(
         self, expected_lg_path: str | None = None
@@ -243,8 +270,11 @@ class FakeWorkbenchManager:
         }
         self.add_calls: list[str] = []
         self.replace_calls: list[tuple[str, str]] = []
+        self.replace_batch_calls: list[list[tuple[str, str]]] = []
         self.reset_calls: list[str] = []
+        self.reset_batch_calls: list[list[str]] = []
         self.delete_calls: list[str] = []
+        self.delete_batch_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
 
     def build_workbench_snapshot(self) -> "WorkbenchSnapshot":
@@ -271,6 +301,14 @@ class FakeWorkbenchManager:
     def is_file_op_running(self) -> bool:
         return self.file_op_running
 
+    def build_workbench_entry_patch(self, rel_paths: list[str]):
+        from module.Data.Project.WorkbenchService import WorkbenchService
+
+        return WorkbenchService().build_entry_patch(
+            self.build_workbench_snapshot(),
+            rel_paths,
+        )
+
     def get_supported_extensions(self) -> set[str]:
         return set(self.supported_extensions)
 
@@ -280,11 +318,20 @@ class FakeWorkbenchManager:
     def schedule_replace_file(self, rel_path: str, path: str) -> None:
         self.replace_calls.append((rel_path, path))
 
+    def schedule_replace_file_batch(self, operations: list[tuple[str, str]]) -> None:
+        self.replace_batch_calls.append(list(operations))
+
     def schedule_reset_file(self, rel_path: str) -> None:
         self.reset_calls.append(rel_path)
 
+    def schedule_reset_file_batch(self, rel_paths: list[str]) -> None:
+        self.reset_batch_calls.append(list(rel_paths))
+
     def schedule_delete_file(self, rel_path: str) -> None:
         self.delete_calls.append(rel_path)
+
+    def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
+        self.delete_batch_calls.append(list(rel_paths))
 
     def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
         self.reorder_calls.append(list(ordered_rel_paths))

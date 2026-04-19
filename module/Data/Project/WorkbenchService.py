@@ -88,6 +88,23 @@ class WorkbenchService:
             entries=tuple(entries),
         )
 
+    def build_entry_patch(
+        self,
+        snapshot: WorkbenchSnapshot,
+        rel_paths: list[str],
+    ) -> tuple[WorkbenchFileEntrySnapshot, ...]:
+        """按文件路径筛出需要发给前端的文件行补丁。"""
+
+        rel_path_set = {str(rel_path) for rel_path in rel_paths if str(rel_path) != ""}
+        if not rel_path_set:
+            return ()
+
+        return tuple(
+            entry
+            for entry in snapshot.entries
+            if entry.rel_path in rel_path_set
+        )
+
     def normalize_status(self, raw_status: object) -> Base.ProjectStatus:
         """把条目状态规整成枚举。"""
 

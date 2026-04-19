@@ -37,5 +37,6 @@ export const zh_cn_basic_settings_page = {
     refresh_failed_title: '基础设置加载失败',
     update_failed: '设置保存失败，请稍后重试。',
     pick_directory_failed: '目录选择失败，请重新选择固定保存目录。',
+    source_language_loading_toast: '正在刷新项目缓存 …',
   },
 } as const

@@ -106,6 +106,45 @@ def test_filter_items_applies_warning_status_file_and_glossary_constraints() -> 
     assert result == [matched_item]
 
 
+def test_filter_items_uses_failed_term_cache_as_authoritative_source() -> None:
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterOptions,
+    )
+    from module.Data.Proofreading.ProofreadingFilterService import (
+        ProofreadingFilterService,
+    )
+
+    service = ProofreadingFilterService()
+    glossary_item = build_item(
+        item_id=1,
+        src="勇者が来た",
+        dst="Narration",
+        file_path="script/a.txt",
+    )
+    warning_map = {id(glossary_item): [WarningType.GLOSSARY]}
+
+    class FailingChecker:
+        def get_failed_glossary_terms(self, item: Item) -> list[tuple[str, str]]:
+            raise AssertionError(f"不应该对 {item.get_id()} 回退逐条计算失败术语")
+
+    options = ProofreadingFilterOptions(
+        warning_types={WarningType.GLOSSARY},
+        statuses={Base.ProjectStatus.PROCESSED},
+        file_paths={"script/a.txt"},
+        glossary_terms={("勇者", "Hero")},
+    )
+
+    result = service.filter_items(
+        items=[glossary_item],
+        warning_map=warning_map,
+        options=options,
+        checker=FailingChecker(),
+        failed_terms_by_item_key={},
+    )
+
+    assert result == []
+
+
 def test_resolve_status_after_manual_edit_promotes_finished_rows() -> None:
     from module.Data.Proofreading.ProofreadingFilterService import (
         ProofreadingFilterService,

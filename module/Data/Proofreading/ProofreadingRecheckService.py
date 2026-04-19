@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 
 from model.Item import Item
 from module.ResultChecker import ResultChecker
+from module.ResultChecker import ResultCheckItemSnapshot
 from module.ResultChecker import WarningType
+
+
+@dataclass(frozen=True)
+class ProofreadingRecheckBatchResult:
+    """批量校对重检结果。"""
+
+    checker: ResultChecker
+    warning_map: dict[int, list[WarningType]]
+    failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]]
+    applied_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]]
 
 
 class ProofreadingRecheckService:
@@ -36,12 +48,37 @@ class ProofreadingRecheckService:
     ) -> tuple[list[WarningType], tuple[tuple[str, str], ...] | None]:
         """重检单条条目并返回警告与失败术语。"""
 
-        checker = self.build_checker(config)
-        warnings = checker.check_item(item)
+        snapshot = self.check_item_with_snapshot(config, item)
         failed_terms: tuple[tuple[str, str], ...] | None = None
+        if snapshot.failed_glossary_terms:
+            failed_terms = snapshot.failed_glossary_terms
+        return list(snapshot.warnings), failed_terms
+
+    def check_item_with_snapshot(
+        self,
+        config: Any,
+        item: Item,
+    ) -> ResultCheckItemSnapshot:
+        """重检单条条目，并返回完整派生结果。"""
+
+        checker = self.build_checker(config)
+        collect_item_check_snapshot = getattr(
+            checker,
+            "collect_item_check_snapshot",
+            None,
+        )
+        if callable(collect_item_check_snapshot):
+            return collect_item_check_snapshot(item)
+
+        warnings = checker.check_item(item)
+        failed_terms: tuple[tuple[str, str], ...] = ()
         if WarningType.GLOSSARY in warnings:
             failed_terms = tuple(checker.get_failed_glossary_terms(item))
-        return warnings, failed_terms
+        return ResultCheckItemSnapshot(
+            tuple(warnings),
+            failed_terms,
+            (),
+        )
 
     def check_items(
         self,
@@ -50,9 +87,43 @@ class ProofreadingRecheckService:
     ) -> tuple[ResultChecker, dict[int, list[WarningType]]]:
         """批量重检条目并返回 warning_map。"""
 
+        batch_result = self.check_items_with_caches(config, items)
+        return batch_result.checker, batch_result.warning_map
+
+    def check_items_with_caches(
+        self,
+        config: Any,
+        items: list[Item],
+    ) -> ProofreadingRecheckBatchResult:
+        """批量重检条目，并同步产出失败/生效术语缓存。"""
+
         checker = self.build_checker(config)
-        warning_map = checker.check_items(items)
-        return checker, warning_map
+        warning_map: dict[int, list[WarningType]]
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]]
+        applied_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]]
+
+        check_items_with_details = getattr(checker, "check_items_with_details", None)
+        if callable(check_items_with_details):
+            (
+                warning_map,
+                failed_terms_by_item_key,
+                applied_terms_by_item_key,
+            ) = check_items_with_details(items)
+        else:
+            warning_map = checker.check_items(items)
+            failed_terms_by_item_key = self.build_failed_glossary_terms_cache(
+                items,
+                warning_map,
+                checker,
+            )
+            applied_terms_by_item_key = {}
+
+        return ProofreadingRecheckBatchResult(
+            checker=checker,
+            warning_map=warning_map,
+            failed_terms_by_item_key=failed_terms_by_item_key,
+            applied_terms_by_item_key=applied_terms_by_item_key,
+        )
 
     def build_failed_glossary_terms_cache(
         self,

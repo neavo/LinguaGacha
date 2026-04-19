@@ -115,7 +115,7 @@
   stroke-width: 1.9;
 }
 
-.text-replacement-page__rule-badge[data-state='active'] {
+.text-replacement-page__rule-badge[data-state="active"] {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
@@ -133,20 +133,6 @@
   min-width: 32px;
   justify-content: center;
   font-size: 11px;
-}
-
-.text-replacement-page__preset-dialog-shell,
-.text-replacement-page__dialog-shell {
-  padding: 0;
-}
-
-.text-replacement-page__dialog-shell {
-  background: var(--popover);
-  height: 640px;
-}
-
-.text-replacement-page__dialog-shell [data-slot='dialog-footer'] {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
 }
 
 .text-replacement-page__dialog-scroll {
@@ -246,29 +232,4 @@
   font-size: 13px;
   line-height: 1.2;
   color: var(--foreground);
-}
-
-.text-replacement-page__dialog-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.text-replacement-page__dialog-footer-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.text-replacement-page__preset-dialog-body {
-  padding: 24px 24px 12px;
-}
-
-.text-replacement-page__preset-dialog-footer {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
-}
-
-.text-replacement-page__preset-dialog-button {
-  min-width: 112px;
 }

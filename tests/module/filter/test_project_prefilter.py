@@ -24,7 +24,6 @@ class TestProjectPrefilterResetPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
         # 复位后重新评估，"Hello World" 包含拉丁字符且不命中规则 → NONE
@@ -35,7 +34,6 @@ class TestProjectPrefilterResetPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
         assert item.get_status() == Base.ProjectStatus.NONE
@@ -46,7 +44,6 @@ class TestProjectPrefilterResetPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
         assert item.get_status() == Base.ProjectStatus.PROCESSED
@@ -60,7 +57,6 @@ class TestProjectPrefilterFilterPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
         assert item.get_status() == Base.ProjectStatus.RULE_SKIPPED
@@ -71,7 +67,6 @@ class TestProjectPrefilterFilterPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.ZH,
-            target_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
         assert item.get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
@@ -81,7 +76,6 @@ class TestProjectPrefilterFilterPhase:
         result = ProjectPrefilter.apply(
             items,
             source_language=BaseLanguage.ALL,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
 
@@ -96,7 +90,6 @@ class TestProjectPrefilterFilterPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.ZH,
-            target_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
         assert item.get_status() == Base.ProjectStatus.RULE_SKIPPED
@@ -106,7 +99,6 @@ class TestProjectPrefilterFilterPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.ZH,
-            target_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
         assert item.get_status() == Base.ProjectStatus.NONE
@@ -117,7 +109,6 @@ class TestProjectPrefilterFilterPhase:
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
         assert item.get_status() == Base.ProjectStatus.PROCESSED
@@ -136,7 +127,6 @@ class TestProjectPrefilterStats:
         result = ProjectPrefilter.apply(
             items,
             source_language=BaseLanguage.Enum.ZH,
-            target_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
         assert result.stats.rule_skipped == 2
@@ -147,11 +137,9 @@ class TestProjectPrefilterStats:
         result = ProjectPrefilter.apply(
             [],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=True,
         )
         assert result.prefilter_config["source_language"] == "EN"
-        assert result.prefilter_config["target_language"] == "ZH"
         assert result.prefilter_config["mtool_optimizer_enable"] is True
 
 
@@ -164,7 +152,6 @@ class TestProjectPrefilterProgressCallback:
         ProjectPrefilter.apply(
             items,
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
             progress_cb=lambda current, total: progress_steps.append((current, total)),
         )
@@ -178,7 +165,6 @@ class TestProjectPrefilterProgressCallback:
         ProjectPrefilter.apply(
             items,
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
             progress_cb=lambda current, total: progress_steps.append((current, total)),
             progress_every=4,
@@ -200,7 +186,6 @@ class TestProjectPrefilterInputContract:
         result = ProjectPrefilter.apply(
             items,
             source_language="ZH",
-            target_language="EN",
             mtool_optimizer_enable=False,
         )
 
@@ -208,7 +193,6 @@ class TestProjectPrefilterInputContract:
         assert items[1].get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
         assert result.prefilter_config == {
             "source_language": "ZH",
-            "target_language": "EN",
             "mtool_optimizer_enable": False,
         }
 
@@ -331,7 +315,6 @@ class TestProjectPrefilterMToolIntegration:
         result = ProjectPrefilter.apply(
             [multi_line, clause, normal],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=True,
         )
         assert result.stats.mtool_skipped == 1
@@ -352,7 +335,6 @@ class TestProjectPrefilterMToolIntegration:
         result = ProjectPrefilter.apply(
             [multi_line, clause],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
         assert result.stats.mtool_skipped == 0
@@ -369,7 +351,6 @@ class TestProjectPrefilterCoverageBranches:
         result = ProjectPrefilter.apply(
             [],
             source_language=BaseLanguage.Enum.EN,
-            target_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
             progress_cb=lambda current, total: progress_steps.append((current, total)),
         )

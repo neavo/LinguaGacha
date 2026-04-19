@@ -1,6 +1,8 @@
 from typing import Any
 
 from api.Contract.WorkbenchPayloads import WorkbenchFileEntryPayload
+from api.Contract.WorkbenchPayloads import WorkbenchFilePatchPayload
+from api.Contract.WorkbenchPayloads import WorkbenchSummaryPayload
 from api.Contract.WorkbenchPayloads import WorkbenchSnapshotPayload
 from module.Data.DataManager import DataManager
 
@@ -34,6 +36,25 @@ class WorkbenchAppService:
         self.data_manager.schedule_replace_file(rel_path, path)
         return {"accepted": True}
 
+    def replace_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
+        """调度批量替换文件操作。"""
+
+        operations_raw = request.get("operations", [])
+        operations: list[tuple[str, str]] = []
+        if isinstance(operations_raw, list):
+            for operation in operations_raw:
+                if not isinstance(operation, dict):
+                    continue
+                operations.append(
+                    (
+                        str(operation.get("rel_path", "")),
+                        str(operation.get("path", "")),
+                    )
+                )
+
+        self.data_manager.schedule_replace_file_batch(operations)
+        return {"accepted": True}
+
     def reset_file(self, request: dict[str, Any]) -> dict[str, object]:
         """调度重置文件操作。"""
 
@@ -41,11 +62,35 @@ class WorkbenchAppService:
         self.data_manager.schedule_reset_file(rel_path)
         return {"accepted": True}
 
+    def reset_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
+        """调度批量重置文件操作。"""
+
+        rel_paths_raw = request.get("rel_paths", [])
+        rel_paths = (
+            [str(rel_path) for rel_path in rel_paths_raw]
+            if isinstance(rel_paths_raw, list)
+            else []
+        )
+        self.data_manager.schedule_reset_file_batch(rel_paths)
+        return {"accepted": True}
+
     def delete_file(self, request: dict[str, Any]) -> dict[str, object]:
         """调度删除文件操作。"""
 
         rel_path = str(request.get("rel_path", ""))
         self.data_manager.schedule_delete_file(rel_path)
+        return {"accepted": True}
+
+    def delete_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
+        """调度批量删除文件操作。"""
+
+        rel_paths_raw = request.get("rel_paths", [])
+        rel_paths = (
+            [str(rel_path) for rel_path in rel_paths_raw]
+            if isinstance(rel_paths_raw, list)
+            else []
+        )
+        self.data_manager.schedule_delete_file_batch(rel_paths)
         return {"accepted": True}
 
     def reorder_files(self, request: dict[str, Any]) -> dict[str, object]:
@@ -59,6 +104,47 @@ class WorkbenchAppService:
         )
         self.data_manager.schedule_reorder_files(ordered_rel_paths)
         return {"accepted": True}
+
+    def get_file_patch(self, request: dict[str, Any]) -> dict[str, object]:
+        """按文件影响范围返回工作台局部补丁。"""
+
+        rel_paths_raw = request.get("rel_paths", [])
+        rel_paths = (
+            [str(rel_path) for rel_path in rel_paths_raw]
+            if isinstance(rel_paths_raw, list)
+            else []
+        )
+        removed_rel_paths_raw = request.get("removed_rel_paths", [])
+        removed_rel_paths = (
+            [str(rel_path) for rel_path in removed_rel_paths_raw]
+            if isinstance(removed_rel_paths_raw, list)
+            else []
+        )
+        include_order = bool(request.get("include_order", False))
+
+        snapshot = self.data_manager.build_workbench_snapshot()
+        patched_entries = self.data_manager.build_workbench_entry_patch(rel_paths)
+        return {
+            "patch": WorkbenchFilePatchPayload(
+                summary=self.build_summary(snapshot),
+                ordered_rel_paths=(
+                    tuple(entry.rel_path for entry in snapshot.entries)
+                    if include_order
+                    else ()
+                ),
+                removed_rel_paths=tuple(
+                    rel_path for rel_path in removed_rel_paths if rel_path != ""
+                ),
+                entries=tuple(
+                    WorkbenchFileEntryPayload(
+                        rel_path=str(entry.rel_path),
+                        item_count=int(entry.item_count),
+                        file_type=str(entry.file_type.value),
+                    )
+                    for entry in patched_entries
+                ),
+            ).to_dict()
+        }
 
     def get_supported_extensions(self, request: dict[str, Any]) -> dict[str, object]:
         """提供工作台导入文件选择器需要的支持格式列表。"""
@@ -80,6 +166,14 @@ class WorkbenchAppService:
             for entry in snapshot.entries
         )
         return WorkbenchSnapshotPayload(
+            summary=self.build_summary(snapshot),
+            entries=entries,
+        ).to_dict()
+
+    def build_summary(self, snapshot: Any) -> WorkbenchSummaryPayload:
+        """把内部工作台快照摘要收口为稳定 JSON 载荷。"""
+
+        return WorkbenchSummaryPayload(
             file_count=int(snapshot.file_count),
             total_items=int(snapshot.total_items),
             translated=int(snapshot.translated),
@@ -87,5 +181,4 @@ class WorkbenchAppService:
             error_count=int(snapshot.error_count),
             untranslated=int(snapshot.untranslated),
             file_op_running=bool(self.data_manager.is_file_op_running()),
-            entries=entries,
-        ).to_dict()
+        )

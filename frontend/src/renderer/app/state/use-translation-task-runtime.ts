@@ -8,6 +8,10 @@ import {
 } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import type {
+  ProjectPagesBarrierCheckpoint,
+  ProjectPagesBarrierKind,
+} from '@/app/state/project-pages-barrier'
 import { WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS } from '@/app/state/workbench-progress-constants'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
@@ -34,6 +38,14 @@ import {
 
 type TranslationTaskCommandPayload = {
   task?: Partial<TranslationTaskSnapshot>
+}
+
+type TranslationTaskRuntimeOptions = {
+  createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint
+  waitForProjectPagesBarrier?: (
+    kind: Exclude<ProjectPagesBarrierKind, 'project_warmup'>,
+    options?: { checkpoint?: ProjectPagesBarrierCheckpoint | null },
+  ) => Promise<void>
 }
 
 export type TranslationTaskRuntime = {
@@ -135,7 +147,9 @@ function resolve_translation_terminal_feedback_message(args: {
   return null
 }
 
-export function useTranslationTaskRuntime(): TranslationTaskRuntime {
+export function useTranslationTaskRuntime(
+  options: TranslationTaskRuntimeOptions = {},
+): TranslationTaskRuntime {
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
   const {
@@ -393,10 +407,7 @@ export function useTranslationTaskRuntime(): TranslationTaskRuntime {
       }
 
       if (previous_state.submitting) {
-        return {
-          ...previous_state,
-          open: false,
-        }
+        return previous_state
       }
 
       return null
@@ -407,6 +418,8 @@ export function useTranslationTaskRuntime(): TranslationTaskRuntime {
     if (task_confirm_state === null) {
       return
     }
+
+    const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null
 
     set_task_confirm_state((previous_state) => {
       if (previous_state === null) {
@@ -437,6 +450,11 @@ export function useTranslationTaskRuntime(): TranslationTaskRuntime {
         const next_snapshot = normalize_translation_task_snapshot_payload(task_payload)
         apply_translation_task_snapshot(next_snapshot)
         sync_runtime_task_snapshot(next_snapshot)
+        if (options.waitForProjectPagesBarrier !== undefined) {
+          await options.waitForProjectPagesBarrier('proofreading_cache_refresh', {
+            checkpoint: barrierCheckpoint,
+          })
+        }
         set_task_confirm_state(null)
       }
     } catch (error) {
@@ -449,10 +467,20 @@ export function useTranslationTaskRuntime(): TranslationTaskRuntime {
       }
 
       push_toast('error', resolve_error_message(error, fallback_message))
-      set_task_confirm_state(null)
+      set_task_confirm_state((previous_state) => {
+        if (previous_state === null) {
+          return null
+        }
+
+        return {
+          ...previous_state,
+          submitting: false,
+        }
+      })
     }
   }, [
     apply_translation_task_snapshot,
+    options,
     push_toast,
     sync_runtime_task_snapshot,
     t,

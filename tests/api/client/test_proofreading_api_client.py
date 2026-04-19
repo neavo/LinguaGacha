@@ -10,6 +10,7 @@ from model.Api.ProofreadingModels import ProofreadingMutationResult
 from model.Api.ProofreadingModels import ProofreadingSearchResult
 from model.Api.ProofreadingModels import ProofreadingSnapshot
 from model.Item import Item
+from module.Data.Core.DataTypes import ProjectItemChange
 from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterOptions
 from module.Data.Proofreading.ProofreadingSnapshotService import ProofreadingLoadKind
 from module.Data.Proofreading.ProofreadingSnapshotService import ProofreadingLoadResult
@@ -98,7 +99,13 @@ def build_proofreading_app_service() -> ProofreadingAppService:
     )
 
     snapshot_service = Mock()
-    snapshot_service.load_snapshot.side_effect = [snapshot_result, refreshed_result]
+    mutation_state = {"mutated": False}
+
+    def load_snapshot(lg_path: str) -> ProofreadingLoadResult:
+        del lg_path
+        return refreshed_result if mutation_state["mutated"] else snapshot_result
+
+    snapshot_service.load_snapshot.side_effect = load_snapshot
 
     def filter_items(
         items_ref: list[Item],
@@ -134,11 +141,16 @@ def build_proofreading_app_service() -> ProofreadingAppService:
         new_dst: str,
         *,
         expected_revision: int | None = None,
-    ) -> int:
+    ) -> ProjectItemChange:
         del expected_revision
         item.set_dst(new_dst)
         item.set_status(Base.ProjectStatus.PROCESSED)
-        return 1
+        mutation_state["mutated"] = True
+        return ProjectItemChange(
+            item_ids=(1,),
+            rel_paths=("script/a.txt",),
+            reason="proofreading_save_item",
+        )
 
     def replace_all(
         items_ref: list[Item],
@@ -147,24 +159,26 @@ def build_proofreading_app_service() -> ProofreadingAppService:
         replace_text: str,
         is_regex: bool = False,
         expected_revision: int | None = None,
-    ) -> dict[str, object]:
+    ) -> ProjectItemChange:
         del items_ref, search_text, replace_text, is_regex, expected_revision
-        return {
-            "revision": 8,
-            "changed_item_ids": [1],
-            "items": [
-                {
-                    "id": 1,
-                    "dst": "Hero arrived again",
-                    "status": Base.ProjectStatus.PROCESSED,
-                }
-            ],
-        }
+        mutation_state["mutated"] = True
+        return ProjectItemChange(
+            item_ids=(1,),
+            rel_paths=("script/a.txt",),
+            reason="proofreading_replace_all",
+        )
 
     mutation_service = Mock()
     mutation_service.apply_manual_edit.side_effect = apply_manual_edit
     mutation_service.replace_all.side_effect = replace_all
-    mutation_service.save_all.return_value = [1, 2]
+    mutation_service.save_all.side_effect = lambda items, **kwargs: (
+        mutation_state.__setitem__("mutated", True)
+        or ProjectItemChange(
+            item_ids=(1, 2),
+            rel_paths=("script/a.txt", "script/b.txt"),
+            reason="proofreading_save_all",
+        )
+    )
 
     def check_item(
         config: object,
@@ -175,13 +189,26 @@ def build_proofreading_app_service() -> ProofreadingAppService:
             return [WarningType.GLOSSARY], (("勇者", "Hero"),)
         return [], None
 
+    def check_item_with_snapshot(config: object, item: Item) -> SimpleNamespace:
+        warnings, failed_terms = check_item(config, item)
+        return SimpleNamespace(
+            warnings=tuple(warnings),
+            failed_glossary_terms=failed_terms or (),
+            applied_glossary_terms=(),
+        )
+
     recheck_service = Mock()
     recheck_service.check_item.side_effect = check_item
+    recheck_service.check_item_with_snapshot.side_effect = check_item_with_snapshot
     retranslate_service = Mock()
-    retranslate_service.retranslate_items.return_value = {
-        "revision": 9,
-        "changed_item_ids": [1, 2],
-    }
+    retranslate_service.retranslate_items.side_effect = lambda items, **kwargs: (
+        mutation_state.__setitem__("mutated", True)
+        or ProjectItemChange(
+            item_ids=(1, 2),
+            rel_paths=("script/a.txt", "script/b.txt"),
+            reason="proofreading_retranslate_items",
+        )
+    )
 
     return ProofreadingAppService(
         snapshot_service=snapshot_service,

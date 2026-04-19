@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from enum import StrEnum
 
 from base.Base import Base
@@ -21,6 +22,15 @@ class WarningType(StrEnum):
     SIMILARITY = "SIMILARITY"  # 相似度过高
     GLOSSARY = "GLOSSARY"  # 术语表未生效
     RETRY_THRESHOLD = "RETRY_THRESHOLD"  # 重试次数达阈值
+
+
+@dataclass(frozen=True)
+class ResultCheckItemSnapshot:
+    """单条检查的派生结果。"""
+
+    warnings: tuple[WarningType, ...]
+    failed_glossary_terms: tuple[tuple[str, str], ...]
+    applied_glossary_terms: tuple[tuple[str, str], ...]
 
 
 class ResultChecker(Base):
@@ -191,24 +201,46 @@ class ResultChecker(Base):
 
         return matched_terms
 
-    def get_failed_glossary_terms_from_replaced(
-        self, src_repl: str, dst_repl: str
-    ) -> list[tuple[str, str]]:
-        """复用术语命中判定，避免多处逻辑漂移"""
+    def partition_glossary_terms_from_replaced(
+        self,
+        src_repl: str,
+        dst_repl: str,
+    ) -> tuple[
+        tuple[tuple[str, str], ...],
+        tuple[tuple[str, str], ...],
+        tuple[tuple[str, str], ...],
+    ]:
+        """一次遍历把术语命中结果切成 matched / failed / applied 三类。"""
+
+        matched_terms: list[tuple[str, str]] = []
         failed_terms: list[tuple[str, str]] = []
 
         for term in self.prepared_glossary_data:
             glossary_src = term.get("src", "")
             glossary_dst = term.get("dst", "")
-            # 原文包含术语原文，但译文不包含术语译文
-            if (
-                glossary_src
-                and glossary_src in src_repl
-                and glossary_dst not in dst_repl
-            ):
-                failed_terms.append((glossary_src, glossary_dst))
+            if not glossary_src or glossary_src not in src_repl:
+                continue
 
-        return failed_terms
+            matched_term = (glossary_src, glossary_dst)
+            matched_terms.append(matched_term)
+            if glossary_dst not in dst_repl:
+                failed_terms.append(matched_term)
+
+        if not matched_terms:
+            return (), (), ()
+
+        failed_term_set = set(failed_terms)
+        applied_terms = [term for term in matched_terms if term not in failed_term_set]
+        return tuple(matched_terms), tuple(failed_terms), tuple(applied_terms)
+
+    def get_failed_glossary_terms_from_replaced(
+        self, src_repl: str, dst_repl: str
+    ) -> list[tuple[str, str]]:
+        """复用术语命中判定，避免多处逻辑漂移"""
+        _matched_terms, failed_terms, _applied_terms = (
+            self.partition_glossary_terms_from_replaced(src_repl, dst_repl)
+        )
+        return list(failed_terms)
 
     def get_applied_glossary_terms_from_replaced(
         self,
@@ -217,11 +249,10 @@ class ResultChecker(Base):
     ) -> list[tuple[str, str]]:
         """获取当前条目已生效的术语列表。"""
 
-        matched_terms = self.get_matched_glossary_terms_from_replaced(src_repl)
-        failed_terms = self.get_failed_glossary_terms_from_replaced(src_repl, dst_repl)
-        failed_term_set = set(failed_terms)
-
-        return [term for term in matched_terms if term not in failed_term_set]
+        _matched_terms, _failed_terms, applied_terms = (
+            self.partition_glossary_terms_from_replaced(src_repl, dst_repl)
+        )
+        return list(applied_terms)
 
     def has_untranslated_error(self, item: Item) -> bool:
         """检查是否未翻译"""
@@ -230,6 +261,63 @@ class ResultChecker(Base):
     def has_retry_threshold_error(self, item: Item) -> bool:
         """检查重试次数是否达到阈值"""
         return item.get_retry_count() >= ResponseChecker.RETRY_COUNT_THRESHOLD
+
+    def collect_item_check_snapshot(
+        self,
+        item: Item,
+        glossary: list[dict] | None = None,
+        pre_rules: list[dict] | None = None,
+        post_rules: list[dict] | None = None,
+    ) -> ResultCheckItemSnapshot:
+        """执行单条检查并返回可复用的派生结果。"""
+
+        warnings: list[WarningType] = []
+
+        if item.get_status() in __class__.SKIPPED_STATUS:
+            return ResultCheckItemSnapshot((), (), ())
+
+        if not item.get_dst():
+            return ResultCheckItemSnapshot((), (), ())
+
+        self.prepared_glossary_data = (
+            glossary if glossary is not None else self.prepare_glossary_data()
+        )
+
+        src_repl, dst_repl = self.get_replaced_text(
+            item,
+            pre_rules=pre_rules,
+            post_rules=post_rules,
+        )
+
+        if self.has_kana_error(item):
+            warnings.append(WarningType.KANA)
+
+        if self.has_hangeul_error(item):
+            warnings.append(WarningType.HANGEUL)
+
+        if self.has_text_preserve_error(item, src_repl, dst_repl):
+            warnings.append(WarningType.TEXT_PRESERVE)
+
+        if self.has_similarity_error(item, src_repl, dst_repl):
+            warnings.append(WarningType.SIMILARITY)
+
+        failed_terms: tuple[tuple[str, str], ...] = ()
+        applied_terms: tuple[tuple[str, str], ...] = ()
+        if self.prepared_glossary_data:
+            _matched_terms, failed_terms, applied_terms = (
+                self.partition_glossary_terms_from_replaced(src_repl, dst_repl)
+            )
+            if failed_terms:
+                warnings.append(WarningType.GLOSSARY)
+
+        if self.has_retry_threshold_error(item):
+            warnings.append(WarningType.RETRY_THRESHOLD)
+
+        return ResultCheckItemSnapshot(
+            tuple(warnings),
+            failed_terms,
+            applied_terms,
+        )
 
     # =========================================
     # 公共接口方法
@@ -240,9 +328,25 @@ class ResultChecker(Base):
         对全量数据进行内存检查，返回警告映射表。
         通过一次性提取规则缓存，将复杂度从 O(N*M) 降至 O(N+M)。
         """
-        warning_map: dict[int, list[WarningType]] = {}
+        warning_map, _failed_terms, _applied_terms = self.check_items_with_details(
+            items
+        )
+        return warning_map
 
-        # 1. 在循环外部一次性准备所有规则数据
+    def check_items_with_details(
+        self,
+        items: list[Item],
+    ) -> tuple[
+        dict[int, list[WarningType]],
+        dict[int, tuple[tuple[str, str], ...]],
+        dict[int, tuple[tuple[str, str], ...]],
+    ]:
+        """批量检查条目，并在同一轮里产出术语缓存。"""
+
+        warning_map: dict[int, list[WarningType]] = {}
+        failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = {}
+        applied_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = {}
+
         prepared_glossary = self.prepare_glossary_data()
         pre_rules = (
             DataManager.get().get_pre_replacement()
@@ -255,18 +359,22 @@ class ResultChecker(Base):
             else []
         )
 
-        # 2. 紧凑循环处理
         for item in GapTool.iter(items):
-            warnings = self.check_item(
+            snapshot = self.collect_item_check_snapshot(
                 item,
                 glossary=prepared_glossary,
                 pre_rules=pre_rules,
                 post_rules=post_rules,
             )
-            if warnings:
-                warning_map[id(item)] = warnings
+            item_key = id(item)
+            if snapshot.warnings:
+                warning_map[item_key] = list(snapshot.warnings)
+            if snapshot.failed_glossary_terms:
+                failed_terms_by_item_key[item_key] = snapshot.failed_glossary_terms
+            if snapshot.applied_glossary_terms:
+                applied_terms_by_item_key[item_key] = snapshot.applied_glossary_terms
 
-        return warning_map
+        return warning_map, failed_terms_by_item_key, applied_terms_by_item_key
 
     def check_item(
         self,
@@ -284,42 +392,10 @@ class ResultChecker(Base):
             pre_rules: 可选预热预替换规则
             post_rules: 可选预热后替换规则
         """
-        warnings: list[WarningType] = []
-
-        # 1. 快速过滤
-        if item.get_status() in __class__.SKIPPED_STATUS:
-            return warnings
-
-        if not item.get_dst():
-            return warnings
-
-        # 2. 准备本次检查使用的术语表数据（优先使用传入的缓存）
-        self.prepared_glossary_data = (
-            glossary if glossary is not None else self.prepare_glossary_data()
+        snapshot = self.collect_item_check_snapshot(
+            item,
+            glossary=glossary,
+            pre_rules=pre_rules,
+            post_rules=post_rules,
         )
-
-        # 3. 获取替换后的文本
-        src_repl, dst_repl = self.get_replaced_text(
-            item, pre_rules=pre_rules, post_rules=post_rules
-        )
-
-        # 4. 执行各项原子检查
-        if self.has_kana_error(item):
-            warnings.append(WarningType.KANA)
-
-        if self.has_hangeul_error(item):
-            warnings.append(WarningType.HANGEUL)
-
-        if self.has_text_preserve_error(item, src_repl, dst_repl):
-            warnings.append(WarningType.TEXT_PRESERVE)
-
-        if self.has_similarity_error(item, src_repl, dst_repl):
-            warnings.append(WarningType.SIMILARITY)
-
-        if self.has_glossary_error(src_repl, dst_repl):
-            warnings.append(WarningType.GLOSSARY)
-
-        if self.has_retry_threshold_error(item):
-            warnings.append(WarningType.RETRY_THRESHOLD)
-
-        return warnings
+        return list(snapshot.warnings)

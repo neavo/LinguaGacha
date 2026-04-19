@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import Any
 
 from module.Data.Quality.PromptService import PromptService
+from module.Data.Quality.ProofreadingImpactAnalyzer import (
+    ProofreadingImpactAnalyzer,
+)
 from module.Data.Quality.QualityRuleMutationService import QualityRuleMutationService
 from module.Data.Quality.QualityRulePresetService import QualityRulePresetService
 from module.Data.Quality.QualityRuleSnapshotService import (
@@ -19,7 +22,16 @@ class QualityRuleFacadeService:
     方便 UI 以后只依赖一个入口而不直接碰底层服务。
     """
 
-    def __init__(self, quality_rule_service: Any, meta_service: Any) -> None:
+    def __init__(
+        self,
+        quality_rule_service: Any,
+        meta_service: Any,
+        *,
+        event_emitter: Any | None = None,
+        impact_analyzer: ProofreadingImpactAnalyzer | None = None,
+    ) -> None:
+        self.quality_rule_service = quality_rule_service
+        self.meta_service = meta_service
         self.snapshot_service = QualityRuleSnapshotService(
             quality_rule_service,
             meta_service,
@@ -28,6 +40,8 @@ class QualityRuleFacadeService:
             quality_rule_service,
             meta_service,
             self.snapshot_service,
+            event_emitter=event_emitter,
+            impact_analyzer=impact_analyzer,
         )
         self.preset_service = QualityRulePresetService()
         self.prompt_service = PromptService(quality_rule_service, meta_service)

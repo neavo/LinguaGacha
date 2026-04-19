@@ -78,49 +78,121 @@ export type ProofreadingItem = {
   failed_glossary_terms: ProofreadingGlossaryTerm[]
 }
 
+export type ProofreadingClientItem = ProofreadingItem & {
+  row_id: string
+  compressed_src: string
+  compressed_dst: string
+}
+
 export type ProofreadingSnapshot = {
   revision: number
   project_id: string
   readonly: boolean
   summary: ProofreadingSummary
   filters: ProofreadingFilterOptions
-  items: ProofreadingItem[]
+  items: ProofreadingClientItem[]
 }
 
 export type ProofreadingMutationResult = {
   revision: number
   changed_item_ids: Array<number | string>
-  items: ProofreadingItem[]
+  items: ProofreadingClientItem[]
   summary: ProofreadingSummary
 }
 
 export type ProofreadingVisibleItem = {
   row_id: string
-  item: ProofreadingItem
+  item: ProofreadingClientItem
   compressed_src: string
   compressed_dst: string
 }
 
+type ProofreadingPayloadGlossaryTerm =
+  | ProofreadingGlossaryTerm
+  | { src?: string; dst?: string }
+
+type ProofreadingPayloadItem = Partial<ProofreadingItem> & {
+  applied_glossary_terms?: ProofreadingPayloadGlossaryTerm[]
+  failed_glossary_terms?: ProofreadingPayloadGlossaryTerm[]
+}
+
+type ProofreadingPayloadFilterOptions = Partial<ProofreadingFilterOptions> & {
+  glossary_terms?: ProofreadingPayloadGlossaryTerm[]
+}
+
 export type ProofreadingSnapshotPayload = {
-  snapshot?: Partial<ProofreadingSnapshot> & {
+  snapshot?: {
+    revision?: number
+    project_id?: string
+    readonly?: boolean
     summary?: Partial<ProofreadingSummary>
-    filters?: Partial<ProofreadingFilterOptions> & {
-      glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
-    }
-    items?: Array<Partial<ProofreadingItem> & {
-      applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
-      failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
-    }>
+    filters?: ProofreadingPayloadFilterOptions
+    items?: ProofreadingPayloadItem[]
   }
 }
 
 export type ProofreadingMutationPayload = {
-  result?: Partial<ProofreadingMutationResult> & {
+  result?: {
+    revision?: number
+    changed_item_ids?: Array<number | string>
     summary?: Partial<ProofreadingSummary>
-    items?: Array<Partial<ProofreadingItem> & {
-      applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
-      failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
-    }>
+    items?: ProofreadingPayloadItem[]
+  }
+}
+
+export type ProofreadingFilePatch = {
+  revision: number
+  project_id: string
+  readonly: boolean
+  removed_file_paths: string[]
+  default_filters: ProofreadingFilterOptions
+  applied_filters: ProofreadingFilterOptions
+  full_summary: ProofreadingSummary
+  filtered_summary: ProofreadingSummary
+  full_items: ProofreadingClientItem[]
+  filtered_items: ProofreadingClientItem[]
+}
+
+export type ProofreadingFilePatchPayload = {
+  patch?: {
+    revision?: number
+    project_id?: string
+    readonly?: boolean
+    removed_file_paths?: string[]
+    default_filters?: ProofreadingPayloadFilterOptions
+    applied_filters?: ProofreadingPayloadFilterOptions
+    full_summary?: Partial<ProofreadingSummary>
+    filtered_summary?: Partial<ProofreadingSummary>
+    full_items?: ProofreadingPayloadItem[]
+    filtered_items?: ProofreadingPayloadItem[]
+  }
+}
+
+export type ProofreadingEntryPatch = {
+  revision: number
+  project_id: string
+  readonly: boolean
+  target_item_ids: Array<number | string>
+  default_filters: ProofreadingFilterOptions
+  applied_filters: ProofreadingFilterOptions
+  full_summary: ProofreadingSummary
+  filtered_summary: ProofreadingSummary
+  full_items: ProofreadingClientItem[]
+  filtered_items: ProofreadingClientItem[]
+}
+
+export type ProofreadingEntryPatchPayload = {
+  patch?: {
+    revision?: number
+    project_id?: string
+    readonly?: boolean
+    target_item_ids?: Array<number | string>
+    default_filters?: ProofreadingPayloadFilterOptions
+    applied_filters?: ProofreadingPayloadFilterOptions
+    full_summary?: Partial<ProofreadingSummary>
+    filtered_summary?: Partial<ProofreadingSummary>
+    full_items?: ProofreadingPayloadItem[]
+    filtered_items?: ProofreadingPayloadItem[]
   }
 }
 
@@ -394,7 +466,7 @@ export function compress_proofreading_text(text: string): string {
   return text.replace(/\r\n|\r|\n/gu, ' ↵ ')
 }
 
-export function clone_proofreading_item(item: ProofreadingItem): ProofreadingItem {
+export function clone_proofreading_item(item: ProofreadingClientItem): ProofreadingClientItem {
   return {
     item_id: item.item_id,
     file_path: item.file_path,
@@ -409,6 +481,9 @@ export function clone_proofreading_item(item: ProofreadingItem): ProofreadingIte
     failed_glossary_terms: item.failed_glossary_terms.map((term) => {
       return [term[0], term[1]] as const
     }),
+    row_id: item.row_id,
+    compressed_src: item.compressed_src,
+    compressed_dst: item.compressed_dst,
   }
 }
 
@@ -522,22 +597,28 @@ export function normalize_proofreading_filter_options(
   items: ProofreadingItem[],
 ): ProofreadingFilterOptions {
   const fallback_filters = build_default_proofreading_filter_options(items)
-  const warning_types = Array.isArray(filters?.warning_types)
-    ? unique_strings(filters.warning_types.map((value) => String(value)))
+  const has_warning_types = Array.isArray(filters?.warning_types)
+  const has_statuses = Array.isArray(filters?.statuses)
+  const has_file_paths = Array.isArray(filters?.file_paths)
+  const has_glossary_terms = Array.isArray(filters?.glossary_terms)
+  const warning_types = has_warning_types
+    ? unique_strings((filters?.warning_types ?? []).map((value) => String(value)))
     : []
-  const statuses = Array.isArray(filters?.statuses)
-    ? unique_strings(filters.statuses.map((value) => String(value)))
+  const statuses = has_statuses
+    ? unique_strings((filters?.statuses ?? []).map((value) => String(value)))
     : []
-  const file_paths = Array.isArray(filters?.file_paths)
-    ? unique_strings(filters.file_paths.map((value) => String(value)))
+  const file_paths = has_file_paths
+    ? unique_strings((filters?.file_paths ?? []).map((value) => String(value)))
     : []
-  const glossary_terms = normalize_glossary_terms(filters?.glossary_terms)
+  const glossary_terms = has_glossary_terms
+    ? normalize_glossary_terms(filters?.glossary_terms)
+    : []
 
   return {
-    warning_types: warning_types.length > 0 ? warning_types : fallback_filters.warning_types,
-    statuses: statuses.length > 0 ? statuses : fallback_filters.statuses,
-    file_paths: file_paths.length > 0 ? file_paths : fallback_filters.file_paths,
-    glossary_terms: glossary_terms.length > 0 ? glossary_terms : fallback_filters.glossary_terms,
+    warning_types: has_warning_types ? warning_types : fallback_filters.warning_types,
+    statuses: has_statuses ? statuses : fallback_filters.statuses,
+    file_paths: has_file_paths ? file_paths : fallback_filters.file_paths,
+    glossary_terms: has_glossary_terms ? glossary_terms : fallback_filters.glossary_terms,
   }
 }
 
@@ -546,8 +627,8 @@ function normalize_proofreading_item(
     applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
     failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
   },
-): ProofreadingItem {
-  return {
+): ProofreadingClientItem {
+  const normalized_item: ProofreadingItem = {
     item_id: item.item_id ?? 0,
     file_path: String(item.file_path ?? ''),
     row_number: Number(item.row_number ?? 0),
@@ -560,15 +641,31 @@ function normalize_proofreading_item(
     applied_glossary_terms: normalize_glossary_terms(item.applied_glossary_terms),
     failed_glossary_terms: normalize_glossary_terms(item.failed_glossary_terms),
   }
+
+  return {
+    ...normalized_item,
+    row_id: build_proofreading_row_id(normalized_item.item_id),
+    compressed_src: compress_proofreading_text(normalized_item.src),
+    compressed_dst: compress_proofreading_text(normalized_item.dst),
+  }
+}
+
+function normalize_proofreading_items(
+  items: Array<Partial<ProofreadingItem> & {
+    applied_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+    failed_glossary_terms?: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }>
+  }> | undefined,
+): ProofreadingClientItem[] {
+  return Array.isArray(items)
+    ? items.map((item) => normalize_proofreading_item(item))
+    : []
 }
 
 export function normalize_proofreading_snapshot_payload(
   payload: ProofreadingSnapshotPayload,
 ): ProofreadingSnapshot {
   const snapshot = payload.snapshot ?? {}
-  const items = Array.isArray(snapshot.items)
-    ? snapshot.items.map((item) => normalize_proofreading_item(item))
-    : []
+  const items = normalize_proofreading_items(snapshot.items)
 
   return {
     revision: Number(snapshot.revision ?? 0),
@@ -584,15 +681,72 @@ export function normalize_proofreading_mutation_payload(
   payload: ProofreadingMutationPayload,
 ): ProofreadingMutationResult {
   const result = payload.result ?? {}
+  const items = normalize_proofreading_items(result.items)
   return {
     revision: Number(result.revision ?? 0),
     changed_item_ids: Array.isArray(result.changed_item_ids)
       ? result.changed_item_ids
       : [],
-    items: Array.isArray(result.items)
-      ? result.items.map((item) => normalize_proofreading_item(item))
-      : [],
+    items,
     summary: normalize_proofreading_summary(result.summary),
+  }
+}
+
+export function normalize_proofreading_file_patch_payload(
+  payload: ProofreadingFilePatchPayload,
+): ProofreadingFilePatch {
+  const patch = payload.patch ?? {}
+  const full_items = normalize_proofreading_items(patch.full_items)
+  const filtered_items = normalize_proofreading_items(patch.filtered_items)
+
+  return {
+    revision: Number(patch.revision ?? 0),
+    project_id: String(patch.project_id ?? ''),
+    readonly: Boolean(patch.readonly),
+    removed_file_paths: Array.isArray(patch.removed_file_paths)
+      ? unique_strings(patch.removed_file_paths.map((file_path) => String(file_path)))
+      : [],
+    default_filters: normalize_proofreading_filter_options(
+      patch.default_filters,
+      full_items,
+    ),
+    applied_filters: normalize_proofreading_filter_options(
+      patch.applied_filters,
+      filtered_items,
+    ),
+    full_summary: normalize_proofreading_summary(patch.full_summary),
+    filtered_summary: normalize_proofreading_summary(patch.filtered_summary),
+    full_items,
+    filtered_items,
+  }
+}
+
+export function normalize_proofreading_entry_patch_payload(
+  payload: ProofreadingEntryPatchPayload,
+): ProofreadingEntryPatch {
+  const patch = payload.patch ?? {}
+  const full_items = normalize_proofreading_items(patch.full_items)
+  const filtered_items = normalize_proofreading_items(patch.filtered_items)
+
+  return {
+    revision: Number(patch.revision ?? 0),
+    project_id: String(patch.project_id ?? ''),
+    readonly: Boolean(patch.readonly),
+    target_item_ids: Array.isArray(patch.target_item_ids)
+      ? patch.target_item_ids
+      : [],
+    default_filters: normalize_proofreading_filter_options(
+      patch.default_filters,
+      full_items,
+    ),
+    applied_filters: normalize_proofreading_filter_options(
+      patch.applied_filters,
+      filtered_items,
+    ),
+    full_summary: normalize_proofreading_summary(patch.full_summary),
+    filtered_summary: normalize_proofreading_summary(patch.filtered_summary),
+    full_items,
+    filtered_items,
   }
 }
 

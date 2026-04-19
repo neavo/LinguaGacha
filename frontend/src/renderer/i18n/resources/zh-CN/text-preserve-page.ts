@@ -15,6 +15,7 @@ export const zh_cn_text_preserve_page = {
   mode: {
     label: '文本保护模式',
     status: '{TITLE} - {STATE}',
+    loading_toast: '正在刷新校对缓存 …',
     content_html:
       '对文本中无需翻译的代码段、控制字符、样式字符等内容进行保护，避免它们被错误的翻译'
       + '<br>'

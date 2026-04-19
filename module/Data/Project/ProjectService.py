@@ -114,7 +114,6 @@ class ProjectService(Base):
             prefilter_result = ProjectPrefilter.apply(
                 items=items,
                 source_language=str(config.source_language),
-                target_language=str(config.target_language),
                 mtool_optimizer_enable=bool(config.mtool_optimizer_enable),
                 progress_cb=prefilter_progress,
             )

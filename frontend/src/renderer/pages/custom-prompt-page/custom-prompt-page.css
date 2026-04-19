@@ -126,22 +126,6 @@
 
 .custom-prompt-page__toggle-tooltip-html br {
   display: block;
-  content: '';
+  content: "";
   margin-top: 2px;
-}
-
-.custom-prompt-page__preset-dialog-shell {
-  padding: 0;
-}
-
-.custom-prompt-page__preset-dialog-body {
-  padding: 24px 24px 12px;
-}
-
-.custom-prompt-page__preset-dialog-footer {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
-}
-
-.custom-prompt-page__preset-dialog-button {
-  min-width: 112px;
 }
