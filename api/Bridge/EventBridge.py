@@ -33,17 +33,20 @@ class EventBridge:
                 EventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("translation", data, stopping=True),
             )
-        elif event in (
-            Base.Event.TRANSLATION_RESET_ALL,
-            Base.Event.TRANSLATION_RESET_FAILED,
-        ):
+        elif event == Base.Event.TRANSLATION_RESET_ALL:
             if self.is_terminal_translation_reset_event(data):
                 return (
                     EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
                     self.build_translation_reset_payload(event, data),
                 )
-            else:
-                return None, {}
+            return None, {}
+        elif event == Base.Event.TRANSLATION_RESET_FAILED:
+            if data.get("sub_event") == Base.SubEvent.ERROR:
+                return (
+                    EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
+                    self.build_translation_reset_payload(event, data),
+                )
+            return None, {}
         elif event == Base.Event.ANALYSIS_PROGRESS:
             return (
                 EventTopic.TASK_PROGRESS_CHANGED.value,
@@ -78,9 +81,7 @@ class EventBridge:
         elif event == Base.Event.WORKBENCH_REFRESH:
             return (
                 EventTopic.WORKBENCH_SNAPSHOT_CHANGED.value,
-                {
-                    "reason": str(data.get("reason", "")),
-                },
+                self.build_workbench_refresh_payload(data),
             )
         elif event == Base.Event.WORKBENCH_SNAPSHOT:
             snapshot = data.get("snapshot", {})
@@ -123,11 +124,11 @@ class EventBridge:
             if relevant_rule_types or relevant_meta_keys:
                 return (
                     EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
-                    {
-                        "reason": "quality_rule_update",
-                        "rule_types": relevant_rule_types,
-                        "meta_keys": relevant_meta_keys,
-                    },
+                    self.build_quality_rule_update_payload(
+                        data,
+                        relevant_rule_types=relevant_rule_types,
+                        relevant_meta_keys=relevant_meta_keys,
+                    ),
                 )
             else:
                 return None, {}
@@ -260,19 +261,26 @@ class EventBridge:
 
         payload: dict[str, Any] = {
             "reason": str(data.get("reason", "")),
+            "scope": str(data.get("scope", "global") or "global"),
         }
 
         keys = data.get("keys")
         if isinstance(keys, list):
             payload["keys"] = [str(key) for key in keys]
 
-        rel_path = str(data.get("rel_path", ""))
-        if rel_path != "":
-            payload["rel_path"] = rel_path
+        item_ids = data.get("item_ids")
+        if isinstance(item_ids, list):
+            payload["item_ids"] = self.normalize_item_ids(item_ids)
 
-        old_rel_path = str(data.get("old_rel_path", ""))
-        if old_rel_path != "":
-            payload["old_rel_path"] = old_rel_path
+        rel_paths = data.get("rel_paths")
+        if isinstance(rel_paths, list):
+            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
+
+        removed_rel_paths = data.get("removed_rel_paths")
+        if isinstance(removed_rel_paths, list):
+            payload["removed_rel_paths"] = [
+                str(rel_path) for rel_path in removed_rel_paths
+            ]
 
         source_event = data.get("source_event")
         if source_event is not None:
@@ -281,5 +289,75 @@ class EventBridge:
         trigger_reason = str(data.get("trigger_reason", ""))
         if trigger_reason != "":
             payload["trigger_reason"] = trigger_reason
+
+        return payload
+
+    def build_quality_rule_update_payload(
+        self,
+        data: dict[str, Any],
+        *,
+        relevant_rule_types: list[str],
+        relevant_meta_keys: list[str],
+    ) -> dict[str, Any]:
+        """把规则更新裁成带精确范围的校对失效载荷。"""
+
+        payload: dict[str, Any] = {
+            "reason": "quality_rule_update",
+            "scope": str(data.get("scope", "global") or "global"),
+            "rule_types": relevant_rule_types,
+            "meta_keys": relevant_meta_keys,
+        }
+
+        item_ids = data.get("item_ids")
+        if isinstance(item_ids, list):
+            payload["item_ids"] = self.normalize_item_ids(item_ids)
+
+        rel_paths = data.get("rel_paths")
+        if isinstance(rel_paths, list):
+            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
+
+        return payload
+
+    def normalize_item_ids(self, raw_item_ids: list[Any]) -> list[int]:
+        """把条目 id 收口成稳定整数列表。"""
+
+        item_ids: list[int] = []
+        seen_item_ids: set[int] = set()
+        for raw_item_id in raw_item_ids:
+            if isinstance(raw_item_id, bool):
+                continue
+            try:
+                item_id = int(raw_item_id)
+            except (TypeError, ValueError):
+                continue
+            if item_id in seen_item_ids:
+                continue
+            seen_item_ids.add(item_id)
+            item_ids.append(item_id)
+        return item_ids
+
+    def build_workbench_refresh_payload(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """把工作台刷新事件裁成稳定的结构化载荷。"""
+
+        payload: dict[str, Any] = {
+            "reason": str(data.get("reason", "")),
+            "scope": str(data.get("scope", "global") or "global"),
+        }
+
+        rel_paths = data.get("rel_paths")
+        if isinstance(rel_paths, list):
+            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
+
+        removed_rel_paths = data.get("removed_rel_paths")
+        if isinstance(removed_rel_paths, list):
+            payload["removed_rel_paths"] = [
+                str(rel_path) for rel_path in removed_rel_paths
+            ]
+
+        if "order_changed" in data:
+            payload["order_changed"] = bool(data.get("order_changed"))
 
         return payload

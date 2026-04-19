@@ -63,7 +63,9 @@ def test_reset_failed_translation_items_sync_resets_failed_items_and_progress() 
         ignored_item,
     ]
 
-    extras = service.reset_failed_translation_items_sync()
+    result = service.reset_failed_translation_items_sync()
+    assert result is not None
+    change, extras = result
 
     assert extras == {
         "processed_line": 1,
@@ -71,6 +73,9 @@ def test_reset_failed_translation_items_sync_resets_failed_items_and_progress() 
         "line": 1,
         "total_line": 3,
     }
+    assert change.item_ids == (1,)
+    assert change.rel_paths == ()
+    assert change.reason == "translation_reset_failed"
     updated_items = session.captured_batch["items"]
     assert isinstance(updated_items, list)
     assert len(updated_items) == 1
@@ -111,7 +116,9 @@ def test_reset_failed_translation_items_sync_marks_project_processed_when_no_pen
         processed_in_past_item,
     ]
 
-    extras = service.reset_failed_translation_items_sync()
+    result = service.reset_failed_translation_items_sync()
+    assert result is not None
+    change, extras = result
 
     assert extras == {
         "processed_line": 1,
@@ -119,6 +126,8 @@ def test_reset_failed_translation_items_sync_marks_project_processed_when_no_pen
         "line": 1,
         "total_line": 1,
     }
+    assert change.item_ids == ()
+    assert change.rel_paths == ()
     assert session.captured_batch["meta"] == {
         "translation_extras": extras,
         "project_status": Base.ProjectStatus.PROCESSED,

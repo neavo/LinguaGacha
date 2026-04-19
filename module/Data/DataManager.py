@@ -15,6 +15,7 @@ from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.AssetService import AssetService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.DataEnums import TextPreserveMode as DataTextPreserveMode
+from module.Data.Core.DataTypes import ProjectPrefilterScheduleResult
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
@@ -24,6 +25,9 @@ from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
 from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
 from module.Data.Project.WorkbenchService import WorkbenchService
+from module.Data.Quality.ProofreadingImpactAnalyzer import ProofreadingImpactAnalyzer
+from module.Data.Quality.ProofreadingImpactAnalyzer import ProofreadingImpactResult
+from module.Data.Quality.QualityRuleSnapshotService import QualityRuleSnapshotService
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Translation.TranslationResetService import TranslationResetService
@@ -33,8 +37,10 @@ from module.Localizer.Localizer import Localizer
 
 if TYPE_CHECKING:
     from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
+    from module.Data.Core.DataTypes import ProjectItemChange
     from module.Data.Core.DataTypes import ProjectFileMutationResult
     from module.Data.Core.DataTypes import ProjectPrefilterRequest
+    from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
     from module.Data.Core.DataTypes import WorkbenchSnapshot
 
 
@@ -64,20 +70,37 @@ class DataManager(Base):
             "analysis_prompt_enable",
         }
     )
+    PROOFREADING_RULE_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "glossary",
+            "pre_replacement",
+            "post_replacement",
+            "text_preserve",
+        }
+    )
+    PROOFREADING_RULE_META_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "glossary_enable",
+            "text_preserve_mode",
+            "pre_translation_replacement_enable",
+            "post_translation_replacement_enable",
+        }
+    )
     PREFILTER_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
             "source_language",
-            "target_language",
             "mtool_optimizer_enable",
         }
     )
     PROOFREADING_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
             "source_language",
+        }
+    )
+    PROJECT_LANGUAGE_META_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "source_language",
             "target_language",
-            "check_kana_residue",
-            "check_hangeul_residue",
-            "check_similarity",
         }
     )
     TextPreserveMode = DataTextPreserveMode
@@ -150,6 +173,7 @@ class DataManager(Base):
             Base.Event.TRANSLATION_RESET_FAILED,
             self.on_translation_activity,
         )
+        self.subscribe(Base.Event.QUALITY_RULE_UPDATE, self.on_quality_rule_update)
         self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
 
     @classmethod
@@ -217,30 +241,28 @@ class DataManager(Base):
 
         self.item_service.clear_item_cache()
 
-        should_emit_refresh = False
-        if event == Base.Event.TRANSLATION_TASK:
-            should_emit_refresh = data.get("sub_event") == Base.SubEvent.DONE
-        elif event in (
-            Base.Event.TRANSLATION_RESET_ALL,
-            Base.Event.TRANSLATION_RESET_FAILED,
-        ):
-            sub_event = data["sub_event"]
-            should_emit_refresh = sub_event in (
-                Base.SubEvent.DONE,
-                Base.SubEvent.ERROR,
-            )
-
+        should_emit_refresh = event == Base.Event.TRANSLATION_RESET_ALL and data.get(
+            "sub_event"
+        ) in (Base.SubEvent.DONE, Base.SubEvent.ERROR)
         if should_emit_refresh and self.is_loaded():
-            self.emit(Base.Event.WORKBENCH_REFRESH, {"reason": event.value})
+            self.emit_workbench_refresh(reason=event.value)
+
+    def on_quality_rule_update(self, event: Base.Event, data: dict) -> None:
+        """质量规则更新当前只影响校对快照，不再联动工作台刷新。"""
+
+        del event
+        del data
 
     def handle_project_loaded_post_actions(self) -> None:
-        """在工程真正对外可见前完成加载后补处理。"""
+        """在工程真正对外可见前完成加载后补处理与语言镜像同步。"""
+
+        self.sync_project_language_meta()
         if self.schedule_prefilter_if_needed(reason="project_loaded"):
             return
         self.refresh_analysis_progress_snapshot_cache()
 
     def on_config_updated(self, event: Base.Event, data: dict) -> None:
-        """关键配置变化后补跑预过滤。"""
+        """关键配置变化后同步工程镜像，并按真实依赖补发刷新。"""
 
         del event
 
@@ -251,26 +273,59 @@ class DataManager(Base):
             return
 
         normalized_keys = [str(key) for key in keys if isinstance(key, str)]
-        if any(
-            key in self.PROOFREADING_RELEVANT_CONFIG_KEYS for key in normalized_keys
+        if any(key in self.PROJECT_LANGUAGE_META_KEYS for key in normalized_keys):
+            self.sync_project_language_meta()
+
+        prefilter_schedule_result = ProjectPrefilterScheduleResult()
+        if any(key in self.PREFILTER_RELEVANT_CONFIG_KEYS for key in normalized_keys):
+            prefilter_schedule_result = self.schedule_prefilter_if_needed_with_result(
+                reason="config_updated"
+            )
+
+        if (
+            any(
+                key in self.PROOFREADING_RELEVANT_CONFIG_KEYS for key in normalized_keys
+            )
+            and not prefilter_schedule_result.accepted
         ):
             self.emit_proofreading_refresh(
                 reason="config_updated",
+                scope="global",
                 keys=normalized_keys,
                 source_event=Base.Event.CONFIG_UPDATED,
             )
 
-        if any(key in self.PREFILTER_RELEVANT_CONFIG_KEYS for key in normalized_keys):
-            self.schedule_prefilter_if_needed(reason="config_updated")
+    def sync_project_language_meta(self) -> None:
+        """把当前运行时语言镜像回已加载工程，避免项目摘要长期滞后。"""
+
+        if not self.is_loaded():
+            return
+
+        config = Config().load()
+        self.set_meta("source_language", str(config.source_language))
+        self.set_meta("target_language", str(config.target_language))
 
     def schedule_prefilter_if_needed(self, *, reason: str) -> bool:
         """按当前配置判断是否需要补跑预过滤。"""
 
+        schedule_result = self.schedule_prefilter_if_needed_with_result(reason=reason)
+        return schedule_result.needed
+
+    def schedule_prefilter_if_needed_with_result(
+        self,
+        *,
+        reason: str,
+    ) -> ProjectPrefilterScheduleResult:
+        """返回预过滤是否需要、以及本次是否已成功接管刷新职责。"""
+
         config = Config().load()
-        if self.is_prefilter_needed(config):
-            self.schedule_project_prefilter(config, reason=reason)
-            return True
-        return False
+        if not self.is_prefilter_needed(config):
+            return ProjectPrefilterScheduleResult()
+
+        return ProjectPrefilterScheduleResult(
+            needed=True,
+            accepted=self.schedule_project_prefilter(config, reason=reason),
+        )
 
     def is_prefilter_needed(self, config: Config) -> bool:
         """判断当前工程是否需要重跑预过滤。"""
@@ -280,24 +335,31 @@ class DataManager(Base):
             config,
         )
 
-    def schedule_project_prefilter(self, config: Config, *, reason: str) -> None:
+    def schedule_project_prefilter(
+        self,
+        config: Config,
+        *,
+        reason: str,
+        emit_refresh_events: bool = True,
+    ) -> bool:
         """后台触发预过滤。"""
 
         from module.Engine.Engine import Engine
 
         lg_path = self.get_lg_path()
         if not lg_path or not self.is_loaded():
-            return
+            return False
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            return
+            return False
 
         request, start_worker = self.prefilter_service.enqueue_request(
             config,
             reason=reason,
             lg_path=lg_path,
+            emit_refresh_events=emit_refresh_events,
         )
         if not start_worker:
-            return
+            return True
 
         self.emit_prefilter_run(request)
         threading.Thread(
@@ -305,28 +367,37 @@ class DataManager(Base):
             args=(request.token,),
             daemon=True,
         ).start()
+        return True
 
-    def run_project_prefilter(self, config: Config, *, reason: str) -> None:
+    def run_project_prefilter(
+        self,
+        config: Config,
+        *,
+        reason: str,
+        emit_refresh_events: bool = True,
+    ) -> bool:
         """同步执行预过滤。"""
 
         from module.Engine.Engine import Engine
 
         lg_path = self.get_lg_path()
         if not lg_path or not self.is_loaded():
-            return
+            return False
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            return
+            return False
 
         request, should_run = self.prefilter_service.enqueue_sync_request(
             config,
             reason=reason,
             lg_path=lg_path,
+            emit_refresh_events=emit_refresh_events,
         )
         if not should_run or request is None:
-            return
+            return True
 
         self.emit_prefilter_run(request)
         self.project_prefilter_worker(request.token)
+        return True
 
     def emit_prefilter_run(self, request: ProjectPrefilterRequest) -> None:
         """预过滤开始时统一发 RUN 事件。"""
@@ -363,17 +434,16 @@ class DataManager(Base):
                 if request is None:
                     if updated and last_request is not None and last_result is not None:
                         self.refresh_analysis_progress_snapshot_cache()
-                        # 为什么：预过滤真正写回后，工作台统计与文件列表依赖的条目状态已经变了，
-                        # 必须补发一次失效信号，页面缓存层才能重新拉取最新快照。
-                        self.emit(
-                            Base.Event.WORKBENCH_REFRESH,
-                            {"reason": last_request.reason},
-                        )
-                        self.emit_proofreading_refresh(
-                            reason="project_prefilter_updated",
-                            trigger_reason=last_request.reason,
-                            source_event=Base.Event.PROJECT_PREFILTER,
-                        )
+                        if last_request.emit_refresh_events:
+                            # 为什么：预过滤真正写回后，工作台统计与文件列表依赖的条目状态已经变了，
+                            # 必须补发一次失效信号，页面缓存层才能重新拉取最新快照。
+                            self.emit_workbench_refresh(reason=last_request.reason)
+                            self.emit_proofreading_refresh(
+                                reason="project_prefilter_updated",
+                                scope="global",
+                                trigger_reason=last_request.reason,
+                                source_event=Base.Event.PROJECT_PREFILTER,
+                            )
                         self.log_prefilter_result(last_request, last_result)
                         self.emit(
                             Base.Event.PROJECT_PREFILTER,
@@ -662,10 +732,86 @@ class DataManager(Base):
         self,
         expected_lg_path: str | None = None,
     ) -> int | None:
+        old_glossary_snapshot: dict[str, object] | None = None
+        if self.is_loaded():
+            old_glossary_snapshot = self.build_quality_rule_snapshot_payload(
+                QualityRuleSnapshotService.RuleType.GLOSSARY
+            )
+
         imported = self.analysis_service.import_analysis_candidates(expected_lg_path)
         if imported and imported > 0:
-            self.emit_quality_rule_update(rule_types=[LGDatabase.RuleType.GLOSSARY])
+            impact_scope = "global"
+            impacted_item_ids: list[int] | None = None
+            impacted_rel_paths: list[str] | None = None
+
+            if old_glossary_snapshot is not None and self.is_loaded():
+                new_glossary_snapshot = self.build_quality_rule_snapshot_payload(
+                    QualityRuleSnapshotService.RuleType.GLOSSARY
+                )
+                impact = self.analyze_quality_rule_update_impact(
+                    rule_type=QualityRuleSnapshotService.RuleType.GLOSSARY,
+                    old_snapshot=old_glossary_snapshot,
+                    new_snapshot=new_glossary_snapshot,
+                )
+                if impact is not None:
+                    impact_scope = impact.scope
+                    impacted_item_ids = list(impact.item_ids)
+                    impacted_rel_paths = list(impact.rel_paths)
+
+            self.emit_quality_rule_update(
+                rule_types=[LGDatabase.RuleType.GLOSSARY],
+                scope=impact_scope,
+                item_ids=impacted_item_ids,
+                rel_paths=impacted_rel_paths,
+            )
         return imported
+
+    def build_quality_rule_snapshot_payload(
+        self,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+    ) -> dict[str, object]:
+        """读取当前质量规则快照，供跨链路写入后复用同一份影响分析口径。"""
+
+        snapshot_service = QualityRuleSnapshotService(
+            self.quality_rule_service,
+            self.meta_service,
+        )
+        with self.state_lock:
+            return snapshot_service.build_rule_snapshot_payload(rule_type)
+
+    def analyze_quality_rule_update_impact(
+        self,
+        *,
+        rule_type: str | QualityRuleSnapshotService.RuleType,
+        old_snapshot: dict[str, object],
+        new_snapshot: dict[str, object],
+    ) -> ProofreadingImpactResult | None:
+        """复用质量规则 impact 分析，避免不同写入口各自推一套范围。"""
+
+        impact_analyzer = ProofreadingImpactAnalyzer(self)
+        old_entries_raw = old_snapshot.get("entries", [])
+        new_entries_raw = new_snapshot.get("entries", [])
+        old_meta_raw = old_snapshot.get("meta", {})
+        new_meta_raw = new_snapshot.get("meta", {})
+        old_entries = (
+            [dict(entry) for entry in old_entries_raw if isinstance(entry, dict)]
+            if isinstance(old_entries_raw, list)
+            else []
+        )
+        new_entries = (
+            [dict(entry) for entry in new_entries_raw if isinstance(entry, dict)]
+            if isinstance(new_entries_raw, list)
+            else []
+        )
+        old_meta = dict(old_meta_raw) if isinstance(old_meta_raw, dict) else {}
+        new_meta = dict(new_meta_raw) if isinstance(new_meta_raw, dict) else {}
+        return impact_analyzer.analyze_rule_update(
+            rule_type=str(getattr(rule_type, "value", rule_type)),
+            old_entries=old_entries,
+            new_entries=new_entries,
+            old_meta=old_meta,
+            new_meta=new_meta,
+        )
 
     def sync_importable_analysis_candidate_count(self) -> int:
         return self.analysis_service.sync_importable_analysis_candidate_count()
@@ -714,7 +860,9 @@ class DataManager(Base):
             progress_snapshot=progress_snapshot,
         )
 
-    def reset_failed_translation_items_sync(self) -> dict[str, Any] | None:
+    def reset_failed_translation_items_sync(
+        self,
+    ) -> tuple["ProjectItemChange", dict[str, Any]] | None:
         """翻译域统一入口，避免继续从分析服务借道。"""
 
         return self.translation_reset_service.reset_failed_translation_items_sync()
@@ -753,12 +901,22 @@ class DataManager(Base):
         self,
         rule_types: list[LGDatabase.RuleType] | None = None,
         meta_keys: list[str] | None = None,
+        scope: str = "global",
+        item_ids: list[int] | None = None,
+        rel_paths: list[str] | None = None,
     ) -> None:
         payload: dict[str, Any] = {}
         if rule_types:
-            payload["rule_types"] = [rule_type.value for rule_type in rule_types]
+            payload["rule_types"] = [
+                getattr(rule_type, "value", str(rule_type)) for rule_type in rule_types
+            ]
         if meta_keys:
             payload["meta_keys"] = meta_keys
+        payload["scope"] = scope
+        if item_ids:
+            payload["item_ids"] = list(item_ids)
+        if rel_paths:
+            payload["rel_paths"] = list(rel_paths)
         self.emit(Base.Event.QUALITY_RULE_UPDATE, payload)
 
     def get_glossary(self) -> list[dict[str, Any]]:
@@ -898,6 +1056,89 @@ class DataManager(Base):
             if keys:
                 self.emit_quality_rule_update(meta_keys=keys)
 
+    def build_project_item_change(
+        self,
+        values: list[Item] | list[dict[str, Any]],
+        *,
+        reason: str,
+    ) -> "ProjectItemChange":
+        """把条目对象或条目字典整理成稳定影响范围。"""
+
+        from module.Data.Core.DataTypes import ProjectItemChange
+
+        item_ids: list[int] = []
+        rel_paths: list[str] = []
+        seen_item_ids: set[int] = set()
+        seen_rel_paths: set[str] = set()
+        for value in values:
+            if isinstance(value, Item):
+                item_id = value.get_id()
+                rel_path = str(value.get_file_path() or "")
+            elif isinstance(value, dict):
+                raw_item_id = value.get("id", value.get("item_id"))
+                item_id = raw_item_id if isinstance(raw_item_id, int) else None
+                rel_path = str(value.get("file_path", "") or "")
+            else:
+                continue
+
+            if isinstance(item_id, int) and item_id not in seen_item_ids:
+                seen_item_ids.add(item_id)
+                item_ids.append(item_id)
+            if rel_path != "" and rel_path not in seen_rel_paths:
+                seen_rel_paths.add(rel_path)
+                rel_paths.append(rel_path)
+
+        return ProjectItemChange(
+            item_ids=tuple(item_ids),
+            rel_paths=tuple(rel_paths),
+            reason=reason,
+        )
+
+    def emit_project_item_change_refresh(
+        self,
+        change: "ProjectItemChange",
+        *,
+        source_event: Base.Event | None = None,
+    ) -> None:
+        """把条目级变更统一映射成工作台与校对页刷新。"""
+
+        if change.rel_paths:
+            self.emit_workbench_refresh(
+                reason=change.reason,
+                scope="file",
+                rel_paths=list(change.rel_paths),
+            )
+
+        if change.item_ids:
+            self.emit_proofreading_refresh(
+                reason=change.reason,
+                scope="entry",
+                source_event=source_event,
+                item_ids=list(change.item_ids),
+                rel_paths=list(change.rel_paths),
+            )
+
+    def apply_translation_batch_update(
+        self,
+        finalized_items: list[dict[str, Any]],
+        extras_snapshot: dict[str, Any],
+    ) -> "ProjectItemChange":
+        """翻译提交统一走数据层显式入口，保证落库和刷新顺序一致。"""
+
+        self.update_batch(
+            items=finalized_items,
+            meta={
+                "translation_extras": extras_snapshot,
+                "project_status": Base.ProjectStatus.PROCESSING,
+            },
+        )
+        change = self.build_project_item_change(
+            finalized_items,
+            reason="translation_batch_update",
+        )
+        self.emit_project_item_change_refresh(change)
+        return change
+
     def get_items_for_translation(
         self,
         config: Config,
@@ -959,6 +1200,7 @@ class DataManager(Base):
             return
 
         def worker() -> None:
+            result: ProjectFileMutationResult | None = None
             self.emit(
                 Base.Event.PROGRESS_TOAST,
                 {
@@ -969,8 +1211,11 @@ class DataManager(Base):
             )
             try:
                 result = action()
-                self.emit_project_file_update(result)
-                self.run_project_prefilter(Config().load(), reason="file_op")
+                self.run_project_prefilter(
+                    Config().load(),
+                    reason="file_op",
+                    emit_refresh_events=False,
+                )
             except ValueError as e:
                 self.emit(
                     Base.Event.TOAST,
@@ -986,44 +1231,94 @@ class DataManager(Base):
                 self.emit(Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE})
                 self.finish_file_operation()
 
+            if result is not None:
+                self.emit_project_file_update(result)
+
         threading.Thread(target=worker, daemon=True).start()
 
     def emit_project_file_update(self, result: ProjectFileMutationResult) -> None:
         """统一发工程文件更新事件。"""
 
-        payload: dict[str, Any] = {"rel_path": result.rel_path}
-        if result.old_rel_path:
-            payload["old_rel_path"] = result.old_rel_path
+        payload: dict[str, Any] = {
+            "rel_paths": list(result.rel_paths),
+            "removed_rel_paths": list(result.removed_rel_paths),
+            "order_changed": bool(result.order_changed),
+        }
         self.emit(Base.Event.PROJECT_FILE_UPDATE, payload)
+
+        if result.order_changed:
+            self.emit_workbench_refresh(
+                reason="project_file_reorder",
+                scope="order",
+                order_changed=True,
+            )
+            return
+
+        self.emit_workbench_refresh(
+            reason="project_file_update",
+            scope="file",
+            rel_paths=list(result.rel_paths),
+            removed_rel_paths=list(result.removed_rel_paths),
+        )
         self.emit_proofreading_refresh(
             reason="project_file_update",
-            rel_path=result.rel_path,
-            old_rel_path=result.old_rel_path,
+            scope="file",
+            rel_paths=list(result.rel_paths),
+            removed_rel_paths=list(result.removed_rel_paths),
             source_event=Base.Event.PROJECT_FILE_UPDATE,
         )
+
+    def emit_workbench_refresh(
+        self,
+        *,
+        reason: str,
+        scope: str = "global",
+        rel_paths: list[str] | None = None,
+        removed_rel_paths: list[str] | None = None,
+        order_changed: bool = False,
+    ) -> None:
+        """统一发工作台刷新事件，避免调用方自己拼结构。"""
+
+        payload: dict[str, Any] = {
+            "reason": reason,
+            "scope": scope,
+        }
+        if rel_paths:
+            payload["rel_paths"] = list(rel_paths)
+        if removed_rel_paths:
+            payload["removed_rel_paths"] = list(removed_rel_paths)
+        if order_changed:
+            payload["order_changed"] = True
+        self.emit(Base.Event.WORKBENCH_REFRESH, payload)
 
     def emit_proofreading_refresh(
         self,
         *,
         reason: str,
-        source_event: Base.Event,
+        scope: str = "global",
+        source_event: Base.Event | None = None,
         keys: list[str] | None = None,
-        rel_path: str | None = None,
-        old_rel_path: str | None = None,
+        item_ids: list[int] | None = None,
+        rel_paths: list[str] | None = None,
+        removed_rel_paths: list[str] | None = None,
         trigger_reason: str | None = None,
     ) -> None:
         """统一发校对页快照失效事件，避免各个入口各拼一套 payload。"""
 
         payload: dict[str, Any] = {
             "reason": reason,
-            "source_event": source_event.value,
+            "scope": scope,
         }
+        if source_event is not None:
+            payload["source_event"] = source_event.value
         if keys:
             payload["keys"] = list(keys)
-        if rel_path:
-            payload["rel_path"] = rel_path
-        if old_rel_path:
-            payload["old_rel_path"] = old_rel_path
+        if item_ids:
+            payload["item_ids"] = list(item_ids)
+        if rel_paths:
+            payload["rel_paths"] = list(rel_paths)
+        if removed_rel_paths:
+            payload["removed_rel_paths"] = list(removed_rel_paths)
         if trigger_reason:
             payload["trigger_reason"] = trigger_reason
         self.emit(Base.Event.PROOFREADING_REFRESH, payload)
@@ -1042,6 +1337,15 @@ class DataManager(Base):
             self.get_all_item_dicts(),
         )
 
+    def build_workbench_entry_patch(
+        self,
+        rel_paths: list[str],
+    ) -> tuple["WorkbenchFileEntrySnapshot", ...]:
+        """按文件路径构建工作台局部文件行补丁。"""
+
+        snapshot = self.build_workbench_snapshot()
+        return self.workbench_service.build_entry_patch(snapshot, rel_paths)
+
     def schedule_add_file(self, file_path: str) -> None:
         self.schedule_guarded_file_operation(
             Localizer.get().workbench_progress_adding_file,
@@ -1056,6 +1360,16 @@ class DataManager(Base):
             f"Failed to replace file: {rel_path} -> {new_file_path}",
         )
 
+    def schedule_replace_file_batch(
+        self,
+        operations: list[tuple[str, str]],
+    ) -> None:
+        self.schedule_guarded_file_operation(
+            Localizer.get().toast_processing,
+            lambda: self.project_file_service.replace_file_batch(operations),
+            "Failed to replace files in batch",
+        )
+
     def schedule_reset_file(self, rel_path: str) -> None:
         self.schedule_guarded_file_operation(
             Localizer.get().workbench_progress_resetting_file,
@@ -1063,11 +1377,25 @@ class DataManager(Base):
             f"Failed to reset file: {rel_path}",
         )
 
+    def schedule_reset_file_batch(self, rel_paths: list[str]) -> None:
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_resetting_file,
+            lambda: self.project_file_service.reset_file_batch(rel_paths),
+            "Failed to reset files in batch",
+        )
+
     def schedule_delete_file(self, rel_path: str) -> None:
         self.schedule_guarded_file_operation(
             Localizer.get().workbench_progress_deleting_file,
             lambda: self.project_file_service.delete_file(rel_path),
             f"Failed to delete file: {rel_path}",
+        )
+
+    def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
+        self.schedule_guarded_file_operation(
+            Localizer.get().workbench_progress_deleting_file,
+            lambda: self.project_file_service.delete_file_batch(rel_paths),
+            "Failed to delete files in batch",
         )
 
     def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
@@ -1082,15 +1410,27 @@ class DataManager(Base):
             raise ValueError(Localizer.get().task_running)
 
         try:
-            self.project_file_service.reorder_files(ordered_rel_paths)
+            result = self.project_file_service.reorder_files(ordered_rel_paths)
         finally:
             self.finish_file_operation()
+        self.emit_project_file_update(result)
 
     def add_file(self, file_path: str) -> None:
-        self.emit_project_file_update(self.project_file_service.add_file(file_path))
+        result = self.project_file_service.add_file(file_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
 
     def replace_file(self, rel_path: str, new_file_path: str) -> dict[str, int]:
         result = self.project_file_service.replace_file(rel_path, new_file_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
         self.emit_project_file_update(result)
         return {
             "matched": result.matched,
@@ -1099,10 +1439,57 @@ class DataManager(Base):
         }
 
     def reset_file(self, rel_path: str) -> None:
-        self.emit_project_file_update(self.project_file_service.reset_file(rel_path))
+        result = self.project_file_service.reset_file(rel_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
 
     def delete_file(self, rel_path: str) -> None:
-        self.emit_project_file_update(self.project_file_service.delete_file(rel_path))
+        result = self.project_file_service.delete_file(rel_path)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
+
+    def replace_file_batch(
+        self,
+        operations: list[tuple[str, str]],
+    ) -> dict[str, int]:
+        result = self.project_file_service.replace_file_batch(operations)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
+        return {
+            "matched": result.matched,
+            "new": result.new,
+            "total": result.total,
+        }
+
+    def reset_file_batch(self, rel_paths: list[str]) -> None:
+        result = self.project_file_service.reset_file_batch(rel_paths)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
+
+    def delete_file_batch(self, rel_paths: list[str]) -> None:
+        result = self.project_file_service.delete_file_batch(rel_paths)
+        self.run_project_prefilter(
+            Config().load(),
+            reason="file_op",
+            emit_refresh_events=False,
+        )
+        self.emit_project_file_update(result)
 
     def timestamp_suffix_context(self) -> AbstractContextManager[None]:
         return self.export_path_service.timestamp_suffix_context(

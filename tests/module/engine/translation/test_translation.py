@@ -10,6 +10,7 @@ import pytest
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
+from module.Data.Core.DataTypes import ProjectItemChange
 import module.Engine.Translation.Translation as translation_module
 from module.Engine.Translation.Translation import Translation
 
@@ -218,11 +219,22 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         set_translation_extras=MagicMock(),
         set_project_status=MagicMock(),
         run_project_prefilter=MagicMock(),
-        reset_failed_translation_items_sync=MagicMock(return_value={"line": 7}),
+        reset_failed_translation_items_sync=MagicMock(
+            return_value=(
+                ProjectItemChange(
+                    item_ids=(1,),
+                    rel_paths=("script/a.txt",),
+                    reason="translation_reset_failed",
+                ),
+                {"line": 7},
+            )
+        ),
         reset_failed_items_sync=MagicMock(return_value={"line": 7}),
         get_all_items=MagicMock(return_value=item_list),
         state_lock=threading.Lock(),
         update_batch=MagicMock(),
+        apply_translation_batch_update=MagicMock(),
+        emit_project_item_change_refresh=MagicMock(),
         merge_glossary_incoming=MagicMock(return_value=([], {})),
     )
     return dm
@@ -305,6 +317,7 @@ def test_resolve_export_items_uses_runtime_cache_for_manual_export_when_translat
     copied_item = Item(src="copied")
     translation.copy_items = lambda: [copied_item]
     engine = create_engine(engine_status)
+
     def fail_if_read_data_manager() -> None:
         raise AssertionError("不应读取 DataManager")
 
@@ -352,6 +365,7 @@ def test_resolve_export_items_uses_runtime_cache_for_auto_export(
     translation.items_cache = [cached_item]
     copied_item = Item(src="copied")
     translation.copy_items = lambda: [copied_item]
+
     def fail_if_read_data_manager() -> None:
         raise AssertionError("不应读取 DataManager")
 
@@ -488,8 +502,7 @@ def test_apply_batch_update_sync_writes_items_and_meta_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    update_calls: list[dict[str, Any]] = []
-    fake_dm = SimpleNamespace(update_batch=lambda **kwargs: update_calls.append(kwargs))
+    fake_dm = SimpleNamespace(apply_translation_batch_update=MagicMock())
     monkeypatch.setattr(
         translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
@@ -500,10 +513,10 @@ def test_apply_batch_update_sync_writes_items_and_meta_only(
         extras_snapshot={"line": 1},
     )
 
-    kwargs = update_calls[0]
-    assert kwargs["items"] == [{"id": 1, "dst": "a"}]
-    assert "rules" not in kwargs
-    assert kwargs["meta"]["project_status"] == Base.ProjectStatus.PROCESSING
+    fake_dm.apply_translation_batch_update.assert_called_once_with(
+        [{"id": 1, "dst": "a"}],
+        {"line": 1},
+    )
 
 
 def test_translation_require_stop_sets_engine_status_and_emits_run_event(
@@ -879,6 +892,7 @@ def test_translation_reset_all_runs_reset_task_and_emits_done(
     dm.run_project_prefilter.assert_called_once_with(
         translation.config,
         reason="translation_reset",
+        emit_refresh_events=False,
     )
     assert has_emitted(
         translation,
@@ -893,7 +907,16 @@ def test_translation_reset_failed_updates_extras_when_returned(
     translation = create_translation_stub()
     engine = create_engine()
     dm = create_data_manager(loaded=True)
-    dm.reset_failed_translation_items_sync = MagicMock(return_value={"line": 22})
+    dm.reset_failed_translation_items_sync = MagicMock(
+        return_value=(
+            ProjectItemChange(
+                item_ids=(3,),
+                rel_paths=("script/a.txt",),
+                reason="translation_reset_failed",
+            ),
+            {"line": 22},
+        )
+    )
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
@@ -905,6 +928,7 @@ def test_translation_reset_failed_updates_extras_when_returned(
     )
 
     assert translation.extras == {"line": 22}
+    dm.emit_project_item_change_refresh.assert_called_once()
 
 
 def test_translation_reset_failed_keeps_extras_when_reset_returns_none(

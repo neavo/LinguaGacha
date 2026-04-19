@@ -21,8 +21,8 @@ class WorkbenchFileEntryPayload:
 
 
 @dataclass(frozen=True)
-class WorkbenchSnapshotPayload:
-    """工作台整体快照载荷。"""
+class WorkbenchSummaryPayload:
+    """工作台统计摘要载荷。"""
 
     file_count: int
     total_items: int
@@ -31,7 +31,6 @@ class WorkbenchSnapshotPayload:
     error_count: int
     untranslated: int
     file_op_running: bool
-    entries: tuple[WorkbenchFileEntryPayload, ...]
 
     def to_dict(self) -> dict[str, Any]:
         """转换为稳定 JSON 结构，供 HTTP 响应载荷使用。"""
@@ -44,5 +43,40 @@ class WorkbenchSnapshotPayload:
             "error_count": self.error_count,
             "untranslated": self.untranslated,
             "file_op_running": self.file_op_running,
+        }
+
+
+@dataclass(frozen=True)
+class WorkbenchSnapshotPayload:
+    """工作台整体快照载荷。"""
+
+    summary: WorkbenchSummaryPayload
+    entries: tuple[WorkbenchFileEntryPayload, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为稳定 JSON 结构，供 HTTP 响应载荷使用。"""
+
+        return {
+            **self.summary.to_dict(),
+            "entries": [entry.to_dict() for entry in self.entries],
+        }
+
+
+@dataclass(frozen=True)
+class WorkbenchFilePatchPayload:
+    """工作台文件补丁载荷。"""
+
+    summary: WorkbenchSummaryPayload
+    ordered_rel_paths: tuple[str, ...]
+    removed_rel_paths: tuple[str, ...]
+    entries: tuple[WorkbenchFileEntryPayload, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为稳定 JSON 结构，供 HTTP 响应载荷使用。"""
+
+        return {
+            "summary": self.summary.to_dict(),
+            "ordered_rel_paths": list(self.ordered_rel_paths),
+            "removed_rel_paths": list(self.removed_rel_paths),
             "entries": [entry.to_dict() for entry in self.entries],
         }

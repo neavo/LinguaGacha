@@ -36,6 +36,10 @@ export const zh_cn_workbench_page = {
   feedback: {
     refresh_failed_title: '工作台刷新失败',
     refresh_failed: '工作台刷新失败',
+    add_file_loading_toast: '正在添加文件并刷新缓存 …',
+    file_action_failed: '文件操作失败，请稍后重试。',
+    export_failed: '生成译文失败，请稍后重试。',
+    close_project_failed: '关闭工程失败，请稍后重试。',
   },
   action: {
     add_file: '添加文件',
@@ -92,6 +96,7 @@ export const zh_cn_workbench_page = {
       stopped: '已停止 …',
       reset_all_failed: '重置全部分析失败',
       reset_failed_failed: '重置失败分析进度失败',
+      import_loading_toast: '正在导入候选术语并刷新校对缓存 …',
       import_failed: '导入候选术语失败',
       import_success: '已导入 {COUNT} 条候选术语',
     },

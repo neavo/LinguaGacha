@@ -107,20 +107,6 @@
   color: darkgoldenrod;
 }
 
-.text-preserve-page__preset-dialog-shell,
-.text-preserve-page__dialog-shell {
-  padding: 0;
-}
-
-.text-preserve-page__dialog-shell {
-  background: var(--popover);
-  height: 640px;
-}
-
-.text-preserve-page__dialog-shell [data-slot='dialog-footer'] {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
-}
-
 .text-preserve-page__dialog-scroll {
   display: flex;
   flex: 1;
@@ -177,29 +163,4 @@
 .text-preserve-page__dialog-error {
   font-size: 12px;
   color: var(--destructive);
-}
-
-.text-preserve-page__dialog-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.text-preserve-page__dialog-footer-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.text-preserve-page__preset-dialog-body {
-  padding: 24px 24px 12px;
-}
-
-.text-preserve-page__preset-dialog-footer {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
-}
-
-.text-preserve-page__preset-dialog-button {
-  min-width: 112px;
 }

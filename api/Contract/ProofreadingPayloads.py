@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Self
 
+from model.Api.ProofreadingModels import ProofreadingFilterOptionsSnapshot
+from model.Api.ProofreadingModels import ProofreadingItemView
 from model.Api.ProofreadingModels import ProofreadingMutationResult
 from model.Api.ProofreadingModels import ProofreadingSearchResult
 from model.Api.ProofreadingModels import ProofreadingSnapshot
+from model.Api.ProofreadingModels import ProofreadingSummary
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,38 @@ class ProofreadingMutationResultPayload:
         """转换为 JSON 结构，供路由层直接输出。"""
 
         return {"result": self.result.to_dict()}
+
+
+@dataclass(frozen=True)
+class ProofreadingEntryPatchPayload:
+    """校对页条目级补丁载荷。"""
+
+    revision: int
+    project_id: str
+    readonly: bool
+    target_item_ids: tuple[int, ...]
+    default_filters: ProofreadingFilterOptionsSnapshot
+    applied_filters: ProofreadingFilterOptionsSnapshot
+    full_summary: ProofreadingSummary
+    filtered_summary: ProofreadingSummary
+    full_items: tuple[ProofreadingItemView, ...]
+    filtered_items: tuple[ProofreadingItemView, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为 JSON 结构，供路由层直接输出。"""
+
+        return {
+            "revision": self.revision,
+            "project_id": self.project_id,
+            "readonly": self.readonly,
+            "target_item_ids": list(self.target_item_ids),
+            "default_filters": self.default_filters.to_dict(),
+            "applied_filters": self.applied_filters.to_dict(),
+            "full_summary": self.full_summary.to_dict(),
+            "filtered_summary": self.filtered_summary.to_dict(),
+            "full_items": [item.to_dict() for item in self.full_items],
+            "filtered_items": [item.to_dict() for item in self.filtered_items],
+        }
 
 
 def build_mutation_result_payload(

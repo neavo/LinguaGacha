@@ -74,7 +74,17 @@ def test_is_prefilter_needed_only_skips_when_config_matches_exactly() -> None:
         service.is_prefilter_needed(
             {
                 "source_language": "EN",
-                "target_language": "ZH",
+                "mtool_optimizer_enable": False,
+            },
+            config,
+        )
+        is False
+    )
+    config.target_language = "JP"
+    assert (
+        service.is_prefilter_needed(
+            {
+                "source_language": "EN",
                 "mtool_optimizer_enable": False,
             },
             config,
@@ -160,7 +170,6 @@ def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> Non
         ),
         prefilter_config={
             "source_language": "EN",
-            "target_language": "ZH",
             "mtool_optimizer_enable": False,
         },
     )
@@ -183,6 +192,8 @@ def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> Non
     assert session.meta_cache["prefilter_config"] == expected_result.prefilter_config
     assert session.meta_cache["analysis_extras"] == {}
     assert session.meta_cache["analysis_candidate_count"] == 0
+    assert "source_language" not in session.meta_cache
+    assert "target_language" not in session.meta_cache
     session.db.delete_analysis_item_checkpoints.assert_called_once()
     assert "analysis_term_pool" not in session.meta_cache
 
@@ -217,7 +228,6 @@ def test_apply_once_ignores_stale_request_when_project_path_changes(
         ),
         prefilter_config={
             "source_language": "EN",
-            "target_language": "ZH",
             "mtool_optimizer_enable": False,
         },
     )

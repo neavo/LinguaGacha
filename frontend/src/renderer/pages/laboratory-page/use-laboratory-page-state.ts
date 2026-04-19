@@ -5,6 +5,7 @@ import {
   normalize_settings_snapshot,
   type SettingsSnapshotPayload,
 } from '@/app/state/desktop-runtime-context'
+import { useProjectPagesBarrier } from '@/app/state/project-pages-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
@@ -40,7 +41,8 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     set_settings_snapshot,
     refresh_settings,
   } = useDesktopRuntime()
-  const { push_toast } = useDesktopToast()
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier()
+  const { push_toast, run_modal_progress_toast } = useDesktopToast()
   const { t } = useI18n()
   const [snapshot, set_snapshot] = useState<LaboratorySnapshot>(() => {
     return build_laboratory_snapshot(settings_snapshot)
@@ -101,7 +103,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       field: LaboratoryPendingField,
       request: SettingsUpdateRequest,
       next_snapshot: LaboratorySnapshot,
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       const previous_snapshot = snapshot_ref.current
       set_snapshot(next_snapshot)
       set_pending(field, true)
@@ -112,24 +114,26 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         set_settings_snapshot(next_settings_snapshot)
         set_snapshot(build_laboratory_snapshot(next_settings_snapshot))
         set_refresh_error(null)
+        return true
       } catch (error) {
         set_snapshot((current_snapshot) => {
           const reverted_snapshot = {
             ...current_snapshot,
           }
 
-        if ('mtool_optimizer_enable' in request) {
-          reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable
-        }
+          if ('mtool_optimizer_enable' in request) {
+            reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable
+          }
 
-        return reverted_snapshot
-      })
+          return reverted_snapshot
+        })
 
         if (error instanceof Error) {
           push_toast('error', error.message)
         } else {
           push_toast('error', t('laboratory_page.feedback.update_failed'))
         }
+        return false
       } finally {
         set_pending(field, false)
       }
@@ -145,14 +149,34 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         return
       }
 
-      await commit_update('mtool_optimizer_enable', {
-        mtool_optimizer_enable: next_checked,
-      }, {
-        ...previous_snapshot,
-        mtool_optimizer_enable: next_checked,
+      const barrier_checkpoint = create_barrier_checkpoint()
+
+      await run_modal_progress_toast({
+        message: t('laboratory_page.feedback.mtool_optimizer_loading_toast'),
+        task: async () => {
+          const succeeded = await commit_update('mtool_optimizer_enable', {
+            mtool_optimizer_enable: next_checked,
+          }, {
+            ...previous_snapshot,
+            mtool_optimizer_enable: next_checked,
+          })
+
+          if (succeeded) {
+            await wait_for_barrier('project_cache_refresh', {
+              checkpoint: barrier_checkpoint,
+            })
+          }
+        },
       })
     },
-    [commit_update, is_task_busy],
+    [
+      commit_update,
+      create_barrier_checkpoint,
+      is_task_busy,
+      run_modal_progress_toast,
+      t,
+      wait_for_barrier,
+    ],
   )
 
   const value = useMemo<UseLaboratoryPageStateResult>(() => {

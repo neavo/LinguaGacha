@@ -8,6 +8,9 @@ from model.Api.QualityRuleModels import ProofreadingLookupQuery
 from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Data.Quality.ProofreadingImpactAnalyzer import (
+    ProofreadingImpactAnalyzer,
+)
 from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
 from module.Data.Quality.QualityRuleMutationService import QualityRuleMutationService
 from module.PromptBuilder import PromptBuilder
@@ -20,9 +23,21 @@ class QualityRuleAppService:
     def __init__(self, quality_rule_facade: Any | None = None) -> None:
         self.data_manager = DataManager.get()
         if quality_rule_facade is None:
+            quality_rule_service = getattr(
+                self.data_manager,
+                "quality_rule_service",
+                self.data_manager,
+            )
+            meta_service = getattr(
+                self.data_manager,
+                "meta_service",
+                self.data_manager,
+            )
             self.quality_rule_facade = QualityRuleFacadeService(
-                self.data_manager,
-                self.data_manager,
+                quality_rule_service,
+                meta_service,
+                event_emitter=self.data_manager,
+                impact_analyzer=ProofreadingImpactAnalyzer(self.data_manager),
             )
         else:
             self.quality_rule_facade = quality_rule_facade

@@ -233,11 +233,22 @@ class Translation(Base):
                 dm.set_translation_extras({})
                 dm.set_project_status(Base.ProjectStatus.NONE)
                 self.extras = dm.get_translation_extras()
-                dm.run_project_prefilter(self.config, reason="translation_reset")
+                dm.run_project_prefilter(
+                    self.config,
+                    reason="translation_reset",
+                    emit_refresh_events=False,
+                )
             else:
-                extras = dm.reset_failed_translation_items_sync()
-                if extras is not None:
+                reset_result = dm.reset_failed_translation_items_sync()
+                if reset_result is not None:
+                    change, extras = reset_result
                     self.extras = extras
+                    emit_change = getattr(dm, "emit_project_item_change_refresh", None)
+                    if callable(emit_change):
+                        emit_change(
+                            change,
+                            source_event=Base.Event.TRANSLATION_RESET_FAILED,
+                        )
 
             self.emit(
                 Base.Event.PROJECT_CHECK,
@@ -627,14 +638,11 @@ class Translation(Base):
         """
         同步执行批量更新（在翻译后台线程中串行落库）。
 
-        为什么串行：DataManager.update_batch(...) 需要事务一致性，并且要保证缓存/事件顺序稳定。
+        为什么串行：翻译提交需要把落库、缓存更新和局部刷新收口成同一条数据层入口。
         """
-        DataManager.get().update_batch(
-            items=finalized_items,
-            meta={
-                "translation_extras": extras_snapshot,
-                "project_status": Base.ProjectStatus.PROCESSING,
-            },
+        DataManager.get().apply_translation_batch_update(
+            finalized_items,
+            extras_snapshot,
         )
 
     def start_translation_pipeline(

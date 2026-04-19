@@ -7,6 +7,7 @@ from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Core.DataTypes import ProjectItemChange
 from module.Engine.TaskModeStrategy import TaskModeStrategy
 
 
@@ -25,7 +26,9 @@ class TranslationResetService:
         self.meta_service = meta_service
         self.item_service = item_service
 
-    def reset_failed_translation_items_sync(self) -> dict[str, Any] | None:
+    def reset_failed_translation_items_sync(
+        self,
+    ) -> tuple[ProjectItemChange, dict[str, Any]] | None:
         """重置失败译文并同步翻译进度快照。"""
 
         with self.session.state_lock:
@@ -37,6 +40,9 @@ class TranslationResetService:
             return None
 
         changed_items: list[dict[str, Any]] = []
+        changed_item_ids: list[int] = []
+        changed_rel_paths: list[str] = []
+        seen_rel_paths: set[str] = set()
         for item in items:
             if not TaskModeStrategy.should_reset_failed(item.get_status()):
                 continue
@@ -48,6 +54,11 @@ class TranslationResetService:
             item_dict = item.to_dict()
             if isinstance(item_dict.get("id"), int):
                 changed_items.append(item_dict)
+                changed_item_ids.append(int(item_dict["id"]))
+                rel_path = str(item_dict.get("file_path", "") or "")
+                if rel_path != "" and rel_path not in seen_rel_paths:
+                    seen_rel_paths.add(rel_path)
+                    changed_rel_paths.append(rel_path)
 
         processed_line = sum(
             1 for item in items if item.get_status() == Base.ProjectStatus.PROCESSED
@@ -82,4 +93,11 @@ class TranslationResetService:
                 "project_status": project_status,
             },
         )
-        return extras
+        return (
+            ProjectItemChange(
+                item_ids=tuple(changed_item_ids),
+                rel_paths=tuple(changed_rel_paths),
+                reason="translation_reset_failed",
+            ),
+            extras,
+        )

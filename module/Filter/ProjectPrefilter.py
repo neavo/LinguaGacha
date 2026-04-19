@@ -50,7 +50,6 @@ class ProjectPrefilter:
         items: list[Item],
         *,
         source_language: BaseLanguage.Enum | str,
-        target_language: BaseLanguage.Enum | str,
         mtool_optimizer_enable: bool,
         progress_cb: ProgressCallback | None = None,
         progress_every: int = 200,
@@ -131,7 +130,6 @@ class ProjectPrefilter:
 
         prefilter_config = {
             "source_language": str(source_language),
-            "target_language": str(target_language),
             "mtool_optimizer_enable": bool(mtool_optimizer_enable),
         }
 

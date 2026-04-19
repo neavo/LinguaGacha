@@ -39,32 +39,6 @@
   white-space: nowrap;
 }
 
-.glossary-page__dialog-shell {
-  padding: 0;
-  background: var(--popover);
-  height: 640px;
-}
-
-.glossary-page__dialog-shell [data-slot='dialog-footer'] {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
-}
-
-.glossary-page__preset-dialog-shell {
-  padding: 0;
-}
-
-.glossary-page__preset-dialog-body {
-  padding: 24px 24px 12px;
-}
-
-.glossary-page__preset-dialog-footer {
-  background: color-mix(in srgb, var(--muted) 50%, var(--popover));
-}
-
-.glossary-page__preset-dialog-button {
-  min-width: 112px;
-}
-
 .glossary-page__dialog-scroll {
   display: flex;
   flex: 1;
@@ -233,7 +207,7 @@
   stroke-width: 1.9;
 }
 
-.glossary-page__rule-badge[data-state='active'] {
+.glossary-page__rule-badge[data-state="active"] {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
@@ -270,9 +244,10 @@
 }
 
 .glossary-page__statistics-badge-button:hover .glossary-page__statistics-badge,
-.glossary-page__statistics-badge-button:focus-visible .glossary-page__statistics-badge,
-.glossary-page__statistics-badge-button[data-state='open'] .glossary-page__statistics-badge {
+.glossary-page__statistics-badge-button:focus-visible
+  .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button[data-state="open"]
+  .glossary-page__statistics-badge {
   transform: translateY(-1px);
   filter: saturate(1.08);
 }
-

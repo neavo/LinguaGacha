@@ -8,6 +8,10 @@ import {
 } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import type {
+  ProjectPagesBarrierCheckpoint,
+  ProjectPagesBarrierKind,
+} from '@/app/state/project-pages-barrier'
 import { WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS } from '@/app/state/workbench-progress-constants'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
@@ -36,6 +40,14 @@ import {
 type AnalysisTaskCommandPayload = {
   task?: Partial<AnalysisTaskSnapshot>
   imported_count?: number
+}
+
+type AnalysisTaskRuntimeOptions = {
+  createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint
+  waitForProjectPagesBarrier?: (
+    kind: Exclude<ProjectPagesBarrierKind, 'project_warmup'>,
+    options?: { checkpoint?: ProjectPagesBarrierCheckpoint | null },
+  ) => Promise<void>
 }
 
 export type AnalysisTaskRuntime = {
@@ -140,12 +152,14 @@ function resolve_analysis_terminal_feedback_message(args: {
   return null
 }
 
-export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
+export function useAnalysisTaskRuntime(
+  options: AnalysisTaskRuntimeOptions = {},
+): AnalysisTaskRuntime {
   const { t } = useI18n()
-  const { push_toast } = useDesktopToast()
+  const { push_toast, run_modal_progress_toast } = useDesktopToast()
   const {
     project_snapshot,
-    workbench_invalidation_tick,
+    workbench_change_signal,
     set_task_snapshot,
     task_snapshot,
   } = useDesktopRuntime()
@@ -166,7 +180,7 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
   const previous_project_loaded_ref = useRef(false)
   const previous_project_path_ref = useRef('')
   const previous_task_busy_ref = useRef(task_snapshot.busy)
-  const previous_invalidation_tick_ref = useRef(workbench_invalidation_tick)
+  const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq)
   const previous_analysis_status_ref = useRef(create_empty_analysis_task_snapshot().status)
   const observed_analysis_waveform_snapshot_ref = useRef<AnalysisTaskSnapshot | null>(null)
   const observed_analysis_waveform_time_ref = useRef<number | null>(null)
@@ -406,10 +420,7 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
       }
 
       if (previous_state.submitting) {
-        return {
-          ...previous_state,
-          open: false,
-        }
+        return previous_state
       }
 
       return null
@@ -420,6 +431,8 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
     if (analysis_confirm_state === null) {
       return
     }
+
+    const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null
 
     set_analysis_confirm_state((previous_state) => {
       if (previous_state === null) {
@@ -444,6 +457,14 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload)
       apply_analysis_task_snapshot(next_snapshot)
       sync_runtime_task_snapshot(next_snapshot)
+      if (
+        analysis_confirm_state.kind !== 'stop-analysis'
+        && options.waitForProjectPagesBarrier !== undefined
+      ) {
+        await options.waitForProjectPagesBarrier('project_cache_refresh', {
+          checkpoint: barrierCheckpoint,
+        })
+      }
       set_analysis_confirm_state(null)
     } catch (error) {
       let fallback_message = t('workbench_page.analysis_task.feedback.stop_failed')
@@ -454,11 +475,21 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
       }
 
       push_toast('error', resolve_error_message(error, fallback_message))
-      set_analysis_confirm_state(null)
+      set_analysis_confirm_state((previous_state) => {
+        if (previous_state === null) {
+          return null
+        }
+
+        return {
+          ...previous_state,
+          submitting: false,
+        }
+      })
     }
   }, [
     analysis_confirm_state,
     apply_analysis_task_snapshot,
+    options,
     push_toast,
     sync_runtime_task_snapshot,
     t,
@@ -472,23 +503,34 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
       return
     }
 
+    const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null
     set_analysis_importing(true)
 
     try {
-      const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-        '/api/tasks/import-analysis-glossary',
-        {},
-      )
-      const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload)
-      apply_analysis_task_snapshot(next_snapshot)
-      sync_runtime_task_snapshot(next_snapshot)
-      push_toast(
-        'success',
-        t('workbench_page.analysis_task.feedback.import_success').replace(
-          '{COUNT}',
-          String(task_payload.imported_count ?? 0),
-        ),
-      )
+      await run_modal_progress_toast({
+        message: t('workbench_page.analysis_task.feedback.import_loading_toast'),
+        task: async () => {
+          const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
+            '/api/tasks/import-analysis-glossary',
+            {},
+          )
+          const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload)
+          apply_analysis_task_snapshot(next_snapshot)
+          sync_runtime_task_snapshot(next_snapshot)
+          if (options.waitForProjectPagesBarrier !== undefined) {
+            await options.waitForProjectPagesBarrier('proofreading_cache_refresh', {
+              checkpoint: barrierCheckpoint,
+            })
+          }
+          push_toast(
+            'success',
+            t('workbench_page.analysis_task.feedback.import_success').replace(
+              '{COUNT}',
+              String(task_payload.imported_count ?? 0),
+            ),
+          )
+        },
+      })
     } catch (error) {
       push_toast(
         'error',
@@ -501,8 +543,10 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
     analysis_task_menu_busy,
     analysis_task_metrics.candidate_count,
     apply_analysis_task_snapshot,
+    options,
     project_snapshot.loaded,
     push_toast,
+    run_modal_progress_toast,
     sync_runtime_task_snapshot,
     t,
     task_snapshot.busy,
@@ -545,19 +589,19 @@ export function useAnalysisTaskRuntime(): AnalysisTaskRuntime {
   }, [project_snapshot.loaded, refresh_analysis_task_snapshot, task_snapshot.busy])
 
   useEffect(() => {
-    const previous_tick = previous_invalidation_tick_ref.current
-    previous_invalidation_tick_ref.current = workbench_invalidation_tick
+    const previous_seq = previous_workbench_change_seq_ref.current
+    previous_workbench_change_seq_ref.current = workbench_change_signal.seq
 
     if (!project_snapshot.loaded) {
       return
     }
 
-    if (previous_tick !== workbench_invalidation_tick) {
+    if (previous_seq !== workbench_change_signal.seq) {
       void refresh_analysis_task_snapshot()
     }
   }, [
     project_snapshot.loaded,
-    workbench_invalidation_tick,
+    workbench_change_signal.seq,
     refresh_analysis_task_snapshot,
   ])
 

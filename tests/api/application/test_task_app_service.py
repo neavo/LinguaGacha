@@ -62,7 +62,13 @@ def test_reset_translation_all_returns_latest_snapshot_and_emits_terminal_event(
     assert fake_task_data_manager.replace_all_items_calls == [["line-1", "line-2"]]
     assert fake_task_data_manager.set_translation_extras_calls == [{}]
     assert fake_task_data_manager.set_project_status_calls == [Base.ProjectStatus.NONE]
-    assert len(fake_task_data_manager.run_project_prefilter_calls) == 1
+    assert fake_task_data_manager.run_project_prefilter_calls == [
+        (
+            task_app_service.config_loader(),
+            "translation_reset",
+            False,
+        )
+    ]
 
 
 def test_reset_translation_failed_returns_latest_snapshot_and_emits_terminal_event(
@@ -79,6 +85,24 @@ def test_reset_translation_failed_returns_latest_snapshot_and_emits_terminal_eve
     assert result["task"]["task_type"] == "translation"
     assert result["task"]["error_line"] == 0
     assert task_app_service.emitted_events == [
+        (
+            Base.Event.WORKBENCH_REFRESH,
+            {
+                "reason": "translation_reset_failed",
+                "scope": "file",
+                "rel_paths": ["script/a.txt", "script/b.txt"],
+            },
+        ),
+        (
+            Base.Event.PROOFREADING_REFRESH,
+            {
+                "reason": "translation_reset_failed",
+                "scope": "entry",
+                "source_event": Base.Event.TRANSLATION_RESET_FAILED,
+                "item_ids": [1, 2],
+                "rel_paths": ["script/a.txt", "script/b.txt"],
+            },
+        ),
         (
             Base.Event.PROJECT_CHECK,
             {"sub_event": Base.SubEvent.REQUEST},

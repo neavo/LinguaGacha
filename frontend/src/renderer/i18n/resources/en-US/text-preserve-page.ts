@@ -18,6 +18,7 @@ export const en_us_text_preserve_page = {
   mode: {
     label: 'Text Preserve Mode',
     status: '{TITLE} - {STATE}',
+    loading_toast: 'Refreshing proofreading cache …',
     content_html:
       "Preserve text segments like code snippets, control characters, and style characters that shouldn't be translated, preventing incorrect translation"
       + '<br>'

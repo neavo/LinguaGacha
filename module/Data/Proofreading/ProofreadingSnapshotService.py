@@ -38,11 +38,17 @@ class ProofreadingLoadResult:
     lg_path: str
     revision: int = 0
     config: Any | None = None
+    total_item_count: int = 0
     items_all: list[Item] = field(default_factory=list)
     items: list[Item] = field(default_factory=list)
+    items_by_id: dict[int, Item] = field(default_factory=dict)
+    items_by_file_path: dict[str, tuple[Item, ...]] = field(default_factory=dict)
     warning_map: dict[int, list[WarningType]] = field(default_factory=dict)
     checker: ResultChecker | None = None
     failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = field(
+        default_factory=dict
+    )
+    applied_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] = field(
         default_factory=dict
     )
     filter_options: ProofreadingFilterOptions = field(
@@ -95,7 +101,7 @@ class ProofreadingSnapshotService:
     @staticmethod
     def build_summary(
         *,
-        items_all: list[Item],
+        total_item_count: int,
         items: list[Item],
         warning_map: dict[int, list[WarningType]],
     ) -> dict[str, int]:
@@ -107,9 +113,36 @@ class ProofreadingSnapshotService:
                 warning_items += 1
 
         return {
-            "total_items": len(items_all),
+            "total_items": total_item_count,
             "filtered_items": len(items),
             "warning_items": warning_items,
+        }
+
+    @staticmethod
+    def build_items_by_id(items: list[Item]) -> dict[int, Item]:
+        """按条目 id 构建索引，避免 mutation 回包线性扫描。"""
+
+        items_by_id: dict[int, Item] = {}
+        for item in items:
+            item_id = item.get_id()
+            if isinstance(item_id, int):
+                items_by_id[item_id] = item
+        return items_by_id
+
+    @staticmethod
+    def build_items_by_file_path(items: list[Item]) -> dict[str, tuple[Item, ...]]:
+        """按文件路径构建索引，供 file patch 直接取回目标条目。"""
+
+        grouped_items: dict[str, list[Item]] = {}
+        for item in items:
+            file_path = str(item.get_file_path() or "")
+            if file_path == "":
+                continue
+            grouped_items.setdefault(file_path, []).append(item)
+
+        return {
+            file_path: tuple(group_items)
+            for file_path, group_items in grouped_items.items()
         }
 
     def load_snapshot(self, expected_lg_path: str) -> ProofreadingLoadResult:
@@ -129,43 +162,79 @@ class ProofreadingSnapshotService:
 
         revision = self.revision_service.get_revision("proofreading")
         config = self.config_loader()
-        items_all = self.data_manager.get_all_items()
-        if not items_all:
+        item_dicts_all = self.data_manager.get_all_item_dicts()
+        total_item_count = len(item_dicts_all)
+        if total_item_count == 0:
             return ProofreadingLoadResult(
                 kind=ProofreadingLoadKind.OK,
                 lg_path=expected_lg_path,
                 revision=revision,
                 config=config,
                 summary=self.build_summary(
-                    items_all=[],
+                    total_item_count=0,
                     items=[],
                     warning_map={},
                 ),
             )
 
-        items = self.filter_service.build_review_items(items_all)
+        build_review_items_from_dicts = getattr(
+            self.filter_service,
+            "build_review_items_from_dicts",
+            None,
+        )
+        if callable(build_review_items_from_dicts):
+            items = build_review_items_from_dicts(item_dicts_all)
+        else:
+            items = self.filter_service.build_review_items(
+                self.data_manager.get_all_items()
+            )
         if not items:
             return ProofreadingLoadResult(
                 kind=ProofreadingLoadKind.OK,
                 lg_path=expected_lg_path,
                 revision=revision,
                 config=config,
-                items_all=items_all,
+                total_item_count=total_item_count,
                 summary=self.build_summary(
-                    items_all=items_all,
+                    total_item_count=total_item_count,
                     items=[],
                     warning_map={},
                 ),
             )
 
-        checker, warning_map = self.recheck_service.check_items(config, items)
-        failed_terms_by_item_key = (
-            self.recheck_service.build_failed_glossary_terms_cache(
-                items,
-                warning_map,
-                checker,
-            )
+        check_items_with_caches = getattr(
+            self.recheck_service,
+            "check_items_with_caches",
+            None,
         )
+        if callable(check_items_with_caches):
+            recheck_result = check_items_with_caches(config, items)
+            checker = recheck_result.checker
+            warning_map = recheck_result.warning_map
+            failed_terms_by_item_key = recheck_result.failed_terms_by_item_key
+            applied_terms_by_item_key = recheck_result.applied_terms_by_item_key
+        else:
+            checker, warning_map = self.recheck_service.check_items(config, items)
+            failed_terms_by_item_key = {}
+            applied_terms_by_item_key = {}
+        if not failed_terms_by_item_key:
+            failed_terms_by_item_key = (
+                self.recheck_service.build_failed_glossary_terms_cache(
+                    items,
+                    warning_map,
+                    checker,
+                )
+            )
+        if not applied_terms_by_item_key and checker is not None:
+            for item in items:
+                item_key = id(item)
+                src_repl, dst_repl = checker.get_replaced_text(item)
+                applied_terms = checker.get_applied_glossary_terms_from_replaced(
+                    src_repl,
+                    dst_repl,
+                )
+                if applied_terms:
+                    applied_terms_by_item_key[item_key] = tuple(applied_terms)
         filter_options = self.filter_service.build_default_filter_options(
             items,
             warning_map,
@@ -173,21 +242,27 @@ class ProofreadingSnapshotService:
             failed_terms_by_item_key=failed_terms_by_item_key,
         )
         summary = self.build_summary(
-            items_all=items_all,
+            total_item_count=total_item_count,
             items=items,
             warning_map=warning_map,
         )
+        items_by_id = self.build_items_by_id(items)
+        items_by_file_path = self.build_items_by_file_path(items)
 
         return ProofreadingLoadResult(
             kind=ProofreadingLoadKind.OK,
             lg_path=expected_lg_path,
             revision=revision,
             config=config,
-            items_all=items_all,
+            total_item_count=total_item_count,
+            items_all=items,
             items=items,
+            items_by_id=items_by_id,
+            items_by_file_path=items_by_file_path,
             warning_map=warning_map,
             checker=checker,
             failed_terms_by_item_key=failed_terms_by_item_key,
+            applied_terms_by_item_key=applied_terms_by_item_key,
             filter_options=filter_options,
             summary=summary,
         )

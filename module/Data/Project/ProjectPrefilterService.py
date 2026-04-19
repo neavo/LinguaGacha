@@ -46,7 +46,6 @@ class ProjectPrefilterService:
 
         expected = {
             "source_language": str(config.source_language),
-            "target_language": str(config.target_language),
             "mtool_optimizer_enable": bool(config.mtool_optimizer_enable),
         }
         return current_config != expected
@@ -57,6 +56,7 @@ class ProjectPrefilterService:
         *,
         reason: str,
         lg_path: str,
+        emit_refresh_events: bool = True,
     ) -> tuple[ProjectPrefilterRequest, bool]:
         """压入一条异步预过滤请求。"""
 
@@ -76,6 +76,7 @@ class ProjectPrefilterService:
                 reason=reason,
                 lg_path=lg_path,
                 token=token,
+                emit_refresh_events=emit_refresh_events,
             )
             self.prefilter_latest_request = request
             self.prefilter_pending = True
@@ -88,6 +89,7 @@ class ProjectPrefilterService:
         *,
         reason: str,
         lg_path: str,
+        emit_refresh_events: bool = True,
     ) -> tuple[ProjectPrefilterRequest | None, bool]:
         """压入同步请求。
 
@@ -102,6 +104,7 @@ class ProjectPrefilterService:
                     reason=reason,
                     lg_path=lg_path,
                     token=self.prefilter_active_token,
+                    emit_refresh_events=emit_refresh_events,
                 )
                 self.prefilter_latest_request = request
                 self.prefilter_pending = True
@@ -118,6 +121,7 @@ class ProjectPrefilterService:
                 reason=reason,
                 lg_path=lg_path,
                 token=token,
+                emit_refresh_events=emit_refresh_events,
             )
             self.prefilter_latest_request = request
             self.prefilter_pending = True
@@ -131,6 +135,7 @@ class ProjectPrefilterService:
         reason: str,
         lg_path: str,
         token: int,
+        emit_refresh_events: bool = True,
     ) -> ProjectPrefilterRequest:
         """统一构造冻结请求。"""
 
@@ -141,8 +146,8 @@ class ProjectPrefilterService:
             lg_path=lg_path,
             reason=reason,
             source_language=str(config.source_language),
-            target_language=str(config.target_language),
             mtool_optimizer_enable=bool(config.mtool_optimizer_enable),
+            emit_refresh_events=emit_refresh_events,
         )
 
     def pop_pending_request(self) -> ProjectPrefilterRequest | None:
@@ -189,7 +194,6 @@ class ProjectPrefilterService:
         result = ProjectPrefilter.apply(
             items=items,
             source_language=request.source_language,
-            target_language=request.target_language,
             mtool_optimizer_enable=request.mtool_optimizer_enable,
             progress_cb=progress_cb,
         )
@@ -200,8 +204,6 @@ class ProjectPrefilterService:
 
         meta = {
             "prefilter_config": result.prefilter_config,
-            "source_language": request.source_language,
-            "target_language": request.target_language,
             "analysis_extras": {},
             "analysis_candidate_count": 0,
         }

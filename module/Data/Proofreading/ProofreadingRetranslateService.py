@@ -7,6 +7,7 @@ from typing import Callable
 from base.Base import Base
 from model.Item import Item
 from module.Config import Config
+from module.Data.Core.DataTypes import ProjectItemChange
 from module.Data.DataManager import DataManager
 from module.Data.Proofreading.ProofreadingRevisionService import (
     ProofreadingRevisionService,
@@ -21,6 +22,7 @@ class ProofreadingRetranslateService:
     """
 
     REVISION_SCOPE: str = "proofreading"
+    RETRANSLATE_REASON: str = "proofreading_retranslate_items"
 
     def __init__(
         self,
@@ -59,7 +61,7 @@ class ProofreadingRetranslateService:
         items: list[Item],
         *,
         expected_revision: int | None = None,
-    ) -> dict[str, object]:
+    ) -> ProjectItemChange:
         """顺序重译条目并写回工程数据库。"""
 
         if expected_revision is None:
@@ -71,7 +73,7 @@ class ProofreadingRetranslateService:
             )
 
         config = self.config_loader()
-        changed_item_ids: list[int] = []
+        changed_items: list[Item] = []
         for item in items:
             item.set_status(Base.ProjectStatus.NONE)
             item.set_retry_count(0)
@@ -81,7 +83,8 @@ class ProofreadingRetranslateService:
 
             item_id = self.data_manager.save_item(item)
             if isinstance(item_id, int):
-                changed_item_ids.append(item_id)
+                item.set_id(item_id)
+                changed_items.append(Item.from_dict(item.to_dict()))
 
         if current_revision is None:
             revision = self.revision_service.get_revision(self.REVISION_SCOPE)
@@ -91,11 +94,22 @@ class ProofreadingRetranslateService:
                 current_revision,
             )
         self.sync_project_translation_state()
-
-        return {
-            "revision": revision,
-            "changed_item_ids": changed_item_ids,
-        }
+        del revision
+        change = ProjectItemChange(
+            item_ids=tuple(
+                item.get_id() for item in changed_items if isinstance(item.get_id(), int)
+            ),
+            rel_paths=tuple(
+                dict.fromkeys(
+                    str(item.get_file_path() or "")
+                    for item in changed_items
+                    if str(item.get_file_path() or "") != ""
+                )
+            ),
+            reason=self.RETRANSLATE_REASON,
+        )
+        self.emit_project_item_change(change)
+        return change
 
     def translate_item(self, item: Item, config: Config) -> bool:
         """同步等待单条重译结果，保持 API 命令语义简单稳定。"""
@@ -150,3 +164,34 @@ class ProofreadingRetranslateService:
         )
         extras["line"] = translated_count
         self.data_manager.set_translation_extras(extras)
+
+    def emit_project_item_change(self, change: ProjectItemChange) -> None:
+        """把重译后的精确影响范围映射成页面刷新。"""
+
+        emit_change = getattr(self.data_manager, "emit_project_item_change_refresh", None)
+        if callable(emit_change):
+            emit_change(change)
+            return
+
+        emit = getattr(self.data_manager, "emit", None)
+        if not callable(emit):
+            return
+        if change.rel_paths:
+            emit(
+                Base.Event.WORKBENCH_REFRESH,
+                {
+                    "reason": change.reason,
+                    "scope": "file",
+                    "rel_paths": list(change.rel_paths),
+                },
+            )
+        if change.item_ids:
+            emit(
+                Base.Event.PROOFREADING_REFRESH,
+                {
+                    "reason": change.reason,
+                    "scope": "entry",
+                    "item_ids": list(change.item_ids),
+                    "rel_paths": list(change.rel_paths),
+                },
+            )

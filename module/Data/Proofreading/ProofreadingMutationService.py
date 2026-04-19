@@ -5,6 +5,7 @@ from typing import Any
 
 from base.Base import Base
 from model.Item import Item
+from module.Data.Core.DataTypes import ProjectItemChange
 from module.Data.DataManager import DataManager
 from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterService
 from module.Data.Proofreading.ProofreadingRevisionService import (
@@ -23,6 +24,9 @@ class ProofreadingMutationService:
     """
 
     REVISION_SCOPE: str = "proofreading"
+    SAVE_ITEM_REASON: str = "proofreading_save_item"
+    SAVE_ALL_REASON: str = "proofreading_save_all"
+    REPLACE_ALL_REASON: str = "proofreading_replace_all"
 
     def __init__(
         self,
@@ -102,12 +106,79 @@ class ProofreadingMutationService:
         else:
             pass
 
+    def build_project_item_change(
+        self,
+        values: list[Item] | list[dict[str, Any]],
+        *,
+        reason: str,
+    ) -> ProjectItemChange:
+        """把本次写入条目整理成统一影响范围。"""
+
+        item_ids: list[int] = []
+        rel_paths: list[str] = []
+        seen_item_ids: set[int] = set()
+        seen_rel_paths: set[str] = set()
+        for value in values:
+            if isinstance(value, Item):
+                item_id = value.get_id()
+                rel_path = str(value.get_file_path() or "")
+            elif isinstance(value, dict):
+                raw_item_id = value.get("id", value.get("item_id"))
+                item_id = raw_item_id if isinstance(raw_item_id, int) else None
+                rel_path = str(value.get("file_path", "") or "")
+            else:
+                continue
+
+            if isinstance(item_id, int) and item_id not in seen_item_ids:
+                seen_item_ids.add(item_id)
+                item_ids.append(item_id)
+            if rel_path != "" and rel_path not in seen_rel_paths:
+                seen_rel_paths.add(rel_path)
+                rel_paths.append(rel_path)
+
+        return ProjectItemChange(
+            item_ids=tuple(item_ids),
+            rel_paths=tuple(rel_paths),
+            reason=reason,
+        )
+
+    def emit_project_item_change(self, change: ProjectItemChange) -> None:
+        """把条目写入后的精确刷新统一补发出去。"""
+
+        emit_change = getattr(self.data_manager, "emit_project_item_change_refresh", None)
+        if callable(emit_change):
+            emit_change(change)
+            return
+
+        emit = getattr(self.data_manager, "emit", None)
+        if not callable(emit):
+            return
+        if change.rel_paths:
+            emit(
+                Base.Event.WORKBENCH_REFRESH,
+                {
+                    "reason": change.reason,
+                    "scope": "file",
+                    "rel_paths": list(change.rel_paths),
+                },
+            )
+        if change.item_ids:
+            emit(
+                Base.Event.PROOFREADING_REFRESH,
+                {
+                    "reason": change.reason,
+                    "scope": "entry",
+                    "item_ids": list(change.item_ids),
+                    "rel_paths": list(change.rel_paths),
+                },
+            )
+
     def save_item(
         self,
         item: Item,
         *,
         expected_revision: int | None = None,
-    ) -> int:
+    ) -> ProjectItemChange:
         """保存单条条目。"""
 
         with self._get_state_lock():
@@ -115,29 +186,41 @@ class ProofreadingMutationService:
             saved_item_id = self.data_manager.save_item(item)
             self._bump_revision(current_revision)
             self.sync_project_translation_state()
-        return saved_item_id
+            saved_item = Item.from_dict(item.to_dict())
+            saved_item.set_id(saved_item_id)
+            change = self.build_project_item_change(
+                [saved_item],
+                reason=self.SAVE_ITEM_REASON,
+            )
+        self.emit_project_item_change(change)
+        return change
 
     def save_all(
         self,
         items: list[Item],
         *,
         expected_revision: int | None = None,
-    ) -> list[int]:
+    ) -> ProjectItemChange:
         """批量保存整页条目。"""
 
         with self._get_state_lock():
             current_revision = self._guard_revision(expected_revision)
-            saved_item_ids = self.data_manager.replace_all_items(items)
+            self.data_manager.replace_all_items(items)
             self._bump_revision(current_revision)
             self.sync_project_translation_state()
-        return saved_item_ids
+            change = self.build_project_item_change(
+                items,
+                reason=self.SAVE_ALL_REASON,
+            )
+        self.emit_project_item_change(change)
+        return change
 
     def replace_batch(
         self,
         items: list[dict[str, Any]],
         *,
         expected_revision: int | None = None,
-    ) -> None:
+    ) -> ProjectItemChange:
         """批量写回字典型 payload，供 Replace 场景使用。"""
 
         with self._get_state_lock():
@@ -145,6 +228,12 @@ class ProofreadingMutationService:
             self.data_manager.update_batch(items=items)
             self._bump_revision(current_revision)
             self.sync_project_translation_state()
+            change = self.build_project_item_change(
+                items,
+                reason=self.REPLACE_ALL_REASON,
+            )
+        self.emit_project_item_change(change)
+        return change
 
     @staticmethod
     def replace_once_in_text(
@@ -192,13 +281,12 @@ class ProofreadingMutationService:
         replace_text: str,
         is_regex: bool = False,
         expected_revision: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> ProjectItemChange:
         """统一处理批量替换，避免页面自己拼 payload。"""
 
         with self._get_state_lock():
             current_revision = self._guard_revision(expected_revision)
 
-            changed_item_ids: list[int] = []
             changed_payload: list[dict[str, Any]] = []
             changed_states: list[tuple[Item, str, Base.ProjectStatus]] = []
             for item in items:
@@ -224,11 +312,11 @@ class ProofreadingMutationService:
                 changed_payload.append(
                     {
                         "id": item_id,
+                        "file_path": item.get_file_path(),
                         "dst": new_dst,
                         "status": new_status,
                     }
                 )
-                changed_item_ids.append(item_id)
                 changed_states.append((item, new_dst, new_status))
 
             if changed_payload:
@@ -236,20 +324,21 @@ class ProofreadingMutationService:
                 for target_item, new_dst, new_status in changed_states:
                     target_item.set_dst(new_dst)
                     target_item.set_status(new_status)
-                new_revision = self.revision_service.bump_revision(
+                self.revision_service.bump_revision(
                     self.REVISION_SCOPE,
                     current_revision,
                 )
                 self.sync_project_translation_state()
+                change = self.build_project_item_change(
+                    changed_payload,
+                    reason=self.REPLACE_ALL_REASON,
+                )
             else:
-                new_revision = self.revision_service.get_revision(self.REVISION_SCOPE)
+                change = ProjectItemChange(reason=self.REPLACE_ALL_REASON)
 
-        return {
-            "revision": new_revision,
-            "changed_item_ids": changed_item_ids,
-            "changed_count": len(changed_item_ids),
-            "items": changed_payload,
-        }
+        if change.item_ids:
+            self.emit_project_item_change(change)
+        return change
 
     def apply_manual_edit(
         self,
@@ -257,7 +346,7 @@ class ProofreadingMutationService:
         new_dst: str,
         *,
         expected_revision: int | None = None,
-    ) -> int:
+    ) -> ProjectItemChange:
         """保存单条人工编辑，并统一状态推导。"""
 
         with self._get_state_lock():
@@ -274,4 +363,10 @@ class ProofreadingMutationService:
             item.set_status(new_status)
             self._bump_revision(current_revision)
             self.sync_project_translation_state()
-        return saved_item_id
+            saved_item.set_id(saved_item_id)
+            change = self.build_project_item_change(
+                [saved_item],
+                reason=self.SAVE_ITEM_REASON,
+            )
+        self.emit_project_item_change(change)
+        return change

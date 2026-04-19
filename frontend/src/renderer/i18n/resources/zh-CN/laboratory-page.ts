@@ -16,5 +16,6 @@ export const zh_cn_laboratory_page = {
     refresh_failed: '当前无法刷新实验室设置，请稍后重试。',
     refresh_failed_title: '实验室设置加载失败',
     update_failed: '实验室设置保存失败，请稍后重试。',
+    mtool_optimizer_loading_toast: '正在刷新项目缓存 …',
   },
 } as const
