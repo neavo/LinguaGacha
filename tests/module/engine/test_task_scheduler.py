@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 import module.Engine.TaskScheduler as shared_scheduler_module
 from module.Engine.TaskScheduler import TaskScheduler
 

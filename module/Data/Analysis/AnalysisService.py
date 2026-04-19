@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Analysis.AnalysisCandidateService import AnalysisCandidateService
 from module.Data.Analysis.AnalysisProgressService import AnalysisProgressService
 from module.Data.Analysis.AnalysisRepository import AnalysisRepository
@@ -95,7 +95,7 @@ class AnalysisService:
             if cached is None:
                 return None
             return max(0, int(cached))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     def set_analysis_candidate_count_cache(self, count: int) -> int:

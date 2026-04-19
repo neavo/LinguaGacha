@@ -2,7 +2,7 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
-from model.Api.WorkbenchModels import WorkbenchSnapshot
+from api.Models.Workbench import WorkbenchSnapshot
 
 
 class WorkbenchApiClient:

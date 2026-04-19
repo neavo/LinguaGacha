@@ -1,5 +1,5 @@
-from model.Api.PromptModels import CustomPromptSnapshot
-from model.Api.PromptModels import PromptPresetEntry
+from api.Models.Prompt import CustomPromptSnapshot
+from api.Models.Prompt import PromptPresetEntry
 
 
 def test_custom_prompt_snapshot_from_dict_preserves_enable_and_text_fields() -> None:

@@ -8,7 +8,7 @@ from typing import Any
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from base.BasePath import BasePath
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Fixer.CodeFixer import CodeFixer

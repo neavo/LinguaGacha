@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.File.KVJSON import KVJSON
 from tests.module.file.conftest import DummyDataManager

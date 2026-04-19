@@ -21,7 +21,7 @@
 | 路径 | 职责 |
 | --- | --- |
 | `DataManager.py` | 工程级数据入口；协调会话、规则、分析、翻译、工作台事件与跨 service 流程 |
-| `Core/` | `ProjectSession` 以及 `Meta/Rule/Item/Asset/Batch` 基础能力 |
+| `Core/` | `ProjectSession`、`Item`、`Project` 以及 `Meta/Rule/ItemService/Asset/Batch` 基础能力 |
 | `Storage/LGDatabase.py` | `.lg` 的 schema、SQL、事务与序列化实现 |
 | `Project/` | 工程创建/加载/卸载、文件操作、预过滤、导出路径与工作台快照 |
 | `Quality/` | 规则快照、变更、预设、提示词与分析候选导入术语的规则侧逻辑 |
@@ -34,6 +34,7 @@
 - `DataManager` 持有 `ProjectSession`，负责工程加载态、规则/条目缓存、事件发射和跨 service 编排。
 - 运行时 `Config` 是语言设置的权威来源；当前工程 `.lg` 中的 `source_language` / `target_language` meta 只做镜像摘要，由 `DataManager` 在工程加载后与设置变更时同步。
 - `Project/`、`Quality/`、`Analysis/`、`Translation/` 这四条主链路以 `DataManager` 为入口，不在 API 层绕过它直接拼装内部依赖。
+- `Item` / `Project` 这类数据层基础实体已经收口到 `Core/`，不再放在仓库根级独立模块里。
 - `Proofreading/` 由 `api/Application/ProofreadingAppService.py` 组合使用；它依赖 `DataManager` 读取当前工程、提交 mutation，并自行维护筛选、revision 与重检逻辑。
 - `Extra/` 由 `api/Application/ExtraAppService.py` 组合使用；它直接提供繁简转换与姓名字段能力，不承担工程生命周期管理。
 - `ProjectSession` 只做当前工程会话状态容器；`LGDatabase` 只做 SQL、schema 和事务，不承担业务流程。
@@ -76,6 +77,7 @@ flowchart TD
 ## 子包职责速查
 ### `Core`
 - `ProjectSession`：当前工程会话状态与缓存权威来源
+- `Item` / `Project`：数据层共享实体与导入导出链路中的基础对象
 - `MetaService` / `RuleService` / `ItemService` / `AssetService`：基础数据读写与缓存整理
 - `BatchService`：`items / rules / meta` 的统一事务写回
 - `DataTypes` / `DataEnums`：跨层冻结快照类型与通用枚举

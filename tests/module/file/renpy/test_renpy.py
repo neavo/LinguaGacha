@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 from module.Config import Config
 

@@ -9,7 +9,7 @@ import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Core.ProjectSession import ProjectSession
 
@@ -363,9 +363,7 @@ def test_replace_file_batch_updates_multiple_files_in_single_result(
             del content
             stem = rel_path.rsplit(".", 1)[0]
             return [
-                Item.from_dict(
-                    {"src": stem, "file_path": rel_path, "file_type": "TXT"}
-                )
+                Item.from_dict({"src": stem, "file_path": rel_path, "file_type": "TXT"})
             ]
 
     monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)

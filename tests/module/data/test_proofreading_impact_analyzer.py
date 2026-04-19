@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Quality.ProofreadingImpactAnalyzer import (
     ProofreadingImpactAnalyzer,
 )

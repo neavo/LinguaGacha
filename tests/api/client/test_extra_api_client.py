@@ -4,13 +4,13 @@ from api.Application.ExtraAppService import ExtraAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ExtraApiClient import ExtraApiClient
 from api.Server.Routes.ExtraRoutes import ExtraRoutes
-from model.Api import ExtraToolEntry
-from model.Api import ExtraToolSnapshot
-from model.Api import NameFieldEntryDraft
-from model.Api import NameFieldSnapshot
-from model.Api import NameFieldTranslateResult
-from model.Api import TsConversionOptionsSnapshot
-from model.Api import TsConversionTaskAccepted
+from api.Models import ExtraToolEntry
+from api.Models import ExtraToolSnapshot
+from api.Models import NameFieldEntryDraft
+from api.Models import NameFieldSnapshot
+from api.Models import NameFieldTranslateResult
+from api.Models import TsConversionOptionsSnapshot
+from api.Models import TsConversionTaskAccepted
 
 
 class FakeNameFieldExtractionService:

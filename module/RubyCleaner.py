@@ -1,9 +1,9 @@
 import re
 
-from model.Item import Item
+from module.Data.Core.Item import Item
+
 
 class RubyCleaner:
-
     # 激进模式额外规则（移除括号/竖线等格式的ruby标记）
     AGGRESSIVE_RULES: tuple[tuple[re.Pattern, str], ...] = (
         # (漢字/かんじ)

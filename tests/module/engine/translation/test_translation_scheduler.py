@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 import module.Engine.Translation.TranslationScheduler as translation_scheduler_module
 from module.Engine.Translation.TranslationScheduler import TaskContext

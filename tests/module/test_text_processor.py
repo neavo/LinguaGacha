@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 
 from base.BaseLanguage import BaseLanguage
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot

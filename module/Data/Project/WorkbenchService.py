@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Any
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
 from module.Data.Core.DataTypes import WorkbenchSnapshot
 from module.Utils.GapTool import GapTool
@@ -100,9 +100,7 @@ class WorkbenchService:
             return ()
 
         return tuple(
-            entry
-            for entry in snapshot.entries
-            if entry.rel_path in rel_path_set
+            entry for entry in snapshot.entries if entry.rel_path in rel_path_set
         )
 
     def normalize_status(self, raw_status: object) -> Base.ProjectStatus:

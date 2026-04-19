@@ -67,7 +67,7 @@ class AnalysisRepository:
         raw_value = self.session.meta_cache.get(self.ANALYSIS_CANDIDATE_COUNT_META_KEY)
         try:
             return max(0, int(raw_value))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     def count_candidate_entries(

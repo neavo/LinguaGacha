@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.File.ASS import ASS
 from tests.module.file.conftest import DummyDataManager

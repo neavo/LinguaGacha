@@ -3,8 +3,8 @@ from collections.abc import Callable
 from api.Application.TaskAppService import TaskAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.TaskApiClient import TaskApiClient
-from model.Api.TaskModels import AnalysisGlossaryImportResult
-from model.Api.TaskModels import TaskSnapshot
+from api.Models.Task import AnalysisGlossaryImportResult
+from api.Models.Task import TaskSnapshot
 from tests.api.support.application_fakes import FakeEngine
 from tests.api.support.application_fakes import FakeTaskDataManager
 

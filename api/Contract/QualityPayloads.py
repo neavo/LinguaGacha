@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from model.Api.QualityRuleModels import ProofreadingLookupQuery
-from model.Api.QualityRuleModels import QualityRuleSnapshot
+from api.Models.QualityRule import ProofreadingLookupQuery
+from api.Models.QualityRule import QualityRuleSnapshot
 
 
 @dataclass(frozen=True)

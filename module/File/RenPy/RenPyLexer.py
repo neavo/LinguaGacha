@@ -2,7 +2,7 @@ import hashlib
 import os
 import re
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.File.RenPy.RenPyAst import StringLiteral
 
 PLACEHOLDER = '"{}"'

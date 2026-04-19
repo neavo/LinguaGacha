@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 
 from base.Base import Base
-from model.Model import ThinkingLevel
+from module.Model.Types import ThinkingLevel
 from module.Config import Config
 from module.Engine.Engine import Engine
 from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool

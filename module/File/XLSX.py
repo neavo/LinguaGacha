@@ -5,7 +5,7 @@ import openpyxl
 import openpyxl.worksheet.worksheet
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Utils.SpreadsheetTool import SpreadsheetTool

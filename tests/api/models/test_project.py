@@ -1,5 +1,5 @@
-from model.Api.ProjectModels import ProjectPreview
-from model.Api.ProjectModels import ProjectSnapshot
+from api.Models.Project import ProjectPreview
+from api.Models.Project import ProjectSnapshot
 
 
 def test_project_snapshot_from_dict_uses_safe_defaults() -> None:

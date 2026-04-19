@@ -2,8 +2,8 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
-from model.Api.ProjectModels import ProjectPreview
-from model.Api.ProjectModels import ProjectSnapshot
+from api.Models.Project import ProjectPreview
+from api.Models.Project import ProjectSnapshot
 
 
 class ProjectApiClient:

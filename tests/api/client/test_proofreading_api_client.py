@@ -6,10 +6,10 @@ from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from base.Base import Base
-from model.Api.ProofreadingModels import ProofreadingMutationResult
-from model.Api.ProofreadingModels import ProofreadingSearchResult
-from model.Api.ProofreadingModels import ProofreadingSnapshot
-from model.Item import Item
+from api.Models.Proofreading import ProofreadingMutationResult
+from api.Models.Proofreading import ProofreadingSearchResult
+from api.Models.Proofreading import ProofreadingSnapshot
+from module.Data.Core.Item import Item
 from module.Data.Core.DataTypes import ProjectItemChange
 from module.Data.Proofreading.ProofreadingFilterService import ProofreadingFilterOptions
 from module.Data.Proofreading.ProofreadingSnapshotService import ProofreadingLoadKind

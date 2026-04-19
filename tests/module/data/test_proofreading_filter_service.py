@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.ResultChecker import WarningType
 
 

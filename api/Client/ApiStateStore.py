@@ -1,11 +1,11 @@
 import threading
 
 from api.Bridge.EventTopic import EventTopic
-from model.Api.ExtraModels import ExtraTaskState
-from model.Api.ProjectModels import ProjectSnapshot
-from model.Api.TaskModels import TaskProgressUpdate
-from model.Api.TaskModels import TaskSnapshot
-from model.Api.TaskModels import TaskStatusUpdate
+from api.Models.Extra import ExtraTaskState
+from api.Models.Project import ProjectSnapshot
+from api.Models.Task import TaskProgressUpdate
+from api.Models.Task import TaskSnapshot
+from api.Models.Task import TaskStatusUpdate
 
 
 class ApiStateStore:

@@ -1,4 +1,4 @@
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.File.TRANS.KAG import KAG
 
 

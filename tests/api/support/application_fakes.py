@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from model.Model import Model
-from model.Model import ModelType
+from module.Model.Types import Model
+from module.Model.Types import ModelType
 from module.Config import Config
 from module.Data.Core.DataTypes import ProjectItemChange
 
@@ -280,7 +280,7 @@ class FakeWorkbenchManager:
     def build_workbench_snapshot(self) -> "WorkbenchSnapshot":
         from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
         from module.Data.Core.DataTypes import WorkbenchSnapshot
-        from model.Item import Item
+        from module.Data.Core.Item import Item
 
         entry_dict = self.snapshot["entries"][0]
         entry = WorkbenchFileEntrySnapshot(

@@ -16,7 +16,7 @@ from typing import Protocol
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
 from module.Utils.GapTool import GapTool

@@ -3,8 +3,8 @@ from collections.abc import Callable
 from api.Application.ProjectAppService import ProjectAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
-from model.Api.ProjectModels import ProjectPreview
-from model.Api.ProjectModels import ProjectSnapshot
+from api.Models.Project import ProjectPreview
+from api.Models.Project import ProjectSnapshot
 from tests.api.support.application_fakes import FakeProjectManager
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.File.FileManager import FileManager
 

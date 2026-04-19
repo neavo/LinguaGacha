@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Core.DataTypes import ProjectItemChange
 import module.Engine.Translation.Translation as translation_module

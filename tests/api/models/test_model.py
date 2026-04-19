@@ -1,9 +1,9 @@
-from model.Api.ModelModels import ModelEntrySnapshot
-from model.Api.ModelModels import ModelGenerationSnapshot
-from model.Api.ModelModels import ModelPageSnapshot
-from model.Api.ModelModels import ModelRequestSnapshot
-from model.Api.ModelModels import ModelThinkingSnapshot
-from model.Api.ModelModels import ModelThresholdSnapshot
+from api.Models.Model import ModelEntrySnapshot
+from api.Models.Model import ModelGenerationSnapshot
+from api.Models.Model import ModelPageSnapshot
+from api.Models.Model import ModelRequestSnapshot
+from api.Models.Model import ModelThinkingSnapshot
+from api.Models.Model import ModelThresholdSnapshot
 
 
 def test_model_page_snapshot_from_dict_builds_nested_objects() -> None:

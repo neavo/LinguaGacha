@@ -1,8 +1,8 @@
-from model.Api.QualityRuleModels import ProofreadingLookupQuery
-from model.Api.QualityRuleModels import QualityRuleEntry
-from model.Api.QualityRuleModels import QualityRuleSnapshot
-from model.Api.QualityRuleModels import QualityRuleStatisticsResult
-from model.Api.QualityRuleModels import QualityRuleStatisticsSnapshot
+from api.Models.QualityRule import ProofreadingLookupQuery
+from api.Models.QualityRule import QualityRuleEntry
+from api.Models.QualityRule import QualityRuleSnapshot
+from api.Models.QualityRule import QualityRuleStatisticsResult
+from api.Models.QualityRule import QualityRuleStatisticsSnapshot
 
 
 def test_quality_rule_entry_from_dict_uses_safe_defaults() -> None:

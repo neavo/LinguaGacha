@@ -1,9 +1,9 @@
-from model.Api.ExtraModels import ExtraTaskState
+from api.Models.Extra import ExtraTaskState
 from api.Client.ApiStateStore import ApiStateStore
 from api.Bridge.EventTopic import EventTopic
-from model.Api.ProjectModels import ProjectSnapshot
-from model.Api.TaskModels import TaskProgressUpdate
-from model.Api.TaskModels import TaskSnapshot
+from api.Models.Project import ProjectSnapshot
+from api.Models.Task import TaskProgressUpdate
+from api.Models.Task import TaskSnapshot
 
 
 def test_api_state_store_hydrates_project_snapshot() -> None:

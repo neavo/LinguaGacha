@@ -4,7 +4,7 @@ from api.Contract.ExtraPayloads import NameFieldSnapshotPayload
 from api.Contract.ExtraPayloads import NameFieldTranslateResultPayload
 from api.Contract.ExtraPayloads import TsConversionOptionsPayload
 from api.Contract.ExtraPayloads import TsConversionTaskPayload
-from model.Api.ExtraModels import ExtraTaskState
+from api.Models.Extra import ExtraTaskState
 from module.Data.Extra.NameFieldExtractionService import NameFieldExtractionService
 from module.Data.Extra.TsConversionService import TsConversionService
 

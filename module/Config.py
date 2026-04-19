@@ -11,7 +11,7 @@ from base.BasePath import BasePath
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
-from module.ModelManager import ModelManager
+from module.Model.Manager import ModelManager
 from module.Utils.JSONTool import JSONTool
 
 

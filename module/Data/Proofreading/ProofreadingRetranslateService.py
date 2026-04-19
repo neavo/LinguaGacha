@@ -5,7 +5,7 @@ from typing import Any
 from typing import Callable
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Core.DataTypes import ProjectItemChange
 from module.Data.DataManager import DataManager
@@ -97,7 +97,9 @@ class ProofreadingRetranslateService:
         del revision
         change = ProjectItemChange(
             item_ids=tuple(
-                item.get_id() for item in changed_items if isinstance(item.get_id(), int)
+                item.get_id()
+                for item in changed_items
+                if isinstance(item.get_id(), int)
             ),
             rel_paths=tuple(
                 dict.fromkeys(
@@ -168,7 +170,9 @@ class ProofreadingRetranslateService:
     def emit_project_item_change(self, change: ProjectItemChange) -> None:
         """把重译后的精确影响范围映射成页面刷新。"""
 
-        emit_change = getattr(self.data_manager, "emit_project_item_change_refresh", None)
+        emit_change = getattr(
+            self.data_manager, "emit_project_item_change_refresh", None
+        )
         if callable(emit_change):
             emit_change(change)
             return

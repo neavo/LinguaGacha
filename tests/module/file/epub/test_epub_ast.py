@@ -13,7 +13,7 @@ import io
 import zipfile
 
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 from pathlib import Path
 

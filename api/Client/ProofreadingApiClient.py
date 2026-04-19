@@ -4,9 +4,9 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Server.Routes.ProofreadingRoutes import ProofreadingRoutes
-from model.Api.ProofreadingModels import ProofreadingMutationResult
-from model.Api.ProofreadingModels import ProofreadingSearchResult
-from model.Api.ProofreadingModels import ProofreadingSnapshot
+from api.Models.Proofreading import ProofreadingMutationResult
+from api.Models.Proofreading import ProofreadingSearchResult
+from api.Models.Proofreading import ProofreadingSnapshot
 
 
 class ProofreadingApiClient:

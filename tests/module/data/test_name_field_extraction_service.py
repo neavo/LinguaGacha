@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 
 class FakeDataManager:

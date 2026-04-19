@@ -9,11 +9,11 @@ from api.Contract.ModelPayloads import ModelPageSnapshotPayload
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
-from model.Api.ModelModels import ModelEntrySnapshot
-from model.Api.ModelModels import ModelPageSnapshot
-from model.Model import ModelType
+from api.Models.Model import ModelEntrySnapshot
+from api.Models.Model import ModelPageSnapshot
+from module.Model.Types import ModelType
 from module.Config import Config
-from module.ModelManager import ModelManager
+from module.Model.Manager import ModelManager
 
 
 class ModelConfigLike(Protocol):

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from base.Base import Base
 from base.LogManager import LogManager
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.AssetService import AssetService

@@ -2,7 +2,7 @@ import re
 
 from rich import print
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Config import Config
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 

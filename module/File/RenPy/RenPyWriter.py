@@ -1,5 +1,5 @@
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.File.RenPy.RenPyLexer import build_skeleton
 from module.File.RenPy.RenPyLexer import escape_renpy_string
 from module.File.RenPy.RenPyLexer import scan_double_quoted_literals

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Self
 
-from model.Api.ModelModels import ModelPageSnapshot
+from api.Models.Model import ModelPageSnapshot
 
 
 @dataclass(frozen=True)

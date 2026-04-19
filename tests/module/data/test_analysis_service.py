@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from base.Base import Base
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ProjectSession import ProjectSession

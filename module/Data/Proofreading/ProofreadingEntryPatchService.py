@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from typing import Callable
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 from module.Data.Proofreading.ProofreadingFilterService import (
     ProofreadingFilterScanResult,
 )

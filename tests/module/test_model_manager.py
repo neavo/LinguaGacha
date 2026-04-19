@@ -4,9 +4,9 @@ import pytest
 
 from base.BaseLanguage import BaseLanguage
 from base.BasePath import BasePath
-from model.Model import Model
-from model.Model import ModelType
-from module.ModelManager import ModelManager
+from module.Model.Types import Model
+from module.Model.Types import ModelType
+from module.Model.Manager import ModelManager
 
 
 def build_model_data(
@@ -76,7 +76,7 @@ class TestModelManager:
 
         generated_ids = iter(["generated-1", "generated-2"])
         monkeypatch.setattr(
-            "module.ModelManager.Model.generate_id",
+            "module.Model.Manager.Model.generate_id",
             lambda: next(generated_ids),
         )
         monkeypatch.setattr(
@@ -125,7 +125,7 @@ class TestModelManager:
     ) -> None:
         manager = ModelManager()
         monkeypatch.setattr(
-            "module.ModelManager.JSONTool.load_file", lambda path: {"bad": 1}
+            "module.Model.Manager.JSONTool.load_file", lambda path: {"bad": 1}
         )
 
         assert manager.load_preset_models() == []
@@ -143,7 +143,7 @@ class TestModelManager:
         def fake_load(path: str) -> dict:
             return {"path": path}
 
-        monkeypatch.setattr("module.ModelManager.JSONTool.load_file", fake_load)
+        monkeypatch.setattr("module.Model.Manager.JSONTool.load_file", fake_load)
 
         google_template = manager.load_template(ModelType.CUSTOM_GOOGLE)
         openai_template = manager.load_template(ModelType.CUSTOM_OPENAI)
@@ -211,8 +211,10 @@ class TestModelManager:
         def fake_load(_: str) -> list[dict]:
             raise RuntimeError("boom")
 
-        monkeypatch.setattr("module.ModelManager.LogManager.get", lambda: DummyLogger())
-        monkeypatch.setattr("module.ModelManager.JSONTool.load_file", fake_load)
+        monkeypatch.setattr(
+            "module.Model.Manager.LogManager.get", lambda: DummyLogger()
+        )
+        monkeypatch.setattr("module.Model.Manager.JSONTool.load_file", fake_load)
 
         assert manager.load_preset_models() == []
 
@@ -229,7 +231,9 @@ class TestModelManager:
             "get_model_preset_dir",
             lambda language: "/tmp/preset",
         )
-        monkeypatch.setattr("module.ModelManager.JSONTool.load_file", lambda _: ["bad"])
+        monkeypatch.setattr(
+            "module.Model.Manager.JSONTool.load_file", lambda _: ["bad"]
+        )
 
         assert manager.load_template(ModelType.CUSTOM_OPENAI) == {}
 
@@ -250,8 +254,10 @@ class TestModelManager:
         def fake_load(_: str) -> dict:
             raise RuntimeError("boom")
 
-        monkeypatch.setattr("module.ModelManager.LogManager.get", lambda: DummyLogger())
-        monkeypatch.setattr("module.ModelManager.JSONTool.load_file", fake_load)
+        monkeypatch.setattr(
+            "module.Model.Manager.LogManager.get", lambda: DummyLogger()
+        )
+        monkeypatch.setattr("module.Model.Manager.JSONTool.load_file", fake_load)
 
         assert manager.load_template(ModelType.CUSTOM_GOOGLE) == {}
 
@@ -269,7 +275,7 @@ class TestModelManager:
         )
         generated_ids = iter(["g-1", "g-2", "g-3"])
         monkeypatch.setattr(
-            "module.ModelManager.Model.generate_id", lambda: next(generated_ids)
+            "module.Model.Manager.Model.generate_id", lambda: next(generated_ids)
         )
         monkeypatch.setattr(
             manager,
@@ -369,7 +375,7 @@ class TestModelManager:
                 "model_id": "m",
             },
         )
-        monkeypatch.setattr("module.ModelManager.Model.generate_id", lambda: "new-id")
+        monkeypatch.setattr("module.Model.Manager.Model.generate_id", lambda: "new-id")
 
         created = manager.add_model(ModelType.CUSTOM_OPENAI)
 

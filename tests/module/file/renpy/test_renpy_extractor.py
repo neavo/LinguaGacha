@@ -17,7 +17,7 @@ from module.File.RenPy.RenPyLexer import scan_double_quoted_literals
 
 from module.File.RenPy.RenPyParser import parse_document
 
-from model.Item import Item
+from module.Data.Core.Item import Item
 
 import pytest
 
