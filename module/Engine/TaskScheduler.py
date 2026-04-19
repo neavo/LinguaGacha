@@ -4,7 +4,6 @@ from collections.abc import Iterator
 
 from base.Base import Base
 from module.Data.Core.Item import Item
-from module.Utils.GapTool import GapTool
 
 
 class TaskScheduler:
@@ -39,7 +38,7 @@ class TaskScheduler:
         token_length = 0
         chunk: list[Item] = []
 
-        for i, item in GapTool.iter(enumerate(items)):
+        for i, item in enumerate(items):
             if item.get_status() != Base.ProjectStatus.NONE:
                 skip += 1
                 continue

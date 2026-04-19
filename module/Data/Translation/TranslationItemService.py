@@ -6,7 +6,6 @@ from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Core.ProjectSession import ProjectSession
 from module.File.FileManager import FileManager
-from module.Utils.GapTool import GapTool
 from module.Utils.ZstdTool import ZstdTool
 
 
@@ -30,9 +29,9 @@ class TranslationItemService:
         if mode in (Base.TranslationMode.NEW, Base.TranslationMode.CONTINUE):
             items: list[dict[str, Any]] = db.get_all_items()
 
-            # 分批构造 Item，避免后台线程长时间占用 GIL 导致 UI 掉帧
+            # 解压和构造 Item 放在锁外，避免长时间占用会话状态锁。
             result: list[Item] = []
-            for item_dict in GapTool.iter(items):
+            for item_dict in items:
                 result.append(Item.from_dict(item_dict))
 
             return result
@@ -42,7 +41,7 @@ class TranslationItemService:
             parsed_items: list[Item] = []
 
             asset_paths = db.get_all_asset_paths()
-            for rel_path in GapTool.iter(asset_paths):
+            for rel_path in asset_paths:
                 compressed = db.get_asset(rel_path)
                 if not compressed:
                     continue
@@ -59,6 +58,6 @@ class TranslationItemService:
 
         items: list[dict[str, Any]] = db.get_all_items()
         result: list[Item] = []
-        for item_dict in GapTool.iter(items):
+        for item_dict in items:
             result.append(Item.from_dict(item_dict))
         return result

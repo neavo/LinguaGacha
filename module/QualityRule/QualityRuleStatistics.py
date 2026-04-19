@@ -8,8 +8,6 @@ from enum import StrEnum
 from typing import Any
 from typing import Callable
 
-from module.Utils.GapTool import GapTool
-
 
 class QualityRuleStatistics:
     """质量规则统计器（纯逻辑）。
@@ -124,7 +122,7 @@ class QualityRuleStatistics:
         """把条目列表压成“统计 key + src”的候选集。"""
 
         candidates: list[tuple[str, str]] = []
-        for entry in GapTool.iter(entries):
+        for entry in entries:
             key = str(key_builder(entry)).strip()
             src = str(entry.get("src", "")).strip()
             if key == "" or src == "":
@@ -139,7 +137,7 @@ class QualityRuleStatistics:
         """把原始候选压成便于比较的快照。"""
 
         snapshots: list[QualityRuleStatistics.RelationCandidate] = []
-        for order, candidate in enumerate(GapTool.iter(candidates)):
+        for order, candidate in enumerate(candidates):
             key, src = candidate
             normalized_key = str(key).strip()
             normalized_src = str(src).strip()
@@ -179,7 +177,7 @@ class QualityRuleStatistics:
         """按文本长度分桶，跳过不可能成为父项的候选。"""
 
         buckets: dict[int, list[QualityRuleStatistics.RelationCandidate]] = {}
-        for snapshot in GapTool.iter(scope_snapshots):
+        for snapshot in scope_snapshots:
             buckets.setdefault(snapshot.length, []).append(snapshot)
         return {length: tuple(items) for length, items in buckets.items()}
 
@@ -219,7 +217,7 @@ class QualityRuleStatistics:
         scope_buckets = __class__.build_relation_scope_buckets(scope_snapshots)
         sorted_lengths = tuple(sorted(scope_buckets))
         subset_map: dict[str, tuple[str, ...]] = {}
-        for target_snapshot in GapTool.iter(target_snapshots):
+        for target_snapshot in target_snapshots:
             if should_stop is not None and should_stop():
                 return {}
 
@@ -253,7 +251,7 @@ class QualityRuleStatistics:
             if should_stop is not None and should_stop():
                 return tuple()
 
-            for scope_snapshot in GapTool.iter(scope_buckets.get(length, tuple())):
+            for scope_snapshot in scope_buckets.get(length, tuple()):
                 if should_stop is not None and should_stop():
                     return tuple()
                 if target_snapshot.key == scope_snapshot.key:
@@ -331,7 +329,7 @@ class QualityRuleStatistics:
             list[QualityRuleStatistics.RegexRuleTask],
         ] = {}
 
-        for rule in GapTool.iter(rules):
+        for rule in rules:
             key = str(rule.key)
             pattern = __class__.normalize_rule_pattern(rule.pattern)
             if pattern == "":
@@ -396,9 +394,7 @@ class QualityRuleStatistics:
 
         src_fold_snapshot: tuple[str, ...] = ()
         if (False, False) in literal_buckets:
-            src_fold_snapshot = tuple(
-                text.casefold() for text in GapTool.iter(src_snapshot)
-            )
+            src_fold_snapshot = tuple(text.casefold() for text in src_snapshot)
 
         for (use_dst, case_sensitive), bucket_rules in literal_buckets.items():
             if case_sensitive:
@@ -464,7 +460,7 @@ class QualityRuleStatistics:
 
         nodes = __class__.build_aho_nodes(tuple(patterns))
         matched_counts = [0] * len(patterns)
-        for text in GapTool.iter(texts):
+        for text in texts:
             matched_indexes = __class__.find_aho_matched_pattern_indexes(text, nodes)
             for pattern_index in matched_indexes:
                 matched_counts[pattern_index] += 1
@@ -505,7 +501,7 @@ class QualityRuleStatistics:
                 matched_by_pattern[pattern] = 0
                 continue
             matched_count = 0
-            for text in GapTool.iter(texts):
+            for text in texts:
                 if compiled.search(text) is not None:
                     matched_count += 1
             matched_by_pattern[pattern] = matched_count

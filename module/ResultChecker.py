@@ -10,7 +10,6 @@ from module.Data.DataManager import DataManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
-from module.Utils.GapTool import GapTool
 
 
 class WarningType(StrEnum):
@@ -359,7 +358,7 @@ class ResultChecker(Base):
             else []
         )
 
-        for item in GapTool.iter(items):
+        for item in items:
             snapshot = self.collect_item_check_snapshot(
                 item,
                 glossary=prepared_glossary,

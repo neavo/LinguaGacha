@@ -7,7 +7,6 @@ from base.Base import Base
 from module.Data.Core.Item import Item
 from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
 from module.Data.Core.DataTypes import WorkbenchSnapshot
-from module.Utils.GapTool import GapTool
 
 
 class WorkbenchService:
@@ -39,7 +38,7 @@ class WorkbenchService:
         count_by_path: dict[str, int] = defaultdict(int)
         file_type_by_path: dict[str, Item.FileType] = {}
 
-        for item in GapTool.iter(item_dicts):
+        for item in item_dicts:
             rel_path = item.get("file_path")
             if not isinstance(rel_path, str) or rel_path == "":
                 continue
@@ -69,7 +68,7 @@ class WorkbenchService:
                 translated_in_past += 1
 
         entries: list[WorkbenchFileEntrySnapshot] = []
-        for rel_path in GapTool.iter(asset_paths):
+        for rel_path in asset_paths:
             entries.append(
                 WorkbenchFileEntrySnapshot(
                     rel_path=rel_path,

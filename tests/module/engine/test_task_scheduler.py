@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
-import pytest
-
 from base.Base import Base
 from module.Data.Core.Item import Item
-import module.Engine.TaskScheduler as shared_scheduler_module
 from module.Engine.TaskScheduler import TaskScheduler
 
 
@@ -36,40 +31,6 @@ def test_generate_item_chunks_splits_when_file_changes() -> None:
 
     assert [len(chunk) for chunk in chunks] == [2, 1]
     assert preceding_chunks[1] == []
-
-
-def test_generate_item_chunks_iter_uses_gap_tool(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    items = [create_item("a1"), create_item("a2")]
-    observed: list[list[tuple[int, Item]]] = []
-
-    def fake_gap_iter(
-        iterable: list[tuple[int, Item]] | Any,
-        *,
-        sleep_seconds: float | None = None,
-    ) -> Any:
-        del sleep_seconds
-        captured = list(iterable)
-        observed.append(captured)
-        return iter(captured)
-
-    monkeypatch.setattr(
-        shared_scheduler_module.GapTool,
-        "iter",
-        staticmethod(fake_gap_iter),
-    )
-
-    chunks = list(
-        TaskScheduler.generate_item_chunks_iter(
-            items=items,
-            input_token_threshold=1000,
-            preceding_lines_threshold=0,
-        )
-    )
-
-    assert observed == [[(0, items[0]), (1, items[1])]]
-    assert [chunk for chunk, _preceding in chunks] == [items]
 
 
 def test_generate_item_chunks_splits_when_line_limit_exceeded() -> None:

@@ -14,7 +14,6 @@ from module.Data.Core.DataTypes import ProjectFileMutationResult
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
-from module.Utils.GapTool import GapTool
 from module.Utils.ZstdTool import ZstdTool
 
 
@@ -70,7 +69,7 @@ class ProjectFileService:
         file_manager = FileManager(Config().load())
         items = file_manager.parse_asset(rel_path, original_data)
         item_dicts: list[dict[str, Any]] = []
-        for item in GapTool.iter(items):
+        for item in items:
             item_dicts.append(item.to_dict())
 
         db.add_asset(rel_path, ZstdTool.compress(original_data), len(original_data))
@@ -105,7 +104,7 @@ class ProjectFileService:
         file_manager = FileManager(Config().load())
         new_items = file_manager.parse_asset(target_rel_path, original_data)
         new_item_dicts: list[dict[str, Any]] = []
-        for item in GapTool.iter(new_items):
+        for item in new_items:
             new_item_dicts.append(item.to_dict())
 
         old_type = self.pick_file_type(old_items)
@@ -157,7 +156,7 @@ class ProjectFileService:
 
         db = self.get_loaded_db()
         items = db.get_items_by_file_path(rel_path)
-        for item in GapTool.iter(items):
+        for item in items:
             item["dst"] = ""
             item["name_dst"] = None
             item["status"] = Base.ProjectStatus.NONE
@@ -196,9 +195,9 @@ class ProjectFileService:
         db = self.get_loaded_db()
         all_items: list[dict[str, Any]] = []
 
-        for rel_path in GapTool.iter(normalized_rel_paths):
+        for rel_path in normalized_rel_paths:
             items = db.get_items_by_file_path(rel_path)
-            for item in GapTool.iter(items):
+            for item in items:
                 item["dst"] = ""
                 item["name_dst"] = None
                 item["status"] = Base.ProjectStatus.NONE
@@ -223,14 +222,14 @@ class ProjectFileService:
         db = self.get_loaded_db()
 
         with db.connection() as conn:
-            for rel_path in GapTool.iter(normalized_rel_paths):
+            for rel_path in normalized_rel_paths:
                 db.delete_items_by_file_path(rel_path, conn=conn)
                 db.delete_asset(rel_path, conn=conn)
             conn.commit()
 
         self.item_service.clear_item_cache()
         with self.session.state_lock:
-            for rel_path in GapTool.iter(normalized_rel_paths):
+            for rel_path in normalized_rel_paths:
                 self.session.asset_decompress_cache.pop(rel_path, None)
         self.analysis_service.clear_analysis_progress()
         return ProjectFileMutationResult(
@@ -253,7 +252,7 @@ class ProjectFileService:
         target_path_casefolds: set[str] = set()
         prepared_operations: list[dict[str, Any]] = []
 
-        for rel_path, new_file_path in GapTool.iter(normalized_operations):
+        for rel_path, new_file_path in normalized_operations:
             if rel_path.casefold() not in existing_path_casefolds:
                 raise ValueError(Localizer.get().workbench_msg_file_not_found)
 
@@ -280,7 +279,7 @@ class ProjectFileService:
             file_manager = FileManager(Config().load())
             new_items = file_manager.parse_asset(target_rel_path, original_data)
             new_item_dicts: list[dict[str, Any]] = []
-            for item in GapTool.iter(new_items):
+            for item in new_items:
                 new_item_dicts.append(item.to_dict())
 
             old_type = self.pick_file_type(old_items)
@@ -308,7 +307,7 @@ class ProjectFileService:
             target_path_casefolds.add(target_rel_path.casefold())
 
         with db.connection() as conn:
-            for operation in GapTool.iter(prepared_operations):
+            for operation in prepared_operations:
                 rel_path = str(operation["rel_path"])
                 target_rel_path = str(operation["target_rel_path"])
                 original_data = bytes(operation["original_data"])
@@ -328,7 +327,7 @@ class ProjectFileService:
 
         self.item_service.clear_item_cache()
         with self.session.state_lock:
-            for operation in GapTool.iter(prepared_operations):
+            for operation in prepared_operations:
                 rel_path = str(operation["rel_path"])
                 target_rel_path = str(operation["target_rel_path"])
                 self.session.asset_decompress_cache.pop(rel_path, None)
@@ -338,12 +337,11 @@ class ProjectFileService:
         self.analysis_service.clear_analysis_progress()
         return ProjectFileMutationResult(
             rel_paths=tuple(
-                str(operation["target_rel_path"])
-                for operation in GapTool.iter(prepared_operations)
+                str(operation["target_rel_path"]) for operation in prepared_operations
             ),
             removed_rel_paths=tuple(
                 str(operation["rel_path"])
-                for operation in GapTool.iter(prepared_operations)
+                for operation in prepared_operations
                 if str(operation["target_rel_path"]).casefold()
                 != str(operation["rel_path"]).casefold()
             ),
@@ -408,7 +406,7 @@ class ProjectFileService:
 
         normalized_rel_paths: list[str] = []
         seen: set[str] = set()
-        for rel_path in GapTool.iter(rel_paths):
+        for rel_path in rel_paths:
             normalized_rel_path = str(rel_path).strip()
             if normalized_rel_path == "":
                 continue
@@ -432,7 +430,7 @@ class ProjectFileService:
         normalized_operations: list[tuple[str, str]] = []
         seen_rel_paths: set[str] = set()
 
-        for rel_path, new_file_path in GapTool.iter(operations):
+        for rel_path, new_file_path in operations:
             normalized_rel_path = str(rel_path).strip()
             normalized_file_path = str(new_file_path).strip()
             if normalized_rel_path == "" or normalized_file_path == "":
@@ -452,7 +450,7 @@ class ProjectFileService:
     def pick_file_type(self, items: list[dict[str, Any]]) -> str:
         """从条目列表里挑出有效文件类型。"""
 
-        for item in GapTool.iter(items):
+        for item in items:
             raw_type = item.get("file_type")
             if isinstance(raw_type, Item.FileType):
                 return raw_type.value
@@ -488,7 +486,7 @@ class ProjectFileService:
         """按 src 继承旧文件中的完成态译文。"""
 
         src_seen_order: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for item in GapTool.iter(old_items):
+        for item in old_items:
             src = item.get("src")
             if isinstance(src, str):
                 src_seen_order[src].append(item)
@@ -524,7 +522,7 @@ class ProjectFileService:
         }
 
         matched = 0
-        for item in GapTool.iter(new_item_dicts):
+        for item in new_item_dicts:
             src = item.get("src")
             if not isinstance(src, str):
                 continue

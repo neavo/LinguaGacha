@@ -9,7 +9,6 @@ from module.File.TRANS.NONE import NONE
 from module.File.TRANS.RENPY import RENPY
 from module.File.TRANS.RPGMAKER import RPGMAKER
 from module.File.TRANS.WOLF import WOLF
-from module.Utils.GapTool import GapTool
 from module.Utils.JSONTool import JSONTool
 
 
@@ -95,7 +94,7 @@ class TRANS(Base):
             )
 
             # 以 data 为权威行表，按 row_index 索引读取同位 tags/context/parameters。
-            for row_index in GapTool.iter(range(len(data_list))):
+            for row_index in range(len(data_list)):
                 data_raw = data_list[row_index]
                 data_row: list = data_raw if isinstance(data_raw, list) else []
 

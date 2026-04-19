@@ -10,7 +10,6 @@ from typing import Generator
 
 from base.Base import Base
 from base.LogManager import LogManager
-from module.Utils.GapTool import GapTool
 from module.Utils.JSONTool import JSONTool
 
 
@@ -682,7 +681,7 @@ class LGDatabase(Base):
         with self.connection() as conn:
             cursor = conn.execute("SELECT id, data FROM items ORDER BY id")
             result = []
-            for row in GapTool.iter(cursor):
+            for row in cursor:
                 data = JSONTool.loads(row["data"])
                 data["id"] = row["id"]
                 result.append(data)
@@ -697,7 +696,7 @@ class LGDatabase(Base):
                     (file_path,),
                 )
                 result: list[dict[str, Any]] = []
-                for row in GapTool.iter(cursor):
+                for row in cursor:
                     data = JSONTool.loads(row["data"])
                     data["id"] = row["id"]
                     result.append(data)
@@ -709,7 +708,7 @@ class LGDatabase(Base):
 
                 cursor = conn.execute("SELECT id, data FROM items ORDER BY id")
                 result = []
-                for row in GapTool.iter(cursor):
+                for row in cursor:
                     data = JSONTool.loads(row["data"])
                     if data.get("file_path") != file_path:
                         continue
@@ -732,7 +731,7 @@ class LGDatabase(Base):
         def delete_with_fallback(target_conn: sqlite3.Connection) -> int:
             cursor = target_conn.execute("SELECT id, data FROM items")
             ids: list[int] = []
-            for row in GapTool.iter(cursor):
+            for row in cursor:
                 data = JSONTool.loads(row["data"])
                 if data.get("file_path") == file_path:
                     ids.append(int(row["id"]))
@@ -802,7 +801,7 @@ class LGDatabase(Base):
         with self.connection() as conn:
             conn.execute("DELETE FROM items")
             ids = []
-            for item in GapTool.iter(items):
+            for item in items:
                 item_id = item.get("id")
                 data = {k: v for k, v in item.items() if k != "id"}
                 data_json = JSONTool.dumps(data)
@@ -829,7 +828,7 @@ class LGDatabase(Base):
         """批量插入翻译条目（不清空已有记录），返回新 ID 列表"""
         if conn is not None:
             ids = []
-            for item in GapTool.iter(items):
+            for item in items:
                 data_json = JSONTool.dumps({k: v for k, v in item.items() if k != "id"})
                 cursor = conn.execute(
                     "INSERT INTO items (data) VALUES (?)",
@@ -842,7 +841,7 @@ class LGDatabase(Base):
 
         with self.connection() as local_conn:
             ids = []
-            for item in GapTool.iter(items):
+            for item in items:
                 data_json = JSONTool.dumps({k: v for k, v in item.items() if k != "id"})
                 cursor = local_conn.execute(
                     "INSERT INTO items (data) VALUES (?)",
