@@ -135,6 +135,11 @@ class ProofreadingEntryPatchService:
                 if request_options.glossary_terms is not None
                 else base_options.glossary_terms
             ),
+            include_without_glossary_miss=(
+                request_options.include_without_glossary_miss
+                if request_options.include_without_glossary_miss is not None
+                else base_options.include_without_glossary_miss
+            ),
         )
 
     def filter_items_from_request(

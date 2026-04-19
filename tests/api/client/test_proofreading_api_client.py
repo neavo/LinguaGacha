@@ -51,6 +51,7 @@ def build_proofreading_app_service() -> ProofreadingAppService:
             statuses={Base.ProjectStatus.NONE, Base.ProjectStatus.PROCESSED},
             file_paths={"script/a.txt", "script/b.txt"},
             glossary_terms={("勇者", "Hero")},
+            include_without_glossary_miss=True,
         ),
         summary={
             "total_items": 2,
@@ -90,6 +91,7 @@ def build_proofreading_app_service() -> ProofreadingAppService:
             statuses={Base.ProjectStatus.NONE, Base.ProjectStatus.PROCESSED},
             file_paths={"script/a.txt", "script/b.txt"},
             glossary_terms={("勇者", "Hero")},
+            include_without_glossary_miss=True,
         ),
         summary={
             "total_items": 2,
@@ -231,6 +233,7 @@ def test_proofreading_api_client_get_snapshot_returns_snapshot(
     assert isinstance(result, ProofreadingSnapshot)
     assert result.revision == 7
     assert result.items[0].item_id == 1
+    assert result.filters.include_without_glossary_miss is True
 
 
 def test_proofreading_api_client_filter_items_returns_snapshot(

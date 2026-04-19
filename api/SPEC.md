@@ -516,7 +516,8 @@ data: {"task_type":"translation","line":3}
 - `file-patch` 会同时返回两套文件切片：默认筛选口径下的 `full_items` / `full_summary`，以及当前已应用筛选口径下的 `filtered_items` / `filtered_summary`。
 - `entry-patch` 会按 `target_item_ids` 返回双视图补丁：旧列表先移除这些条目，再由前端插回 `full_items` / `filtered_items`。
 - 当前工程未加载或请求里的工程路径已经过期时，API 会返回 `readonly` 快照，而不是专门的业务错误码。
-- `filters` 当前稳定字段为：`warning_types`、`statuses`、`file_paths`、`glossary_terms`。
+- `filters` 当前稳定字段为：`warning_types`、`statuses`、`file_paths`、`glossary_terms`、`include_without_glossary_miss`。
+- `include_without_glossary_miss` 为 `true` 时，当前筛选会保留“没有术语未命中”的条目，这同时覆盖“完全不含术语”和“术语全部生效”两类情况。
 - `save-item`、`save-all`、`replace-all`、`retranslate-items` 当前都使用 `expected_revision` 做乐观锁保护；但冲突异常在 API 边界仍未标准化成独立错误码。
 - 上述 mutation 路由的主响应壳未变化；渲染层当前会结合 `result.changed_item_ids + result.items[*].file_path` 立即请求一次 `/api/proofreading/entry-patch`，而不是再整页重拉。
 

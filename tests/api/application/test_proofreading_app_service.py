@@ -85,6 +85,7 @@ def build_load_result(
             },
             file_paths={"script/a.txt"} if items else set(),
             glossary_terms={("勇者", "Hero")} if items else set(),
+            include_without_glossary_miss=True,
         ),
         summary={
             "total_items": len(items),
@@ -120,6 +121,7 @@ def build_refreshed_load_result() -> ProofreadingLoadResult:
         statuses={Base.ProjectStatus.NONE},
         file_paths={"script/a.txt"},
         glossary_terms={("勇者", "Hero")},
+        include_without_glossary_miss=True,
     )
     return refreshed_result
 
@@ -252,6 +254,7 @@ def test_proofreading_snapshot_returns_revision() -> None:
         "warning_items": 1,
     }
     assert snapshot["filters"]["file_paths"] == ["script/a.txt"]
+    assert snapshot["filters"]["include_without_glossary_miss"] is True
     assert snapshot["items"][0] == {
         "item_id": 1,
         "file_path": "script/a.txt",
@@ -559,6 +562,7 @@ def test_proofreading_file_patch_returns_filtered_and_full_file_slices() -> None
                 "statuses": ["PROCESSED"],
                 "file_paths": ["script/a.txt"],
                 "glossary_terms": [["勇者", "Hero"]],
+                "include_without_glossary_miss": False,
             },
         }
     )
@@ -567,6 +571,8 @@ def test_proofreading_file_patch_returns_filtered_and_full_file_slices() -> None
     assert patch["removed_file_paths"] == ["script/old.txt"]
     assert patch["default_filters"]["file_paths"] == ["script/a.txt"]
     assert patch["applied_filters"]["file_paths"] == ["script/a.txt"]
+    assert patch["default_filters"]["include_without_glossary_miss"] is True
+    assert patch["applied_filters"]["include_without_glossary_miss"] is False
     assert patch["full_summary"]["total_items"] == 2
     assert patch["filtered_summary"]["filtered_items"] == 1
     assert patch["full_items"][0]["file_path"] == "script/a.txt"
@@ -584,6 +590,7 @@ def test_proofreading_entry_patch_returns_target_item_ids_and_dual_views() -> No
                 "statuses": ["PROCESSED"],
                 "file_paths": ["script/a.txt"],
                 "glossary_terms": [["勇者", "Hero"]],
+                "include_without_glossary_miss": False,
             },
         }
     )
@@ -592,5 +599,7 @@ def test_proofreading_entry_patch_returns_target_item_ids_and_dual_views() -> No
     assert patch["target_item_ids"] == [1, 2]
     assert patch["default_filters"]["file_paths"] == ["script/a.txt"]
     assert patch["applied_filters"]["file_paths"] == ["script/a.txt"]
+    assert patch["default_filters"]["include_without_glossary_miss"] is True
+    assert patch["applied_filters"]["include_without_glossary_miss"] is False
     assert patch["full_items"][0]["item_id"] == 1
     assert patch["filtered_items"][0]["item_id"] == 1

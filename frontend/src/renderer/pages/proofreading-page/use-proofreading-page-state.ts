@@ -110,6 +110,7 @@ function serialize_filter_options(filters: ProofreadingFilterOptions): Record<st
     statuses: [...filters.statuses],
     file_paths: [...filters.file_paths],
     glossary_terms: serialize_glossary_terms(filters.glossary_terms),
+    include_without_glossary_miss: filters.include_without_glossary_miss,
   }
 }
 
@@ -300,6 +301,7 @@ function build_filter_signature(filters: ProofreadingFilterOptions | null): stri
     glossary_terms: serialize_glossary_terms(filters.glossary_terms).sort((left_term, right_term) => {
       return compare_text(left_term.join('→'), right_term.join('→'))
     }),
+    include_without_glossary_miss: filters.include_without_glossary_miss,
   })
 }
 
@@ -307,13 +309,6 @@ function build_sort_signature(sort_state: AppTableSortState | null): string {
   return sort_state === null
     ? 'null'
     : `${sort_state.column_id}:${sort_state.direction}`
-}
-
-function are_filter_options_equal(
-  left_filters: ProofreadingFilterOptions,
-  right_filters: ProofreadingFilterOptions,
-): boolean {
-  return build_filter_signature(left_filters) === build_filter_signature(right_filters)
 }
 
 type ProofreadingFilterValueKeyResolver<T> = (value: T) => string
@@ -425,6 +420,11 @@ function reconcile_proofreading_filter_options(args: {
       resolve_key: build_glossary_term_key,
       clone_value: clone_glossary_term,
     }),
+    include_without_glossary_miss:
+      args.previous_applied.include_without_glossary_miss
+        === args.previous_default.include_without_glossary_miss
+        ? args.next_default.include_without_glossary_miss
+        : args.previous_applied.include_without_glossary_miss,
   }
 }
 
@@ -739,18 +739,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
             next_default: next_full_snapshot.filters,
           })
 
-      let next_server_snapshot = next_full_snapshot
-
-      // 为什么：页面要同时保留“筛选弹窗的全量底稿”和“当前筛后的工作范围”，所以这里拆成双快照管理。
-      if (!are_filter_options_equal(next_applied_filters, next_full_snapshot.filters)) {
-        const filtered_payload = await api_fetch<ProofreadingSnapshotPayload>(
-          '/api/proofreading/filter',
-          {
-            filter_options: serialize_filter_options(next_applied_filters),
-          },
-        )
-        next_server_snapshot = normalize_proofreading_snapshot_payload(filtered_payload)
-      }
+      // 为什么：`snapshot` 只提供全量底稿与默认筛选定义，真正“当前表格工作范围”
+      // 必须统一走 `/api/proofreading/filter`，否则默认筛选等于快照默认值时会误把全量条目直接塞进表格。
+      const filtered_payload = await api_fetch<ProofreadingSnapshotPayload>(
+        '/api/proofreading/filter',
+        {
+          filter_options: serialize_filter_options(next_applied_filters),
+        },
+      )
+      const next_server_snapshot = normalize_proofreading_snapshot_payload(filtered_payload)
 
       if (request_id !== refresh_request_id_ref.current) {
         return
@@ -802,16 +799,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     try {
       const normalized_filters = clone_proofreading_filter_options(next_filters)
-      const next_server_snapshot = are_filter_options_equal(normalized_filters, full_snapshot.filters)
-        ? full_snapshot
-        : normalize_proofreading_snapshot_payload(
-            await api_fetch<ProofreadingSnapshotPayload>(
-              '/api/proofreading/filter',
-              {
-                filter_options: serialize_filter_options(normalized_filters),
-              },
-            ),
-          )
+      const next_server_snapshot = normalize_proofreading_snapshot_payload(
+        await api_fetch<ProofreadingSnapshotPayload>(
+          '/api/proofreading/filter',
+          {
+            filter_options: serialize_filter_options(normalized_filters),
+          },
+        ),
+      )
 
       preferred_row_id_ref.current = null
       should_select_first_visible_ref.current = true
@@ -823,7 +818,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     } finally {
       set_is_refreshing(false)
     }
-  }, [full_snapshot, handle_api_error, project_snapshot.loaded, t])
+  }, [handle_api_error, project_snapshot.loaded, t])
 
   const apply_file_patch = useCallback(async (): Promise<void> => {
     if (!project_snapshot.loaded) {

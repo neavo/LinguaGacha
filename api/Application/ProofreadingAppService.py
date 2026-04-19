@@ -493,6 +493,11 @@ class ProofreadingAppService:
                 if request_options.glossary_terms is not None
                 else base_options.glossary_terms
             ),
+            include_without_glossary_miss=(
+                request_options.include_without_glossary_miss
+                if request_options.include_without_glossary_miss is not None
+                else base_options.include_without_glossary_miss
+            ),
         )
 
     def resolve_search_options(
@@ -776,5 +781,8 @@ class ProofreadingAppService:
                     for term in (filter_options.glossary_terms or set())
                 ],
                 key=lambda term: f"{term[0]}->{term[1]}",
+            ),
+            "include_without_glossary_miss": (
+                filter_options.include_without_glossary_miss is not False
             ),
         }

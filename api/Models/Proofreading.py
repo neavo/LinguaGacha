@@ -14,6 +14,7 @@ class ProofreadingFilterOptionsSnapshot:
     statuses: tuple[str, ...] = ()
     file_paths: tuple[str, ...] = ()
     glossary_terms: tuple[tuple[str, str], ...] = ()
+    include_without_glossary_miss: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> Self:
@@ -53,11 +54,24 @@ class ProofreadingFilterOptionsSnapshot:
                     normalized_terms.append((str(term[0]), str(term[1])))
             glossary_terms = tuple(normalized_terms)
 
+        include_without_glossary_miss_raw = normalized.get(
+            "include_without_glossary_miss",
+            True,
+        )
+        if isinstance(include_without_glossary_miss_raw, str):
+            include_without_glossary_miss = (
+                include_without_glossary_miss_raw.strip().lower()
+                not in ("", "0", "false", "no", "off")
+            )
+        else:
+            include_without_glossary_miss = bool(include_without_glossary_miss_raw)
+
         return cls(
             warning_types=warning_types,
             statuses=statuses,
             file_paths=file_paths,
             glossary_terms=glossary_terms,
+            include_without_glossary_miss=include_without_glossary_miss,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -68,6 +82,7 @@ class ProofreadingFilterOptionsSnapshot:
             "statuses": list(self.statuses),
             "file_paths": list(self.file_paths),
             "glossary_terms": [list(term) for term in self.glossary_terms],
+            "include_without_glossary_miss": self.include_without_glossary_miss,
         }
 
 

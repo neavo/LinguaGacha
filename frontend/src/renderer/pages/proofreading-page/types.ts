@@ -64,6 +64,7 @@ export type ProofreadingFilterOptions = {
   statuses: string[]
   file_paths: string[]
   glossary_terms: ProofreadingGlossaryTerm[]
+  include_without_glossary_miss: boolean
 }
 
 export type ProofreadingItem = {
@@ -277,6 +278,12 @@ export type ProofreadingTranslationTaskMetrics = {
 
 export function build_proofreading_row_id(item_id: number | string): string {
   return String(item_id)
+}
+
+export function format_proofreading_glossary_term(
+  term: ProofreadingGlossaryTerm,
+): string {
+  return `${term[0]} -> ${term[1]}`
 }
 
 export function create_empty_translation_task_snapshot(): ProofreadingTranslationTaskSnapshot {
@@ -497,6 +504,7 @@ export function clone_proofreading_filter_options(
     glossary_terms: filters.glossary_terms.map((term) => {
       return [term[0], term[1]] as const
     }),
+    include_without_glossary_miss: filters.include_without_glossary_miss,
   }
 }
 
@@ -589,6 +597,7 @@ function build_default_proofreading_filter_options(
     statuses: default_statuses.length > 0 ? default_statuses : available_statuses,
     file_paths: [...available_file_paths],
     glossary_terms: [...available_glossary_terms.values()],
+    include_without_glossary_miss: true,
   }
 }
 
@@ -601,6 +610,8 @@ export function normalize_proofreading_filter_options(
   const has_statuses = Array.isArray(filters?.statuses)
   const has_file_paths = Array.isArray(filters?.file_paths)
   const has_glossary_terms = Array.isArray(filters?.glossary_terms)
+  const has_include_without_glossary_miss =
+    typeof filters?.include_without_glossary_miss === 'boolean'
   const warning_types = has_warning_types
     ? unique_strings((filters?.warning_types ?? []).map((value) => String(value)))
     : []
@@ -619,6 +630,9 @@ export function normalize_proofreading_filter_options(
     statuses: has_statuses ? statuses : fallback_filters.statuses,
     file_paths: has_file_paths ? file_paths : fallback_filters.file_paths,
     glossary_terms: has_glossary_terms ? glossary_terms : fallback_filters.glossary_terms,
+    include_without_glossary_miss: has_include_without_glossary_miss
+      ? Boolean(filters?.include_without_glossary_miss)
+      : fallback_filters.include_without_glossary_miss,
   }
 }
 
@@ -761,6 +775,7 @@ export function create_empty_proofreading_snapshot(): ProofreadingSnapshot {
       statuses: [],
       file_paths: [],
       glossary_terms: [],
+      include_without_glossary_miss: true,
     },
     items: [],
   }
