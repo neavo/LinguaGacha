@@ -36,44 +36,65 @@ class TestLanguageFilterEN:
         assert LanguageFilter.filter("12345", BaseLanguage.Enum.EN) is True
 
 
-class TestLanguageFilterOtherLanguages:
-    """其他语言通过 getattr 动态获取检测函数。"""
+@pytest.mark.parametrize(
+    ("source_language", "text"),
+    [
+        (BaseLanguage.Enum.JA, "こんにちは"),
+        (BaseLanguage.Enum.KO, "안녕하세요"),
+        (BaseLanguage.Enum.RU, "Привет"),
+        (BaseLanguage.Enum.AR, "مرحبا"),
+        (BaseLanguage.Enum.DE, "Straße"),
+        (BaseLanguage.Enum.FR, "Bonjour"),
+        (BaseLanguage.Enum.PL, "Zażółć gęślą jaźń"),
+        (BaseLanguage.Enum.ES, "Hola"),
+        (BaseLanguage.Enum.IT, "Città"),
+        (BaseLanguage.Enum.PT, "Olá"),
+        (BaseLanguage.Enum.HU, "Árvíztűrő"),
+        (BaseLanguage.Enum.TR, "İstanbul"),
+        (BaseLanguage.Enum.TH, "สวัสดี"),
+        (BaseLanguage.Enum.ID, "Bahasa"),
+        (BaseLanguage.Enum.VI, "Xin chào"),
+    ],
+    ids=[
+        "JA",
+        "KO",
+        "RU",
+        "AR",
+        "DE",
+        "FR",
+        "PL",
+        "ES",
+        "IT",
+        "PT",
+        "HU",
+        "TR",
+        "TH",
+        "ID",
+        "VI",
+    ],
+)
+def test_filter_accepts_supported_dynamic_language_codes(
+    source_language: BaseLanguage.Enum,
+    text: str,
+) -> None:
+    assert LanguageFilter.filter(text, source_language) is False
 
-    def test_ja_with_hiragana_not_filtered(self) -> None:
-        assert LanguageFilter.filter("こんにちは", BaseLanguage.Enum.JA) is False
 
-    def test_ja_with_katakana_not_filtered(self) -> None:
-        assert LanguageFilter.filter("カタカナ", BaseLanguage.Enum.JA) is False
-
-    def test_ja_without_japanese_filtered(self) -> None:
-        assert LanguageFilter.filter("12345", BaseLanguage.Enum.JA) is True
-
-    def test_ko_with_hangul_not_filtered(self) -> None:
-        assert LanguageFilter.filter("안녕하세요", BaseLanguage.Enum.KO) is False
-
-    def test_ko_without_hangul_filtered(self) -> None:
-        assert LanguageFilter.filter("12345", BaseLanguage.Enum.KO) is True
-
-    def test_ru_with_cyrillic_not_filtered(self) -> None:
-        assert LanguageFilter.filter("Привет", BaseLanguage.Enum.RU) is False
-
-    def test_ru_without_cyrillic_filtered(self) -> None:
-        assert LanguageFilter.filter("12345", BaseLanguage.Enum.RU) is True
-
-    @pytest.mark.parametrize(
-        "lang,text",
-        [
-            (BaseLanguage.Enum.DE, "Straße"),
-            (BaseLanguage.Enum.FR, "Bonjour"),
-            (BaseLanguage.Enum.ES, "Hola"),
-            (BaseLanguage.Enum.TH, "สวัสดี"),
-        ],
-        ids=["DE", "FR", "ES", "TH"],
-    )
-    def test_various_languages_with_native_text_not_filtered(
-        self, lang: BaseLanguage.Enum, text: str
-    ) -> None:
-        assert LanguageFilter.filter(text, lang) is False
+@pytest.mark.parametrize(
+    ("source_language", "text"),
+    [
+        (BaseLanguage.Enum.JA, "12345"),
+        (BaseLanguage.Enum.KO, "12345"),
+        (BaseLanguage.Enum.RU, "12345"),
+        (BaseLanguage.Enum.AR, "12345"),
+    ],
+    ids=["JA", "KO", "RU", "AR"],
+)
+def test_filter_rejects_text_without_expected_script_for_dynamic_languages(
+    source_language: BaseLanguage.Enum,
+    text: str,
+) -> None:
+    assert LanguageFilter.filter(text, source_language) is True
 
 
 @pytest.mark.parametrize(
@@ -96,3 +117,8 @@ def test_filter_accepts_plain_string_language_code(
 
 def test_filter_returns_false_when_source_language_is_all() -> None:
     assert LanguageFilter.filter("Hello 你好 123", BaseLanguage.ALL) is False
+
+
+def test_filter_raises_when_language_code_is_unknown() -> None:
+    with pytest.raises(AttributeError):
+        LanguageFilter.filter("Hello World", "UNKNOWN")

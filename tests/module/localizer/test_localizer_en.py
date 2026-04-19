@@ -1,19 +1,44 @@
+from string import Formatter
+
 from module.Localizer.LocalizerEN import LocalizerEN
-from module.Localizer.LocalizerZH import LocalizerZH
 
 
-def test_localizer_en_inherits_from_zh() -> None:
-    assert issubclass(LocalizerEN, LocalizerZH)
+def get_public_text_catalog() -> dict[str, str]:
+    return {
+        key: value
+        for key, value in vars(LocalizerEN).items()
+        if not key.startswith("_") and isinstance(value, str)
+    }
 
 
-def test_localizer_en_declares_same_text_keys_as_zh() -> None:
-    assert set(LocalizerZH.__annotations__) == set(LocalizerEN.__annotations__)
+def get_placeholder_names(text: str) -> set[str]:
+    formatter = Formatter()
+    placeholder_names: set[str] = set()
+    for _, field_name, _, _ in formatter.parse(text):
+        if field_name:
+            placeholder_names.add(field_name)
+    return placeholder_names
 
 
-def test_localizer_en_declares_non_empty_text_values_for_all_keys() -> None:
-    assert LocalizerEN.__annotations__
+def test_localizer_en_catalog_contains_non_empty_strings() -> None:
+    # Arrange
+    catalog = get_public_text_catalog()
 
-    for key in LocalizerEN.__annotations__:
-        value = getattr(LocalizerEN, key)
-        assert isinstance(value, str), f"{key} 必须是字符串"
+    # Act / Assert
+    assert catalog
+    for key, value in catalog.items():
         assert value != "", f"{key} 不应为空字符串"
+
+
+def test_localizer_en_templates_can_be_formatted_with_public_placeholders() -> None:
+    # Arrange
+    catalog = get_public_text_catalog()
+
+    # Act / Assert
+    for key, value in catalog.items():
+        placeholder_values = {
+            field_name: f"<{field_name}>" for field_name in get_placeholder_names(value)
+        }
+        formatted_value = value.format(**placeholder_values)
+
+        assert isinstance(formatted_value, str), f"{key} 应保持为可展示文本"

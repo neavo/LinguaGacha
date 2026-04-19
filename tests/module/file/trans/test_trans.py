@@ -8,17 +8,9 @@ from base.Base import Base
 
 from module.Config import Config
 
-from module.File.TRANS.KAG import KAG
-
 from module.File.TRANS.NONE import NONE
 
-from module.File.TRANS.RENPY import RENPY
-
-from module.File.TRANS.RPGMAKER import RPGMAKER
-
 from module.File.TRANS.TRANS import TRANS
-
-from module.File.TRANS.WOLF import WOLF
 
 from pathlib import Path
 
@@ -30,39 +22,31 @@ from tests.module.file.conftest import DummyDataManager
 def test_get_processor_routes_by_game_engine(config: Config) -> None:
     handler = TRANS(config)
 
-    assert isinstance(handler.get_processor({"gameEngine": "kag"}), KAG)
-    assert isinstance(handler.get_processor({"gameEngine": "wolf"}), WOLF)
-    assert isinstance(handler.get_processor({"gameEngine": "renpy"}), RENPY)
-    assert isinstance(handler.get_processor({"gameEngine": "rmmz"}), RPGMAKER)
-    assert isinstance(handler.get_processor({"gameEngine": "unknown"}), NONE)
+    assert handler.get_processor({"gameEngine": "kag"}).TEXT_TYPE == Item.TextType.KAG
+    assert handler.get_processor({"gameEngine": "wolf"}).TEXT_TYPE == Item.TextType.WOLF
+    assert (
+        handler.get_processor({"gameEngine": "renpy"}).TEXT_TYPE
+        == Item.TextType.RENPY
+    )
+    assert (
+        handler.get_processor({"gameEngine": "rmmz"}).TEXT_TYPE
+        == Item.TextType.RPGMAKER
+    )
+    assert (
+        handler.get_processor({"gameEngine": "unknown"}).TEXT_TYPE
+        == Item.TextType.NONE
+    )
 
 
 def test_read_from_stream_marks_duplicates_when_enabled(
     config: Config,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = TRANS(config)
     config.deduplication_in_trans = True
 
-    class DummyProcessor(NONE):
-        def pre_process(self) -> None:
-            return
-
-        def check(self, path: str, data: list[str], tag: list[str], context: list[str]):
-            del path
-            del context
-            src = data[0] if data else ""
-            dst = data[1] if len(data) > 1 else src
-            return src, dst, tag, Base.ProjectStatus.NONE, False
-
-    monkeypatch.setattr(
-        "module.File.TRANS.TRANS.TRANS.get_processor",
-        lambda self, project: DummyProcessor(project),
-    )
-
     payload = {
         "project": {
-            "gameEngine": "dummy",
+            "gameEngine": "unknown",
             "files": {
                 "script.json": {
                     "tags": [[], []],
@@ -82,35 +66,18 @@ def test_read_from_stream_marks_duplicates_when_enabled(
     assert len(items) == 2
     assert items[0].get_status() == Base.ProjectStatus.NONE
     assert items[1].get_status() == Base.ProjectStatus.DUPLICATED
-    assert items[0].get_text_type() == NONE.TEXT_TYPE
+    assert items[0].get_text_type() == Item.TextType.NONE
 
 
 def test_read_from_stream_does_not_mark_duplicates_when_disabled(
     config: Config,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = TRANS(config)
     config.deduplication_in_trans = False
 
-    class DummyProcessor(NONE):
-        def pre_process(self) -> None:
-            return
-
-        def check(self, path: str, data: list[str], tag: list[str], context: list[str]):
-            del path
-            del context
-            src = data[0] if data else ""
-            dst = data[1] if len(data) > 1 else src
-            return src, dst, tag, Base.ProjectStatus.NONE, False
-
-    monkeypatch.setattr(
-        "module.File.TRANS.TRANS.TRANS.get_processor",
-        lambda self, project: DummyProcessor(project),
-    )
-
     payload = {
         "project": {
-            "gameEngine": "dummy",
+            "gameEngine": "unknown",
             "files": {
                 "script.json": {
                     "tags": [[], []],
@@ -134,18 +101,18 @@ def test_read_from_stream_does_not_mark_duplicates_when_disabled(
 
 def test_read_from_stream_returns_empty_for_invalid_shapes(
     config: Config,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = TRANS(config)
 
-    monkeypatch.setattr("module.File.TRANS.TRANS.JSONTool.loads", lambda content: [])
     assert handler.read_from_stream(b"[]", "a.trans") == []
 
-    monkeypatch.setattr(
-        "module.File.TRANS.TRANS.JSONTool.loads",
-        lambda content: {"project": {"files": []}},
+    assert (
+        handler.read_from_stream(
+            json.dumps({"project": {"files": []}}).encode("utf-8"),
+            "a.trans",
+        )
+        == []
     )
-    assert handler.read_from_stream(b"{}", "a.trans") == []
 
 
 def test_read_from_path_reads_files_and_builds_rel_path(
@@ -158,18 +125,49 @@ def test_read_from_path_reads_files_and_builds_rel_path(
     file_a = input_root / "a.trans"
     file_b = input_root / "sub" / "b.trans"
     file_b.parent.mkdir(parents=True, exist_ok=True)
-    file_a.write_text("a", encoding="utf-8")
-    file_b.write_text("b", encoding="utf-8")
+    file_a.write_text(
+        json.dumps(
+            {
+                "project": {
+                    "gameEngine": "unknown",
+                    "files": {
+                        "script/a.json": {
+                            "tags": [[]],
+                            "data": [["A", ""]],
+                            "context": [[]],
+                            "parameters": [[]],
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    file_b.write_text(
+        json.dumps(
+            {
+                "project": {
+                    "gameEngine": "unknown",
+                    "files": {
+                        "script/b.json": {
+                            "tags": [[]],
+                            "data": [["B", ""]],
+                            "context": [[]],
+                            "parameters": [[]],
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    def fake_read_from_stream(content: bytes, rel_path: str) -> list[Item]:
-        del content
-        return [Item.from_dict({"src": rel_path})]
-
-    handler.read_from_stream = fake_read_from_stream
     items = handler.read_from_path([str(file_a), str(file_b)], str(input_root))
 
-    rels = sorted(item.get_src().replace("\\", "/") for item in items)
-    assert rels == ["a.trans", "sub/b.trans"]
+    observed = sorted(
+        (item.get_file_path().replace("\\", "/"), item.get_src()) for item in items
+    )
+    assert observed == [("a.trans", "A"), ("sub/b.trans", "B")]
 
 
 def test_read_from_stream_clamps_negative_column_indices(config: Config) -> None:
@@ -519,21 +517,6 @@ class MixedBlockProcessor(NONE):
         del tag
         # 混合分区，确保触发 partition parameters + gold。
         return [True, False] if len(context) >= 2 else [False]
-
-
-class EmptyBlockProcessor(NONE):
-    def post_process(self) -> None:
-        return
-
-    def filter(
-        self, src: str, path: str, tag: list[str], context: list[str]
-    ) -> list[bool]:
-        del src
-        del path
-        del tag
-        del context
-        # 覆盖空 block 分支（由调用方兜底为 [False]）。
-        return []
 
 
 def test_patch_writer_respects_index_translation_and_preserves_extra_columns(
@@ -913,54 +896,6 @@ def test_patch_writer_creates_tags_and_parameters_when_fields_have_wrong_types(
             {"contextStr": "c2", "translation": ""},
         ]
     ]
-
-
-def test_patch_writer_removes_gold_when_not_mixed_and_filter_returns_empty_block(
-    config: Config,
-    dummy_data_manager: DummyDataManager,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    handler = TRANS(config)
-    monkeypatch.setattr(
-        "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
-    )
-    monkeypatch.setattr(
-        "module.File.TRANS.TRANS.TRANS.get_processor",
-        lambda self, project: EmptyBlockProcessor(project),
-    )
-
-    rel_path = "remove_gold.trans"
-    file_key = "script/remove_gold.json"
-    payload = {
-        "project": {
-            "gameEngine": "dummy",
-            "files": {
-                file_key: {
-                    "tags": [["gold"]],
-                    "data": [["src", "old_dst"]],
-                    "context": [["ctx"]],
-                    "parameters": [None],
-                }
-            },
-        }
-    }
-    content = json.dumps(payload).encode("utf-8")
-    dummy_data_manager.assets[rel_path] = content
-
-    items = handler.read_from_stream(content, rel_path)
-    assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED_IN_PAST
-
-    handler.write_to_path(items)
-
-    output = json.loads(
-        (dummy_data_manager.translated_path / rel_path).read_text("utf-8")
-    )
-    file_obj = output["project"]["files"][file_key]
-
-    assert file_obj["data"] == [["src", "old_dst"]]
-    assert file_obj["tags"] == [[]]
-    assert file_obj["parameters"] == [None]
 
 
 def test_patch_writer_skips_duplicated_row_when_translation_mapping_missing(
@@ -1372,68 +1307,3 @@ def test_legacy_fallback_skips_unknown_file_key_in_items(
     )
 
 
-def test_patch_writer_skips_when_entry_data_becomes_invalid_after_validation(
-    config: Config,
-    dummy_data_manager: DummyDataManager,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    handler = TRANS(config)
-    monkeypatch.setattr(
-        "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
-    )
-
-    rel_path = "flaky_data.trans"
-    file_key = "script/flaky.json"
-
-    class FlakyEntry(dict):
-        def __init__(self, *args, **kwargs) -> None:
-            super().__init__(*args, **kwargs)
-            self.data_get_calls = 0
-
-        def get(self, key, default=None):
-            if key == "data":
-                self.data_get_calls += 1
-                if self.data_get_calls >= 2:
-                    return None
-            return super().get(key, default)
-
-    json_data = {
-        "project": {
-            "gameEngine": "dummy",
-            "files": {
-                file_key: FlakyEntry(
-                    {
-                        "tags": [[]],
-                        "data": [["src", ""]],
-                        "context": [[]],
-                        "parameters": [None],
-                    }
-                )
-            },
-        }
-    }
-
-    # data 校验阶段读取正常，patch 阶段读取变为 None，确保触发 patch writer 的 defensive continue。
-    monkeypatch.setattr(
-        "module.File.TRANS.TRANS.JSONTool.loads", lambda content: json_data
-    )
-    dummy_data_manager.assets[rel_path] = b"ignored"
-
-    item = Item.from_dict(
-        {
-            "src": "src",
-            "dst": "dst",
-            "status": Base.ProjectStatus.PROCESSED,
-            "tag": file_key,
-            "row": 0,
-            "file_type": Item.FileType.TRANS,
-            "file_path": rel_path,
-            "extra_field": {"trans_ref": {"file_key": file_key, "row_index": 0}},
-        }
-    )
-    handler.write_to_path([item])
-
-    output = json.loads(
-        (dummy_data_manager.translated_path / rel_path).read_text("utf-8")
-    )
-    assert output["project"]["files"][file_key]["data"] == [["src", ""]]

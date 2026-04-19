@@ -4,9 +4,6 @@ from api.Application.ExtraAppService import ExtraAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ExtraApiClient import ExtraApiClient
 from api.Server.Routes.ExtraRoutes import ExtraRoutes
-from api.Models import ExtraToolEntry
-from api.Models import ExtraToolSnapshot
-from api.Models import NameFieldEntryDraft
 from api.Models import NameFieldSnapshot
 from api.Models import NameFieldTranslateResult
 from api.Models import TsConversionOptionsSnapshot
@@ -56,46 +53,6 @@ class FakeNameFieldExtractionService:
         return {"items": items}
 
 
-def test_extra_models_expose_minimal_ts_conversion_contract() -> None:
-    # Arrange
-    snapshot = TsConversionOptionsSnapshot()
-    accepted = TsConversionTaskAccepted()
-
-    # Assert
-    assert snapshot.default_direction == ""
-    assert snapshot.preserve_text_enabled is False
-    assert snapshot.convert_name_enabled is False
-    assert accepted.accepted is False
-    assert accepted.task_id == ""
-
-
-def test_extra_models_expose_minimal_name_field_contract() -> None:
-    # Arrange
-    draft = NameFieldEntryDraft()
-    name_field_snapshot = NameFieldSnapshot()
-    translate_result = NameFieldTranslateResult()
-
-    # Assert
-    assert draft.src == ""
-    assert draft.dst == ""
-    assert draft.context == ""
-    assert draft.status == ""
-    assert name_field_snapshot.items == ()
-    assert translate_result.items == ()
-    assert translate_result.success_count == 0
-    assert translate_result.failed_count == 0
-
-
-def test_extra_models_expose_minimal_tool_contract() -> None:
-    # Arrange
-    tool_entry = ExtraToolEntry()
-    tool_snapshot = ExtraToolSnapshot()
-
-    # Assert
-    assert tool_entry.tool_id == ""
-    assert tool_snapshot.entries == ()
-
-
 def test_extra_api_client_get_ts_conversion_options_returns_snapshot(
     start_api_server: Callable[..., str],
 ) -> None:
@@ -111,6 +68,26 @@ def test_extra_api_client_get_ts_conversion_options_returns_snapshot(
     assert result.default_direction == "TO_TRADITIONAL"
     assert result.preserve_text_enabled is True
     assert result.convert_name_enabled is True
+
+
+def test_extra_api_client_get_name_field_snapshot_returns_snapshot(
+    start_api_server: Callable[..., str],
+) -> None:
+    # Arrange
+    base_url = start_api_server(
+        extra_app_service=ExtraAppService(
+            name_field_extraction_service=FakeNameFieldExtractionService()
+        )
+    )
+    extra_api_client = ExtraApiClient(ApiClient(base_url))
+
+    # Act
+    result = extra_api_client.get_name_field_snapshot()
+
+    # Assert
+    assert isinstance(result, NameFieldSnapshot)
+    assert result.items[0].src == "勇者"
+    assert result.items[0].dst == ""
 
 
 def test_extra_api_client_start_ts_conversion_returns_task_result(

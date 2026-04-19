@@ -1,3 +1,5 @@
+import pytest
+
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Data.Core.Item import Item
@@ -196,6 +198,16 @@ class TestProjectPrefilterInputContract:
             "mtool_optimizer_enable": False,
         }
 
+    def test_apply_raises_for_unknown_language_code(self) -> None:
+        items = [make_item(src="Hello World")]
+
+        with pytest.raises(AttributeError):
+            ProjectPrefilter.apply(
+                items,
+                source_language="UNKNOWN",
+                mtool_optimizer_enable=False,
+            )
+
 
 class TestMToolOptimizerPreprocess:
     """MTool 优化器预处理：标记 KVJSON 中的子句。"""
@@ -342,10 +354,10 @@ class TestProjectPrefilterMToolIntegration:
         assert clause.get_status() == Base.ProjectStatus.NONE
 
 
-class TestProjectPrefilterCoverageBranches:
-    """补齐回调与空输入分支，确保预过滤流程覆盖完整。"""
+class TestProjectPrefilterEmptyInputAndPhaseProgress:
+    """空输入与阶段进度回调也要保持稳定可消费。"""
 
-    def test_apply_with_empty_items_and_callback_reports_nothing(self) -> None:
+    def test_apply_returns_zero_stats_for_empty_items(self) -> None:
         progress_steps: list[tuple[int, int]] = []
 
         result = ProjectPrefilter.apply(
@@ -357,9 +369,12 @@ class TestProjectPrefilterCoverageBranches:
 
         assert result.stats.rule_skipped == 0
         assert result.stats.language_skipped == 0
+        assert result.stats.mtool_skipped == 0
         assert progress_steps == []
 
-    def test_mtool_preprocess_empty_list_reports_offset_progress(self) -> None:
+    def test_mtool_preprocess_reports_existing_progress_when_no_kvjson_items(
+        self,
+    ) -> None:
         progress_steps: list[tuple[int, int]] = []
 
         skipped = ProjectPrefilter.mtool_optimizer_preprocess(
@@ -372,7 +387,7 @@ class TestProjectPrefilterCoverageBranches:
         assert skipped == 0
         assert progress_steps == [(3, 10)]
 
-    def test_mtool_preprocess_progress_callback_reports_final_step(self) -> None:
+    def test_mtool_preprocess_reports_phase_completion(self) -> None:
         progress_steps: list[tuple[int, int]] = []
         multi_line = make_item(
             src="Line A\nLine B",

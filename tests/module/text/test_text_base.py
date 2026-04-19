@@ -8,20 +8,20 @@ class UppercaseOnlyText(TextBase.TextBase):
         return c.isupper()
 
 
-class TestTextBaseCommonBehavior:
-    def test_base_helper_methods_delegate_to_subclass_char_rule(self) -> None:
-        base = UppercaseOnlyText()
+class TestTextBaseAny:
+    def test_any_delegates_to_subclass_char_rule(self) -> None:
+        detector = UppercaseOnlyText()
 
-        assert base.any("aB") is True
-        assert base.all("ABC") is True
-        assert base.all("Ab") is False
-        assert base.strip_non_target("..ABC??") == "ABC"
+        assert detector.any("aB") is True
+        assert detector.any("abc") is False
+        assert detector.any("") is False
 
-    def test_any_and_all_on_empty_text(self) -> None:
-        cjk = TextBase.CJK()
+    def test_all_delegates_to_subclass_char_rule(self) -> None:
+        detector = UppercaseOnlyText()
 
-        assert cjk.any("") is False
-        assert cjk.all("") is True
+        assert detector.all("ABC") is True
+        assert detector.all("Ab") is False
+        assert detector.all("") is True
 
     def test_strip_non_target_keeps_middle_non_target_chars(self) -> None:
         cjk = TextBase.CJK()
@@ -64,19 +64,14 @@ class TestCJKAndLatin:
 
 
 class TestJapaneseAndKorean:
-    def test_ja_supports_cjk_hiragana_and_katakana(self) -> None:
+    def test_ja_char_supports_cjk_hiragana_and_katakana(self) -> None:
         ja = TextBase.JA()
 
         assert ja.char("你") is True
         assert ja.char("あ") is True
         assert ja.char("カ") is True
 
-    def test_ja_katakana_excludes_long_vowel_mark(self) -> None:
-        ja = TextBase.JA()
-
-        assert ja.katakana("ー") is False
-
-    def test_ja_hiragana_helpers(self) -> None:
+    def test_ja_hiragana_detection_only_matches_hiragana_text(self) -> None:
         ja = TextBase.JA()
 
         assert ja.any_hiragana("abcあ") is True
@@ -84,22 +79,24 @@ class TestJapaneseAndKorean:
         assert ja.all_hiragana("あい") is True
         assert ja.all_hiragana("あA") is False
 
-    def test_ja_katakana_helpers(self) -> None:
+    def test_ja_katakana_detection_excludes_long_vowel_mark(self) -> None:
         ja = TextBase.JA()
 
+        assert ja.katakana("カ") is True
+        assert ja.katakana("ー") is False
         assert ja.any_katakana("abcカ") is True
         assert ja.any_katakana("abc") is False
         assert ja.all_katakana("カタ") is True
         assert ja.all_katakana("カあ") is False
 
-    def test_ko_supports_cjk_and_hangul(self) -> None:
+    def test_ko_char_supports_cjk_and_hangul(self) -> None:
         ko = TextBase.KO()
 
         assert ko.char("你") is True
         assert ko.char("한") is True
         assert ko.char("A") is False
 
-    def test_ko_hangeul_helpers(self) -> None:
+    def test_ko_hangeul_detection_only_matches_hangeul_text(self) -> None:
         ko = TextBase.KO()
 
         assert ko.any_hangeul("A한") is True

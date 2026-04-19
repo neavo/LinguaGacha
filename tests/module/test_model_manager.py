@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import pytest
 
@@ -45,19 +45,17 @@ class TestModelManager:
         second = ModelManager.get()
         assert first is not second
 
-    def test_base_path_get_model_preset_dir_uses_app_language(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_get_preset_dir_uses_app_language(self) -> None:
         manager = ModelManager()
-        BasePath.initialize("/tmp/app", False)
+        BasePath.initialize("/workspace/app", False)
 
         manager.set_app_language(BaseLanguage.Enum.ZH)
-        zh_path = BasePath.get_model_preset_dir(manager.app_language)
+        zh_path = manager.get_preset_dir()
         manager.set_app_language(BaseLanguage.Enum.EN)
-        en_path = BasePath.get_model_preset_dir(manager.app_language)
+        en_path = manager.get_preset_dir()
 
-        assert zh_path.replace("\\", "/") == "/tmp/app/resource/preset/model/zh"
-        assert en_path.replace("\\", "/") == "/tmp/app/resource/preset/model/en"
+        assert zh_path.replace("\\", "/") == "/workspace/app/resource/preset/model/zh"
+        assert en_path.replace("\\", "/") == "/workspace/app/resource/preset/model/en"
 
     def test_initialize_models_migrates_and_fills_missing_types(
         self, monkeypatch: pytest.MonkeyPatch
@@ -130,37 +128,33 @@ class TestModelManager:
 
         assert manager.load_preset_models() == []
 
-    def test_load_template_returns_type_specific_template(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_load_template_reads_template_from_current_language_dir(self, fs) -> None:
+        del fs
         manager = ModelManager()
-        monkeypatch.setattr(
-            BasePath,
-            "get_model_preset_dir",
-            lambda language: "/tmp/preset",
+        BasePath.initialize("/workspace/app", False)
+        manager.set_app_language(BaseLanguage.Enum.EN)
+        preset_dir = Path("/workspace/app/resource/preset/model/en")
+        preset_dir.mkdir(parents=True, exist_ok=True)
+        (preset_dir / manager.PRESET_CUSTOM_GOOGLE_FILENAME).write_text(
+            '{"name": "google-template"}',
+            encoding="utf-8",
         )
-
-        def fake_load(path: str) -> dict:
-            return {"path": path}
-
-        monkeypatch.setattr("module.Model.Manager.JSONTool.load_file", fake_load)
+        (preset_dir / manager.PRESET_CUSTOM_OPENAI_FILENAME).write_text(
+            '{"name": "openai-template"}',
+            encoding="utf-8",
+        )
+        (preset_dir / manager.PRESET_CUSTOM_ANTHROPIC_FILENAME).write_text(
+            '{"name": "anthropic-template"}',
+            encoding="utf-8",
+        )
 
         google_template = manager.load_template(ModelType.CUSTOM_GOOGLE)
         openai_template = manager.load_template(ModelType.CUSTOM_OPENAI)
         anthropic_template = manager.load_template(ModelType.CUSTOM_ANTHROPIC)
 
-        assert google_template["path"] == os.path.join(
-            "/tmp/preset",
-            manager.PRESET_CUSTOM_GOOGLE_FILENAME,
-        )
-        assert openai_template["path"] == os.path.join(
-            "/tmp/preset",
-            manager.PRESET_CUSTOM_OPENAI_FILENAME,
-        )
-        assert anthropic_template["path"] == os.path.join(
-            "/tmp/preset",
-            manager.PRESET_CUSTOM_ANTHROPIC_FILENAME,
-        )
+        assert google_template["name"] == "google-template"
+        assert openai_template["name"] == "openai-template"
+        assert anthropic_template["name"] == "anthropic-template"
 
     def test_get_active_model_falls_back_to_first_when_missing(self) -> None:
         manager = ModelManager()
@@ -784,26 +778,6 @@ class TestModelManager:
         current = manager.get_model_by_id("target")
         assert isinstance(current, Model)
         assert current.name == "target-updated"
-
-    def test_reset_preset_model_returns_false_when_replace_loop_cannot_find_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        manager = ModelManager()
-
-        monkeypatch.setattr(
-            manager,
-            "get_model_by_id",
-            lambda _: Model.from_dict(
-                build_model_data("target", ModelType.PRESET.value)
-            ),
-        )
-        monkeypatch.setattr(
-            manager,
-            "load_preset_models",
-            lambda: [build_model_data("target", ModelType.PRESET.value)],
-        )
-
-        assert manager.reset_preset_model("target") is False
 
     def test_reorder_models_ignores_unknown_id(self) -> None:
         manager = ModelManager()

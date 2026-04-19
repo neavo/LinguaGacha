@@ -6,6 +6,7 @@ import pytest
 
 def test_get_app_settings_returns_serializable_snapshot(
     settings_app_service,
+    fake_settings_config,
 ) -> None:
     result = settings_app_service.get_app_settings({})
 
@@ -13,6 +14,8 @@ def test_get_app_settings_returns_serializable_snapshot(
 
     assert settings["app_language"] == BaseLanguage.Enum.ZH
     assert settings["project_save_mode"] == Config.ProjectSaveMode.MANUAL
+    assert fake_settings_config.load_calls == 1
+    assert fake_settings_config.save_calls == 1
 
 
 def test_update_app_settings_persists_selected_keys(
@@ -23,6 +26,7 @@ def test_update_app_settings_persists_selected_keys(
         {
             "target_language": BaseLanguage.Enum.EN,
             "request_timeout": 300,
+            "preceding_lines_threshold": "4",
         }
     )
 
@@ -30,6 +34,7 @@ def test_update_app_settings_persists_selected_keys(
 
     assert settings["target_language"] == BaseLanguage.Enum.EN
     assert settings["request_timeout"] == 300
+    assert settings["preceding_lines_threshold"] == 4
     assert fake_settings_config.save_calls == 1
     assert settings_app_service.applied_localizer_languages == []
     assert settings_app_service.applied_model_languages == []
@@ -40,6 +45,7 @@ def test_update_app_settings_persists_selected_keys(
                 "keys": [
                     "target_language",
                     "request_timeout",
+                    "preceding_lines_threshold",
                 ],
                 "settings": settings,
             },
@@ -101,14 +107,16 @@ def test_update_app_settings_syncs_runtime_language_when_app_language_changes(
     ]
 
 
+@pytest.mark.parametrize("invalid_language", ["JA", "garbage-language"])
 def test_update_app_settings_rejects_unsupported_app_language(
     settings_app_service,
     fake_settings_config,
+    invalid_language: str,
 ) -> None:
     with pytest.raises(ValueError, match="应用语言只支持 ZH 或 EN"):
         settings_app_service.update_app_settings(
             {
-                "app_language": "JA",
+                "app_language": invalid_language,
             }
         )
 

@@ -46,6 +46,7 @@ def test_move_bottom_keeps_relative_order_of_selected_rows() -> None:
     )
 
     assert order == [0, 2, 4, 5, 1, 3]
+    assert QualityRuleReorder.build_order_move_bottom(4, []) == [0, 1, 2, 3]
 
 
 def test_identity_and_normalize_rows_return_empty_when_non_positive_total() -> None:
@@ -88,33 +89,49 @@ def test_build_order_move_to_index_handles_empty_full_and_same_position() -> Non
     ) == [0, 2, 3, 1]
 
 
-def test_build_order_for_operation_dispatch_and_fallback() -> None:
-    assert QualityRuleReorder.build_order_for_operation(
-        total_count=4,
-        moving_rows=[2],
-        operation=QualityRuleReorder.Operation.MOVE_UP,
-    ) == QualityRuleReorder.build_order_move_up(4, [2])
-    assert QualityRuleReorder.build_order_for_operation(
-        total_count=4,
-        moving_rows=[1],
-        operation=QualityRuleReorder.Operation.MOVE_DOWN,
-    ) == QualityRuleReorder.build_order_move_down(4, [1])
-    assert QualityRuleReorder.build_order_for_operation(
-        total_count=4,
-        moving_rows=[2],
-        operation=QualityRuleReorder.Operation.MOVE_TOP,
-    ) == QualityRuleReorder.build_order_move_top(4, [2])
-    assert QualityRuleReorder.build_order_for_operation(
-        total_count=4,
-        moving_rows=[1],
-        operation=QualityRuleReorder.Operation.MOVE_BOTTOM,
-    ) == QualityRuleReorder.build_order_move_bottom(4, [1])
+def test_build_order_for_operation_applies_requested_result_or_falls_back() -> None:
+    values = ["a", "b", "c", "d"]
 
-    assert QualityRuleReorder.build_order_for_operation(
-        total_count=4,
-        moving_rows=[1],
-        operation=cast(QualityRuleReorder.Operation, "UNKNOWN"),
-    ) == [0, 1, 2, 3]
+    assert apply_order(
+        values,
+        QualityRuleReorder.build_order_for_operation(
+            total_count=4,
+            moving_rows=[2],
+            operation=QualityRuleReorder.Operation.MOVE_UP,
+        ),
+    ) == ["a", "c", "b", "d"]
+    assert apply_order(
+        values,
+        QualityRuleReorder.build_order_for_operation(
+            total_count=4,
+            moving_rows=[1],
+            operation=QualityRuleReorder.Operation.MOVE_DOWN,
+        ),
+    ) == ["a", "c", "b", "d"]
+    assert apply_order(
+        values,
+        QualityRuleReorder.build_order_for_operation(
+            total_count=4,
+            moving_rows=[2],
+            operation=QualityRuleReorder.Operation.MOVE_TOP,
+        ),
+    ) == ["c", "a", "b", "d"]
+    assert apply_order(
+        values,
+        QualityRuleReorder.build_order_for_operation(
+            total_count=4,
+            moving_rows=[1],
+            operation=QualityRuleReorder.Operation.MOVE_BOTTOM,
+        ),
+    ) == ["a", "c", "d", "b"]
+    assert apply_order(
+        values,
+        QualityRuleReorder.build_order_for_operation(
+            total_count=4,
+            moving_rows=[1],
+            operation=cast(QualityRuleReorder.Operation, "UNKNOWN"),
+        ),
+    ) == values
 
 
 def test_build_order_move_up_covers_empty_and_adjacent_rows() -> None:
@@ -137,7 +154,3 @@ def test_build_order_move_top_normalizes_rows() -> None:
         2,
         4,
     ]
-
-
-def test_build_order_move_bottom_handles_empty_rows() -> None:
-    assert QualityRuleReorder.build_order_move_bottom(4, []) == [0, 1, 2, 3]

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -13,6 +12,14 @@ from module.Engine.Translation.TranslationProgressTracker import (
 )
 
 
+class FakeProgress:
+    def __init__(self) -> None:
+        self.updates: list[dict[str, int]] = []
+
+    def update_task(self, task_id: int, **kwargs: int) -> None:
+        self.updates.append({"task_id": task_id, **kwargs})
+
+
 def create_translation_stub() -> SimpleNamespace:
     translation = SimpleNamespace()
     translation.extras = {}
@@ -21,7 +28,9 @@ def create_translation_stub() -> SimpleNamespace:
     translation.dm = SimpleNamespace(get_translation_extras=lambda: {})
     translation.saved_statuses: list[Base.ProjectStatus] = []
     translation.emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
-    translation.save_translation_state = MagicMock()
+    translation.save_translation_state = lambda status: (
+        translation.saved_statuses.append(status)
+    )
     translation.emit = lambda event, data: translation.emitted_events.append(
         (event, data)
     )
@@ -152,14 +161,14 @@ def test_build_plan_snapshot_continue_mode_reuses_saved_tokens_and_live_counts(
 
 def test_update_pipeline_progress_updates_bound_progress_and_emits_event() -> None:
     translation = create_translation_stub()
-    progress = MagicMock()
+    progress = FakeProgress()
     translation.task_hooks = SimpleNamespace(progress=progress, pid=7)
     tracker = TranslationProgressTracker(translation)
     snapshot = {"line": 3, "total_line": 8}
 
     tracker.update_pipeline_progress(snapshot)
 
-    progress.update_task.assert_called_once_with(7, completed=3, total=8)
+    assert progress.updates == [{"task_id": 7, "completed": 3, "total": 8}]
     assert translation.emitted_events == [(Base.Event.TRANSLATION_PROGRESS, snapshot)]
 
 
@@ -171,7 +180,5 @@ def test_persist_progress_snapshot_saves_state_only_when_requested() -> None:
 
     snapshot = tracker.persist_progress_snapshot(save_state=True)
 
-    translation.save_translation_state.assert_called_once_with(
-        Base.ProjectStatus.PROCESSING
-    )
+    assert translation.saved_statuses == [Base.ProjectStatus.PROCESSING]
     assert snapshot == {"line": 1}

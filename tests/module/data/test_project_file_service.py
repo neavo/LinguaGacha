@@ -17,6 +17,7 @@ from module.Data.Core.ProjectSession import ProjectSession
 def build_service() -> tuple[ProjectFileService, ProjectSession]:
     session = ProjectSession()
     captured_batch: dict[str, object] = {}
+    inserted_items_batches: list[list[dict[str, object]]] = []
 
     def record_update_batch(
         *,
@@ -28,9 +29,17 @@ def build_service() -> tuple[ProjectFileService, ProjectSession]:
         captured_batch["rules"] = rules
         captured_batch["meta"] = meta
 
+    def record_insert_items(
+        items: list[dict[str, object]],
+        conn: object | None = None,
+    ) -> list[int]:
+        del conn
+        inserted_items_batches.append([dict(item) for item in items])
+        return list(range(1, len(items) + 1))
+
     session.db = SimpleNamespace(
         add_asset=MagicMock(),
-        insert_items=MagicMock(),
+        insert_items=MagicMock(side_effect=record_insert_items),
         get_items_by_file_path=MagicMock(return_value=[]),
         update_batch=MagicMock(side_effect=record_update_batch),
         delete_items_by_file_path=MagicMock(),
@@ -46,6 +55,7 @@ def build_service() -> tuple[ProjectFileService, ProjectSession]:
     )
     session.lg_path = "demo/project.lg"
     session.captured_batch = captured_batch
+    session.inserted_items_batches = inserted_items_batches
     item_service = SimpleNamespace(clear_item_cache=MagicMock())
     analysis_service = SimpleNamespace(clear_analysis_progress=MagicMock())
     service = ProjectFileService(
@@ -116,7 +126,7 @@ def test_add_file_imports_asset_and_items_and_clears_caches(
     assert result.total == 1
     session.db.add_asset.assert_called_once()
     session.db.insert_items.assert_called_once()
-    inserted_items = session.db.insert_items.call_args.args[0]
+    inserted_items = session.inserted_items_batches[0]
     assert len(inserted_items) == 1
     assert inserted_items[0]["src"] == "a"
     assert inserted_items[0]["file_path"] == "a.txt"
@@ -204,12 +214,14 @@ def test_reorder_files_updates_asset_sort_orders() -> None:
     with connection_ctx as conn:
         expected_conn = conn
 
-    service.reorder_files(["script/b.txt", "script/a.txt"])
+    result = service.reorder_files(["script/b.txt", "script/a.txt"])
 
     session.db.update_asset_sort_orders.assert_called_once_with(
         ["script/b.txt", "script/a.txt"],
         conn=expected_conn,
     )
+    expected_conn.commit.assert_called_once()
+    assert result.order_changed is True
 
 
 def test_reorder_files_rejects_missing_or_extra_paths() -> None:

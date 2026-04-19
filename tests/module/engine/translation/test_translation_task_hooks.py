@@ -112,7 +112,7 @@ def test_translation_task_hooks_handle_commit_payloads_updates_batch_and_progres
         ),
     )
 
-    hooks.handle_commit_payloads(payload)
+    result = hooks.handle_commit_payloads(payload)
 
     translation.update_extras_snapshot.assert_called_once_with(
         processed_count=1,
@@ -120,10 +120,14 @@ def test_translation_task_hooks_handle_commit_payloads_updates_batch_and_progres
         input_tokens=3,
         output_tokens=4,
     )
-    translation.apply_batch_update_sync.assert_called_once()
+    translation.apply_batch_update_sync.assert_called_once_with(
+        [item.to_dict()],
+        {"line": 1, "total_line": 2},
+    )
     translation.update_pipeline_progress.assert_called_once_with(
         {"line": 1, "total_line": 2}
     )
+    assert result.retry_contexts == ()
 
 
 def test_translation_task_hooks_handle_commit_payloads_returns_retry_contexts() -> None:

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import Any
 
 import pytest
 
 from base.Base import Base
-from module.Engine.Analysis.Analysis import Analysis
+from module.Engine.Analysis.AnalysisProgressTracker import AnalysisProgressTracker
+from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 
 from tests.module.engine.analysis.support import analysis_progress_module
 
@@ -31,12 +34,31 @@ class FakeConsoleProgress:
         self.updates.append({"task_id": task_id, **kwargs})
 
 
+@dataclass
+class FakeAnalysis:
+    extras: dict[str, object] = field(default_factory=dict)
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = field(
+        default_factory=list
+    )
+
+    def set_progress_snapshot(self, snapshot: TaskProgressSnapshot) -> dict[str, Any]:
+        self.extras = snapshot.to_dict()
+        return dict(self.extras)
+
+    def emit(self, event: Base.Event, data: dict[str, object]) -> None:
+        self.emitted_events.append((event, data))
+
+
+def create_tracker(**overrides: object) -> tuple[FakeAnalysis, AnalysisProgressTracker]:
+    analysis = FakeAnalysis(build_analysis_runtime_extras(**overrides))
+    return analysis, AnalysisProgressTracker(analysis)
+
+
 def test_analysis_progress_tracker_runtime_uses_memory_snapshot_only(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
-    analysis.extras = build_analysis_runtime_extras(
+    analysis, tracker = create_tracker(
         total_line=9,
         processed_line=3,
         error_line=1,
@@ -44,7 +66,6 @@ def test_analysis_progress_tracker_runtime_uses_memory_snapshot_only(
         total_input_tokens=3,
         total_output_tokens=4,
     )
-    emitted: list[tuple[Base.Event, dict[str, object]]] = []
     fake_data_manager.get_analysis_status_summary = lambda: (_ for _ in ()).throw(
         AssertionError("运行态不该全量重算")
     )
@@ -58,27 +79,21 @@ def test_analysis_progress_tracker_runtime_uses_memory_snapshot_only(
         lambda: fake_data_manager,
     )
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
-    monkeypatch.setattr(
-        analysis,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
-    )
 
-    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=False)
+    snapshot = tracker.persist_progress_snapshot(save_state=False)
 
     assert snapshot["time"] == pytest.approx(12.0)
     assert snapshot["line"] == 4
     assert snapshot["processed_line"] == 3
     assert snapshot["error_line"] == 1
-    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+    assert analysis.emitted_events == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
 def test_analysis_progress_tracker_emits_candidate_count_from_cache(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
-    analysis.extras = build_analysis_runtime_extras(
+    analysis, tracker = create_tracker(
         total_line=9,
         processed_line=2,
         total_output_tokens=6,
@@ -86,7 +101,6 @@ def test_analysis_progress_tracker_emits_candidate_count_from_cache(
         total_tokens=9,
     )
     fake_data_manager.analysis_candidate_count = 5
-    emitted: list[tuple[Base.Event, dict[str, object]]] = []
 
     monkeypatch.setattr(
         analysis_progress_module.DataManager,
@@ -94,29 +108,22 @@ def test_analysis_progress_tracker_emits_candidate_count_from_cache(
         lambda: fake_data_manager,
     )
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
-    monkeypatch.setattr(
-        analysis,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
-    )
 
-    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=False)
+    snapshot = tracker.persist_progress_snapshot(save_state=False)
 
     assert snapshot["analysis_candidate_count"] == 5
-    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+    assert analysis.emitted_events == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
 def test_analysis_progress_tracker_updates_bound_console_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
-    analysis.extras = build_analysis_runtime_extras(
+    analysis, tracker = create_tracker(
         total_line=9,
         processed_line=3,
         error_line=1,
     )
-    emitted: list[tuple[Base.Event, dict[str, object]]] = []
     progress = FakeConsoleProgress()
 
     monkeypatch.setattr(
@@ -125,32 +132,25 @@ def test_analysis_progress_tracker_updates_bound_console_progress(
         lambda: fake_data_manager,
     )
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
-    monkeypatch.setattr(
-        analysis,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
-    )
 
-    analysis.progress_tracker.bind_console_progress(progress, 7)
-    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=False)
+    tracker.bind_console_progress(progress, 7)
+    snapshot = tracker.persist_progress_snapshot(save_state=False)
 
     assert progress.updates == [{"task_id": 7, "completed": 4, "total": 9}]
-    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+    assert analysis.emitted_events == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
 def test_analysis_progress_tracker_save_state_only_persists_runtime_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
-    analysis.extras = build_analysis_runtime_extras(
+    analysis, tracker = create_tracker(
         total_line=9,
         processed_line=1,
         total_tokens=7,
         total_input_tokens=3,
         total_output_tokens=4,
     )
-    emitted: list[tuple[Base.Event, dict[str, object]]] = []
     persisted_snapshots: list[dict[str, object]] = []
 
     def fake_persist(snapshot: dict[str, object]) -> dict[str, object]:
@@ -169,34 +169,27 @@ def test_analysis_progress_tracker_save_state_only_persists_runtime_snapshot(
         lambda: fake_data_manager,
     )
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
-    monkeypatch.setattr(
-        analysis,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
-    )
 
-    snapshot = analysis.progress_tracker.persist_progress_snapshot(save_state=True)
+    snapshot = tracker.persist_progress_snapshot(save_state=True)
 
     assert persisted_snapshots[0]["processed_line"] == 1
     assert persisted_snapshots[0]["error_line"] == 0
     assert persisted_snapshots[0]["line"] == 1
     assert snapshot["total_line"] == 9
-    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+    assert analysis.emitted_events == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
 def test_analysis_progress_tracker_force_sync_refreshes_cache_after_persist(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
-    analysis.extras = build_analysis_runtime_extras(
+    analysis, tracker = create_tracker(
         total_line=9,
         processed_line=1,
         total_tokens=7,
         total_input_tokens=3,
         total_output_tokens=4,
     )
-    emitted: list[tuple[Base.Event, dict[str, object]]] = []
     persisted_snapshots: list[dict[str, object]] = []
 
     def fake_persist(snapshot: dict[str, object]) -> dict[str, object]:
@@ -223,27 +216,21 @@ def test_analysis_progress_tracker_force_sync_refreshes_cache_after_persist(
         lambda: fake_data_manager,
     )
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
-    monkeypatch.setattr(
-        analysis,
-        "emit",
-        lambda event, data: emitted.append((event, data)),
-    )
 
-    snapshot = analysis.progress_tracker.sync_progress_snapshot_after_commit(force=True)
+    snapshot = tracker.sync_progress_snapshot_after_commit(force=True)
 
     assert persisted_snapshots[0]["processed_line"] == 1
     assert persisted_snapshots[0]["line"] == 1
     assert snapshot["processed_line"] == 2
     assert snapshot["error_line"] == 1
     assert snapshot["line"] == 3
-    assert emitted == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
+    assert analysis.emitted_events == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 
 def test_analysis_progress_tracker_clear_progress_dirty_state_records_persist_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    analysis = Analysis()
-    tracker = analysis.progress_tracker
+    _, tracker = create_tracker()
     tracker.progress_dirty = True
     tracker.pending_progress_commit_count = 3
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 123.0)

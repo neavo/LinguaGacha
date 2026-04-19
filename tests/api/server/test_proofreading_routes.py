@@ -1,23 +1,6 @@
-from collections.abc import Callable
-
 from api.Server.Routes.ProofreadingRoutes import ProofreadingRoutes
 from tests.api.server.route_contracts import PHASE_TWO_PROOFREADING_ROUTE_PATHS
-
-
-class RouteRecorder:
-    """记录校对路由注册结果，避免把闭包实现细节当成断言目标。"""
-
-    def __init__(self) -> None:
-        self.routes: list[tuple[str, str]] = []
-
-    def add_json_route(
-        self,
-        method: str,
-        path: str,
-        handler: Callable[..., object],
-    ) -> None:
-        del handler
-        self.routes.append((method, path))
+from tests.api.server.route_contracts import RouteRecorder
 
 
 def test_proofreading_routes_paths_match_boundary_contract() -> None:
@@ -42,6 +25,6 @@ def test_proofreading_routes_register_expected_http_contract() -> None:
 
     ProofreadingRoutes.register(recorder, object())
 
-    assert recorder.routes == [
+    assert recorder.json_routes == [
         ("POST", path) for path in PHASE_TWO_PROOFREADING_ROUTE_PATHS
     ]

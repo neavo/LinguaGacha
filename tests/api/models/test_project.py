@@ -14,6 +14,10 @@ def test_project_snapshot_from_dict_normalizes_loaded_flag() -> None:
 
     assert snapshot.path == "demo.lg"
     assert snapshot.loaded is True
+    assert snapshot.to_dict() == {
+        "path": "demo.lg",
+        "loaded": True,
+    }
 
 
 def test_project_preview_from_dict_models_summary_fields() -> None:
@@ -69,3 +73,11 @@ def test_project_preview_to_dict_returns_explicit_modeled_fields() -> None:
         "translated_items": 5,
         "progress": 0.25,
     }
+
+
+def test_project_preview_from_dict_marks_missing_progress_as_absent() -> None:
+    preview = ProjectPreview.from_dict({"name": "Draft"})
+
+    assert preview.name == "Draft"
+    assert preview.progress == 0.0
+    assert preview.has_progress is False

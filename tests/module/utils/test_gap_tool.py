@@ -27,7 +27,7 @@ class TestGapToolIter:
         assert result == [1, 2, 3]
         assert sleep_calls == []
 
-    def test_iter_sleeps_when_interval_elapsed(
+    def test_iter_sleeps_each_time_interval_elapsed(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -44,7 +44,10 @@ class TestGapToolIter:
         assert result == ["a", "b", "c"]
         assert sleep_calls == [0.005, 0.005]
 
-    def test_iter_with_empty_iterable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_iter_with_empty_iterable_does_not_sleep(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         perf = counter([1.0])
         sleep_calls: list[float] = []
 
@@ -56,21 +59,45 @@ class TestGapToolIter:
         assert list(GapTool.iter([], sleep_seconds=0.1)) == []
         assert sleep_calls == []
 
-    def test_iter_uses_windows_default_sleep_when_value_is_none(
+    @pytest.mark.parametrize(
+        ("platform", "expected_sleep"),
+        [
+            ("win32", GapTool.DEFAULT_SLEEP_SECONDS_WINDOWS),
+            ("linux", GapTool.DEFAULT_SLEEP_SECONDS),
+        ],
+    )
+    def test_iter_uses_platform_default_sleep_when_value_is_none(
         self,
+        platform: str,
+        expected_sleep: float,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         perf = counter([0.0, 0.11, 0.12])
         sleep_calls: list[float] = []
 
-        monkeypatch.setattr("module.Utils.GapTool.sys.platform", "win32")
+        monkeypatch.setattr("module.Utils.GapTool.sys.platform", platform)
         monkeypatch.setattr(
             "module.Utils.GapTool.time.perf_counter", lambda: next(perf)
         )
         monkeypatch.setattr("module.Utils.GapTool.time.sleep", sleep_calls.append)
 
         assert list(GapTool.iter(["value"], sleep_seconds=None)) == ["value"]
-        assert sleep_calls == [GapTool.DEFAULT_SLEEP_SECONDS_WINDOWS]
+        assert sleep_calls == [expected_sleep]
+
+    def test_iter_clamps_negative_sleep_to_zero(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        perf = counter([0.0, 0.11, 0.12])
+        sleep_calls: list[float] = []
+
+        monkeypatch.setattr(
+            "module.Utils.GapTool.time.perf_counter", lambda: next(perf)
+        )
+        monkeypatch.setattr("module.Utils.GapTool.time.sleep", sleep_calls.append)
+
+        assert list(GapTool.iter(["value"], sleep_seconds=-1.0)) == ["value"]
+        assert sleep_calls == [0.0]
 
 
 class TestGapToolResolveSleepSeconds:

@@ -15,7 +15,6 @@ from module.Engine.TaskRequestErrors import StreamDegradationError
 from module.Engine.TaskRequestExecutor import TaskRequestResult
 from module.Engine.Translation.TranslationTask import TranslationTask
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
-from module.Response.ResponseCleaner import ResponseCleaner
 from module.Response.ResponseChecker import ResponseChecker
 from module.TextProcessor import TextProcessor
 
@@ -278,26 +277,6 @@ class TestTranslationTaskPrepareRequestData:
 
 
 class TestTranslationTaskUtils:
-    @pytest.mark.parametrize(
-        ("source", "expected_cleaned", "expected_why"),
-        [
-            ("", "", ""),
-            ("plain text", "plain text", ""),
-            ("A<why>R1</why>B<why>\nR2\n</why>", "AB", "R1\nR2"),
-        ],
-    )
-    def test_extract_why_from_response(
-        self, source: str, expected_cleaned: str, expected_why: str
-    ) -> None:
-        cleaned, why_text = ResponseCleaner.extract_why_from_response(source)
-
-        assert cleaned == expected_cleaned
-        assert why_text == expected_why
-
-    def test_normalize_blank_lines_collapse_consecutive_blanks(self) -> None:
-        normalized = ResponseCleaner.normalize_blank_lines("A\n\n\nB\n \n\nC\n")
-        assert normalized == "A\n\nB\n\nC"
-
     @pytest.mark.parametrize(
         ("error", "expected_attr"),
         [

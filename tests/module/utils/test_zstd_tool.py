@@ -15,6 +15,12 @@ def test_compress_and_decompress_roundtrip() -> None:
     assert restored == original
 
 
+def test_compress_and_decompress_empty_payload() -> None:
+    compressed = ZstdTool.compress(b"")
+
+    assert ZstdTool.decompress(compressed) == b""
+
+
 def test_compress_file_and_decompress_to_file(fs) -> None:
     source_path = Path("/workspace/source.bin")
     output_path = Path("/workspace/nested/restored.bin")

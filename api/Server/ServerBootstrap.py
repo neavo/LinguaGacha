@@ -29,6 +29,7 @@ class ServerBootstrap:
     """统一维护本地 HTTP 服务的启动与关闭入口。"""
 
     TEST_DEFAULT_PORTS: tuple[int, ...] = (0,)
+    TEST_SERVE_FOREVER_POLL_INTERVAL_SECONDS: float = 0.01
 
     @dataclass(frozen=True)
     class ServerRuntime:
@@ -36,6 +37,14 @@ class ServerBootstrap:
 
         base_url: str
         shutdown: Callable[[], None]
+
+    @classmethod
+    def get_serve_forever_poll_interval(cls, *, as_runtime: bool) -> float:
+        """测试服务缩短轮询间隔，避免每次 shutdown 都额外等待 0.5 秒。"""
+
+        if as_runtime:
+            return 0.5
+        return cls.TEST_SERVE_FOREVER_POLL_INTERVAL_SECONDS
 
     @classmethod
     def start(cls) -> ServerRuntime:
@@ -95,8 +104,15 @@ class ServerBootstrap:
             extra_app_service=extra_app_service,
             model_app_service=model_app_service,
         )
+        serve_forever_poll_interval = cls.get_serve_forever_poll_interval(
+            as_runtime=as_runtime
+        )
+
+        def serve_http_server() -> None:
+            http_server.serve_forever(poll_interval=serve_forever_poll_interval)
+
         serve_thread = threading.Thread(
-            target=http_server.serve_forever,
+            target=serve_http_server,
             daemon=True,
         )
         serve_thread.start()

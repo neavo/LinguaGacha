@@ -1,23 +1,6 @@
-from collections.abc import Callable
-
 from api.Server.Routes.QualityRoutes import QualityRoutes
 from tests.api.server.route_contracts import PHASE_TWO_QUALITY_ROUTE_PATHS
-
-
-class RouteRecorder:
-    """记录质量路由注册结果，避免把闭包实现细节当成断言目标。"""
-
-    def __init__(self) -> None:
-        self.routes: list[tuple[str, str]] = []
-
-    def add_json_route(
-        self,
-        method: str,
-        path: str,
-        handler: Callable[..., object],
-    ) -> None:
-        del handler
-        self.routes.append((method, path))
+from tests.api.server.route_contracts import RouteRecorder
 
 
 def test_quality_routes_paths_match_boundary_contract() -> None:
@@ -54,4 +37,6 @@ def test_quality_routes_register_expected_http_contract() -> None:
 
     QualityRoutes.register(recorder, object())
 
-    assert recorder.routes == [("POST", path) for path in PHASE_TWO_QUALITY_ROUTE_PATHS]
+    assert recorder.json_routes == [
+        ("POST", path) for path in PHASE_TWO_QUALITY_ROUTE_PATHS
+    ]

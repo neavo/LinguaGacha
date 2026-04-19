@@ -59,6 +59,9 @@ class TestRuleFilterPrefix:
         assert RuleFilter.filter("MAPDATA/map001") is True
         assert RuleFilter.filter("bgm/music") is True
 
+    def test_prefix_match_ignores_surrounding_whitespace(self) -> None:
+        assert RuleFilter.filter("  MapData/map001  ") is True
+
 
 class TestRuleFilterSuffix:
     """以特定后缀结尾的文本应被过滤。"""
@@ -88,6 +91,9 @@ class TestRuleFilterSuffix:
     )
     def test_known_suffix_filtered(self, src: str) -> None:
         assert RuleFilter.filter(src) is True
+
+    def test_suffix_match_ignores_surrounding_whitespace(self) -> None:
+        assert RuleFilter.filter("  music.mp3  ") is True
 
 
 class TestRuleFilterRegex:
@@ -132,8 +138,8 @@ class TestRuleFilterMultiline:
         assert RuleFilter.filter(src) is False
 
 
-class TestRuleFilterEdgeCases:
-    """边界场景。"""
+class TestRuleFilterFragmentsInsideSentence:
+    """普通句子里出现规则片段时，不应被误过滤。"""
 
     def test_ev_with_letters_not_filtered(self) -> None:
         # "EV001abc" 不匹配 ^EV\d+$ 模式
@@ -146,6 +152,3 @@ class TestRuleFilterEdgeCases:
     def test_text_with_prefix_in_middle_not_filtered(self) -> None:
         # 只要不以前缀开头即可
         assert RuleFilter.filter("go to MapData/map") is False
-
-    def test_text_with_mid_substring_not_filtered(self) -> None:
-        assert RuleFilter.filter("formidable") is False

@@ -5,6 +5,7 @@ from api.Client.ApiClient import ApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Models.Task import AnalysisGlossaryImportResult
 from api.Models.Task import TaskSnapshot
+from api.Server.Routes.TaskRoutes import TaskRoutes
 from tests.api.support.application_fakes import FakeEngine
 from tests.api.support.application_fakes import FakeTaskDataManager
 
@@ -85,3 +86,50 @@ def test_task_api_client_import_analysis_glossary_returns_objectified_result(
     assert result.imported_count == 4
     assert result.task.task_type == "analysis"
     assert result.task.analysis_candidate_count == 6
+
+
+def test_task_api_client_start_and_stop_commands_use_snapshot_contract(
+    recording_api_client,
+) -> None:
+    task_client = TaskApiClient(recording_api_client)
+    recording_api_client.queue_post_response(
+        TaskRoutes.START_TRANSLATION_PATH,
+        {"task": {"task_type": "translation", "status": "TRANSLATING", "busy": True}},
+    )
+    recording_api_client.queue_post_response(
+        TaskRoutes.STOP_TRANSLATION_PATH,
+        {"task": {"task_type": "translation", "status": "STOPPING", "busy": True}},
+    )
+    recording_api_client.queue_post_response(
+        TaskRoutes.START_ANALYSIS_PATH,
+        {"task": {"task_type": "analysis", "status": "ANALYZING", "busy": True}},
+    )
+    recording_api_client.queue_post_response(
+        TaskRoutes.STOP_ANALYSIS_PATH,
+        {"task": {"task_type": "analysis", "status": "STOPPING", "busy": True}},
+    )
+
+    start_translation = task_client.start_translation({"mode": "NEW"})
+    stop_translation = task_client.stop_translation()
+    start_analysis = task_client.start_analysis({"mode": "RESET"})
+    stop_analysis = task_client.stop_analysis()
+
+    assert isinstance(start_translation, TaskSnapshot)
+    assert start_translation.task_type == "translation"
+    assert stop_translation.status == "STOPPING"
+    assert start_analysis.task_type == "analysis"
+    assert stop_analysis.status == "STOPPING"
+
+
+def test_task_api_client_export_translation_returns_raw_payload(
+    recording_api_client,
+) -> None:
+    task_client = TaskApiClient(recording_api_client)
+    recording_api_client.queue_post_response(
+        TaskRoutes.EXPORT_TRANSLATION_PATH,
+        {"accepted": True},
+    )
+
+    result = task_client.export_translation()
+
+    assert result == {"accepted": True}

@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from collections.abc import Generator
+from copy import deepcopy
 
 import pytest
 
@@ -29,6 +30,30 @@ type ServiceOverride = (
 )
 
 type StartApiServerFactory = Callable[..., str]
+
+
+class RecordingApiClient:
+    """记录 HTTP 请求并返回预设响应，供薄客户端单元测试复用。"""
+
+    def __init__(self) -> None:
+        self.post_requests: list[tuple[str, dict[str, object]]] = []
+        self.get_requests: list[str] = []
+        self.post_responses: dict[str, dict[str, object]] = {}
+        self.get_responses: dict[str, dict[str, object]] = {}
+
+    def queue_post_response(self, path: str, response: dict[str, object]) -> None:
+        self.post_responses[path] = deepcopy(response)
+
+    def queue_get_response(self, path: str, response: dict[str, object]) -> None:
+        self.get_responses[path] = deepcopy(response)
+
+    def post(self, path: str, body: dict[str, object]) -> dict[str, object]:
+        self.post_requests.append((path, deepcopy(body)))
+        return deepcopy(self.post_responses.get(path, {}))
+
+    def get(self, path: str) -> dict[str, object]:
+        self.get_requests.append(path)
+        return deepcopy(self.get_responses.get(path, {}))
 
 
 @pytest.fixture
@@ -70,3 +95,8 @@ def start_api_server() -> Generator[StartApiServerFactory, None, None]:
 
     for shutdown in reversed(runtimes):
         shutdown()
+
+
+@pytest.fixture
+def recording_api_client() -> RecordingApiClient:
+    return RecordingApiClient()

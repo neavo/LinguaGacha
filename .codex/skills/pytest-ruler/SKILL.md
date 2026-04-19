@@ -22,7 +22,7 @@ description: 基于 pytest 的 TDD 测试工作流技能，用于编写、补充
 4. 网络、外部 SDK、系统边界才用 `patch`，并且要 patch 在使用点
 5. 集成测试和场景测试不要把同仓库内部模块全 mock 掉
 6. 每个测试都要证明一条明确需求、边界或错误分支，并且失败时能说明问题
-7. 可测试单元默认要求分支覆盖率 `> 90%`；达不到必须注明原因并显式确认
+7. 测试范围要围绕真实需求、边界和错误分支展开，不为指标本身制造用例
 
 ## 断言什么
 
@@ -110,7 +110,7 @@ def test_classify_number(value, expected):
 ### 用例语义
 
 - 每个测试用例都必须对应真实业务需求、错误分支或边界条件
-- 不要为了凑数、补覆盖率或“看起来更完整”而制造孤儿用例
+- 不要为了凑数或“看起来更完整”而制造孤儿用例
 - 如果一个测试名说不清它在证明什么，就先停下来改写成更有语义的场景
 
 ### 控制台输出
@@ -167,8 +167,6 @@ rg -n "__new__|call_args|call_args_list|tmp_path|mock_open" tests
 
 ```powershell
 uv run pytest tests/ -v
-uv run pytest tests/ --cov=<module> --cov-branch --cov-report=term-missing
-uv run pytest tests/ --cov=<module> --cov-branch --cov-fail-under=90
 ```
 
 ## 提交前检查

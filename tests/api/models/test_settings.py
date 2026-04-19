@@ -48,3 +48,16 @@ def test_app_settings_snapshot_handles_mtool_optimizer_field() -> None:
 
     assert snapshot.mtool_optimizer_enable is True
     assert snapshot.to_dict()["mtool_optimizer_enable"] is True
+
+
+def test_app_settings_snapshot_ignores_invalid_recent_projects_payload() -> None:
+    snapshot = AppSettingsSnapshot.from_dict(
+        {
+            "app_language": "EN",
+            "recent_projects": ("demo.lg",),
+        }
+    )
+
+    assert snapshot.app_language == "EN"
+    assert snapshot.recent_projects == ()
+    assert snapshot.to_dict()["recent_projects"] == []

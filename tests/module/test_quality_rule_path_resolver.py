@@ -121,6 +121,33 @@ def test_user_preset_round_trip_supports_save_read_rename_delete(
     )
 
 
+def test_user_preset_guards_invalid_payload_builtin_mutation_and_empty_name(
+    resolver_root: Path,
+) -> None:
+    user_dir = resolver_root / "userdata" / "glossary"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    (user_dir / "invalid.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid quality preset payload"):
+        QualityRulePathResolver.read_preset("glossary", "user:invalid.json")
+
+    with pytest.raises(ValueError, match="preset name is empty"):
+        QualityRulePathResolver.save_user_preset("glossary", "   ", [])
+
+    with pytest.raises(ValueError, match="builtin preset cannot be renamed"):
+        QualityRulePathResolver.rename_user_preset(
+            "glossary",
+            "builtin:demo.json",
+            "renamed",
+        )
+
+    with pytest.raises(ValueError, match="builtin preset cannot be deleted"):
+        QualityRulePathResolver.delete_user_preset(
+            "glossary",
+            "builtin:demo.json",
+        )
+
+
 def test_user_preset_uses_runtime_data_dir_when_split(
     resolver_root: Path,
 ) -> None:

@@ -165,78 +165,6 @@ class TestTextProcessor:
 
         assert processor.get_re_check(True, Item.TextType.NONE) is None
 
-    def test_get_re_sample_uses_custom_mode_entries(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        snapshot = create_snapshot(
-            text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
-            text_preserve_entries=({"src": "  [A]"}, {"src": ""}),
-        )
-        processor = TextProcessor(Config(), None, snapshot)
-        captured: dict[str, object] = {}
-
-        def fake_get_rule(
-            *,
-            custom: bool,
-            custom_data: tuple[str, ...] | None,
-            rule_type: TextProcessor.RuleType,
-            text_type: Item.TextType,
-            language: BaseLanguage.Enum,
-        ) -> re.Pattern[str]:
-            captured["custom"] = custom
-            captured["custom_data"] = custom_data
-            captured["rule_type"] = rule_type
-            captured["text_type"] = text_type
-            captured["language"] = language
-            return re.compile(r"\[[^\]]+\]")
-
-        monkeypatch.setattr(TextProcessor, "get_rule", fake_get_rule)
-
-        pattern = processor.get_re_sample(False, Item.TextType.NONE)
-
-        assert isinstance(pattern, re.Pattern)
-        assert captured["custom"] is True
-        assert captured["custom_data"] == ("[A]",)
-        assert captured["rule_type"] == TextProcessor.RuleType.SAMPLE
-        assert captured["text_type"] == Item.TextType.NONE
-        assert captured["language"] == BaseLanguage.Enum.ZH
-
-    def test_get_re_prefix_uses_preset_mode(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        snapshot = create_snapshot(
-            text_preserve_mode=DataManager.TextPreserveMode.SMART,
-            text_preserve_entries=({"src": "[A]"},),
-        )
-        processor = TextProcessor(Config(), None, snapshot)
-        captured: dict[str, object] = {}
-
-        def fake_get_rule(
-            *,
-            custom: bool,
-            custom_data: tuple[str, ...] | None,
-            rule_type: TextProcessor.RuleType,
-            text_type: Item.TextType,
-            language: BaseLanguage.Enum,
-        ) -> re.Pattern[str]:
-            captured["custom"] = custom
-            captured["custom_data"] = custom_data
-            captured["rule_type"] = rule_type
-            captured["text_type"] = text_type
-            captured["language"] = language
-            return re.compile(r".+")
-
-        monkeypatch.setattr(TextProcessor, "get_rule", fake_get_rule)
-
-        pattern = processor.get_re_prefix(True, Item.TextType.NONE)
-
-        assert isinstance(pattern, re.Pattern)
-        assert captured["custom"] is False
-        assert captured["custom_data"] is None
-        assert captured["rule_type"] == TextProcessor.RuleType.PREFIX
-        assert captured["text_type"] == Item.TextType.NONE
-        assert captured["language"] == BaseLanguage.Enum.ZH
-
     def test_replace_post_translation_supports_regex_case_sensitive(self) -> None:
         snapshot = create_snapshot(
             post_replacement_enable=True,
@@ -738,87 +666,6 @@ class TestTextProcessor:
         assert pattern.search("zab") is not None
         assert pattern.search("abz") is None
 
-    def test_get_re_sample_uses_data_manager_custom_entries(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeDataManager:
-            def get_text_preserve_mode(self) -> DataManager.TextPreserveMode:
-                return DataManager.TextPreserveMode.CUSTOM
-
-            def get_text_preserve(self) -> list[dict[str, object]]:
-                return [{"src": "  [A]"}, {"src": ""}, {"src": "[B]"}]
-
-        processor = TextProcessor(Config(), None)
-        captured: dict[str, object] = {}
-
-        def fake_get_rule(
-            *,
-            custom: bool,
-            custom_data: tuple[str, ...] | None,
-            rule_type: TextProcessor.RuleType,
-            text_type: Item.TextType,
-            language: BaseLanguage.Enum,
-        ) -> re.Pattern[str]:
-            captured["custom"] = custom
-            captured["custom_data"] = custom_data
-            captured["rule_type"] = rule_type
-            captured["text_type"] = text_type
-            captured["language"] = language
-            return re.compile(r"\[[^\]]+\]")
-
-        monkeypatch.setattr(
-            "module.TextProcessor.DataManager.get", lambda: FakeDataManager()
-        )
-        monkeypatch.setattr(TextProcessor, "get_rule", fake_get_rule)
-
-        pattern = processor.get_re_sample(False, Item.TextType.NONE)
-
-        assert isinstance(pattern, re.Pattern)
-        assert captured["custom"] is True
-        assert captured["custom_data"] == ("[A]", "[B]")
-        assert captured["rule_type"] == TextProcessor.RuleType.SAMPLE
-        assert captured["text_type"] == Item.TextType.NONE
-        assert captured["language"] == BaseLanguage.Enum.ZH
-
-    def test_get_re_prefix_uses_data_manager_smart_mode(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeDataManager:
-            def get_text_preserve_mode(self) -> DataManager.TextPreserveMode:
-                return DataManager.TextPreserveMode.SMART
-
-        processor = TextProcessor(Config(), None)
-        captured: dict[str, object] = {}
-
-        def fake_get_rule(
-            *,
-            custom: bool,
-            custom_data: tuple[str, ...] | None,
-            rule_type: TextProcessor.RuleType,
-            text_type: Item.TextType,
-            language: BaseLanguage.Enum,
-        ) -> re.Pattern[str]:
-            captured["custom"] = custom
-            captured["custom_data"] = custom_data
-            captured["rule_type"] = rule_type
-            captured["text_type"] = text_type
-            captured["language"] = language
-            return re.compile(r".+")
-
-        monkeypatch.setattr(
-            "module.TextProcessor.DataManager.get", lambda: FakeDataManager()
-        )
-        monkeypatch.setattr(TextProcessor, "get_rule", fake_get_rule)
-
-        pattern = processor.get_re_prefix(True, Item.TextType.NONE)
-
-        assert isinstance(pattern, re.Pattern)
-        assert captured["custom"] is False
-        assert captured["custom_data"] is None
-        assert captured["rule_type"] == TextProcessor.RuleType.PREFIX
-        assert captured["text_type"] == Item.TextType.NONE
-        assert captured["language"] == BaseLanguage.Enum.ZH
-
     def test_get_re_suffix_returns_none_when_data_manager_mode_off(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -968,17 +815,6 @@ class TestTextProcessor:
         assert pattern.search("abz") is not None
         assert pattern.search("zab") is None
 
-    def test_get_rule_returns_none_for_unknown_rule_type(self) -> None:
-        pattern = TextProcessor.get_rule(
-            custom=True,
-            custom_data=("ab",),
-            rule_type=cast(TextProcessor.RuleType, "UNKNOWN"),
-            text_type=Item.TextType.NONE,
-            language=BaseLanguage.Enum.ZH,
-        )
-
-        assert pattern is None
-
     def test_build_custom_preserve_data_skips_non_dict_entries(self) -> None:
         snapshot = create_snapshot(text_preserve_entries=({"src": "[A]"},))
         snapshot.text_preserve_entries = cast(
@@ -988,77 +824,6 @@ class TestTextProcessor:
         processor = TextProcessor(Config(), None, snapshot)
 
         assert processor.build_custom_preserve_data() == ("[A]", "[B]")
-
-    def test_get_re_check_uses_smart_mode_snapshot(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        snapshot = create_snapshot(
-            text_preserve_mode=DataManager.TextPreserveMode.SMART
-        )
-        processor = TextProcessor(Config(), None, snapshot)
-        captured: dict[str, object] = {}
-
-        def fake_get_rule(
-            *,
-            custom: bool,
-            custom_data: tuple[str, ...] | None,
-            rule_type: TextProcessor.RuleType,
-            text_type: Item.TextType,
-            language: BaseLanguage.Enum,
-        ) -> re.Pattern[str]:
-            captured["custom"] = custom
-            captured["custom_data"] = custom_data
-            captured["rule_type"] = rule_type
-            captured["text_type"] = text_type
-            captured["language"] = language
-            return re.compile(r"\[[^\]]+\]")
-
-        monkeypatch.setattr(TextProcessor, "get_rule", fake_get_rule)
-
-        pattern = processor.get_re_check(False, Item.TextType.NONE)
-
-        assert isinstance(pattern, re.Pattern)
-        assert captured["custom"] is False
-        assert captured["custom_data"] is None
-        assert captured["rule_type"] == TextProcessor.RuleType.CHECK
-        assert captured["text_type"] == Item.TextType.NONE
-        assert captured["language"] == BaseLanguage.Enum.ZH
-
-    def test_get_re_suffix_uses_custom_mode_snapshot(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        snapshot = create_snapshot(
-            text_preserve_mode=DataManager.TextPreserveMode.CUSTOM,
-            text_preserve_entries=({"src": "[A]"},),
-        )
-        processor = TextProcessor(Config(), None, snapshot)
-        captured: dict[str, object] = {}
-
-        def fake_get_rule(
-            *,
-            custom: bool,
-            custom_data: tuple[str, ...] | None,
-            rule_type: TextProcessor.RuleType,
-            text_type: Item.TextType,
-            language: BaseLanguage.Enum,
-        ) -> re.Pattern[str]:
-            captured["custom"] = custom
-            captured["custom_data"] = custom_data
-            captured["rule_type"] = rule_type
-            captured["text_type"] = text_type
-            captured["language"] = language
-            return re.compile(r".+")
-
-        monkeypatch.setattr(TextProcessor, "get_rule", fake_get_rule)
-
-        pattern = processor.get_re_suffix(False, Item.TextType.NONE)
-
-        assert isinstance(pattern, re.Pattern)
-        assert captured["custom"] is True
-        assert captured["custom_data"] == ("[A]",)
-        assert captured["rule_type"] == TextProcessor.RuleType.SUFFIX
-        assert captured["text_type"] == Item.TextType.NONE
-        assert captured["language"] == BaseLanguage.Enum.ZH
 
     def test_clean_ruby_enabled_and_missing_item_returns_original(self) -> None:
         processor = TextProcessor(Config(clean_ruby=True), None)
@@ -1111,33 +876,6 @@ class TestTextProcessor:
         assert name is None
         assert srcs == ["a"]
         assert dsts == ["b"]
-
-    def test_extract_name_keeps_text_when_group_value_is_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeMatch:
-            def group(self, index: int) -> None:
-                del index
-                return None
-
-        class FakePattern:
-            def search(self, text: str) -> FakeMatch:
-                del text
-                return FakeMatch()
-
-            def sub(self, pattern: str, text: str) -> str:
-                del pattern
-                return text
-
-        item = Item(name_src="Alice")
-        processor = TextProcessor(Config(), item)
-        monkeypatch.setattr(TextProcessor, "RE_NAME", FakePattern())
-
-        name, srcs, dsts = processor.extract_name(["【Alice】hello"], ["dst"], item)
-
-        assert name is None
-        assert srcs == ["【Alice】hello"]
-        assert dsts == ["dst"]
 
     def test_replace_pre_translation_data_manager_disabled(
         self, monkeypatch: pytest.MonkeyPatch

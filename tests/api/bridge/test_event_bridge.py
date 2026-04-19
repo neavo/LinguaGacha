@@ -1,8 +1,7 @@
 import pytest
 
-from base.Base import Base
 from api.Bridge.EventBridge import EventBridge
-from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
+from base.Base import Base
 from module.Data.Storage.LGDatabase import LGDatabase
 
 
@@ -53,6 +52,80 @@ def test_translation_progress_patch_does_not_force_missing_fields_to_zero() -> N
     }
 
 
+@pytest.mark.parametrize(
+    ("event", "task_type", "sub_event", "expected_status", "expected_busy"),
+    [
+        (
+            Base.Event.TRANSLATION_TASK,
+            "translation",
+            Base.SubEvent.DONE,
+            "DONE",
+            False,
+        ),
+        (
+            Base.Event.TRANSLATION_REQUEST_STOP,
+            "translation",
+            Base.SubEvent.REQUEST,
+            "STOPPING",
+            True,
+        ),
+        (
+            Base.Event.ANALYSIS_TASK,
+            "analysis",
+            Base.SubEvent.ERROR,
+            "ERROR",
+            False,
+        ),
+        (
+            Base.Event.ANALYSIS_REQUEST_STOP,
+            "analysis",
+            Base.SubEvent.REQUEST,
+            "STOPPING",
+            True,
+        ),
+    ],
+)
+def test_task_status_events_are_mapped_to_public_status_contract(
+    event: Base.Event,
+    task_type: str,
+    sub_event: Base.SubEvent,
+    expected_status: str,
+    expected_busy: bool,
+) -> None:
+    topic, payload = EventBridge().map_event(
+        event,
+        {"sub_event": sub_event},
+    )
+
+    assert topic == "task.status_changed"
+    assert payload == {
+        "task_type": task_type,
+        "status": expected_status,
+        "busy": expected_busy,
+    }
+
+
+def test_translation_progress_maps_remaining_numeric_fields() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.TRANSLATION_PROGRESS,
+        {
+            "line": 2,
+            "error_line": 1,
+            "total_tokens": 20,
+            "time": 6.5,
+        },
+    )
+
+    assert topic == "task.progress_changed"
+    assert payload == {
+        "task_type": "translation",
+        "line": 2,
+        "error_line": 1,
+        "total_tokens": 20,
+        "time": 6.5,
+    }
+
+
 def test_config_updated_maps_settings_snapshot_when_available() -> None:
     topic, payload = EventBridge().map_event(
         Base.Event.CONFIG_UPDATED,
@@ -75,6 +148,19 @@ def test_config_updated_maps_settings_snapshot_when_available() -> None:
     }
 
 
+def test_config_updated_normalizes_keys_and_ignores_non_dict_settings() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.CONFIG_UPDATED,
+        {
+            "keys": "app_language",
+            "settings": "invalid",
+        },
+    )
+
+    assert topic == "settings.changed"
+    assert payload == {"keys": []}
+
+
 def test_workbench_refresh_maps_to_workbench_snapshot_changed() -> None:
     topic, payload = EventBridge().map_event(
         Base.Event.WORKBENCH_REFRESH,
@@ -85,6 +171,38 @@ def test_workbench_refresh_maps_to_workbench_snapshot_changed() -> None:
     assert payload == {
         "reason": "config_updated",
         "scope": "global",
+    }
+
+
+@pytest.mark.parametrize(
+    ("event", "payload", "expected_loaded", "expected_path"),
+    [
+        (
+            Base.Event.PROJECT_LOADED,
+            {"path": "demo/project.lg"},
+            True,
+            "demo/project.lg",
+        ),
+        (
+            Base.Event.PROJECT_UNLOADED,
+            {"path": "demo/project.lg"},
+            False,
+            "demo/project.lg",
+        ),
+    ],
+)
+def test_project_events_map_to_project_changed(
+    event: Base.Event,
+    payload: dict[str, object],
+    expected_loaded: bool,
+    expected_path: str,
+) -> None:
+    topic, mapped_payload = EventBridge().map_event(event, payload)
+
+    assert topic == "project.changed"
+    assert mapped_payload == {
+        "loaded": expected_loaded,
+        "path": expected_path,
     }
 
 
@@ -112,6 +230,25 @@ def test_proofreading_refresh_maps_to_snapshot_invalidated() -> None:
     }
 
 
+def test_proofreading_refresh_keeps_keys_and_trigger_reason() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.PROOFREADING_REFRESH,
+        {
+            "reason": "quality_rule_update",
+            "keys": ["summary", 2],
+            "trigger_reason": "rule_saved",
+        },
+    )
+
+    assert topic == "proofreading.snapshot_invalidated"
+    assert payload == {
+        "reason": "quality_rule_update",
+        "scope": "global",
+        "keys": ["summary", "2"],
+        "trigger_reason": "rule_saved",
+    }
+
+
 def test_workbench_refresh_maps_file_scope_payload() -> None:
     topic, payload = EventBridge().map_event(
         Base.Event.WORKBENCH_REFRESH,
@@ -132,6 +269,16 @@ def test_workbench_refresh_maps_file_scope_payload() -> None:
         "removed_rel_paths": ["chapter/old.txt"],
         "order_changed": False,
     }
+
+
+def test_workbench_snapshot_event_only_exposes_dict_snapshot() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.WORKBENCH_SNAPSHOT,
+        {"snapshot": "invalid"},
+    )
+
+    assert topic == "workbench.snapshot_changed"
+    assert payload == {"snapshot": {}}
 
 
 def test_analysis_progress_maps_candidate_count_to_task_progress() -> None:
@@ -156,37 +303,6 @@ def test_analysis_progress_maps_candidate_count_to_task_progress() -> None:
     assert payload["request_in_flight_count"] == 1
 
 
-def test_quality_rule_update_uses_proofreading_rule_impact_single_source(
-    monkeypatch,
-) -> None:
-    # 准备
-    observed: list[dict[str, object] | None] = []
-
-    def fake_extract(data: dict[str, object] | None) -> tuple[list[str], list[str]]:
-        observed.append(data)
-        return ["glossary"], []
-
-    monkeypatch.setattr(
-        ProofreadingRuleImpact,
-        "extract_relevant_rule_update",
-        fake_extract,
-    )
-
-    # 执行
-    topic, payload = EventBridge().map_event(
-        Base.Event.QUALITY_RULE_UPDATE,
-        {"rule_types": ["glossary"]},
-    )
-
-    # 断言
-    assert observed == [{"rule_types": ["glossary"]}]
-    assert topic == "proofreading.snapshot_invalidated"
-    assert payload["reason"] == "quality_rule_update"
-    assert payload["scope"] == "global"
-    assert payload["rule_types"] == ["glossary"]
-    assert payload["meta_keys"] == []
-
-
 def test_quality_rule_update_maps_uppercase_rule_type_values_to_proofreading_invalidation() -> (
     None
 ):
@@ -204,6 +320,35 @@ def test_quality_rule_update_maps_uppercase_rule_type_values_to_proofreading_inv
         "rule_types": ["glossary"],
         "meta_keys": [],
     }
+
+
+def test_quality_rule_update_accepts_meta_key_only_and_normalizes_item_ids() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.QUALITY_RULE_UPDATE,
+        {
+            "meta_key": "GLOSSARY_ENABLE",
+            "item_ids": [True, "1", 1, "2", "oops"],
+        },
+    )
+
+    assert topic == "proofreading.snapshot_invalidated"
+    assert payload == {
+        "reason": "quality_rule_update",
+        "scope": "global",
+        "rule_types": [],
+        "meta_keys": ["glossary_enable"],
+        "item_ids": [1, 2],
+    }
+
+
+def test_irrelevant_quality_rule_update_is_ignored() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.QUALITY_RULE_UPDATE,
+        {"rule_types": ["translation_prompt"]},
+    )
+
+    assert topic is None
+    assert payload == {}
 
 
 def test_quality_rule_update_preserves_entry_scope_item_ids_and_rel_paths() -> None:
@@ -265,6 +410,16 @@ def test_event_bridge_maps_extra_finished_topic() -> None:
     assert payload["phase"] == "FINISHED"
     assert payload["message"] == "done"
     assert payload["finished"] is True
+
+
+def test_unknown_event_is_ignored() -> None:
+    topic, payload = EventBridge().map_event(
+        Base.Event.APITEST,
+        {},
+    )
+
+    assert topic is None
+    assert payload == {}
 
 
 @pytest.mark.parametrize(

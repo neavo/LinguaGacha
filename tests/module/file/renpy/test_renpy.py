@@ -298,21 +298,21 @@ def test_read_from_path_reads_files_and_builds_rel_paths(
     file_a = input_root / "a.rpy"
     file_b = input_root / "sub" / "b.rpy"
     file_b.parent.mkdir(parents=True, exist_ok=True)
-    file_a.write_text("A", encoding="utf-8")
-    file_b.write_text("B", encoding="utf-8")
+    file_a.write_text(
+        '# game/a.rpy:1\ntranslate chinese a_start:\n\n    # e "Alpha"\n    e ""\n',
+        encoding="utf-8",
+    )
+    file_b.write_text(
+        '# game/sub/b.rpy:1\ntranslate chinese b_start:\n\n    # e "Beta"\n    e ""\n',
+        encoding="utf-8",
+    )
 
-    called: list[str] = []
-
-    def fake_read_from_stream(content: bytes, rel_path: str) -> list[Item]:
-        del content
-        called.append(rel_path.replace("\\", "/"))
-        return [Item.from_dict({"src": rel_path})]
-
-    handler.read_from_stream = fake_read_from_stream
     items = handler.read_from_path([str(file_a), str(file_b)], str(input_root))
 
-    assert sorted(called) == ["a.rpy", "sub/b.rpy"]
-    assert len(items) == 2
+    observed = sorted(
+        (item.get_file_path().replace("\\", "/"), item.get_src()) for item in items
+    )
+    assert observed == [("a.rpy", "Alpha"), ("sub/b.rpy", "Beta")]
 
 
 def test_write_to_path_logs_skipped_and_writes_output(

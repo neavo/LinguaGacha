@@ -401,11 +401,25 @@ def test_refresh_analysis_progress_snapshot_cache_rebuilds_and_persists_summary(
 
 def test_clear_analysis_progress_clears_tables_and_meta() -> None:
     service, session = build_analysis_service()
+    service.set_analysis_extras({"line": 9, "processed_line": 5})
+    service.set_analysis_candidate_count_cache(7)
 
     service.clear_analysis_progress()
 
     session.db.delete_analysis_item_checkpoints.assert_called_once()
     session.db.clear_analysis_candidate_aggregates.assert_called_once()
+    assert service.get_analysis_progress_snapshot() == {
+        "start_time": 0.0,
+        "time": 0.0,
+        "total_line": 0,
+        "line": 0,
+        "processed_line": 0,
+        "error_line": 0,
+        "total_tokens": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+    }
+    assert service.get_analysis_candidate_count_cache() == 0
 
 
 def test_analysis_helpers_normalize_control_code_and_skipped_statuses() -> None:

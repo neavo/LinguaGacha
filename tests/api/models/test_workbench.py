@@ -40,3 +40,26 @@ def test_workbench_snapshot_from_dict_converts_entries_to_tuple() -> None:
             file_type="TXT",
         ),
     )
+    assert snapshot.to_dict() == {
+        "file_count": 1,
+        "total_items": 3,
+        "translated": 1,
+        "translated_in_past": 2,
+        "error_count": 1,
+        "untranslated": 0,
+        "file_op_running": True,
+        "entries": [
+            {
+                "rel_path": "script/a.txt",
+                "item_count": 3,
+                "file_type": "TXT",
+            }
+        ],
+    }
+
+
+def test_workbench_snapshot_ignores_invalid_entry_container() -> None:
+    snapshot = WorkbenchSnapshot.from_dict({"entries": ("not-a-list",)})
+
+    assert snapshot.entries == ()
+    assert snapshot.to_dict()["entries"] == []
