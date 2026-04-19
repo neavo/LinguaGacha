@@ -12,7 +12,6 @@ from module.Data.Core.ItemService import ItemService
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
-from module.Utils.GapTool import GapTool
 
 
 class ProjectPrefilterService:
@@ -199,7 +198,7 @@ class ProjectPrefilterService:
         )
 
         item_dicts: list[dict[str, Any]] = []
-        for item in GapTool.iter(items):
+        for item in items:
             item_dicts.append(item.to_dict())
 
         meta = {

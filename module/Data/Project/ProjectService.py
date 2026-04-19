@@ -8,7 +8,6 @@ from module.Data.Storage.LGDatabase import LGDatabase
 from module.File.FileManager import FileManager
 from module.Filter.ProjectPrefilter import ProjectPrefilter
 from module.Localizer.Localizer import Localizer
-from module.Utils.GapTool import GapTool
 from module.Utils.ZstdTool import ZstdTool
 
 ProgressCallback = Callable[[int, int, str], None]
@@ -140,7 +139,7 @@ class ProjectService(Base):
             LogManager.get().print("")
 
             items_dicts: list[dict] = []
-            for item in GapTool.iter(items):
+            for item in items:
                 items_dicts.append(item.to_dict())
             db.set_items(items_dicts)
 

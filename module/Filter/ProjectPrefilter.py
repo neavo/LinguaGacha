@@ -19,7 +19,6 @@ from base.BaseLanguage import BaseLanguage
 from module.Data.Core.Item import Item
 from module.Filter.LanguageFilter import LanguageFilter
 from module.Filter.RuleFilter import RuleFilter
-from module.Utils.GapTool import GapTool
 
 
 @dataclass(frozen=True)
@@ -83,7 +82,7 @@ class ProjectPrefilter:
 
         # 1) 复位可重算状态，并在 MTool 开关开启时收集 KVJSON 条目。
         items_kvjson: list[Item] = []
-        for idx, item in enumerate(GapTool.iter(items), start=1):
+        for idx, item in enumerate(items, start=1):
             if item.get_status() in (
                 Base.ProjectStatus.RULE_SKIPPED,
                 Base.ProjectStatus.LANGUAGE_SKIPPED,
@@ -95,7 +94,7 @@ class ProjectPrefilter:
 
         # 2) RuleFilter / LanguageFilter：仅对 NONE 条目生效。
         offset = total_items
-        for idx, item in enumerate(GapTool.iter(items), start=1):
+        for idx, item in enumerate(items, start=1):
             if item.get_status() != Base.ProjectStatus.NONE:
                 tick(offset + idx)
                 continue
@@ -172,16 +171,16 @@ class ProjectPrefilter:
                 progress_cb(min(step, progress_total), progress_total)
 
         group_by_file_path: dict[str, list[Item]] = {}
-        for item in GapTool.iter(items_kvjson):
+        for item in items_kvjson:
             group_by_file_path.setdefault(item.get_file_path(), []).append(item)
             work_done += 1
             report(work_done)
 
         skipped = 0
-        for items_by_file_path in GapTool.iter(group_by_file_path.values()):
+        for items_by_file_path in group_by_file_path.values():
             # 找出子句：多行 src 会拆成若干行；去掉空行。
             target: set[str] = set()
-            for item in GapTool.iter(items_by_file_path):
+            for item in items_by_file_path:
                 src = item.get_src()
                 if "\n" in src:
                     target.update(
@@ -195,7 +194,7 @@ class ProjectPrefilter:
                 report(work_done)
 
             # 将“子句对应的独立条目”标记为跳过
-            for item in GapTool.iter(items_by_file_path):
+            for item in items_by_file_path:
                 work_done += 1
                 report(work_done)
                 if item.get_status() != Base.ProjectStatus.NONE:
