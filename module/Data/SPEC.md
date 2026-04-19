@@ -118,6 +118,30 @@ flowchart TD
 - `TranslationItemService`：翻译任务取条目
 - `TranslationResetService`：翻译失败/重置后的进度整理与状态回写
 
+## 页面快照真实依赖与失效判定
+### 工作台快照
+- `WorkbenchService` 当前真正聚合的是文件集合、文件顺序、条目侧 `file_path / file_type / status` 的汇总结果，以及 API 响应层补入的 `file_op_running`。
+- 判断工作台是否需要刷新时，优先看文件集合、顺序或状态聚合是否变化；单条 `dst` 文本变化本身不构成工作台失效，只有它进一步改动 `status`、`file_path` 或文件集合时才需要联动。
+- 文件重排只影响工作台；质量规则、提示词与分析任务终态当前都不会直接改动工作台快照。
+
+### 校对页快照
+- 校对页快照不是“条目列表缓存”，而是 `items_all -> build_review_items() -> ResultChecker -> warning_map -> 默认筛选/摘要/失败术语缓存` 的组合结果。
+- 判断校对页是否需要失效时，除了看条目内容，还要看进入 review 范围的条目集合和检查语义是否变化；规则、术语、文本保护模式、`source_language` 等都可能命中这条链。
+- `target_language` 当前只同步工程 meta 镜像，不参与预过滤比较，也不是工作台/校对页快照的真实依赖。
+
+### 设置与规则变化的当前口径
+| 变更 | 工作台 | 校对页 | 当前约束 |
+| --- | --- | --- | --- |
+| `source_language` | 全局 | 全局 | 会改变预过滤结果与校对检查语义 |
+| `mtool_optimizer_enable` | 全局 | 全局 | 会成批改动预过滤与状态聚合结果 |
+| `target_language` | 无 | 无 | 只同步工程摘要，不触发页面刷新或预过滤 |
+| `check_kana_residue` / `check_hangeul_residue` / `check_similarity` | 无 | 无 | `ResultChecker` 当前未消费这些开关 |
+| 术语表、前置替换、后置替换 | 无 | 条目级 | 由 `ProofreadingImpactAnalyzer` 收敛到受影响条目，工作台不再联动 |
+| 文本保护条目内容 | 无 | 条目级 | 仅 `CUSTOM` 模式下按 regex 命中候选收敛 |
+| 文本保护模式 | 无 | 全局 | 会整体改变校对检查语义 |
+
+- 分析任务完成/重置、提示词变更、应用语言变化与最近项目变化，当前都不属于工作台或校对页快照的真实依赖，默认不应补发页面刷新。
+
 ## 当前已落地的文件级刷新事实
 - `DataManager` 当前负责把文件操作统一收口到稳定态后再发结构化刷新事件，避免前端在预过滤未完成时读取半成品快照。
 - `DataManager.emit_workbench_refresh()` / `emit_proofreading_refresh()` 是当前文件级刷新事件的唯一拼装入口。

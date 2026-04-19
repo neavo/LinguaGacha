@@ -329,6 +329,8 @@ data: {"task_type":"translation","line":3}
 
 - `update` 只会处理 `SettingsAppService.SETTING_KEYS` 白名单中的字段，未知字段会被忽略。
 - `app_language` 当前只接受 `ZH` 与 `EN`。
+- `settings.changed` 只是设置广播，不等于工作台或校对页必须失效；当前只有 `source_language` 与 `mtool_optimizer_enable` 会进入两页的高影响刷新链。
+- `target_language` 当前只同步工程 meta 镜像，`check_kana_residue` / `check_hangeul_residue` / `check_similarity` / `app_language` / `recent_projects` 当前都不应被消费侧直接解释为页面刷新信号。
 
 ### 4.6 Model
 
