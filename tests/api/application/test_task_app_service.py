@@ -62,7 +62,13 @@ def test_reset_translation_all_returns_latest_snapshot_and_emits_terminal_event(
     assert fake_task_data_manager.replace_all_items_calls == [["line-1", "line-2"]]
     assert fake_task_data_manager.set_translation_extras_calls == [{}]
     assert fake_task_data_manager.set_project_status_calls == [Base.ProjectStatus.NONE]
-    assert len(fake_task_data_manager.run_project_prefilter_calls) == 1
+    assert fake_task_data_manager.run_project_prefilter_calls == [
+        (
+            task_app_service.config_loader(),
+            "translation_reset",
+            False,
+        )
+    ]
 
 
 def test_reset_translation_failed_returns_latest_snapshot_and_emits_terminal_event(

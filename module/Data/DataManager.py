@@ -248,56 +248,10 @@ class DataManager(Base):
             self.emit_workbench_refresh(reason=event.value)
 
     def on_quality_rule_update(self, event: Base.Event, data: dict) -> None:
-        """把规则更新对工作台的影响收口成结构化刷新。"""
+        """质量规则更新当前只影响校对快照，不再联动工作台刷新。"""
 
         del event
-
-        raw_rule_types = data.get("rule_types", [])
-        rule_types = (
-            [str(rule_type).strip().casefold() for rule_type in raw_rule_types]
-            if isinstance(raw_rule_types, list)
-            else []
-        )
-        raw_meta_keys = data.get("meta_keys", [])
-        meta_keys = (
-            [str(meta_key).strip() for meta_key in raw_meta_keys]
-            if isinstance(raw_meta_keys, list)
-            else []
-        )
-
-        rule_type_relevant = any(
-            rule_type in self.PROOFREADING_RULE_TYPES for rule_type in rule_types
-        )
-        meta_key_relevant = any(
-            meta_key in self.PROOFREADING_RULE_META_KEYS for meta_key in meta_keys
-        )
-        if not (rule_type_relevant or meta_key_relevant):
-            return
-
-        scope = str(data.get("scope", "global") or "global")
-        rel_paths_raw = data.get("rel_paths", [])
-        rel_paths = (
-            [str(rel_path) for rel_path in rel_paths_raw if str(rel_path) != ""]
-            if isinstance(rel_paths_raw, list)
-            else []
-        )
-        if scope == "entry" and rel_paths:
-            self.emit_workbench_refresh(
-                reason="quality_rule_update",
-                scope="file",
-                rel_paths=rel_paths,
-            )
-            return
-
-        if scope == "file" and rel_paths:
-            self.emit_workbench_refresh(
-                reason="quality_rule_update",
-                scope="file",
-                rel_paths=rel_paths,
-            )
-            return
-
-        self.emit_workbench_refresh(reason="quality_rule_update", scope="global")
+        del data
 
     def handle_project_loaded_post_actions(self) -> None:
         """在工程真正对外可见前完成加载后补处理与语言镜像同步。"""

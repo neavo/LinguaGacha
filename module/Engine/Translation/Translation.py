@@ -233,7 +233,11 @@ class Translation(Base):
                 dm.set_translation_extras({})
                 dm.set_project_status(Base.ProjectStatus.NONE)
                 self.extras = dm.get_translation_extras()
-                dm.run_project_prefilter(self.config, reason="translation_reset")
+                dm.run_project_prefilter(
+                    self.config,
+                    reason="translation_reset",
+                    emit_refresh_events=False,
+                )
             else:
                 reset_result = dm.reset_failed_translation_items_sync()
                 if reset_result is not None:

@@ -129,7 +129,7 @@ flowchart TD
 - 翻译批量提交、校对保存/替换/重译，以及 `translation_reset_failed` 当前都已经改成条目级差异刷新，不再依赖任务终态后的整页兜底刷新。
 - 批量 `replace/reset/delete` 当前都按“一次事务 + 一次事件”的语义落地；前端多选操作不再需要逐个文件排队触发刷新。
 - 文件重排当前只触发工作台 `scope="order"` 刷新；文件增删改则同时触发工作台和校对页 `scope="file"` 刷新。
-- 质量规则写入当前由 `QualityRuleMutationService` 先取旧/新快照，再通过 `ProofreadingImpactAnalyzer` 计算精确条目范围；EventBridge 负责把同一条 `QUALITY_RULE_UPDATE` 裁成 `proofreading.snapshot_invalidated`，DataManager 则补发工作台 `scope=file/global` 刷新。
+- 质量规则写入当前由 `QualityRuleMutationService` 先取旧/新快照，再通过 `ProofreadingImpactAnalyzer` 计算精确条目范围；EventBridge 负责把同一条 `QUALITY_RULE_UPDATE` 裁成 `proofreading.snapshot_invalidated`，工作台不再因为这类规则更新补发刷新。
 
 ## 修改建议
 | 变更类型 | 优先落点 |

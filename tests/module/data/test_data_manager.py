@@ -142,7 +142,7 @@ def test_set_meta_emits_quality_rule_update_for_rule_meta_keys(
     ]
 
 
-def test_on_quality_rule_update_emits_file_scoped_workbench_refresh_for_entry_impact(
+def test_on_quality_rule_update_does_not_refresh_workbench_for_rule_changes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
@@ -156,16 +156,7 @@ def test_on_quality_rule_update_emits_file_scoped_workbench_refresh_for_entry_im
         },
     )
 
-    assert emitted_events == [
-        (
-            Base.Event.WORKBENCH_REFRESH,
-            {
-                "reason": "quality_rule_update",
-                "scope": "file",
-                "rel_paths": ["script/a.txt"],
-            },
-        )
-    ]
+    assert emitted_events == []
 
 
 def test_emit_project_item_change_refresh_emits_workbench_and_proofreading_events(

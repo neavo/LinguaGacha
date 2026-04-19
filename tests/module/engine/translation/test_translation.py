@@ -317,6 +317,7 @@ def test_resolve_export_items_uses_runtime_cache_for_manual_export_when_translat
     copied_item = Item(src="copied")
     translation.copy_items = lambda: [copied_item]
     engine = create_engine(engine_status)
+
     def fail_if_read_data_manager() -> None:
         raise AssertionError("不应读取 DataManager")
 
@@ -364,6 +365,7 @@ def test_resolve_export_items_uses_runtime_cache_for_auto_export(
     translation.items_cache = [cached_item]
     copied_item = Item(src="copied")
     translation.copy_items = lambda: [copied_item]
+
     def fail_if_read_data_manager() -> None:
         raise AssertionError("不应读取 DataManager")
 
@@ -890,6 +892,7 @@ def test_translation_reset_all_runs_reset_task_and_emits_done(
     dm.run_project_prefilter.assert_called_once_with(
         translation.config,
         reason="translation_reset",
+        emit_refresh_events=False,
     )
     assert has_emitted(
         translation,

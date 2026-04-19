@@ -131,9 +131,11 @@ class FakeTaskDataManager:
         self.replace_all_items_calls: list[list[object]] = []
         self.set_translation_extras_calls: list[dict[str, int | float]] = []
         self.set_project_status_calls: list[Base.ProjectStatus] = []
-        self.run_project_prefilter_calls: list[tuple[object, str]] = []
+        self.run_project_prefilter_calls: list[tuple[object, str, bool]] = []
         self.reset_failed_translation_items_sync_calls: int = 0
-        self.project_item_change_refresh_calls: list[tuple[ProjectItemChange, Base.Event | None]] = []
+        self.project_item_change_refresh_calls: list[
+            tuple[ProjectItemChange, Base.Event | None]
+        ] = []
         self.clear_analysis_candidates_and_progress_calls: int = 0
         self.reset_failed_analysis_checkpoints_calls: int = 0
         self.refresh_analysis_progress_snapshot_cache_calls: int = 0
@@ -179,8 +181,14 @@ class FakeTaskDataManager:
         self.set_project_status_calls.append(status)
         self.project_status = status
 
-    def run_project_prefilter(self, config: object, *, reason: str) -> None:
-        self.run_project_prefilter_calls.append((config, reason))
+    def run_project_prefilter(
+        self,
+        config: object,
+        *,
+        reason: str,
+        emit_refresh_events: bool = True,
+    ) -> None:
+        self.run_project_prefilter_calls.append((config, reason, emit_refresh_events))
 
     def clear_analysis_candidates_and_progress(self) -> None:
         self.clear_analysis_candidates_and_progress_calls += 1

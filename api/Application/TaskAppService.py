@@ -194,6 +194,7 @@ class TaskAppService:
                 self.data_manager.run_project_prefilter(
                     config,
                     reason="translation_reset",
+                    emit_refresh_events=False,
                 )
             else:
                 reset_result = self.data_manager.reset_failed_translation_items_sync()

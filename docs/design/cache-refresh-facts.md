@@ -138,14 +138,14 @@
 | `check_kana_residue` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
 | `check_hangeul_residue` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
 | `check_similarity` 变化 | 无 | 无 | 当前不触发校对失效 | 该开关仍属于配置项，但当前校对快照链不消费 |
-| 术语表内容变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file`，分析候选导入术语表也已走同一口径 | 只影响命中相关术语的条目 |
-| 术语表启用开关变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中术语检查的条目 |
-| 前置替换规则内容变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中相关模式的条目 |
-| 前置替换启用开关变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中相关模式的条目 |
-| 后置替换规则内容变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中相关模式的条目 |
-| 后置替换启用开关变化 | 文件级 | 条目级 | 当前会按 impact 发 `proofreading scope=entry + workbench scope=file` | 只影响命中相关模式的条目 |
-| 文本保护条目内容变化 | 文件级 | 条目级 | 当前仅在 `CUSTOM` 模式下按 regex 候选集发差异刷新 | 非 `CUSTOM` 模式下不再触发无意义刷新 |
-| 文本保护模式变化 | 文件级 | 全局 | 当前走全局失效 | 会整体改变检查器行为 |
+| 术语表内容变化 | 无 | 条目级 | 当前会按 impact 发 `proofreading scope=entry`，分析候选导入术语表也已走同一口径 | 只影响命中相关术语的条目 |
+| 术语表启用开关变化 | 无 | 条目级 | 当前会按 impact 发 `proofreading scope=entry` | 只影响命中术语检查的条目 |
+| 前置替换规则内容变化 | 无 | 条目级 | 当前会按 impact 发 `proofreading scope=entry` | 只影响命中相关模式的条目 |
+| 前置替换启用开关变化 | 无 | 条目级 | 当前会按 impact 发 `proofreading scope=entry` | 只影响命中相关模式的条目 |
+| 后置替换规则内容变化 | 无 | 条目级 | 当前会按 impact 发 `proofreading scope=entry` | 只影响命中相关模式的条目 |
+| 后置替换启用开关变化 | 无 | 条目级 | 当前会按 impact 发 `proofreading scope=entry` | 只影响命中相关模式的条目 |
+| 文本保护条目内容变化 | 无 | 条目级 | 当前仅在 `CUSTOM` 模式下按 regex 候选集发差异刷新 | 非 `CUSTOM` 模式下不再触发无意义刷新 |
+| 文本保护模式变化 | 无 | 全局 | 当前走全局失效 | 会整体改变检查器行为 |
 | 新增文件 | 文件级 | 文件级 | 工作台与校对页都先收结构化事件，再各自请求一次文件补丁 | 影响单文件条目集 |
 | 替换文件 | 文件级 | 文件级 | 工作台与校对页都先收结构化事件，再各自请求一次文件补丁 | 影响单文件条目集 |
 | 重置文件 | 文件级 | 文件级 | 工作台与校对页都先收结构化事件，再各自请求一次文件补丁 | 影响单文件状态回滚 |
@@ -187,9 +187,15 @@
 - 校对页保存、批量替换、重译。
 - 翻译批量提交。
 - `translation_reset_failed`。
-- 可精确收敛的规则变更。
 
-### 3. `target_language` 已从页面刷新链和预过滤比较口径中剥离
+### 3. 质量规则变更已从工作台刷新链移除
+
+当前已确认：
+
+- 术语表、前置替换、后置替换与文本保护规则变化只会补发校对页失效，不再联动工作台刷新。
+- 工作台快照当前只依赖文件集合、文件顺序、`file_type` 与条目 `status` 聚合结果；质量规则变化本身不会直接改动这些字段。
+
+### 4. `target_language` 已从页面刷新链和预过滤比较口径中剥离
 
 当前已确认：
 
@@ -202,7 +208,7 @@
 - `target_language` 仍是合法的工程摘要字段。
 - 但它不再属于工作台/校对页缓存的高影响配置。
 
-### 4. 部分校对开关已从校对页刷新链移除
+### 5. 部分校对开关已从校对页刷新链移除
 
 当前以下开关不会再触发校对页失效：
 

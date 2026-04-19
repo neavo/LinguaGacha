@@ -18,6 +18,16 @@ class ProofreadingImpactResult:
     rel_paths: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ProofreadingReplacementRule:
+    """替换规则的最小语义快照。"""
+
+    src: str
+    dst: str
+    regex: bool = False
+    case_sensitive: bool = False
+
+
 class ProofreadingImpactAnalyzer:
     """按当前规则语义估算会影响哪些校对条目。"""
 
@@ -125,21 +135,27 @@ class ProofreadingImpactAnalyzer:
     ) -> ProofreadingImpactResult | None:
         """前置替换按原文命中条目。"""
 
-        old_rules = self.extract_src_dst_pairs(old_entries)
-        new_rules = self.extract_src_dst_pairs(new_entries)
+        old_rules = self.extract_replacement_rules(old_entries)
+        new_rules = self.extract_replacement_rules(new_entries)
         old_enabled = bool(old_meta.get("enabled", True))
         new_enabled = bool(new_meta.get("enabled", True))
         if old_rules == new_rules and old_enabled == new_enabled:
             return None
 
-        target_srcs = {rule[0] for rule in [*old_rules, *new_rules] if rule[0] != ""}
-        if not target_srcs:
+        target_rules = self.merge_replacement_rules(old_rules, new_rules)
+        if not target_rules:
             return None
 
-        return self.build_entry_impact(
-            review_items,
-            lambda item: any(src in item.get_src() for src in target_srcs),
-        )
+        try:
+            return self.build_entry_impact(
+                review_items,
+                lambda item: any(
+                    self.match_replacement_rule_text(item.get_src(), rule)
+                    for rule in target_rules
+                ),
+            )
+        except re.error:
+            return ProofreadingImpactResult(scope=self.GLOBAL_SCOPE)
 
     def analyze_post_replacement_update(
         self,
@@ -152,21 +168,27 @@ class ProofreadingImpactAnalyzer:
     ) -> ProofreadingImpactResult | None:
         """后置替换按原始译文命中条目。"""
 
-        old_rules = self.extract_src_dst_pairs(old_entries)
-        new_rules = self.extract_src_dst_pairs(new_entries)
+        old_rules = self.extract_replacement_rules(old_entries)
+        new_rules = self.extract_replacement_rules(new_entries)
         old_enabled = bool(old_meta.get("enabled", True))
         new_enabled = bool(new_meta.get("enabled", True))
         if old_rules == new_rules and old_enabled == new_enabled:
             return None
 
-        target_dsts = {rule[1] for rule in [*old_rules, *new_rules] if rule[1] != ""}
-        if not target_dsts:
+        target_rules = self.merge_replacement_rules(old_rules, new_rules)
+        if not target_rules:
             return None
 
-        return self.build_entry_impact(
-            review_items,
-            lambda item: any(dst in item.get_dst() for dst in target_dsts),
-        )
+        try:
+            return self.build_entry_impact(
+                review_items,
+                lambda item: any(
+                    self.match_replacement_rule_text(item.get_dst(), rule)
+                    for rule in target_rules
+                ),
+            )
+        except re.error:
+            return ProofreadingImpactResult(scope=self.GLOBAL_SCOPE)
 
     def analyze_text_preserve_update(
         self,
@@ -309,6 +331,66 @@ class ProofreadingImpactAnalyzer:
             seen_pairs.add(pair)
             pairs.append(pair)
         return tuple(pairs)
+
+    def extract_replacement_rules(
+        self,
+        entries: list[dict[str, Any]],
+    ) -> tuple[ProofreadingReplacementRule, ...]:
+        """提取替换规则真实参与匹配的最小语义集合。"""
+
+        rules: list[ProofreadingReplacementRule] = []
+        seen_rules: set[ProofreadingReplacementRule] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            rule = ProofreadingReplacementRule(
+                src=str(entry.get("src", "")).strip(),
+                dst=str(entry.get("dst", "")).strip(),
+                regex=bool(entry.get("regex", False)),
+                case_sensitive=bool(entry.get("case_sensitive", False)),
+            )
+            if rule.src == "":
+                continue
+            if rule in seen_rules:
+                continue
+            seen_rules.add(rule)
+            rules.append(rule)
+        return tuple(rules)
+
+    def merge_replacement_rules(
+        self,
+        old_rules: tuple[ProofreadingReplacementRule, ...],
+        new_rules: tuple[ProofreadingReplacementRule, ...],
+    ) -> tuple[ProofreadingReplacementRule, ...]:
+        """合并旧新规则，保证影响分析不会漏掉语义变更前后的命中集。"""
+
+        merged_rules: list[ProofreadingReplacementRule] = []
+        seen_rules: set[ProofreadingReplacementRule] = set()
+        for rule in [*old_rules, *new_rules]:
+            if rule in seen_rules:
+                continue
+            seen_rules.add(rule)
+            merged_rules.append(rule)
+        return tuple(merged_rules)
+
+    def match_replacement_rule_text(
+        self,
+        text: str,
+        rule: ProofreadingReplacementRule,
+    ) -> bool:
+        """镜像替换规则的真实命中语义，避免 impact 分析与 TextProcessor 漂移。"""
+
+        if rule.src == "":
+            return False
+
+        if rule.regex:
+            flags = 0 if rule.case_sensitive else re.IGNORECASE
+            return re.search(rule.src, text, flags) is not None
+
+        if rule.case_sensitive:
+            return rule.src in text
+
+        return rule.src.casefold() in text.casefold()
 
     def extract_text_preserve_patterns(
         self,
