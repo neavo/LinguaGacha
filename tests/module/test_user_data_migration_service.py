@@ -57,6 +57,24 @@ def test_migrate_prompt_user_presets_keeps_new_file_and_deletes_old_duplicate(
     assert not (legacy_dir / "story.txt").exists()
 
 
+def test_migrate_prompt_user_presets_ignores_non_preset_files(
+    migration_root: Path,
+) -> None:
+    legacy_dir = (
+        migration_root / "resource" / "preset" / "custom_prompt" / "user" / "zh"
+    )
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_dir / "story.txt").write_text("story", encoding="utf-8")
+    (legacy_dir / "readme.md").write_text("keep", encoding="utf-8")
+
+    UserDataMigrationService.migrate_prompt_user_presets()
+
+    assert (migration_root / "userdata" / "translation_prompt" / "story.txt").read_text(
+        encoding="utf-8"
+    ) == "story"
+    assert (legacy_dir / "readme.md").exists()
+
+
 def test_migrate_quality_rule_user_presets_moves_to_flat_userdata_dir(
     migration_root: Path,
 ) -> None:
@@ -169,6 +187,112 @@ def test_run_startup_migrations_copies_legacy_config_and_normalizes_values(
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert saved["clean_ruby"] is True
     assert saved["glossary_default_preset"] == "builtin:01_demo.json"
+
+
+def test_run_startup_migrations_uses_root_legacy_config_when_resource_missing(
+    migration_root: Path,
+) -> None:
+    legacy_path = migration_root / "config.json"
+    legacy_path.write_text(
+        json.dumps({"clean_ruby": True}),
+        encoding="utf-8",
+    )
+
+    UserDataMigrationService.run_startup_migrations()
+
+    assert Config().load().clean_ruby is True
+    assert (migration_root / "userdata" / "config.json").exists()
+    assert legacy_path.exists()
+
+
+def test_run_startup_migrations_prefers_resource_config_in_desktop_upgrade(
+    migration_root: Path,
+) -> None:
+    root_legacy_path = migration_root / "config.json"
+    resource_legacy_path = migration_root / "resource" / "config.json"
+    root_legacy_path.write_text(
+        json.dumps({"clean_ruby": False}),
+        encoding="utf-8",
+    )
+    resource_legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    resource_legacy_path.write_text(
+        json.dumps({"clean_ruby": True}),
+        encoding="utf-8",
+    )
+
+    UserDataMigrationService.run_startup_migrations()
+
+    assert Config().load().clean_ruby is True
+    assert (migration_root / "userdata" / "config.json").exists()
+
+
+def test_run_startup_migrations_prefers_data_config_in_portable_upgrade(
+    migration_root: Path,
+) -> None:
+    data_dir = migration_root / "portable_data"
+    BasePath.APP_DIR = str(migration_root)
+    BasePath.DATA_DIR = str(data_dir)
+    data_legacy_path = data_dir / "config.json"
+    resource_legacy_path = migration_root / "resource" / "config.json"
+    root_legacy_path = migration_root / "config.json"
+    data_legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    resource_legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    root_legacy_path.write_text(
+        json.dumps({"clean_ruby": False}),
+        encoding="utf-8",
+    )
+    resource_legacy_path.write_text(
+        json.dumps({"clean_ruby": False}),
+        encoding="utf-8",
+    )
+    data_legacy_path.write_text(
+        json.dumps({"clean_ruby": True}),
+        encoding="utf-8",
+    )
+
+    UserDataMigrationService.run_startup_migrations()
+
+    assert Config().load().clean_ruby is True
+    assert (data_dir / "userdata" / "config.json").exists()
+
+
+def test_run_startup_migrations_keeps_existing_userdata_config(
+    migration_root: Path,
+) -> None:
+    config_path = migration_root / "userdata" / "config.json"
+    legacy_path = migration_root / "resource" / "config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps({"clean_ruby": False}),
+        encoding="utf-8",
+    )
+    legacy_path.write_text(
+        json.dumps({"clean_ruby": True}),
+        encoding="utf-8",
+    )
+
+    UserDataMigrationService.run_startup_migrations()
+
+    assert Config().load().clean_ruby is False
+    assert json.loads(config_path.read_text(encoding="utf-8"))["clean_ruby"] is False
+
+
+def test_normalize_quality_rule_default_preset_value_returns_empty_for_unknown_json_path(
+    migration_root: Path,
+    reset_migration_service: FakeLogManager,
+) -> None:
+    del migration_root
+
+    result = UserDataMigrationService.normalize_quality_rule_default_preset_value(
+        "glossary",
+        "resource/not_glossary/demo.json",
+    )
+
+    assert result == ""
+    assert reset_migration_service.warning_messages == [
+        "Failed to normalize default preset value: glossary -> resource/not_glossary/demo.json"
+    ]
 
 
 def test_migrate_update_runtime_artifacts_moves_runtime_files_to_userdata(

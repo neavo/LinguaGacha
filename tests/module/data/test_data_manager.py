@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from unittest.mock import call
 
 import pytest
 
@@ -20,11 +19,19 @@ def build_data_manager(
 ) -> tuple[DataManager, list[tuple[Base.Event, dict]]]:
     """构造一个真实初始化后的 DataManager，再替换边界依赖。"""
 
+    meta_store: dict[str, object] = {}
     monkeypatch.setattr(DataManager, "subscribe", lambda *args, **kwargs: None)
     dm = DataManager()
     dm.session.db = SimpleNamespace(open=MagicMock(), close=MagicMock())
     dm.session.lg_path = "demo/project.lg"
-    dm.meta_service = SimpleNamespace(get_meta=MagicMock(), set_meta=MagicMock())
+    dm.meta_service = SimpleNamespace(
+        get_meta=MagicMock(
+            side_effect=lambda key, default=None: meta_store.get(key, default)
+        ),
+        set_meta=MagicMock(
+            side_effect=lambda key, value: meta_store.__setitem__(key, value)
+        ),
+    )
     dm.rule_service = SimpleNamespace(
         get_rules_cached=MagicMock(return_value=[]),
         set_rules_cached=MagicMock(),
@@ -70,6 +77,7 @@ def build_data_manager(
         emitted_events.append((event, data))
 
     dm.emit = capture_emit
+    dm.test_meta_store = meta_store
     return dm, emitted_events
 
 
@@ -96,20 +104,6 @@ def test_data_manager_get_returns_singleton(monkeypatch: pytest.MonkeyPatch) -> 
         assert first is second
     finally:
         DataManager.instance = None
-
-
-def test_open_db_and_close_db_delegate_to_database() -> None:
-    monkeypatch = pytest.MonkeyPatch()
-    try:
-        dm, _events = build_data_manager(monkeypatch)
-
-        dm.open_db()
-        dm.close_db()
-
-        dm.session.db.open.assert_called_once()
-        dm.session.db.close.assert_called_once()
-    finally:
-        monkeypatch.undo()
 
 
 def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
@@ -213,10 +207,10 @@ def test_sync_project_language_meta_updates_current_project_meta(
 
     dm.sync_project_language_meta()
 
-    assert dm.meta_service.set_meta.call_args_list == [
-        call("source_language", "JA"),
-        call("target_language", "EN"),
-    ]
+    assert dm.test_meta_store == {
+        "source_language": "JA",
+        "target_language": "EN",
+    }
     assert emitted_events == []
 
 

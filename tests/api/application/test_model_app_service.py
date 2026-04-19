@@ -9,15 +9,20 @@ from tests.api.support.application_fakes import FakeModelManager
 
 def build_model_app_service(
     *,
+    fake_config: FakeModelConfig | None = None,
+    fake_model_manager: FakeModelManager | None = None,
     available_models_loader: Callable[[dict[str, object]], list[str]] | None = None,
     api_test_runner: Callable[[dict[str, object]], dict[str, object]] | None = None,
 ) -> ModelAppService:
     """统一构造模型应用服务测试桩，避免每个用例重复拼装依赖。"""
 
-    fake_config = FakeModelConfig()
+    config = fake_config if fake_config is not None else FakeModelConfig()
+    model_manager = (
+        fake_model_manager if fake_model_manager is not None else FakeModelManager()
+    )
     return ModelAppService(
-        config_loader=lambda: fake_config,
-        model_manager=FakeModelManager(),
+        config_loader=lambda: config,
+        model_manager=model_manager,
         available_models_loader=available_models_loader,
         api_test_runner=api_test_runner,
     )
@@ -46,6 +51,17 @@ def test_model_app_service_snapshot_returns_active_model_and_models() -> None:
     assert snapshot["active_model_id"] == "preset-1"
     assert isinstance(snapshot["models"], list)
     assert len(snapshot["models"]) == 3
+
+
+def test_model_app_service_activate_model_updates_active_model_snapshot() -> None:
+    fake_config = FakeModelConfig()
+    service = build_model_app_service(fake_config=fake_config)
+
+    data = service.activate_model({"model_id": "preset-2"})
+
+    assert data["snapshot"]["active_model_id"] == "preset-2"
+    assert fake_config.activate_model_id == "preset-2"
+    assert fake_config.save_calls == 1
 
 
 def test_model_app_service_update_model_merges_nested_patch() -> None:
@@ -77,6 +93,63 @@ def test_model_app_service_delete_preset_model_is_rejected() -> None:
         service.delete_model({"model_id": "preset-1"})
 
 
+def test_model_app_service_add_model_returns_snapshot_with_new_custom_model() -> None:
+    fake_config = FakeModelConfig()
+    fake_model_manager = FakeModelManager()
+    service = build_model_app_service(
+        fake_config=fake_config,
+        fake_model_manager=fake_model_manager,
+    )
+
+    data = service.add_model({"model_type": "CUSTOM_GOOGLE"})
+
+    models = data["snapshot"]["models"]
+    added_model = next(model for model in models if model["id"] == "custom_google-1")
+    assert len(models) == 4
+    assert added_model["type"] == "CUSTOM_GOOGLE"
+    assert fake_config.save_calls == 1
+
+
+def test_model_app_service_delete_model_reassigns_active_model_after_removing_custom_model() -> (
+    None
+):
+    fake_config = FakeModelConfig()
+    fake_config.activate_model_id = "custom-openai-1"
+    service = build_model_app_service(
+        fake_config=fake_config,
+        fake_model_manager=FakeModelManager(),
+    )
+
+    data = service.delete_model({"model_id": "custom-openai-1"})
+
+    remaining_ids = [model["id"] for model in data["snapshot"]["models"]]
+    assert "custom-openai-1" not in remaining_ids
+    assert data["snapshot"]["active_model_id"] == "preset-1"
+    assert fake_config.activate_model_id == "preset-1"
+
+
+def test_model_app_service_reset_preset_model_restores_original_fields() -> None:
+    fake_config = FakeModelConfig()
+    service = build_model_app_service(
+        fake_config=fake_config,
+        fake_model_manager=FakeModelManager(),
+    )
+    service.update_model(
+        {
+            "model_id": "preset-1",
+            "patch": {"name": "已改坏的模型名"},
+        }
+    )
+
+    data = service.reset_preset_model({"model_id": "preset-1"})
+
+    restored_model = next(
+        model for model in data["snapshot"]["models"] if model["id"] == "preset-1"
+    )
+    assert restored_model["name"] == "GPT-4.1"
+    assert restored_model["api_url"] == "https://api.example.com/v1"
+
+
 def test_model_app_service_reorder_model_accepts_ordered_model_ids() -> None:
     service = build_model_app_service()
 
@@ -92,6 +165,20 @@ def test_model_app_service_reorder_model_accepts_ordered_model_ids() -> None:
     ]
 
     assert preset_ids == ["preset-2", "preset-1"]
+
+
+def test_model_app_service_reorder_model_rejects_cross_group_ids() -> None:
+    service = build_model_app_service()
+
+    with pytest.raises(
+        ValueError,
+        match="ordered_model_ids must match one model group exactly",
+    ):
+        service.reorder_model(
+            {
+                "ordered_model_ids": ["preset-1", "custom-openai-1"],
+            }
+        )
 
 
 def test_model_app_service_reorder_model_keeps_operation_payload_for_legacy_client() -> (

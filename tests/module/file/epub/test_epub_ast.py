@@ -1176,18 +1176,17 @@ def test_read_from_path_reads_epub_files_and_rel_path(
     file_a = input_root / "a.epub"
     file_b = input_root / "sub" / "b.epub"
     file_b.parent.mkdir(parents=True, exist_ok=True)
-    file_a.write_bytes(b"a")
-    file_b.write_bytes(b"b")
+    file_a.write_bytes(build_epub_bytes())
+    file_b.write_bytes(build_epub_bytes())
 
-    called: list[str] = []
-
-    def fake_read_from_stream(content: bytes, rel_path: str) -> list[Item]:
-        del content
-        called.append(rel_path.replace("\\", "/"))
-        return [Item.from_dict({"src": rel_path})]
-
-    ast.read_from_stream = fake_read_from_stream
     items = ast.read_from_path([str(file_a), str(file_b)], str(input_root))
 
-    assert sorted(called) == ["a.epub", "sub/b.epub"]
-    assert len(items) == 2
+    observed = sorted(
+        (item.get_file_path().replace("\\", "/"), item.get_src()) for item in items
+    )
+    assert observed == [
+        ("a.epub", "ok"),
+        ("a.epub", "toc"),
+        ("sub/b.epub", "ok"),
+        ("sub/b.epub", "toc"),
+    ]

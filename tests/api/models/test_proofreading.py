@@ -1,9 +1,10 @@
 from api.Models.Proofreading import ProofreadingFilterOptionsSnapshot
 from api.Models.Proofreading import ProofreadingItemView
 from api.Models.Proofreading import ProofreadingMutationResult
+from api.Models.Proofreading import ProofreadingSearchResult
 from api.Models.Proofreading import ProofreadingSnapshot
 from api.Models.Proofreading import ProofreadingSummary
-import pytest
+from api.Models.Proofreading import ProofreadingWarningSummary
 
 
 def test_proofreading_filter_options_snapshot_from_dict_normalizes_collections() -> (
@@ -22,6 +23,38 @@ def test_proofreading_filter_options_snapshot_from_dict_normalizes_collections()
     assert options.statuses == ("NONE", "PROCESSED")
     assert options.file_paths == ("chapter-1.txt",)
     assert options.glossary_terms == (("HP", "生命值"),)
+
+
+def test_proofreading_filter_options_snapshot_accepts_dict_terms() -> None:
+    options = ProofreadingFilterOptionsSnapshot.from_dict(
+        {
+            "glossary_terms": [
+                {"src": "勇者", "dst": "Hero"},
+                ["HP", "生命值"],
+            ]
+        }
+    )
+
+    assert options.glossary_terms == (("勇者", "Hero"), ("HP", "生命值"))
+    assert options.to_dict()["glossary_terms"] == [["勇者", "Hero"], ["HP", "生命值"]]
+
+
+def test_proofreading_filter_options_snapshot_ignores_invalid_collection_payloads() -> (
+    None
+):
+    options = ProofreadingFilterOptionsSnapshot.from_dict(
+        {
+            "warning_types": "invalid",
+            "statuses": "invalid",
+            "file_paths": "invalid",
+            "glossary_terms": "invalid",
+        }
+    )
+
+    assert options.warning_types == ()
+    assert options.statuses == ()
+    assert options.file_paths == ()
+    assert options.glossary_terms == ()
 
 
 def test_proofreading_summary_from_dict_keeps_all_stable_totals() -> None:
@@ -60,6 +93,43 @@ def test_proofreading_item_view_from_dict_keeps_item_id_and_row_number() -> None
     assert item.status == "PROCESSED"
     assert item.warnings == ("GLOSSARY",)
     assert item.failed_glossary_terms == (("HP", "生命值"),)
+
+
+def test_proofreading_item_view_supports_alias_fields_and_term_dicts() -> None:
+    item = ProofreadingItemView.from_dict(
+        {
+            "id": "item-1",
+            "row": 7,
+            "file_path": "chapter-2.txt",
+            "src": "勇者が来た",
+            "dst": "Hero arrived",
+            "status": "PROCESSED",
+            "warning_types": ["GLOSSARY"],
+            "applied_glossary_terms": [{"src": "勇者", "dst": "Hero"}],
+            "failed_glossary_terms": [{"src": "HP", "dst": "生命值"}],
+        }
+    )
+
+    assert item.item_id == "item-1"
+    assert item.row_number == 7
+    assert item.warnings == ("GLOSSARY",)
+    assert item.applied_glossary_terms == (("勇者", "Hero"),)
+    assert item.failed_glossary_terms == (("HP", "生命值"),)
+    assert item.to_dict()["applied_glossary_terms"] == [["勇者", "Hero"]]
+
+
+def test_proofreading_item_view_ignores_invalid_warning_and_term_containers() -> None:
+    item = ProofreadingItemView.from_dict(
+        {
+            "warnings": "invalid",
+            "applied_glossary_terms": "invalid",
+            "failed_glossary_terms": "invalid",
+        }
+    )
+
+    assert item.warnings == ()
+    assert item.applied_glossary_terms == ()
+    assert item.failed_glossary_terms == ()
 
 
 def test_proofreading_snapshot_from_dict_keeps_filters_and_items_contract() -> None:
@@ -109,34 +179,33 @@ def test_proofreading_snapshot_from_dict_keeps_filters_and_items_contract() -> N
     assert snapshot.items[0].failed_glossary_terms == (("勇者", "Hero"),)
 
 
-def test_proofreading_snapshot_uses_filters_contract_and_ignores_legacy_alias() -> None:
+def test_proofreading_snapshot_accepts_prebuilt_objects() -> None:
+    summary = ProofreadingSummary(total_items=3, filtered_items=2, warning_items=1)
+    filters = ProofreadingFilterOptionsSnapshot(
+        warning_types=("GLOSSARY",),
+        statuses=("PROCESSED",),
+        file_paths=("chapter-1.txt",),
+        glossary_terms=(("HP", "生命值"),),
+    )
+    item = ProofreadingItemView(
+        item_id="item-1",
+        row_number=12,
+        warnings=("GLOSSARY",),
+    )
     snapshot = ProofreadingSnapshot.from_dict(
         {
             "revision": 11,
             "project_id": "project-1",
             "readonly": False,
-            "summary": {
-                "total_items": 3,
-                "filtered_items": 2,
-                "warning_items": 1,
-            },
-            "filter_options": {
-                "warning_types": ["GLOSSARY"],
-                "statuses": ["PROCESSED"],
-                "file_paths": ["chapter-1.txt"],
-                "glossary_terms": [["HP", "生命值"]],
-            },
-            "items": [],
+            "summary": summary,
+            "filters": filters,
+            "items": [item],
         }
     )
 
-    assert snapshot.filters.warning_types == ()
-    assert snapshot.filters.statuses == ()
-    assert snapshot.filters.file_paths == ()
-    assert snapshot.filters.glossary_terms == ()
-
-    with pytest.raises(AttributeError):
-        _ = snapshot.filter_options
+    assert snapshot.summary == summary
+    assert snapshot.filters == filters
+    assert snapshot.items == (item,)
 
 
 def test_proofreading_snapshot_round_trip_keeps_stable_contract_keys() -> None:
@@ -263,14 +332,25 @@ def test_proofreading_mutation_result_round_trip_keeps_items_and_summary() -> No
     }
 
 
-def test_proofreading_model_package_exports_match_module_contract() -> None:
-    from api.Models import ProofreadingSearchResult
-    from api.Models import ProofreadingWarningSummary
-
-    warning_summary = ProofreadingWarningSummary.from_dict(
-        {"warning_type": "GLOSSARY", "count": 4}
+def test_proofreading_mutation_result_accepts_prebuilt_objects() -> None:
+    item = ProofreadingItemView(item_id="item-1", dst="译文")
+    summary = ProofreadingSummary(total_items=1, filtered_items=1, warning_items=0)
+    result = ProofreadingMutationResult.from_dict(
+        {
+            "revision": 4,
+            "changed_item_ids": "invalid",
+            "items": [item],
+            "summary": summary,
+        }
     )
-    search_result = ProofreadingSearchResult.from_dict(
+
+    assert result.changed_item_ids == ()
+    assert result.items == (item,)
+    assert result.summary == summary
+
+
+def test_proofreading_search_result_round_trip_keeps_stable_fields() -> None:
+    result = ProofreadingSearchResult.from_dict(
         {
             "keyword": "HP",
             "is_regex": True,
@@ -278,8 +358,86 @@ def test_proofreading_model_package_exports_match_module_contract() -> None:
         }
     )
 
-    assert warning_summary.warning_type == "GLOSSARY"
-    assert warning_summary.count == 4
-    assert search_result.keyword == "HP"
-    assert search_result.is_regex is True
-    assert search_result.matched_item_ids == (1, 2)
+    assert result.keyword == "HP"
+    assert result.is_regex is True
+    assert result.matched_item_ids == (1, 2)
+    assert result.to_dict() == {
+        "keyword": "HP",
+        "is_regex": True,
+        "matched_item_ids": [1, 2],
+    }
+
+
+def test_proofreading_warning_summary_round_trip_keeps_stable_fields() -> None:
+    summary = ProofreadingWarningSummary.from_dict(
+        {
+            "warning_type": "GLOSSARY",
+            "count": 4,
+        }
+    )
+
+    assert summary.warning_type == "GLOSSARY"
+    assert summary.count == 4
+    assert summary.to_dict() == {
+        "warning_type": "GLOSSARY",
+        "count": 4,
+    }
+
+
+def test_proofreading_models_use_safe_defaults_for_invalid_payloads() -> None:
+    options = ProofreadingFilterOptionsSnapshot.from_dict(None)
+    warning_summary = ProofreadingWarningSummary.from_dict(None)
+    summary = ProofreadingSummary.from_dict(None)
+    item = ProofreadingItemView.from_dict(None)
+    search_result = ProofreadingSearchResult.from_dict(None)
+    mutation_result = ProofreadingMutationResult.from_dict(None)
+    snapshot = ProofreadingSnapshot.from_dict(None)
+
+    assert options.to_dict() == {
+        "warning_types": [],
+        "statuses": [],
+        "file_paths": [],
+        "glossary_terms": [],
+    }
+    assert warning_summary.to_dict() == {
+        "warning_type": "",
+        "count": 0,
+    }
+    assert summary.to_dict() == {
+        "total_items": 0,
+        "filtered_items": 0,
+        "warning_items": 0,
+    }
+    assert item.to_dict()["item_id"] == 0
+    assert search_result.to_dict() == {
+        "keyword": "",
+        "is_regex": False,
+        "matched_item_ids": [],
+    }
+    assert mutation_result.to_dict() == {
+        "revision": 0,
+        "changed_item_ids": [],
+        "items": [],
+        "summary": {
+            "total_items": 0,
+            "filtered_items": 0,
+            "warning_items": 0,
+        },
+    }
+    assert snapshot.to_dict() == {
+        "revision": 0,
+        "project_id": "",
+        "readonly": False,
+        "summary": {
+            "total_items": 0,
+            "filtered_items": 0,
+            "warning_items": 0,
+        },
+        "filters": {
+            "warning_types": [],
+            "statuses": [],
+            "file_paths": [],
+            "glossary_terms": [],
+        },
+        "items": [],
+    }

@@ -1,3 +1,5 @@
+import pytest
+
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
 
@@ -367,19 +369,20 @@ def test_count_post_replacement_literal_case_insensitive_unicode_semantics() -> 
     assert result["post_unicode"].matched_item_count == 1
 
 
-def test_count_literal_bucket_hit_items_returns_empty_when_texts_empty() -> None:
+@pytest.mark.parametrize(
+    ("texts", "rules"),
+    [
+        ((), (LiteralRuleTask(key="a", pattern="HP"),)),
+        (("HP",), ()),
+    ],
+)
+def test_count_literal_bucket_hit_items_returns_empty_without_complete_bucket(
+    texts: tuple[str, ...],
+    rules: tuple[LiteralRuleTask, ...],
+) -> None:
     result = count_literal_bucket_hit_items(
-        texts=(),
-        rules=(LiteralRuleTask(key="a", pattern="HP"),),
-    )
-
-    assert result == {}
-
-
-def test_count_literal_bucket_hit_items_returns_empty_when_rules_empty() -> None:
-    result = count_literal_bucket_hit_items(
-        texts=("HP",),
-        rules=(),
+        texts=texts,
+        rules=rules,
     )
 
     assert result == {}
@@ -411,19 +414,37 @@ def test_count_literal_bucket_hit_items_mixed_empty_and_non_empty_pattern() -> N
     assert result["hp"] == 1
 
 
-def test_count_regex_bucket_hit_items_returns_empty_when_texts_empty() -> None:
-    result = count_regex_bucket_hit_items(
-        texts=(),
-        rules=(RegexRuleTask(key="a", pattern=r"HP", flags=0),),
+def test_count_literal_bucket_hit_items_supports_failure_transitions_and_suffix_outputs() -> (
+    None
+):
+    result = count_literal_bucket_hit_items(
+        texts=("ushers", "hero"),
+        rules=(
+            LiteralRuleTask(key="he", pattern="he"),
+            LiteralRuleTask(key="she", pattern="she"),
+            LiteralRuleTask(key="hers", pattern="hers"),
+        ),
     )
 
-    assert result == {}
+    assert result["he"] == 2
+    assert result["she"] == 1
+    assert result["hers"] == 1
 
 
-def test_count_regex_bucket_hit_items_returns_empty_when_rules_empty() -> None:
+@pytest.mark.parametrize(
+    ("texts", "rules"),
+    [
+        ((), (RegexRuleTask(key="a", pattern=r"HP", flags=0),)),
+        (("HP",), ()),
+    ],
+)
+def test_count_regex_bucket_hit_items_returns_empty_without_complete_bucket(
+    texts: tuple[str, ...],
+    rules: tuple[RegexRuleTask, ...],
+) -> None:
     result = count_regex_bucket_hit_items(
-        texts=("HP",),
-        rules=(),
+        texts=texts,
+        rules=rules,
     )
 
     assert result == {}
@@ -454,6 +475,21 @@ def test_build_subset_relation_map_returns_empty_for_invalid_targets_or_scope() 
         )
         == {}
     )
+
+
+def test_build_subset_relation_map_ignores_self_alias_and_unrelated_scope() -> None:
+    result = build_subset_relation_map(
+        (("child|0", "艾琳"),),
+        scope_candidates=(
+            ("parent_long|0", "第一圣女艾琳"),
+            ("child|0", "艾琳"),
+            ("alias|1", "艾琳"),
+            ("other|0", "圣女贝拉"),
+            ("parent_short|0", "圣女艾琳"),
+        ),
+    )
+
+    assert result == {"child|0": ("第一圣女艾琳", "圣女艾琳")}
 
 
 def test_build_subset_relation_map_returns_empty_when_stopped_mid_scan() -> None:

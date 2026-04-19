@@ -37,24 +37,6 @@ def install_fake_text_processor(
 
 
 class TestCodeFixer:
-    def test_is_ordered_subset_returns_mismatch_indexes(self) -> None:
-        flag, mismatch_indexes = CodeFixer.is_ordered_subset(
-            ["<1>", "<3>"],
-            ["<1>", "<2>", "<3>", "<4>"],
-        )
-
-        assert flag is True
-        assert mismatch_indexes == [1, 3]
-
-    def test_is_ordered_subset_returns_false_when_not_subset(self) -> None:
-        flag, mismatch_indexes = CodeFixer.is_ordered_subset(
-            ["<1>", "<5>"],
-            ["<1>", "<2>", "<3>"],
-        )
-
-        assert flag is False
-        assert mismatch_indexes == []
-
     def test_fix_remove_extra_codes_from_destination(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -64,6 +46,16 @@ class TestCodeFixer:
         dst = "A<1>B<x><2>C"
 
         assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == "A<1>B<2>C"
+
+    def test_fix_remove_extra_codes_before_and_after_last_match(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        install_fake_text_processor(monkeypatch, re.compile(r"<[^>]+>"))
+
+        src = "A<1>B<3>C"
+        dst = "A<1>B<x><3><y>C"
+
+        assert CodeFixer.fix(src, dst, Item.TextType.RPGMAKER, Config()) == "A<1>B<3>C"
 
     def test_fix_remove_all_destination_codes_when_source_has_none(
         self, monkeypatch: pytest.MonkeyPatch

@@ -177,7 +177,7 @@ data: {"task_type":"translation","line":3}
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
 | `/api/project/load` | `{"path": str}` | `{"project": ProjectSnapshotPayload}` | 加载已有工程 |
-| `/api/project/create` | `{"source_path": str, "output_path": str}` | `{"project": ProjectSnapshotPayload}` | 创建新工程 |
+| `/api/project/create` | `{"source_path": str, "path": str}` | `{"project": ProjectSnapshotPayload}` | 创建新工程 |
 | `/api/project/snapshot` | `{}` | `{"project": ProjectSnapshotPayload}` | 读取当前工程快照 |
 | `/api/project/unload` | `{}` | `{"project": ProjectSnapshotPayload}` | 卸载当前工程 |
 | `/api/project/extensions` | `{}` | `{"extensions": list[str]}` | 读取导入支持的文件扩展名 |

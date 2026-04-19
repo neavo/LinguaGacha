@@ -30,6 +30,7 @@ def test_task_snapshot_merge_progress_preserves_existing_status() -> None:
     assert merged.status == "TRANSLATING"
     assert merged.line == 3
     assert merged.total_input_tokens == 9
+    assert merged.to_dict()["status"] == "TRANSLATING"
 
 
 def test_task_snapshot_merge_status_preserves_progress_fields() -> None:
@@ -92,3 +93,39 @@ def test_analysis_glossary_import_result_to_dict_keeps_nested_snapshot() -> None
     assert payload["imported_count"] == 3
     assert payload["task"]["task_type"] == "analysis"
     assert payload["task"]["status"] == "IDLE"
+
+
+def test_task_updates_distinguish_missing_fields_and_explicit_zero_values() -> None:
+    status = TaskStatusUpdate.from_dict({})
+    progress = TaskProgressUpdate.from_dict(
+        {
+            "request_in_flight_count": 0,
+            "line": 0,
+            "time": 0.0,
+            "analysis_candidate_count": 0,
+        }
+    )
+
+    assert status.task_type is None
+    assert status.status is None
+    assert status.busy is None
+    assert progress.request_in_flight_count == 0
+    assert progress.line == 0
+    assert progress.time == 0.0
+    assert progress.analysis_candidate_count == 0
+
+
+def test_analysis_glossary_import_result_uses_safe_defaults_for_invalid_task_payload() -> (
+    None
+):
+    result = AnalysisGlossaryImportResult.from_dict(
+        {
+            "accepted": True,
+            "imported_count": 0,
+            "task": "invalid",
+        }
+    )
+
+    assert result.accepted is True
+    assert result.imported_count == 0
+    assert result.task.to_dict() == TaskSnapshot().to_dict()

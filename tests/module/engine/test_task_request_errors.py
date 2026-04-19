@@ -6,19 +6,21 @@ from module.Engine.TaskRequestErrors import StreamDegradationError
 
 
 @pytest.mark.parametrize(
-    "error_type",
+    ("error_type", "message"),
     [
-        RequestCancelledError,
-        RequestHardTimeoutError,
-        StreamDegradationError,
+        (RequestCancelledError, "cancelled"),
+        (RequestHardTimeoutError, "timeout"),
+        (StreamDegradationError, "degraded"),
     ],
 )
-def test_custom_request_errors_are_exceptions(error_type: type[Exception]) -> None:
-    error = error_type("boom")
+def test_custom_request_errors_preserve_domain_type_and_message(
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    error = error_type(message)
+
     assert isinstance(error, Exception)
-    assert str(error) == "boom"
+    assert str(error) == message
 
-
-def test_custom_error_can_be_caught_by_base_exception() -> None:
-    with pytest.raises(Exception, match="cancelled"):
-        raise RequestCancelledError("cancelled")
+    with pytest.raises(error_type, match=message):
+        raise error

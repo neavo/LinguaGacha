@@ -7,6 +7,7 @@ import pytest
 from base.Base import Base
 from module.Data.Core.Item import Item
 from module.Engine.Analysis.Analysis import Analysis
+from module.Engine.Analysis.AnalysisScheduler import AnalysisScheduler
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 
 from tests.module.engine.analysis.support import analysis_scheduler_module
@@ -14,6 +15,10 @@ from tests.module.engine.analysis.support import analysis_scheduler_module
 
 def build_item(item_id: int, src: str, file_path: str = "story.txt") -> Item:
     return Item(id=item_id, src=src, file_path=file_path)
+
+
+def build_scheduler() -> AnalysisScheduler:
+    return AnalysisScheduler(Analysis())
 
 
 def test_analysis_scheduler_build_initial_contexts_uses_shared_file_boundaries() -> (
@@ -29,9 +34,9 @@ def test_analysis_scheduler_build_initial_contexts_uses_shared_file_boundaries()
             previous_status=Base.ProjectStatus.ERROR,
         ),
     ]
-    analysis = Analysis()
+    scheduler = build_scheduler()
 
-    contexts = analysis.scheduler.build_initial_analysis_contexts(
+    contexts = scheduler.build_initial_analysis_contexts(
         items,
         input_token_threshold=1000,
     )
@@ -47,9 +52,9 @@ def test_analysis_scheduler_build_initial_contexts_uses_shared_file_boundaries()
 def test_analysis_scheduler_build_initial_contexts_returns_empty_for_empty_input() -> (
     None
 ):
-    analysis = Analysis()
+    scheduler = build_scheduler()
     assert (
-        analysis.scheduler.build_initial_analysis_contexts(
+        scheduler.build_initial_analysis_contexts(
             [],
             input_token_threshold=1000,
         )
@@ -66,7 +71,7 @@ def test_analysis_scheduler_build_initial_contexts_skips_invalid_and_orphan_seed
     invalid_id_item = Item(id="bad-id", src="bad", file_path="a.txt")
     orphan_item = Item(id=999, src="orphan", file_path="a.txt")
     valid_item = Item(id=1, src="a1", file_path="a.txt")
-    analysis = Analysis()
+    scheduler = build_scheduler()
 
     monkeypatch.setattr(
         analysis_scheduler_module.TaskScheduler,
@@ -81,7 +86,7 @@ def test_analysis_scheduler_build_initial_contexts_skips_invalid_and_orphan_seed
         ),
     )
 
-    contexts = analysis.scheduler.build_initial_analysis_contexts(
+    contexts = scheduler.build_initial_analysis_contexts(
         items,
         input_token_threshold=1000,
     )
@@ -95,7 +100,7 @@ def test_analysis_scheduler_build_progress_snapshot_counts_current_status_and_re
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
+    scheduler = build_scheduler()
     fake_data_manager.items = [
         build_item(1, "A"),
         build_item(2, "B"),
@@ -112,7 +117,7 @@ def test_analysis_scheduler_build_progress_snapshot_counts_current_status_and_re
         lambda: fake_data_manager,
     )
 
-    snapshot = analysis.scheduler.build_progress_snapshot(
+    snapshot = scheduler.build_progress_snapshot(
         previous_extras={
             "time": 12.0,
             "total_tokens": 13,
@@ -137,7 +142,7 @@ def test_analysis_scheduler_build_task_contexts_continue_only_schedules_none_ite
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
+    scheduler = build_scheduler()
     done_item = build_item(1, "done")
     error_item = build_item(3, "error", file_path="scene.txt")
     pending_item = build_item(4, "pending", file_path="scene.txt")
@@ -153,7 +158,7 @@ def test_analysis_scheduler_build_task_contexts_continue_only_schedules_none_ite
         lambda: fake_data_manager,
     )
 
-    contexts = analysis.scheduler.build_analysis_task_contexts(analysis.config)
+    contexts = scheduler.build_analysis_task_contexts(scheduler.analysis.config)
 
     assert [context.file_path for context in contexts] == ["scene.txt"]
     assert [item.item_id for item in contexts[0].items] == [4]
@@ -163,7 +168,7 @@ def test_analysis_scheduler_build_task_contexts_splits_when_file_changes(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
+    scheduler = build_scheduler()
     fake_data_manager.items = [
         build_item(1, "a1", file_path="a.txt"),
         build_item(2, "a2", file_path="a.txt"),
@@ -176,7 +181,7 @@ def test_analysis_scheduler_build_task_contexts_splits_when_file_changes(
         lambda: fake_data_manager,
     )
 
-    contexts = analysis.scheduler.build_analysis_task_contexts(analysis.config)
+    contexts = scheduler.build_analysis_task_contexts(scheduler.analysis.config)
 
     assert [context.file_path for context in contexts] == ["a.txt", "b.txt"]
     assert [[item.item_id for item in context.items] for context in contexts] == [
@@ -189,8 +194,8 @@ def test_analysis_scheduler_build_task_contexts_uses_shared_line_limit(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
-    analysis = Analysis()
-    analysis.model = {"threshold": {"input_token_limit": 16}}
+    scheduler = build_scheduler()
+    scheduler.analysis.model = {"threshold": {"input_token_limit": 16}}
     fake_data_manager.items = [
         build_item(1, "\n".join([f"line-{i}" for i in range(8)])),
         build_item(2, "line-9"),
@@ -202,7 +207,7 @@ def test_analysis_scheduler_build_task_contexts_uses_shared_line_limit(
         lambda: fake_data_manager,
     )
 
-    contexts = analysis.scheduler.build_analysis_task_contexts(analysis.config)
+    contexts = scheduler.build_analysis_task_contexts(scheduler.analysis.config)
 
     assert [[item.item_id for item in context.items] for context in contexts] == [
         [1],

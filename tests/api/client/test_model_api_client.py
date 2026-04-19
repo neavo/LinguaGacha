@@ -1,9 +1,11 @@
 from collections.abc import Callable
+from copy import deepcopy
 
 from api.Application.ModelAppService import ModelAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ModelApiClient import ModelApiClient
 from api.Models.Model import ModelPageSnapshot
+from api.Server.Routes.ModelRoutes import ModelRoutes
 from tests.api.support.application_fakes import FakeModelConfig
 from tests.api.support.application_fakes import FakeModelManager
 
@@ -23,6 +25,15 @@ def build_model_api_client(
         )
     base_url = start_api_server(model_app_service=model_app_service)
     return ModelApiClient(ApiClient(base_url))
+
+
+def build_model_snapshot_payload() -> dict[str, object]:
+    return {
+        "snapshot": {
+            "active_model_id": "preset-1",
+            "models": deepcopy(list(FakeModelConfig.DEFAULT_MODELS)),
+        }
+    }
 
 
 def test_model_api_client_get_snapshot_returns_model_page_snapshot(
@@ -133,3 +144,50 @@ def test_model_api_client_test_model_returns_runner_result(
         "success": True,
         "result_msg": "test ok: preset-1",
     }
+
+
+def test_model_api_client_supports_activate_delete_reset_and_reorder_commands(
+    recording_api_client,
+) -> None:
+    client = ModelApiClient(recording_api_client)
+    recording_api_client.queue_post_response(
+        ModelRoutes.ACTIVATE_PATH,
+        build_model_snapshot_payload(),
+    )
+    recording_api_client.queue_post_response(
+        ModelRoutes.DELETE_PATH,
+        build_model_snapshot_payload(),
+    )
+    recording_api_client.queue_post_response(
+        ModelRoutes.RESET_PRESET_PATH,
+        build_model_snapshot_payload(),
+    )
+    recording_api_client.queue_post_response(
+        ModelRoutes.REORDER_PATH,
+        build_model_snapshot_payload(),
+    )
+
+    activated = client.activate_model("preset-2")
+    deleted = client.delete_model("custom-openai-1")
+    reset = client.reset_preset_model("preset-1")
+    reordered = client.reorder_model("preset-1", "UP")
+
+    assert isinstance(activated, ModelPageSnapshot)
+    assert activated.active_model_id == "preset-1"
+    assert isinstance(deleted, ModelPageSnapshot)
+    assert isinstance(reset, ModelPageSnapshot)
+    assert isinstance(reordered, ModelPageSnapshot)
+
+
+def test_model_api_client_list_available_models_returns_empty_list_for_invalid_payload(
+    recording_api_client,
+) -> None:
+    client = ModelApiClient(recording_api_client)
+    recording_api_client.queue_post_response(
+        ModelRoutes.LIST_AVAILABLE_PATH,
+        {"models": "invalid"},
+    )
+
+    models = client.list_available_models("preset-1")
+
+    assert models == []

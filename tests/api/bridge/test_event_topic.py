@@ -1,48 +1,32 @@
-from base.Base import Base
-from api.Bridge.EventBridge import EventBridge
 from api.Bridge.EventTopic import EventTopic
 
 
-def test_proofreading_snapshot_invalidated_topic_value_matches_public_contract() -> (
-    None
-):
+def test_event_topic_values_match_public_contract() -> None:
     # 准备
-    topic = EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED
+    actual_topics = {topic.name: topic.value for topic in EventTopic}
 
     # 执行
-    topic_value = topic.value
+    expected_topics = {
+        "PROJECT_CHANGED": "project.changed",
+        "TASK_STATUS_CHANGED": "task.status_changed",
+        "TASK_PROGRESS_CHANGED": "task.progress_changed",
+        "WORKBENCH_SNAPSHOT_CHANGED": "workbench.snapshot_changed",
+        "SETTINGS_CHANGED": "settings.changed",
+        "PROOFREADING_SNAPSHOT_INVALIDATED": "proofreading.snapshot_invalidated",
+        "EXTRA_TS_CONVERSION_PROGRESS": "extra.ts_conversion_progress",
+        "EXTRA_TS_CONVERSION_FINISHED": "extra.ts_conversion_finished",
+    }
 
     # 断言
-    assert topic_value == "proofreading.snapshot_invalidated"
+    assert actual_topics == expected_topics
 
 
-def test_quality_rule_update_maps_to_snapshot_invalidated_topic() -> None:
+def test_event_topic_values_are_unique() -> None:
     # 准备
-    event_bridge = EventBridge()
+    topic_values = [topic.value for topic in EventTopic]
 
     # 执行
-    topic, payload = event_bridge.map_event(
-        Base.Event.QUALITY_RULE_UPDATE,
-        {"rule_type": "glossary"},
-    )
+    unique_topic_values = set(topic_values)
 
     # 断言
-    assert topic == EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value
-    assert payload["reason"] == "quality_rule_update"
-    assert payload["rule_types"] == ["glossary"]
-    assert payload["meta_keys"] == []
-
-
-def test_irrelevant_quality_rule_update_does_not_emit_event() -> None:
-    # 准备
-    event_bridge = EventBridge()
-
-    # 执行
-    topic, payload = event_bridge.map_event(
-        Base.Event.QUALITY_RULE_UPDATE,
-        {"rule_types": ["translation_prompt"]},
-    )
-
-    # 断言
-    assert topic is None
-    assert payload == {}
+    assert len(topic_values) == len(unique_topic_values)

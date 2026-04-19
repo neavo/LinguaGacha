@@ -1,0 +1,203 @@
+import socket
+
+import httpx
+import pytest
+
+from api.Application.SettingsAppService import SettingsAppService
+from api.Server.ServerBootstrap import ServerBootstrap
+from tests.api.support.application_fakes import FakeSettingsConfig
+
+
+def reserve_tcp_socket() -> socket.socket:
+    """预占本地端口，方便验证服务启动时的候选端口回退。"""
+
+    reserved_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    reserved_socket.bind(("127.0.0.1", 0))
+    reserved_socket.listen()
+    return reserved_socket
+
+
+def test_start_for_test_exposes_health_endpoint() -> None:
+    # Arrange
+    base_url, shutdown = ServerBootstrap.start_for_test()
+
+    try:
+        # Act
+        response = httpx.get(f"{base_url}/api/health")
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+        assert response.json()["data"] == {
+            "status": "ok",
+            "service": "linguagacha-core",
+        }
+    finally:
+        shutdown()
+
+
+def test_start_for_test_registers_provided_settings_service() -> None:
+    # Arrange
+    fake_settings_config = FakeSettingsConfig()
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        settings_app_service=SettingsAppService(
+            config_loader=lambda: fake_settings_config
+        )
+    )
+
+    try:
+        # Act
+        snapshot_response = httpx.post(f"{base_url}/api/settings/app")
+        update_response = httpx.post(
+            f"{base_url}/api/settings/update",
+            json={"app_language": "JA"},
+        )
+
+        # Assert
+        assert snapshot_response.status_code == 200
+        assert snapshot_response.json()["data"]["settings"]["app_language"] == "ZH"
+        assert update_response.status_code == 400
+        assert update_response.json()["ok"] is False
+        assert update_response.json()["error"]["code"] == "invalid_request"
+    finally:
+        shutdown()
+
+
+def test_start_for_test_binds_next_candidate_port_when_previous_is_occupied() -> None:
+    # Arrange
+    occupied_socket = reserve_tcp_socket()
+    fallback_socket = reserve_tcp_socket()
+    occupied_port = int(occupied_socket.getsockname()[1])
+    fallback_port = int(fallback_socket.getsockname()[1])
+    fallback_socket.close()
+
+    # Act
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        candidate_ports=(occupied_port, fallback_port)
+    )
+
+    try:
+        # Assert
+        assert base_url == f"http://127.0.0.1:{fallback_port}"
+    finally:
+        shutdown()
+        occupied_socket.close()
+
+
+def test_start_for_test_raises_when_all_candidate_ports_are_occupied() -> None:
+    # Arrange
+    occupied_sockets = [reserve_tcp_socket() for _ in range(5)]
+    occupied_ports = tuple(int(sock.getsockname()[1]) for sock in occupied_sockets)
+
+    try:
+        # Act / Assert
+        with pytest.raises(RuntimeError, match="候选端口全部被占用"):
+            ServerBootstrap.start_for_test(candidate_ports=occupied_ports)
+    finally:
+        for occupied_socket in occupied_sockets:
+            occupied_socket.close()
+
+
+class FakeThread:
+    """最小线程桩：同步执行 target，方便断言启动和关闭语义。"""
+
+    def __init__(self, *, target, daemon: bool) -> None:
+        self.target = target
+        self.daemon = daemon
+        self.started = False
+        self.join_timeout: float | None = None
+
+    def start(self) -> None:
+        self.started = True
+        self.target()
+
+    def join(self, timeout: float | None = None) -> None:
+        self.join_timeout = timeout
+
+
+class FakeHttpServer:
+    """最小 HTTP 服务桩：记录测试启动时使用的轮询间隔与关闭动作。"""
+
+    def __init__(self) -> None:
+        self.server_address = ("127.0.0.1", 43210)
+        self.poll_interval: float | None = None
+        self.shutdown_called = False
+        self.server_close_called = False
+
+    def serve_forever(self, poll_interval: float = 0.5) -> None:
+        self.poll_interval = poll_interval
+
+    def shutdown(self) -> None:
+        self.shutdown_called = True
+
+    def server_close(self) -> None:
+        self.server_close_called = True
+
+
+def test_start_for_test_uses_short_poll_interval_in_test_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    fake_http_server = FakeHttpServer()
+    fake_threads: list[FakeThread] = []
+
+    monkeypatch.setattr(
+        ServerBootstrap,
+        "create_http_server_with_candidates",
+        classmethod(lambda cls, **kwargs: fake_http_server),
+    )
+    monkeypatch.setattr(
+        "api.Server.ServerBootstrap.threading.Thread",
+        lambda *, target, daemon: (
+            fake_threads.append(FakeThread(target=target, daemon=daemon))
+            or fake_threads[-1]
+        ),
+    )
+
+    # Act
+    base_url, shutdown = ServerBootstrap.start_for_test()
+    shutdown()
+
+    # Assert
+    assert base_url == "http://127.0.0.1:43210"
+    assert fake_http_server.poll_interval == (
+        ServerBootstrap.TEST_SERVE_FOREVER_POLL_INTERVAL_SECONDS
+    )
+    assert fake_threads[0].started is True
+    assert fake_threads[0].daemon is True
+    assert fake_http_server.shutdown_called is True
+    assert fake_http_server.server_close_called is True
+    assert fake_threads[0].join_timeout == 1
+
+
+def test_start_for_test_returns_runtime_object_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    fake_http_server = FakeHttpServer()
+    fake_threads: list[FakeThread] = []
+
+    monkeypatch.setattr(
+        ServerBootstrap,
+        "create_http_server_with_candidates",
+        classmethod(lambda cls, **kwargs: fake_http_server),
+    )
+    monkeypatch.setattr(
+        "api.Server.ServerBootstrap.threading.Thread",
+        lambda *, target, daemon: (
+            fake_threads.append(FakeThread(target=target, daemon=daemon))
+            or fake_threads[-1]
+        ),
+    )
+
+    # Act
+    runtime = ServerBootstrap.start_for_test(as_runtime=True)
+    runtime.shutdown()
+
+    # Assert
+    assert isinstance(runtime, ServerBootstrap.ServerRuntime)
+    assert runtime.base_url == "http://127.0.0.1:43210"
+    assert fake_http_server.poll_interval == 0.5
+    assert fake_http_server.shutdown_called is True
+    assert fake_http_server.server_close_called is True
+    assert fake_threads[0].join_timeout == 1

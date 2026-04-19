@@ -160,6 +160,32 @@ def test_user_preset_round_trip_supports_save_read_rename_delete(
     assert not Path(deleted_path).exists()
 
 
+def test_user_preset_guards_builtin_mutation_and_empty_name(
+    resolver_root: Path,
+) -> None:
+    del resolver_root
+
+    with pytest.raises(ValueError, match="preset name is empty"):
+        PromptPathResolver.save_user_preset(
+            PromptPathResolver.TaskType.TRANSLATION,
+            "   ",
+            "hello",
+        )
+
+    with pytest.raises(ValueError, match="builtin preset cannot be renamed"):
+        PromptPathResolver.rename_user_preset(
+            PromptPathResolver.TaskType.TRANSLATION,
+            "builtin:demo.txt",
+            "renamed",
+        )
+
+    with pytest.raises(ValueError, match="builtin preset cannot be deleted"):
+        PromptPathResolver.delete_user_preset(
+            PromptPathResolver.TaskType.TRANSLATION,
+            "builtin:demo.txt",
+        )
+
+
 def test_user_preset_round_trip_uses_data_dir_when_runtime_env_is_split(
     resolver_root: Path,
 ) -> None:

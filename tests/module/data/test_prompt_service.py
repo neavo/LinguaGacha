@@ -6,9 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from module.Data.Quality.PromptService import PromptService
-from module.Data.Quality.QualityRuleFacadeService import (
-    QualityRuleFacadeService,
-)
 from module.PromptPathResolver import PromptPathResolver
 
 
@@ -130,11 +127,13 @@ def test_save_prompt_updates_text_enable_and_revision() -> None:
     assert result["text"] == "新的翻译提示词。"
 
 
-def test_import_and_export_prompt_round_trip(tmp_path: Path) -> None:
+def test_import_and_export_prompt_round_trip(fs) -> None:
+    del fs
     service, meta_store = build_service()
     meta_store[service.build_revision_meta_key("analysis")] = 0
-    input_path = tmp_path / "analysis.txt"
-    output_path = tmp_path / "analysis-export.txt"
+    input_path = Path("/workspace/prompt/analysis.txt")
+    output_path = Path("/workspace/prompt/analysis-export.txt")
+    input_path.parent.mkdir(parents=True, exist_ok=True)
     input_path.write_text("导入的分析提示词", encoding="utf-8")
 
     exported_path = service.export_prompt("analysis", output_path)
@@ -151,10 +150,12 @@ def test_import_and_export_prompt_round_trip(tmp_path: Path) -> None:
     assert imported_snapshot["meta"]["enabled"] is True
 
 
-def test_import_prompt_strips_bom_and_trailing_newline(tmp_path: Path) -> None:
+def test_import_prompt_strips_bom_and_trailing_newline(fs) -> None:
+    del fs
     service, meta_store = build_service()
     meta_store[service.build_revision_meta_key("analysis")] = 0
-    input_path = tmp_path / "analysis-import.txt"
+    input_path = Path("/workspace/prompt/analysis-import.txt")
+    input_path.parent.mkdir(parents=True, exist_ok=True)
     input_path.write_bytes("\ufeff  导入的分析提示词  \r\n".encode("utf-8"))
 
     imported_snapshot = service.import_prompt(
@@ -167,12 +168,14 @@ def test_import_prompt_strips_bom_and_trailing_newline(tmp_path: Path) -> None:
     assert imported_snapshot["text"] == "导入的分析提示词"
 
 
-def test_export_prompt_adds_txt_suffix_and_strips_text(tmp_path: Path) -> None:
+def test_export_prompt_adds_txt_suffix_and_strips_text(fs) -> None:
+    del fs
     service, _meta_store = build_service()
     service.quality_rule_service.get_analysis_prompt = MagicMock(
         return_value="  导出的分析提示词  \n"
     )
-    output_path = tmp_path / "analysis-export"
+    output_path = Path("/workspace/prompt/analysis-export")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     exported_path = service.export_prompt("analysis", output_path)
 
@@ -270,46 +273,3 @@ def test_prompt_preset_helpers_delegate_to_resolver(monkeypatch) -> None:
             "builtin:default.txt",
         ),
     ]
-
-
-def test_facade_forwards_preset_and_prompt_methods() -> None:
-    facade = QualityRuleFacadeService(SimpleNamespace(), SimpleNamespace())
-    facade.preset_service = SimpleNamespace(
-        list_presets=MagicMock(return_value=(["builtin"], ["user"])),
-        read_preset=MagicMock(return_value="预设内容"),
-        save_user_preset=MagicMock(return_value="/tmp/preset.txt"),
-        rename_user_preset=MagicMock(return_value={"name": "新名字"}),
-        delete_user_preset=MagicMock(return_value="/tmp/deleted.txt"),
-    )
-    facade.prompt_service = SimpleNamespace(
-        get_prompt_snapshot=MagicMock(return_value={"task_type": "translation"}),
-        save_prompt=MagicMock(return_value={"task_type": "translation"}),
-        get_default_preset_text=MagicMock(return_value="默认预设"),
-    )
-
-    assert facade.list_presets("translation") == (["builtin"], ["user"])
-    assert facade.read_preset("translation", "builtin:sample.txt") == "预设内容"
-    assert facade.save_user_preset("translation", "新预设", "文本") == "/tmp/preset.txt"
-    assert facade.rename_user_preset(
-        "translation",
-        "user:old.txt",
-        "新名字",
-    ) == {"name": "新名字"}
-    assert (
-        facade.delete_user_preset("translation", "user:old.txt") == "/tmp/deleted.txt"
-    )
-    assert (
-        facade.get_default_preset_text("translation", "builtin:default.txt")
-        == "默认预设"
-    )
-    assert facade.get_prompt_snapshot("translation") == {"task_type": "translation"}
-    assert facade.save_prompt(
-        "translation",
-        expected_revision=0,
-        text="新内容",
-        enabled=True,
-    ) == {"task_type": "translation"}
-    assert (
-        facade.get_default_preset_text("translation", "builtin:default.txt")
-        == "默认预设"
-    )

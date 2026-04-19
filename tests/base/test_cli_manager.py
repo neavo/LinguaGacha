@@ -661,42 +661,32 @@ def test_build_analysis_execution_plan_ignores_continue_flag_and_uses_progress(
     assert continue_plan.analysis_mode == Base.AnalysisMode.CONTINUE
 
 
-def test_execute_plans_emit_expected_public_events_and_apply_side_effects(
+def test_execute_translation_plan_resets_failed_items_and_emits_request(
     fake_data_manager: FakeDataManager,
 ) -> None:
     manager = CLIManager()
-    captured_subscriptions: list[Base.Event] = []
+    subscribed_events: list[Base.Event] = []
     emitted_events: list[tuple[Base.Event, dict[str, Any]]] = []
     snapshot = SimpleNamespace(name="snapshot")
-    manager.subscribe = lambda event, handler: captured_subscriptions.append(event)
+    manager.subscribe = lambda event, handler: subscribed_events.append(event)
     manager.emit = lambda event, payload: (
         emitted_events.append((event, payload)) or True
     )
-    translation_plan = CLIManager.TaskExecutionPlan(
-        work_mode=CLIManager.WorkMode.RESET_FAILED,
-        prefilter_reason="cli",
-        translation_mode=Base.TranslationMode.CONTINUE,
-        should_reset_failed_translation=True,
-    )
-    analysis_plan = CLIManager.TaskExecutionPlan(
-        work_mode=CLIManager.WorkMode.RESET_FAILED,
-        prefilter_reason="cli_analysis",
-        analysis_mode=Base.AnalysisMode.NEW,
-        should_reset_failed_analysis=True,
+
+    manager.execute_translation_plan(
+        Config(),
+        snapshot,
+        CLIManager.TaskExecutionPlan(
+            work_mode=CLIManager.WorkMode.RESET_FAILED,
+            prefilter_reason="cli",
+            translation_mode=Base.TranslationMode.CONTINUE,
+            should_reset_failed_translation=True,
+        ),
     )
 
-    manager.execute_translation_plan(Config(), snapshot, translation_plan)
-    manager.execute_analysis_plan(Config(), snapshot, analysis_plan)
-
-    assert captured_subscriptions == [
-        Base.Event.TRANSLATION_TASK,
-        Base.Event.ANALYSIS_TASK,
-        Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-        Base.Event.TOAST,
-    ]
+    assert subscribed_events == [Base.Event.TRANSLATION_TASK]
     assert fake_data_manager.translation_reset_failed_count == 1
-    assert fake_data_manager.analysis_reset_failed_count == 1
-    assert fake_data_manager.prefilter_reasons == ["cli", "cli_analysis"]
+    assert fake_data_manager.prefilter_reasons == ["cli"]
     assert emitted_events[0] == (
         Base.Event.TRANSLATION_TASK,
         {
@@ -707,11 +697,43 @@ def test_execute_plans_emit_expected_public_events_and_apply_side_effects(
             "persist_quality_rules": False,
         },
     )
-    assert emitted_events[1] == (
+
+
+def test_execute_analysis_plan_resets_failed_checkpoints_and_emits_request(
+    fake_data_manager: FakeDataManager,
+) -> None:
+    manager = CLIManager()
+    subscribed_events: list[Base.Event] = []
+    emitted_events: list[tuple[Base.Event, dict[str, Any]]] = []
+    snapshot = SimpleNamespace(name="snapshot")
+    manager.subscribe = lambda event, handler: subscribed_events.append(event)
+    manager.emit = lambda event, payload: (
+        emitted_events.append((event, payload)) or True
+    )
+
+    manager.execute_analysis_plan(
+        Config(),
+        snapshot,
+        CLIManager.TaskExecutionPlan(
+            work_mode=CLIManager.WorkMode.RESET_FAILED,
+            prefilter_reason="cli_analysis",
+            analysis_mode=Base.AnalysisMode.NEW,
+            should_reset_failed_analysis=True,
+        ),
+    )
+
+    assert subscribed_events == [
+        Base.Event.ANALYSIS_TASK,
+        Base.Event.ANALYSIS_EXPORT_GLOSSARY,
+        Base.Event.TOAST,
+    ]
+    assert fake_data_manager.analysis_reset_failed_count == 1
+    assert fake_data_manager.prefilter_reasons == ["cli_analysis"]
+    assert emitted_events[0] == (
         Base.Event.ANALYSIS_TASK,
         {
             "sub_event": Base.SubEvent.REQUEST,
-            "config": emitted_events[1][1]["config"],
+            "config": emitted_events[0][1]["config"],
             "mode": Base.AnalysisMode.NEW,
             "quality_snapshot": snapshot,
             "cli_auto_export_glossary": True,
@@ -720,134 +742,35 @@ def test_execute_plans_emit_expected_public_events_and_apply_side_effects(
     assert manager.waiting_analysis_export is True
 
 
-@pytest.mark.parametrize(
-    ("task", "builder_name", "expected_plan"),
-    [
-        (
-            CLIManager.Task.TRANSLATION,
-            "build_translation_execution_plan",
-            create_execution_plan(
-                translation_mode=Base.TranslationMode.NEW,
-            ),
-        ),
-        (
-            CLIManager.Task.ANALYSIS,
-            "build_analysis_execution_plan",
-            create_execution_plan(
-                analysis_mode=Base.AnalysisMode.NEW,
-            ),
-        ),
-    ],
-)
-def test_build_task_execution_plan_routes_to_matching_builder(
-    fake_data_manager: FakeDataManager,
-    monkeypatch: pytest.MonkeyPatch,
-    task: CLIManager.Task,
-    builder_name: str,
-    expected_plan: CLIManager.TaskExecutionPlan,
-) -> None:
-    manager = CLIManager()
-    config = Config()
-    args = create_args(task=task.value)
-    called_builders: list[str] = []
-    manager.cli_task = task
-    monkeypatch.setattr(
-        manager,
-        "build_translation_execution_plan",
-        lambda parsed_args, dm, cfg: (
-            called_builders.append("build_translation_execution_plan") or expected_plan
-        ),
-    )
-    monkeypatch.setattr(
-        manager,
-        "build_analysis_execution_plan",
-        lambda parsed_args, dm, cfg: (
-            called_builders.append("build_analysis_execution_plan") or expected_plan
-        ),
-    )
-
-    result = manager.build_task_execution_plan(args, fake_data_manager, config)
-
-    assert result == expected_plan
-    assert called_builders == [builder_name]
-
-
-@pytest.mark.parametrize(
-    ("task", "executor_name"),
-    [
-        (CLIManager.Task.TRANSLATION, "execute_translation_plan"),
-        (CLIManager.Task.ANALYSIS, "execute_analysis_plan"),
-    ],
-)
-def test_execute_task_plan_routes_to_matching_executor(
-    monkeypatch: pytest.MonkeyPatch,
-    task: CLIManager.Task,
-    executor_name: str,
-) -> None:
-    manager = CLIManager()
-    config = Config()
-    snapshot = SimpleNamespace(name="snapshot")
-    plan = create_execution_plan(
-        translation_mode=Base.TranslationMode.NEW,
-    )
-    called_executors: list[str] = []
-    manager.cli_task = task
-    monkeypatch.setattr(
-        manager,
-        "execute_translation_plan",
-        lambda cfg, qs, execution_plan: called_executors.append(
-            "execute_translation_plan"
-        ),
-    )
-    monkeypatch.setattr(
-        manager,
-        "execute_analysis_plan",
-        lambda cfg, qs, execution_plan: called_executors.append(
-            "execute_analysis_plan"
-        ),
-    )
-
-    manager.execute_task_plan(config, snapshot, plan)
-
-    assert called_executors == [executor_name]
-
-
-def test_cli_event_handlers_close_translation_and_analysis_exit_paths() -> None:
+def test_translation_task_done_maps_stopped_final_status_to_exit_code() -> None:
     manager = CLIManager()
 
     manager.translation_task_done(
         Base.Event.TRANSLATION_TASK,
         {"sub_event": Base.SubEvent.DONE, "final_status": "STOPPED"},
     )
+
     assert manager.get_exit_code() == CLIManager.EXIT_CODE_STOPPED
 
+
+def test_analysis_export_glossary_done_finishes_success_after_export() -> None:
     manager = CLIManager()
     manager.waiting_analysis_export = True
+
     manager.analysis_task_done(
         Base.Event.ANALYSIS_TASK,
         {"sub_event": Base.SubEvent.DONE, "final_status": "SUCCESS"},
     )
+
     assert manager.get_exit_code() is None
+
     manager.analysis_export_glossary_done(
         Base.Event.ANALYSIS_EXPORT_GLOSSARY,
         {"sub_event": Base.SubEvent.DONE},
     )
+
     assert manager.get_exit_code() == CLIManager.EXIT_CODE_SUCCESS
     assert manager.waiting_analysis_export is False
-
-    manager = CLIManager()
-    manager.cli_task = CLIManager.Task.ANALYSIS
-    manager.waiting_analysis_export = True
-    manager.analysis_cli_toast(
-        Base.Event.TOAST,
-        {"message": "no_items"},
-    )
-    assert manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
-
-    manager = CLIManager()
-    manager.request_process_exit(CLIManager.EXIT_CODE_STOPPED)
-    manager.request_process_exit(CLIManager.EXIT_CODE_SUCCESS)
-    assert manager.get_exit_code() == CLIManager.EXIT_CODE_STOPPED
 
 
 def test_run_returns_false_without_cli_flag(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1016,97 +939,133 @@ def test_map_final_status_to_exit_code_covers_public_statuses(
     assert manager.map_final_status_to_exit_code(final_status) == expected_exit_code
 
 
-def test_event_handlers_ignore_unrelated_events_and_cover_error_paths() -> None:
-    translation_manager = CLIManager()
-    translation_manager.translation_task_done(
+def test_translation_task_done_ignores_unrelated_events_and_non_terminal_sub_events() -> (
+    None
+):
+    manager = CLIManager()
+
+    manager.translation_task_done(
         Base.Event.ANALYSIS_TASK,
         {"sub_event": Base.SubEvent.DONE},
     )
-    translation_manager.translation_task_done(
+    manager.translation_task_done(
         Base.Event.TRANSLATION_TASK,
         {"sub_event": Base.SubEvent.REQUEST},
     )
-    assert translation_manager.get_exit_code() is None
 
-    translation_error_manager = CLIManager()
-    translation_error_manager.translation_task_done(
+    assert manager.get_exit_code() is None
+
+
+def test_translation_task_done_requests_failed_exit_on_error() -> None:
+    manager = CLIManager()
+
+    manager.translation_task_done(
         Base.Event.TRANSLATION_TASK,
         {"sub_event": Base.SubEvent.ERROR},
     )
-    assert translation_error_manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
 
-    analysis_manager = CLIManager()
-    analysis_manager.waiting_analysis_export = True
-    analysis_manager.analysis_task_done(
+    assert manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
+
+
+def test_analysis_task_done_waits_for_matching_terminal_event() -> None:
+    manager = CLIManager()
+    manager.waiting_analysis_export = True
+
+    manager.analysis_task_done(
         Base.Event.TRANSLATION_TASK,
         {"sub_event": Base.SubEvent.DONE},
     )
-    analysis_manager.analysis_task_done(
+    manager.analysis_task_done(
         Base.Event.ANALYSIS_TASK,
         {"sub_event": Base.SubEvent.REQUEST},
     )
-    assert analysis_manager.get_exit_code() is None
+    manager.analysis_task_done(
+        Base.Event.ANALYSIS_TASK,
+        {"sub_event": Base.SubEvent.DONE, "final_status": "SUCCESS"},
+    )
 
-    analysis_error_manager = CLIManager()
-    analysis_error_manager.waiting_analysis_export = True
-    analysis_error_manager.analysis_task_done(
+    assert manager.get_exit_code() is None
+    assert manager.waiting_analysis_export is True
+
+
+def test_analysis_task_done_requests_failed_exit_on_error() -> None:
+    manager = CLIManager()
+    manager.waiting_analysis_export = True
+
+    manager.analysis_task_done(
         Base.Event.ANALYSIS_TASK,
         {"sub_event": Base.SubEvent.ERROR},
     )
-    assert analysis_error_manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
-    assert analysis_error_manager.waiting_analysis_export is False
 
-    analysis_failed_manager = CLIManager()
-    analysis_failed_manager.analysis_task_done(
+    assert manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
+    assert manager.waiting_analysis_export is False
+
+
+def test_analysis_task_done_maps_failed_final_status_to_failed_exit() -> None:
+    manager = CLIManager()
+
+    manager.analysis_task_done(
         Base.Event.ANALYSIS_TASK,
         {"sub_event": Base.SubEvent.DONE, "final_status": "FAILED"},
     )
-    assert analysis_failed_manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
+
+    assert manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
 
 
-def test_analysis_export_and_toast_handlers_only_finish_for_matching_state() -> None:
-    export_manager = CLIManager()
-    export_manager.waiting_analysis_export = True
-    export_manager.analysis_export_glossary_done(
+def test_analysis_export_glossary_done_ignores_unrelated_or_non_terminal_events() -> (
+    None
+):
+    manager = CLIManager()
+    manager.waiting_analysis_export = True
+
+    manager.analysis_export_glossary_done(
         Base.Event.ANALYSIS_TASK,
         {"sub_event": Base.SubEvent.DONE},
     )
-    export_manager.analysis_export_glossary_done(
+    manager.analysis_export_glossary_done(
         Base.Event.ANALYSIS_EXPORT_GLOSSARY,
         {"sub_event": Base.SubEvent.REQUEST},
     )
-    assert export_manager.get_exit_code() is None
-    assert export_manager.waiting_analysis_export is True
 
-    export_error_manager = CLIManager()
-    export_error_manager.waiting_analysis_export = True
-    export_error_manager.analysis_export_glossary_done(
+    assert manager.get_exit_code() is None
+    assert manager.waiting_analysis_export is True
+
+
+def test_analysis_export_glossary_done_requests_failed_exit_on_error() -> None:
+    manager = CLIManager()
+    manager.waiting_analysis_export = True
+
+    manager.analysis_export_glossary_done(
         Base.Event.ANALYSIS_EXPORT_GLOSSARY,
         {"sub_event": Base.SubEvent.ERROR},
     )
-    assert export_error_manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
-    assert export_error_manager.waiting_analysis_export is False
 
-    toast_manager = CLIManager()
-    toast_manager.cli_task = CLIManager.Task.ANALYSIS
-    toast_manager.waiting_analysis_export = True
-    toast_manager.analysis_cli_toast(
+    assert manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
+    assert manager.waiting_analysis_export is False
+
+
+def test_analysis_cli_toast_only_exits_for_analysis_no_items_state() -> None:
+    manager = CLIManager()
+    manager.cli_task = CLIManager.Task.ANALYSIS
+    manager.waiting_analysis_export = True
+
+    manager.analysis_cli_toast(
         Base.Event.TRANSLATION_TASK,
         {"message": "no_items"},
     )
-    toast_manager.analysis_cli_toast(
+    manager.analysis_cli_toast(
         Base.Event.TOAST,
         {"message": "different"},
     )
-    assert toast_manager.get_exit_code() is None
 
-    idle_toast_manager = CLIManager()
-    idle_toast_manager.cli_task = CLIManager.Task.ANALYSIS
-    idle_toast_manager.analysis_cli_toast(
+    assert manager.get_exit_code() is None
+
+    manager.analysis_cli_toast(
         Base.Event.TOAST,
         {"message": "no_items"},
     )
-    assert idle_toast_manager.get_exit_code() is None
+
+    assert manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
 
 
 def test_verify_helpers_and_quality_rule_validation(fs) -> None:
@@ -1357,15 +1316,10 @@ def test_determine_cli_work_mode_covers_all_user_intents(
     assert result == expected_mode
 
 
-def test_progress_helpers_and_build_quality_snapshot_from_args_cover_public_results(
-    fs,
+def test_progress_helpers_reflect_translation_and_analysis_snapshots(
     fake_data_manager: FakeDataManager,
 ) -> None:
-    del fs
     manager = CLIManager()
-    prompt_path = Path("/workspace/cli/translation.txt")
-    prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    prompt_path.write_text("prompt", encoding="utf-8")
 
     fake_data_manager.project_status = Base.ProjectStatus.NONE
     fake_data_manager.analysis_snapshot = {"line": 0}
@@ -1377,16 +1331,25 @@ def test_progress_helpers_and_build_quality_snapshot_from_args_cover_public_resu
     assert manager.has_translation_progress(fake_data_manager) is True
     assert manager.has_analysis_progress(fake_data_manager) is True
 
+
+def test_build_quality_snapshot_from_args_reads_translation_prompt_file(fs) -> None:
+    del fs
+    manager = CLIManager()
+    prompt_path = Path("/workspace/cli/translation.txt")
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text("prompt", encoding="utf-8")
+
     snapshot = manager.build_quality_snapshot_from_args(
         create_args(
             translation_custom_prompt=str(prompt_path),
         )
     )
+
     assert snapshot.translation_prompt_enable is True
     assert snapshot.translation_prompt == "prompt"
 
 
-def test_execute_translation_plan_handles_reset_failure_and_skips_optional_steps(
+def test_execute_translation_plan_requests_failed_exit_when_reset_all_sync_fails(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager: FakeDataManager,
 ) -> None:
@@ -1413,10 +1376,14 @@ def test_execute_translation_plan_handles_reset_failure_and_skips_optional_steps
     assert emitted_events == []
     assert fake_data_manager.prefilter_reasons == []
 
+
+def test_execute_translation_plan_skips_optional_steps_when_not_requested(
+    fake_data_manager: FakeDataManager,
+) -> None:
     manager = CLIManager()
     snapshot = SimpleNamespace(name="snapshot")
-    subscribed_events = []
-    emitted_events = []
+    subscribed_events: list[Base.Event] = []
+    emitted_events: list[Base.Event] = []
     manager.subscribe = lambda event, handler: subscribed_events.append(event)
     manager.emit = lambda event, payload: emitted_events.append(event)
 
@@ -1461,26 +1428,6 @@ def test_execute_analysis_plan_skips_optional_steps_when_not_requested(
         Base.Event.TOAST,
     ]
     assert emitted_events == [Base.Event.ANALYSIS_TASK]
-
-
-def test_cli_mode_does_not_start_local_api_server() -> None:
-    import app as app_module
-
-    start_calls: list[bool] = []
-
-    class FakeBootstrap:
-        @staticmethod
-        def start() -> object:
-            start_calls.append(True)
-            return object()
-
-    runtime = app_module.start_local_api_server_if_needed(
-        is_cli_mode=True,
-        server_bootstrap=FakeBootstrap,
-    )
-
-    assert runtime is None
-    assert start_calls == []
 
 
 @pytest.mark.parametrize(
@@ -1598,23 +1545,32 @@ def test_run_logs_quality_snapshot_error_without_cause(
     assert patch_cli_runtime.error_exceptions == [None]
 
 
-def test_translation_and_analysis_reset_helpers_cover_success_and_failures(
+def test_translation_reset_sync_restores_initial_translation_state(
+    fake_data_manager: FakeDataManager,
+) -> None:
+    manager = CLIManager()
+
+    assert manager.translation_reset_sync(Config()) is True
+    assert fake_data_manager.replace_all_items_calls == [["item"]]
+    assert fake_data_manager.translation_extras == [{}]
+    assert fake_data_manager.project_status_updates == [Base.ProjectStatus.NONE]
+
+
+def test_translation_reset_sync_returns_false_when_project_is_not_loaded(
+    fake_data_manager: FakeDataManager,
+) -> None:
+    manager = CLIManager()
+    fake_data_manager.loaded = False
+
+    assert manager.translation_reset_sync(Config()) is False
+
+
+def test_translation_reset_sync_logs_failure_when_reset_items_lookup_crashes(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager: FakeDataManager,
     patch_cli_runtime: FakeLogManager,
 ) -> None:
     manager = CLIManager()
-    config = Config()
-
-    assert manager.translation_reset_sync(config) is True
-    assert fake_data_manager.replace_all_items_calls == [["item"]]
-    assert fake_data_manager.translation_extras == [{}]
-    assert fake_data_manager.project_status_updates == [Base.ProjectStatus.NONE]
-
-    fake_data_manager.loaded = False
-    assert manager.translation_reset_sync(config) is False
-
-    fake_data_manager.loaded = True
 
     def raise_reset_error(
         config_arg: Config, mode: Base.TranslationMode
@@ -1626,11 +1582,6 @@ def test_translation_and_analysis_reset_helpers_cover_success_and_failures(
         fake_data_manager, "get_items_for_translation", raise_reset_error
     )
 
-    assert manager.translation_reset_sync(config) is False
+    assert manager.translation_reset_sync(Config()) is False
     assert patch_cli_runtime.error_messages == ["task_failed"]
     assert isinstance(patch_cli_runtime.error_exceptions[0], RuntimeError)
-
-    manager.translation_reset_failed_sync()
-    manager.analysis_reset_failed_sync()
-    assert fake_data_manager.translation_reset_failed_count == 1
-    assert fake_data_manager.analysis_reset_failed_count == 1

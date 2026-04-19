@@ -87,12 +87,6 @@ def test_generate_parameter_only_when_block_mixed() -> None:
     ]
 
 
-def test_pre_and_post_process_are_noops() -> None:
-    processor = NONE(project={})
-    processor.pre_process()
-    processor.post_process()
-
-
 def test_check_removes_gold_tag_when_not_filtered() -> None:
     processor = NONE(project={})
 

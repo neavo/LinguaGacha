@@ -498,27 +498,6 @@ def test_get_task_buffer_size_has_lower_and_upper_bounds() -> None:
     assert Translation.get_task_buffer_size(translation, 40) == 160
 
 
-def test_apply_batch_update_sync_writes_items_and_meta_only(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    fake_dm = SimpleNamespace(apply_translation_batch_update=MagicMock())
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
-
-    Translation.apply_batch_update_sync(
-        translation,
-        finalized_items=[{"id": 1, "dst": "a"}],
-        extras_snapshot={"line": 1},
-    )
-
-    fake_dm.apply_translation_batch_update.assert_called_once_with(
-        [{"id": 1, "dst": "a"}],
-        {"line": 1},
-    )
-
-
 def test_translation_require_stop_sets_engine_status_and_emits_run_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

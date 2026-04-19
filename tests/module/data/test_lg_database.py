@@ -319,7 +319,7 @@ def test_ensure_schema_backfills_asset_sort_order_for_legacy_db(fs) -> None:
     with real_db_path(fs, "legacy_sort_order") as db_path:
         if db_path.exists():
             db_path.unlink()
-        with sqlite3.connect(db_path) as conn:
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             conn.execute(
                 """
@@ -554,24 +554,27 @@ def test_update_asset_path_update_asset_delete_asset_and_insert_items_support_co
 ) -> None:
     with real_db_path(fs, "conn_param") as db_path:
         db = LGDatabase(str(db_path))
-        db.add_asset("a.bin", b"v1", 2)
+        try:
+            db.add_asset("a.bin", b"v1", 2)
 
-        with db.connection() as conn:
-            db.update_asset("a.bin", b"v2", 2, conn=conn)
-            conn.commit()
-            assert db.get_asset("a.bin") == b"v2"
+            with db.connection() as conn:
+                db.update_asset("a.bin", b"v2", 2, conn=conn)
+                conn.commit()
+                assert db.get_asset("a.bin") == b"v2"
 
-            assert db.update_asset_path("a.bin", "b.bin", conn=conn) == 1
-            conn.commit()
-            assert db.get_asset("b.bin") == b"v2"
+                assert db.update_asset_path("a.bin", "b.bin", conn=conn) == 1
+                conn.commit()
+                assert db.get_asset("b.bin") == b"v2"
 
-            ids = db.insert_items([{"src": "A"}, {"src": "B"}], conn=conn)
-            conn.commit()
-            assert ids and all(isinstance(v, int) for v in ids)
+                ids = db.insert_items([{"src": "A"}, {"src": "B"}], conn=conn)
+                conn.commit()
+                assert ids and all(isinstance(v, int) for v in ids)
 
-            db.delete_asset("b.bin", conn=conn)
-            conn.commit()
-            assert db.get_asset("b.bin") is None
+                db.delete_asset("b.bin", conn=conn)
+                conn.commit()
+                assert db.get_asset("b.bin") is None
+        finally:
+            db.close()
 
 
 def test_insert_items_appends_without_clearing(database: LGDatabase) -> None:

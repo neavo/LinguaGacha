@@ -540,6 +540,7 @@ class LogManager:
             self.app_logger.removeHandler(self.queue_handler)
 
         self.flush_handlers()
+        self.close_handlers()
         self.async_enabled = False
 
     def flush_handlers(self) -> None:
@@ -549,6 +550,16 @@ class LogManager:
                 handler.flush()
             except Exception:
                 # 退出阶段只尽量冲刷日志，不能因为 flush 再抛异常打断收尾。
+                pass
+
+    def close_handlers(self) -> None:
+        """退出时主动关闭 handler，避免文件句柄拖到 GC 才被动回收。"""
+        handlers = (*self.get_handlers(), self.queue_handler)
+        for handler in handlers:
+            try:
+                handler.close()
+            except Exception:
+                # 关闭阶段以尽力回收资源为主，单个 handler 失败不该阻断整体收尾。
                 pass
 
     def get_traceback(self, e: Exception | BaseException) -> str:

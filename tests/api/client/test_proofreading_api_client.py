@@ -290,8 +290,10 @@ def test_proofreading_api_client_save_item_returns_mutation_result(
     )
 
     assert isinstance(result, ProofreadingMutationResult)
-    assert result.revision >= 0
+    assert result.revision == 9
     assert result.changed_item_ids == (1,)
+    assert result.items[0].dst == "Heroine arrived refreshed"
+    assert result.summary.warning_items == 1
 
 
 def test_proofreading_api_client_replace_all_returns_mutation_result(

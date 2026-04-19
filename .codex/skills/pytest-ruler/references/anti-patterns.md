@@ -242,7 +242,7 @@ def test_expiry(mock_datetime):
     assert not token.is_expired()
 ```
 
-## 覆盖率陷阱
+## 只测快乐路径
 
 ```python
 # ❌ 只有快乐路径
