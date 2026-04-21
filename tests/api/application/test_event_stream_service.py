@@ -2,6 +2,7 @@ from queue import Empty
 
 from base.Base import Base
 from api.Application.EventStreamService import EventStreamService
+from api.Bridge.V2.EventBridge import V2EventBridge
 
 
 def test_publish_event_creates_standardized_envelope() -> None:
@@ -129,3 +130,22 @@ def test_stream_to_handler_swallow_connection_aborted_error() -> None:
 
     assert handler.wfile.write_calls == 1
     assert service.subscribers == []
+
+
+def test_publish_event_supports_v2_patch_bridge() -> None:
+    service = EventStreamService(event_bridge=V2EventBridge())
+    subscriber = service.add_subscriber()
+
+    service.publish_internal_event(
+        Base.Event.TRANSLATION_TASK,
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "item_ids": [1, 2],
+            "revision": 5,
+        },
+    )
+
+    envelope = subscriber.get_nowait()
+    assert envelope.topic == "project.patch"
+    assert envelope.data["source"] == "task"
+    assert envelope.data["updatedSections"] == ["items", "task"]

@@ -1,5 +1,6 @@
 from queue import Empty
 from queue import Queue
+from typing import Protocol
 from typing import Any
 
 from base.Base import Base
@@ -7,12 +8,22 @@ from api.Bridge.EventBridge import EventBridge
 from api.Contract.EventEnvelope import EventEnvelope
 
 
+class EventBridgeProtocol(Protocol):
+    """约束事件桥最小能力，允许 V1 / V2 共用同一套 SSE 传输层。"""
+
+    def map_event(
+        self,
+        event: Base.Event,
+        data: dict[str, Any],
+    ) -> tuple[str | None, dict[str, Any]]: ...
+
+
 class EventStreamService:
     """维护 SSE 订阅者，并负责把内部事件标准化后广播出去。"""
 
     KEEPALIVE_BYTES: bytes = b": keepalive\n\n"
 
-    def __init__(self, event_bridge: EventBridge | None = None) -> None:
+    def __init__(self, event_bridge: EventBridgeProtocol | None = None) -> None:
         self.event_bridge = event_bridge if event_bridge is not None else EventBridge()
         self.subscribers: list[Queue[EventEnvelope]] = []
         self.subscribed_events: tuple[Base.Event, ...] = Base.API_STREAM_SOURCE_EVENTS
