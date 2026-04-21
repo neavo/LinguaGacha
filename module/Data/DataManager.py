@@ -1036,6 +1036,11 @@ class DataManager(Base):
     def get_all_item_dicts(self) -> list[dict[str, Any]]:
         return [dict(item) for item in self.item_service.get_all_item_dicts()]
 
+    def get_items_all(self) -> list[Item]:
+        """提供 V2 runtime 使用的全量条目对象视图。"""
+
+        return [Item.from_dict(item_dict) for item_dict in self.get_all_item_dicts()]
+
     def save_item(self, item: Item) -> int:
         return self.item_service.save_item(item)
 
