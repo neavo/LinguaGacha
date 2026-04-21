@@ -1,81 +1,91 @@
 # `api/` 规格
 
-## 1. 范围
+## 一句话总览
+`api/` 是 LinguaGacha Python Core 对外暴露的唯一本地协议边界。它当前服务两类消费者：
+- Electron 渲染层运行时
+- Python 侧测试 / 桥接 / 对象化客户端
 
-本文档描述 `api/` 目录当前已经落地的本地 Core API 事实，包括：
+这份文档只保留后续 Agent 开发会反复依赖、且不翻多处代码就难以快速得出的事实；完整路径常量和字段定义以 `Routes/*`、`Contract/*`、`Models/*` 为准。
 
-- 本地 HTTP / SSE 边界与运行时结构
-- 路由分组、请求入口、响应载荷与关键约束
-- Python 侧 `api/v2/Client` / `ApiStateStore` 的对象化消费边界
-- Electron 渲染层接入 Core 的运行时入口
-
-本文只记录当前代码已经实现并可验证的行为，不记录“计划中”或“理应如此”的未来状态。
-
-### 1.1 权威来源
-
+## 权威来源
 | 关注点 | 代码权威来源 |
 | --- | --- |
-| 路径、HTTP 方法、服务启动 | `api/v2/Server/CoreApiServer.py`、`api/v2/Server/ServerBootstrap.py`、`api/v2/Server/Routes/*.py` |
-| 请求归一化、业务约束、响应语义 | `api/v2/Application/*.py` |
-| HTTP `data` 载荷包装 | `api/v2/Contract/*.py` |
-| Python 侧对象化消费 | `api/v2/Client/*.py`、`api/v2/Models/*.py` |
-| Electron 运行时接入 | `frontend/src/renderer/app/desktop-api.ts` |
+| 服务启动、监听地址、错误映射 | `api/v2/Server/CoreApiServer.py`、`api/v2/Server/ServerBootstrap.py`、`api/v2/Server/CoreApiPortCatalog.py` |
+| 路由分组与精确路径 | `api/v2/Server/Routes/*.py` |
+| 请求归一化与业务约束 | `api/v2/Application/*.py` |
+| HTTP 载荷包装与 bootstrap / SSE 线格式 | `api/v2/Contract/*.py` |
+| 公开事件桥与 `project.patch` 生成 | `api/v2/Bridge/*.py` |
+| Python 客户端与状态仓库 | `api/v2/Client/*.py`、`api/v2/Models/*.py` |
+| Electron 接入点 | `frontend/src/renderer/app/desktop-api.ts`、`frontend/src/renderer/app/project-runtime/SPEC.md` |
 
-### 1.2 阅读顺序
+## 阅读顺序
+1. 先读第 2 节和第 3 节，确认运行时边界、版本分层和协议不变量。
+2. 再读第 4 节，理解各路由族真正需要记住的兼容与约束。
+3. 如果要改 Python 对象化客户端，继续读第 5 节。
+4. 如果要改 Electron 运行态接入，继续读第 6 节，并联读 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md)。
 
-1. 先看本文第 2 节和第 3 节，确认边界、协议和错误口径。
-2. 再看第 4 节，定位具体接口族与稳定载荷。
-3. 如果要改 Python 客户端对象化边界，继续看第 5 节。
-4. 如果要改 Electron 运行时接入方式，继续看第 6 节。
+## 1. 运行时边界
 
-## 2. 运行时结构
-
+### 1.1 当前真实分层
 ```mermaid
 flowchart LR
     A["app.py / ServerBootstrap"] --> B["CoreApiServer"]
     B --> C["Routes"]
     C --> D["Application"]
-    D --> E["Contract / JSON"]
-    D --> I["Models / DTO"]
-
-    F["frontend/src/renderer/app/desktop-api.ts"] --> B
-    G["frontend EventSource"] --> B
-    H["api/v2/Client/* + ApiStateStore"] --> B
-    I --> H
+    D --> E["Contract / JSON / SSE"]
+    D --> F["Models / DTO"]
+    G["frontend desktop-api.ts"] --> B
+    H["frontend EventSource"] --> B
+    I["api/v2/Client/* + ApiStateStore"] --> B
 ```
 
-### 2.1 目录职责
-
+### 1.2 目录职责
 | 目录 | 职责 |
 | --- | --- |
-| `api/v2/Server/` | 启动本地 HTTP 服务、注册路由、处理基础响应壳与错误映射 |
-| `api/v2/Server/Routes/` | 按领域声明路径常量并把请求分发到对应 Application 服务 |
-| `api/v2/Application/` | 读取 Core 状态、归一化请求、组织稳定响应语义 |
-| `api/v2/Models/` | 冻结 DTO、增量 patch 与 Python 侧对象化消费共享模型 |
-| `api/v2/Contract/` | 把内部对象收口为 HTTP `data` 载荷 |
-| `api/v2/Bridge/` | 把内部事件裁剪成对外稳定的 SSE topic 与 payload |
-| `api/v2/Client/` | Python 侧薄客户端、SSE 消费器与状态仓库，主要用于测试和桥接场景 |
+| `api/v2/Server/` | 本地 HTTP 服务、路由注册、统一错误映射 |
+| `api/v2/Application/` | 读取 Core 状态、归一化请求、组织稳定语义 |
+| `api/v2/Contract/` | 把内部对象编码成 HTTP / SSE 有效载荷 |
+| `api/v2/Bridge/` | 把内部事件裁成公开 topic 与 `project.patch` |
+| `api/v2/Models/` | Python 冻结 DTO、bootstrap 行块与客户端共享模型 |
+| `api/v2/Client/` | Python 侧薄客户端、SSE 消费器、状态仓库 |
 
-当前 `api/` 顶层只保留 `v2/` 作为业务包；新增 Python API 边界一律继续落在 `api/v2/` 下，不再在根层回流新的并行子包。
+### 1.3 版本现实
+- 当前业务主边界已经集中在 `api/v2/`。
+- 但并不是所有公开接口都已经迁到 `/api/v2/...`：
+  - `settings` 仍在 `/api/settings/*`
+  - `extra` 仍在 `/api/extra/*`
+- 后续新增主业务 API 应继续落在 `api/v2/`，不要再新开并行根前缀。
 
-### 2.2 启动与注册
+### 1.4 监听地址与端口
+- `CoreApiServer` 当前固定绑定 `127.0.0.1`，不是 `0.0.0.0`。
+- 默认端口只有一个：`38191`。
+- 若设置 `LINGUAGACHA_CORE_API_BASE_URL`，服务端和前端都会把端口解析到该地址中的显式端口；它不是“建议值”，而是单一候选端口来源。
 
-- `ServerBootstrap.start()` 负责组装各个 `*AppService`，再统一注册到 `CoreApiServer`。
-- `CoreApiServer.register_routes()` 只注册基础健康检查；业务路由由 `api/v2/Server/Routes/*.py` 追加注册。
-- 当前项目运行态相关 SSE 入口已经统一收口到 `api/v2/Server/Routes/EventRoutes.py` 暴露的 `/api/v2/events/stream`；旧 `/api/events/stream` 已删除。
+### 1.5 事件桥真实装配
+- `ServerBootstrap` 不是直接把 `PublicEventBridge` 挂到 SSE 上。
+- 当前实际装配是：
+  - 外层：`ProjectPatchEventBridge`
+  - 内层：`PublicEventBridge`
+- 结果是：
+  - 普通公开 topic 仍由 `PublicEventBridge` 负责
+  - `project.patch` 由外层桥额外补出
 
-## 3. 通用协议
+## 2. 协议不变量
 
-### 3.1 HTTP 约定
-
-- 当前 `GET` 接口包括：
+### 2.1 HTTP 约定
+- 公开 `GET` 目前只有 3 个：
   - `/api/health`
   - `/api/v2/events/stream`
   - `/api/v2/project/bootstrap/stream`
-- 其余公开接口统一使用 `POST + JSON body`。
-- `OPTIONS` 由 `CoreApiServer` 统一返回 `204`，无需各路由单独处理。
+- 其余公开接口统一走 `POST + JSON body`。
+- `OPTIONS` 由 `CoreApiServer` 统一回 `204`。
+- 当前 CORS 是完全开放口径：
+  - `Access-Control-Allow-Origin: *`
+  - `Access-Control-Allow-Methods: GET,POST,OPTIONS`
+  - `Access-Control-Allow-Headers: Content-Type`
 
-成功响应壳固定为：
+### 2.2 响应壳
+成功响应固定为：
 
 ```json
 {
@@ -84,7 +94,7 @@ flowchart LR
 }
 ```
 
-失败响应壳固定为：
+失败响应固定为：
 
 ```json
 {
@@ -96,547 +106,228 @@ flowchart LR
 }
 ```
 
-### 3.2 当前错误码现实
-
-`CoreApiServer` 当前只在边界层统一保证以下错误码：
+### 2.3 当前错误码现实
+`CoreApiServer` 在边界层只稳定保证 3 个错误码：
 
 | `error.code` | 触发条件 |
 | --- | --- |
-| `not_found` | 路由不存在，或处理过程中抛出 `FileNotFoundError` |
-| `invalid_request` | 处理过程中抛出 `ValueError` |
+| `not_found` | 路由不存在，或内部抛出 `FileNotFoundError` |
+| `invalid_request` | 内部抛出 `ValueError` |
 | `internal_error` | 其他未捕获异常 |
 
-需要特别注意：
+需要特别记住：
+- revision 冲突、工程未加载、任务忙碌等业务错误，当前大多仍会折叠成 `invalid_request + message`。
+- 也就是说，**不要假设 API 已经提供稳定的业务错误码体系**。
 
-- 质量规则、提示词、校对等模块在数据层已经存在 revision 冲突异常类型，但 API 边界当前**没有**把它们翻译成独立 HTTP 错误码。
-- 任务重置、分析术语导入、Extra 命令的“工程未加载”与“任务执行中”目前通常表现为 `invalid_request + 本地化 message`，而不是稳定的 `NO_PROJECT` / `TASK_RUNNING` 代码。
+### 2.4 SSE 线格式
+普通事件流 `/api/v2/events/stream` 由 `EventEnvelope.to_sse_payload()` 生成，当前协议特点是：
+- `event:` 直接写 topic
+- `data:` 直接写 payload JSON
+- 没有 `event_id`、`timestamp`、`topic` 回显
+- 空闲时服务端发送 `: keepalive`
 
-### 3.3 SSE 约定
+## 3. 运行态事件协议
 
-SSE 真实线格式由 `EventEnvelope.to_sse_payload()` 生成，当前协议是：
+### 3.1 Bootstrap 流不是普通 topic 流
+`/api/v2/project/bootstrap/stream` 当前使用独立事件型别，而不是复用普通 topic：
 
-```text
-event: task.progress_changed
-data: {"task_type":"translation","line":3}
-
-```
-
-当前实现特点：
-
-- `event:` 直接承载 topic 名称。
-- `data:` 直接承载 payload JSON。
-- **没有** `event_id`、`timestamp`、`topic` 回显等额外包裹字段。
-- 服务端空闲时会发送 `: keepalive` 注释帧保活。
-
-### 3.4 当前公开 topic
-
-项目运行态相关 topic 当前统一由 `/api/v2/events/stream` 暴露：
-
-| topic | 当前稳定字段 | 用途 |
+| `event:` | 当前字段 | 用途 |
 | --- | --- | --- |
-| `project.changed` | `loaded`、`path` | 通知工程加载态和当前路径变化 |
-| `task.status_changed` | `task_type`、`status`、`busy` | 通知翻译 / 分析任务生命周期变化 |
-| `task.progress_changed` | `task_type` 以及当前事件中实际出现的进度字段；不会强行补齐缺失字段 | 通知翻译 / 分析任务进度字段变化 |
-| `settings.changed` | `keys`，以及可选的 `settings` 子集 | 通知设置字段变化 |
-| `project.patch` | `source`、`projectRevision`、`updatedSections`、`patch`，以及可选 `sectionRevisions` | 以项目领域 patch 回灌 `ProjectStore`，替代页面级 invalidation |
-| `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | `task_id`、`phase`、`message`、`current`、`total`、`finished` | 通知繁简转换长任务进度与终态 |
+| `stage_started` | `stage`、`message` | stage 开始 |
+| `stage_payload` | `stage`、`payload` | stage 有效载荷 |
+| `stage_completed` | `stage` | stage 完成 |
+| `completed` | `projectRevision`、`sectionRevisions` | 整条 bootstrap 流完成 |
 
-`workbench.snapshot_changed` 与 `proofreading.snapshot_invalidated` 已从公开协议中删除，不再作为主路径事件存在。
+不明显但很重要的事实：
+- 前端当前只真正消费 `stage_started`、`stage_payload`、`completed`。
+- `desktop-api.ts` 会监听 `failed`，但 Python 服务端现在**不会主动发送** `failed`。
+- 这条流本质上是“一次性阶段化首包”，不是长期订阅流。
 
-`task.status_changed` 需要结合内部终态语义理解：
+### 3.2 Bootstrap stage 顺序是稳定契约
+当前顺序固定为：
+1. `project`
+2. `files`
+3. `items`
+4. `quality`
+5. `prompts`
+6. `analysis`
+7. `task`
 
-- 任务正常完成时，`status` 会落成 `DONE`
-- 任务失败时，`status` 会直接落成 `ERROR`，不再通过额外 toast 补失败提示
-- 停止请求完成后，`status` 会回到 `IDLE`
+渲染层 `ProjectStore` 依赖这套顺序建立最小运行态；如果顺序或命名变化，前后端文档必须同步改。
 
-### 3.5 Python 侧 SSE 消费现状
+### 3.3 `RowBlock` 当前只在两个 stage 上是硬约束
+当前稳定 schema：
 
-- `SseClient` 解析 `event:` / `data:` 帧后，把 payload 直接交给 `ApiStateStore.apply_event()`。
-- `SseClient` 当前没有自动重连策略，发生 `httpx.HTTPError` 时会静默结束线程。
-- `ApiStateStore` 当前只合并以下状态：
-  - `project.changed`
-  - `task.status_changed`
-  - `task.progress_changed`
-  - `extra.ts_conversion_progress`
-  - `extra.ts_conversion_finished`
-- `settings.changed` 与 `project.patch` 当前属于通知型事件，`ApiStateStore` 不缓存完整快照。
+| schema | stage | 字段顺序 |
+| --- | --- | --- |
+| `project-files.v1` | `files` | `rel_path`、`file_type` |
+| `project-items.v1` | `items` | `item_id`、`file_path`、`src`、`dst`、`status` |
 
-## 4. HTTP 接口目录
+前端不是直接消费 Python dict，而是先把它们归一化成：
+- `files[rel_path]`
+- `items[item_id]`
 
-除第 4.1 节外，下列接口默认都是 `POST`。
+### 3.4 公开 topic 里真正不直观的地方
+当前 `/api/v2/events/stream` 上值得记住的 topic：
 
-### 4.1 基础接口
+| topic | 需要记住的事实 |
+| --- | --- |
+| `task.progress_changed` | 只发送本次事件里真实出现的字段，不会补齐缺失统计 |
+| `task.status_changed` | `DONE / ERROR / IDLE` 是桥接层根据内部终态再解释后的结果 |
+| `settings.changed` | 只是设置广播，不等于页面必须刷新 |
+| `project.patch` | 不是 `EventTopic` 成员，而是桥接层额外补出的运行态补丁 |
 
-| 方法 | 路径 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `GET` | `/api/health` | `{"status": "ok", "service": "linguagacha-core"}` | 渲染层探活与 base URL 确认入口 |
-| `GET` | `/api/v2/events/stream` | SSE 流 | V2 `project.patch` 事件流入口 |
-| `GET` | `/api/v2/project/bootstrap/stream` | SSE 流 | 当前已加载项目的 V2 bootstrap 分段首包 |
+### 3.5 `project.patch` 的真实语义
+`project.patch` 当前**不保证**总是完整补丁事件。
 
-### 4.2 Project
+它至少会有：
+- `source`
+- `updatedSections`
 
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/v2/project/load` | `{"path": str}` | `{"project": ProjectSnapshotPayload}` | 加载已有工程 |
-| `/api/v2/project/create` | `{"source_path": str, "path": str}` | `{"project": ProjectSnapshotPayload}` | 创建新工程 |
-| `/api/v2/project/snapshot` | `{}` | `{"project": ProjectSnapshotPayload}` | 读取当前工程快照 |
-| `/api/v2/project/unload` | `{}` | `{"project": ProjectSnapshotPayload}` | 卸载当前工程 |
-| `/api/v2/project/source-files` | `{"path": str}` | `{"source_files": list[str]}` | 扫描给定路径下可导入源文件 |
-| `/api/v2/project/preview` | `{"path": str}` | `{"preview": ProjectPreviewPayload}` | 读取指定工程的摘要 |
+它**可能**还会有：
+- `projectRevision`
+- `patch`
+- `sectionRevisions`
 
-`ProjectSnapshotPayload` 当前稳定字段：
+这意味着：
+- 翻译 / 分析 DONE 后，它常常是“带 `patch` 的真实增量补丁”
+- 文件操作后，它可能只是“告知哪些 section 失效”，前端会把它当成“重新 bootstrap 当前项目运行态”的信号
 
-- `path`
-- `loaded`
+如果后续要新增 `project.patch` 用法，优先保持这两种语义兼容，而不是假设所有事件都必须带 `patch` 数组。
 
-`ProjectPreviewPayload` 当前稳定字段：
+## 4. 路由族与真正需要记住的约束
 
-- `path`
-- `name`
-- `source_language`
-- `target_language`
-- `file_count`
-- `created_at`
-- `updated_at`
-- `total_items`
-- `translated_items`
-- `progress`
+### 4.1 当前路由族分布
+| 前缀 | 说明 |
+| --- | --- |
+| `/api/health` | 探活入口 |
+| `/api/v2/events/stream` | 运行态 SSE |
+| `/api/v2/project/bootstrap/stream` | V2 bootstrap 首包 |
+| `/api/v2/project/*` | 工程、工作台、校对页 |
+| `/api/v2/tasks/*` | 翻译 / 分析任务 |
+| `/api/v2/models/*` | 模型页 |
+| `/api/v2/quality/rules/*` | 质量规则 |
+| `/api/v2/quality/prompts/*` | 自定义提示词 |
+| `/api/settings/*` | 应用设置 |
+| `/api/extra/*` | Extra 工具 |
 
-补充说明：
+这份文档不再平铺完整接口清单；精确路径以 `api/v2/Server/Routes/*.py` 为准。
 
-- Python 侧 `ProjectPreview` 额外提供派生字段 `has_progress`，它不是 HTTP 线上的字段。
+### 4.2 Project / Workbench / Proofreading
+- `project`、`workbench`、`proofreading` 三块虽然都挂在 `/api/v2/project/*` 下，但它们不是一个 Application 服务。
+- 工作台命令型接口大多只返回 `accepted`，真正的重型视图刷新依赖后续显式拉取 `file-patch`。
+- `reorder-files` 的隐藏硬约束是：`ordered_rel_paths` 必须完整覆盖当前文件集合，不能只传局部。
+- Proofreading 的工程定位优先级当前是：
+  - `lg_path`
+  - `path`
+  - `project_id`
+  - 当前已加载工程
+- Proofreading 的筛选输入优先级当前是：
+  - `filters`
+  - `filter_options`
+  - 顶层扁平字段
+- Proofreading 在“工程未加载 / 工程路径过期”时，很多场景返回的是 `readonly` 快照，而不是业务错误。
 
 ### 4.3 Task
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/v2/tasks/start-translation` | `{"mode": "NEW" \| "CONTINUE"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理翻译任务 |
-| `/api/v2/tasks/stop-translation` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止翻译任务 |
-| `/api/v2/tasks/reset-translation-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步重置全部翻译进度 |
-| `/api/v2/tasks/reset-translation-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败翻译条目 |
-| `/api/v2/tasks/start-analysis` | `{"mode": "NEW" \| "CONTINUE" \| "RESET"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理分析任务 |
-| `/api/v2/tasks/stop-analysis` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止分析任务 |
-| `/api/v2/tasks/reset-analysis-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步清空分析进度与候选 |
-| `/api/v2/tasks/reset-analysis-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败分析进度 |
-| `/api/v2/tasks/import-analysis-glossary` | `{}` | `{"accepted": true, "imported_count": int, "task": TaskSnapshotPayload}` | 把分析候选导入术语表 |
-| `/api/v2/tasks/snapshot` | `{}` 或 `{"task_type": "translation" \| "analysis"}` | `{"task": TaskSnapshotPayload}` | 读取当前任务快照 |
-| `/api/v2/tasks/export-translation` | `{}` | `{"accepted": true}` | 请求导出当前工程译文 |
-
-`TaskSnapshotPayload` 当前稳定字段：
-
-- `task_type`
-- `status`
-- `busy`
-- `request_in_flight_count`
-- `line`
-- `total_line`
-- `processed_line`
-- `error_line`
-- `total_tokens`
-- `total_output_tokens`
-- `total_input_tokens`
-- `time`
-- `start_time`
-
-补充说明：
-
-- 分析任务快照在可用时会额外带上 `analysis_candidate_count`。
-- `reset-*` 与 `import-analysis-glossary` 当前都要求“工程已加载且引擎空闲”；失败时通常会落成 `invalid_request`。
-- `import-analysis-glossary` 的 Python 客户端返回值已经对象化为 `AnalysisGlossaryImportResult`。
-- `export-translation` 当前只有最小 `accepted` 回执，还没有对应的冻结返回模型。
-
-### 4.4 Workbench
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/v2/project/workbench/snapshot` | `{}` | `{"snapshot": WorkbenchSnapshotPayload}` | 读取工作台快照 |
-| `/api/v2/project/workbench/add-file` | `{"path": str}` | `{"accepted": true}` | 调度新增文件 |
-| `/api/v2/project/workbench/replace-file` | `{"rel_path": str, "path": str}` | `{"accepted": true}` | 调度替换文件 |
-| `/api/v2/project/workbench/reset-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度重置文件 |
-| `/api/v2/project/workbench/delete-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度删除文件 |
-| `/api/v2/project/workbench/delete-file-batch` | `{"rel_paths": list[str]}` | `{"accepted": true}` | 调度批量删除文件 |
-| `/api/v2/project/workbench/reorder-files` | `{"ordered_rel_paths": list[str]}` | `{"accepted": true}` | 持久化文件顺序 |
-| `/api/v2/project/workbench/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str], "include_order": bool}` | `{"patch": WorkbenchFilePatchPayload}` | 读取工作台文件级补丁 |
-
-`WorkbenchSnapshotPayload` 当前稳定字段：
-
-- `file_count`
-- `total_items`
-- `translated`
-- `translated_in_past`
-- `error_count`
-- `untranslated`
-- `file_op_running`
-- `entries`
-
-`WorkbenchFileEntryPayload` 当前稳定字段：
-
-- `rel_path`
-- `item_count`
-- `file_type`
-
-`WorkbenchFilePatchPayload` 当前稳定字段：
-
-- `summary`
-- `ordered_rel_paths`
-- `removed_rel_paths`
-- `entries`
-
-补充说明：
-
-- `reorder-files` 的后端校验落在 `ProjectFileService.reorder_files()`：`ordered_rel_paths` 必须与当前工程文件集合完全一致，长度和元素集合都要匹配。
-- `delete-file-batch` 当前是一次请求内完成一次事务、一次缓存失效和一次结构化刷新事件。
-- 工作台文件命令接口仍只返回 `accepted`；页面运行时当前只在显式文件操作后按需调用 `/api/v2/project/workbench/file-patch` 合并局部变更，不再依赖 `workbench.snapshot_changed`。
-
-### 4.5 Settings
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/settings/app` | `{}` | `{"settings": AppSettingsSnapshot}` | 读取应用设置 |
-| `/api/settings/update` | 允许的局部字段 | `{"settings": AppSettingsSnapshot}` | 局部更新设置 |
-| `/api/settings/recent-projects/add` | `{"path": str, "name": str}` | `{"settings": AppSettingsSnapshot}` | 追加最近工程 |
-| `/api/settings/recent-projects/remove` | `{"path": str}` | `{"settings": AppSettingsSnapshot}` | 删除最近工程 |
-
-`AppSettingsSnapshot` 当前稳定字段：
-
-- `app_language`
-- `source_language`
-- `target_language`
-- `project_save_mode`
-- `project_fixed_path`
-- `output_folder_open_on_finish`
-- `request_timeout`
-- `preceding_lines_threshold`
-- `clean_ruby`
-- `deduplication_in_trans`
-- `deduplication_in_bilingual`
-- `check_kana_residue`
-- `check_hangeul_residue`
-- `check_similarity`
-- `write_translated_name_fields_to_file`
-- `auto_process_prefix_suffix_preserved_text`
-- `mtool_optimizer_enable`
-- `glossary_default_preset`
-- `text_preserve_default_preset`
-- `pre_translation_replacement_default_preset`
-- `post_translation_replacement_default_preset`
-- `translation_custom_prompt_default_preset`
-- `analysis_custom_prompt_default_preset`
-- `recent_projects`
-
-补充说明：
-
-- `update` 只会处理 `SettingsAppService.SETTING_KEYS` 白名单中的字段，未知字段会被忽略。
-- `app_language` 当前只接受 `ZH` 与 `EN`。
-- `settings.changed` 只是设置广播，不等于工作台或校对页必须失效；当前只有 `source_language` 与 `mtool_optimizer_enable` 会进入两页的高影响刷新链。
-- `target_language` 当前只同步工程 meta 镜像，`check_kana_residue` / `check_hangeul_residue` / `check_similarity` / `app_language` / `recent_projects` 当前都不应被消费侧直接解释为页面刷新信号。
-
-### 4.6 Model
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/v2/models/snapshot` | `{}` | `{"snapshot": ModelPageSnapshotPayload}` | 读取模型页完整快照 |
-| `/api/v2/models/update` | `{"model_id": str, "patch": dict}` | `{"snapshot": ModelPageSnapshotPayload}` | 局部更新模型配置 |
-| `/api/v2/models/activate` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 切换激活模型 |
-| `/api/v2/models/add` | `{"model_type": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 新增模型 |
-| `/api/v2/models/delete` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 删除模型 |
-| `/api/v2/models/reset-preset` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 重置预设模型 |
-| `/api/v2/models/reorder` | `{"ordered_model_ids": list[str]}` 或兼容 `{"model_id": str, "operation": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 模型排序 |
-| `/api/v2/models/list-available` | `{"model_id": str}` | `{"models": list[str]}` | 查询供应商可用模型列表 |
-| `/api/v2/models/test` | `{"model_id": str}` | 原始测试结果字典 | 执行模型连通性 / 配置测试 |
-
-`ModelPageSnapshotPayload` 当前稳定字段：
-
-- `active_model_id`
-- `models`
-
-`models` 中每个条目当前稳定字段：
-
-- `id`
-- `type`
-- `name`
-- `api_format`
-- `api_url`
-- `api_key`
-- `model_id`
-- `request`
-- `threshold`
-- `thinking`
-- `generation`
-
-补充说明：
-
-- `update.patch` 当前只允许以下顶层键：`name`、`api_url`、`api_key`、`model_id`、`thinking`、`threshold`、`generation`、`request`。
-- `thinking`、`threshold`、`generation`、`request` 这四个 patch 字段必须是对象。
-- `add.model_type` 当前来自 `ModelType`，实际可新增的是自定义类型：`CUSTOM_GOOGLE`、`CUSTOM_OPENAI`、`CUSTOM_ANTHROPIC`。
-- `reorder` 现在优先使用整组 `ordered_model_ids`；旧前端仍可用 `model_id + operation` 兼容调用。
-- `ordered_model_ids` 必须完整匹配某一个模型分组，不能跨组混排。
-
-### 4.7 Quality
-
-#### 4.7.1 质量规则
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/v2/quality/rules/snapshot` | `{"rule_type": str}` | `{"snapshot": QualityRuleSnapshotPayload}` | 读取规则快照 |
-| `/api/v2/quality/rules/update-meta` | `{"rule_type": str, "expected_revision": int, "meta": dict}` | `{"snapshot": QualityRuleSnapshotPayload}` | 更新规则元信息 |
-| `/api/v2/quality/rules/save-entries` | `{"rule_type": str, "expected_revision": int, "entries": list[dict]}` | `{"snapshot": QualityRuleSnapshotPayload}` | 保存规则条目 |
-| `/api/v2/quality/rules/import` | `{"rule_type": str, "expected_revision": int, "path": str}` | `{"entries": list[dict]}` | 从本地文件导入规则条目 |
-| `/api/v2/quality/rules/export` | `{"rule_type": str, "path": str, "entries": list[dict]}` | `{"path": str}` | 导出规则条目 |
-| `/api/v2/quality/rules/presets` | `{"preset_dir_name": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出规则预设 |
-| `/api/v2/quality/rules/presets/read` | `{"preset_dir_name": str, "virtual_id": str}` | `{"entries": list[dict]}` | 读取规则预设正文 |
-| `/api/v2/quality/rules/presets/save` | `{"preset_dir_name": str, "name": str, "entries": list[dict]}` | `{"item": dict}` | 保存规则用户预设 |
-| `/api/v2/quality/rules/presets/rename` | `{"preset_dir_name": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名规则用户预设 |
-| `/api/v2/quality/rules/presets/delete` | `{"preset_dir_name": str, "virtual_id": str}` | `{"path": str}` | 删除规则用户预设 |
-| `/api/v2/quality/rules/query-proofreading` | `{"rule_type": str, "entry": dict}` | `{"query": ProofreadingLookupPayload}` | 把规则条目转换成校对查询 |
-| `/api/v2/quality/rules/statistics` | `{"rules": list[dict], "relation_candidates": list[dict]}` | `{"statistics": QualityRuleStatisticsSnapshot}` | 构建规则统计快照 |
-
-`rule_type` 当前实际使用值：
-
-- `glossary`
-- `pre_replacement`
-- `post_replacement`
-- `text_preserve`
-
-`QualityRuleSnapshot` 当前稳定字段：
-
-- `rule_type`
-- `revision`
-- `meta`
-- `statistics`
-- `entries`
-
-需要特别注意的差异：
-
-- `glossary` / `pre_replacement` / `post_replacement` 的 `meta` 形状是 `{"enabled": bool}`。
-- `text_preserve` 的 `meta` 形状是 `{"mode": str}`，不是 `enabled`。
-- 规则 preset 列表项当前稳定字段是：`name`、`file_name`、`virtual_id`、`path`、`type`。
-- `query-proofreading` 在 `rule_type == "text_preserve"` 时会强制把 `is_regex` 设为 `true`。
-- `statistics.results` 的 value 当前稳定字段是：`matched_item_count`、`subset_parents`。
-
-#### 4.7.2 自定义提示词
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/v2/quality/prompts/snapshot` | `{"task_type": "translation" \| "analysis"}` | `{"prompt": dict}` | 读取提示词快照 |
-| `/api/v2/quality/prompts/template` | `{"task_type": "translation" \| "analysis"}` | `{"template": {"default_text": str, "prefix_text": str, "suffix_text": str}}` | 读取提示词模板文本 |
-| `/api/v2/quality/prompts/save` | `{"task_type": str, "expected_revision": int, "text": str, "enabled": bool \| null}` | `{"prompt": dict}` | 保存提示词 |
-| `/api/v2/quality/prompts/import` | `{"task_type": str, "path": str, "expected_revision": int, "enabled": bool \| null}` | `{"prompt": dict}` | 从本地文件导入提示词 |
-| `/api/v2/quality/prompts/export` | `{"task_type": str, "path": str}` | `{"path": str}` | 导出提示词 |
-| `/api/v2/quality/prompts/presets` | `{"task_type": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出提示词预设 |
-| `/api/v2/quality/prompts/presets/read` | `{"task_type": str, "virtual_id": str}` | `{"text": str}` | 读取提示词预设正文 |
-| `/api/v2/quality/prompts/presets/save` | `{"task_type": str, "name": str, "text": str}` | `{"path": str}` | 保存提示词用户预设 |
-| `/api/v2/quality/prompts/presets/rename` | `{"task_type": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名提示词用户预设 |
-| `/api/v2/quality/prompts/presets/delete` | `{"task_type": str, "virtual_id": str}` | `{"path": str}` | 删除提示词用户预设 |
-
-`prompt` 快照当前稳定字段：
-
-- `task_type`
-- `revision`
-- `meta`
-- `text`
-
-其中：
-
-- `meta` 当前只稳定包含 `enabled`。
-- `template` 当前只稳定包含 `default_text`、`prefix_text`、`suffix_text`。
-- 提示词 preset 列表项和质量规则 preset 列表项使用同一套字段：`name`、`file_name`、`virtual_id`、`path`、`type`。
-
-### 4.8 Proofreading
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/v2/project/proofreading/snapshot` | `{}`、`{"lg_path": str}`、`{"path": str}` 或 `{"project_id": str}` | `{"snapshot": ProofreadingSnapshotPayload}` | 读取校对页快照 |
-| `/api/v2/project/proofreading/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingFilePatchPayload}` | 按受影响文件读取校对页局部补丁 |
-| `/api/v2/project/proofreading/entry-patch` | `{"item_ids": list[int], "rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingEntryPatchPayload}` | 按受影响条目读取校对页局部补丁 |
-| `/api/v2/project/proofreading/filter` | `{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"snapshot": ProofreadingSnapshotPayload}` | 按筛选条件重建快照 |
-| `/api/v2/project/proofreading/save-item` | `{"item": dict, "new_dst": str, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 保存单条条目 |
-| `/api/v2/project/proofreading/save-all` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量保存 |
-| `/api/v2/project/proofreading/replace-all` | `{"items": list[dict], "search_text": str, "replace_text": str, "is_regex": bool, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量替换 |
-| `/api/v2/project/proofreading/retranslate-items` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 重新翻译条目 |
-
-`ProofreadingSnapshot` 当前稳定字段：
-
-- `revision`
-- `project_id`
-- `readonly`
-- `summary`
-- `filters`
-- `items`
-
-`ProofreadingMutationResult` 当前稳定字段：
-
-- `revision`
-- `changed_item_ids`
-- `items`
-- `summary`
-
-`ProofreadingFilePatchPayload` 当前稳定字段：
-
-- `revision`
-- `project_id`
-- `readonly`
-- `removed_file_paths`
-- `default_filters`
-- `applied_filters`
-- `full_summary`
-- `filtered_summary`
-- `full_items`
-- `filtered_items`
-
-`ProofreadingEntryPatchPayload` 当前稳定字段：
-
-- `revision`
-- `project_id`
-- `readonly`
-- `target_item_ids`
-- `default_filters`
-- `applied_filters`
-- `full_summary`
-- `filtered_summary`
-- `full_items`
-- `filtered_items`
-
-补充说明：
-
-- `snapshot` 会优先解析 `lg_path`，再回退到 `path` / `project_id` / 当前工程路径。
-- `file-patch`、`entry-patch` 与 `filter` 共用同一套筛选解析入口：优先取 `filters`，其次取 `filter_options`，最后回退到请求顶层扁平字段。
-- `file-patch` 会同时返回两套文件切片：默认筛选口径下的 `full_items` / `full_summary`，以及当前已应用筛选口径下的 `filtered_items` / `filtered_summary`。
-- `entry-patch` 会按 `target_item_ids` 返回双视图补丁：旧列表先移除这些条目，再由前端插回 `full_items` / `filtered_items`。
-- 当前工程未加载或请求里的工程路径已经过期时，API 会返回 `readonly` 快照，而不是专门的业务错误码。
-- `filters` 当前稳定字段为：`warning_types`、`statuses`、`file_paths`、`glossary_terms`、`include_without_glossary_miss`。
-- `include_without_glossary_miss` 为 `true` 时，当前筛选会保留“没有术语未命中”的条目，这同时覆盖“完全不含术语”和“术语全部生效”两类情况。
-- `save-item`、`save-all`、`replace-all`、`retranslate-items` 当前都使用 `expected_revision` 做乐观锁保护；但冲突异常在 API 边界仍未标准化成独立错误码。
-- 上述 mutation 路由的主响应壳未变化；渲染层当前会结合 `result.changed_item_ids + result.items[*].file_path` 立即请求一次 `/api/v2/project/proofreading/entry-patch`，而不是再整页重拉。
-
-### 4.9 Extra
-
-#### 4.9.1 繁简转换
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/extra/ts-conversion/options` | `{}` | `{"options": TsConversionOptionsSnapshot}` | 读取繁简转换默认选项 |
-| `/api/extra/ts-conversion/start` | `{"direction": str, "preserve_text": bool, "convert_name": bool}` | `{"task": TsConversionTaskAccepted}` | 启动繁简转换任务 |
-
-`TsConversionOptionsSnapshot` 当前稳定字段：
-
-- `default_direction`
-- `preserve_text_enabled`
-- `convert_name_enabled`
-
-`TsConversionTaskAccepted` 当前稳定字段：
-
-- `accepted`
-- `task_id`
-
-补充说明：
-
-- 启动成功后，进度与终态都通过 SSE 的 `extra.ts_conversion_progress` / `extra.ts_conversion_finished` 推送。
-- Python 侧 `ApiStateStore` 统一通过 `get_extra_task_state("extra_ts_conversion")` 读取当前任务状态。
-
-#### 4.9.2 姓名字段
-
-| 路径 | 请求体 | `data` 结构 | 说明 |
-| --- | --- | --- | --- |
-| `/api/extra/name-fields/snapshot` | `{}` | `{"snapshot": NameFieldSnapshot}` | 读取当前姓名字段快照 |
-| `/api/extra/name-fields/extract` | `{}` | `{"snapshot": NameFieldSnapshot}` | 重新提取姓名字段 |
-| `/api/extra/name-fields/translate` | `{"items": list[dict]}` | `{"result": NameFieldTranslateResult}` | 翻译姓名字段列表 |
-| `/api/extra/name-fields/save-to-glossary` | `{"items": list[dict]}` | `{"snapshot": NameFieldSnapshot}` | 把姓名字段写回术语表 |
-
-姓名字段条目当前稳定字段：
-
-- `src`
-- `dst`
-- `context`
-- `status`
-
-`NameFieldTranslateResult` 当前额外稳定字段：
-
-- `success_count`
-- `failed_count`
-
-## 5. Python 客户端与对象化现状
-
-### 5.1 客户端边界
-
-- `ApiClient` 是一个非常薄的 HTTP 包装器：它只返回响应里的 `data` 字段，当前不会主动抛出 HTTP 错误，也不会保留 `error` 壳。
-- `AppClientContext` 把允许给 Python UI / 测试消费的客户端对象收口到一个不可变容器里。
-- Electron 渲染层运行时**不依赖**这些 Python 客户端；它走的是 `desktop-api.ts + EventSource`。
-
-### 5.2 对象化覆盖一览
-
-| 客户端 | 已对象化返回 | 仍返回原始结构 |
-| --- | --- | --- |
-| `ProjectApiClient` | `load/create/snapshot/unload -> ProjectSnapshot`、`preview -> ProjectPreview` | `source-files -> list[str]` |
-| `TaskApiClient` | 所有任务快照命令 -> `TaskSnapshot`、`import_analysis_glossary -> AnalysisGlossaryImportResult` | `export_translation -> dict[str, Any]` |
-| `WorkbenchApiClient` | `snapshot -> WorkbenchSnapshot` | `add/replace/reset/delete/delete_batch/reorder -> dict[str, Any]`、`file_patch -> dict[str, Any]` |
-| `SettingsApiClient` | 全部返回 `AppSettingsSnapshot` | 无 |
-| `ModelApiClient` | `snapshot/update/activate/add/delete/reset/reorder -> ModelPageSnapshot` | `list_available_models -> list[str]`、`test_model -> dict[str, Any]` |
-| `QualityRuleApiClient` | `snapshot/save_entries/update_meta -> QualityRuleSnapshot`、`query_proofreading -> ProofreadingLookupQuery`、`statistics -> QualityRuleStatisticsSnapshot` | 规则导入导出 / preset 全家桶 / prompt 全家桶仍是 `dict`、`list`、`tuple`、`str` |
-| `ProofreadingApiClient` | `snapshot/filter -> ProofreadingSnapshot`、`save/retranslate -> ProofreadingMutationResult` | `/api/v2/project/proofreading/file-patch` 当前尚未在 Python 客户端封装 |
-| `ExtraApiClient` | 全部当前公开路由都已对象化 | 无 |
-
-### 5.3 `ApiStateStore` 当前缓存口径
-
-`ApiStateStore` 当前只缓存以下状态：
-
-- `project_snapshot: ProjectSnapshot`
-- `task_snapshot: TaskSnapshot`
-- `extra_task_states: dict[str, ExtraTaskState]`
-
-不会缓存的内容包括：
-
-- 设置快照
-- 工作台完整快照
-- 质量规则快照
-- 校对完整快照
-- 模型页快照
-
-### 5.4 当前仍保持原始结构的接口族
-
-以下接口当前仍以 `dict` / `str` / `tuple` 等原始结构返回，而不是冻结 DTO：
-
-- `QualityRuleApiClient` 的 prompt 系列接口
-- `QualityRuleApiClient` 的规则导入导出与 preset 系列接口
-- `ModelApiClient.test_model()`
-- `TaskApiClient.export_translation()`
-
-## 6. 前端运行时边界
-
-当前 Electron 渲染层运行时只通过以下入口接入 Core：
-
-- `frontend/src/renderer/app/desktop-api.ts`
-  - `api_fetch()`：统一发 `POST`
-  - `open_v2_event_stream()`：打开项目运行态 SSE
-  - `open_v2_project_bootstrap_stream()`：读取 V2 bootstrap 分段首包
-  - `probe_core_api_candidate()`：用 `/api/health` 做探活
-- `frontend/src/renderer/app/state/*`
-- `frontend/src/renderer/pages/*`
-
-当前约束如下：
-
-- 渲染层在真正发请求前，会校验 `/api/health` 返回的 `service === "linguagacha-core"` 且 `status === "ok"`。
-- 渲染层大量接口当前使用本地 TypeScript payload 类型，而不是复用 Python 侧 `api/v2/Client` 的冻结模型。
-- `DesktopRuntimeContext` 当前会先消费 `/api/v2/project/bootstrap/stream` 建立 `ProjectStore`，再监听 `/api/v2/events/stream` 上的 `project.patch` 合并任务回灌。
-- `project.patch` 会在渲染层继续派生出结构化变更信号，供仍在迁移期的页面 hook 复用：
-  - `workbench_change_signal = { seq, reason, scope, rel_paths, removed_rel_paths, order_changed }`
-  - `proofreading_change_signal = { seq, reason, scope, item_ids, rel_paths, removed_rel_paths }`
-- 工作台页当前只响应 `scope == "file" | "order" | "global"`；校对页额外支持 `scope == "entry"`。
-- 两页当前都不再因为“任意任务从 busy 回到 idle”而主动整页刷新；只有项目加载/切换、显式 `scope == "global"`，或补丁失败时才回退整页 `/api/v2/project/workbench/snapshot` / `/api/v2/project/proofreading/snapshot`。
-- `api/v2/Client/*` 与 `ApiStateStore` 主要服务于 Python 侧测试、桥接和对象化消费场景，不是 Electron 渲染层运行时入口。
-
-## 7. 维护与同步要求
-
-出现以下变化时，必须同步更新本文：
-
-- 路径、HTTP 方法、请求键或 `data` 字段发生变化
-- SSE topic 或 payload 发生变化
-- `CoreApiServer` 的错误映射策略发生变化
-- `api/v2/Client` 的对象化覆盖范围发生变化
-- Electron 渲染层接入 Core 的唯一入口发生变化
-
-维护原则：
-
-- 只写当前代码已经兑现的事实，不在规格里预支未来设计。
-- 优先记录“开发会依赖的稳定信息”，例如路径、字段、白名单、兼容请求形态、真实错误边界。
-- 不把页面临时实现细节、历史遗留原因或与开发无关的示例堆进本文。
+- `tasks/snapshot` 是按需快照，不是订阅态入口。
+- 分析任务快照在可用时会额外带 `analysis_candidate_count`。
+- `import-analysis-glossary`、`reset-*` 当前都要求：
+  - 工程已加载
+  - 引擎空闲
+- `export-translation` 目前只有最小 `accepted` 回执，没有稳定 DTO。
+
+### 4.4 Settings
+- `settings` 仍未迁到 `/api/v2/`。
+- `update` 只处理 `SettingsAppService.SETTING_KEYS` 白名单字段，未知字段会被忽略，不会报错。
+- 对渲染层运行态而言，当前只有：
+  - `source_language`
+  - `mtool_optimizer_enable`
+  会进入工作台 / 校对页的高影响刷新链。
+- `target_language` 当前只同步工程 meta 镜像，不是页面刷新信号。
+
+### 4.5 Models
+- `models/reorder` 当前同时支持两种形态：
+  - 新形态：`ordered_model_ids`
+  - 兼容形态：`model_id + operation`
+- 新逻辑应优先使用 `ordered_model_ids`。
+- `ordered_model_ids` 必须只重排某一个模型分组，不能跨组混排。
+- `models/add` 当前实际只新增自定义类型，不会新增新的 preset 模型。
+
+### 4.6 Quality / Prompts
+- 当前 `rule_type` 只稳定使用：
+  - `glossary`
+  - `pre_replacement`
+  - `post_replacement`
+  - `text_preserve`
+- `text_preserve` 与其余规则最大的非显然差异是：
+  - `meta` 形状是 `{"mode": str}`
+  - 不是 `{"enabled": bool}`
+- `query-proofreading` 在 `text_preserve` 下会强制把 `is_regex` 设为 `true`。
+- 规则和提示词都已经用了 `expected_revision` 做乐观锁，但 API 边界还没有给出专门的冲突错误码。
+
+### 4.7 Extra
+- `extra` 仍保留在非 v2 前缀下。
+- `ts-conversion/start` 的终态和进度不靠轮询，而是依赖 SSE：
+  - `extra.ts_conversion_progress`
+  - `extra.ts_conversion_finished`
+
+## 5. Python 客户端边界
+
+### 5.1 `ApiClient` 的真实行为
+- `ApiClient` 只取响应体里的 `data`。
+- 它当前不会：
+  - 校验 `ok`
+  - 保留 `error`
+  - 主动把业务失败提升成结构化异常
+- 所以 Python 客户端侧很多“失败”最终只会表现成空字典或缺字段，而不是明确错误对象。
+
+### 5.2 对象化覆盖的真正分界
+高价值结论不是“每个方法返回什么”，而是这几条分界：
+- `SettingsApiClient`、`ExtraApiClient` 基本已经对象化完成。
+- `ProjectApiClient`、`TaskApiClient` 的主路径快照已对象化，但少量辅助命令仍返回原始结构。
+- `WorkbenchApiClient`、`QualityRuleApiClient`、`ProofreadingApiClient` 仍有明显一截停留在原始 `dict` / `list` 返回。
+- `ModelApiClient.test_model()`、`TaskApiClient.export_translation()` 当前仍是原始结构接口。
+
+### 5.3 `ApiStateStore` 当前只缓存最小运行态
+它现在只稳定缓存：
+- `project_snapshot`
+- `task_snapshot`
+- `extra_task_states`
+
+它**不会**缓存：
+- settings
+- workbench
+- quality
+- proofreading
+- model page
+- `project.patch` 派生运行态
+
+也就是说，`ApiStateStore` 仍然只是 Python 侧的轻量状态仓，而不是 `ProjectStore` 的 Python 对等实现。
+
+### 5.4 `SseClient` 的现实限制
+- 没有自动重连。
+- 只消费 `/api/v2/events/stream`。
+- `settings.changed` 与 `project.patch` 目前都不会落成本地缓存，只是通知型事件。
+
+## 6. Electron 接入边界
+- 渲染层真正的 API 接入入口只有 `frontend/src/renderer/app/desktop-api.ts`。
+- 发请求前会先用 `/api/health` 校验：
+  - `status === "ok"`
+  - `service === "linguagacha-core"`
+- 项目运行态主路径固定为：
+  - `/api/v2/project/bootstrap/stream`
+  - `/api/v2/events/stream`
+- 更细的 `ProjectStore`、bootstrap stage 落地、页面变更信号，已经下沉到 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md)，不在本文重复展开。
+
+## 7. 什么时候必须同步更新本文
+- 路径前缀、路由分组或版本边界变化
+- 错误映射口径变化
+- bootstrap stage / schema / 事件型别变化
+- SSE topic 或 `project.patch` 语义变化
+- Python 客户端对象化覆盖边界变化
+- Electron 接入 Core 的唯一入口变化
+
+## 维护原则
+- 本文不再做完整接口手册；能在 `Routes/*` 和 `Contract/*` 一眼看出的字段表，不重复平铺。
+- 优先记录“代码里分散存在、但开发时必须一起理解”的真实边界。
+- 若某段说明已经更适合前端运行态文档，就迁到前端文档，不在这里维持双份解释。

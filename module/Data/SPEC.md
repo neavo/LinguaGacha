@@ -14,6 +14,8 @@
 | 翻译条目准备与重置 | `DataManager.py` -> `Translation/TranslationItemService.py` / `Translation/TranslationResetService.py` |
 | 校对页快照、筛选、保存、重翻 | `api/v2/Application/ProofreadingAppService.py` -> `Proofreading/*` |
 | 繁简转换、姓名字段 | `api/v2/Application/ExtraAppService.py` -> `Extra/*` |
+| 外部文件格式解析与写回 | [`../File/SPEC.md`](../File/SPEC.md) -> `../File/FileManager.py` |
+| 后台任务执行、请求与停止语义 | [`../Engine/SPEC.md`](../Engine/SPEC.md) -> `../Engine/*` |
 | 会话缓存、meta、rules、items、assets | `Core/*` |
 | SQL、schema、事务细节 | `Storage/LGDatabase.py` |
 
@@ -38,6 +40,8 @@
 - `Proofreading/` 由 `api/v2/Application/ProofreadingAppService.py` 组合使用；它依赖 `DataManager` 读取当前工程、提交 mutation，并自行维护筛选、revision 与重检逻辑。
 - `Extra/` 由 `api/v2/Application/ExtraAppService.py` 组合使用；它直接提供繁简转换与姓名字段能力，不承担工程生命周期管理。
 - `ProjectSession` 只做当前工程会话状态容器；`LGDatabase` 只做 SQL、schema 和事务，不承担业务流程。
+- `module/File` 负责把外部格式转换成 `Item` / 资产写回，`module/Data` 只消费稳定条目和资产字典，不负责格式解析细节。
+- `module/Engine` 负责后台任务生命周期和请求执行，`module/Data` 只提供任务所需的数据事实与批量提交入口，不直接承担请求调度。
 - 新增数据链路时，先判断它属于工程编排、规则/分析/翻译、校对，还是 Extra 工具，不要把所有逻辑都压回 `DataManager`。
 
 ### 明确禁止

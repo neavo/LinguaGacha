@@ -1,103 +1,103 @@
 # LinguaGacha 仓库结构
 
 ## 一句话总览
-LinguaGacha 当前由无头 Python Core 与 Electron 前端组成：`app.py` 负责运行时入口、CLI 分流与本地 Core API 启停，`api/` 暴露 HTTP / SSE 契约，`frontend/` 承载桌面前端，`module/` 承担核心业务实现。
+LinguaGacha 当前是“无头 Python Core + Electron 桌面前端”的双进程工程。`app.py` 负责无头运行时、CLI 分流与 Core API 启停；`api/v2/` 负责本地 HTTP / SSE / bootstrap 边界；`module/Data/` 持有工程事实与数据编排；`module/Engine/` 负责后台任务执行；`module/File/` 负责格式解析与回写；`frontend/` 承载 Electron 壳层与 React 渲染层。
 
-## 核心模块关系
+## 核心运行时关系
 ```mermaid
-flowchart TD
-    A["frontend"] --> B["api/"]
-    B --> C["api/v2/*"]
-    B --> D["app.py"]
-    D --> E["base/"]
-    D --> F["module/"]
-    F --> G["module/Data/Core"]
-    F --> H["module/Model"]
+flowchart LR
+    A["frontend/src/main"] --> B["frontend/src/preload"]
+    B --> C["frontend/src/renderer"]
+    C --> D["api/v2 HTTP / SSE / bootstrap"]
+    D --> E["app.py"]
+    E --> F["module/Data"]
+    E --> G["module/Engine"]
+    F --> H["module/File"]
+    G --> I["module/Model"]
 ```
-
-## 仓库结构
-| 路径 | 职责 |
-| --- | --- |
-| `app.py` | Python Core 入口、CLI 分流、Core API 启停与退出清理 |
-| `api/` | 本地 Core API 根目录；当前业务边界统一收口在 `api/v2/` |
-| `api/v2/Models/` | Python 侧冻结 DTO、SSE patch 与客户端对象化消费模型 |
-| `base/` | 事件、日志、路径、版本、命令行等基础设施 |
-| `frontend/` | Electron + React 前端子工程、桌面桥接与渲染层实现 |
-| `module/` | 数据层、任务引擎、文件处理、本地化与其他业务模块 |
-| `module/Model/` | 模型配置领域对象与模型管理流程 |
-| `resource/` | 预设、模板、图标与运行时资源 |
-| `buildtools/` | 构建流程与辅助脚本 |
-| `tests/` | 自动化测试 |
 
 ## 文档入口
 ```mermaid
 flowchart TD
     A["AGENTS.md"] --> B["docs/ARCHITECTURE.md"]
     B --> C["frontend/SPEC.md"]
-    B --> D["api/SPEC.md"]
-    B --> E["module/Data/SPEC.md"]
-    C --> F["frontend/src/renderer/SPEC.md"]
-    C --> D
+    C --> D["frontend/src/renderer/SPEC.md"]
+    D --> E["frontend/src/renderer/app/project-runtime/SPEC.md"]
+    B --> F["api/SPEC.md"]
+    B --> G["module/Data/SPEC.md"]
+    B --> H["module/Engine/SPEC.md"]
+    B --> I["module/File/SPEC.md"]
+    B --> J["module/Model/SPEC.md"]
 ```
 
 规则：
-- `AGENTS.md` 只给出规则和仓库级入口。
-- 本文负责分发现有模块文档，并作为文档索引、阅读路径与同步矩阵的唯一权威来源。
-- 模块 `SPEC.md` 只继续链接更下游的局部说明或真实依赖方向上的文档，不反向回链本文。
+- `AGENTS.md` 只保留协作规则、交付约束和仓库级入口。
+- 本文是仓库级文档索引、阅读路径和同步矩阵的唯一权威来源。
+- 模块 `SPEC.md` 只写当前模块的稳定边界、真实入口和改动落点，不记录对开发没有帮助的历史叙述。
 
 ## 推荐阅读路径
 | 场景 | 阅读顺序 |
 | --- | --- |
 | 仓库整体结构 | `docs/ARCHITECTURE.md` -> `app.py` -> `base/*` |
-| Electron / React 前端 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) |
-| HTTP / SSE 契约 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> `api/v2/Application/*` / `api/v2/Server/*` |
-| V2 项目运行态协议 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) |
-| 工程加载、规则、分析、工作台数据 | `docs/ARCHITECTURE.md` -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) -> `module/Data/DataManager.py` |
-| 模型页与模型配置 | `docs/ARCHITECTURE.md` -> [`module/Model/SPEC.md`](../module/Model/SPEC.md) -> `module/Model/Manager.py` |
-| 任务调度与请求生命周期 | `docs/ARCHITECTURE.md` -> `module/Engine/Engine.py` -> `module/Engine/*` |
-| 文件导入、资产解析、导出格式 | `docs/ARCHITECTURE.md` -> `module/File/FileManager.py` -> `module/File/*` |
-
-当前项目运行态协议已经完成 V1 退场；涉及项目加载、工作台、校对、规则、模型、任务回灌与事件流时，默认只阅读 `/api/v2/...` 与 `V2` / `v2` 边界目录对应的实现与文档。
+| Electron 壳层、桥接与构建入口 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) |
+| 渲染层页面、导航与组件落位 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) |
+| V2 项目运行态 / `ProjectStore` / bootstrap | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) -> [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) -> [`api/SPEC.md`](../api/SPEC.md) |
+| HTTP / SSE 契约与 Python 侧对象化客户端 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) |
+| 工程加载、工作台、校对与质量规则数据流 | `docs/ARCHITECTURE.md` -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) |
+| 任务调度、请求生命周期、停止与重试 | `docs/ARCHITECTURE.md` -> [`module/Engine/SPEC.md`](../module/Engine/SPEC.md) |
+| 文件导入导出、格式解析与回写 | `docs/ARCHITECTURE.md` -> [`module/File/SPEC.md`](../module/File/SPEC.md) |
+| 模型配置、预设模板与模型页后端入口 | `docs/ARCHITECTURE.md` -> [`module/Model/SPEC.md`](../module/Model/SPEC.md) -> [`api/SPEC.md`](../api/SPEC.md) |
 
 ## 模块文档索引
 | 文档 | 对应目录 | 说明 |
 | --- | --- | --- |
-| [`frontend/SPEC.md`](../frontend/SPEC.md) | `frontend/` | Electron 子工程根目录、主进程、预加载、共享契约与改动入口 |
-| [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) | `frontend/src/renderer/` | 渲染层页面结构、状态组织、组件落位与样式边界 |
-| [`api/SPEC.md`](../api/SPEC.md) | `api/` | 本地 Core API 的 HTTP / SSE 契约、Python 侧对象化客户端边界与前端运行时接入规则 |
-| [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `module/Data/` | 数据层公开入口、内部拆分与主流程 |
-| [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置领域对象、模型预设管理与模型页后端入口 |
+| [`frontend/SPEC.md`](../frontend/SPEC.md) | `frontend/` | Electron 子工程根目录、主进程、预加载、共享契约、构建命令与壳层边界 |
+| [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) | `frontend/src/renderer/` | 渲染层目录职责、页面落位、导航映射、组件层级与样式边界 |
+| [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) | `frontend/src/renderer/app/project-runtime/` | `ProjectStore`、bootstrap 分段、`project.patch`、页面变更信号与 V2 运行态主路径 |
+| [`api/SPEC.md`](../api/SPEC.md) | `api/` | 本地 Core API 的 HTTP / SSE / bootstrap 契约、错误边界、Python 客户端对象化范围与前端接入点 |
+| [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `module/Data/` | 工程事实、工作台、规则、分析、校对和 Extra 数据服务的真实入口 |
+| [`module/Engine/SPEC.md`](../module/Engine/SPEC.md) | `module/Engine/` | 翻译/分析任务生命周期骨架、共享流水线、请求器、并发与停止语义 |
+| [`module/File/SPEC.md`](../module/File/SPEC.md) | `module/File/` | 文件格式接入、解析分发、写回策略与新增格式时的真实落点 |
+| [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置对象、模板补齐、预设迁移、分组排序与模型页后端入口 |
+
+## 当前最值得记住的边界
+- V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` + `/api/v2/events/stream`；页面不再把整页 snapshot 当成唯一事实源。
+- `DataManager` 负责工程事实与数据编排，`Engine` 负责后台任务生命周期，`FileManager` 只负责格式解析与回写；三者不要互相吞职责。
+- Electron 渲染层只通过 `window.desktopApp` 暴露的桌面能力接入宿主，再通过 `desktop-api.ts` 探活并请求 Core API。
+- 新增文档时，优先补“难以从代码快速看懂、而且后续开发会反复依赖”的真实边界，而不是表面目录介绍。
 
 ## 文档放置规则
 | 文档类型 | 位置 | 用途 |
 | --- | --- | --- |
-| `AGENTS.md` | 仓库根目录 | 规则、约束、仓库级入口 |
-| `docs/ARCHITECTURE.md` | `docs/` | 仓库结构总览与模块文档索引 |
-| `*/SPEC.md` | 模块目录内 | 当前模块的结构、边界、主流程和改动建议 |
-| `docs/design/*.md` | `docs/design/` | 设计方案与取舍记录 |
+| `AGENTS.md` | 仓库根目录 | 协作规则、交付约束、仓库级入口 |
+| `docs/ARCHITECTURE.md` | `docs/` | 仓库结构总览、阅读路径、文档索引与同步矩阵 |
+| `*/SPEC.md` | 模块目录内 | 当前模块的稳定边界、主流程、改动入口与维护约束 |
+| `docs/design/*.md` | `docs/design/` | 仍然有效的方案取舍与设计记录 |
 
 ## 更新规则
 | 变更类型 | 必须同步的文档 |
 | --- | --- |
-| 仓库结构、阅读路径或文档引用规则变化 | `docs/ARCHITECTURE.md` |
-| 前端子工程入口、桥接边界或阅读顺序变化 | `frontend/SPEC.md` |
-| 渲染层页面结构、状态组织或样式边界变化 | `frontend/src/renderer/SPEC.md` |
-| API 契约、Python 侧客户端边界或前端接入规则变化 | `api/SPEC.md` |
-| 数据层职责、主流程或公开入口变化 | `module/Data/SPEC.md` |
-| 模型配置对象、模型管理器或模型页后端入口变化 | `module/Model/SPEC.md` |
-| 设计方案与取舍记录 | `docs/design/*.md` |
+| 仓库结构、阅读路径、文档索引或同步矩阵变化 | `docs/ARCHITECTURE.md` |
+| Electron 子工程根目录、桥接边界、构建命令或共享契约变化 | `frontend/SPEC.md` |
+| 渲染层目录职责、导航映射、页面落位或样式边界变化 | `frontend/src/renderer/SPEC.md` |
+| `ProjectStore`、bootstrap stage、`project.patch`、运行态变更信号变化 | `frontend/src/renderer/app/project-runtime/SPEC.md` + `api/SPEC.md` |
+| API 路径、请求/响应字段、错误码、SSE topic 或客户端对象化范围变化 | `api/SPEC.md` |
+| 数据层职责、工作台/校对/规则/分析主链路变化 | `module/Data/SPEC.md` |
+| 任务生命周期、请求器、共享流水线或停止语义变化 | `module/Engine/SPEC.md` |
+| 文件格式支持、解析分发或写回策略变化 | `module/File/SPEC.md` |
+| 模型配置字段、模板、排序或模型页后端入口变化 | `module/Model/SPEC.md` |
 
 ## 新增文档时怎么判断位置
 ```mermaid
 flowchart TD
-    A["准备新增文档"] --> B{"描述当前模块<br/>还是某次方案"}
-    B -->|当前模块| C["放到对应目录/SPEC.md"]
-    B -->|设计方案| D["放到 docs/design/"]
+    A["准备新增文档"] --> B{"描述当前稳定边界<br/>还是某次方案记录"}
+    B -->|当前稳定边界| C["放到对应目录/SPEC.md"]
+    B -->|方案记录| D["放到 docs/design/"]
     C --> E["更新 docs/ARCHITECTURE.md 索引"]
     D --> E
 ```
 
 ## 维护约束
-- 本文只写仓库级总览和真实存在的文档入口，不为不存在的局部说明预留占位条目。
-- 模块文档只写当前代码与资源现状，不记录对开发没有帮助的历史叙述。
-- 代码改动如果会让文档失真，应在同一任务内同步修正文档。
+- 本文只列出真实存在、且对开发有帮助的文档入口，不为“以后可能会写”的文档预留占位。
+- 模块文档优先写状态来源、唯一写入口、跨层载荷和不明显的兼容约束，不重复显而易见的代码表面行为。
+- 代码改动如果会让现有阅读路径或模块边界失真，必须在同一任务内同步修正文档。

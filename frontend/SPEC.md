@@ -1,84 +1,104 @@
-# frontend 子工程规格
+# `frontend` 子工程规格
 
 ## 一句话总览
-`frontend` 是 LinguaGacha 的 Electron + React 子工程，采用 `main / preload / shared / renderer` 四段结构：主进程负责桌面宿主，预加载负责安全桥接，共享层负责跨端契约，渲染层负责界面、导航、状态与样式。
+`frontend/` 是 LinguaGacha 的 Electron + React 子工程，采用 `main / preload / shared / renderer / test` 五段结构：主进程负责桌面宿主与原生能力，预加载负责安全桥接，共享层负责跨端契约与 Core API 地址解析，渲染层负责界面与运行态消费，`src/test/` 负责前端测试环境装配。
 
 ## 阅读顺序
-1. 先读本文，确认 `frontend/` 根目录、Electron 壳层、桥接边界与命令入口。
-2. 如果改动落在页面结构、样式分层、导航、状态组织或组件落位，继续读 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md)。
-3. 如果改动涉及 Python Core 交互、HTTP / SSE 契约或探活策略，继续读 [`../api/SPEC.md`](../api/SPEC.md)。
+1. 先读本文，确认子工程根目录、构建入口、主进程 / 预加载 / 共享层边界。
+2. 如果改动落在页面结构、导航、组件落位、样式边界，继续读 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md)。
+3. 如果改动落在 `ProjectStore`、bootstrap、`project.patch` 或页面变更信号，继续读 [`src/renderer/app/project-runtime/SPEC.md`](./src/renderer/app/project-runtime/SPEC.md)。
+4. 如果改动涉及 Python Core 契约、SSE topic、bootstrap stage 或 HTTP 路径，继续读 [`../api/SPEC.md`](../api/SPEC.md)。
 
 ## 子工程边界图
 ```mermaid
 flowchart LR
     A["src/main"] --> B["src/preload"]
-    B --> C["src/renderer"]
-    C --> D["api/ HTTP / SSE"]
-    D --> E["app.py / Python Core"]
-    A --> F["src/shared"]
-    B --> F
-    C --> F
+    A --> C["src/shared"]
+    B --> C
+    B --> D["src/renderer"]
+    D --> E["api/v2 HTTP / SSE / bootstrap"]
+    D --> F["src/test"]
 ```
-
-## 本文件负责什么
-- 解释 `frontend/` 根目录的结构、Electron 壳层边界、桥接入口与命令体系。
-- 说明 `src/main/`、`src/preload/`、`src/shared/` 与 `src/renderer/` 的职责切分。
-- 为后续进入 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) 或 [`../api/SPEC.md`](../api/SPEC.md) 提供稳定入口。
-
-## 本文件不负责什么
-- 不展开 `src/renderer/` 内部页面、widgets、shadcn 与样式约束细节。
-- 不重复转写 HTTP / SSE 契约正文。
-- 不替代仓库级文档说明整体模块关系与非前端模块阅读路径。
 
 ## 顶层目录与入口
 | 路径 | 职责 |
 | --- | --- |
-| `package.json` | 子工程命令入口，集中声明 `dev`、`build`、`lint`、`renderer:audit` 与 `preview` |
-| `components.json` | shadcn CLI 配置权威来源，定义 `style`、`base`、全局 CSS 和 `@/shadcn` / `@/widgets` 等别名 |
-| `electron.vite.config.ts` | Electron / Vite 构建入口与 renderer 别名配置 |
-| `electron-builder.json5` | Electron 打包配置 |
-| `scripts/` | 子工程级脚本与审查工具，例如 `check-renderer-design-system.mjs` 与 `dev-launcher.mjs` |
-| `src/main/` | Electron 主进程；只处理窗口创建、原生对话框、标题栏策略与 IPC 落地 |
-| `src/preload/` | `window.desktopApp` 桥接层；只暴露渲染层必须消费的桌面能力 |
-| `src/shared/` | 主进程、预加载与渲染层共享的桌面契约、壳层常量和 Core API 地址解析规则 |
-| `src/renderer/` | React 渲染层；具体分层、样式边界、组件落位与审查规则见 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) |
-| `public/` | 以原始路径暴露给 HTML / Electron 的静态资源，例如 `icon.png` 与字体文件 |
+| `package.json` | 子工程命令入口；声明 `dev`、`build`、`lint`、`test`、`renderer:audit`、`preview` |
+| `components.json` | shadcn CLI 配置权威来源；约束 `@/shadcn`、`@/widgets`、`@/hooks` 等别名 |
+| `electron.vite.config.ts` | Electron / Vite 构建入口；renderer root 固定为 `src/renderer`，开发态 host 固定为 `127.0.0.1` |
+| `src/main/` | Electron 主进程；窗口创建、标题栏策略、原生对话框、外链打开、开发态调试入口 |
+| `src/preload/` | `contextBridge` 暴露 `window.desktopApp`，不持有页面状态 |
+| `src/shared/` | 主进程 / 预加载 / 渲染层共享契约、桌面壳层常量、Core API 地址解析 |
+| `src/renderer/` | React 渲染层；目录规则见 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) |
+| `src/test/` | Vitest 前端测试环境入口；当前由 `setup.ts` 提供公共测试装配 |
+| `public/` | 原始静态资源，例如应用图标 |
 
-## Electron / Shared 侧边界
-- `src/main/` 不承载页面状态、业务请求流程或渲染层工具。
-- `src/preload/` 只组织 `contextBridge` 暴露对象，不维护页面状态与 UI 逻辑。
-- IPC channel、桌面壳层信息、桥接类型、标题栏高度和 Core API 地址解析统一收敛在 `src/shared/`。
-- Core API 地址解析由 [`src/shared/core-api-base-url.ts`](./src/shared/core-api-base-url.ts) 负责；`src/preload/index.ts` 只桥接单一权威地址，渲染层再负责探活与缓存。
+## Main / Preload / Shared 的真实边界
+### `src/main/`
+- 负责：
+  - 创建窗口与标题栏 overlay 策略
+  - 打开文件 / 目录选择器
+  - 外部链接打开与应用退出
+  - 开发态 DevTools 快捷键与远程调试端口
+- 当前开发态会打开 Chromium remote debugging 端口 `9222`，方便外部自动化工具直接附着 Electron 实例。
+- 不负责：
+  - 页面状态
+  - HTTP 请求编排
+  - React 组件树逻辑
 
-## 与 Python Core 的边界
-- Electron 前端与 Python Core 的运行时通信统一走 `api/` 暴露的 HTTP / SSE 契约，不直接 import Python 模块。
-- 项目运行态主路径已经切到 V2：渲染层先通过 `/api/v2/project/bootstrap/stream` 建立 `ProjectStore`，再通过 `/api/v2/events/stream` 上的 `project.patch` 合并任务回灌。
-- Python Core 继续作为持久化结果与后台任务执行的事实源；渲染层持有的是项目实体的前端运行时读模型，而不是页面级 `snapshot` 缓存。
-- 项目运行态相关的 V1 页面接口与旧 SSE 入口已经从主路径移除；工作台与校对页当前只保留 `/api/v2/project/...` 路径和 `ProjectStore` 派生结果作为运行时事实来源。
-- 若需要新增桥接能力，优先判断它属于桌面壳层能力、前端状态编排还是 Core API 契约，避免把职责堆进单个目录。
+### `src/preload/`
+- 只通过 `contextBridge.exposeInMainWorld('desktopApp', ...)` 暴露桌面能力。
+- 当前对渲染层公开的稳定能力包括：
+  - `shell`
+  - `coreApi.baseUrl`
+  - 文件 / 目录选择
+  - 外链打开
+  - 主题标题栏同步
+  - `getPathForFile()`
+- 不维护页面缓存、运行态状态或 UI 逻辑。
 
-## 渲染层入口
-- 渲染层所有稳定规则统一收敛在 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md)。
-- 修改 `src/renderer/` 下的目录落位、样式分层、组件归属、命名空间、审查脚本或导航入口时，先读 `src/renderer/SPEC.md`。
-- `src/renderer/shadcn/` 是 shadcn CLI 管理的基础组件目录；`components.json` 中 `aliases.ui` 的值固定指向 `@/shadcn`。
+### `src/shared/`
+- 是桌面壳层契约的唯一权威来源。
+- 当前最关键的共享规则：
+  - `core-api-base-url.ts` 负责解析 Core API 地址
+  - `desktop-shell.ts` 负责标题栏高度、安全区、控制按钮侧
+  - `ipc-channels.ts` 维护 IPC channel 常量
 
-## 命令与审查
+## Core API 地址的真实来源
+`window.desktopApp.coreApi.baseUrl` 最终来自 `src/shared/core-api-base-url.ts`，当前解析顺序固定为：
+1. 环境变量 `LINGUAGACHA_CORE_API_BASE_URL`
+2. 启动参数 `--core-api-base-url=...`
+3. 默认地址 `http://127.0.0.1:38191`
+
+渲染层不会盲信这个地址，而是继续通过 `desktop-api.ts` 请求 `/api/health` 做探活确认。
+
+## 与渲染层的接缝
+- 渲染层的稳定入口在 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md)。
+- `desktop-api.ts` 是渲染层访问 Core API 的唯一 HTTP / SSE 入口。
+- `app/project-runtime/` 负责消费 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`，不要在页面里重新拼第二套项目运行态客户端。
+
+## 命令与验证入口
 | 命令 | 用途 |
 | --- | --- |
-| `npm run dev` | 启动开发环境 |
-| `npm run build` | 类型检查、构建 renderer 与 Electron 产物并执行打包 |
+| `npm run dev` | 启动 Electron 开发环境 |
+| `npm run build` | 前端类型检查 + Electron 构建与打包 |
 | `npm run lint` | ESLint 检查 |
+| `npm run test` | Vitest 一次性测试 |
+| `npm run test:watch` | Vitest 监听模式 |
 | `npm run renderer:audit` | 渲染层设计系统与样式边界硬规则审查 |
-| `npm run preview` | Electron 预览构建产物 |
+| `npm run preview` | 预览打包后的 Electron 构建产物 |
 
-## 改动入口建议
-1. 调整构建入口、输出目录、Vite alias 或 renderer root 时，优先修改 `electron.vite.config.ts`，再同步检查 `package.json` 与 `components.json`。
-2. 调整桌面桥接接口时，先改 `src/shared/` 契约，再同步 `src/preload/index.ts` 与渲染层消费代码。
-3. 调整 Electron 窗口、标题栏或原生能力时，优先修改 `src/main/` 与 `src/shared/`，不要把桌面宿主逻辑散落到渲染层。
-4. 调整渲染层分层、组件落位、样式边界、导航与页面入口时，直接进入 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) 对照实施。
+## 修改建议
+| 变更类型 | 优先落点 |
+| --- | --- |
+| 构建入口、renderer root、开发态 host、alias | `electron.vite.config.ts` |
+| 主进程窗口、标题栏、原生对话框、开发态调试 | `src/main/index.ts` |
+| 桌面桥接接口 | `src/shared/*` -> `src/preload/index.ts` -> 渲染层消费代码 |
+| Core API base URL 解析规则 | `src/shared/core-api-base-url.ts` |
+| 页面、导航、组件与样式 | [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) |
+| `ProjectStore` 与 V2 运行态消费 | [`src/renderer/app/project-runtime/SPEC.md`](./src/renderer/app/project-runtime/SPEC.md) |
 
 ## 维护约束
-- `frontend/SPEC.md` 是 Electron 子工程的总规格入口；涉及根目录结构、主进程、预加载、共享契约或阅读顺序变化时，优先更新本文。
-- `src/renderer/SPEC.md` 只负责渲染层内部规则；若变更只影响渲染层局部，不要把细节上提到本文。
-- 仓库级入口文档链接前端说明时，直接指向本文。
-- 本文只向更下游的前端局部说明或真实依赖文档延伸，不反向回链 `docs/ARCHITECTURE.md`，避免形成循环入口。
+- Electron 子工程只存在一套桌面桥接入口：`window.desktopApp`。
+- 渲染层的项目运行态主路径只存在一套：`desktop-api.ts` + `app/project-runtime/`。
+- 如果主进程、预加载、共享契约或构建入口变化，会直接影响整个桌面前端，必须同步更新本文。
