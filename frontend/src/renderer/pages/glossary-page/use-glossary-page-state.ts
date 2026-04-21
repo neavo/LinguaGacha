@@ -469,7 +469,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const refresh_snapshot = useCallback(async (): Promise<void> => {
     try {
       const payload = await api_fetch<GlossarySnapshotPayload>(
-        '/api/quality/rules/snapshot',
+        '/api/v2/quality/rules/snapshot',
         {
           rule_type: 'glossary',
         },
@@ -487,7 +487,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const save_entries_snapshot = useCallback(async (next_entries: GlossaryEntry[]): Promise<boolean> => {
     try {
       const payload = await api_fetch<GlossarySnapshotPayload>(
-        '/api/quality/rules/save-entries',
+        '/api/v2/quality/rules/save-entries',
         {
           rule_type: 'glossary',
           expected_revision: revision_ref.current,
@@ -538,7 +538,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const [preset_payload, settings_payload] = await Promise.all([
       api_fetch<GlossaryPresetPayload>(
-        '/api/quality/rules/presets',
+        '/api/v2/quality/rules/presets',
         {
           preset_dir_name: 'glossary',
         },
@@ -673,7 +673,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     try {
       const payload = await api_fetch<GlossarySnapshotPayload>(
-        '/api/quality/rules/update-meta',
+        '/api/v2/quality/rules/update-meta',
         {
           rule_type: 'glossary',
           expected_revision: revision_ref.current,
@@ -956,7 +956,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     try {
       const payload = await api_fetch<{ query: { keyword: string; is_regex: boolean } }>(
-        '/api/quality/rules/query-proofreading',
+        '/api/v2/quality/rules/query-proofreading',
         {
           rule_type: 'glossary',
           entry: normalize_dialog_entry(target_entry),
@@ -980,7 +980,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
 
       const payload = await api_fetch<{ entries?: GlossaryEntry[] }>(
-        '/api/quality/rules/import',
+        '/api/v2/quality/rules/import',
         {
           rule_type: 'glossary',
           expected_revision: revision_ref.current,
@@ -1020,7 +1020,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
 
       await api_fetch(
-        '/api/quality/rules/export',
+        '/api/v2/quality/rules/export',
         {
           rule_type: 'glossary',
           path: pick_result.path,
@@ -1075,7 +1075,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         results = worker_result.results
       } else {
         const payload = await api_fetch<GlossaryStatisticsPayload>(
-          '/api/quality/rules/statistics',
+          '/api/v2/quality/rules/statistics',
           {
             rules: entries.map((entry, index) => ({
               key: build_glossary_entry_id(entry, index),
@@ -1127,7 +1127,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const apply_preset = useCallback(async (virtual_id: string): Promise<void> => {
     try {
       const payload = await api_fetch<{ entries: GlossaryEntry[] }>(
-        '/api/quality/rules/presets/read',
+        '/api/v2/quality/rules/presets/read',
         {
           preset_dir_name: 'glossary',
           virtual_id,
@@ -1196,7 +1196,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     try {
       await api_fetch(
-        '/api/quality/rules/presets/save',
+        '/api/v2/quality/rules/presets/save',
         {
           preset_dir_name: 'glossary',
           name: normalized_name,
@@ -1232,7 +1232,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     try {
       const payload = await api_fetch<{ item?: GlossaryPresetItem }>(
-        '/api/quality/rules/presets/rename',
+        '/api/v2/quality/rules/presets/rename',
         {
           preset_dir_name: 'glossary',
           virtual_id,
@@ -1416,7 +1416,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       try {
         if (confirm_state.target_virtual_id !== null) {
           await api_fetch(
-            '/api/quality/rules/presets/delete',
+            '/api/v2/quality/rules/presets/delete',
             {
               preset_dir_name: 'glossary',
               virtual_id: confirm_state.target_virtual_id,

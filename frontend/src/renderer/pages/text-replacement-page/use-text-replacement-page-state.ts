@@ -467,7 +467,7 @@ export function useTextReplacementPageState(
   const refresh_snapshot = useCallback(async (): Promise<void> => {
     try {
       const payload = await api_fetch<TextReplacementSnapshotPayload>(
-        '/api/quality/rules/snapshot',
+        '/api/v2/quality/rules/snapshot',
         {
           rule_type: config.rule_type,
         },
@@ -487,7 +487,7 @@ export function useTextReplacementPageState(
   ): Promise<boolean> => {
     try {
       const payload = await api_fetch<TextReplacementSnapshotPayload>(
-        '/api/quality/rules/save-entries',
+        '/api/v2/quality/rules/save-entries',
         {
           rule_type: config.rule_type,
           expected_revision: revision_ref.current,
@@ -541,7 +541,7 @@ export function useTextReplacementPageState(
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const [preset_payload, settings_payload] = await Promise.all([
       api_fetch<TextReplacementPresetPayload>(
-        '/api/quality/rules/presets',
+        '/api/v2/quality/rules/presets',
         {
           preset_dir_name: config.preset_dir_name,
         },
@@ -647,7 +647,7 @@ export function useTextReplacementPageState(
 
     try {
       const payload = await api_fetch<TextReplacementSnapshotPayload>(
-        '/api/quality/rules/update-meta',
+        '/api/v2/quality/rules/update-meta',
         {
           rule_type: config.rule_type,
           expected_revision: revision_ref.current,
@@ -914,7 +914,7 @@ export function useTextReplacementPageState(
 
     try {
       const payload = await api_fetch<{ query: { keyword: string; is_regex: boolean } }>(
-        '/api/quality/rules/query-proofreading',
+        '/api/v2/quality/rules/query-proofreading',
         {
           rule_type: config.rule_type,
           entry: normalize_entry(target_entry),
@@ -963,7 +963,7 @@ export function useTextReplacementPageState(
       }
 
       const payload = await api_fetch<{ entries?: TextReplacementEntry[] }>(
-        '/api/quality/rules/import',
+        '/api/v2/quality/rules/import',
         {
           rule_type: config.rule_type,
           expected_revision: revision_ref.current,
@@ -1005,7 +1005,7 @@ export function useTextReplacementPageState(
       }
 
       await api_fetch(
-        '/api/quality/rules/export',
+        '/api/v2/quality/rules/export',
         {
           rule_type: config.rule_type,
           path: pick_result.path,
@@ -1039,7 +1039,7 @@ export function useTextReplacementPageState(
 
     try {
       const payload = await api_fetch<TextReplacementStatisticsPayload>(
-        '/api/quality/rules/statistics',
+        '/api/v2/quality/rules/statistics',
         {
           rules: entries.map((entry, index) => ({
             key: build_text_replacement_entry_id(entry, index),
@@ -1100,7 +1100,7 @@ export function useTextReplacementPageState(
   const apply_preset = useCallback(async (virtual_id: string): Promise<void> => {
     try {
       const payload = await api_fetch<{ entries: TextReplacementEntry[] }>(
-        '/api/quality/rules/presets/read',
+        '/api/v2/quality/rules/presets/read',
         {
           preset_dir_name: config.preset_dir_name,
           virtual_id,
@@ -1171,7 +1171,7 @@ export function useTextReplacementPageState(
 
     try {
       await api_fetch(
-        '/api/quality/rules/presets/save',
+        '/api/v2/quality/rules/presets/save',
         {
           preset_dir_name: config.preset_dir_name,
           name: normalized_name,
@@ -1207,7 +1207,7 @@ export function useTextReplacementPageState(
 
     try {
       const payload = await api_fetch<{ item?: TextReplacementPresetItem }>(
-        '/api/quality/rules/presets/rename',
+        '/api/v2/quality/rules/presets/rename',
         {
           preset_dir_name: config.preset_dir_name,
           virtual_id,
@@ -1476,7 +1476,7 @@ export function useTextReplacementPageState(
       try {
         if (confirm_state.target_virtual_id !== null) {
           await api_fetch(
-            '/api/quality/rules/presets/delete',
+            '/api/v2/quality/rules/presets/delete',
             {
               preset_dir_name: config.preset_dir_name,
               virtual_id: confirm_state.target_virtual_id,

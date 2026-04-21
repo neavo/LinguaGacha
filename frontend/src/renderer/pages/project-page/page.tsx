@@ -581,7 +581,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
     try {
       const payload = await api_fetch<ProjectPreviewPayload>(
-        "/api/project/preview",
+        "/api/v2/project/preview",
         { path: project_path },
       );
       set_selected_project(
@@ -619,7 +619,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
     try {
       const payload = await api_fetch<ProjectSourceFilesPayload>(
-        "/api/project/source-files",
+        "/api/v2/project/source-files",
         { path: source_path },
       );
       const source_files = Array.isArray(payload.source_files)
@@ -791,7 +791,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         message: t("project_page.create.loading_toast"),
         task: async () => {
           const payload = await api_fetch<ProjectSnapshotPayload>(
-            "/api/project/create",
+            "/api/v2/project/create",
             {
               source_path: selected_source.path,
               path: normalized_output_path,
@@ -851,7 +851,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         message: t("project_page.open.loading_toast"),
         task: async () => {
           const payload = await api_fetch<ProjectSnapshotPayload>(
-            "/api/project/load",
+            "/api/v2/project/load",
             {
               path: selected_project.path,
             },

@@ -975,7 +975,7 @@ export function useWorkbenchLiveState(
 
   const apply_file_patch = useCallback(async (): Promise<void> => {
     const payload = await api_fetch<WorkbenchFilePatchPayload>(
-      "/api/workbench/file-patch",
+      "/api/v2/project/workbench/file-patch",
       {
         rel_paths: workbench_change_signal.rel_paths,
         removed_rel_paths: workbench_change_signal.removed_rel_paths,
@@ -1074,7 +1074,7 @@ export function useWorkbenchLiveState(
         }
 
         const payload = await api_fetch<WorkbenchSnapshotPayload>(
-          "/api/workbench/snapshot",
+          "/api/v2/project/workbench/snapshot",
           {},
         );
         const next_snapshot = normalize_snapshot(payload);
@@ -1525,7 +1525,7 @@ export function useWorkbenchLiveState(
         message: t("workbench_page.feedback.add_file_loading_toast"),
         task: async () => {
           await run_file_mutation(async () => {
-            await api_fetch("/api/workbench/add-file", { path: result.path });
+            await api_fetch("/api/v2/project/workbench/add-file", { path: result.path });
           }, barrier_checkpoint);
         },
       });
@@ -1623,7 +1623,7 @@ export function useWorkbenchLiveState(
       set_entries(next_entries);
 
       try {
-        await api_fetch("/api/workbench/reorder-files", {
+        await api_fetch("/api/v2/project/workbench/reorder-files", {
           ordered_rel_paths: ordered_entry_ids,
         });
       } catch {
@@ -1658,7 +1658,7 @@ export function useWorkbenchLiveState(
         }
 
         await run_file_mutation(async () => {
-          await api_fetch("/api/workbench/replace-file", {
+          await api_fetch("/api/v2/project/workbench/replace-file", {
             rel_path: target_rel_path,
             path: current_dialog_state.pending_path,
           });
@@ -1674,7 +1674,7 @@ export function useWorkbenchLiveState(
         }
 
         await run_file_mutation(async () => {
-          await api_fetch("/api/workbench/reset-file", {
+          await api_fetch("/api/v2/project/workbench/reset-file", {
             rel_path: target_rel_path,
           });
         }, barrier_checkpoint);
@@ -1690,13 +1690,13 @@ export function useWorkbenchLiveState(
 
         if (current_dialog_state.target_rel_paths.length === 1) {
           await run_file_mutation(async () => {
-            await api_fetch("/api/workbench/delete-file", {
+            await api_fetch("/api/v2/project/workbench/delete-file", {
               rel_path: current_dialog_state.target_rel_paths[0],
             });
           }, barrier_checkpoint);
         } else {
           await run_file_mutation(async () => {
-            await api_fetch("/api/workbench/delete-file-batch", {
+            await api_fetch("/api/v2/project/workbench/delete-file-batch", {
               rel_paths: current_dialog_state.target_rel_paths,
             });
           }, barrier_checkpoint);
@@ -1707,7 +1707,7 @@ export function useWorkbenchLiveState(
       }
 
       if (current_dialog_state.kind === "export-translation") {
-        await api_fetch("/api/tasks/export-translation", {});
+        await api_fetch("/api/v2/tasks/export-translation", {});
         set_dialog_state(close_dialog_state());
         return;
       }
@@ -1717,7 +1717,7 @@ export function useWorkbenchLiveState(
         try {
           const payload = await api_fetch<{
             project?: { path?: string; loaded?: boolean };
-          }>("/api/project/unload", {});
+          }>("/api/v2/project/unload", {});
           set_project_snapshot({
             path: String(payload.project?.path ?? ""),
             loaded: Boolean(payload.project?.loaded),

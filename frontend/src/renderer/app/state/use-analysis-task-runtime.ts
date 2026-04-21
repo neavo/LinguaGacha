@@ -346,7 +346,7 @@ export function useAnalysisTaskRuntime(
 
     try {
       const task_payload = await api_fetch<AnalysisTaskPayload>(
-        '/api/tasks/snapshot',
+        '/api/v2/tasks/snapshot',
         { task_type: 'analysis' },
       )
       apply_analysis_task_snapshot(normalize_analysis_task_snapshot_payload(task_payload))
@@ -377,7 +377,7 @@ export function useAnalysisTaskRuntime(
 
     try {
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-        '/api/tasks/start-analysis',
+        '/api/v2/tasks/start-analysis',
         { mode: should_continue ? 'CONTINUE' : 'NEW' },
       )
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload)
@@ -446,11 +446,11 @@ export function useAnalysisTaskRuntime(
     })
 
     try {
-      let path = '/api/tasks/stop-analysis'
+      let path = '/api/v2/tasks/stop-analysis'
       if (analysis_confirm_state.kind === 'reset-all') {
-        path = '/api/tasks/reset-analysis-all'
+        path = '/api/v2/tasks/reset-analysis-all'
       } else if (analysis_confirm_state.kind === 'reset-failed') {
-        path = '/api/tasks/reset-analysis-failed'
+        path = '/api/v2/tasks/reset-analysis-failed'
       }
 
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>(path, {})
@@ -511,7 +511,7 @@ export function useAnalysisTaskRuntime(
         message: t('workbench_page.analysis_task.feedback.import_loading_toast'),
         task: async () => {
           const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-            '/api/tasks/import-analysis-glossary',
+            '/api/v2/tasks/import-analysis-glossary',
             {},
           )
           const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload)

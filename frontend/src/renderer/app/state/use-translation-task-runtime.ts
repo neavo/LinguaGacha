@@ -333,7 +333,7 @@ export function useTranslationTaskRuntime(
 
     try {
       const task_payload = await api_fetch<TranslationTaskPayload>(
-        '/api/tasks/snapshot',
+        '/api/v2/tasks/snapshot',
         { task_type: 'translation' },
       )
       apply_translation_task_snapshot(normalize_translation_task_snapshot_payload(task_payload))
@@ -364,7 +364,7 @@ export function useTranslationTaskRuntime(
 
     try {
       const task_payload = await api_fetch<TranslationTaskCommandPayload>(
-        '/api/tasks/start-translation',
+        '/api/v2/tasks/start-translation',
         { mode: should_continue ? 'CONTINUE' : 'NEW' },
       )
       const next_snapshot = normalize_translation_task_snapshot_payload(task_payload)
@@ -435,7 +435,7 @@ export function useTranslationTaskRuntime(
     try {
       if (task_confirm_state.kind === 'stop-translation') {
         const task_payload = await api_fetch<TranslationTaskCommandPayload>(
-          '/api/tasks/stop-translation',
+          '/api/v2/tasks/stop-translation',
           {},
         )
         const next_snapshot = normalize_translation_task_snapshot_payload(task_payload)
@@ -444,8 +444,8 @@ export function useTranslationTaskRuntime(
         set_task_confirm_state(null)
       } else {
         const reset_path = task_confirm_state.kind === 'reset-all'
-          ? '/api/tasks/reset-translation-all'
-          : '/api/tasks/reset-translation-failed'
+          ? '/api/v2/tasks/reset-translation-all'
+          : '/api/v2/tasks/reset-translation-failed'
         const task_payload = await api_fetch<TranslationTaskCommandPayload>(reset_path, {})
         const next_snapshot = normalize_translation_task_snapshot_payload(task_payload)
         apply_translation_task_snapshot(next_snapshot)

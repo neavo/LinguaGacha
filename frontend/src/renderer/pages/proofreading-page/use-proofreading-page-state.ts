@@ -743,7 +743,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     if (error instanceof DesktopApiError && error.code === 'REVISION_CONFLICT') {
       try {
-        await api_fetch<ProofreadingSnapshotPayload>('/api/proofreading/snapshot', {})
+        await api_fetch<ProofreadingSnapshotPayload>('/api/v2/project/proofreading/snapshot', {})
       } catch {
         return
       }
@@ -770,7 +770,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     try {
       const snapshot_payload = await api_fetch<ProofreadingSnapshotPayload>(
-        '/api/proofreading/snapshot',
+        '/api/v2/project/proofreading/snapshot',
         {},
       )
       const next_full_snapshot = normalize_proofreading_snapshot_payload(snapshot_payload)
@@ -783,9 +783,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           })
 
       // 为什么：`snapshot` 只提供全量底稿与默认筛选定义，真正“当前表格工作范围”
-      // 必须统一走 `/api/proofreading/filter`，否则默认筛选等于快照默认值时会误把全量条目直接塞进表格。
+      // 必须统一走 `/api/v2/project/proofreading/filter`，否则默认筛选等于快照默认值时会误把全量条目直接塞进表格。
       const filtered_payload = await api_fetch<ProofreadingSnapshotPayload>(
-        '/api/proofreading/filter',
+        '/api/v2/project/proofreading/filter',
         {
           filter_options: serialize_filter_options(next_applied_filters),
         },
@@ -844,7 +844,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const normalized_filters = clone_proofreading_filter_options(next_filters)
       const next_server_snapshot = normalize_proofreading_snapshot_payload(
         await api_fetch<ProofreadingSnapshotPayload>(
-          '/api/proofreading/filter',
+          '/api/v2/project/proofreading/filter',
           {
             filter_options: serialize_filter_options(normalized_filters),
           },
@@ -869,7 +869,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     const payload = await api_fetch<ProofreadingFilePatchPayload>(
-      '/api/proofreading/file-patch',
+      '/api/v2/project/proofreading/file-patch',
       {
         filter_options: serialize_filter_options(
           applied_filters_ref.current ?? full_snapshot_ref.current.filters,
@@ -933,7 +933,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     const payload = await api_fetch<ProofreadingEntryPatchPayload>(
-      '/api/proofreading/entry-patch',
+      '/api/v2/project/proofreading/entry-patch',
       {
         filter_options: serialize_filter_options(
           applied_filters_ref.current ?? full_snapshot_ref.current.filters,
@@ -1148,7 +1148,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     try {
       await run_mutation({
-        path: '/api/proofreading/save-item',
+        path: '/api/v2/project/proofreading/save-item',
         body: {
           item: serialize_item(target_item),
           new_dst: dialog_state.draft_dst,
@@ -1228,7 +1228,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     await run_mutation({
-      path: '/api/proofreading/save-item',
+      path: '/api/v2/project/proofreading/save-item',
       body: {
         item: serialize_item(target_item),
         new_dst: replaced_result.text,
@@ -1286,7 +1286,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     await run_mutation({
-      path: '/api/proofreading/replace-all',
+      path: '/api/v2/project/proofreading/replace-all',
       body: {
         items: target_items.map((item) => serialize_item(item)),
         search_text: trimmed_keyword,
@@ -1372,8 +1372,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_pending_mutation(null)
     await run_mutation({
       path: is_retranslate
-        ? '/api/proofreading/retranslate-items'
-        : '/api/proofreading/save-all',
+        ? '/api/v2/project/proofreading/retranslate-items'
+        : '/api/v2/project/proofreading/save-all',
       body: is_retranslate
         ? {
             items: target_items.map((item) => serialize_item(item)),

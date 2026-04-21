@@ -429,7 +429,7 @@ export function useModelPageState(): UseModelPageStateResult {
     set_is_refreshing(true)
 
     try {
-      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/models/snapshot', {})
+      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/v2/models/snapshot', {})
       const next_snapshot = normalize_model_page_snapshot(payload)
       set_snapshot(next_snapshot)
       set_refresh_error(null)
@@ -482,7 +482,7 @@ export function useModelPageState(): UseModelPageStateResult {
     set_snapshot(optimistic_snapshot)
 
     try {
-      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/models/update', {
+      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/v2/models/update', {
         model_id,
         patch,
       })
@@ -511,7 +511,7 @@ export function useModelPageState(): UseModelPageStateResult {
     set_is_action_running(true)
 
     try {
-      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/models/add', {
+      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/v2/models/add', {
         model_type,
       })
       set_snapshot(normalize_model_page_snapshot(payload))
@@ -538,7 +538,7 @@ export function useModelPageState(): UseModelPageStateResult {
     set_is_action_running(true)
 
     try {
-      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/models/activate', {
+      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/v2/models/activate', {
         model_id,
       })
       set_snapshot(normalize_model_page_snapshot(payload))
@@ -601,7 +601,7 @@ export function useModelPageState(): UseModelPageStateResult {
     set_is_action_running(true)
 
     try {
-      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/models/reorder', {
+      const payload = await api_fetch<ModelPageSnapshotPayload>('/api/v2/models/reorder', {
         ordered_model_ids,
       })
       set_snapshot(normalize_model_page_snapshot(payload))
@@ -622,7 +622,7 @@ export function useModelPageState(): UseModelPageStateResult {
     set_is_action_running(true)
 
     try {
-      const payload = await api_fetch<ModelTestPayload>('/api/models/test', {
+      const payload = await api_fetch<ModelTestPayload>('/api/v2/models/test', {
         model_id,
       })
       const result = normalize_model_test_result(payload)
@@ -668,7 +668,7 @@ export function useModelPageState(): UseModelPageStateResult {
 
     try {
       if (current_confirm_state.kind === 'delete') {
-        const payload = await api_fetch<ModelPageSnapshotPayload>('/api/models/delete', {
+        const payload = await api_fetch<ModelPageSnapshotPayload>('/api/v2/models/delete', {
           model_id: current_confirm_state.model_id,
         })
         set_snapshot(normalize_model_page_snapshot(payload))
@@ -676,7 +676,7 @@ export function useModelPageState(): UseModelPageStateResult {
           set_dialog_state(close_dialog_state())
         }
       } else if (current_confirm_state.kind === 'reset') {
-        const payload = await api_fetch<ModelPageSnapshotPayload>('/api/models/reset-preset', {
+        const payload = await api_fetch<ModelPageSnapshotPayload>('/api/v2/models/reset-preset', {
           model_id: current_confirm_state.model_id,
         })
         set_snapshot(normalize_model_page_snapshot(payload))
@@ -740,7 +740,7 @@ export function useModelPageState(): UseModelPageStateResult {
     })
 
     try {
-      const payload = await api_fetch<ModelListPayload>('/api/models/list-available', {
+      const payload = await api_fetch<ModelListPayload>('/api/v2/models/list-available', {
         model_id,
       })
       set_selector_state((previous_state) => {
