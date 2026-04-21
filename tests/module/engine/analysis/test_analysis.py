@@ -13,7 +13,6 @@ from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.Analysis import Analysis
 from module.Engine.Engine import Engine
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
-from module.Localizer.Localizer import Localizer
 
 analysis_module = import_module("module.Engine.Analysis.Analysis")
 EmittedEvent = tuple[Base.Event, dict[str, object]]
@@ -196,32 +195,12 @@ def capture_emitted_events(
 
 def assert_analysis_import_started(emitted: list[EmittedEvent]) -> None:
     # 导入入口必须先通知页面“开始了”，后面的成功/失败断言才有意义。
-    assert emitted[:2] == [
+    assert emitted[:1] == [
         (
             Base.Event.ANALYSIS_IMPORT_GLOSSARY,
             {"sub_event": Base.SubEvent.RUN},
         ),
-        (
-            Base.Event.PROGRESS_TOAST,
-            {
-                "sub_event": Base.SubEvent.RUN,
-                "message": "处理中 …",
-                "indeterminate": True,
-            },
-        ),
     ]
-
-
-def assert_analysis_import_finished(
-    emitted: list[EmittedEvent],
-    *,
-    sub_event: Base.SubEvent,
-) -> None:
-    # 统一校验进度提示的收尾方式，避免每个测试都重复找同一条事件。
-    assert (
-        Base.Event.PROGRESS_TOAST,
-        {"sub_event": sub_event},
-    ) in emitted
 
 
 # 导入术语相关测试都要同步线程并截获日志，这里集中搭建，避免样板代码盖住断言重点。
@@ -312,36 +291,6 @@ def test_analysis_require_stop_marks_engine_as_stopping(
         (
             Base.Event.ANALYSIS_REQUEST_STOP,
             {"sub_event": Base.SubEvent.RUN},
-        )
-    ]
-
-
-@pytest.mark.parametrize(
-    ("final_status", "toast_type", "message_attr"),
-    [
-        ("SUCCESS", Base.ToastType.SUCCESS, "engine_task_done"),
-        ("STOPPED", Base.ToastType.SUCCESS, "engine_task_stop"),
-        ("FAILED", Base.ToastType.WARNING, "engine_task_fail"),
-    ],
-)
-def test_emit_analysis_terminal_toast_matches_final_status(
-    monkeypatch: pytest.MonkeyPatch,
-    final_status: str,
-    toast_type: Base.ToastType,
-    message_attr: str,
-) -> None:
-    analysis = Analysis()
-    emitted = capture_emitted_events(monkeypatch, analysis)
-
-    analysis.emit_analysis_terminal_toast(final_status)
-
-    assert emitted == [
-        (
-            Base.Event.TOAST,
-            {
-                "type": toast_type,
-                "message": getattr(Localizer.get(), message_attr),
-            },
         )
     ]
 
@@ -610,11 +559,6 @@ def test_start_creates_progress_bar_for_pending_tasks(
         lambda final_status: None,
     )
     monkeypatch.setattr(
-        analysis,
-        "emit_analysis_terminal_toast",
-        lambda final_status: None,
-    )
-    monkeypatch.setattr(
         analysis.progress_tracker,
         "persist_progress_snapshot",
         lambda save_state: dict(analysis.extras),
@@ -680,11 +624,6 @@ def test_start_without_pending_tasks_skips_progress_bar(
         lambda final_status: None,
     )
     monkeypatch.setattr(
-        analysis,
-        "emit_analysis_terminal_toast",
-        lambda final_status: None,
-    )
-    monkeypatch.setattr(
         analysis.progress_tracker,
         "persist_progress_snapshot",
         lambda save_state: dict(analysis.extras),
@@ -707,27 +646,23 @@ def test_analysis_import_glossary_emits_done_and_refresh(
 
     assert_analysis_import_started(emitted)
     assert (
-        Base.Event.TOAST,
-        {
-            "type": Base.ToastType.SUCCESS,
-            "message": "导入成功，新增 1 条 …",
-        },
-    ) in emitted
-    assert_analysis_import_finished(emitted, sub_event=Base.SubEvent.DONE)
-    assert (
         Base.Event.PROJECT_CHECK,
         {"sub_event": Base.SubEvent.REQUEST},
     ) in emitted
     assert (
         Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {"sub_event": Base.SubEvent.DONE, "imported_count": 1},
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "imported_count": 1,
+            "message": "导入成功，新增 1 条 …",
+        },
     ) in emitted
     assert fake_data_manager.import_expected_paths == [fake_data_manager.lg_path]
     assert logger.info_messages == ["处理中 …", "导入成功，新增 1 条 …"]
     assert logger.print_messages == [""]
 
 
-def test_analysis_import_glossary_emits_success_toast_when_zero_imported(
+def test_analysis_import_glossary_emits_success_event_when_zero_imported(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
@@ -740,16 +675,12 @@ def test_analysis_import_glossary_emits_success_toast_when_zero_imported(
 
     assert_analysis_import_started(emitted)
     assert (
-        Base.Event.TOAST,
+        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
         {
-            "type": Base.ToastType.SUCCESS,
+            "sub_event": Base.SubEvent.DONE,
+            "imported_count": 0,
             "message": "导入成功，新增 0 条 …",
         },
-    ) in emitted
-    assert_analysis_import_finished(emitted, sub_event=Base.SubEvent.DONE)
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {"sub_event": Base.SubEvent.DONE, "imported_count": 0},
     ) in emitted
     assert logger.info_messages == ["处理中 …", "导入成功，新增 0 条 …"]
     assert logger.print_messages == [""]
@@ -780,19 +711,17 @@ def test_analysis_import_glossary_skips_stale_project_after_switch(
     analysis.analysis_import_glossary()
 
     assert_analysis_import_started(emitted)
-    assert_analysis_import_finished(emitted, sub_event=Base.SubEvent.DONE)
     assert (
         Base.Event.ANALYSIS_IMPORT_GLOSSARY,
         {"sub_event": Base.SubEvent.ERROR},
     ) in emitted
-    assert not any(event == Base.Event.TOAST for event, _ in emitted)
     assert fake_data_manager.import_count == 0
     assert fake_data_manager.import_expected_paths == ["/workspace/demo/project.lg"]
     assert logger.info_messages == ["处理中 …"]
     assert logger.print_messages == [""]
 
 
-def test_analysis_import_glossary_emits_error_toast_and_progress_terminal_on_failure(
+def test_analysis_import_glossary_emits_error_event_on_failure(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
@@ -819,14 +748,6 @@ def test_analysis_import_glossary_emits_error_toast_and_progress_terminal_on_fai
     analysis.analysis_import_glossary()
 
     assert_analysis_import_started(emitted)
-    assert (
-        Base.Event.TOAST,
-        {
-            "type": Base.ToastType.ERROR,
-            "message": "任务执行失败 …",
-        },
-    ) in emitted
-    assert_analysis_import_finished(emitted, sub_event=Base.SubEvent.ERROR)
     assert (
         Base.Event.ANALYSIS_IMPORT_GLOSSARY,
         {

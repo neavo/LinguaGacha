@@ -178,7 +178,7 @@ def build_localizer() -> Any:
     return SimpleNamespace(
         task_running="task_running",
         task_failed="task_failed",
-        translation_page_toast_resetting="resetting",
+        translation_resetting="resetting",
         export_translation_start="export_start",
         export_translation_success="export_success",
         export_translation_failed="export_failed",
@@ -234,7 +234,6 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         state_lock=threading.Lock(),
         update_batch=MagicMock(),
         apply_translation_batch_update=MagicMock(),
-        emit_project_item_change_refresh=MagicMock(),
         merge_glossary_incoming=MagicMock(return_value=([], {})),
     )
     return dm
@@ -279,25 +278,6 @@ def test_get_concurrency_helpers_delegate_to_limiter() -> None:
 
     assert Translation.get_concurrency_in_use(translation) == 3
     assert Translation.get_concurrency_limit(translation) == 9
-
-
-def test_should_emit_export_result_toast_only_for_manual_source() -> None:
-    translation = create_translation_stub()
-
-    assert (
-        Translation.should_emit_export_result_toast(
-            translation,
-            Translation.ExportSource.MANUAL,
-        )
-        is True
-    )
-    assert (
-        Translation.should_emit_export_result_toast(
-            translation,
-            Translation.ExportSource.AUTO_ON_FINISH,
-        )
-        is False
-    )
 
 
 @pytest.mark.parametrize(
@@ -541,7 +521,7 @@ def test_run_translation_export_manual_success_flow(
     translation = create_translation_stub()
     translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
     translation.mtool_optimizer_postprocess = MagicMock()
-    translation.check_and_wirte_result = MagicMock()
+    translation.check_and_wirte_result = MagicMock(return_value="E:/tmp/output.txt")
     logger = FakeLogger()
     monkeypatch.setattr(
         translation_module.LogManager, "get", staticmethod(lambda: logger)
@@ -567,23 +547,25 @@ def test_run_translation_export_manual_success_flow(
     translation.mtool_optimizer_postprocess.assert_called_once()
     translation.check_and_wirte_result.assert_called_once()
     assert emitted_events(translation)[0] == (
-        Base.Event.PROGRESS_TOAST,
+        Base.Event.TRANSLATION_EXPORT,
         {
             "sub_event": Base.SubEvent.RUN,
+            "source": "MANUAL",
             "message": "start",
-            "indeterminate": True,
         },
     )
     assert emitted_events(translation)[-1] == (
-        Base.Event.TOAST,
+        Base.Event.TRANSLATION_EXPORT,
         {
-            "type": Base.ToastType.SUCCESS,
+            "sub_event": Base.SubEvent.DONE,
+            "source": "MANUAL",
+            "output_path": "E:/tmp/output.txt",
             "message": "success",
         },
     )
 
 
-def test_run_translation_export_emits_error_toast_when_write_fails(
+def test_run_translation_export_emits_error_event_when_write_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -614,9 +596,10 @@ def test_run_translation_export_emits_error_toast_when_write_fails(
 
     assert has_emitted(
         translation,
-        Base.Event.TOAST,
+        Base.Event.TRANSLATION_EXPORT,
         {
-            "type": Base.ToastType.ERROR,
+            "sub_event": Base.SubEvent.ERROR,
+            "source": "MANUAL",
             "message": "failed",
         },
     )
@@ -722,7 +705,7 @@ def test_translation_stop_event_ignores_non_request_sub_event() -> None:
     translation.translation_require_stop.assert_not_called()
 
 
-def test_translation_run_emits_busy_toast_and_error_event(
+def test_translation_run_emits_busy_error_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -740,13 +723,6 @@ def test_translation_run_emits_busy_toast_and_error_event(
     )
 
     assert emitted_events(translation) == [
-        (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.WARNING,
-                "message": "task running",
-            },
-        ),
         (
             Base.Event.TRANSLATION_TASK,
             {
@@ -808,7 +784,15 @@ def test_translation_reset_returns_when_project_not_loaded(
         {"sub_event": Base.SubEvent.REQUEST},
     )
 
-    assert emitted_events(translation) == []
+    assert emitted_events(translation) == [
+        (
+            Base.Event.TRANSLATION_RESET_ALL,
+            {
+                "sub_event": Base.SubEvent.ERROR,
+                "message": "project_not_loaded",
+            },
+        )
+    ]
 
 
 def test_translation_reset_ignores_non_request_sub_event() -> None:
@@ -823,7 +807,7 @@ def test_translation_reset_ignores_non_request_sub_event() -> None:
     assert emitted_events(translation) == []
 
 
-def test_translation_reset_emits_warning_when_engine_busy(
+def test_translation_reset_emits_busy_error_when_engine_busy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -841,7 +825,10 @@ def test_translation_reset_emits_warning_when_engine_busy(
     assert has_emitted(
         translation,
         Base.Event.TRANSLATION_RESET_FAILED,
-        {"sub_event": Base.SubEvent.ERROR},
+        {
+            "sub_event": Base.SubEvent.ERROR,
+            "message": "task_running",
+        },
     )
 
 
@@ -871,7 +858,6 @@ def test_translation_reset_all_runs_reset_task_and_emits_done(
     dm.run_project_prefilter.assert_called_once_with(
         translation.config,
         reason="translation_reset",
-        emit_refresh_events=False,
     )
     assert has_emitted(
         translation,
@@ -907,7 +893,6 @@ def test_translation_reset_failed_updates_extras_when_returned(
     )
 
     assert translation.extras == {"line": 22}
-    dm.emit_project_item_change_refresh.assert_called_once()
 
 
 def test_translation_reset_failed_keeps_extras_when_reset_returns_none(
@@ -950,16 +935,19 @@ def test_translation_reset_emits_error_when_task_raises(
 
     assert has_emitted(
         translation,
-        Base.Event.TOAST,
+        Base.Event.TRANSLATION_RESET_FAILED,
         {
-            "type": Base.ToastType.ERROR,
+            "sub_event": Base.SubEvent.ERROR,
             "message": "task_failed",
         },
     )
     assert has_emitted(
         translation,
         Base.Event.TRANSLATION_RESET_FAILED,
-        {"sub_event": Base.SubEvent.ERROR},
+        {
+            "sub_event": Base.SubEvent.ERROR,
+            "message": "task_failed",
+        },
     )
 
 
@@ -981,12 +969,16 @@ def test_run_translation_export_finishes_progress_when_no_items(
 
     translation.check_and_wirte_result.assert_not_called()
     assert emitted_events(translation)[-1] == (
-        Base.Event.PROGRESS_TOAST,
-        {"sub_event": Base.SubEvent.DONE},
+        Base.Event.TRANSLATION_EXPORT,
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "source": "MANUAL",
+            "empty": True,
+        },
     )
 
 
-def test_run_translation_export_auto_source_error_has_no_result_toast(
+def test_run_translation_export_auto_source_emits_error_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -1005,10 +997,18 @@ def test_run_translation_export_auto_source_error_has_no_result_toast(
     )
 
     translation.mtool_optimizer_postprocess.assert_not_called()
-    assert not has_emitted(translation, Base.Event.TOAST)
+    assert has_emitted(
+        translation,
+        Base.Event.TRANSLATION_EXPORT,
+        {
+            "sub_event": Base.SubEvent.ERROR,
+            "source": "AUTO_ON_FINISH",
+            "message": "export_failed",
+        },
+    )
 
 
-def test_run_translation_export_auto_source_success_skips_result_toast(
+def test_run_translation_export_auto_source_emits_done_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -1018,7 +1018,7 @@ def test_run_translation_export_auto_source_success_skips_result_toast(
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
     translation.mtool_optimizer_postprocess = MagicMock()
-    translation.check_and_wirte_result = MagicMock()
+    translation.check_and_wirte_result = MagicMock(return_value="E:/tmp/output.txt")
 
     Translation.run_translation_export(
         translation,
@@ -1027,7 +1027,16 @@ def test_run_translation_export_auto_source_success_skips_result_toast(
     )
 
     translation.mtool_optimizer_postprocess.assert_called_once()
-    assert not has_emitted(translation, Base.Event.TOAST)
+    assert has_emitted(
+        translation,
+        Base.Event.TRANSLATION_EXPORT,
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "source": "AUTO_ON_FINISH",
+            "output_path": "E:/tmp/output.txt",
+            "message": "export_success",
+        },
+    )
 
 
 def test_translation_export_spawns_thread_when_not_stopping(
@@ -1072,9 +1081,9 @@ def test_start_handles_project_not_loaded(
 
     assert has_emitted(
         translation,
-        Base.Event.TOAST,
+        Base.Event.TRANSLATION_TASK,
         {
-            "type": Base.ToastType.WARNING,
+            "sub_event": Base.SubEvent.ERROR,
             "message": "project_not_loaded",
         },
     )
@@ -1103,15 +1112,15 @@ def test_start_handles_no_active_model(
 
     assert has_emitted(
         translation,
-        Base.Event.TOAST,
+        Base.Event.TRANSLATION_TASK,
         {
-            "type": Base.ToastType.WARNING,
+            "sub_event": Base.SubEvent.ERROR,
             "message": "no_active_model",
         },
     )
 
 
-def test_start_emits_warning_when_items_are_empty(
+def test_start_emits_error_when_items_are_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -1143,9 +1152,9 @@ def test_start_emits_warning_when_items_are_empty(
 
     assert has_emitted(
         translation,
-        Base.Event.TOAST,
+        Base.Event.TRANSLATION_TASK,
         {
-            "type": Base.ToastType.WARNING,
+            "sub_event": Base.SubEvent.ERROR,
             "message": "no_items",
         },
     )
@@ -1268,7 +1277,7 @@ def test_start_continue_mode_handles_stop_and_failed_states(
     )
 
 
-def test_start_emits_error_toast_when_exception_occurs(
+def test_start_emits_failed_terminal_event_when_exception_occurs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -1290,9 +1299,10 @@ def test_start_emits_error_toast_when_exception_occurs(
 
     assert has_emitted(
         translation,
-        Base.Event.TOAST,
+        Base.Event.TRANSLATION_TASK,
         {
-            "type": Base.ToastType.ERROR,
+            "sub_event": Base.SubEvent.DONE,
+            "final_status": "FAILED",
             "message": "task_failed",
         },
     )

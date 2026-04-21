@@ -150,10 +150,11 @@ def test_api_test_start_emits_warning_when_engine_busy(
 
     assert recorder.events == [
         (
-            Base.Event.TOAST,
+            Base.Event.APITEST,
             {
-                "type": Base.ToastType.WARNING,
-                "message": "running",
+                "sub_event": Base.SubEvent.ERROR,
+                "result": False,
+                "result_msg": "running",
             },
         )
     ]
@@ -194,13 +195,6 @@ def test_api_test_start_emits_run_then_error_when_thread_start_fails(
             {
                 "sub_event": Base.SubEvent.RUN,
                 "model_id": "m1",
-            },
-        ),
-        (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.ERROR,
-                "message": "task_failed",
             },
         ),
         (

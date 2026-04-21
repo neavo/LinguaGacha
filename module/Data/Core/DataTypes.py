@@ -18,7 +18,6 @@ class ProjectPrefilterRequest:
     reason: str
     source_language: str
     mtool_optimizer_enable: bool
-    emit_refresh_events: bool = True
 
 
 @dataclass(frozen=True)
@@ -26,7 +25,7 @@ class ProjectPrefilterScheduleResult:
     """预过滤调度结果。
 
     `needed` 表示当前配置语义上是否需要重跑预过滤。
-    `accepted` 表示本次是否已经成功把刷新职责交给预过滤链。
+    `accepted` 表示本次是否已经成功把重算请求交给预过滤链。
     """
 
     needed: bool = False

@@ -12,6 +12,8 @@ import {
   type DragEvent,
   type MouseEvent,
   type MouseEventHandler,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -43,6 +45,7 @@ import { cn } from "@/lib/utils";
 import "@/pages/project-page/project-page.css";
 import { PROJECT_FORMAT_SUPPORT_ITEMS } from "@/pages/project-page/support-formats";
 import { DesktopApiError, api_fetch } from "@/app/desktop-api";
+import { type ProjectStoreStage } from "@/app/project-runtime/project-store";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
 type ProjectPageProps = {
@@ -522,8 +525,38 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
   );
 }
 
+function resolve_project_loading_stage_message(
+  stage: ProjectStoreStage | null,
+  t: ReturnType<typeof useI18n>["t"],
+): string | null {
+  if (stage === "project") {
+    return t("project_page.loading_stages.project");
+  }
+  if (stage === "files") {
+    return t("project_page.loading_stages.files");
+  }
+  if (stage === "items") {
+    return t("project_page.loading_stages.items");
+  }
+  if (stage === "quality") {
+    return t("project_page.loading_stages.quality");
+  }
+  if (stage === "prompts") {
+    return t("project_page.loading_stages.prompts");
+  }
+  if (stage === "analysis") {
+    return t("project_page.loading_stages.analysis");
+  }
+  if (stage === "task") {
+    return t("project_page.loading_stages.task");
+  }
+
+  return null;
+}
+
 export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const {
+    project_warmup_stage,
     settings_snapshot,
     set_project_snapshot,
     set_project_warmup_status,
@@ -532,7 +565,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   } = useDesktopRuntime();
   const { create_barrier_checkpoint, wait_for_barrier } =
     useProjectPagesBarrier();
-  const { push_toast, run_modal_progress_toast } = useDesktopToast();
+  const {
+    push_toast,
+    push_progress_toast,
+    update_progress_toast,
+    dismiss_toast,
+  } = useDesktopToast();
   const { t } = useI18n();
   const [selected_source, set_selected_source] =
     useState<SelectedSource | null>(null);
@@ -545,6 +583,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const [active_dropzone, set_active_dropzone] = useState<ActiveDropzone>(null);
   const [missing_recent_project, set_missing_recent_project] =
     useState<MissingRecentProjectState>(null);
+  const project_loading_toast_id_ref = useRef<string | number | null>(null);
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5);
   const has_recent_projects = recent_projects.length > 0;
   const create_footer_class_name =
@@ -561,6 +600,44 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
   async function refresh_recent_projects(): Promise<void> {
     await refresh_settings();
+  }
+
+  useEffect(() => {
+    const toast_id = project_loading_toast_id_ref.current;
+    const next_message = resolve_project_loading_stage_message(
+      project_warmup_stage,
+      t,
+    );
+    const normalized_message = next_message?.trim() ?? "";
+
+    if (toast_id === null || normalized_message === "") {
+      return;
+    }
+
+    update_progress_toast(toast_id, {
+      message: normalized_message,
+      presentation: "modal",
+    });
+  }, [project_warmup_stage, t, update_progress_toast]);
+
+  async function run_project_loading_modal(args: {
+    initial_message: string;
+    task: () => Promise<void>;
+  }): Promise<void> {
+    const toast_id = push_progress_toast({
+      message: args.initial_message,
+      presentation: "modal",
+    });
+    project_loading_toast_id_ref.current = toast_id;
+
+    try {
+      await args.task();
+    } finally {
+      if (project_loading_toast_id_ref.current === toast_id) {
+        project_loading_toast_id_ref.current = null;
+      }
+      dismiss_toast(toast_id);
+    }
   }
 
   async function select_project_path(
@@ -787,8 +864,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         : `${output_path}.lg`;
       const barrier_checkpoint = create_barrier_checkpoint();
 
-      await run_modal_progress_toast({
-        message: t("project_page.create.loading_toast"),
+      await run_project_loading_modal({
+        initial_message: t("project_page.create.loading_toast"),
         task: async () => {
           const payload = await api_fetch<ProjectSnapshotPayload>(
             "/api/v2/project/create",
@@ -847,8 +924,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     try {
       const barrier_checkpoint = create_barrier_checkpoint();
 
-      await run_modal_progress_toast({
-        message: t("project_page.open.loading_toast"),
+      await run_project_loading_modal({
+        initial_message: t("project_page.open.loading_toast"),
         task: async () => {
           const payload = await api_fetch<ProjectSnapshotPayload>(
             "/api/v2/project/load",

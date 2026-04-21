@@ -3,10 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api_fetch } from '@/app/desktop-api'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
-import { isProjectRuntimeV2Enabled } from '@/app/state/v2/runtime-feature'
-import { runQualityStatisticsWorkerTask } from '@/app/state/v2/workers/quality-statistics-worker'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
+import { runQualityStatisticsWorkerTask } from '@/pages/glossary-page/quality-statistics-worker'
 import {
   build_glossary_filter_result,
   has_active_glossary_filters,
@@ -49,15 +48,6 @@ type GlossarySnapshot = {
 
 type GlossarySnapshotPayload = {
   snapshot: GlossarySnapshot
-}
-
-type GlossaryStatisticsPayload = {
-  statistics?: {
-    results?: Record<string, {
-      matched_item_count?: number
-      subset_parents?: string[]
-    }>
-  }
 }
 
 type GlossaryPresetPayload = {
@@ -1053,45 +1043,23 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     })
 
     try {
-      let results: Record<string, { matched_item_count?: number; subset_parents?: string[] }>
+      const worker_result = await runQualityStatisticsWorkerTask({
+        rules: entries.map((entry, index) => ({
+          key: build_glossary_entry_id(entry, index),
+          pattern: entry.src,
+          mode: 'glossary',
+          case_sensitive: entry.case_sensitive,
+        })),
+        srcTexts: Object.values(project_store.getState().items).map((item) => {
+          if (typeof item !== 'object' || item === null) {
+            return ''
+          }
 
-      if (isProjectRuntimeV2Enabled()) {
-        const worker_result = await runQualityStatisticsWorkerTask({
-          rules: entries.map((entry, index) => ({
-            key: build_glossary_entry_id(entry, index),
-            pattern: entry.src,
-            mode: 'glossary',
-            case_sensitive: entry.case_sensitive,
-          })),
-          srcTexts: Object.values(project_store.getState().items).map((item) => {
-            if (typeof item !== 'object' || item === null) {
-              return ''
-            }
-
-            return String((item as { src?: string }).src ?? '')
-          }),
-          dstTexts: [],
-        })
-        results = worker_result.results
-      } else {
-        const payload = await api_fetch<GlossaryStatisticsPayload>(
-          '/api/v2/quality/rules/statistics',
-          {
-            rules: entries.map((entry, index) => ({
-              key: build_glossary_entry_id(entry, index),
-              pattern: entry.src,
-              mode: 'glossary',
-              regex: false,
-              case_sensitive: entry.case_sensitive,
-            })),
-            relation_candidates: entries.map((entry, index) => ({
-              key: build_glossary_entry_id(entry, index),
-              src: entry.src,
-            })),
-          },
-        )
-        results = payload.statistics?.results ?? {}
-      }
+          return String((item as { src?: string }).src ?? '')
+        }),
+        dstTexts: [],
+      })
+      const results = worker_result.results
 
       set_statistics_state(buildGlossaryStatisticsState({
         revision: revision_ref.current,

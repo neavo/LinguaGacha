@@ -20,10 +20,10 @@ import {
   isProjectStoreStage,
   type ProjectStorePatchEvent,
   type ProjectStorePatchOperation,
+  type ProjectStoreStage,
   type ProjectStoreSectionRevisions,
-} from '@/app/state/v2/project-store'
-import { isProjectRuntimeV2Enabled } from '@/app/state/v2/runtime-feature'
-import { createV2ProjectRuntime } from '@/app/state/v2/use-project-runtime'
+} from '@/app/project-runtime/project-store'
+import { createV2ProjectRuntime } from '@/app/project-runtime/use-project-runtime'
 
 type RecentProjectEntry = {
   path: string
@@ -107,6 +107,7 @@ type DesktopRuntimeContextValue = {
   proofreading_change_signal: ProofreadingChangeSignal
   workbench_change_signal: WorkbenchChangeSignal
   project_warmup_status: ProjectWarmupStatus
+  project_warmup_stage: ProjectStoreStage | null
   pending_target_route: RouteId | null
   is_app_language_updating: boolean
   set_settings_snapshot: (snapshot: SettingsSnapshot) => void
@@ -114,11 +115,9 @@ type DesktopRuntimeContextValue = {
   set_task_snapshot: (snapshot: TaskSnapshot) => void
   set_project_warmup_status: (status: ProjectWarmupStatus) => void
   set_pending_target_route: (route_id: RouteId | null) => void
-  wait_for_project_warmup: (project_path: string) => Promise<void>
   project_store: ReturnType<typeof createProjectStore>
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>
   refresh_settings: () => Promise<SettingsSnapshot>
-  refresh_project: () => Promise<ProjectSnapshot>
   refresh_task: () => Promise<TaskSnapshot>
 }
 
@@ -211,6 +210,11 @@ const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
   removed_rel_paths: [],
   order_changed: false,
 }
+
+const PROJECT_CACHE_REFRESH_RELEVANT_SETTINGS_KEYS = new Set([
+  'source_language',
+  'mtool_optimizer_enable',
+])
 
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null)
 
@@ -352,7 +356,7 @@ function parse_event_payload(event: MessageEvent<string>): Record<string, unknow
   }
 }
 
-function normalize_section_array(value: unknown): string[] {
+function normalize_string_array(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return []
   }
@@ -360,6 +364,10 @@ function normalize_section_array(value: unknown): string[] {
   return value
     .map((entry) => String(entry ?? '').trim())
     .filter((entry) => entry !== '')
+}
+
+function normalize_section_array(value: unknown): string[] {
+  return normalize_string_array(value)
 }
 
 function normalize_section_revisions(value: unknown): ProjectStoreSectionRevisions | undefined {
@@ -494,9 +502,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     DEFAULT_WORKBENCH_CHANGE_SIGNAL,
   )
   const [project_warmup_status, set_project_warmup_status] = useState<ProjectWarmupStatus>('idle')
+  const [project_warmup_stage, set_project_warmup_stage] = useState<ProjectStoreStage | null>(null)
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null)
   const [is_app_language_updating, set_is_app_language_updating] = useState(false)
-  const project_warmup_waiters_ref = useRef<Map<string, Set<() => void>>>(new Map())
   const project_store_ref = useRef(createProjectStore())
   const v2_project_runtime = useMemo(() => {
     return createV2ProjectRuntime({
@@ -515,13 +523,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     const payload = await api_fetch<SettingsSnapshotPayload>('/api/settings/app', {})
     return apply_settings_snapshot(payload)
   }, [apply_settings_snapshot])
-
-  const refresh_project = useCallback(async (): Promise<ProjectSnapshot> => {
-    const payload = await api_fetch<ProjectSnapshotPayload>('/api/v2/project/snapshot', {})
-    const next_snapshot = normalize_project_snapshot(payload)
-    set_project_snapshot(next_snapshot)
-    return next_snapshot
-  }, [])
 
   const refresh_task = useCallback(async (): Promise<TaskSnapshot> => {
     const payload = await api_fetch<TaskSnapshotPayload>('/api/v2/tasks/snapshot', {})
@@ -550,73 +551,34 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     settings_snapshot,
   ])
 
-  const resolve_project_warmup_waiters = useCallback((project_path: string): void => {
-    const normalized_project_path = project_path.trim()
-    if (normalized_project_path === '') {
-      return
-    }
-
-    const waiters = project_warmup_waiters_ref.current.get(normalized_project_path)
-    if (waiters === undefined) {
-      return
-    }
-
-    project_warmup_waiters_ref.current.delete(normalized_project_path)
-    for (const resolve of waiters) {
-      resolve()
-    }
+  const bump_workbench_runtime_signal = useCallback((args: {
+    reason: string
+    relPaths: string[]
+  }): void => {
+    set_workbench_change_signal((previous_signal) => ({
+      seq: previous_signal.seq + 1,
+      reason: args.reason,
+      scope: args.relPaths.length > 0 ? 'file' : 'global',
+      rel_paths: args.relPaths,
+      removed_rel_paths: [],
+      order_changed: false,
+    }))
   }, [])
 
-  const resolve_all_project_warmup_waiters = useCallback((): void => {
-    for (const waiters of project_warmup_waiters_ref.current.values()) {
-      for (const resolve of waiters) {
-        resolve()
-      }
-    }
-    project_warmup_waiters_ref.current.clear()
+  const bump_proofreading_runtime_signal = useCallback((args: {
+    reason: string
+    itemIds: number[]
+    relPaths: string[]
+  }): void => {
+    set_proofreading_change_signal((previous_signal) => ({
+      seq: previous_signal.seq + 1,
+      reason: args.reason,
+      scope: args.itemIds.length > 0 ? 'entry' : 'global',
+      item_ids: args.itemIds,
+      rel_paths: args.relPaths,
+      removed_rel_paths: [],
+    }))
   }, [])
-
-  const wait_for_project_warmup = useCallback((project_path: string): Promise<void> => {
-    const normalized_project_path = project_path.trim()
-    if (normalized_project_path === '') {
-      return Promise.resolve()
-    }
-
-    if (
-      project_snapshot.loaded
-      && project_snapshot.path === normalized_project_path
-      && project_warmup_status === 'ready'
-    ) {
-      return Promise.resolve()
-    }
-
-    return new Promise((resolve) => {
-      const waiters = project_warmup_waiters_ref.current.get(normalized_project_path) ?? new Set()
-      waiters.add(resolve)
-      project_warmup_waiters_ref.current.set(normalized_project_path, waiters)
-    })
-  }, [
-    project_snapshot.loaded,
-    project_snapshot.path,
-    project_warmup_status,
-  ])
-
-  useEffect(() => {
-    if (!project_snapshot.loaded) {
-      resolve_all_project_warmup_waiters()
-      return
-    }
-
-    if (project_warmup_status === 'ready') {
-      resolve_project_warmup_waiters(project_snapshot.path)
-    }
-  }, [
-    project_snapshot.loaded,
-    project_snapshot.path,
-    project_warmup_status,
-    resolve_all_project_warmup_waiters,
-    resolve_project_warmup_waiters,
-  ])
 
   useEffect(() => {
     let cancelled = false
@@ -658,11 +620,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   }, [apply_settings_snapshot])
 
   useEffect(() => {
-    if (!isProjectRuntimeV2Enabled()) {
-      return
-    }
-
     if (!project_snapshot.loaded || project_snapshot.path.trim() === '') {
+      set_project_warmup_stage(null)
       return
     }
 
@@ -670,11 +629,28 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     async function bootstrap_project_runtime(): Promise<void> {
       set_project_warmup_status('warming')
+      set_project_warmup_stage(null)
 
       try {
-        await v2_project_runtime.bootstrap(project_snapshot.path)
+        await v2_project_runtime.bootstrap(project_snapshot.path, {
+          onStageStarted: (stage) => {
+            if (cancelled) {
+              return
+            }
+
+            set_project_warmup_stage(stage)
+          },
+        })
         if (!cancelled) {
-          set_project_warmup_status('ready')
+          bump_workbench_runtime_signal({
+            reason: 'project_bootstrap',
+            relPaths: [],
+          })
+          bump_proofreading_runtime_signal({
+            reason: 'project_bootstrap',
+            itemIds: [],
+            relPaths: [],
+          })
         }
       } catch {
         return
@@ -687,6 +663,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       cancelled = true
     }
   }, [
+    bump_proofreading_runtime_signal,
+    bump_workbench_runtime_signal,
     project_snapshot.loaded,
     project_snapshot.path,
     set_project_warmup_status,
@@ -694,10 +672,12 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   ])
 
   useEffect(() => {
-    if (!isProjectRuntimeV2Enabled()) {
-      return
+    if (project_warmup_status === 'ready') {
+      set_project_warmup_stage(null)
     }
+  }, [project_warmup_status])
 
+  useEffect(() => {
     let event_source: EventSource | null = null
     let cancelled = false
 
@@ -722,6 +702,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     function handle_settings_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event) as SettingsChangedEventPayload
+      const changed_keys = normalize_string_array(payload.keys)
 
       if (typeof payload.settings === 'object' && payload.settings !== null) {
         apply_settings_snapshot({
@@ -730,35 +711,23 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       } else {
         void refresh_settings()
       }
-    }
 
-    function bump_workbench_runtime_signal(args: {
-      reason: string
-      relPaths: string[]
-    }): void {
-      set_workbench_change_signal((previous_signal) => ({
-        seq: previous_signal.seq + 1,
-        reason: args.reason,
-        scope: args.relPaths.length > 0 ? 'file' : 'global',
-        rel_paths: args.relPaths,
-        removed_rel_paths: [],
-        order_changed: false,
-      }))
-    }
+      if (
+        !project_snapshot.loaded
+        || !changed_keys.some((key) => PROJECT_CACHE_REFRESH_RELEVANT_SETTINGS_KEYS.has(key))
+      ) {
+        return
+      }
 
-    function bump_proofreading_runtime_signal(args: {
-      reason: string
-      itemIds: number[]
-      relPaths: string[]
-    }): void {
-      set_proofreading_change_signal((previous_signal) => ({
-        seq: previous_signal.seq + 1,
-        reason: args.reason,
-        scope: args.itemIds.length > 0 ? 'entry' : 'global',
-        item_ids: args.itemIds,
-        rel_paths: args.relPaths,
-        removed_rel_paths: [],
-      }))
+      bump_workbench_runtime_signal({
+        reason: 'config_updated',
+        relPaths: [],
+      })
+      bump_proofreading_runtime_signal({
+        reason: 'config_updated',
+        itemIds: [],
+        relPaths: [],
+      })
     }
 
     async function handle_project_patch(event: MessageEvent<string>): Promise<void> {
@@ -796,8 +765,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       if (cancelled) {
         return
       }
-
-      set_project_warmup_status('ready')
 
       if (updated_sections.some((section) => ['project', 'files', 'items'].includes(section))) {
         bump_workbench_runtime_signal({
@@ -851,6 +818,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     }
   }, [
     apply_settings_snapshot,
+    bump_proofreading_runtime_signal,
+    bump_workbench_runtime_signal,
     project_snapshot.loaded,
     project_snapshot.path,
     refresh_settings,
@@ -868,6 +837,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       proofreading_change_signal,
       workbench_change_signal,
       project_warmup_status,
+      project_warmup_stage,
       pending_target_route,
       is_app_language_updating,
       set_settings_snapshot,
@@ -875,11 +845,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       set_task_snapshot,
       set_project_warmup_status,
       set_pending_target_route,
-      wait_for_project_warmup,
       project_store: project_store_ref.current,
       update_app_language,
       refresh_settings,
-      refresh_project,
       refresh_task,
     }
   }, [
@@ -891,10 +859,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     proofreading_change_signal,
     workbench_change_signal,
     project_warmup_status,
+    project_warmup_stage,
     pending_target_route,
     is_app_language_updating,
-    wait_for_project_warmup,
-    refresh_project,
     refresh_settings,
     refresh_task,
     update_app_language,

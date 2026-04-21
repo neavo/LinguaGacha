@@ -40,6 +40,15 @@ export const zh_cn_project_page = {
     total: '总计:',
     rows_unit: '行',
   },
+  loading_stages: {
+    project: '正在加载项目骨架 …',
+    files: '正在加载项目文件 …',
+    items: '正在加载项目条目 …',
+    quality: '正在加载质量规则 …',
+    prompts: '正在加载提示词配置 …',
+    analysis: '正在加载分析结果 …',
+    task: '正在加载任务状态 …',
+  },
   formats: {
     title: '支持文件格式',
     subtitle_bundle: '字幕 / 电子书 / Markdown',

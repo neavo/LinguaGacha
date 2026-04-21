@@ -6,10 +6,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import module.Data.DataManager as data_manager_module
 from base.Base import Base
 from module.Data.DataManager import DataManager
-from module.Data.Core.DataTypes import ProjectFileMutationResult
-from module.Data.Core.DataTypes import ProjectPrefilterScheduleResult
+from module.Data.Core.DataTypes import (
+    ProjectFileMutationResult,
+    ProjectPrefilterScheduleResult,
+)
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Localizer.Localizer import Localizer
 
@@ -120,7 +123,7 @@ def test_on_translation_activity_clears_item_cache_and_emits_refresh_signal(
     assert emitted_events == []
 
 
-def test_set_meta_emits_quality_rule_update_for_rule_meta_keys(
+def test_set_meta_updates_rule_meta_without_emitting_legacy_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
@@ -128,67 +131,7 @@ def test_set_meta_emits_quality_rule_update_for_rule_meta_keys(
     dm.set_meta("glossary_enable", True)
 
     dm.meta_service.set_meta.assert_called_once_with("glossary_enable", True)
-    assert emitted_events == [
-        (
-            Base.Event.QUALITY_RULE_UPDATE,
-            {"meta_keys": ["glossary_enable"], "scope": "global"},
-        )
-    ]
-
-
-def test_on_quality_rule_update_does_not_refresh_workbench_for_rule_changes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-
-    dm.on_quality_rule_update(
-        Base.Event.QUALITY_RULE_UPDATE,
-        {
-            "rule_types": ["glossary"],
-            "scope": "entry",
-            "rel_paths": ["script/a.txt"],
-        },
-    )
-
     assert emitted_events == []
-
-
-def test_emit_project_item_change_refresh_emits_workbench_and_proofreading_events(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from module.Data.Core.DataTypes import ProjectItemChange
-
-    dm, emitted_events = build_data_manager(monkeypatch)
-
-    dm.emit_project_item_change_refresh(
-        ProjectItemChange(
-            item_ids=(1, 2),
-            rel_paths=("script/a.txt",),
-            reason="translation_batch_update",
-        ),
-        source_event=Base.Event.TRANSLATION_TASK,
-    )
-
-    assert emitted_events == [
-        (
-            Base.Event.WORKBENCH_REFRESH,
-            {
-                "reason": "translation_batch_update",
-                "scope": "file",
-                "rel_paths": ["script/a.txt"],
-            },
-        ),
-        (
-            Base.Event.PROOFREADING_REFRESH,
-            {
-                "reason": "translation_batch_update",
-                "scope": "entry",
-                "source_event": Base.Event.TRANSLATION_TASK.value,
-                "item_ids": [1, 2],
-                "rel_paths": ["script/a.txt"],
-            },
-        ),
-    ]
 
 
 def test_sync_project_language_meta_updates_current_project_meta(
@@ -279,7 +222,6 @@ def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
         reason="file_op",
         lg_path="demo/project.lg",
         token=7,
-        emit_refresh_events=True,
     )
     dm.prefilter_service = SimpleNamespace(
         pop_pending_request=MagicMock(side_effect=[request, None]),
@@ -294,10 +236,7 @@ def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
     dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_called_once()
     dm.prefilter_service.mark_request_handled.assert_called_once_with(request)
     dm.prefilter_service.finish_worker.assert_called_once()
-    assert (
-        Base.Event.WORKBENCH_REFRESH,
-        {"reason": "file_op", "scope": "global"},
-    ) in emitted_events
+    assert emitted_events == []
 
 
 def test_project_prefilter_worker_can_skip_page_refresh_events(
@@ -308,7 +247,6 @@ def test_project_prefilter_worker_can_skip_page_refresh_events(
         reason="file_op",
         lg_path="demo/project.lg",
         token=7,
-        emit_refresh_events=False,
     )
     dm.prefilter_service = SimpleNamespace(
         pop_pending_request=MagicMock(side_effect=[request, None]),
@@ -320,56 +258,71 @@ def test_project_prefilter_worker_can_skip_page_refresh_events(
 
     dm.project_prefilter_worker(token=7)
 
-    assert all(event != Base.Event.WORKBENCH_REFRESH for event, _data in emitted_events)
-    assert all(
-        event != Base.Event.PROOFREADING_REFRESH for event, _data in emitted_events
-    )
+    assert emitted_events == []
 
 
-def test_emit_project_file_update_emits_single_structured_batch_refresh(
+def test_schedule_guarded_file_operation_emits_runtime_refresh_after_finish(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
+    call_order: list[str] = []
 
-    dm.emit_project_file_update(
-        ProjectFileMutationResult(
-            rel_paths=("script/a.txt", "script/b.txt"),
-            removed_rel_paths=("script/old.txt",),
-        )
+    class ImmediateThread:
+        def __init__(self, target, daemon: bool) -> None:
+            self.target = target
+            self.daemon = daemon
+
+        def start(self) -> None:
+            self.target()
+
+    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(
+        data_manager_module.LogManager,
+        "get",
+        lambda: SimpleNamespace(
+            info=lambda message: call_order.append(f"log:{message}"),
+            warning=lambda message: call_order.append(f"warning:{message}"),
+            error=lambda message, error: call_order.append(
+                f"error:{message}:{type(error).__name__}"
+            ),
+        ),
+    )
+    dm.try_begin_guarded_file_operation = MagicMock()
+    dm.run_project_prefilter = MagicMock(
+        side_effect=lambda config, reason: call_order.append(f"prefilter:{reason}")
+    )
+    dm.finish_file_operation = MagicMock(
+        side_effect=lambda: call_order.append("finish")
     )
 
+    def mutate_file() -> ProjectFileMutationResult:
+        call_order.append("action")
+        return ProjectFileMutationResult(rel_paths=("chapter01.txt",))
+
+    dm.schedule_guarded_file_operation(
+        "正在添加文件",
+        mutate_file,
+        "Failed to add file",
+    )
+
+    assert call_order == [
+        "log:正在添加文件",
+        "action",
+        "prefilter:file_op",
+        "finish",
+    ]
     assert emitted_events == [
         (
-            Base.Event.PROJECT_FILE_UPDATE,
+            Base.Event.PROJECT_RUNTIME_REFRESH,
             {
-                "rel_paths": ["script/a.txt", "script/b.txt"],
-                "removed_rel_paths": ["script/old.txt"],
-                "order_changed": False,
+                "source": "file_op",
+                "updatedSections": ["files", "items", "analysis"],
             },
-        ),
-        (
-            Base.Event.WORKBENCH_REFRESH,
-            {
-                "reason": "project_file_update",
-                "scope": "file",
-                "rel_paths": ["script/a.txt", "script/b.txt"],
-                "removed_rel_paths": ["script/old.txt"],
-            },
-        ),
-        (
-            Base.Event.PROOFREADING_REFRESH,
-            {
-                "reason": "project_file_update",
-                "scope": "file",
-                "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
-                "rel_paths": ["script/a.txt", "script/b.txt"],
-                "removed_rel_paths": ["script/old.txt"],
-            },
-        ),
+        )
     ]
 
 
-def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
+def test_update_batch_no_longer_emits_legacy_quality_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
@@ -380,19 +333,7 @@ def test_update_batch_emits_quality_rule_update_for_rules_and_meta(
     )
 
     dm.batch_service.update_batch.assert_called_once()
-    assert emitted_events == [
-        (
-            Base.Event.QUALITY_RULE_UPDATE,
-            {
-                "rule_types": [LGDatabase.RuleType.GLOSSARY.value],
-                "scope": "global",
-            },
-        ),
-        (
-            Base.Event.QUALITY_RULE_UPDATE,
-            {"meta_keys": ["glossary_enable"], "scope": "global"},
-        ),
-    ]
+    assert emitted_events == []
 
 
 def test_on_config_updated_defers_proofreading_refresh_when_prefilter_accepts(
@@ -416,7 +357,7 @@ def test_on_config_updated_defers_proofreading_refresh_when_prefilter_accepts(
     assert emitted_events == []
 
 
-def test_on_config_updated_falls_back_to_proofreading_refresh_when_prefilter_not_accepted(
+def test_on_config_updated_prefilter_rejected_no_longer_emits_legacy_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
@@ -434,17 +375,7 @@ def test_on_config_updated_falls_back_to_proofreading_refresh_when_prefilter_not
     dm.schedule_prefilter_if_needed_with_result.assert_called_once_with(
         reason="config_updated"
     )
-    assert emitted_events == [
-        (
-            Base.Event.PROOFREADING_REFRESH,
-            {
-                "reason": "config_updated",
-                "scope": "global",
-                "source_event": Base.Event.CONFIG_UPDATED.value,
-                "keys": ["source_language", "unrelated_key"],
-            },
-        )
-    ]
+    assert emitted_events == []
 
 
 @pytest.mark.parametrize(
@@ -504,79 +435,16 @@ def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
     dm.schedule_prefilter_if_needed_with_result.assert_not_called()
 
 
-def test_emit_project_file_update_also_invalidates_proofreading(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-
-    dm.emit_project_file_update(
-        ProjectFileMutationResult(
-            rel_paths=("chapter/a.txt",),
-            removed_rel_paths=("chapter/b.txt",),
-        )
-    )
-
-    assert emitted_events == [
-        (
-            Base.Event.PROJECT_FILE_UPDATE,
-            {
-                "rel_paths": ["chapter/a.txt"],
-                "removed_rel_paths": ["chapter/b.txt"],
-                "order_changed": False,
-            },
-        ),
-        (
-            Base.Event.WORKBENCH_REFRESH,
-            {
-                "reason": "project_file_update",
-                "scope": "file",
-                "rel_paths": ["chapter/a.txt"],
-                "removed_rel_paths": ["chapter/b.txt"],
-            },
-        ),
-        (
-            Base.Event.PROOFREADING_REFRESH,
-            {
-                "reason": "project_file_update",
-                "scope": "file",
-                "source_event": Base.Event.PROJECT_FILE_UPDATE.value,
-                "rel_paths": ["chapter/a.txt"],
-                "removed_rel_paths": ["chapter/b.txt"],
-            },
-        ),
-    ]
-
-
-def test_import_analysis_candidates_emits_precise_quality_rule_update_when_impact_is_known(
+def test_import_analysis_candidates_returns_count_without_emitting_legacy_quality_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
     dm.analysis_service.import_analysis_candidates = MagicMock(side_effect=[2, 0, None])
-    dm.build_quality_rule_snapshot_payload = MagicMock(
-        return_value={"entries": [], "meta": {}}
-    )
-    dm.analyze_quality_rule_update_impact = MagicMock(
-        return_value=SimpleNamespace(
-            scope="entry",
-            item_ids=(11, 12),
-            rel_paths=("script/a.txt",),
-        )
-    )
 
     assert dm.import_analysis_candidates() == 2
     assert dm.import_analysis_candidates() == 0
     assert dm.import_analysis_candidates() is None
-    assert emitted_events == [
-        (
-            Base.Event.QUALITY_RULE_UPDATE,
-            {
-                "rule_types": [LGDatabase.RuleType.GLOSSARY.value],
-                "scope": "entry",
-                "item_ids": [11, 12],
-                "rel_paths": ["script/a.txt"],
-            },
-        )
-    ]
+    assert emitted_events == []
 
 
 def test_output_path_helpers_delegate_to_export_service(
@@ -589,14 +457,18 @@ def test_output_path_helpers_delegate_to_export_service(
     assert dm.export_custom_suffix_context("x") is not None
 
 
-def test_create_project_emits_toast_when_presets_loaded(
+def test_create_project_logs_when_presets_loaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
+    dm, _emitted_events = build_data_manager(monkeypatch)
     dm.project_service.create = MagicMock(return_value=["术语表"])
+    logger = MagicMock()
+    monkeypatch.setattr(
+        data_manager_module.LogManager, "get", staticmethod(lambda: logger)
+    )
 
     class FakeLocalizer:
-        quality_default_preset_loaded_toast = "已加载 {NAME}"
+        quality_default_preset_loaded_message = "已加载 {NAME}"
 
     original = Localizer.get
     Localizer.get = staticmethod(lambda: FakeLocalizer)  # type: ignore[assignment]
@@ -605,12 +477,4 @@ def test_create_project_emits_toast_when_presets_loaded(
     finally:
         Localizer.get = original  # type: ignore[assignment]
 
-    assert emitted_events == [
-        (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": "已加载 术语表",
-            },
-        )
-    ]
+    logger.info.assert_called_once_with("已加载 术语表")

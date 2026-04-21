@@ -85,14 +85,6 @@ export type ProofreadingClientItem = ProofreadingItem & {
   compressed_dst: string
 }
 
-export type ProofreadingStoreItemRecord = {
-  item_id: number | string
-  file_path: string
-  src: string
-  dst: string
-  status: string
-}
-
 export type ProofreadingSnapshot = {
   revision: number
   project_id: string

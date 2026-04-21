@@ -9,7 +9,7 @@ class LocalizerEN(LocalizerZH):
     task_failed: str = "Task failed …"
     task_success: str = "Task succeeded …"
     task_running: str = "Task is running …"
-    toast_processing: str = "Processing …"
+    task_processing: str = "Processing …"
     export_translation_start: str = "Generating translation …"
     export_translation_done: str = "Translation files saved to [blue]{PATH}[/blue] …"
     export_translation_success: str = "Translation files generated …"
@@ -19,7 +19,7 @@ class LocalizerEN(LocalizerZH):
 
     # 主页面
     app_exit_countdown: str = "Exiting … {SECONDS} …"
-    app_new_version_toast: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
+    app_new_version_found: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
     app_new_version_failure: str = "New version download failed …"
     app_new_version_success: str = "New version download successful …"
     app_new_version_apply_failed: str = "Update failed and rolled back …"
@@ -139,7 +139,7 @@ class LocalizerEN(LocalizerZH):
     project_store_file_not_found: str = "Project file not found: {PATH}"
 
     # 翻译
-    translation_page_toast_resetting: str = "Resetting …"
+    translation_resetting: str = "Resetting …"
 
     # 分析
     analysis_page_import_success: str = "Import succeeded, added {COUNT} entries …"
@@ -163,4 +163,4 @@ class LocalizerEN(LocalizerZH):
     workbench_msg_file_not_found: str = "File not found"
 
     # 质量类通用
-    quality_default_preset_loaded_toast: str = "Default preset loaded: {NAME} …"
+    quality_default_preset_loaded_message: str = "Default preset loaded: {NAME} …"

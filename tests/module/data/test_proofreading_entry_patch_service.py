@@ -76,9 +76,6 @@ def test_get_patch_merges_filters_and_preserves_requested_item_order() -> None:
         request={
             "item_ids": [2, "1", True, "bad", 2],
             "filter_options": {"warning_types": {"GLOSSARY"}},
-            "search_keyword": "勇者",
-            "search_is_regex": True,
-            "search_replace_mode": True,
         },
     )
 
@@ -96,11 +93,7 @@ def test_get_patch_merges_filters_and_preserves_requested_item_order() -> None:
     assert options.statuses == {Base.ProjectStatus.PROCESSED}
     assert options.file_paths == {"script/a.txt"}
     scan_kwargs = captured_call["kwargs"]
-    assert scan_kwargs["search_keyword"] == "勇者"
-    assert scan_kwargs["search_is_regex"] is True
-    assert scan_kwargs["search_dst_only"] is True
-    assert scan_kwargs["enable_search_filter"] is True
-    assert scan_kwargs["enable_glossary_term_filter"] is True
+    assert scan_kwargs["collect_when"] is not None
 
 
 def test_normalize_item_ids_drops_duplicates_invalid_values_and_bool() -> None:

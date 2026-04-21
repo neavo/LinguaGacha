@@ -6,8 +6,7 @@ import type {
 } from "@/app/state/project-pages-barrier";
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 import { useDesktopToast } from "@/app/state/use-desktop-toast";
-import { buildWorkbenchView } from "@/app/state/v2/selectors";
-import { isProjectRuntimeV2Enabled } from "@/app/state/v2/runtime-feature";
+import { buildWorkbenchView } from "@/app/project-runtime/selectors";
 import {
   useAnalysisTaskRuntime,
   type AnalysisTaskRuntime,
@@ -43,12 +42,6 @@ import type {
   WorkbenchTaskTone,
   WorkbenchTaskViewState,
 } from "@/pages/workbench-page/types";
-
-type WorkbenchSnapshotPayload = {
-  snapshot?: Partial<WorkbenchSnapshot> & {
-    entries?: Array<Partial<WorkbenchSnapshotEntry>>;
-  };
-};
 
 type WorkbenchFilePatch = {
   summary: Omit<WorkbenchSnapshot, "entries">;
@@ -87,34 +80,6 @@ function resolve_error_message(
   }
 
   return fallback_message;
-}
-
-function normalize_snapshot(
-  payload: WorkbenchSnapshotPayload,
-): WorkbenchSnapshot {
-  const snapshot = payload.snapshot ?? {};
-  const entries = Array.isArray(snapshot.entries)
-    ? snapshot.entries
-        .filter(
-          (entry) =>
-            typeof entry?.rel_path === "string" && entry.rel_path !== "",
-        )
-        .map((entry) => ({
-          rel_path: String(entry.rel_path),
-          file_type: String(entry.file_type ?? ""),
-          item_count: Number(entry.item_count ?? 0),
-        }))
-    : [];
-
-  return {
-    file_count: Number(snapshot.file_count ?? 0),
-    total_items: Number(snapshot.total_items ?? 0),
-    translated: Number(snapshot.translated ?? 0),
-    translated_in_past: Number(snapshot.translated_in_past ?? 0),
-    error_count: Number(snapshot.error_count ?? 0),
-    file_op_running: Boolean(snapshot.file_op_running),
-    entries,
-  };
 }
 
 function close_dialog_state(): WorkbenchDialogState {
@@ -1050,34 +1015,12 @@ export function useWorkbenchLiveState(
       set_cache_status("refreshing");
 
       try {
-        if (isProjectRuntimeV2Enabled()) {
-          const view = buildWorkbenchView(project_store.getState());
-          const next_snapshot: WorkbenchSnapshot = {
-            ...EMPTY_SNAPSHOT,
-            ...view.summary,
-            entries: view.entries,
-          };
-
-          if (request_id !== refresh_request_id_ref.current) {
-            return next_snapshot;
-          }
-
-          snapshot_ref.current = next_snapshot;
-          set_snapshot(next_snapshot);
-          apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
-          set_refresh_error(null);
-          set_cache_status("ready");
-          set_cache_stale(false);
-          set_last_loaded_at(Date.now());
-          set_settled_project_path(project_snapshot.path);
-          return next_snapshot;
-        }
-
-        const payload = await api_fetch<WorkbenchSnapshotPayload>(
-          "/api/v2/project/workbench/snapshot",
-          {},
-        );
-        const next_snapshot = normalize_snapshot(payload);
+        const view = buildWorkbenchView(project_store.getState());
+        const next_snapshot: WorkbenchSnapshot = {
+          ...EMPTY_SNAPSHOT,
+          ...view.summary,
+          entries: view.entries,
+        };
 
         if (request_id !== refresh_request_id_ref.current) {
           return next_snapshot;

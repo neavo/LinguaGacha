@@ -725,7 +725,6 @@ def test_execute_analysis_plan_resets_failed_checkpoints_and_emits_request(
     assert subscribed_events == [
         Base.Event.ANALYSIS_TASK,
         Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-        Base.Event.TOAST,
     ]
     assert fake_data_manager.analysis_reset_failed_count == 1
     assert fake_data_manager.prefilter_reasons == ["cli_analysis"]
@@ -1044,25 +1043,25 @@ def test_analysis_export_glossary_done_requests_failed_exit_on_error() -> None:
     assert manager.waiting_analysis_export is False
 
 
-def test_analysis_cli_toast_only_exits_for_analysis_no_items_state() -> None:
+def test_analysis_task_done_exits_for_error_state_when_waiting_export() -> None:
     manager = CLIManager()
     manager.cli_task = CLIManager.Task.ANALYSIS
     manager.waiting_analysis_export = True
 
-    manager.analysis_cli_toast(
+    manager.analysis_task_done(
         Base.Event.TRANSLATION_TASK,
-        {"message": "no_items"},
+        {"sub_event": Base.SubEvent.ERROR, "message": "no_items"},
     )
-    manager.analysis_cli_toast(
-        Base.Event.TOAST,
-        {"message": "different"},
+    manager.analysis_task_done(
+        Base.Event.ANALYSIS_TASK,
+        {"sub_event": Base.SubEvent.RUN},
     )
 
     assert manager.get_exit_code() is None
 
-    manager.analysis_cli_toast(
-        Base.Event.TOAST,
-        {"message": "no_items"},
+    manager.analysis_task_done(
+        Base.Event.ANALYSIS_TASK,
+        {"sub_event": Base.SubEvent.ERROR, "message": "no_items"},
     )
 
     assert manager.get_exit_code() == CLIManager.EXIT_CODE_FAILED
@@ -1425,7 +1424,6 @@ def test_execute_analysis_plan_skips_optional_steps_when_not_requested(
     assert subscribed_events == [
         Base.Event.ANALYSIS_TASK,
         Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-        Base.Event.TOAST,
     ]
     assert emitted_events == [Base.Event.ANALYSIS_TASK]
 

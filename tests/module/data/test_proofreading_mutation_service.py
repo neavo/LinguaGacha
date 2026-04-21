@@ -98,7 +98,6 @@ def build_fake_data_manager(
                 "translation_extras", dict(extras)
             )
         ),
-        emit_project_item_change_refresh=MagicMock(),
     )
     meta_store["project_state"] = project_state
     return fake_data_manager, meta_store
@@ -129,7 +128,6 @@ def test_apply_manual_edit_updates_status_and_bumps_revision() -> None:
     assert item.get_dst() == "Hero arrived"
     assert item.get_status() == Base.ProjectStatus.PROCESSED
     assert data_manager.save_item.call_count == 1
-    data_manager.emit_project_item_change_refresh.assert_called_once()
     assert meta_store["proofreading_revision.proofreading"] == 4
 
 
@@ -215,7 +213,6 @@ def test_save_all_replaces_all_items_and_bumps_revision() -> None:
     assert result.item_ids == (1, 2)
     assert result.rel_paths == ("script/a.txt", "script/b.txt")
     assert data_manager.replace_all_items.call_count == 1
-    data_manager.emit_project_item_change_refresh.assert_called_once()
     assert meta_store["proofreading_revision.proofreading"] == 9
 
 
@@ -255,7 +252,6 @@ def test_replace_all_returns_changed_item_ids_and_bumps_revision() -> None:
     assert items[0].get_dst() == "bravo bravo"
     assert items[0].get_status() == Base.ProjectStatus.PROCESSED
     assert data_manager.update_batch.call_count == 1
-    data_manager.emit_project_item_change_refresh.assert_called_once()
     assert meta_store["proofreading_revision.proofreading"] == 3
 
 
@@ -314,7 +310,6 @@ def test_replace_all_skips_write_when_no_item_changed() -> None:
     assert result.item_ids == ()
     assert result.rel_paths == ()
     assert data_manager.update_batch.call_count == 0
-    data_manager.emit_project_item_change_refresh.assert_not_called()
     assert meta_store["proofreading_revision.proofreading"] == 5
 
 

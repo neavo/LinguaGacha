@@ -50,7 +50,7 @@ flowchart LR
 - `app.py` 负责运行时入口、CLI 分流、Core API 启停与退出清理；不要把前端逻辑、页面状态或桌面桥接塞回这里。
 - `api/` 是 Python Core 对外暴露给 Electron 的唯一 HTTP / SSE 边界；接口、响应壳、错误码、SSE topic 变更必须同时对齐 [`api/SPEC.md`](api/SPEC.md)。
 - `module/Data/` 负责以数据为中心的主链路服务；工程、规则、分析、翻译、校对与 Extra 工具的改动先按 [`module/Data/SPEC.md`](module/Data/SPEC.md) 判断真实落点。
-- `api/Client/` 与 `api/Models/` 负责 Python 侧的对象化契约边界；改动响应结构时，要同步检查客户端对象、状态仓库和契约测试是否仍一致。
+- `api/v2/Client/` 与 `api/v2/Models/` 负责 Python 侧的对象化契约边界；改动响应结构时，要同步检查客户端对象、状态仓库和契约测试是否仍一致。
 
 ### 2.2 Python 代码风格
 - 注释统一使用 `# ...`；所有类、方法和关键逻辑都要解释“为什么这样做”，不要只翻译代码表面行为。
@@ -71,7 +71,7 @@ flowchart LR
 - 需要包装语义时使用 `raise ... from e` 保留原始异常链。
 
 ### 2.4 Python 变更约束
-- 新增或调整本地 API 时，先明确它属于 `api/Application`、`api/Contract`、`api/Server/Routes` 还是 `api/Bridge`，不要只补某一层。
+- 新增或调整本地 API 时，先明确它属于 `api/Application`、`api/Contract`、`api/v2/Server/Routes` 还是 `api/Bridge`，不要只补某一层。
 - 新增项目级状态前，先判断它应归属 `ProjectSession`、某个领域 service、`DataManager`，还是渲染层的应用级状态封装。
 - 禁止在 API 层直接操作数据库或持有 `ProjectSession`；SQL 只允许落在 `Storage/LGDatabase.py`。
 - Python 侧用户文案继续放在 `module/Localizer/`，不要把前端渲染层文案回写到后端。

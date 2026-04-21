@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from api.Models.V2.ProjectRuntime import V2RowBlock
+from api.v2.Models.ProjectRuntime import RowBlock
+from module.Data.Core.Item import Item
 
 
 class V2ProjectRuntimeService:
@@ -54,7 +55,7 @@ class V2ProjectRuntimeService:
             for record in self.build_file_records()
         )
 
-        return V2RowBlock(
+        return RowBlock(
             schema=self.FILES_BLOCK_SCHEMA,
             fields=self.FILES_BLOCK_FIELDS,
             rows=rows,
@@ -74,7 +75,7 @@ class V2ProjectRuntimeService:
             for record in self.build_item_records()
         )
 
-        return V2RowBlock(
+        return RowBlock(
             schema=self.ITEMS_BLOCK_SCHEMA,
             fields=self.ITEMS_BLOCK_FIELDS,
             rows=rows,
@@ -87,9 +88,16 @@ class V2ProjectRuntimeService:
         """为 patch 与 bootstrap 统一构建稳定文件记录。"""
 
         target_rel_paths = (
-            {str(rel_path).strip() for rel_path in rel_paths if str(rel_path).strip() != ""}
+            {
+                str(rel_path).strip()
+                for rel_path in rel_paths
+                if str(rel_path).strip() != ""
+            }
             if rel_paths is not None
             else None
+        )
+        ordered_rel_paths = self.normalize_rel_paths(
+            self.call_data_manager("get_all_asset_paths", [])
         )
         records_by_path: dict[str, dict[str, object]] = {}
         for item in self.data_manager.get_items_all():
@@ -103,6 +111,24 @@ class V2ProjectRuntimeService:
                 "rel_path": file_path,
                 "file_type": self.resolve_file_type_value(item),
             }
+
+        if ordered_rel_paths:
+            ordered_records: list[dict[str, object]] = []
+            for rel_path in ordered_rel_paths:
+                if target_rel_paths is not None and rel_path not in target_rel_paths:
+                    continue
+
+                ordered_records.append(
+                    {
+                        "rel_path": rel_path,
+                        "file_type": records_by_path.get(rel_path, {}).get(
+                            "file_type",
+                            Item.FileType.NONE.value,
+                        ),
+                    }
+                )
+            return ordered_records
+
         return list(records_by_path.values())
 
     def build_item_records(
@@ -218,3 +244,19 @@ class V2ProjectRuntimeService:
         if callable(method):
             return method(*args)
         return fallback
+
+    def normalize_rel_paths(self, value: object) -> list[str]:
+        """把文件路径列表规整成稳定顺序，过滤空值并去重。"""
+
+        if not isinstance(value, list):
+            return []
+
+        normalized_rel_paths: list[str] = []
+        seen_rel_paths: set[str] = set()
+        for raw_rel_path in value:
+            rel_path = str(raw_rel_path).strip()
+            if rel_path == "" or rel_path in seen_rel_paths:
+                continue
+            seen_rel_paths.add(rel_path)
+            normalized_rel_paths.append(rel_path)
+        return normalized_rel_paths

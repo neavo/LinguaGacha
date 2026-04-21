@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import re
 from dataclasses import dataclass
 from typing import Any
 from typing import Callable
@@ -114,7 +112,7 @@ class ProofreadingFilterScanResult:
 class ProofreadingFilterService:
     """校对页纯业务筛选服务。
 
-    这个服务吸收了原来 `ProofreadingDomain` 里的筛选、搜索与术语缓存逻辑，
+    这个服务吸收了原来 `ProofreadingDomain` 里的筛选与术语缓存逻辑，
     让前端 helper 只保留转发壳。
     """
 
@@ -317,13 +315,8 @@ class ProofreadingFilterService:
         checker: ResultChecker | None,
         *,
         failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
-        search_keyword: str = "",
-        search_is_regex: bool = False,
-        search_dst_only: bool = False,
-        enable_search_filter: bool = False,
-        enable_glossary_term_filter: bool = True,
     ) -> list[Item]:
-        """按筛选、搜索与术语条件过滤条目。"""
+        """按筛选与术语条件过滤条目。"""
 
         scan_result = self.scan_filtered_items(
             items,
@@ -331,11 +324,6 @@ class ProofreadingFilterService:
             options,
             checker,
             failed_terms_by_item_key=failed_terms_by_item_key,
-            search_keyword=search_keyword,
-            search_is_regex=search_is_regex,
-            search_dst_only=search_dst_only,
-            enable_search_filter=enable_search_filter,
-            enable_glossary_term_filter=enable_glossary_term_filter,
         )
         return list(scan_result.items)
 
@@ -368,12 +356,6 @@ class ProofreadingFilterService:
         checker: ResultChecker | None,
         *,
         failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None,
-        search_pattern: re.Pattern[str] | None,
-        keyword_lower: str,
-        search_keyword: str,
-        search_dst_only: bool,
-        enable_search_filter: bool,
-        enable_glossary_term_filter: bool,
     ) -> bool:
         """判断单条条目是否命中过滤条件。"""
 
@@ -392,45 +374,25 @@ class ProofreadingFilterService:
             if ProofreadingFilterOptions.NO_WARNING_TAG not in warning_types:
                 return False
 
-        if enable_glossary_term_filter:
-            if WarningType.GLOSSARY in item_warnings:
-                item_terms = self.resolve_item_failed_glossary_terms(
-                    item,
-                    item_warnings,
-                    checker,
-                    failed_terms_by_item_key,
-                )
-                if glossary_terms:
-                    if not any(term in glossary_terms for term in item_terms):
-                        return False
-                else:
+        if WarningType.GLOSSARY in item_warnings:
+            item_terms = self.resolve_item_failed_glossary_terms(
+                item,
+                item_warnings,
+                checker,
+                failed_terms_by_item_key,
+            )
+            if glossary_terms:
+                if not any(term in glossary_terms for term in item_terms):
                     return False
-            elif not include_without_glossary_miss:
+            else:
                 return False
+        elif not include_without_glossary_miss:
+            return False
 
         if item.get_status() not in statuses:
             return False
         if item.get_file_path() not in file_paths:
             return False
-
-        if enable_search_filter and search_keyword:
-            src = item.get_src()
-            dst = item.get_dst()
-            if search_pattern is not None:
-                if search_dst_only:
-                    if not search_pattern.search(dst):
-                        return False
-                elif not (search_pattern.search(src) or search_pattern.search(dst)):
-                    return False
-            elif keyword_lower:
-                if search_dst_only:
-                    if keyword_lower not in dst.lower():
-                        return False
-                elif (
-                    keyword_lower not in src.lower()
-                    and keyword_lower not in dst.lower()
-                ):
-                    return False
 
         return True
 
@@ -442,24 +404,11 @@ class ProofreadingFilterService:
         checker: ResultChecker | None,
         *,
         failed_terms_by_item_key: dict[int, tuple[tuple[str, str], ...]] | None = None,
-        search_keyword: str = "",
-        search_is_regex: bool = False,
-        search_dst_only: bool = False,
-        enable_search_filter: bool = False,
-        enable_glossary_term_filter: bool = True,
         collect_when: Callable[[Item], bool] | None = None,
     ) -> ProofreadingFilterScanResult:
         """单次扫描完成筛选摘要统计，并按需收集目标条目。"""
 
         resolved = self.normalize_filter_options(options, items)
-
-        search_pattern: re.Pattern[str] | None = None
-        keyword_lower = ""
-        if enable_search_filter and search_keyword:
-            if search_is_regex:
-                search_pattern = re.compile(search_keyword, re.IGNORECASE)
-            else:
-                keyword_lower = search_keyword.lower()
 
         filtered: list[Item] = []
         filtered_item_count = 0
@@ -478,12 +427,6 @@ class ProofreadingFilterService:
                 resolved,
                 checker,
                 failed_terms_by_item_key=failed_terms_by_item_key,
-                search_pattern=search_pattern,
-                keyword_lower=keyword_lower,
-                search_keyword=search_keyword,
-                search_dst_only=search_dst_only,
-                enable_search_filter=enable_search_filter,
-                enable_glossary_term_filter=enable_glossary_term_filter,
             ):
                 continue
 

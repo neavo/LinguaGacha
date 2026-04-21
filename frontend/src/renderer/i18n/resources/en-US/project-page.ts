@@ -43,6 +43,15 @@ export const en_us_project_page = {
     total: 'Total:',
     rows_unit: '',
   },
+  loading_stages: {
+    project: 'Loading project skeleton …',
+    files: 'Loading project files …',
+    items: 'Loading project items …',
+    quality: 'Loading quality rules …',
+    prompts: 'Loading prompt settings …',
+    analysis: 'Loading analysis results …',
+    task: 'Loading task status …',
+  },
   formats: {
     title: 'Supported File Formats',
     subtitle_bundle: 'EBook/Subtitle/Markdown',

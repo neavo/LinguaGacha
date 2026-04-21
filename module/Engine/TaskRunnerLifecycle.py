@@ -38,7 +38,6 @@ class TaskRunnerHooks:
     on_before_execute: Callable[[], None]
     execute: Callable[[TaskRunnerExecutionPlan, int], str]
     on_after_execute: Callable[[str], None]
-    terminal_toast: Callable[[str], None]
     finalize: Callable[[str], None]
     cleanup: Callable[[], None]
     after_done: Callable[[str], None]
@@ -46,6 +45,23 @@ class TaskRunnerHooks:
 
 class TaskRunnerLifecycle:
     """抽取分析与翻译共享的任务生命周期骨架。"""
+
+    @staticmethod
+    def emit_task_error(
+        owner: Base,
+        *,
+        task_event: Base.Event,
+        message: str,
+    ) -> None:
+        """共享错误出口统一走任务事件，避免后端夹带 UI 语义。"""
+
+        owner.emit(
+            task_event,
+            {
+                "sub_event": Base.SubEvent.ERROR,
+                "message": message,
+            },
+        )
 
     @staticmethod
     def reset_request_runtime(*, reset_text_processor: bool) -> None:
@@ -74,19 +90,10 @@ class TaskRunnerLifecycle:
         engine = Engine.get()
         with engine.lock:
             if engine.status != Base.TaskStatus.IDLE:
-                owner.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().task_running,
-                    },
-                )
-                owner.emit(
-                    task_event,
-                    {
-                        "sub_event": Base.SubEvent.ERROR,
-                        "message": Localizer.get().task_running,
-                    },
+                TaskRunnerLifecycle.emit_task_error(
+                    owner,
+                    task_event=task_event,
+                    message=Localizer.get().task_running,
                 )
                 return
 
@@ -105,19 +112,10 @@ class TaskRunnerLifecycle:
         except Exception as e:
             engine.set_status(Base.TaskStatus.IDLE)
             LogManager.get().error(Localizer.get().task_failed, e)
-            owner.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
-            owner.emit(
-                task_event,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
+            TaskRunnerLifecycle.emit_task_error(
+                owner,
+                task_event=task_event,
+                message=Localizer.get().task_failed,
             )
 
     @staticmethod
@@ -139,18 +137,21 @@ class TaskRunnerLifecycle:
         )
 
     @staticmethod
-    def ensure_project_loaded(owner: Base, *, dm: Any) -> bool:
+    def ensure_project_loaded(
+        owner: Base,
+        *,
+        dm: Any,
+        task_event: Base.Event,
+    ) -> bool:
         """共享的工程加载校验。"""
 
         if dm.is_loaded():
             return True
 
-        owner.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.WARNING,
-                "message": Localizer.get().alert_project_not_loaded,
-            },
+        TaskRunnerLifecycle.emit_task_error(
+            owner,
+            task_event=task_event,
+            message=Localizer.get().alert_project_not_loaded,
         )
         return False
 
@@ -159,6 +160,7 @@ class TaskRunnerLifecycle:
         owner: Base,
         *,
         config: Config,
+        task_event: Base.Event,
     ) -> dict[str, Any] | None:
         """共享的激活模型校验。"""
 
@@ -166,12 +168,10 @@ class TaskRunnerLifecycle:
         if model is not None:
             return model
 
-        owner.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.WARNING,
-                "message": Localizer.get().alert_no_active_model,
-            },
+        TaskRunnerLifecycle.emit_task_error(
+            owner,
+            task_event=task_event,
+            message=Localizer.get().alert_no_active_model,
         )
         return None
 
@@ -200,55 +200,22 @@ class TaskRunnerLifecycle:
         return max_concurrency, rps_limit, rpm_limit
 
     @staticmethod
-    def emit_terminal_toast(owner: Base, *, final_status: str) -> None:
-        """统一成功、停止、失败三种终态提示。"""
-
-        if final_status == "SUCCESS":
-            toast_type = Base.ToastType.SUCCESS
-            message = Localizer.get().engine_task_done
-        elif final_status == "STOPPED":
-            toast_type = Base.ToastType.SUCCESS
-            message = Localizer.get().engine_task_stop
-        else:
-            toast_type = Base.ToastType.WARNING
-            message = Localizer.get().engine_task_fail
-
-        owner.emit(
-            Base.Event.TOAST,
-            {
-                "type": toast_type,
-                "message": message,
-            },
-        )
-
-    @staticmethod
     def emit_task_done(
         owner: Base,
         *,
         task_event: Base.Event,
         final_status: str,
+        message: str | None = None,
     ) -> None:
         """统一 DONE 事件载荷，避免不同任务线漂移。"""
 
-        owner.emit(
-            task_event,
-            {
-                "sub_event": Base.SubEvent.DONE,
-                "final_status": final_status,
-            },
-        )
-
-    @staticmethod
-    def emit_no_items_warning(owner: Base) -> None:
-        """两条任务线的“没有可处理条目”提示统一收口。"""
-
-        owner.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.WARNING,
-                "message": Localizer.get().engine_no_items,
-            },
-        )
+        payload: dict[str, Any] = {
+            "sub_event": Base.SubEvent.DONE,
+            "final_status": final_status,
+        }
+        if isinstance(message, str) and message != "":
+            payload["message"] = message
+        owner.emit(task_event, payload)
 
     @staticmethod
     def run_reset_flow(
@@ -263,30 +230,27 @@ class TaskRunnerLifecycle:
         """统一重置任务的边界事件、线程启动和异常提示。"""
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
             owner.emit(
-                Base.Event.TOAST,
+                reset_event,
                 {
-                    "type": Base.ToastType.WARNING,
+                    "sub_event": Base.SubEvent.ERROR,
                     "message": Localizer.get().task_running,
                 },
             )
-            owner.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
             return
 
         if not ensure_loaded():
+            owner.emit(
+                reset_event,
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "message": Localizer.get().alert_project_not_loaded,
+                },
+            )
             return
 
         owner.emit(reset_event, {"sub_event": Base.SubEvent.RUN})
-        progress_toast_active = False
         if progress_message:
-            owner.emit(
-                Base.Event.PROGRESS_TOAST,
-                {
-                    "sub_event": Base.SubEvent.RUN,
-                    "message": progress_message,
-                    "indeterminate": True,
-                },
-            )
-            progress_toast_active = True
+            LogManager.get().info(progress_message)
 
         def task() -> None:
             try:
@@ -295,19 +259,12 @@ class TaskRunnerLifecycle:
             except Exception as e:
                 LogManager.get().error(Localizer.get().task_failed, e)
                 owner.emit(
-                    Base.Event.TOAST,
+                    reset_event,
                     {
-                        "type": Base.ToastType.ERROR,
+                        "sub_event": Base.SubEvent.ERROR,
                         "message": Localizer.get().task_failed,
                     },
                 )
-                owner.emit(reset_event, {"sub_event": Base.SubEvent.ERROR})
-            finally:
-                if progress_toast_active:
-                    owner.emit(
-                        Base.Event.PROGRESS_TOAST,
-                        {"sub_event": Base.SubEvent.DONE},
-                    )
 
         thread_factory(target=task, daemon=True).start()
 
@@ -326,6 +283,8 @@ class TaskRunnerLifecycle:
         should_finalize = True
         should_emit_done = True
         should_run_after_done = True
+        terminal_message: str | None = None
+        immediate_error_message: str | None = None
 
         try:
             if not hooks.prepare():
@@ -333,11 +292,11 @@ class TaskRunnerLifecycle:
 
             plan = hooks.build_plan()
             if plan.total_line == 0:
-                # “没有可处理条目”只是空跑，不应触发领域收尾或伪造 DONE 事件。
+                # “没有可处理条目”要显式落成错误终态，避免前端把它误认成成功完成。
                 should_finalize = False
                 should_emit_done = False
                 should_run_after_done = False
-                cls.emit_no_items_warning(owner)
+                immediate_error_message = Localizer.get().engine_no_items
                 return
 
             has_active_snapshot = True
@@ -346,7 +305,6 @@ class TaskRunnerLifecycle:
             if not plan.has_pending_work:
                 flow_final_status = plan.idle_final_status
                 hooks.on_after_execute(flow_final_status)
-                hooks.terminal_toast(flow_final_status)
                 return
 
             max_workers, rps_limit, rpm_threshold = cls.build_task_limits(
@@ -356,16 +314,9 @@ class TaskRunnerLifecycle:
             hooks.on_before_execute()
             flow_final_status = hooks.execute(plan, max_workers)
             hooks.on_after_execute(flow_final_status)
-            hooks.terminal_toast(flow_final_status)
         except Exception as e:
             LogManager.get().error(Localizer.get().task_failed, e)
-            owner.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
+            terminal_message = Localizer.get().task_failed
         finally:
             if has_active_snapshot:
                 hooks.persist_progress(save_state=True)
@@ -374,11 +325,21 @@ class TaskRunnerLifecycle:
                 hooks.finalize(flow_final_status)
             hooks.cleanup()
             Engine.get().set_status(Base.TaskStatus.IDLE)
+            if (
+                isinstance(immediate_error_message, str)
+                and immediate_error_message != ""
+            ):
+                cls.emit_task_error(
+                    owner,
+                    task_event=task_event,
+                    message=immediate_error_message,
+                )
             if should_emit_done:
                 cls.emit_task_done(
                     owner,
                     task_event=task_event,
                     final_status=flow_final_status,
+                    message=terminal_message,
                 )
             if should_run_after_done:
                 hooks.after_done(flow_final_status)

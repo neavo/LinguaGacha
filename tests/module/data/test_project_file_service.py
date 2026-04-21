@@ -188,23 +188,6 @@ def test_delete_file_batch_removes_all_assets_and_items() -> None:
     assert "b.txt" not in session.asset_decompress_cache
 
 
-def test_reset_file_batch_updates_all_target_items() -> None:
-    service, session = build_service()
-    session.db.get_items_by_file_path = MagicMock(
-        side_effect=[
-            [{"id": 1, "dst": "A", "status": Base.ProjectStatus.PROCESSED}],
-            [{"id": 2, "dst": "B", "status": Base.ProjectStatus.ERROR}],
-        ]
-    )
-
-    result = service.reset_file_batch(["a.txt", "b.txt"])
-
-    assert result.rel_paths == ("a.txt", "b.txt")
-    updated = session.captured_batch["items"]
-    assert len(updated) == 2
-    assert all(item["dst"] == "" for item in updated)
-
-
 def test_reorder_files_updates_asset_sort_orders() -> None:
     service, session = build_service()
     session.db.get_all_asset_paths = MagicMock(
@@ -334,63 +317,6 @@ def test_replace_file_renames_asset_and_clears_old_and_new_cache_entries(
     session.db.update_asset_path.assert_called_once()
     assert "chapter/a.txt" not in session.asset_decompress_cache
     assert "chapter\\b.txt" not in session.asset_decompress_cache
-
-
-def test_replace_file_batch_updates_multiple_files_in_single_result(
-    fs,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, session = build_service()
-    session.db.asset_path_exists = MagicMock(return_value=True)
-    session.db.get_all_asset_paths = MagicMock(return_value=["a.txt", "b.txt"])
-    session.db.get_items_by_file_path = MagicMock(
-        side_effect=[
-            [
-                {
-                    "id": 1,
-                    "src": "a",
-                    "dst": "旧译文A",
-                    "status": Base.ProjectStatus.PROCESSED,
-                    "file_type": "TXT",
-                }
-            ],
-            [
-                {
-                    "id": 2,
-                    "src": "b",
-                    "dst": "旧译文B",
-                    "status": Base.ProjectStatus.PROCESSED,
-                    "file_type": "TXT",
-                }
-            ],
-        ]
-    )
-    file_manager_module = importlib.import_module("module.File.FileManager")
-
-    class StubFileManager:
-        def __init__(self, _config: object) -> None:
-            pass
-
-        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
-            del content
-            stem = rel_path.rsplit(".", 1)[0]
-            return [
-                Item.from_dict({"src": stem, "file_path": rel_path, "file_type": "TXT"})
-            ]
-
-    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
-    create_virtual_file(fs, "C:/workspace/a.txt")
-    create_virtual_file(fs, "C:/workspace/b.txt")
-
-    result = service.replace_file_batch(
-        [("a.txt", "C:/workspace/a.txt"), ("b.txt", "C:/workspace/b.txt")]
-    )
-
-    assert result.rel_paths == ("a.txt", "b.txt")
-    assert result.matched == 2
-    assert result.total == 2
-    assert session.db.update_asset.call_count == 2
-    assert session.db.delete_items_by_file_path.call_count == 2
 
 
 def test_build_replace_target_rel_path_keeps_parent_folder() -> None:

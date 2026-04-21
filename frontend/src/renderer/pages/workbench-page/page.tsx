@@ -1,7 +1,6 @@
 import { AlertCircle, LoaderCircle } from 'lucide-react'
 
 import { useCachedWorkbenchLiveState } from '@/app/state/project-pages-context'
-import { isProjectRuntimeV2Enabled } from '@/app/state/v2/runtime-feature'
 import { WorkbenchCommandBar } from '@/pages/workbench-page/components/workbench-command-bar'
 import { WorkbenchDialogs } from '@/pages/workbench-page/components/workbench-dialogs'
 import { WorkbenchFileTable } from '@/pages/workbench-page/components/workbench-file-table'
@@ -25,13 +24,11 @@ type WorkbenchPageProps = {
 export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n()
   const workbench_state = useCachedWorkbenchLiveState()
-  const runtime_mode = isProjectRuntimeV2Enabled() ? 'v2' : 'v1'
 
   return (
     <div
       className="workbench-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
-      data-runtime-mode={runtime_mode}
     >
       {workbench_state.refresh_error === null
         ? null

@@ -9,7 +9,7 @@ from types import TracebackType
 
 from rich.console import Console
 
-from api.Server.ServerBootstrap import ServerBootstrap
+from api.v2.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
 from base.BasePath import BasePath
 from base.CLIManager import CLIManager
@@ -22,18 +22,6 @@ from module.Localizer.Localizer import Localizer
 from module.Migration.UserDataMigrationService import UserDataMigrationService
 
 APP_VERSION_FILE_NAME: str = "version.txt"
-
-
-def start_local_api_server_if_needed(
-    *,
-    is_cli_mode: bool,
-    server_bootstrap: type[ServerBootstrap],
-) -> ServerBootstrap.ServerRuntime | None:
-    """本地 Core 服务只属于 UI 边界，CLI 仍维持内部入口语义。"""
-
-    if is_cli_mode:
-        return None
-    return server_bootstrap.start()
 
 
 def excepthook(

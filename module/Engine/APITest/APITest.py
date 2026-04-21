@@ -40,10 +40,11 @@ class APITest(Base):
         with engine.lock:
             if engine.status != Base.TaskStatus.IDLE:
                 self.emit(
-                    Base.Event.TOAST,
+                    Base.Event.APITEST,
                     {
-                        "type": Base.ToastType.WARNING,
-                        "message": Localizer.get().task_running,
+                        "sub_event": Base.SubEvent.ERROR,
+                        "result": False,
+                        "result_msg": Localizer.get().task_running,
                     },
                 )
                 return
@@ -67,13 +68,6 @@ class APITest(Base):
         except Exception as e:
             engine.set_status(Base.TaskStatus.IDLE)
             LogManager.get().error(Localizer.get().task_failed, e)
-            self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().task_failed,
-                },
-            )
             self.emit(
                 Base.Event.APITEST,
                 {

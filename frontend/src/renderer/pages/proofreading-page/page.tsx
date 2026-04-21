@@ -2,7 +2,6 @@ import { AlertCircle, Funnel, LoaderCircle } from 'lucide-react'
 
 import type { ScreenComponentProps } from '@/app/navigation/types'
 import { useCachedProofreadingPageState } from '@/app/state/project-pages-context'
-import { isProjectRuntimeV2Enabled } from '@/app/state/v2/runtime-feature'
 import '@/pages/proofreading-page/proofreading-page.css'
 import { ProofreadingConfirmDialog } from '@/pages/proofreading-page/components/proofreading-confirm-dialog'
 import { ProofreadingEditDialog } from '@/pages/proofreading-page/components/proofreading-edit-dialog'
@@ -34,7 +33,6 @@ const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = [
 export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n()
   const proofreading_page_state = useCachedProofreadingPageState()
-  const runtime_mode = isProjectRuntimeV2Enabled() ? 'v2' : 'v1'
   const toolbar_disabled = proofreading_page_state.readonly
     || proofreading_page_state.is_refreshing
     || proofreading_page_state.is_mutating
@@ -64,7 +62,6 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
     <div
       className="proofreading-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
-      data-runtime-mode={runtime_mode}
     >
       {proofreading_page_state.refresh_error === null
         ? null

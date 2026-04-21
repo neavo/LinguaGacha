@@ -7,7 +7,7 @@ LinguaGacha 当前由无头 Python Core 与 Electron 前端组成：`app.py` 负
 ```mermaid
 flowchart TD
     A["frontend"] --> B["api/"]
-    B --> C["api/Models"]
+    B --> C["api/v2/*"]
     B --> D["app.py"]
     D --> E["base/"]
     D --> F["module/"]
@@ -19,8 +19,8 @@ flowchart TD
 | 路径 | 职责 |
 | --- | --- |
 | `app.py` | Python Core 入口、CLI 分流、Core API 启停与退出清理 |
-| `api/` | 本地 Core API、HTTP / SSE 契约与前后端边界 |
-| `api/Models/` | Python 侧冻结 DTO、SSE patch 与客户端对象化消费模型 |
+| `api/` | 本地 Core API 根目录；当前业务边界统一收口在 `api/v2/` |
+| `api/v2/Models/` | Python 侧冻结 DTO、SSE patch 与客户端对象化消费模型 |
 | `base/` | 事件、日志、路径、版本、命令行等基础设施 |
 | `frontend/` | Electron + React 前端子工程、桌面桥接与渲染层实现 |
 | `module/` | 数据层、任务引擎、文件处理、本地化与其他业务模块 |
@@ -50,7 +50,7 @@ flowchart TD
 | --- | --- |
 | 仓库整体结构 | `docs/ARCHITECTURE.md` -> `app.py` -> `base/*` |
 | Electron / React 前端 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) |
-| HTTP / SSE 契约 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> `api/Application/*` / `api/Server/*` |
+| HTTP / SSE 契约 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> `api/v2/Application/*` / `api/v2/Server/*` |
 | V2 项目运行态协议 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) |
 | 工程加载、规则、分析、工作台数据 | `docs/ARCHITECTURE.md` -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) -> `module/Data/DataManager.py` |
 | 模型页与模型配置 | `docs/ARCHITECTURE.md` -> [`module/Model/SPEC.md`](../module/Model/SPEC.md) -> `module/Model/Manager.py` |

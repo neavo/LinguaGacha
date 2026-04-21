@@ -29,8 +29,6 @@ class Base:
 
     # 事件
     class Event(StrEnum):
-        TOAST = "TOAST"  # Toast
-        PROGRESS_TOAST = "PROGRESS_TOAST"  # 进度 Toast 生命周期事件
         APITEST = "APITEST"  # 测试 - 生命周期事件
         TRANSLATION_TASK = (
             "TRANSLATION_TASK"  # 翻译 - 任务生命周期事件（发起/运行/结束）
@@ -60,16 +58,11 @@ class Base:
         APP_UPDATE_APPLY = "APP_UPDATE_APPLY"  # 更新 - 应用流程
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
-        PROJECT_FILE_UPDATE = "PROJECT_FILE_UPDATE"  # 工程 - 文件变更（增删改/重命名）
-        PROJECT_CHECK = "PROJECT_CHECK"  # 工程 - 检查生命周期事件
-        PROJECT_PREFILTER = "PROJECT_PREFILTER"  # 工程 - 预过滤生命周期事件
-        WORKBENCH_REFRESH = "WORKBENCH_REFRESH"  # 工作台 - 刷新请求（无需携带快照）
-        WORKBENCH_SNAPSHOT = "WORKBENCH_SNAPSHOT"  # 工作台 - 快照更新（跨线程回到 UI）
-        PROOFREADING_REFRESH = (
-            "PROOFREADING_REFRESH"  # 校对 - 快照失效，需要页面重新拉取
+        PROJECT_RUNTIME_REFRESH = (
+            "PROJECT_RUNTIME_REFRESH"  # 工程 - V2 运行态需要重新同步
         )
+        PROJECT_CHECK = "PROJECT_CHECK"  # 工程 - 检查生命周期事件
         CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
-        QUALITY_RULE_UPDATE = "QUALITY_RULE_UPDATE"  # 质量规则更新
         EXTRA_TS_CONVERSION_PROGRESS = (
             "EXTRA_TS_CONVERSION_PROGRESS"  # Extra - 繁简转换进度更新
         )
@@ -87,27 +80,12 @@ class Base:
         DONE = "DONE"  # 成功完成阶段
         ERROR = "ERROR"  # 失败终态阶段
 
-    # 工程预过滤子事件
-    # 为什么单独枚举：预过滤存在 UPDATED 这一业务特有阶段，通用生命周期无法完整表达。
-    class ProjectPrefilterSubEvent(StrEnum):
-        RUN = "RUN"  # worker 已启动
-        UPDATED = "UPDATED"  # 预过滤结果已写入并可消费
-        DONE = "DONE"  # 一次 prefilter 生命周期结束
-        ERROR = "ERROR"  # 执行失败
-
     # 接口格式
     class APIFormat(StrEnum):
         OPENAI = "OpenAI"
         GOOGLE = "Google"
         ANTHROPIC = "Anthropic"
         SAKURALLM = "SakuraLLM"
-
-    # 接口格式
-    class ToastType(StrEnum):
-        INFO = "INFO"
-        ERROR = "ERROR"
-        SUCCESS = "SUCCESS"
-        WARNING = "WARNING"
 
     # 任务类型
     class TaskType(StrEnum):
@@ -169,17 +147,14 @@ class Base:
     API_STREAM_SOURCE_EVENTS: tuple[Event, ...] = (
         Event.PROJECT_LOADED,
         Event.PROJECT_UNLOADED,
+        Event.PROJECT_RUNTIME_REFRESH,
         Event.TRANSLATION_TASK,
         Event.TRANSLATION_REQUEST_STOP,
         Event.TRANSLATION_PROGRESS,
         Event.ANALYSIS_TASK,
         Event.ANALYSIS_REQUEST_STOP,
         Event.ANALYSIS_PROGRESS,
-        Event.WORKBENCH_REFRESH,
-        Event.WORKBENCH_SNAPSHOT,
-        Event.PROOFREADING_REFRESH,
         Event.CONFIG_UPDATED,
-        Event.QUALITY_RULE_UPDATE,
         Event.EXTRA_TS_CONVERSION_PROGRESS,
         Event.EXTRA_TS_CONVERSION_FINISHED,
     )

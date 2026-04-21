@@ -250,10 +250,7 @@ async function* open_json_event_source_stream(args: {
   }
 }
 
-export function open_v2_project_bootstrap_stream(
-  project_path: string,
-): AsyncIterable<EventSourceJsonEvent> {
-  void project_path
+export function open_v2_project_bootstrap_stream(): AsyncIterable<EventSourceJsonEvent> {
   return open_json_event_source_stream({
     path: '/api/v2/project/bootstrap/stream',
     event_types: [

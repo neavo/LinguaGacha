@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildWorkbenchView } from '@/app/state/v2/selectors'
+import { buildWorkbenchView } from '@/app/project-runtime/selectors'
 
 describe('buildWorkbenchView', () => {
   it('直接从 items/files 生成工作台条目', () => {

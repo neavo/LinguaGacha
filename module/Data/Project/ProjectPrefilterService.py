@@ -55,7 +55,6 @@ class ProjectPrefilterService:
         *,
         reason: str,
         lg_path: str,
-        emit_refresh_events: bool = True,
     ) -> tuple[ProjectPrefilterRequest, bool]:
         """压入一条异步预过滤请求。"""
 
@@ -75,7 +74,6 @@ class ProjectPrefilterService:
                 reason=reason,
                 lg_path=lg_path,
                 token=token,
-                emit_refresh_events=emit_refresh_events,
             )
             self.prefilter_latest_request = request
             self.prefilter_pending = True
@@ -88,7 +86,6 @@ class ProjectPrefilterService:
         *,
         reason: str,
         lg_path: str,
-        emit_refresh_events: bool = True,
     ) -> tuple[ProjectPrefilterRequest | None, bool]:
         """压入同步请求。
 
@@ -103,7 +100,6 @@ class ProjectPrefilterService:
                     reason=reason,
                     lg_path=lg_path,
                     token=self.prefilter_active_token,
-                    emit_refresh_events=emit_refresh_events,
                 )
                 self.prefilter_latest_request = request
                 self.prefilter_pending = True
@@ -120,7 +116,6 @@ class ProjectPrefilterService:
                 reason=reason,
                 lg_path=lg_path,
                 token=token,
-                emit_refresh_events=emit_refresh_events,
             )
             self.prefilter_latest_request = request
             self.prefilter_pending = True
@@ -134,7 +129,6 @@ class ProjectPrefilterService:
         reason: str,
         lg_path: str,
         token: int,
-        emit_refresh_events: bool = True,
     ) -> ProjectPrefilterRequest:
         """统一构造冻结请求。"""
 
@@ -146,7 +140,6 @@ class ProjectPrefilterService:
             reason=reason,
             source_language=str(config.source_language),
             mtool_optimizer_enable=bool(config.mtool_optimizer_enable),
-            emit_refresh_events=emit_refresh_events,
         )
 
     def pop_pending_request(self) -> ProjectPrefilterRequest | None:

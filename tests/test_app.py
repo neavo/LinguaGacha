@@ -74,40 +74,6 @@ class RecordingVersionManager:
         self.versions.append(version)
 
 
-def test_cli_mode_does_not_start_local_api_server() -> None:
-    start_calls: list[bool] = []
-
-    class FakeBootstrap:
-        @staticmethod
-        def start() -> object:
-            start_calls.append(True)
-            return object()
-
-    runtime = app_module.start_local_api_server_if_needed(
-        is_cli_mode=True,
-        server_bootstrap=FakeBootstrap,
-    )
-
-    assert runtime is None
-    assert start_calls == []
-
-
-def test_ui_mode_starts_local_api_server() -> None:
-    runtime_token = object()
-
-    class FakeBootstrap:
-        @staticmethod
-        def start() -> object:
-            return runtime_token
-
-    runtime = app_module.start_local_api_server_if_needed(
-        is_cli_mode=False,
-        server_bootstrap=FakeBootstrap,
-    )
-
-    assert runtime is runtime_token
-
-
 @pytest.mark.parametrize(
     ("has_runtime", "project_loaded"),
     [(True, True), (False, False)],

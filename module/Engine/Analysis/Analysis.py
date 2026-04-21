@@ -145,40 +145,16 @@ class Analysis(Base):
 
     def emit_analysis_import_progress_start(self) -> None:
         """导入开始时统一显示处理中提示，并同步写入控制台日志。"""
-        message = Localizer.get().toast_processing
+        message = Localizer.get().task_processing
         LogManager.get().info(message)
-        self.emit(
-            Base.Event.PROGRESS_TOAST,
-            {
-                "sub_event": Base.SubEvent.RUN,
-                "message": message,
-                "indeterminate": True,
-            },
-        )
-
-    def emit_analysis_import_progress_end(self, *, failed: bool) -> None:
-        """统一结束导入中的进度提示，复用窗口层既有的延迟隐藏规则。"""
-        self.emit(
-            Base.Event.PROGRESS_TOAST,
-            {
-                "sub_event": Base.SubEvent.ERROR if failed else Base.SubEvent.DONE,
-            },
-        )
 
     def finish_analysis_import_progress(self, *, failed: bool) -> None:
         """导入结束时统一收掉进度提示和日志分隔，避免不同分支各自收尾。"""
-        self.emit_analysis_import_progress_end(failed=failed)
+        del failed
         LogManager.get().print("")
 
     def emit_analysis_import_rejected(self, message: str) -> None:
         """前置条件不满足时统一发警告，避免入口分支重复堆同样的事件。"""
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.WARNING,
-                "message": message,
-            },
-        )
         self.emit(
             Base.Event.ANALYSIS_IMPORT_GLOSSARY,
             {
@@ -219,7 +195,6 @@ class Analysis(Base):
 
         def task() -> None:
             progress_failed = False
-            toast_payload: dict[str, Any] | None = None
             # 工程已切换时保持静默收口，只通知页面当前导入流程结束即可。
             completion_event: dict[str, Any] = {"sub_event": Base.SubEvent.ERROR}
             try:
@@ -233,29 +208,20 @@ class Analysis(Base):
                         "{COUNT}", str(imported_count)
                     )
                     LogManager.get().info(message)
-                    toast_payload = {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": message,
-                    }
                     completion_event = {
                         "sub_event": Base.SubEvent.DONE,
                         "imported_count": imported_count,
+                        "message": message,
                     }
             except Exception as e:
                 progress_failed = True
                 message = Localizer.get().task_failed
                 LogManager.get().error(message, e)
-                toast_payload = {
-                    "type": Base.ToastType.ERROR,
-                    "message": message,
-                }
                 completion_event = {
                     "sub_event": Base.SubEvent.ERROR,
                     "message": message,
                 }
             finally:
-                if toast_payload is not None:
-                    self.emit(Base.Event.TOAST, toast_payload)
                 self.finish_analysis_import_progress(failed=progress_failed)
                 self.emit(
                     Base.Event.ANALYSIS_IMPORT_GLOSSARY,
@@ -464,10 +430,6 @@ class Analysis(Base):
         except Exception as e:
             self.emit_cli_analysis_export_error(Localizer.get().task_failed, e)
 
-    def emit_analysis_terminal_toast(self, final_status: str) -> None:
-        """分析终态提示只维护一处，避免空跑和正常执行两条路径各改一遍。"""
-        TaskRunnerLifecycle.emit_terminal_toast(self, final_status=final_status)
-
     # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
     def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
         sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
@@ -531,12 +493,17 @@ class Analysis(Base):
             self.cli_auto_export_glossary = bool(
                 data.get("cli_auto_export_glossary", False)
             )
-            if not TaskRunnerLifecycle.ensure_project_loaded(self, dm=dm):
+            if not TaskRunnerLifecycle.ensure_project_loaded(
+                self,
+                dm=dm,
+                task_event=Base.Event.ANALYSIS_TASK,
+            ):
                 return False
 
             self.model = TaskRunnerLifecycle.resolve_active_model(
                 self,
                 config=self.config,
+                task_event=Base.Event.ANALYSIS_TASK,
             )
             if self.model is None:
                 return False
@@ -623,7 +590,6 @@ class Analysis(Base):
                 on_before_execute=lambda: AnalysisTask.log_run_start(self),
                 execute=execute,
                 on_after_execute=AnalysisTask.log_run_finish,
-                terminal_toast=self.emit_analysis_terminal_toast,
                 finalize=lambda final_status: None,
                 cleanup=dm.close_db,
                 after_done=lambda final_status: self.after_analysis_done(

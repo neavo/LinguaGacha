@@ -99,11 +99,9 @@ class ProofreadingEntryPatchService:
     ) -> ProofreadingFilterOptions:
         """统一解析筛选选项，和整页快照保持同一口径。"""
 
-        filters_raw = request.get("filters")
+        filters_raw = request.get("filter_options")
         if not isinstance(filters_raw, dict):
-            filters_raw = request.get("filter_options")
-        if not isinstance(filters_raw, dict):
-            filters_raw = request
+            filters_raw = {}
         request_options = ProofreadingFilterOptions.from_dict(filters_raw)
         return self.merge_filter_options(load_result.filter_options, request_options)
 
@@ -149,45 +147,17 @@ class ProofreadingEntryPatchService:
         *,
         collect_when: Callable[[Item], bool] | None = None,
     ) -> ProofreadingFilterScanResult:
-        """在当前筛选与搜索口径下重建可见条目集。"""
+        """在当前筛选口径下重建可见条目集。"""
 
         options = self.resolve_filter_options(request, load_result)
-        search_keyword, search_is_regex, search_dst_only = self.resolve_search_options(
-            request
-        )
-        enable_search_filter = bool(
-            request.get("enable_search_filter", search_keyword != "")
-        )
-        enable_glossary_term_filter = bool(
-            request.get("enable_glossary_term_filter", True)
-        )
         return self.filter_service.scan_filtered_items(
             load_result.items,
             load_result.warning_map,
             options,
             load_result.checker,
             failed_terms_by_item_key=load_result.failed_terms_by_item_key,
-            search_keyword=search_keyword,
-            search_is_regex=search_is_regex,
-            search_dst_only=search_dst_only,
-            enable_search_filter=enable_search_filter,
-            enable_glossary_term_filter=enable_glossary_term_filter,
             collect_when=collect_when,
         )
-
-    def resolve_search_options(
-        self,
-        request: dict[str, Any],
-    ) -> tuple[str, bool, bool]:
-        """兼容不同调用姿势下的搜索字段。"""
-
-        keyword_raw = request.get("keyword", request.get("search_keyword", ""))
-        keyword = str(keyword_raw)
-        is_regex = bool(request.get("is_regex", request.get("search_is_regex", False)))
-        search_dst_only = bool(
-            request.get("search_dst_only", request.get("search_replace_mode", False))
-        )
-        return keyword, is_regex, search_dst_only
 
     def normalize_item_ids(self, raw_item_ids: Any) -> list[int]:
         """把请求里的条目 id 统一规整成整数列表。"""

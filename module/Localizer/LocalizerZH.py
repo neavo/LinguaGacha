@@ -9,7 +9,7 @@ class LocalizerZH:
     task_failed: str = "任务执行失败 …"
     task_success: str = "任务执行成功 …"
     task_running: str = "任务正在执行中 …"
-    toast_processing: str = "处理中 …"
+    task_processing: str = "处理中 …"
     export_translation_start: str = "生成译文中 …"
     export_translation_done: str = "译文已保存至 [blue]{PATH}[/blue] …"
     export_translation_success: str = "译文生成完成 …"
@@ -19,7 +19,7 @@ class LocalizerZH:
 
     # 主页面
     app_exit_countdown: str = "退出中 … {SECONDS} …"
-    app_new_version_toast: str = "已找到新版本，版本号为 {VERSION}，请点击左下角按钮下载更新 …"
+    app_new_version_found: str = "已找到新版本，版本号为 {VERSION}，请点击左下角按钮下载更新 …"
     app_new_version_failure: str = "新版本下载失败 … "
     app_new_version_success: str = "新版本下载成功 … "
     app_new_version_apply_failed: str = "更新失败，已回滚 …"
@@ -139,7 +139,7 @@ class LocalizerZH:
     project_store_file_not_found: str = "工程文件不存在: {PATH}"
 
     # 翻译
-    translation_page_toast_resetting: str = "正在重置 …"
+    translation_resetting: str = "正在重置 …"
 
     # 分析
     analysis_page_import_success: str = "导入成功，新增 {COUNT} 条 …"
@@ -163,4 +163,4 @@ class LocalizerZH:
     workbench_msg_file_not_found: str = "文件不存在 …"
 
     # 质量类通用
-    quality_default_preset_loaded_toast: str = "已自动加载默认预设：{NAME} …"
+    quality_default_preset_loaded_message: str = "已自动加载默认预设：{NAME} …"

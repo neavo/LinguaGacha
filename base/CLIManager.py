@@ -164,21 +164,6 @@ class CLIManager(Base):
         if sub_event == Base.SubEvent.ERROR:
             self.finish_analysis_exit(self.EXIT_CODE_FAILED)
 
-    def analysis_cli_toast(self, event: Base.Event, data: dict[str, Any]) -> None:
-        """CLI 分析等待导出期间，补上“无可分析条目”这类不会发 DONE 的退出口。"""
-        if event != Base.Event.TOAST:
-            return
-        if self.cli_task != self.Task.ANALYSIS:
-            return
-        if not self.waiting_analysis_export:
-            return
-
-        message = str(data.get("message", ""))
-        if message != Localizer.get().engine_no_items:
-            return
-
-        self.finish_analysis_exit(self.EXIT_CODE_FAILED)
-
     def verify_file(self, path: str) -> bool:
         return os.path.isfile(path)
 
@@ -783,7 +768,6 @@ class CLIManager(Base):
             Base.Event.ANALYSIS_EXPORT_GLOSSARY,
             self.analysis_export_glossary_done,
         )
-        self.subscribe(Base.Event.TOAST, self.analysis_cli_toast)
         self.emit(
             Base.Event.ANALYSIS_TASK,
             {

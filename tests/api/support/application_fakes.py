@@ -49,9 +49,6 @@ class FakeProjectManager:
     def get_lg_path(self) -> str:
         return self.project_path
 
-    def get_supported_extensions(self) -> set[str]:
-        return {".txt", ".json"}
-
     def collect_source_files(self, path: str) -> list[str]:
         return [path]
 
@@ -131,11 +128,8 @@ class FakeTaskDataManager:
         self.replace_all_items_calls: list[list[object]] = []
         self.set_translation_extras_calls: list[dict[str, int | float]] = []
         self.set_project_status_calls: list[Base.ProjectStatus] = []
-        self.run_project_prefilter_calls: list[tuple[object, str, bool]] = []
+        self.run_project_prefilter_calls: list[tuple[object, str]] = []
         self.reset_failed_translation_items_sync_calls: int = 0
-        self.project_item_change_refresh_calls: list[
-            tuple[ProjectItemChange, Base.Event | None]
-        ] = []
         self.clear_analysis_candidates_and_progress_calls: int = 0
         self.reset_failed_analysis_checkpoints_calls: int = 0
         self.refresh_analysis_progress_snapshot_cache_calls: int = 0
@@ -186,9 +180,8 @@ class FakeTaskDataManager:
         config: object,
         *,
         reason: str,
-        emit_refresh_events: bool = True,
     ) -> None:
-        self.run_project_prefilter_calls.append((config, reason, emit_refresh_events))
+        self.run_project_prefilter_calls.append((config, reason))
 
     def clear_analysis_candidates_and_progress(self) -> None:
         self.clear_analysis_candidates_and_progress_calls += 1
@@ -228,14 +221,6 @@ class FakeTaskDataManager:
             dict(self.translation_extras),
         )
 
-    def emit_project_item_change_refresh(
-        self,
-        change: ProjectItemChange,
-        *,
-        source_event: Base.Event | None = None,
-    ) -> None:
-        self.project_item_change_refresh_calls.append((change, source_event))
-
     def import_analysis_candidates(
         self, expected_lg_path: str | None = None
     ) -> int | None:
@@ -252,7 +237,6 @@ class FakeWorkbenchManager:
 
     def __init__(self) -> None:
         self.file_op_running: bool = False
-        self.supported_extensions: set[str] = {".txt", ".json"}
         self.snapshot: dict[str, int | tuple[dict[str, str | int], ...]] = {
             "file_count": 1,
             "total_items": 2,
@@ -270,9 +254,7 @@ class FakeWorkbenchManager:
         }
         self.add_calls: list[str] = []
         self.replace_calls: list[tuple[str, str]] = []
-        self.replace_batch_calls: list[list[tuple[str, str]]] = []
         self.reset_calls: list[str] = []
-        self.reset_batch_calls: list[list[str]] = []
         self.delete_calls: list[str] = []
         self.delete_batch_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
@@ -309,23 +291,14 @@ class FakeWorkbenchManager:
             rel_paths,
         )
 
-    def get_supported_extensions(self) -> set[str]:
-        return set(self.supported_extensions)
-
     def schedule_add_file(self, path: str) -> None:
         self.add_calls.append(path)
 
     def schedule_replace_file(self, rel_path: str, path: str) -> None:
         self.replace_calls.append((rel_path, path))
 
-    def schedule_replace_file_batch(self, operations: list[tuple[str, str]]) -> None:
-        self.replace_batch_calls.append(list(operations))
-
     def schedule_reset_file(self, rel_path: str) -> None:
         self.reset_calls.append(rel_path)
-
-    def schedule_reset_file_batch(self, rel_paths: list[str]) -> None:
-        self.reset_batch_calls.append(list(rel_paths))
 
     def schedule_delete_file(self, rel_path: str) -> None:
         self.delete_calls.append(rel_path)

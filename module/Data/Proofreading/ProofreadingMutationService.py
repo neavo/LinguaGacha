@@ -142,39 +142,6 @@ class ProofreadingMutationService:
             reason=reason,
         )
 
-    def emit_project_item_change(self, change: ProjectItemChange) -> None:
-        """把条目写入后的精确刷新统一补发出去。"""
-
-        emit_change = getattr(
-            self.data_manager, "emit_project_item_change_refresh", None
-        )
-        if callable(emit_change):
-            emit_change(change)
-            return
-
-        emit = getattr(self.data_manager, "emit", None)
-        if not callable(emit):
-            return
-        if change.rel_paths:
-            emit(
-                Base.Event.WORKBENCH_REFRESH,
-                {
-                    "reason": change.reason,
-                    "scope": "file",
-                    "rel_paths": list(change.rel_paths),
-                },
-            )
-        if change.item_ids:
-            emit(
-                Base.Event.PROOFREADING_REFRESH,
-                {
-                    "reason": change.reason,
-                    "scope": "entry",
-                    "item_ids": list(change.item_ids),
-                    "rel_paths": list(change.rel_paths),
-                },
-            )
-
     def save_item(
         self,
         item: Item,
@@ -194,7 +161,6 @@ class ProofreadingMutationService:
                 [saved_item],
                 reason=self.SAVE_ITEM_REASON,
             )
-        self.emit_project_item_change(change)
         return change
 
     def save_all(
@@ -214,7 +180,6 @@ class ProofreadingMutationService:
                 items,
                 reason=self.SAVE_ALL_REASON,
             )
-        self.emit_project_item_change(change)
         return change
 
     def replace_batch(
@@ -234,7 +199,6 @@ class ProofreadingMutationService:
                 items,
                 reason=self.REPLACE_ALL_REASON,
             )
-        self.emit_project_item_change(change)
         return change
 
     @staticmethod
@@ -338,8 +302,6 @@ class ProofreadingMutationService:
             else:
                 change = ProjectItemChange(reason=self.REPLACE_ALL_REASON)
 
-        if change.item_ids:
-            self.emit_project_item_change(change)
         return change
 
     def apply_manual_edit(
@@ -370,5 +332,4 @@ class ProofreadingMutationService:
                 [saved_item],
                 reason=self.SAVE_ITEM_REASON,
             )
-        self.emit_project_item_change(change)
         return change

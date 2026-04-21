@@ -236,19 +236,12 @@ class Translation(Base):
                 dm.run_project_prefilter(
                     self.config,
                     reason="translation_reset",
-                    emit_refresh_events=False,
                 )
             else:
                 reset_result = dm.reset_failed_translation_items_sync()
                 if reset_result is not None:
-                    change, extras = reset_result
+                    _change, extras = reset_result
                     self.extras = extras
-                    emit_change = getattr(dm, "emit_project_item_change_refresh", None)
-                    if callable(emit_change):
-                        emit_change(
-                            change,
-                            source_event=Base.Event.TRANSLATION_RESET_FAILED,
-                        )
 
             self.emit(
                 Base.Event.PROJECT_CHECK,
@@ -258,17 +251,13 @@ class Translation(Base):
         TaskRunnerLifecycle.run_reset_flow(
             self,
             reset_event=reset_event,
-            progress_message=Localizer.get().translation_page_toast_resetting,
+            progress_message=Localizer.get().translation_resetting,
             worker=run_reset_worker,
             thread_factory=threading.Thread,
             ensure_loaded=dm.is_loaded,
         )
 
     # 翻译结果手动导出事件
-
-    def should_emit_export_result_toast(self, source: ExportSource) -> bool:
-        """根据导出来源决定是否展示导出结果提示。"""
-        return source == self.ExportSource.MANUAL
 
     def should_use_runtime_export_items(self, source: ExportSource) -> bool:
         """判断当前导出是否应该优先信任翻译运行态快照。"""
@@ -308,64 +297,53 @@ class Translation(Base):
         apply_mtool_postprocess: bool = True,
     ) -> None:
         """统一执行译文导出流程，避免手动/自动链路的交互与日志分叉。"""
-        emit_result_toast = self.should_emit_export_result_toast(source)
-        progress_toast_active = False
+        source_value = str(source.value)
         try:
             LogManager.get().info(Localizer.get().export_translation_start)
             self.emit(
-                Base.Event.PROGRESS_TOAST,
+                Base.Event.TRANSLATION_EXPORT,
                 {
                     "sub_event": Base.SubEvent.RUN,
+                    "source": source_value,
                     "message": Localizer.get().export_translation_start,
-                    "indeterminate": True,
                 },
             )
-            progress_toast_active = True
 
             items = self.resolve_export_items(source)
             if not items:
+                self.emit(
+                    Base.Event.TRANSLATION_EXPORT,
+                    {
+                        "sub_event": Base.SubEvent.DONE,
+                        "source": source_value,
+                        "empty": True,
+                    },
+                )
                 return
 
             # 自动导出在翻译收尾阶段已对 items_cache 执行过后处理，此处避免重复追加拆分行。
             if apply_mtool_postprocess:
                 self.mtool_optimizer_postprocess(items)
-            self.check_and_wirte_result(items)
-
-            if emit_result_toast:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-                progress_toast_active = False
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().export_translation_success,
-                    },
-                )
+            output_path = self.check_and_wirte_result(items)
+            self.emit(
+                Base.Event.TRANSLATION_EXPORT,
+                {
+                    "sub_event": Base.SubEvent.DONE,
+                    "source": source_value,
+                    "output_path": output_path,
+                    "message": Localizer.get().export_translation_success,
+                },
+            )
         except Exception as e:
             LogManager.get().error(Localizer.get().export_translation_failed, e)
-            if emit_result_toast and progress_toast_active:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
-                progress_toast_active = False
-            if emit_result_toast:
-                self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.ERROR,
-                        "message": Localizer.get().export_translation_failed,
-                    },
-                )
-        finally:
-            if progress_toast_active:
-                self.emit(
-                    Base.Event.PROGRESS_TOAST,
-                    {"sub_event": Base.SubEvent.DONE},
-                )
+            self.emit(
+                Base.Event.TRANSLATION_EXPORT,
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "source": source_value,
+                    "message": Localizer.get().export_translation_failed,
+                },
+            )
 
     def translation_export(self, event: Base.Event, data: dict) -> None:
         if Engine.get().get_status() == Base.TaskStatus.STOPPING:
@@ -398,13 +376,18 @@ class Translation(Base):
             run_state["mode"] = mode
 
             self.config = config if isinstance(config, Config) else Config().load()
-            if not TaskRunnerLifecycle.ensure_project_loaded(self, dm=dm):
+            if not TaskRunnerLifecycle.ensure_project_loaded(
+                self,
+                dm=dm,
+                task_event=Base.Event.TRANSLATION_TASK,
+            ):
                 return False
 
             dm.open_db()
             self.model = TaskRunnerLifecycle.resolve_active_model(
                 self,
                 config=self.config,
+                task_event=Base.Event.TRANSLATION_TASK,
             )
             if self.model is None:
                 return False
@@ -500,7 +483,6 @@ class Translation(Base):
                 on_before_execute=self.log_translation_start,
                 execute=execute,
                 on_after_execute=self.log_translation_finish,
-                terminal_toast=self.emit_translation_terminal_toast,
                 finalize=self.finalize_translation_run,
                 cleanup=self.cleanup_translation_run,
                 after_done=lambda final_status: None,
@@ -544,11 +526,6 @@ class Translation(Base):
         else:
             LogManager.get().warning(Localizer.get().engine_task_fail)
         LogManager.get().print("")
-
-    def emit_translation_terminal_toast(self, final_status: str) -> None:
-        """翻译终态提示仍走共享口径，但保留领域侧可替换入口。"""
-
-        TaskRunnerLifecycle.emit_terminal_toast(self, final_status=final_status)
 
     def update_pipeline_progress(self, extras_snapshot: dict[str, Any]) -> None:
         """提交阶段统一从这里同步控制台进度和 UI 事件。"""
@@ -719,7 +696,7 @@ class Translation(Base):
         LogManager.get().info(Localizer.get().translation_mtool_optimizer_post_log)
 
     # 检查结果并写入文件
-    def check_and_wirte_result(self, items: list[Item]) -> None:
+    def check_and_wirte_result(self, items: list[Item]) -> str:
         # 写入文件并获取实际输出路径（带时间戳）
         output_path = FileManager(self.config).write_to_path(items)
         LogManager.get().print("")
@@ -732,3 +709,4 @@ class Translation(Base):
         # 打开输出文件夹
         if self.config.output_folder_open_on_finish:
             webbrowser.open(os.path.abspath(output_path))
+        return output_path
