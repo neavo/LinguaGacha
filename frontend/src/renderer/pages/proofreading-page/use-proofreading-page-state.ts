@@ -10,6 +10,7 @@ import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
   clone_proofreading_item,
+  compress_proofreading_text,
   create_empty_proofreading_snapshot,
   normalize_proofreading_entry_patch_payload,
   normalize_proofreading_mutation_payload,
@@ -28,6 +29,7 @@ import {
   type ProofreadingSearchScope,
   type ProofreadingSnapshot,
   type ProofreadingSnapshotPayload,
+  type ProofreadingStoreItemRecord,
   type ProofreadingVisibleItem,
 } from '@/pages/proofreading-page/types'
 
@@ -287,6 +289,47 @@ function sort_visible_items(
 
     return compare_text(left_item.row_id, right_item.row_id)
   })
+}
+
+export function buildProofreadingVisibleItems(args: {
+  items: ProofreadingStoreItemRecord[]
+  warningMap: Record<string, string[]>
+  filters: {
+    warning_types: string[]
+  }
+}): ProofreadingVisibleItem[] {
+  const active_warning_types = new Set(args.filters.warning_types)
+
+  return args.items
+    .map((item) => {
+      const warnings = args.warningMap[String(item.item_id)] ?? []
+      return {
+        row_id: build_proofreading_row_id(item.item_id),
+        item: {
+          item_id: item.item_id,
+          file_path: item.file_path,
+          row_number: 0,
+          src: item.src,
+          dst: item.dst,
+          status: item.status,
+          warnings,
+          applied_glossary_terms: [],
+          failed_glossary_terms: [],
+          row_id: build_proofreading_row_id(item.item_id),
+          compressed_src: compress_proofreading_text(item.src),
+          compressed_dst: compress_proofreading_text(item.dst),
+        },
+        compressed_src: compress_proofreading_text(item.src),
+        compressed_dst: compress_proofreading_text(item.dst),
+      }
+    })
+    .filter((entry) => {
+      if (active_warning_types.size === 0) {
+        return true
+      }
+
+      return entry.item.warnings.some((warning) => active_warning_types.has(warning))
+    })
 }
 
 function build_filter_signature(filters: ProofreadingFilterOptions | null): string {
