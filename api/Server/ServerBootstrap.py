@@ -12,6 +12,7 @@ from api.Application.QualityRuleAppService import QualityRuleAppService
 from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.V2.ProjectBootstrapAppService import V2ProjectBootstrapAppService
+from api.Application.V2.ProjectMutationAppService import V2ProjectMutationAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
@@ -26,6 +27,8 @@ from api.Server.Routes.TaskRoutes import TaskRoutes
 from api.Server.Routes.V2.ProjectRoutes import V2ProjectRoutes
 from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
 from module.Data.DataManager import DataManager
+from module.Data.Project.V2.MutationService import V2ProjectMutationService
+from module.Data.Project.V2.RevisionService import V2ProjectRevisionService
 from module.Data.Project.V2.RuntimeService import V2ProjectRuntimeService
 
 
@@ -62,8 +65,12 @@ class ServerBootstrap:
         settings_app_service = SettingsAppService()
         extra_app_service = ExtraAppService()
         model_app_service = ModelAppService()
+        revision_service = V2ProjectRevisionService()
         project_bootstrap_app_service = V2ProjectBootstrapAppService(
             V2ProjectRuntimeService(DataManager.get())
+        )
+        project_mutation_app_service = V2ProjectMutationAppService(
+            V2ProjectMutationService(DataManager.get(), revision_service)
         )
         return cls.start_for_test(
             project_app_service=project_app_service,
@@ -75,6 +82,7 @@ class ServerBootstrap:
             extra_app_service=extra_app_service,
             model_app_service=model_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
+            project_mutation_app_service=project_mutation_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
             as_runtime=True,
         )
@@ -92,6 +100,7 @@ class ServerBootstrap:
         extra_app_service: ExtraAppService | None = None,
         model_app_service: ModelAppService | None = None,
         project_bootstrap_app_service: V2ProjectBootstrapAppService | None = None,
+        project_mutation_app_service: V2ProjectMutationAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
@@ -113,6 +122,7 @@ class ServerBootstrap:
             extra_app_service=extra_app_service,
             model_app_service=model_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
+            project_mutation_app_service=project_mutation_app_service,
         )
         serve_forever_poll_interval = cls.get_serve_forever_poll_interval(
             as_runtime=as_runtime
@@ -157,6 +167,7 @@ class ServerBootstrap:
         extra_app_service: ExtraAppService | None,
         model_app_service: ModelAppService | None,
         project_bootstrap_app_service: V2ProjectBootstrapAppService | None,
+        project_mutation_app_service: V2ProjectMutationAppService | None,
     ) -> ThreadingHTTPServer:
         """按候选端口顺序尝试绑定，确保前后端发现顺序一致。"""
 
@@ -184,6 +195,7 @@ class ServerBootstrap:
             cls.register_v2_routes(
                 core_api_server,
                 project_bootstrap_app_service=project_bootstrap_app_service,
+                project_mutation_app_service=project_mutation_app_service,
             )
 
             try:
@@ -201,12 +213,17 @@ class ServerBootstrap:
         core_api_server: CoreApiServer,
         *,
         project_bootstrap_app_service: V2ProjectBootstrapAppService | None = None,
+        project_mutation_app_service: V2ProjectMutationAppService | None = None,
     ) -> None:
         """统一收口 V2 路由注册入口，方便迁移期按版本逐组接入。"""
 
         del cls
-        if project_bootstrap_app_service is not None:
+        if (
+            project_bootstrap_app_service is not None
+            or project_mutation_app_service is not None
+        ):
             V2ProjectRoutes.register(
                 core_api_server,
                 project_bootstrap_app_service,
+                project_mutation_app_service,
             )

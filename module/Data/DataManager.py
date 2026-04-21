@@ -1047,6 +1047,18 @@ class DataManager(Base):
     def replace_all_items(self, items: list[Item]) -> list[int]:
         return self.item_service.replace_all_items(items)
 
+    def update_item_text(self, item_id: int, dst: str) -> None:
+        """提供 V2 mutation 使用的最小单条文本更新入口。"""
+
+        self.update_batch(
+            items=[
+                {
+                    "id": item_id,
+                    "dst": dst,
+                }
+            ]
+        )
+
     def update_batch(
         self,
         items: list[dict[str, Any]] | None = None,
