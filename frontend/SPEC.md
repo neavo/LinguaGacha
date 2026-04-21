@@ -54,7 +54,7 @@ flowchart LR
 - Electron 前端与 Python Core 的运行时通信统一走 `api/` 暴露的 HTTP / SSE 契约，不直接 import Python 模块。
 - 项目运行态主路径已经切到 V2：渲染层先通过 `/api/v2/project/bootstrap/stream` 建立 `ProjectStore`，再通过 `/api/v2/events/stream` 上的 `project.patch` 合并任务回灌。
 - Python Core 继续作为持久化结果与后台任务执行的事实源；渲染层持有的是项目实体的前端运行时读模型，而不是页面级 `snapshot` 缓存。
-- 工作台与校对页不再把 `/api/workbench/snapshot`、`/api/proofreading/snapshot` 当作主读入口；这些 V1 页面接口只剩迁移期兼容或局部兜底职责。
+- 项目运行态相关的 V1 页面接口与旧 SSE 入口已经从主路径移除；工作台与校对页当前只保留 `/api/v2/project/...` 路径和 `ProjectStore` 派生结果作为运行时事实来源。
 - 若需要新增桥接能力，优先判断它属于桌面壳层能力、前端状态编排还是 Core API 契约，避免把职责堆进单个目录。
 
 ## 渲染层入口

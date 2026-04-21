@@ -84,6 +84,7 @@
 - 应用级通知、桌面运行时上下文、跨页面状态和与 Electron 桥接强耦合的适配逻辑统一收口在 `app/`。
 - `app/state/v2/` 统一承载 `ProjectStore`、bootstrap stream 消费、patch 合并和项目运行态辅助逻辑；新增 V2 协议逻辑优先下沉到这里，而不是继续堆在页面 hook 里。
 - `app/state/desktop-runtime-context.tsx` 当前只保留薄装配职责：持有 `ProjectStore` 实例、对接 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`，并把 `project.patch` 转成页面可消费的变更信号。
+- `app/desktop-api.ts` 当前只暴露 V2 项目运行态入口；项目运行态相关代码不得再重新引入旧 `/api/events/stream` 或非 `/api/v2/...` 的页面级首拉接口。
 - 应用语言的唯一写入口固定在 `app/state/desktop-runtime-context.tsx`；`i18n/` 只允许根据 `settings_snapshot.app_language` 派生渲染语言，不得再维护独立可写 locale 状态。
 
 ### `pages/`

@@ -1,7 +1,6 @@
 from typing import Any
 
 from api.Bridge.EventTopic import EventTopic
-from api.Bridge.ProofreadingRuleImpact import ProofreadingRuleImpact
 from base.Base import Base
 from api.Models.Extra import ExtraTaskState
 
@@ -33,20 +32,6 @@ class EventBridge:
                 EventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("translation", data, stopping=True),
             )
-        elif event == Base.Event.TRANSLATION_RESET_ALL:
-            if self.is_terminal_translation_reset_event(data):
-                return (
-                    EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
-                    self.build_translation_reset_payload(event, data),
-                )
-            return None, {}
-        elif event == Base.Event.TRANSLATION_RESET_FAILED:
-            if data.get("sub_event") == Base.SubEvent.ERROR:
-                return (
-                    EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
-                    self.build_translation_reset_payload(event, data),
-                )
-            return None, {}
         elif event == Base.Event.ANALYSIS_PROGRESS:
             return (
                 EventTopic.TASK_PROGRESS_CHANGED.value,
@@ -78,22 +63,6 @@ class EventBridge:
                     "path": str(data.get("path", "")),
                 },
             )
-        elif event == Base.Event.WORKBENCH_REFRESH:
-            return (
-                EventTopic.WORKBENCH_SNAPSHOT_CHANGED.value,
-                self.build_workbench_refresh_payload(data),
-            )
-        elif event == Base.Event.WORKBENCH_SNAPSHOT:
-            snapshot = data.get("snapshot", {})
-            return (
-                EventTopic.WORKBENCH_SNAPSHOT_CHANGED.value,
-                {"snapshot": snapshot if isinstance(snapshot, dict) else {}},
-            )
-        elif event == Base.Event.PROOFREADING_REFRESH:
-            return (
-                EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
-                self.build_proofreading_refresh_payload(data),
-            )
         elif event == Base.Event.CONFIG_UPDATED:
             keys = data.get("keys", [])
             normalized_keys = (
@@ -117,21 +86,6 @@ class EventBridge:
                 EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
                 self.build_extra_task_payload(data, finished=True),
             )
-        elif event == Base.Event.QUALITY_RULE_UPDATE:
-            relevant_rule_types, relevant_meta_keys = (
-                ProofreadingRuleImpact.extract_relevant_rule_update(data)
-            )
-            if relevant_rule_types or relevant_meta_keys:
-                return (
-                    EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value,
-                    self.build_quality_rule_update_payload(
-                        data,
-                        relevant_rule_types=relevant_rule_types,
-                        relevant_meta_keys=relevant_meta_keys,
-                    ),
-                )
-            else:
-                return None, {}
         else:
             return None, {}
 
@@ -224,140 +178,3 @@ class EventBridge:
             "finished": finished,
         }
 
-    def is_terminal_translation_reset_event(self, data: dict[str, Any]) -> bool:
-        """只在 reset 进入终态时通知校对失效，避免请求态触发无意义重刷。"""
-
-        sub_event = data.get("sub_event")
-        return sub_event in (Base.SubEvent.DONE, Base.SubEvent.ERROR)
-
-    def build_translation_reset_payload(
-        self,
-        event: Base.Event,
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        """把翻译 reset 收口成稳定的 proofreading 失效原因，供 Electron 前端复用。"""
-
-        if event == Base.Event.TRANSLATION_RESET_ALL:
-            reset_scope = "all"
-        else:
-            reset_scope = "failed"
-
-        sub_event = data.get("sub_event")
-        if sub_event == Base.SubEvent.ERROR:
-            reason = "translation_reset_error"
-        else:
-            reason = "translation_reset"
-
-        return {
-            "reason": reason,
-            "reset_scope": reset_scope,
-        }
-
-    def build_proofreading_refresh_payload(
-        self,
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        """把校对刷新请求裁成稳定的最小失效载荷。"""
-
-        payload: dict[str, Any] = {
-            "reason": str(data.get("reason", "")),
-            "scope": str(data.get("scope", "global") or "global"),
-        }
-
-        keys = data.get("keys")
-        if isinstance(keys, list):
-            payload["keys"] = [str(key) for key in keys]
-
-        item_ids = data.get("item_ids")
-        if isinstance(item_ids, list):
-            payload["item_ids"] = self.normalize_item_ids(item_ids)
-
-        rel_paths = data.get("rel_paths")
-        if isinstance(rel_paths, list):
-            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
-
-        removed_rel_paths = data.get("removed_rel_paths")
-        if isinstance(removed_rel_paths, list):
-            payload["removed_rel_paths"] = [
-                str(rel_path) for rel_path in removed_rel_paths
-            ]
-
-        source_event = data.get("source_event")
-        if source_event is not None:
-            payload["source_event"] = str(getattr(source_event, "value", source_event))
-
-        trigger_reason = str(data.get("trigger_reason", ""))
-        if trigger_reason != "":
-            payload["trigger_reason"] = trigger_reason
-
-        return payload
-
-    def build_quality_rule_update_payload(
-        self,
-        data: dict[str, Any],
-        *,
-        relevant_rule_types: list[str],
-        relevant_meta_keys: list[str],
-    ) -> dict[str, Any]:
-        """把规则更新裁成带精确范围的校对失效载荷。"""
-
-        payload: dict[str, Any] = {
-            "reason": "quality_rule_update",
-            "scope": str(data.get("scope", "global") or "global"),
-            "rule_types": relevant_rule_types,
-            "meta_keys": relevant_meta_keys,
-        }
-
-        item_ids = data.get("item_ids")
-        if isinstance(item_ids, list):
-            payload["item_ids"] = self.normalize_item_ids(item_ids)
-
-        rel_paths = data.get("rel_paths")
-        if isinstance(rel_paths, list):
-            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
-
-        return payload
-
-    def normalize_item_ids(self, raw_item_ids: list[Any]) -> list[int]:
-        """把条目 id 收口成稳定整数列表。"""
-
-        item_ids: list[int] = []
-        seen_item_ids: set[int] = set()
-        for raw_item_id in raw_item_ids:
-            if isinstance(raw_item_id, bool):
-                continue
-            try:
-                item_id = int(raw_item_id)
-            except TypeError, ValueError:
-                continue
-            if item_id in seen_item_ids:
-                continue
-            seen_item_ids.add(item_id)
-            item_ids.append(item_id)
-        return item_ids
-
-    def build_workbench_refresh_payload(
-        self,
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        """把工作台刷新事件裁成稳定的结构化载荷。"""
-
-        payload: dict[str, Any] = {
-            "reason": str(data.get("reason", "")),
-            "scope": str(data.get("scope", "global") or "global"),
-        }
-
-        rel_paths = data.get("rel_paths")
-        if isinstance(rel_paths, list):
-            payload["rel_paths"] = [str(rel_path) for rel_path in rel_paths]
-
-        removed_rel_paths = data.get("removed_rel_paths")
-        if isinstance(removed_rel_paths, list):
-            payload["removed_rel_paths"] = [
-                str(rel_path) for rel_path in removed_rel_paths
-            ]
-
-        if "order_changed" in data:
-            payload["order_changed"] = bool(data.get("order_changed"))
-
-        return payload

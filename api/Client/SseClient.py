@@ -9,7 +9,7 @@ from api.Client.ApiStateStore import ApiStateStore
 class SseClient:
     """后台消费本地 SSE，并把事件合并进状态仓库。"""
 
-    STREAM_PATH: str = "/api/events/stream"
+    STREAM_PATH: str = "/api/v2/events/stream"
 
     def __init__(self, base_url: str, api_state_store: ApiStateStore) -> None:
         self.base_url = base_url.rstrip("/")

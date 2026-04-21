@@ -10,9 +10,7 @@ def test_event_topic_values_match_public_contract() -> None:
         "PROJECT_CHANGED": "project.changed",
         "TASK_STATUS_CHANGED": "task.status_changed",
         "TASK_PROGRESS_CHANGED": "task.progress_changed",
-        "WORKBENCH_SNAPSHOT_CHANGED": "workbench.snapshot_changed",
         "SETTINGS_CHANGED": "settings.changed",
-        "PROOFREADING_SNAPSHOT_INVALIDATED": "proofreading.snapshot_invalidated",
         "EXTRA_TS_CONVERSION_PROGRESS": "extra.ts_conversion_progress",
         "EXTRA_TS_CONVERSION_FINISHED": "extra.ts_conversion_finished",
     }

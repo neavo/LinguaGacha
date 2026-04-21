@@ -57,6 +57,8 @@ flowchart TD
 | 任务调度与请求生命周期 | `docs/ARCHITECTURE.md` -> `module/Engine/Engine.py` -> `module/Engine/*` |
 | 文件导入、资产解析、导出格式 | `docs/ARCHITECTURE.md` -> `module/File/FileManager.py` -> `module/File/*` |
 
+当前项目运行态协议已经完成 V1 退场；涉及项目加载、工作台、校对、规则、模型、任务回灌与事件流时，默认只阅读 `/api/v2/...` 与 `V2` / `v2` 边界目录对应的实现与文档。
+
 ## 模块文档索引
 | 文档 | 对应目录 | 说明 |
 | --- | --- | --- |

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from typing import Callable
 
+from api.Bridge.EventBridge import EventBridge
 from base.Base import Base
 
 
@@ -18,6 +19,7 @@ class V2EventBridge:
     ) -> None:
         self.runtime_service = runtime_service
         self.task_snapshot_builder = task_snapshot_builder
+        self.event_bridge = EventBridge()
 
     def map_event(
         self,
@@ -31,6 +33,9 @@ class V2EventBridge:
 
         if self.is_analysis_done_event(event, data):
             return self.PROJECT_PATCH_TOPIC, self.build_analysis_task_patch(data)
+
+        if isinstance(event, Base.Event):
+            return self.event_bridge.map_event(event, data)
 
         return None, {}
 

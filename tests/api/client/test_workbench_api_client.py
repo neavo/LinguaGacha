@@ -4,7 +4,7 @@ from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from api.Models.Workbench import WorkbenchSnapshot
-from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
+from api.Server.Routes.V2.ProjectRoutes import V2ProjectRoutes
 from tests.api.support.application_fakes import FakeWorkbenchManager
 import pytest
 
@@ -46,14 +46,14 @@ def test_workbench_api_client_reorder_files_forwards_payload(
         (
             "add_file",
             {"path": "script/c.txt"},
-            (WorkbenchRoutes.ADD_FILE_PATH, {"path": "script/c.txt"}),
+            (V2ProjectRoutes.WORKBENCH_ADD_FILE_PATH, {"path": "script/c.txt"}),
             {"accepted": True},
         ),
         (
             "replace_file",
             {"rel_path": "script/a.txt", "path": "demo/a.txt"},
             (
-                WorkbenchRoutes.REPLACE_FILE_PATH,
+                V2ProjectRoutes.WORKBENCH_REPLACE_FILE_PATH,
                 {"rel_path": "script/a.txt", "path": "demo/a.txt"},
             ),
             {"accepted": True},
@@ -62,7 +62,7 @@ def test_workbench_api_client_reorder_files_forwards_payload(
             "replace_file_batch",
             {"operations": [{"rel_path": "script/a.txt", "path": "demo/a.txt"}]},
             (
-                WorkbenchRoutes.REPLACE_FILE_BATCH_PATH,
+                V2ProjectRoutes.WORKBENCH_REPLACE_FILE_BATCH_PATH,
                 {"operations": [{"rel_path": "script/a.txt", "path": "demo/a.txt"}]},
             ),
             {"accepted": True},
@@ -70,25 +70,25 @@ def test_workbench_api_client_reorder_files_forwards_payload(
         (
             "reset_file",
             {"rel_path": "script/a.txt"},
-            (WorkbenchRoutes.RESET_FILE_PATH, {"rel_path": "script/a.txt"}),
+            (V2ProjectRoutes.WORKBENCH_RESET_FILE_PATH, {"rel_path": "script/a.txt"}),
             {"accepted": True},
         ),
         (
             "reset_file_batch",
             {"rel_paths": ["script/a.txt"]},
-            (WorkbenchRoutes.RESET_FILE_BATCH_PATH, {"rel_paths": ["script/a.txt"]}),
+            (V2ProjectRoutes.WORKBENCH_RESET_FILE_BATCH_PATH, {"rel_paths": ["script/a.txt"]}),
             {"accepted": True},
         ),
         (
             "delete_file",
             {"rel_path": "script/a.txt"},
-            (WorkbenchRoutes.DELETE_FILE_PATH, {"rel_path": "script/a.txt"}),
+            (V2ProjectRoutes.WORKBENCH_DELETE_FILE_PATH, {"rel_path": "script/a.txt"}),
             {"accepted": True},
         ),
         (
             "delete_file_batch",
             {"rel_paths": ["script/a.txt"]},
-            (WorkbenchRoutes.DELETE_FILE_BATCH_PATH, {"rel_paths": ["script/a.txt"]}),
+            (V2ProjectRoutes.WORKBENCH_DELETE_FILE_BATCH_PATH, {"rel_paths": ["script/a.txt"]}),
             {"accepted": True},
         ),
     ],
@@ -112,7 +112,7 @@ def test_workbench_api_client_forwards_mutation_payloads(
 def test_workbench_api_client_reads_file_patch_payload(recording_api_client) -> None:
     workbench_client = WorkbenchApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        WorkbenchRoutes.FILE_PATCH_PATH,
+        V2ProjectRoutes.WORKBENCH_FILE_PATCH_PATH,
         {"entries": [{"rel_path": "script/a.txt"}], "order_changed": True},
     )
 
@@ -123,7 +123,7 @@ def test_workbench_api_client_reads_file_patch_payload(recording_api_client) -> 
     )
 
     assert recording_api_client.post_requests[-1] == (
-        WorkbenchRoutes.FILE_PATCH_PATH,
+        V2ProjectRoutes.WORKBENCH_FILE_PATCH_PATH,
         {
             "rel_paths": ["script/a.txt"],
             "removed_rel_paths": ["script/b.txt"],
@@ -139,7 +139,7 @@ def test_workbench_api_client_reads_file_patch_payload(recording_api_client) -> 
 def test_workbench_api_client_reads_supported_extensions(recording_api_client) -> None:
     workbench_client = WorkbenchApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        WorkbenchRoutes.EXTENSIONS_PATH,
+        V2ProjectRoutes.WORKBENCH_EXTENSIONS_PATH,
         {"extensions": [".txt", 1]},
     )
 

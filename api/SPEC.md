@@ -60,7 +60,7 @@ flowchart LR
 
 - `ServerBootstrap.start()` 负责组装各个 `*AppService`，再统一注册到 `CoreApiServer`。
 - `CoreApiServer.register_routes()` 只注册基础健康检查；业务路由由 `api/Server/Routes/*.py` 追加注册。
-- 迁移期同时存在两条 SSE 入口：`EventRoutes` 暴露 `/api/events/stream` 供 V1 存量场景使用，`api/Server/Routes/V2/EventRoutes.py` 暴露 `/api/v2/events/stream` 供 V2 `ProjectStore` 消费。
+- 当前项目运行态相关 SSE 入口已经统一收口到 `api/Server/Routes/V2/EventRoutes.py` 暴露的 `/api/v2/events/stream`；旧 `/api/events/stream` 已删除。
 
 ## 3. 通用协议
 
@@ -68,7 +68,6 @@ flowchart LR
 
 - 当前 `GET` 接口包括：
   - `/api/health`
-  - `/api/events/stream`
   - `/api/v2/events/stream`
   - `/api/v2/project/bootstrap/stream`
 - 其余公开接口统一使用 `POST + JSON body`。
@@ -129,36 +128,18 @@ data: {"task_type":"translation","line":3}
 
 ### 3.4 当前公开 topic
 
-V1 `/api/events/stream` 仍保留以下 topic：
-
-| topic | 载荷用途 |
-| --- | --- |
-| `project.changed` | 通知工程加载态和当前路径变化 |
-| `task.status_changed` | 通知翻译 / 分析任务生命周期变化 |
-| `task.progress_changed` | 通知翻译 / 分析任务进度字段变化 |
-| `workbench.snapshot_changed` | 通知工作台快照或刷新原因变化 |
-| `settings.changed` | 通知设置字段变化 |
-| `proofreading.snapshot_invalidated` | 通知校对快照失效，需要重新拉取 |
-| `extra.ts_conversion_progress` | 通知繁简转换长任务进度 |
-| `extra.ts_conversion_finished` | 通知繁简转换长任务终态 |
-
-当前 payload 摘要：
-
-| topic | 当前稳定字段 |
-| --- | --- |
-| `project.changed` | `loaded`、`path` |
-| `task.status_changed` | `task_type`、`status`、`busy` |
-| `task.progress_changed` | `task_type` 以及当前事件中实际出现的进度字段；不会强行补齐缺失字段 |
-| `workbench.snapshot_changed` | `reason`、`scope`，以及按文件场景可选的 `rel_paths`、`removed_rel_paths`、`order_changed`；仍兼容 `snapshot` 全量载荷 |
-| `settings.changed` | `keys`，以及可选的 `settings` 子集 |
-| `proofreading.snapshot_invalidated` | `reason`、`scope`，以及按来源可选的 `item_ids`、`rule_types`、`meta_keys`、`reset_scope`、`keys`、`rel_paths`、`removed_rel_paths`、`source_event`、`trigger_reason` |
-| `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | `task_id`、`phase`、`message`、`current`、`total`、`finished` |
-
-V2 `/api/v2/events/stream` 当前公开的主 topic 为：
+项目运行态相关 topic 当前统一由 `/api/v2/events/stream` 暴露：
 
 | topic | 当前稳定字段 | 用途 |
 | --- | --- | --- |
-| `project.patch` | `source`、`projectRevision`、`updatedSections`、`patch` | 以项目领域 patch 回灌 `ProjectStore`，替代页面级 invalidation |
+| `project.changed` | `loaded`、`path` | 通知工程加载态和当前路径变化 |
+| `task.status_changed` | `task_type`、`status`、`busy` | 通知翻译 / 分析任务生命周期变化 |
+| `task.progress_changed` | `task_type` 以及当前事件中实际出现的进度字段；不会强行补齐缺失字段 | 通知翻译 / 分析任务进度字段变化 |
+| `settings.changed` | `keys`，以及可选的 `settings` 子集 | 通知设置字段变化 |
+| `project.patch` | `source`、`projectRevision`、`updatedSections`、`patch`，以及可选 `sectionRevisions` | 以项目领域 patch 回灌 `ProjectStore`，替代页面级 invalidation |
+| `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | `task_id`、`phase`、`message`、`current`、`total`、`finished` | 通知繁简转换长任务进度与终态 |
+
+`workbench.snapshot_changed` 与 `proofreading.snapshot_invalidated` 已从公开协议中删除，不再作为主路径事件存在。
 
 ### 3.5 Python 侧 SSE 消费现状
 
@@ -168,10 +149,9 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
   - `project.changed`
   - `task.status_changed`
   - `task.progress_changed`
-  - `proofreading.snapshot_invalidated`
   - `extra.ts_conversion_progress`
   - `extra.ts_conversion_finished`
-- `settings.changed` 与 `workbench.snapshot_changed` 当前属于通知型事件，`ApiStateStore` 不缓存完整快照。
+- `settings.changed` 与 `project.patch` 当前属于通知型事件，`ApiStateStore` 不缓存完整快照。
 
 ## 4. HTTP 接口目录
 
@@ -182,7 +162,6 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 | 方法 | 路径 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | `{"status": "ok", "service": "linguagacha-core"}` | 渲染层探活与 base URL 确认入口 |
-| `GET` | `/api/events/stream` | SSE 流 | V1 存量事件流入口 |
 | `GET` | `/api/v2/events/stream` | SSE 流 | V2 `project.patch` 事件流入口 |
 | `GET` | `/api/v2/project/bootstrap/stream` | SSE 流 | 当前已加载项目的 V2 bootstrap 分段首包 |
 
@@ -190,13 +169,13 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `/api/project/load` | `{"path": str}` | `{"project": ProjectSnapshotPayload}` | 加载已有工程 |
-| `/api/project/create` | `{"source_path": str, "path": str}` | `{"project": ProjectSnapshotPayload}` | 创建新工程 |
-| `/api/project/snapshot` | `{}` | `{"project": ProjectSnapshotPayload}` | 读取当前工程快照 |
-| `/api/project/unload` | `{}` | `{"project": ProjectSnapshotPayload}` | 卸载当前工程 |
-| `/api/project/extensions` | `{}` | `{"extensions": list[str]}` | 读取导入支持的文件扩展名 |
-| `/api/project/source-files` | `{"path": str}` | `{"source_files": list[str]}` | 扫描给定路径下可导入源文件 |
-| `/api/project/preview` | `{"path": str}` | `{"preview": ProjectPreviewPayload}` | 读取指定工程的摘要 |
+| `/api/v2/project/load` | `{"path": str}` | `{"project": ProjectSnapshotPayload}` | 加载已有工程 |
+| `/api/v2/project/create` | `{"source_path": str, "path": str}` | `{"project": ProjectSnapshotPayload}` | 创建新工程 |
+| `/api/v2/project/snapshot` | `{}` | `{"project": ProjectSnapshotPayload}` | 读取当前工程快照 |
+| `/api/v2/project/unload` | `{}` | `{"project": ProjectSnapshotPayload}` | 卸载当前工程 |
+| `/api/v2/project/extensions` | `{}` | `{"extensions": list[str]}` | 读取导入支持的文件扩展名 |
+| `/api/v2/project/source-files` | `{"path": str}` | `{"source_files": list[str]}` | 扫描给定路径下可导入源文件 |
+| `/api/v2/project/preview` | `{"path": str}` | `{"preview": ProjectPreviewPayload}` | 读取指定工程的摘要 |
 
 `ProjectSnapshotPayload` 当前稳定字段：
 
@@ -224,17 +203,17 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `/api/tasks/start-translation` | `{"mode": "NEW" \| "CONTINUE"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理翻译任务 |
-| `/api/tasks/stop-translation` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止翻译任务 |
-| `/api/tasks/reset-translation-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步重置全部翻译进度 |
-| `/api/tasks/reset-translation-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败翻译条目 |
-| `/api/tasks/start-analysis` | `{"mode": "NEW" \| "CONTINUE" \| "RESET"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理分析任务 |
-| `/api/tasks/stop-analysis` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止分析任务 |
-| `/api/tasks/reset-analysis-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步清空分析进度与候选 |
-| `/api/tasks/reset-analysis-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败分析进度 |
-| `/api/tasks/import-analysis-glossary` | `{}` | `{"accepted": true, "imported_count": int, "task": TaskSnapshotPayload}` | 把分析候选导入术语表 |
-| `/api/tasks/snapshot` | `{}` 或 `{"task_type": "translation" \| "analysis"}` | `{"task": TaskSnapshotPayload}` | 读取当前任务快照 |
-| `/api/tasks/export-translation` | `{}` | `{"accepted": true}` | 请求导出当前工程译文 |
+| `/api/v2/tasks/start-translation` | `{"mode": "NEW" \| "CONTINUE"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理翻译任务 |
+| `/api/v2/tasks/stop-translation` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止翻译任务 |
+| `/api/v2/tasks/reset-translation-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步重置全部翻译进度 |
+| `/api/v2/tasks/reset-translation-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败翻译条目 |
+| `/api/v2/tasks/start-analysis` | `{"mode": "NEW" \| "CONTINUE" \| "RESET"}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 受理分析任务 |
+| `/api/v2/tasks/stop-analysis` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 请求停止分析任务 |
+| `/api/v2/tasks/reset-analysis-all` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步清空分析进度与候选 |
+| `/api/v2/tasks/reset-analysis-failed` | `{}` | `{"accepted": true, "task": TaskSnapshotPayload}` | 同步只重置失败分析进度 |
+| `/api/v2/tasks/import-analysis-glossary` | `{}` | `{"accepted": true, "imported_count": int, "task": TaskSnapshotPayload}` | 把分析候选导入术语表 |
+| `/api/v2/tasks/snapshot` | `{}` 或 `{"task_type": "translation" \| "analysis"}` | `{"task": TaskSnapshotPayload}` | 读取当前任务快照 |
+| `/api/v2/tasks/export-translation` | `{}` | `{"accepted": true}` | 请求导出当前工程译文 |
 
 `TaskSnapshotPayload` 当前稳定字段：
 
@@ -263,17 +242,17 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `/api/workbench/snapshot` | `{}` | `{"snapshot": WorkbenchSnapshotPayload}` | 读取工作台快照 |
-| `/api/workbench/add-file` | `{"path": str}` | `{"accepted": true}` | 调度新增文件 |
-| `/api/workbench/replace-file` | `{"rel_path": str, "path": str}` | `{"accepted": true}` | 调度替换文件 |
-| `/api/workbench/replace-file-batch` | `{"operations": list[{"rel_path": str, "path": str}]}` | `{"accepted": true}` | 调度批量替换文件 |
-| `/api/workbench/reset-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度重置文件 |
-| `/api/workbench/reset-file-batch` | `{"rel_paths": list[str]}` | `{"accepted": true}` | 调度批量重置文件 |
-| `/api/workbench/delete-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度删除文件 |
-| `/api/workbench/delete-file-batch` | `{"rel_paths": list[str]}` | `{"accepted": true}` | 调度批量删除文件 |
-| `/api/workbench/reorder-files` | `{"ordered_rel_paths": list[str]}` | `{"accepted": true}` | 持久化文件顺序 |
-| `/api/workbench/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str], "include_order": bool}` | `{"patch": WorkbenchFilePatchPayload}` | 读取工作台文件级补丁 |
-| `/api/workbench/extensions` | `{}` | `{"extensions": list[str]}` | 读取工作台导入支持扩展名 |
+| `/api/v2/project/workbench/snapshot` | `{}` | `{"snapshot": WorkbenchSnapshotPayload}` | 读取工作台快照 |
+| `/api/v2/project/workbench/add-file` | `{"path": str}` | `{"accepted": true}` | 调度新增文件 |
+| `/api/v2/project/workbench/replace-file` | `{"rel_path": str, "path": str}` | `{"accepted": true}` | 调度替换文件 |
+| `/api/v2/project/workbench/replace-file-batch` | `{"operations": list[{"rel_path": str, "path": str}]}` | `{"accepted": true}` | 调度批量替换文件 |
+| `/api/v2/project/workbench/reset-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度重置文件 |
+| `/api/v2/project/workbench/reset-file-batch` | `{"rel_paths": list[str]}` | `{"accepted": true}` | 调度批量重置文件 |
+| `/api/v2/project/workbench/delete-file` | `{"rel_path": str}` | `{"accepted": true}` | 调度删除文件 |
+| `/api/v2/project/workbench/delete-file-batch` | `{"rel_paths": list[str]}` | `{"accepted": true}` | 调度批量删除文件 |
+| `/api/v2/project/workbench/reorder-files` | `{"ordered_rel_paths": list[str]}` | `{"accepted": true}` | 持久化文件顺序 |
+| `/api/v2/project/workbench/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str], "include_order": bool}` | `{"patch": WorkbenchFilePatchPayload}` | 读取工作台文件级补丁 |
+| `/api/v2/project/workbench/extensions` | `{}` | `{"extensions": list[str]}` | 读取工作台导入支持扩展名 |
 
 `WorkbenchSnapshotPayload` 当前稳定字段：
 
@@ -304,7 +283,7 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 - `reorder-files` 的后端校验落在 `ProjectFileService.reorder_files()`：`ordered_rel_paths` 必须与当前工程文件集合完全一致，长度和元素集合都要匹配。
 - `replace-file-batch`、`reset-file-batch`、`delete-file-batch` 当前都是一次请求内完成一次事务、一次缓存失效和一次结构化刷新事件。
 - 批量文件操作默认是“全成或全败”；其中 `replace-file-batch` 还会拒绝同批源路径与目标路径发生重名链冲突的情况。
-- 工作台文件命令接口仍只返回 `accepted`；页面运行时现在依赖 `workbench.snapshot_changed` 的结构化 payload 再调用 `/api/workbench/file-patch` 合并本地缓存。
+- 工作台文件命令接口仍只返回 `accepted`；页面运行时当前只在显式文件操作后按需调用 `/api/v2/project/workbench/file-patch` 合并局部变更，不再依赖 `workbench.snapshot_changed`。
 
 ### 4.5 Settings
 
@@ -353,15 +332,15 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `/api/models/snapshot` | `{}` | `{"snapshot": ModelPageSnapshotPayload}` | 读取模型页完整快照 |
-| `/api/models/update` | `{"model_id": str, "patch": dict}` | `{"snapshot": ModelPageSnapshotPayload}` | 局部更新模型配置 |
-| `/api/models/activate` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 切换激活模型 |
-| `/api/models/add` | `{"model_type": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 新增模型 |
-| `/api/models/delete` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 删除模型 |
-| `/api/models/reset-preset` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 重置预设模型 |
-| `/api/models/reorder` | `{"ordered_model_ids": list[str]}` 或兼容 `{"model_id": str, "operation": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 模型排序 |
-| `/api/models/list-available` | `{"model_id": str}` | `{"models": list[str]}` | 查询供应商可用模型列表 |
-| `/api/models/test` | `{"model_id": str}` | 原始测试结果字典 | 执行模型连通性 / 配置测试 |
+| `/api/v2/models/snapshot` | `{}` | `{"snapshot": ModelPageSnapshotPayload}` | 读取模型页完整快照 |
+| `/api/v2/models/update` | `{"model_id": str, "patch": dict}` | `{"snapshot": ModelPageSnapshotPayload}` | 局部更新模型配置 |
+| `/api/v2/models/activate` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 切换激活模型 |
+| `/api/v2/models/add` | `{"model_type": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 新增模型 |
+| `/api/v2/models/delete` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 删除模型 |
+| `/api/v2/models/reset-preset` | `{"model_id": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 重置预设模型 |
+| `/api/v2/models/reorder` | `{"ordered_model_ids": list[str]}` 或兼容 `{"model_id": str, "operation": str}` | `{"snapshot": ModelPageSnapshotPayload}` | 模型排序 |
+| `/api/v2/models/list-available` | `{"model_id": str}` | `{"models": list[str]}` | 查询供应商可用模型列表 |
+| `/api/v2/models/test` | `{"model_id": str}` | 原始测试结果字典 | 执行模型连通性 / 配置测试 |
 
 `ModelPageSnapshotPayload` 当前稳定字段：
 
@@ -396,18 +375,18 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `/api/quality/rules/snapshot` | `{"rule_type": str}` | `{"snapshot": QualityRuleSnapshotPayload}` | 读取规则快照 |
-| `/api/quality/rules/update-meta` | `{"rule_type": str, "expected_revision": int, "meta": dict}` | `{"snapshot": QualityRuleSnapshotPayload}` | 更新规则元信息 |
-| `/api/quality/rules/save-entries` | `{"rule_type": str, "expected_revision": int, "entries": list[dict]}` | `{"snapshot": QualityRuleSnapshotPayload}` | 保存规则条目 |
-| `/api/quality/rules/import` | `{"rule_type": str, "expected_revision": int, "path": str}` | `{"entries": list[dict]}` | 从本地文件导入规则条目 |
-| `/api/quality/rules/export` | `{"rule_type": str, "path": str, "entries": list[dict]}` | `{"path": str}` | 导出规则条目 |
-| `/api/quality/rules/presets` | `{"preset_dir_name": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出规则预设 |
-| `/api/quality/rules/presets/read` | `{"preset_dir_name": str, "virtual_id": str}` | `{"entries": list[dict]}` | 读取规则预设正文 |
-| `/api/quality/rules/presets/save` | `{"preset_dir_name": str, "name": str, "entries": list[dict]}` | `{"item": dict}` | 保存规则用户预设 |
-| `/api/quality/rules/presets/rename` | `{"preset_dir_name": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名规则用户预设 |
-| `/api/quality/rules/presets/delete` | `{"preset_dir_name": str, "virtual_id": str}` | `{"path": str}` | 删除规则用户预设 |
-| `/api/quality/rules/query-proofreading` | `{"rule_type": str, "entry": dict}` | `{"query": ProofreadingLookupPayload}` | 把规则条目转换成校对查询 |
-| `/api/quality/rules/statistics` | `{"rules": list[dict], "relation_candidates": list[dict]}` | `{"statistics": QualityRuleStatisticsSnapshot}` | 构建规则统计快照 |
+| `/api/v2/quality/rules/snapshot` | `{"rule_type": str}` | `{"snapshot": QualityRuleSnapshotPayload}` | 读取规则快照 |
+| `/api/v2/quality/rules/update-meta` | `{"rule_type": str, "expected_revision": int, "meta": dict}` | `{"snapshot": QualityRuleSnapshotPayload}` | 更新规则元信息 |
+| `/api/v2/quality/rules/save-entries` | `{"rule_type": str, "expected_revision": int, "entries": list[dict]}` | `{"snapshot": QualityRuleSnapshotPayload}` | 保存规则条目 |
+| `/api/v2/quality/rules/import` | `{"rule_type": str, "expected_revision": int, "path": str}` | `{"entries": list[dict]}` | 从本地文件导入规则条目 |
+| `/api/v2/quality/rules/export` | `{"rule_type": str, "path": str, "entries": list[dict]}` | `{"path": str}` | 导出规则条目 |
+| `/api/v2/quality/rules/presets` | `{"preset_dir_name": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出规则预设 |
+| `/api/v2/quality/rules/presets/read` | `{"preset_dir_name": str, "virtual_id": str}` | `{"entries": list[dict]}` | 读取规则预设正文 |
+| `/api/v2/quality/rules/presets/save` | `{"preset_dir_name": str, "name": str, "entries": list[dict]}` | `{"item": dict}` | 保存规则用户预设 |
+| `/api/v2/quality/rules/presets/rename` | `{"preset_dir_name": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名规则用户预设 |
+| `/api/v2/quality/rules/presets/delete` | `{"preset_dir_name": str, "virtual_id": str}` | `{"path": str}` | 删除规则用户预设 |
+| `/api/v2/quality/rules/query-proofreading` | `{"rule_type": str, "entry": dict}` | `{"query": ProofreadingLookupPayload}` | 把规则条目转换成校对查询 |
+| `/api/v2/quality/rules/statistics` | `{"rules": list[dict], "relation_candidates": list[dict]}` | `{"statistics": QualityRuleStatisticsSnapshot}` | 构建规则统计快照 |
 
 `rule_type` 当前实际使用值：
 
@@ -436,16 +415,16 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `/api/quality/prompts/snapshot` | `{"task_type": "translation" \| "analysis"}` | `{"prompt": dict}` | 读取提示词快照 |
-| `/api/quality/prompts/template` | `{"task_type": "translation" \| "analysis"}` | `{"template": {"default_text": str, "prefix_text": str, "suffix_text": str}}` | 读取提示词模板文本 |
-| `/api/quality/prompts/save` | `{"task_type": str, "expected_revision": int, "text": str, "enabled": bool \| null}` | `{"prompt": dict}` | 保存提示词 |
-| `/api/quality/prompts/import` | `{"task_type": str, "path": str, "expected_revision": int, "enabled": bool \| null}` | `{"prompt": dict}` | 从本地文件导入提示词 |
-| `/api/quality/prompts/export` | `{"task_type": str, "path": str}` | `{"path": str}` | 导出提示词 |
-| `/api/quality/prompts/presets` | `{"task_type": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出提示词预设 |
-| `/api/quality/prompts/presets/read` | `{"task_type": str, "virtual_id": str}` | `{"text": str}` | 读取提示词预设正文 |
-| `/api/quality/prompts/presets/save` | `{"task_type": str, "name": str, "text": str}` | `{"path": str}` | 保存提示词用户预设 |
-| `/api/quality/prompts/presets/rename` | `{"task_type": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名提示词用户预设 |
-| `/api/quality/prompts/presets/delete` | `{"task_type": str, "virtual_id": str}` | `{"path": str}` | 删除提示词用户预设 |
+| `/api/v2/quality/prompts/snapshot` | `{"task_type": "translation" \| "analysis"}` | `{"prompt": dict}` | 读取提示词快照 |
+| `/api/v2/quality/prompts/template` | `{"task_type": "translation" \| "analysis"}` | `{"template": {"default_text": str, "prefix_text": str, "suffix_text": str}}` | 读取提示词模板文本 |
+| `/api/v2/quality/prompts/save` | `{"task_type": str, "expected_revision": int, "text": str, "enabled": bool \| null}` | `{"prompt": dict}` | 保存提示词 |
+| `/api/v2/quality/prompts/import` | `{"task_type": str, "path": str, "expected_revision": int, "enabled": bool \| null}` | `{"prompt": dict}` | 从本地文件导入提示词 |
+| `/api/v2/quality/prompts/export` | `{"task_type": str, "path": str}` | `{"path": str}` | 导出提示词 |
+| `/api/v2/quality/prompts/presets` | `{"task_type": str}` | `{"builtin_presets": list[dict], "user_presets": list[dict]}` | 列出提示词预设 |
+| `/api/v2/quality/prompts/presets/read` | `{"task_type": str, "virtual_id": str}` | `{"text": str}` | 读取提示词预设正文 |
+| `/api/v2/quality/prompts/presets/save` | `{"task_type": str, "name": str, "text": str}` | `{"path": str}` | 保存提示词用户预设 |
+| `/api/v2/quality/prompts/presets/rename` | `{"task_type": str, "virtual_id": str, "new_name": str}` | `{"item": dict}` | 重命名提示词用户预设 |
+| `/api/v2/quality/prompts/presets/delete` | `{"task_type": str, "virtual_id": str}` | `{"path": str}` | 删除提示词用户预设 |
 
 `prompt` 快照当前稳定字段：
 
@@ -464,16 +443,16 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 | 路径 | 请求体 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
-| `/api/proofreading/snapshot` | `{}`、`{"lg_path": str}`、`{"path": str}` 或 `{"project_id": str}` | `{"snapshot": ProofreadingSnapshotPayload}` | 读取校对页快照 |
-| `/api/proofreading/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingFilePatchPayload}` | 按受影响文件读取校对页局部补丁 |
-| `/api/proofreading/entry-patch` | `{"item_ids": list[int], "rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingEntryPatchPayload}` | 按受影响条目读取校对页局部补丁 |
-| `/api/proofreading/filter` | `{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"snapshot": ProofreadingSnapshotPayload}` | 按筛选条件重建快照 |
-| `/api/proofreading/search` | `{"keyword": str, "is_regex": bool}` 并可叠加筛选字段 | `{"search_result": ProofreadingSearchResultPayload}` | 在当前筛选口径下搜索 |
-| `/api/proofreading/save-item` | `{"item": dict, "new_dst": str, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 保存单条条目 |
-| `/api/proofreading/save-all` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量保存 |
-| `/api/proofreading/replace-all` | `{"items": list[dict], "search_text": str, "replace_text": str, "is_regex": bool, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量替换 |
-| `/api/proofreading/recheck-item` | `{"item": dict}` | `{"result": ProofreadingMutationResultPayload}` | 重查单条条目 |
-| `/api/proofreading/retranslate-items` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 重新翻译条目 |
+| `/api/v2/project/proofreading/snapshot` | `{}`、`{"lg_path": str}`、`{"path": str}` 或 `{"project_id": str}` | `{"snapshot": ProofreadingSnapshotPayload}` | 读取校对页快照 |
+| `/api/v2/project/proofreading/file-patch` | `{"rel_paths": list[str], "removed_rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingFilePatchPayload}` | 按受影响文件读取校对页局部补丁 |
+| `/api/v2/project/proofreading/entry-patch` | `{"item_ids": list[int], "rel_paths": list[str]}`，并可叠加 `{"lg_path": str}`、`{"path": str}`、`{"project_id": str}`、`{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"patch": ProofreadingEntryPatchPayload}` | 按受影响条目读取校对页局部补丁 |
+| `/api/v2/project/proofreading/filter` | `{"filters": dict}`、`{"filter_options": dict}` 或扁平筛选字段 | `{"snapshot": ProofreadingSnapshotPayload}` | 按筛选条件重建快照 |
+| `/api/v2/project/proofreading/search` | `{"keyword": str, "is_regex": bool}` 并可叠加筛选字段 | `{"search_result": ProofreadingSearchResultPayload}` | 在当前筛选口径下搜索 |
+| `/api/v2/project/proofreading/save-item` | `{"item": dict, "new_dst": str, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 保存单条条目 |
+| `/api/v2/project/proofreading/save-all` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量保存 |
+| `/api/v2/project/proofreading/replace-all` | `{"items": list[dict], "search_text": str, "replace_text": str, "is_regex": bool, "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 批量替换 |
+| `/api/v2/project/proofreading/recheck-item` | `{"item": dict}` | `{"result": ProofreadingMutationResultPayload}` | 重查单条条目 |
+| `/api/v2/project/proofreading/retranslate-items` | `{"items": list[dict], "expected_revision": int}` | `{"result": ProofreadingMutationResultPayload}` | 重新翻译条目 |
 
 `ProofreadingSnapshot` 当前稳定字段：
 
@@ -533,7 +512,7 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 - `filters` 当前稳定字段为：`warning_types`、`statuses`、`file_paths`、`glossary_terms`、`include_without_glossary_miss`。
 - `include_without_glossary_miss` 为 `true` 时，当前筛选会保留“没有术语未命中”的条目，这同时覆盖“完全不含术语”和“术语全部生效”两类情况。
 - `save-item`、`save-all`、`replace-all`、`retranslate-items` 当前都使用 `expected_revision` 做乐观锁保护；但冲突异常在 API 边界仍未标准化成独立错误码。
-- 上述 mutation 路由的主响应壳未变化；渲染层当前会结合 `result.changed_item_ids + result.items[*].file_path` 立即请求一次 `/api/proofreading/entry-patch`，而不是再整页重拉。
+- 上述 mutation 路由的主响应壳未变化；渲染层当前会结合 `result.changed_item_ids + result.items[*].file_path` 立即请求一次 `/api/v2/project/proofreading/entry-patch`，而不是再整页重拉。
 
 ### 4.9 Extra
 
@@ -599,7 +578,7 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 | `SettingsApiClient` | 全部返回 `AppSettingsSnapshot` | 无 |
 | `ModelApiClient` | `snapshot/update/activate/add/delete/reset/reorder -> ModelPageSnapshot` | `list_available_models -> list[str]`、`test_model -> dict[str, Any]` |
 | `QualityRuleApiClient` | `snapshot/save_entries/update_meta -> QualityRuleSnapshot`、`query_proofreading -> ProofreadingLookupQuery`、`statistics -> QualityRuleStatisticsSnapshot` | 规则导入导出 / preset 全家桶 / prompt 全家桶仍是 `dict`、`list`、`tuple`、`str` |
-| `ProofreadingApiClient` | `snapshot/filter -> ProofreadingSnapshot`、`search -> ProofreadingSearchResult`、`save/recheck/retranslate -> ProofreadingMutationResult` | `/api/proofreading/file-patch` 当前尚未在 Python 客户端封装 |
+| `ProofreadingApiClient` | `snapshot/filter -> ProofreadingSnapshot`、`search -> ProofreadingSearchResult`、`save/recheck/retranslate -> ProofreadingMutationResult` | `/api/v2/project/proofreading/file-patch` 当前尚未在 Python 客户端封装 |
 | `ExtraApiClient` | 全部当前公开路由都已对象化 | 无 |
 
 ### 5.3 `ApiStateStore` 当前缓存口径
@@ -608,7 +587,6 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 - `project_snapshot: ProjectSnapshot`
 - `task_snapshot: TaskSnapshot`
-- `proofreading_snapshot_invalidated: bool`
 - `extra_task_states: dict[str, ExtraTaskState]`
 
 不会缓存的内容包括：
@@ -641,7 +619,7 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
 
 - `frontend/src/renderer/app/desktop-api.ts`
   - `api_fetch()`：统一发 `POST`
-  - `open_event_stream()` / `open_v2_event_stream()`：按版本打开 SSE
+  - `open_v2_event_stream()`：打开项目运行态 SSE
   - `open_v2_project_bootstrap_stream()`：读取 V2 bootstrap 分段首包
   - `probe_core_api_candidate()`：用 `/api/health` 做探活
 - `frontend/src/renderer/app/state/*`
@@ -656,7 +634,7 @@ V2 `/api/v2/events/stream` 当前公开的主 topic 为：
   - `workbench_change_signal = { seq, reason, scope, rel_paths, removed_rel_paths, order_changed }`
   - `proofreading_change_signal = { seq, reason, scope, item_ids, rel_paths, removed_rel_paths }`
 - 工作台页当前只响应 `scope == "file" | "order" | "global"`；校对页额外支持 `scope == "entry"`。
-- 两页当前都不再因为“任意任务从 busy 回到 idle”而主动整页刷新；只有项目加载/切换、显式 `scope == "global"`，或补丁失败时才回退整页 `/snapshot`。
+- 两页当前都不再因为“任意任务从 busy 回到 idle”而主动整页刷新；只有项目加载/切换、显式 `scope == "global"`，或补丁失败时才回退整页 `/api/v2/project/workbench/snapshot` / `/api/v2/project/proofreading/snapshot`。
 - `api/Client/*` 与 `ApiStateStore` 主要服务于 Python 侧测试、桥接和对象化消费场景，不是 Electron 渲染层运行时入口。
 
 ## 7. 维护与同步要求

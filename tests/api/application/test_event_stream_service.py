@@ -59,7 +59,7 @@ def test_publish_event_keeps_progress_patch_shape() -> None:
     }
 
 
-def test_publish_workbench_refresh_creates_workbench_invalidation_envelope() -> None:
+def test_publish_workbench_refresh_is_ignored_after_v1_removal() -> None:
     service = EventStreamService()
     subscriber = service.add_subscriber()
 
@@ -68,15 +68,10 @@ def test_publish_workbench_refresh_creates_workbench_invalidation_envelope() -> 
         {"reason": "config_updated"},
     )
 
-    envelope = subscriber.get_nowait()
-    assert envelope.topic == "workbench.snapshot_changed"
-    assert envelope.data == {
-        "reason": "config_updated",
-        "scope": "global",
-    }
+    assert subscriber.empty() is True
 
 
-def test_publish_proofreading_refresh_creates_proofreading_invalidation_envelope() -> (
+def test_publish_proofreading_refresh_is_ignored_after_v1_removal() -> (
     None
 ):
     service = EventStreamService()
@@ -90,13 +85,7 @@ def test_publish_proofreading_refresh_creates_proofreading_invalidation_envelope
         },
     )
 
-    envelope = subscriber.get_nowait()
-    assert envelope.topic == "proofreading.snapshot_invalidated"
-    assert envelope.data == {
-        "reason": "project_prefilter_updated",
-        "scope": "global",
-        "trigger_reason": "config_updated",
-    }
+    assert subscriber.empty() is True
 
 
 class FakeSseHandler:

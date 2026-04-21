@@ -7,7 +7,7 @@ from api.Client.QualityRuleApiClient import QualityRuleApiClient
 from api.Models.QualityRule import ProofreadingLookupQuery
 from api.Models.QualityRule import QualityRuleSnapshot
 from api.Models.QualityRule import QualityRuleStatisticsSnapshot
-from api.Server.Routes.QualityRoutes import QualityRoutes
+from api.Server.Routes.V2.QualityRoutes import V2QualityRoutes
 
 
 def build_quality_rule_facade() -> Mock:
@@ -196,11 +196,11 @@ def test_quality_rule_api_client_save_entries_and_update_meta_return_snapshots(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.SAVE_ENTRIES_PATH,
+        V2QualityRoutes.SAVE_ENTRIES_PATH,
         build_quality_rule_snapshot_payload(),
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.UPDATE_META_PATH,
+        V2QualityRoutes.UPDATE_META_PATH,
         build_quality_rule_snapshot_payload(),
     )
 
@@ -222,11 +222,11 @@ def test_quality_rule_api_client_filters_invalid_rule_entry_payloads(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.IMPORT_RULES_PATH,
+        V2QualityRoutes.IMPORT_RULES_PATH,
         {"entries": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_READ_PATH,
+        V2QualityRoutes.RULE_PRESET_READ_PATH,
         {"entries": [{"src": "勇者", "dst": "Hero"}, "invalid"]},
     )
 
@@ -242,7 +242,7 @@ def test_quality_rule_api_client_build_rule_statistics_returns_snapshot(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.STATISTICS_PATH,
+        V2QualityRoutes.STATISTICS_PATH,
         {
             "statistics": {
                 "available": True,
@@ -268,23 +268,23 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SNAPSHOT_PATH,
+        V2QualityRoutes.PROMPT_SNAPSHOT_PATH,
         {"prompt": {"task_type": "translation", "text": "snapshot"}},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_TEMPLATE_PATH,
+        V2QualityRoutes.PROMPT_TEMPLATE_PATH,
         {"template": {"system": "system prompt", "version": 2}},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SAVE_PATH,
+        V2QualityRoutes.PROMPT_SAVE_PATH,
         {"prompt": {"task_type": "translation", "text": "saved"}},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_IMPORT_PATH,
+        V2QualityRoutes.PROMPT_IMPORT_PATH,
         {"prompt": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_EXPORT_PATH,
+        V2QualityRoutes.PROMPT_EXPORT_PATH,
         {"path": "demo/output/prompt.txt"},
     )
 
@@ -306,26 +306,26 @@ def test_quality_rule_api_client_normalizes_prompt_preset_payloads(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESETS_PATH,
+        V2QualityRoutes.PROMPT_PRESETS_PATH,
         {
             "builtin_presets": [{"virtual_id": "builtin:base", "name": "内置"}],
             "user_presets": [{"virtual_id": "user:mine", "name": "用户"}],
         },
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_READ_PATH,
+        V2QualityRoutes.PROMPT_PRESET_READ_PATH,
         {"text": "preset body"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_SAVE_PATH,
+        V2QualityRoutes.PROMPT_PRESET_SAVE_PATH,
         {"path": "user/new.json"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_RENAME_PATH,
+        V2QualityRoutes.PROMPT_PRESET_RENAME_PATH,
         {"item": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_DELETE_PATH,
+        V2QualityRoutes.PROMPT_PRESET_DELETE_PATH,
         {"path": "user/old.json"},
     )
 
@@ -352,31 +352,31 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SNAPSHOT_PATH,
+        V2QualityRoutes.PROMPT_SNAPSHOT_PATH,
         {"prompt": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_SAVE_PATH,
+        V2QualityRoutes.RULE_PRESET_SAVE_PATH,
         {"item": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_RENAME_PATH,
+        V2QualityRoutes.RULE_PRESET_RENAME_PATH,
         {"item": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_TEMPLATE_PATH,
+        V2QualityRoutes.PROMPT_TEMPLATE_PATH,
         {"template": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SAVE_PATH,
+        V2QualityRoutes.PROMPT_SAVE_PATH,
         {"prompt": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_IMPORT_PATH,
+        V2QualityRoutes.PROMPT_IMPORT_PATH,
         {"prompt": {"task_type": "translation", "text": "imported"}},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_READ_PATH,
+        V2QualityRoutes.RULE_PRESET_READ_PATH,
         {"entries": "invalid"},
     )
 

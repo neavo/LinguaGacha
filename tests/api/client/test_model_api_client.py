@@ -5,7 +5,7 @@ from api.Application.ModelAppService import ModelAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ModelApiClient import ModelApiClient
 from api.Models.Model import ModelPageSnapshot
-from api.Server.Routes.ModelRoutes import ModelRoutes
+from api.Server.Routes.V2.ModelRoutes import V2ModelRoutes
 from tests.api.support.application_fakes import FakeModelConfig
 from tests.api.support.application_fakes import FakeModelManager
 
@@ -151,19 +151,19 @@ def test_model_api_client_supports_activate_delete_reset_and_reorder_commands(
 ) -> None:
     client = ModelApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        ModelRoutes.ACTIVATE_PATH,
+        V2ModelRoutes.ACTIVATE_PATH,
         build_model_snapshot_payload(),
     )
     recording_api_client.queue_post_response(
-        ModelRoutes.DELETE_PATH,
+        V2ModelRoutes.DELETE_PATH,
         build_model_snapshot_payload(),
     )
     recording_api_client.queue_post_response(
-        ModelRoutes.RESET_PRESET_PATH,
+        V2ModelRoutes.RESET_PRESET_PATH,
         build_model_snapshot_payload(),
     )
     recording_api_client.queue_post_response(
-        ModelRoutes.REORDER_PATH,
+        V2ModelRoutes.REORDER_PATH,
         build_model_snapshot_payload(),
     )
 
@@ -184,7 +184,7 @@ def test_model_api_client_list_available_models_returns_empty_list_for_invalid_p
 ) -> None:
     client = ModelApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        ModelRoutes.LIST_AVAILABLE_PATH,
+        V2ModelRoutes.LIST_AVAILABLE_PATH,
         {"models": "invalid"},
     )
 

@@ -149,24 +149,20 @@ export async function api_fetch<data_type>(
   return payload.data
 }
 
-async function open_event_stream_at_path(path: string): Promise<EventSource> {
+async function open_event_source_at_path(path: string): Promise<EventSource> {
   const base_url = await resolve_core_api_base_url()
   return new EventSource(build_api_url(base_url, path))
 }
 
-export async function open_event_stream(): Promise<EventSource> {
-  return open_event_stream_at_path('/api/events/stream')
-}
-
 export async function open_v2_event_stream(): Promise<EventSource> {
-  return open_event_stream_at_path('/api/v2/events/stream')
+  return open_event_source_at_path('/api/v2/events/stream')
 }
 
 async function* open_json_event_source_stream(args: {
   path: string
   event_types: string[]
 }): AsyncIterable<EventSourceJsonEvent> {
-  const event_source = await open_event_stream_at_path(args.path)
+  const event_source = await open_event_source_at_path(args.path)
   const queue: EventSourceJsonEvent[] = []
   let pending_resolve: ((value: EventSourceJsonEvent | null) => void) | null = null
   let stream_error: Error | null = null

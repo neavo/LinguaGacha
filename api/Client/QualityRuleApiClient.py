@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
-from api.Server.Routes.QualityRoutes import QualityRoutes
 from api.Models.QualityRule import ProofreadingLookupQuery
 from api.Models.QualityRule import QualityRuleSnapshot
 from api.Models.QualityRule import QualityRuleStatisticsSnapshot
+from api.Server.Routes.V2.QualityRoutes import V2QualityRoutes
 
 
 class QualityRuleApiClient:
@@ -19,7 +19,7 @@ class QualityRuleApiClient:
         """读取指定规则类型的快照。"""
 
         response = self.api_client.post(
-            QualityRoutes.SNAPSHOT_PATH,
+            V2QualityRoutes.SNAPSHOT_PATH,
             {"rule_type": rule_type},
         )
         return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
@@ -27,13 +27,13 @@ class QualityRuleApiClient:
     def save_entries(self, request: dict[str, Any]) -> QualityRuleSnapshot:
         """保存规则条目列表，并返回最新快照。"""
 
-        response = self.api_client.post(QualityRoutes.SAVE_ENTRIES_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.SAVE_ENTRIES_PATH, request)
         return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
 
     def import_rules(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         """从本地路径读取规则条目，由页面决定后续合并与保存。"""
 
-        response = self.api_client.post(QualityRoutes.IMPORT_RULES_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.IMPORT_RULES_PATH, request)
         entries_raw = response.get("entries", [])
         if not isinstance(entries_raw, list):
             return []
@@ -42,7 +42,7 @@ class QualityRuleApiClient:
     def export_rules(self, request: dict[str, Any]) -> str:
         """导出当前规则条目到本地路径。"""
 
-        response = self.api_client.post(QualityRoutes.EXPORT_RULES_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.EXPORT_RULES_PATH, request)
         return str(response.get("path", ""))
 
     def list_rule_presets(
@@ -52,7 +52,7 @@ class QualityRuleApiClient:
         """列出质量规则预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESETS_PATH,
+            V2QualityRoutes.RULE_PRESETS_PATH,
             {"preset_dir_name": preset_dir_name},
         )
         builtin_raw = response.get("builtin_presets", [])
@@ -77,7 +77,7 @@ class QualityRuleApiClient:
         """读取质量规则预设正文。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_READ_PATH,
+            V2QualityRoutes.RULE_PRESET_READ_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "virtual_id": virtual_id,
@@ -97,7 +97,7 @@ class QualityRuleApiClient:
         """保存质量规则用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_SAVE_PATH,
+            V2QualityRoutes.RULE_PRESET_SAVE_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "name": name,
@@ -120,7 +120,7 @@ class QualityRuleApiClient:
         """重命名质量规则用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_RENAME_PATH,
+            V2QualityRoutes.RULE_PRESET_RENAME_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "virtual_id": virtual_id,
@@ -138,7 +138,7 @@ class QualityRuleApiClient:
         """删除质量规则用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_DELETE_PATH,
+            V2QualityRoutes.RULE_PRESET_DELETE_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "virtual_id": virtual_id,
@@ -149,7 +149,7 @@ class QualityRuleApiClient:
     def update_meta(self, request: dict[str, Any]) -> QualityRuleSnapshot:
         """更新规则 meta，并返回最新快照。"""
 
-        response = self.api_client.post(QualityRoutes.UPDATE_META_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.UPDATE_META_PATH, request)
         return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
 
     def query_proofreading(
@@ -160,7 +160,7 @@ class QualityRuleApiClient:
 
         normalized_request = request if "entry" in request else {"entry": dict(request)}
         response = self.api_client.post(
-            QualityRoutes.QUERY_PROOFREADING_PATH,
+            V2QualityRoutes.QUERY_PROOFREADING_PATH,
             normalized_request,
         )
         return ProofreadingLookupQuery.from_dict(response.get("query", {}))
@@ -171,14 +171,14 @@ class QualityRuleApiClient:
     ) -> QualityRuleStatisticsSnapshot:
         """构建质量规则统计快照。"""
 
-        response = self.api_client.post(QualityRoutes.STATISTICS_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.STATISTICS_PATH, request)
         return QualityRuleStatisticsSnapshot.from_dict(response.get("statistics", {}))
 
     def get_prompt_snapshot(self, task_type: str) -> dict[str, Any]:
         """读取指定任务的提示词快照。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_SNAPSHOT_PATH,
+            V2QualityRoutes.PROMPT_SNAPSHOT_PATH,
             {"task_type": task_type},
         )
         prompt_raw = response.get("prompt", {})
@@ -188,7 +188,7 @@ class QualityRuleApiClient:
         """读取提示词页展示所需的模板文本。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_TEMPLATE_PATH,
+            V2QualityRoutes.PROMPT_TEMPLATE_PATH,
             {"task_type": task_type},
         )
         template_raw = response.get("template", {})
@@ -199,21 +199,21 @@ class QualityRuleApiClient:
     def save_prompt(self, request: dict[str, Any]) -> dict[str, Any]:
         """保存提示词正文与启用状态。"""
 
-        response = self.api_client.post(QualityRoutes.PROMPT_SAVE_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.PROMPT_SAVE_PATH, request)
         prompt_raw = response.get("prompt", {})
         return dict(prompt_raw) if isinstance(prompt_raw, dict) else {}
 
     def import_prompt(self, request: dict[str, Any]) -> dict[str, Any]:
         """从本地路径导入提示词。"""
 
-        response = self.api_client.post(QualityRoutes.PROMPT_IMPORT_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.PROMPT_IMPORT_PATH, request)
         prompt_raw = response.get("prompt", {})
         return dict(prompt_raw) if isinstance(prompt_raw, dict) else {}
 
     def export_prompt(self, request: dict[str, Any]) -> str:
         """导出提示词到本地路径。"""
 
-        response = self.api_client.post(QualityRoutes.PROMPT_EXPORT_PATH, request)
+        response = self.api_client.post(V2QualityRoutes.PROMPT_EXPORT_PATH, request)
         return str(response.get("path", ""))
 
     def list_prompt_presets(
@@ -223,7 +223,7 @@ class QualityRuleApiClient:
         """列出提示词预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESETS_PATH,
+            V2QualityRoutes.PROMPT_PRESETS_PATH,
             {"task_type": task_type},
         )
         builtin_raw = response.get("builtin_presets", [])
@@ -244,7 +244,7 @@ class QualityRuleApiClient:
         """读取提示词预设正文。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_READ_PATH,
+            V2QualityRoutes.PROMPT_PRESET_READ_PATH,
             {"task_type": task_type, "virtual_id": virtual_id},
         )
         return str(response.get("text", ""))
@@ -258,7 +258,7 @@ class QualityRuleApiClient:
         """保存提示词用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_SAVE_PATH,
+            V2QualityRoutes.PROMPT_PRESET_SAVE_PATH,
             {"task_type": task_type, "name": name, "text": text},
         )
         return str(response.get("path", ""))
@@ -272,7 +272,7 @@ class QualityRuleApiClient:
         """重命名提示词用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_RENAME_PATH,
+            V2QualityRoutes.PROMPT_PRESET_RENAME_PATH,
             {
                 "task_type": task_type,
                 "virtual_id": virtual_id,
@@ -290,7 +290,7 @@ class QualityRuleApiClient:
         """删除提示词用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_DELETE_PATH,
+            V2QualityRoutes.PROMPT_PRESET_DELETE_PATH,
             {"task_type": task_type, "virtual_id": virtual_id},
         )
         return str(response.get("path", ""))

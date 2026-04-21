@@ -5,7 +5,7 @@ from api.Client.ApiClient import ApiClient
 from api.Client.ProjectApiClient import ProjectApiClient
 from api.Models.Project import ProjectPreview
 from api.Models.Project import ProjectSnapshot
-from api.Server.Routes.ProjectRoutes import ProjectRoutes
+from api.Server.Routes.V2.ProjectRoutes import V2ProjectRoutes
 from tests.api.support.application_fakes import FakeProjectManager
 
 
@@ -44,7 +44,7 @@ def test_project_api_client_create_project_returns_project_snapshot(
 ) -> None:
     project_client = ProjectApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        ProjectRoutes.CREATE_PATH,
+        V2ProjectRoutes.CREATE_PATH,
         {"project": {"path": "demo/output.lg", "loaded": True}},
     )
 
@@ -58,7 +58,7 @@ def test_project_api_client_create_project_returns_project_snapshot(
     assert isinstance(result, ProjectSnapshot)
     assert result.path == "demo/output.lg"
     assert recording_api_client.post_requests[-1] == (
-        ProjectRoutes.CREATE_PATH,
+        V2ProjectRoutes.CREATE_PATH,
         {
             "source_path": "demo/source",
             "output_path": "demo/output.lg",

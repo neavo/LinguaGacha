@@ -159,6 +159,7 @@ flowchart TD
 - 批量 `replace/reset/delete` 当前都按“一次事务 + 一次事件”的语义落地；前端多选操作不再需要逐个文件排队触发刷新。
 - 文件重排当前只触发工作台 `scope="order"` 刷新；文件增删改则同时触发工作台和校对页 `scope="file"` 刷新。
 - 对 Electron 渲染层主路径来说，工作台/校对页已不再依赖 `workbench.snapshot_changed` 与 `proofreading.snapshot_invalidated`；后台任务终态改为通过 V2 `project.patch` 回灌 `ProjectStore`。
+- 若某个数据层改动需要影响项目运行态主路径，应优先落到 V2 bootstrap、mutation、revision 或 `project.patch` 语义，不再新增 V1 页面失效 topic 或旧路由依赖。
 
 ## 修改建议
 | 变更类型 | 优先落点 |

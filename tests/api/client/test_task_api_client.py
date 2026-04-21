@@ -5,7 +5,7 @@ from api.Client.ApiClient import ApiClient
 from api.Client.TaskApiClient import TaskApiClient
 from api.Models.Task import AnalysisGlossaryImportResult
 from api.Models.Task import TaskSnapshot
-from api.Server.Routes.TaskRoutes import TaskRoutes
+from api.Server.Routes.V2.TaskRoutes import V2TaskRoutes
 from tests.api.support.application_fakes import FakeEngine
 from tests.api.support.application_fakes import FakeTaskDataManager
 
@@ -93,19 +93,19 @@ def test_task_api_client_start_and_stop_commands_use_snapshot_contract(
 ) -> None:
     task_client = TaskApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        TaskRoutes.START_TRANSLATION_PATH,
+        V2TaskRoutes.START_TRANSLATION_PATH,
         {"task": {"task_type": "translation", "status": "TRANSLATING", "busy": True}},
     )
     recording_api_client.queue_post_response(
-        TaskRoutes.STOP_TRANSLATION_PATH,
+        V2TaskRoutes.STOP_TRANSLATION_PATH,
         {"task": {"task_type": "translation", "status": "STOPPING", "busy": True}},
     )
     recording_api_client.queue_post_response(
-        TaskRoutes.START_ANALYSIS_PATH,
+        V2TaskRoutes.START_ANALYSIS_PATH,
         {"task": {"task_type": "analysis", "status": "ANALYZING", "busy": True}},
     )
     recording_api_client.queue_post_response(
-        TaskRoutes.STOP_ANALYSIS_PATH,
+        V2TaskRoutes.STOP_ANALYSIS_PATH,
         {"task": {"task_type": "analysis", "status": "STOPPING", "busy": True}},
     )
 
@@ -126,7 +126,7 @@ def test_task_api_client_export_translation_returns_raw_payload(
 ) -> None:
     task_client = TaskApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        TaskRoutes.EXPORT_TRANSLATION_PATH,
+        V2TaskRoutes.EXPORT_TRANSLATION_PATH,
         {"accepted": True},
     )
 

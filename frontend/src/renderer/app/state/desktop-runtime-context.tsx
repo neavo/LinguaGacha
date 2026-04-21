@@ -12,7 +12,6 @@ import {
 import type { RouteId } from '@/app/navigation/types'
 import {
   api_fetch,
-  open_event_stream,
   open_v2_event_stream,
   open_v2_project_bootstrap_stream,
 } from '@/app/desktop-api'
@@ -695,6 +694,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   ])
 
   useEffect(() => {
+    if (!isProjectRuntimeV2Enabled()) {
+      return
+    }
+
     let event_source: EventSource | null = null
     let cancelled = false
 
@@ -728,44 +731,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         void refresh_settings()
       }
     }
-
-    async function attach_event_stream(): Promise<void> {
-      try {
-        const next_event_source = await open_event_stream()
-        if (cancelled) {
-          next_event_source.close()
-          return
-        }
-
-        event_source = next_event_source
-        event_source.addEventListener('project.changed', handle_project_changed as EventListener)
-        event_source.addEventListener('task.status_changed', handle_task_status_changed as EventListener)
-        event_source.addEventListener('task.progress_changed', handle_task_progress_changed as EventListener)
-        event_source.addEventListener('settings.changed', handle_settings_changed as EventListener)
-      } catch {
-        return
-      }
-    }
-
-    void attach_event_stream()
-
-    return () => {
-      cancelled = true
-      event_source?.close()
-    }
-  }, [apply_settings_snapshot, refresh_settings, refresh_task])
-
-  useEffect(() => {
-    if (!isProjectRuntimeV2Enabled()) {
-      return
-    }
-
-    if (!project_snapshot.loaded || project_snapshot.path.trim() === '') {
-      return
-    }
-
-    let event_source: EventSource | null = null
-    let cancelled = false
 
     function bump_workbench_runtime_signal(args: {
       reason: string
@@ -805,6 +770,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       const rel_paths = patch_event === null ? [] : collect_project_patch_rel_paths(patch_event)
 
       if (patch_event === null) {
+        if (!project_snapshot.loaded || project_snapshot.path.trim() === '') {
+          return
+        }
+
         try {
           await v2_project_runtime.bootstrap(project_snapshot.path)
         } catch {
@@ -853,7 +822,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       }
     }
 
-    async function attach_v2_event_stream(): Promise<void> {
+    async function attach_event_stream(): Promise<void> {
       try {
         const next_event_source = await open_v2_event_stream()
         if (cancelled) {
@@ -862,6 +831,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         }
 
         event_source = next_event_source
+        event_source.addEventListener('project.changed', handle_project_changed as EventListener)
+        event_source.addEventListener('task.status_changed', handle_task_status_changed as EventListener)
+        event_source.addEventListener('task.progress_changed', handle_task_progress_changed as EventListener)
+        event_source.addEventListener('settings.changed', handle_settings_changed as EventListener)
         event_source.addEventListener('project.patch', ((event: MessageEvent<string>) => {
           void handle_project_patch(event)
         }) as EventListener)
@@ -870,16 +843,18 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       }
     }
 
-    void attach_v2_event_stream()
+    void attach_event_stream()
 
     return () => {
       cancelled = true
       event_source?.close()
     }
   }, [
+    apply_settings_snapshot,
     project_snapshot.loaded,
     project_snapshot.path,
-    set_project_warmup_status,
+    refresh_settings,
+    refresh_task,
     v2_project_runtime,
   ])
 

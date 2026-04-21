@@ -1337,7 +1337,7 @@ git commit -m "docs: align v2 route groups and replacement matrix"
 - Test: `tests/api/server/v2/test_model_routes.py`
 - Test: `tests/api/server/v2/test_quality_routes.py`
 
-- [ ] **Step 1: 先写失败测试，列出仍在消费旧 URL 的页面与运行时入口**
+- [x] **Step 1: 先写失败测试，列出仍在消费旧 URL 的页面与运行时入口**
 
 ```text
 必须清零的旧 URL 包括：
@@ -1349,7 +1349,7 @@ git commit -m "docs: align v2 route groups and replacement matrix"
 - 旧版 `/api/tasks/*`
 ```
 
-- [ ] **Step 2: 把剩余读写命令、资源操作与模型页全部切到 `/api/v2/...`**
+- [x] **Step 2: 把剩余读写命令、资源操作与模型页全部切到 `/api/v2/...`**
 
 ```text
 至少覆盖：
@@ -1360,7 +1360,7 @@ git commit -m "docs: align v2 route groups and replacement matrix"
 - proofreading 与 workbench 的残余 patch / mutation 请求
 ```
 
-- [ ] **Step 3: 跑扫描与页面测试，确认 renderer 主路径不再引用旧 URL**
+- [x] **Step 3: 跑扫描与页面测试，确认 renderer 主路径不再引用旧 URL**
 
 Run:
 
@@ -1378,7 +1378,7 @@ Expected:
 除了明确保留到最终删除步骤的旧壳层兼容代码外，renderer 主路径不再命中 `/api/project/|/api/workbench/|/api/proofreading/|/api/quality/|/api/models/|/api/tasks/` 旧 URL
 ```
 
-- [ ] **Step 4: 提交这一小步**
+- [x] **Step 4: 提交这一小步**
 
 ```bash
 git add frontend/src/renderer/pages/model-page frontend/src/renderer/pages/project-page frontend/src/renderer/app/state frontend/src/renderer/pages/workbench-page frontend/src/renderer/pages/proofreading-page frontend/src/renderer/pages/glossary-page frontend/src/renderer/pages/text-preserve-page frontend/src/renderer/pages/text-replacement-page frontend/src/renderer/pages/custom-prompt-page api/Application/V2 api/Server/Routes/V2
@@ -1409,7 +1409,7 @@ git commit -m "refactor: switch remaining runtime endpoints to api v2"
 - Modify: `frontend/src/renderer/SPEC.md`
 - Modify: `module/Data/SPEC.md`
 
-- [ ] **Step 1: 先写失败守卫，锁住旧路由与旧 topic 不得回流**
+- [x] **Step 1: 先写失败守卫，锁住旧路由与旧 topic 不得回流**
 
 ```text
 必须失败的遗留项：
@@ -1419,7 +1419,7 @@ git commit -m "refactor: switch remaining runtime endpoints to api v2"
 - renderer 对旧运行时入口的直接监听
 ```
 
-- [ ] **Step 2: 删除 V1 路由注册、旧桥接和旧运行时消费**
+- [x] **Step 2: 删除 V1 路由注册、旧桥接和旧运行时消费**
 
 ```text
 删除目标：
@@ -1429,7 +1429,7 @@ git commit -m "refactor: switch remaining runtime endpoints to api v2"
 - 页面与桌面壳层中最后残留的旧监听与旧请求
 ```
 
-- [ ] **Step 3: 跑全套验证，并确认仓库只剩 `/api/v2` 与 `V2` / `v2` 主路径**
+- [x] **Step 3: 跑全套验证，并确认仓库只剩 `/api/v2` 与 `V2` / `v2` 主路径**
 
 Run:
 
@@ -1450,7 +1450,7 @@ Expected:
 测试全绿；扫描结果为空；仓库中的项目运行态主路径只剩 `/api/v2/...` 与 `V2` / `v2` 边界目录
 ```
 
-- [ ] **Step 4: 提交这一小步**
+- [x] **Step 4: 提交这一小步**
 
 ```bash
 git add api/Server api/Bridge api/Client frontend/src/renderer/app/state docs/ARCHITECTURE.md api/SPEC.md frontend/SPEC.md frontend/src/renderer/SPEC.md module/Data/SPEC.md tests/api frontend/src/renderer/app/state/v2/runtime-guard.test.ts

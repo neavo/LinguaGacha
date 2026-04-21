@@ -15,7 +15,6 @@ class ApiStateStore:
         self.lock = threading.RLock()
         self.project_snapshot: ProjectSnapshot = ProjectSnapshot.from_dict({})
         self.task_snapshot: TaskSnapshot = TaskSnapshot.from_dict({})
-        self.proofreading_snapshot_invalidated: bool = False
         self.extra_task_states: dict[str, ExtraTaskState] = {}
 
     def hydrate_project(self, snapshot: ProjectSnapshot) -> None:
@@ -23,7 +22,6 @@ class ApiStateStore:
 
         with self.lock:
             self.project_snapshot = snapshot
-            self.proofreading_snapshot_invalidated = False
             self.extra_task_states = {}
 
     def reset_project(self) -> None:
@@ -31,7 +29,6 @@ class ApiStateStore:
 
         with self.lock:
             self.project_snapshot = ProjectSnapshot.from_dict({})
-            self.proofreading_snapshot_invalidated = False
             self.extra_task_states = {}
 
     def is_project_loaded(self) -> bool:
@@ -82,24 +79,6 @@ class ApiStateStore:
         with self.lock:
             return self.task_snapshot.busy
 
-    def mark_proofreading_snapshot_invalidated(self) -> None:
-        """只记录校对快照是否过期，不缓存整页内容。"""
-
-        with self.lock:
-            self.proofreading_snapshot_invalidated = True
-
-    def clear_proofreading_snapshot_invalidated(self) -> None:
-        """当页面重新拉取快照后，由调用方显式清掉过期标记。"""
-
-        with self.lock:
-            self.proofreading_snapshot_invalidated = False
-
-    def is_proofreading_snapshot_invalidated(self) -> bool:
-        """给页面一个最小布尔值，判断是否需要重新拉取校对快照。"""
-
-        with self.lock:
-            return self.proofreading_snapshot_invalidated
-
     def merge_extra_task_state(
         self,
         payload: dict[str, object],
@@ -147,8 +126,6 @@ class ApiStateStore:
             self.merge_task_status(TaskStatusUpdate.from_dict(payload))
         elif topic == EventTopic.TASK_PROGRESS_CHANGED.value:
             self.merge_task_progress(TaskProgressUpdate.from_dict(payload))
-        elif topic == EventTopic.PROOFREADING_SNAPSHOT_INVALIDATED.value:
-            self.mark_proofreading_snapshot_invalidated()
         elif topic == EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value:
             self.merge_extra_task_state(payload, finished=False)
         elif topic == EventTopic.EXTRA_TS_CONVERSION_FINISHED.value:
