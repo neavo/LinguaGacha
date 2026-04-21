@@ -526,6 +526,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const {
     settings_snapshot,
     set_project_snapshot,
+    set_project_warmup_status,
     refresh_settings,
     refresh_task,
   } = useDesktopRuntime();
@@ -796,6 +797,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               path: normalized_output_path,
             },
           );
+          set_project_warmup_status("warming");
           set_project_snapshot(normalize_project_snapshot(payload));
           await api_fetch<SettingsPayload>(
             "/api/settings/recent-projects/add",
@@ -854,6 +856,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               path: selected_project.path,
             },
           );
+          set_project_warmup_status("warming");
           set_project_snapshot(normalize_project_snapshot(payload));
           await api_fetch<SettingsPayload>(
             "/api/settings/recent-projects/add",

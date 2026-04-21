@@ -100,6 +100,18 @@ function hasWorkbenchMutationCacheAdvanced(
   )
 }
 
+function isProjectWarmupReady(
+  state: ProjectPagesBarrierState,
+  targetProjectPath: string,
+): boolean {
+  return (
+    state.projectLoaded
+    && targetProjectPath !== ''
+    && state.projectPath === targetProjectPath
+    && state.projectWarmupReady
+  )
+}
+
 function isCacheBarrierReady(args: {
   state: ProjectPagesBarrierState
   cacheState: CacheBarrierState
@@ -139,12 +151,7 @@ export function isProjectPagesBarrierReady(
   const targetProjectPath = resolveTargetProjectPath(state, options)
 
   if (kind === 'project_warmup') {
-    return (
-      state.projectLoaded
-      && targetProjectPath !== ''
-      && state.projectPath === targetProjectPath
-      && state.projectWarmupReady
-    )
+    return isProjectWarmupReady(state, targetProjectPath)
   }
 
   if (kind === 'workbench_file_mutation') {

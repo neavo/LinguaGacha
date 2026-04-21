@@ -40,6 +40,18 @@ export type ProjectStoreBootstrapPayload = {
   }
 }
 
+export function isProjectStoreStage(value: string): value is ProjectStoreStage {
+  return [
+    'project',
+    'files',
+    'items',
+    'quality',
+    'prompts',
+    'analysis',
+    'task',
+  ].includes(value)
+}
+
 type ProjectStoreApi = {
   getState: () => ProjectStoreState
   applyBootstrapStage: (

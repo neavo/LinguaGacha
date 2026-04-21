@@ -11,6 +11,9 @@ import {
 
 import type { RouteId } from '@/app/navigation/types'
 import { api_fetch, open_event_stream } from '@/app/desktop-api'
+import { createProjectStore } from '@/app/state/v2/project-store'
+import { isProjectRuntimeV2Enabled } from '@/app/state/v2/runtime-feature'
+import { createV2ProjectRuntime } from '@/app/state/v2/use-project-runtime'
 
 type RecentProjectEntry = {
   path: string
@@ -406,6 +409,13 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null)
   const [is_app_language_updating, set_is_app_language_updating] = useState(false)
   const project_warmup_waiters_ref = useRef<Map<string, Set<() => void>>>(new Map())
+  const project_store_ref = useRef(createProjectStore())
+  const v2_project_runtime = useMemo(() => {
+    return createV2ProjectRuntime({
+      store: project_store_ref.current,
+      openBootstrapStream: async function* () {},
+    })
+  }, [])
 
   const apply_settings_snapshot = useCallback((payload: SettingsSnapshotPayload): SettingsSnapshot => {
     const next_snapshot = normalize_settings_snapshot(payload)
@@ -558,6 +568,42 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       cancelled = true
     }
   }, [apply_settings_snapshot])
+
+  useEffect(() => {
+    if (!isProjectRuntimeV2Enabled()) {
+      return
+    }
+
+    if (!project_snapshot.loaded || project_snapshot.path.trim() === '') {
+      return
+    }
+
+    let cancelled = false
+
+    async function bootstrap_project_runtime(): Promise<void> {
+      set_project_warmup_status('warming')
+
+      try {
+        await v2_project_runtime.bootstrap(project_snapshot.path)
+        if (!cancelled) {
+          set_project_warmup_status('ready')
+        }
+      } catch {
+        return
+      }
+    }
+
+    void bootstrap_project_runtime()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    project_snapshot.loaded,
+    project_snapshot.path,
+    set_project_warmup_status,
+    v2_project_runtime,
+  ])
 
   useEffect(() => {
     let event_source: EventSource | null = null
