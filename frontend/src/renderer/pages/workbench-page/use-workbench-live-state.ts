@@ -6,6 +6,8 @@ import type {
 } from "@/app/state/project-pages-barrier";
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 import { useDesktopToast } from "@/app/state/use-desktop-toast";
+import { buildWorkbenchView } from "@/app/state/v2/selectors";
+import { isProjectRuntimeV2Enabled } from "@/app/state/v2/runtime-feature";
 import {
   useAnalysisTaskRuntime,
   type AnalysisTaskRuntime,
@@ -868,6 +870,7 @@ export function useWorkbenchLiveState(
   });
   const {
     project_snapshot,
+    project_store,
     workbench_change_signal,
     refresh_task,
     set_project_snapshot,
@@ -1047,6 +1050,29 @@ export function useWorkbenchLiveState(
       set_cache_status("refreshing");
 
       try {
+        if (isProjectRuntimeV2Enabled()) {
+          const view = buildWorkbenchView(project_store.getState());
+          const next_snapshot: WorkbenchSnapshot = {
+            ...EMPTY_SNAPSHOT,
+            ...view.summary,
+            entries: view.entries,
+          };
+
+          if (request_id !== refresh_request_id_ref.current) {
+            return next_snapshot;
+          }
+
+          snapshot_ref.current = next_snapshot;
+          set_snapshot(next_snapshot);
+          apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
+          set_refresh_error(null);
+          set_cache_status("ready");
+          set_cache_stale(false);
+          set_last_loaded_at(Date.now());
+          set_settled_project_path(project_snapshot.path);
+          return next_snapshot;
+        }
+
         const payload = await api_fetch<WorkbenchSnapshotPayload>(
           "/api/workbench/snapshot",
           {},
@@ -1090,6 +1116,7 @@ export function useWorkbenchLiveState(
     [
       apply_refreshed_entries,
       apply_selection_state,
+      project_store,
       project_snapshot.loaded,
       project_snapshot.path,
       push_toast,

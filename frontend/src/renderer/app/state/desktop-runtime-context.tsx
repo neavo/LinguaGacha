@@ -105,6 +105,7 @@ type DesktopRuntimeContextValue = {
   set_project_warmup_status: (status: ProjectWarmupStatus) => void
   set_pending_target_route: (route_id: RouteId | null) => void
   wait_for_project_warmup: (project_path: string) => Promise<void>
+  project_store: ReturnType<typeof createProjectStore>
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>
   refresh_settings: () => Promise<SettingsSnapshot>
   refresh_project: () => Promise<ProjectSnapshot>
@@ -716,6 +717,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       set_project_warmup_status,
       set_pending_target_route,
       wait_for_project_warmup,
+      project_store: project_store_ref.current,
       update_app_language,
       refresh_settings,
       refresh_project,
