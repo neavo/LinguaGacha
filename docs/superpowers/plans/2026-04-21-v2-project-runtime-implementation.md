@@ -1169,7 +1169,7 @@ git commit -m "feat: migrate quality pages to v2 runtime"
 - Test: `tests/api/bridge/v2/test_event_bridge.py`
 - Modify: `tests/api/application/test_event_stream_service.py`
 
-- [ ] **Step 1: 先写失败测试，锁住任务完成后不再依赖页面 invalidation**
+- [x] **Step 1: 先写失败测试，锁住任务完成后不再依赖页面 invalidation**
 
 ```python
 from api.Bridge.V2.EventBridge import V2EventBridge
@@ -1186,7 +1186,7 @@ def test_v2_task_patch_replaces_proofreading_invalidation():
     assert payload["source"] == "task"
 ```
 
-- [ ] **Step 2: 跑失败测试，确认仍存在 V1 invalidation 依赖**
+- [x] **Step 2: 跑失败测试，确认仍存在 V1 invalidation 依赖**
 
 Run:
 
@@ -1200,7 +1200,7 @@ Expected:
 FAIL  expected 'project.patch'
 ```
 
-- [ ] **Step 3: 删除页面侧 V1 `snapshot/invalidation` 主路径，并同步文档**
+- [x] **Step 3: 删除页面侧 V1 `snapshot/invalidation` 主路径，并同步文档**
 
 ```python
 # EventBridge.py
@@ -1222,7 +1222,7 @@ event_source.addEventListener('project.patch', handleProjectPatch as EventListen
 - 新增 `project.patch`
 ```
 
-- [ ] **Step 4: 跑全套关键验证**
+- [x] **Step 4: 跑全套关键验证**
 
 Run:
 
@@ -1242,7 +1242,7 @@ Expected:
 全部通过；前端不再直接请求 /api/workbench/snapshot 与 /api/proofreading/snapshot
 ```
 
-- [ ] **Step 5: 提交这一小步**
+- [x] **Step 5: 提交这一小步**
 
 ```bash
 git add api/Application/EventStreamService.py api/Bridge/V2/EventBridge.py api/Server/Routes/V2/EventRoutes.py frontend/src/renderer/app/state/use-analysis-task-runtime.ts frontend/src/renderer/app/state/use-translation-task-runtime.ts frontend/src/renderer/app/state/desktop-runtime-context.tsx docs/ARCHITECTURE.md api/SPEC.md frontend/SPEC.md frontend/src/renderer/SPEC.md module/Data/SPEC.md tests/api/server/v2/test_event_routes.py tests/api/bridge/v2/test_event_bridge.py tests/api/application/test_event_stream_service.py
@@ -1261,7 +1261,7 @@ git commit -m "refactor: switch runtime to v2 and retire v1 paths"
 - Modify: `docs/superpowers/specs/2026-04-21-v2-project-runtime-protocol-design.md`
 - Modify: `docs/superpowers/plans/2026-04-21-v2-project-runtime-implementation.md`
 
-- [ ] **Step 1: 先写失败测试，锁住 V2 URL 族拥有独立的版本化路由组**
+- [x] **Step 1: 先写失败测试，锁住 V2 URL 族拥有独立的版本化路由组**
 
 ```text
 期望：
@@ -1270,7 +1270,7 @@ git commit -m "refactor: switch runtime to v2 and retire v1 paths"
 - 替换矩阵覆盖现有 `project/task/model/quality/workbench/proofreading` 旧入口
 ```
 
-- [ ] **Step 2: 补齐 V2 路由组和替换矩阵，明确哪些旧路由会被哪条新路由接管**
+- [x] **Step 2: 补齐 V2 路由组和替换矩阵，明确哪些旧路由会被哪条新路由接管**
 
 ```text
 至少补齐：
@@ -1281,7 +1281,25 @@ git commit -m "refactor: switch runtime to v2 and retire v1 paths"
 - 文档里的 V1 -> V2 替换矩阵
 ```
 
-- [ ] **Step 3: 跑 V2 路由定向测试，确认版本化路由骨架齐全**
+当前已对齐的替换矩阵：
+
+| V1 | V2 |
+| --- | --- |
+| `/api/project/load` | `/api/v2/project/load` |
+| `/api/project/create` | `/api/v2/project/create` |
+| `/api/project/snapshot` | `/api/v2/project/snapshot` |
+| `/api/project/unload` | `/api/v2/project/unload` |
+| `/api/project/extensions` | `/api/v2/project/extensions` |
+| `/api/project/source-files` | `/api/v2/project/source-files` |
+| `/api/project/preview` | `/api/v2/project/preview` |
+| `/api/tasks/*` | `/api/v2/tasks/*` |
+| `/api/models/*` | `/api/v2/models/*` |
+| `/api/quality/*` | `/api/v2/quality/*` |
+| `/api/workbench/*` | `/api/v2/project/workbench/*` |
+| `/api/proofreading/*` | `/api/v2/project/proofreading/*` |
+| `/api/events/stream` | `/api/v2/events/stream`（项目运行态主路径） |
+
+- [x] **Step 3: 跑 V2 路由定向测试，确认版本化路由骨架齐全**
 
 Run:
 
@@ -1289,7 +1307,7 @@ Run:
 uv run pytest tests/api/server/v2 -v
 ```
 
-- [ ] **Step 4: 提交这一小步**
+- [x] **Step 4: 提交这一小步**
 
 ```bash
 git add api/Server/Routes/V2 api/Server/ServerBootstrap.py docs/superpowers/specs/2026-04-21-v2-project-runtime-protocol-design.md docs/superpowers/plans/2026-04-21-v2-project-runtime-implementation.md

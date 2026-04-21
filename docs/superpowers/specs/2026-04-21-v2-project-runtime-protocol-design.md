@@ -695,13 +695,26 @@ flowchart LR
 
 这一阶段需要产出 V1 -> V2 替换矩阵，并冻结 V1 的新增行为。新功能不再接入 V1，只允许修复现有缺陷。
 
-推荐的替换矩阵示例：
+当前已落地的替换矩阵：
 
 | V1 | V2 |
 | --- | --- |
+| `/api/project/load` | `/api/v2/project/load` |
+| `/api/project/create` | `/api/v2/project/create` |
+| `/api/project/snapshot` | `/api/v2/project/snapshot` |
+| `/api/project/unload` | `/api/v2/project/unload` |
+| `/api/project/extensions` | `/api/v2/project/extensions` |
+| `/api/project/source-files` | `/api/v2/project/source-files` |
+| `/api/project/preview` | `/api/v2/project/preview` |
+| `/api/tasks/*` | `/api/v2/tasks/*` |
+| `/api/models/*` | `/api/v2/models/*` |
+| `/api/quality/*` | `/api/v2/quality/*` |
 | `/api/workbench/snapshot` | `bootstrap.files/items + TS selector` |
+| `/api/workbench/*` | `/api/v2/project/workbench/*` |
 | `/api/proofreading/snapshot` | `bootstrap.items/quality + TS selector` |
+| `/api/proofreading/*` | `/api/v2/project/proofreading/*` |
 | `/api/proofreading/filter` | TS 本地派生 |
+| `/api/events/stream` | `/api/v2/events/stream`（项目运行态主路径） |
 | `workbench.snapshot_changed` | patch + `files/items` revision |
 | `proofreading.snapshot_invalidated` | patch + `items/quality` revision |
 
