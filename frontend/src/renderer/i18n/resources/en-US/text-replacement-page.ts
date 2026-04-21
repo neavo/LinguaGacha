@@ -79,27 +79,22 @@ export const en_us_text_replacement_page = {
     delete_selection: {
       title: 'Confirm Delete',
       description: 'Confirm deleting {COUNT} item(s)?',
-      confirm: 'Delete',
     },
     delete_entry: {
       title: 'Confirm Delete',
       description: 'Confirm deleting 1 item?',
-      confirm: 'Delete',
     },
     delete_preset: {
       title: 'Delete Preset',
       description: 'Delete preset "{NAME}"?',
-      confirm: 'Delete Preset',
     },
     reset: {
       title: 'Confirm Reset',
       description: 'Confirm reset data …?',
-      confirm: 'Reset',
     },
     overwrite_preset: {
       title: 'Overwrite Preset',
       description: 'Preset "{NAME}" already exists. Overwrite it …?',
-      confirm: 'Overwrite',
     },
   },
   feedback: {

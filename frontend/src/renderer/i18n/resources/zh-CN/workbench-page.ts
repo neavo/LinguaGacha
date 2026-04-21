@@ -6,11 +6,9 @@ export const zh_cn_workbench_page = {
     command_bar: '工作台命令栏',
   },
   unit: {
-    file: 'File',
     line: 'Line',
   },
   stats: {
-    file_count: '文件总数',
     total_lines: '总计',
     translated: '翻译成功',
     untranslated: '等待翻译',
@@ -111,27 +109,22 @@ export const zh_cn_workbench_page = {
     replace: {
       title: '确认',
       description: '当前文件的翻译数据将尽可能的保留',
-      confirm: '确认',
     },
     reset: {
       title: '确认',
       description: '确定要重置该文件的翻译状态吗 …?',
-      confirm: '确认',
     },
     delete: {
       title: '确认',
       description: '确定要删除所选文件及其所有翻译条目吗 …?',
-      confirm: '确认',
     },
     export: {
       title: '确认',
       description: '确定要生成译文文件吗 …?',
-      confirm: '确认',
     },
     close_project: {
       title: '确认',
       description: '确定要关闭当前工程吗 …?',
-      confirm: '确认',
     },
   },
 } as const

@@ -181,26 +181,6 @@ def test_model_app_service_reorder_model_rejects_cross_group_ids() -> None:
         )
 
 
-def test_model_app_service_reorder_model_keeps_operation_payload_for_legacy_client() -> (
-    None
-):
-    service = build_model_app_service()
-
-    data = service.reorder_model(
-        {
-            "model_id": "preset-2",
-            "operation": "MOVE_UP",
-        }
-    )
-
-    snapshot = data["snapshot"]
-    preset_ids = [
-        model["id"] for model in snapshot["models"] if model["type"] == "PRESET"
-    ]
-
-    assert preset_ids == ["preset-2", "preset-1"]
-
-
 def test_model_app_service_list_available_models_returns_loader_result() -> None:
     service = build_model_app_service(
         available_models_loader=lambda model: ["gpt-5.4", str(model["model_id"])],

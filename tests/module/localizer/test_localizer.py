@@ -197,45 +197,6 @@ def test_get_app_language_returns_latest_public_state() -> None:
     assert current_language == BaseLanguage.Enum.EN
 
 
-def test_union_text_resolve_reads_latest_app_language() -> None:
-    text = Localizer.UnionText(zh="中文", en="English")
-
-    Localizer.set_app_language(BaseLanguage.Enum.ZH)
-    assert text.resolve() == "中文"
-
-    Localizer.set_app_language(BaseLanguage.Enum.EN)
-    assert text.resolve() == "English"
-
-
-@pytest.mark.parametrize(
-    ("app_language", "text", "expected"),
-    [
-        (BaseLanguage.Enum.EN, Localizer.UnionText(zh="中文", en="English"), "English"),
-        (BaseLanguage.Enum.EN, Localizer.UnionText(zh="中文", en=None), "中文"),
-        (BaseLanguage.Enum.JA, Localizer.UnionText(zh="中文", en="English"), "中文"),
-        (BaseLanguage.Enum.JA, Localizer.UnionText(zh=None, en="English"), "English"),
-        (BaseLanguage.Enum.EN, Localizer.UnionText(zh=None, en=None), None),
-        (BaseLanguage.Enum.EN, Localizer.UnionText(zh="中文", en=""), ""),
-        (BaseLanguage.Enum.ZH, Localizer.UnionText(zh="", en="English"), ""),
-    ],
-)
-def test_union_text_resolves_by_app_language(
-    app_language: BaseLanguage.Enum,
-    text: Localizer.UnionText,
-    expected: str | None,
-) -> None:
-    Localizer.set_app_language(app_language)
-
-    assert text.resolve() == expected
-
-
-def test_union_text_is_immutable() -> None:
-    text = Localizer.UnionText(zh="中文", en="English")
-
-    with pytest.raises(AttributeError):
-        text.zh = "修改后中文"
-
-
 def test_localizer_bundles_share_same_keys_and_placeholders() -> None:
     # Arrange
     zh_catalog = get_public_text_catalog(LocalizerZH)

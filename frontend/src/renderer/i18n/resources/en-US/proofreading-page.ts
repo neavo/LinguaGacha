@@ -20,7 +20,6 @@ export const en_us_proofreading_page = {
     save: 'Save',
     cancel: 'Cancel',
     confirm: 'Confirm',
-    more: 'More',
   },
   toggle: {
     status: '{TITLE} - {STATE}',
@@ -32,10 +31,8 @@ export const en_us_proofreading_page = {
     translation: 'Translation',
   },
   search: {
-    label: 'Search',
     placeholder: 'Query …',
     clear: 'Clear',
-    replace_label: 'Replace',
     replace_placeholder: 'Replace …',
     replace_clear: 'Clear',
     regex: 'Regex',
@@ -78,7 +75,6 @@ export const en_us_proofreading_page = {
   },
   result_check_title: 'Result Check',
   tooltip: {
-    status_prefix: 'Current Status: ',
     warning_title: 'Warning',
   },
   filter: {
@@ -89,7 +85,6 @@ export const en_us_proofreading_page = {
     search_placeholder: 'Filter …',
     glossary_detail: 'Glossary Misses',
     without_glossary_miss: 'No glossary terms or all glossary terms applied',
-    search_term: 'Search term source or target …',
     no_warning: 'No Warning',
     no_glossary_error: 'No glossary misses in current scope',
     no_glossary_error_description: 'No glossary terms are currently missing.',

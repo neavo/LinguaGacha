@@ -239,7 +239,6 @@ def test_proofreading_api_client_save_item_returns_mutation_result(
                 "dst": "Hero arrived again",
                 "status": Base.ProjectStatus.PROCESSED,
             },
-            "new_dst": "Hero arrived again",
             "expected_revision": 7,
         }
     )

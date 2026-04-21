@@ -141,7 +141,7 @@ def test_project_patch_event_bridge_maps_runtime_refresh_to_bootstrap_signal():
 
 def test_project_patch_event_bridge_ignores_unmapped_events():
     topic, payload = ProjectPatchEventBridge().map_event(
-        Base.Event.APITEST,
+        Base.Event.PROJECT_CHECK,
         {
             "reason": "config_updated",
         },

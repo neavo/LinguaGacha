@@ -26,7 +26,6 @@
 | `TaskRequestExecutor.py` / `TaskRequestErrors.py` | 请求执行辅助与异常类型 |
 | `Translation/` | 翻译任务的控制器、调度器、任务对象、进度跟踪与 hooks |
 | `Analysis/` | 分析任务的控制器、调度器、上下文模型、进度跟踪与 hooks |
-| `APITest/` | 模型连通性测试链路，不参与翻译 / 分析主流程 |
 
 ## 真实主链路
 ```mermaid
@@ -117,4 +116,5 @@ flowchart TD
 ## 维护约束
 - `module/Engine` 不持有项目数据真相；落库、条目状态和工程 revision 仍然交给 `module/Data`。
 - 共享骨架只抽“真正被翻译与分析共同依赖的规则”；不要为了看起来统一，把领域差异硬塞回公共层。
+- 模型页的连通性测试已经改为 `api/v2/Application/ModelAppService.py` 直接复用 `TaskRequester` 执行，不再走 `module/Engine` 内部事件子系统。
 - 如果改动会影响任务事件的字段、终态或停止语义，必须同步检查 [`api/SPEC.md`](../../api/SPEC.md)。

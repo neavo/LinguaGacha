@@ -1,6 +1,5 @@
 import os
 import threading
-from enum import StrEnum
 from typing import ClassVar
 
 from base.BasePath import BasePath
@@ -30,14 +29,6 @@ class ModelManager:
         ModelType.CUSTOM_OPENAI: PRESET_CUSTOM_OPENAI_FILENAME,
         ModelType.CUSTOM_ANTHROPIC: PRESET_CUSTOM_ANTHROPIC_FILENAME,
     }
-
-    class ReorderOperation(StrEnum):
-        """模型组内排序操作类型。"""
-
-        MOVE_UP = "MOVE_UP"
-        MOVE_DOWN = "MOVE_DOWN"
-        MOVE_TOP = "MOVE_TOP"
-        MOVE_BOTTOM = "MOVE_BOTTOM"
 
     def __init__(self) -> None:
         self.models: list[Model] = []
@@ -326,56 +317,6 @@ class ModelManager:
             if model not in new_order:
                 new_order.append(model)
         self.models = new_order
-
-    @classmethod
-    def build_group_reordered_ids(
-        cls,
-        model_ids: list[str],
-        model_id: str,
-        operation: "ModelManager.ReorderOperation",
-    ) -> list[str]:
-        """
-        计算组内重排后的模型 ID 列表。
-        为什么做成纯函数：UI 与测试共享同一规则，避免边界行为分叉。
-        """
-        if not model_ids:
-            return []
-
-        if model_id not in model_ids:
-            return list(model_ids)
-
-        result = list(model_ids)
-        target_index = result.index(model_id)
-
-        if operation == cls.ReorderOperation.MOVE_UP:
-            if target_index <= 0:
-                return result
-            result[target_index - 1], result[target_index] = (
-                result[target_index],
-                result[target_index - 1],
-            )
-            return result
-        elif operation == cls.ReorderOperation.MOVE_DOWN:
-            if target_index >= len(result) - 1:
-                return result
-            result[target_index], result[target_index + 1] = (
-                result[target_index + 1],
-                result[target_index],
-            )
-            return result
-        elif operation == cls.ReorderOperation.MOVE_TOP:
-            if target_index <= 0:
-                return result
-            moved_id = result.pop(target_index)
-            result.insert(0, moved_id)
-            return result
-        elif operation == cls.ReorderOperation.MOVE_BOTTOM:
-            if target_index >= len(result) - 1:
-                return result
-            moved_id = result.pop(target_index)
-            result.append(moved_id)
-            return result
-        return result
 
     @classmethod
     def build_global_ordered_ids_for_group(

@@ -47,12 +47,10 @@ export const en_us_model_page = {
     delete: {
       title: 'Confirm',
       description: 'Confirm to delete data …?',
-      confirm: 'Confirm',
     },
     reset: {
       title: 'Confirm',
       description: 'Confirm to reset data …?',
-      confirm: 'Confirm',
     },
   },
   feedback: {

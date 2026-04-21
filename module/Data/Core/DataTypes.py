@@ -86,24 +86,6 @@ class ProjectFileMutationResult:
     total: int = 0
     order_changed: bool = False
 
-    @property
-    def rel_path(self) -> str:
-        """兼容旧调用方读取单文件主路径。"""
-
-        if self.rel_paths:
-            return self.rel_paths[0]
-        if self.removed_rel_paths:
-            return self.removed_rel_paths[0]
-        return ""
-
-    @property
-    def old_rel_path(self) -> str | None:
-        """兼容旧调用方读取被替换前的旧路径。"""
-
-        if self.rel_paths and self.removed_rel_paths:
-            return self.removed_rel_paths[0]
-        return None
-
 
 @dataclass(frozen=True)
 class ProjectItemChange:

@@ -16,7 +16,7 @@
 | `widgets/` | 跨页面复用的组合组件，例如 `app-table`、`command-bar`、`search-bar` |
 | `shadcn/` | shadcn CLI 管理的基础组件源码与项目内定制 |
 | `hooks/` | 跨页面复用的交互 hook，当前主要是 `use-save-shortcut.ts` |
-| `i18n/` | 文案资源、翻译入口、消息类型 |
+| `i18n/` | 文案资源、翻译入口、消息类型；`LocaleKey` 优先静态引用，不动态拼接 key |
 | `lib/` | 无页面语义的纯逻辑工具 |
 | `index.css` | 全局 token、第三方运行时皮肤、浏览器基础重置 |
 | `index.tsx` / `index.html` | renderer 启动入口 |
@@ -30,7 +30,7 @@
 | `custom-prompt` | 仅侧边栏父节点 | 没有独立屏幕；真正页面是 `translation-prompt` / `analysis-prompt` |
 | `pre-translation-replacement` / `post-translation-replacement` | 同一个 `TextReplacementPage`，靠 `variant` 区分 | 不要为它们再建平行页面目录 |
 | `translation-prompt` / `analysis-prompt` | 同一个 `CustomPromptPage`，靠 `variant` 区分 | 不要为它们再建平行页面目录 |
-| `toolbox` | `pages/debug-panel-page/create-debug-panel-screen.tsx` | 当前是 debug panel 工厂生成的屏幕，不存在独立 `toolbox-page/` 目录 |
+| `toolbox` | `pages/debug-panel-page/page.tsx` | 直接复用 debug panel 页面，不存在独立 `toolbox-page/` 目录 |
 
 ### 导航权威来源
 - `app/navigation/types.ts`：路由 id 常量

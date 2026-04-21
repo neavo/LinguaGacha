@@ -64,7 +64,7 @@ def test_publish_unmapped_event_is_ignored() -> None:
     subscriber = service.add_subscriber()
 
     service.publish_internal_event(
-        Base.Event.APITEST,
+        Base.Event.PROJECT_CHECK,
         {"reason": "config_updated"},
     )
 
@@ -186,7 +186,7 @@ def test_publish_unmapped_event_with_patch_bridge_is_ignored() -> None:
     subscriber = service.add_subscriber()
 
     service.publish_internal_event(
-        Base.Event.APITEST,
+        Base.Event.PROJECT_CHECK,
         {
             "reason": "quality_rule_update",
         },

@@ -22,36 +22,36 @@ class WorkbenchAppService:
         return {"snapshot": self.build_snapshot()}
 
     def add_file(self, request: dict[str, Any]) -> dict[str, object]:
-        """调度新增文件操作。"""
+        """执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         path = str(request.get("path", ""))
-        self.data_manager.schedule_add_file(path)
+        self.data_manager.add_file(path)
         return {"accepted": True}
 
     def replace_file(self, request: dict[str, Any]) -> dict[str, object]:
-        """调度替换文件操作。"""
+        """执行替换文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_path = str(request.get("rel_path", ""))
         path = str(request.get("path", ""))
-        self.data_manager.schedule_replace_file(rel_path, path)
+        self.data_manager.replace_file(rel_path, path)
         return {"accepted": True}
 
     def reset_file(self, request: dict[str, Any]) -> dict[str, object]:
-        """调度重置文件操作。"""
+        """执行重置文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_path = str(request.get("rel_path", ""))
-        self.data_manager.schedule_reset_file(rel_path)
+        self.data_manager.reset_file(rel_path)
         return {"accepted": True}
 
     def delete_file(self, request: dict[str, Any]) -> dict[str, object]:
-        """调度删除文件操作。"""
+        """执行删除文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_path = str(request.get("rel_path", ""))
-        self.data_manager.schedule_delete_file(rel_path)
+        self.data_manager.delete_file(rel_path)
         return {"accepted": True}
 
     def delete_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
-        """调度批量删除文件操作。"""
+        """执行批量删除文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_paths_raw = request.get("rel_paths", [])
         rel_paths = (
@@ -59,7 +59,7 @@ class WorkbenchAppService:
             if isinstance(rel_paths_raw, list)
             else []
         )
-        self.data_manager.schedule_delete_file_batch(rel_paths)
+        self.data_manager.delete_file_batch(rel_paths)
         return {"accepted": True}
 
     def reorder_files(self, request: dict[str, Any]) -> dict[str, object]:

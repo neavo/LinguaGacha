@@ -28,7 +28,6 @@ export const zh_cn_project_page = {
     remove_unavailable: '当前无法移除这条最近使用记录，请稍后重试。',
     missing_file_title: '文件不存在',
     missing_file_description: '工程文件已被移动或删除：\n{PATH}\n是否从最近打开中移除？',
-    missing_file_confirm: '移除记录',
   },
   preview: {
     project_name: '项目名称',

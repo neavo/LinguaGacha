@@ -35,17 +35,14 @@ export const en_us_custom_prompt_page = {
     delete_preset: {
       title: 'Delete Preset',
       description: 'Delete preset "{NAME}"?',
-      confirm: 'Delete Preset',
     },
     reset: {
       title: 'Confirm Reset',
       description: 'Confirm reset data …?',
-      confirm: 'Reset',
     },
     overwrite_preset: {
       title: 'Overwrite Preset',
       description: 'Preset "{NAME}" already exists. Overwrite it …?',
-      confirm: 'Overwrite',
     },
   },
   feedback: {

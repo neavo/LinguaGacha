@@ -76,8 +76,8 @@ def test_analysis_glossary_import_preview_and_project_file_result_hold_public_st
     assert preview.report.added == 1
     assert preview.entries[0].incoming_indexes == (0,)
     assert preview.statistics_results["Alice|0"].matched_item_count == 3
-    assert result.rel_path == "script/a.txt"
-    assert result.old_rel_path is None
+    assert result.rel_paths == ("script/a.txt",)
+    assert result.removed_rel_paths == ()
     assert result.total == 0
 
     with pytest.raises(FrozenInstanceError):

@@ -37,8 +37,6 @@ class LocalizerEN(LocalizerZH):
 
     # 日志
     log_crash: str = "A critical error has occurred, app will now exit, error detail has been saved to the log file …"
-    log_proxy: str = "Network proxy enabled …"
-    log_expert_mode: str = "Expert Mode Enabled …"
     log_api_test_fail: str = (
         "API test failed …"
         "\n"
@@ -114,12 +112,8 @@ class LocalizerEN(LocalizerZH):
     translation_task_force_accept_info: str = " | Forced Accept: {REASON}"
     engine_api_name: str = "API Name"
     engine_api_model: str = "API Model"
-    api_test_key: str = "Testing Key:"
-    api_test_messages: str = "Task Prompts:"
     api_test_timeout: str = "Request timed out ({SECONDS}s)"
     api_test_result: str = "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …"
-    api_test_result_failure: str = "Failed Keys:"
-    api_test_token_info: str = "Token usage: input {INPUT}, output {OUTPUT}, time {TIME}s"
     translation_mtool_optimizer_pre_log: str = "MToolOptimizer pre-processing completed, {COUNT} entries containing duplicate clauses were filtered in total …"
     translation_mtool_optimizer_post_log: str = "MToolOptimizer post-processing completed …"
     translation_response_check_fail: str = "Data error, will automatically retry, Reason: {REASON}"

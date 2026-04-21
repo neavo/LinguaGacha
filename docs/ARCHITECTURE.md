@@ -20,6 +20,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     A["AGENTS.md"] --> B["docs/ARCHITECTURE.md"]
+    A --> K["doc/DESIGN.md"]
     B --> C["frontend/SPEC.md"]
     C --> D["frontend/src/renderer/SPEC.md"]
     D --> E["frontend/src/renderer/app/project-runtime/SPEC.md"]
@@ -33,6 +34,7 @@ flowchart TD
 规则：
 - `AGENTS.md` 只保留协作规则、交付约束和仓库级入口。
 - 本文是仓库级文档索引、阅读路径和同步矩阵的唯一权威来源。
+- `doc/DESIGN.md` 是面向代理的前端设计系统文档，用于约束界面风格、组件气质与生成方向。
 - 模块 `SPEC.md` 只写当前模块的稳定边界、真实入口和改动落点，不记录对开发没有帮助的历史叙述。
 
 ## 推荐阅读路径
@@ -70,6 +72,7 @@ flowchart TD
 | 文档类型 | 位置 | 用途 |
 | --- | --- | --- |
 | `AGENTS.md` | 仓库根目录 | 协作规则、交付约束、仓库级入口 |
+| `doc/DESIGN.md` | `doc/` | 面向代理的前端设计系统文档，描述界面风格、组件语义与生成约束 |
 | `docs/ARCHITECTURE.md` | `docs/` | 仓库结构总览、阅读路径、文档索引与同步矩阵 |
 | `*/SPEC.md` | 模块目录内 | 当前模块的稳定边界、主流程、改动入口与维护约束 |
 | `docs/design/*.md` | `docs/design/` | 仍然有效的方案取舍与设计记录 |

@@ -121,7 +121,7 @@ def test_add_file_imports_asset_and_items_and_clears_caches(
 
     result = service.add_file("C:/workspace/a.txt")
 
-    assert result.rel_path == "a.txt"
+    assert result.rel_paths == ("a.txt",)
     assert result.new == 1
     assert result.total == 1
     session.db.add_asset.assert_called_once()
@@ -152,7 +152,7 @@ def test_reset_file_clears_translation_fields() -> None:
 
     result = service.reset_file("a.txt")
 
-    assert result.rel_path == "a.txt"
+    assert result.rel_paths == ("a.txt",)
     updated = session.captured_batch["items"]
     assert updated[0]["dst"] == ""
     assert updated[0]["status"] == Base.ProjectStatus.NONE
@@ -166,7 +166,7 @@ def test_delete_file_removes_asset_and_items() -> None:
 
     result = service.delete_file("a.txt")
 
-    assert result.rel_path == "a.txt"
+    assert result.removed_rel_paths == ("a.txt",)
     session.db.delete_items_by_file_path.assert_called_once()
     session.db.delete_asset.assert_called_once()
     assert "a.txt" not in session.asset_decompress_cache
@@ -243,7 +243,8 @@ def test_replace_file_returns_mutation_stats(fs, monkeypatch) -> None:
 
     assert result.matched == 1
     assert result.total == 1
-    assert result.old_rel_path is None
+    assert result.rel_paths == ("a.txt",)
+    assert result.removed_rel_paths == ()
     assert "a.txt" not in session.asset_decompress_cache
     service.item_service.clear_item_cache.assert_called_once()
     service.analysis_service.clear_analysis_progress.assert_called_once()
@@ -312,8 +313,8 @@ def test_replace_file_renames_asset_and_clears_old_and_new_cache_entries(
     create_virtual_file(fs, file_path)
     result = service.replace_file("chapter/a.txt", file_path)
 
-    assert result.rel_path == "chapter\\b.txt"
-    assert result.old_rel_path == "chapter/a.txt"
+    assert result.rel_paths == ("chapter\\b.txt",)
+    assert result.removed_rel_paths == ("chapter/a.txt",)
     session.db.update_asset_path.assert_called_once()
     assert "chapter/a.txt" not in session.asset_decompress_cache
     assert "chapter\\b.txt" not in session.asset_decompress_cache

@@ -127,13 +127,13 @@ def test_upsert_candidate_aggregate_roundtrip_normalizes_invalid_entries(
     }
 
 
-def test_commit_task_result_persists_candidates_checkpoints_and_snapshot(
+def test_commit_task_batch_persists_candidates_checkpoints_and_snapshot(
     repository_env: tuple[AnalysisRepository, ProjectSession, LGDatabase],
 ) -> None:
     repository, session, db = repository_env
 
-    inserted = repository.commit_task_result(
-        checkpoints=[
+    inserted = repository.commit_task_batch(
+        success_checkpoints=[
             {
                 "item_id": 1,
                 "status": Base.ProjectStatus.PROCESSED.value,
@@ -159,6 +159,7 @@ def test_commit_task_result_persists_candidates_checkpoints_and_snapshot(
                 "dst": "坏数据",
             },
         ],
+        error_checkpoints=[],
         progress_snapshot={"processed_line": 1, "line": 1},
     )
     aggregate = repository.get_candidate_aggregate()
@@ -212,8 +213,8 @@ def test_clear_progress_clears_snapshot_checkpoints_and_candidate_pool(
     repository_env: tuple[AnalysisRepository, ProjectSession, LGDatabase],
 ) -> None:
     repository, session, db = repository_env
-    repository.commit_task_result(
-        checkpoints=[
+    repository.commit_task_batch(
+        success_checkpoints=[
             {
                 "item_id": 1,
                 "status": Base.ProjectStatus.PROCESSED.value,
@@ -229,6 +230,7 @@ def test_clear_progress_clears_snapshot_checkpoints_and_candidate_pool(
                 "case_sensitive": False,
             }
         ],
+        error_checkpoints=[],
         progress_snapshot={"processed_line": 1, "line": 1},
     )
 
@@ -313,8 +315,9 @@ def test_getters_return_empty_when_project_not_loaded() -> None:
         == {}
     )
     assert (
-        repository.commit_task_result(
-            checkpoints=[],
+        repository.commit_task_batch(
+            success_checkpoints=[],
+            error_checkpoints=[],
             glossary_entries=[],
             progress_snapshot=None,
         )

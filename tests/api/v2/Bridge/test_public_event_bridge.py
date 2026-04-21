@@ -236,7 +236,7 @@ def test_event_bridge_maps_extra_finished_topic() -> None:
 
 def test_unknown_event_is_ignored() -> None:
     topic, payload = PublicEventBridge().map_event(
-        Base.Event.APITEST,
+        Base.Event.PROJECT_CHECK,
         {},
     )
 

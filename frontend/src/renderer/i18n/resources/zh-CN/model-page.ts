@@ -44,12 +44,10 @@ export const zh_cn_model_page = {
     delete: {
       title: '确认',
       description: '确认删除数据 …？',
-      confirm: '确认',
     },
     reset: {
       title: '确认',
       description: '确认重置数据 …？',
-      confirm: '确认',
     },
   },
   feedback: {

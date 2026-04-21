@@ -296,21 +296,6 @@ class AnalysisRepository:
 
         return inserted_count
 
-    def commit_task_result(
-        self,
-        *,
-        checkpoints: list[dict[str, Any]],
-        glossary_entries: list[dict[str, Any]],
-        progress_snapshot: dict[str, Any] | None,
-    ) -> int:
-        """兼容旧入口，内部统一转到新的批量提交实现。"""
-        return self.commit_task_batch(
-            success_checkpoints=checkpoints,
-            error_checkpoints=[],
-            glossary_entries=glossary_entries,
-            progress_snapshot=progress_snapshot,
-        )
-
     def clear_progress(self) -> None:
         """清空分析快照、检查点和候选池。"""
 

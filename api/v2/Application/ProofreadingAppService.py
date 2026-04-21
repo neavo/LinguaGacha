@@ -229,11 +229,10 @@ class ProofreadingAppService:
         """保存单条条目，并把 revision 冲突语义原样保留在 mutation 结果里。"""
 
         item = self.resolve_request_item(request)
-        new_dst = self.resolve_new_dst(request, item)
         expected_revision = int(request.get("expected_revision", 0) or 0)
         change = self.mutation_service.apply_manual_edit(
             item,
-            new_dst,
+            str(item.get_dst()),
             expected_revision=expected_revision,
         )
         saved_item_id = (
@@ -416,12 +415,6 @@ class ProofreadingAppService:
                 elif isinstance(item_raw, dict):
                     items.append(Item.from_dict(item_raw))
         return items
-
-    def resolve_new_dst(self, request: dict[str, Any], item: Item) -> str:
-        """统一解析新译文，兼容前端直接传 item 或单独传 new_dst。"""
-
-        new_dst_raw = request.get("new_dst", request.get("dst", item.get_dst()))
-        return str(new_dst_raw)
 
     def filter_items_from_request(
         self,

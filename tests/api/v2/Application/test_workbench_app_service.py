@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_build_workbench_snapshot_returns_serializable_payload(
     workbench_app_service,
     fake_workbench_manager,
@@ -23,6 +26,7 @@ def test_add_file_routes_through_workbench_manager(
 
     assert result["accepted"] is True
     assert fake_workbench_manager.add_calls == ["script/b.txt"]
+    assert fake_workbench_manager.scheduled_add_calls == []
 
 
 def test_replace_file_routes_through_workbench_manager(
@@ -35,6 +39,7 @@ def test_replace_file_routes_through_workbench_manager(
 
     assert result["accepted"] is True
     assert fake_workbench_manager.replace_calls == [("script/a.txt", "C:/next/a.txt")]
+    assert fake_workbench_manager.scheduled_replace_calls == []
 
 
 def test_reorder_files_routes_through_workbench_manager(
@@ -57,6 +62,7 @@ def test_reset_file_routes_through_workbench_manager(
 
     assert result["accepted"] is True
     assert fake_workbench_manager.reset_calls == ["script/a.txt"]
+    assert fake_workbench_manager.scheduled_reset_calls == []
 
 
 def test_delete_file_routes_through_workbench_manager(
@@ -67,6 +73,7 @@ def test_delete_file_routes_through_workbench_manager(
 
     assert result["accepted"] is True
     assert fake_workbench_manager.delete_calls == ["script/a.txt"]
+    assert fake_workbench_manager.scheduled_delete_calls == []
 
 
 def test_delete_file_batch_routes_through_workbench_manager(
@@ -81,6 +88,18 @@ def test_delete_file_batch_routes_through_workbench_manager(
     assert fake_workbench_manager.delete_batch_calls == [
         ["script/a.txt", "script/b.txt"]
     ]
+    assert fake_workbench_manager.scheduled_delete_batch_calls == []
+
+
+def test_add_file_propagates_manager_value_error(workbench_app_service) -> None:
+    class FailingWorkbenchManager:
+        def add_file(self, path: str) -> None:
+            raise ValueError(f"duplicate: {path}")
+
+    service = type(workbench_app_service)(FailingWorkbenchManager())
+
+    with pytest.raises(ValueError, match="duplicate: script/b.txt"):
+        service.add_file({"path": "script/b.txt"})
 
 
 def test_get_file_patch_returns_summary_order_and_entries(

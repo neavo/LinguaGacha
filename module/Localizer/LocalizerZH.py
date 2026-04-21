@@ -37,8 +37,6 @@ class LocalizerZH:
 
     # 日志
     log_crash: str = "出现严重错误，应用即将退出，错误信息已保存至日志文件 …"
-    log_proxy: str = "网络代理已启用 …"
-    log_expert_mode: str = "专家模式已启用 …"
     log_api_test_fail: str = (
         "接口测试失败 …"
         "\n"
@@ -114,12 +112,8 @@ class LocalizerZH:
     translation_task_force_accept_info: str = " | 已强制放行：{REASON}"
     engine_api_name: str = "接口名称"
     engine_api_model: str = "接口模型"
-    api_test_key: str = "正在测试密钥："
-    api_test_messages: str = "任务提示词："
     api_test_timeout: str = "请求超时（{SECONDS} 秒）"
     api_test_result: str = "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …"
-    api_test_result_failure: str = "失败的密钥："
-    api_test_token_info: str = "Token 使用：输入 {INPUT}，输出 {OUTPUT}，耗时 {TIME} 秒"
     translation_mtool_optimizer_pre_log: str = "MToolOptimizer 预处理已完成，共过滤 {COUNT} 个包含重复子句的条目 …"
     translation_mtool_optimizer_post_log: str = "MToolOptimizer 后处理已完成 …"
     translation_response_check_fail: str = "返回数据错误，将自动重试，原因：{REASON}"

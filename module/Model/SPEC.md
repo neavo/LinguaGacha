@@ -24,5 +24,5 @@
 - 新增模型供应商或模板时，优先扩展 `ModelType`、`Manager.TEMPLATE_FILENAME_BY_TYPE` 与对应预设资源，不要把分支散落到调用方。
 
 ## 维护提示
-- 如果模型页协议变化涉及冻结 DTO，去改 `api/v2/Models/Model.py`，不要回写到这里。
+- 如果模型页协议变化涉及冻结 DTO，去改 `api/v2/Models/Model.py` / `api/v2/Models/ModelTest.py`，不要回写到这里。
 - 如果只是模型配置字段、默认值或模板选择逻辑变化，优先改 `Types.py` / `Manager.py`，并同步检查 `Config` 与 `ModelAppService`。

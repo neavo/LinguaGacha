@@ -31,7 +31,6 @@ export const en_us_project_page = {
     remove_unavailable: 'Unable to remove this recent project entry right now. Please try again later.',
     missing_file_title: 'File Not Found',
     missing_file_description: 'Project file has been moved or deleted:\n{PATH}\nRemove it from recent projects?',
-    missing_file_confirm: 'Remove Entry',
   },
   preview: {
     project_name: 'Project Name',

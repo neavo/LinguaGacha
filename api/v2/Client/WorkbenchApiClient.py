@@ -18,14 +18,14 @@ class WorkbenchApiClient:
         return WorkbenchSnapshot.from_dict(response.get("snapshot", {}))
 
     def add_file(self, path: str) -> dict[str, Any]:
-        """调度新增文件操作。"""
+        """执行新增文件操作。"""
 
         return self.api_client.post(
             ProjectRoutes.WORKBENCH_ADD_FILE_PATH, {"path": path}
         )
 
     def replace_file(self, rel_path: str, path: str) -> dict[str, Any]:
-        """调度替换文件操作。"""
+        """执行替换文件操作。"""
 
         return self.api_client.post(
             ProjectRoutes.WORKBENCH_REPLACE_FILE_PATH,
@@ -33,14 +33,14 @@ class WorkbenchApiClient:
         )
 
     def reset_file(self, rel_path: str) -> dict[str, Any]:
-        """调度重置文件操作。"""
+        """执行重置文件操作。"""
 
         return self.api_client.post(
             ProjectRoutes.WORKBENCH_RESET_FILE_PATH, {"rel_path": rel_path}
         )
 
     def delete_file(self, rel_path: str) -> dict[str, Any]:
-        """调度删除文件操作。"""
+        """执行删除文件操作。"""
 
         return self.api_client.post(
             ProjectRoutes.WORKBENCH_DELETE_FILE_PATH,
@@ -48,7 +48,7 @@ class WorkbenchApiClient:
         )
 
     def delete_file_batch(self, rel_paths: list[str]) -> dict[str, Any]:
-        """调度批量删除文件操作。"""
+        """执行批量删除文件操作。"""
 
         return self.api_client.post(
             ProjectRoutes.WORKBENCH_DELETE_FILE_BATCH_PATH,

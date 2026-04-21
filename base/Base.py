@@ -29,7 +29,6 @@ class Base:
 
     # 事件
     class Event(StrEnum):
-        APITEST = "APITEST"  # 测试 - 生命周期事件
         TRANSLATION_TASK = (
             "TRANSLATION_TASK"  # 翻译 - 任务生命周期事件（发起/运行/结束）
         )
@@ -90,15 +89,12 @@ class Base:
     # 任务类型
     class TaskType(StrEnum):
         NER = "NER"
-        APITEST = "APITEST"
         TRANSLATION = "TRANSLATION"
         ANALYSIS = "ANALYSIS"
 
     # 任务状态
     class TaskStatus(StrEnum):
         IDLE = "IDLE"  # 无任务
-        NERING = "NERING"  # 测试中
-        TESTING = "TESTING"  # 测试中
         ANALYZING = "ANALYZING"  # 分析中
         TRANSLATING = "TRANSLATING"  # 翻译中
         STOPPING = "STOPPING"  # 停止中

@@ -9,11 +9,9 @@ export const en_us_workbench_page = {
     command_bar: 'Workbench Command Bar',
   },
   unit: {
-    file: 'File',
     line: 'Line',
   },
   stats: {
-    file_count: 'Files',
     total_lines: 'Total',
     translated: 'Succeeded',
     untranslated: 'Awaiting',
@@ -114,27 +112,22 @@ export const en_us_workbench_page = {
     replace: {
       title: 'Confirm',
       description: 'Current translations will be preserved as much as possible',
-      confirm: 'Confirm',
     },
     reset: {
       title: 'Confirm',
       description: 'Reset translation status for this file …?',
-      confirm: 'Confirm',
     },
     delete: {
       title: 'Confirm',
       description: 'Delete the selected files and all their translation items …?',
-      confirm: 'Confirm',
     },
     export: {
       title: 'Confirm',
       description: 'Confirm to generate the translation file?',
-      confirm: 'Confirm',
     },
     close_project: {
       title: 'Confirm',
       description: 'Are you sure you want to close the current project?',
-      confirm: 'Confirm',
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>

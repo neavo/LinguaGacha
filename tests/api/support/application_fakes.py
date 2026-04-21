@@ -253,10 +253,15 @@ class FakeWorkbenchManager:
             ),
         }
         self.add_calls: list[str] = []
+        self.scheduled_add_calls: list[str] = []
         self.replace_calls: list[tuple[str, str]] = []
+        self.scheduled_replace_calls: list[tuple[str, str]] = []
         self.reset_calls: list[str] = []
+        self.scheduled_reset_calls: list[str] = []
         self.delete_calls: list[str] = []
+        self.scheduled_delete_calls: list[str] = []
         self.delete_batch_calls: list[list[str]] = []
+        self.scheduled_delete_batch_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
 
     def build_workbench_snapshot(self) -> "WorkbenchSnapshot":
@@ -292,18 +297,33 @@ class FakeWorkbenchManager:
         )
 
     def schedule_add_file(self, path: str) -> None:
+        self.scheduled_add_calls.append(path)
+
+    def add_file(self, path: str) -> None:
         self.add_calls.append(path)
 
     def schedule_replace_file(self, rel_path: str, path: str) -> None:
+        self.scheduled_replace_calls.append((rel_path, path))
+
+    def replace_file(self, rel_path: str, path: str) -> None:
         self.replace_calls.append((rel_path, path))
 
     def schedule_reset_file(self, rel_path: str) -> None:
+        self.scheduled_reset_calls.append(rel_path)
+
+    def reset_file(self, rel_path: str) -> None:
         self.reset_calls.append(rel_path)
 
     def schedule_delete_file(self, rel_path: str) -> None:
+        self.scheduled_delete_calls.append(rel_path)
+
+    def delete_file(self, rel_path: str) -> None:
         self.delete_calls.append(rel_path)
 
     def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
+        self.scheduled_delete_batch_calls.append(list(rel_paths))
+
+    def delete_file_batch(self, rel_paths: list[str]) -> None:
         self.delete_batch_calls.append(list(rel_paths))
 
     def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:

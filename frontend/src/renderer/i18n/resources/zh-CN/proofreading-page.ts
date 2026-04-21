@@ -17,7 +17,6 @@ export const zh_cn_proofreading_page = {
     save: '保存',
     cancel: '取消',
     confirm: '确认',
-    more: '更多',
   },
   toggle: {
     status: '{TITLE} - {STATE}',
@@ -29,10 +28,8 @@ export const zh_cn_proofreading_page = {
     translation: '译文',
   },
   search: {
-    label: '搜索',
     placeholder: '查询 …',
     clear: '清空',
-    replace_label: '替换',
     replace_placeholder: '替换 …',
     replace_clear: '清空',
     regex: '正则',
@@ -75,7 +72,6 @@ export const zh_cn_proofreading_page = {
   },
   result_check_title: '结果检查',
   tooltip: {
-    status_prefix: '当前状态：',
     warning_title: '警告',
   },
   filter: {
@@ -86,7 +82,6 @@ export const zh_cn_proofreading_page = {
     search_placeholder: '筛选 …',
     glossary_detail: '未生效的术语',
     without_glossary_miss: '不含术语或术语全部生效',
-    search_term: '搜索术语原文或译文 …',
     no_warning: '无警告',
     no_glossary_error: '当前范围内无未生效术语',
     no_glossary_error_description: '当前范围内没有术语未命中项。',

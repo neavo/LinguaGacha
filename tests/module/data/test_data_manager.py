@@ -322,6 +322,98 @@ def test_schedule_guarded_file_operation_emits_runtime_refresh_after_finish(
     ]
 
 
+def test_add_file_runs_guarded_flow_and_emits_runtime_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    call_order: list[str] = []
+
+    monkeypatch.setattr(
+        data_manager_module.LogManager,
+        "get",
+        lambda: SimpleNamespace(
+            info=lambda message: call_order.append(f"log:{message}"),
+            warning=lambda message: call_order.append(f"warning:{message}"),
+            error=lambda message, error: call_order.append(
+                f"error:{message}:{type(error).__name__}"
+            ),
+        ),
+    )
+    dm.try_begin_guarded_file_operation = MagicMock(
+        side_effect=lambda: call_order.append("begin")
+    )
+    dm.run_project_prefilter = MagicMock(
+        side_effect=lambda config, reason: call_order.append(f"prefilter:{reason}")
+    )
+    dm.finish_file_operation = MagicMock(
+        side_effect=lambda: call_order.append("finish")
+    )
+
+    def mutate_file(path: str) -> ProjectFileMutationResult:
+        call_order.append(f"action:{path}")
+        return ProjectFileMutationResult(rel_paths=("chapter01.txt",))
+
+    dm.project_file_service.add_file = MagicMock(side_effect=mutate_file)
+
+    dm.add_file("chapter01.txt")
+
+    assert call_order == [
+        "begin",
+        f"log:{Localizer.get().workbench_progress_adding_file}",
+        "action:chapter01.txt",
+        "prefilter:file_op",
+        "finish",
+    ]
+    assert emitted_events == [
+        (
+            Base.Event.PROJECT_RUNTIME_REFRESH,
+            {
+                "source": "file_op",
+                "updatedSections": ["files", "items", "analysis"],
+            },
+        )
+    ]
+
+
+def test_add_file_reraises_value_error_without_runtime_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    call_order: list[str] = []
+
+    monkeypatch.setattr(
+        data_manager_module.LogManager,
+        "get",
+        lambda: SimpleNamespace(
+            info=lambda message: call_order.append(f"log:{message}"),
+            warning=lambda message: call_order.append(f"warning:{message}"),
+            error=lambda message, error: call_order.append(
+                f"error:{message}:{type(error).__name__}"
+            ),
+        ),
+    )
+    dm.try_begin_guarded_file_operation = MagicMock(
+        side_effect=lambda: call_order.append("begin")
+    )
+    dm.run_project_prefilter = MagicMock()
+    dm.finish_file_operation = MagicMock(
+        side_effect=lambda: call_order.append("finish")
+    )
+    dm.project_file_service.add_file = MagicMock(side_effect=ValueError("文件已存在 …"))
+
+    with pytest.raises(ValueError, match="文件已存在"):
+        dm.add_file("chapter01.txt")
+
+    assert call_order == [
+        "begin",
+        f"log:{Localizer.get().workbench_progress_adding_file}",
+        "warning:文件已存在 …",
+        "finish",
+    ]
+    dm.run_project_prefilter.assert_not_called()
+    assert emitted_events == []
+
+
 def test_update_batch_no_longer_emits_legacy_quality_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

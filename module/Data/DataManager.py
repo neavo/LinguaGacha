@@ -896,27 +896,47 @@ class DataManager(Base):
         self.try_begin_guarded_file_operation()
 
         def worker() -> None:
-            should_refresh_runtime = False
             try:
-                LogManager.get().info(progress_message)
-                action()
-                should_refresh_runtime = True
-                self.run_project_prefilter(
-                    Config().load(),
-                    reason="file_op",
+                self.complete_guarded_file_operation(
+                    progress_message,
+                    action,
+                    error_message,
                 )
-            except ValueError as e:
-                LogManager.get().warning(str(e))
-            except Exception as e:
-                LogManager.get().error(error_message, e)
-            finally:
-                self.finish_file_operation()
-                if should_refresh_runtime:
-                    # 为什么：文件线程结束后要补一次 V2 运行态同步信号，
-                    # 否则前端只会卡在等待屏障，却拿不到新的 ProjectStore 数据。
-                    self.emit_project_runtime_refresh(reason="file_op")
+            except Exception:
+                return
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def complete_guarded_file_operation(
+        self,
+        progress_message: str,
+        action: Callable[[], ProjectFileMutationResult],
+        error_message: str,
+    ) -> ProjectFileMutationResult:
+        """执行文件操作并统一收口日志、预处理和运行态刷新。"""
+
+        should_refresh_runtime = False
+        try:
+            LogManager.get().info(progress_message)
+            result = action()
+            should_refresh_runtime = True
+            self.run_project_prefilter(
+                Config().load(),
+                reason="file_op",
+            )
+            return result
+        except ValueError as e:
+            LogManager.get().warning(str(e))
+            raise
+        except Exception as e:
+            LogManager.get().error(error_message, e)
+            raise
+        finally:
+            self.finish_file_operation()
+            if should_refresh_runtime:
+                # 为什么：文件操作真正成功后，必须补一次 V2 运行态刷新信号，
+                # 让页面缓存和 ProjectStore 都能推进到同一个完成态。
+                self.emit_project_runtime_refresh(reason="file_op")
 
     def require_loaded_lg_path(self) -> str:
         """读取当前工程路径；未加载工程时统一抛出同一条错误。"""
@@ -998,17 +1018,19 @@ class DataManager(Base):
         )
 
     def add_file(self, file_path: str) -> None:
-        self.project_file_service.add_file(file_path)
-        self.run_project_prefilter(
-            Config().load(),
-            reason="file_op",
+        self.try_begin_guarded_file_operation()
+        self.complete_guarded_file_operation(
+            Localizer.get().workbench_progress_adding_file,
+            lambda: self.project_file_service.add_file(file_path),
+            f"Failed to add file: {file_path}",
         )
 
     def replace_file(self, rel_path: str, new_file_path: str) -> dict[str, int]:
-        result = self.project_file_service.replace_file(rel_path, new_file_path)
-        self.run_project_prefilter(
-            Config().load(),
-            reason="file_op",
+        self.try_begin_guarded_file_operation()
+        result = self.complete_guarded_file_operation(
+            Localizer.get().task_processing,
+            lambda: self.project_file_service.replace_file(rel_path, new_file_path),
+            f"Failed to replace file: {rel_path} -> {new_file_path}",
         )
         return {
             "matched": result.matched,
@@ -1017,24 +1039,27 @@ class DataManager(Base):
         }
 
     def reset_file(self, rel_path: str) -> None:
-        self.project_file_service.reset_file(rel_path)
-        self.run_project_prefilter(
-            Config().load(),
-            reason="file_op",
+        self.try_begin_guarded_file_operation()
+        self.complete_guarded_file_operation(
+            Localizer.get().workbench_progress_resetting_file,
+            lambda: self.project_file_service.reset_file(rel_path),
+            f"Failed to reset file: {rel_path}",
         )
 
     def delete_file(self, rel_path: str) -> None:
-        self.project_file_service.delete_file(rel_path)
-        self.run_project_prefilter(
-            Config().load(),
-            reason="file_op",
+        self.try_begin_guarded_file_operation()
+        self.complete_guarded_file_operation(
+            Localizer.get().workbench_progress_deleting_file,
+            lambda: self.project_file_service.delete_file(rel_path),
+            f"Failed to delete file: {rel_path}",
         )
 
     def delete_file_batch(self, rel_paths: list[str]) -> None:
-        self.project_file_service.delete_file_batch(rel_paths)
-        self.run_project_prefilter(
-            Config().load(),
-            reason="file_op",
+        self.try_begin_guarded_file_operation()
+        self.complete_guarded_file_operation(
+            Localizer.get().workbench_progress_deleting_file,
+            lambda: self.project_file_service.delete_file_batch(rel_paths),
+            "Failed to delete files in batch",
         )
 
     def timestamp_suffix_context(self) -> AbstractContextManager[None]:

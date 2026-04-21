@@ -216,6 +216,7 @@ flowchart LR
 ### 4.2 Project / Workbench / Proofreading
 - `project`、`workbench`、`proofreading` 三块虽然都挂在 `/api/v2/project/*` 下，但它们不是一个 Application 服务。
 - 工作台命令型接口大多只返回 `accepted`，真正的重型视图刷新依赖后续显式拉取 `file-patch`。
+- `workbench/add-file`、`replace-file`、`reset-file`、`delete-file`、`delete-file-batch` 现在在 HTTP 请求内直接执行文件操作；参数校验、重名冲突和解析失败会直接以错误响应透传给前端，而不是只在后台线程里吞掉。
 - `reorder-files` 的隐藏硬约束是：`ordered_rel_paths` 必须完整覆盖当前文件集合，不能只传局部。
 - Proofreading 的工程定位优先级当前是：
   - `lg_path`
@@ -246,10 +247,7 @@ flowchart LR
 - `target_language` 当前只同步工程 meta 镜像，不是页面刷新信号。
 
 ### 4.5 Models
-- `models/reorder` 当前同时支持两种形态：
-  - 新形态：`ordered_model_ids`
-  - 兼容形态：`model_id + operation`
-- 新逻辑应优先使用 `ordered_model_ids`。
+- `models/reorder` 当前只接受 `ordered_model_ids`，不再兼容 `model_id + operation` 的离散重排动作。
 - `ordered_model_ids` 必须只重排某一个模型分组，不能跨组混排。
 - `models/add` 当前实际只新增自定义类型，不会新增新的 preset 模型。
 
