@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
+import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
+import { isProjectRuntimeV2Enabled } from '@/app/state/v2/runtime-feature'
+import { runQualityStatisticsWorkerTask } from '@/app/state/v2/workers/quality-statistics-worker'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import {
@@ -215,6 +218,28 @@ function build_statistics_badge_tooltip(
   return tooltip_lines.join('\n')
 }
 
+export function buildGlossaryStatisticsState(args: {
+  revision: number
+  completed_entry_ids: GlossaryEntryId[]
+  results: Record<string, { matched_item_count?: number; subset_parents?: string[] }>
+}): GlossaryStatisticsState {
+  return {
+    running: false,
+    completed_revision: args.revision,
+    completed_entry_ids: args.completed_entry_ids,
+    matched_count_by_entry_id: Object.fromEntries(
+      Object.entries(args.results).map(([entry_id, result]) => {
+        return [entry_id, result.matched_item_count ?? 0]
+      }),
+    ),
+    subset_parent_labels_by_entry_id: Object.fromEntries(
+      Object.entries(args.results).map(([entry_id, result]) => {
+        return [entry_id, result.subset_parents ?? []]
+      }),
+    ),
+  }
+}
+
 type UseGlossaryPageStateResult = {
   enabled: boolean
   filtered_entries: GlossaryVisibleEntry[]
@@ -281,6 +306,7 @@ type UseGlossaryPageStateResult = {
 export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
+  const { project_store } = useDesktopRuntime()
   const {
     navigate_to_route,
     push_proofreading_lookup_intent,
@@ -1027,41 +1053,53 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     })
 
     try {
-      const payload = await api_fetch<GlossaryStatisticsPayload>(
-        '/api/quality/rules/statistics',
-        {
+      let results: Record<string, { matched_item_count?: number; subset_parents?: string[] }>
+
+      if (isProjectRuntimeV2Enabled()) {
+        const worker_result = await runQualityStatisticsWorkerTask({
           rules: entries.map((entry, index) => ({
             key: build_glossary_entry_id(entry, index),
             pattern: entry.src,
             mode: 'glossary',
-            regex: false,
             case_sensitive: entry.case_sensitive,
           })),
-          relation_candidates: entries.map((entry, index) => ({
-            key: build_glossary_entry_id(entry, index),
-            src: entry.src,
-          })),
-        },
-      )
-      const results = payload.statistics?.results ?? {}
+          srcTexts: Object.values(project_store.getState().items).map((item) => {
+            if (typeof item !== 'object' || item === null) {
+              return ''
+            }
 
-      set_statistics_state({
-        running: false,
-        completed_revision: revision_ref.current,
+            return String((item as { src?: string }).src ?? '')
+          }),
+          dstTexts: [],
+        })
+        results = worker_result.results
+      } else {
+        const payload = await api_fetch<GlossaryStatisticsPayload>(
+          '/api/quality/rules/statistics',
+          {
+            rules: entries.map((entry, index) => ({
+              key: build_glossary_entry_id(entry, index),
+              pattern: entry.src,
+              mode: 'glossary',
+              regex: false,
+              case_sensitive: entry.case_sensitive,
+            })),
+            relation_candidates: entries.map((entry, index) => ({
+              key: build_glossary_entry_id(entry, index),
+              src: entry.src,
+            })),
+          },
+        )
+        results = payload.statistics?.results ?? {}
+      }
+
+      set_statistics_state(buildGlossaryStatisticsState({
+        revision: revision_ref.current,
         completed_entry_ids: entries.map((entry, index) => {
           return build_glossary_entry_id(entry, index)
         }),
-        matched_count_by_entry_id: Object.fromEntries(
-          Object.entries(results).map(([entry_id, result]) => {
-            return [entry_id, result.matched_item_count ?? 0]
-          }),
-        ),
-        subset_parent_labels_by_entry_id: Object.fromEntries(
-          Object.entries(results).map(([entry_id, result]) => {
-            return [entry_id, result.subset_parents ?? []]
-          }),
-        ),
-      })
+        results,
+      }))
     } catch (error) {
       set_statistics_state(create_empty_statistics_state())
       if (error instanceof Error) {
@@ -1070,7 +1108,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast('error', t('glossary_page.feedback.statistics_failed'))
       }
     }
-  }, [entries, push_toast, statistics_state.running, t])
+  }, [entries, project_store, push_toast, statistics_state.running, t])
 
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
