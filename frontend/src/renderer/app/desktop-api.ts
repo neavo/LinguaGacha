@@ -12,6 +12,11 @@ type HealthPayload = {
   service?: string
 }
 
+type EventSourceJsonEvent = {
+  type: string
+  [key: string]: unknown
+}
+
 const CORE_API_HEALTH_PATH = '/api/health'
 const CORE_API_SERVICE_NAME = 'linguagacha-core'
 const CORE_API_PROBE_TIMEOUT_MS = 300
@@ -48,6 +53,14 @@ function read_core_api_base_url(): string {
 function build_api_url(base_url: string, path: string): string {
   const normalized_path = path.startsWith('/') ? path : `/${path}`
   return `${base_url}${normalized_path}`
+}
+
+function parse_event_source_payload(event: MessageEvent<string>): Record<string, unknown> {
+  try {
+    return JSON.parse(event.data) as Record<string, unknown>
+  } catch {
+    return {}
+  }
 }
 
 async function probe_core_api_candidate(base_url: string): Promise<boolean> {
@@ -136,9 +149,125 @@ export async function api_fetch<data_type>(
   return payload.data
 }
 
-export async function open_event_stream(): Promise<EventSource> {
+async function open_event_stream_at_path(path: string): Promise<EventSource> {
   const base_url = await resolve_core_api_base_url()
-  return new EventSource(build_api_url(base_url, '/api/events/stream'))
+  return new EventSource(build_api_url(base_url, path))
+}
+
+export async function open_event_stream(): Promise<EventSource> {
+  return open_event_stream_at_path('/api/events/stream')
+}
+
+export async function open_v2_event_stream(): Promise<EventSource> {
+  return open_event_stream_at_path('/api/v2/events/stream')
+}
+
+async function* open_json_event_source_stream(args: {
+  path: string
+  event_types: string[]
+}): AsyncIterable<EventSourceJsonEvent> {
+  const event_source = await open_event_stream_at_path(args.path)
+  const queue: EventSourceJsonEvent[] = []
+  let pending_resolve: ((value: EventSourceJsonEvent | null) => void) | null = null
+  let stream_error: Error | null = null
+  let closed = false
+
+  function push_event(event: EventSourceJsonEvent): void {
+    if (pending_resolve !== null) {
+      const resolve = pending_resolve
+      pending_resolve = null
+      resolve(event)
+      return
+    }
+
+    queue.push(event)
+  }
+
+  function close_stream(): void {
+    if (closed) {
+      return
+    }
+
+    closed = true
+    event_source.close()
+    if (pending_resolve !== null) {
+      const resolve = pending_resolve
+      pending_resolve = null
+      resolve(null)
+    }
+  }
+
+  function fail_stream(): void {
+    stream_error = new DesktopApiError('事件流连接失败。', 'event_stream_failed', 503)
+    close_stream()
+  }
+
+  for (const event_type of args.event_types) {
+    event_source.addEventListener(event_type, ((event: MessageEvent<string>) => {
+      const payload = parse_event_source_payload(event)
+      push_event({
+        type: event_type,
+        ...payload,
+      })
+      if (event_type === 'completed' || event_type === 'failed') {
+        close_stream()
+      }
+    }) as EventListener)
+  }
+
+  event_source.onerror = () => {
+    fail_stream()
+  }
+
+  try {
+    while (true) {
+      if (queue.length > 0) {
+        const next_event = queue.shift()
+        if (next_event !== undefined) {
+          yield next_event
+          continue
+        }
+      }
+
+      if (closed) {
+        if (stream_error !== null) {
+          throw stream_error
+        }
+        return
+      }
+
+      const next_event = await new Promise<EventSourceJsonEvent | null>((resolve) => {
+        pending_resolve = resolve
+      })
+
+      if (next_event === null) {
+        if (stream_error !== null) {
+          throw stream_error
+        }
+        return
+      }
+
+      yield next_event
+    }
+  } finally {
+    close_stream()
+  }
+}
+
+export function open_v2_project_bootstrap_stream(
+  project_path: string,
+): AsyncIterable<EventSourceJsonEvent> {
+  void project_path
+  return open_json_event_source_stream({
+    path: '/api/v2/project/bootstrap/stream',
+    event_types: [
+      'stage_started',
+      'stage_payload',
+      'stage_completed',
+      'completed',
+      'failed',
+    ],
+  })
 }
 
 export async function open_external_url(url: string): Promise<void> {

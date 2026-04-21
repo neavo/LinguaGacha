@@ -25,3 +25,39 @@ def test_v2_project_routes_register_bootstrap_stream():
         ("GET", "/api/v2/project/bootstrap/stream")
     ]
     assert route_definition.mode == "stream"
+
+
+def test_server_bootstrap_registers_v2_project_command_routes():
+    core_api_server = CoreApiServer()
+
+    ServerBootstrap.register_v2_routes(
+        core_api_server,
+        v2_project_app_service=object(),
+    )
+
+    assert core_api_server.route_map[("POST", "/api/v2/project/load")].mode == "json"
+    assert core_api_server.route_map[("POST", "/api/v2/project/snapshot")].mode == "json"
+    assert core_api_server.route_map[("POST", "/api/v2/project/preview")].mode == "json"
+
+
+def test_server_bootstrap_registers_v2_project_runtime_routes():
+    core_api_server = CoreApiServer()
+
+    ServerBootstrap.register_v2_routes(
+        core_api_server,
+        workbench_app_service=object(),
+        proofreading_app_service=object(),
+    )
+
+    assert (
+        core_api_server.route_map[("POST", "/api/v2/project/workbench/snapshot")].mode
+        == "json"
+    )
+    assert (
+        core_api_server.route_map[("POST", "/api/v2/project/proofreading/snapshot")].mode
+        == "json"
+    )
+    assert (
+        core_api_server.route_map[("POST", "/api/v2/project/proofreading/save-item")].mode
+        == "json"
+    )

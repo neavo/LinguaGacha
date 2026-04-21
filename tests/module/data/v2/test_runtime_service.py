@@ -12,6 +12,9 @@ class StubItem:
     def get_file_path(self):
         return "chapter01.txt"
 
+    def get_file_type(self):
+        return "TXT"
+
     def get_src(self):
         return "原文"
 
@@ -36,3 +39,14 @@ def test_build_items_block_uses_schema_and_rows():
     assert block["schema"] == "project-items.v1"
     assert block["fields"] == ["item_id", "file_path", "src", "dst", "status"]
     assert block["rows"] == [[1, "chapter01.txt", "原文", "译文", "DONE"]]
+
+
+def test_build_files_block_uses_schema_and_rows():
+    data_manager = StubDataManager()
+    service = V2ProjectRuntimeService(data_manager)
+
+    block = service.build_files_block()
+
+    assert block["schema"] == "project-files.v1"
+    assert block["fields"] == ["rel_path", "file_type"]
+    assert block["rows"] == [["chapter01.txt", "TXT"]]

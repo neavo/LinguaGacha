@@ -5,6 +5,28 @@ from api.Application.EventStreamService import EventStreamService
 from api.Bridge.V2.EventBridge import V2EventBridge
 
 
+class StubRuntimeService:
+    def build_item_records(self, item_ids: list[int]) -> list[dict[str, object]]:
+        return [
+            {
+                "item_id": item_id,
+                "file_path": "chapter01.txt",
+                "src": "原文",
+                "dst": f"译文{item_id}",
+                "status": "DONE",
+            }
+            for item_id in item_ids
+        ]
+
+
+def build_task_snapshot(task_type: str) -> dict[str, object]:
+    return {
+        "task_type": task_type,
+        "status": "DONE",
+        "busy": False,
+    }
+
+
 def test_publish_event_creates_standardized_envelope() -> None:
     service = EventStreamService()
     subscriber = service.add_subscriber()
@@ -133,7 +155,12 @@ def test_stream_to_handler_swallow_connection_aborted_error() -> None:
 
 
 def test_publish_event_supports_v2_patch_bridge() -> None:
-    service = EventStreamService(event_bridge=V2EventBridge())
+    service = EventStreamService(
+        event_bridge=V2EventBridge(
+            runtime_service=StubRuntimeService(),
+            task_snapshot_builder=build_task_snapshot,
+        )
+    )
     subscriber = service.add_subscriber()
 
     service.publish_internal_event(
@@ -149,3 +176,23 @@ def test_publish_event_supports_v2_patch_bridge() -> None:
     assert envelope.topic == "project.patch"
     assert envelope.data["source"] == "task"
     assert envelope.data["updatedSections"] == ["items", "task"]
+    assert envelope.data["patch"][0]["items"][0]["item_id"] == 1
+
+
+def test_publish_v1_invalidation_with_v2_bridge_is_ignored() -> None:
+    service = EventStreamService(
+        event_bridge=V2EventBridge(
+            runtime_service=StubRuntimeService(),
+            task_snapshot_builder=build_task_snapshot,
+        )
+    )
+    subscriber = service.add_subscriber()
+
+    service.publish_internal_event(
+        Base.Event.PROOFREADING_REFRESH,
+        {
+            "reason": "quality_rule_update",
+        },
+    )
+
+    assert subscriber.empty() is True

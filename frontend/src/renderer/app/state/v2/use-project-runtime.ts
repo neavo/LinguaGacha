@@ -21,6 +21,83 @@ type V2ProjectRuntimeArgs = {
 }
 
 export function createV2ProjectRuntime(args: V2ProjectRuntimeArgs) {
+  function isRowBlockPayload(payload: Record<string, unknown>): payload is {
+    fields: string[]
+    rows: unknown[][]
+  } {
+    return Array.isArray(payload.fields) && Array.isArray(payload.rows)
+  }
+
+  function buildRecordMapFromRowBlock(payload: {
+    fields: string[]
+    rows: unknown[][]
+  }, keyField: string): Record<string, Record<string, unknown>> {
+    const records: Record<string, Record<string, unknown>> = {}
+
+    for (const row of payload.rows) {
+      if (!Array.isArray(row)) {
+        continue
+      }
+
+      const record: Record<string, unknown> = {}
+      payload.fields.forEach((field, index) => {
+        record[field] = row[index]
+      })
+
+      const recordKey = String(record[keyField] ?? '').trim()
+      if (recordKey === '') {
+        continue
+      }
+
+      records[recordKey] = record
+    }
+
+    return records
+  }
+
+  function normalizeStagePayload(
+    stage: ProjectStoreStage,
+    payload: Record<string, unknown>,
+  ): ProjectStoreBootstrapPayload {
+    if (stage === 'items' && isRowBlockPayload(payload)) {
+      return {
+        items: buildRecordMapFromRowBlock(payload, 'item_id'),
+      }
+    }
+
+    if (stage === 'files' && isRowBlockPayload(payload)) {
+      return {
+        files: buildRecordMapFromRowBlock(payload, 'rel_path'),
+      }
+    }
+
+    if (stage === 'quality') {
+      return {
+        quality: payload,
+      }
+    }
+
+    if (stage === 'prompts') {
+      return {
+        prompts: payload,
+      }
+    }
+
+    if (stage === 'analysis') {
+      return {
+        analysis: payload,
+      }
+    }
+
+    if (stage === 'task') {
+      return {
+        task: payload,
+      }
+    }
+
+    return payload as ProjectStoreBootstrapPayload
+  }
+
   return {
     async bootstrap(projectPath: string): Promise<void> {
       const normalized_project_path = projectPath.trim()
@@ -37,8 +114,16 @@ export function createV2ProjectRuntime(args: V2ProjectRuntimeArgs) {
 
           args.store.applyBootstrapStage(
             stage,
-            payload as ProjectStoreBootstrapPayload,
+            normalizeStagePayload(stage, payload),
           )
+        },
+        onCompleted: (projectRevision, sectionRevisions) => {
+          args.store.applyBootstrapStage('project', {
+            revisions: {
+              projectRevision,
+              sections: sectionRevisions,
+            },
+          })
         },
       })
     },

@@ -9,6 +9,10 @@ export type BootstrapStreamEvent = {
 export async function consumeBootstrapStream(args: {
   open: () => AsyncIterable<BootstrapStreamEvent>
   onStagePayload: (stage: string, payload: Record<string, unknown>) => void
+  onCompleted?: (
+    projectRevision: number,
+    sectionRevisions: Record<string, number>,
+  ) => void
 }): Promise<void> {
   for await (const event of args.open()) {
     if (
@@ -17,6 +21,14 @@ export async function consumeBootstrapStream(args: {
       && event.payload !== undefined
     ) {
       args.onStagePayload(event.stage, event.payload)
+      continue
+    }
+
+    if (event.type === 'completed') {
+      args.onCompleted?.(
+        Number(event.projectRevision ?? 0),
+        event.sectionRevisions ?? {},
+      )
     }
   }
 }

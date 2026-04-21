@@ -60,13 +60,17 @@ flowchart LR
 
 - `ServerBootstrap.start()` 负责组装各个 `*AppService`，再统一注册到 `CoreApiServer`。
 - `CoreApiServer.register_routes()` 只注册基础健康检查；业务路由由 `api/Server/Routes/*.py` 追加注册。
-- `EventRoutes` 把 `EventStreamService.stream_to_handler()` 暴露为唯一 SSE 入口。
+- 迁移期同时存在两条 SSE 入口：`EventRoutes` 暴露 `/api/events/stream` 供 V1 存量场景使用，`api/Server/Routes/V2/EventRoutes.py` 暴露 `/api/v2/events/stream` 供 V2 `ProjectStore` 消费。
 
 ## 3. 通用协议
 
 ### 3.1 HTTP 约定
 
-- `GET /api/health` 与 `GET /api/events/stream` 是仅有的 `GET` 接口。
+- 当前 `GET` 接口包括：
+  - `/api/health`
+  - `/api/events/stream`
+  - `/api/v2/events/stream`
+  - `/api/v2/project/bootstrap/stream`
 - 其余公开接口统一使用 `POST + JSON body`。
 - `OPTIONS` 由 `CoreApiServer` 统一返回 `204`，无需各路由单独处理。
 
@@ -125,6 +129,8 @@ data: {"task_type":"translation","line":3}
 
 ### 3.4 当前公开 topic
 
+V1 `/api/events/stream` 仍保留以下 topic：
+
 | topic | 载荷用途 |
 | --- | --- |
 | `project.changed` | 通知工程加载态和当前路径变化 |
@@ -148,6 +154,12 @@ data: {"task_type":"translation","line":3}
 | `proofreading.snapshot_invalidated` | `reason`、`scope`，以及按来源可选的 `item_ids`、`rule_types`、`meta_keys`、`reset_scope`、`keys`、`rel_paths`、`removed_rel_paths`、`source_event`、`trigger_reason` |
 | `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | `task_id`、`phase`、`message`、`current`、`total`、`finished` |
 
+V2 `/api/v2/events/stream` 当前公开的主 topic 为：
+
+| topic | 当前稳定字段 | 用途 |
+| --- | --- | --- |
+| `project.patch` | `source`、`projectRevision`、`updatedSections`、`patch` | 以项目领域 patch 回灌 `ProjectStore`，替代页面级 invalidation |
+
 ### 3.5 Python 侧 SSE 消费现状
 
 - `SseClient` 解析 `event:` / `data:` 帧后，把 payload 直接交给 `ApiStateStore.apply_event()`。
@@ -170,7 +182,9 @@ data: {"task_type":"translation","line":3}
 | 方法 | 路径 | `data` 结构 | 说明 |
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | `{"status": "ok", "service": "linguagacha-core"}` | 渲染层探活与 base URL 确认入口 |
-| `GET` | `/api/events/stream` | SSE 流 | 唯一事件流入口 |
+| `GET` | `/api/events/stream` | SSE 流 | V1 存量事件流入口 |
+| `GET` | `/api/v2/events/stream` | SSE 流 | V2 `project.patch` 事件流入口 |
+| `GET` | `/api/v2/project/bootstrap/stream` | SSE 流 | 当前已加载项目的 V2 bootstrap 分段首包 |
 
 ### 4.2 Project
 
@@ -627,7 +641,8 @@ data: {"task_type":"translation","line":3}
 
 - `frontend/src/renderer/app/desktop-api.ts`
   - `api_fetch()`：统一发 `POST`
-  - `open_event_stream()`：统一打开 SSE
+  - `open_event_stream()` / `open_v2_event_stream()`：按版本打开 SSE
+  - `open_v2_project_bootstrap_stream()`：读取 V2 bootstrap 分段首包
   - `probe_core_api_candidate()`：用 `/api/health` 做探活
 - `frontend/src/renderer/app/state/*`
 - `frontend/src/renderer/pages/*`
@@ -636,10 +651,11 @@ data: {"task_type":"translation","line":3}
 
 - 渲染层在真正发请求前，会校验 `/api/health` 返回的 `service === "linguagacha-core"` 且 `status === "ok"`。
 - 渲染层大量接口当前使用本地 TypeScript payload 类型，而不是复用 Python 侧 `api/Client` 的冻结模型。
-- `DesktopRuntimeContext` 当前把 `workbench.snapshot_changed` 与 `proofreading.snapshot_invalidated` 收口成结构化变更信号：
+- `DesktopRuntimeContext` 当前会先消费 `/api/v2/project/bootstrap/stream` 建立 `ProjectStore`，再监听 `/api/v2/events/stream` 上的 `project.patch` 合并任务回灌。
+- `project.patch` 会在渲染层继续派生出结构化变更信号，供仍在迁移期的页面 hook 复用：
   - `workbench_change_signal = { seq, reason, scope, rel_paths, removed_rel_paths, order_changed }`
   - `proofreading_change_signal = { seq, reason, scope, item_ids, rel_paths, removed_rel_paths }`
-- 工作台页当前只响应 `scope == "file" | "order" | "global"`；校对页额外支持 `scope == "entry"`，收到后会优先请求 `/api/proofreading/entry-patch` 做本地合并。
+- 工作台页当前只响应 `scope == "file" | "order" | "global"`；校对页额外支持 `scope == "entry"`。
 - 两页当前都不再因为“任意任务从 busy 回到 idle”而主动整页刷新；只有项目加载/切换、显式 `scope == "global"`，或补丁失败时才回退整页 `/snapshot`。
 - `api/Client/*` 与 `ApiStateStore` 主要服务于 Python 侧测试、桥接和对象化消费场景，不是 Electron 渲染层运行时入口。
 

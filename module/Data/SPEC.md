@@ -23,7 +23,7 @@
 | `DataManager.py` | 工程级数据入口；协调会话、规则、分析、翻译、工作台事件与跨 service 流程 |
 | `Core/` | `ProjectSession`、`Item`、`Project` 以及 `Meta/Rule/ItemService/Asset/Batch` 基础能力 |
 | `Storage/LGDatabase.py` | `.lg` 的 schema、SQL、事务与序列化实现 |
-| `Project/` | 工程创建/加载/卸载、文件操作、预过滤、导出路径与工作台快照 |
+| `Project/` | 工程创建/加载/卸载、文件操作、预过滤、导出路径、工作台快照，以及 V2 runtime snapshot / patch / revision 支撑 |
 | `Quality/` | 规则快照、变更、预设、提示词与分析候选导入术语的规则侧逻辑 |
 | `Analysis/` | 分析进度、候选聚合、checkpoint 与分析结果写回 |
 | `Proofreading/` | 校对页快照、筛选、revision 冲突、保存、重检与重翻 |
@@ -68,6 +68,7 @@ flowchart TD
 | --- | --- |
 | 工程创建/加载/卸载 | `DataManager` -> `ProjectService` / `ProjectLifecycleService` |
 | 工作台文件增删改、批量文件操作与文件级补丁 | `DataManager` -> `ProjectFileService` / `WorkbenchService` |
+| V2 项目运行态 bootstrap / patch 构建 | `V2ProjectBootstrapAppService` / `V2ProjectRuntimeService` -> `DataManager` |
 | 规则、提示词、预设 | `DataManager` -> `QualityRuleService` / `PromptService` / `QualityRulePresetService` |
 | 分析进度、候选导入 | `DataManager` -> `AnalysisService` / `QualityRuleGlossaryImportService` |
 | 翻译取条目、翻译重置 | `DataManager` -> `TranslationItemService` / `TranslationResetService` |
@@ -89,6 +90,8 @@ flowchart TD
 - `ProjectFileService`：文件导入、更新、重置、删除，以及批量 `replace/reset/delete` 的单事务提交
 - `ExportPathService`：导出路径规则
 - `WorkbenchService`：工作台聚合快照与按文件路径裁切 entry patch
+- `Project/V2/RuntimeService`：把当前工程实体编码成 V2 bootstrap block 与 task patch 可复用的稳定记录
+- `Project/V2/RevisionService` / `Project/V2/MutationService`：维护 V2 `projectRevision`、section revision 与 mutation 写入口
 
 ### `Quality`
 - `QualityRuleService`：规则领域总门面
@@ -155,7 +158,7 @@ flowchart TD
 - 翻译批量提交、校对保存/替换/重译，以及 `translation_reset_failed` 当前都已经改成条目级差异刷新，不再依赖任务终态后的整页兜底刷新。
 - 批量 `replace/reset/delete` 当前都按“一次事务 + 一次事件”的语义落地；前端多选操作不再需要逐个文件排队触发刷新。
 - 文件重排当前只触发工作台 `scope="order"` 刷新；文件增删改则同时触发工作台和校对页 `scope="file"` 刷新。
-- 质量规则写入当前由 `QualityRuleMutationService` 先取旧/新快照，再通过 `ProofreadingImpactAnalyzer` 计算精确条目范围；EventBridge 负责把同一条 `QUALITY_RULE_UPDATE` 裁成 `proofreading.snapshot_invalidated`，工作台不再因为这类规则更新补发刷新。
+- 对 Electron 渲染层主路径来说，工作台/校对页已不再依赖 `workbench.snapshot_changed` 与 `proofreading.snapshot_invalidated`；后台任务终态改为通过 V2 `project.patch` 回灌 `ProjectStore`。
 
 ## 修改建议
 | 变更类型 | 优先落点 |

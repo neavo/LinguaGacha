@@ -10,8 +10,19 @@ import {
 } from 'react'
 
 import type { RouteId } from '@/app/navigation/types'
-import { api_fetch, open_event_stream } from '@/app/desktop-api'
-import { createProjectStore } from '@/app/state/v2/project-store'
+import {
+  api_fetch,
+  open_event_stream,
+  open_v2_event_stream,
+  open_v2_project_bootstrap_stream,
+} from '@/app/desktop-api'
+import {
+  createProjectStore,
+  isProjectStoreStage,
+  type ProjectStorePatchEvent,
+  type ProjectStorePatchOperation,
+  type ProjectStoreSectionRevisions,
+} from '@/app/state/v2/project-store'
 import { isProjectRuntimeV2Enabled } from '@/app/state/v2/runtime-feature'
 import { createV2ProjectRuntime } from '@/app/state/v2/use-project-runtime'
 
@@ -133,20 +144,12 @@ type SettingsChangedEventPayload = {
   }
 }
 
-type ProofreadingSnapshotInvalidatedEventPayload = {
-  reason?: unknown
-  scope?: unknown
-  item_ids?: unknown
-  rel_paths?: unknown
-  removed_rel_paths?: unknown
-}
-
-type WorkbenchSnapshotChangedEventPayload = {
-  reason?: unknown
-  scope?: unknown
-  rel_paths?: unknown
-  removed_rel_paths?: unknown
-  order_changed?: unknown
+type ProjectPatchEventPayload = {
+  source?: unknown
+  projectRevision?: unknown
+  updatedSections?: unknown
+  patch?: unknown
+  sectionRevisions?: unknown
 }
 
 const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
@@ -350,7 +353,7 @@ function parse_event_payload(event: MessageEvent<string>): Record<string, unknow
   }
 }
 
-function normalize_string_array(value: unknown): string[] {
+function normalize_section_array(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return []
   }
@@ -360,38 +363,123 @@ function normalize_string_array(value: unknown): string[] {
     .filter((entry) => entry !== '')
 }
 
-function normalize_item_id_array(value: unknown): number[] {
-  if (!Array.isArray(value)) {
-    return []
+function normalize_section_revisions(value: unknown): ProjectStoreSectionRevisions | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
   }
 
-  const item_ids: number[] = []
-  for (const entry of value) {
-    const next_item_id = Number(entry)
-    if (!Number.isInteger(next_item_id)) {
+  const raw_entries = Object.entries(value as Record<string, unknown>)
+  const section_revisions: Record<string, number> = {}
+  for (const [section, revision] of raw_entries) {
+    if (!isProjectStoreStage(section)) {
       continue
     }
-    if (!item_ids.includes(next_item_id)) {
+
+    const normalized_revision = Number(revision)
+    if (!Number.isFinite(normalized_revision)) {
+      continue
+    }
+
+    section_revisions[section] = normalized_revision
+  }
+
+  if (Object.keys(section_revisions).length === 0) {
+    return undefined
+  }
+
+  return section_revisions
+}
+
+function is_project_store_patch_operation(value: unknown): value is ProjectStorePatchOperation {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { op?: unknown }).op === 'string'
+}
+
+function normalize_project_patch_event(
+  payload: ProjectPatchEventPayload,
+): ProjectStorePatchEvent | null {
+  if (!Array.isArray(payload.patch)) {
+    return null
+  }
+
+  const updated_sections = normalize_section_array(payload.updatedSections)
+    .filter(isProjectStoreStage)
+  if (updated_sections.length === 0) {
+    return null
+  }
+
+  const patch = payload.patch.filter(is_project_store_patch_operation)
+
+  return {
+    source: String(payload.source ?? 'task'),
+    projectRevision: Number(payload.projectRevision ?? 0),
+    updatedSections: updated_sections,
+    patch,
+    sectionRevisions: normalize_section_revisions(payload.sectionRevisions),
+  }
+}
+
+function collect_project_patch_item_ids(event: ProjectStorePatchEvent): number[] {
+  const item_ids: number[] = []
+
+  for (const operation of event.patch) {
+    if (operation.op !== 'merge_items' || !Array.isArray(operation.items)) {
+      continue
+    }
+
+    for (const item of operation.items) {
+      const next_item_id = Number(item.item_id)
+      if (!Number.isInteger(next_item_id) || item_ids.includes(next_item_id)) {
+        continue
+      }
       item_ids.push(next_item_id)
     }
   }
+
   return item_ids
 }
 
-function normalize_proofreading_change_scope(value: unknown): ProofreadingChangeScope {
-  if (value === 'file' || value === 'entry') {
-    return value
+function collect_project_patch_rel_paths(event: ProjectStorePatchEvent): string[] {
+  const rel_paths: string[] = []
+
+  function append_rel_path(value: unknown): void {
+    const rel_path = String(value ?? '').trim()
+    if (rel_path === '' || rel_paths.includes(rel_path)) {
+      return
+    }
+    rel_paths.push(rel_path)
   }
 
-  return 'global'
+  for (const operation of event.patch) {
+    if (operation.op === 'merge_items' && Array.isArray(operation.items)) {
+      for (const item of operation.items) {
+        append_rel_path(item.file_path)
+      }
+    }
+
+    if (operation.op === 'merge_files' && Array.isArray(operation.files)) {
+      for (const file of operation.files) {
+        append_rel_path(file.rel_path ?? file.file_path)
+      }
+    }
+  }
+
+  return rel_paths
 }
 
-function normalize_workbench_change_scope(value: unknown): WorkbenchChangeScope {
-  if (value === 'file' || value === 'order') {
-    return value
+function resolve_project_patch_task_payload(
+  event: ProjectStorePatchEvent,
+): Partial<TaskSnapshot> | null {
+  for (const operation of event.patch) {
+    if (operation.op !== 'replace_task' || typeof operation.task !== 'object' || operation.task === null) {
+      continue
+    }
+
+    return operation.task as Partial<TaskSnapshot>
   }
 
-  return 'global'
+  return null
 }
 
 export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Element {
@@ -414,7 +502,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const v2_project_runtime = useMemo(() => {
     return createV2ProjectRuntime({
       store: project_store_ref.current,
-      openBootstrapStream: async function* () {},
+      openBootstrapStream: open_v2_project_bootstrap_stream,
     })
   }, [])
 
@@ -430,14 +518,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   }, [apply_settings_snapshot])
 
   const refresh_project = useCallback(async (): Promise<ProjectSnapshot> => {
-    const payload = await api_fetch<ProjectSnapshotPayload>('/api/project/snapshot', {})
+    const payload = await api_fetch<ProjectSnapshotPayload>('/api/v2/project/snapshot', {})
     const next_snapshot = normalize_project_snapshot(payload)
     set_project_snapshot(next_snapshot)
     return next_snapshot
   }, [])
 
   const refresh_task = useCallback(async (): Promise<TaskSnapshot> => {
-    const payload = await api_fetch<TaskSnapshotPayload>('/api/tasks/snapshot', {})
+    const payload = await api_fetch<TaskSnapshotPayload>('/api/v2/tasks/snapshot', {})
     const next_snapshot = normalize_task_snapshot(payload)
     set_task_snapshot(next_snapshot)
     return next_snapshot
@@ -540,8 +628,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         // 否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的 Py 应用状态一起清空。
         const [next_settings, next_project, next_task] = await Promise.all([
           api_fetch<SettingsSnapshotPayload>('/api/settings/app', {}),
-          api_fetch<ProjectSnapshotPayload>('/api/project/snapshot', {}),
-          api_fetch<TaskSnapshotPayload>('/api/tasks/snapshot', {}),
+          api_fetch<ProjectSnapshotPayload>('/api/v2/project/snapshot', {}),
+          api_fetch<TaskSnapshotPayload>('/api/v2/tasks/snapshot', {}),
         ])
         if (cancelled) {
           return
@@ -641,30 +729,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       }
     }
 
-    function handle_proofreading_snapshot_invalidated(event: MessageEvent<string>): void {
-      const payload = parse_event_payload(event) as ProofreadingSnapshotInvalidatedEventPayload
-      set_proofreading_change_signal((previous_signal) => ({
-        seq: previous_signal.seq + 1,
-        reason: String(payload.reason ?? ''),
-        scope: normalize_proofreading_change_scope(payload.scope),
-        item_ids: normalize_item_id_array(payload.item_ids),
-        rel_paths: normalize_string_array(payload.rel_paths),
-        removed_rel_paths: normalize_string_array(payload.removed_rel_paths),
-      }))
-    }
-
-    function handle_workbench_snapshot_changed(event: MessageEvent<string>): void {
-      const payload = parse_event_payload(event) as WorkbenchSnapshotChangedEventPayload
-      set_workbench_change_signal((previous_signal) => ({
-        seq: previous_signal.seq + 1,
-        reason: String(payload.reason ?? ''),
-        scope: normalize_workbench_change_scope(payload.scope),
-        rel_paths: normalize_string_array(payload.rel_paths),
-        removed_rel_paths: normalize_string_array(payload.removed_rel_paths),
-        order_changed: Boolean(payload.order_changed),
-      }))
-    }
-
     async function attach_event_stream(): Promise<void> {
       try {
         const next_event_source = await open_event_stream()
@@ -678,14 +742,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         event_source.addEventListener('task.status_changed', handle_task_status_changed as EventListener)
         event_source.addEventListener('task.progress_changed', handle_task_progress_changed as EventListener)
         event_source.addEventListener('settings.changed', handle_settings_changed as EventListener)
-        event_source.addEventListener(
-          'proofreading.snapshot_invalidated',
-          handle_proofreading_snapshot_invalidated as EventListener,
-        )
-        event_source.addEventListener(
-          'workbench.snapshot_changed',
-          handle_workbench_snapshot_changed as EventListener,
-        )
       } catch {
         return
       }
@@ -698,6 +754,134 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       event_source?.close()
     }
   }, [apply_settings_snapshot, refresh_settings, refresh_task])
+
+  useEffect(() => {
+    if (!isProjectRuntimeV2Enabled()) {
+      return
+    }
+
+    if (!project_snapshot.loaded || project_snapshot.path.trim() === '') {
+      return
+    }
+
+    let event_source: EventSource | null = null
+    let cancelled = false
+
+    function bump_workbench_runtime_signal(args: {
+      reason: string
+      relPaths: string[]
+    }): void {
+      set_workbench_change_signal((previous_signal) => ({
+        seq: previous_signal.seq + 1,
+        reason: args.reason,
+        scope: args.relPaths.length > 0 ? 'file' : 'global',
+        rel_paths: args.relPaths,
+        removed_rel_paths: [],
+        order_changed: false,
+      }))
+    }
+
+    function bump_proofreading_runtime_signal(args: {
+      reason: string
+      itemIds: number[]
+      relPaths: string[]
+    }): void {
+      set_proofreading_change_signal((previous_signal) => ({
+        seq: previous_signal.seq + 1,
+        reason: args.reason,
+        scope: args.itemIds.length > 0 ? 'entry' : 'global',
+        item_ids: args.itemIds,
+        rel_paths: args.relPaths,
+        removed_rel_paths: [],
+      }))
+    }
+
+    async function handle_project_patch(event: MessageEvent<string>): Promise<void> {
+      const payload = parse_event_payload(event) as ProjectPatchEventPayload
+      const patch_event = normalize_project_patch_event(payload)
+      const updated_sections = patch_event?.updatedSections ?? normalize_section_array(payload.updatedSections)
+      const reason = String(payload.source ?? 'project_patch')
+      const item_ids = patch_event === null ? [] : collect_project_patch_item_ids(patch_event)
+      const rel_paths = patch_event === null ? [] : collect_project_patch_rel_paths(patch_event)
+
+      if (patch_event === null) {
+        try {
+          await v2_project_runtime.bootstrap(project_snapshot.path)
+        } catch {
+          return
+        }
+      } else {
+        project_store_ref.current.applyProjectPatch(patch_event)
+
+        const task_payload = resolve_project_patch_task_payload(patch_event)
+        if (task_payload !== null) {
+          set_task_snapshot((previous_snapshot) => {
+            return merge_task_progress_update(
+              merge_task_status_update(previous_snapshot, task_payload),
+              task_payload,
+            )
+          })
+        }
+      }
+
+      if (cancelled) {
+        return
+      }
+
+      set_project_warmup_status('ready')
+
+      if (updated_sections.some((section) => ['project', 'files', 'items'].includes(section))) {
+        bump_workbench_runtime_signal({
+          reason,
+          relPaths: rel_paths,
+        })
+      }
+
+      if (updated_sections.some((section) => [
+        'project',
+        'items',
+        'quality',
+        'prompts',
+        'analysis',
+        'task',
+      ].includes(section))) {
+        bump_proofreading_runtime_signal({
+          reason,
+          itemIds: item_ids,
+          relPaths: rel_paths,
+        })
+      }
+    }
+
+    async function attach_v2_event_stream(): Promise<void> {
+      try {
+        const next_event_source = await open_v2_event_stream()
+        if (cancelled) {
+          next_event_source.close()
+          return
+        }
+
+        event_source = next_event_source
+        event_source.addEventListener('project.patch', ((event: MessageEvent<string>) => {
+          void handle_project_patch(event)
+        }) as EventListener)
+      } catch {
+        return
+      }
+    }
+
+    void attach_v2_event_stream()
+
+    return () => {
+      cancelled = true
+      event_source?.close()
+    }
+  }, [
+    project_snapshot.loaded,
+    project_snapshot.path,
+    set_project_warmup_status,
+    v2_project_runtime,
+  ])
 
   const context_value = useMemo<DesktopRuntimeContextValue>(() => {
     return {

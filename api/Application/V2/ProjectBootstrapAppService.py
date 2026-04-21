@@ -14,8 +14,12 @@ class V2ProjectBootstrapAppService:
 
     STAGE_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
         ("project", "正在加载项目骨架", "build_project_block"),
+        ("files", "正在加载项目文件", "build_files_block"),
         ("items", "正在加载项目条目", "build_items_block"),
         ("quality", "正在加载质量规则", "build_quality_block"),
+        ("prompts", "正在加载提示词配置", "build_prompts_block"),
+        ("analysis", "正在加载分析结果", "build_analysis_block"),
+        ("task", "正在加载任务状态", "build_task_block"),
     )
 
     def __init__(self, runtime_service: Any) -> None:

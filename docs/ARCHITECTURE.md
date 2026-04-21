@@ -51,6 +51,7 @@ flowchart TD
 | 仓库整体结构 | `docs/ARCHITECTURE.md` -> `app.py` -> `base/*` |
 | Electron / React 前端 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) |
 | HTTP / SSE 契约 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> `api/Application/*` / `api/Server/*` |
+| V2 项目运行态协议 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) |
 | 工程加载、规则、分析、工作台数据 | `docs/ARCHITECTURE.md` -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) -> `module/Data/DataManager.py` |
 | 模型页与模型配置 | `docs/ARCHITECTURE.md` -> [`module/Model/SPEC.md`](../module/Model/SPEC.md) -> `module/Model/Manager.py` |
 | 任务调度与请求生命周期 | `docs/ARCHITECTURE.md` -> `module/Engine/Engine.py` -> `module/Engine/*` |
