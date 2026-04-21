@@ -11,6 +11,7 @@ from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Application.QualityRuleAppService import QualityRuleAppService
 from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
+from api.Application.V2.ProjectBootstrapAppService import V2ProjectBootstrapAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
@@ -22,7 +23,10 @@ from api.Server.Routes.ProofreadingRoutes import ProofreadingRoutes
 from api.Server.Routes.QualityRoutes import QualityRoutes
 from api.Server.Routes.SettingsRoutes import SettingsRoutes
 from api.Server.Routes.TaskRoutes import TaskRoutes
+from api.Server.Routes.V2.ProjectRoutes import V2ProjectRoutes
 from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
+from module.Data.DataManager import DataManager
+from module.Data.Project.V2.RuntimeService import V2ProjectRuntimeService
 
 
 class ServerBootstrap:
@@ -58,6 +62,9 @@ class ServerBootstrap:
         settings_app_service = SettingsAppService()
         extra_app_service = ExtraAppService()
         model_app_service = ModelAppService()
+        project_bootstrap_app_service = V2ProjectBootstrapAppService(
+            V2ProjectRuntimeService(DataManager.get())
+        )
         return cls.start_for_test(
             project_app_service=project_app_service,
             proofreading_app_service=proofreading_app_service,
@@ -67,6 +74,7 @@ class ServerBootstrap:
             settings_app_service=settings_app_service,
             extra_app_service=extra_app_service,
             model_app_service=model_app_service,
+            project_bootstrap_app_service=project_bootstrap_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
             as_runtime=True,
         )
@@ -83,6 +91,7 @@ class ServerBootstrap:
         settings_app_service: SettingsAppService | None = None,
         extra_app_service: ExtraAppService | None = None,
         model_app_service: ModelAppService | None = None,
+        project_bootstrap_app_service: V2ProjectBootstrapAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
@@ -103,6 +112,7 @@ class ServerBootstrap:
             settings_app_service=settings_app_service,
             extra_app_service=extra_app_service,
             model_app_service=model_app_service,
+            project_bootstrap_app_service=project_bootstrap_app_service,
         )
         serve_forever_poll_interval = cls.get_serve_forever_poll_interval(
             as_runtime=as_runtime
@@ -146,6 +156,7 @@ class ServerBootstrap:
         settings_app_service: SettingsAppService | None,
         extra_app_service: ExtraAppService | None,
         model_app_service: ModelAppService | None,
+        project_bootstrap_app_service: V2ProjectBootstrapAppService | None,
     ) -> ThreadingHTTPServer:
         """按候选端口顺序尝试绑定，确保前后端发现顺序一致。"""
 
@@ -170,6 +181,10 @@ class ServerBootstrap:
                 ExtraRoutes.register(core_api_server, extra_app_service)
             if model_app_service is not None:
                 ModelRoutes.register(core_api_server, model_app_service)
+            cls.register_v2_routes(
+                core_api_server,
+                project_bootstrap_app_service=project_bootstrap_app_service,
+            )
 
             try:
                 return core_api_server.create_http_server()
@@ -179,3 +194,19 @@ class ServerBootstrap:
         raise RuntimeError(
             "Core API 候选端口全部被占用，无法启动服务。"
         ) from last_error
+
+    @classmethod
+    def register_v2_routes(
+        cls,
+        core_api_server: CoreApiServer,
+        *,
+        project_bootstrap_app_service: V2ProjectBootstrapAppService | None = None,
+    ) -> None:
+        """统一收口 V2 路由注册入口，方便迁移期按版本逐组接入。"""
+
+        del cls
+        if project_bootstrap_app_service is not None:
+            V2ProjectRoutes.register(
+                core_api_server,
+                project_bootstrap_app_service,
+            )
