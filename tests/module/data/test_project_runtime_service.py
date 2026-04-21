@@ -1,4 +1,4 @@
-from module.Data.Project.V2.RuntimeService import V2ProjectRuntimeService
+from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 
 
 class StubStatus:
@@ -24,6 +24,15 @@ class StubItem:
     def get_status(self):
         return StubStatus()
 
+    def get_row(self):
+        return 0
+
+    def get_text_type(self):
+        return None
+
+    def get_retry_count(self):
+        return 0
+
 
 class StubDataManager:
     def get_all_asset_paths(self):
@@ -35,18 +44,27 @@ class StubDataManager:
 
 def test_build_items_block_uses_schema_and_rows():
     data_manager = StubDataManager()
-    service = V2ProjectRuntimeService(data_manager)
+    service = ProjectRuntimeService(data_manager)
 
     block = service.build_items_block()
 
     assert block["schema"] == "project-items.v1"
-    assert block["fields"] == ["item_id", "file_path", "src", "dst", "status"]
-    assert block["rows"] == [[1, "chapter01.txt", "原文", "译文", "DONE"]]
+    assert block["fields"] == [
+        "item_id",
+        "file_path",
+        "row_number",
+        "src",
+        "dst",
+        "status",
+        "text_type",
+        "retry_count",
+    ]
+    assert block["rows"] == [[1, "chapter01.txt", 0, "原文", "译文", "DONE", "", 0]]
 
 
 def test_build_files_block_uses_schema_and_rows():
     data_manager = StubDataManager()
-    service = V2ProjectRuntimeService(data_manager)
+    service = ProjectRuntimeService(data_manager)
 
     block = service.build_files_block()
 
@@ -79,6 +97,15 @@ class OrderedStubItem:
     def get_status(self):
         return StubStatus()
 
+    def get_row(self):
+        return 0
+
+    def get_text_type(self):
+        return None
+
+    def get_retry_count(self):
+        return 0
+
 
 class OrderedStubDataManager:
     def get_all_asset_paths(self):
@@ -93,7 +120,7 @@ class OrderedStubDataManager:
 
 def test_build_files_block_preserves_asset_sort_order():
     data_manager = OrderedStubDataManager()
-    service = V2ProjectRuntimeService(data_manager)
+    service = ProjectRuntimeService(data_manager)
 
     block = service.build_files_block()
 

@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
 import { useProjectPagesBarrier } from '@/app/state/project-pages-context'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
+import {
+  buildProofreadingLookupQuery,
+  getQualityRuleSlice,
+} from '@/app/project-runtime/quality-runtime'
+import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import {
@@ -73,6 +78,8 @@ const TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY = 'text_preserve_default_preset'
 const TEXT_PRESERVE_TITLE_KEY: LocaleKey = 'text_preserve_page.title'
 const TEXT_PRESERVE_EXPORT_FILE_NAME = 'text_preserve.json'
 const DEFAULT_MODE: TextPreserveMode = 'off'
+const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000
+const MODAL_PROGRESS_TIMEOUT_MESSAGE = '模态进度通知等待超时。'
 
 const EMPTY_ENTRY: TextPreserveEntry = {
   src: '',
@@ -246,14 +253,25 @@ function resolve_text_preserve_error_message(
   return fallback_message
 }
 
+function is_modal_progress_timeout_error(error: unknown): boolean {
+  return error instanceof Error && error.message === MODAL_PROGRESS_TIMEOUT_MESSAGE
+}
+
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n()
   const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier()
   const { push_toast, run_modal_progress_toast } = useDesktopToast()
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation()
+  const { project_snapshot, project_store } = useDesktopRuntime()
+  const project_store_state = useSyncExternalStore(
+    project_store.subscribe,
+    project_store.getState,
+    project_store.getState,
+  )
 
   const [revision, set_revision] = useState(0)
   const [mode, set_mode] = useState<TextPreserveMode>(DEFAULT_MODE)
+  const [mode_updating, set_mode_updating] = useState(false)
   const [entries, set_entries] = useState<TextPreserveEntry[]>([])
   const [preset_items, set_preset_items] = useState<TextPreservePresetItem[]>([])
   const [selected_entry_ids, set_selected_entry_ids] = useState<TextPreserveEntryId[]>([])
@@ -278,10 +296,16 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   })
   const unknown_error_message = t('text_preserve_page.feedback.unknown_error')
   const revision_ref = useRef(revision)
+  const mode_ref = useRef(mode)
+  const mode_update_in_flight_ref = useRef(false)
 
   useEffect(() => {
     revision_ref.current = revision
   }, [revision])
+
+  useEffect(() => {
+    mode_ref.current = mode
+  }, [mode])
 
   const entry_ids = useMemo<TextPreserveEntryId[]>(() => {
     return entries.map((entry, index) => {
@@ -419,19 +443,19 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     )
   }, [push_toast, unknown_error_message])
 
-  const refresh_snapshot = useCallback(async (): Promise<void> => {
-    try {
-      const payload = await api_fetch<TextPreserveSnapshotPayload>(
-        '/api/v2/quality/rules/snapshot',
-        {
-          rule_type: TEXT_PRESERVE_RULE_TYPE,
-        },
-      )
-      apply_snapshot(payload.snapshot)
-    } catch (error) {
-      push_action_error_toast(error)
-    }
-  }, [apply_snapshot, push_action_error_toast])
+  const apply_store_snapshot = useCallback((): void => {
+    const preserve_slice = getQualityRuleSlice(
+      project_store_state.quality,
+      'text_preserve',
+    )
+    apply_snapshot({
+      revision: preserve_slice.revision,
+      meta: {
+        mode: preserve_slice.mode,
+      },
+      entries: preserve_slice.entries,
+    })
+  }, [apply_snapshot, project_store_state.quality])
 
   const save_entries_snapshot = useCallback(async (
     next_entries: TextPreserveEntry[],
@@ -509,8 +533,19 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [])
 
   useEffect(() => {
-    void refresh_snapshot()
-  }, [refresh_snapshot])
+    if (!project_snapshot.loaded) {
+      apply_snapshot({
+        revision: 0,
+        meta: {
+          mode: DEFAULT_MODE,
+        },
+        entries: [],
+      })
+      return
+    }
+
+    apply_store_snapshot()
+  }, [apply_snapshot, apply_store_snapshot, project_snapshot.loaded, project_snapshot.path])
 
   useEffect(() => {
     if (statistics_ready || sort_state?.column_id !== 'statistics') {
@@ -589,13 +624,21 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [])
 
   const update_mode = useCallback(async (next_mode: TextPreserveMode): Promise<void> => {
-    const previous_mode = mode
+    const previous_mode = mode_ref.current
+    if (mode_update_in_flight_ref.current || previous_mode === next_mode) {
+      return
+    }
+
+    mode_update_in_flight_ref.current = true
+    set_mode_updating(true)
     set_mode(next_mode)
     const barrier_checkpoint = create_barrier_checkpoint()
+    let snapshot_committed = false
 
     try {
       await run_modal_progress_toast({
         message: t('text_preserve_page.mode.loading_toast'),
+        timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
         task: async () => {
           const payload = await api_fetch<TextPreserveSnapshotPayload>(
             '/api/v2/quality/rules/update-meta',
@@ -608,19 +651,30 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             },
           )
           apply_snapshot(payload.snapshot)
+          snapshot_committed = true
           await wait_for_barrier('proofreading_cache_refresh', {
             checkpoint: barrier_checkpoint,
           })
         },
       })
     } catch (error) {
-      set_mode(previous_mode)
-      push_action_error_toast(error)
+      if (snapshot_committed && is_modal_progress_timeout_error(error)) {
+        push_toast(
+          'warning',
+          t('text_preserve_page.feedback.mode_refresh_pending'),
+        )
+      } else {
+        set_mode(previous_mode)
+        push_action_error_toast(error)
+      }
+    } finally {
+      mode_update_in_flight_ref.current = false
+      set_mode_updating(false)
     }
   }, [
     apply_snapshot,
     create_barrier_checkpoint,
-    mode,
+    push_toast,
     push_action_error_toast,
     run_modal_progress_toast,
     t,
@@ -777,14 +831,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     try {
-      const payload = await api_fetch<{ query: { keyword: string; is_regex: boolean } }>(
-        '/api/v2/quality/rules/query-proofreading',
-        {
-          rule_type: TEXT_PRESERVE_RULE_TYPE,
-          entry: normalize_entry(target_entry),
-        },
-      )
-      push_proofreading_lookup_intent(payload.query)
+      push_proofreading_lookup_intent(buildProofreadingLookupQuery({
+        rule_type: TEXT_PRESERVE_RULE_TYPE,
+        entry: normalize_entry(target_entry),
+      }))
       navigate_to_route('proofreading')
     } catch (error) {
       push_action_error_toast(error)
@@ -1365,6 +1415,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   return {
     title_key: TEXT_PRESERVE_TITLE_KEY,
     mode,
+    mode_updating,
     filtered_entries,
     filter_state,
     sort_state,

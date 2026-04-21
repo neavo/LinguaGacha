@@ -80,7 +80,7 @@ flowchart TD
 | 运行时主控制器 | `Translation/Translation.py` | `Analysis/Analysis.py` |
 | 计划构建 | 基于待翻译 `Item` 切块与上文块 | 基于分析候选 / checkpoint 构建 `AnalysisTaskContext` |
 | 提交阶段 | 批量写回条目、统计 token / 行数、触发局部刷新 | 批量写回 checkpoint / glossary entry、同步候选统计 |
-| 成功后收尾 | 落库存量状态、可自动导出译文 | 可自动导入术语表；CLI 模式可直接导出 glossary |
+| 成功后收尾 | 落库存量状态、可自动导出译文 | 可自动导入术语表 |
 | 运行时事实缓存 | `items_cache` + `extras` | `extras` + `current_task_contexts` |
 
 ## 这些语义最容易踩线
@@ -116,5 +116,5 @@ flowchart TD
 ## 维护约束
 - `module/Engine` 不持有项目数据真相；落库、条目状态和工程 revision 仍然交给 `module/Data`。
 - 共享骨架只抽“真正被翻译与分析共同依赖的规则”；不要为了看起来统一，把领域差异硬塞回公共层。
-- 模型页的连通性测试已经改为 `api/v2/Application/ModelAppService.py` 直接复用 `TaskRequester` 执行，不再走 `module/Engine` 内部事件子系统。
+- 模型页的连通性测试由 `api/v2/Application/ModelAppService.py` 直接复用 `TaskRequester` 执行。
 - 如果改动会影响任务事件的字段、终态或停止语义，必须同步检查 [`api/SPEC.md`](../../api/SPEC.md)。

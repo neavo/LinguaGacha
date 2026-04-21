@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import { serializeQualityRuntimeSnapshot } from '@/app/project-runtime/quality-runtime'
 import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
@@ -158,6 +159,7 @@ export function useAnalysisTaskRuntime(
   const { t } = useI18n()
   const { push_toast, run_modal_progress_toast } = useDesktopToast()
   const {
+    project_store,
     project_snapshot,
     workbench_change_signal,
     set_task_snapshot,
@@ -378,7 +380,12 @@ export function useAnalysisTaskRuntime(
     try {
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
         '/api/v2/tasks/start-analysis',
-        { mode: should_continue ? 'CONTINUE' : 'NEW' },
+        {
+          mode: should_continue ? 'CONTINUE' : 'NEW',
+          quality_snapshot: serializeQualityRuntimeSnapshot(
+            project_store.getState(),
+          ),
+        },
       )
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload)
       apply_analysis_task_snapshot(next_snapshot)
@@ -399,6 +406,7 @@ export function useAnalysisTaskRuntime(
     analysis_task_display_snapshot,
     analysis_task_menu_busy,
     apply_analysis_task_snapshot,
+    project_store,
     project_snapshot.loaded,
     push_toast,
     clear_analysis_waveform_sampling,
@@ -432,8 +440,6 @@ export function useAnalysisTaskRuntime(
       return
     }
 
-    const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null
-
     set_analysis_confirm_state((previous_state) => {
       if (previous_state === null) {
         return null
@@ -457,14 +463,7 @@ export function useAnalysisTaskRuntime(
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload)
       apply_analysis_task_snapshot(next_snapshot)
       sync_runtime_task_snapshot(next_snapshot)
-      if (
-        analysis_confirm_state.kind !== 'stop-analysis'
-        && options.waitForProjectPagesBarrier !== undefined
-      ) {
-        await options.waitForProjectPagesBarrier('project_cache_refresh', {
-          checkpoint: barrierCheckpoint,
-        })
-      }
+      // 为什么：分析 reset 不直接改工作台快照；这里若等待 workbench barrier，确认弹窗会卡在一个不会推进的 loading 态。
       set_analysis_confirm_state(null)
     } catch (error) {
       let fallback_message = t('workbench_page.analysis_task.feedback.stop_failed')
@@ -489,7 +488,6 @@ export function useAnalysisTaskRuntime(
   }, [
     analysis_confirm_state,
     apply_analysis_task_snapshot,
-    options,
     push_toast,
     sync_runtime_task_snapshot,
     t,

@@ -621,6 +621,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
   useEffect(() => {
     if (!project_snapshot.loaded || project_snapshot.path.trim() === '') {
+      project_store_ref.current.reset()
       set_project_warmup_stage(null)
       return
     }
@@ -630,6 +631,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     async function bootstrap_project_runtime(): Promise<void> {
       set_project_warmup_status('warming')
       set_project_warmup_stage(null)
+      project_store_ref.current.reset()
 
       try {
         await v2_project_runtime.bootstrap(project_snapshot.path, {
@@ -779,6 +781,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         'quality',
         'prompts',
         'analysis',
+        'proofreading',
         'task',
       ].includes(section))) {
         bump_proofreading_runtime_signal({

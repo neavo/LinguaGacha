@@ -134,3 +134,10 @@ def test_is_engine_busy_matches_declared_busy_statuses(
     expected: bool,
 ) -> None:
     assert Base.is_engine_busy(status) is expected
+
+
+def test_api_stream_source_events_include_reset_events() -> None:
+    assert Base.Event.TRANSLATION_RESET_ALL in Base.API_STREAM_SOURCE_EVENTS
+    assert Base.Event.TRANSLATION_RESET_FAILED in Base.API_STREAM_SOURCE_EVENTS
+    assert Base.Event.ANALYSIS_RESET_ALL in Base.API_STREAM_SOURCE_EVENTS
+    assert Base.Event.ANALYSIS_RESET_FAILED in Base.API_STREAM_SOURCE_EVENTS

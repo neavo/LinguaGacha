@@ -1,4 +1,4 @@
-from api.v2.Bridge.EventTopic import EventTopic
+from api.v2.Bridge.PublicEventTopic import PublicEventTopic
 from api.v2.Client.ApiStateStore import ApiStateStore
 import api.v2.Client.SseClient as sse_client_module
 from api.v2.Client.SseClient import SseClient
@@ -74,7 +74,7 @@ class StopAwareLines:
         self.client = client
 
     def __iter__(self):
-        yield f"event: {EventTopic.PROJECT_CHANGED.value}"
+        yield f"event: {PublicEventTopic.PROJECT_CHANGED.value}"
         self.client.stop_event.set()
         yield 'data: {"loaded": true, "path": "demo.lg"}'
         yield ""
@@ -101,7 +101,7 @@ def test_sse_client_合并额外繁简转换进度事件() -> None:
 
     # 执行
     client.dispatch_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         [
             '{"task_id":"extra_ts_conversion","phase":"RUNNING","message":"running","current":2,"total":10}'
         ],
@@ -121,7 +121,7 @@ def test_sse_client_合并额外繁简转换完成事件() -> None:
     store = ApiStateStore()
     client = SseClient("http://127.0.0.1:1", store)
     client.dispatch_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         [
             '{"task_id":"extra_ts_conversion","phase":"RUNNING","message":"running","current":2,"total":10}'
         ],
@@ -129,7 +129,7 @@ def test_sse_client_合并额外繁简转换完成事件() -> None:
 
     # 执行
     client.dispatch_event(
-        EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
         [
             '{"task_id":"extra_ts_conversion","phase":"FINISHED","message":"done","current":10,"total":10}'
         ],
@@ -150,7 +150,7 @@ def test_sse_client_run_按空行收束并拼接多段_data(monkeypatch) -> None
     store = ApiStateStore()
     stream_lines = [
         ": keepalive",
-        f"event: {EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value}",
+        f"event: {PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value}",
         'data: {"task_id":"extra_ts_conversion",',
         'data: "phase":"RUNNING",',
         'data: "message":"line1\\nline2",',
@@ -251,6 +251,6 @@ def test_sse_client_dispatch_event_ignores_empty_event_and_non_dict_payload() ->
     client = SseClient("http://127.0.0.1:1", store)
 
     client.dispatch_event("", ['{"loaded":true}'])
-    client.dispatch_event(EventTopic.PROJECT_CHANGED.value, ['["not-a-dict"]'])
+    client.dispatch_event(PublicEventTopic.PROJECT_CHANGED.value, ['["not-a-dict"]'])
 
     assert store.is_project_loaded() is False

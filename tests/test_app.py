@@ -44,20 +44,6 @@ class RecordingDataManager:
         self.unload_calls += 1
 
 
-class StubCliManager:
-    def __init__(self, *, is_cli_mode: bool, exit_code: int | None) -> None:
-        self.is_cli_mode = is_cli_mode
-        self.exit_code = exit_code
-        self.run_calls: int = 0
-
-    def run(self) -> bool:
-        self.run_calls += 1
-        return self.is_cli_mode
-
-    def get_exit_code(self) -> int | None:
-        return self.exit_code
-
-
 class RecordingEngine:
     def __init__(self) -> None:
         self.run_calls: int = 0
@@ -131,56 +117,41 @@ def test_run_headless_mode_cleans_up_after_keyboard_interrupt(
     assert cleanup_calls == [(runtime, logger)]
 
 
-@pytest.mark.parametrize(
-    ("exit_code", "expected_exit_code"),
-    [(None, 0), (7, 7)],
-)
-def test_main_returns_cli_exit_code_and_cleans_up_runtime(
-    monkeypatch: pytest.MonkeyPatch,
-    exit_code: int | None,
-    expected_exit_code: int,
-) -> None:
-    logger = RecordingLogger()
-    cli_manager = StubCliManager(is_cli_mode=True, exit_code=exit_code)
-    cleanup_calls: list[tuple[None, RecordingLogger]] = []
-
-    def record_cleanup(
-        *,
-        local_api_server_runtime: None,
-        logger: RecordingLogger,
-    ) -> None:
-        cleanup_calls.append((local_api_server_runtime, logger))
-
-    monkeypatch.setattr(app_module, "bootstrap_runtime", lambda: logger)
-    monkeypatch.setattr(app_module.CLIManager, "get", lambda: cli_manager)
-    monkeypatch.setattr(app_module, "cleanup_runtime", record_cleanup)
-
-    result = app_module.main()
-
-    assert result == expected_exit_code
-    assert cli_manager.run_calls == 1
-    assert cleanup_calls == [(None, logger)]
-
-
-def test_main_runs_headless_mode_when_cli_does_not_take_over(
+def test_main_ignores_legacy_cli_args_and_runs_headless_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     logger = RecordingLogger()
-    cli_manager = StubCliManager(is_cli_mode=False, exit_code=None)
     headless_loggers: list[RecordingLogger] = []
 
     monkeypatch.setattr(app_module, "bootstrap_runtime", lambda: logger)
-    monkeypatch.setattr(app_module.CLIManager, "get", lambda: cli_manager)
     monkeypatch.setattr(
         app_module,
         "run_headless_mode",
         lambda *, logger: headless_loggers.append(logger),
     )
 
-    result = app_module.main()
+    result = app_module.main(["app.py", "--cli", "--project=demo.lg"])
 
     assert result == 0
-    assert cli_manager.run_calls == 1
+    assert headless_loggers == [logger]
+
+
+def test_main_runs_headless_mode_without_legacy_cli_args(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = RecordingLogger()
+    headless_loggers: list[RecordingLogger] = []
+
+    monkeypatch.setattr(app_module, "bootstrap_runtime", lambda: logger)
+    monkeypatch.setattr(
+        app_module,
+        "run_headless_mode",
+        lambda *, logger: headless_loggers.append(logger),
+    )
+
+    result = app_module.main(["app.py"])
+
+    assert result == 0
     assert headless_loggers == [logger]
 
 

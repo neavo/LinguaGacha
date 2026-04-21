@@ -1,3 +1,4 @@
+import codecs
 import socket
 from io import BytesIO
 
@@ -5,6 +6,7 @@ import pytest
 
 from api.v2.Contract.ApiResponse import ApiResponse
 from api.v2.Server.CoreApiServer import CoreApiServer
+from module.Utils.JSONTool import JSONTool
 
 
 class DisconnectingWriteStream:
@@ -38,6 +40,22 @@ class FakeRequestHandler:
 
     def end_headers(self) -> None:
         return None
+
+
+class RecordingRequestHandler(FakeRequestHandler):
+    """记录响应头与 body，便于断言 JSONTool 输出确实落在 API 边界。"""
+
+    def __init__(self, *, path: str, command: str = "POST") -> None:
+        super().__init__(path=path, command=command)
+        self.status_code: int | None = None
+        self.sent_headers: list[tuple[str, str]] = []
+        self.wfile = BytesIO()
+
+    def send_response(self, status_code: int) -> None:
+        self.status_code = status_code
+
+    def send_header(self, key: str, value: str) -> None:
+        self.sent_headers.append((key, value))
 
 
 def test_core_api_server_swallows_disconnect_when_success_response_is_aborted() -> None:
@@ -107,3 +125,34 @@ def test_core_api_server_request_handler_swallows_disconnect_during_read_loop(
         http_server.server_close()
 
     assert handle_call_count == 1
+
+
+def test_core_api_server_write_json_uses_json_tool_bytes() -> None:
+    server = CoreApiServer()
+    handler = RecordingRequestHandler(path="/api/demo")
+    response = ApiResponse(ok=True, data={"text": "\ud800", "message": "勇者"})
+
+    server.add_json_route(
+        "POST",
+        "/api/demo",
+        lambda request: response,
+    )
+
+    server.handle_http_request(handler, "POST")
+
+    expected_payload = JSONTool.dumps_bytes(response.to_dict(), indent=0)
+
+    assert handler.status_code == 200
+    assert ("Content-Type", server.CONTENT_TYPE_JSON) in handler.sent_headers
+    assert ("Content-Length", str(len(expected_payload))) in handler.sent_headers
+    assert handler.wfile.getvalue() == expected_payload
+
+
+def test_core_api_server_read_json_request_uses_json_tool() -> None:
+    server = CoreApiServer()
+    handler = RecordingRequestHandler(path="/api/demo")
+    payload_bytes = codecs.BOM_UTF8 + b'{"text":"\xe5\x8b\x87\xe8\x80\x85"}'
+    handler.headers["Content-Length"] = str(len(payload_bytes))
+    handler.rfile = BytesIO(payload_bytes)
+
+    assert server.read_json_request(handler) == {"text": "勇者"}

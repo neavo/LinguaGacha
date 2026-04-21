@@ -1,6 +1,6 @@
 import threading
 
-from api.v2.Bridge.EventTopic import EventTopic
+from api.v2.Bridge.PublicEventTopic import PublicEventTopic
 from api.v2.Models.Extra import ExtraTaskState
 from api.v2.Models.Project import ProjectSnapshot
 from api.v2.Models.Task import TaskProgressUpdate
@@ -117,16 +117,16 @@ class ApiStateStore:
     def apply_event(self, topic: str, payload: dict[str, object]) -> None:
         """统一把 SSE topic 合并进本地状态仓库。"""
 
-        if topic == EventTopic.PROJECT_CHANGED.value:
+        if topic == PublicEventTopic.PROJECT_CHANGED.value:
             if bool(payload.get("loaded", False)):
                 self.hydrate_project(ProjectSnapshot.from_dict(payload))
             else:
                 self.reset_project()
-        elif topic == EventTopic.TASK_STATUS_CHANGED.value:
+        elif topic == PublicEventTopic.TASK_STATUS_CHANGED.value:
             self.merge_task_status(TaskStatusUpdate.from_dict(payload))
-        elif topic == EventTopic.TASK_PROGRESS_CHANGED.value:
+        elif topic == PublicEventTopic.TASK_PROGRESS_CHANGED.value:
             self.merge_task_progress(TaskProgressUpdate.from_dict(payload))
-        elif topic == EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value:
+        elif topic == PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value:
             self.merge_extra_task_state(payload, finished=False)
-        elif topic == EventTopic.EXTRA_TS_CONVERSION_FINISHED.value:
+        elif topic == PublicEventTopic.EXTRA_TS_CONVERSION_FINISHED.value:
             self.merge_extra_task_state(payload, finished=True)

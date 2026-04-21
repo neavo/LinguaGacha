@@ -5,7 +5,6 @@ from api.v2.Server.CoreApiServer import CoreApiServer
 class QualityRoutes:
     """集中注册质量规则相关 HTTP 路由。"""
 
-    SNAPSHOT_PATH: str = "/api/v2/quality/rules/snapshot"
     UPDATE_META_PATH: str = "/api/v2/quality/rules/update-meta"
     SAVE_ENTRIES_PATH: str = "/api/v2/quality/rules/save-entries"
     IMPORT_RULES_PATH: str = "/api/v2/quality/rules/import"
@@ -15,9 +14,7 @@ class QualityRoutes:
     RULE_PRESET_SAVE_PATH: str = "/api/v2/quality/rules/presets/save"
     RULE_PRESET_RENAME_PATH: str = "/api/v2/quality/rules/presets/rename"
     RULE_PRESET_DELETE_PATH: str = "/api/v2/quality/rules/presets/delete"
-    QUERY_PROOFREADING_PATH: str = "/api/v2/quality/rules/query-proofreading"
     STATISTICS_PATH: str = "/api/v2/quality/rules/statistics"
-    PROMPT_SNAPSHOT_PATH: str = "/api/v2/quality/prompts/snapshot"
     PROMPT_TEMPLATE_PATH: str = "/api/v2/quality/prompts/template"
     PROMPT_SAVE_PATH: str = "/api/v2/quality/prompts/save"
     PROMPT_IMPORT_PATH: str = "/api/v2/quality/prompts/import"
@@ -30,13 +27,6 @@ class QualityRoutes:
 
     @classmethod
     def register(cls, core_api_server: CoreApiServer, quality_rule_app_service) -> None:
-        core_api_server.add_json_route(
-            "POST",
-            cls.SNAPSHOT_PATH,
-            lambda request: ApiResponse(
-                ok=True, data=quality_rule_app_service.get_rule_snapshot(request)
-            ),
-        )
         core_api_server.add_json_route(
             "POST",
             cls.UPDATE_META_PATH,
@@ -102,23 +92,9 @@ class QualityRoutes:
         )
         core_api_server.add_json_route(
             "POST",
-            cls.QUERY_PROOFREADING_PATH,
-            lambda request: ApiResponse(
-                ok=True, data=quality_rule_app_service.query_proofreading(request)
-            ),
-        )
-        core_api_server.add_json_route(
-            "POST",
             cls.STATISTICS_PATH,
             lambda request: ApiResponse(
                 ok=True, data=quality_rule_app_service.build_rule_statistics(request)
-            ),
-        )
-        core_api_server.add_json_route(
-            "POST",
-            cls.PROMPT_SNAPSHOT_PATH,
-            lambda request: ApiResponse(
-                ok=True, data=quality_rule_app_service.get_prompt_snapshot(request)
             ),
         )
         core_api_server.add_json_route(

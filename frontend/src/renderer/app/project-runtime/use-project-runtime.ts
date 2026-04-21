@@ -73,19 +73,25 @@ export function createV2ProjectRuntime(args: V2ProjectRuntimeArgs) {
 
     if (stage === 'quality') {
       return {
-        quality: payload,
+        quality: payload as ProjectStoreBootstrapPayload['quality'],
       }
     }
 
     if (stage === 'prompts') {
       return {
-        prompts: payload,
+        prompts: payload as ProjectStoreBootstrapPayload['prompts'],
       }
     }
 
     if (stage === 'analysis') {
       return {
         analysis: payload,
+      }
+    }
+
+    if (stage === 'proofreading') {
+      return {
+        proofreading: payload as ProjectStoreBootstrapPayload['proofreading'],
       }
     }
 

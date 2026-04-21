@@ -4,7 +4,6 @@ from unittest.mock import Mock
 from api.v2.Application.QualityRuleAppService import QualityRuleAppService
 from api.v2.Client.ApiClient import ApiClient
 from api.v2.Client.QualityRuleApiClient import QualityRuleApiClient
-from api.v2.Models.QualityRule import ProofreadingLookupQuery
 from api.v2.Models.QualityRule import QualityRuleSnapshot
 from api.v2.Models.QualityRule import QualityRuleStatisticsSnapshot
 from api.v2.Server.Routes.QualityRoutes import QualityRoutes
@@ -14,22 +13,6 @@ def build_quality_rule_facade() -> Mock:
     """构造最小规则门面，目的是固定客户端与服务端之间的载荷契约。"""
 
     quality_rule_facade = Mock()
-    quality_rule_facade.get_rule_snapshot.return_value = {
-        "rule_type": "glossary",
-        "revision": 2,
-        "meta": {"enabled": True},
-        "statistics": {"available": False, "results": {}},
-        "entries": [
-            {
-                "entry_id": "glossary:0",
-                "src": "勇者",
-                "dst": "Hero",
-                "info": "",
-                "regex": False,
-                "case_sensitive": False,
-            }
-        ],
-    }
     quality_rule_facade.import_rules.return_value = [{"src": "勇者", "dst": "Hero"}]
     quality_rule_facade.export_rules.return_value = "demo/output/glossary.json"
     quality_rule_facade.list_presets.return_value = (
@@ -86,59 +69,6 @@ def build_quality_rule_snapshot_payload() -> dict[str, object]:
             ],
         }
     }
-
-
-def test_quality_rule_api_client_get_rule_snapshot_returns_snapshot(
-    start_api_server: Callable[..., str],
-) -> None:
-    quality_rule_facade = build_quality_rule_facade()
-    base_url = start_api_server(
-        quality_rule_app_service=QualityRuleAppService(quality_rule_facade)
-    )
-    quality_client = QualityRuleApiClient(ApiClient(base_url))
-
-    snapshot = quality_client.get_rule_snapshot("glossary")
-
-    assert isinstance(snapshot, QualityRuleSnapshot)
-    assert snapshot.rule_type == "glossary"
-    assert snapshot.entries[0].src == "勇者"
-
-
-def test_quality_rule_api_client_query_proofreading_returns_lookup_object(
-    start_api_server: Callable[..., str],
-) -> None:
-    quality_rule_facade = Mock()
-    base_url = start_api_server(
-        quality_rule_app_service=QualityRuleAppService(quality_rule_facade)
-    )
-    quality_client = QualityRuleApiClient(ApiClient(base_url))
-
-    query = quality_client.query_proofreading({"src": "^勇者$", "regex": True})
-
-    assert isinstance(query, ProofreadingLookupQuery)
-    assert query.keyword == "^勇者$"
-    assert query.is_regex is True
-
-
-def test_quality_rule_api_client_query_text_preserve_uses_regex_lookup(
-    start_api_server: Callable[..., str],
-) -> None:
-    quality_rule_facade = Mock()
-    base_url = start_api_server(
-        quality_rule_app_service=QualityRuleAppService(quality_rule_facade)
-    )
-    quality_client = QualityRuleApiClient(ApiClient(base_url))
-
-    query = quality_client.query_proofreading(
-        {
-            "rule_type": "text_preserve",
-            "entry": {"src": "[勇者]"},
-        }
-    )
-
-    assert isinstance(query, ProofreadingLookupQuery)
-    assert query.keyword == "[勇者]"
-    assert query.is_regex is True
 
 
 def test_quality_rule_api_client_rule_import_export_and_presets_round_trip(
@@ -268,10 +198,6 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SNAPSHOT_PATH,
-        {"prompt": {"task_type": "translation", "text": "snapshot"}},
-    )
-    recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_TEMPLATE_PATH,
         {"template": {"system": "system prompt", "version": 2}},
     )
@@ -288,13 +214,11 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
         {"path": "demo/output/prompt.txt"},
     )
 
-    snapshot = quality_client.get_prompt_snapshot("translation")
     template = quality_client.get_prompt_template("translation")
     saved_prompt = quality_client.save_prompt({"task_type": "translation"})
     imported_prompt = quality_client.import_prompt({"task_type": "translation"})
     exported_path = quality_client.export_prompt({"task_type": "translation"})
 
-    assert snapshot == {"task_type": "translation", "text": "snapshot"}
     assert template == {"system": "system prompt", "version": "2"}
     assert saved_prompt == {"task_type": "translation", "text": "saved"}
     assert imported_prompt == {}
@@ -352,10 +276,6 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SNAPSHOT_PATH,
-        {"prompt": "invalid"},
-    )
-    recording_api_client.queue_post_response(
         QualityRoutes.RULE_PRESET_SAVE_PATH,
         {"item": "invalid"},
     )
@@ -380,7 +300,6 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
         {"entries": "invalid"},
     )
 
-    prompt_snapshot = quality_client.get_prompt_snapshot("translation")
     saved_prompt = quality_client.save_prompt({"task_type": "translation"})
     imported_prompt = quality_client.import_prompt({"task_type": "translation"})
     saved_item = quality_client.save_rule_preset("glossary", "新预设", [])
@@ -392,7 +311,6 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
     template = quality_client.get_prompt_template("translation")
     preset_entries = quality_client.read_rule_preset("glossary", "builtin:base.json")
 
-    assert prompt_snapshot == {}
     assert saved_prompt == {}
     assert imported_prompt == {"task_type": "translation", "text": "imported"}
     assert saved_item == {}

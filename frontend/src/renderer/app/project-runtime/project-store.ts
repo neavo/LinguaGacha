@@ -5,20 +5,69 @@ export type ProjectStoreStage =
   | 'quality'
   | 'prompts'
   | 'analysis'
+  | 'proofreading'
   | 'task'
 
 export type ProjectStoreSectionRevisions = Partial<Record<ProjectStoreStage, number>>
 
+export type ProjectStoreProjectState = {
+  path: string
+  loaded: boolean
+}
+
+export type ProjectStoreFileRecord = {
+  rel_path: string
+  file_type: string
+}
+
+export type ProjectStoreItemRecord = {
+  item_id: number
+  file_path: string
+  src: string
+  dst: string
+  status: string
+  row_number?: number
+  text_type?: string
+  retry_count?: number
+}
+
+export type ProjectStoreQualityRuleSlice = {
+  entries: Array<Record<string, unknown>>
+  enabled: boolean
+  mode: string
+  revision: number
+}
+
+export type ProjectStoreQualityState = {
+  glossary: ProjectStoreQualityRuleSlice
+  pre_replacement: ProjectStoreQualityRuleSlice
+  post_replacement: ProjectStoreQualityRuleSlice
+  text_preserve: ProjectStoreQualityRuleSlice
+}
+
+export type ProjectStorePromptSlice = {
+  text: string
+  enabled: boolean
+  revision: number
+}
+
+export type ProjectStorePromptsState = {
+  translation: ProjectStorePromptSlice
+  analysis: ProjectStorePromptSlice
+}
+
+export type ProjectStoreProofreadingState = {
+  revision: number
+}
+
 export type ProjectStoreState = {
-  project: {
-    path: string
-    loaded: boolean
-  }
+  project: ProjectStoreProjectState
   files: Record<string, unknown>
   items: Record<string, unknown>
-  quality: Record<string, unknown>
-  prompts: Record<string, unknown>
+  quality: ProjectStoreQualityState
+  prompts: ProjectStorePromptsState
   analysis: Record<string, unknown>
+  proofreading: ProjectStoreProofreadingState
   task: Record<string, unknown>
   revisions: {
     projectRevision: number
@@ -33,6 +82,7 @@ export type ProjectStoreBootstrapPayload = {
   quality?: ProjectStoreState['quality']
   prompts?: ProjectStoreState['prompts']
   analysis?: ProjectStoreState['analysis']
+  proofreading?: ProjectStoreState['proofreading']
   task?: ProjectStoreState['task']
   revisions?: Partial<ProjectStoreState['revisions']> & {
     sections?: ProjectStoreSectionRevisions
@@ -51,11 +101,13 @@ type ProjectStoreReplacePatchOperation = {
     | 'replace_quality'
     | 'replace_prompts'
     | 'replace_analysis'
+    | 'replace_proofreading'
     | 'replace_task'
   project?: ProjectStoreState['project']
   quality?: ProjectStoreState['quality']
   prompts?: ProjectStoreState['prompts']
   analysis?: ProjectStoreState['analysis']
+  proofreading?: ProjectStoreState['proofreading']
   task?: ProjectStoreState['task']
 }
 
@@ -71,6 +123,8 @@ export type ProjectStorePatchEvent = {
   sectionRevisions?: ProjectStoreSectionRevisions
 }
 
+export type ProjectStoreListener = () => void
+
 export function isProjectStoreStage(value: string): value is ProjectStoreStage {
   return [
     'project',
@@ -79,17 +133,50 @@ export function isProjectStoreStage(value: string): value is ProjectStoreStage {
     'quality',
     'prompts',
     'analysis',
+    'proofreading',
     'task',
   ].includes(value)
 }
 
 type ProjectStoreApi = {
   getState: () => ProjectStoreState
+  subscribe: (listener: ProjectStoreListener) => () => void
+  reset: () => void
   applyBootstrapStage: (
     stage: ProjectStoreStage,
     payload: ProjectStoreBootstrapPayload,
   ) => void
   applyProjectPatch: (event: ProjectStorePatchEvent) => void
+}
+
+function createEmptyQualityRuleSlice(): ProjectStoreQualityRuleSlice {
+  return {
+    entries: [],
+    enabled: false,
+    mode: 'off',
+    revision: 0,
+  }
+}
+
+function createEmptyPromptsState(): ProjectStorePromptsState {
+  return {
+    translation: {
+      text: '',
+      enabled: false,
+      revision: 0,
+    },
+    analysis: {
+      text: '',
+      enabled: false,
+      revision: 0,
+    },
+  }
+}
+
+function createEmptyProofreadingState(): ProjectStoreProofreadingState {
+  return {
+    revision: 0,
+  }
 }
 
 const INITIAL_STATE: ProjectStoreState = {
@@ -99,9 +186,15 @@ const INITIAL_STATE: ProjectStoreState = {
   },
   files: {},
   items: {},
-  quality: {},
-  prompts: {},
+  quality: {
+    glossary: createEmptyQualityRuleSlice(),
+    pre_replacement: createEmptyQualityRuleSlice(),
+    post_replacement: createEmptyQualityRuleSlice(),
+    text_preserve: createEmptyQualityRuleSlice(),
+  },
+  prompts: createEmptyPromptsState(),
   analysis: {},
+  proofreading: createEmptyProofreadingState(),
   task: {},
   revisions: {
     projectRevision: 0,
@@ -146,7 +239,10 @@ function mergePatchRevisions(args: {
   }
 
   return {
-    projectRevision: args.projectRevision,
+    projectRevision: Math.max(
+      args.currentRevisions.projectRevision,
+      args.projectRevision,
+    ),
     sections: next_section_revisions,
   }
 }
@@ -191,12 +287,193 @@ function mergeSectionRecords(args: {
   return next_records
 }
 
+function cloneQualityEntries(
+  entries: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return entries.map((entry) => ({ ...entry }))
+}
+
+function normalizeQualityRuleSlice(
+  value: ProjectStoreQualityRuleSlice | Record<string, unknown> | undefined,
+): ProjectStoreQualityRuleSlice {
+  if (value === undefined || value === null) {
+    return createEmptyQualityRuleSlice()
+  }
+
+  const candidate = value as {
+    entries?: unknown
+    enabled?: unknown
+    mode?: unknown
+    revision?: unknown
+  }
+
+  return {
+    entries: Array.isArray(candidate.entries)
+      ? candidate.entries.flatMap((entry) => {
+          return typeof entry === 'object' && entry !== null
+            ? [{ ...(entry as Record<string, unknown>) }]
+            : []
+        })
+      : [],
+    enabled: Boolean(candidate.enabled),
+    mode: String(candidate.mode ?? 'off'),
+    revision: Number(candidate.revision ?? 0),
+  }
+}
+
+function normalizeQualityState(
+  value: ProjectStoreQualityState | Record<string, unknown> | undefined,
+): ProjectStoreQualityState {
+  const candidate = value as Record<string, unknown> | undefined
+
+  return {
+    glossary: normalizeQualityRuleSlice(candidate?.glossary as ProjectStoreQualityRuleSlice | undefined),
+    pre_replacement: normalizeQualityRuleSlice(
+      candidate?.pre_replacement as ProjectStoreQualityRuleSlice | undefined,
+    ),
+    post_replacement: normalizeQualityRuleSlice(
+      candidate?.post_replacement as ProjectStoreQualityRuleSlice | undefined,
+    ),
+    text_preserve: normalizeQualityRuleSlice(
+      candidate?.text_preserve as ProjectStoreQualityRuleSlice | undefined,
+    ),
+  }
+}
+
+function normalizePromptSlice(
+  value: ProjectStorePromptSlice | Record<string, unknown> | undefined,
+): ProjectStorePromptSlice {
+  if (value === undefined || value === null) {
+    return {
+      text: '',
+      enabled: false,
+      revision: 0,
+    }
+  }
+
+  const candidate = value as {
+    text?: unknown
+    enabled?: unknown
+    revision?: unknown
+    meta?: {
+      enabled?: unknown
+    }
+  }
+
+  return {
+    text: String(candidate.text ?? ''),
+    enabled: Boolean(candidate.enabled ?? candidate.meta?.enabled),
+    revision: Number(candidate.revision ?? 0),
+  }
+}
+
+function normalizePromptsState(
+  value: ProjectStorePromptsState | Record<string, unknown> | undefined,
+): ProjectStorePromptsState {
+  const candidate = value as Record<string, unknown> | undefined
+
+  return {
+    translation: normalizePromptSlice(
+      candidate?.translation as ProjectStorePromptSlice | undefined,
+    ),
+    analysis: normalizePromptSlice(candidate?.analysis as ProjectStorePromptSlice | undefined),
+  }
+}
+
+function normalizeProofreadingState(
+  value: ProjectStoreProofreadingState | Record<string, unknown> | undefined,
+): ProjectStoreProofreadingState {
+  if (value === undefined || value === null) {
+    return createEmptyProofreadingState()
+  }
+
+  const candidate = value as {
+    revision?: unknown
+  }
+
+  return {
+    revision: Number(candidate.revision ?? 0),
+  }
+}
+
+function cloneState(state: ProjectStoreState): ProjectStoreState {
+  return {
+    project: {
+      ...state.project,
+    },
+    files: {
+      ...state.files,
+    },
+    items: {
+      ...state.items,
+    },
+    quality: {
+      glossary: {
+        ...state.quality.glossary,
+        entries: cloneQualityEntries(state.quality.glossary.entries),
+      },
+      pre_replacement: {
+        ...state.quality.pre_replacement,
+        entries: cloneQualityEntries(state.quality.pre_replacement.entries),
+      },
+      post_replacement: {
+        ...state.quality.post_replacement,
+        entries: cloneQualityEntries(state.quality.post_replacement.entries),
+      },
+      text_preserve: {
+        ...state.quality.text_preserve,
+        entries: cloneQualityEntries(state.quality.text_preserve.entries),
+      },
+    },
+    prompts: {
+      translation: {
+        ...state.prompts.translation,
+      },
+      analysis: {
+        ...state.prompts.analysis,
+      },
+    },
+    analysis: {
+      ...state.analysis,
+    },
+    proofreading: {
+      ...state.proofreading,
+    },
+    task: {
+      ...state.task,
+    },
+    revisions: {
+      projectRevision: state.revisions.projectRevision,
+      sections: {
+        ...state.revisions.sections,
+      },
+    },
+  }
+}
+
 export function createProjectStore(): ProjectStoreApi {
-  let state = INITIAL_STATE
+  let state = cloneState(INITIAL_STATE)
+  const listeners = new Set<ProjectStoreListener>()
+
+  function notifyListeners(): void {
+    for (const listener of listeners) {
+      listener()
+    }
+  }
 
   return {
     getState(): ProjectStoreState {
       return state
+    },
+    subscribe(listener: ProjectStoreListener): () => void {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    reset(): void {
+      state = cloneState(INITIAL_STATE)
+      notifyListeners()
     },
     applyBootstrapStage(
       stage: ProjectStoreStage,
@@ -214,16 +491,19 @@ export function createProjectStore(): ProjectStoreApi {
       } else if (stage === 'items' && payload.items !== undefined) {
         next_state.items = payload.items
       } else if (stage === 'quality' && payload.quality !== undefined) {
-        next_state.quality = payload.quality
+        next_state.quality = normalizeQualityState(payload.quality)
       } else if (stage === 'prompts' && payload.prompts !== undefined) {
-        next_state.prompts = payload.prompts
+        next_state.prompts = normalizePromptsState(payload.prompts)
       } else if (stage === 'analysis' && payload.analysis !== undefined) {
         next_state.analysis = payload.analysis
+      } else if (stage === 'proofreading' && payload.proofreading !== undefined) {
+        next_state.proofreading = normalizeProofreadingState(payload.proofreading)
       } else if (stage === 'task' && payload.task !== undefined) {
         next_state.task = payload.task
       }
 
       state = next_state
+      notifyListeners()
     },
     applyProjectPatch(event: ProjectStorePatchEvent): void {
       const next_state: ProjectStoreState = {
@@ -261,17 +541,22 @@ export function createProjectStore(): ProjectStoreApi {
         }
 
         if (operation.op === 'replace_quality' && operation.quality !== undefined) {
-          next_state.quality = operation.quality
+          next_state.quality = normalizeQualityState(operation.quality)
           continue
         }
 
         if (operation.op === 'replace_prompts' && operation.prompts !== undefined) {
-          next_state.prompts = operation.prompts
+          next_state.prompts = normalizePromptsState(operation.prompts)
           continue
         }
 
         if (operation.op === 'replace_analysis' && operation.analysis !== undefined) {
           next_state.analysis = operation.analysis
+          continue
+        }
+
+        if (operation.op === 'replace_proofreading' && operation.proofreading !== undefined) {
+          next_state.proofreading = normalizeProofreadingState(operation.proofreading)
           continue
         }
 
@@ -281,6 +566,7 @@ export function createProjectStore(): ProjectStoreApi {
       }
 
       state = next_state
+      notifyListeners()
     },
   }
 }

@@ -8,6 +8,7 @@
 
 from copy import deepcopy
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING
 
 from base.Base import Base
@@ -15,6 +16,7 @@ from base.BaseLanguage import BaseLanguage
 from module.Model.Types import Model
 from module.Model.Types import ModelType
 from module.Config import Config
+from module.Data.Core.DataEnums import TextPreserveMode
 from module.Data.Core.DataTypes import ProjectItemChange
 
 if TYPE_CHECKING:
@@ -96,8 +98,25 @@ class FakeTaskDataManager:
     """提供任务快照所需的最小数据桩。"""
 
     def __init__(self) -> None:
+        self.session = type("FakeSession", (), {"state_lock": RLock()})()
+        self.quality_rule_service = self
+        self.meta_service = self
         self.loaded: bool = True
         self.lg_path: str = "demo/project.lg"
+        self.meta: dict[str, object] = {}
+        self.project_runtime_patches: list[dict[str, object]] = []
+        self.glossary_entries: list[dict[str, str]] = []
+        self.glossary_enable: bool = True
+        self.text_preserve_entries: list[dict[str, str | bool]] = []
+        self.text_preserve_mode: TextPreserveMode = TextPreserveMode.OFF
+        self.pre_replacement_entries: list[dict[str, str | bool]] = []
+        self.pre_replacement_enable: bool = False
+        self.post_replacement_entries: list[dict[str, str | bool]] = []
+        self.post_replacement_enable: bool = False
+        self.translation_prompt_enable: bool = False
+        self.translation_prompt: str = ""
+        self.analysis_prompt_enable: bool = False
+        self.analysis_prompt: str = ""
         self.translation_extras: dict[str, int | float] = {
             "line": 0,
             "total_line": 0,
@@ -153,6 +172,54 @@ class FakeTaskDataManager:
 
     def get_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
+
+    def get_glossary(self) -> list[dict[str, str]]:
+        return deepcopy(self.glossary_entries)
+
+    def get_glossary_enable(self) -> bool:
+        return self.glossary_enable
+
+    def get_text_preserve(self) -> list[dict[str, str | bool]]:
+        return deepcopy(self.text_preserve_entries)
+
+    def get_text_preserve_mode(self) -> TextPreserveMode:
+        return self.text_preserve_mode
+
+    def get_pre_replacement(self) -> list[dict[str, str | bool]]:
+        return deepcopy(self.pre_replacement_entries)
+
+    def get_pre_replacement_enable(self) -> bool:
+        return self.pre_replacement_enable
+
+    def get_post_replacement(self) -> list[dict[str, str | bool]]:
+        return deepcopy(self.post_replacement_entries)
+
+    def get_post_replacement_enable(self) -> bool:
+        return self.post_replacement_enable
+
+    def get_translation_prompt_enable(self) -> bool:
+        return self.translation_prompt_enable
+
+    def get_translation_prompt(self) -> str:
+        return self.translation_prompt
+
+    def get_analysis_prompt_enable(self) -> bool:
+        return self.analysis_prompt_enable
+
+    def get_analysis_prompt(self) -> str:
+        return self.analysis_prompt
+
+    def get_analysis_extras(self) -> dict[str, int | float]:
+        return self.get_analysis_progress_snapshot()
+
+    def get_analysis_status_summary(self) -> dict[str, int]:
+        return {"candidate_count": self.analysis_candidate_count}
+
+    def get_meta(self, key: str, default: object = None) -> object:
+        return self.meta.get(key, default)
+
+    def set_meta(self, key: str, value: object) -> None:
+        self.meta[key] = value
 
     def get_items_for_translation(
         self,
@@ -230,6 +297,25 @@ class FakeTaskDataManager:
 
     def sync_importable_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
+
+    def emit_project_runtime_patch(
+        self,
+        *,
+        reason: str,
+        updated_sections: tuple[str, ...],
+        patch: list[dict[str, object]],
+        section_revisions: dict[str, int],
+        project_revision: int,
+    ) -> None:
+        self.project_runtime_patches.append(
+            {
+                "reason": reason,
+                "updated_sections": updated_sections,
+                "patch": deepcopy(patch),
+                "section_revisions": dict(section_revisions),
+                "project_revision": project_revision,
+            }
+        )
 
 
 class FakeWorkbenchManager:

@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from api.v2.Application.EventStreamService import EventStreamService
-from api.v2.Bridge.EventBridge import ProjectPatchEventBridge
+from api.v2.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 from api.v2.Server.CoreApiServer import CoreApiServer
 from api.v2.Server.Routes.EventRoutes import EventRoutes
 from api.v2.Server.ServerBootstrap import ServerBootstrap

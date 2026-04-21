@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import { serializeQualityRuntimeSnapshot } from '@/app/project-runtime/quality-runtime'
 import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
@@ -153,6 +154,7 @@ export function useTranslationTaskRuntime(
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
   const {
+    project_store,
     project_snapshot,
     set_task_snapshot,
     task_snapshot,
@@ -365,7 +367,12 @@ export function useTranslationTaskRuntime(
     try {
       const task_payload = await api_fetch<TranslationTaskCommandPayload>(
         '/api/v2/tasks/start-translation',
-        { mode: should_continue ? 'CONTINUE' : 'NEW' },
+        {
+          mode: should_continue ? 'CONTINUE' : 'NEW',
+          quality_snapshot: serializeQualityRuntimeSnapshot(
+            project_store.getState(),
+          ),
+        },
       )
       const next_snapshot = normalize_translation_task_snapshot_payload(task_payload)
       apply_translation_task_snapshot(next_snapshot)
@@ -384,6 +391,7 @@ export function useTranslationTaskRuntime(
     }
   }, [
     apply_translation_task_snapshot,
+    project_store,
     project_snapshot.loaded,
     push_toast,
     sync_runtime_task_snapshot,

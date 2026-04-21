@@ -2,9 +2,16 @@ from __future__ import annotations
 
 from api.v2.Models.ProjectRuntime import RowBlock
 from module.Data.Core.Item import Item
+from module.Data.Quality.PromptService import PromptService
+from module.Data.Quality.QualityRuleSnapshotService import (
+    QualityRuleSnapshotService,
+)
+from module.Data.Proofreading.ProofreadingRevisionService import (
+    ProofreadingRevisionService,
+)
 
 
-class V2ProjectRuntimeService:
+class ProjectRuntimeService:
     """把当前项目运行态编码成 V2 bootstrap 可消费的稳定分段块。"""
 
     FILES_BLOCK_SCHEMA: str = "project-files.v1"
@@ -16,13 +23,32 @@ class V2ProjectRuntimeService:
     ITEMS_BLOCK_FIELDS: tuple[str, ...] = (
         "item_id",
         "file_path",
+        "row_number",
         "src",
         "dst",
         "status",
+        "text_type",
+        "retry_count",
     )
 
     def __init__(self, data_manager) -> None:
         self.data_manager = data_manager
+        quality_rule_service = getattr(
+            self.data_manager,
+            "quality_rule_service",
+            self.data_manager,
+        )
+        meta_service = getattr(
+            self.data_manager,
+            "meta_service",
+            self.data_manager,
+        )
+        self.quality_snapshot_service = QualityRuleSnapshotService(
+            quality_rule_service,
+            meta_service,
+        )
+        self.prompt_service = PromptService(quality_rule_service, meta_service)
+        self.proofreading_revision_service = ProofreadingRevisionService(meta_service)
 
     def build_project_block(self) -> dict[str, object]:
         """构建最小项目骨架块，供前端先拿到加载态与项目路径。"""
@@ -68,9 +94,12 @@ class V2ProjectRuntimeService:
             (
                 record["item_id"],
                 record["file_path"],
+                record["row_number"],
                 record["src"],
                 record["dst"],
                 record["status"],
+                record["text_type"],
+                record["retry_count"],
             )
             for record in self.build_item_records()
         )
@@ -148,9 +177,12 @@ class V2ProjectRuntimeService:
                 {
                     "item_id": item_id,
                     "file_path": item.get_file_path(),
+                    "row_number": int(item.get_row() or 0),
                     "src": item.get_src(),
                     "dst": item.get_dst(),
                     "status": self.resolve_status_value(item),
+                    "text_type": self.resolve_enum_value(item.get_text_type()),
+                    "retry_count": int(item.get_retry_count() or 0),
                 }
             )
         return records
@@ -159,37 +191,18 @@ class V2ProjectRuntimeService:
         """收口当前项目直接依赖的质量规则运行态。"""
 
         return {
-            "glossary": self.call_data_manager("get_glossary", []),
-            "text_preserve": self.call_data_manager("get_text_preserve", []),
-            "text_preserve_mode": self.resolve_enum_value(
-                self.call_data_manager("get_text_preserve_mode", "NONE")
-            ),
-            "pre_replacement": self.call_data_manager("get_pre_replacement", []),
-            "pre_replacement_enable": bool(
-                self.call_data_manager("get_pre_replacement_enable", False)
-            ),
-            "post_replacement": self.call_data_manager("get_post_replacement", []),
-            "post_replacement_enable": bool(
-                self.call_data_manager("get_post_replacement_enable", False)
-            ),
+            "glossary": self.build_quality_rule_slice("glossary"),
+            "pre_replacement": self.build_quality_rule_slice("pre_replacement"),
+            "post_replacement": self.build_quality_rule_slice("post_replacement"),
+            "text_preserve": self.build_quality_rule_slice("text_preserve"),
         }
 
     def build_prompts_block(self) -> dict[str, object]:
         """收口翻译与分析提示词的当前运行态。"""
 
         return {
-            "translation": {
-                "text": str(self.call_data_manager("get_translation_prompt", "")),
-                "enabled": bool(
-                    self.call_data_manager("get_translation_prompt_enable", False)
-                ),
-            },
-            "analysis": {
-                "text": str(self.call_data_manager("get_analysis_prompt", "")),
-                "enabled": bool(
-                    self.call_data_manager("get_analysis_prompt_enable", False)
-                ),
-            },
+            "translation": self.prompt_service.get_prompt_snapshot("translation"),
+            "analysis": self.prompt_service.get_prompt_snapshot("analysis"),
         }
 
     def build_analysis_block(self) -> dict[str, object]:
@@ -201,6 +214,13 @@ class V2ProjectRuntimeService:
                 self.call_data_manager("get_analysis_candidate_count", 0) or 0
             ),
             "status_summary": self.call_data_manager("get_analysis_status_summary", {}),
+        }
+
+    def build_proofreading_block(self) -> dict[str, object]:
+        """提供校对运行态需要的最小 revision 视图。"""
+
+        return {
+            "revision": self.proofreading_revision_service.get_revision("proofreading"),
         }
 
     def build_task_block(self) -> dict[str, object]:
@@ -230,7 +250,52 @@ class V2ProjectRuntimeService:
     def resolve_enum_value(self, value: object) -> str:
         """统一把枚举对象规整成稳定字符串。"""
 
+        if value is None:
+            return ""
         return str(getattr(value, "value", value))
+
+    def build_quality_rule_slice(self, rule_type: str) -> dict[str, object]:
+        snapshot = self.quality_snapshot_service.get_rule_snapshot(rule_type)
+        meta = (
+            dict(snapshot.get("meta", {}))
+            if isinstance(snapshot.get("meta"), dict)
+            else {}
+        )
+        return {
+            "entries": snapshot.get("entries", []),
+            "enabled": bool(meta.get("enabled", False)),
+            "mode": str(meta.get("mode", "off")),
+            "revision": int(snapshot.get("revision", 0) or 0),
+        }
+
+    def get_section_revision(self, stage: str) -> int:
+        if stage == "quality":
+            return max(
+                int(self.build_quality_rule_slice("glossary")["revision"]),
+                int(self.build_quality_rule_slice("pre_replacement")["revision"]),
+                int(self.build_quality_rule_slice("post_replacement")["revision"]),
+                int(self.build_quality_rule_slice("text_preserve")["revision"]),
+            )
+        if stage == "prompts":
+            return max(
+                int(self.prompt_service.get_revision("translation")),
+                int(self.prompt_service.get_revision("analysis")),
+            )
+        if stage == "proofreading":
+            return int(self.proofreading_revision_service.get_revision("proofreading"))
+        return 0
+
+    def build_section_revisions(self) -> dict[str, int]:
+        return {
+            "project": self.get_section_revision("project"),
+            "files": self.get_section_revision("files"),
+            "items": self.get_section_revision("items"),
+            "quality": self.get_section_revision("quality"),
+            "prompts": self.get_section_revision("prompts"),
+            "analysis": self.get_section_revision("analysis"),
+            "proofreading": self.get_section_revision("proofreading"),
+            "task": self.get_section_revision("task"),
+        }
 
     def call_data_manager(
         self,

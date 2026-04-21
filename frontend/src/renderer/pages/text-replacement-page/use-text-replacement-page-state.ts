@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
+import {
+  buildProofreadingLookupQuery,
+  getQualityRuleSlice,
+} from '@/app/project-runtime/quality-runtime'
+import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import {
@@ -306,6 +311,12 @@ export function useTextReplacementPageState(
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation()
+  const { project_snapshot, project_store } = useDesktopRuntime()
+  const project_store_state = useSyncExternalStore(
+    project_store.subscribe,
+    project_store.getState,
+    project_store.getState,
+  )
 
   const [revision, set_revision] = useState(0)
   const [enabled, set_enabled] = useState(true)
@@ -464,23 +475,19 @@ export function useTextReplacementPageState(
     set_selection_anchor_entry_id(null)
   }, [])
 
-  const refresh_snapshot = useCallback(async (): Promise<void> => {
-    try {
-      const payload = await api_fetch<TextReplacementSnapshotPayload>(
-        '/api/v2/quality/rules/snapshot',
-        {
-          rule_type: config.rule_type,
-        },
-      )
-      apply_snapshot(payload.snapshot)
-    } catch (error) {
-      if (error instanceof Error) {
-        push_toast('error', error.message)
-      } else {
-        push_toast('error', t('text_replacement_page.feedback.refresh_failed'))
-      }
-    }
-  }, [apply_snapshot, config.rule_type, push_toast, t])
+  const apply_store_snapshot = useCallback((): void => {
+    const replacement_slice = getQualityRuleSlice(
+      project_store_state.quality,
+      config.rule_type,
+    )
+    apply_snapshot({
+      revision: replacement_slice.revision,
+      meta: {
+        enabled: replacement_slice.enabled,
+      },
+      entries: replacement_slice.entries as TextReplacementEntry[],
+    })
+  }, [apply_snapshot, config.rule_type, project_store_state.quality])
 
   const save_entries_snapshot = useCallback(async (
     next_entries: TextReplacementEntry[],
@@ -562,8 +569,19 @@ export function useTextReplacementPageState(
   }, [config.default_preset_settings_key, config.preset_dir_name])
 
   useEffect(() => {
-    void refresh_snapshot()
-  }, [refresh_snapshot])
+    if (!project_snapshot.loaded) {
+      apply_snapshot({
+        revision: 0,
+        meta: {
+          enabled: true,
+        },
+        entries: [],
+      })
+      return
+    }
+
+    apply_store_snapshot()
+  }, [apply_snapshot, apply_store_snapshot, project_snapshot.loaded, project_snapshot.path])
 
   useEffect(() => {
     if (statistics_ready || sort_state?.column_id !== 'statistics') {
@@ -913,14 +931,10 @@ export function useTextReplacementPageState(
     }
 
     try {
-      const payload = await api_fetch<{ query: { keyword: string; is_regex: boolean } }>(
-        '/api/v2/quality/rules/query-proofreading',
-        {
-          rule_type: config.rule_type,
-          entry: normalize_entry(target_entry),
-        },
-      )
-      push_proofreading_lookup_intent(payload.query)
+      push_proofreading_lookup_intent(buildProofreadingLookupQuery({
+        rule_type: config.rule_type,
+        entry: normalize_entry(target_entry),
+      }))
       navigate_to_route('proofreading')
     } catch (error) {
       if (error instanceof Error) {

@@ -823,6 +823,22 @@ class DataManager(Base):
             finalized_items,
             reason="translation_batch_update",
         )
+        if change.item_ids:
+            from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
+
+            runtime_service = ProjectRuntimeService(self)
+            self.emit_project_runtime_patch(
+                reason=change.reason,
+                updated_sections=("items",),
+                patch=[
+                    {
+                        "op": "merge_items",
+                        "items": runtime_service.build_item_records(
+                            list(change.item_ids)
+                        ),
+                    }
+                ],
+            )
         return change
 
     def get_items_for_translation(
@@ -862,7 +878,16 @@ class DataManager(Base):
             section
             for section in updated_sections
             if section
-            in ("project", "files", "items", "quality", "prompts", "analysis", "task")
+            in (
+                "project",
+                "files",
+                "items",
+                "quality",
+                "prompts",
+                "analysis",
+                "proofreading",
+                "task",
+            )
         ]
         if not normalized_sections:
             return
@@ -874,6 +899,55 @@ class DataManager(Base):
                 "updatedSections": normalized_sections,
             },
         )
+
+    def emit_project_runtime_patch(
+        self,
+        *,
+        reason: str,
+        updated_sections: tuple[str, ...],
+        patch: list[dict[str, Any]],
+        section_revisions: dict[str, int] | None = None,
+        project_revision: int | None = None,
+    ) -> None:
+        """直接推送 V2 运行态补丁，避免前端再整段重拉 bootstrap。"""
+
+        normalized_sections = [
+            section
+            for section in updated_sections
+            if section
+            in (
+                "project",
+                "files",
+                "items",
+                "quality",
+                "prompts",
+                "analysis",
+                "proofreading",
+                "task",
+            )
+        ]
+        if not normalized_sections or not patch:
+            return
+
+        payload: dict[str, Any] = {
+            "source": reason,
+            "updatedSections": normalized_sections,
+            "patch": patch,
+        }
+
+        if section_revisions:
+            normalized_section_revisions = {
+                str(section): int(revision)
+                for section, revision in section_revisions.items()
+                if section in normalized_sections
+            }
+            if normalized_section_revisions:
+                payload["sectionRevisions"] = normalized_section_revisions
+
+        if project_revision is not None:
+            payload["projectRevision"] = int(project_revision)
+
+        self.emit(Base.Event.PROJECT_RUNTIME_PATCH, payload)
 
     def try_begin_guarded_file_operation(self) -> None:
         """在数据层兜底拦住忙碌态文件操作。"""

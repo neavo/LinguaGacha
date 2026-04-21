@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from api.v2.Client.ApiClient import ApiClient
-from api.v2.Models.QualityRule import ProofreadingLookupQuery
 from api.v2.Models.QualityRule import QualityRuleSnapshot
 from api.v2.Models.QualityRule import QualityRuleStatisticsSnapshot
 from api.v2.Server.Routes.QualityRoutes import QualityRoutes
@@ -14,15 +13,6 @@ class QualityRuleApiClient:
 
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
-
-    def get_rule_snapshot(self, rule_type: str) -> QualityRuleSnapshot:
-        """读取指定规则类型的快照。"""
-
-        response = self.api_client.post(
-            QualityRoutes.SNAPSHOT_PATH,
-            {"rule_type": rule_type},
-        )
-        return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
 
     def save_entries(self, request: dict[str, Any]) -> QualityRuleSnapshot:
         """保存规则条目列表，并返回最新快照。"""
@@ -152,19 +142,6 @@ class QualityRuleApiClient:
         response = self.api_client.post(QualityRoutes.UPDATE_META_PATH, request)
         return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
 
-    def query_proofreading(
-        self,
-        request: dict[str, Any],
-    ) -> ProofreadingLookupQuery:
-        """把质量规则条目转换成校对页查询对象。"""
-
-        normalized_request = request if "entry" in request else {"entry": dict(request)}
-        response = self.api_client.post(
-            QualityRoutes.QUERY_PROOFREADING_PATH,
-            normalized_request,
-        )
-        return ProofreadingLookupQuery.from_dict(response.get("query", {}))
-
     def build_rule_statistics(
         self,
         request: dict[str, Any],
@@ -173,16 +150,6 @@ class QualityRuleApiClient:
 
         response = self.api_client.post(QualityRoutes.STATISTICS_PATH, request)
         return QualityRuleStatisticsSnapshot.from_dict(response.get("statistics", {}))
-
-    def get_prompt_snapshot(self, task_type: str) -> dict[str, Any]:
-        """读取指定任务的提示词快照。"""
-
-        response = self.api_client.post(
-            QualityRoutes.PROMPT_SNAPSHOT_PATH,
-            {"task_type": task_type},
-        )
-        prompt_raw = response.get("prompt", {})
-        return dict(prompt_raw) if isinstance(prompt_raw, dict) else {}
 
     def get_prompt_template(self, task_type: str) -> dict[str, str]:
         """读取提示词页展示所需的模板文本。"""

@@ -539,6 +539,71 @@ def test_import_analysis_candidates_returns_count_without_emitting_legacy_qualit
     assert emitted_events == []
 
 
+def test_apply_translation_batch_update_emits_items_patch_for_v2_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, emitted_events = build_data_manager(monkeypatch)
+    dm.update_batch = MagicMock()
+
+    class FakeRuntimeService:
+        def __init__(self, data_manager: DataManager) -> None:
+            self.data_manager = data_manager
+
+        def build_item_records(self, item_ids: list[int]) -> list[dict[str, object]]:
+            assert self.data_manager is dm
+            return [
+                {
+                    "item_id": item_id,
+                    "file_path": "script/a.txt",
+                    "src": "原文",
+                    "dst": "译文",
+                    "status": "DONE",
+                }
+                for item_id in item_ids
+            ]
+
+    monkeypatch.setattr(
+        "module.Data.Project.ProjectRuntimeService.ProjectRuntimeService",
+        FakeRuntimeService,
+    )
+
+    change = dm.apply_translation_batch_update(
+        [
+            {
+                "id": 7,
+                "file_path": "script/a.txt",
+                "dst": "译文",
+            }
+        ],
+        {"line": 3},
+    )
+
+    assert change.item_ids == (7,)
+    assert emitted_events == [
+        (
+            Base.Event.PROJECT_RUNTIME_PATCH,
+            {
+                "source": "translation_batch_update",
+                "updatedSections": ["items"],
+                "patch": [
+                    {
+                        "op": "merge_items",
+                        "items": [
+                            {
+                                "item_id": 7,
+                                "file_path": "script/a.txt",
+                                "src": "原文",
+                                "dst": "译文",
+                                "status": "DONE",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+    ]
+
+
 def test_output_path_helpers_delegate_to_export_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

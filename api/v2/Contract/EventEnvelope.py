@@ -1,6 +1,18 @@
 from dataclasses import dataclass
-import json
 from typing import Any
+
+from module.Utils.JSONTool import JSONTool
+
+
+def build_sse_frame(event_type: str, data: dict[str, Any]) -> bytes:
+    """统一拼装 SSE 帧，并复用仓库级 JSON 安全序列化策略。"""
+
+    return (
+        f"event: {event_type}\n".encode("utf-8")
+        + b"data: "
+        + JSONTool.dumps_bytes(data, indent=0)
+        + b"\n\n"
+    )
 
 
 @dataclass(frozen=True)
@@ -16,5 +28,4 @@ class EventEnvelope:
     def to_sse_payload(self) -> bytes:
         """统一编码成 SSE 文本格式，保证所有订阅端拿到同一协议。"""
 
-        data_json = json.dumps(self.data, ensure_ascii=False)
-        return f"event: {self.topic}\ndata: {data_json}\n\n".encode("utf-8")
+        return build_sse_frame(self.topic, self.data)

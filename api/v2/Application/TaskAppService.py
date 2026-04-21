@@ -5,6 +5,7 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from api.v2.Contract.TaskPayloads import TaskSnapshotPayload
 
 
@@ -29,20 +30,25 @@ class TaskAppService:
             config_loader if config_loader is not None else lambda: Config().load()
         )
 
-    def start_translation(self, request: dict[str, str]) -> dict[str, object]:
+    def start_translation(self, request: dict[str, Any]) -> dict[str, object]:
         """请求启动翻译任务，并返回受理回执。"""
 
         mode = Base.TranslationMode(str(request.get("mode", Base.TranslationMode.NEW)))
+        quality_snapshot = self.resolve_quality_snapshot(request)
         self.event_emitter(
             Base.Event.TRANSLATION_TASK,
-            {"sub_event": Base.SubEvent.REQUEST, "mode": mode},
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "mode": mode,
+                "quality_snapshot": quality_snapshot,
+            },
         )
         return {
             "accepted": True,
             "task": self.build_command_ack("translation", "REQUEST", True),
         }
 
-    def stop_translation(self, request: dict[str, str]) -> dict[str, object]:
+    def stop_translation(self, request: dict[str, Any]) -> dict[str, object]:
         """请求停止翻译任务。"""
 
         del request
@@ -55,7 +61,7 @@ class TaskAppService:
             "task": self.build_command_ack("translation", "STOPPING", True),
         }
 
-    def reset_translation_all(self, request: dict[str, str]) -> dict[str, object]:
+    def reset_translation_all(self, request: dict[str, Any]) -> dict[str, object]:
         """请求重置整个项目的翻译进度。"""
 
         return self.request_translation_reset(
@@ -63,7 +69,7 @@ class TaskAppService:
             reset_all=True,
         )
 
-    def reset_translation_failed(self, request: dict[str, str]) -> dict[str, object]:
+    def reset_translation_failed(self, request: dict[str, Any]) -> dict[str, object]:
         """请求仅重置整个项目中失败的翻译条目。"""
 
         return self.request_translation_reset(
@@ -71,20 +77,25 @@ class TaskAppService:
             reset_all=False,
         )
 
-    def start_analysis(self, request: dict[str, str]) -> dict[str, object]:
+    def start_analysis(self, request: dict[str, Any]) -> dict[str, object]:
         """请求启动分析任务，并返回受理回执。"""
 
         mode = Base.AnalysisMode(str(request.get("mode", Base.AnalysisMode.NEW)))
+        quality_snapshot = self.resolve_quality_snapshot(request)
         self.event_emitter(
             Base.Event.ANALYSIS_TASK,
-            {"sub_event": Base.SubEvent.REQUEST, "mode": mode},
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "mode": mode,
+                "quality_snapshot": quality_snapshot,
+            },
         )
         return {
             "accepted": True,
             "task": self.build_command_ack("analysis", "REQUEST", True),
         }
 
-    def stop_analysis(self, request: dict[str, str]) -> dict[str, object]:
+    def stop_analysis(self, request: dict[str, Any]) -> dict[str, object]:
         """请求停止分析任务。"""
 
         del request
@@ -97,17 +108,17 @@ class TaskAppService:
             "task": self.build_command_ack("analysis", "STOPPING", True),
         }
 
-    def reset_analysis_all(self, request: dict[str, str]) -> dict[str, object]:
+    def reset_analysis_all(self, request: dict[str, Any]) -> dict[str, object]:
         """同步重置全部分析进度，并立即返回最新快照。"""
 
         return self.request_analysis_reset(request, reset_all=True)
 
-    def reset_analysis_failed(self, request: dict[str, str]) -> dict[str, object]:
+    def reset_analysis_failed(self, request: dict[str, Any]) -> dict[str, object]:
         """同步仅重置失败分析进度，并立即返回最新快照。"""
 
         return self.request_analysis_reset(request, reset_all=False)
 
-    def import_analysis_glossary(self, request: dict[str, str]) -> dict[str, object]:
+    def import_analysis_glossary(self, request: dict[str, Any]) -> dict[str, object]:
         """把分析候选同步导入术语表，并把最新候选数回传给 UI。"""
 
         del request
@@ -157,7 +168,7 @@ class TaskAppService:
             )
             raise
 
-    def export_translation(self, request: dict[str, str]) -> dict[str, object]:
+    def export_translation(self, request: dict[str, Any]) -> dict[str, object]:
         """请求导出当前工程译文。"""
 
         del request
@@ -166,7 +177,7 @@ class TaskAppService:
 
     def request_translation_reset(
         self,
-        request: dict[str, str],
+        request: dict[str, Any],
         *,
         reset_all: bool,
     ) -> dict[str, object]:
@@ -216,7 +227,7 @@ class TaskAppService:
 
     def request_analysis_reset(
         self,
-        request: dict[str, str],
+        request: dict[str, Any],
         *,
         reset_all: bool,
     ) -> dict[str, object]:
@@ -281,7 +292,7 @@ class TaskAppService:
         if lg_path == "":
             raise ValueError(Localizer.get().alert_project_not_loaded)
 
-    def get_task_snapshot(self, request: dict[str, str]) -> dict[str, object]:
+    def get_task_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
         """显式查询当前任务快照。"""
 
         requested_task_type = str(request.get("task_type", ""))
@@ -380,3 +391,14 @@ class TaskAppService:
         """默认事件出口直接复用 Base 事件总线。"""
 
         Base().emit(event, data)
+
+    def resolve_quality_snapshot(
+        self,
+        request: dict[str, Any],
+    ) -> QualityRuleSnapshot | None:
+        payload = request.get("quality_snapshot")
+        if isinstance(payload, QualityRuleSnapshot):
+            return payload
+        if isinstance(payload, dict):
+            return QualityRuleSnapshot.from_dict(payload)
+        return None

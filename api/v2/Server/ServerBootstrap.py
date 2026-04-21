@@ -13,7 +13,7 @@ from api.v2.Application.QualityRuleAppService import QualityRuleAppService
 from api.v2.Application.SettingsAppService import SettingsAppService
 from api.v2.Application.TaskAppService import TaskAppService
 from api.v2.Application.WorkbenchAppService import WorkbenchAppService
-from api.v2.Bridge.EventBridge import ProjectPatchEventBridge
+from api.v2.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 from api.v2.Server.CoreApiServer import CoreApiServer
 from api.v2.Server.CoreApiPortCatalog import CoreApiPortCatalog
 from api.v2.Server.Routes.ExtraRoutes import ExtraRoutes
@@ -24,7 +24,7 @@ from api.v2.Server.Routes.ModelRoutes import ModelRoutes
 from api.v2.Server.Routes.QualityRoutes import QualityRoutes
 from api.v2.Server.Routes.ProjectRoutes import ProjectRoutes
 from module.Data.DataManager import DataManager
-from module.Data.Project.V2.RuntimeService import V2ProjectRuntimeService
+from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 
 
 class ServerBootstrap:
@@ -61,7 +61,7 @@ class ServerBootstrap:
         extra_app_service = ExtraAppService()
         model_app_service = ModelAppService()
         project_bootstrap_app_service = ProjectBootstrapAppService(
-            V2ProjectRuntimeService(DataManager.get())
+            ProjectRuntimeService(DataManager.get())
         )
         return cls.start_for_test(
             project_app_service=project_app_service,

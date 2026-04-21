@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 from typing import Any
 
 from base.Base import Base
@@ -21,7 +20,6 @@ from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
 from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
 from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
 from module.Localizer.Localizer import Localizer
-from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 
@@ -36,7 +34,6 @@ class Analysis(Base):
         self.stop_requested: bool = False
         self.extras: dict[str, Any] = {}
         self.quality_snapshot: QualityRuleSnapshot | None = None
-        self.cli_auto_export_glossary: bool = False
         self.current_task_contexts: list[AnalysisTaskContext] = []
         self.scheduler = AnalysisScheduler(self)
         self.progress_tracker = AnalysisProgressTracker(self)
@@ -243,193 +240,6 @@ class Analysis(Base):
 
         return int(dm.get_analysis_candidate_count() or 0) > 0
 
-    def build_cli_glossary_export_paths(
-        self, expected_lg_path: str
-    ) -> tuple[Path, str, str, str]:
-        """CLI 默认总是把导出目录锚定到工程旁边，保证脚本重复执行路径稳定。"""
-        project_path = Path(expected_lg_path)
-        export_dir = project_path.parent / f"{project_path.stem}_glossary"
-        path_base = export_dir / "glossary"
-        return (
-            export_dir,
-            str(path_base),
-            str(path_base.with_suffix(".json")),
-            str(path_base.with_suffix(".xlsx")),
-        )
-
-    def build_cli_glossary_export_payload(
-        self,
-        *,
-        sub_event: Base.SubEvent,
-        json_path: str | None = None,
-        xlsx_path: str | None = None,
-        imported_count: int | None = None,
-        exported_count: int | None = None,
-        message: str | None = None,
-    ) -> dict[str, Any]:
-        """导出事件统一走同一套载荷结构，避免不同分支手写字典时漏字段。"""
-        payload: dict[str, Any] = {"sub_event": sub_event}
-        if json_path is not None:
-            payload["json_path"] = json_path
-        if xlsx_path is not None:
-            payload["xlsx_path"] = xlsx_path
-        if imported_count is not None:
-            payload["imported_count"] = imported_count
-        if exported_count is not None:
-            payload["exported_count"] = exported_count
-        if message is not None:
-            payload["message"] = message
-        return payload
-
-    def build_cli_glossary_export_success_message(
-        self,
-        *,
-        export_dir: Path,
-        json_path: str,
-        xlsx_path: str,
-        exported_count: int,
-        imported_count: int,
-    ) -> str:
-        """成功文案只在一处拼装，减少占位符替换散落在业务流程里。"""
-        return (
-            Localizer.get()
-            .log_cli_analysis_export_success.replace("{DIR}", str(export_dir))
-            .replace("{JSON}", json_path)
-            .replace("{XLSX}", xlsx_path)
-            .replace("{COUNT}", str(exported_count))
-            .replace("{IMPORTED}", str(imported_count))
-        )
-
-    def export_glossary_for_cli(
-        self,
-        dm: DataManager,
-        *,
-        expected_lg_path: str,
-        imported_count: int,
-    ) -> None:
-        """CLI 分析成功后导出最终术语表，让结果可直接被脚本或人工消费。"""
-        if not dm.is_loaded() or dm.get_lg_path() != expected_lg_path:
-            message = Localizer.get().task_failed
-            self.emit(
-                Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-                self.build_cli_glossary_export_payload(
-                    sub_event=Base.SubEvent.ERROR,
-                    message=message,
-                ),
-            )
-            return
-
-        export_dir, path_base, json_path, xlsx_path = (
-            self.build_cli_glossary_export_paths(expected_lg_path)
-        )
-        glossary_entries = dm.get_glossary()
-        exported_count = len(glossary_entries)
-
-        LogManager.get().info(Localizer.get().log_cli_analysis_export_start)
-        self.emit(
-            Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-            self.build_cli_glossary_export_payload(
-                sub_event=Base.SubEvent.RUN,
-                json_path=json_path,
-                xlsx_path=xlsx_path,
-                imported_count=imported_count,
-                exported_count=exported_count,
-            ),
-        )
-
-        try:
-            export_dir.mkdir(parents=True, exist_ok=True)
-            QualityRuleIO.export_rules(path_base, glossary_entries)
-            message = self.build_cli_glossary_export_success_message(
-                export_dir=export_dir,
-                json_path=json_path,
-                xlsx_path=xlsx_path,
-                exported_count=exported_count,
-                imported_count=imported_count,
-            )
-            LogManager.get().info(message)
-            self.emit(
-                Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-                self.build_cli_glossary_export_payload(
-                    sub_event=Base.SubEvent.DONE,
-                    json_path=json_path,
-                    xlsx_path=xlsx_path,
-                    imported_count=imported_count,
-                    exported_count=exported_count,
-                    message=message,
-                ),
-            )
-        except Exception as e:
-            message = Localizer.get().log_cli_analysis_export_failed
-            LogManager.get().error(message, e)
-            self.emit(
-                Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-                self.build_cli_glossary_export_payload(
-                    sub_event=Base.SubEvent.ERROR,
-                    json_path=json_path,
-                    xlsx_path=xlsx_path,
-                    imported_count=imported_count,
-                    exported_count=exported_count,
-                    message=message,
-                ),
-            )
-
-    def emit_cli_analysis_export_error(
-        self,
-        message: str,
-        e: Exception | None = None,
-    ) -> None:
-        """CLI 收尾失败时统一记录并发终态事件，避免调用方永远等不到退出信号。"""
-        if e is not None:
-            LogManager.get().error(message, e)
-        self.emit(
-            Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-            {
-                "sub_event": Base.SubEvent.ERROR,
-                "message": message,
-            },
-        )
-
-    def finalize_cli_analysis_result(
-        self,
-        dm: DataManager,
-        final_status: str,
-    ) -> None:
-        """CLI 成功场景要跑到最终可交付文件，失败和停止则直接交给 CLI 退出。"""
-        if final_status != "SUCCESS":
-            return
-        try:
-            if not dm.is_loaded():
-                self.emit_cli_analysis_export_error(Localizer.get().task_failed)
-                return
-
-            expected_lg_path = dm.get_lg_path()
-            if not isinstance(expected_lg_path, str) or expected_lg_path == "":
-                self.emit_cli_analysis_export_error(Localizer.get().task_failed)
-                return
-
-            imported_count = self.import_analysis_candidates_sync(
-                dm,
-                expected_lg_path=expected_lg_path,
-            )
-            if imported_count is None:
-                self.emit_cli_analysis_export_error(Localizer.get().task_failed)
-                return
-
-            LogManager.get().info(
-                Localizer.get().analysis_page_import_success.replace(
-                    "{COUNT}",
-                    str(imported_count),
-                )
-            )
-            self.export_glossary_for_cli(
-                dm,
-                expected_lg_path=expected_lg_path,
-                imported_count=imported_count,
-            )
-        except Exception as e:
-            self.emit_cli_analysis_export_error(Localizer.get().task_failed, e)
-
     # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
     def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
         sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
@@ -490,9 +300,6 @@ class Analysis(Base):
             run_state["mode"] = mode
 
             self.config = config if isinstance(config, Config) else Config().load()
-            self.cli_auto_export_glossary = bool(
-                data.get("cli_auto_export_glossary", False)
-            )
             if not TaskRunnerLifecycle.ensure_project_loaded(
                 self,
                 dm=dm,
@@ -605,10 +412,6 @@ class Analysis(Base):
         final_status: str,
     ) -> None:
         """分析任务进入 DONE 后，再决定是否桥接自动导入流程。"""
-        if self.cli_auto_export_glossary:
-            self.finalize_cli_analysis_result(dm, final_status)
-            return
-
         if self.should_auto_import_glossary(dm, final_status):
             self.emit(
                 Base.Event.ANALYSIS_IMPORT_GLOSSARY,

@@ -49,6 +49,7 @@ export const en_us_project_page = {
     quality: 'Loading quality rules …',
     prompts: 'Loading prompt settings …',
     analysis: 'Loading analysis results …',
+    proofreading: 'Loading proofreading view …',
     task: 'Loading task status …',
   },
   formats: {

@@ -228,6 +228,9 @@ def test_server_bootstrap_no_longer_registers_v1_runtime_routes() -> None:
         ("POST", "/api/workbench/snapshot"),
         ("POST", "/api/proofreading/snapshot"),
         ("POST", "/api/quality/rules/snapshot"),
+        ("POST", "/api/v2/quality/rules/snapshot"),
+        ("POST", "/api/v2/quality/rules/query-proofreading"),
+        ("POST", "/api/v2/quality/prompts/snapshot"),
     ]
 
     try:

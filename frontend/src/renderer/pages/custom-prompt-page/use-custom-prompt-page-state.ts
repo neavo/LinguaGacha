@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import { getPromptSlice } from '@/app/project-runtime/quality-runtime'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
@@ -19,6 +20,7 @@ import type {
 
 type PromptSnapshot = {
   revision?: number
+  enabled?: boolean
   meta?: {
     enabled?: boolean
   }
@@ -71,11 +73,11 @@ function create_empty_preset_input_state(): CustomPromptPresetInputState {
   }
 }
 
-function normalize_prompt_snapshot(snapshot: PromptSnapshot | undefined): PromptSnapshot {
+export function normalize_prompt_snapshot(snapshot: PromptSnapshot | undefined): PromptSnapshot {
   return {
     revision: Number(snapshot?.revision ?? 0),
     meta: {
-      enabled: Boolean(snapshot?.meta?.enabled),
+      enabled: Boolean(snapshot?.meta?.enabled ?? snapshot?.enabled),
     },
     text: String(snapshot?.text ?? ''),
   }
@@ -175,7 +177,12 @@ export function useCustomPromptPageState(
   const config = CUSTOM_PROMPT_VARIANT_CONFIG[variant]
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
-  const { project_snapshot, settings_snapshot } = useDesktopRuntime()
+  const { project_snapshot, project_store, settings_snapshot } = useDesktopRuntime()
+  const project_store_state = useSyncExternalStore(
+    project_store.subscribe,
+    project_store.getState,
+    project_store.getState,
+  )
 
   const [template, set_template] = useState<CustomPromptTemplate>(() => {
     return create_empty_prompt_template()
@@ -193,7 +200,6 @@ export function useCustomPromptPageState(
   })
   const revision_ref = useRef(revision)
   const template_ref = useRef(template)
-  const refresh_snapshot_ref = useRef<() => Promise<void>>(async () => {})
   const previous_app_language_ref = useRef(settings_snapshot.app_language)
 
   useEffect(() => {
@@ -243,32 +249,13 @@ export function useCustomPromptPageState(
     return normalize_prompt_template(payload.template)
   }, [config.task_type])
 
-  const refresh_snapshot = useCallback(async (): Promise<void> => {
-    try {
-      const [next_template, snapshot_payload] = await Promise.all([
-        fetch_prompt_template(),
-        api_fetch<PromptSnapshotPayload>(
-          '/api/v2/quality/prompts/snapshot',
-          {
-            task_type: config.task_type,
-          },
-        ),
-      ])
-
-      // Why: 旧版页面在正文为空时会回退到默认模板，这里必须把模板和快照一起应用，
-      // 否则编辑区会短暂显示错误正文。
-      set_template(next_template)
-      apply_snapshot(normalize_prompt_snapshot(snapshot_payload.prompt), next_template)
-    } catch (error) {
-      push_toast(
-        'error',
-        resolve_error_message(
-          error,
-          t('custom_prompt_page.feedback.load_failed'),
-        ),
-      )
-    }
-  }, [apply_snapshot, config.task_type, fetch_prompt_template, push_toast, t])
+  const apply_store_snapshot = useCallback((template_override?: CustomPromptTemplate): void => {
+    const prompt_slice = getPromptSlice(project_store_state.prompts, config.task_type)
+    apply_snapshot(
+      normalize_prompt_snapshot(prompt_slice),
+      template_override,
+    )
+  }, [apply_snapshot, config.task_type, project_store_state.prompts])
 
   const refresh_template = useCallback(async (): Promise<void> => {
     try {
@@ -286,10 +273,6 @@ export function useCustomPromptPageState(
   }, [fetch_prompt_template, push_toast, t])
 
   useEffect(() => {
-    refresh_snapshot_ref.current = refresh_snapshot
-  }, [refresh_snapshot])
-
-  useEffect(() => {
     if (!project_snapshot.loaded) {
       set_template(create_empty_prompt_template())
       set_prompt_text('')
@@ -300,9 +283,38 @@ export function useCustomPromptPageState(
       set_confirm_state(create_empty_confirm_state())
       set_preset_input_state(create_empty_preset_input_state())
     } else {
-      void refresh_snapshot_ref.current()
+      void (async () => {
+        try {
+          const next_template = await fetch_prompt_template()
+          set_template(next_template)
+          apply_store_snapshot(next_template)
+        } catch (error) {
+          push_toast(
+            'error',
+            resolve_error_message(
+              error,
+              t('custom_prompt_page.feedback.load_failed'),
+            ),
+          )
+        }
+      })()
     }
-  }, [project_snapshot.loaded, project_snapshot.path])
+  }, [
+    apply_store_snapshot,
+    fetch_prompt_template,
+    project_snapshot.loaded,
+    project_snapshot.path,
+    push_toast,
+    t,
+  ])
+
+  useEffect(() => {
+    if (!project_snapshot.loaded) {
+      return
+    }
+
+    apply_store_snapshot()
+  }, [apply_store_snapshot, project_snapshot.loaded, project_snapshot.path])
 
   useEffect(() => {
     if (!project_snapshot.loaded) {

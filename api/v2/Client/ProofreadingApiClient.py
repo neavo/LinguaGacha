@@ -4,7 +4,6 @@ from typing import Any
 
 from api.v2.Client.ApiClient import ApiClient
 from api.v2.Models.Proofreading import ProofreadingMutationResult
-from api.v2.Models.Proofreading import ProofreadingSnapshot
 from api.v2.Server.Routes.ProjectRoutes import ProjectRoutes
 
 
@@ -13,22 +12,6 @@ class ProofreadingApiClient:
 
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
-
-    def get_snapshot(
-        self, request: dict[str, Any] | None = None
-    ) -> ProofreadingSnapshot:
-        """读取校对快照，供页面首屏与主动刷新共用。"""
-
-        response = self.api_client.post(
-            ProjectRoutes.PROOFREADING_SNAPSHOT_PATH, request or {}
-        )
-        return ProofreadingSnapshot.from_dict(response.get("snapshot", {}))
-
-    def filter_items(self, request: dict[str, Any]) -> ProofreadingSnapshot:
-        """按筛选条件读取校对快照。"""
-
-        response = self.api_client.post(ProjectRoutes.PROOFREADING_FILTER_PATH, request)
-        return ProofreadingSnapshot.from_dict(response.get("snapshot", {}))
 
     def save_item(self, request: dict[str, Any]) -> ProofreadingMutationResult:
         """保存单条条目，并返回写入结果。"""

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from api.v2.Contract.QualityPayloads import ProofreadingLookupPayload
 from api.v2.Contract.QualityPayloads import QualityRuleSnapshotPayload
-from api.v2.Models.QualityRule import ProofreadingLookupQuery
 from api.v2.Models.QualityRule import QualityRuleStatisticsSnapshot
+from base.Base import Base
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
 from module.Data.Quality.QualityRuleMutationService import QualityRuleMutationService
 from module.PromptBuilder import PromptBuilder
@@ -17,8 +17,19 @@ from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 class QualityRuleAppService:
     """质量规则用例层，负责把 Core 结果映射成稳定 API 载荷。"""
 
-    def __init__(self, quality_rule_facade: Any | None = None) -> None:
+    def __init__(
+        self,
+        quality_rule_facade: Any | None = None,
+        runtime_service: ProjectRuntimeService | None = None,
+        event_emitter: Any | None = None,
+    ) -> None:
         self.data_manager = DataManager.get()
+        self.runtime_service = (
+            runtime_service
+            if runtime_service is not None
+            else ProjectRuntimeService(self.data_manager)
+        )
+        self.event_emitter = event_emitter if event_emitter is not None else Base().emit
         if quality_rule_facade is None:
             quality_rule_service = getattr(
                 self.data_manager,
@@ -37,13 +48,6 @@ class QualityRuleAppService:
         else:
             self.quality_rule_facade = quality_rule_facade
 
-    def get_rule_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
-        """读取规则快照，并统一通过 payload 输出。"""
-
-        rule_type = str(request.get("rule_type", ""))
-        snapshot = self.quality_rule_facade.get_rule_snapshot(rule_type)
-        return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
-
     def save_rule_entries(self, request: dict[str, Any]) -> dict[str, object]:
         """保存完整规则条目列表。"""
 
@@ -61,6 +65,7 @@ class QualityRuleAppService:
             expected_revision=expected_revision,
             entries=entries,
         )
+        self.emit_quality_patch("quality_rule_save")
         return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
 
     def import_rules(self, request: dict[str, Any]) -> dict[str, object]:
@@ -189,28 +194,9 @@ class QualityRuleAppService:
 
         if snapshot is None:
             snapshot = self.quality_rule_facade.get_rule_snapshot(rule_type)
-        return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
-
-    def query_proofreading(self, request: dict[str, Any]) -> dict[str, object]:
-        """把质量规则条目转换成校对页可直接消费的查询参数。"""
-
-        rule_type = str(request.get("rule_type", ""))
-        entry_raw = request.get("entry", {})
-        if isinstance(entry_raw, dict):
-            keyword = str(entry_raw.get("src", "")).strip()
-            if rule_type == "text_preserve":
-                is_regex = True
-            else:
-                is_regex = bool(entry_raw.get("regex", False))
         else:
-            keyword = ""
-            if rule_type == "text_preserve":
-                is_regex = True
-            else:
-                is_regex = bool(request.get("is_regex", False))
-
-        query = ProofreadingLookupQuery(keyword=keyword, is_regex=is_regex)
-        return ProofreadingLookupPayload(query=query).to_dict()
+            self.emit_quality_patch("quality_rule_meta")
+        return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
 
     def build_rule_statistics(self, request: dict[str, Any]) -> dict[str, object]:
         """构建质量规则统计快照。"""
@@ -264,13 +250,6 @@ class QualityRuleAppService:
         )
         return {"statistics": payload.to_dict()}
 
-    def get_prompt_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
-        """读取指定任务类型的提示词快照。"""
-
-        task_type = str(request.get("task_type", ""))
-        snapshot = self.quality_rule_facade.get_prompt_snapshot(task_type)
-        return {"prompt": snapshot}
-
     def get_prompt_template(self, request: dict[str, Any]) -> dict[str, object]:
         """读取提示词编辑页所需的模板文本。"""
 
@@ -313,6 +292,7 @@ class QualityRuleAppService:
             text=text,
             enabled=enabled,
         )
+        self.emit_prompts_patch("quality_prompt_save")
         return {"prompt": snapshot}
 
     def import_prompt(self, request: dict[str, Any]) -> dict[str, object]:
@@ -334,6 +314,7 @@ class QualityRuleAppService:
             expected_revision=expected_revision,
             enabled=enabled,
         )
+        self.emit_prompts_patch("quality_prompt_import")
         return {"prompt": snapshot}
 
     def export_prompt(self, request: dict[str, Any]) -> dict[str, object]:
@@ -393,3 +374,35 @@ class QualityRuleAppService:
         virtual_id = str(request.get("virtual_id", ""))
         path = self.quality_rule_facade.delete_prompt_preset(task_type, virtual_id)
         return {"path": path}
+
+    def emit_quality_patch(self, reason: str) -> None:
+        quality_block = self.runtime_service.build_quality_block()
+        quality_revision = self.runtime_service.get_section_revision("quality")
+        self.data_manager.emit_project_runtime_patch(
+            reason=reason,
+            updated_sections=("quality",),
+            patch=[
+                {
+                    "op": "replace_quality",
+                    "quality": quality_block,
+                }
+            ],
+            section_revisions={"quality": quality_revision},
+            project_revision=quality_revision,
+        )
+
+    def emit_prompts_patch(self, reason: str) -> None:
+        prompts_block = self.runtime_service.build_prompts_block()
+        prompts_revision = self.runtime_service.get_section_revision("prompts")
+        self.data_manager.emit_project_runtime_patch(
+            reason=reason,
+            updated_sections=("prompts",),
+            patch=[
+                {
+                    "op": "replace_prompts",
+                    "prompts": prompts_block,
+                }
+            ],
+            section_revisions={"prompts": prompts_revision},
+            project_revision=prompts_revision,
+        )

@@ -2,7 +2,7 @@ from queue import Empty
 
 from base.Base import Base
 from api.v2.Application.EventStreamService import EventStreamService
-from api.v2.Bridge.EventBridge import ProjectPatchEventBridge
+from api.v2.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 
 
 class StubRuntimeService:
@@ -17,6 +17,49 @@ class StubRuntimeService:
             }
             for item_id in item_ids
         ]
+
+    def build_quality_block(self) -> dict[str, object]:
+        return {
+            "glossary": {
+                "entries": [{"src": "绿之塔", "dst": "绿塔"}],
+                "enabled": True,
+                "mode": "off",
+                "revision": 4,
+            },
+            "pre_replacement": {
+                "entries": [],
+                "enabled": False,
+                "mode": "off",
+                "revision": 0,
+            },
+            "post_replacement": {
+                "entries": [],
+                "enabled": False,
+                "mode": "off",
+                "revision": 0,
+            },
+            "text_preserve": {
+                "entries": [],
+                "enabled": False,
+                "mode": "off",
+                "revision": 0,
+            },
+        }
+
+    def build_analysis_block(self) -> dict[str, object]:
+        return {
+            "candidate_count": 3,
+            "status_summary": {"done": 3},
+        }
+
+    def get_section_revision(self, stage: str) -> int:
+        if stage == "quality":
+            return 4
+        if stage == "analysis":
+            return 8
+        if stage == "task":
+            return 6
+        return 0
 
 
 def build_task_snapshot(task_type: str) -> dict[str, object]:
@@ -174,6 +217,54 @@ def test_publish_runtime_refresh_event_supports_v2_bootstrap_patch() -> None:
         "source": "file_op",
         "updatedSections": ["files", "items", "analysis"],
     }
+
+
+def test_publish_translation_reset_all_done_supports_runtime_refresh_patch() -> None:
+    service = EventStreamService(
+        event_bridge=ProjectPatchEventBridge(
+            runtime_service=StubRuntimeService(),
+            task_snapshot_builder=build_task_snapshot,
+        )
+    )
+    subscriber = service.add_subscriber()
+
+    service.publish_internal_event(
+        Base.Event.TRANSLATION_RESET_ALL,
+        {
+            "sub_event": Base.SubEvent.DONE,
+        },
+    )
+
+    envelope = subscriber.get_nowait()
+    assert envelope.topic == "project.patch"
+    assert envelope.data == {
+        "source": "translation_reset_all",
+        "updatedSections": ["items", "analysis", "task"],
+    }
+
+
+def test_publish_analysis_import_glossary_done_supports_quality_patch() -> None:
+    service = EventStreamService(
+        event_bridge=ProjectPatchEventBridge(
+            runtime_service=StubRuntimeService(),
+            task_snapshot_builder=build_task_snapshot,
+        )
+    )
+    subscriber = service.add_subscriber()
+
+    service.publish_internal_event(
+        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "imported_count": 16,
+        },
+    )
+
+    envelope = subscriber.get_nowait()
+    assert envelope.topic == "project.patch"
+    assert envelope.data["source"] == "analysis_import_glossary"
+    assert envelope.data["updatedSections"] == ["quality", "analysis", "task"]
+    assert envelope.data["patch"][0]["op"] == "replace_quality"
 
 
 def test_publish_unmapped_event_with_patch_bridge_is_ignored() -> None:

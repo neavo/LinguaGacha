@@ -1,4 +1,3 @@
-import os
 from importlib import import_module
 from types import SimpleNamespace
 from typing import Any
@@ -16,43 +15,6 @@ from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 
 analysis_module = import_module("module.Engine.Analysis.Analysis")
 EmittedEvent = tuple[Base.Event, dict[str, object]]
-
-
-def normalize_path(path: str) -> str:
-    return os.path.normpath(path)
-
-
-def build_cli_glossary_export_paths() -> tuple[str, str, str]:
-    # CLI 导出路径是固定约定，统一收口后测试断言更容易看懂。
-    export_dir = normalize_path("/workspace/demo/project_glossary")
-    return (
-        export_dir,
-        normalize_path(f"{export_dir}/glossary.json"),
-        normalize_path(f"{export_dir}/glossary.xlsx"),
-    )
-
-
-def build_cli_glossary_done_event(exported_count: int) -> EmittedEvent:
-    # 这类断言只关心导出结果，不想让大段重复字符串把测试重点冲淡。
-    export_dir, json_path, xlsx_path = build_cli_glossary_export_paths()
-    return (
-        Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "json_path": json_path,
-            "xlsx_path": xlsx_path,
-            "imported_count": 0,
-            "exported_count": exported_count,
-            "message": (
-                "术语表导出完成 …\n"
-                f"目录：{export_dir}\n"
-                f"JSON：{json_path}\n"
-                f"XLSX：{xlsx_path}\n"
-                f"术语条数：{exported_count}\n"
-                "本轮导入：0"
-            ),
-        },
-    )
 
 
 def build_context(file_path: str) -> AnalysisTaskContext:
@@ -826,7 +788,7 @@ def test_start_success_emits_auto_import_glossary_request(
     ) in emitted
 
 
-def test_start_uses_cli_quality_snapshot_override(
+def test_start_uses_quality_snapshot_override(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -856,124 +818,39 @@ def test_start_uses_cli_quality_snapshot_override(
             "mode": Base.AnalysisMode.NEW,
             "config": config,
             "quality_snapshot": quality_snapshot,
-            "cli_auto_export_glossary": True,
         }
     )
 
     assert analysis.quality_snapshot is quality_snapshot
-    assert analysis.cli_auto_export_glossary is True
 
 
-def test_after_analysis_done_cli_exports_glossary_files(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    fake_data_manager.glossary_entries = [{"src": "A", "dst": "甲"}]
-    install_analysis_logger(monkeypatch)
-    analysis = Analysis()
-    analysis.cli_auto_export_glossary = True
-    emitted = capture_emitted_events(monkeypatch, analysis)
-    exported_paths: list[tuple[str, list[dict[str, object]]]] = []
-
-    monkeypatch.setattr(
-        analysis_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(
-        analysis_module.QualityRuleIO,
-        "export_rules",
-        lambda path_base, rules: exported_paths.append((path_base, rules)),
-    )
-
-    analysis.after_analysis_done(fake_data_manager, "SUCCESS")
-
-    assert fake_data_manager.import_expected_paths == [fake_data_manager.lg_path]
-    assert exported_paths == [
-        (
-            normalize_path("/workspace/demo/project_glossary/glossary"),
-            [{"src": "A", "dst": "甲"}],
-        )
-    ]
-    assert build_cli_glossary_done_event(1) in emitted
-
-
-def test_after_analysis_done_cli_success_with_zero_import_still_exports(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    fake_data_manager.glossary_entries = []
-    install_analysis_logger(monkeypatch)
-    analysis = Analysis()
-    analysis.cli_auto_export_glossary = True
-    emitted = capture_emitted_events(monkeypatch, analysis)
-    exported_paths: list[str] = []
-
-    monkeypatch.setattr(
-        analysis_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(
-        analysis_module.QualityRuleIO,
-        "export_rules",
-        lambda path_base, rules: exported_paths.append(path_base),
-    )
-
-    analysis.after_analysis_done(fake_data_manager, "SUCCESS")
-
-    assert exported_paths == [
-        normalize_path("/workspace/demo/project_glossary/glossary")
-    ]
-    assert build_cli_glossary_done_event(0) in emitted
-
-
-def test_after_analysis_done_cli_stopped_skips_export(
+def test_after_analysis_done_success_requests_import_glossary(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
 ) -> None:
     install_analysis_logger(monkeypatch)
     analysis = Analysis()
-    analysis.cli_auto_export_glossary = True
     emitted = capture_emitted_events(monkeypatch, analysis)
-
-    monkeypatch.setattr(
-        analysis_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-
-    analysis.after_analysis_done(fake_data_manager, "STOPPED")
-
-    assert not any(
-        event == Base.Event.ANALYSIS_EXPORT_GLOSSARY for event, _data in emitted
-    )
-
-
-def test_after_analysis_done_cli_import_exception_emits_export_error(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    logger = FakeLogManager()
-    analysis = Analysis()
-    analysis.cli_auto_export_glossary = True
-    emitted = capture_emitted_events(monkeypatch, analysis)
-
-    monkeypatch.setattr(analysis_module.LogManager, "get", lambda: logger)
-    monkeypatch.setattr(
-        analysis,
-        "import_analysis_candidates_sync",
-        lambda dm, expected_lg_path: (_ for _ in ()).throw(RuntimeError("boom")),
-    )
+    fake_data_manager.analysis_candidate_count = 2
 
     analysis.after_analysis_done(fake_data_manager, "SUCCESS")
 
     assert (
-        Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-        {
-            "sub_event": Base.SubEvent.ERROR,
-            "message": "任务执行失败 …",
-        },
+        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
+        {"sub_event": Base.SubEvent.REQUEST},
     ) in emitted
-    assert logger.error_messages == ["任务执行失败 …"]
-    assert isinstance(logger.error_exceptions[0], RuntimeError)
+
+
+def test_after_analysis_done_stopped_skips_import_glossary(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_data_manager,
+) -> None:
+    install_analysis_logger(monkeypatch)
+    analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
+
+    analysis.after_analysis_done(fake_data_manager, "STOPPED")
+
+    assert not any(
+        event == Base.Event.ANALYSIS_IMPORT_GLOSSARY for event, _data in emitted
+    )

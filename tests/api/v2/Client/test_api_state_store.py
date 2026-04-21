@@ -1,6 +1,6 @@
 from api.v2.Models.Extra import ExtraTaskState
 from api.v2.Client.ApiStateStore import ApiStateStore
-from api.v2.Bridge.EventTopic import EventTopic
+from api.v2.Bridge.PublicEventTopic import PublicEventTopic
 from api.v2.Models.Project import ProjectSnapshot
 from api.v2.Models.Task import TaskProgressUpdate
 from api.v2.Models.Task import TaskSnapshot
@@ -123,13 +123,13 @@ def test_api_state_store_project_event_can_reset_loaded_snapshot() -> None:
     # 准备
     store = ApiStateStore()
     store.apply_event(
-        EventTopic.PROJECT_CHANGED.value,
+        PublicEventTopic.PROJECT_CHANGED.value,
         {"loaded": True, "path": "demo.lg"},
     )
 
     # 执行
     store.apply_event(
-        EventTopic.PROJECT_CHANGED.value,
+        PublicEventTopic.PROJECT_CHANGED.value,
         {"loaded": False, "path": "demo.lg"},
     )
 
@@ -144,7 +144,7 @@ def test_api_state_store_merges_task_events_from_public_topics() -> None:
 
     # 执行
     store.apply_event(
-        EventTopic.TASK_STATUS_CHANGED.value,
+        PublicEventTopic.TASK_STATUS_CHANGED.value,
         {
             "task_type": "translation",
             "status": "TRANSLATING",
@@ -152,7 +152,7 @@ def test_api_state_store_merges_task_events_from_public_topics() -> None:
         },
     )
     store.apply_event(
-        EventTopic.TASK_PROGRESS_CHANGED.value,
+        PublicEventTopic.TASK_PROGRESS_CHANGED.value,
         {
             "task_type": "translation",
             "processed_line": 3,
@@ -172,7 +172,7 @@ def test_api_state_store_reads_extra_task_state_as_frozen_snapshot() -> None:
 
     # 执行
     store.apply_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         {
             "task_id": "extra_ts_conversion",
             "phase": "RUNNING",
@@ -198,7 +198,7 @@ def test_api_state_store_merges_extra_task_finished_state() -> None:
     # 准备
     store = ApiStateStore()
     store.apply_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         {
             "task_id": "extra_ts_conversion",
             "phase": "RUNNING",
@@ -210,7 +210,7 @@ def test_api_state_store_merges_extra_task_finished_state() -> None:
 
     # 执行
     store.apply_event(
-        EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
         {
             "task_id": "extra_ts_conversion",
             "phase": "FINISHED",
@@ -238,7 +238,7 @@ def test_api_state_store_ignores_extra_event_without_task_id() -> None:
 
     # 执行
     store.apply_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         {
             "phase": "RUNNING",
             "message": "missing id",
@@ -264,7 +264,7 @@ def test_api_state_store_can_clear_specific_extra_task_state() -> None:
     # 准备
     store = ApiStateStore()
     store.apply_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         {
             "task_id": "extra_ts_conversion",
             "phase": "RUNNING",
@@ -283,7 +283,7 @@ def test_api_state_store_clears_extra_task_state_on_project_hydrate() -> None:
     # 准备
     store = ApiStateStore()
     store.apply_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         {
             "task_id": "extra_ts_conversion",
             "phase": "RUNNING",
@@ -308,7 +308,7 @@ def test_api_state_store_clears_extra_task_state_on_project_reset() -> None:
     # 准备
     store = ApiStateStore()
     store.apply_event(
-        EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+        PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
         {
             "task_id": "extra_ts_conversion",
             "phase": "RUNNING",

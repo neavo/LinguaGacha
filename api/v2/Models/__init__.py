@@ -12,10 +12,8 @@ from api.v2.Models.Model import ModelThinkingSnapshot
 from api.v2.Models.Model import ModelThresholdSnapshot
 from api.v2.Models.Project import ProjectPreview
 from api.v2.Models.Project import ProjectSnapshot
-from api.v2.Models.Proofreading import ProofreadingFilterOptionsSnapshot
 from api.v2.Models.Proofreading import ProofreadingItemView
 from api.v2.Models.Proofreading import ProofreadingMutationResult
-from api.v2.Models.Proofreading import ProofreadingSnapshot
 from api.v2.Models.Proofreading import ProofreadingSummary
 from api.v2.Models.Proofreading import ProofreadingWarningSummary
 from api.v2.Models.QualityRule import ProofreadingLookupQuery
@@ -47,11 +45,9 @@ __all__ = [
     "NameFieldTranslateResult",
     "ProjectPreview",
     "ProjectSnapshot",
-    "ProofreadingFilterOptionsSnapshot",
     "ProofreadingItemView",
     "ProofreadingLookupQuery",
     "ProofreadingMutationResult",
-    "ProofreadingSnapshot",
     "ProofreadingSummary",
     "ProofreadingWarningSummary",
     "QualityRuleEntry",

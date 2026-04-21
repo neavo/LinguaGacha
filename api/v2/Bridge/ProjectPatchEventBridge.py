@@ -28,11 +28,32 @@ class ProjectPatchEventBridge:
     ) -> tuple[str | None, dict[str, Any]]:
         """仅暴露 V2 运行态真正需要的 task patch 事件。"""
 
+        if self.is_project_runtime_patch_event(event):
+            return self.PROJECT_PATCH_TOPIC, dict(data)
+
         if self.is_translation_done_event(event, data):
             return self.PROJECT_PATCH_TOPIC, self.build_translation_task_patch(data)
 
         if self.is_analysis_done_event(event, data):
             return self.PROJECT_PATCH_TOPIC, self.build_analysis_task_patch(data)
+
+        if self.is_analysis_import_glossary_done_event(event, data):
+            return (
+                self.PROJECT_PATCH_TOPIC,
+                self.build_analysis_import_glossary_patch(),
+            )
+
+        if self.is_translation_reset_done_event(event, data):
+            return (
+                self.PROJECT_PATCH_TOPIC,
+                self.build_translation_reset_refresh_patch(event),
+            )
+
+        if self.is_analysis_reset_done_event(event, data):
+            return (
+                self.PROJECT_PATCH_TOPIC,
+                self.build_analysis_reset_refresh_patch(event),
+            )
 
         if self.is_project_runtime_refresh_event(event):
             return self.PROJECT_PATCH_TOPIC, self.build_runtime_refresh_patch(data)
@@ -104,6 +125,84 @@ class ProjectPatchEventBridge:
             "patch": patch,
         }
 
+    def build_analysis_import_glossary_patch(self) -> dict[str, Any]:
+        """把候选术语导入终态裁成 quality/analysis/task patch。"""
+
+        patch: list[dict[str, object]] = []
+        updated_sections: list[str] = []
+        quality_block = self.build_quality_block()
+        if quality_block:
+            patch.append(
+                {
+                    "op": "replace_quality",
+                    "quality": quality_block,
+                }
+            )
+            updated_sections.append("quality")
+
+        analysis_block = self.build_analysis_block()
+        if analysis_block:
+            patch.append(
+                {
+                    "op": "replace_analysis",
+                    "analysis": analysis_block,
+                }
+            )
+            updated_sections.append("analysis")
+
+        task_snapshot = self.build_task_snapshot("analysis")
+        if task_snapshot:
+            patch.append(
+                {
+                    "op": "replace_task",
+                    "task": task_snapshot,
+                }
+            )
+            updated_sections.append("task")
+
+        section_revisions = self.build_section_revisions(updated_sections)
+        return {
+            "source": "analysis_import_glossary",
+            "projectRevision": max(section_revisions.values(), default=0),
+            "updatedSections": updated_sections,
+            "patch": patch,
+            "sectionRevisions": section_revisions,
+        }
+
+    def build_translation_reset_refresh_patch(
+        self,
+        event: Base.Event,
+    ) -> dict[str, Any]:
+        """翻译 reset 完成后，要求前端重拉受影响运行态，解除工作台确认态。"""
+
+        if event == Base.Event.TRANSLATION_RESET_ALL:
+            updated_sections = ["items", "analysis", "task"]
+            source = "translation_reset_all"
+        else:
+            updated_sections = ["items", "task"]
+            source = "translation_reset_failed"
+
+        return {
+            "source": source,
+            "updatedSections": updated_sections,
+        }
+
+    def build_analysis_reset_refresh_patch(
+        self,
+        event: Base.Event,
+    ) -> dict[str, Any]:
+        """分析 reset 完成后，要求前端重拉分析相关运行态。"""
+
+        source = (
+            "analysis_reset_all"
+            if event == Base.Event.ANALYSIS_RESET_ALL
+            else "analysis_reset_failed"
+        )
+        return {
+            "source": source,
+            "updatedSections": ["analysis", "task"],
+        }
+
     def build_runtime_refresh_patch(self, data: dict[str, Any]) -> dict[str, Any]:
         """文件操作完成后只声明受影响 section，让前端主动重拉 V2 运行态。"""
 
@@ -149,10 +248,59 @@ class ProjectPatchEventBridge:
             and data.get("sub_event") == Base.SubEvent.DONE
         )
 
+    def is_analysis_import_glossary_done_event(
+        self,
+        event: Base.Event,
+        data: dict[str, Any],
+    ) -> bool:
+        """分析候选导入成功后，需要把质量相关区块重新回灌到运行态。"""
+
+        return (
+            event == Base.Event.ANALYSIS_IMPORT_GLOSSARY
+            and data.get("sub_event") == Base.SubEvent.DONE
+        )
+
+    def is_translation_reset_done_event(
+        self,
+        event: Base.Event,
+        data: dict[str, Any],
+    ) -> bool:
+        """翻译 reset 只在成功终态时推进运行态刷新。"""
+
+        return (
+            event
+            in (
+                Base.Event.TRANSLATION_RESET_ALL,
+                Base.Event.TRANSLATION_RESET_FAILED,
+            )
+            and data.get("sub_event") == Base.SubEvent.DONE
+        )
+
+    def is_analysis_reset_done_event(
+        self,
+        event: Base.Event,
+        data: dict[str, Any],
+    ) -> bool:
+        """分析 reset 只在成功终态时推进运行态刷新。"""
+
+        return (
+            event
+            in (
+                Base.Event.ANALYSIS_RESET_ALL,
+                Base.Event.ANALYSIS_RESET_FAILED,
+            )
+            and data.get("sub_event") == Base.SubEvent.DONE
+        )
+
     def is_project_runtime_refresh_event(self, event: Base.Event) -> bool:
         """只接显式运行态刷新事件，避免旧失效通知误闯回 V2 主路径。"""
 
         return event == Base.Event.PROJECT_RUNTIME_REFRESH
+
+    def is_project_runtime_patch_event(self, event: Base.Event) -> bool:
+        """显式补丁事件直接透传到 `project.patch`。"""
+
+        return event == Base.Event.PROJECT_RUNTIME_PATCH
 
     def build_item_records(
         self,
@@ -183,6 +331,16 @@ class ProjectPatchEventBridge:
                 return payload
         return {}
 
+    def build_quality_block(self) -> dict[str, object]:
+        """从 runtime_service 读取最新质量块，供术语导入后刷新术语页。"""
+
+        runtime_builder = getattr(self.runtime_service, "build_quality_block", None)
+        if callable(runtime_builder):
+            payload = runtime_builder()
+            if isinstance(payload, dict):
+                return payload
+        return {}
+
     def build_task_snapshot(self, task_type: str) -> dict[str, object]:
         """统一读取当前任务快照，供 task patch 回灌桌面壳层。"""
 
@@ -193,6 +351,23 @@ class ProjectPatchEventBridge:
         if isinstance(payload, dict):
             return payload
         return {}
+
+    def build_section_revisions(
+        self,
+        updated_sections: list[str],
+    ) -> dict[str, int]:
+        """优先复用运行态 revision，避免桥接层随手递增假版本。"""
+
+        get_section_revision = getattr(
+            self.runtime_service, "get_section_revision", None
+        )
+        if not callable(get_section_revision):
+            return {}
+
+        section_revisions: dict[str, int] = {}
+        for section in updated_sections:
+            section_revisions[section] = int(get_section_revision(section) or 0)
+        return section_revisions
 
     def normalize_item_ids(self, raw_item_ids: Any) -> list[int]:
         """把 patch 里的条目 id 收口成稳定整数列表。"""

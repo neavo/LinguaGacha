@@ -1,9 +1,9 @@
-import json
 import threading
 
 import httpx
 
 from api.v2.Client.ApiStateStore import ApiStateStore
+from module.Utils.JSONTool import JSONTool
 
 
 class SseClient:
@@ -65,6 +65,6 @@ class SseClient:
 
         if event_name != "" and data_lines:
             payload_text = "\n".join(data_lines)
-            payload = json.loads(payload_text)
+            payload = JSONTool.loads(payload_text)
             if isinstance(payload, dict):
                 self.api_state_store.apply_event(event_name, payload)

@@ -47,7 +47,6 @@ def create_translation_stub() -> Translation:
     translation.items_cache = None
     translation.task_limiter = None
     translation.stop_requested = False
-    translation.persist_quality_rules = True
     translation.quality_snapshot = None
     translation.config = Config(
         mtool_optimizer_enable=False,

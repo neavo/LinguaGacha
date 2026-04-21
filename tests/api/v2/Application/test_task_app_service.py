@@ -31,6 +31,7 @@ def test_start_translation_returns_request_ack_and_emits_event(
             {
                 "sub_event": Base.SubEvent.REQUEST,
                 "mode": Base.TranslationMode.NEW,
+                "quality_snapshot": None,
             },
         )
     ]
@@ -68,6 +69,7 @@ def test_start_analysis_returns_request_ack_and_emits_event(
             {
                 "sub_event": Base.SubEvent.REQUEST,
                 "mode": Base.AnalysisMode.CONTINUE,
+                "quality_snapshot": None,
             },
         )
     ]

@@ -1,9 +1,9 @@
-from api.v2.Bridge.EventTopic import EventTopic
+from api.v2.Bridge.PublicEventTopic import PublicEventTopic
 
 
 def test_event_topic_values_match_public_contract() -> None:
     # 准备
-    actual_topics = {topic.name: topic.value for topic in EventTopic}
+    actual_topics = {topic.name: topic.value for topic in PublicEventTopic}
 
     # 执行
     expected_topics = {
@@ -21,7 +21,7 @@ def test_event_topic_values_match_public_contract() -> None:
 
 def test_event_topic_values_are_unique() -> None:
     # 准备
-    topic_values = [topic.value for topic in EventTopic]
+    topic_values = [topic.value for topic in PublicEventTopic]
 
     # 执行
     unique_topic_values = set(topic_values)
@@ -32,7 +32,7 @@ def test_event_topic_values_are_unique() -> None:
 
 def test_event_topic_no_longer_exposes_v1_invalidation_topics() -> None:
     # 准备
-    actual_topics = {topic.name for topic in EventTopic}
+    actual_topics = {topic.name for topic in PublicEventTopic}
 
     # 断言
     assert "WORKBENCH_SNAPSHOT_CHANGED" not in actual_topics

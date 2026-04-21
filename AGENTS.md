@@ -33,7 +33,7 @@ flowchart TD
 ## 2. 仓库级硬边界
 
 ### 2.1 运行时与通信边界
-- LinguaGacha 是“无头 Python Core + Electron 桌面前端”的双进程工程；`app.py` 只负责运行时入口、CLI 分流、Core API 启停与退出清理。
+- LinguaGacha 是“无头 Python Core + Electron 桌面前端”的双进程工程。
 - `api/` 是 Python Core 对 Electron 暴露的唯一 HTTP / SSE 边界；接口路径、响应字段、错误码和 SSE topic 变化必须同步检查 [`api/SPEC.md`](api/SPEC.md)。
 - Electron 渲染层只通过 `window.desktopApp` 暴露的桌面能力接入宿主，再通过 `frontend/src/renderer/app/desktop-api.ts` 与 Core API 通信；禁止在前端直接导入 Python 模块或绕过 preload 直连 Node / Electron。
 - V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`；页面应消费 bootstrap + patch 流，而不是把整页 snapshot 当成唯一事实源。

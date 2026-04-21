@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from api.v2.Contract.BootstrapPayloads import BootstrapCompletedPayload
 from api.v2.Contract.BootstrapPayloads import BootstrapStageCompleted
 from api.v2.Contract.BootstrapPayloads import BootstrapStagePayload
 from api.v2.Contract.BootstrapPayloads import BootstrapStageStarted
+from api.v2.Contract.EventEnvelope import build_sse_frame
 
 
 class ProjectBootstrapAppService:
@@ -19,6 +19,7 @@ class ProjectBootstrapAppService:
         ("quality", "正在加载质量规则", "build_quality_block"),
         ("prompts", "正在加载提示词配置", "build_prompts_block"),
         ("analysis", "正在加载分析结果", "build_analysis_block"),
+        ("proofreading", "正在加载校对运行态", "build_proofreading_block"),
         ("task", "正在加载任务状态", "build_task_block"),
     )
 
@@ -29,22 +30,18 @@ class ProjectBootstrapAppService:
         """按固定顺序输出 bootstrap 分段事件，供前端建立项目状态仓。"""
 
         del request
-        section_revisions: dict[str, int] = {}
+        section_revisions = self.resolve_section_revisions()
 
-        for stage_index, (stage, message, builder_name) in enumerate(
-            self.STAGE_DEFINITIONS,
-            start=1,
-        ):
+        for stage, message, builder_name in self.STAGE_DEFINITIONS:
             yield BootstrapStageStarted(stage=stage, message=message).to_dict()
             yield BootstrapStagePayload(
                 stage=stage,
                 payload=self.resolve_stage_payload(builder_name),
             ).to_dict()
             yield BootstrapStageCompleted(stage=stage).to_dict()
-            section_revisions[stage] = stage_index
 
         yield BootstrapCompletedPayload(
-            project_revision=len(section_revisions),
+            project_revision=max(section_revisions.values(), default=0),
             section_revisions=section_revisions,
         ).to_dict()
 
@@ -57,6 +54,19 @@ class ProjectBootstrapAppService:
             if isinstance(payload, dict):
                 return payload
         return {}
+
+    def resolve_section_revisions(self) -> dict[str, int]:
+        builder = getattr(self.runtime_service, "build_section_revisions", None)
+        if callable(builder):
+            payload = builder()
+            if isinstance(payload, dict):
+                return {
+                    str(stage): int(revision)
+                    for stage, revision in payload.items()
+                    if isinstance(stage, str)
+                }
+
+        return {stage: 0 for stage, _message, _builder_name in self.STAGE_DEFINITIONS}
 
     def stream_to_handler(self, handler: Any) -> None:
         """把一次性 bootstrap 事件流写成 SSE，供渲染层逐段消费。"""
@@ -73,9 +83,6 @@ class ProjectBootstrapAppService:
         for event in self.iter_bootstrap_events({}):
             event_type = str(event.get("type", "message"))
             payload = {key: value for key, value in event.items() if key != "type"}
-            frame = (
-                f"event: {event_type}\n"
-                f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-            ).encode("utf-8")
+            frame = build_sse_frame(event_type, payload)
             handler.wfile.write(frame)
             handler.wfile.flush()

@@ -151,7 +151,8 @@ flowchart LR
 4. `quality`
 5. `prompts`
 6. `analysis`
-7. `task`
+7. `proofreading`
+8. `task`
 
 渲染层 `ProjectStore` 依赖这套顺序建立最小运行态；如果顺序或命名变化，前后端文档必须同步改。
 
@@ -161,7 +162,7 @@ flowchart LR
 | schema | stage | 字段顺序 |
 | --- | --- | --- |
 | `project-files.v1` | `files` | `rel_path`、`file_type` |
-| `project-items.v1` | `items` | `item_id`、`file_path`、`src`、`dst`、`status` |
+| `project-items.v1` | `items` | `item_id`、`file_path`、`row_number`、`src`、`dst`、`status`、`text_type`、`retry_count` |
 
 前端不是直接消费 Python dict，而是先把它们归一化成：
 - `files[rel_path]`
@@ -175,7 +176,7 @@ flowchart LR
 | `task.progress_changed` | 只发送本次事件里真实出现的字段，不会补齐缺失统计 |
 | `task.status_changed` | `DONE / ERROR / IDLE` 是桥接层根据内部终态再解释后的结果 |
 | `settings.changed` | 只是设置广播，不等于页面必须刷新 |
-| `project.patch` | 不是 `EventTopic` 成员，而是桥接层额外补出的运行态补丁 |
+| `project.patch` | 不是 `PublicEventTopic` 成员，而是桥接层额外补出的运行态补丁 |
 
 ### 3.5 `project.patch` 的真实语义
 `project.patch` 当前**不保证**总是完整补丁事件。
@@ -191,6 +192,9 @@ flowchart LR
 
 这意味着：
 - 翻译 / 分析 DONE 后，它常常是“带 `patch` 的真实增量补丁”
+- 翻译任务进行中，每次批量提交终态条目后，后端也会补发 `merge_items` patch；任务进度数字仍继续走 `task.progress_changed`
+- 翻译 reset 进入 `DONE` 后，后端会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 受影响运行态
+- 分析 reset 进入 `DONE` 后，后端也会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 分析相关运行态
 - 文件操作后，它可能只是“告知哪些 section 失效”，前端会把它当成“重新 bootstrap 当前项目运行态”的信号
 
 如果后续要新增 `project.patch` 用法，优先保持这两种语义兼容，而不是假设所有事件都必须带 `patch` 数组。
@@ -211,23 +215,22 @@ flowchart LR
 | `/api/settings/*` | 应用设置 |
 | `/api/extra/*` | Extra 工具 |
 
-这份文档不再平铺完整接口清单；精确路径以 `api/v2/Server/Routes/*.py` 为准。
+本文聚焦路由分组与运行时约束；精确路径以 `api/v2/Server/Routes/*.py` 为准。
 
 ### 4.2 Project / Workbench / Proofreading
 - `project`、`workbench`、`proofreading` 三块虽然都挂在 `/api/v2/project/*` 下，但它们不是一个 Application 服务。
 - 工作台命令型接口大多只返回 `accepted`，真正的重型视图刷新依赖后续显式拉取 `file-patch`。
 - `workbench/add-file`、`replace-file`、`reset-file`、`delete-file`、`delete-file-batch` 现在在 HTTP 请求内直接执行文件操作；参数校验、重名冲突和解析失败会直接以错误响应透传给前端，而不是只在后台线程里吞掉。
 - `reorder-files` 的隐藏硬约束是：`ordered_rel_paths` 必须完整覆盖当前文件集合，不能只传局部。
-- Proofreading 的工程定位优先级当前是：
-  - `lg_path`
-  - `path`
-  - `project_id`
-  - 当前已加载工程
-- Proofreading 的筛选输入优先级当前是：
-  - `filters`
-  - `filter_options`
-  - 顶层扁平字段
-- Proofreading 在“工程未加载 / 工程路径过期”时，很多场景返回的是 `readonly` 快照，而不是业务错误。
+- Proofreading 路由族当前包含这些写接口：
+  - `save-item`
+  - `save-all`
+  - `replace-all`
+  - `retranslate-items`
+- 这些写接口统一返回最小 mutation ack：
+  - `revision`
+  - `changed_item_ids`
+- GUI 依赖后续 `project.patch` 里的 `merge_items + replace_proofreading + replace_task` 与本地 runtime 重算，而不是继续读取 Python 派生快照。
 
 ### 4.3 Task
 - `tasks/snapshot` 是按需快照，不是订阅态入口。
@@ -235,6 +238,9 @@ flowchart LR
 - `import-analysis-glossary`、`reset-*` 当前都要求：
   - 工程已加载
   - 引擎空闲
+- `ANALYSIS_IMPORT_GLOSSARY` 进入 `DONE` 时，事件桥会补发 `project.patch`，把 `quality + analysis + task` 三个 section 一起回灌到 `ProjectStore`。
+- `TRANSLATION_RESET_ALL` / `TRANSLATION_RESET_FAILED` 进入 `DONE` 时，事件桥会补发 `project.patch`，要求前端重拉翻译 reset 影响到的运行态 section。
+- `ANALYSIS_RESET_ALL` / `ANALYSIS_RESET_FAILED` 进入 `DONE` 时，事件桥会补发 `project.patch`，要求前端重拉分析 reset 影响到的运行态 section。
 - `export-translation` 目前只有最小 `accepted` 回执，没有稳定 DTO。
 
 ### 4.4 Settings
@@ -247,7 +253,7 @@ flowchart LR
 - `target_language` 当前只同步工程 meta 镜像，不是页面刷新信号。
 
 ### 4.5 Models
-- `models/reorder` 当前只接受 `ordered_model_ids`，不再兼容 `model_id + operation` 的离散重排动作。
+- `models/reorder` 的请求体字段是 `ordered_model_ids`。
 - `ordered_model_ids` 必须只重排某一个模型分组，不能跨组混排。
 - `models/add` 当前实际只新增自定义类型，不会新增新的 preset 模型。
 
@@ -257,10 +263,16 @@ flowchart LR
   - `pre_replacement`
   - `post_replacement`
   - `text_preserve`
+- GUI 的质量规则与提示词正文真值来自：
+  - bootstrap `quality` / `prompts`
+  - 后续 `project.patch`
+- 质量规则与提示词路由族不包含这些读取接口：
+  - `/api/v2/quality/rules/snapshot`
+  - `/api/v2/quality/prompts/snapshot`
+  - `/api/v2/quality/rules/query-proofreading`
 - `text_preserve` 与其余规则最大的非显然差异是：
   - `meta` 形状是 `{"mode": str}`
   - 不是 `{"enabled": bool}`
-- `query-proofreading` 在 `text_preserve` 下会强制把 `is_regex` 设为 `true`。
 - 规则和提示词都已经用了 `expected_revision` 做乐观锁，但 API 边界还没有给出专门的冲突错误码。
 
 ### 4.7 Extra
@@ -283,7 +295,8 @@ flowchart LR
 高价值结论不是“每个方法返回什么”，而是这几条分界：
 - `SettingsApiClient`、`ExtraApiClient` 基本已经对象化完成。
 - `ProjectApiClient`、`TaskApiClient` 的主路径快照已对象化，但少量辅助命令仍返回原始结构。
-- `WorkbenchApiClient`、`QualityRuleApiClient`、`ProofreadingApiClient` 仍有明显一截停留在原始 `dict` / `list` 返回。
+- `WorkbenchApiClient`、`QualityRuleApiClient` 仍有明显一截停留在原始 `dict` / `list` 返回。
+- `ProofreadingApiClient` 当前只覆盖写接口，且统一返回对象化的 `ProofreadingMutationResult`。
 - `ModelApiClient.test_model()`、`TaskApiClient.export_translation()` 当前仍是原始结构接口。
 
 ### 5.3 `ApiStateStore` 当前只缓存最小运行态
@@ -326,6 +339,6 @@ flowchart LR
 - Electron 接入 Core 的唯一入口变化
 
 ## 维护原则
-- 本文不再做完整接口手册；能在 `Routes/*` 和 `Contract/*` 一眼看出的字段表，不重复平铺。
+- 本文聚焦需要跨多处代码一起理解的协议边界；能在 `Routes/*` 和 `Contract/*` 一眼看出的字段表，不重复平铺。
 - 优先记录“代码里分散存在、但开发时必须一起理解”的真实边界。
 - 若某段说明已经更适合前端运行态文档，就迁到前端文档，不在这里维持双份解释。

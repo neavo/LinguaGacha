@@ -4,11 +4,12 @@ from copy import deepcopy
 from importlib import import_module
 
 from api.v2.Application.QualityRuleAppService import QualityRuleAppService
-from api.v2.Models.QualityRule import ProofreadingLookupQuery
 from api.v2.Models.QualityRule import QualityRuleSnapshot
 from base.BaseLanguage import BaseLanguage
 
-quality_rule_app_service_module = import_module("api.v2.Application.QualityRuleAppService")
+quality_rule_app_service_module = import_module(
+    "api.v2.Application.QualityRuleAppService"
+)
 
 
 class RecordingQualityRuleFacade:
@@ -68,7 +69,6 @@ class RecordingQualityRuleFacade:
             "type": "user",
         }
         self.deleted_preset_path = "user/demo.json"
-        self.prompt_snapshot = {"task_type": "translation", "text": "snapshot"}
         self.saved_prompt_snapshot = {"task_type": "translation", "text": "saved"}
         self.imported_prompt_snapshot = {
             "task_type": "translation",
@@ -91,10 +91,6 @@ class RecordingQualityRuleFacade:
 
     def record(self, operation_name: str, **payload: object) -> None:
         self.operations.append({"operation": operation_name, **payload})
-
-    def get_rule_snapshot(self, rule_type: str) -> dict[str, object]:
-        self.record("get_rule_snapshot", rule_type=rule_type)
-        return deepcopy(self.snapshot)
 
     def save_entries(
         self,
@@ -233,10 +229,6 @@ class RecordingQualityRuleFacade:
         )
         return self.deleted_preset_path
 
-    def get_prompt_snapshot(self, task_type: str) -> dict[str, object]:
-        self.record("get_prompt_snapshot", task_type=task_type)
-        return deepcopy(self.prompt_snapshot)
-
     def save_prompt(
         self,
         task_type: str,
@@ -331,17 +323,6 @@ def build_fake_quality_rule_facade() -> RecordingQualityRuleFacade:
     return RecordingQualityRuleFacade()
 
 
-def test_get_quality_rule_snapshot_returns_payload() -> None:
-    app_service = QualityRuleAppService(build_fake_quality_rule_facade())
-
-    result = app_service.get_rule_snapshot({"rule_type": "glossary"})
-    snapshot = QualityRuleSnapshot.from_dict(result["snapshot"])
-
-    assert snapshot.rule_type == "glossary"
-    assert snapshot.revision == 3
-    assert snapshot.entries[0].src == "勇者"
-
-
 def test_update_quality_rule_meta_routes_enabled_toggle_to_core_service() -> None:
     facade = build_fake_quality_rule_facade()
     app_service = QualityRuleAppService(facade)
@@ -416,31 +397,6 @@ def test_save_quality_rule_entries_returns_snapshot_payload() -> None:
     assert snapshot.entries[0].dst == "Hero"
 
 
-def test_query_proofreading_returns_lookup_query() -> None:
-    app_service = QualityRuleAppService(build_fake_quality_rule_facade())
-
-    result = app_service.query_proofreading({"entry": {"src": "^勇者$", "regex": True}})
-    query = ProofreadingLookupQuery.from_dict(result["query"])
-
-    assert query.keyword == "^勇者$"
-    assert query.is_regex is True
-
-
-def test_query_proofreading_for_text_preserve_forces_regex_lookup() -> None:
-    app_service = QualityRuleAppService(build_fake_quality_rule_facade())
-
-    result = app_service.query_proofreading(
-        {
-            "rule_type": "text_preserve",
-            "entry": {"src": "[勇者]"},
-        }
-    )
-    query = ProofreadingLookupQuery.from_dict(result["query"])
-
-    assert query.keyword == "[勇者]"
-    assert query.is_regex is True
-
-
 def test_get_prompt_template_uses_current_localizer_language(
     monkeypatch,
 ) -> None:
@@ -486,11 +442,10 @@ def test_get_prompt_template_uses_current_localizer_language(
     }
 
 
-def test_prompt_snapshot_and_save_prompt_return_stable_payloads() -> None:
+def test_save_prompt_returns_stable_payload() -> None:
     facade = build_fake_quality_rule_facade()
     app_service = QualityRuleAppService(facade)
 
-    snapshot = app_service.get_prompt_snapshot({"task_type": "translation"})
     saved_prompt = app_service.save_prompt(
         {
             "task_type": "translation",
@@ -500,7 +455,6 @@ def test_prompt_snapshot_and_save_prompt_return_stable_payloads() -> None:
         }
     )
 
-    assert snapshot == {"prompt": {"task_type": "translation", "text": "snapshot"}}
     assert facade.operations[-1] == {
         "operation": "save_prompt",
         "task_type": "translation",

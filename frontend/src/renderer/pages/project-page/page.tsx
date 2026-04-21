@@ -547,6 +547,9 @@ function resolve_project_loading_stage_message(
   if (stage === "analysis") {
     return t("project_page.loading_stages.analysis");
   }
+  if (stage === "proofreading") {
+    return t("project_page.loading_stages.proofreading");
+  }
   if (stage === "task") {
     return t("project_page.loading_stages.task");
   }

@@ -9,7 +9,7 @@
 | 理解 `ProjectStore` 数据形状与 patch 语义 | `project-store.ts` |
 | 理解 bootstrap 事件如何落入 store | `bootstrap-stream.ts` -> `use-project-runtime.ts` |
 | 理解桌面运行时如何消费它 | `../state/desktop-runtime-context.tsx` |
-| 理解后端如何产生 stage / patch | [`api/SPEC.md`](../../../../../api/SPEC.md) -> `api/v2/Application/ProjectBootstrapAppService.py` -> `module/Data/Project/V2/RuntimeService.py` |
+| 理解后端如何产生 stage / patch | [`api/SPEC.md`](../../../../../api/SPEC.md) -> `api/v2/Application/ProjectBootstrapAppService.py` -> `module/Data/Project/ProjectRuntimeService.py` |
 
 ## 目录职责
 | 路径 | 职责 |
@@ -32,7 +32,7 @@ flowchart TD
 ```
 
 ## `ProjectStore` 的稳定分区
-当前 store 固定分成下面 7 个 stage / section：
+当前 store 固定分成下面 8 个 stage / section：
 
 | stage | 用途 | 当前来源 |
 | --- | --- | --- |
@@ -42,6 +42,7 @@ flowchart TD
 | `quality` | glossary / replacement / text preserve 当前运行态 | bootstrap `quality` 块 |
 | `prompts` | translation / analysis prompt 的 text + enabled | bootstrap `prompts` 块 |
 | `analysis` | 分析候选摘要与运行态统计 | bootstrap `analysis` 块、`replace_analysis` patch |
+| `proofreading` | 校对运行态 revision | bootstrap `proofreading` 块、`replace_proofreading` patch |
 | `task` | 当前任务快照 | bootstrap `task` 块、`replace_task` patch |
 
 `ProjectStore.revisions` 额外维护：
@@ -57,7 +58,8 @@ flowchart TD
 4. `quality`
 5. `prompts`
 6. `analysis`
-7. `task`
+7. `proofreading`
+8. `task`
 
 ### stage payload 形状
 | stage | 线上的主要形状 | TS 落地后的形状 |
@@ -65,12 +67,12 @@ flowchart TD
 | `project` | `{ project: { path, loaded } }` | 原样写入 `store.project` |
 | `files` | `RowBlock(fields, rows)` | 转成 `Record<rel_path, file_record>` |
 | `items` | `RowBlock(fields, rows)` | 转成 `Record<item_id, item_record>` |
-| `quality` / `prompts` / `analysis` / `task` | 普通对象 | 直接作为对应 section 快照 |
+| `quality` / `prompts` / `analysis` / `proofreading` / `task` | 普通对象 | 直接作为对应 section 快照 |
 
 注意：
 - `files` 使用 `rel_path` 作为 key。
 - `items` 使用 `item_id` 作为 key。
-- bootstrap 完成后，`onCompleted()` 只负责把 revision 信息补回 store，不再重写前面阶段数据。
+- bootstrap 完成后，`onCompleted()` 负责把 revision 信息补回 store；前面阶段数据由各自的 `stage_payload` 写入。
 
 ## `project.patch` 的当前补丁语义
 ### patch operation
@@ -82,11 +84,17 @@ flowchart TD
 | `replace_quality` | 整段替换 `quality` |
 | `replace_prompts` | 整段替换 `prompts` |
 | `replace_analysis` | 整段替换 `analysis` |
+| `replace_proofreading` | 整段替换 `proofreading` |
 | `replace_task` | 整段替换 `task` |
 
 ### 当前事件来源
+- 翻译任务进行中，每次批量提交终态条目后，后端会补发 `merge_items`
 - 翻译任务 DONE 时，后端会优先发 `merge_items + replace_task`
+- 翻译 reset DONE 时，后端会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 受影响 section
 - 分析任务 DONE 时，后端会优先发 `replace_analysis + replace_task`
+- 分析 reset DONE 时，后端会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 分析相关 section
+- 分析候选导入术语完成时，后端会优先发 `replace_quality + replace_analysis + replace_task`
+- 校对保存 / 替换 / 重翻后，后端会优先发 `merge_items + replace_proofreading + replace_task`
 - 文件操作完成后，后端可能只发“受影响 section 列表”，让前端重新 bootstrap 当前项目运行态
 
 ## `DesktopRuntimeContext` 与页面信号
@@ -103,22 +111,20 @@ flowchart TD
 
 ### 触发规则
 - `project.patch` 命中 `project` / `files` / `items` 时，会触发工作台信号。
-- `project.patch` 命中 `project` / `items` / `quality` / `prompts` / `analysis` / `task` 时，会触发校对信号。
+- `project.patch` 命中 `project` / `items` / `quality` / `prompts` / `analysis` / `proofreading` / `task` 时，会触发校对信号。
 - `settings.changed` 只有当 `keys` 包含 `source_language` 或 `mtool_optimizer_enable` 时，才会同时 bump 两类页面信号。
 
 ## 当前页面仍然怎么用它
 - 工作台与校对页的主读路径已经转到 `ProjectStore + selector / worker`。
 - 但页面在显式文件操作后，仍可能继续请求：
   - `/api/v2/project/workbench/file-patch`
-  - `/api/v2/project/proofreading/file-patch`
-  - `/api/v2/project/proofreading/entry-patch`
-- 也就是说，`ProjectStore` 负责“运行态事实源”，页面 patch API 负责“局部重建重型视图”。
+- 也就是说，`ProjectStore` 负责“运行态事实源”；工作台仍保留文件级 patch，而校对页已经改成依赖 `ProjectStore.items + quality/prompts + proofreading revision` 的本地 runtime 重算。
 
 ## 修改建议
 | 变更类型 | 优先落点 |
 | --- | --- |
 | bootstrap stage 名称、顺序或 payload 形状 | 本文 + `project-store.ts` + 后端 bootstrap 服务 |
-| 新增 / 删除 patch operation | 本文 + `project-store.ts` + `api/v2/Bridge/EventBridge.py` |
+| 新增 / 删除 patch operation | 本文 + `project-store.ts` + `api/v2/Bridge/ProjectPatchEventBridge.py` |
 | 页面如何把 patch 转成 change signal | `../state/desktop-runtime-context.tsx` |
 | 纯页面派生读取逻辑 | `selectors.ts` 或对应页面 hook |
 

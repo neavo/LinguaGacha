@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class EventTopic(StrEnum):
+class PublicEventTopic(StrEnum):
     """统一维护对外暴露的 SSE topic。"""
 
     PROJECT_CHANGED = "project.changed"

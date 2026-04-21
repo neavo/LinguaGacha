@@ -45,57 +45,6 @@ class LocalizerEN(LocalizerZH):
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
     log_unknown_reason: str = "Unknown Reason"
-    log_cli_verify_language: str = "parameter error: invalid language …"
-    log_cli_target_language_all_unsupported: str = "ALL is not supported …"
-    log_cli_create_deprecated: str = "CLI argument --create is deprecated, project creation is now decided only by --input …"
-    log_cli_continue_deprecated: str = "CLI argument --continue is deprecated, task mode is now inferred automatically from current progress …"
-    log_cli_quality_rule_file_not_found: str = (
-        "parameter error: rule file not found …"
-        "\n"
-        "Argument: {ARG}"
-        "\n"
-        "Path: {PATH}"
-    )
-    log_cli_quality_rule_file_unsupported: str = (
-        "parameter error: unsupported rule file format (only .json/.xlsx) …"
-        "\n"
-        "Argument: {ARG}"
-        "\n"
-        "Path: {PATH}"
-    )
-    log_cli_quality_rule_import_failed: str = (
-        "quality rule import failed …"
-        "\n"
-        "Argument: {ARG}"
-        "\n"
-        "Path: {PATH}"
-        "\n"
-        "Reason: {REASON}"
-    )
-    log_cli_text_preserve_mode_invalid: str = (
-        "parameter error: invalid text preserve options …"
-        "\n"
-        "--text_preserve_mode: {MODE}"
-        "\n"
-        "--text_preserve: {PATH}"
-        "\n"
-        "Note: mode=custom requires --text_preserve; providing --text_preserve requires mode=custom"
-    )
-    log_cli_analysis_export_start: str = "Exporting glossary files …"
-    log_cli_analysis_export_success: str = (
-        "Glossary export completed …"
-        "\n"
-        "Directory: {DIR}"
-        "\n"
-        "JSON: {JSON}"
-        "\n"
-        "XLSX: {XLSX}"
-        "\n"
-        "Glossary Entries: {COUNT}"
-        "\n"
-        "Imported This Run: {IMPORTED}"
-    )
-    log_cli_analysis_export_failed: str = "Glossary export failed …"
 
     # 引擎
     engine_no_items: str = "No items to process were found, please check …"

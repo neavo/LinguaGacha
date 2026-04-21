@@ -45,57 +45,6 @@ class LocalizerZH:
     log_read_file_fail: str = "文件读取失败 …"
     log_write_file_fail: str = "文件写入失败 …"
     log_unknown_reason: str = "未知原因"
-    log_cli_verify_language: str = "参数发生错误：无效的语言 …"
-    log_cli_target_language_all_unsupported: str = "译文语言不支持 ALL …"
-    log_cli_create_deprecated: str = "命令行参数 --create 已弃用，是否建项现在仅由 --input 决定 …"
-    log_cli_continue_deprecated: str = "命令行参数 --continue 已弃用，任务模式现在会根据当前进度自动判定 …"
-    log_cli_quality_rule_file_not_found: str = (
-        "参数发生错误：规则文件不存在 …"
-        "\n"
-        "参数：{ARG}"
-        "\n"
-        "路径：{PATH}"
-    )
-    log_cli_quality_rule_file_unsupported: str = (
-        "参数发生错误：规则文件格式不受支持（仅支持 .json/.xlsx） …"
-        "\n"
-        "参数：{ARG}"
-        "\n"
-        "路径：{PATH}"
-    )
-    log_cli_quality_rule_import_failed: str = (
-        "质量规则导入失败 …"
-        "\n"
-        "参数：{ARG}"
-        "\n"
-        "路径：{PATH}"
-        "\n"
-        "原因：{REASON}"
-    )
-    log_cli_text_preserve_mode_invalid: str = (
-        "参数发生错误：文本保护参数组合无效 …"
-        "\n"
-        "--text_preserve_mode: {MODE}"
-        "\n"
-        "--text_preserve: {PATH}"
-        "\n"
-        "说明：mode=custom 时必须提供 --text_preserve；提供 --text_preserve 时 mode 必须为 custom"
-    )
-    log_cli_analysis_export_start: str = "正在导出术语表文件 …"
-    log_cli_analysis_export_success: str = (
-        "术语表导出完成 …"
-        "\n"
-        "目录：{DIR}"
-        "\n"
-        "JSON：{JSON}"
-        "\n"
-        "XLSX：{XLSX}"
-        "\n"
-        "术语条数：{COUNT}"
-        "\n"
-        "本轮导入：{IMPORTED}"
-    )
-    log_cli_analysis_export_failed: str = "术语表导出失败 …"
 
     # 引擎
     engine_no_items: str = "没有找到需要处理数据，请确认 …"

@@ -1,6 +1,6 @@
 from typing import Any
 
-from api.v2.Bridge.EventTopic import EventTopic
+from api.v2.Bridge.PublicEventTopic import PublicEventTopic
 from base.Base import Base
 from api.v2.Models.Extra import ExtraTaskState
 
@@ -19,37 +19,37 @@ class PublicEventBridge:
 
         if event == Base.Event.TRANSLATION_PROGRESS:
             return (
-                EventTopic.TASK_PROGRESS_CHANGED.value,
+                PublicEventTopic.TASK_PROGRESS_CHANGED.value,
                 self.build_task_progress_payload("translation", data),
             )
         elif event == Base.Event.TRANSLATION_TASK:
             return (
-                EventTopic.TASK_STATUS_CHANGED.value,
+                PublicEventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("translation", data),
             )
         elif event == Base.Event.TRANSLATION_REQUEST_STOP:
             return (
-                EventTopic.TASK_STATUS_CHANGED.value,
+                PublicEventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("translation", data, stopping=True),
             )
         elif event == Base.Event.ANALYSIS_PROGRESS:
             return (
-                EventTopic.TASK_PROGRESS_CHANGED.value,
+                PublicEventTopic.TASK_PROGRESS_CHANGED.value,
                 self.build_task_progress_payload("analysis", data),
             )
         elif event == Base.Event.ANALYSIS_TASK:
             return (
-                EventTopic.TASK_STATUS_CHANGED.value,
+                PublicEventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("analysis", data),
             )
         elif event == Base.Event.ANALYSIS_REQUEST_STOP:
             return (
-                EventTopic.TASK_STATUS_CHANGED.value,
+                PublicEventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("analysis", data, stopping=True),
             )
         elif event == Base.Event.PROJECT_LOADED:
             return (
-                EventTopic.PROJECT_CHANGED.value,
+                PublicEventTopic.PROJECT_CHANGED.value,
                 {
                     "loaded": True,
                     "path": str(data.get("path", "")),
@@ -57,7 +57,7 @@ class PublicEventBridge:
             )
         elif event == Base.Event.PROJECT_UNLOADED:
             return (
-                EventTopic.PROJECT_CHANGED.value,
+                PublicEventTopic.PROJECT_CHANGED.value,
                 {
                     "loaded": False,
                     "path": str(data.get("path", "")),
@@ -73,17 +73,17 @@ class PublicEventBridge:
             if isinstance(settings, dict):
                 payload["settings"] = settings
             return (
-                EventTopic.SETTINGS_CHANGED.value,
+                PublicEventTopic.SETTINGS_CHANGED.value,
                 payload,
             )
         elif event == Base.Event.EXTRA_TS_CONVERSION_PROGRESS:
             return (
-                EventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
+                PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
                 self.build_extra_task_payload(data, finished=False),
             )
         elif event == Base.Event.EXTRA_TS_CONVERSION_FINISHED:
             return (
-                EventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
+                PublicEventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
                 self.build_extra_task_payload(data, finished=True),
             )
         else:

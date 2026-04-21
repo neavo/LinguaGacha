@@ -117,5 +117,6 @@ export const en_us_text_preserve_page = {
     regex_invalid: 'Invalid regular expression',
     merge_warning: 'Duplicate entries were merged …',
     reset_success: 'Reset completed …',
+    mode_refresh_pending: 'The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly.',
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>

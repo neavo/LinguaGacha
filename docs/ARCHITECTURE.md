@@ -1,7 +1,7 @@
 # LinguaGacha 仓库结构
 
 ## 一句话总览
-LinguaGacha 当前是“无头 Python Core + Electron 桌面前端”的双进程工程。`app.py` 负责无头运行时、CLI 分流与 Core API 启停；`api/v2/` 负责本地 HTTP / SSE / bootstrap 边界；`module/Data/` 持有工程事实与数据编排；`module/Engine/` 负责后台任务执行；`module/File/` 负责格式解析与回写；`frontend/` 承载 Electron 壳层与 React 渲染层。
+LinguaGacha 当前是“无头 Python Core + Electron 桌面前端”的双进程工程。`app.py` 负责无头运行时与 Core API 启停；`api/v2/` 负责本地 HTTP / SSE / bootstrap 边界；`module/Data/` 持有工程事实与数据编排；`module/Engine/` 负责后台任务执行；`module/File/` 负责格式解析与回写；`frontend/` 承载 Electron 壳层与 React 渲染层。
 
 ## 核心运行时关系
 ```mermaid
@@ -63,7 +63,7 @@ flowchart TD
 | [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置对象、模板补齐、预设迁移、分组排序与模型页后端入口 |
 
 ## 当前最值得记住的边界
-- V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` + `/api/v2/events/stream`；页面不再把整页 snapshot 当成唯一事实源。
+- V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` + `/api/v2/events/stream`；页面通过 bootstrap 与 `project.patch` 建立运行态事实源。
 - `DataManager` 负责工程事实与数据编排，`Engine` 负责后台任务生命周期，`FileManager` 只负责格式解析与回写；三者不要互相吞职责。
 - Electron 渲染层只通过 `window.desktopApp` 暴露的桌面能力接入宿主，再通过 `desktop-api.ts` 探活并请求 Core API。
 - 新增文档时，优先补“难以从代码快速看懂、而且后续开发会反复依赖”的真实边界，而不是表面目录介绍。

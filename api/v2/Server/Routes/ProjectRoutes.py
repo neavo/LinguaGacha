@@ -21,10 +21,6 @@ class ProjectRoutes:
     )
     WORKBENCH_REORDER_FILES_PATH: str = "/api/v2/project/workbench/reorder-files"
     WORKBENCH_FILE_PATCH_PATH: str = "/api/v2/project/workbench/file-patch"
-    PROOFREADING_SNAPSHOT_PATH: str = "/api/v2/project/proofreading/snapshot"
-    PROOFREADING_FILE_PATCH_PATH: str = "/api/v2/project/proofreading/file-patch"
-    PROOFREADING_ENTRY_PATCH_PATH: str = "/api/v2/project/proofreading/entry-patch"
-    PROOFREADING_FILTER_PATH: str = "/api/v2/project/proofreading/filter"
     PROOFREADING_SAVE_ITEM_PATH: str = "/api/v2/project/proofreading/save-item"
     PROOFREADING_SAVE_ALL_PATH: str = "/api/v2/project/proofreading/save-all"
     PROOFREADING_REPLACE_ALL_PATH: str = "/api/v2/project/proofreading/replace-all"
@@ -145,34 +141,6 @@ class ProjectRoutes:
                 ),
             )
         if proofreading_app_service is not None:
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_SNAPSHOT_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.get_snapshot(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_FILE_PATCH_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.get_file_patch(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_ENTRY_PATCH_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.get_entry_patch(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_FILTER_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.filter_items(request)
-                ),
-            )
             core_api_server.add_json_route(
                 "POST",
                 cls.PROOFREADING_SAVE_ITEM_PATH,

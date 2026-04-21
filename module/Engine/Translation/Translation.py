@@ -59,8 +59,6 @@ class Translation(Base):
         # 翻译期间使用的质量规则快照（开始/继续时捕获）
         self.quality_snapshot: QualityRuleSnapshot | None = None
 
-        # 是否允许把质量规则写回工程（GUI 为 True；CLI 可传 False 仅本次生效）。
-        self.persist_quality_rules: bool = True
         self.scheduler: TranslationScheduler | None = None
         self.progress_tracker = TranslationProgressTracker(self)
         self.task_hooks: TranslationTaskHooks | None = None
@@ -392,7 +390,6 @@ class Translation(Base):
             if self.model is None:
                 return False
 
-            self.persist_quality_rules = bool(data.get("persist_quality_rules", True))
             snapshot_override = data.get("quality_snapshot")
             self.quality_snapshot = (
                 snapshot_override
