@@ -138,6 +138,22 @@ class ProjectAppService:
                 "analysis",
                 int(expected_section_revisions_raw["analysis"]),
             )
+        if (
+            isinstance(expected_section_revisions_raw, dict)
+            and "quality" in expected_section_revisions_raw
+        ):
+            current_quality_revision = int(
+                self.runtime_service.get_section_revision("quality") or 0
+            )
+            expected_quality_revision = int(
+                expected_section_revisions_raw["quality"] or 0
+            )
+            if current_quality_revision != expected_quality_revision:
+                raise ValueError(
+                    "质量规则 section revision 冲突："
+                    f"当前={current_quality_revision}，"
+                    f"期望={expected_quality_revision}"
+                )
 
         entries_raw = request.get("entries", [])
         entries = (
@@ -145,15 +161,12 @@ class ProjectAppService:
             if isinstance(entries_raw, list)
             else []
         )
-        quality_expected_revision = 0
-        if (
-            isinstance(expected_section_revisions_raw, dict)
-            and "quality" in expected_section_revisions_raw
-        ):
-            quality_expected_revision = int(expected_section_revisions_raw["quality"])
+        glossary_expected_revision = int(
+            request.get("expected_glossary_revision", 0) or 0
+        )
         self.quality_rule_facade.save_entries(
             "glossary",
-            expected_revision=quality_expected_revision,
+            expected_revision=glossary_expected_revision,
             entries=entries,
         )
         self.project_manager.set_meta(

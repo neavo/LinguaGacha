@@ -35,13 +35,9 @@ class TranslationTaskHooks:
         self,
         *,
         translation: Translation,
-        progress: Any,
-        pid: int,
         max_workers: int,
     ) -> None:
         self.translation = translation
-        self.progress = progress
-        self.pid = pid
         self.max_workers = max_workers
 
     def should_stop(self) -> bool:

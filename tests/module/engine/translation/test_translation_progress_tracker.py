@@ -12,14 +12,6 @@ from module.Engine.Translation.TranslationProgressTracker import (
 )
 
 
-class FakeProgress:
-    def __init__(self) -> None:
-        self.updates: list[dict[str, int]] = []
-
-    def update_task(self, task_id: int, **kwargs: int) -> None:
-        self.updates.append({"task_id": task_id, **kwargs})
-
-
 def create_translation_stub() -> SimpleNamespace:
     translation = SimpleNamespace()
     translation.extras = {}
@@ -159,16 +151,13 @@ def test_build_plan_snapshot_continue_mode_reuses_saved_tokens_and_live_counts(
     assert snapshot.total_output_tokens == 50
 
 
-def test_update_pipeline_progress_updates_bound_progress_and_emits_event() -> None:
+def test_update_pipeline_progress_emits_event() -> None:
     translation = create_translation_stub()
-    progress = FakeProgress()
-    translation.task_hooks = SimpleNamespace(progress=progress, pid=7)
     tracker = TranslationProgressTracker(translation)
     snapshot = {"line": 3, "total_line": 8}
 
     tracker.update_pipeline_progress(snapshot)
 
-    assert progress.updates == [{"task_id": 7, "completed": 3, "total": 8}]
     assert translation.emitted_events == [(Base.Event.TRANSLATION_PROGRESS, snapshot)]
 
 

@@ -90,6 +90,14 @@ type UseProofreadingPageStateResult = {
   close_pending_mutation: () => void;
 };
 
+type ProofreadingProjectRefreshState = {
+  project_loaded: boolean;
+  project_path: string;
+  cache_status: "idle" | "refreshing" | "ready" | "error";
+  is_refreshing: boolean;
+  settled_project_path: string;
+};
+
 function create_empty_dialog_state(): ProofreadingDialogState {
   return {
     open: false,
@@ -97,6 +105,17 @@ function create_empty_dialog_state(): ProofreadingDialogState {
     draft_dst: "",
     saving: false,
   };
+}
+
+export function should_refresh_proofreading_cache_for_project(
+  args: ProofreadingProjectRefreshState,
+): boolean {
+  return (
+    args.project_loaded &&
+    args.cache_status === "refreshing" &&
+    !args.is_refreshing &&
+    args.settled_project_path !== args.project_path
+  );
 }
 
 function escape_regular_expression(source_text: string): string {
@@ -1270,11 +1289,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   ]);
 
   useEffect(() => {
-    if (!project_snapshot.loaded || project_warmup_status !== "ready") {
-      return;
-    }
-
-    if (cache_status === "refreshing" && settled_project_path !== project_snapshot.path) {
+    if (
+      should_refresh_proofreading_cache_for_project({
+        project_loaded: project_snapshot.loaded,
+        project_path: project_snapshot.path,
+        cache_status,
+        is_refreshing,
+        settled_project_path,
+      })
+    ) {
+      // 为什么：项目 warmup 的完成条件本来就包含校对缓存落到当前工程。
+      // 这里若继续等待 warmup ready，再次打开同一路径时就会互相等待，最终卡在 loading。
       void refresh_snapshot({
         reset_filters: pending_reset_filters_ref.current,
       });
@@ -1282,9 +1307,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
   }, [
     cache_status,
+    is_refreshing,
     project_snapshot.loaded,
     project_snapshot.path,
-    project_warmup_status,
     refresh_snapshot,
     settled_project_path,
   ]);

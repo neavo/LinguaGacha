@@ -4,29 +4,24 @@ import time
 from typing import TYPE_CHECKING
 from typing import Any
 
-from rich.progress import TaskID
-
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
-from base.LogManager import LogManager
 
 if TYPE_CHECKING:
     from module.Engine.Analysis.Analysis import Analysis
 
 
 class AnalysisProgressTracker:
-    """分析进度追踪器统一管理运行态快照、节流持久化和进度展示。"""
+    """分析进度追踪器统一管理运行态快照、节流持久化和进度事件。"""
 
     PROGRESS_PERSIST_BATCH_SIZE: int = 8
     PROGRESS_PERSIST_INTERVAL_SECONDS: float = 0.5
 
     def __init__(self, analysis: Analysis) -> None:
         self.analysis = analysis
-        self.console_progress: LogManager.ProgressSession | None = None
-        self.console_progress_task_id: TaskID | None = None
         self.progress_dirty: bool = False
         self.pending_progress_commit_count: int = 0
         self.last_progress_persist_at: float = 0.0
@@ -37,20 +32,6 @@ class AnalysisProgressTracker:
         self.pending_progress_commit_count = 0
         self.last_progress_persist_at = 0.0
 
-    def bind_console_progress(
-        self,
-        progress: LogManager.ProgressSession,
-        task_id: TaskID,
-    ) -> None:
-        """控制台进度条统一绑定在 tracker，后续所有更新都走同一入口。"""
-        self.console_progress = progress
-        self.console_progress_task_id = task_id
-
-    def clear_console_progress(self) -> None:
-        """任务结束后立刻解绑，避免收尾持久化碰到已关闭的进度条。"""
-        self.console_progress = None
-        self.console_progress_task_id = None
-
     def get_extra_int(self, key: str) -> int:
         """运行态计数统一按整数读取，避免每处都重复做同样的兜底转换。"""
         return int(self.analysis.extras.get(key, 0) or 0)
@@ -58,19 +39,6 @@ class AnalysisProgressTracker:
     def set_extra_int(self, key: str, value: int) -> None:
         """运行态计数统一按整数写回，保持 extras 字段口径稳定。"""
         self.analysis.extras[key] = int(value)
-
-    def update_console_progress(self, snapshot: dict[str, Any]) -> None:
-        """控制台进度和 UI 进度都吃同一份快照，避免两套口径越跑越偏。"""
-        progress = self.console_progress
-        task_id = self.console_progress_task_id
-        if progress is None or task_id is None:
-            return
-
-        progress.update_task(
-            task_id,
-            completed=int(snapshot.get("line", 0) or 0),
-            total=int(snapshot.get("total_line", 0) or 0),
-        )
 
     def update_extras_after_batch(
         self,
@@ -222,6 +190,5 @@ class AnalysisProgressTracker:
         snapshot_dict["analysis_candidate_count"] = int(
             dm.get_analysis_candidate_count() or 0
         )
-        self.update_console_progress(snapshot_dict)
         self.analysis.emit(Base.Event.ANALYSIS_PROGRESS, snapshot_dict)
         return snapshot_dict

@@ -6,8 +6,6 @@ from enum import StrEnum
 from itertools import zip_longest
 from typing import Any
 
-from rich.progress import TaskID
-
 from base.Base import Base
 from base.LogManager import LogManager
 from module.Data.Core.Item import Item
@@ -344,6 +342,10 @@ class Translation(Base):
             )
 
     def translation_export(self, event: Base.Event, data: dict) -> None:
+        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
+        if sub_event != Base.SubEvent.REQUEST:
+            return
+
         if Engine.get().get_status() == Base.TaskStatus.STOPPING:
             return
 
@@ -447,17 +449,10 @@ class Translation(Base):
             if task_limiter is None:
                 return "FAILED"
 
-            with LogManager.get().progress(transient=True) as progress:
-                pid = progress.new_task(
-                    total=int(self.extras.get("total_line", 0) or 0),
-                    completed=int(self.extras.get("line", 0) or 0),
-                )
-                self.start_translation_pipeline(
-                    progress=progress,
-                    pid=pid,
-                    task_limiter=task_limiter,
-                    max_workers=max_workers,
-                )
+            self.start_translation_pipeline(
+                task_limiter=task_limiter,
+                max_workers=max_workers,
+            )
 
             self.sync_extras_line_stats()
             self.emit(Base.Event.TRANSLATION_PROGRESS, dict(self.extras))
@@ -525,7 +520,7 @@ class Translation(Base):
         LogManager.get().print("")
 
     def update_pipeline_progress(self, extras_snapshot: dict[str, Any]) -> None:
-        """提交阶段统一从这里同步控制台进度和 UI 事件。"""
+        """提交阶段统一从这里发出翻译进度事件。"""
         self.progress_tracker.update_pipeline_progress(extras_snapshot)
 
     def finalize_translation_run(self, final_status: str) -> None:
@@ -622,8 +617,6 @@ class Translation(Base):
     def start_translation_pipeline(
         self,
         *,
-        progress: LogManager.ProgressSession,
-        pid: TaskID,
         task_limiter: TaskLimiter,
         max_workers: int,
     ) -> None:
@@ -635,8 +628,6 @@ class Translation(Base):
         del task_limiter
         hooks = TranslationTaskHooks(
             translation=self,
-            progress=progress,
-            pid=pid,
             max_workers=max_workers,
         )
         normal_queue_size, high_queue_size, commit_queue_size = (
@@ -662,12 +653,9 @@ class Translation(Base):
         # 筛选
         LogManager.get().print("")
         items_kvjson: list[Item] = []
-        with LogManager.get().progress(transient=True) as progress:
-            pid = progress.new_task()
-            for item in items:
-                progress.update_task(pid, advance=1, total=len(items))
-                if item.get_file_type() == Item.FileType.KVJSON:
-                    items_kvjson.append(item)
+        for item in items:
+            if item.get_file_type() == Item.FileType.KVJSON:
+                items_kvjson.append(item)
 
         # 按文件路径分组
         group_by_file_path: dict[str, list[Item]] = {}

@@ -61,7 +61,6 @@ class FakeLogManager:
         self.error_exceptions: list[BaseException | None] = []
         self.print_messages: list[str] = []
         self.rich_messages: list[object] = []
-        self.progress_sessions: list["FakeProgressSession"] = []
 
     def info(self, msg: str, e: BaseException | None = None) -> None:
         del e
@@ -78,19 +77,15 @@ class FakeLogManager:
     def print_rich(self, renderable: object) -> None:
         self.rich_messages.append(renderable)
 
-    def progress(self, *, transient: bool) -> "FakeProgressSession":
-        session = FakeProgressSession(transient=transient)
-        self.progress_sessions.append(session)
-        return session
-
 
 def install_analysis_logger(
     monkeypatch: pytest.MonkeyPatch,
     logger: FakeLogManager | None = None,
 ) -> FakeLogManager:
-    # 这些测试只关心事件和状态变化，不该把真实控制台日志带进来。
+    # 分析控制器已不再依赖 LogManager；保留这个辅助函数，兼容旧测试装配入口。
     fake_logger = logger or FakeLogManager()
-    monkeypatch.setattr(analysis_module.LogManager, "get", lambda: fake_logger)
+    if hasattr(analysis_module, "LogManager"):
+        monkeypatch.setattr(analysis_module.LogManager, "get", lambda: fake_logger)
     return fake_logger
 
 
@@ -102,26 +97,6 @@ class ImmediateThread:
 
     def start(self) -> None:
         self.target(*self.args)
-
-
-class FakeProgressSession:
-    def __init__(self, transient: bool) -> None:
-        self.transient = transient
-        self.new_calls: list[dict[str, int]] = []
-
-    def __enter__(self) -> "FakeProgressSession":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        del exc_type, exc, tb
-        return False
-
-    def new_task(self, total: int = 0, completed: int = 0) -> int:
-        self.new_calls.append({"total": total, "completed": completed})
-        return 11
-
-    def update_task(self, task_id: int, **kwargs: int) -> None:
-        del task_id, kwargs
 
 
 def capture_emitted_events(
@@ -393,7 +368,7 @@ def test_start_stopped_does_not_import_candidates(
     analysis.start({"mode": Base.AnalysisMode.NEW, "config": config})
 
 
-def test_start_creates_progress_bar_for_pending_tasks(
+def test_start_with_pending_tasks_runs_without_console_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -406,7 +381,7 @@ def test_start_creates_progress_bar_for_pending_tasks(
 
     analysis = Analysis()
     config = build_start_config()
-    fake_logger = install_analysis_logger(monkeypatch)
+    install_analysis_logger(monkeypatch)
     patch_start_runtime(
         monkeypatch,
         analysis,
@@ -441,29 +416,21 @@ def test_start_creates_progress_bar_for_pending_tasks(
         "persist_progress_snapshot",
         lambda save_state: dict(analysis.extras),
     )
+    executed = {"called": False}
 
     def fake_execute(task_contexts, max_workers: int) -> str:
         del task_contexts, max_workers
-        assert len(fake_logger.progress_sessions) == 1
-        assert (
-            analysis.progress_tracker.console_progress
-            is fake_logger.progress_sessions[0]
-        )
-        assert analysis.progress_tracker.console_progress_task_id == 11
+        executed["called"] = True
         return "SUCCESS"
 
     monkeypatch.setattr(analysis, "execute_task_contexts", fake_execute)
 
     analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
-    assert len(fake_logger.progress_sessions) == 1
-    assert fake_logger.progress_sessions[0].transient is True
-    assert fake_logger.progress_sessions[0].new_calls == [{"total": 5, "completed": 2}]
-    assert analysis.progress_tracker.console_progress is None
-    assert analysis.progress_tracker.console_progress_task_id is None
+    assert executed["called"] is True
 
 
-def test_start_without_pending_tasks_skips_progress_bar(
+def test_start_without_pending_tasks_skips_console_progress(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -489,13 +456,6 @@ def test_start_without_pending_tasks_skips_progress_bar(
         ),
     )
 
-    def fail_progress(*args, **kwargs) -> FakeProgressSession:
-        del args, kwargs
-        raise AssertionError("没有待执行任务时不该创建进度条")
-
-    fake_logger = FakeLogManager()
-    monkeypatch.setattr(analysis_module.LogManager, "get", lambda: fake_logger)
-    fake_logger.progress = fail_progress
     monkeypatch.setattr(
         analysis_module.AnalysisTask,
         "log_run_finish",

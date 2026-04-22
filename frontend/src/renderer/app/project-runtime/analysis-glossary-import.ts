@@ -50,6 +50,7 @@ type AnalysisGlossaryImportPlan = {
   request_body: {
     entries: GlossaryEntry[];
     analysis_candidate_count: number;
+    expected_glossary_revision: number;
     expected_section_revisions: Record<string, number>;
   };
 };
@@ -371,7 +372,7 @@ async function filter_import_candidates(args: {
     const matched_item_count = statistics_result.results[entry_key]?.matched_item_count ?? 0;
     if (
       !is_control_code_self_mapping(preview_entry.entry.src, preview_entry.entry.dst) &&
-      matched_item_count <= 1
+      matched_item_count < 1
     ) {
       preview_entry.incoming_indexes.forEach((index) => filtered_indexes.add(index));
       continue;
@@ -464,6 +465,7 @@ export async function create_analysis_glossary_import_plan(
     request_body: {
       entries: merged_preview.merged_entries,
       analysis_candidate_count: next_candidate_count,
+      expected_glossary_revision: Number(state.quality.glossary.revision ?? 0),
       expected_section_revisions: {
         quality: state.revisions.sections.quality ?? 0,
         analysis: state.revisions.sections.analysis ?? 0,

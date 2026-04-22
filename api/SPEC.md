@@ -199,7 +199,7 @@ flowchart LR
 ### 4.3 同步 mutation 与任务型接口
 - 工作台 `add-file / replace-file / reset-file / delete-file / delete-file-batch / reorder-files` 与校对 `save-item / save-all / replace-all` 都属于同步 mutation：前端先本地 patch，服务端持久化后返回 `ProjectMutationAck` 对齐 revision。
 - `retranslate-items`、翻译任务、分析任务与 reset 链路属于任务型接口，完成后仍通过任务事件和必要的 `project.patch` 推进运行态。
-- `/api/v2/project/analysis/import-glossary` 也是同步 mutation：前端提交已筛好的 `entries`、`analysis_candidate_count` 与期望 revision，服务端只负责持久化与 revision 对齐。
+- `/api/v2/project/analysis/import-glossary` 也是同步 mutation：前端提交已筛好的 `entries`、`analysis_candidate_count`、`expected_section_revisions`，以及单独的 `expected_glossary_revision`；服务端会分别校验运行态 section revision 与 glossary 自身 revision，再负责持久化与 revision 对齐。
 - `tasks/snapshot` 是按需快照，不是订阅入口；分析任务快照在可用时会额外带 `analysis_candidate_count`。
 - `export-translation` 只有最小 `accepted` 回执，没有稳定 DTO 边界。
 

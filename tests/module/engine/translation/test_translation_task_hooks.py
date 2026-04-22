@@ -74,8 +74,6 @@ def build_translation_hooks(
     translation.task_hooks = None
     hooks = TranslationTaskHooks(
         translation=translation,
-        progress=SimpleNamespace(update=lambda *args, **kwargs: None),
-        pid=3,
         max_workers=2,
     )
     return hooks, translation

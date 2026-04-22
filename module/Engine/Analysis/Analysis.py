@@ -4,7 +4,6 @@ import threading
 from typing import Any
 
 from base.Base import Base
-from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
@@ -234,19 +233,10 @@ class Analysis(Base):
             if not isinstance(task_contexts, list):
                 return "FAILED"
 
-            with LogManager.get().progress(transient=True) as progress:
-                task_id = progress.new_task(
-                    total=int(self.extras.get("total_line", 0) or 0),
-                    completed=int(self.extras.get("line", 0) or 0),
-                )
-                self.progress_tracker.bind_console_progress(progress, task_id)
-                try:
-                    return self.execute_task_contexts(
-                        task_contexts,
-                        max_workers=max_workers,
-                    )
-                finally:
-                    self.progress_tracker.clear_console_progress()
+            return self.execute_task_contexts(
+                task_contexts,
+                max_workers=max_workers,
+            )
 
         TaskRunnerLifecycle.run_task_flow(
             self,

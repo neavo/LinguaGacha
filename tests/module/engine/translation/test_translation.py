@@ -514,6 +514,24 @@ def test_translation_export_returns_immediately_when_engine_stopping(
     thread_factory.assert_not_called()
 
 
+def test_translation_export_ignores_non_request_sub_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    translation = create_translation_stub()
+    engine = SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE)
+    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
+    thread_factory = MagicMock()
+    monkeypatch.setattr(translation_module.threading, "Thread", thread_factory)
+
+    Translation.translation_export(
+        translation,
+        Base.Event.TRANSLATION_EXPORT,
+        {"sub_event": Base.SubEvent.RUN},
+    )
+
+    thread_factory.assert_not_called()
+
+
 def test_run_translation_export_manual_success_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1208,8 +1226,6 @@ def test_start_success_flow_triggers_auto_export(
         {"config": config, "mode": Base.TranslationMode.NEW},
     )
 
-    assert len(logger.progress_sessions) == 1
-    assert logger.progress_sessions[0].transient is True
     translation.run_translation_export.assert_called_once_with(
         source=Translation.ExportSource.AUTO_ON_FINISH,
         apply_mtool_postprocess=False,
@@ -1267,8 +1283,6 @@ def test_start_continue_mode_handles_stop_and_failed_states(
         {"config": config, "mode": Base.TranslationMode.CONTINUE},
     )
 
-    assert len(logger.progress_sessions) == 1
-    assert logger.progress_sessions[0].transient is True
     assert any(
         event == Base.Event.TRANSLATION_TASK
         and payload.get("final_status") == expected_final_status
@@ -1370,8 +1384,6 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
 
     Translation.start_translation_pipeline(
         translation,
-        progress=FakeProgressSession(),
-        pid=3,
         task_limiter=FakeTaskLimiter(rps=1, rpm=0, max_concurrency=1),
         max_workers=2,
     )
@@ -1410,9 +1422,6 @@ def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
     Translation.mtool_optimizer_postprocess(translation, items)
 
     assert len(items) == 5
-    assert len(logger.progress_sessions) == 1
-    assert logger.progress_sessions[0].transient is True
-    assert len(logger.progress_sessions[0].updates) == 3
     assert any(value.get_src() == "a" for value in items[3:])
     assert any(value.get_src() == "b" for value in items[3:])
     assert logger.info_messages[-1] == "mtool_done"

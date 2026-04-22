@@ -122,7 +122,10 @@ class TaskAppService:
         """请求导出当前工程译文。"""
 
         del request
-        self.event_emitter(Base.Event.TRANSLATION_EXPORT, {})
+        self.event_emitter(
+            Base.Event.TRANSLATION_EXPORT,
+            {"sub_event": Base.SubEvent.REQUEST},
+        )
         return {"accepted": True}
 
     def request_translation_reset(

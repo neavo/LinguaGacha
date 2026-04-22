@@ -267,6 +267,6 @@ def test_export_translation_emits_export_event_and_returns_accept_ack(
     assert task_app_service.emitted_events == [
         (
             Base.Event.TRANSLATION_EXPORT,
-            {},
+            {"sub_event": Base.SubEvent.REQUEST},
         )
     ]

@@ -153,6 +153,25 @@ function resolve_analysis_terminal_feedback_message(args: {
   return null;
 }
 
+function should_prompt_analysis_glossary_import_confirmation(args: {
+  previous_status: string;
+  next_status: string;
+  candidate_count: number;
+}): boolean {
+  if (args.candidate_count <= 0) {
+    return false;
+  }
+
+  if (
+    args.previous_status === "STOPPING" ||
+    !is_active_analysis_task_status(args.previous_status)
+  ) {
+    return false;
+  }
+
+  return args.next_status === "DONE" || args.next_status === "IDLE";
+}
+
 export function useAnalysisTaskRuntime(
   options: AnalysisTaskRuntimeOptions = {},
 ): AnalysisTaskRuntime {
@@ -447,69 +466,12 @@ export function useAnalysisTaskRuntime(
     });
   }, []);
 
-  const confirm_analysis_task_action = useCallback(async (): Promise<void> => {
-    if (analysis_confirm_state === null) {
-      return;
-    }
-
-    set_analysis_confirm_state((previous_state) => {
-      if (previous_state === null) {
-        return null;
-      }
-
-      return {
-        ...previous_state,
-        submitting: true,
-      };
-    });
-
-    try {
-      let path = "/api/v2/tasks/stop-analysis";
-      if (analysis_confirm_state.kind === "reset-all") {
-        path = "/api/v2/tasks/reset-analysis-all";
-      } else if (analysis_confirm_state.kind === "reset-failed") {
-        path = "/api/v2/tasks/reset-analysis-failed";
-      }
-
-      const task_payload = await api_fetch<AnalysisTaskCommandPayload>(path, {});
-      const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
-      apply_analysis_task_snapshot(next_snapshot);
-      sync_runtime_task_snapshot(next_snapshot);
-      // 为什么：分析 reset 不直接改工作台快照；这里若等待 workbench barrier，确认弹窗会卡在一个不会推进的 loading 态。
-      set_analysis_confirm_state(null);
-    } catch (error) {
-      let fallback_message = t("workbench_page.analysis_task.feedback.stop_failed");
-      if (analysis_confirm_state.kind === "reset-all") {
-        fallback_message = t("workbench_page.analysis_task.feedback.reset_all_failed");
-      } else if (analysis_confirm_state.kind === "reset-failed") {
-        fallback_message = t("workbench_page.analysis_task.feedback.reset_failed_failed");
-      }
-
-      push_toast("error", resolve_error_message(error, fallback_message));
-      set_analysis_confirm_state((previous_state) => {
-        if (previous_state === null) {
-          return null;
-        }
-
-        return {
-          ...previous_state,
-          submitting: false,
-        };
-      });
-    }
-  }, [
-    analysis_confirm_state,
-    apply_analysis_task_snapshot,
-    push_toast,
-    sync_runtime_task_snapshot,
-    t,
-  ]);
-
-  const request_import_analysis_glossary = useCallback(async (): Promise<void> => {
-    if (!project_snapshot.loaded || task_snapshot.busy || analysis_task_menu_busy) {
-      return;
-    }
-    if (analysis_task_metrics.candidate_count <= 0) {
+  const execute_analysis_glossary_import = useCallback(async (): Promise<void> => {
+    if (
+      !project_snapshot.loaded ||
+      task_snapshot.busy ||
+      analysis_task_metrics.candidate_count <= 0
+    ) {
       return;
     }
 
@@ -568,18 +530,12 @@ export function useAnalysisTaskRuntime(
           );
         },
       });
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_error_message(error, t("workbench_page.analysis_task.feedback.import_failed")),
-      );
     } finally {
       set_analysis_importing(false);
     }
   }, [
-    analysis_task_menu_busy,
-    analysis_task_metrics.candidate_count,
     align_project_runtime_ack,
+    analysis_task_metrics.candidate_count,
     apply_analysis_task_snapshot,
     commit_local_project_patch,
     options,
@@ -588,6 +544,99 @@ export function useAnalysisTaskRuntime(
     push_toast,
     refresh_project_runtime,
     run_modal_progress_toast,
+    task_snapshot.busy,
+    t,
+  ]);
+
+  const confirm_analysis_task_action = useCallback(async (): Promise<void> => {
+    if (analysis_confirm_state === null) {
+      return;
+    }
+
+    set_analysis_confirm_state((previous_state) => {
+      if (previous_state === null) {
+        return null;
+      }
+
+      return {
+        ...previous_state,
+        submitting: true,
+      };
+    });
+
+    try {
+      if (analysis_confirm_state.kind === "import-glossary") {
+        await execute_analysis_glossary_import();
+        set_analysis_confirm_state(null);
+        return;
+      }
+
+      let path = "/api/v2/tasks/stop-analysis";
+      if (analysis_confirm_state.kind === "reset-all") {
+        path = "/api/v2/tasks/reset-analysis-all";
+      } else if (analysis_confirm_state.kind === "reset-failed") {
+        path = "/api/v2/tasks/reset-analysis-failed";
+      }
+
+      const task_payload = await api_fetch<AnalysisTaskCommandPayload>(path, {});
+      const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
+      apply_analysis_task_snapshot(next_snapshot);
+      sync_runtime_task_snapshot(next_snapshot);
+      // 为什么：分析 reset 不直接改工作台快照；这里若等待 workbench barrier，确认弹窗会卡在一个不会推进的 loading 态。
+      set_analysis_confirm_state(null);
+    } catch (error) {
+      let fallback_message = t("workbench_page.analysis_task.feedback.stop_failed");
+      if (analysis_confirm_state.kind === "reset-all") {
+        fallback_message = t("workbench_page.analysis_task.feedback.reset_all_failed");
+      } else if (analysis_confirm_state.kind === "reset-failed") {
+        fallback_message = t("workbench_page.analysis_task.feedback.reset_failed_failed");
+      } else if (analysis_confirm_state.kind === "import-glossary") {
+        fallback_message = t("workbench_page.analysis_task.feedback.import_failed");
+      }
+
+      push_toast("error", resolve_error_message(error, fallback_message));
+      set_analysis_confirm_state((previous_state) => {
+        if (previous_state === null) {
+          return null;
+        }
+
+        return {
+          ...previous_state,
+          submitting: false,
+        };
+      });
+    }
+  }, [
+    analysis_confirm_state,
+    apply_analysis_task_snapshot,
+    execute_analysis_glossary_import,
+    push_toast,
+    sync_runtime_task_snapshot,
+    t,
+  ]);
+
+  const request_import_analysis_glossary = useCallback(async (): Promise<void> => {
+    if (!project_snapshot.loaded || task_snapshot.busy || analysis_task_menu_busy) {
+      return;
+    }
+    if (analysis_task_metrics.candidate_count <= 0) {
+      return;
+    }
+
+    try {
+      await execute_analysis_glossary_import();
+    } catch (error) {
+      push_toast(
+        "error",
+        resolve_error_message(error, t("workbench_page.analysis_task.feedback.import_failed")),
+      );
+    }
+  }, [
+    analysis_task_menu_busy,
+    analysis_task_metrics.candidate_count,
+    execute_analysis_glossary_import,
+    project_snapshot.loaded,
+    push_toast,
     t,
     task_snapshot.busy,
   ]);
@@ -673,7 +722,20 @@ export function useAnalysisTaskRuntime(
     if (feedback_message !== null) {
       push_toast("success", feedback_message);
     }
+
+    if (
+      analysis_confirm_state === null &&
+      should_prompt_analysis_glossary_import_confirmation({
+        previous_status,
+        next_status,
+        candidate_count: analysis_task_snapshot.analysis_candidate_count,
+      })
+    ) {
+      set_analysis_confirm_state(create_task_confirm_state("import-glossary"));
+    }
   }, [
+    analysis_confirm_state,
+    analysis_task_snapshot.analysis_candidate_count,
     analysis_task_display_snapshot,
     analysis_task_snapshot.status,
     project_snapshot.loaded,

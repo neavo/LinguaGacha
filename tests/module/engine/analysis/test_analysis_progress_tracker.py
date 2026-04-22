@@ -26,14 +26,6 @@ def build_analysis_runtime_extras(**overrides: object) -> dict[str, object]:
     return extras
 
 
-class FakeConsoleProgress:
-    def __init__(self) -> None:
-        self.updates: list[dict[str, int]] = []
-
-    def update_task(self, task_id: int, **kwargs: int) -> None:
-        self.updates.append({"task_id": task_id, **kwargs})
-
-
 @dataclass
 class FakeAnalysis:
     extras: dict[str, object] = field(default_factory=dict)
@@ -112,31 +104,6 @@ def test_analysis_progress_tracker_emits_candidate_count_from_cache(
     snapshot = tracker.persist_progress_snapshot(save_state=False)
 
     assert snapshot["analysis_candidate_count"] == 5
-    assert analysis.emitted_events == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
-
-
-def test_analysis_progress_tracker_updates_bound_console_progress(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    analysis, tracker = create_tracker(
-        total_line=9,
-        processed_line=3,
-        error_line=1,
-    )
-    progress = FakeConsoleProgress()
-
-    monkeypatch.setattr(
-        analysis_progress_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
-
-    tracker.bind_console_progress(progress, 7)
-    snapshot = tracker.persist_progress_snapshot(save_state=False)
-
-    assert progress.updates == [{"task_id": 7, "completed": 4, "total": 9}]
     assert analysis.emitted_events == [(Base.Event.ANALYSIS_PROGRESS, snapshot)]
 
 

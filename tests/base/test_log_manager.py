@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
-from typing import cast
 
 import base.LogManager as log_manager_module
-import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest import MonkeyPatch
 
@@ -43,41 +40,6 @@ class CapturingPlainHandler(logging.Handler):
         self.records.append(record)
 
 
-class FakeProgress:
-    """进度条替身：只记录共享 Progress 的公开交互结果。"""
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        self.args = args
-        self.kwargs = kwargs
-        self.started = False
-        self.stopped = False
-        self.task_ids: list[int] = []
-        self.operations: list[tuple[Any, ...]] = []
-
-    def start(self) -> None:
-        self.started = True
-
-    def stop(self) -> None:
-        self.stopped = True
-
-    def add_task(self, *args: object, total=None, completed=0) -> int:
-        del args
-        task_id = len(self.task_ids) + 1
-        self.task_ids.append(task_id)
-        self.operations.append(("add", task_id, total, completed))
-        return task_id
-
-    def update(self, task_id: int, **kwargs: int | None) -> None:
-        self.operations.append(("update", task_id, kwargs))
-
-    def stop_task(self, task_id: int) -> None:
-        self.operations.append(("stop_task", task_id))
-
-    def remove_task(self, task_id: int) -> None:
-        self.task_ids = [value for value in self.task_ids if value != task_id]
-        self.operations.append(("remove_task", task_id))
-
-
 def build_log_manager(
     monkeypatch: MonkeyPatch,
     log_dir: Path,
@@ -110,16 +72,6 @@ def build_log_manager(
     structured_handler = CapturingStructuredHandler.instances[0]
     plain_handler = CapturingPlainHandler.instances[0]
     return manager, structured_handler, plain_handler
-
-
-def build_progress_log_manager(
-    monkeypatch: MonkeyPatch,
-    log_dir: Path,
-) -> log_manager_module.LogManager:
-    """进度测试额外替换 Progress 实现，只保留共享会话行为。"""
-    monkeypatch.setattr(log_manager_module, "Progress", FakeProgress)
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
-    return manager
 
 
 def create_log_dir(fs: FakeFilesystem) -> Path:
@@ -258,137 +210,5 @@ def test_rich_handler_uses_shared_console_and_print_rich_reuses_it(
         manager.print_rich({"table": "demo"})
 
         assert messages == [{"table": "demo"}]
-    finally:
-        manager.shutdown()
-
-
-def test_progress_returns_progress_session(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """公开 progress() 入口应该直接返回可用的进度会话对象。"""
-    log_dir = create_log_dir(fs)
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        session = manager.progress(transient=True)
-        assert isinstance(session, log_manager_module.LogManager.ProgressSession)
-        assert session.transient is True
-        assert session.manager is manager
-    finally:
-        manager.shutdown()
-
-
-def test_progress_reuses_existing_console_progress(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """已有共享 Progress 存在时，新会话不应偷偷重建控制台区域。"""
-    log_dir = create_log_dir(fs)
-    manager = build_progress_log_manager(monkeypatch, log_dir)
-    existing_progress = FakeProgress()
-    manager.console_progress = cast(Any, existing_progress)
-
-    try:
-        with manager.progress(transient=False) as session:
-            assert session is not None
-            assert manager.console_progress is existing_progress
-            assert existing_progress.started is False
-    finally:
-        manager.shutdown()
-
-
-def test_progress_session_starts_and_stops_shared_progress(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """首个会话负责启动共享进度区，最后一个会话负责干净收尾。"""
-    log_dir = create_log_dir(fs)
-    manager = build_progress_log_manager(monkeypatch, log_dir)
-
-    try:
-        with manager.progress(transient=True) as session:
-            task_id = session.new_task(total=3)
-            session.update_task(task_id, advance=1)
-
-            progress = manager.console_progress
-            assert isinstance(progress, FakeProgress)
-            assert progress.started is True
-            assert progress.kwargs["console"] is manager.get_console()
-
-        assert progress.stopped is True
-        assert manager.console_progress is None
-    finally:
-        manager.shutdown()
-
-
-def test_progress_session_new_task_raises_when_progress_not_started(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """未进入上下文前创建任务，应明确告诉调用方共享进度尚未启动。"""
-    log_dir = create_log_dir(fs)
-    manager = build_progress_log_manager(monkeypatch, log_dir)
-
-    try:
-        session = manager.progress(transient=False)
-        with pytest.raises(RuntimeError, match="Progress is not started"):
-            session.new_task(total=1)
-    finally:
-        manager.shutdown()
-
-
-def test_progress_session_tolerates_manager_shutdown_during_active_session(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """关闭期间清空共享进度后，旧会话的 update/exit 也不该再抛异常。"""
-    log_dir = create_log_dir(fs)
-    manager = build_progress_log_manager(monkeypatch, log_dir)
-
-    try:
-        session = manager.progress(transient=False)
-        session.__enter__()
-        task_id = session.new_task(total=1)
-        manager.shutdown()
-        session.update_task(task_id, advance=1)
-        session.__exit__(None, None, None)
-        assert manager.console_progress is None
-    finally:
-        manager.shutdown()
-
-
-def test_progress_session_keeps_shared_progress_for_following_session(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """前一个会话结束后，后续仍在使用的共享进度不应被误停掉。"""
-    log_dir = create_log_dir(fs)
-    manager = build_progress_log_manager(monkeypatch, log_dir)
-
-    try:
-        owner = manager.progress(transient=False)
-        owner.__enter__()
-        first_task_id = owner.new_task(total=2)
-        second_task_id = owner.new_task(total=3)
-
-        follower = manager.progress(transient=False)
-        follower.__enter__()
-        follower_task_id = follower.new_task(total=1)
-
-        progress = manager.console_progress
-        assert isinstance(progress, FakeProgress)
-
-        owner.__exit__(None, None, None)
-
-        assert manager.console_progress is progress
-        assert progress.stopped is False
-        assert ("stop_task", first_task_id) in progress.operations
-        assert ("stop_task", second_task_id) in progress.operations
-        assert ("stop_task", follower_task_id) not in progress.operations
-        assert all(operation[0] != "remove_task" for operation in progress.operations)
-
-        follower.__exit__(None, None, None)
-        assert progress.stopped is True
     finally:
         manager.shutdown()
