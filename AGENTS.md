@@ -80,7 +80,7 @@ flowchart TD
 - `frontend/src/main` 只负责 Electron 宿主、窗口、原生对话框与标题栏；`frontend/src/preload` 只负责 `contextBridge` 桥接；`frontend/src/shared` 只放跨端共享契约与桌面常量。
 - `frontend/src/renderer` 才承载 React 页面、导航、状态编排、组件与样式实现；页面私有逻辑留在 `pages/<page-name>/`，不要为了表面复用过早抬进 `widgets`、`app` 或 `lib`。
 - `widgets/` 只放跨页面稳定复用的组合层；`shadcn/` 只放 shadcn CLI 已安装组件源码与其项目内定制，业务组件不得混入其中。
-- TypeScript 代码优先保持显式类型；只有第三方类型确实缺失时才局部使用 `any` 兜底。React Hook 必须遵循 ESLint 依赖规则。
+- TypeScript 代码优先保持显式类型；只有第三方类型确实缺失时才局部使用 `any` 兜底。React Hook 必须显式维护依赖数组的正确性，不依赖工具禁用注释掩盖依赖问题。
 - `frontend/src/renderer/index.html` 只是宿主壳；全局主题变量与 `--ui-*` token 只允许定义在 `frontend/src/renderer/index.css`。
 - 页面私有样式放在页面目录并由页面入口导入，widget 私有样式由 widget 自己导入；不要把页面语义样式反向塞回全局。
 - 渲染层执行 `px-first`：视觉尺寸字面量优先使用 `px`，`line-height` 使用无单位数值，`letter-spacing` 仅允许 `em`，`clamp()` 仅允许 `px + vw + px` 组合。

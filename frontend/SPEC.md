@@ -23,7 +23,8 @@ flowchart LR
 ## 顶层目录与入口
 | 路径 | 职责 |
 | --- | --- |
-| `package.json` | 子工程命令入口；声明 `dev`、`build`、`lint`、`test`、`renderer:audit`、`preview` |
+| `package.json` | 子工程命令入口；声明 `dev`、`build`、`format`、`format:check`、`lint`、`test`、`renderer:audit`、`preview` |
+| `scripts/format-related-files.mjs` | 前端渐进式格式化入口，默认只收集当前变更文件并调用 `oxfmt` |
 | `components.json` | shadcn CLI 配置权威来源；约束 `@/shadcn`、`@/widgets`、`@/hooks` 等别名 |
 | `electron.vite.config.ts` | Electron / Vite 构建入口；renderer root 固定为 `src/renderer`，开发态 host 固定为 `127.0.0.1` |
 | `src/main/` | Electron 主进程；窗口创建、标题栏策略、原生对话框、外链打开、开发态调试入口 |
@@ -82,6 +83,8 @@ flowchart LR
 | --- | --- |
 | `npm run dev` | 启动 Electron 开发环境 |
 | `npm run build` | 前端类型检查 + Electron 构建与打包 |
+| `npm run format` | 只对当前变更的前端代码与配置文件执行 `oxfmt`；可追加 `-- <file...>` 精确指定文件 |
+| `npm run format:check` | 只检查当前变更的前端代码与配置文件格式；可追加 `-- <file...>` 精确指定文件 |
 | `npm run lint` | Oxlint 检查 |
 | `npm run test` | Vitest 一次性测试 |
 | `npm run test:watch` | Vitest 监听模式 |

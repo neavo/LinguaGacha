@@ -1,11 +1,14 @@
 {
   "name": "frontend",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "type": "module",
+  "main": "dist-electron/index.js",
   "scripts": {
     "dev": "node ./scripts/dev-launcher.mjs",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && electron-builder",
+    "format": "node ./scripts/format-related-files.mjs",
+    "format:check": "node ./scripts/format-related-files.mjs --check",
     "lint": "oxlint .",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -47,12 +50,12 @@
     "execa": "^9.6.1",
     "get-port": "^7.2.0",
     "jsdom": "^29.0.2",
+    "oxfmt": "^0.46.0",
     "oxlint": "^1.61.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "vite": "^7.3.2",
     "vitest": "^4.1.4",
     "wait-on": "^8.0.5"
-  },
-  "main": "dist-electron/index.js"
+  }
 }
