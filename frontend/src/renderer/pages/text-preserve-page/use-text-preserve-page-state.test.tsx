@@ -58,10 +58,20 @@ const runtime_state = {
   },
 }
 
+const project_store_listeners = new Set<() => void>()
+
+function notify_project_store(): void {
+  for (const listener of project_store_listeners) {
+    listener()
+  }
+}
+
 const project_store = {
   subscribe: (listener: () => void) => {
-    void listener
-    return () => {}
+    project_store_listeners.add(listener)
+    return () => {
+      project_store_listeners.delete(listener)
+    }
   },
   getState: () => runtime_state,
 }
@@ -98,6 +108,34 @@ vi.mock('@/app/state/use-desktop-runtime', () => {
         path: 'E:/demo/sample.lg',
       },
       project_store,
+      settings_snapshot: {},
+      set_settings_snapshot: vi.fn(),
+      commit_local_project_patch: (input: {
+        patch: Array<{ op: string; quality?: typeof runtime_state.quality }>
+      }) => {
+        const previous_quality = {
+          ...runtime_state.quality,
+          text_preserve: {
+            ...runtime_state.quality.text_preserve,
+            entries: runtime_state.quality.text_preserve.entries.map((entry) => ({ ...entry })),
+          },
+        }
+        const quality_patch = input.patch.find((operation) => operation.op === 'replace_quality')
+        if (quality_patch?.quality !== undefined) {
+          runtime_state.quality = quality_patch.quality
+          notify_project_store()
+        }
+
+        return {
+          previousProjectRevision: 0,
+          previousSectionRevisions: { quality: 0 },
+          previousSections: { quality: previous_quality },
+          rollback: () => {
+            runtime_state.quality = previous_quality
+            notify_project_store()
+          },
+        }
+      },
     }),
   }
 })
@@ -143,6 +181,7 @@ describe('useTextPreservePageState', () => {
   let latest_state: ReturnType<typeof useTextPreservePageState> | null = null
 
   beforeEach(() => {
+    project_store_listeners.clear()
     create_barrier_checkpoint_mock.mockReturnValue({
       projectPath: 'E:/demo/sample.lg',
       proofreadingLastLoadedAt: 1,
@@ -202,13 +241,7 @@ describe('useTextPreservePageState', () => {
       return await new Promise<void>(() => {})
     })
     api_fetch_mock.mockResolvedValue({
-      snapshot: {
-        revision: 2,
-        meta: {
-          mode: 'smart',
-        },
-        entries: runtime_state.quality.text_preserve.entries,
-      },
+      accepted: true,
     })
 
     await mount_probe()
@@ -242,13 +275,7 @@ describe('useTextPreservePageState', () => {
       })
     })
     api_fetch_mock.mockResolvedValue({
-      snapshot: {
-        revision: 2,
-        meta: {
-          mode: 'smart',
-        },
-        entries: runtime_state.quality.text_preserve.entries,
-      },
+      accepted: true,
     })
 
     await mount_probe()

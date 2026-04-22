@@ -19,7 +19,6 @@ class ProjectRoutes:
         "/api/v2/project/workbench/delete-file-batch"
     )
     WORKBENCH_REORDER_FILES_PATH: str = "/api/v2/project/workbench/reorder-files"
-    WORKBENCH_FILE_PATCH_PATH: str = "/api/v2/project/workbench/file-patch"
     PROOFREADING_SAVE_ITEM_PATH: str = "/api/v2/project/proofreading/save-item"
     PROOFREADING_SAVE_ALL_PATH: str = "/api/v2/project/proofreading/save-all"
     PROOFREADING_REPLACE_ALL_PATH: str = "/api/v2/project/proofreading/replace-all"
@@ -123,13 +122,6 @@ class ProjectRoutes:
                 cls.WORKBENCH_REORDER_FILES_PATH,
                 lambda request: ApiResponse(
                     ok=True, data=workbench_app_service.reorder_files(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.WORKBENCH_FILE_PATCH_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=workbench_app_service.get_file_patch(request)
                 ),
             )
         if proofreading_app_service is not None:

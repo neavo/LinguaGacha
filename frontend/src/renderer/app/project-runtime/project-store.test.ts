@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { createProjectStore } from './project-store'
+import {
+  createProjectStore,
+  createProjectStoreReplaceSectionPatch,
+} from './project-store'
 
 describe('createProjectStore', () => {
   it('按 section 独立写入 bootstrap 阶段数据', () => {
@@ -203,5 +206,194 @@ describe('createProjectStore', () => {
     })
     expect(store.getState().revisions.projectRevision).toBe(8)
     expect(store.getState().revisions.sections.prompts).toBe(5)
+  })
+
+  it('精确 revision 模式允许本地 patch 回滚到旧 revision', () => {
+    const store = createProjectStore()
+    const bootstrap_quality = {
+      glossary: {
+        entries: [],
+        enabled: true,
+        mode: 'off',
+        revision: 2,
+      },
+      pre_replacement: {
+        entries: [],
+        enabled: false,
+        mode: 'off',
+        revision: 0,
+      },
+      post_replacement: {
+        entries: [],
+        enabled: false,
+        mode: 'off',
+        revision: 0,
+      },
+      text_preserve: {
+        entries: [],
+        enabled: false,
+        mode: 'off',
+        revision: 0,
+      },
+    }
+
+    store.applyBootstrapStage('quality', {
+      quality: bootstrap_quality,
+      revisions: {
+        projectRevision: 4,
+        sections: {
+          quality: 2,
+        },
+      },
+    })
+
+    const optimistic_quality = {
+      ...store.getState().quality,
+      glossary: {
+        ...store.getState().quality.glossary,
+        entries: [
+          {
+            id: '1',
+            src: '原文',
+            dst: '译文',
+          },
+        ],
+        revision: 3,
+      },
+    }
+
+    store.applyProjectPatch({
+      source: 'quality_rule_save_entries',
+      projectRevision: 5,
+      updatedSections: ['quality'],
+      sectionRevisions: {
+        quality: 3,
+      },
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', optimistic_quality),
+      ],
+    }, {
+      revisionMode: 'exact',
+    })
+
+    expect(store.getState().quality.glossary.revision).toBe(3)
+    expect(store.getState().revisions.projectRevision).toBe(5)
+    expect(store.getState().revisions.sections.quality).toBe(3)
+
+    store.applyProjectPatch({
+      source: 'quality_rule_save_entries_rollback',
+      projectRevision: 4,
+      updatedSections: ['quality'],
+      sectionRevisions: {
+        quality: 2,
+      },
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', bootstrap_quality),
+      ],
+    }, {
+      revisionMode: 'exact',
+    })
+
+    expect(store.getState().quality.glossary.revision).toBe(2)
+    expect(store.getState().quality.glossary.entries).toEqual([])
+    expect(store.getState().revisions.projectRevision).toBe(4)
+    expect(store.getState().revisions.sections.quality).toBe(2)
+  })
+
+  it('服务器 patch 不会把本地合成 revision 压回去', () => {
+    const store = createProjectStore()
+
+    store.applyBootstrapStage('quality', {
+      quality: {
+        glossary: {
+          entries: [],
+          enabled: true,
+          mode: 'off',
+          revision: 2,
+        },
+        pre_replacement: {
+          entries: [],
+          enabled: false,
+          mode: 'off',
+          revision: 0,
+        },
+        post_replacement: {
+          entries: [],
+          enabled: false,
+          mode: 'off',
+          revision: 0,
+        },
+        text_preserve: {
+          entries: [],
+          enabled: false,
+          mode: 'off',
+          revision: 0,
+        },
+      },
+      revisions: {
+        projectRevision: 4,
+        sections: {
+          quality: 2,
+        },
+      },
+    })
+
+    const optimistic_quality = {
+      ...store.getState().quality,
+      glossary: {
+        ...store.getState().quality.glossary,
+        revision: 3,
+      },
+    }
+
+    store.applyProjectPatch({
+      source: 'quality_rule_save_entries',
+      projectRevision: 5,
+      updatedSections: ['quality'],
+      sectionRevisions: {
+        quality: 3,
+      },
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', optimistic_quality),
+      ],
+    }, {
+      revisionMode: 'exact',
+    })
+
+    const server_quality = {
+      ...store.getState().quality,
+      glossary: {
+        ...store.getState().quality.glossary,
+        entries: [
+          {
+            id: '1',
+            src: '原文',
+            dst: '服务器译文',
+          },
+        ],
+      },
+    }
+
+    store.applyProjectPatch({
+      source: 'quality_rule_save_entries_confirmed',
+      projectRevision: 4,
+      updatedSections: ['quality'],
+      sectionRevisions: {
+        quality: 2,
+      },
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', server_quality),
+      ],
+    })
+
+    expect(store.getState().quality.glossary.entries).toEqual([
+      {
+        id: '1',
+        src: '原文',
+        dst: '服务器译文',
+      },
+    ])
+    expect(store.getState().revisions.projectRevision).toBe(5)
+    expect(store.getState().revisions.sections.quality).toBe(3)
   })
 })

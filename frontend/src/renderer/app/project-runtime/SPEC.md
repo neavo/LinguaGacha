@@ -18,6 +18,7 @@
 | `bootstrap-stream.ts` | 把 SSE bootstrap 事件转成阶段化消费接口 |
 | `use-project-runtime.ts` | 组织 bootstrap 消费，把 stage payload 归一化后写入 `ProjectStore` |
 | `selectors.ts` | 面向页面的稳定读取入口 |
+| `quality-statistics.ts` | 基于 `ProjectStore.items` 计算 glossary / replacement / text preserve 统计，供质量页共享 |
 
 ## 真实运行链路
 ```mermaid
@@ -101,7 +102,13 @@ store 固定分成下面 8 个 stage / section：
 `DesktopRuntimeContext` 做三件事：
 1. 初始化 `settings_snapshot`、`project_snapshot`、`task_snapshot`
 2. 持有 `ProjectStore`
-3. 把 `project.patch` 和设置变化进一步派生为页面可消费的变更信号
+3. 把本地 patch、`project.patch` 和设置变化进一步派生为页面可消费的变更信号
+
+### 本地 patch 提交通道
+- `DesktopRuntimeContext` 通过 `commit_local_project_patch(...)` 暴露渲染层唯一的本地运行态写入口。
+- 质量规则、提示词和工作台文件操作都先在 TS 侧计算下一个 section，再走这条入口写入 `ProjectStore`。
+- 服务器 `project.patch` 与本地 patch 共用同一套后处理：`ProjectStore.applyProjectPatch(...)`、`task_snapshot` 合并、`workbench_change_signal / proofreading_change_signal` bump。
+- 本地 patch 的 revision 由前端按命中的 section 合成；后续服务器 patch 到达后，再用真实 revision 对齐。
 
 ### 派生信号
 | 信号 | 作用域 | 主要消费者 |
@@ -110,15 +117,14 @@ store 固定分成下面 8 个 stage / section：
 | `proofreading_change_signal` | `global` / `file` / `entry` | 校对页 |
 
 ### 触发规则
-- `project.patch` 命中 `project` / `files` / `items` 时，会触发工作台信号。
-- `project.patch` 命中 `project` / `items` / `quality` / `prompts` / `analysis` / `proofreading` / `task` 时，会触发校对信号。
+- 本地 patch 或 `project.patch` 命中 `project` / `files` / `items` 时，会触发工作台信号。
+- 本地 patch 或 `project.patch` 命中 `project` / `items` / `quality` / `prompts` / `analysis` / `proofreading` / `task` 时，会触发校对信号。
 - `settings.changed` 只有当 `keys` 包含 `source_language` 或 `mtool_optimizer_enable` 时，才会同时 bump 两类页面信号。
 
 ## 页面如何继续消费它
-- 工作台与校对页的主读路径已经转到 `ProjectStore + selector / worker`。
-- 工作台在显式文件操作后会继续请求：
-  - `/api/v2/project/workbench/file-patch`
-- `ProjectStore` 负责“运行态事实源”；工作台保留文件级 patch，校对页依赖 `ProjectStore.items + quality/prompts + proofreading revision` 的本地 runtime 重算。
+- 工作台与校对页通过 `ProjectStore` 加本地派生逻辑消费项目运行态。
+- 工作台收到 `workbench_change_signal` 后，直接用 `buildWorkbenchView(project_store.getState())` 全量重建视图；文件操作后的视图刷新依赖同一套运行态事实源。
+- `ProjectStore` 负责“运行态事实源”；工作台依赖 `selectors.ts` 本地重建视图，质量页依赖 `quality-statistics.ts` 共享统计任务，校对页依赖页面本地 runtime 派生校对结果。
 
 ## 修改建议
 | 变更类型 | 优先落点 |
@@ -131,4 +137,4 @@ store 固定分成下面 8 个 stage / section：
 ## 维护约束
 - `ProjectStore` 只保存“项目运行态最小事实”，不要把页面私有筛选、对话框状态、表格排序 UI 状态塞进来。
 - 运行态协议变化时，前后端文档必须同步更新：本文和 [`api/SPEC.md`](../../../../../api/SPEC.md) 要一起改。
-- 如果某个需求只影响单页的重型视图重建，不要先改 `ProjectStore`；先判断它是不是应该继续走页面 patch API。
+- 页面命令如果会改动项目运行态，应优先判断它能否落成 `commit_local_project_patch + project.patch` 的共用语义，而不是再开并行 patch API。

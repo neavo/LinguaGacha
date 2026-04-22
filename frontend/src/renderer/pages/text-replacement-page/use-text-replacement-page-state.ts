@@ -2,10 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from '@/app/desktop-api'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
+import { createProjectStoreReplaceSectionPatch } from '@/app/project-runtime/project-store'
+import {
+  collect_project_item_texts,
+  run_quality_statistics_task,
+} from '@/app/project-runtime/quality-statistics'
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
+  replaceQualityRuleSlice,
 } from '@/app/project-runtime/quality-runtime'
+import {
+  normalize_settings_snapshot,
+  type SettingsSnapshotPayload,
+} from '@/app/state/desktop-runtime-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
@@ -53,26 +63,13 @@ type TextReplacementSnapshot = {
   entries: TextReplacementEntry[]
 }
 
-type TextReplacementSnapshotPayload = {
-  snapshot: TextReplacementSnapshot
-}
-
-type TextReplacementStatisticsPayload = {
-  statistics?: {
-    results?: Record<string, {
-      matched_item_count?: number
-      subset_parents?: string[]
-    }>
-  }
+type TextReplacementMutationAckPayload = {
+  accepted?: boolean
 }
 
 type TextReplacementPresetPayload = {
   builtin_presets: TextReplacementPresetItem[]
   user_presets: TextReplacementPresetItem[]
-}
-
-type TextReplacementSettingsPayload = {
-  settings?: Record<string, string | undefined>
 }
 
 const EMPTY_ENTRY: TextReplacementEntry = {
@@ -311,7 +308,13 @@ export function useTextReplacementPageState(
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation()
-  const { project_snapshot, project_store } = useDesktopRuntime()
+  const {
+    project_snapshot,
+    project_store,
+    settings_snapshot,
+    set_settings_snapshot,
+    commit_local_project_patch,
+  } = useDesktopRuntime()
   const project_store_state = useSyncExternalStore(
     project_store.subscribe,
     project_store.getState,
@@ -492,20 +495,42 @@ export function useTextReplacementPageState(
   const save_entries_snapshot = useCallback(async (
     next_entries: TextReplacementEntry[],
   ): Promise<boolean> => {
+    const current_replacement_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      config.rule_type,
+    )
+    const normalized_entries = next_entries.map((entry) => {
+      return normalize_entry(entry)
+    })
+    const next_quality_state = replaceQualityRuleSlice(
+      project_store.getState().quality,
+      config.rule_type,
+      {
+        ...current_replacement_slice,
+        entries: normalized_entries,
+        revision: current_replacement_slice.revision + 1,
+      },
+    )
+    const local_commit = commit_local_project_patch({
+      source: 'quality_rule_save_entries',
+      updatedSections: ['quality'],
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', next_quality_state),
+      ],
+    })
+
     try {
-      const payload = await api_fetch<TextReplacementSnapshotPayload>(
+      await api_fetch<TextReplacementMutationAckPayload>(
         '/api/v2/quality/rules/save-entries',
         {
           rule_type: config.rule_type,
-          expected_revision: revision_ref.current,
-          entries: next_entries.map((entry) => {
-            return normalize_entry(entry)
-          }),
+          expected_revision: current_replacement_slice.revision,
+          entries: normalized_entries,
         },
       )
-      apply_snapshot(payload.snapshot)
       return true
     } catch (error) {
+      local_commit.rollback()
       if (error instanceof Error) {
         push_toast('error', error.message)
       } else {
@@ -513,7 +538,7 @@ export function useTextReplacementPageState(
       }
       return false
     }
-  }, [apply_snapshot, config.rule_type, push_toast, t])
+  }, [commit_local_project_patch, config.rule_type, project_store, push_toast, t])
 
   const persist_merged_entries = useCallback(async (
     incoming_entries: TextReplacementEntry[],
@@ -546,17 +571,14 @@ export function useTextReplacementPageState(
   }, [clear_selection_state, entries, invalidate_statistics, push_toast, save_entries_snapshot, t])
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
-    const [preset_payload, settings_payload] = await Promise.all([
-      api_fetch<TextReplacementPresetPayload>(
-        '/api/v2/quality/rules/presets',
-        {
-          preset_dir_name: config.preset_dir_name,
-        },
-      ),
-      api_fetch<TextReplacementSettingsPayload>('/api/settings/app', {}),
-    ])
+    const preset_payload = await api_fetch<TextReplacementPresetPayload>(
+      '/api/v2/quality/rules/presets',
+      {
+        preset_dir_name: config.preset_dir_name,
+      },
+    )
     const default_virtual_id = String(
-      settings_payload.settings?.[config.default_preset_settings_key] ?? '',
+      settings_snapshot[config.default_preset_settings_key] ?? '',
     )
 
     set_preset_items(
@@ -566,7 +588,7 @@ export function useTextReplacementPageState(
         default_virtual_id,
       ),
     )
-  }, [config.default_preset_settings_key, config.preset_dir_name])
+  }, [config.default_preset_settings_key, config.preset_dir_name, settings_snapshot])
 
   useEffect(() => {
     if (!project_snapshot.loaded) {
@@ -660,30 +682,47 @@ export function useTextReplacementPageState(
   }, [])
 
   const update_enabled = useCallback(async (next_enabled: boolean): Promise<void> => {
-    const previous_enabled = enabled
-    set_enabled(next_enabled)
+    const current_replacement_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      config.rule_type,
+    )
+    const next_quality_state = replaceQualityRuleSlice(
+      project_store.getState().quality,
+      config.rule_type,
+      {
+        ...current_replacement_slice,
+        enabled: next_enabled,
+        revision: current_replacement_slice.revision + 1,
+      },
+    )
+    const local_commit = commit_local_project_patch({
+      source: 'quality_rule_meta',
+      updatedSections: ['quality'],
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', next_quality_state),
+      ],
+    })
 
     try {
-      const payload = await api_fetch<TextReplacementSnapshotPayload>(
+      await api_fetch<TextReplacementMutationAckPayload>(
         '/api/v2/quality/rules/update-meta',
         {
           rule_type: config.rule_type,
-          expected_revision: revision_ref.current,
+          expected_revision: current_replacement_slice.revision,
           meta: {
             enabled: next_enabled,
           },
         },
       )
-      apply_snapshot(payload.snapshot)
     } catch (error) {
-      set_enabled(previous_enabled)
+      local_commit.rollback()
       if (error instanceof Error) {
         push_toast('error', error.message)
       } else {
         push_toast('error', t('text_replacement_page.feedback.save_failed'))
       }
     }
-  }, [apply_snapshot, config.rule_type, enabled, push_toast, t])
+  }, [commit_local_project_patch, config.rule_type, project_store, push_toast, t])
 
   const open_create_dialog = useCallback((): void => {
     const insert_after_entry_id = resolve_create_insert_after_entry_id()
@@ -1052,23 +1091,23 @@ export function useTextReplacementPageState(
     })
 
     try {
-      const payload = await api_fetch<TextReplacementStatisticsPayload>(
-        '/api/v2/quality/rules/statistics',
-        {
-          rules: entries.map((entry, index) => ({
-            key: build_text_replacement_entry_id(entry, index),
-            pattern: entry.src,
-            mode: config.statistics_mode,
-            regex: entry.regex,
-            case_sensitive: entry.case_sensitive,
-          })),
-          relation_candidates: entries.map((entry, index) => ({
-            key: build_text_replacement_entry_id(entry, index),
-            src: entry.src,
-          })),
-        },
-      )
-      const results = payload.statistics?.results ?? {}
+      const item_texts = collect_project_item_texts(project_store.getState().items)
+      const worker_result = await run_quality_statistics_task({
+        rules: entries.map((entry, index) => ({
+          key: build_text_replacement_entry_id(entry, index),
+          pattern: entry.src,
+          mode: config.statistics_mode,
+          regex: entry.regex,
+          case_sensitive: entry.case_sensitive,
+        })),
+        srcTexts: item_texts.srcTexts,
+        dstTexts: item_texts.dstTexts,
+        relationCandidates: entries.map((entry, index) => ({
+          key: build_text_replacement_entry_id(entry, index),
+          src: entry.src,
+        })),
+      })
+      const results = worker_result.results
 
       set_statistics_state({
         running: false,
@@ -1095,7 +1134,7 @@ export function useTextReplacementPageState(
         push_toast('error', t('text_replacement_page.feedback.statistics_failed'))
       }
     }
-  }, [config.statistics_mode, entries, push_toast, statistics_state.running, t])
+  }, [config.statistics_mode, entries, project_store, push_toast, statistics_state.running, t])
 
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
@@ -1230,13 +1269,14 @@ export function useTextReplacementPageState(
       )
       const target_preset = preset_items.find((item) => item.virtual_id === virtual_id)
       if (target_preset?.is_default) {
-        await api_fetch(
+        const settings_payload = await api_fetch<SettingsSnapshotPayload>(
           '/api/settings/update',
           build_default_preset_update_payload(
             config,
             String(payload.item?.virtual_id ?? ''),
           ),
         )
+        set_settings_snapshot(normalize_settings_snapshot(settings_payload))
       }
       await refresh_preset_menu()
       push_toast('success', t('text_replacement_page.feedback.preset_renamed'))
@@ -1249,14 +1289,15 @@ export function useTextReplacementPageState(
       }
       return false
     }
-  }, [config, preset_items, push_toast, refresh_preset_menu, t])
+  }, [config, preset_items, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const set_default_preset = useCallback(async (virtual_id: string): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         build_default_preset_update_payload(config, virtual_id),
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('text_replacement_page.feedback.default_preset_set'))
     } catch (error) {
@@ -1266,14 +1307,15 @@ export function useTextReplacementPageState(
         push_toast('error', t('text_replacement_page.feedback.preset_failed'))
       }
     }
-  }, [config, push_toast, refresh_preset_menu, t])
+  }, [config, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         build_default_preset_update_payload(config, ''),
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('text_replacement_page.feedback.default_preset_cleared'))
     } catch (error) {
@@ -1283,7 +1325,7 @@ export function useTextReplacementPageState(
         push_toast('error', t('text_replacement_page.feedback.preset_failed'))
       }
     }
-  }, [config, push_toast, refresh_preset_menu, t])
+  }, [config, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const validate_entry = useCallback((entry: TextReplacementEntry): string | null => {
     if (entry.src === '') {
@@ -1501,10 +1543,11 @@ export function useTextReplacementPageState(
             return item.virtual_id === confirm_state.target_virtual_id
           })
           if (target_preset?.is_default) {
-            await api_fetch(
+            const settings_payload = await api_fetch<SettingsSnapshotPayload>(
               '/api/settings/update',
               build_default_preset_update_payload(config, ''),
             )
+            set_settings_snapshot(normalize_settings_snapshot(settings_payload))
           }
           await refresh_preset_menu()
           push_toast('success', t('text_replacement_page.feedback.preset_deleted'))
@@ -1544,6 +1587,7 @@ export function useTextReplacementPageState(
     reset_entries,
     save_preset,
     selected_entry_ids,
+    set_settings_snapshot,
     t,
   ])
 

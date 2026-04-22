@@ -15,8 +15,6 @@ from api.v2.Models.Project import ProjectSnapshot
 from api.v2.Models.Proofreading import ProofreadingMutationResult
 from api.v2.Models.QualityRule import QualityRuleEntry
 from api.v2.Models.QualityRule import QualityRuleSnapshot
-from api.v2.Models.QualityRule import QualityRuleStatisticsResult
-from api.v2.Models.QualityRule import QualityRuleStatisticsSnapshot
 from api.v2.Models.Settings import AppSettingsSnapshot
 from api.v2.Models.Settings import RecentProjectEntry
 from api.v2.Models.Task import AnalysisGlossaryImportResult
@@ -42,8 +40,6 @@ __all__ = [
     "ProofreadingMutationResult",
     "QualityRuleEntry",
     "QualityRuleSnapshot",
-    "QualityRuleStatisticsResult",
-    "QualityRuleStatisticsSnapshot",
     "RecentProjectEntry",
     "TaskProgressUpdate",
     "TaskSnapshot",

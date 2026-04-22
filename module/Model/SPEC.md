@@ -7,7 +7,7 @@
 | 任务类型 | 优先阅读 |
 | --- | --- |
 | 模型配置对象结构 | `Types.py` |
-| 预设模型加载、迁移与模板回填 | `Manager.py` |
+| 预设模型加载、preset 兼容整理与模板回填 | `Manager.py` |
 | 配置文件如何初始化模型列表 | `../Config.py` -> `Manager.py` |
 | 模型页 API 行为 | `../../api/v2/Application/ModelAppService.py` -> `Manager.py` |
 
@@ -15,7 +15,7 @@
 | 路径 | 职责 |
 | --- | --- |
 | `Types.py` | `Model`、`ModelType`、`ThinkingLevel` 以及请求/阈值/思考/生成参数配置对象 |
-| `Manager.py` | 预设模型加载、旧预设迁移、自定义模板补齐、模型 CRUD 与分组排序 |
+| `Manager.py` | 预设模型加载、preset 兼容整理、自定义模板补齐、模型 CRUD 与分组排序 |
 
 ## 边界与约束
 - `Types.py` 只承载模型配置领域语义，不承担 HTTP 载荷或前端页面快照职责。

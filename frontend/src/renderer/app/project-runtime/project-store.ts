@@ -44,7 +44,7 @@ export type ProjectStoreProofreadingState = {
   revision: number
 }
 
-export type ProjectStoreState = {
+export type ProjectStoreSectionStateMap = {
   project: ProjectStoreProjectState
   files: Record<string, unknown>
   items: Record<string, unknown>
@@ -53,6 +53,9 @@ export type ProjectStoreState = {
   analysis: Record<string, unknown>
   proofreading: ProjectStoreProofreadingState
   task: Record<string, unknown>
+}
+
+export type ProjectStoreState = ProjectStoreSectionStateMap & {
   revisions: {
     projectRevision: number
     sections: ProjectStoreSectionRevisions
@@ -108,6 +111,11 @@ export type ProjectStorePatchEvent = {
 }
 
 export type ProjectStoreListener = () => void
+export type ProjectStorePatchRevisionMode = 'merge' | 'exact'
+
+type ProjectStorePatchOptions = {
+  revisionMode?: ProjectStorePatchRevisionMode
+}
 
 export function isProjectStoreStage(value: string): value is ProjectStoreStage {
   return [
@@ -130,7 +138,10 @@ type ProjectStoreApi = {
     stage: ProjectStoreStage,
     payload: ProjectStoreBootstrapPayload,
   ) => void
-  applyProjectPatch: (event: ProjectStorePatchEvent) => void
+  applyProjectPatch: (
+    event: ProjectStorePatchEvent,
+    options?: ProjectStorePatchOptions,
+  ) => void
 }
 
 function createEmptyQualityRuleSlice(): ProjectStoreQualityRuleSlice {
@@ -211,7 +222,22 @@ function mergePatchRevisions(args: {
 }): ProjectStoreState['revisions'] {
   const next_section_revisions: ProjectStoreSectionRevisions = {
     ...args.currentRevisions.sections,
-    ...args.sectionRevisions,
+  }
+
+  for (const [section, revision] of Object.entries(args.sectionRevisions ?? {})) {
+    if (!isProjectStoreStage(section)) {
+      continue
+    }
+
+    const normalized_revision = Number(revision)
+    if (!Number.isFinite(normalized_revision)) {
+      continue
+    }
+
+    next_section_revisions[section] = Math.max(
+      next_section_revisions[section] ?? 0,
+      normalized_revision,
+    )
   }
 
   for (const section of args.updatedSections) {
@@ -227,6 +253,31 @@ function mergePatchRevisions(args: {
       args.currentRevisions.projectRevision,
       args.projectRevision,
     ),
+    sections: next_section_revisions,
+  }
+}
+
+function resolveExactPatchRevisions(args: {
+  currentRevisions: ProjectStoreState['revisions']
+  projectRevision: number
+  updatedSections: ProjectStoreStage[]
+  sectionRevisions?: ProjectStoreSectionRevisions
+}): ProjectStoreState['revisions'] {
+  const next_section_revisions: ProjectStoreSectionRevisions = {
+    ...args.currentRevisions.sections,
+  }
+
+  for (const section of args.updatedSections) {
+    const explicit_revision = args.sectionRevisions?.[section]
+    next_section_revisions[section] = explicit_revision ?? (
+      (next_section_revisions[section] ?? 0) + 1
+    )
+  }
+
+  return {
+    projectRevision: Number.isFinite(args.projectRevision)
+      ? args.projectRevision
+      : args.currentRevisions.projectRevision,
     sections: next_section_revisions,
   }
 }
@@ -269,12 +320,6 @@ function mergeSectionRecords(args: {
   }
 
   return next_records
-}
-
-function cloneQualityEntries(
-  entries: Array<Record<string, unknown>>,
-): Array<Record<string, unknown>> {
-  return entries.map((entry) => ({ ...entry }))
 }
 
 function normalizeQualityRuleSlice(
@@ -380,52 +425,112 @@ function normalizeProofreadingState(
   }
 }
 
+export function cloneProjectStoreSection<TStage extends ProjectStoreStage>(
+  section: TStage,
+  value: ProjectStoreSectionStateMap[TStage],
+): ProjectStoreSectionStateMap[TStage] {
+  if (section === 'project') {
+    return {
+      ...(value as ProjectStoreProjectState),
+    } as ProjectStoreSectionStateMap[TStage]
+  }
+
+  if (section === 'files' || section === 'items' || section === 'analysis' || section === 'task') {
+    return {
+      ...(value as Record<string, unknown>),
+    } as ProjectStoreSectionStateMap[TStage]
+  }
+
+  if (section === 'quality') {
+    return normalizeQualityState(
+      value as ProjectStoreQualityState,
+    ) as ProjectStoreSectionStateMap[TStage]
+  }
+
+  if (section === 'prompts') {
+    return normalizePromptsState(
+      value as ProjectStorePromptsState,
+    ) as ProjectStoreSectionStateMap[TStage]
+  }
+
+  return normalizeProofreadingState(
+    value as ProjectStoreProofreadingState,
+  ) as ProjectStoreSectionStateMap[TStage]
+}
+
+export function snapshotProjectStoreSections(
+  state: ProjectStoreState,
+  sections: ProjectStoreStage[],
+): Partial<ProjectStoreSectionStateMap> {
+  const snapshots: Partial<ProjectStoreSectionStateMap> = {}
+
+  for (const section of sections) {
+    (
+      snapshots as Record<ProjectStoreStage, ProjectStoreSectionStateMap[ProjectStoreStage]>
+    )[section] = cloneProjectStoreSection(section, state[section])
+  }
+
+  return snapshots
+}
+
+export function createProjectStoreReplaceSectionPatch(
+  section: Exclude<ProjectStoreStage, 'files' | 'items'>,
+  value: ProjectStoreSectionStateMap[Exclude<ProjectStoreStage, 'files' | 'items'>],
+): ProjectStorePatchOperation {
+  if (section === 'project') {
+    return {
+      op: 'replace_project',
+      project: cloneProjectStoreSection('project', value as ProjectStoreProjectState),
+    }
+  }
+
+  if (section === 'quality') {
+    return {
+      op: 'replace_quality',
+      quality: cloneProjectStoreSection('quality', value as ProjectStoreQualityState),
+    }
+  }
+
+  if (section === 'prompts') {
+    return {
+      op: 'replace_prompts',
+      prompts: cloneProjectStoreSection('prompts', value as ProjectStorePromptsState),
+    }
+  }
+
+  if (section === 'analysis') {
+    return {
+      op: 'replace_analysis',
+      analysis: cloneProjectStoreSection('analysis', value as Record<string, unknown>),
+    }
+  }
+
+  if (section === 'proofreading') {
+    return {
+      op: 'replace_proofreading',
+      proofreading: cloneProjectStoreSection(
+        'proofreading',
+        value as ProjectStoreProofreadingState,
+      ),
+    }
+  }
+
+  return {
+    op: 'replace_task',
+    task: cloneProjectStoreSection('task', value as Record<string, unknown>),
+  }
+}
+
 function cloneState(state: ProjectStoreState): ProjectStoreState {
   return {
-    project: {
-      ...state.project,
-    },
-    files: {
-      ...state.files,
-    },
-    items: {
-      ...state.items,
-    },
-    quality: {
-      glossary: {
-        ...state.quality.glossary,
-        entries: cloneQualityEntries(state.quality.glossary.entries),
-      },
-      pre_replacement: {
-        ...state.quality.pre_replacement,
-        entries: cloneQualityEntries(state.quality.pre_replacement.entries),
-      },
-      post_replacement: {
-        ...state.quality.post_replacement,
-        entries: cloneQualityEntries(state.quality.post_replacement.entries),
-      },
-      text_preserve: {
-        ...state.quality.text_preserve,
-        entries: cloneQualityEntries(state.quality.text_preserve.entries),
-      },
-    },
-    prompts: {
-      translation: {
-        ...state.prompts.translation,
-      },
-      analysis: {
-        ...state.prompts.analysis,
-      },
-    },
-    analysis: {
-      ...state.analysis,
-    },
-    proofreading: {
-      ...state.proofreading,
-    },
-    task: {
-      ...state.task,
-    },
+    project: cloneProjectStoreSection('project', state.project),
+    files: cloneProjectStoreSection('files', state.files),
+    items: cloneProjectStoreSection('items', state.items),
+    quality: cloneProjectStoreSection('quality', state.quality),
+    prompts: cloneProjectStoreSection('prompts', state.prompts),
+    analysis: cloneProjectStoreSection('analysis', state.analysis),
+    proofreading: cloneProjectStoreSection('proofreading', state.proofreading),
+    task: cloneProjectStoreSection('task', state.task),
     revisions: {
       projectRevision: state.revisions.projectRevision,
       sections: {
@@ -489,15 +594,26 @@ export function createProjectStore(): ProjectStoreApi {
       state = next_state
       notifyListeners()
     },
-    applyProjectPatch(event: ProjectStorePatchEvent): void {
+    applyProjectPatch(
+      event: ProjectStorePatchEvent,
+      options?: ProjectStorePatchOptions,
+    ): void {
+      const revision_mode = options?.revisionMode ?? 'merge'
       const next_state: ProjectStoreState = {
         ...state,
-        revisions: mergePatchRevisions({
-          currentRevisions: state.revisions,
-          projectRevision: event.projectRevision,
-          updatedSections: event.updatedSections,
-          sectionRevisions: event.sectionRevisions,
-        }),
+        revisions: revision_mode === 'exact'
+          ? resolveExactPatchRevisions({
+              currentRevisions: state.revisions,
+              projectRevision: event.projectRevision,
+              updatedSections: event.updatedSections,
+              sectionRevisions: event.sectionRevisions,
+            })
+          : mergePatchRevisions({
+              currentRevisions: state.revisions,
+              projectRevision: event.projectRevision,
+              updatedSections: event.updatedSections,
+              sectionRevisions: event.sectionRevisions,
+            }),
       }
 
       for (const operation of event.patch) {

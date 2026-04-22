@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
+import { createProjectStoreReplaceSectionPatch } from '@/app/project-runtime/project-store'
+import {
+  collect_project_item_texts,
+  run_quality_statistics_task,
+} from '@/app/project-runtime/quality-statistics'
 import { useProjectPagesBarrier } from '@/app/state/project-pages-context'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
+  replaceQualityRuleSlice,
 } from '@/app/project-runtime/quality-runtime'
+import {
+  normalize_settings_snapshot,
+  type SettingsSnapshotPayload,
+} from '@/app/state/desktop-runtime-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
@@ -50,26 +60,13 @@ type TextPreserveSnapshot = {
   entries: Array<Partial<TextPreserveEntry>>
 }
 
-type TextPreserveSnapshotPayload = {
-  snapshot: TextPreserveSnapshot
-}
-
-type TextPreserveStatisticsPayload = {
-  statistics?: {
-    results?: Record<string, {
-      matched_item_count?: number
-      subset_parents?: string[]
-    }>
-  }
+type TextPreserveMutationAckPayload = {
+  accepted?: boolean
 }
 
 type TextPreservePresetPayload = {
   builtin_presets: TextPreservePresetItem[]
   user_presets: TextPreservePresetItem[]
-}
-
-type TextPreserveSettingsPayload = {
-  settings?: Record<string, string | undefined>
 }
 
 const TEXT_PRESERVE_RULE_TYPE = 'text_preserve'
@@ -262,7 +259,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier()
   const { push_toast, run_modal_progress_toast } = useDesktopToast()
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation()
-  const { project_snapshot, project_store } = useDesktopRuntime()
+  const {
+    project_snapshot,
+    project_store,
+    settings_snapshot,
+    set_settings_snapshot,
+    commit_local_project_patch,
+  } = useDesktopRuntime()
   const project_store_state = useSyncExternalStore(
     project_store.subscribe,
     project_store.getState,
@@ -460,24 +463,46 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const save_entries_snapshot = useCallback(async (
     next_entries: TextPreserveEntry[],
   ): Promise<boolean> => {
+    const current_preserve_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      TEXT_PRESERVE_RULE_TYPE,
+    )
+    const normalized_entries = next_entries.map((entry) => {
+      return normalize_entry(entry)
+    })
+    const next_quality_state = replaceQualityRuleSlice(
+      project_store.getState().quality,
+      TEXT_PRESERVE_RULE_TYPE,
+      {
+        ...current_preserve_slice,
+        entries: normalized_entries,
+        revision: current_preserve_slice.revision + 1,
+      },
+    )
+    const local_commit = commit_local_project_patch({
+      source: 'quality_rule_save_entries',
+      updatedSections: ['quality'],
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', next_quality_state),
+      ],
+    })
+
     try {
-      const payload = await api_fetch<TextPreserveSnapshotPayload>(
+      await api_fetch<TextPreserveMutationAckPayload>(
         '/api/v2/quality/rules/save-entries',
         {
           rule_type: TEXT_PRESERVE_RULE_TYPE,
-          expected_revision: revision_ref.current,
-          entries: next_entries.map((entry) => {
-            return normalize_entry(entry)
-          }),
+          expected_revision: current_preserve_slice.revision,
+          entries: normalized_entries,
         },
       )
-      apply_snapshot(payload.snapshot)
       return true
     } catch (error) {
+      local_commit.rollback()
       push_action_error_toast(error)
       return false
     }
-  }, [apply_snapshot, push_action_error_toast])
+  }, [commit_local_project_patch, project_store, push_action_error_toast])
 
   const persist_merged_entries = useCallback(async (
     incoming_entries: TextPreserveEntry[],
@@ -510,17 +535,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [clear_selection_state, entries, invalidate_statistics, push_toast, save_entries_snapshot, t])
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
-    const [preset_payload, settings_payload] = await Promise.all([
-      api_fetch<TextPreservePresetPayload>(
-        '/api/v2/quality/rules/presets',
-        {
-          preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
-        },
-      ),
-      api_fetch<TextPreserveSettingsPayload>('/api/settings/app', {}),
-    ])
+    const preset_payload = await api_fetch<TextPreservePresetPayload>(
+      '/api/v2/quality/rules/presets',
+      {
+        preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
+      },
+    )
     const default_virtual_id = String(
-      settings_payload.settings?.[TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY] ?? '',
+      settings_snapshot[TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY] ?? '',
     )
 
     set_preset_items(
@@ -530,7 +552,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         default_virtual_id,
       ),
     )
-  }, [])
+  }, [settings_snapshot])
 
   useEffect(() => {
     if (!project_snapshot.loaded) {
@@ -631,7 +653,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
     mode_update_in_flight_ref.current = true
     set_mode_updating(true)
-    set_mode(next_mode)
     const barrier_checkpoint = create_barrier_checkpoint()
     let snapshot_committed = false
 
@@ -640,21 +661,55 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         message: t('text_preserve_page.mode.loading_toast'),
         timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
         task: async () => {
-          const payload = await api_fetch<TextPreserveSnapshotPayload>(
-            '/api/v2/quality/rules/update-meta',
+          const current_preserve_slice = getQualityRuleSlice(
+            project_store.getState().quality,
+            TEXT_PRESERVE_RULE_TYPE,
+          )
+          const next_quality_state = replaceQualityRuleSlice(
+            project_store.getState().quality,
+            TEXT_PRESERVE_RULE_TYPE,
             {
-              rule_type: TEXT_PRESERVE_RULE_TYPE,
-              expected_revision: revision_ref.current,
-              meta: {
-                mode: next_mode,
-              },
+              ...current_preserve_slice,
+              mode: next_mode,
+              revision: current_preserve_slice.revision + 1,
             },
           )
-          apply_snapshot(payload.snapshot)
-          snapshot_committed = true
-          await wait_for_barrier('proofreading_cache_refresh', {
-            checkpoint: barrier_checkpoint,
+          const local_commit = commit_local_project_patch({
+            source: 'quality_rule_meta',
+            updatedSections: ['quality'],
+            patch: [
+              createProjectStoreReplaceSectionPatch('quality', next_quality_state),
+            ],
           })
+
+          snapshot_committed = true
+
+          try {
+            await api_fetch<TextPreserveMutationAckPayload>(
+              '/api/v2/quality/rules/update-meta',
+              {
+                rule_type: TEXT_PRESERVE_RULE_TYPE,
+                expected_revision: current_preserve_slice.revision,
+                meta: {
+                  mode: next_mode,
+                },
+              },
+            )
+          } catch (error) {
+            local_commit.rollback()
+            throw error
+          }
+
+          try {
+            await wait_for_barrier('proofreading_cache_refresh', {
+              checkpoint: barrier_checkpoint,
+            })
+          } catch (error) {
+            if (!is_modal_progress_timeout_error(error)) {
+              local_commit.rollback()
+            }
+            throw error
+          }
         },
       })
     } catch (error) {
@@ -672,8 +727,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       set_mode_updating(false)
     }
   }, [
-    apply_snapshot,
+    commit_local_project_patch,
     create_barrier_checkpoint,
+    project_store,
     push_toast,
     push_action_error_toast,
     run_modal_progress_toast,
@@ -956,23 +1012,23 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     })
 
     try {
-      const payload = await api_fetch<TextPreserveStatisticsPayload>(
-        '/api/v2/quality/rules/statistics',
-        {
-          rules: effective_entries.map((item) => ({
-            key: item.entry_id,
-            pattern: item.entry.src,
-            mode: TEXT_PRESERVE_RULE_TYPE,
-            regex: true,
-            case_sensitive: false,
-          })),
-          relation_candidates: effective_entries.map((item) => ({
-            key: item.entry_id,
-            src: item.entry.src,
-          })),
-        },
-      )
-      const results = payload.statistics?.results ?? {}
+      const item_texts = collect_project_item_texts(project_store.getState().items)
+      const worker_result = await run_quality_statistics_task({
+        rules: effective_entries.map((item) => ({
+          key: item.entry_id,
+          pattern: item.entry.src,
+          mode: TEXT_PRESERVE_RULE_TYPE,
+          regex: true,
+          case_sensitive: false,
+        })),
+        srcTexts: item_texts.srcTexts,
+        dstTexts: item_texts.dstTexts,
+        relationCandidates: effective_entries.map((item) => ({
+          key: item.entry_id,
+          src: item.entry.src,
+        })),
+      })
+      const results = worker_result.results
 
       set_statistics_state({
         running: false,
@@ -995,7 +1051,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       set_statistics_state(create_empty_statistics_state())
       push_action_error_toast(error)
     }
-  }, [entries, entry_ids, push_action_error_toast, statistics_state.running])
+  }, [entries, entry_ids, project_store, push_action_error_toast, statistics_state.running])
 
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
@@ -1121,12 +1177,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       )
       const target_preset = preset_items.find((item) => item.virtual_id === virtual_id)
       if (target_preset?.is_default) {
-        await api_fetch(
+        const settings_payload = await api_fetch<SettingsSnapshotPayload>(
           '/api/settings/update',
           build_default_preset_update_payload(
             String(payload.item?.virtual_id ?? ''),
           ),
         )
+        set_settings_snapshot(normalize_settings_snapshot(settings_payload))
       }
       await refresh_preset_menu()
       push_toast('success', t('text_preserve_page.feedback.preset_renamed'))
@@ -1135,33 +1192,35 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       push_action_error_toast(error)
       return false
     }
-  }, [preset_items, push_action_error_toast, push_toast, refresh_preset_menu, t])
+  }, [preset_items, push_action_error_toast, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const set_default_preset = useCallback(async (virtual_id: string): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         build_default_preset_update_payload(virtual_id),
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('text_preserve_page.feedback.default_preset_set'))
     } catch (error) {
       push_action_error_toast(error)
     }
-  }, [push_action_error_toast, push_toast, refresh_preset_menu, t])
+  }, [push_action_error_toast, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         build_default_preset_update_payload(''),
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('text_preserve_page.feedback.default_preset_cleared'))
     } catch (error) {
       push_action_error_toast(error)
     }
-  }, [push_action_error_toast, push_toast, refresh_preset_menu, t])
+  }, [push_action_error_toast, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const validate_entry = useCallback((entry: TextPreserveEntry): string | null => {
     if (entry.src === '') {
@@ -1370,10 +1429,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             return item.virtual_id === confirm_state.target_virtual_id
           })
           if (target_preset?.is_default) {
-            await api_fetch(
+            const settings_payload = await api_fetch<SettingsSnapshotPayload>(
               '/api/settings/update',
               build_default_preset_update_payload(''),
             )
+            set_settings_snapshot(normalize_settings_snapshot(settings_payload))
           }
           await refresh_preset_menu()
           push_toast('success', t('text_preserve_page.feedback.preset_deleted'))
@@ -1409,6 +1469,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     reset_entries,
     save_preset,
     selected_entry_ids,
+    set_settings_snapshot,
     t,
   ])
 

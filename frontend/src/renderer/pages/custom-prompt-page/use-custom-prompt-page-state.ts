@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { api_fetch } from '@/app/desktop-api'
-import { getPromptSlice } from '@/app/project-runtime/quality-runtime'
+import { createProjectStoreReplaceSectionPatch } from '@/app/project-runtime/project-store'
+import { getPromptSlice, replacePromptSlice } from '@/app/project-runtime/quality-runtime'
+import {
+  normalize_settings_snapshot,
+  type SettingsSnapshotPayload,
+} from '@/app/state/desktop-runtime-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n } from '@/i18n'
@@ -27,8 +32,8 @@ type PromptSnapshot = {
   text?: string
 }
 
-type PromptSnapshotPayload = {
-  prompt?: PromptSnapshot
+type PromptMutationAckPayload = {
+  accepted?: boolean
 }
 
 type PromptTemplatePayload = {
@@ -40,8 +45,8 @@ type PromptPresetPayload = {
   user_presets?: CustomPromptPresetItem[]
 }
 
-type PromptSettingsPayload = {
-  settings?: Record<string, string | undefined>
+type PromptImportPayload = {
+  text?: string
 }
 
 function create_empty_prompt_template(): CustomPromptTemplate {
@@ -177,7 +182,13 @@ export function useCustomPromptPageState(
   const config = CUSTOM_PROMPT_VARIANT_CONFIG[variant]
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
-  const { project_snapshot, project_store, settings_snapshot } = useDesktopRuntime()
+  const {
+    project_snapshot,
+    project_store,
+    settings_snapshot,
+    set_settings_snapshot,
+    commit_local_project_patch,
+  } = useDesktopRuntime()
   const project_store_state = useSyncExternalStore(
     project_store.subscribe,
     project_store.getState,
@@ -188,7 +199,7 @@ export function useCustomPromptPageState(
     return create_empty_prompt_template()
   })
   const [prompt_text, set_prompt_text] = useState('')
-  const [revision, set_revision] = useState(0)
+  const [, set_revision] = useState(0)
   const [enabled, set_enabled] = useState(false)
   const [preset_items, set_preset_items] = useState<CustomPromptPresetItem[]>([])
   const [preset_menu_open, set_preset_menu_open] = useState(false)
@@ -198,13 +209,8 @@ export function useCustomPromptPageState(
   const [preset_input_state, set_preset_input_state] = useState<CustomPromptPresetInputState>(() => {
     return create_empty_preset_input_state()
   })
-  const revision_ref = useRef(revision)
   const template_ref = useRef(template)
   const previous_app_language_ref = useRef(settings_snapshot.app_language)
-
-  useEffect(() => {
-    revision_ref.current = revision
-  }, [revision])
 
   useEffect(() => {
     template_ref.current = template
@@ -220,23 +226,6 @@ export function useCustomPromptPageState(
     set_enabled(Boolean(snapshot.meta?.enabled))
     set_prompt_text(resolve_editor_prompt_text(snapshot, resolved_template))
   }, [])
-
-  const save_prompt_request = useCallback(async (
-    next_text: string,
-    next_enabled?: boolean,
-  ): Promise<PromptSnapshot> => {
-    const payload = await api_fetch<PromptSnapshotPayload>(
-      '/api/v2/quality/prompts/save',
-      {
-        task_type: config.task_type,
-        expected_revision: revision_ref.current,
-        text: normalize_prompt_text(next_text),
-        enabled: next_enabled,
-      },
-    )
-
-    return normalize_prompt_snapshot(payload.prompt)
-  }, [config.task_type])
 
   const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
     const payload = await api_fetch<PromptTemplatePayload>(
@@ -256,6 +245,62 @@ export function useCustomPromptPageState(
       template_override,
     )
   }, [apply_snapshot, config.task_type, project_store_state.prompts])
+
+  const persist_prompt_change = useCallback(async (args: {
+    nextText: string
+    nextEnabled: boolean
+    failureMessage: string
+  }): Promise<boolean> => {
+    const current_prompt_slice = getPromptSlice(
+      project_store.getState().prompts,
+      config.task_type,
+    )
+    const next_prompt_slice = {
+      text: normalize_prompt_text(args.nextText),
+      enabled: args.nextEnabled,
+      revision: current_prompt_slice.revision + 1,
+    }
+    const next_prompts_state = replacePromptSlice(
+      project_store.getState().prompts,
+      config.task_type,
+      next_prompt_slice,
+    )
+    const local_commit = commit_local_project_patch({
+      source: 'quality_prompt_save',
+      updatedSections: ['prompts'],
+      patch: [
+        createProjectStoreReplaceSectionPatch('prompts', next_prompts_state),
+      ],
+    })
+
+    try {
+      await api_fetch<PromptMutationAckPayload>(
+        '/api/v2/quality/prompts/save',
+        {
+          task_type: config.task_type,
+          expected_revision: current_prompt_slice.revision,
+          text: next_prompt_slice.text,
+          enabled: next_prompt_slice.enabled,
+        },
+      )
+      return true
+    } catch (error) {
+      local_commit.rollback()
+      push_toast(
+        'error',
+        resolve_error_message(
+          error,
+          args.failureMessage,
+        ),
+      )
+      return false
+    }
+  }, [
+    commit_local_project_patch,
+    config.task_type,
+    project_store,
+    push_toast,
+  ])
 
   const refresh_template = useCallback(async (): Promise<void> => {
     try {
@@ -333,17 +378,14 @@ export function useCustomPromptPageState(
   }, [project_snapshot.loaded, refresh_template, settings_snapshot.app_language])
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
-    const [preset_payload, settings_payload] = await Promise.all([
-      api_fetch<PromptPresetPayload>(
-        '/api/v2/quality/prompts/presets',
-        {
-          task_type: config.task_type,
-        },
-      ),
-      api_fetch<PromptSettingsPayload>('/api/settings/app', {}),
-    ])
+    const preset_payload = await api_fetch<PromptPresetPayload>(
+      '/api/v2/quality/prompts/presets',
+      {
+        task_type: config.task_type,
+      },
+    )
     const default_virtual_id = String(
-      settings_payload.settings?.[config.default_preset_settings_key] ?? '',
+      settings_snapshot[config.default_preset_settings_key] ?? '',
     )
 
     set_preset_items(
@@ -353,27 +395,22 @@ export function useCustomPromptPageState(
         default_virtual_id,
       ),
     )
-  }, [config.default_preset_settings_key, config.task_type])
+  }, [config.default_preset_settings_key, config.task_type, settings_snapshot])
 
   const update_prompt_text = useCallback((next_text: string): void => {
     set_prompt_text(next_text)
   }, [])
 
   const save_prompt_text = useCallback(async (): Promise<void> => {
-    try {
-      const snapshot = await save_prompt_request(prompt_text)
-      apply_snapshot(snapshot)
+    const succeeded = await persist_prompt_change({
+      nextText: prompt_text,
+      nextEnabled: enabled,
+      failureMessage: t('custom_prompt_page.feedback.save_failed'),
+    })
+    if (succeeded) {
       push_toast('success', t('app.feedback.save_success'))
-    } catch (error) {
-      push_toast(
-        'error',
-        resolve_error_message(
-          error,
-          t('custom_prompt_page.feedback.save_failed'),
-        ),
-      )
     }
-  }, [apply_snapshot, prompt_text, push_toast, save_prompt_request, t])
+  }, [enabled, persist_prompt_change, prompt_text, push_toast, t])
 
   const commit_prompt_text = useCallback(async (
     next_text: string,
@@ -381,50 +418,25 @@ export function useCustomPromptPageState(
       | 'custom_prompt_page.feedback.import_success'
       | 'custom_prompt_page.feedback.reset_success',
   ): Promise<boolean> => {
-    const rollback_text = prompt_text
-    const rollback_enabled = enabled
-
-    set_prompt_text(next_text)
-
-    try {
-      const snapshot = await save_prompt_request(next_text)
-      apply_snapshot(snapshot)
+    const succeeded = await persist_prompt_change({
+      nextText: next_text,
+      nextEnabled: enabled,
+      failureMessage: t('custom_prompt_page.feedback.save_failed'),
+    })
+    if (succeeded) {
       push_toast('success', t(success_message_key))
       return true
-    } catch (error) {
-      set_prompt_text(rollback_text)
-      set_enabled(rollback_enabled)
-      push_toast(
-        'error',
-        resolve_error_message(
-          error,
-          t('custom_prompt_page.feedback.save_failed'),
-        ),
-      )
-      return false
     }
-  }, [apply_snapshot, enabled, prompt_text, push_toast, save_prompt_request, t])
+    return false
+  }, [enabled, persist_prompt_change, push_toast, t])
 
   const update_enabled = useCallback(async (next_enabled: boolean): Promise<void> => {
-    const previous_text = prompt_text
-    const previous_enabled = enabled
-    set_enabled(next_enabled)
-
-    try {
-      const snapshot = await save_prompt_request(prompt_text, next_enabled)
-      apply_snapshot(snapshot)
-    } catch (error) {
-      set_prompt_text(previous_text)
-      set_enabled(previous_enabled)
-      push_toast(
-        'error',
-        resolve_error_message(
-          error,
-          t('custom_prompt_page.feedback.save_failed'),
-        ),
-      )
-    }
-  }, [apply_snapshot, enabled, prompt_text, push_toast, save_prompt_request, t])
+    await persist_prompt_change({
+      nextText: prompt_text,
+      nextEnabled: next_enabled,
+      failureMessage: t('custom_prompt_page.feedback.save_failed'),
+    })
+  }, [persist_prompt_change, prompt_text, t])
 
   const import_prompt_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -433,16 +445,20 @@ export function useCustomPromptPageState(
         return
       }
 
-      const payload = await api_fetch<PromptSnapshotPayload>(
+      const payload = await api_fetch<PromptImportPayload>(
         '/api/v2/quality/prompts/import',
         {
           task_type: config.task_type,
-          expected_revision: revision_ref.current,
           path: pick_result.path,
         },
       )
-      apply_snapshot(normalize_prompt_snapshot(payload.prompt))
-      push_toast('success', t('custom_prompt_page.feedback.import_success'))
+      const succeeded = await commit_prompt_text(
+        String(payload.text ?? ''),
+        'custom_prompt_page.feedback.import_success',
+      )
+      if (!succeeded) {
+        return
+      }
     } catch (error) {
       push_toast(
         'error',
@@ -452,7 +468,7 @@ export function useCustomPromptPageState(
         ),
       )
     }
-  }, [apply_snapshot, config.task_type, push_toast, t])
+  }, [commit_prompt_text, config.task_type, push_toast, t])
 
   const export_prompt_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -615,13 +631,14 @@ export function useCustomPromptPageState(
       )
       const target_preset = preset_items.find((item) => item.virtual_id === virtual_id)
       if (target_preset?.is_default) {
-        await api_fetch(
+        const settings_payload = await api_fetch<SettingsSnapshotPayload>(
           '/api/settings/update',
           build_default_preset_update_payload(
             config,
             String(payload.item?.virtual_id ?? ''),
           ),
         )
+        set_settings_snapshot(normalize_settings_snapshot(settings_payload))
       }
       await refresh_preset_menu()
       push_toast('success', t('custom_prompt_page.feedback.preset_renamed'))
@@ -636,14 +653,15 @@ export function useCustomPromptPageState(
       )
       return false
     }
-  }, [config, preset_items, push_toast, refresh_preset_menu, t])
+  }, [config, preset_items, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const set_default_preset = useCallback(async (virtual_id: string): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         build_default_preset_update_payload(config, virtual_id),
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('custom_prompt_page.feedback.default_preset_set'))
     } catch (error) {
@@ -655,14 +673,15 @@ export function useCustomPromptPageState(
         ),
       )
     }
-  }, [config, push_toast, refresh_preset_menu, t])
+  }, [config, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         build_default_preset_update_payload(config, ''),
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('custom_prompt_page.feedback.default_preset_cleared'))
     } catch (error) {
@@ -674,7 +693,7 @@ export function useCustomPromptPageState(
         ),
       )
     }
-  }, [config, push_toast, refresh_preset_menu, t])
+  }, [config, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state())
@@ -793,10 +812,11 @@ export function useCustomPromptPageState(
             return item.virtual_id === confirm_state.target_virtual_id
           })
           if (target_preset?.is_default) {
-            await api_fetch(
+            const settings_payload = await api_fetch<SettingsSnapshotPayload>(
               '/api/settings/update',
               build_default_preset_update_payload(config, ''),
             )
+            set_settings_snapshot(normalize_settings_snapshot(settings_payload))
           }
           await refresh_preset_menu()
           push_toast('success', t('custom_prompt_page.feedback.preset_deleted'))
@@ -836,6 +856,7 @@ export function useCustomPromptPageState(
     push_toast,
     refresh_preset_menu,
     save_preset,
+    set_settings_snapshot,
     t,
     template.default_text,
   ])

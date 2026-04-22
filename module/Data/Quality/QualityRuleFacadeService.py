@@ -279,19 +279,14 @@ class QualityRuleFacadeService:
 
         return self.prompt_service.export_prompt(task_type, path)
 
-    def import_prompt(
+    def read_prompt_import_text(
         self,
         task_type: str,
         path: str,
-        *,
-        expected_revision: int,
-        enabled: bool | None = None,
-    ) -> dict[str, object]:
-        """对外暴露提示词导入。"""
+    ) -> str:
+        """对外暴露提示词导入文本读取。"""
 
-        return self.prompt_service.import_prompt(
+        return self.prompt_service.read_prompt_import_text(
             task_type,
             path,
-            expected_revision=expected_revision,
-            enabled=enabled,
         )

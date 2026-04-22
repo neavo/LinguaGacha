@@ -50,61 +50,12 @@ class QualityRuleEntry:
 
 
 @dataclass(frozen=True)
-class QualityRuleStatisticsResult:
-    """质量规则统计结果冻结后传递，避免前端再拆字段。"""
-
-    matched_item_count: int = 0
-    subset_parents: tuple[str, ...] = ()
-
-    @classmethod
-    def from_dict(cls, data: int | dict[str, Any] | None) -> Self:
-        """把统计结果统一归一化成命中数对象。"""
-
-        if isinstance(data, dict):
-            value = data.get("matched_item_count", 0)
-            subset_parents_raw = data.get("subset_parents", [])
-            subset_parents: tuple[str, ...] = ()
-            if isinstance(subset_parents_raw, (list, tuple, set)):
-                subset_parents = tuple(str(item) for item in subset_parents_raw)
-            return cls(
-                matched_item_count=int(value or 0),
-                subset_parents=subset_parents,
-            )
-
-        if hasattr(data, "matched_item_count"):
-            value = getattr(data, "matched_item_count", 0)
-            subset_parents_raw = getattr(data, "subset_parents", ())
-            subset_parents: tuple[str, ...] = ()
-            if isinstance(subset_parents_raw, (list, tuple, set)):
-                subset_parents = tuple(str(item) for item in subset_parents_raw)
-            return cls(
-                matched_item_count=int(value or 0),
-                subset_parents=subset_parents,
-            )
-
-        if data is None:
-            return cls()
-        return cls(matched_item_count=int(data))
-
-    def to_dict(self) -> dict[str, Any]:
-        """把统计结果转回边界层 JSON 结构。"""
-
-        return {
-            "matched_item_count": self.matched_item_count,
-            "subset_parents": list(self.subset_parents),
-        }
-
-
-@dataclass(frozen=True)
 class QualityRuleSnapshot:
     """质量规则快照把规则类型、版本与条目一并冻结，避免跨层漂移。"""
 
     rule_type: str = ""
     revision: int = 0
     meta: dict[str, Any] = field(default_factory=dict)
-    statistics: "QualityRuleStatisticsSnapshot" = field(
-        default_factory=lambda: QualityRuleStatisticsSnapshot()
-    )
     entries: tuple[QualityRuleEntry, ...] = ()
 
     @classmethod
@@ -134,15 +85,6 @@ class QualityRuleSnapshot:
             meta=dict(normalized.get("meta", {}))
             if isinstance(normalized.get("meta", {}), dict)
             else {},
-            statistics=(
-                normalized["statistics"]
-                if isinstance(
-                    normalized.get("statistics"), QualityRuleStatisticsSnapshot
-                )
-                else QualityRuleStatisticsSnapshot.from_dict(
-                    normalized.get("statistics", {})
-                )
-            ),
             entries=entries,
         )
 
@@ -153,52 +95,5 @@ class QualityRuleSnapshot:
             "rule_type": self.rule_type,
             "revision": self.revision,
             "meta": dict(self.meta),
-            "statistics": self.statistics.to_dict(),
             "entries": [entry.to_dict() for entry in self.entries],
-        }
-
-
-@dataclass(frozen=True)
-class QualityRuleStatisticsSnapshot:
-    """质量规则统计快照把结果和子父项关系一起冻结，供页面一次性消费。"""
-
-    available: bool = False
-    results: dict[str, QualityRuleStatisticsResult] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> Self:
-        """把统计响应归一化成对象，避免前端继续处理嵌套字典。"""
-
-        normalized: dict[str, Any]
-        if isinstance(data, dict):
-            normalized = data
-        else:
-            normalized = {}
-
-        available = bool(normalized.get("available", False))
-
-        results_raw = normalized.get("results", {})
-        results: dict[str, QualityRuleStatisticsResult] = {}
-        if isinstance(results_raw, dict):
-            for key, value in results_raw.items():
-                if isinstance(value, dict):
-                    result_payload = dict(value)
-                else:
-                    result_payload = {"matched_item_count": value}
-
-                results[str(key)] = QualityRuleStatisticsResult.from_dict(
-                    result_payload
-                )
-
-        return cls(
-            available=available,
-            results=results,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """把统计快照转换回 JSON 字典，保持边界层输入稳定。"""
-
-        return {
-            "available": self.available,
-            "results": {key: value.to_dict() for key, value in self.results.items()},
         }

@@ -6,13 +6,13 @@ import type {
   ProjectStoreState,
 } from './project-store'
 
-type QualityRuntimeRuleType =
+export type QualityRuntimeRuleType =
   | 'glossary'
   | 'pre_replacement'
   | 'post_replacement'
   | 'text_preserve'
 
-type QualityRuntimeTaskType = 'translation' | 'analysis'
+export type QualityRuntimeTaskType = 'translation' | 'analysis'
 
 type ProofreadingLookupQuery = {
   keyword: string
@@ -61,6 +61,50 @@ export function getPromptSlice(
   return task_type === 'translation'
     ? clonePromptSlice(prompts.translation)
     : clonePromptSlice(prompts.analysis)
+}
+
+export function replaceQualityRuleSlice(
+  quality: ProjectStoreQualityState,
+  rule_type: QualityRuntimeRuleType,
+  next_slice: ProjectStoreQualityRuleSlice,
+): ProjectStoreQualityState {
+  const cloned_quality = {
+    glossary: cloneQualitySlice(quality.glossary),
+    pre_replacement: cloneQualitySlice(quality.pre_replacement),
+    post_replacement: cloneQualitySlice(quality.post_replacement),
+    text_preserve: cloneQualitySlice(quality.text_preserve),
+  }
+
+  if (rule_type === 'glossary') {
+    cloned_quality.glossary = cloneQualitySlice(next_slice)
+    return cloned_quality
+  }
+  if (rule_type === 'pre_replacement') {
+    cloned_quality.pre_replacement = cloneQualitySlice(next_slice)
+    return cloned_quality
+  }
+  if (rule_type === 'post_replacement') {
+    cloned_quality.post_replacement = cloneQualitySlice(next_slice)
+    return cloned_quality
+  }
+
+  cloned_quality.text_preserve = cloneQualitySlice(next_slice)
+  return cloned_quality
+}
+
+export function replacePromptSlice(
+  prompts: ProjectStorePromptsState,
+  task_type: QualityRuntimeTaskType,
+  next_slice: ProjectStorePromptSlice,
+): ProjectStorePromptsState {
+  return {
+    translation: task_type === 'translation'
+      ? clonePromptSlice(next_slice)
+      : clonePromptSlice(prompts.translation),
+    analysis: task_type === 'analysis'
+      ? clonePromptSlice(next_slice)
+      : clonePromptSlice(prompts.analysis),
+  }
 }
 
 export function serializeQualityRuntimeSnapshot(

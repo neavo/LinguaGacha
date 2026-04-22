@@ -43,31 +43,12 @@ import type {
   WorkbenchTaskViewState,
 } from "@/pages/workbench-page/types";
 
-type WorkbenchFilePatch = {
-  summary: Omit<WorkbenchSnapshot, "entries">;
-  ordered_rel_paths: string[];
-  removed_rel_paths: string[];
-  entries: WorkbenchSnapshotEntry[];
-};
-
-type WorkbenchFilePatchPayload = {
-  patch?: {
-    summary?: Partial<Omit<WorkbenchSnapshot, "entries">> & {
-      entries?: Array<Partial<WorkbenchSnapshotEntry>>;
-    };
-    ordered_rel_paths?: unknown;
-    removed_rel_paths?: unknown;
-    entries?: Array<Partial<WorkbenchSnapshotEntry>>;
-  };
-};
-
 const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   file_count: 0,
   total_items: 0,
   translated: 0,
   translated_in_past: 0,
   error_count: 0,
-  file_op_running: false,
   entries: [],
 };
 
@@ -91,96 +72,10 @@ function close_dialog_state(): WorkbenchDialogState {
   };
 }
 
-function normalize_rel_paths(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((entry) => String(entry ?? "").trim())
-    .filter((entry) => entry !== "");
-}
-
-function normalize_file_patch(
-  payload: WorkbenchFilePatchPayload,
-): WorkbenchFilePatch {
-  const patch = payload.patch ?? {};
-  const summary = patch.summary ?? {};
-  const entries = Array.isArray(patch.entries)
-    ? patch.entries
-        .filter(
-          (entry) =>
-            typeof entry?.rel_path === "string" && entry.rel_path !== "",
-        )
-        .map((entry) => ({
-          rel_path: String(entry.rel_path),
-          file_type: String(entry.file_type ?? ""),
-          item_count: Number(entry.item_count ?? 0),
-        }))
-    : [];
-
-  return {
-    summary: {
-      file_count: Number(summary.file_count ?? 0),
-      total_items: Number(summary.total_items ?? 0),
-      translated: Number(summary.translated ?? 0),
-      translated_in_past: Number(summary.translated_in_past ?? 0),
-      error_count: Number(summary.error_count ?? 0),
-      file_op_running: Boolean(summary.file_op_running),
-    },
-    ordered_rel_paths: normalize_rel_paths(patch.ordered_rel_paths),
-    removed_rel_paths: normalize_rel_paths(patch.removed_rel_paths),
-    entries,
-  };
-}
-
 function map_snapshot_entries(
   entries: WorkbenchSnapshotEntry[],
 ): WorkbenchFileEntry[] {
   return entries.map((entry) => ({ ...entry }));
-}
-
-function merge_workbench_entries(args: {
-  previous_entries: WorkbenchFileEntry[];
-  patch: WorkbenchFilePatch;
-}): WorkbenchFileEntry[] | null {
-  const affected_rel_path_set = new Set<string>([
-    ...args.patch.removed_rel_paths,
-    ...args.patch.entries.map((entry) => entry.rel_path),
-  ]);
-  const merged_entry_map = new Map<string, WorkbenchFileEntry>();
-
-  for (const previous_entry of args.previous_entries) {
-    if (affected_rel_path_set.has(previous_entry.rel_path)) {
-      continue;
-    }
-    merged_entry_map.set(previous_entry.rel_path, previous_entry);
-  }
-
-  for (const patched_entry of args.patch.entries) {
-    merged_entry_map.set(patched_entry.rel_path, { ...patched_entry });
-  }
-
-  const ordered_rel_paths = args.patch.ordered_rel_paths;
-  if (ordered_rel_paths.length === 0) {
-    return Array.from(merged_entry_map.values());
-  }
-
-  const next_entries: WorkbenchFileEntry[] = [];
-  for (const rel_path of ordered_rel_paths) {
-    const entry = merged_entry_map.get(rel_path);
-    if (entry === undefined) {
-      return null;
-    }
-    next_entries.push(entry);
-    merged_entry_map.delete(rel_path);
-  }
-
-  if (merged_entry_map.size > 0) {
-    return null;
-  }
-
-  return next_entries;
 }
 
 type WorkbenchSelectionState = {
@@ -852,6 +747,7 @@ export function useWorkbenchLiveState(
   const [settled_project_path, set_settled_project_path] = useState("");
   const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState(false);
+  const [file_op_running, set_file_op_running] = useState(false);
   const [selected_entry_ids, set_selected_entry_ids] = useState<string[]>([]);
   const [active_entry_id, set_active_entry_id] = useState<string | null>(null);
   const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null);
@@ -938,56 +834,6 @@ export function useWorkbenchLiveState(
     [apply_selection_state],
   );
 
-  const apply_file_patch = useCallback(async (): Promise<void> => {
-    const payload = await api_fetch<WorkbenchFilePatchPayload>(
-      "/api/v2/project/workbench/file-patch",
-      {
-        rel_paths: workbench_change_signal.rel_paths,
-        removed_rel_paths: workbench_change_signal.removed_rel_paths,
-        include_order: true,
-      },
-    );
-    const patch = normalize_file_patch(payload);
-    const previous_entries = entries_ref.current;
-    const previous_selection_state = selection_state_ref.current;
-    const next_entries = merge_workbench_entries({
-      previous_entries,
-      patch,
-    });
-
-    if (next_entries === null) {
-      throw new Error("工作台文件补丁无法安全合并。");
-    }
-
-    const next_snapshot: WorkbenchSnapshot = {
-      ...snapshot_ref.current,
-      ...patch.summary,
-      entries: next_entries,
-    };
-
-    snapshot_ref.current = next_snapshot;
-    set_snapshot(next_snapshot);
-    set_entries(next_entries);
-    apply_selection_state(
-      resolve_workbench_selection_after_snapshot({
-        previous_entries,
-        next_entries,
-        previous_selection_state,
-        preferred_active_entry_id: previous_selection_state.active_entry_id,
-      }),
-    );
-    set_refresh_error(null);
-    set_cache_status("ready");
-    set_cache_stale(false);
-    set_last_loaded_at(Date.now());
-    set_settled_project_path(project_snapshot.path);
-  }, [
-    apply_selection_state,
-    project_snapshot.path,
-    workbench_change_signal.rel_paths,
-    workbench_change_signal.removed_rel_paths,
-  ]);
-
   const refresh_snapshot = useCallback(
     async (
       preferred_active_entry_id: string | null = null,
@@ -997,6 +843,7 @@ export function useWorkbenchLiveState(
         set_refresh_request_id(0);
         snapshot_ref.current = EMPTY_SNAPSHOT;
         set_snapshot(EMPTY_SNAPSHOT);
+        set_file_op_running(false);
         set_entries([]);
         apply_selection_state(create_empty_selection_state());
         set_refresh_error(null);
@@ -1029,6 +876,7 @@ export function useWorkbenchLiveState(
         snapshot_ref.current = next_snapshot;
         set_snapshot(next_snapshot);
         apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
+        set_file_op_running(false);
         set_refresh_error(null);
         set_cache_status("ready");
         set_cache_stale(false);
@@ -1047,6 +895,7 @@ export function useWorkbenchLiveState(
         set_refresh_error(message);
         set_cache_status("error");
         set_cache_stale(true);
+        set_file_op_running(false);
         set_settled_project_path(project_snapshot.path);
         push_toast("error", message);
         return snapshot_ref.current;
@@ -1073,6 +922,7 @@ export function useWorkbenchLiveState(
     async function load_workbench_data(): Promise<void> {
       if (!project_snapshot.loaded) {
         set_snapshot(EMPTY_SNAPSHOT);
+        set_file_op_running(false);
         set_entries([]);
         apply_selection_state(create_empty_selection_state());
         set_dialog_state(close_dialog_state());
@@ -1106,22 +956,13 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    // 为什么：工作台收到结构化变更后，优先走文件补丁；只有全局或补丁失败时才退回整页刷新。
+    // 为什么：工作台现在完全依赖 ProjectStore 重建视图，收到任意结构化变更后直接全量重算。
     if (previous_seq !== workbench_change_signal.seq) {
       set_cache_stale(true);
-      if (workbench_change_signal.scope === "global") {
-        void refresh_snapshot().catch(() => {});
-        return;
-      }
-
-      void apply_file_patch().catch(() => {
-        void refresh_snapshot().catch(() => {});
-      });
+      void refresh_snapshot().catch(() => {});
     }
   }, [
-    apply_file_patch,
     project_snapshot.loaded,
-    workbench_change_signal.scope,
     workbench_change_signal.seq,
     refresh_snapshot,
   ]);
@@ -1342,12 +1183,12 @@ export function useWorkbenchLiveState(
   const readonly =
     !project_snapshot.loaded ||
     task_snapshot.busy ||
-    snapshot.file_op_running ||
+    file_op_running ||
     is_mutation_running;
   const can_edit_files = !readonly;
   const can_export_translation =
     project_snapshot.loaded &&
-    !snapshot.file_op_running &&
+    !file_op_running &&
     !is_mutation_running;
   const can_close_project =
     project_snapshot.loaded && !task_snapshot.busy && !is_mutation_running;
@@ -1377,14 +1218,7 @@ export function useWorkbenchLiveState(
 
       try {
         await action();
-        set_snapshot((previous_snapshot) => {
-          const next_snapshot = {
-            ...previous_snapshot,
-            file_op_running: true,
-          };
-          snapshot_ref.current = next_snapshot;
-          return next_snapshot;
-        });
+        set_file_op_running(true);
         if (options.waitForProjectPagesBarrier !== undefined) {
           await options.waitForProjectPagesBarrier("workbench_file_mutation", {
             checkpoint: barrier_checkpoint,
@@ -1666,6 +1500,7 @@ export function useWorkbenchLiveState(
             loaded: Boolean(payload.project?.loaded),
           });
           set_snapshot(EMPTY_SNAPSHOT);
+          set_file_op_running(false);
           set_entries([]);
           apply_selection_state(create_empty_selection_state());
           await refresh_task();
@@ -1723,7 +1558,7 @@ export function useWorkbenchLiveState(
     settled_project_path,
     refresh_error,
     is_refreshing,
-    file_op_running: snapshot.file_op_running,
+    file_op_running,
     stats,
     stats_mode,
     translation_task_runtime,

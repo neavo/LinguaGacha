@@ -16,10 +16,7 @@ def test_server_bootstrap_registers_only_active_v2_quality_routes():
         "/api/v2/quality/rules/query-proofreading",
     ) not in core_api_server.route_map
     assert ("POST", "/api/v2/quality/prompts/snapshot") not in core_api_server.route_map
-    assert (
-        core_api_server.route_map[("POST", "/api/v2/quality/rules/statistics")].mode
-        == "json"
-    )
+    assert ("POST", "/api/v2/quality/rules/statistics") not in core_api_server.route_map
     assert (
         core_api_server.route_map[("POST", "/api/v2/quality/rules/save-entries")].mode
         == "json"

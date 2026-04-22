@@ -2,18 +2,15 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from module.Data.Core.Item import Item
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
 from module.Data.Core.DataTypes import AnalysisGlossaryImportPreviewEntry
 from module.Data.Core.DataTypes import ProjectFileMutationResult
 from module.Data.Core.DataTypes import ProjectPrefilterRequest
-from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
-from module.Data.Core.DataTypes import WorkbenchSnapshot
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
 
-def test_project_prefilter_request_and_workbench_snapshots_are_frozen() -> None:
+def test_project_prefilter_request_is_frozen() -> None:
     request = ProjectPrefilterRequest(
         token=7,
         seq=9,
@@ -22,23 +19,8 @@ def test_project_prefilter_request_and_workbench_snapshots_are_frozen() -> None:
         source_language="JA",
         mtool_optimizer_enable=True,
     )
-    entry = WorkbenchFileEntrySnapshot(
-        rel_path="script/a.txt",
-        item_count=2,
-        file_type=Item.FileType.TXT,
-    )
-    snapshot = WorkbenchSnapshot(
-        file_count=1,
-        total_items=2,
-        translated=1,
-        translated_in_past=0,
-        error_count=0,
-        entries=(entry,),
-    )
 
     assert request.reason == "project_loaded"
-    assert snapshot.entries == (entry,)
-    assert snapshot.entries[0].file_type is Item.FileType.TXT
 
     with pytest.raises(FrozenInstanceError):
         request.reason = "config_updated"

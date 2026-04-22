@@ -4,8 +4,6 @@ from unittest.mock import Mock
 from api.v2.Application.QualityRuleAppService import QualityRuleAppService
 from api.v2.Client.ApiClient import ApiClient
 from api.v2.Client.QualityRuleApiClient import QualityRuleApiClient
-from api.v2.Models.QualityRule import QualityRuleSnapshot
-from api.v2.Models.QualityRule import QualityRuleStatisticsSnapshot
 from api.v2.Server.Routes.QualityRoutes import QualityRoutes
 
 
@@ -48,27 +46,6 @@ def build_quality_rule_facade() -> Mock:
     }
     quality_rule_facade.delete_user_preset.return_value = "user/renamed.json"
     return quality_rule_facade
-
-
-def build_quality_rule_snapshot_payload() -> dict[str, object]:
-    return {
-        "snapshot": {
-            "rule_type": "glossary",
-            "revision": 2,
-            "meta": {"enabled": True},
-            "statistics": {"available": False, "results": {}},
-            "entries": [
-                {
-                    "entry_id": "glossary:0",
-                    "src": "勇者",
-                    "dst": "Hero",
-                    "info": "",
-                    "regex": False,
-                    "case_sensitive": False,
-                }
-            ],
-        }
-    }
 
 
 def test_quality_rule_api_client_rule_import_export_and_presets_round_trip(
@@ -121,17 +98,17 @@ def test_quality_rule_api_client_rule_import_export_and_presets_round_trip(
     assert deleted_path == "user/renamed.json"
 
 
-def test_quality_rule_api_client_save_entries_and_update_meta_return_snapshots(
+def test_quality_rule_api_client_save_entries_and_update_meta_return_minimal_ack(
     recording_api_client,
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
         QualityRoutes.SAVE_ENTRIES_PATH,
-        build_quality_rule_snapshot_payload(),
+        {"accepted": True},
     )
     recording_api_client.queue_post_response(
         QualityRoutes.UPDATE_META_PATH,
-        build_quality_rule_snapshot_payload(),
+        {"accepted": True},
     )
 
     saved_snapshot = quality_client.save_entries(
@@ -141,10 +118,8 @@ def test_quality_rule_api_client_save_entries_and_update_meta_return_snapshots(
         {"rule_type": "glossary", "meta": {"enabled": True}}
     )
 
-    assert isinstance(saved_snapshot, QualityRuleSnapshot)
-    assert saved_snapshot.rule_type == "glossary"
-    assert isinstance(updated_snapshot, QualityRuleSnapshot)
-    assert updated_snapshot.entries[0].dst == "Hero"
+    assert saved_snapshot is True
+    assert updated_snapshot is True
 
 
 def test_quality_rule_api_client_filters_invalid_rule_entry_payloads(
@@ -167,32 +142,6 @@ def test_quality_rule_api_client_filters_invalid_rule_entry_payloads(
     assert preset_entries == [{"src": "勇者", "dst": "Hero"}]
 
 
-def test_quality_rule_api_client_build_rule_statistics_returns_snapshot(
-    recording_api_client,
-) -> None:
-    quality_client = QualityRuleApiClient(recording_api_client)
-    recording_api_client.queue_post_response(
-        QualityRoutes.STATISTICS_PATH,
-        {
-            "statistics": {
-                "available": True,
-                "results": {
-                    "glossary": {
-                        "matched_item_count": 4,
-                        "subset_parents": ["root"],
-                    }
-                },
-            }
-        },
-    )
-
-    result = quality_client.build_rule_statistics({"rule_type": "glossary"})
-
-    assert isinstance(result, QualityRuleStatisticsSnapshot)
-    assert result.available is True
-    assert result.results["glossary"].matched_item_count == 4
-
-
 def test_quality_rule_api_client_normalizes_prompt_payload_variants(
     recording_api_client,
 ) -> None:
@@ -203,11 +152,11 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
     )
     recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_SAVE_PATH,
-        {"prompt": {"task_type": "translation", "text": "saved"}},
+        {"accepted": True},
     )
     recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_IMPORT_PATH,
-        {"prompt": "invalid"},
+        {"text": "imported body"},
     )
     recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_EXPORT_PATH,
@@ -216,12 +165,14 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
 
     template = quality_client.get_prompt_template("translation")
     saved_prompt = quality_client.save_prompt({"task_type": "translation"})
-    imported_prompt = quality_client.import_prompt({"task_type": "translation"})
+    imported_prompt = quality_client.read_prompt_import_text(
+        {"task_type": "translation"}
+    )
     exported_path = quality_client.export_prompt({"task_type": "translation"})
 
     assert template == {"system": "system prompt", "version": "2"}
-    assert saved_prompt == {"task_type": "translation", "text": "saved"}
-    assert imported_prompt == {}
+    assert saved_prompt is True
+    assert imported_prompt == "imported body"
     assert exported_path == "demo/output/prompt.txt"
 
 
@@ -289,11 +240,11 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
     )
     recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_SAVE_PATH,
-        {"prompt": "invalid"},
+        {},
     )
     recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_IMPORT_PATH,
-        {"prompt": {"task_type": "translation", "text": "imported"}},
+        {"text": "imported"},
     )
     recording_api_client.queue_post_response(
         QualityRoutes.RULE_PRESET_READ_PATH,
@@ -301,7 +252,9 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
     )
 
     saved_prompt = quality_client.save_prompt({"task_type": "translation"})
-    imported_prompt = quality_client.import_prompt({"task_type": "translation"})
+    imported_prompt = quality_client.read_prompt_import_text(
+        {"task_type": "translation"}
+    )
     saved_item = quality_client.save_rule_preset("glossary", "新预设", [])
     renamed_item = quality_client.rename_rule_preset(
         "glossary",
@@ -311,8 +264,8 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
     template = quality_client.get_prompt_template("translation")
     preset_entries = quality_client.read_rule_preset("glossary", "builtin:base.json")
 
-    assert saved_prompt == {}
-    assert imported_prompt == {"task_type": "translation", "text": "imported"}
+    assert saved_prompt is False
+    assert imported_prompt == "imported"
     assert saved_item == {}
     assert renamed_item == {}
     assert template == {}

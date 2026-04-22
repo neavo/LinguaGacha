@@ -1,7 +1,4 @@
 from module.Data.Proofreading.ProofreadingFilterService import (
-    ProofreadingFilterOptions as ProofreadingFilterOptions,
-)
-from module.Data.Proofreading.ProofreadingFilterService import (
     ProofreadingFilterService as ProofreadingFilterService,
 )
 from module.Data.Proofreading.ProofreadingMutationService import (

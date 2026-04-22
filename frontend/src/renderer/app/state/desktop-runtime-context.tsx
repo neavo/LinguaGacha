@@ -16,12 +16,17 @@ import {
   open_v2_project_bootstrap_stream,
 } from '@/app/desktop-api'
 import {
+  createProjectStoreReplaceSectionPatch,
   createProjectStore,
   isProjectStoreStage,
   type ProjectStorePatchEvent,
   type ProjectStorePatchOperation,
+  type ProjectStorePatchRevisionMode,
+  type ProjectStoreSectionStateMap,
   type ProjectStoreStage,
+  type ProjectStoreState,
   type ProjectStoreSectionRevisions,
+  snapshotProjectStoreSections,
 } from '@/app/project-runtime/project-store'
 import { createV2ProjectRuntime } from '@/app/project-runtime/use-project-runtime'
 
@@ -50,6 +55,12 @@ export type SettingsSnapshot = {
   write_translated_name_fields_to_file: boolean
   auto_process_prefix_suffix_preserved_text: boolean
   mtool_optimizer_enable: boolean
+  glossary_default_preset: string
+  pre_translation_replacement_default_preset: string
+  post_translation_replacement_default_preset: string
+  text_preserve_default_preset: string
+  translation_custom_prompt_default_preset: string
+  analysis_custom_prompt_default_preset: string
   recent_projects: RecentProjectEntry[]
 }
 
@@ -116,6 +127,7 @@ type DesktopRuntimeContextValue = {
   set_project_warmup_status: (status: ProjectWarmupStatus) => void
   set_pending_target_route: (route_id: RouteId | null) => void
   project_store: ReturnType<typeof createProjectStore>
+  commit_local_project_patch: (input: LocalProjectPatchInput) => LocalProjectPatchCommit
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>
   refresh_settings: () => Promise<SettingsSnapshot>
   refresh_task: () => Promise<TaskSnapshot>
@@ -150,6 +162,20 @@ type ProjectPatchEventPayload = {
   sectionRevisions?: unknown
 }
 
+export type LocalProjectPatchInput = {
+  source: string
+  updatedSections: ProjectStoreStage[]
+  patch: ProjectStorePatchOperation[]
+  rollbackPatch?: ProjectStorePatchOperation[]
+}
+
+export type LocalProjectPatchCommit = {
+  previousProjectRevision: number
+  previousSectionRevisions: ProjectStoreSectionRevisions
+  previousSections: Partial<ProjectStoreSectionStateMap>
+  rollback: (source?: string) => void
+}
+
 const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   app_language: 'ZH',
   source_language: 'JA',
@@ -168,6 +194,12 @@ const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   write_translated_name_fields_to_file: true,
   auto_process_prefix_suffix_preserved_text: true,
   mtool_optimizer_enable: true,
+  glossary_default_preset: '',
+  pre_translation_replacement_default_preset: '',
+  post_translation_replacement_default_preset: '',
+  text_preserve_default_preset: '',
+  translation_custom_prompt_default_preset: '',
+  analysis_custom_prompt_default_preset: '',
   recent_projects: [],
 }
 
@@ -280,6 +312,20 @@ export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): S
     ),
     mtool_optimizer_enable: Boolean(
       snapshot.mtool_optimizer_enable ?? DEFAULT_SETTINGS_SNAPSHOT.mtool_optimizer_enable,
+    ),
+    glossary_default_preset: String(snapshot.glossary_default_preset ?? ''),
+    pre_translation_replacement_default_preset: String(
+      snapshot.pre_translation_replacement_default_preset ?? '',
+    ),
+    post_translation_replacement_default_preset: String(
+      snapshot.post_translation_replacement_default_preset ?? '',
+    ),
+    text_preserve_default_preset: String(snapshot.text_preserve_default_preset ?? ''),
+    translation_custom_prompt_default_preset: String(
+      snapshot.translation_custom_prompt_default_preset ?? '',
+    ),
+    analysis_custom_prompt_default_preset: String(
+      snapshot.analysis_custom_prompt_default_preset ?? '',
     ),
     recent_projects: normalize_recent_projects(snapshot.recent_projects),
   }
@@ -489,6 +535,63 @@ function resolve_project_patch_task_payload(
   return null
 }
 
+function build_local_project_patch_revisions(
+  current_revisions: ProjectStoreState['revisions'],
+  updated_sections: ProjectStoreStage[],
+): {
+  projectRevision: number
+  sectionRevisions: ProjectStoreSectionRevisions
+} {
+  const current_max_revision = Math.max(
+    current_revisions.projectRevision,
+    ...Object.values(current_revisions.sections),
+  )
+  const next_section_revisions: ProjectStoreSectionRevisions = {}
+
+  for (const section of updated_sections) {
+    next_section_revisions[section] = (current_revisions.sections[section] ?? 0) + 1
+  }
+
+  return {
+    projectRevision: current_max_revision + 1,
+    sectionRevisions: next_section_revisions,
+  }
+}
+
+function collect_previous_section_revisions(
+  current_revisions: ProjectStoreState['revisions'],
+  updated_sections: ProjectStoreStage[],
+): ProjectStoreSectionRevisions {
+  const previous_section_revisions: ProjectStoreSectionRevisions = {}
+
+  for (const section of updated_sections) {
+    previous_section_revisions[section] = current_revisions.sections[section] ?? 0
+  }
+
+  return previous_section_revisions
+}
+
+function build_local_project_patch_rollback_patch(args: {
+  updatedSections: ProjectStoreStage[]
+  previousSections: Partial<ProjectStoreSectionStateMap>
+}): ProjectStorePatchOperation[] {
+  return args.updatedSections.map((section) => {
+    if (section === 'files' || section === 'items') {
+      throw new Error(`本地 project patch 暂不支持自动回滚 ${section} section。`)
+    }
+
+    const previous_section = args.previousSections[section]
+    if (previous_section === undefined) {
+      throw new Error(`缺少 ${section} 的回滚快照。`)
+    }
+
+    return createProjectStoreReplaceSectionPatch(
+      section,
+      previous_section,
+    )
+  })
+}
+
 export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Element {
   const [hydration_ready, set_hydration_ready] = useState(false)
   const [hydration_error, set_hydration_error] = useState<string | null>(null)
@@ -579,6 +682,103 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       removed_rel_paths: [],
     }))
   }, [])
+
+  const apply_runtime_project_patch = useCallback((
+    patch_event: ProjectStorePatchEvent,
+    revision_mode: ProjectStorePatchRevisionMode = 'merge',
+  ): void => {
+    project_store_ref.current.applyProjectPatch(patch_event, {
+      revisionMode: revision_mode,
+    })
+
+    const task_payload = resolve_project_patch_task_payload(patch_event)
+    if (task_payload !== null) {
+      set_task_snapshot((previous_snapshot) => {
+        return merge_task_progress_update(
+          merge_task_status_update(previous_snapshot, task_payload),
+          task_payload,
+        )
+      })
+    }
+
+    const item_ids = collect_project_patch_item_ids(patch_event)
+    const rel_paths = collect_project_patch_rel_paths(patch_event)
+    if (patch_event.updatedSections.some((section) => ['project', 'files', 'items'].includes(section))) {
+      bump_workbench_runtime_signal({
+        reason: patch_event.source,
+        relPaths: rel_paths,
+      })
+    }
+
+    if (patch_event.updatedSections.some((section) => [
+      'project',
+      'items',
+      'quality',
+      'prompts',
+      'analysis',
+      'proofreading',
+      'task',
+    ].includes(section))) {
+      bump_proofreading_runtime_signal({
+        reason: patch_event.source,
+        itemIds: item_ids,
+        relPaths: rel_paths,
+      })
+    }
+  }, [
+    bump_proofreading_runtime_signal,
+    bump_workbench_runtime_signal,
+  ])
+
+  const commit_local_project_patch = useCallback((input: LocalProjectPatchInput): LocalProjectPatchCommit => {
+    if (input.updatedSections.length === 0) {
+      throw new Error('本地 project patch 至少需要一个 updated section。')
+    }
+
+    const current_state = project_store_ref.current.getState()
+    const previous_sections = snapshotProjectStoreSections(current_state, input.updatedSections)
+    const previous_project_revision = current_state.revisions.projectRevision
+    const previous_section_revisions = collect_previous_section_revisions(
+      current_state.revisions,
+      input.updatedSections,
+    )
+    const next_revisions = build_local_project_patch_revisions(
+      current_state.revisions,
+      input.updatedSections,
+    )
+
+    apply_runtime_project_patch({
+      source: input.source,
+      projectRevision: next_revisions.projectRevision,
+      updatedSections: input.updatedSections,
+      patch: input.patch,
+      sectionRevisions: next_revisions.sectionRevisions,
+    }, 'exact')
+
+    let rolled_back = false
+    return {
+      previousProjectRevision: previous_project_revision,
+      previousSectionRevisions: previous_section_revisions,
+      previousSections: previous_sections,
+      rollback: (source = `${input.source}_rollback`) => {
+        if (rolled_back) {
+          return
+        }
+
+        rolled_back = true
+        apply_runtime_project_patch({
+          source,
+          projectRevision: previous_project_revision,
+          updatedSections: input.updatedSections,
+          patch: input.rollbackPatch ?? build_local_project_patch_rollback_patch({
+            updatedSections: input.updatedSections,
+            previousSections: previous_sections,
+          }),
+          sectionRevisions: previous_section_revisions,
+        }, 'exact')
+      },
+    }
+  }, [apply_runtime_project_patch])
 
   useEffect(() => {
     let cancelled = false
@@ -735,10 +935,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     async function handle_project_patch(event: MessageEvent<string>): Promise<void> {
       const payload = parse_event_payload(event) as ProjectPatchEventPayload
       const patch_event = normalize_project_patch_event(payload)
-      const updated_sections = patch_event?.updatedSections ?? normalize_section_array(payload.updatedSections)
+      const updated_sections = normalize_section_array(payload.updatedSections)
+        .filter(isProjectStoreStage)
       const reason = String(payload.source ?? 'project_patch')
-      const item_ids = patch_event === null ? [] : collect_project_patch_item_ids(patch_event)
-      const rel_paths = patch_event === null ? [] : collect_project_patch_rel_paths(patch_event)
 
       if (patch_event === null) {
         if (!project_snapshot.loaded || project_snapshot.path.trim() === '') {
@@ -750,46 +949,42 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         } catch {
           return
         }
-      } else {
-        project_store_ref.current.applyProjectPatch(patch_event)
 
-        const task_payload = resolve_project_patch_task_payload(patch_event)
-        if (task_payload !== null) {
-          set_task_snapshot((previous_snapshot) => {
-            return merge_task_progress_update(
-              merge_task_status_update(previous_snapshot, task_payload),
-              task_payload,
-            )
+        if (cancelled) {
+          return
+        }
+
+        if (updated_sections.some((section) => ['project', 'files', 'items'].includes(section))) {
+          bump_workbench_runtime_signal({
+            reason,
+            relPaths: [],
           })
         }
+
+        if (updated_sections.some((section) => [
+          'project',
+          'items',
+          'quality',
+          'prompts',
+          'analysis',
+          'proofreading',
+          'task',
+        ].includes(section))) {
+          bump_proofreading_runtime_signal({
+            reason,
+            itemIds: [],
+            relPaths: [],
+          })
+        }
+
+        return
       }
 
       if (cancelled) {
         return
       }
 
-      if (updated_sections.some((section) => ['project', 'files', 'items'].includes(section))) {
-        bump_workbench_runtime_signal({
-          reason,
-          relPaths: rel_paths,
-        })
-      }
-
-      if (updated_sections.some((section) => [
-        'project',
-        'items',
-        'quality',
-        'prompts',
-        'analysis',
-        'proofreading',
-        'task',
-      ].includes(section))) {
-        bump_proofreading_runtime_signal({
-          reason,
-          itemIds: item_ids,
-          relPaths: rel_paths,
-        })
-      }
+      apply_runtime_project_patch(patch_event)
     }
 
     async function attach_event_stream(): Promise<void> {
@@ -821,6 +1016,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     }
   }, [
     apply_settings_snapshot,
+    apply_runtime_project_patch,
     bump_proofreading_runtime_signal,
     bump_workbench_runtime_signal,
     project_snapshot.loaded,
@@ -849,6 +1045,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       set_project_warmup_status,
       set_pending_target_route,
       project_store: project_store_ref.current,
+      commit_local_project_patch,
       update_app_language,
       refresh_settings,
       refresh_task,
@@ -865,6 +1062,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     project_warmup_stage,
     pending_target_route,
     is_app_language_updating,
+    commit_local_project_patch,
     refresh_settings,
     refresh_task,
     update_app_language,

@@ -4,6 +4,7 @@ import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { createProjectStoreReplaceSectionPatch } from '@/app/project-runtime/project-store'
 import { DesktopRuntimeProvider } from '@/app/state/desktop-runtime-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 
@@ -34,7 +35,27 @@ type RuntimeSnapshot = {
   proofreadingReason: string
   fileKeys: string[]
   itemKeys: string[]
+  taskStatus: string
 }
+
+type RuntimeHandle = {
+  project_store: {
+    getState: () => {
+      quality: {
+        glossary: Record<string, unknown>
+      }
+    }
+  }
+  commit_local_project_patch: (input: {
+    source: string
+    updatedSections: string[]
+    patch: unknown[]
+  }) => {
+    rollback: () => void
+  }
+}
+
+type RuntimeHandleRef = RuntimeHandle | null
 
 function RuntimeProbe(props: {
   onSnapshot: (snapshot: RuntimeSnapshot) => void
@@ -49,15 +70,29 @@ function RuntimeProbe(props: {
       proofreadingReason: runtime.proofreading_change_signal.reason,
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: Object.keys(runtime.project_store.getState().items),
+      taskStatus: runtime.task_snapshot.status,
     })
   }, [
     props,
     runtime.proofreading_change_signal.reason,
     runtime.proofreading_change_signal.seq,
+    runtime.task_snapshot.status,
     runtime.project_store,
     runtime.workbench_change_signal.reason,
     runtime.workbench_change_signal.seq,
   ])
+
+  return null
+}
+
+function RuntimeHandleProbe(props: {
+  onRuntime: (runtime: RuntimeHandleRef) => void
+}): JSX.Element | null {
+  const runtime = useDesktopRuntime()
+
+  useEffect(() => {
+    props.onRuntime(runtime as unknown as RuntimeHandle)
+  }, [props, runtime])
 
   return null
 }
@@ -315,6 +350,207 @@ describe('DesktopRuntimeProvider', () => {
       workbenchReason: 'config_updated',
       proofreadingSeq: 2,
       proofreadingReason: 'config_updated',
+    })
+  })
+
+  it('本地 project patch 会立即更新 store、任务快照并支持回滚', async () => {
+    const snapshots: RuntimeSnapshot[] = []
+    const event_stream = create_event_source_stub()
+    let runtime_handle: RuntimeHandleRef = null
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === '/api/settings/app') {
+        return {
+          settings: {
+            app_language: 'ZH',
+          },
+        }
+      }
+
+      if (path === '/api/v2/project/snapshot') {
+        return {
+          project: {
+            path: 'E:/demo/demo.lg',
+            loaded: true,
+          },
+        }
+      }
+
+      if (path === '/api/v2/tasks/snapshot') {
+        return {
+          task: {
+            task_type: 'translation',
+            status: 'IDLE',
+            busy: false,
+          },
+        }
+      }
+
+      throw new Error(`未预期的请求：${path}`)
+    })
+
+    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source)
+    open_v2_project_bootstrap_stream_mock.mockImplementation(() => {
+      return (async function* () {
+        yield {
+          type: 'stage_payload',
+          stage: 'quality',
+          payload: {
+            glossary: {
+              entries: [],
+              enabled: true,
+              mode: 'off',
+              revision: 1,
+            },
+            pre_replacement: {
+              entries: [],
+              enabled: false,
+              mode: 'off',
+              revision: 0,
+            },
+            post_replacement: {
+              entries: [],
+              enabled: false,
+              mode: 'off',
+              revision: 0,
+            },
+            text_preserve: {
+              entries: [],
+              enabled: false,
+              mode: 'off',
+              revision: 0,
+            },
+          },
+        }
+        yield {
+          type: 'stage_payload',
+          stage: 'task',
+          payload: {
+            task_type: 'translation',
+            status: 'IDLE',
+            busy: false,
+          },
+        }
+        yield {
+          type: 'completed',
+          projectRevision: 3,
+          sectionRevisions: {
+            quality: 1,
+            task: 1,
+          },
+        }
+      })()
+    })
+
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot)
+            }}
+          />
+          <RuntimeHandleProbe
+            onRuntime={(runtime) => {
+              runtime_handle = runtime
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      )
+    })
+
+    await wait_for_condition(() => {
+      return runtime_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1
+    })
+
+    let rollback_local_patch: (() => void) | null = null
+    await act(async () => {
+      if (runtime_handle === null) {
+        throw new Error('运行时句柄未准备好。')
+      }
+
+      const current_quality = runtime_handle.project_store.getState().quality
+      const local_commit = runtime_handle.commit_local_project_patch({
+        source: 'quality_rule_save_entries',
+        updatedSections: ['quality', 'task'],
+        patch: [
+          createProjectStoreReplaceSectionPatch('quality', {
+            ...current_quality,
+            glossary: {
+              ...current_quality.glossary,
+              entries: [
+                {
+                  id: '1',
+                  src: '原文',
+                  dst: '译文',
+                },
+              ],
+              revision: 2,
+            },
+          }),
+          createProjectStoreReplaceSectionPatch('task', {
+            task_type: 'translation',
+            status: 'RUNNING',
+            busy: true,
+          }),
+        ],
+      })
+
+      rollback_local_patch = () => {
+        local_commit.rollback()
+      }
+      await Promise.resolve()
+    })
+
+    await wait_for_condition(() => {
+      const latest_snapshot = snapshots.at(-1)
+      return latest_snapshot?.proofreadingSeq === 2 && latest_snapshot.taskStatus === 'RUNNING'
+    })
+
+    const stable_runtime = runtime_handle as RuntimeHandleRef
+    if (stable_runtime === null) {
+      throw new Error('运行时句柄未准备好。')
+    }
+
+    expect((stable_runtime as RuntimeHandle).project_store.getState().quality.glossary).toMatchObject({
+      revision: 2,
+      entries: [
+        {
+          id: '1',
+          src: '原文',
+          dst: '译文',
+        },
+      ],
+    })
+    expect(snapshots.at(-1)).toMatchObject({
+      workbenchSeq: 1,
+      proofreadingSeq: 2,
+      proofreadingReason: 'quality_rule_save_entries',
+      taskStatus: 'RUNNING',
+    })
+
+    await act(async () => {
+      rollback_local_patch?.()
+      await Promise.resolve()
+    })
+
+    await wait_for_condition(() => {
+      const latest_snapshot = snapshots.at(-1)
+      return latest_snapshot?.proofreadingSeq === 3 && latest_snapshot.taskStatus === 'IDLE'
+    })
+
+    expect((stable_runtime as RuntimeHandle).project_store.getState().quality.glossary).toMatchObject({
+      revision: 1,
+      entries: [],
+    })
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingSeq: 3,
+      proofreadingReason: 'quality_rule_save_entries_rollback',
+      taskStatus: 'IDLE',
     })
   })
 })

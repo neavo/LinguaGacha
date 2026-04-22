@@ -81,7 +81,6 @@ flowchart TD
 | 计划构建 | 基于待翻译 `Item` 切块与上文块 | 基于分析候选 / checkpoint 构建 `AnalysisTaskContext` |
 | 提交阶段 | 批量写回条目、统计 token / 行数、触发局部刷新 | 批量写回 checkpoint / glossary entry、同步候选统计 |
 | 成功后收尾 | 落库存量状态、可自动导出译文 | 可自动导入术语表 |
-| 运行时事实缓存 | `items_cache` + `extras` | `extras` + `current_task_contexts` |
 
 ## 这些语义最容易踩线
 ### 停止语义
@@ -99,7 +98,7 @@ flowchart TD
 
 ### 并发与限流
 - `TaskLimiter` 控制“允许开始请求的节奏”。
-- `request_in_flight_count` 反映“已经真正发出去的请求数”。
+- `request_in_flight_count` 反映“真正发出去的请求数”。
 - 如果要改 UI 的实时请求展示，请优先检查 `TaskRequester.emit_request_in_flight_progress()`，不是 `TaskLimiter`。
 
 ## 修改建议

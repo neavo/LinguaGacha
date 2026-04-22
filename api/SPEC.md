@@ -49,12 +49,11 @@ flowchart LR
 | `api/v2/Models/` | Python 冻结 DTO、bootstrap 行块与客户端共享模型 |
 | `api/v2/Client/` | Python 侧薄客户端与对象化返回包装 |
 
-### 1.3 版本现实
-- 业务主边界集中在 `api/v2/`。
-- 但并不是所有公开接口都已经迁到 `/api/v2/...`：
-  - `settings` 仍在 `/api/settings/*`
-  - `extra` 仍在 `/api/extra/*`
-- 后续新增主业务 API 应继续落在 `api/v2/`，不要再新开并行根前缀。
+### 1.3 路径前缀分层
+- 主业务 API 统一落在 `api/v2/`。
+- 应用设置固定使用 `/api/settings/*`。
+- Extra 工具固定使用 `/api/extra/*`。
+- 新增主业务协议时，不要再扩展新的并行根前缀。
 
 ### 1.4 监听地址与端口
 - `CoreApiServer` 固定绑定 `127.0.0.1`，不是 `0.0.0.0`。
@@ -117,7 +116,7 @@ flowchart LR
 
 需要特别记住：
 - revision 冲突、工程未加载、任务忙碌等业务错误，大多会折叠成 `invalid_request + message`。
-- 也就是说，**不要假设 API 已经提供稳定的业务错误码体系**。
+- 也就是说，**不要假设 API 提供了稳定的业务错误码体系**。
 
 ### 2.4 SSE 线格式
 普通事件流 `/api/v2/events/stream` 由 `EventEnvelope.to_sse_payload()` 生成，协议特点是：
@@ -219,8 +218,8 @@ flowchart LR
 
 ### 4.2 Project / Workbench / Proofreading
 - `project`、`workbench`、`proofreading` 三块虽然都挂在 `/api/v2/project/*` 下，但它们不是一个 Application 服务。
-- 工作台首屏与运行态真值由 bootstrap + `ProjectStore` 持有。工作台局部刷新入口是 `file-patch`；API 不提供整页 `workbench/snapshot`。
-- 工作台命令型接口大多只返回 `accepted`，真正的重型视图刷新依赖后续显式拉取 `file-patch`。
+- 工作台首屏与运行态真值由 bootstrap + `ProjectStore` 持有；API 不提供整页 `workbench/snapshot`，也没有独立文件级 patch route。
+- 工作台命令型接口大多只返回 `accepted`；Electron 主路径依赖随后到达的 `project.patch` 失效通知与本地 selector 重建工作台视图。
 - `workbench/add-file`、`replace-file`、`reset-file`、`delete-file`、`delete-file-batch` 在 HTTP 请求内直接执行文件操作；参数校验、重名冲突和解析失败以错误响应透传给前端。
 - `reorder-files` 的隐藏硬约束是：`ordered_rel_paths` 必须完整覆盖当前文件集合，不能只传局部。
 - Proofreading 路由族写接口包括：
@@ -273,7 +272,10 @@ flowchart LR
 - `text_preserve` 与其余规则最大的非显然差异是：
   - `meta` 形状是 `{"mode": str}`
   - 不是 `{"enabled": bool}`
-- 规则和提示词都已经用了 `expected_revision` 做乐观锁，但 API 边界还没有给出专门的冲突错误码。
+- 规则和提示词写接口使用 `expected_revision` 做乐观锁，但 API 边界还没有给出专门的冲突错误码。
+- `save-entries`、`update-meta` 与 `prompts/save` 都返回最小 ack：`{"accepted": true}`。
+- `prompts/import` 只负责从本地路径读取文本并返回 `{"text": ...}`；它不直接写项目状态，也不承担导入即保存语义。
+- 规则统计由 Electron 渲染层基于 `ProjectStore.items` 本地计算；公开路由不包含 `/api/v2/quality/rules/statistics`。
 
 ### 4.7 Extra
 - `extra` 路由位于非 v2 前缀 `/api/extra/*`。
@@ -292,12 +294,12 @@ flowchart LR
 - 所以 Python 客户端侧很多“失败”最终只会表现成空字典或缺字段，而不是明确错误对象。
 
 ### 5.2 对象化覆盖的真正分界
-高价值结论不是“每个方法返回什么”，而是这几条分界：
-- `SettingsApiClient`、`ExtraApiClient` 基本已经对象化完成。
-- `ProjectApiClient`、`TaskApiClient` 的主路径快照已对象化，但少量辅助命令仍返回原始结构。
-- `WorkbenchApiClient`、`QualityRuleApiClient` 仍有明显一截停留在原始 `dict` / `list` 返回。
-- `ProofreadingApiClient` 覆盖写接口，并统一返回对象化的 `ProofreadingMutationResult`。
-- `ModelApiClient.test_model()`、`TaskApiClient.export_translation()` 返回原始结构。
+高价值结论不是“每个方法返回什么”，而是哪些客户端以稳定 DTO 为主，哪些以基础值或原始集合为主：
+- `SettingsApiClient`、`ExtraApiClient`、`ProjectApiClient`、`ProofreadingApiClient` 的主路径返回是对象化结果。
+- `TaskApiClient` 的任务快照与分析术语导入结果返回对象化结果；`export_translation()` 返回原始结构。
+- `ModelApiClient` 的模型页快照链路返回对象化结果；`test_model()` 返回原始结构。
+- `WorkbenchApiClient` 统一返回原始 ack `dict`。
+- `QualityRuleApiClient` 以 `bool`、`str`、原始 `dict` / `list` 为主，没有形成冻结 DTO 边界。
 - Python 侧客户端边界是显式请求/响应包装，不承担运行态缓存、SSE 消费或 `ProjectStore` 风格的长期状态同步层。
 
 ## 6. Electron 接入边界
@@ -308,7 +310,7 @@ flowchart LR
 - 项目运行态主路径固定为：
   - `/api/v2/project/bootstrap/stream`
   - `/api/v2/events/stream`
-- 更细的 `ProjectStore`、bootstrap stage 落地、页面变更信号，已经下沉到 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md)，不在本文重复展开。
+- 更细的 `ProjectStore`、bootstrap stage 落地、页面变更信号与本地统计任务，以 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) 为准。
 
 ## 7. 什么时候必须同步更新本文
 - 路径前缀、路由分组或版本边界变化
@@ -321,4 +323,4 @@ flowchart LR
 ## 维护原则
 - 本文聚焦需要跨多处代码一起理解的协议边界；能在 `Routes/*` 和 `Contract/*` 一眼看出的字段表，不重复平铺。
 - 优先记录“代码里分散存在、但开发时必须一起理解”的真实边界。
-- 若某段说明已经更适合前端运行态文档，就迁到前端文档，不在这里维持双份解释。
+- 更适合前端运行态文档的规则，以前端文档为准，不在这里维持双份解释。

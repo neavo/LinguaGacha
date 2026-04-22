@@ -9,7 +9,6 @@
 from copy import deepcopy
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -18,9 +17,6 @@ from module.Model.Types import ModelType
 from module.Config import Config
 from module.Data.Core.DataEnums import TextPreserveMode
 from module.Data.Core.DataTypes import ProjectItemChange
-
-if TYPE_CHECKING:
-    from module.Data.Core.DataTypes import WorkbenchSnapshot
 
 
 class FakeProjectManager:
@@ -319,98 +315,31 @@ class FakeTaskDataManager:
 
 
 class FakeWorkbenchManager:
-    """提供工作台快照与文件操作所需的最小数据桩。"""
+    """提供工作台文件操作所需的最小数据桩。"""
 
     def __init__(self) -> None:
         self.file_op_running: bool = False
-        self.snapshot: dict[str, int | tuple[dict[str, str | int], ...]] = {
-            "file_count": 1,
-            "total_items": 2,
-            "translated": 1,
-            "translated_in_past": 0,
-            "error_count": 0,
-            "entries": (
-                {
-                    "rel_path": "script/a.txt",
-                    "item_count": 2,
-                    "file_type": "TXT",
-                },
-            ),
-        }
         self.add_calls: list[str] = []
-        self.scheduled_add_calls: list[str] = []
         self.replace_calls: list[tuple[str, str]] = []
-        self.scheduled_replace_calls: list[tuple[str, str]] = []
         self.reset_calls: list[str] = []
-        self.scheduled_reset_calls: list[str] = []
         self.delete_calls: list[str] = []
-        self.scheduled_delete_calls: list[str] = []
         self.delete_batch_calls: list[list[str]] = []
-        self.scheduled_delete_batch_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
-
-    def build_workbench_snapshot(self) -> "WorkbenchSnapshot":
-        from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
-        from module.Data.Core.DataTypes import WorkbenchSnapshot
-        from module.Data.Core.Item import Item
-
-        entry_dict = self.snapshot["entries"][0]
-        entry = WorkbenchFileEntrySnapshot(
-            rel_path=str(entry_dict["rel_path"]),
-            item_count=int(entry_dict["item_count"]),
-            file_type=Item.FileType(str(entry_dict["file_type"])),
-        )
-        return WorkbenchSnapshot(
-            file_count=int(self.snapshot["file_count"]),
-            total_items=int(self.snapshot["total_items"]),
-            translated=int(self.snapshot["translated"]),
-            translated_in_past=int(self.snapshot["translated_in_past"]),
-            error_count=int(self.snapshot["error_count"]),
-            entries=(entry,),
-        )
 
     def is_file_op_running(self) -> bool:
         return self.file_op_running
 
-    def build_workbench_entry_patch(
-        self,
-        rel_paths: list[str],
-        *,
-        snapshot=None,
-    ):
-        from module.Data.Project.WorkbenchService import WorkbenchService
-
-        return WorkbenchService().build_entry_patch(
-            self.build_workbench_snapshot() if snapshot is None else snapshot,
-            rel_paths,
-        )
-
-    def schedule_add_file(self, path: str) -> None:
-        self.scheduled_add_calls.append(path)
-
     def add_file(self, path: str) -> None:
         self.add_calls.append(path)
-
-    def schedule_replace_file(self, rel_path: str, path: str) -> None:
-        self.scheduled_replace_calls.append((rel_path, path))
 
     def replace_file(self, rel_path: str, path: str) -> None:
         self.replace_calls.append((rel_path, path))
 
-    def schedule_reset_file(self, rel_path: str) -> None:
-        self.scheduled_reset_calls.append(rel_path)
-
     def reset_file(self, rel_path: str) -> None:
         self.reset_calls.append(rel_path)
 
-    def schedule_delete_file(self, rel_path: str) -> None:
-        self.scheduled_delete_calls.append(rel_path)
-
     def delete_file(self, rel_path: str) -> None:
         self.delete_calls.append(rel_path)
-
-    def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
-        self.scheduled_delete_batch_calls.append(list(rel_paths))
 
     def delete_file_batch(self, rel_paths: list[str]) -> None:
         self.delete_batch_calls.append(list(rel_paths))

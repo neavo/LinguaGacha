@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from module.Data.Core.Item import Item
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
@@ -30,27 +29,6 @@ class ProjectPrefilterScheduleResult:
 
     needed: bool = False
     accepted: bool = False
-
-
-@dataclass(frozen=True)
-class WorkbenchFileEntrySnapshot:
-    """工作台文件行快照。"""
-
-    rel_path: str
-    item_count: int
-    file_type: Item.FileType
-
-
-@dataclass(frozen=True)
-class WorkbenchSnapshot:
-    """工作台整体快照。"""
-
-    file_count: int
-    total_items: int
-    translated: int
-    translated_in_past: int
-    error_count: int
-    entries: tuple[WorkbenchFileEntrySnapshot, ...]
 
 
 @dataclass(frozen=True)

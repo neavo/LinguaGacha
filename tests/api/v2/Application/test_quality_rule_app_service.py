@@ -4,7 +4,6 @@ from copy import deepcopy
 from importlib import import_module
 
 from api.v2.Application.QualityRuleAppService import QualityRuleAppService
-from api.v2.Models.QualityRule import QualityRuleSnapshot
 from base.BaseLanguage import BaseLanguage
 
 quality_rule_app_service_module = import_module(
@@ -21,10 +20,6 @@ class RecordingQualityRuleFacade:
             "rule_type": "glossary",
             "revision": 3,
             "meta": {"enabled": True},
-            "statistics": {
-                "available": False,
-                "results": {},
-            },
             "entries": [
                 {
                     "entry_id": "glossary:0",
@@ -70,10 +65,7 @@ class RecordingQualityRuleFacade:
         }
         self.deleted_preset_path = "user/demo.json"
         self.saved_prompt_snapshot = {"task_type": "translation", "text": "saved"}
-        self.imported_prompt_snapshot = {
-            "task_type": "translation",
-            "text": "imported",
-        }
+        self.imported_prompt_text = "imported"
         self.exported_prompt_path = "demo/output/prompt.txt"
         self.builtin_prompt_presets = [
             {"virtual_id": "builtin:translation.txt", "name": "内置预设"}
@@ -246,22 +238,17 @@ class RecordingQualityRuleFacade:
         )
         return deepcopy(self.saved_prompt_snapshot)
 
-    def import_prompt(
+    def read_prompt_import_text(
         self,
         task_type: str,
         path: str,
-        *,
-        expected_revision: int,
-        enabled: bool | None,
-    ) -> dict[str, object]:
+    ) -> str:
         self.record(
-            "import_prompt",
+            "read_prompt_import_text",
             task_type=task_type,
             path=path,
-            expected_revision=expected_revision,
-            enabled=enabled,
         )
-        return deepcopy(self.imported_prompt_snapshot)
+        return self.imported_prompt_text
 
     def export_prompt(self, task_type: str, path: str) -> str:
         self.record("export_prompt", task_type=task_type, path=path)
@@ -341,8 +328,7 @@ def test_update_quality_rule_meta_routes_enabled_toggle_to_core_service() -> Non
         "expected_revision": 3,
         "enabled": False,
     }
-    snapshot = QualityRuleSnapshot.from_dict(result["snapshot"])
-    assert snapshot.rule_type == "glossary"
+    assert result == {"accepted": True}
 
 
 def test_update_quality_rule_meta_maps_text_preserve_mode_to_core_key() -> None:
@@ -351,7 +337,6 @@ def test_update_quality_rule_meta_maps_text_preserve_mode_to_core_key() -> None:
         "rule_type": "text_preserve",
         "revision": 2,
         "meta": {"mode": "SMART"},
-        "statistics": {"available": False, "results": {}},
         "entries": [],
     }
     app_service = QualityRuleAppService(facade)
@@ -371,11 +356,10 @@ def test_update_quality_rule_meta_maps_text_preserve_mode_to_core_key() -> None:
         "meta_key": "text_preserve_mode",
         "value": "SMART",
     }
-    snapshot = QualityRuleSnapshot.from_dict(result["snapshot"])
-    assert snapshot.meta["mode"] == "SMART"
+    assert result == {"accepted": True}
 
 
-def test_save_quality_rule_entries_returns_snapshot_payload() -> None:
+def test_save_quality_rule_entries_returns_minimal_ack() -> None:
     facade = build_fake_quality_rule_facade()
     app_service = QualityRuleAppService(facade)
 
@@ -393,8 +377,7 @@ def test_save_quality_rule_entries_returns_snapshot_payload() -> None:
         "expected_revision": 3,
         "entries": [{"src": "勇者", "dst": "Hero"}],
     }
-    snapshot = QualityRuleSnapshot.from_dict(result["snapshot"])
-    assert snapshot.entries[0].dst == "Hero"
+    assert result == {"accepted": True}
 
 
 def test_get_prompt_template_uses_current_localizer_language(
@@ -442,7 +425,7 @@ def test_get_prompt_template_uses_current_localizer_language(
     }
 
 
-def test_save_prompt_returns_stable_payload() -> None:
+def test_save_prompt_returns_minimal_ack() -> None:
     facade = build_fake_quality_rule_facade()
     app_service = QualityRuleAppService(facade)
 
@@ -462,19 +445,17 @@ def test_save_prompt_returns_stable_payload() -> None:
         "text": "next prompt",
         "enabled": False,
     }
-    assert saved_prompt == {"prompt": {"task_type": "translation", "text": "saved"}}
+    assert saved_prompt == {"accepted": True}
 
 
-def test_prompt_import_export_and_presets_keep_payload_shapes() -> None:
+def test_prompt_import_text_export_and_presets_keep_payload_shapes() -> None:
     facade = build_fake_quality_rule_facade()
     app_service = QualityRuleAppService(facade)
 
-    imported_prompt = app_service.import_prompt(
+    imported_prompt = app_service.read_prompt_import_text(
         {
             "task_type": "translation",
             "path": "demo/input.txt",
-            "expected_revision": 3,
-            "enabled": True,
         }
     )
     exported_path = app_service.export_prompt(
@@ -511,9 +492,7 @@ def test_prompt_import_export_and_presets_keep_payload_shapes() -> None:
         }
     )
 
-    assert imported_prompt == {
-        "prompt": {"task_type": "translation", "text": "imported"}
-    }
+    assert imported_prompt == {"text": "imported"}
     assert exported_path == {"path": "demo/output/prompt.txt"}
     assert presets["builtin_presets"][0]["virtual_id"] == "builtin:translation.txt"
     assert preset_text == {"text": "preset body"}

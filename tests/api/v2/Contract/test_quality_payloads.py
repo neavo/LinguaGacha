@@ -7,7 +7,6 @@ def test_quality_rule_snapshot_payload_wraps_snapshot() -> None:
             "rule_type": "glossary",
             "revision": 2,
             "meta": {"enabled": True},
-            "statistics": {"available": False, "results": {}},
             "entries": [
                 {
                     "entry_id": "glossary:0",

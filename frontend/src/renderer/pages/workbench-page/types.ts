@@ -30,7 +30,6 @@ export type WorkbenchSnapshot = {
   translated: number;
   translated_in_past: number;
   error_count: number;
-  file_op_running: boolean;
   entries: WorkbenchSnapshotEntry[];
 };
 

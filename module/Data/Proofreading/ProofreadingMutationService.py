@@ -202,25 +202,6 @@ class ProofreadingMutationService:
         return change
 
     @staticmethod
-    def replace_once_in_text(
-        *,
-        text: str,
-        search_text: str,
-        replace_text: str,
-        is_regex: bool,
-    ) -> tuple[str, int]:
-        """执行一次替换，和页面现有匹配语义保持一致。"""
-
-        if is_regex:
-            pattern = re.compile(search_text, re.IGNORECASE)
-            return pattern.subn(replace_text, text, count=1)
-        if not search_text:
-            return text, 0
-
-        pattern = re.compile(re.escape(search_text), re.IGNORECASE)
-        return pattern.subn(lambda match: replace_text, text, count=1)
-
-    @staticmethod
     def replace_all_in_text(
         *,
         text: str,

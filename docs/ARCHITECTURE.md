@@ -60,7 +60,7 @@ flowchart TD
 | [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `module/Data/` | 工程事实、工作台、规则、分析、校对和 Extra 数据服务的真实入口 |
 | [`module/Engine/SPEC.md`](../module/Engine/SPEC.md) | `module/Engine/` | 翻译/分析任务生命周期骨架、共享流水线、请求器、并发与停止语义 |
 | [`module/File/SPEC.md`](../module/File/SPEC.md) | `module/File/` | 文件格式接入、解析分发、写回策略与新增格式时的真实落点 |
-| [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置对象、模板补齐、预设迁移、分组排序与模型页后端入口 |
+| [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置对象、模板补齐、preset 兼容整理、分组排序与模型页后端入口 |
 
 ## 最值得记住的边界
 - V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` + `/api/v2/events/stream`；页面通过 bootstrap 与 `project.patch` 建立运行态事实源。

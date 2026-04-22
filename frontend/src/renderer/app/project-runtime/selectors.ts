@@ -62,7 +62,6 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
       translated: item_values.filter((item) => isTranslatedStatus(item.status)).length,
       translated_in_past: item_values.filter((item) => item.status === 'PROCESSED_IN_PAST').length,
       error_count: item_values.filter((item) => item.status === 'ERROR').length,
-      file_op_running: false,
     },
   }
 }

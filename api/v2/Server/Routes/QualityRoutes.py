@@ -14,7 +14,6 @@ class QualityRoutes:
     RULE_PRESET_SAVE_PATH: str = "/api/v2/quality/rules/presets/save"
     RULE_PRESET_RENAME_PATH: str = "/api/v2/quality/rules/presets/rename"
     RULE_PRESET_DELETE_PATH: str = "/api/v2/quality/rules/presets/delete"
-    STATISTICS_PATH: str = "/api/v2/quality/rules/statistics"
     PROMPT_TEMPLATE_PATH: str = "/api/v2/quality/prompts/template"
     PROMPT_SAVE_PATH: str = "/api/v2/quality/prompts/save"
     PROMPT_IMPORT_PATH: str = "/api/v2/quality/prompts/import"
@@ -92,13 +91,6 @@ class QualityRoutes:
         )
         core_api_server.add_json_route(
             "POST",
-            cls.STATISTICS_PATH,
-            lambda request: ApiResponse(
-                ok=True, data=quality_rule_app_service.build_rule_statistics(request)
-            ),
-        )
-        core_api_server.add_json_route(
-            "POST",
             cls.PROMPT_TEMPLATE_PATH,
             lambda request: ApiResponse(
                 ok=True, data=quality_rule_app_service.get_prompt_template(request)
@@ -115,7 +107,7 @@ class QualityRoutes:
             "POST",
             cls.PROMPT_IMPORT_PATH,
             lambda request: ApiResponse(
-                ok=True, data=quality_rule_app_service.import_prompt(request)
+                ok=True, data=quality_rule_app_service.read_prompt_import_text(request)
             ),
         )
         core_api_server.add_json_route(

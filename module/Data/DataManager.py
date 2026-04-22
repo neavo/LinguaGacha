@@ -24,7 +24,6 @@ from module.Data.Project.ExportPathService import ExportPathService
 from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
 from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
-from module.Data.Project.WorkbenchService import WorkbenchService
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Translation.TranslationResetService import TranslationResetService
@@ -37,8 +36,6 @@ if TYPE_CHECKING:
     from module.Data.Core.DataTypes import ProjectItemChange
     from module.Data.Core.DataTypes import ProjectFileMutationResult
     from module.Data.Core.DataTypes import ProjectPrefilterRequest
-    from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
-    from module.Data.Core.DataTypes import WorkbenchSnapshot
 
 
 class DataManager(Base):
@@ -106,7 +103,6 @@ class DataManager(Base):
             self.item_service,
             self.batch_service,
         )
-        self.workbench_service = WorkbenchService()
         self.quality_rule_service = QualityRuleService(
             self.session,
             self.rule_service,
@@ -747,18 +743,6 @@ class DataManager(Base):
     def replace_all_items(self, items: list[Item]) -> list[int]:
         return self.item_service.replace_all_items(items)
 
-    def update_item_text(self, item_id: int, dst: str) -> None:
-        """提供 V2 mutation 使用的最小单条文本更新入口。"""
-
-        self.update_batch(
-            items=[
-                {
-                    "id": item_id,
-                    "dst": dst,
-                }
-            ]
-        )
-
     def update_batch(
         self,
         items: list[dict[str, Any]] | None = None,
@@ -1019,60 +1003,6 @@ class DataManager(Base):
         if not self.is_loaded() or not lg_path:
             raise RuntimeError("工程未加载，无法获取输出路径")
         return lg_path
-
-    def build_workbench_snapshot(self) -> WorkbenchSnapshot:
-        return self.workbench_service.build_snapshot(
-            self.get_all_asset_paths(),
-            self.get_all_item_dicts(),
-        )
-
-    def build_workbench_entry_patch(
-        self,
-        rel_paths: list[str],
-        *,
-        snapshot: WorkbenchSnapshot | None = None,
-    ) -> tuple["WorkbenchFileEntrySnapshot", ...]:
-        """按文件路径构建工作台局部文件行补丁。"""
-
-        resolved_snapshot = (
-            snapshot if snapshot is not None else self.build_workbench_snapshot()
-        )
-        return self.workbench_service.build_entry_patch(resolved_snapshot, rel_paths)
-
-    def schedule_add_file(self, file_path: str) -> None:
-        self.schedule_guarded_file_operation(
-            Localizer.get().workbench_progress_adding_file,
-            lambda: self.project_file_service.add_file(file_path),
-            f"Failed to add file: {file_path}",
-        )
-
-    def schedule_replace_file(self, rel_path: str, new_file_path: str) -> None:
-        self.schedule_guarded_file_operation(
-            Localizer.get().task_processing,
-            lambda: self.project_file_service.replace_file(rel_path, new_file_path),
-            f"Failed to replace file: {rel_path} -> {new_file_path}",
-        )
-
-    def schedule_reset_file(self, rel_path: str) -> None:
-        self.schedule_guarded_file_operation(
-            Localizer.get().workbench_progress_resetting_file,
-            lambda: self.project_file_service.reset_file(rel_path),
-            f"Failed to reset file: {rel_path}",
-        )
-
-    def schedule_delete_file(self, rel_path: str) -> None:
-        self.schedule_guarded_file_operation(
-            Localizer.get().workbench_progress_deleting_file,
-            lambda: self.project_file_service.delete_file(rel_path),
-            f"Failed to delete file: {rel_path}",
-        )
-
-    def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
-        self.schedule_guarded_file_operation(
-            Localizer.get().workbench_progress_deleting_file,
-            lambda: self.project_file_service.delete_file_batch(rel_paths),
-            "Failed to delete files in batch",
-        )
 
     def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
         """同步重排工作台文件顺序，供前端拖拽后立即持久化。"""

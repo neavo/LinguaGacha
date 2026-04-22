@@ -55,21 +55,3 @@ class WorkbenchApiClient:
             ProjectRoutes.WORKBENCH_REORDER_FILES_PATH,
             {"ordered_rel_paths": ordered_rel_paths},
         )
-
-    def get_file_patch(
-        self,
-        *,
-        rel_paths: list[str],
-        removed_rel_paths: list[str],
-        include_order: bool,
-    ) -> dict[str, Any]:
-        """按文件路径读取工作台局部补丁。"""
-
-        return self.api_client.post(
-            ProjectRoutes.WORKBENCH_FILE_PATCH_PATH,
-            {
-                "rel_paths": rel_paths,
-                "removed_rel_paths": removed_rel_paths,
-                "include_order": include_order,
-            },
-        )

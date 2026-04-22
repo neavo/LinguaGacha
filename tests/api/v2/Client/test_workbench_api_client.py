@@ -78,30 +78,3 @@ def test_workbench_api_client_forwards_mutation_payloads(
 
     assert recording_api_client.post_requests[-1] == expected_request
     assert result == expected_response
-
-
-def test_workbench_api_client_reads_file_patch_payload(recording_api_client) -> None:
-    workbench_client = WorkbenchApiClient(recording_api_client)
-    recording_api_client.queue_post_response(
-        ProjectRoutes.WORKBENCH_FILE_PATCH_PATH,
-        {"entries": [{"rel_path": "script/a.txt"}], "order_changed": True},
-    )
-
-    result = workbench_client.get_file_patch(
-        rel_paths=["script/a.txt"],
-        removed_rel_paths=["script/b.txt"],
-        include_order=True,
-    )
-
-    assert recording_api_client.post_requests[-1] == (
-        ProjectRoutes.WORKBENCH_FILE_PATCH_PATH,
-        {
-            "rel_paths": ["script/a.txt"],
-            "removed_rel_paths": ["script/b.txt"],
-            "include_order": True,
-        },
-    )
-    assert result == {
-        "entries": [{"rel_path": "script/a.txt"}],
-        "order_changed": True,
-    }

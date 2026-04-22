@@ -2,14 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from '@/app/desktop-api'
 import { useAppNavigation } from '@/app/navigation/navigation-context'
+import { createProjectStoreReplaceSectionPatch } from '@/app/project-runtime/project-store'
+import {
+  collect_project_item_texts,
+  run_quality_statistics_task,
+} from '@/app/project-runtime/quality-statistics'
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
+  replaceQualityRuleSlice,
 } from '@/app/project-runtime/quality-runtime'
+import {
+  normalize_settings_snapshot,
+  type SettingsSnapshotPayload,
+} from '@/app/state/desktop-runtime-context'
 import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
-import { runQualityStatisticsWorkerTask } from '@/pages/glossary-page/quality-statistics-worker'
 import {
   build_glossary_filter_result,
   has_active_glossary_filters,
@@ -50,19 +59,13 @@ type GlossarySnapshot = {
   entries: GlossaryEntry[]
 }
 
-type GlossarySnapshotPayload = {
-  snapshot: GlossarySnapshot
+type GlossaryMutationAckPayload = {
+  accepted?: boolean
 }
 
 type GlossaryPresetPayload = {
   builtin_presets: GlossaryPresetItem[]
   user_presets: GlossaryPresetItem[]
-}
-
-type GlossarySettingsPayload = {
-  settings?: {
-    glossary_default_preset?: string
-  }
 }
 
 const EMPTY_ENTRY: GlossaryEntry = {
@@ -300,7 +303,13 @@ type UseGlossaryPageStateResult = {
 export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { t } = useI18n()
   const { push_toast } = useDesktopToast()
-  const { project_snapshot, project_store } = useDesktopRuntime()
+  const {
+    project_snapshot,
+    project_store,
+    settings_snapshot,
+    set_settings_snapshot,
+    commit_local_project_patch,
+  } = useDesktopRuntime()
   const {
     navigate_to_route,
     push_proofreading_lookup_intent,
@@ -477,20 +486,42 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [apply_snapshot, project_store_state.quality])
 
   const save_entries_snapshot = useCallback(async (next_entries: GlossaryEntry[]): Promise<boolean> => {
+    const current_glossary_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      'glossary',
+    )
+    const normalized_entries = next_entries.map((entry) => {
+      return normalize_dialog_entry(entry)
+    })
+    const next_quality_state = replaceQualityRuleSlice(
+      project_store.getState().quality,
+      'glossary',
+      {
+        ...current_glossary_slice,
+        entries: normalized_entries,
+        revision: current_glossary_slice.revision + 1,
+      },
+    )
+    const local_commit = commit_local_project_patch({
+      source: 'quality_rule_save_entries',
+      updatedSections: ['quality'],
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', next_quality_state),
+      ],
+    })
+
     try {
-      const payload = await api_fetch<GlossarySnapshotPayload>(
+      await api_fetch<GlossaryMutationAckPayload>(
         '/api/v2/quality/rules/save-entries',
         {
           rule_type: 'glossary',
-          expected_revision: revision_ref.current,
-          entries: next_entries.map((entry) => {
-            return normalize_dialog_entry(entry)
-          }),
+          expected_revision: current_glossary_slice.revision,
+          entries: normalized_entries,
         },
       )
-      apply_snapshot(payload.snapshot)
       return true
     } catch (error) {
+      local_commit.rollback()
       if (error instanceof Error) {
         push_toast('error', error.message)
       } else {
@@ -498,7 +529,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
       return false
     }
-  }, [apply_snapshot, push_toast, t])
+  }, [commit_local_project_patch, project_store, push_toast, t])
 
   const persist_merged_entries = useCallback(async (
     incoming_entries: GlossaryEntry[],
@@ -528,16 +559,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [clear_selection_state, entries, invalidate_statistics, push_toast, save_entries_snapshot, t])
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
-    const [preset_payload, settings_payload] = await Promise.all([
-      api_fetch<GlossaryPresetPayload>(
-        '/api/v2/quality/rules/presets',
-        {
-          preset_dir_name: 'glossary',
-        },
-      ),
-      api_fetch<GlossarySettingsPayload>('/api/settings/app', {}),
-    ])
-    const default_virtual_id = String(settings_payload.settings?.glossary_default_preset ?? '')
+    const preset_payload = await api_fetch<GlossaryPresetPayload>(
+      '/api/v2/quality/rules/presets',
+      {
+        preset_dir_name: 'glossary',
+      },
+    )
+    const default_virtual_id = String(settings_snapshot.glossary_default_preset ?? '')
 
     set_preset_items(
       decorate_preset_items(
@@ -546,7 +574,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         default_virtual_id,
       ),
     )
-  }, [])
+  }, [settings_snapshot])
 
   useEffect(() => {
     if (!project_snapshot.loaded) {
@@ -671,30 +699,47 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [entries, entry_index_by_id])
 
   const update_enabled = useCallback(async (next_enabled: boolean): Promise<void> => {
-    const previous_enabled = enabled
-    set_enabled(next_enabled)
+    const current_glossary_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      'glossary',
+    )
+    const next_quality_state = replaceQualityRuleSlice(
+      project_store.getState().quality,
+      'glossary',
+      {
+        ...current_glossary_slice,
+        enabled: next_enabled,
+        revision: current_glossary_slice.revision + 1,
+      },
+    )
+    const local_commit = commit_local_project_patch({
+      source: 'quality_rule_meta',
+      updatedSections: ['quality'],
+      patch: [
+        createProjectStoreReplaceSectionPatch('quality', next_quality_state),
+      ],
+    })
 
     try {
-      const payload = await api_fetch<GlossarySnapshotPayload>(
+      await api_fetch<GlossaryMutationAckPayload>(
         '/api/v2/quality/rules/update-meta',
         {
           rule_type: 'glossary',
-          expected_revision: revision_ref.current,
+          expected_revision: current_glossary_slice.revision,
           meta: {
             enabled: next_enabled,
           },
         },
       )
-      apply_snapshot(payload.snapshot)
     } catch (error) {
-      set_enabled(previous_enabled)
+      local_commit.rollback()
       if (error instanceof Error) {
         push_toast('error', error.message)
       } else {
         push_toast('error', t('glossary_page.feedback.save_failed'))
       }
     }
-  }, [apply_snapshot, enabled, push_toast, t])
+  }, [commit_local_project_patch, project_store, push_toast, t])
 
   const open_create_dialog = useCallback((): void => {
     const insert_after_entry_id = resolve_create_insert_after_entry_id()
@@ -1052,21 +1097,20 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     })
 
     try {
-      const worker_result = await runQualityStatisticsWorkerTask({
+      const item_texts = collect_project_item_texts(project_store.getState().items)
+      const worker_result = await run_quality_statistics_task({
         rules: entries.map((entry, index) => ({
           key: build_glossary_entry_id(entry, index),
           pattern: entry.src,
           mode: 'glossary',
           case_sensitive: entry.case_sensitive,
         })),
-        srcTexts: Object.values(project_store.getState().items).map((item) => {
-          if (typeof item !== 'object' || item === null) {
-            return ''
-          }
-
-          return String((item as { src?: string }).src ?? '')
-        }),
-        dstTexts: [],
+        srcTexts: item_texts.srcTexts,
+        dstTexts: item_texts.dstTexts,
+        relationCandidates: entries.map((entry, index) => ({
+          key: build_glossary_entry_id(entry, index),
+          src: entry.src,
+        })),
       })
       const results = worker_result.results
 
@@ -1218,12 +1262,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       )
       const target_preset = preset_items.find((item) => item.virtual_id === virtual_id)
       if (target_preset?.is_default) {
-        await api_fetch(
+        const settings_payload = await api_fetch<SettingsSnapshotPayload>(
           '/api/settings/update',
           {
             glossary_default_preset: String(payload.item?.virtual_id ?? ''),
           },
         )
+        set_settings_snapshot(normalize_settings_snapshot(settings_payload))
       }
       await refresh_preset_menu()
       push_toast('success', t('glossary_page.feedback.preset_renamed'))
@@ -1236,16 +1281,17 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
       return false
     }
-  }, [preset_items, push_toast, refresh_preset_menu, t])
+  }, [preset_items, push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const set_default_preset = useCallback(async (virtual_id: string): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         {
           glossary_default_preset: virtual_id,
         },
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('glossary_page.feedback.default_preset_set'))
     } catch (error) {
@@ -1255,16 +1301,17 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast('error', t('glossary_page.feedback.preset_failed'))
       }
     }
-  }, [push_toast, refresh_preset_menu, t])
+  }, [push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
     try {
-      await api_fetch(
+      const payload = await api_fetch<SettingsSnapshotPayload>(
         '/api/settings/update',
         {
           glossary_default_preset: '',
         },
       )
+      set_settings_snapshot(normalize_settings_snapshot(payload))
       await refresh_preset_menu()
       push_toast('success', t('glossary_page.feedback.default_preset_cleared'))
     } catch (error) {
@@ -1274,7 +1321,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast('error', t('glossary_page.feedback.preset_failed'))
       }
     }
-  }, [push_toast, refresh_preset_menu, t])
+  }, [push_toast, refresh_preset_menu, set_settings_snapshot, t])
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state())
@@ -1404,12 +1451,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             return item.virtual_id === confirm_state.target_virtual_id
           })
           if (target_preset?.is_default) {
-            await api_fetch(
+            const settings_payload = await api_fetch<SettingsSnapshotPayload>(
               '/api/settings/update',
               {
                 glossary_default_preset: '',
               },
             )
+            set_settings_snapshot(normalize_settings_snapshot(settings_payload))
           }
           await refresh_preset_menu()
           push_toast('success', t('glossary_page.feedback.preset_deleted'))
@@ -1447,6 +1495,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     refresh_preset_menu,
     reset_entries,
     save_preset,
+    set_settings_snapshot,
     t,
   ])
 
