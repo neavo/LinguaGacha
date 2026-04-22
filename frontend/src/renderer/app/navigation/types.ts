@@ -2,26 +2,23 @@ import type { LocaleKey } from '@/i18n'
 import type { LucideIcon } from 'lucide-react'
 import type { ComponentType } from 'react'
 
-export const ROUTE_IDS = [
-  'project-home',
-  'model',
-  'proofreading',
-  'workbench',
-  'basic-settings',
-  'expert-settings',
-  'glossary',
-  'text-preserve',
-  'text-replacement',
-  'pre-translation-replacement',
-  'post-translation-replacement',
-  'custom-prompt',
-  'translation-prompt',
-  'analysis-prompt',
-  'laboratory',
-  'toolbox',
-] as const
-
-export type RouteId = (typeof ROUTE_IDS)[number]
+export type RouteId =
+  | 'project-home'
+  | 'model'
+  | 'proofreading'
+  | 'workbench'
+  | 'basic-settings'
+  | 'expert-settings'
+  | 'glossary'
+  | 'text-preserve'
+  | 'text-replacement'
+  | 'pre-translation-replacement'
+  | 'post-translation-replacement'
+  | 'custom-prompt'
+  | 'translation-prompt'
+  | 'analysis-prompt'
+  | 'laboratory'
+  | 'toolbox'
 
 type NavigationNode = {
   id: RouteId

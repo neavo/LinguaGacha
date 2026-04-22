@@ -5,8 +5,6 @@ type WorkbenchActionKind =
   | "export-translation"
   | "close-project";
 
-export type WorkbenchTaskStatus = string;
-
 export type WorkbenchSnapshotEntry = {
   rel_path: string;
   file_type: string;

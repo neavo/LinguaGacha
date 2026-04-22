@@ -1029,11 +1029,15 @@ class DataManager(Base):
     def build_workbench_entry_patch(
         self,
         rel_paths: list[str],
+        *,
+        snapshot: WorkbenchSnapshot | None = None,
     ) -> tuple["WorkbenchFileEntrySnapshot", ...]:
         """按文件路径构建工作台局部文件行补丁。"""
 
-        snapshot = self.build_workbench_snapshot()
-        return self.workbench_service.build_entry_patch(snapshot, rel_paths)
+        resolved_snapshot = (
+            snapshot if snapshot is not None else self.build_workbench_snapshot()
+        )
+        return self.workbench_service.build_entry_patch(resolved_snapshot, rel_paths)
 
     def schedule_add_file(self, file_path: str) -> None:
         self.schedule_guarded_file_operation(

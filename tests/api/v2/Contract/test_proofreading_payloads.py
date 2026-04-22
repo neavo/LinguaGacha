@@ -12,12 +12,6 @@ def test_proofreading_mutation_payload_builds_minimal_ack() -> None:
         "result": {
             "revision": 9,
             "changed_item_ids": [1, 2],
-            "items": [],
-            "summary": {
-                "total_items": 0,
-                "filtered_items": 0,
-                "warning_items": 0,
-            },
         }
     }
 
@@ -32,4 +26,3 @@ def test_proofreading_mutation_payload_roundtrip_defaults_missing_fields() -> No
 
     assert payload["result"]["revision"] == 5
     assert payload["result"]["changed_item_ids"] == [3]
-    assert payload["result"]["items"] == []

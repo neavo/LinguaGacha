@@ -20,7 +20,7 @@
 ## 边界与约束
 - `Types.py` 只承载模型配置领域语义，不承担 HTTP 载荷或前端页面快照职责。
 - `Manager.py` 是模型列表整理与分组排序的唯一规则入口；`Config` 与 `ModelAppService` 不应各自复制排序或默认模型补齐逻辑。
-- 模型配置的持久化格式仍由 `Config` 决定，`module/Model` 不直接负责文件路径解析之外的应用设置读写。
+- 模型配置的持久化格式由 `Config` 决定，`module/Model` 不直接负责文件路径解析之外的应用设置读写。
 - 新增模型供应商或模板时，优先扩展 `ModelType`、`Manager.TEMPLATE_FILENAME_BY_TYPE` 与对应预设资源，不要把分支散落到调用方。
 
 ## 维护提示

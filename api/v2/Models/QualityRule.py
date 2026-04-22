@@ -7,37 +7,6 @@ from typing import Self
 
 
 @dataclass(frozen=True)
-class ProofreadingLookupQuery:
-    """校对页反查请求在质量规则边界内冻结，避免页面继续传递可变字典。"""
-
-    keyword: str = ""
-    is_regex: bool = False
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> Self:
-        """把反查条件统一成稳定对象，避免前端分支解析。"""
-
-        normalized: dict[str, Any]
-        if isinstance(data, dict):
-            normalized = data
-        else:
-            normalized = {}
-
-        return cls(
-            keyword=str(normalized.get("keyword", "")),
-            is_regex=bool(normalized.get("is_regex", False)),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """把反查请求转回 JSON 字典，供边界层复用。"""
-
-        return {
-            "keyword": self.keyword,
-            "is_regex": self.is_regex,
-        }
-
-
-@dataclass(frozen=True)
 class QualityRuleEntry:
     """质量规则条目冻结后再传给前端，避免编辑态继续污染原始字典。"""
 

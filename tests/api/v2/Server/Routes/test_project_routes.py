@@ -50,7 +50,7 @@ def test_server_bootstrap_registers_v2_project_runtime_routes():
     )
 
     assert (
-        core_api_server.route_map[("POST", "/api/v2/project/workbench/snapshot")].mode
+        core_api_server.route_map[("POST", "/api/v2/project/workbench/file-patch")].mode
         == "json"
     )
     assert (
@@ -59,4 +59,11 @@ def test_server_bootstrap_registers_v2_project_runtime_routes():
         ].mode
         == "json"
     )
-    assert ("POST", "/api/v2/project/proofreading/snapshot") not in core_api_server.route_map
+    assert (
+        "POST",
+        "/api/v2/project/workbench/snapshot",
+    ) not in core_api_server.route_map
+    assert (
+        "POST",
+        "/api/v2/project/proofreading/snapshot",
+    ) not in core_api_server.route_map

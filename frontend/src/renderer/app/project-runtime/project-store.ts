@@ -15,22 +15,6 @@ export type ProjectStoreProjectState = {
   loaded: boolean
 }
 
-export type ProjectStoreFileRecord = {
-  rel_path: string
-  file_type: string
-}
-
-export type ProjectStoreItemRecord = {
-  item_id: number
-  file_path: string
-  src: string
-  dst: string
-  status: string
-  row_number?: number
-  text_type?: string
-  retry_count?: number
-}
-
 export type ProjectStoreQualityRuleSlice = {
   entries: Array<Record<string, unknown>>
   enabled: boolean

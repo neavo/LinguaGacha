@@ -1,7 +1,7 @@
 # `module/Data` 规范说明
 
 ## 一句话总览
-`module/Data` 承担项目数据、规则、分析、校对与 Extra 工具等“以数据为中心”的服务实现。`DataManager` 仍是工程加载、工作台、质量规则、分析和翻译链路的主入口；`Proofreading/` 与 `Extra/` 则由 `api/v2/Application` 直接组合成用例层能力。
+`module/Data` 承担项目数据、规则、分析、校对与 Extra 工具等“以数据为中心”的服务实现。`DataManager` 是工程加载、工作台、质量规则、分析和翻译链路的主入口；`Proofreading/` 与 `Extra/` 则由 `api/v2/Application` 直接组合成用例层能力。
 
 ## 阅读顺序
 | 任务类型 | 优先阅读 |
@@ -34,12 +34,12 @@
 
 ## 边界与入口
 - `DataManager` 持有 `ProjectSession`，负责工程加载态、规则/条目缓存、事件发射和跨 service 编排。
-- 运行时 `Config` 是语言设置的权威来源；当前工程 `.lg` 中的 `source_language` / `target_language` meta 只做镜像摘要，由 `DataManager` 在工程加载后与设置变更时同步。
+- 运行时 `Config` 是语言设置的权威来源；工程 `.lg` 中的 `source_language` / `target_language` meta 只做镜像摘要，由 `DataManager` 在工程加载后与设置变更时同步。
 - `Project/`、`Quality/`、`Analysis/`、`Translation/` 这四条主链路以 `DataManager` 为入口，不在 API 层绕过它直接拼装内部依赖。
 - `Item` / `Project` 这类数据层基础实体位于 `Core/`。
 - `Proofreading/` 由 `api/v2/Application/ProofreadingAppService.py` 组合使用；它依赖 `DataManager` 读取当前工程、提交 mutation，并自行维护筛选、revision 与重检逻辑。
 - `Extra/` 由 `api/v2/Application/ExtraAppService.py` 组合使用；它直接提供繁简转换与姓名字段能力，不承担工程生命周期管理。
-- `ProjectSession` 只做当前工程会话状态容器；`LGDatabase` 只做 SQL、schema 和事务，不承担业务流程。
+- `ProjectSession` 只做工程会话状态容器；`LGDatabase` 只做 SQL、schema 和事务，不承担业务流程。
 - `module/File` 负责把外部格式转换成 `Item` / 资产写回，`module/Data` 只消费稳定条目和资产字典，不负责格式解析细节。
 - `module/Engine` 负责后台任务生命周期和请求执行，`module/Data` 只提供任务所需的数据事实与批量提交入口，不直接承担请求调度。
 - 新增数据链路时，先判断它属于工程编排、规则/分析/翻译、校对，还是 Extra 工具，不要把所有逻辑都压回 `DataManager`。
@@ -81,7 +81,7 @@ flowchart TD
 
 ## 子包职责速查
 ### `Core`
-- `ProjectSession`：当前工程会话状态与缓存权威来源
+- `ProjectSession`：工程会话状态与缓存权威来源
 - `Item` / `Project`：数据层共享实体与导入导出链路中的基础对象
 - `MetaService` / `RuleService` / `ItemService` / `AssetService`：基础数据读写与缓存整理
 - `BatchService`：`items / rules / meta` 的统一事务写回
@@ -90,11 +90,11 @@ flowchart TD
 ### `Project`
 - `ProjectService`：创建工程、收集源文件、预览工程
 - `ProjectLifecycleService`：加载/卸载工程与加载后整理
-- `ProjectPrefilterService`：预过滤是否需要重跑与实际执行；当前比较口径只依赖 `source_language` 与 `mtool_optimizer_enable`，并支持由调用方控制是否补发整页刷新事件
+- `ProjectPrefilterService`：预过滤是否需要重跑与实际执行；比较口径只依赖 `source_language` 与 `mtool_optimizer_enable`，并支持由调用方控制是否补发整页刷新事件
 - `ProjectFileService`：文件导入、更新、重置、删除与批量删除
 - `ExportPathService`：导出路径规则
 - `WorkbenchService`：工作台聚合快照与按文件路径裁切 entry patch
-- `Project/ProjectRuntimeService`：把当前工程实体编码成 V2 bootstrap block 与 task patch 可复用的稳定记录
+- `Project/ProjectRuntimeService`：把工程实体编码成 V2 bootstrap block 与 task patch 可复用的稳定记录
 
 ### `Quality`
 - `QualityRuleService`：规则领域总门面
@@ -126,36 +126,36 @@ flowchart TD
 
 ## 页面快照真实依赖与失效判定
 ### 工作台快照
-- `WorkbenchService` 当前真正聚合的是文件集合、文件顺序、条目侧 `file_path / file_type / status` 的汇总结果，以及 API 响应层补入的 `file_op_running`。
+- `WorkbenchService` 聚合文件集合、文件顺序、条目侧 `file_path / file_type / status` 的汇总结果，以及 API 响应层补入的 `file_op_running`。
 - 判断工作台是否需要刷新时，优先看文件集合、顺序或状态聚合是否变化；单条 `dst` 文本变化本身不构成工作台失效，只有它进一步改动 `status`、`file_path` 或文件集合时才需要联动。
-- 文件重排只影响工作台；质量规则、提示词与分析任务终态当前都不会直接改动工作台快照。
+- 文件重排只影响工作台；质量规则、提示词与分析任务终态不会直接改动工作台快照。
 
 ### 校对页本地 runtime
 - Electron 主路径上的校对页依赖 `ProjectStore.items + quality/prompts + proofreading revision + settings_snapshot` 在 TS worker 中本地重算。
-- Python `Proofreading/` 当前只负责 mutation、重检辅助与 revision 管理；校对页是否需要重算，取决于条目事实、规则运行态和 `source_language` 等输入是否变化。
-- `target_language` 当前只同步工程 meta 镜像，不参与预过滤比较，也不是工作台/校对页本地 runtime 的真实依赖。
+- Python `Proofreading/` 负责 mutation、重检辅助与 revision 管理；校对页是否需要重算，取决于条目事实、规则运行态和 `source_language` 等输入是否变化。
+- `target_language` 只同步工程 meta 镜像，不参与预过滤比较，也不是工作台/校对页本地 runtime 的真实依赖。
 
-### 设置与规则变化的当前口径
-| 变更 | 工作台 | 校对页 | 当前约束 |
+### 设置与规则变化口径
+| 变更 | 工作台 | 校对页 | 约束 |
 | --- | --- | --- | --- |
 | `source_language` | 全局 | 全局 | 会改变预过滤结果与校对检查语义 |
 | `mtool_optimizer_enable` | 全局 | 全局 | 会成批改动预过滤与状态聚合结果 |
 | `target_language` | 无 | 无 | 只同步工程摘要，不触发页面刷新或预过滤 |
-| `check_kana_residue` / `check_hangeul_residue` / `check_similarity` | 无 | 无 | `ResultChecker` 当前未消费这些开关 |
+| `check_kana_residue` / `check_hangeul_residue` / `check_similarity` | 无 | 无 | `ResultChecker` 未消费这些开关 |
 | 术语表、前置替换、后置替换 | 无 | 无 | 主路径通过 `ProjectStore` 与 `project.patch` 维持跨页一致性 |
 | 文本保护条目内容 | 无 | 无 | 主路径通过 `ProjectStore` 与 `project.patch` 维持跨页一致性 |
 | 文本保护模式 | 无 | 无 | 会改变校对检查语义，但刷新由前端显式拉取或重新进入页面触发 |
 
-- 分析任务完成/重置、提示词变更、应用语言变化与最近项目变化，当前都不属于工作台或校对页快照的真实依赖，默认不应补发页面刷新。
+- 分析任务完成/重置、提示词变更、应用语言变化与最近项目变化，都不属于工作台或校对页快照的真实依赖，默认不应补发页面刷新。
 
-## 当前已落地的文件级刷新事实
-- `DataManager` 当前负责把文件操作与条目写入收口到稳定数据态。
-- `ProjectFileMutationResult` 已从单文件结果扩成批量结果，统一携带 `rel_paths`、`removed_rel_paths` 与 `order_changed`。
-- `ProjectItemChange` 当前统一承载条目级刷新所需的 `item_ids`、`rel_paths` 与 `reason`。
+## 文件级刷新契约
+- `DataManager` 负责把文件操作与条目写入收口到稳定数据态。
+- `ProjectFileMutationResult` 统一携带 `rel_paths`、`removed_rel_paths` 与 `order_changed`，表达单文件与批量文件修改结果。
+- `ProjectItemChange` 统一携带 `item_ids`、`rel_paths` 与 `reason`，承载条目级刷新所需的最小载荷。
 - `WorkbenchService.build_entry_patch()` 负责从最新工作台快照中裁出受影响文件的 entry 列表。
-- 校对保存/替换/重译当前只返回最小 mutation ack；GUI 依赖随后到达的 `project.patch` 和本地 runtime 重算。
-- 批量删除当前按“一次事务 + 一次稳定结果”的语义落地。
-- 文件重排、增删改当前都先完成持久化与预过滤；工作台按需读取 `/api/v2/project/workbench/file-patch`，校对页通过 `project.patch` 和本地 runtime 刷新。
+- 校对保存/替换/重译只返回最小 mutation ack；GUI 依赖随后到达的 `project.patch` 和本地 runtime 重算。
+- 批量删除按“一次事务 + 一次稳定结果”的语义落地。
+- 文件重排、增删改都先完成持久化与预过滤；工作台按需读取 `/api/v2/project/workbench/file-patch`，校对页通过 `project.patch` 和本地 runtime 刷新。
 - 对 Electron 渲染层主路径来说，工作台/校对页通过 V2 `project.patch` 回灌 `ProjectStore`。
 - 若某个数据层改动需要影响项目运行态主路径，应优先落到 V2 bootstrap 或 `project.patch` 语义。
 
@@ -181,7 +181,7 @@ flowchart TD
 
 ## 维护约束
 - `DataManager` 是工程级门面，不是任意逻辑的回收站。
-- `ProjectSession` 只保存当前工程会话状态；流程控制状态不要随手塞进去。
+- `ProjectSession` 只保存工程会话状态；流程控制状态不要随手塞进去。
 - `Proofreading/` 与 `Extra/` 已经有独立服务分层，不要为了省事回退成页面或 API 直接拼数据。
 - 代码改动如果改变了阅读入口、目录职责或主链路，要同步更新本文。
 

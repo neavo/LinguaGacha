@@ -92,7 +92,6 @@ export const zh_cn_glossary_page = {
     },
   },
   feedback: {
-    refresh_failed: '术语表刷新失败',
     save_failed: '术语表保存失败',
     import_failed: '术语表导入失败',
     import_success: '数据已导入 …',

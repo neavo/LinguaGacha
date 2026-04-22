@@ -98,7 +98,6 @@ export const en_us_text_replacement_page = {
     },
   },
   feedback: {
-    refresh_failed: 'Failed to refresh replacement page.',
     save_failed: 'Failed to save replacement page.',
     import_failed: 'Failed to import replacement rules.',
     import_success: 'Data imported …',

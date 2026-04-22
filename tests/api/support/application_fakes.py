@@ -329,7 +329,6 @@ class FakeWorkbenchManager:
             "translated": 1,
             "translated_in_past": 0,
             "error_count": 0,
-            "untranslated": 1,
             "entries": (
                 {
                     "rel_path": "script/a.txt",
@@ -367,18 +366,22 @@ class FakeWorkbenchManager:
             translated=int(self.snapshot["translated"]),
             translated_in_past=int(self.snapshot["translated_in_past"]),
             error_count=int(self.snapshot["error_count"]),
-            untranslated=int(self.snapshot["untranslated"]),
             entries=(entry,),
         )
 
     def is_file_op_running(self) -> bool:
         return self.file_op_running
 
-    def build_workbench_entry_patch(self, rel_paths: list[str]):
+    def build_workbench_entry_patch(
+        self,
+        rel_paths: list[str],
+        *,
+        snapshot=None,
+    ):
         from module.Data.Project.WorkbenchService import WorkbenchService
 
         return WorkbenchService().build_entry_patch(
-            self.build_workbench_snapshot(),
+            self.build_workbench_snapshot() if snapshot is None else snapshot,
             rel_paths,
         )
 

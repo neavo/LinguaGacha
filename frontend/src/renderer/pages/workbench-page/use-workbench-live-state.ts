@@ -510,32 +510,32 @@ function build_translation_task_metric_entries(
   return [
     {
       key: "elapsed",
-      label: t("proofreading_page.task.detail.elapsed_time"),
+      label: t("workbench_page.translation_task.detail.elapsed_time"),
       ...format_duration_value(metrics.elapsed_seconds),
     },
     {
       key: "remaining-time",
-      label: t("proofreading_page.task.detail.remaining_time"),
+      label: t("workbench_page.translation_task.detail.remaining_time"),
       ...format_duration_value(metrics.remaining_seconds),
     },
     {
       key: "speed",
-      label: t("proofreading_page.task.detail.average_speed"),
+      label: t("workbench_page.translation_task.detail.average_speed"),
       ...format_speed_value(metrics.average_output_speed),
     },
     {
       key: "input-tokens",
-      label: t("proofreading_page.task.detail.input_tokens"),
+      label: t("workbench_page.translation_task.detail.input_tokens"),
       ...format_compact_metric_value(metrics.input_tokens, "T"),
     },
     {
       key: "output-tokens",
-      label: t("proofreading_page.task.detail.output_tokens"),
+      label: t("workbench_page.translation_task.detail.output_tokens"),
       ...format_compact_metric_value(metrics.output_tokens, "T"),
     },
     {
       key: "active-requests",
-      label: t("proofreading_page.task.detail.active_requests"),
+      label: t("workbench_page.translation_task.detail.active_requests"),
       ...format_compact_metric_value(metrics.request_in_flight_count, "Task"),
     },
   ];
@@ -588,11 +588,11 @@ function build_empty_task_summary_view_model(
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryViewModel {
   return {
-    status_text: t("proofreading_page.task.summary.empty"),
+    status_text: t("workbench_page.translation_task.summary.empty"),
     trailing_text: null,
     tone: "neutral",
     show_spinner: false,
-    detail_tooltip_text: t("proofreading_page.task.summary.detail_tooltip"),
+    detail_tooltip_text: t("workbench_page.translation_task.summary.detail_tooltip"),
   };
 }
 
@@ -600,11 +600,11 @@ function build_translation_task_summary_view_model(
   metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryViewModel {
-  let status_text = t("proofreading_page.task.summary.empty");
+  let status_text = t("workbench_page.translation_task.summary.empty");
   if (metrics.stopping) {
-    status_text = t("proofreading_page.task.summary.stopping");
+    status_text = t("workbench_page.translation_task.summary.stopping");
   } else if (metrics.active) {
-    status_text = t("proofreading_page.task.summary.running");
+    status_text = t("workbench_page.translation_task.summary.running");
   }
 
   const show_runtime = metrics.active || metrics.stopping;
@@ -619,7 +619,7 @@ function build_translation_task_summary_view_model(
       stopping: metrics.stopping,
     }),
     show_spinner: show_runtime,
-    detail_tooltip_text: t("proofreading_page.task.summary.detail_tooltip"),
+    detail_tooltip_text: t("workbench_page.translation_task.summary.detail_tooltip"),
   };
 }
 
@@ -627,7 +627,7 @@ function build_analysis_task_summary_view_model(
   metrics: AnalysisTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryViewModel {
-  let status_text = t("proofreading_page.task.summary.empty");
+  let status_text = t("workbench_page.analysis_task.summary.empty");
   if (metrics.stopping) {
     status_text = t("workbench_page.analysis_task.summary.stopping");
   } else if (metrics.active) {
@@ -657,16 +657,16 @@ function build_translation_task_detail_view_model(args: {
   t: ReturnType<typeof useI18n>["t"];
 }): WorkbenchTaskDetailViewModel {
   return {
-    title: args.t("proofreading_page.task.detail.title"),
-    description: args.t("proofreading_page.task.detail.description"),
-    waveform_title: args.t("proofreading_page.task.detail.waveform_title"),
-    metrics_title: args.t("proofreading_page.task.detail.metrics_title"),
+    title: args.t("workbench_page.translation_task.detail.title"),
+    description: args.t("workbench_page.translation_task.detail.description"),
+    waveform_title: args.t("workbench_page.translation_task.detail.waveform_title"),
+    metrics_title: args.t("workbench_page.translation_task.detail.metrics_title"),
     completion_percent_text: `${args.metrics.completion_percent.toFixed(2)}%`,
     percent_tone: resolve_percent_tone(args.metrics),
     metric_entries: build_translation_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping
-      ? args.t("proofreading_page.action.stopping")
-      : args.t("proofreading_page.action.stop_translation"),
+      ? args.t("workbench_page.action.translation_stopping")
+      : args.t("workbench_page.action.stop_translation"),
     stop_disabled: !args.metrics.active || args.metrics.stopping,
     waveform_history: args.waveform_history,
   };
@@ -706,8 +706,8 @@ function build_translation_task_confirm_dialog_view_model(
   if (state.kind === "reset-all") {
     return {
       open: state.open,
-      title: t("proofreading_page.task.confirm.reset_all_title"),
-      description: t("proofreading_page.task.confirm.reset_all_description"),
+      title: t("workbench_page.translation_task.confirm.reset_all_title"),
+      description: t("workbench_page.translation_task.confirm.reset_all_description"),
       submitting: state.submitting,
     };
   }
@@ -715,16 +715,16 @@ function build_translation_task_confirm_dialog_view_model(
   if (state.kind === "reset-failed") {
     return {
       open: state.open,
-      title: t("proofreading_page.task.confirm.reset_failed_title"),
-      description: t("proofreading_page.task.confirm.reset_failed_description"),
+      title: t("workbench_page.translation_task.confirm.reset_failed_title"),
+      description: t("workbench_page.translation_task.confirm.reset_failed_description"),
       submitting: state.submitting,
     };
   }
 
   return {
     open: state.open,
-    title: t("proofreading_page.task.confirm.stop_title"),
-    description: t("proofreading_page.task.confirm.stop_description"),
+    title: t("workbench_page.translation_task.confirm.stop_title"),
+    description: t("workbench_page.translation_task.confirm.stop_description"),
     submitting: state.submitting,
   };
 }

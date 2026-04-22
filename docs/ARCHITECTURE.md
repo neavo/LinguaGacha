@@ -1,7 +1,7 @@
 # LinguaGacha 仓库结构
 
 ## 一句话总览
-LinguaGacha 当前是“无头 Python Core + Electron 桌面前端”的双进程工程。`app.py` 负责无头运行时与 Core API 启停；`api/v2/` 负责本地 HTTP / SSE / bootstrap 边界；`module/Data/` 持有工程事实与数据编排；`module/Engine/` 负责后台任务执行；`module/File/` 负责格式解析与回写；`frontend/` 承载 Electron 壳层与 React 渲染层。
+LinguaGacha 是“无头 Python Core + Electron 桌面前端”的双进程工程。`app.py` 负责无头运行时与 Core API 启停；`api/v2/` 负责本地 HTTP / SSE / bootstrap 边界；`module/Data/` 持有工程事实与数据编排；`module/Engine/` 负责后台任务执行；`module/File/` 负责格式解析与回写；`frontend/` 承载 Electron 壳层与 React 渲染层。
 
 ## 核心运行时关系
 ```mermaid
@@ -20,7 +20,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     A["AGENTS.md"] --> B["docs/ARCHITECTURE.md"]
-    A --> K["doc/DESIGN.md"]
+    A --> K["docs/DESIGN.md"]
     B --> C["frontend/SPEC.md"]
     C --> D["frontend/src/renderer/SPEC.md"]
     D --> E["frontend/src/renderer/app/project-runtime/SPEC.md"]
@@ -34,8 +34,8 @@ flowchart TD
 规则：
 - `AGENTS.md` 只保留协作规则、交付约束和仓库级入口。
 - 本文是仓库级文档索引、阅读路径和同步矩阵的唯一权威来源。
-- `doc/DESIGN.md` 是面向代理的前端设计系统文档，用于约束界面风格、组件气质与生成方向。
-- 模块 `SPEC.md` 只写当前模块的稳定边界、真实入口和改动落点，不记录对开发没有帮助的历史叙述。
+- `docs/DESIGN.md` 是面向代理的前端设计系统文档，用于约束界面风格、组件气质与生成方向。
+- 模块 `SPEC.md` 只写模块的稳定边界、真实入口和改动落点，不记录对开发没有帮助的历史叙述。
 
 ## 推荐阅读路径
 | 场景 | 阅读顺序 |
@@ -62,20 +62,11 @@ flowchart TD
 | [`module/File/SPEC.md`](../module/File/SPEC.md) | `module/File/` | 文件格式接入、解析分发、写回策略与新增格式时的真实落点 |
 | [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置对象、模板补齐、预设迁移、分组排序与模型页后端入口 |
 
-## 当前最值得记住的边界
+## 最值得记住的边界
 - V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` + `/api/v2/events/stream`；页面通过 bootstrap 与 `project.patch` 建立运行态事实源。
 - `DataManager` 负责工程事实与数据编排，`Engine` 负责后台任务生命周期，`FileManager` 只负责格式解析与回写；三者不要互相吞职责。
 - Electron 渲染层只通过 `window.desktopApp` 暴露的桌面能力接入宿主，再通过 `desktop-api.ts` 探活并请求 Core API。
-- 新增文档时，优先补“难以从代码快速看懂、而且后续开发会反复依赖”的真实边界，而不是表面目录介绍。
-
-## 文档放置规则
-| 文档类型 | 位置 | 用途 |
-| --- | --- | --- |
-| `AGENTS.md` | 仓库根目录 | 协作规则、交付约束、仓库级入口 |
-| `doc/DESIGN.md` | `doc/` | 面向代理的前端设计系统文档，描述界面风格、组件语义与生成约束 |
-| `docs/ARCHITECTURE.md` | `docs/` | 仓库结构总览、阅读路径、文档索引与同步矩阵 |
-| `*/SPEC.md` | 模块目录内 | 当前模块的稳定边界、主流程、改动入口与维护约束 |
-| `docs/design/*.md` | `docs/design/` | 仍然有效的方案取舍与设计记录 |
+- 同一条稳定规则只保留在一个权威文档；本文只负责入口、索引和同步矩阵，不接管模块内部规则。
 
 ## 更新规则
 | 变更类型 | 必须同步的文档 |
@@ -89,16 +80,6 @@ flowchart TD
 | 任务生命周期、请求器、共享流水线或停止语义变化 | `module/Engine/SPEC.md` |
 | 文件格式支持、解析分发或写回策略变化 | `module/File/SPEC.md` |
 | 模型配置字段、模板、排序或模型页后端入口变化 | `module/Model/SPEC.md` |
-
-## 新增文档时怎么判断位置
-```mermaid
-flowchart TD
-    A["准备新增文档"] --> B{"描述当前稳定边界<br/>还是某次方案记录"}
-    B -->|当前稳定边界| C["放到对应目录/SPEC.md"]
-    B -->|方案记录| D["放到 docs/design/"]
-    C --> E["更新 docs/ARCHITECTURE.md 索引"]
-    D --> E
-```
 
 ## 维护约束
 - 本文只列出真实存在、且对开发有帮助的文档入口，不为“以后可能会写”的文档预留占位。

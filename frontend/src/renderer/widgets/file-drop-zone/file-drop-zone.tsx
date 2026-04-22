@@ -7,7 +7,7 @@ import {
 import { cn } from '@/lib/utils'
 import '@/widgets/file-drop-zone/file-drop-zone.css'
 
-export type FileDropIssue = 'multiple' | 'unavailable'
+type FileDropIssue = 'multiple' | 'unavailable'
 
 type FileDropZoneProps = {
   label: string
@@ -17,7 +17,6 @@ type FileDropZoneProps = {
   on_path_drop: (path: string) => void | Promise<void>
   on_drop_issue?: (issue: FileDropIssue) => void
 }
-
 
 export function FileDropZone(props: FileDropZoneProps): JSX.Element {
   const drag_depth_ref = useRef(0)

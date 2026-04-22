@@ -1,7 +1,7 @@
 # `api/` 规格
 
 ## 一句话总览
-`api/` 是 LinguaGacha Python Core 对外暴露的唯一本地协议边界。它当前服务两类消费者：
+`api/` 是 LinguaGacha Python Core 对外暴露的唯一本地协议边界。它服务两类消费者：
 - Electron 渲染层运行时
 - Python 侧测试 / 桥接 / 对象化客户端
 
@@ -15,7 +15,7 @@
 | 请求归一化与业务约束 | `api/v2/Application/*.py` |
 | HTTP 载荷包装与 bootstrap / SSE 线格式 | `api/v2/Contract/*.py` |
 | 公开事件桥与 `project.patch` 生成 | `api/v2/Bridge/*.py` |
-| Python 客户端与状态仓库 | `api/v2/Client/*.py`、`api/v2/Models/*.py` |
+| Python 客户端与对象化模型 | `api/v2/Client/*.py`、`api/v2/Models/*.py` |
 | Electron 接入点 | `frontend/src/renderer/app/desktop-api.ts`、`frontend/src/renderer/app/project-runtime/SPEC.md` |
 
 ## 阅读顺序
@@ -26,7 +26,7 @@
 
 ## 1. 运行时边界
 
-### 1.1 当前真实分层
+### 1.1 真实分层
 ```mermaid
 flowchart LR
     A["app.py / ServerBootstrap"] --> B["CoreApiServer"]
@@ -36,7 +36,7 @@ flowchart LR
     D --> F["Models / DTO"]
     G["frontend desktop-api.ts"] --> B
     H["frontend EventSource"] --> B
-    I["api/v2/Client/* + ApiStateStore"] --> B
+    I["api/v2/Client/*"] --> B
 ```
 
 ### 1.2 目录职责
@@ -47,23 +47,23 @@ flowchart LR
 | `api/v2/Contract/` | 把内部对象编码成 HTTP / SSE 有效载荷 |
 | `api/v2/Bridge/` | 把内部事件裁成公开 topic 与 `project.patch` |
 | `api/v2/Models/` | Python 冻结 DTO、bootstrap 行块与客户端共享模型 |
-| `api/v2/Client/` | Python 侧薄客户端、SSE 消费器、状态仓库 |
+| `api/v2/Client/` | Python 侧薄客户端与对象化返回包装 |
 
 ### 1.3 版本现实
-- 当前业务主边界已经集中在 `api/v2/`。
+- 业务主边界集中在 `api/v2/`。
 - 但并不是所有公开接口都已经迁到 `/api/v2/...`：
   - `settings` 仍在 `/api/settings/*`
   - `extra` 仍在 `/api/extra/*`
 - 后续新增主业务 API 应继续落在 `api/v2/`，不要再新开并行根前缀。
 
 ### 1.4 监听地址与端口
-- `CoreApiServer` 当前固定绑定 `127.0.0.1`，不是 `0.0.0.0`。
+- `CoreApiServer` 固定绑定 `127.0.0.1`，不是 `0.0.0.0`。
 - 默认端口只有一个：`38191`。
 - 若设置 `LINGUAGACHA_CORE_API_BASE_URL`，服务端和前端都会把端口解析到该地址中的显式端口；它不是“建议值”，而是单一候选端口来源。
 
 ### 1.5 事件桥真实装配
 - `ServerBootstrap` 不是直接把 `PublicEventBridge` 挂到 SSE 上。
-- 当前实际装配是：
+- 实际装配是：
   - 外层：`ProjectPatchEventBridge`
   - 内层：`PublicEventBridge`
 - 结果是：
@@ -73,13 +73,13 @@ flowchart LR
 ## 2. 协议不变量
 
 ### 2.1 HTTP 约定
-- 公开 `GET` 目前只有 3 个：
+- 公开 `GET` 只有 3 个：
   - `/api/health`
   - `/api/v2/events/stream`
   - `/api/v2/project/bootstrap/stream`
 - 其余公开接口统一走 `POST + JSON body`。
 - `OPTIONS` 由 `CoreApiServer` 统一回 `204`。
-- 当前 CORS 是完全开放口径：
+- CORS 采用完全开放口径：
   - `Access-Control-Allow-Origin: *`
   - `Access-Control-Allow-Methods: GET,POST,OPTIONS`
   - `Access-Control-Allow-Headers: Content-Type`
@@ -106,7 +106,7 @@ flowchart LR
 }
 ```
 
-### 2.3 当前错误码现实
+### 2.3 错误码现实
 `CoreApiServer` 在边界层只稳定保证 3 个错误码：
 
 | `error.code` | 触发条件 |
@@ -116,11 +116,11 @@ flowchart LR
 | `internal_error` | 其他未捕获异常 |
 
 需要特别记住：
-- revision 冲突、工程未加载、任务忙碌等业务错误，当前大多仍会折叠成 `invalid_request + message`。
+- revision 冲突、工程未加载、任务忙碌等业务错误，大多会折叠成 `invalid_request + message`。
 - 也就是说，**不要假设 API 已经提供稳定的业务错误码体系**。
 
 ### 2.4 SSE 线格式
-普通事件流 `/api/v2/events/stream` 由 `EventEnvelope.to_sse_payload()` 生成，当前协议特点是：
+普通事件流 `/api/v2/events/stream` 由 `EventEnvelope.to_sse_payload()` 生成，协议特点是：
 - `event:` 直接写 topic
 - `data:` 直接写 payload JSON
 - 没有 `event_id`、`timestamp`、`topic` 回显
@@ -129,9 +129,9 @@ flowchart LR
 ## 3. 运行态事件协议
 
 ### 3.1 Bootstrap 流不是普通 topic 流
-`/api/v2/project/bootstrap/stream` 当前使用独立事件型别，而不是复用普通 topic：
+`/api/v2/project/bootstrap/stream` 使用独立事件型别，而不是复用普通 topic：
 
-| `event:` | 当前字段 | 用途 |
+| `event:` | 字段 | 用途 |
 | --- | --- | --- |
 | `stage_started` | `stage`、`message` | stage 开始 |
 | `stage_payload` | `stage`、`payload` | stage 有效载荷 |
@@ -139,12 +139,12 @@ flowchart LR
 | `completed` | `projectRevision`、`sectionRevisions` | 整条 bootstrap 流完成 |
 
 不明显但很重要的事实：
-- 前端当前只真正消费 `stage_started`、`stage_payload`、`completed`。
-- `desktop-api.ts` 会监听 `failed`，但 Python 服务端现在**不会主动发送** `failed`。
+- 前端主路径消费 `stage_started`、`stage_payload`、`completed`。
+- `desktop-api.ts` 会监听 `failed`，但 Python 服务端不主动发送 `failed`。
 - 这条流本质上是“一次性阶段化首包”，不是长期订阅流。
 
 ### 3.2 Bootstrap stage 顺序是稳定契约
-当前顺序固定为：
+顺序固定为：
 1. `project`
 2. `files`
 3. `items`
@@ -156,8 +156,8 @@ flowchart LR
 
 渲染层 `ProjectStore` 依赖这套顺序建立最小运行态；如果顺序或命名变化，前后端文档必须同步改。
 
-### 3.3 `RowBlock` 当前只在两个 stage 上是硬约束
-当前稳定 schema：
+### 3.3 `RowBlock` 只在两个 stage 上是硬约束
+稳定 schema：
 
 | schema | stage | 字段顺序 |
 | --- | --- | --- |
@@ -169,7 +169,7 @@ flowchart LR
 - `items[item_id]`
 
 ### 3.4 公开 topic 里真正不直观的地方
-当前 `/api/v2/events/stream` 上值得记住的 topic：
+`/api/v2/events/stream` 上值得记住的 topic：
 
 | topic | 需要记住的事实 |
 | --- | --- |
@@ -179,7 +179,7 @@ flowchart LR
 | `project.patch` | 不是 `PublicEventTopic` 成员，而是桥接层额外补出的运行态补丁 |
 
 ### 3.5 `project.patch` 的真实语义
-`project.patch` 当前**不保证**总是完整补丁事件。
+`project.patch` **不保证**总是完整补丁事件。
 
 它至少会有：
 - `source`
@@ -195,13 +195,13 @@ flowchart LR
 - 翻译任务进行中，每次批量提交终态条目后，后端也会补发 `merge_items` patch；任务进度数字仍继续走 `task.progress_changed`
 - 翻译 reset 进入 `DONE` 后，后端会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 受影响运行态
 - 分析 reset 进入 `DONE` 后，后端也会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 分析相关运行态
-- 文件操作后，它可能只是“告知哪些 section 失效”，前端会把它当成“重新 bootstrap 当前项目运行态”的信号
+- 文件操作后，它可能只是“告知哪些 section 失效”，前端会把它当成“重新 bootstrap 项目运行态”的信号
 
 如果后续要新增 `project.patch` 用法，优先保持这两种语义兼容，而不是假设所有事件都必须带 `patch` 数组。
 
 ## 4. 路由族与真正需要记住的约束
 
-### 4.1 当前路由族分布
+### 4.1 路由族分布
 | 前缀 | 说明 |
 | --- | --- |
 | `/api/health` | 探活入口 |
@@ -219,10 +219,11 @@ flowchart LR
 
 ### 4.2 Project / Workbench / Proofreading
 - `project`、`workbench`、`proofreading` 三块虽然都挂在 `/api/v2/project/*` 下，但它们不是一个 Application 服务。
+- 工作台首屏与运行态真值由 bootstrap + `ProjectStore` 持有。工作台局部刷新入口是 `file-patch`；API 不提供整页 `workbench/snapshot`。
 - 工作台命令型接口大多只返回 `accepted`，真正的重型视图刷新依赖后续显式拉取 `file-patch`。
-- `workbench/add-file`、`replace-file`、`reset-file`、`delete-file`、`delete-file-batch` 现在在 HTTP 请求内直接执行文件操作；参数校验、重名冲突和解析失败会直接以错误响应透传给前端，而不是只在后台线程里吞掉。
+- `workbench/add-file`、`replace-file`、`reset-file`、`delete-file`、`delete-file-batch` 在 HTTP 请求内直接执行文件操作；参数校验、重名冲突和解析失败以错误响应透传给前端。
 - `reorder-files` 的隐藏硬约束是：`ordered_rel_paths` 必须完整覆盖当前文件集合，不能只传局部。
-- Proofreading 路由族当前包含这些写接口：
+- Proofreading 路由族写接口包括：
   - `save-item`
   - `save-all`
   - `replace-all`
@@ -235,30 +236,29 @@ flowchart LR
 ### 4.3 Task
 - `tasks/snapshot` 是按需快照，不是订阅态入口。
 - 分析任务快照在可用时会额外带 `analysis_candidate_count`。
-- `import-analysis-glossary`、`reset-*` 当前都要求：
+- `import-analysis-glossary`、`reset-*` 都要求：
   - 工程已加载
   - 引擎空闲
 - `ANALYSIS_IMPORT_GLOSSARY` 进入 `DONE` 时，事件桥会补发 `project.patch`，把 `quality + analysis + task` 三个 section 一起回灌到 `ProjectStore`。
 - `TRANSLATION_RESET_ALL` / `TRANSLATION_RESET_FAILED` 进入 `DONE` 时，事件桥会补发 `project.patch`，要求前端重拉翻译 reset 影响到的运行态 section。
 - `ANALYSIS_RESET_ALL` / `ANALYSIS_RESET_FAILED` 进入 `DONE` 时，事件桥会补发 `project.patch`，要求前端重拉分析 reset 影响到的运行态 section。
-- `export-translation` 目前只有最小 `accepted` 回执，没有稳定 DTO。
+- `export-translation` 只有最小 `accepted` 回执，没有稳定 DTO。
 
 ### 4.4 Settings
-- `settings` 仍未迁到 `/api/v2/`。
+- `settings` 路由位于 `/api/settings/*`。
 - `update` 只处理 `SettingsAppService.SETTING_KEYS` 白名单字段，未知字段会被忽略，不会报错。
-- 对渲染层运行态而言，当前只有：
+- 对渲染层运行态而言，真正进入工作台 / 校对页高影响刷新链的设置只有：
   - `source_language`
   - `mtool_optimizer_enable`
-  会进入工作台 / 校对页的高影响刷新链。
-- `target_language` 当前只同步工程 meta 镜像，不是页面刷新信号。
+- `target_language` 只同步工程 meta 镜像，不是页面刷新信号。
 
 ### 4.5 Models
 - `models/reorder` 的请求体字段是 `ordered_model_ids`。
 - `ordered_model_ids` 必须只重排某一个模型分组，不能跨组混排。
-- `models/add` 当前实际只新增自定义类型，不会新增新的 preset 模型。
+- `models/add` 只新增自定义类型，不会新增新的 preset 模型。
 
 ### 4.6 Quality / Prompts
-- 当前 `rule_type` 只稳定使用：
+- 稳定 `rule_type` 只有：
   - `glossary`
   - `pre_replacement`
   - `post_replacement`
@@ -276,7 +276,7 @@ flowchart LR
 - 规则和提示词都已经用了 `expected_revision` 做乐观锁，但 API 边界还没有给出专门的冲突错误码。
 
 ### 4.7 Extra
-- `extra` 仍保留在非 v2 前缀下。
+- `extra` 路由位于非 v2 前缀 `/api/extra/*`。
 - `ts-conversion/start` 的终态和进度不靠轮询，而是依赖 SSE：
   - `extra.ts_conversion_progress`
   - `extra.ts_conversion_finished`
@@ -285,7 +285,7 @@ flowchart LR
 
 ### 5.1 `ApiClient` 的真实行为
 - `ApiClient` 只取响应体里的 `data`。
-- 它当前不会：
+- 它不会：
   - 校验 `ok`
   - 保留 `error`
   - 主动把业务失败提升成结构化异常
@@ -296,29 +296,9 @@ flowchart LR
 - `SettingsApiClient`、`ExtraApiClient` 基本已经对象化完成。
 - `ProjectApiClient`、`TaskApiClient` 的主路径快照已对象化，但少量辅助命令仍返回原始结构。
 - `WorkbenchApiClient`、`QualityRuleApiClient` 仍有明显一截停留在原始 `dict` / `list` 返回。
-- `ProofreadingApiClient` 当前只覆盖写接口，且统一返回对象化的 `ProofreadingMutationResult`。
-- `ModelApiClient.test_model()`、`TaskApiClient.export_translation()` 当前仍是原始结构接口。
-
-### 5.3 `ApiStateStore` 当前只缓存最小运行态
-它现在只稳定缓存：
-- `project_snapshot`
-- `task_snapshot`
-- `extra_task_states`
-
-它**不会**缓存：
-- settings
-- workbench
-- quality
-- proofreading
-- model page
-- `project.patch` 派生运行态
-
-也就是说，`ApiStateStore` 仍然只是 Python 侧的轻量状态仓，而不是 `ProjectStore` 的 Python 对等实现。
-
-### 5.4 `SseClient` 的现实限制
-- 没有自动重连。
-- 只消费 `/api/v2/events/stream`。
-- `settings.changed` 与 `project.patch` 目前都不会落成本地缓存，只是通知型事件。
+- `ProofreadingApiClient` 覆盖写接口，并统一返回对象化的 `ProofreadingMutationResult`。
+- `ModelApiClient.test_model()`、`TaskApiClient.export_translation()` 返回原始结构。
+- Python 侧客户端边界是显式请求/响应包装，不承担运行态缓存、SSE 消费或 `ProjectStore` 风格的长期状态同步层。
 
 ## 6. Electron 接入边界
 - 渲染层真正的 API 接入入口只有 `frontend/src/renderer/app/desktop-api.ts`。

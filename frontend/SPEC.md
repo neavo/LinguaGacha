@@ -30,7 +30,7 @@ flowchart LR
 | `src/preload/` | `contextBridge` 暴露 `window.desktopApp`，不持有页面状态 |
 | `src/shared/` | 主进程 / 预加载 / 渲染层共享契约、桌面壳层常量、Core API 地址解析 |
 | `src/renderer/` | React 渲染层；目录规则见 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) |
-| `src/test/` | Vitest 前端测试环境入口；当前由 `setup.ts` 提供公共测试装配 |
+| `src/test/` | Vitest 前端测试环境入口；由 `setup.ts` 提供公共测试装配 |
 | `public/` | 原始静态资源，例如应用图标 |
 
 ## Main / Preload / Shared 的真实边界
@@ -40,7 +40,7 @@ flowchart LR
   - 打开文件 / 目录选择器
   - 外部链接打开与应用退出
   - 开发态 DevTools 快捷键与远程调试端口
-- 当前开发态会打开 Chromium remote debugging 端口 `9222`，方便外部自动化工具直接附着 Electron 实例。
+- 开发态会打开 Chromium remote debugging 端口 `9222`，方便外部自动化工具直接附着 Electron 实例。
 - 不负责：
   - 页面状态
   - HTTP 请求编排
@@ -48,7 +48,7 @@ flowchart LR
 
 ### `src/preload/`
 - 只通过 `contextBridge.exposeInMainWorld('desktopApp', ...)` 暴露桌面能力。
-- 当前对渲染层公开的稳定能力包括：
+- 对渲染层公开的稳定能力包括：
   - `shell`
   - `coreApi.baseUrl`
   - 文件 / 目录选择
@@ -59,13 +59,13 @@ flowchart LR
 
 ### `src/shared/`
 - 是桌面壳层契约的唯一权威来源。
-- 当前最关键的共享规则：
+- 最关键的共享规则：
   - `core-api-base-url.ts` 负责解析 Core API 地址
   - `desktop-shell.ts` 负责标题栏高度、安全区、控制按钮侧
   - `ipc-channels.ts` 维护 IPC channel 常量
 
 ## Core API 地址的真实来源
-`window.desktopApp.coreApi.baseUrl` 最终来自 `src/shared/core-api-base-url.ts`，当前解析顺序固定为：
+`window.desktopApp.coreApi.baseUrl` 最终来自 `src/shared/core-api-base-url.ts`，解析顺序固定为：
 1. 环境变量 `LINGUAGACHA_CORE_API_BASE_URL`
 2. 启动参数 `--core-api-base-url=...`
 3. 默认地址 `http://127.0.0.1:38191`

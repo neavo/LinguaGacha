@@ -3,26 +3,9 @@ from collections.abc import Callable
 from api.v2.Application.WorkbenchAppService import WorkbenchAppService
 from api.v2.Client.ApiClient import ApiClient
 from api.v2.Client.WorkbenchApiClient import WorkbenchApiClient
-from api.v2.Models.Workbench import WorkbenchSnapshot
 from api.v2.Server.Routes.ProjectRoutes import ProjectRoutes
 from tests.api.support.application_fakes import FakeWorkbenchManager
 import pytest
-
-
-def test_workbench_api_client_get_snapshot_returns_snapshot(
-    fake_workbench_manager: FakeWorkbenchManager,
-    start_api_server: Callable[..., str],
-) -> None:
-    base_url = start_api_server(
-        workbench_app_service=WorkbenchAppService(fake_workbench_manager)
-    )
-    workbench_client = WorkbenchApiClient(ApiClient(base_url))
-
-    result = workbench_client.get_snapshot()
-
-    assert isinstance(result, WorkbenchSnapshot)
-    assert result.error_count == 0
-    assert result.entries[0].rel_path == "script/a.txt"
 
 
 def test_workbench_api_client_reorder_files_forwards_payload(

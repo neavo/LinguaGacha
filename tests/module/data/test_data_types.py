@@ -33,7 +33,6 @@ def test_project_prefilter_request_and_workbench_snapshots_are_frozen() -> None:
         translated=1,
         translated_in_past=0,
         error_count=0,
-        untranslated=1,
         entries=(entry,),
     )
 

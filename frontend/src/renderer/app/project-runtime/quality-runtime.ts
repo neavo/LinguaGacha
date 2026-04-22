@@ -6,15 +6,15 @@ import type {
   ProjectStoreState,
 } from './project-store'
 
-export type QualityRuntimeRuleType =
+type QualityRuntimeRuleType =
   | 'glossary'
   | 'pre_replacement'
   | 'post_replacement'
   | 'text_preserve'
 
-export type QualityRuntimeTaskType = 'translation' | 'analysis'
+type QualityRuntimeTaskType = 'translation' | 'analysis'
 
-export type ProofreadingLookupQuery = {
+type ProofreadingLookupQuery = {
   keyword: string
   is_regex: boolean
 }

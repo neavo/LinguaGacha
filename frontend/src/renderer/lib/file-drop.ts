@@ -1,4 +1,4 @@
-export type DroppedPathResult = {
+type DroppedPathResult = {
   path: string | null
   has_multiple_paths: boolean
 }

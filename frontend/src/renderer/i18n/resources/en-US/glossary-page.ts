@@ -95,7 +95,6 @@ export const en_us_glossary_page = {
     },
   },
   feedback: {
-    refresh_failed: 'Failed to refresh the glossary.',
     save_failed: 'Failed to save the glossary.',
     import_failed: 'Failed to import the glossary.',
     import_success: 'Data imported …',

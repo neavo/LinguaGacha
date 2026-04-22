@@ -3,23 +3,16 @@ from typing import Any
 from api.v2.Contract.WorkbenchPayloads import WorkbenchFileEntryPayload
 from api.v2.Contract.WorkbenchPayloads import WorkbenchFilePatchPayload
 from api.v2.Contract.WorkbenchPayloads import WorkbenchSummaryPayload
-from api.v2.Contract.WorkbenchPayloads import WorkbenchSnapshotPayload
 from module.Data.DataManager import DataManager
 
 
 class WorkbenchAppService:
-    """工作台用例层，负责把文件操作与快照查询收口为稳定响应载荷。"""
+    """工作台用例层，负责把文件操作与局部补丁收口为稳定响应载荷。"""
 
     def __init__(self, data_manager: Any | None = None) -> None:
         self.data_manager = (
             data_manager if data_manager is not None else DataManager.get()
         )
-
-    def get_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
-        """显式查询工作台快照，供页面首屏与主动刷新使用。"""
-
-        del request
-        return {"snapshot": self.build_snapshot()}
 
     def add_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
@@ -92,7 +85,10 @@ class WorkbenchAppService:
         include_order = bool(request.get("include_order", False))
 
         snapshot = self.data_manager.build_workbench_snapshot()
-        patched_entries = self.data_manager.build_workbench_entry_patch(rel_paths)
+        patched_entries = self.data_manager.build_workbench_entry_patch(
+            rel_paths,
+            snapshot=snapshot,
+        )
         return {
             "patch": WorkbenchFilePatchPayload(
                 summary=self.build_summary(snapshot),
@@ -115,23 +111,6 @@ class WorkbenchAppService:
             ).to_dict()
         }
 
-    def build_snapshot(self) -> dict[str, object]:
-        """把内部冻结快照转换为纯 JSON 响应载荷。"""
-
-        snapshot = self.data_manager.build_workbench_snapshot()
-        entries = tuple(
-            WorkbenchFileEntryPayload(
-                rel_path=str(entry.rel_path),
-                item_count=int(entry.item_count),
-                file_type=str(entry.file_type.value),
-            )
-            for entry in snapshot.entries
-        )
-        return WorkbenchSnapshotPayload(
-            summary=self.build_summary(snapshot),
-            entries=entries,
-        ).to_dict()
-
     def build_summary(self, snapshot: Any) -> WorkbenchSummaryPayload:
         """把内部工作台快照摘要收口为稳定 JSON 载荷。"""
 
@@ -141,6 +120,5 @@ class WorkbenchAppService:
             translated=int(snapshot.translated),
             translated_in_past=int(snapshot.translated_in_past),
             error_count=int(snapshot.error_count),
-            untranslated=int(snapshot.untranslated),
             file_op_running=bool(self.data_manager.is_file_op_running()),
         )

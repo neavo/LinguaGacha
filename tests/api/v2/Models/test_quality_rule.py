@@ -1,6 +1,5 @@
 from types import SimpleNamespace
 
-from api.v2.Models.QualityRule import ProofreadingLookupQuery
 from api.v2.Models.QualityRule import QualityRuleEntry
 from api.v2.Models.QualityRule import QualityRuleSnapshot
 from api.v2.Models.QualityRule import QualityRuleStatisticsResult
@@ -232,18 +231,3 @@ def test_quality_rule_snapshot_ignores_invalid_nested_payloads() -> None:
     assert snapshot.entries == ()
     assert snapshot.statistics == statistics
     assert statistics.to_dict() == {"available": False, "results": {}}
-
-
-def test_proofreading_lookup_query_from_dict_keeps_keyword_and_regex_flag() -> None:
-    query = ProofreadingLookupQuery.from_dict({"keyword": "HP", "is_regex": True})
-
-    assert query.keyword == "HP"
-    assert query.is_regex is True
-    assert query.to_dict() == {"keyword": "HP", "is_regex": True}
-
-
-def test_proofreading_lookup_query_uses_safe_defaults_for_invalid_payload() -> None:
-    query = ProofreadingLookupQuery.from_dict(None)
-
-    assert query.keyword == ""
-    assert query.is_regex is False

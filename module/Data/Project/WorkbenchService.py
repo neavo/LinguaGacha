@@ -83,7 +83,6 @@ class WorkbenchService:
             translated=translated,
             translated_in_past=translated_in_past,
             error_count=error_count,
-            untranslated=max(0, total_items - translated - error_count),
             entries=tuple(entries),
         )
 

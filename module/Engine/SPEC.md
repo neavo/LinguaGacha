@@ -45,7 +45,7 @@ flowchart TD
 ## 共享边界
 ### `Engine`
 - `Engine.status` 是全局忙碌态的唯一权威来源，翻译与分析不会并行运行。
-- `request_in_flight_count` 统计“当前真正占用网络请求的数量”，它不是限流器的并发上限，也不是队列长度。
+- `request_in_flight_count` 统计“真正占用网络请求的数量”，它不是限流器的并发上限，也不是队列长度。
 - UI 需要实时请求数时，应走 `Engine.get_request_in_flight_count()` 对应的事件补丁，不要自己推导。
 
 ### `TaskRunnerLifecycle`
@@ -67,7 +67,7 @@ flowchart TD
 
 ### `TaskRequester`
 - 请求器本身是同步的，并发由线程池和 `TaskPipeline` 提供。
-- 当前已落地的供应商分支：
+- 供应商分支：
   - OpenAI 兼容
   - Anthropic
   - Google Gemini
@@ -114,7 +114,7 @@ flowchart TD
 | 分析任务特有的 checkpoint、候选池、自动导入术语 | `Analysis/*` |
 
 ## 维护约束
-- `module/Engine` 不持有项目数据真相；落库、条目状态和工程 revision 仍然交给 `module/Data`。
+- `module/Engine` 不持有项目数据真相；落库、条目状态和工程 revision 交给 `module/Data`。
 - 共享骨架只抽“真正被翻译与分析共同依赖的规则”；不要为了看起来统一，把领域差异硬塞回公共层。
 - 模型页的连通性测试由 `api/v2/Application/ModelAppService.py` 直接复用 `TaskRequester` 执行。
 - 如果改动会影响任务事件的字段、终态或停止语义，必须同步检查 [`api/SPEC.md`](../../api/SPEC.md)。

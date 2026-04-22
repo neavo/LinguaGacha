@@ -1,4 +1,3 @@
-from api.v2.Contract.QualityPayloads import ProofreadingLookupPayload
 from api.v2.Contract.QualityPayloads import QualityRuleSnapshotPayload
 
 
@@ -24,16 +23,3 @@ def test_quality_rule_snapshot_payload_wraps_snapshot() -> None:
 
     assert payload["snapshot"]["rule_type"] == "glossary"
     assert payload["snapshot"]["entries"][0]["dst"] == "Hero"
-
-
-def test_proofreading_lookup_payload_wraps_lookup_query() -> None:
-    payload = ProofreadingLookupPayload.from_dict(
-        {"keyword": "^勇者$", "is_regex": True}
-    ).to_dict()
-
-    assert payload == {
-        "query": {
-            "keyword": "^勇者$",
-            "is_regex": True,
-        }
-    }

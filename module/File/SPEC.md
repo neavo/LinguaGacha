@@ -49,7 +49,7 @@ flowchart TD
   - 在 `DataManager.timestamp_suffix_context()` 内统一调用各格式 writer
   - 由 `DataManager` 决定最终输出目录、双语目录和时间戳后缀
 
-## 当前支持的格式与分发优先级
+## 支持的格式与分发优先级
 | 扩展名 | 读取处理器 | 写回处理器 | 需要特别注意的规则 |
 | --- | --- | --- | --- |
 | `.md` | `MD` | `MD` | 纯文本路径 |

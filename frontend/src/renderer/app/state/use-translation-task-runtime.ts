@@ -134,7 +134,7 @@ function resolve_translation_terminal_feedback_message(args: {
   t: ReturnType<typeof useI18n>['t']
 }): string | null {
   if (args.previous_status === 'STOPPING' && args.next_status !== 'STOPPING') {
-    return args.t('proofreading_page.feedback.translation_task_stopped')
+    return args.t('workbench_page.translation_task.feedback.stopped')
   }
 
   if (!is_active_translation_task_status(args.previous_status) || args.previous_status === 'STOPPING') {
@@ -142,7 +142,7 @@ function resolve_translation_terminal_feedback_message(args: {
   }
 
   if (args.next_status === 'DONE' || (args.next_status === 'IDLE' && args.has_result)) {
-    return args.t('proofreading_page.feedback.translation_task_done')
+    return args.t('workbench_page.translation_task.feedback.done')
   }
 
   return null
@@ -342,7 +342,7 @@ export function useTranslationTaskRuntime(
     } catch (error) {
       push_toast(
         'error',
-        resolve_error_message(error, t('proofreading_page.feedback.translation_task_refresh_failed')),
+        resolve_error_message(error, t('workbench_page.translation_task.feedback.refresh_failed')),
       )
     }
   }, [apply_translation_task_snapshot, clear_translation_task_state, project_snapshot.loaded, push_toast, t])
@@ -386,7 +386,7 @@ export function useTranslationTaskRuntime(
     } catch (error) {
       push_toast(
         'error',
-        resolve_error_message(error, t('proofreading_page.feedback.translation_task_start_failed')),
+        resolve_error_message(error, t('workbench_page.translation_task.feedback.start_failed')),
       )
     }
   }, [
@@ -466,12 +466,12 @@ export function useTranslationTaskRuntime(
         set_task_confirm_state(null)
       }
     } catch (error) {
-      let fallback_message = t('proofreading_page.feedback.translation_task_stop_failed')
+      let fallback_message = t('workbench_page.translation_task.feedback.stop_failed')
 
       if (task_confirm_state.kind === 'reset-all') {
-        fallback_message = t('proofreading_page.feedback.translation_task_reset_all_failed')
+        fallback_message = t('workbench_page.translation_task.feedback.reset_all_failed')
       } else if (task_confirm_state.kind === 'reset-failed') {
-        fallback_message = t('proofreading_page.feedback.translation_task_reset_failed_failed')
+        fallback_message = t('workbench_page.translation_task.feedback.reset_failed_failed')
       }
 
       push_toast('error', resolve_error_message(error, fallback_message))

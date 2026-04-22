@@ -15,7 +15,7 @@
 | `pages/` | 页面入口、页面私有组件、页面 CSS、页面私有 hook 与辅助模块 |
 | `widgets/` | 跨页面复用的组合组件，例如 `app-table`、`command-bar`、`search-bar` |
 | `shadcn/` | shadcn CLI 管理的基础组件源码与项目内定制 |
-| `hooks/` | 跨页面复用的交互 hook，当前主要是 `use-save-shortcut.ts` |
+| `hooks/` | 跨页面复用的交互 hook，主要是 `use-save-shortcut.ts` |
 | `i18n/` | 文案资源、翻译入口、消息类型；`LocaleKey` 优先静态引用，不动态拼接 key |
 | `lib/` | 无页面语义的纯逻辑工具 |
 | `index.css` | 全局 token、第三方运行时皮肤、浏览器基础重置 |
@@ -23,7 +23,7 @@
 
 ## 真实导航映射
 ### 路由与屏幕不是一一对应的地方
-| 路由 / 节点 | 当前真实落点 | 说明 |
+| 路由 / 节点 | 真实落点 | 说明 |
 | --- | --- | --- |
 | `project-home` | `pages/project-page/page.tsx` | 默认落地页，不在侧边栏分组里显示 |
 | `text-replacement` | 仅侧边栏父节点 | 没有独立屏幕；真正页面是 `pre-translation-replacement` / `post-translation-replacement` |
@@ -41,7 +41,7 @@
 
 ## `app/` 与 `pages/` 的真实边界
 ### `app/`
-- 当前真正承载：
+- 真正承载：
   - `DesktopRuntimeContext`
   - `ProjectStore` 与 V2 运行态装配
   - 应用壳层 `AppSidebar` / `AppTitlebar`
@@ -64,7 +64,7 @@
 - 页面目录不应该被其他页面反向依赖。
 
 ## 状态来源的真实分层
-| 状态类型 | 当前权威来源 | 说明 |
+| 状态类型 | 权威来源 | 说明 |
 | --- | --- | --- |
 | 设置、当前工程、当前任务、页面变更信号 | `app/state/desktop-runtime-context.tsx` | 渲染层启动时先做 hydration，再接 SSE |
 | 项目运行态最小事实 | `app/project-runtime/` | `ProjectStore` 消费 bootstrap 与 `project.patch` |
@@ -74,7 +74,7 @@
 ## `widgets/` 与 `shadcn/` 的边界
 ### `widgets/`
 - 只放跨页面复用的组合组件层。
-- 当前稳定例子：
+- 稳定例子：
   - `app-table`
   - `command-bar`
   - `search-bar`
@@ -93,7 +93,7 @@
   - 浏览器基础重置
 - 页面私有样式必须放在页面目录，由页面入口导入。
 - widget 私有样式由 widget 自己导入，不回写到页面 CSS 或 `index.css`。
-- 当前渲染层继续执行 `px-first`：
+- 渲染层继续执行 `px-first`：
   - 字面量长度优先 `px`
   - `line-height` 用无单位数值
   - `letter-spacing` 仅允许 `em`

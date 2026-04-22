@@ -50,8 +50,8 @@ export function TranslationTaskMenu(
   const { t } = useI18n()
   const has_progress = has_translation_task_progress(props.translation_task_display_snapshot)
   const main_action_label = has_progress
-    ? t('proofreading_page.action.continue_translation')
-    : t('proofreading_page.action.start_translation')
+    ? t('workbench_page.action.continue_translation')
+    : t('workbench_page.action.start_translation')
   const action_items_disabled = props.translation_task_metrics.active || props.busy || props.disabled
   const progress_percent = resolve_summary_progress_percent(props.translation_task_metrics)
   const trigger_icon = <ScanText data-icon="inline-start" />
@@ -69,7 +69,7 @@ export function TranslationTaskMenu(
           disabled={props.disabled}
         >
           {trigger_icon}
-          {t('proofreading_page.action.translation_task')}
+          {t('workbench_page.action.translation_task')}
         </Button>
       </DropdownMenuTrigger>
 
@@ -77,7 +77,7 @@ export function TranslationTaskMenu(
         <div className="task-runtime__menu-progress">
           <div className="task-runtime__menu-progress-head">
             <span className="task-runtime__menu-progress-label">
-              {t('proofreading_page.task.menu.progress')}
+              {t('workbench_page.translation_task.menu.progress')}
             </span>
             <span className="task-runtime__menu-progress-value">
               {progress_percent.toFixed(2)}
@@ -116,7 +116,7 @@ export function TranslationTaskMenu(
             {props.active_task_action_kind === 'reset-all' && props.busy
               ? <Spinner data-icon="inline-start" />
               : <BrushCleaning data-icon="inline-start" />}
-            {t('proofreading_page.action.reset_translation_all')}
+            {t('workbench_page.action.reset_translation_all')}
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
@@ -128,7 +128,7 @@ export function TranslationTaskMenu(
             {props.active_task_action_kind === 'reset-failed' && props.busy
               ? <Spinner data-icon="inline-start" />
               : <Paintbrush data-icon="inline-start" />}
-            {t('proofreading_page.action.reset_translation_failed')}
+            {t('workbench_page.action.reset_translation_failed')}
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

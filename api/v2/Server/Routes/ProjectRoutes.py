@@ -11,7 +11,6 @@ class ProjectRoutes:
     UNLOAD_PATH: str = "/api/v2/project/unload"
     SOURCE_FILES_PATH: str = "/api/v2/project/source-files"
     PREVIEW_PATH: str = "/api/v2/project/preview"
-    WORKBENCH_SNAPSHOT_PATH: str = "/api/v2/project/workbench/snapshot"
     WORKBENCH_ADD_FILE_PATH: str = "/api/v2/project/workbench/add-file"
     WORKBENCH_REPLACE_FILE_PATH: str = "/api/v2/project/workbench/replace-file"
     WORKBENCH_RESET_FILE_PATH: str = "/api/v2/project/workbench/reset-file"
@@ -84,13 +83,6 @@ class ProjectRoutes:
                 ),
             )
         if workbench_app_service is not None:
-            core_api_server.add_json_route(
-                "POST",
-                cls.WORKBENCH_SNAPSHOT_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=workbench_app_service.get_snapshot(request)
-                ),
-            )
             core_api_server.add_json_route(
                 "POST",
                 cls.WORKBENCH_ADD_FILE_PATH,

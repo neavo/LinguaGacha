@@ -1,23 +1,6 @@
 import pytest
 
 
-def test_build_workbench_snapshot_returns_serializable_payload(
-    workbench_app_service,
-    fake_workbench_manager,
-) -> None:
-    fake_workbench_manager.file_op_running = True
-    result = workbench_app_service.get_snapshot({})
-
-    snapshot = result["snapshot"]
-
-    assert snapshot["error_count"] == 0
-    assert snapshot["file_op_running"] is True
-    assert "entries" in snapshot
-    assert isinstance(snapshot["entries"], list)
-    assert snapshot["entries"][0]["rel_path"] == "script/a.txt"
-    assert snapshot["entries"][0]["file_type"] == "TXT"
-
-
 def test_add_file_routes_through_workbench_manager(
     workbench_app_service,
     fake_workbench_manager,
@@ -115,6 +98,7 @@ def test_get_file_patch_returns_summary_order_and_entries(
 
     patch = result["patch"]
     assert patch["summary"]["file_count"] == 1
+    assert "untranslated" not in patch["summary"]
     assert patch["ordered_rel_paths"] == ["script/a.txt"]
     assert patch["removed_rel_paths"] == ["script/old.txt"]
     assert patch["entries"][0]["rel_path"] == "script/a.txt"

@@ -131,12 +131,6 @@ def test_proofreading_save_item_returns_minimal_mutation_ack() -> None:
     assert result["result"] == {
         "revision": 9,
         "changed_item_ids": [1],
-        "items": [],
-        "summary": {
-            "total_items": 0,
-            "filtered_items": 0,
-            "warning_items": 0,
-        },
     }
     assert data_manager.emitted_patches[0]["updated_sections"] == (
         "items",
