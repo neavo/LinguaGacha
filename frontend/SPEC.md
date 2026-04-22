@@ -82,7 +82,7 @@ flowchart LR
 | --- | --- |
 | `npm run dev` | 启动 Electron 开发环境 |
 | `npm run build` | 前端类型检查 + Electron 构建与打包 |
-| `npm run lint` | ESLint 检查 |
+| `npm run lint` | Oxlint 检查 |
 | `npm run test` | Vitest 一次性测试 |
 | `npm run test:watch` | Vitest 监听模式 |
 | `npm run renderer:audit` | 渲染层设计系统与样式边界硬规则审查 |
