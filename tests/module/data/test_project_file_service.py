@@ -8,62 +8,22 @@ from unittest.mock import MagicMock
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
-from base.Base import Base
 from module.Data.Core.Item import Item
-from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Project.ProjectFileService import ProjectFileService
 
 
 def build_service() -> tuple[ProjectFileService, ProjectSession]:
     session = ProjectSession()
-    captured_batch: dict[str, object] = {}
-    inserted_items_batches: list[list[dict[str, object]]] = []
-
-    def record_update_batch(
-        *,
-        items: list[dict[str, object]] | None = None,
-        rules: dict[object, object] | None = None,
-        meta: dict[str, object] | None = None,
-    ) -> None:
-        captured_batch["items"] = items or []
-        captured_batch["rules"] = rules
-        captured_batch["meta"] = meta
-
-    def record_insert_items(
-        items: list[dict[str, object]],
-        conn: object | None = None,
-    ) -> list[int]:
-        del conn
-        inserted_items_batches.append([dict(item) for item in items])
-        return list(range(1, len(items) + 1))
-
     session.db = SimpleNamespace(
-        add_asset=MagicMock(),
-        insert_items=MagicMock(side_effect=record_insert_items),
-        get_items_by_file_path=MagicMock(return_value=[]),
-        update_batch=MagicMock(side_effect=record_update_batch),
-        delete_items_by_file_path=MagicMock(),
-        delete_asset=MagicMock(),
-        update_asset=MagicMock(),
-        update_asset_path=MagicMock(),
         update_asset_sort_orders=MagicMock(),
-        asset_path_exists=MagicMock(return_value=False),
         get_all_asset_paths=MagicMock(return_value=[]),
         connection=MagicMock(
             return_value=contextlib.nullcontext(SimpleNamespace(commit=MagicMock()))
         ),
     )
     session.lg_path = "demo/project.lg"
-    session.captured_batch = captured_batch
-    session.inserted_items_batches = inserted_items_batches
-    item_service = SimpleNamespace(clear_item_cache=MagicMock())
-    analysis_service = SimpleNamespace(clear_analysis_progress=MagicMock())
-    service = ProjectFileService(
-        session,
-        item_service,
-        analysis_service,
-        {".txt"},
-    )
+    service = ProjectFileService(session, {".txt"})
     return service, session
 
 
@@ -97,95 +57,89 @@ def create_virtual_file(
     fs.create_file(file_path, contents=content, create_missing_dirs=True)
 
 
-def test_add_file_rejects_unsupported_extension() -> None:
+def test_parse_file_preview_rejects_unsupported_extension() -> None:
     service, _session = build_service()
 
     with pytest.raises(ValueError, match="unsupported|格式|format"):
-        service.add_file("a.md")
+        service.parse_file_preview("a.md")
 
 
-def test_add_file_imports_asset_and_items_and_clears_caches(
+def test_parse_file_preview_returns_normalized_items_and_target_rel_path(
     fs,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service, session = build_service()
+    service, _session = build_service()
     install_stub_file_manager(
         monkeypatch,
         items=[
             Item.from_dict(
-                {"src": "a", "file_path": "a.txt", "file_type": Item.FileType.TXT}
+                {
+                    "src": "a",
+                    "dst": "A",
+                    "name_src": "Alice",
+                    "name_dst": "爱丽丝",
+                    "extra_field": {"speaker": "narrator"},
+                    "tag": "line",
+                    "row": 3,
+                    "file_path": "a.txt",
+                    "file_type": Item.FileType.TXT,
+                    "text_type": Item.TextType.MD,
+                    "status": "PROCESSED",
+                    "retry_count": 2,
+                }
             )
         ],
     )
     create_virtual_file(fs, "C:/workspace/a.txt")
 
-    result = service.add_file("C:/workspace/a.txt")
+    result = service.parse_file_preview("C:/workspace/a.txt")
 
-    assert result.rel_paths == ("a.txt",)
-    assert result.new == 1
-    assert result.total == 1
-    session.db.add_asset.assert_called_once()
-    session.db.insert_items.assert_called_once()
-    inserted_items = session.inserted_items_batches[0]
-    assert len(inserted_items) == 1
-    assert inserted_items[0]["src"] == "a"
-    assert inserted_items[0]["file_path"] == "a.txt"
-    assert inserted_items[0]["file_type"] == Item.FileType.TXT
-    service.item_service.clear_item_cache.assert_called_once()
-    service.analysis_service.clear_analysis_progress.assert_called_once()
+    assert result["target_rel_path"] == "a.txt"
+    assert result["file_type"] == Item.FileType.TXT.value
+    assert result["parsed_items"] == [
+        {
+            "src": "a",
+            "dst": "A",
+            "name_src": "Alice",
+            "name_dst": "爱丽丝",
+            "extra_field": {"speaker": "narrator"},
+            "tag": "line",
+            "row": 3,
+            "file_type": Item.FileType.TXT.value,
+            "file_path": "a.txt",
+            "text_type": Item.TextType.MD.value,
+            "status": "PROCESSED",
+            "retry_count": 2,
+        }
+    ]
 
 
-def test_reset_file_clears_translation_fields() -> None:
-    service, session = build_service()
-    session.db.get_items_by_file_path = MagicMock(
-        return_value=[
-            {
-                "id": 1,
-                "src": "a",
-                "dst": "X",
-                "name_dst": "N",
-                "status": Base.ProjectStatus.PROCESSED,
-                "retry_count": 3,
-            }
-        ]
+def test_parse_file_preview_keeps_parent_folder_when_replacing_file(
+    fs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _session = build_service()
+    install_stub_file_manager(
+        monkeypatch,
+        items=[
+            Item.from_dict(
+                {
+                    "src": "line-1",
+                    "file_path": "chapter\\b.txt",
+                    "file_type": Item.FileType.TXT,
+                }
+            )
+        ],
+    )
+    create_virtual_file(fs, "C:/workspace/b.txt")
+
+    result = service.parse_file_preview(
+        "C:/workspace/b.txt",
+        current_rel_path="chapter/a.txt",
     )
 
-    result = service.reset_file("a.txt")
-
-    assert result.rel_paths == ("a.txt",)
-    updated = session.captured_batch["items"]
-    assert updated[0]["dst"] == ""
-    assert updated[0]["status"] == Base.ProjectStatus.NONE
-    service.item_service.clear_item_cache.assert_called_once()
-    service.analysis_service.clear_analysis_progress.assert_called_once()
-
-
-def test_delete_file_removes_asset_and_items() -> None:
-    service, session = build_service()
-    session.asset_decompress_cache["a.txt"] = b"cached"
-
-    result = service.delete_file("a.txt")
-
-    assert result.removed_rel_paths == ("a.txt",)
-    session.db.delete_items_by_file_path.assert_called_once()
-    session.db.delete_asset.assert_called_once()
-    assert "a.txt" not in session.asset_decompress_cache
-    service.item_service.clear_item_cache.assert_called_once()
-    service.analysis_service.clear_analysis_progress.assert_called_once()
-
-
-def test_delete_file_batch_removes_all_assets_and_items() -> None:
-    service, session = build_service()
-    session.asset_decompress_cache["a.txt"] = b"cached-a"
-    session.asset_decompress_cache["b.txt"] = b"cached-b"
-
-    result = service.delete_file_batch(["a.txt", "b.txt"])
-
-    assert result.removed_rel_paths == ("a.txt", "b.txt")
-    assert session.db.delete_items_by_file_path.call_count == 2
-    assert session.db.delete_asset.call_count == 2
-    assert "a.txt" not in session.asset_decompress_cache
-    assert "b.txt" not in session.asset_decompress_cache
+    assert result["target_rel_path"] == "chapter\\b.txt"
+    assert result["parsed_items"][0]["file_path"] == "chapter\\b.txt"
 
 
 def test_reorder_files_updates_asset_sort_orders() -> None:
@@ -197,14 +151,13 @@ def test_reorder_files_updates_asset_sort_orders() -> None:
     with connection_ctx as conn:
         expected_conn = conn
 
-    result = service.reorder_files(["script/b.txt", "script/a.txt"])
+    service.reorder_files(["script/b.txt", "script/a.txt"])
 
     session.db.update_asset_sort_orders.assert_called_once_with(
         ["script/b.txt", "script/a.txt"],
         conn=expected_conn,
     )
     expected_conn.commit.assert_called_once()
-    assert result.order_changed is True
 
 
 def test_reorder_files_rejects_missing_or_extra_paths() -> None:
@@ -217,107 +170,37 @@ def test_reorder_files_rejects_missing_or_extra_paths() -> None:
         service.reorder_files(["script/a.txt"])
 
 
-def test_replace_file_returns_mutation_stats(fs, monkeypatch) -> None:
-    service, session = build_service()
-    session.db.asset_path_exists = MagicMock(return_value=True)
-    session.db.get_items_by_file_path = MagicMock(
-        return_value=[
-            {
-                "id": 1,
-                "src": "a",
-                "dst": "旧译文",
-                "status": Base.ProjectStatus.PROCESSED,
-                "file_type": "TXT",
-            }
-        ]
+def test_normalize_batch_rel_paths_keeps_order_and_deduplicates_case_insensitively() -> (
+    None
+):
+    service, _session = build_service()
+
+    assert service.normalize_batch_rel_paths(
+        ["a.txt", " A.txt ", "b.txt", "", "B.TXT"]
+    ) == ["a.txt", "b.txt"]
+
+
+def test_normalize_batch_rel_paths_rejects_empty_input() -> None:
+    service, _session = build_service()
+
+    with pytest.raises(ValueError, match="路径无效"):
+        service.normalize_batch_rel_paths(["", "   "])
+
+
+def test_pick_file_type_prefers_first_non_none_value() -> None:
+    service, _session = build_service()
+
+    assert (
+        service.pick_file_type(
+            [
+                {"file_type": Item.FileType.NONE},
+                {"file_type": ""},
+                {"file_type": Item.FileType.TXT},
+                {"file_type": "MD"},
+            ]
+        )
+        == Item.FileType.TXT.value
     )
-    session.asset_decompress_cache["a.txt"] = b"cached"
-    install_stub_file_manager(
-        monkeypatch,
-        items=[Item.from_dict({"src": "a", "file_path": "a.txt", "file_type": "TXT"})],
-    )
-
-    file_path = "C:/workspace/a.txt"
-    create_virtual_file(fs, file_path)
-    result = service.replace_file("a.txt", file_path)
-
-    assert result.matched == 1
-    assert result.total == 1
-    assert result.rel_paths == ("a.txt",)
-    assert result.removed_rel_paths == ()
-    assert "a.txt" not in session.asset_decompress_cache
-    service.item_service.clear_item_cache.assert_called_once()
-    service.analysis_service.clear_analysis_progress.assert_called_once()
-
-
-def test_replace_file_rejects_format_mismatch(fs, monkeypatch) -> None:
-    service, session = build_service()
-    session.db.asset_path_exists = MagicMock(return_value=True)
-    session.db.get_items_by_file_path = MagicMock(
-        return_value=[
-            {
-                "id": 1,
-                "src": "a",
-                "dst": "旧译文",
-                "status": Base.ProjectStatus.PROCESSED,
-                "file_type": "TXT",
-            }
-        ]
-    )
-    install_stub_file_manager(
-        monkeypatch,
-        items=[Item.from_dict({"src": "a", "file_path": "a.txt", "file_type": "MD"})],
-    )
-
-    file_path = "C:/workspace/a.txt"
-    create_virtual_file(fs, file_path)
-
-    with pytest.raises(ValueError, match="mismatch|格式|replace"):
-        service.replace_file("a.txt", file_path)
-
-
-def test_replace_file_renames_asset_and_clears_old_and_new_cache_entries(
-    fs,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, session = build_service()
-    session.db.asset_path_exists = MagicMock(return_value=True)
-    session.db.get_items_by_file_path = MagicMock(
-        return_value=[
-            {
-                "id": 1,
-                "src": "a",
-                "dst": "旧译文",
-                "status": Base.ProjectStatus.PROCESSED,
-                "file_type": "TXT",
-            }
-        ]
-    )
-    session.db.get_all_asset_paths = MagicMock(return_value=["chapter/a.txt"])
-    session.asset_decompress_cache["chapter/a.txt"] = b"old"
-    session.asset_decompress_cache["chapter\\b.txt"] = b"new"
-    install_stub_file_manager(
-        monkeypatch,
-        items=[
-            Item.from_dict(
-                {
-                    "src": "a",
-                    "file_path": "chapter\\b.txt",
-                    "file_type": "TXT",
-                }
-            )
-        ],
-    )
-
-    file_path = "C:/workspace/b.txt"
-    create_virtual_file(fs, file_path)
-    result = service.replace_file("chapter/a.txt", file_path)
-
-    assert result.rel_paths == ("chapter\\b.txt",)
-    assert result.removed_rel_paths == ("chapter/a.txt",)
-    session.db.update_asset_path.assert_called_once()
-    assert "chapter/a.txt" not in session.asset_decompress_cache
-    assert "chapter\\b.txt" not in session.asset_decompress_cache
 
 
 def test_build_replace_target_rel_path_keeps_parent_folder() -> None:
@@ -367,59 +250,3 @@ def test_ensure_replace_target_path_not_conflict_ignores_self_but_rejects_other_
             "folder/a.txt",
             "folder/B.txt",
         )
-
-
-def test_inherit_completed_translations_prefers_most_common_dst_and_keeps_structural_status() -> (
-    None
-):
-    service, _session = build_service()
-    old_items = [
-        {
-            "src": "line-1",
-            "dst": "旧译文A",
-            "name_dst": "角色A",
-            "retry_count": 3,
-            "status": Base.ProjectStatus.PROCESSED,
-        },
-        {
-            "src": "line-1",
-            "dst": "旧译文A",
-            "name_dst": "角色B",
-            "retry_count": 1,
-            "status": Base.ProjectStatus.PROCESSED,
-        },
-        {
-            "src": "line-1",
-            "dst": "旧译文B",
-            "name_dst": "角色C",
-            "retry_count": 9,
-            "status": Base.ProjectStatus.PROCESSED,
-        },
-    ]
-    new_items = [
-        {
-            "src": "line-1",
-            "dst": "",
-            "name_dst": None,
-            "retry_count": 0,
-            "status": Base.ProjectStatus.NONE,
-        },
-        {
-            "src": "line-1",
-            "dst": "",
-            "name_dst": None,
-            "retry_count": 0,
-            "status": Base.ProjectStatus.EXCLUDED,
-        },
-        {"src": "line-2", "dst": "", "status": Base.ProjectStatus.NONE},
-    ]
-
-    matched = service.inherit_completed_translations(old_items, new_items)
-
-    assert matched == 2
-    assert new_items[0]["dst"] == "旧译文A"
-    assert new_items[0]["name_dst"] == "角色A"
-    assert new_items[0]["retry_count"] == 3
-    assert new_items[0]["status"] == Base.ProjectStatus.PROCESSED
-    assert new_items[1]["dst"] == "旧译文A"
-    assert new_items[1]["status"] == Base.ProjectStatus.EXCLUDED

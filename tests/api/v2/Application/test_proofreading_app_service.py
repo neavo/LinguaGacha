@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 from base.Base import Base
 from module.Data.Core.DataTypes import ProjectItemChange
-from module.Data.Core.Item import Item
 
 from api.v2.Application.ProofreadingAppService import ProofreadingAppService
 
@@ -41,28 +40,16 @@ def build_app_service() -> tuple[
     SimpleNamespace,
 ]:
     data_manager = FakeProofreadingDataManager()
+    mutation_ack = {
+        "accepted": True,
+        "projectRevision": 11,
+        "sectionRevisions": {
+            "items": 8,
+            "proofreading": 9,
+        },
+    }
     mutation_service = SimpleNamespace(
-        apply_manual_edit=MagicMock(
-            return_value=ProjectItemChange(
-                item_ids=(1,),
-                rel_paths=("script/a.txt",),
-                reason="proofreading_save_item",
-            )
-        ),
-        save_all=MagicMock(
-            return_value=ProjectItemChange(
-                item_ids=(1, 2),
-                rel_paths=("script/a.txt", "script/b.txt"),
-                reason="proofreading_save_all",
-            )
-        ),
-        replace_all=MagicMock(
-            return_value=ProjectItemChange(
-                item_ids=(1,),
-                rel_paths=("script/a.txt",),
-                reason="proofreading_replace_all",
-            )
-        ),
+        persist_finalized_items=MagicMock(),
     )
     retranslate_service = SimpleNamespace(
         retranslate_items=MagicMock(
@@ -96,6 +83,7 @@ def build_app_service() -> tuple[
                 "busy": False,
             }
         ),
+        build_project_mutation_ack=MagicMock(return_value=mutation_ack),
     )
 
     app_service = ProofreadingAppService(
@@ -112,31 +100,45 @@ def test_proofreading_save_item_returns_minimal_mutation_ack() -> None:
 
     result = app_service.save_item(
         {
-            "item": {
-                "id": 1,
-                "src": "勇者が来た",
-                "dst": "Hero arrived",
-                "file_path": "script/a.txt",
-                "status": Base.ProjectStatus.PROCESSED,
-            },
-            "new_dst": "Hero arrived again",
-            "expected_revision": 7,
+            "items": [
+                {
+                    "id": 1,
+                    "src": "勇者が来た",
+                    "dst": "Hero arrived again",
+                    "file_path": "script/a.txt",
+                    "status": Base.ProjectStatus.PROCESSED,
+                }
+            ],
+            "translation_extras": {"line": 1},
+            "project_status": "PROCESSING",
+            "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
 
-    mutation_service.apply_manual_edit.assert_called_once()
-    called_item = mutation_service.apply_manual_edit.call_args.args[0]
-    assert isinstance(called_item, Item)
-    assert called_item.get_id() == 1
-    assert result["result"] == {
-        "revision": 9,
-        "changed_item_ids": [1],
-    }
-    assert data_manager.emitted_patches[0]["updated_sections"] == (
-        "items",
-        "proofreading",
-        "task",
+    mutation_service.persist_finalized_items.assert_called_once_with(
+        [
+            {
+                "id": 1,
+                "src": "勇者が来た",
+                "dst": "Hero arrived again",
+                "file_path": "script/a.txt",
+                "status": Base.ProjectStatus.PROCESSED,
+            }
+        ],
+        translation_extras={"line": 1},
+        project_status="PROCESSING",
+        expected_section_revisions={"items": 7, "proofreading": 6},
+        reason="proofreading_save_item",
     )
+    assert result == {
+        "accepted": True,
+        "projectRevision": 11,
+        "sectionRevisions": {
+            "items": 8,
+            "proofreading": 9,
+        },
+    }
+    assert data_manager.emitted_patches == []
 
 
 def test_proofreading_save_all_returns_minimal_mutation_ack() -> None:
@@ -156,14 +158,36 @@ def test_proofreading_save_all_returns_minimal_mutation_ack() -> None:
                     "status": Base.ProjectStatus.NONE,
                 },
             ],
-            "expected_revision": 7,
+            "translation_extras": {"line": 2},
+            "project_status": "NONE",
+            "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
 
-    mutation_service.save_all.assert_called_once()
-    assert result["result"]["revision"] == 9
-    assert result["result"]["changed_item_ids"] == [1, 2]
-    assert data_manager.emitted_patches[0]["reason"] == "proofreading_save_all"
+    mutation_service.persist_finalized_items.assert_called_once_with(
+        [
+            {
+                "id": 1,
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            },
+            {
+                "id": 2,
+                "dst": "",
+                "status": Base.ProjectStatus.NONE,
+            },
+        ],
+        translation_extras={"line": 2},
+        project_status="NONE",
+        expected_section_revisions={"items": 7, "proofreading": 6},
+        reason="proofreading_save_all",
+    )
+    assert result["accepted"] is True
+    assert result["sectionRevisions"] == {
+        "items": 8,
+        "proofreading": 9,
+    }
+    assert data_manager.emitted_patches == []
 
 
 def test_proofreading_replace_all_returns_minimal_mutation_ack() -> None:
@@ -180,14 +204,27 @@ def test_proofreading_replace_all_returns_minimal_mutation_ack() -> None:
             ],
             "search_text": "Hero",
             "replace_text": "Heroine",
-            "expected_revision": 7,
+            "translation_extras": {"line": 1},
+            "project_status": "PROCESSING",
+            "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
 
-    mutation_service.replace_all.assert_called_once()
-    assert result["result"]["revision"] == 9
-    assert result["result"]["changed_item_ids"] == [1]
-    assert data_manager.emitted_patches[0]["reason"] == "proofreading_replace_all"
+    mutation_service.persist_finalized_items.assert_called_once_with(
+        [
+            {
+                "id": 1,
+                "dst": "Hero arrived",
+                "status": Base.ProjectStatus.PROCESSED,
+            }
+        ],
+        translation_extras={"line": 1},
+        project_status="PROCESSING",
+        expected_section_revisions={"items": 7, "proofreading": 6},
+        reason="proofreading_replace_all",
+    )
+    assert result["projectRevision"] == 11
+    assert data_manager.emitted_patches == []
 
 
 def test_proofreading_retranslate_items_returns_minimal_mutation_ack() -> None:

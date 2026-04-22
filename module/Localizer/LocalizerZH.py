@@ -85,7 +85,6 @@ class LocalizerZH:
     translation_resetting: str = "正在重置 …"
 
     # 分析
-    analysis_page_import_success: str = "导入成功，新增 {COUNT} 条 …"
     analysis_task_source_texts: str = "分析输入："
     analysis_task_extracted_terms: str = "提取术语："
     analysis_task_no_terms: str = "未提取到术语"
@@ -98,11 +97,7 @@ class LocalizerZH:
     # 工作台
     workbench_msg_file_exists: str = "文件已存在 …"
     workbench_msg_unsupported_format: str = "不支持的文件格式"
-    workbench_msg_replace_format_mismatch: str = "文件格式不一致，无法替换"
     workbench_msg_replace_name_conflict: str = "文件已存在 …"
-    workbench_progress_adding_file: str = "正在添加文件 …"
-    workbench_progress_resetting_file: str = "正在重置文件 …"
-    workbench_progress_deleting_file: str = "正在删除文件 …"
     workbench_msg_file_not_found: str = "文件不存在 …"
 
     # 质量类通用

@@ -21,8 +21,6 @@ class FakeDataManager:
         self.clear_calls = 0
         self.open_calls = 0
         self.close_calls = 0
-        self.import_count = 0
-        self.import_expected_paths: list[str | None] = []
         self.items = []
 
     def is_loaded(self) -> bool:
@@ -239,17 +237,6 @@ class FakeDataManager:
                 "error_count": old_error_count + 1,
             }
         return self.get_analysis_item_checkpoints()
-
-    def import_analysis_candidates(
-        self, expected_lg_path: str | None = None
-    ) -> int | None:
-        self.import_expected_paths.append(expected_lg_path)
-        if not self.loaded:
-            return None
-        if expected_lg_path is not None and expected_lg_path != self.lg_path:
-            return None
-        self.import_count += 1
-        return self.analysis_candidate_count
 
     def get_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count

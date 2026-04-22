@@ -13,7 +13,6 @@ describe('createV2ProjectRuntime', () => {
           type: 'stage_payload',
           stage: 'items',
           payload: {
-            schema: 'project-items.v1',
             fields: ['item_id', 'file_path', 'src', 'dst', 'status'],
             rows: [[1, 'chapter01.txt', '原文', '译文', 'DONE']],
           },

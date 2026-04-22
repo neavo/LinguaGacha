@@ -1,11 +1,7 @@
 # `api/` 规格
 
 ## 一句话总览
-`api/` 是 LinguaGacha Python Core 对外暴露的唯一本地协议边界。它服务两类消费者：
-- Electron 渲染层运行时
-- Python 侧测试 / 桥接 / 对象化客户端
-
-这份文档只保留后续 Agent 开发会反复依赖、且不翻多处代码就难以快速得出的事实；完整路径常量和字段定义以 `Routes/*`、`Contract/*`、`Models/*` 为准。
+`api/` 是 LinguaGacha Python Core 对外暴露的唯一本地协议边界。它同时服务 Electron 渲染层和 Python 侧对象化客户端；需要跨多处代码一起理解的协议事实收口在本文，精确路径常量、字段定义和 DTO 以 `Routes/*`、`Contract/*`、`Models/*` 为准。
 
 ## 权威来源
 | 关注点 | 代码权威来源 |
@@ -19,10 +15,9 @@
 | Electron 接入点 | `frontend/src/renderer/app/desktop-api.ts`、`frontend/src/renderer/app/project-runtime/SPEC.md` |
 
 ## 阅读顺序
-1. 先读第 2 节和第 3 节，确认运行时边界、版本分层和协议不变量。
-2. 再读第 4 节，理解各路由族真正需要记住的兼容与约束。
-3. 如果要改 Python 对象化客户端，继续读第 5 节。
-4. 如果要改 Electron 运行态接入，继续读第 6 节，并联读 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md)。
+1. 先读第 1 节和第 2 节，确认 API 的分层、路径前缀和协议不变量。
+2. 再读第 3 节和第 4 节，确认运行态流、同步 mutation 和各路由族边界。
+3. 如果改 Python 客户端，继续读第 5 节；如果改 Electron 运行态接入，同时联读 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md)。
 
 ## 1. 运行时边界
 
@@ -49,25 +44,21 @@ flowchart LR
 | `api/v2/Models/` | Python 冻结 DTO、bootstrap 行块与客户端共享模型 |
 | `api/v2/Client/` | Python 侧薄客户端与对象化返回包装 |
 
-### 1.3 路径前缀分层
+### 1.3 路径前缀与消费者
 - 主业务 API 统一落在 `api/v2/`。
 - 应用设置固定使用 `/api/settings/*`。
 - Extra 工具固定使用 `/api/extra/*`。
-- 新增主业务协议时，不要再扩展新的并行根前缀。
+- 新增主业务协议时，不扩展新的并行根前缀。
+- Electron 主路径只消费 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`，其余页面写操作走普通 JSON 路由。
 
 ### 1.4 监听地址与端口
 - `CoreApiServer` 固定绑定 `127.0.0.1`，不是 `0.0.0.0`。
 - 默认端口只有一个：`38191`。
-- 若设置 `LINGUAGACHA_CORE_API_BASE_URL`，服务端和前端都会把端口解析到该地址中的显式端口；它不是“建议值”，而是单一候选端口来源。
+- 若设置 `LINGUAGACHA_CORE_API_BASE_URL`，服务端和前端都以该地址中的显式端口为单一候选来源。
 
 ### 1.5 事件桥真实装配
-- `ServerBootstrap` 不是直接把 `PublicEventBridge` 挂到 SSE 上。
-- 实际装配是：
-  - 外层：`ProjectPatchEventBridge`
-  - 内层：`PublicEventBridge`
-- 结果是：
-  - 普通公开 topic 仍由 `PublicEventBridge` 负责
-  - `project.patch` 由外层桥额外补出
+- `ServerBootstrap` 在公开 SSE 上挂的是 `ProjectPatchEventBridge`，它内部再复用 `PublicEventBridge`。
+- 普通公开 topic 由 `PublicEventBridge` 负责，`project.patch` 由外层桥补出；运行态补丁语义因此属于 API 边界的一部分。
 
 ## 2. 协议不变量
 
@@ -78,10 +69,7 @@ flowchart LR
   - `/api/v2/project/bootstrap/stream`
 - 其余公开接口统一走 `POST + JSON body`。
 - `OPTIONS` 由 `CoreApiServer` 统一回 `204`。
-- CORS 采用完全开放口径：
-  - `Access-Control-Allow-Origin: *`
-  - `Access-Control-Allow-Methods: GET,POST,OPTIONS`
-  - `Access-Control-Allow-Headers: Content-Type`
+- CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
 
 ### 2.2 响应壳
 成功响应固定为：
@@ -105,7 +93,7 @@ flowchart LR
 }
 ```
 
-### 2.3 错误码现实
+### 2.3 错误码边界
 `CoreApiServer` 在边界层只稳定保证 3 个错误码：
 
 | `error.code` | 触发条件 |
@@ -115,8 +103,8 @@ flowchart LR
 | `internal_error` | 其他未捕获异常 |
 
 需要特别记住：
-- revision 冲突、工程未加载、任务忙碌等业务错误，大多会折叠成 `invalid_request + message`。
-- 也就是说，**不要假设 API 提供了稳定的业务错误码体系**。
+- revision 冲突、工程未加载、任务忙碌等业务错误大多会折叠成 `invalid_request + message`。
+- API 当前没有稳定的业务错误码体系；调用方不能靠 `error.code` 区分所有业务分支。
 
 ### 2.4 SSE 线格式
 普通事件流 `/api/v2/events/stream` 由 `EventEnvelope.to_sse_payload()` 生成，协议特点是：
@@ -127,20 +115,20 @@ flowchart LR
 
 ## 3. 运行态事件协议
 
-### 3.1 Bootstrap 流不是普通 topic 流
-`/api/v2/project/bootstrap/stream` 使用独立事件型别，而不是复用普通 topic：
+### 3.1 Bootstrap 是一次性阶段化首包
+`/api/v2/project/bootstrap/stream` 使用独立事件型别，不复用普通 topic：
 
 | `event:` | 字段 | 用途 |
 | --- | --- | --- |
-| `stage_started` | `stage`、`message` | stage 开始 |
+| `stage_started` | `stage`、`message` | 某个 stage 开始 |
 | `stage_payload` | `stage`、`payload` | stage 有效载荷 |
-| `stage_completed` | `stage` | stage 完成 |
+| `stage_completed` | `stage` | 某个 stage 结束 |
 | `completed` | `projectRevision`、`sectionRevisions` | 整条 bootstrap 流完成 |
 
-不明显但很重要的事实：
-- 前端主路径消费 `stage_started`、`stage_payload`、`completed`。
-- `desktop-api.ts` 会监听 `failed`，但 Python 服务端不主动发送 `failed`。
-- 这条流本质上是“一次性阶段化首包”，不是长期订阅流。
+规则：
+- 这条流是一次性首包，不是长期订阅流。
+- `desktop-api.ts` 会监听 `failed`，但当前服务端不主动发送该事件型别。
+- 渲染层真正依赖的是 `stage_started`、`stage_payload`、`completed` 三类事件。
 
 ### 3.2 Bootstrap stage 顺序是稳定契约
 顺序固定为：
@@ -153,135 +141,78 @@ flowchart LR
 7. `proofreading`
 8. `task`
 
-渲染层 `ProjectStore` 依赖这套顺序建立最小运行态；如果顺序或命名变化，前后端文档必须同步改。
+`ProjectStore` 依赖这套顺序建立最小运行态；顺序或命名变化时，`api/SPEC.md` 与 `frontend/src/renderer/app/project-runtime/SPEC.md` 必须一起改。
 
-### 3.3 `RowBlock` 只在两个 stage 上是硬约束
-稳定 schema：
+### 3.3 `RowBlock` 的稳定边界
+只有两个 stage 依赖 `RowBlock(fields, rows)` 作为硬约束：
 
-| schema | stage | 字段顺序 |
-| --- | --- | --- |
-| `project-files.v1` | `files` | `rel_path`、`file_type` |
-| `project-items.v1` | `items` | `item_id`、`file_path`、`row_number`、`src`、`dst`、`status`、`text_type`、`retry_count` |
-
-前端不是直接消费 Python dict，而是先把它们归一化成：
-- `files[rel_path]`
-- `items[item_id]`
-
-### 3.4 公开 topic 里真正不直观的地方
-`/api/v2/events/stream` 上值得记住的 topic：
-
-| topic | 需要记住的事实 |
+| stage | 字段顺序 |
 | --- | --- |
-| `task.progress_changed` | 只发送本次事件里真实出现的字段，不会补齐缺失统计 |
-| `task.status_changed` | `DONE / ERROR / IDLE` 是桥接层根据内部终态再解释后的结果 |
-| `settings.changed` | 只是设置广播，不等于页面必须刷新 |
-| `project.patch` | 不是 `PublicEventTopic` 成员，而是桥接层额外补出的运行态补丁 |
+| `files` | `rel_path`、`file_type`、`sort_index` |
+| `items` | `item_id`、`file_path`、`row_number`、`src`、`dst`、`status`、`text_type`、`retry_count` |
 
-### 3.5 `project.patch` 的真实语义
-`project.patch` **不保证**总是完整补丁事件。
+块类型由 stage 决定，不额外携带 `schema` 标签；渲染层会把这两类行块分别归一化为 `files[rel_path]` 与 `items[item_id]`，而不是直接绑定 Python dict 形状。
 
-它至少会有：
-- `source`
-- `updatedSections`
+### 3.4 公开 topic 中真正需要记住的约束
 
-它**可能**还会有：
-- `projectRevision`
-- `patch`
-- `sectionRevisions`
+| topic | 稳定事实 |
+| --- | --- |
+| `task.progress_changed` | 只发送本次事件里真实出现的字段，不补齐缺失统计 |
+| `task.status_changed` | `DONE / ERROR / IDLE` 是桥接层根据内部终态重新解释后的结果 |
+| `settings.changed` | 只是设置广播，不等于页面必须整体刷新 |
+| `project.patch` | 是 `ProjectPatchEventBridge` 额外补出的运行态补丁，不属于普通公开 topic 枚举 |
 
-这意味着：
-- 翻译 / 分析 DONE 后，它常常是“带 `patch` 的真实增量补丁”
-- 翻译任务进行中，每次批量提交终态条目后，后端也会补发 `merge_items` patch；任务进度数字仍继续走 `task.progress_changed`
-- 翻译 reset 进入 `DONE` 后，后端会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 受影响运行态
-- 分析 reset 进入 `DONE` 后，后端也会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 分析相关运行态
-- 文件操作后，它可能只是“告知哪些 section 失效”，前端会把它当成“重新 bootstrap 项目运行态”的信号
+### 3.5 `project.patch` 只有两类稳定语义
+`project.patch` 至少包含 `source` 与 `updatedSections`，其余字段按语义选择性出现：
 
-如果后续要新增 `project.patch` 用法，优先保持这两种语义兼容，而不是假设所有事件都必须带 `patch` 数组。
+| 语义 | 形状 | 典型来源 |
+| --- | --- | --- |
+| 增量补丁 | `projectRevision + patch + sectionRevisions` | 翻译任务提交条目、分析任务终态、显式运行态 patch |
+| 刷新信号 | `updatedSections + sectionRevisions` | 翻译 reset、分析 reset、前端需重拉受影响 section 的场景 |
+
+规则：
+- 调用方不能假设所有 `project.patch` 都自带 `patch` 数组。
+- 同步 mutation 成功路径不依赖额外 `project.patch` 确认事实落地；修订号对齐由 `ProjectMutationAck` 负责。
 
 ## 4. 路由族与真正需要记住的约束
 
 ### 4.1 路由族分布
-| 前缀 | 说明 |
+| 前缀 | 关注点 |
 | --- | --- |
 | `/api/health` | 探活入口 |
-| `/api/v2/events/stream` | 运行态 SSE |
-| `/api/v2/project/bootstrap/stream` | V2 bootstrap 首包 |
-| `/api/v2/project/*` | 工程、工作台、校对页 |
+| `/api/v2/events/stream` | 长期事件流 |
+| `/api/v2/project/bootstrap/stream` | 一次性 bootstrap 首包 |
+| `/api/v2/project/*` | 工程、工作台、校对与同步 mutation |
 | `/api/v2/tasks/*` | 翻译 / 分析任务 |
 | `/api/v2/models/*` | 模型页 |
-| `/api/v2/quality/rules/*` | 质量规则 |
-| `/api/v2/quality/prompts/*` | 自定义提示词 |
+| `/api/v2/quality/rules/*` 与 `/api/v2/quality/prompts/*` | 规则与提示词 |
 | `/api/settings/*` | 应用设置 |
 | `/api/extra/*` | Extra 工具 |
 
-本文聚焦路由分组与运行时约束；精确路径以 `api/v2/Server/Routes/*.py` 为准。
+### 4.2 `/api/v2/project/*` 下的真实边界
+- `project`、`workbench`、`proofreading` 共用前缀，但分别由不同 Application 服务负责。
+- 工作台和校对页的运行态真值来自 bootstrap + `ProjectStore`；API 不提供整页 `workbench` 快照，也不提供文件级并行 patch 路由。
+- `workbench/parse-file` 是只读解析路由：只读取本地文件并返回标准化 preview，不落库、不清缓存、不发事件。
+- 工作台同步写接口和校对同步保存接口都以 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` 作为统一回执。
+- `reorder-files` 的隐藏硬约束是 `ordered_rel_paths` 必须完整覆盖当前文件集合。
 
-### 4.2 Project / Workbench / Proofreading
-- `project`、`workbench`、`proofreading` 三块虽然都挂在 `/api/v2/project/*` 下，但它们不是一个 Application 服务。
-- 工作台首屏与运行态真值由 bootstrap + `ProjectStore` 持有；API 不提供整页 `workbench/snapshot`，也没有独立文件级 patch route。
-- 工作台命令型接口大多只返回 `accepted`；Electron 主路径依赖随后到达的 `project.patch` 失效通知与本地 selector 重建工作台视图。
-- `workbench/add-file`、`replace-file`、`reset-file`、`delete-file`、`delete-file-batch` 在 HTTP 请求内直接执行文件操作；参数校验、重名冲突和解析失败以错误响应透传给前端。
-- `reorder-files` 的隐藏硬约束是：`ordered_rel_paths` 必须完整覆盖当前文件集合，不能只传局部。
-- Proofreading 路由族写接口包括：
-  - `save-item`
-  - `save-all`
-  - `replace-all`
-  - `retranslate-items`
-- 这些写接口统一返回最小 mutation ack：
-  - `revision`
-  - `changed_item_ids`
-- GUI 依赖后续 `project.patch` 里的 `merge_items + replace_proofreading + replace_task` 与本地 runtime 重算，而不是继续读取 Python 派生快照。
+### 4.3 同步 mutation 与任务型接口
+- 工作台 `add-file / replace-file / reset-file / delete-file / delete-file-batch / reorder-files` 与校对 `save-item / save-all / replace-all` 都属于同步 mutation：前端先本地 patch，服务端持久化后返回 `ProjectMutationAck` 对齐 revision。
+- `retranslate-items`、翻译任务、分析任务与 reset 链路属于任务型接口，完成后仍通过任务事件和必要的 `project.patch` 推进运行态。
+- `/api/v2/project/analysis/import-glossary` 也是同步 mutation：前端提交已筛好的 `entries`、`analysis_candidate_count` 与期望 revision，服务端只负责持久化与 revision 对齐。
+- `tasks/snapshot` 是按需快照，不是订阅入口；分析任务快照在可用时会额外带 `analysis_candidate_count`。
+- `export-translation` 只有最小 `accepted` 回执，没有稳定 DTO 边界。
 
-### 4.3 Task
-- `tasks/snapshot` 是按需快照，不是订阅态入口。
-- 分析任务快照在可用时会额外带 `analysis_candidate_count`。
-- `import-analysis-glossary`、`reset-*` 都要求：
-  - 工程已加载
-  - 引擎空闲
-- `ANALYSIS_IMPORT_GLOSSARY` 进入 `DONE` 时，事件桥会补发 `project.patch`，把 `quality + analysis + task` 三个 section 一起回灌到 `ProjectStore`。
-- `TRANSLATION_RESET_ALL` / `TRANSLATION_RESET_FAILED` 进入 `DONE` 时，事件桥会补发 `project.patch`，要求前端重拉翻译 reset 影响到的运行态 section。
-- `ANALYSIS_RESET_ALL` / `ANALYSIS_RESET_FAILED` 进入 `DONE` 时，事件桥会补发 `project.patch`，要求前端重拉分析 reset 影响到的运行态 section。
-- `export-translation` 只有最小 `accepted` 回执，没有稳定 DTO。
-
-### 4.4 Settings
-- `settings` 路由位于 `/api/settings/*`。
-- `update` 只处理 `SettingsAppService.SETTING_KEYS` 白名单字段，未知字段会被忽略，不会报错。
-- 对渲染层运行态而言，真正进入工作台 / 校对页高影响刷新链的设置只有：
-  - `source_language`
-  - `mtool_optimizer_enable`
-- `target_language` 只同步工程 meta 镜像，不是页面刷新信号。
-
-### 4.5 Models
-- `models/reorder` 的请求体字段是 `ordered_model_ids`。
-- `ordered_model_ids` 必须只重排某一个模型分组，不能跨组混排。
-- `models/add` 只新增自定义类型，不会新增新的 preset 模型。
-
-### 4.6 Quality / Prompts
-- 稳定 `rule_type` 只有：
-  - `glossary`
-  - `pre_replacement`
-  - `post_replacement`
-  - `text_preserve`
-- GUI 的质量规则与提示词正文真值来自：
-  - bootstrap `quality` / `prompts`
-  - 后续 `project.patch`
-- 质量规则与提示词路由族不包含这些读取接口：
-  - `/api/v2/quality/rules/snapshot`
-  - `/api/v2/quality/prompts/snapshot`
-  - `/api/v2/quality/rules/query-proofreading`
-- `text_preserve` 与其余规则最大的非显然差异是：
-  - `meta` 形状是 `{"mode": str}`
-  - 不是 `{"enabled": bool}`
-- 规则和提示词写接口使用 `expected_revision` 做乐观锁，但 API 边界还没有给出专门的冲突错误码。
-- `save-entries`、`update-meta` 与 `prompts/save` 都返回最小 ack：`{"accepted": true}`。
-- `prompts/import` 只负责从本地路径读取文本并返回 `{"text": ...}`；它不直接写项目状态，也不承担导入即保存语义。
-- 规则统计由 Electron 渲染层基于 `ProjectStore.items` 本地计算；公开路由不包含 `/api/v2/quality/rules/statistics`。
-
-### 4.7 Extra
-- `extra` 路由位于非 v2 前缀 `/api/extra/*`。
-- `ts-conversion/start` 的终态和进度不靠轮询，而是依赖 SSE：
-  - `extra.ts_conversion_progress`
-  - `extra.ts_conversion_finished`
+### 4.4 Settings / Models / Quality / Extra
+- `settings/update` 只处理 `SettingsAppService.SETTING_KEYS` 白名单字段，未知字段会被忽略。
+- 对渲染层运行态来说，高影响刷新键只有 `source_language` 与 `mtool_optimizer_enable`；`target_language` 只同步工程 meta 镜像。
+- `models/reorder` 使用 `ordered_model_ids`，且只能重排单一模型分组；`models/add` 只新增自定义类型。
+- 稳定 `rule_type` 只有 `glossary`、`pre_replacement`、`post_replacement`、`text_preserve`。
+- 规则与提示词的真值来自 bootstrap 与前端本地 patch；写接口成功后只用 `ProjectMutationAck` 对齐 revision。
+- `text_preserve` 的非显然差异是 `meta` 使用 `{"mode": str}`，而不是 `{"enabled": bool}`。
+- `prompts/import` 只读取本地文本并返回 `{"text": ...}`，不承担导入即保存。
+- 规则统计由渲染层基于 `ProjectStore.items` 本地计算，公开 API 不提供独立统计路由。
+- `extra` 保持非 v2 前缀 `/api/extra/*`；`ts-conversion/start` 的进度与终态依赖 `extra.ts_conversion_progress`、`extra.ts_conversion_finished` 两个 SSE topic。
 
 ## 5. Python 客户端边界
 
@@ -294,11 +225,11 @@ flowchart LR
 - 所以 Python 客户端侧很多“失败”最终只会表现成空字典或缺字段，而不是明确错误对象。
 
 ### 5.2 对象化覆盖的真正分界
-高价值结论不是“每个方法返回什么”，而是哪些客户端以稳定 DTO 为主，哪些以基础值或原始集合为主：
+高价值结论不是“每个方法返回什么”，而是哪些客户端以稳定 DTO 为主，哪些仍返回原始结构：
 - `SettingsApiClient`、`ExtraApiClient`、`ProjectApiClient`、`ProofreadingApiClient` 的主路径返回是对象化结果。
 - `TaskApiClient` 的任务快照与分析术语导入结果返回对象化结果；`export_translation()` 返回原始结构。
 - `ModelApiClient` 的模型页快照链路返回对象化结果；`test_model()` 返回原始结构。
-- `WorkbenchApiClient` 统一返回原始 ack `dict`。
+- `WorkbenchApiClient` 的写接口统一返回 `ProjectMutationAck`；`parse_file()` 仍返回原始 preview `dict`。
 - `QualityRuleApiClient` 以 `bool`、`str`、原始 `dict` / `list` 为主，没有形成冻结 DTO 边界。
 - Python 侧客户端边界是显式请求/响应包装，不承担运行态缓存、SSE 消费或 `ProjectStore` 风格的长期状态同步层。
 
@@ -315,12 +246,12 @@ flowchart LR
 ## 7. 什么时候必须同步更新本文
 - 路径前缀、路由分组或版本边界变化
 - 错误映射口径变化
-- bootstrap stage / schema / 事件型别变化
+- bootstrap stage / RowBlock 字段顺序 / 事件型别变化
 - SSE topic 或 `project.patch` 语义变化
 - Python 客户端对象化覆盖边界变化
 - Electron 接入 Core 的唯一入口变化
 
 ## 维护原则
-- 本文聚焦需要跨多处代码一起理解的协议边界；能在 `Routes/*` 和 `Contract/*` 一眼看出的字段表，不重复平铺。
-- 优先记录“代码里分散存在、但开发时必须一起理解”的真实边界。
-- 更适合前端运行态文档的规则，以前端文档为准，不在这里维持双份解释。
+- 本文只记录需要跨 `Routes / Application / Bridge / Client` 一起理解的协议边界，不平铺可直接从代码读取的字段表。
+- 更适合前端运行态文档的页面派生逻辑，交给 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) 维护。
+- 更适合同步 mutation 落库路径的领域细节，交给 [`module/Data/SPEC.md`](../module/Data/SPEC.md) 维护。

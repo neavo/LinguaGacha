@@ -1,7 +1,6 @@
 from typing import Any
 
 from api.v2.Client.ApiClient import ApiClient
-from api.v2.Models.Task import AnalysisGlossaryImportResult
 from api.v2.Models.Task import TaskSnapshot
 from api.v2.Server.Routes.TaskRoutes import TaskRoutes
 
@@ -45,10 +44,6 @@ class TaskApiClient:
 
     def reset_analysis_failed(self) -> TaskSnapshot:
         return self.post_task_snapshot(TaskRoutes.RESET_ANALYSIS_FAILED_PATH)
-
-    def import_analysis_glossary(self) -> AnalysisGlossaryImportResult:
-        response = self.api_client.post(TaskRoutes.IMPORT_ANALYSIS_GLOSSARY_PATH, {})
-        return AnalysisGlossaryImportResult.from_dict(response)
 
     def export_translation(self) -> dict[str, Any]:
         return self.api_client.post(TaskRoutes.EXPORT_TRANSLATION_PATH, {})

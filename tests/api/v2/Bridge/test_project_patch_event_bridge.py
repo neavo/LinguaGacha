@@ -140,36 +140,6 @@ def test_project_patch_event_bridge_maps_analysis_task_done_event_to_store_patch
     }
 
 
-def test_project_patch_event_bridge_maps_analysis_import_glossary_done_to_quality_patch():
-    runtime_service = StubRuntimeService()
-    bridge = ProjectPatchEventBridge(
-        runtime_service=runtime_service,
-        task_snapshot_builder=build_task_snapshot,
-    )
-
-    topic, payload = bridge.map_event(
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "imported_count": 16,
-        },
-    )
-
-    assert topic == "project.patch"
-    assert payload["source"] == "analysis_import_glossary"
-    assert payload["projectRevision"] == 8
-    assert payload["updatedSections"] == ["quality", "analysis", "task"]
-    assert payload["sectionRevisions"] == {
-        "quality": 4,
-        "analysis": 8,
-        "task": 6,
-    }
-    assert payload["patch"][0] == {
-        "op": "replace_quality",
-        "quality": runtime_service.build_quality_block(),
-    }
-
-
 def test_project_patch_event_bridge_maps_translation_task_done_event_to_task_patch():
     bridge = ProjectPatchEventBridge(
         runtime_service=StubRuntimeService(),
@@ -190,23 +160,7 @@ def test_project_patch_event_bridge_maps_translation_task_done_event_to_task_pat
     assert payload["patch"][0]["items"][0]["item_id"] == 3
 
 
-def test_project_patch_event_bridge_maps_runtime_refresh_to_bootstrap_signal():
-    topic, payload = ProjectPatchEventBridge().map_event(
-        Base.Event.PROJECT_RUNTIME_REFRESH,
-        {
-            "source": "file_op",
-            "updatedSections": ["files", "items", "analysis"],
-        },
-    )
-
-    assert topic == "project.patch"
-    assert payload == {
-        "source": "file_op",
-        "updatedSections": ["files", "items", "analysis"],
-    }
-
-
-def test_project_patch_event_bridge_maps_translation_reset_all_done_to_runtime_refresh():
+def test_project_patch_event_bridge_maps_translation_reset_all_done_to_section_reload():
     topic, payload = ProjectPatchEventBridge().map_event(
         Base.Event.TRANSLATION_RESET_ALL,
         {
@@ -215,13 +169,13 @@ def test_project_patch_event_bridge_maps_translation_reset_all_done_to_runtime_r
     )
 
     assert topic == "project.patch"
-    assert payload == {
-        "source": "translation_reset_all",
-        "updatedSections": ["items", "analysis", "task"],
-    }
+    assert payload["source"] == "translation_reset_all"
+    assert payload["updatedSections"] == ["items", "analysis", "task"]
+    assert payload["projectRevision"] == 0
+    assert payload["sectionRevisions"] == {}
 
 
-def test_project_patch_event_bridge_maps_analysis_reset_failed_done_to_runtime_refresh():
+def test_project_patch_event_bridge_maps_analysis_reset_failed_done_to_section_reload():
     topic, payload = ProjectPatchEventBridge().map_event(
         Base.Event.ANALYSIS_RESET_FAILED,
         {
@@ -230,10 +184,10 @@ def test_project_patch_event_bridge_maps_analysis_reset_failed_done_to_runtime_r
     )
 
     assert topic == "project.patch"
-    assert payload == {
-        "source": "analysis_reset_failed",
-        "updatedSections": ["analysis", "task"],
-    }
+    assert payload["source"] == "analysis_reset_failed"
+    assert payload["updatedSections"] == ["analysis", "task"]
+    assert payload["projectRevision"] == 0
+    assert payload["sectionRevisions"] == {}
 
 
 def test_project_patch_event_bridge_ignores_unmapped_events():

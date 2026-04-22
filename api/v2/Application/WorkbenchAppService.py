@@ -1,6 +1,7 @@
 from typing import Any
 
 from module.Data.DataManager import DataManager
+from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 
 
 class WorkbenchAppService:
@@ -11,34 +12,168 @@ class WorkbenchAppService:
             data_manager if data_manager is not None else DataManager.get()
         )
 
+    def parse_expected_section_revisions(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, int] | None:
+        raw_expected_section_revisions = request.get("expected_section_revisions", {})
+        if not isinstance(raw_expected_section_revisions, dict):
+            return None
+
+        return {
+            str(section): int(revision)
+            for section, revision in raw_expected_section_revisions.items()
+            if isinstance(section, str)
+        }
+
+    def parse_derived_meta(
+        self,
+        request: dict[str, Any],
+    ) -> tuple[dict[str, Any], str, dict[str, Any]]:
+        raw_derived_meta = request.get("derived_meta", {})
+        derived_meta = (
+            dict(raw_derived_meta) if isinstance(raw_derived_meta, dict) else {}
+        )
+        translation_extras = derived_meta.get("translation_extras", {})
+        prefilter_config = derived_meta.get("prefilter_config", {})
+        return (
+            dict(translation_extras) if isinstance(translation_extras, dict) else {},
+            str(derived_meta.get("project_status", "NONE") or "NONE"),
+            dict(prefilter_config) if isinstance(prefilter_config, dict) else {},
+        )
+
+    def build_project_mutation_ack(
+        self,
+        updated_sections: tuple[str, ...] | list[str],
+    ) -> dict[str, object]:
+        ack_builder = getattr(self.data_manager, "build_project_mutation_ack", None)
+        if callable(ack_builder):
+            return ack_builder(updated_sections)
+        return ProjectRuntimeService(self.data_manager).build_project_mutation_ack(
+            updated_sections
+        )
+
+    def parse_file(self, request: dict[str, Any]) -> dict[str, object]:
+        """只读解析工作台文件，返回 TS planner 需要的标准化结果。"""
+
+        source_path = str(request.get("source_path", ""))
+        rel_path_raw = request.get("rel_path")
+        current_rel_path = (
+            str(rel_path_raw)
+            if isinstance(rel_path_raw, str) and rel_path_raw
+            else None
+        )
+        parse_preview = getattr(self.data_manager, "parse_file_preview", None)
+        if callable(parse_preview):
+            return parse_preview(
+                source_path,
+                current_rel_path=current_rel_path,
+            )
+
+        project_file_service = getattr(self.data_manager, "project_file_service", None)
+        if project_file_service is None:
+            raise AttributeError("缺少 project_file_service.parse_file_preview")
+        return project_file_service.parse_file_preview(
+            source_path,
+            current_rel_path=current_rel_path,
+        )
+
     def add_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
 
-        path = str(request.get("path", ""))
-        self.data_manager.add_file(path)
-        return {"accepted": True}
+        source_path = str(request.get("source_path", ""))
+        target_rel_path = str(request.get("target_rel_path", ""))
+        raw_file_record = request.get("file_record", {})
+        file_record = dict(raw_file_record) if isinstance(raw_file_record, dict) else {}
+        parsed_items_raw = request.get("parsed_items", [])
+        parsed_items = (
+            [dict(item) for item in parsed_items_raw if isinstance(item, dict)]
+            if isinstance(parsed_items_raw, list)
+            else []
+        )
+        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
+            request
+        )
+        self.data_manager.persist_add_file_payload(
+            source_path,
+            target_rel_path,
+            file_record=file_record,
+            parsed_items=parsed_items,
+            translation_extras=translation_extras,
+            project_status=project_status,
+            prefilter_config=prefilter_config,
+            expected_section_revisions=self.parse_expected_section_revisions(request),
+        )
+        return self.build_project_mutation_ack(("files", "items", "analysis"))
 
     def replace_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行替换文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_path = str(request.get("rel_path", ""))
-        path = str(request.get("path", ""))
-        self.data_manager.replace_file(rel_path, path)
-        return {"accepted": True}
+        source_path = str(request.get("source_path", ""))
+        target_rel_path = str(request.get("target_rel_path", ""))
+        raw_file_record = request.get("file_record", {})
+        file_record = dict(raw_file_record) if isinstance(raw_file_record, dict) else {}
+        parsed_items_raw = request.get("parsed_items", [])
+        parsed_items = (
+            [dict(item) for item in parsed_items_raw if isinstance(item, dict)]
+            if isinstance(parsed_items_raw, list)
+            else []
+        )
+        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
+            request
+        )
+        self.data_manager.persist_replace_file_payload(
+            source_path,
+            rel_path,
+            target_rel_path,
+            file_record=file_record,
+            parsed_items=parsed_items,
+            translation_extras=translation_extras,
+            project_status=project_status,
+            prefilter_config=prefilter_config,
+            expected_section_revisions=self.parse_expected_section_revisions(request),
+        )
+        return self.build_project_mutation_ack(("files", "items", "analysis"))
 
     def reset_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行重置文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_path = str(request.get("rel_path", ""))
-        self.data_manager.reset_file(rel_path)
-        return {"accepted": True}
+        items_raw = request.get("items", [])
+        item_payloads = (
+            [dict(item) for item in items_raw if isinstance(item, dict)]
+            if isinstance(items_raw, list)
+            else []
+        )
+        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
+            request
+        )
+        self.data_manager.persist_reset_file(
+            rel_path,
+            item_payloads=item_payloads,
+            translation_extras=translation_extras,
+            project_status=project_status,
+            prefilter_config=prefilter_config,
+            expected_section_revisions=self.parse_expected_section_revisions(request),
+        )
+        return self.build_project_mutation_ack(("items", "analysis"))
 
     def delete_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行删除文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_path = str(request.get("rel_path", ""))
-        self.data_manager.delete_file(rel_path)
-        return {"accepted": True}
+        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
+            request
+        )
+        self.data_manager.persist_delete_files(
+            [rel_path],
+            translation_extras=translation_extras,
+            project_status=project_status,
+            prefilter_config=prefilter_config,
+            expected_section_revisions=self.parse_expected_section_revisions(request),
+        )
+        return self.build_project_mutation_ack(("files", "items", "analysis"))
 
     def delete_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
         """执行批量删除文件操作，失败时直接把异常交给 HTTP 边界。"""
@@ -49,8 +184,17 @@ class WorkbenchAppService:
             if isinstance(rel_paths_raw, list)
             else []
         )
-        self.data_manager.delete_file_batch(rel_paths)
-        return {"accepted": True}
+        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
+            request
+        )
+        self.data_manager.persist_delete_files(
+            rel_paths,
+            translation_extras=translation_extras,
+            project_status=project_status,
+            prefilter_config=prefilter_config,
+            expected_section_revisions=self.parse_expected_section_revisions(request),
+        )
+        return self.build_project_mutation_ack(("files", "items", "analysis"))
 
     def reorder_files(self, request: dict[str, Any]) -> dict[str, object]:
         """按前端拖拽后的完整顺序持久化工作台文件列表。"""
@@ -61,5 +205,8 @@ class WorkbenchAppService:
             if isinstance(ordered_rel_paths_raw, list)
             else []
         )
-        self.data_manager.schedule_reorder_files(ordered_rel_paths)
-        return {"accepted": True}
+        self.data_manager.persist_reordered_files(
+            ordered_rel_paths,
+            expected_section_revisions=self.parse_expected_section_revisions(request),
+        )
+        return self.build_project_mutation_ack(("files",))

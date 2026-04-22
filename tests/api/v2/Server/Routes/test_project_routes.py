@@ -8,7 +8,7 @@ class StubRuntimeService:
         return {"project": {"path": "demo.lg", "loaded": True}}
 
     def build_items_block(self):
-        return {"schema": "project-items.v1", "fields": ["item_id"], "rows": [[1]]}
+        return {"fields": ["item_id"], "rows": [[1]]}
 
 
 def test_v2_project_routes_register_bootstrap_stream():
@@ -57,6 +57,10 @@ def test_server_bootstrap_registers_v2_project_runtime_routes():
         core_api_server.route_map[
             ("POST", "/api/v2/project/proofreading/save-item")
         ].mode
+        == "json"
+    )
+    assert (
+        core_api_server.route_map[("POST", "/api/v2/project/workbench/parse-file")].mode
         == "json"
     )
     assert (

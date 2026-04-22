@@ -72,13 +72,6 @@ class AnalysisProgressTracker:
             total=int(snapshot.get("total_line", 0) or 0),
         )
 
-    def update_extras_after_result(self, result: AnalysisTaskResult) -> None:
-        """token 统计统一在这里累加，避免成功和失败分支各写一遍。"""
-        self.update_extras_after_batch(
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
-        )
-
     def update_extras_after_batch(
         self,
         *,

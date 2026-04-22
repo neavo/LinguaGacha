@@ -47,42 +47,46 @@ class ProofreadingAppService:
             self.runtime_service = runtime_service
 
     def save_item(self, request: dict[str, Any]) -> dict[str, object]:
-        """保存单条条目，并返回最小 mutation ack。"""
+        """持久化单条校对写入，并返回统一 project mutation ack。"""
 
-        item = self.resolve_request_item(request)
-        new_dst = str(request.get("new_dst", item.get_dst()))
-        expected_revision = int(request.get("expected_revision", 0) or 0)
-        change = self.mutation_service.apply_manual_edit(
-            item,
-            new_dst,
-            expected_revision=expected_revision,
+        self.mutation_service.persist_finalized_items(
+            self.resolve_finalized_items(request),
+            translation_extras=self.resolve_translation_extras(request),
+            project_status=self.resolve_project_status(request),
+            expected_section_revisions=self.resolve_expected_section_revisions(request),
+            reason="proofreading_save_item",
         )
-        return self.build_mutation_ack(change)
+        return self.runtime_service.build_project_mutation_ack(
+            ["items", "proofreading"]
+        )
 
     def save_all(self, request: dict[str, Any]) -> dict[str, object]:
-        """批量保存条目，并返回最小 mutation ack。"""
+        """持久化批量校对写入，并返回统一 project mutation ack。"""
 
-        items = self.resolve_request_items(request)
-        expected_revision = int(request.get("expected_revision", 0) or 0)
-        change = self.mutation_service.save_all(
-            items,
-            expected_revision=expected_revision,
+        self.mutation_service.persist_finalized_items(
+            self.resolve_finalized_items(request),
+            translation_extras=self.resolve_translation_extras(request),
+            project_status=self.resolve_project_status(request),
+            expected_section_revisions=self.resolve_expected_section_revisions(request),
+            reason="proofreading_save_all",
         )
-        return self.build_mutation_ack(change)
+        return self.runtime_service.build_project_mutation_ack(
+            ["items", "proofreading"]
+        )
 
     def replace_all(self, request: dict[str, Any]) -> dict[str, object]:
-        """批量替换命中项，并返回最小 mutation ack。"""
+        """持久化批量替换结果，并返回统一 project mutation ack。"""
 
-        items = self.resolve_request_items(request)
-        expected_revision = int(request.get("expected_revision", 0) or 0)
-        change = self.mutation_service.replace_all(
-            items,
-            search_text=str(request.get("search_text", "")),
-            replace_text=str(request.get("replace_text", "")),
-            is_regex=bool(request.get("is_regex", False)),
-            expected_revision=expected_revision,
+        self.mutation_service.persist_finalized_items(
+            self.resolve_finalized_items(request),
+            translation_extras=self.resolve_translation_extras(request),
+            project_status=self.resolve_project_status(request),
+            expected_section_revisions=self.resolve_expected_section_revisions(request),
+            reason="proofreading_replace_all",
         )
-        return self.build_mutation_ack(change)
+        return self.runtime_service.build_project_mutation_ack(
+            ["items", "proofreading"]
+        )
 
     def retranslate_items(self, request: dict[str, Any]) -> dict[str, object]:
         """单条/批量重译条目，并返回最小 mutation ack。"""
@@ -109,15 +113,36 @@ class ProofreadingAppService:
             )["result"]
         }
 
-    def resolve_request_item(self, request: dict[str, Any]) -> Item:
-        """把请求中的条目字典收口成 Item 对象。"""
+    def resolve_expected_section_revisions(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, int] | None:
+        revisions_raw = request.get("expected_section_revisions", {})
+        if not isinstance(revisions_raw, dict):
+            return None
+        return {
+            str(section): int(revision)
+            for section, revision in revisions_raw.items()
+            if isinstance(section, str)
+        }
 
-        item_raw = request.get("item", request)
-        if isinstance(item_raw, Item):
-            return item_raw
-        if isinstance(item_raw, dict):
-            return Item.from_dict(item_raw)
-        return Item()
+    def resolve_translation_extras(self, request: dict[str, Any]) -> dict[str, Any]:
+        extras_raw = request.get("translation_extras", {})
+        if not isinstance(extras_raw, dict):
+            return {}
+        return dict(extras_raw)
+
+    def resolve_project_status(self, request: dict[str, Any]) -> str:
+        return str(request.get("project_status", "NONE") or "NONE")
+
+    def resolve_finalized_items(
+        self,
+        request: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        items_raw = request.get("items", [])
+        if not isinstance(items_raw, list):
+            return []
+        return [dict(item) for item in items_raw if isinstance(item, dict)]
 
     def resolve_request_items(self, request: dict[str, Any]) -> list[Item]:
         """把请求中的条目列表收口成 Item 对象列表。"""

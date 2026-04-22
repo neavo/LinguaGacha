@@ -8,6 +8,7 @@ from module.Data.Core.DataTypes import ProjectItemChange
 from api.v2.Application.ProofreadingAppService import ProofreadingAppService
 from api.v2.Client.ApiClient import ApiClient
 from api.v2.Client.ProofreadingApiClient import ProofreadingApiClient
+from api.v2.Models.ProjectRuntime import ProjectMutationAck
 from api.v2.Models.Proofreading import ProofreadingMutationResult
 
 
@@ -15,28 +16,16 @@ def build_proofreading_app_service() -> ProofreadingAppService:
     data_manager = SimpleNamespace(
         emit_project_runtime_patch=MagicMock(),
     )
+    mutation_ack = {
+        "accepted": True,
+        "projectRevision": 11,
+        "sectionRevisions": {
+            "items": 8,
+            "proofreading": 9,
+        },
+    }
     mutation_service = SimpleNamespace(
-        apply_manual_edit=MagicMock(
-            return_value=ProjectItemChange(
-                item_ids=(1,),
-                rel_paths=("script/a.txt",),
-                reason="proofreading_save_item",
-            )
-        ),
-        save_all=MagicMock(
-            return_value=ProjectItemChange(
-                item_ids=(1, 2),
-                rel_paths=("script/a.txt", "script/b.txt"),
-                reason="proofreading_save_all",
-            )
-        ),
-        replace_all=MagicMock(
-            return_value=ProjectItemChange(
-                item_ids=(1,),
-                rel_paths=("script/a.txt",),
-                reason="proofreading_replace_all",
-            )
-        ),
+        persist_finalized_items=MagicMock(),
     )
     retranslate_service = SimpleNamespace(
         retranslate_items=MagicMock(
@@ -57,6 +46,7 @@ def build_proofreading_app_service() -> ProofreadingAppService:
                 "busy": False,
             }
         ),
+        build_project_mutation_ack=MagicMock(return_value=mutation_ack),
     )
 
     return ProofreadingAppService(
@@ -67,7 +57,7 @@ def build_proofreading_app_service() -> ProofreadingAppService:
     )
 
 
-def test_proofreading_api_client_save_item_returns_mutation_result(
+def test_proofreading_api_client_save_item_returns_project_mutation_ack(
     start_api_server: Callable[..., str],
 ) -> None:
     app_service = build_proofreading_app_service()
@@ -76,21 +66,29 @@ def test_proofreading_api_client_save_item_returns_mutation_result(
 
     result = proofreading_client.save_item(
         {
-            "item": {
-                "id": 1,
-                "dst": "Hero arrived again",
-                "status": Base.ProjectStatus.PROCESSED,
-            },
-            "expected_revision": 7,
+            "items": [
+                {
+                    "id": 1,
+                    "dst": "Hero arrived again",
+                    "status": Base.ProjectStatus.PROCESSED,
+                }
+            ],
+            "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
 
-    assert isinstance(result, ProofreadingMutationResult)
-    assert result.revision == 9
-    assert result.changed_item_ids == (1,)
+    assert isinstance(result, ProjectMutationAck)
+    assert result.to_dict() == {
+        "accepted": True,
+        "projectRevision": 11,
+        "sectionRevisions": {
+            "items": 8,
+            "proofreading": 9,
+        },
+    }
 
 
-def test_proofreading_api_client_replace_all_returns_mutation_result(
+def test_proofreading_api_client_replace_all_returns_project_mutation_ack(
     start_api_server: Callable[..., str],
 ) -> None:
     app_service = build_proofreading_app_service()
@@ -108,16 +106,19 @@ def test_proofreading_api_client_replace_all_returns_mutation_result(
             ],
             "search_text": "Hero",
             "replace_text": "Heroine",
-            "expected_revision": 7,
+            "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
 
-    assert isinstance(result, ProofreadingMutationResult)
-    assert result.revision == 9
-    assert result.changed_item_ids == (1,)
+    assert isinstance(result, ProjectMutationAck)
+    assert result.project_revision == 11
+    assert result.section_revisions == {
+        "items": 8,
+        "proofreading": 9,
+    }
 
 
-def test_proofreading_api_client_save_all_returns_mutation_result(
+def test_proofreading_api_client_save_all_returns_project_mutation_ack(
     start_api_server: Callable[..., str],
 ) -> None:
     app_service = build_proofreading_app_service()
@@ -138,12 +139,16 @@ def test_proofreading_api_client_save_all_returns_mutation_result(
                     "status": Base.ProjectStatus.NONE,
                 },
             ],
-            "expected_revision": 7,
+            "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
 
-    assert isinstance(result, ProofreadingMutationResult)
-    assert result.changed_item_ids == (1, 2)
+    assert isinstance(result, ProjectMutationAck)
+    assert result.accepted is True
+    assert result.section_revisions == {
+        "items": 8,
+        "proofreading": 9,
+    }
 
 
 def test_proofreading_api_client_retranslate_items_returns_mutation_result(

@@ -12,19 +12,18 @@ from api.v2.Models.Model import ModelThinkingSnapshot
 from api.v2.Models.Model import ModelThresholdSnapshot
 from api.v2.Models.Project import ProjectPreview
 from api.v2.Models.Project import ProjectSnapshot
+from api.v2.Models.ProjectRuntime import ProjectMutationAck
 from api.v2.Models.Proofreading import ProofreadingMutationResult
 from api.v2.Models.QualityRule import QualityRuleEntry
 from api.v2.Models.QualityRule import QualityRuleSnapshot
 from api.v2.Models.Settings import AppSettingsSnapshot
 from api.v2.Models.Settings import RecentProjectEntry
-from api.v2.Models.Task import AnalysisGlossaryImportResult
 from api.v2.Models.Task import TaskProgressUpdate
 from api.v2.Models.Task import TaskSnapshot
 from api.v2.Models.Task import TaskStatusUpdate
 
 __all__ = [
     "AppSettingsSnapshot",
-    "AnalysisGlossaryImportResult",
     "ExtraTaskState",
     "ModelEntrySnapshot",
     "ModelGenerationSnapshot",
@@ -32,6 +31,7 @@ __all__ = [
     "ModelRequestSnapshot",
     "ModelThinkingSnapshot",
     "ModelThresholdSnapshot",
+    "ProjectMutationAck",
     "NameFieldEntryDraft",
     "NameFieldSnapshot",
     "NameFieldTranslateResult",

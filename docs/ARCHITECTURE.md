@@ -1,41 +1,46 @@
 # LinguaGacha 仓库结构
 
 ## 一句话总览
-LinguaGacha 是“无头 Python Core + Electron 桌面前端”的双进程工程。`app.py` 负责无头运行时与 Core API 启停；`api/v2/` 负责本地 HTTP / SSE / bootstrap 边界；`module/Data/` 持有工程事实与数据编排；`module/Engine/` 负责后台任务执行；`module/File/` 负责格式解析与回写；`frontend/` 承载 Electron 壳层与 React 渲染层。
+LinguaGacha 是“无头 Python Core + Electron 桌面前端”的双进程工程。本文只保留仓库级阅读路径、跨层关系和模块落点，不重复各模块 `SPEC.md` 内部已经拥有的细节。
 
-## 核心运行时关系
+## 运行时主链路
 ```mermaid
 flowchart LR
     A["frontend/src/main"] --> B["frontend/src/preload"]
     B --> C["frontend/src/renderer"]
-    C --> D["api/v2 HTTP / SSE / bootstrap"]
-    D --> E["app.py"]
+    C --> D["api/ HTTP + SSE + bootstrap"]
+    D --> E["app.py / Python Core"]
     E --> F["module/Data"]
     E --> G["module/Engine"]
     F --> H["module/File"]
-    G --> I["module/Model"]
-```
-
-## 文档入口
-```mermaid
-flowchart TD
-    A["AGENTS.md"] --> B["docs/ARCHITECTURE.md"]
-    A --> K["docs/DESIGN.md"]
-    B --> C["frontend/SPEC.md"]
-    C --> D["frontend/src/renderer/SPEC.md"]
-    D --> E["frontend/src/renderer/app/project-runtime/SPEC.md"]
-    B --> F["api/SPEC.md"]
-    B --> G["module/Data/SPEC.md"]
-    B --> H["module/Engine/SPEC.md"]
-    B --> I["module/File/SPEC.md"]
-    B --> J["module/Model/SPEC.md"]
+    E --> I["module/Model"]
 ```
 
 规则：
-- `AGENTS.md` 只保留协作规则、交付约束和仓库级入口。
-- 本文是仓库级文档索引、阅读路径和同步矩阵的唯一权威来源。
-- `docs/DESIGN.md` 是面向代理的前端设计系统文档，用于约束界面风格、组件气质与生成方向。
-- 模块 `SPEC.md` 只写模块的稳定边界、真实入口和改动落点，不记录对开发没有帮助的历史叙述。
+- Electron 渲染层只通过 `window.desktopApp` 暴露的宿主能力进入桌面环境，再通过 `frontend/src/renderer/app/desktop-api.ts` 访问 Core API。
+- Python Core 对前端暴露的唯一协议边界是 `api/`；运行态主路径固定为 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`。
+- `module/Data` 持有工程事实与数据编排，`module/Engine` 负责任务生命周期，`module/File` 负责格式解析与写回；三者边界变化要回到对应 `SPEC.md` 调整。
+
+## 文档地图
+```mermaid
+flowchart TD
+    A["AGENTS.md"] --> B["docs/ARCHITECTURE.md"]
+    A --> C["docs/DESIGN.md"]
+    B --> D["frontend/SPEC.md"]
+    D --> E["frontend/src/renderer/SPEC.md"]
+    E --> F["frontend/src/renderer/app/project-runtime/SPEC.md"]
+    B --> G["api/SPEC.md"]
+    B --> H["module/Data/SPEC.md"]
+    B --> I["module/Engine/SPEC.md"]
+    B --> J["module/File/SPEC.md"]
+    B --> K["module/Model/SPEC.md"]
+```
+
+规则：
+- `AGENTS.md` 负责仓库级协作约束、验证下限和任务起手式。
+- 本文是仓库级阅读路径、跨层关系和文档同步矩阵的权威入口。
+- `docs/DESIGN.md` 只保留长期设计语义与权威来源。
+- 模块 `SPEC.md` 只保留模块内部边界、真实入口和唯一写入口。
 
 ## 推荐阅读路径
 | 场景 | 阅读顺序 |
@@ -50,23 +55,25 @@ flowchart TD
 | 文件导入导出、格式解析与回写 | `docs/ARCHITECTURE.md` -> [`module/File/SPEC.md`](../module/File/SPEC.md) |
 | 模型配置、预设模板与模型页后端入口 | `docs/ARCHITECTURE.md` -> [`module/Model/SPEC.md`](../module/Model/SPEC.md) -> [`api/SPEC.md`](../api/SPEC.md) |
 
-## 模块文档索引
-| 文档 | 对应目录 | 说明 |
-| --- | --- | --- |
-| [`frontend/SPEC.md`](../frontend/SPEC.md) | `frontend/` | Electron 子工程根目录、主进程、预加载、共享契约、构建命令与壳层边界 |
-| [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) | `frontend/src/renderer/` | 渲染层目录职责、页面落位、导航映射、组件层级与样式边界 |
-| [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) | `frontend/src/renderer/app/project-runtime/` | `ProjectStore`、bootstrap 分段、`project.patch`、页面变更信号与 V2 运行态主路径 |
-| [`api/SPEC.md`](../api/SPEC.md) | `api/` | 本地 Core API 的 HTTP / SSE / bootstrap 契约、错误边界、Python 客户端对象化范围与前端接入点 |
-| [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `module/Data/` | 工程事实、工作台、规则、分析、校对和 Extra 数据服务的真实入口 |
-| [`module/Engine/SPEC.md`](../module/Engine/SPEC.md) | `module/Engine/` | 翻译/分析任务生命周期骨架、共享流水线、请求器、并发与停止语义 |
-| [`module/File/SPEC.md`](../module/File/SPEC.md) | `module/File/` | 文件格式接入、解析分发、写回策略与新增格式时的真实落点 |
-| [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `module/Model/` | 模型配置对象、模板补齐、preset 兼容整理、分组排序与模型页后端入口 |
+## 稳定职责矩阵
 
-## 最值得记住的边界
-- V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` + `/api/v2/events/stream`；页面通过 bootstrap 与 `project.patch` 建立运行态事实源。
-- `DataManager` 负责工程事实与数据编排，`Engine` 负责后台任务生命周期，`FileManager` 只负责格式解析与回写；三者不要互相吞职责。
-- Electron 渲染层只通过 `window.desktopApp` 暴露的桌面能力接入宿主，再通过 `desktop-api.ts` 探活并请求 Core API。
-- 同一条稳定规则只保留在一个权威文档；本文只负责入口、索引和同步矩阵，不接管模块内部规则。
+| 领域 | 权威落点 | 需要先记住的边界 |
+| --- | --- | --- |
+| Electron 宿主、预加载、共享契约 | [`frontend/SPEC.md`](../frontend/SPEC.md) | 只有 `window.desktopApp` 可以把桌面能力交给渲染层 |
+| React 页面、导航、样式归属 | [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) | 页面逻辑在 `pages/`，跨页面稳定组合层在 `widgets/` |
+| V2 运行态、`ProjectStore`、变更信号 | [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) | 页面消费 bootstrap + `project.patch`，不重建第二套运行态客户端 |
+| 本地 HTTP / SSE / bootstrap 契约 | [`api/SPEC.md`](../api/SPEC.md) | `api/` 是前端进入 Python Core 的唯一协议边界 |
+| 工程事实、规则、分析、校对与 Extra 数据服务 | [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `DataManager` 是工程级数据门面，SQL 仍只在 `Storage/LGDatabase.py` |
+| 任务生命周期、请求和停止语义 | [`module/Engine/SPEC.md`](../module/Engine/SPEC.md) | `Engine` 不持有项目事实，只负责任务执行骨架 |
+| 文件格式解析与写回 | [`module/File/SPEC.md`](../module/File/SPEC.md) | `FileManager` 负责格式分发，不负责工程生命周期与事务 |
+| 模型配置与模板整理 | [`module/Model/SPEC.md`](../module/Model/SPEC.md) | `Manager.py` 是模型排序、模板补齐和默认回退的唯一规则入口 |
+
+## 仓库级不变量
+
+- `api/` 之外不新增前后端并行协议边界。
+- SQL 只允许落在 `Storage/LGDatabase.py`；API 层不直接持有数据库连接，也不直接持有 `ProjectSession`。
+- 长期用户文案分成两处维护：Python Core 在 `module/Localizer/`，渲染层在 `frontend/src/renderer/i18n/`。
+- 同一条长期规则只保留一个权威归宿；本文只负责入口、阅读路径和跨层关系。
 
 ## 更新规则
 | 变更类型 | 必须同步的文档 |
@@ -83,5 +90,5 @@ flowchart TD
 
 ## 维护约束
 - 本文只列出真实存在、且对开发有帮助的文档入口，不为“以后可能会写”的文档预留占位。
-- 模块文档优先写状态来源、唯一写入口、跨层载荷和不明显的兼容约束，不重复显而易见的代码表面行为。
+- 模块文档优先写状态来源、唯一写入口、跨层载荷和非显然约束，不重复代码表面行为。
 - 代码改动如果会让现有阅读路径或模块边界失真，必须在同一任务内同步修正文档。

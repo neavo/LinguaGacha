@@ -1,66 +1,66 @@
 // @vitest-environment jsdom
 
-import { act, useEffect } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, useEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createProjectStoreReplaceSectionPatch } from '@/app/project-runtime/project-store'
-import { DesktopRuntimeProvider } from '@/app/state/desktop-runtime-context'
-import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
+import {
+  createProjectStoreReplaceSectionPatch,
+  type ProjectStoreQualityState,
+} from "@/app/project-runtime/project-store";
+import { DesktopRuntimeProvider } from "@/app/state/desktop-runtime-context";
+import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 
-const {
-  api_fetch_mock,
-  open_v2_event_stream_mock,
-  open_v2_project_bootstrap_stream_mock,
-} = vi.hoisted(() => {
-  return {
-    api_fetch_mock: vi.fn(),
-    open_v2_event_stream_mock: vi.fn(),
-    open_v2_project_bootstrap_stream_mock: vi.fn(),
-  }
-})
+const { api_fetch_mock, open_v2_event_stream_mock, open_v2_project_bootstrap_stream_mock } =
+  vi.hoisted(() => {
+    return {
+      api_fetch_mock: vi.fn(),
+      open_v2_event_stream_mock: vi.fn(),
+      open_v2_project_bootstrap_stream_mock: vi.fn(),
+    };
+  });
 
-vi.mock('@/app/desktop-api', () => {
+vi.mock("@/app/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
     open_v2_event_stream: open_v2_event_stream_mock,
     open_v2_project_bootstrap_stream: open_v2_project_bootstrap_stream_mock,
-  }
-})
+  };
+});
 
 type RuntimeSnapshot = {
-  workbenchSeq: number
-  workbenchReason: string
-  proofreadingSeq: number
-  proofreadingReason: string
-  fileKeys: string[]
-  itemKeys: string[]
-  taskStatus: string
-}
+  workbenchSeq: number;
+  workbenchReason: string;
+  proofreadingSeq: number;
+  proofreadingReason: string;
+  fileKeys: string[];
+  itemKeys: string[];
+  taskStatus: string;
+};
 
 type RuntimeHandle = {
   project_store: {
     getState: () => {
       quality: {
-        glossary: Record<string, unknown>
-      }
-    }
-  }
+        glossary: Record<string, unknown>;
+      };
+    };
+  };
   commit_local_project_patch: (input: {
-    source: string
-    updatedSections: string[]
-    patch: unknown[]
+    source: string;
+    updatedSections: string[];
+    patch: unknown[];
   }) => {
-    rollback: () => void
-  }
-}
+    rollback: () => void;
+  };
+};
 
-type RuntimeHandleRef = RuntimeHandle | null
+type RuntimeHandleRef = RuntimeHandle | null;
 
 function RuntimeProbe(props: {
-  onSnapshot: (snapshot: RuntimeSnapshot) => void
+  onSnapshot: (snapshot: RuntimeSnapshot) => void;
 }): JSX.Element | null {
-  const runtime = useDesktopRuntime()
+  const runtime = useDesktopRuntime();
 
   useEffect(() => {
     props.onSnapshot({
@@ -71,7 +71,7 @@ function RuntimeProbe(props: {
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: Object.keys(runtime.project_store.getState().items),
       taskStatus: runtime.task_snapshot.status,
-    })
+    });
   }, [
     props,
     runtime.proofreading_change_signal.reason,
@@ -80,477 +80,483 @@ function RuntimeProbe(props: {
     runtime.project_store,
     runtime.workbench_change_signal.reason,
     runtime.workbench_change_signal.seq,
-  ])
+  ]);
 
-  return null
+  return null;
 }
 
 function RuntimeHandleProbe(props: {
-  onRuntime: (runtime: RuntimeHandleRef) => void
+  onRuntime: (runtime: RuntimeHandleRef) => void;
 }): JSX.Element | null {
-  const runtime = useDesktopRuntime()
+  const runtime = useDesktopRuntime();
 
   useEffect(() => {
-    props.onRuntime(runtime as unknown as RuntimeHandle)
-  }, [props, runtime])
+    props.onRuntime(runtime as unknown as RuntimeHandle);
+  }, [props, runtime]);
 
-  return null
+  return null;
 }
 
-async function wait_for_condition(
-  predicate: () => boolean,
-  attempts = 20,
-): Promise<void> {
+async function wait_for_condition(predicate: () => boolean, attempts = 20): Promise<void> {
   for (let index = 0; index < attempts; index += 1) {
     if (predicate()) {
-      return
+      return;
     }
 
     await act(async () => {
-      await Promise.resolve()
-    })
+      await Promise.resolve();
+    });
   }
 
-  throw new Error('等待运行时状态收敛失败。')
+  throw new Error("等待运行时状态收敛失败。");
 }
 
 function create_event_source_stub(): {
-  event_source: EventSource
-  emit: (event_name: string, payload: Record<string, unknown>) => void
+  event_source: EventSource;
+  emit: (event_name: string, payload: Record<string, unknown>) => void;
 } {
-  const listener_map = new Map<string, EventListener>()
+  const listener_map = new Map<string, EventListener>();
 
   return {
     event_source: {
       addEventListener: vi.fn((event_name: string, listener: EventListener) => {
-        listener_map.set(event_name, listener)
+        listener_map.set(event_name, listener);
       }),
       close: vi.fn(),
       onerror: null,
     } as unknown as EventSource,
     emit: (event_name: string, payload: Record<string, unknown>) => {
-      const listener = listener_map.get(event_name)
+      const listener = listener_map.get(event_name);
       if (listener === undefined) {
-        throw new Error(`缺少事件监听器：${event_name}`)
+        throw new Error(`缺少事件监听器：${event_name}`);
       }
 
       listener({
         data: JSON.stringify(payload),
-      } as MessageEvent<string>)
+      } as MessageEvent<string>);
     },
-  }
+  };
 }
 
-describe('DesktopRuntimeProvider', () => {
-  let container: HTMLDivElement | null = null
-  let root: Root | null = null
+describe("DesktopRuntimeProvider", () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
 
   afterEach(async () => {
     if (root !== null) {
       await act(async () => {
-        root?.unmount()
-      })
+        root?.unmount();
+      });
     }
 
-    container?.remove()
-    root = null
-    container = null
-    api_fetch_mock.mockReset()
-    open_v2_event_stream_mock.mockReset()
-    open_v2_project_bootstrap_stream_mock.mockReset()
-  })
+    container?.remove();
+    root = null;
+    container = null;
+    api_fetch_mock.mockReset();
+    open_v2_event_stream_mock.mockReset();
+    open_v2_project_bootstrap_stream_mock.mockReset();
+  });
 
-  it('完成 bootstrap 后补发工作台与校对页刷新信号', async () => {
-    const snapshots: RuntimeSnapshot[] = []
-    const event_stream = create_event_source_stub()
+  it("完成 bootstrap 后补发工作台与校对页刷新信号", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
 
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === '/api/settings/app') {
+      if (path === "/api/settings/app") {
         return {
           settings: {
-            app_language: 'ZH',
+            app_language: "ZH",
           },
-        }
+        };
       }
 
-      if (path === '/api/v2/project/snapshot') {
+      if (path === "/api/v2/project/snapshot") {
         return {
           project: {
-            path: 'E:/demo/demo.lg',
+            path: "E:/demo/demo.lg",
             loaded: true,
           },
-        }
+        };
       }
 
-      if (path === '/api/v2/tasks/snapshot') {
+      if (path === "/api/v2/tasks/snapshot") {
         return {
           task: {
-            task_type: 'translation',
-            status: 'IDLE',
+            task_type: "translation",
+            status: "IDLE",
             busy: false,
           },
-        }
+        };
       }
 
-      throw new Error(`未预期的请求：${path}`)
-    })
+      throw new Error(`未预期的请求：${path}`);
+    });
 
-    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source)
+    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source);
 
     open_v2_project_bootstrap_stream_mock.mockImplementation(() => {
       return (async function* () {
         yield {
-          type: 'stage_payload',
-          stage: 'files',
+          type: "stage_payload",
+          stage: "files",
           payload: {
-            fields: ['rel_path', 'file_type'],
-            rows: [['chapter01.txt', 'TXT']],
+            fields: ["rel_path", "file_type"],
+            rows: [["chapter01.txt", "TXT"]],
           },
-        }
+        };
         yield {
-          type: 'stage_payload',
-          stage: 'items',
+          type: "stage_payload",
+          stage: "items",
           payload: {
-            fields: ['item_id', 'file_path', 'status'],
-            rows: [[1, 'chapter01.txt', 'DONE']],
+            fields: ["item_id", "file_path", "status"],
+            rows: [[1, "chapter01.txt", "DONE"]],
           },
-        }
+        };
         yield {
-          type: 'completed',
+          type: "completed",
           projectRevision: 4,
           sectionRevisions: {
             files: 2,
             items: 3,
           },
-        }
-      })()
-    })
+        };
+      })();
+    });
 
-    container = document.createElement('div')
-    document.body.append(container)
-    root = createRoot(container)
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
 
     await act(async () => {
       root?.render(
         <DesktopRuntimeProvider>
           <RuntimeProbe
             onSnapshot={(snapshot) => {
-              snapshots.push(snapshot)
+              snapshots.push(snapshot);
             }}
           />
         </DesktopRuntimeProvider>,
-      )
-    })
+      );
+    });
 
     await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1)
-      return latest_snapshot?.workbenchSeq === 1 && latest_snapshot.proofreadingSeq === 1
-    })
+      const latest_snapshot = snapshots.at(-1);
+      return latest_snapshot?.workbenchSeq === 1 && latest_snapshot.proofreadingSeq === 1;
+    });
 
-    const latest_snapshot = snapshots.at(-1)
+    const latest_snapshot = snapshots.at(-1);
 
-    expect(open_v2_project_bootstrap_stream_mock).toHaveBeenCalledWith()
+    expect(open_v2_project_bootstrap_stream_mock).toHaveBeenCalledWith();
     expect(latest_snapshot).toMatchObject({
       workbenchSeq: 1,
-      workbenchReason: 'project_bootstrap',
+      workbenchReason: "project_bootstrap",
       proofreadingSeq: 1,
-      proofreadingReason: 'project_bootstrap',
-      fileKeys: ['chapter01.txt'],
-      itemKeys: ['1'],
-    })
-  })
+      proofreadingReason: "project_bootstrap",
+      fileKeys: ["chapter01.txt"],
+      itemKeys: ["1"],
+    });
+  });
 
-  it('source_language 设置变更会触发项目缓存刷新信号', async () => {
-    const snapshots: RuntimeSnapshot[] = []
-    const event_stream = create_event_source_stub()
+  it("source_language 设置变更会触发项目缓存刷新信号", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
 
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === '/api/settings/app') {
+      if (path === "/api/settings/app") {
         return {
           settings: {
-            app_language: 'ZH',
-            source_language: 'JA',
+            app_language: "ZH",
+            source_language: "JA",
           },
-        }
+        };
       }
 
-      if (path === '/api/v2/project/snapshot') {
+      if (path === "/api/v2/project/snapshot") {
         return {
           project: {
-            path: 'E:/demo/demo.lg',
+            path: "E:/demo/demo.lg",
             loaded: true,
           },
-        }
+        };
       }
 
-      if (path === '/api/v2/tasks/snapshot') {
+      if (path === "/api/v2/tasks/snapshot") {
         return {
           task: {
-            task_type: 'translation',
-            status: 'IDLE',
+            task_type: "translation",
+            status: "IDLE",
             busy: false,
           },
-        }
+        };
       }
 
-      throw new Error(`未预期的请求：${path}`)
-    })
+      throw new Error(`未预期的请求：${path}`);
+    });
 
-    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source)
+    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source);
     open_v2_project_bootstrap_stream_mock.mockImplementation(() => {
       return (async function* () {
         yield {
-          type: 'completed',
+          type: "completed",
           projectRevision: 1,
           sectionRevisions: {},
-        }
-      })()
-    })
+        };
+      })();
+    });
 
-    container = document.createElement('div')
-    document.body.append(container)
-    root = createRoot(container)
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
 
     await act(async () => {
       root?.render(
         <DesktopRuntimeProvider>
           <RuntimeProbe
             onSnapshot={(snapshot) => {
-              snapshots.push(snapshot)
+              snapshots.push(snapshot);
             }}
           />
         </DesktopRuntimeProvider>,
-      )
-    })
+      );
+    });
 
     await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1)
-      return latest_snapshot?.workbenchSeq === 1 && latest_snapshot?.proofreadingSeq === 1
-    })
+      const latest_snapshot = snapshots.at(-1);
+      return latest_snapshot?.workbenchSeq === 1 && latest_snapshot?.proofreadingSeq === 1;
+    });
 
     await act(async () => {
-      event_stream.emit('settings.changed', {
-        keys: ['source_language'],
+      event_stream.emit("settings.changed", {
+        keys: ["source_language"],
         settings: {
-          source_language: 'EN',
+          source_language: "EN",
         },
-      })
-      await Promise.resolve()
-    })
+      });
+      await Promise.resolve();
+    });
 
     await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1)
-      return latest_snapshot?.workbenchSeq === 2 && latest_snapshot?.proofreadingSeq === 2
-    })
+      const latest_snapshot = snapshots.at(-1);
+      return latest_snapshot?.workbenchSeq === 2 && latest_snapshot?.proofreadingSeq === 2;
+    });
 
-    const latest_snapshot = snapshots.at(-1)
+    const latest_snapshot = snapshots.at(-1);
 
     expect(latest_snapshot).toMatchObject({
       workbenchSeq: 2,
-      workbenchReason: 'config_updated',
+      workbenchReason: "config_updated",
       proofreadingSeq: 2,
-      proofreadingReason: 'config_updated',
-    })
-  })
+      proofreadingReason: "config_updated",
+    });
+  });
 
-  it('本地 project patch 会立即更新 store、任务快照并支持回滚', async () => {
-    const snapshots: RuntimeSnapshot[] = []
-    const event_stream = create_event_source_stub()
-    let runtime_handle: RuntimeHandleRef = null
+  it("本地 project patch 会立即更新 store、任务快照并支持回滚", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    let runtime_handle: RuntimeHandleRef = null;
 
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === '/api/settings/app') {
+      if (path === "/api/settings/app") {
         return {
           settings: {
-            app_language: 'ZH',
+            app_language: "ZH",
           },
-        }
+        };
       }
 
-      if (path === '/api/v2/project/snapshot') {
+      if (path === "/api/v2/project/snapshot") {
         return {
           project: {
-            path: 'E:/demo/demo.lg',
+            path: "E:/demo/demo.lg",
             loaded: true,
           },
-        }
+        };
       }
 
-      if (path === '/api/v2/tasks/snapshot') {
+      if (path === "/api/v2/tasks/snapshot") {
         return {
           task: {
-            task_type: 'translation',
-            status: 'IDLE',
+            task_type: "translation",
+            status: "IDLE",
             busy: false,
           },
-        }
+        };
       }
 
-      throw new Error(`未预期的请求：${path}`)
-    })
+      throw new Error(`未预期的请求：${path}`);
+    });
 
-    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source)
+    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source);
     open_v2_project_bootstrap_stream_mock.mockImplementation(() => {
       return (async function* () {
         yield {
-          type: 'stage_payload',
-          stage: 'quality',
+          type: "stage_payload",
+          stage: "quality",
           payload: {
             glossary: {
               entries: [],
               enabled: true,
-              mode: 'off',
+              mode: "off",
               revision: 1,
             },
             pre_replacement: {
               entries: [],
               enabled: false,
-              mode: 'off',
+              mode: "off",
               revision: 0,
             },
             post_replacement: {
               entries: [],
               enabled: false,
-              mode: 'off',
+              mode: "off",
               revision: 0,
             },
             text_preserve: {
               entries: [],
               enabled: false,
-              mode: 'off',
+              mode: "off",
               revision: 0,
             },
           },
-        }
+        };
         yield {
-          type: 'stage_payload',
-          stage: 'task',
+          type: "stage_payload",
+          stage: "task",
           payload: {
-            task_type: 'translation',
-            status: 'IDLE',
+            task_type: "translation",
+            status: "IDLE",
             busy: false,
           },
-        }
+        };
         yield {
-          type: 'completed',
+          type: "completed",
           projectRevision: 3,
           sectionRevisions: {
             quality: 1,
             task: 1,
           },
-        }
-      })()
-    })
+        };
+      })();
+    });
 
-    container = document.createElement('div')
-    document.body.append(container)
-    root = createRoot(container)
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
 
     await act(async () => {
       root?.render(
         <DesktopRuntimeProvider>
           <RuntimeProbe
             onSnapshot={(snapshot) => {
-              snapshots.push(snapshot)
+              snapshots.push(snapshot);
             }}
           />
           <RuntimeHandleProbe
             onRuntime={(runtime) => {
-              runtime_handle = runtime
+              runtime_handle = runtime;
             }}
           />
         </DesktopRuntimeProvider>,
-      )
-    })
+      );
+    });
 
     await wait_for_condition(() => {
-      return runtime_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1
-    })
+      return runtime_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1;
+    });
 
-    let rollback_local_patch: (() => void) | null = null
+    let rollback_local_patch: (() => void) | null = null;
     await act(async () => {
       if (runtime_handle === null) {
-        throw new Error('运行时句柄未准备好。')
+        throw new Error("运行时句柄未准备好。");
       }
 
-      const current_quality = runtime_handle.project_store.getState().quality
+      const current_quality = runtime_handle.project_store.getState()
+        .quality as ProjectStoreQualityState;
       const local_commit = runtime_handle.commit_local_project_patch({
-        source: 'quality_rule_save_entries',
-        updatedSections: ['quality', 'task'],
+        source: "quality_rule_save_entries",
+        updatedSections: ["quality", "task"],
         patch: [
-          createProjectStoreReplaceSectionPatch('quality', {
-            ...current_quality,
+          createProjectStoreReplaceSectionPatch("quality", {
             glossary: {
               ...current_quality.glossary,
+              enabled: Boolean(current_quality.glossary.enabled),
+              mode: String(current_quality.glossary.mode),
               entries: [
                 {
-                  id: '1',
-                  src: '原文',
-                  dst: '译文',
+                  id: "1",
+                  src: "原文",
+                  dst: "译文",
                 },
               ],
               revision: 2,
             },
+            pre_replacement: current_quality.pre_replacement,
+            post_replacement: current_quality.post_replacement,
+            text_preserve: current_quality.text_preserve,
           }),
-          createProjectStoreReplaceSectionPatch('task', {
-            task_type: 'translation',
-            status: 'RUNNING',
+          createProjectStoreReplaceSectionPatch("task", {
+            task_type: "translation",
+            status: "RUNNING",
             busy: true,
           }),
         ],
-      })
+      });
 
       rollback_local_patch = () => {
-        local_commit.rollback()
-      }
-      await Promise.resolve()
-    })
+        local_commit.rollback();
+      };
+      await Promise.resolve();
+    });
 
     await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1)
-      return latest_snapshot?.proofreadingSeq === 2 && latest_snapshot.taskStatus === 'RUNNING'
-    })
+      const latest_snapshot = snapshots.at(-1);
+      return latest_snapshot?.proofreadingSeq === 2 && latest_snapshot.taskStatus === "RUNNING";
+    });
 
-    const stable_runtime = runtime_handle as RuntimeHandleRef
+    const stable_runtime = runtime_handle as RuntimeHandleRef;
     if (stable_runtime === null) {
-      throw new Error('运行时句柄未准备好。')
+      throw new Error("运行时句柄未准备好。");
     }
 
-    expect((stable_runtime as RuntimeHandle).project_store.getState().quality.glossary).toMatchObject({
+    expect(
+      (stable_runtime as RuntimeHandle).project_store.getState().quality.glossary,
+    ).toMatchObject({
       revision: 2,
       entries: [
         {
-          id: '1',
-          src: '原文',
-          dst: '译文',
+          id: "1",
+          src: "原文",
+          dst: "译文",
         },
       ],
-    })
+    });
     expect(snapshots.at(-1)).toMatchObject({
       workbenchSeq: 1,
       proofreadingSeq: 2,
-      proofreadingReason: 'quality_rule_save_entries',
-      taskStatus: 'RUNNING',
-    })
+      proofreadingReason: "quality_rule_save_entries",
+      taskStatus: "RUNNING",
+    });
 
     await act(async () => {
-      rollback_local_patch?.()
-      await Promise.resolve()
-    })
+      rollback_local_patch?.();
+      await Promise.resolve();
+    });
 
     await wait_for_condition(() => {
-      const latest_snapshot = snapshots.at(-1)
-      return latest_snapshot?.proofreadingSeq === 3 && latest_snapshot.taskStatus === 'IDLE'
-    })
+      const latest_snapshot = snapshots.at(-1);
+      return latest_snapshot?.proofreadingSeq === 3 && latest_snapshot.taskStatus === "IDLE";
+    });
 
-    expect((stable_runtime as RuntimeHandle).project_store.getState().quality.glossary).toMatchObject({
+    expect(
+      (stable_runtime as RuntimeHandle).project_store.getState().quality.glossary,
+    ).toMatchObject({
       revision: 1,
       entries: [],
-    })
+    });
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingSeq: 3,
-      proofreadingReason: 'quality_rule_save_entries_rollback',
-      taskStatus: 'IDLE',
-    })
-  })
-})
+      proofreadingReason: "quality_rule_save_entries_rollback",
+      taskStatus: "IDLE",
+    });
+  });
+});

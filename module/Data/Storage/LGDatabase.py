@@ -547,22 +547,44 @@ class LGDatabase(Base):
 
     # ========== 资产操作 ==========
 
-    def add_asset(self, path: str, data: bytes, original_size: int) -> int:
+    def add_asset(
+        self,
+        path: str,
+        data: bytes,
+        original_size: int,
+        *,
+        sort_order: int | None = None,
+        conn: sqlite3.Connection | None = None,
+    ) -> int:
         """添加资产（已压缩的数据）"""
-        with self.connection() as conn:
-            sort_order = self.get_next_asset_sort_order(conn)
+        if conn is not None:
+            effective_sort_order = (
+                int(sort_order)
+                if sort_order is not None
+                else self.get_next_asset_sort_order(conn)
+            )
             cursor = conn.execute(
                 """
                 INSERT INTO assets (
                     path, sort_order, data, original_size, compressed_size
                 ) VALUES (?, ?, ?, ?, ?)
                 """,
-                (path, sort_order, data, original_size, len(data)),
+                (path, effective_sort_order, data, original_size, len(data)),
             )
-            conn.commit()
             if cursor.lastrowid is None:
                 raise ValueError("Failed to get lastrowid")
-            return cursor.lastrowid
+            return int(cursor.lastrowid)
+
+        with self.connection() as local_conn:
+            asset_id = self.add_asset(
+                path,
+                data,
+                original_size,
+                sort_order=sort_order,
+                conn=local_conn,
+            )
+            local_conn.commit()
+            return asset_id
 
     def update_asset(
         self,
@@ -648,6 +670,21 @@ class LGDatabase(Base):
                 "SELECT path FROM assets ORDER BY sort_order ASC, id ASC"
             )
             return [row["path"] for row in cursor.fetchall()]
+
+    def get_all_asset_records(self) -> list[dict[str, Any]]:
+        """获取所有资产的稳定顺序记录。"""
+
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC"
+            )
+            return [
+                {
+                    "path": row["path"],
+                    "sort_order": int(row["sort_order"]),
+                }
+                for row in cursor.fetchall()
+            ]
 
     def update_asset_sort_orders(
         self,
@@ -796,9 +833,13 @@ class LGDatabase(Base):
             conn.commit()
             return int(item_id)
 
-    def set_items(self, items: list[dict[str, Any]]) -> list[int]:
+    def set_items(
+        self,
+        items: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> list[int]:
         """批量保存翻译条目（清空后重新写入，并保留原始 ID）"""
-        with self.connection() as conn:
+        if conn is not None:
             conn.execute("DELETE FROM items")
             ids = []
             for item in items:
@@ -817,7 +858,11 @@ class LGDatabase(Base):
                         "INSERT INTO items (data) VALUES (?)", (data_json,)
                     )
                     ids.append(cursor.lastrowid)
-            conn.commit()
+            return ids
+
+        with self.connection() as local_conn:
+            ids = self.set_items(items, conn=local_conn)
+            local_conn.commit()
             return ids
 
     def insert_items(

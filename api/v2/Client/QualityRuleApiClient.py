@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from api.v2.Client.ApiClient import ApiClient
+from api.v2.Models.ProjectRuntime import ProjectMutationAck
 from api.v2.Server.Routes.QualityRoutes import QualityRoutes
 
 
@@ -12,11 +13,11 @@ class QualityRuleApiClient:
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
 
-    def save_entries(self, request: dict[str, Any]) -> bool:
-        """保存规则条目列表，并返回是否接受。"""
+    def save_entries(self, request: dict[str, Any]) -> ProjectMutationAck:
+        """保存规则条目列表，并返回统一 mutation ack。"""
 
         response = self.api_client.post(QualityRoutes.SAVE_ENTRIES_PATH, request)
-        return bool(response.get("accepted", False))
+        return ProjectMutationAck.from_dict(response)
 
     def import_rules(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         """从本地路径读取规则条目，由页面决定后续合并与保存。"""
@@ -134,11 +135,11 @@ class QualityRuleApiClient:
         )
         return str(response.get("path", ""))
 
-    def update_meta(self, request: dict[str, Any]) -> bool:
-        """更新规则 meta，并返回是否接受。"""
+    def update_meta(self, request: dict[str, Any]) -> ProjectMutationAck:
+        """更新规则 meta，并返回统一 mutation ack。"""
 
         response = self.api_client.post(QualityRoutes.UPDATE_META_PATH, request)
-        return bool(response.get("accepted", False))
+        return ProjectMutationAck.from_dict(response)
 
     def get_prompt_template(self, task_type: str) -> dict[str, str]:
         """读取提示词页展示所需的模板文本。"""
@@ -152,11 +153,11 @@ class QualityRuleApiClient:
             return {}
         return {str(key): str(value) for key, value in template_raw.items()}
 
-    def save_prompt(self, request: dict[str, Any]) -> bool:
-        """保存提示词正文与启用状态，并返回是否接受。"""
+    def save_prompt(self, request: dict[str, Any]) -> ProjectMutationAck:
+        """保存提示词正文与启用状态，并返回统一 mutation ack。"""
 
         response = self.api_client.post(QualityRoutes.PROMPT_SAVE_PATH, request)
-        return bool(response.get("accepted", False))
+        return ProjectMutationAck.from_dict(response)
 
     def read_prompt_import_text(self, request: dict[str, Any]) -> str:
         """从本地路径读取提示词正文。"""

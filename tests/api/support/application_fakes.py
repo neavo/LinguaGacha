@@ -136,7 +136,6 @@ class FakeTaskDataManager:
             "start_time": 0.0,
         }
         self.analysis_candidate_count: int = 0
-        self.import_analysis_candidates_result: int | None = 0
         self.translation_reset_items: list[object] = []
         self.project_status: Base.ProjectStatus = Base.ProjectStatus.NONE
         self.get_items_for_translation_calls: list[tuple[object, object]] = []
@@ -284,16 +283,6 @@ class FakeTaskDataManager:
             dict(self.translation_extras),
         )
 
-    def import_analysis_candidates(
-        self, expected_lg_path: str | None = None
-    ) -> int | None:
-        if expected_lg_path is not None and expected_lg_path != self.lg_path:
-            return None
-        return self.import_analysis_candidates_result
-
-    def sync_importable_analysis_candidate_count(self) -> int:
-        return self.analysis_candidate_count
-
     def emit_project_runtime_patch(
         self,
         *,
@@ -320,7 +309,10 @@ class FakeWorkbenchManager:
     def __init__(self) -> None:
         self.file_op_running: bool = False
         self.add_calls: list[str] = []
+        self.add_payloads: list[dict[str, object]] = []
+        self.parse_calls: list[tuple[str, str | None]] = []
         self.replace_calls: list[tuple[str, str]] = []
+        self.replace_payloads: list[dict[str, object]] = []
         self.reset_calls: list[str] = []
         self.delete_calls: list[str] = []
         self.delete_batch_calls: list[list[str]] = []
@@ -332,10 +324,73 @@ class FakeWorkbenchManager:
     def add_file(self, path: str) -> None:
         self.add_calls.append(path)
 
+    def parse_file_preview(
+        self,
+        file_path: str,
+        *,
+        current_rel_path: str | None = None,
+    ) -> dict[str, object]:
+        self.parse_calls.append((file_path, current_rel_path))
+        target_rel_path = current_rel_path or "script/b.txt"
+        return {
+            "target_rel_path": target_rel_path,
+            "file_type": "TXT",
+            "parsed_items": [
+                {
+                    "src": "line-1",
+                    "dst": "",
+                    "row": 1,
+                    "file_type": "TXT",
+                    "file_path": target_rel_path,
+                    "text_type": "NONE",
+                    "status": "NONE",
+                    "retry_count": 0,
+                }
+            ],
+        }
+
     def replace_file(self, rel_path: str, path: str) -> None:
         self.replace_calls.append((rel_path, path))
 
+    def persist_add_file_payload(
+        self,
+        source_path: str,
+        target_rel_path: str,
+        *,
+        file_record: dict[str, object],
+        parsed_items: list[dict[str, object]],
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del translation_extras, project_status, prefilter_config
+        del expected_section_revisions
+        self.add_calls.append(source_path)
+        self.add_payloads.append(
+            {
+                "source_path": source_path,
+                "target_rel_path": target_rel_path,
+                "file_record": dict(file_record),
+                "parsed_items": [dict(item) for item in parsed_items],
+            }
+        )
+
     def reset_file(self, rel_path: str) -> None:
+        self.reset_calls.append(rel_path)
+
+    def persist_reset_file(
+        self,
+        rel_path: str,
+        *,
+        item_payloads: list[dict[str, object]],
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del item_payloads, translation_extras, project_status, prefilter_config
+        del expected_section_revisions
         self.reset_calls.append(rel_path)
 
     def delete_file(self, rel_path: str) -> None:
@@ -344,8 +399,69 @@ class FakeWorkbenchManager:
     def delete_file_batch(self, rel_paths: list[str]) -> None:
         self.delete_batch_calls.append(list(rel_paths))
 
-    def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
+    def persist_replace_file_payload(
+        self,
+        source_path: str,
+        rel_path: str,
+        target_rel_path: str,
+        *,
+        file_record: dict[str, object],
+        parsed_items: list[dict[str, object]],
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del translation_extras, project_status, prefilter_config
+        del expected_section_revisions
+        self.replace_calls.append((rel_path, source_path))
+        self.replace_payloads.append(
+            {
+                "source_path": source_path,
+                "rel_path": rel_path,
+                "target_rel_path": target_rel_path,
+                "file_record": dict(file_record),
+                "parsed_items": [dict(item) for item in parsed_items],
+            }
+        )
+
+    def persist_delete_files(
+        self,
+        rel_paths: list[str],
+        *,
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del translation_extras, project_status, prefilter_config
+        del expected_section_revisions
+        if len(rel_paths) == 1:
+            self.delete_calls.append(rel_paths[0])
+            return
+        self.delete_batch_calls.append(list(rel_paths))
+
+    def persist_reordered_files(
+        self,
+        ordered_rel_paths: list[str],
+        *,
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del expected_section_revisions
         self.reorder_calls.append(list(ordered_rel_paths))
+
+    def build_project_mutation_ack(
+        self,
+        updated_sections: tuple[str, ...] | list[str],
+    ) -> dict[str, object]:
+        return {
+            "accepted": True,
+            "projectRevision": 9,
+            "sectionRevisions": {
+                str(section): index + 1
+                for index, section in enumerate(updated_sections)
+            },
+        }
 
 
 class FakeSettingsConfig:

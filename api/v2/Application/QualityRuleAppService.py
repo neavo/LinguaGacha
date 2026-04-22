@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from base.Base import Base
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
@@ -18,7 +17,6 @@ class QualityRuleAppService:
         self,
         quality_rule_facade: Any | None = None,
         runtime_service: ProjectRuntimeService | None = None,
-        event_emitter: Any | None = None,
     ) -> None:
         self.data_manager = DataManager.get()
         self.runtime_service = (
@@ -26,7 +24,6 @@ class QualityRuleAppService:
             if runtime_service is not None
             else ProjectRuntimeService(self.data_manager)
         )
-        self.event_emitter = event_emitter if event_emitter is not None else Base().emit
         if quality_rule_facade is None:
             quality_rule_service = getattr(
                 self.data_manager,
@@ -62,8 +59,7 @@ class QualityRuleAppService:
             expected_revision=expected_revision,
             entries=entries,
         )
-        self.emit_quality_patch("quality_rule_save")
-        return {"accepted": True}
+        return self.runtime_service.build_project_mutation_ack(["quality"])
 
     def import_rules(self, request: dict[str, Any]) -> dict[str, object]:
         """从本地路径读取规则条目，返回给页面做后续合并。"""
@@ -188,10 +184,7 @@ class QualityRuleAppService:
 
             revision_raw = snapshot.get("revision", current_revision)
             current_revision = int(revision_raw or current_revision)
-
-        if snapshot is not None:
-            self.emit_quality_patch("quality_rule_meta")
-        return {"accepted": True}
+        return self.runtime_service.build_project_mutation_ack(["quality"])
 
     def get_prompt_template(self, request: dict[str, Any]) -> dict[str, object]:
         """读取提示词编辑页所需的模板文本。"""
@@ -235,8 +228,7 @@ class QualityRuleAppService:
             text=text,
             enabled=enabled,
         )
-        self.emit_prompts_patch("quality_prompt_save")
-        return {"accepted": True}
+        return self.runtime_service.build_project_mutation_ack(["prompts"])
 
     def read_prompt_import_text(self, request: dict[str, Any]) -> dict[str, object]:
         """从本地路径读取提示词文本，不直接写入项目状态。"""
@@ -303,35 +295,3 @@ class QualityRuleAppService:
         virtual_id = str(request.get("virtual_id", ""))
         path = self.quality_rule_facade.delete_prompt_preset(task_type, virtual_id)
         return {"path": path}
-
-    def emit_quality_patch(self, reason: str) -> None:
-        quality_block = self.runtime_service.build_quality_block()
-        quality_revision = self.runtime_service.get_section_revision("quality")
-        self.data_manager.emit_project_runtime_patch(
-            reason=reason,
-            updated_sections=("quality",),
-            patch=[
-                {
-                    "op": "replace_quality",
-                    "quality": quality_block,
-                }
-            ],
-            section_revisions={"quality": quality_revision},
-            project_revision=quality_revision,
-        )
-
-    def emit_prompts_patch(self, reason: str) -> None:
-        prompts_block = self.runtime_service.build_prompts_block()
-        prompts_revision = self.runtime_service.get_section_revision("prompts")
-        self.data_manager.emit_project_runtime_patch(
-            reason=reason,
-            updated_sections=("prompts",),
-            patch=[
-                {
-                    "op": "replace_prompts",
-                    "prompts": prompts_block,
-                }
-            ],
-            section_revisions={"prompts": prompts_revision},
-            project_revision=prompts_revision,
-        )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -10,7 +11,6 @@ import module.Data.DataManager as data_manager_module
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Data.Core.DataTypes import (
-    ProjectFileMutationResult,
     ProjectPrefilterScheduleResult,
 )
 from module.Data.Storage.LGDatabase import LGDatabase
@@ -261,159 +261,6 @@ def test_project_prefilter_worker_can_skip_page_refresh_events(
     assert emitted_events == []
 
 
-def test_schedule_guarded_file_operation_emits_runtime_refresh_after_finish(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    call_order: list[str] = []
-
-    class ImmediateThread:
-        def __init__(self, target, daemon: bool) -> None:
-            self.target = target
-            self.daemon = daemon
-
-        def start(self) -> None:
-            self.target()
-
-    monkeypatch.setattr(data_manager_module.threading, "Thread", ImmediateThread)
-    monkeypatch.setattr(
-        data_manager_module.LogManager,
-        "get",
-        lambda: SimpleNamespace(
-            info=lambda message: call_order.append(f"log:{message}"),
-            warning=lambda message: call_order.append(f"warning:{message}"),
-            error=lambda message, error: call_order.append(
-                f"error:{message}:{type(error).__name__}"
-            ),
-        ),
-    )
-    dm.try_begin_guarded_file_operation = MagicMock()
-    dm.run_project_prefilter = MagicMock(
-        side_effect=lambda config, reason: call_order.append(f"prefilter:{reason}")
-    )
-    dm.finish_file_operation = MagicMock(
-        side_effect=lambda: call_order.append("finish")
-    )
-
-    def mutate_file() -> ProjectFileMutationResult:
-        call_order.append("action")
-        return ProjectFileMutationResult(rel_paths=("chapter01.txt",))
-
-    dm.schedule_guarded_file_operation(
-        "正在添加文件",
-        mutate_file,
-        "Failed to add file",
-    )
-
-    assert call_order == [
-        "log:正在添加文件",
-        "action",
-        "prefilter:file_op",
-        "finish",
-    ]
-    assert emitted_events == [
-        (
-            Base.Event.PROJECT_RUNTIME_REFRESH,
-            {
-                "source": "file_op",
-                "updatedSections": ["files", "items", "analysis"],
-            },
-        )
-    ]
-
-
-def test_add_file_runs_guarded_flow_and_emits_runtime_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    call_order: list[str] = []
-
-    monkeypatch.setattr(
-        data_manager_module.LogManager,
-        "get",
-        lambda: SimpleNamespace(
-            info=lambda message: call_order.append(f"log:{message}"),
-            warning=lambda message: call_order.append(f"warning:{message}"),
-            error=lambda message, error: call_order.append(
-                f"error:{message}:{type(error).__name__}"
-            ),
-        ),
-    )
-    dm.try_begin_guarded_file_operation = MagicMock(
-        side_effect=lambda: call_order.append("begin")
-    )
-    dm.run_project_prefilter = MagicMock(
-        side_effect=lambda config, reason: call_order.append(f"prefilter:{reason}")
-    )
-    dm.finish_file_operation = MagicMock(
-        side_effect=lambda: call_order.append("finish")
-    )
-
-    def mutate_file(path: str) -> ProjectFileMutationResult:
-        call_order.append(f"action:{path}")
-        return ProjectFileMutationResult(rel_paths=("chapter01.txt",))
-
-    dm.project_file_service.add_file = MagicMock(side_effect=mutate_file)
-
-    dm.add_file("chapter01.txt")
-
-    assert call_order == [
-        "begin",
-        f"log:{Localizer.get().workbench_progress_adding_file}",
-        "action:chapter01.txt",
-        "prefilter:file_op",
-        "finish",
-    ]
-    assert emitted_events == [
-        (
-            Base.Event.PROJECT_RUNTIME_REFRESH,
-            {
-                "source": "file_op",
-                "updatedSections": ["files", "items", "analysis"],
-            },
-        )
-    ]
-
-
-def test_add_file_reraises_value_error_without_runtime_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    call_order: list[str] = []
-
-    monkeypatch.setattr(
-        data_manager_module.LogManager,
-        "get",
-        lambda: SimpleNamespace(
-            info=lambda message: call_order.append(f"log:{message}"),
-            warning=lambda message: call_order.append(f"warning:{message}"),
-            error=lambda message, error: call_order.append(
-                f"error:{message}:{type(error).__name__}"
-            ),
-        ),
-    )
-    dm.try_begin_guarded_file_operation = MagicMock(
-        side_effect=lambda: call_order.append("begin")
-    )
-    dm.run_project_prefilter = MagicMock()
-    dm.finish_file_operation = MagicMock(
-        side_effect=lambda: call_order.append("finish")
-    )
-    dm.project_file_service.add_file = MagicMock(side_effect=ValueError("文件已存在 …"))
-
-    with pytest.raises(ValueError, match="文件已存在"):
-        dm.add_file("chapter01.txt")
-
-    assert call_order == [
-        "begin",
-        f"log:{Localizer.get().workbench_progress_adding_file}",
-        "warning:文件已存在 …",
-        "finish",
-    ]
-    dm.run_project_prefilter.assert_not_called()
-    assert emitted_events == []
-
-
 def test_update_batch_no_longer_emits_legacy_quality_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -527,18 +374,6 @@ def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
     dm.schedule_prefilter_if_needed_with_result.assert_not_called()
 
 
-def test_import_analysis_candidates_returns_count_without_emitting_legacy_quality_events(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    dm.analysis_service.import_analysis_candidates = MagicMock(side_effect=[2, 0, None])
-
-    assert dm.import_analysis_candidates() == 2
-    assert dm.import_analysis_candidates() == 0
-    assert dm.import_analysis_candidates() is None
-    assert emitted_events == []
-
-
 def test_apply_translation_batch_update_emits_items_patch_for_v2_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -561,6 +396,13 @@ def test_apply_translation_batch_update_emits_items_patch_for_v2_runtime(
                 }
                 for item_id in item_ids
             ]
+
+        def get_section_revision(self, section: str) -> int:
+            assert section == "items"
+            return 3
+
+        def build_section_revisions(self) -> dict[str, int]:
+            return {"items": 3}
 
     monkeypatch.setattr(
         "module.Data.Project.ProjectRuntimeService.ProjectRuntimeService",
@@ -585,6 +427,8 @@ def test_apply_translation_batch_update_emits_items_patch_for_v2_runtime(
             {
                 "source": "translation_batch_update",
                 "updatedSections": ["items"],
+                "sectionRevisions": {"items": 3},
+                "projectRevision": 3,
                 "patch": [
                     {
                         "op": "merge_items",
@@ -635,3 +479,106 @@ def test_create_project_logs_when_presets_loaded(
         Localizer.get = original  # type: ignore[assignment]
 
     logger.info.assert_called_once_with("已加载 术语表")
+
+
+def test_persist_add_file_payload_compresses_asset_before_store(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    connection = SimpleNamespace(commit=MagicMock())
+    db = SimpleNamespace(
+        asset_path_exists=MagicMock(return_value=False),
+        add_asset=MagicMock(),
+        set_items=MagicMock(),
+        delete_analysis_item_checkpoints=MagicMock(),
+        clear_analysis_candidate_aggregates=MagicMock(),
+        connection=MagicMock(return_value=contextlib.nullcontext(connection)),
+    )
+    dm.session.db = db
+    dm.session.asset_decompress_cache = {}
+    dm.get_all_asset_records = MagicMock(return_value=[])
+    dm.build_analysis_reset_meta = MagicMock(return_value={})
+    dm.write_meta_in_connection = MagicMock()
+    dm.replace_session_item_cache = MagicMock()
+    dm.sync_session_meta_cache = MagicMock()
+    dm.bump_project_runtime_section_revisions = MagicMock()
+    dm.try_begin_guarded_file_operation = MagicMock()
+    dm.finish_file_operation = MagicMock()
+
+    source_path = tmp_path / "sample_02.txt"
+    source_path.write_bytes(b"new content")
+
+    compress = MagicMock(return_value=b"compressed")
+    monkeypatch.setattr(data_manager_module.ZstdTool, "compress", compress)
+
+    dm.persist_add_file_payload(
+        str(source_path),
+        "sample_02.txt",
+        file_record={"rel_path": "sample_02.txt", "sort_index": 1},
+        parsed_items=[],
+        translation_extras={},
+        project_status="IDLE",
+        prefilter_config={},
+    )
+
+    compress.assert_called_once_with(b"new content")
+    db.add_asset.assert_called_once_with(
+        "sample_02.txt",
+        b"compressed",
+        len(b"new content"),
+        sort_order=1,
+        conn=connection,
+    )
+
+
+def test_persist_replace_file_payload_compresses_asset_before_store(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    connection = SimpleNamespace(commit=MagicMock())
+    db = SimpleNamespace(
+        asset_path_exists=MagicMock(return_value=True),
+        update_asset=MagicMock(),
+        update_asset_path=MagicMock(),
+        set_items=MagicMock(),
+        delete_analysis_item_checkpoints=MagicMock(),
+        clear_analysis_candidate_aggregates=MagicMock(),
+        connection=MagicMock(return_value=contextlib.nullcontext(connection)),
+    )
+    dm.session.db = db
+    dm.session.asset_decompress_cache = {}
+    dm.build_analysis_reset_meta = MagicMock(return_value={})
+    dm.write_meta_in_connection = MagicMock()
+    dm.replace_session_item_cache = MagicMock()
+    dm.sync_session_meta_cache = MagicMock()
+    dm.bump_project_runtime_section_revisions = MagicMock()
+    dm.try_begin_guarded_file_operation = MagicMock()
+    dm.finish_file_operation = MagicMock()
+
+    source_path = tmp_path / "sample_01.txt"
+    source_path.write_bytes(b"updated content")
+
+    compress = MagicMock(return_value=b"compressed")
+    monkeypatch.setattr(data_manager_module.ZstdTool, "compress", compress)
+
+    dm.persist_replace_file_payload(
+        str(source_path),
+        "sample_01.txt",
+        "sample_01.txt",
+        file_record={"rel_path": "sample_01.txt"},
+        parsed_items=[],
+        translation_extras={},
+        project_status="IDLE",
+        prefilter_config={},
+    )
+
+    compress.assert_called_once_with(b"updated content")
+    db.update_asset.assert_called_once_with(
+        "sample_01.txt",
+        b"compressed",
+        len(b"updated content"),
+        conn=connection,
+    )
+    db.update_asset_path.assert_not_called()

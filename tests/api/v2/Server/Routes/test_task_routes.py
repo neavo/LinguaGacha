@@ -16,8 +16,6 @@ def test_server_bootstrap_registers_v2_task_routes():
         == "json"
     )
     assert (
-        core_api_server.route_map[
-            ("POST", "/api/v2/tasks/import-analysis-glossary")
-        ].mode
+        core_api_server.route_map[("POST", "/api/v2/tasks/reset-analysis-failed")].mode
         == "json"
     )

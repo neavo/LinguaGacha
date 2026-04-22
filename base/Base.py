@@ -23,7 +23,6 @@ class Base:
     # | ANALYSIS_PROGRESS             | （按快照事件处理）           | 上报分析进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
     # | ANALYSIS_RESET_ALL            | REQUEST / RUN / DONE / ERROR | 重置全部分析进度                               | 无                                                        |
     # | ANALYSIS_RESET_FAILED         | REQUEST / RUN / DONE / ERROR | 仅重置失败的分析进度                           | 无                                                        |
-    # | ANALYSIS_IMPORT_GLOSSARY      | REQUEST / RUN / DONE / ERROR | 把候选术语池导入正式术语表                     | imported_count, message                                   |
     # | PROJECT_RUNTIME_PATCH         | UPDATE                       | 直接推送 V2 运行态补丁                        | updatedSections, patch, sectionRevisions, projectRevision |
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
 
@@ -46,17 +45,11 @@ class Base:
         ANALYSIS_PROGRESS = "ANALYSIS_PROGRESS"  # 分析 - 进度快照更新
         ANALYSIS_RESET_ALL = "ANALYSIS_RESET_ALL"  # 分析 - 重置全部
         ANALYSIS_RESET_FAILED = "ANALYSIS_RESET_FAILED"  # 分析 - 仅重置失败项
-        ANALYSIS_IMPORT_GLOSSARY = (
-            "ANALYSIS_IMPORT_GLOSSARY"  # 分析 - 导入候选术语池到正式术语表
-        )
         APP_UPDATE_CHECK = "APP_UPDATE_CHECK"  # 更新 - 检查生命周期事件
         APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"  # 更新 - 下载生命周期事件
         APP_UPDATE_APPLY = "APP_UPDATE_APPLY"  # 更新 - 应用流程
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
-        PROJECT_RUNTIME_REFRESH = (
-            "PROJECT_RUNTIME_REFRESH"  # 工程 - V2 运行态需要重新同步
-        )
         PROJECT_RUNTIME_PATCH = "PROJECT_RUNTIME_PATCH"  # 工程 - V2 运行态直接补丁
         PROJECT_CHECK = "PROJECT_CHECK"  # 工程 - 检查生命周期事件
         CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
@@ -141,7 +134,6 @@ class Base:
     API_STREAM_SOURCE_EVENTS: tuple[Event, ...] = (
         Event.PROJECT_LOADED,
         Event.PROJECT_UNLOADED,
-        Event.PROJECT_RUNTIME_REFRESH,
         Event.PROJECT_RUNTIME_PATCH,
         Event.TRANSLATION_TASK,
         Event.TRANSLATION_REQUEST_STOP,
@@ -153,7 +145,6 @@ class Base:
         Event.ANALYSIS_PROGRESS,
         Event.ANALYSIS_RESET_ALL,
         Event.ANALYSIS_RESET_FAILED,
-        Event.ANALYSIS_IMPORT_GLOSSARY,
         Event.CONFIG_UPDATED,
         Event.EXTRA_TS_CONVERSION_PROGRESS,
         Event.EXTRA_TS_CONVERSION_FINISHED,

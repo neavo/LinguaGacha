@@ -1,7 +1,7 @@
 # `app/project-runtime` 规范说明
 
 ## 一句话总览
-`frontend/src/renderer/app/project-runtime/` 负责把 V2 bootstrap 流和 `project.patch` 事件流收口成渲染层可消费的 `ProjectStore`。它不是页面本身，也不是 HTTP 客户端全集；它只负责“建立项目运行态、合并补丁、提供稳定 selector 与页面变更信号”。
+`frontend/src/renderer/app/project-runtime/` 负责把 V2 bootstrap 流和 `project.patch` 事件流收口成渲染层可消费的 `ProjectStore`。它不承担页面 UI，也不承担读写所有 HTTP 路由；它只负责建立项目运行态、合并补丁、暴露稳定 selector 和页面变更信号。
 
 ## 阅读顺序
 | 任务类型 | 优先阅读 |
@@ -73,6 +73,7 @@ store 固定分成下面 8 个 stage / section：
 注意：
 - `files` 使用 `rel_path` 作为 key。
 - `items` 使用 `item_id` 作为 key。
+- `files` / `items` 的块类型由 stage 决定，不额外依赖 `schema` 标签。
 - bootstrap 完成后，`onCompleted()` 负责把 revision 信息补回 store；前面阶段数据由各自的 `stage_payload` 写入。
 
 ## `project.patch` 补丁语义
@@ -81,6 +82,8 @@ store 固定分成下面 8 个 stage / section：
 | --- | --- |
 | `merge_files` | 合并文件记录，不整段替换 |
 | `merge_items` | 合并条目记录，不整段替换 |
+| `replace_files` | 整段替换 `files`，只给 destructive file flow 使用 |
+| `replace_items` | 整段替换 `items`，只给 destructive item/file flow 使用 |
 | `replace_project` | 整段替换 `project` |
 | `replace_quality` | 整段替换 `quality` |
 | `replace_prompts` | 整段替换 `prompts` |
@@ -88,15 +91,11 @@ store 固定分成下面 8 个 stage / section：
 | `replace_proofreading` | 整段替换 `proofreading` |
 | `replace_task` | 整段替换 `task` |
 
-### 事件来源
-- 翻译任务进行中，每次批量提交终态条目后，后端会补发 `merge_items`
-- 翻译任务 DONE 时，后端会优先发 `merge_items + replace_task`
-- 翻译 reset DONE 时，后端会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 受影响 section
-- 分析任务 DONE 时，后端会优先发 `replace_analysis + replace_task`
-- 分析 reset DONE 时，后端会补发只带 `updatedSections` 的 `project.patch`，驱动前端重新 bootstrap 分析相关 section
-- 分析候选导入术语完成时，后端会优先发 `replace_quality + replace_analysis + replace_task`
-- 校对保存 / 替换 / 重翻后，后端会优先发 `merge_items + replace_proofreading + replace_task`
-- 文件操作完成后，后端可能只发“受影响 section 列表”，让前端重新 bootstrap 项目运行态
+### 稳定语义
+- 带 `patch` 数组的事件表示增量补丁，由 `ProjectStore.applyProjectPatch(...)` 直接合并。
+- 只带 `updatedSections` 的事件表示刷新信号；渲染层会对受影响 section 重新 bootstrap，而不是假设服务器一定给出完整 patch。
+- 翻译、分析、reset 和校对重译这类异步链路会使用服务器 `project.patch`。
+- 质量规则、提示词、校对同步写、预过滤、分析候选导入术语和工作台文件操作属于同步 mutation；这类路径以本地 patch + `ProjectMutationAck` 对齐 revision，不等待额外 SSE 回灌。
 
 ## `DesktopRuntimeContext` 与页面信号
 `DesktopRuntimeContext` 做三件事：
@@ -106,9 +105,10 @@ store 固定分成下面 8 个 stage / section：
 
 ### 本地 patch 提交通道
 - `DesktopRuntimeContext` 通过 `commit_local_project_patch(...)` 暴露渲染层唯一的本地运行态写入口。
-- 质量规则、提示词和工作台文件操作都先在 TS 侧计算下一个 section，再走这条入口写入 `ProjectStore`。
+- 同步 mutation 先在 TS 侧计算下一个 section，再用这条入口写入 `ProjectStore`。
 - 服务器 `project.patch` 与本地 patch 共用同一套后处理：`ProjectStore.applyProjectPatch(...)`、`task_snapshot` 合并、`workbench_change_signal / proofreading_change_signal` bump。
-- 本地 patch 的 revision 由前端按命中的 section 合成；后续服务器 patch 到达后，再用真实 revision 对齐。
+- 同步 mutation 成功路径统一为“本地 patch -> HTTP 持久化 -> `align_project_runtime_ack(...)`”；失败路径统一为“回滚 -> `refresh_project_runtime()`”。
+- 本地 patch 的 revision 由前端按命中的 section 合成，服务端 ack 负责把 revision 对齐到真实值。
 
 ### 派生信号
 | 信号 | 作用域 | 主要消费者 |
@@ -122,9 +122,9 @@ store 固定分成下面 8 个 stage / section：
 - `settings.changed` 只有当 `keys` 包含 `source_language` 或 `mtool_optimizer_enable` 时，才会同时 bump 两类页面信号。
 
 ## 页面如何继续消费它
-- 工作台与校对页通过 `ProjectStore` 加本地派生逻辑消费项目运行态。
-- 工作台收到 `workbench_change_signal` 后，直接用 `buildWorkbenchView(project_store.getState())` 全量重建视图；文件操作后的视图刷新依赖同一套运行态事实源。
-- `ProjectStore` 负责“运行态事实源”；工作台依赖 `selectors.ts` 本地重建视图，质量页依赖 `quality-statistics.ts` 共享统计任务，校对页依赖页面本地 runtime 派生校对结果。
+- 工作台与校对页通过 `ProjectStore` 加页面本地派生逻辑消费项目运行态。
+- 工作台收到 `workbench_change_signal` 后，用 `buildWorkbenchView(project_store.getState())` 重建视图。
+- `ProjectStore` 负责运行态事实源；工作台依赖 `selectors.ts` 本地重建视图，质量页依赖 `quality-statistics.ts`，校对页依赖页面本地 runtime 派生校对结果。
 
 ## 修改建议
 | 变更类型 | 优先落点 |

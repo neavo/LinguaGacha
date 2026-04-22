@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from api.v2.Application.QualityRuleAppService import QualityRuleAppService
 from api.v2.Client.ApiClient import ApiClient
 from api.v2.Client.QualityRuleApiClient import QualityRuleApiClient
+from api.v2.Models.ProjectRuntime import ProjectMutationAck
 from api.v2.Server.Routes.QualityRoutes import QualityRoutes
 
 
@@ -98,17 +99,17 @@ def test_quality_rule_api_client_rule_import_export_and_presets_round_trip(
     assert deleted_path == "user/renamed.json"
 
 
-def test_quality_rule_api_client_save_entries_and_update_meta_return_minimal_ack(
+def test_quality_rule_api_client_save_entries_and_update_meta_return_project_mutation_ack(
     recording_api_client,
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
         QualityRoutes.SAVE_ENTRIES_PATH,
-        {"accepted": True},
+        {"accepted": True, "projectRevision": 9, "sectionRevisions": {"quality": 4}},
     )
     recording_api_client.queue_post_response(
         QualityRoutes.UPDATE_META_PATH,
-        {"accepted": True},
+        {"accepted": True, "projectRevision": 10, "sectionRevisions": {"quality": 5}},
     )
 
     saved_snapshot = quality_client.save_entries(
@@ -118,8 +119,18 @@ def test_quality_rule_api_client_save_entries_and_update_meta_return_minimal_ack
         {"rule_type": "glossary", "meta": {"enabled": True}}
     )
 
-    assert saved_snapshot is True
-    assert updated_snapshot is True
+    assert isinstance(saved_snapshot, ProjectMutationAck)
+    assert isinstance(updated_snapshot, ProjectMutationAck)
+    assert saved_snapshot.to_dict() == {
+        "accepted": True,
+        "projectRevision": 9,
+        "sectionRevisions": {"quality": 4},
+    }
+    assert updated_snapshot.to_dict() == {
+        "accepted": True,
+        "projectRevision": 10,
+        "sectionRevisions": {"quality": 5},
+    }
 
 
 def test_quality_rule_api_client_filters_invalid_rule_entry_payloads(
@@ -152,7 +163,7 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
     )
     recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_SAVE_PATH,
-        {"accepted": True},
+        {"accepted": True, "projectRevision": 6, "sectionRevisions": {"prompts": 3}},
     )
     recording_api_client.queue_post_response(
         QualityRoutes.PROMPT_IMPORT_PATH,
@@ -171,7 +182,12 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
     exported_path = quality_client.export_prompt({"task_type": "translation"})
 
     assert template == {"system": "system prompt", "version": "2"}
-    assert saved_prompt is True
+    assert isinstance(saved_prompt, ProjectMutationAck)
+    assert saved_prompt.to_dict() == {
+        "accepted": True,
+        "projectRevision": 6,
+        "sectionRevisions": {"prompts": 3},
+    }
     assert imported_prompt == "imported body"
     assert exported_path == "demo/output/prompt.txt"
 
@@ -222,7 +238,7 @@ def test_quality_rule_api_client_normalizes_prompt_preset_payloads(
     assert deleted_path == "user/old.json"
 
 
-def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
+def test_quality_rule_api_client_uses_default_ack_for_invalid_mutation_payloads(
     recording_api_client,
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
@@ -264,7 +280,12 @@ def test_quality_rule_api_client_returns_empty_dict_for_invalid_item_payloads(
     template = quality_client.get_prompt_template("translation")
     preset_entries = quality_client.read_rule_preset("glossary", "builtin:base.json")
 
-    assert saved_prompt is False
+    assert isinstance(saved_prompt, ProjectMutationAck)
+    assert saved_prompt.to_dict() == {
+        "accepted": True,
+        "projectRevision": 0,
+        "sectionRevisions": {},
+    }
     assert imported_prompt == "imported"
     assert saved_item == {}
     assert renamed_item == {}

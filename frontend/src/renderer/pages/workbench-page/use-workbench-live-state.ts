@@ -8,6 +8,15 @@ import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 import { useDesktopToast } from "@/app/state/use-desktop-toast";
 import { buildWorkbenchView } from "@/app/project-runtime/selectors";
 import {
+  create_workbench_add_file_plan,
+  create_workbench_delete_files_plan,
+  create_workbench_reorder_plan,
+  create_workbench_reset_file_plan,
+  create_workbench_replace_file_plan,
+  type WorkbenchFileParsePreview,
+  type WorkbenchProjectMutationPlan,
+} from "@/app/project-runtime/workbench-mutation-planner";
+import {
   useAnalysisTaskRuntime,
   type AnalysisTaskRuntime,
 } from "@/app/state/use-analysis-task-runtime";
@@ -15,6 +24,10 @@ import {
   useTranslationTaskRuntime,
   type TranslationTaskRuntime,
 } from "@/app/state/use-translation-task-runtime";
+import {
+  normalize_project_mutation_ack,
+  type ProjectMutationAckPayload,
+} from "@/app/state/desktop-runtime-context";
 import { useI18n } from "@/i18n";
 import { api_fetch } from "@/app/desktop-api";
 import type {
@@ -22,10 +35,7 @@ import type {
   AnalysisTaskMetrics,
   AnalysisTaskSnapshot,
 } from "@/lib/analysis-task";
-import type {
-  TranslationTaskConfirmState,
-  TranslationTaskMetrics,
-} from "@/lib/translation-task";
+import type { TranslationTaskConfirmState, TranslationTaskMetrics } from "@/lib/translation-task";
 import type { AppTableSelectionChange } from "@/widgets/app-table/app-table-types";
 import type {
   WorkbenchTaskConfirmDialogViewModel,
@@ -52,10 +62,7 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   entries: [],
 };
 
-function resolve_error_message(
-  error: unknown,
-  fallback_message: string,
-): string {
+function resolve_error_message(error: unknown, fallback_message: string): string {
   if (error instanceof Error && error.message.trim() !== "") {
     return error.message;
   }
@@ -72,9 +79,29 @@ function close_dialog_state(): WorkbenchDialogState {
   };
 }
 
-function map_snapshot_entries(
-  entries: WorkbenchSnapshotEntry[],
-): WorkbenchFileEntry[] {
+function normalize_workbench_file_parse_preview(
+  source_path: string,
+  payload: {
+    target_rel_path?: unknown;
+    file_type?: unknown;
+    parsed_items?: unknown;
+  },
+): WorkbenchFileParsePreview {
+  return {
+    source_path,
+    target_rel_path: String(payload.target_rel_path ?? ""),
+    file_type: String(payload.file_type ?? "NONE"),
+    parsed_items: Array.isArray(payload.parsed_items)
+      ? payload.parsed_items.flatMap((item) => {
+          return typeof item === "object" && item !== null
+            ? [{ ...(item as Record<string, unknown>) }]
+            : [];
+        })
+      : [],
+  };
+}
+
+function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
   return entries.map((entry) => ({ ...entry }));
 }
 
@@ -126,10 +153,7 @@ function build_translation_stats(
     total_items: snapshot.total_items,
     completed_count: translated_count,
     failed_count: error_total,
-    pending_count: Math.max(
-      0,
-      snapshot.total_items - translated_count - error_total,
-    ),
+    pending_count: Math.max(0, snapshot.total_items - translated_count - error_total),
   };
 }
 
@@ -139,10 +163,7 @@ function build_analysis_stats(
   processed_count: number,
   failed_count: number,
 ): WorkbenchStats {
-  const total_items = Math.max(
-    snapshot.total_items,
-    analysis_display_snapshot?.total_line ?? 0,
-  );
+  const total_items = Math.max(snapshot.total_items, analysis_display_snapshot?.total_line ?? 0);
   const completed_total = Math.min(total_items, Math.max(0, processed_count));
   const failed_total = Math.min(
     Math.max(0, total_items - completed_total),
@@ -191,11 +212,11 @@ function normalize_workbench_selection_state(
   entries: WorkbenchFileEntry[],
 ): WorkbenchSelectionState {
   const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path));
-  const selected_entry_ids = dedupe_workbench_entry_ids(
-    selection_state.selected_entry_ids,
-  ).filter((entry_id) => {
-    return visible_entry_id_set.has(entry_id);
-  });
+  const selected_entry_ids = dedupe_workbench_entry_ids(selection_state.selected_entry_ids).filter(
+    (entry_id) => {
+      return visible_entry_id_set.has(entry_id);
+    },
+  );
   const active_entry_id =
     selection_state.active_entry_id !== null &&
     visible_entry_id_set.has(selection_state.active_entry_id)
@@ -293,8 +314,7 @@ function resolve_active_workbench_task_kind(args: {
 
   if (
     args.fallback_task_kind !== null &&
-    ((args.fallback_task_kind === "translation" &&
-      args.has_translation_display) ||
+    ((args.fallback_task_kind === "translation" && args.has_translation_display) ||
       (args.fallback_task_kind === "analysis" && args.has_analysis_display))
   ) {
     return args.fallback_task_kind;
@@ -506,9 +526,7 @@ function build_translation_task_summary_view_model(
 
   return {
     status_text,
-    trailing_text: show_runtime
-      ? format_summary_speed(metrics.average_output_speed)
-      : null,
+    trailing_text: show_runtime ? format_summary_speed(metrics.average_output_speed) : null,
     tone: resolve_task_tone({
       active: metrics.active,
       stopping: metrics.stopping,
@@ -532,17 +550,13 @@ function build_analysis_task_summary_view_model(
 
   return {
     status_text,
-    trailing_text: show_runtime
-      ? format_summary_speed(metrics.average_output_speed)
-      : null,
+    trailing_text: show_runtime ? format_summary_speed(metrics.average_output_speed) : null,
     tone: resolve_task_tone({
       active: metrics.active,
       stopping: metrics.stopping,
     }),
     show_spinner: show_runtime,
-    detail_tooltip_text: t(
-      "workbench_page.analysis_task.summary.detail_tooltip",
-    ),
+    detail_tooltip_text: t("workbench_page.analysis_task.summary.detail_tooltip"),
   };
 }
 
@@ -575,9 +589,7 @@ function build_analysis_task_detail_view_model(args: {
   return {
     title: args.t("workbench_page.analysis_task.detail.title"),
     description: args.t("workbench_page.analysis_task.detail.description"),
-    waveform_title: args.t(
-      "workbench_page.analysis_task.detail.waveform_title",
-    ),
+    waveform_title: args.t("workbench_page.analysis_task.detail.waveform_title"),
     metrics_title: args.t("workbench_page.analysis_task.detail.metrics_title"),
     completion_percent_text: `${args.metrics.completion_percent.toFixed(2)}%`,
     percent_tone: resolve_percent_tone(args.metrics),
@@ -636,9 +648,7 @@ function build_analysis_task_confirm_dialog_view_model(
     return {
       open: state.open,
       title: t("workbench_page.analysis_task.confirm.reset_all_title"),
-      description: t(
-        "workbench_page.analysis_task.confirm.reset_all_description",
-      ),
+      description: t("workbench_page.analysis_task.confirm.reset_all_description"),
       submitting: state.submitting,
     };
   }
@@ -647,9 +657,7 @@ function build_analysis_task_confirm_dialog_view_model(
     return {
       open: state.open,
       title: t("workbench_page.analysis_task.confirm.reset_failed_title"),
-      description: t(
-        "workbench_page.analysis_task.confirm.reset_failed_description",
-      ),
+      description: t("workbench_page.analysis_task.confirm.reset_failed_description"),
       submitting: state.submitting,
     };
   }
@@ -719,28 +727,30 @@ export function useWorkbenchLiveState(
   const { t } = useI18n();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const raw_translation_task_runtime = useTranslationTaskRuntime({
-    createProjectPagesBarrierCheckpoint:
-      options.createProjectPagesBarrierCheckpoint,
+    createProjectPagesBarrierCheckpoint: options.createProjectPagesBarrierCheckpoint,
     waitForProjectPagesBarrier: options.waitForProjectPagesBarrier,
   });
   const raw_analysis_task_runtime = useAnalysisTaskRuntime({
-    createProjectPagesBarrierCheckpoint:
-      options.createProjectPagesBarrierCheckpoint,
+    createProjectPagesBarrierCheckpoint: options.createProjectPagesBarrierCheckpoint,
     waitForProjectPagesBarrier: options.waitForProjectPagesBarrier,
   });
   const {
+    align_project_runtime_ack,
+    commit_local_project_patch,
     project_snapshot,
     project_store,
+    refresh_project_runtime,
     workbench_change_signal,
     refresh_task,
+    settings_snapshot,
     set_project_snapshot,
     task_snapshot,
   } = useDesktopRuntime();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
   const [entries, set_entries] = useState<WorkbenchFileEntry[]>([]);
-  const [cache_status, set_cache_status] = useState<
-    "idle" | "refreshing" | "ready" | "error"
-  >("idle");
+  const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(
+    "idle",
+  );
   const [cache_stale, set_cache_stale] = useState(false);
   const [last_loaded_at, set_last_loaded_at] = useState<number | null>(null);
   const [refresh_request_id, set_refresh_request_id] = useState(0);
@@ -751,22 +761,18 @@ export function useWorkbenchLiveState(
   const [selected_entry_ids, set_selected_entry_ids] = useState<string[]>([]);
   const [active_entry_id, set_active_entry_id] = useState<string | null>(null);
   const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null);
-  const [dialog_state, set_dialog_state] =
-    useState<WorkbenchDialogState>(close_dialog_state());
+  const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
   const [is_mutation_running, set_is_mutation_running] = useState(false);
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] =
     useState<WorkbenchTaskKind | null>(null);
-  const [stats_mode, set_stats_mode] =
-    useState<WorkbenchStatsMode>("translation");
+  const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>("translation");
   const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq);
   const previous_project_loaded_ref = useRef(project_snapshot.loaded);
   const previous_project_path_ref = useRef(project_snapshot.path);
   const refresh_request_id_ref = useRef(0);
   const snapshot_ref = useRef(snapshot);
   const entries_ref = useRef<WorkbenchFileEntry[]>(entries);
-  const selection_state_ref = useRef<WorkbenchSelectionState>(
-    create_empty_selection_state(),
-  );
+  const selection_state_ref = useRef<WorkbenchSelectionState>(create_empty_selection_state());
 
   const current_selection_state = useMemo<WorkbenchSelectionState>(() => {
     return {
@@ -813,10 +819,7 @@ export function useWorkbenchLiveState(
   }, [current_selection_state]);
 
   const apply_refreshed_entries = useCallback(
-    (
-      next_snapshot: WorkbenchSnapshot,
-      preferred_active_entry_id: string | null,
-    ): void => {
+    (next_snapshot: WorkbenchSnapshot, preferred_active_entry_id: string | null): void => {
       const previous_entries = entries_ref.current;
       const previous_selection_state = selection_state_ref.current;
       const next_entries = map_snapshot_entries(next_snapshot.entries);
@@ -835,9 +838,7 @@ export function useWorkbenchLiveState(
   );
 
   const refresh_snapshot = useCallback(
-    async (
-      preferred_active_entry_id: string | null = null,
-    ): Promise<WorkbenchSnapshot> => {
+    async (preferred_active_entry_id: string | null = null): Promise<WorkbenchSnapshot> => {
       if (!project_snapshot.loaded) {
         refresh_request_id_ref.current = 0;
         set_refresh_request_id(0);
@@ -888,10 +889,7 @@ export function useWorkbenchLiveState(
           return EMPTY_SNAPSHOT;
         }
 
-        const message = resolve_error_message(
-          error,
-          t("workbench_page.feedback.refresh_failed"),
-        );
+        const message = resolve_error_message(error, t("workbench_page.feedback.refresh_failed"));
         set_refresh_error(message);
         set_cache_status("error");
         set_cache_stale(true);
@@ -961,11 +959,7 @@ export function useWorkbenchLiveState(
       set_cache_stale(true);
       void refresh_snapshot().catch(() => {});
     }
-  }, [
-    project_snapshot.loaded,
-    workbench_change_signal.seq,
-    refresh_snapshot,
-  ]);
+  }, [project_snapshot.loaded, workbench_change_signal.seq, refresh_snapshot]);
 
   const translation_stats = useMemo(() => {
     return build_translation_stats(
@@ -1008,10 +1002,7 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    if (
-      !previous_project_loaded ||
-      previous_project_path !== project_snapshot.path
-    ) {
+    if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
       set_recent_workbench_task_kind(null);
       set_stats_mode("translation");
     }
@@ -1056,8 +1047,7 @@ export function useWorkbenchLiveState(
 
   const has_translation_display =
     raw_translation_task_runtime.translation_task_display_snapshot !== null;
-  const has_analysis_display =
-    raw_analysis_task_runtime.analysis_task_display_snapshot !== null;
+  const has_analysis_display = raw_analysis_task_runtime.analysis_task_display_snapshot !== null;
 
   const active_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
     return resolve_active_workbench_task_kind({
@@ -1075,8 +1065,7 @@ export function useWorkbenchLiveState(
     running_workbench_task_kind,
   ]);
 
-  const display_workbench_task_kind =
-    active_workbench_task_kind ?? "translation";
+  const display_workbench_task_kind = active_workbench_task_kind ?? "translation";
 
   const active_workbench_task_view = useMemo<WorkbenchTaskViewState>(() => {
     return {
@@ -1085,59 +1074,56 @@ export function useWorkbenchLiveState(
     };
   }, [display_workbench_task_kind]);
 
-  const active_workbench_task_summary =
-    useMemo<WorkbenchTaskSummaryViewModel>(() => {
-      if (active_workbench_task_kind === "translation") {
-        return build_translation_task_summary_view_model(
-          raw_translation_task_runtime.translation_task_metrics,
-          t,
-        );
-      }
+  const active_workbench_task_summary = useMemo<WorkbenchTaskSummaryViewModel>(() => {
+    if (active_workbench_task_kind === "translation") {
+      return build_translation_task_summary_view_model(
+        raw_translation_task_runtime.translation_task_metrics,
+        t,
+      );
+    }
 
-      if (active_workbench_task_kind === "analysis") {
-        return build_analysis_task_summary_view_model(
-          raw_analysis_task_runtime.analysis_task_metrics,
-          t,
-        );
-      }
+    if (active_workbench_task_kind === "analysis") {
+      return build_analysis_task_summary_view_model(
+        raw_analysis_task_runtime.analysis_task_metrics,
+        t,
+      );
+    }
 
-      return build_empty_task_summary_view_model(t);
-    }, [
-      active_workbench_task_kind,
-      raw_analysis_task_runtime.analysis_task_metrics,
-      raw_translation_task_runtime.translation_task_metrics,
-      t,
-    ]);
+    return build_empty_task_summary_view_model(t);
+  }, [
+    active_workbench_task_kind,
+    raw_analysis_task_runtime.analysis_task_metrics,
+    raw_translation_task_runtime.translation_task_metrics,
+    t,
+  ]);
 
-  const active_workbench_task_detail =
-    useMemo<WorkbenchTaskDetailViewModel | null>(() => {
-      // 为什么：工作台空态也要保留可点击的详情胶囊，默认沿用翻译任务模板展示基础指标。
-      if (display_workbench_task_kind === "translation") {
-        return build_translation_task_detail_view_model({
-          metrics: raw_translation_task_runtime.translation_task_metrics,
-          waveform_history:
-            raw_translation_task_runtime.translation_waveform_history,
-          t,
-        });
-      }
+  const active_workbench_task_detail = useMemo<WorkbenchTaskDetailViewModel | null>(() => {
+    // 为什么：工作台空态也要保留可点击的详情胶囊，默认沿用翻译任务模板展示基础指标。
+    if (display_workbench_task_kind === "translation") {
+      return build_translation_task_detail_view_model({
+        metrics: raw_translation_task_runtime.translation_task_metrics,
+        waveform_history: raw_translation_task_runtime.translation_waveform_history,
+        t,
+      });
+    }
 
-      if (display_workbench_task_kind === "analysis") {
-        return build_analysis_task_detail_view_model({
-          metrics: raw_analysis_task_runtime.analysis_task_metrics,
-          waveform_history: raw_analysis_task_runtime.analysis_waveform_history,
-          t,
-        });
-      }
+    if (display_workbench_task_kind === "analysis") {
+      return build_analysis_task_detail_view_model({
+        metrics: raw_analysis_task_runtime.analysis_task_metrics,
+        waveform_history: raw_analysis_task_runtime.analysis_waveform_history,
+        t,
+      });
+    }
 
-      return null;
-    }, [
-      display_workbench_task_kind,
-      raw_analysis_task_runtime.analysis_task_metrics,
-      raw_analysis_task_runtime.analysis_waveform_history,
-      raw_translation_task_runtime.translation_task_metrics,
-      raw_translation_task_runtime.translation_waveform_history,
-      t,
-    ]);
+    return null;
+  }, [
+    display_workbench_task_kind,
+    raw_analysis_task_runtime.analysis_task_metrics,
+    raw_analysis_task_runtime.analysis_waveform_history,
+    raw_translation_task_runtime.translation_task_metrics,
+    raw_translation_task_runtime.translation_waveform_history,
+    t,
+  ]);
 
   const translation_task_confirm_dialog =
     useMemo<WorkbenchTaskConfirmDialogViewModel | null>(() => {
@@ -1147,13 +1133,12 @@ export function useWorkbenchLiveState(
       );
     }, [raw_translation_task_runtime.task_confirm_state, t]);
 
-  const analysis_task_confirm_dialog =
-    useMemo<WorkbenchTaskConfirmDialogViewModel | null>(() => {
-      return build_analysis_task_confirm_dialog_view_model(
-        raw_analysis_task_runtime.analysis_confirm_state,
-        t,
-      );
-    }, [raw_analysis_task_runtime.analysis_confirm_state, t]);
+  const analysis_task_confirm_dialog = useMemo<WorkbenchTaskConfirmDialogViewModel | null>(() => {
+    return build_analysis_task_confirm_dialog_view_model(
+      raw_analysis_task_runtime.analysis_confirm_state,
+      t,
+    );
+  }, [raw_analysis_task_runtime.analysis_confirm_state, t]);
 
   useEffect(() => {
     if (running_workbench_task_kind !== null) {
@@ -1181,54 +1166,57 @@ export function useWorkbenchLiveState(
   ]);
 
   const readonly =
-    !project_snapshot.loaded ||
-    task_snapshot.busy ||
-    file_op_running ||
-    is_mutation_running;
+    !project_snapshot.loaded || task_snapshot.busy || file_op_running || is_mutation_running;
   const can_edit_files = !readonly;
   const can_export_translation =
-    project_snapshot.loaded &&
-    !file_op_running &&
-    !is_mutation_running;
-  const can_close_project =
-    project_snapshot.loaded && !task_snapshot.busy && !is_mutation_running;
+    project_snapshot.loaded && !file_op_running && !is_mutation_running;
+  const can_close_project = project_snapshot.loaded && !task_snapshot.busy && !is_mutation_running;
 
-  const set_dialog_submitting = useCallback(
-    (next_submitting: boolean): void => {
-      set_dialog_state((previous_state) => {
-        if (previous_state.kind === null) {
-          return previous_state;
-        }
+  const set_dialog_submitting = useCallback((next_submitting: boolean): void => {
+    set_dialog_state((previous_state) => {
+      if (previous_state.kind === null) {
+        return previous_state;
+      }
 
-        return {
-          ...previous_state,
-          submitting: next_submitting,
-        };
-      });
-    },
-    [],
-  );
+      return {
+        ...previous_state,
+        submitting: next_submitting,
+      };
+    });
+  }, []);
 
-  const run_file_mutation = useCallback(
+  const run_ack_only_file_mutation = useCallback(
     async (
-      action: () => Promise<void>,
+      plan: WorkbenchProjectMutationPlan,
+      request: (body: Record<string, unknown>) => Promise<ProjectMutationAckPayload>,
       barrier_checkpoint: ProjectPagesBarrierCheckpoint | null,
     ): Promise<void> => {
       set_is_mutation_running(true);
+      set_file_op_running(true);
+      const local_commit = commit_local_project_patch({
+        source: "workbench_mutation",
+        updatedSections: plan.updatedSections,
+        patch: plan.patch,
+      });
 
       try {
-        await action();
-        set_file_op_running(true);
+        const mutation_ack = normalize_project_mutation_ack(await request(plan.requestBody));
+        align_project_runtime_ack(mutation_ack);
         if (options.waitForProjectPagesBarrier !== undefined) {
           await options.waitForProjectPagesBarrier("workbench_file_mutation", {
             checkpoint: barrier_checkpoint,
           });
         }
+      } catch (error) {
+        set_file_op_running(false);
+        local_commit.rollback();
+        void refresh_project_runtime().catch(() => {});
+        throw error;
       } finally {
         set_is_mutation_running(false);
       }
     },
-    [options],
+    [align_project_runtime_ack, commit_local_project_patch, options, refresh_project_runtime],
   );
 
   const apply_table_selection = useCallback(
@@ -1265,14 +1253,10 @@ export function useWorkbenchLiveState(
 
   const request_delete_entries = useCallback(
     (entry_ids: string[]): void => {
-      const visible_entry_id_set = new Set(
-        entries.map((entry) => entry.rel_path),
-      );
-      const target_rel_paths = dedupe_workbench_entry_ids(entry_ids).filter(
-        (entry_id) => {
-          return visible_entry_id_set.has(entry_id);
-        },
-      );
+      const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path));
+      const target_rel_paths = dedupe_workbench_entry_ids(entry_ids).filter((entry_id) => {
+        return visible_entry_id_set.has(entry_id);
+      });
 
       if (target_rel_paths.length === 0) {
         return;
@@ -1294,25 +1278,46 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    const barrier_checkpoint =
-      options.createProjectPagesBarrierCheckpoint?.() ?? null;
+    const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
 
     try {
       await run_modal_progress_toast({
         message: t("workbench_page.feedback.add_file_loading_toast"),
         task: async () => {
-          await run_file_mutation(async () => {
-            await api_fetch("/api/v2/project/workbench/add-file", { path: result.path });
-          }, barrier_checkpoint);
+          const parsed_file = normalize_workbench_file_parse_preview(
+            result.path,
+            await api_fetch<{
+              target_rel_path?: unknown;
+              file_type?: unknown;
+              parsed_items?: unknown;
+            }>("/api/v2/project/workbench/parse-file", {
+              source_path: result.path,
+            }),
+          );
+          const add_plan = create_workbench_add_file_plan({
+            state: project_store.getState(),
+            parsed_file,
+            settings: {
+              source_language: settings_snapshot.source_language,
+              mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+            },
+          });
+          await run_ack_only_file_mutation(
+            add_plan,
+            async (body) => {
+              return await api_fetch<ProjectMutationAckPayload>(
+                "/api/v2/project/workbench/add-file",
+                body,
+              );
+            },
+            barrier_checkpoint,
+          );
         },
       });
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(
-          error,
-          t("workbench_page.feedback.file_action_failed"),
-        ),
+        resolve_error_message(error, t("workbench_page.feedback.file_action_failed")),
       );
     }
   }
@@ -1379,38 +1384,26 @@ export function useWorkbenchLiveState(
         return;
       }
 
-      const entry_map = new Map(
-        entries.map((entry) => [entry.rel_path, entry]),
-      );
-      const next_entries: WorkbenchFileEntry[] = [];
-      for (const entry_id of ordered_entry_ids) {
-        const entry = entry_map.get(entry_id);
-        if (entry === undefined) {
-          return;
-        }
-        next_entries.push(entry);
-      }
-
-      if (next_entries.length !== entries.length) {
-        return;
-      }
-
-      const previous_entries = entries;
-      set_is_mutation_running(true);
-      set_entries(next_entries);
-
       try {
-        await api_fetch("/api/v2/project/workbench/reorder-files", {
+        const reorder_plan = create_workbench_reorder_plan({
+          state: project_store.getState(),
           ordered_rel_paths: ordered_entry_ids,
         });
+        await run_ack_only_file_mutation(
+          reorder_plan,
+          async (body) => {
+            return await api_fetch<ProjectMutationAckPayload>(
+              "/api/v2/project/workbench/reorder-files",
+              body,
+            );
+          },
+          null,
+        );
       } catch {
-        set_entries(previous_entries);
         push_toast("error", t("workbench_page.reorder.failed"));
-      } finally {
-        set_is_mutation_running(false);
       }
     },
-    [entries, push_toast, readonly, t],
+    [entries.length, project_store, push_toast, readonly, run_ack_only_file_mutation, t],
   );
 
   async function confirm_dialog(): Promise<void> {
@@ -1419,27 +1412,47 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    const barrier_checkpoint =
-      options.createProjectPagesBarrierCheckpoint?.() ?? null;
+    const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
     const target_rel_path = current_dialog_state.target_rel_paths[0] ?? null;
     set_dialog_submitting(true);
 
     try {
       if (current_dialog_state.kind === "replace-file") {
-        if (
-          target_rel_path === null ||
-          current_dialog_state.pending_path === null
-        ) {
+        if (target_rel_path === null || current_dialog_state.pending_path === null) {
           set_dialog_submitting(false);
           return;
         }
 
-        await run_file_mutation(async () => {
-          await api_fetch("/api/v2/project/workbench/replace-file", {
+        const parsed_file = normalize_workbench_file_parse_preview(
+          current_dialog_state.pending_path,
+          await api_fetch<{
+            target_rel_path?: unknown;
+            file_type?: unknown;
+            parsed_items?: unknown;
+          }>("/api/v2/project/workbench/parse-file", {
+            source_path: current_dialog_state.pending_path,
             rel_path: target_rel_path,
-            path: current_dialog_state.pending_path,
-          });
-        }, barrier_checkpoint);
+          }),
+        );
+        const replace_plan = create_workbench_replace_file_plan({
+          state: project_store.getState(),
+          rel_path: target_rel_path,
+          parsed_file,
+          settings: {
+            source_language: settings_snapshot.source_language,
+            mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+          },
+        });
+        await run_ack_only_file_mutation(
+          replace_plan,
+          async (body) => {
+            return await api_fetch<ProjectMutationAckPayload>(
+              "/api/v2/project/workbench/replace-file",
+              body,
+            );
+          },
+          barrier_checkpoint,
+        );
         set_dialog_state(close_dialog_state());
         return;
       }
@@ -1450,11 +1463,24 @@ export function useWorkbenchLiveState(
           return;
         }
 
-        await run_file_mutation(async () => {
-          await api_fetch("/api/v2/project/workbench/reset-file", {
-            rel_path: target_rel_path,
-          });
-        }, barrier_checkpoint);
+        const reset_plan = create_workbench_reset_file_plan({
+          state: project_store.getState(),
+          rel_path: target_rel_path,
+          settings: {
+            source_language: settings_snapshot.source_language,
+            mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+          },
+        });
+        await run_ack_only_file_mutation(
+          reset_plan,
+          async (body) => {
+            return await api_fetch<ProjectMutationAckPayload>(
+              "/api/v2/project/workbench/reset-file",
+              body,
+            );
+          },
+          barrier_checkpoint,
+        );
         set_dialog_state(close_dialog_state());
         return;
       }
@@ -1465,19 +1491,31 @@ export function useWorkbenchLiveState(
           return;
         }
 
-        if (current_dialog_state.target_rel_paths.length === 1) {
-          await run_file_mutation(async () => {
-            await api_fetch("/api/v2/project/workbench/delete-file", {
-              rel_path: current_dialog_state.target_rel_paths[0],
-            });
-          }, barrier_checkpoint);
-        } else {
-          await run_file_mutation(async () => {
-            await api_fetch("/api/v2/project/workbench/delete-file-batch", {
-              rel_paths: current_dialog_state.target_rel_paths,
-            });
-          }, barrier_checkpoint);
-        }
+        const delete_plan = create_workbench_delete_files_plan({
+          state: project_store.getState(),
+          rel_paths: current_dialog_state.target_rel_paths,
+          settings: {
+            source_language: settings_snapshot.source_language,
+            mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+          },
+        });
+        await run_ack_only_file_mutation(
+          delete_plan,
+          async (body) => {
+            return await api_fetch<ProjectMutationAckPayload>(
+              current_dialog_state.target_rel_paths.length === 1
+                ? "/api/v2/project/workbench/delete-file"
+                : "/api/v2/project/workbench/delete-file-batch",
+              current_dialog_state.target_rel_paths.length === 1
+                ? {
+                    ...body,
+                    rel_path: current_dialog_state.target_rel_paths[0],
+                  }
+                : body,
+            );
+          },
+          barrier_checkpoint,
+        );
 
         set_dialog_state(close_dialog_state());
         return;

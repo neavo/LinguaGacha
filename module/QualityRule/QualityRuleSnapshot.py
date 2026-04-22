@@ -126,7 +126,11 @@ class QualityRuleSnapshot:
             else {}
         )
 
-        glossary = dict(quality.get("glossary", {})) if isinstance(quality.get("glossary"), dict) else {}
+        glossary = (
+            dict(quality.get("glossary", {}))
+            if isinstance(quality.get("glossary"), dict)
+            else {}
+        )
         text_preserve = (
             dict(quality.get("text_preserve", {}))
             if isinstance(quality.get("text_preserve"), dict)
@@ -188,7 +192,9 @@ class QualityRuleSnapshot:
             ),
             analysis_prompt_enable=bool(analysis.get("enabled", False)),
             analysis_prompt=str(analysis.get("text", "")),
-            analysis_prompt_revision=cls.normalize_revision(analysis.get("revision", 0)),
+            analysis_prompt_revision=cls.normalize_revision(
+                analysis.get("revision", 0)
+            ),
             glossary_entries=list(cls.copy_non_empty_entries(glossary_entries)),
         )
 

@@ -85,7 +85,7 @@ flowchart TD
 ### EPUB 的双写回策略
 - `EPUB` 会检查每个条目是否都带有 `extra_field.epub.parts`。
 - 全部满足时走 `EPUBAstWriter`。
-- 只要存在旧格式条目，就退回 `EPUBLegacy`，避免把老工程写坏。
+- 只要存在缺少 `extra_field.epub.parts` 的条目，就统一走 `EPUBLegacy`，避免混用两套写回语义。
 
 ## 修改建议
 | 变更类型 | 优先落点 |

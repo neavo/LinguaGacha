@@ -328,7 +328,11 @@ def test_update_quality_rule_meta_routes_enabled_toggle_to_core_service() -> Non
         "expected_revision": 3,
         "enabled": False,
     }
-    assert result == {"accepted": True}
+    assert result == {
+        "accepted": True,
+        "projectRevision": 0,
+        "sectionRevisions": {"quality": 0},
+    }
 
 
 def test_update_quality_rule_meta_maps_text_preserve_mode_to_core_key() -> None:
@@ -356,7 +360,11 @@ def test_update_quality_rule_meta_maps_text_preserve_mode_to_core_key() -> None:
         "meta_key": "text_preserve_mode",
         "value": "SMART",
     }
-    assert result == {"accepted": True}
+    assert result == {
+        "accepted": True,
+        "projectRevision": 0,
+        "sectionRevisions": {"quality": 0},
+    }
 
 
 def test_save_quality_rule_entries_returns_minimal_ack() -> None:
@@ -377,7 +385,11 @@ def test_save_quality_rule_entries_returns_minimal_ack() -> None:
         "expected_revision": 3,
         "entries": [{"src": "勇者", "dst": "Hero"}],
     }
-    assert result == {"accepted": True}
+    assert result == {
+        "accepted": True,
+        "projectRevision": 0,
+        "sectionRevisions": {"quality": 0},
+    }
 
 
 def test_get_prompt_template_uses_current_localizer_language(
@@ -445,7 +457,11 @@ def test_save_prompt_returns_minimal_ack() -> None:
         "text": "next prompt",
         "enabled": False,
     }
-    assert saved_prompt == {"accepted": True}
+    assert saved_prompt == {
+        "accepted": True,
+        "projectRevision": 0,
+        "sectionRevisions": {"prompts": 0},
+    }
 
 
 def test_prompt_import_text_export_and_presets_keep_payload_shapes() -> None:

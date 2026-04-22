@@ -1,6 +1,5 @@
 from importlib import import_module
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
@@ -125,22 +124,6 @@ class FakeProgressSession:
         del task_id, kwargs
 
 
-def install_analysis_import_glossary_runtime(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-    logger: FakeLogManager,
-    thread_type: type[Any],
-) -> None:
-    # 导入测试只关心事件流，不关心真实线程与日志实现，这里统一装最小运行环境。
-    monkeypatch.setattr(
-        analysis_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(analysis_module.threading, "Thread", thread_type)
-    install_analysis_logger(monkeypatch, logger)
-
-
 def capture_emitted_events(
     monkeypatch: pytest.MonkeyPatch,
     analysis: Analysis,
@@ -153,33 +136,6 @@ def capture_emitted_events(
         lambda event, data: emitted.append((event, data)),
     )
     return emitted
-
-
-def assert_analysis_import_started(emitted: list[EmittedEvent]) -> None:
-    # 导入入口必须先通知页面“开始了”，后面的成功/失败断言才有意义。
-    assert emitted[:1] == [
-        (
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            {"sub_event": Base.SubEvent.RUN},
-        ),
-    ]
-
-
-# 导入术语相关测试都要同步线程并截获日志，这里集中搭建，避免样板代码盖住断言重点。
-def build_import_glossary_test_context(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager: object,
-) -> tuple[Analysis, list[EmittedEvent], FakeLogManager]:
-    logger = FakeLogManager()
-    install_analysis_import_glossary_runtime(
-        monkeypatch,
-        fake_data_manager,
-        logger,
-        ImmediateThread,
-    )
-    analysis = Analysis()
-    emitted = capture_emitted_events(monkeypatch, analysis)
-    return analysis, emitted, logger
 
 
 def install_analysis_start_runtime(
@@ -311,11 +267,10 @@ def test_start_continue_only_executes_pending_tasks(
     analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
     assert called == ["todo"]
-    assert fake_data_manager.import_count == 0
     assert fake_data_manager.analysis_extras["total_line"] == 3
 
 
-def test_start_continue_without_pending_tasks_emits_auto_import_when_candidates_exist(
+def test_start_continue_without_pending_tasks_does_not_emit_followup_event(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -348,48 +303,11 @@ def test_start_continue_without_pending_tasks_emits_auto_import_when_candidates_
 
     analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {"sub_event": Base.SubEvent.REQUEST},
-    ) in emitted
-
-
-def test_start_continue_without_pending_tasks_skips_auto_import_when_no_candidates(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-    quality_snapshot,
-) -> None:
-    install_analysis_start_runtime(
-        monkeypatch,
-        fake_data_manager,
-        quality_snapshot,
+    assert emitted != []
+    assert all(
+        event in (Base.Event.ANALYSIS_PROGRESS, Base.Event.ANALYSIS_TASK)
+        for event, _data in emitted
     )
-
-    analysis = Analysis()
-    emitted = capture_emitted_events(monkeypatch, analysis)
-    config = build_start_config()
-    patch_start_runtime(
-        monkeypatch,
-        analysis,
-        task_contexts=[],
-        progress_snapshot=build_analysis_progress_snapshot(
-            total_line=3,
-            line=3,
-            processed_line=3,
-            error_line=0,
-            time_value=12.0,
-            total_tokens=13,
-            total_input_tokens=5,
-            total_output_tokens=8,
-        ),
-    )
-
-    analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
-
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {"sub_event": Base.SubEvent.REQUEST},
-    ) not in emitted
 
 
 def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
@@ -473,8 +391,6 @@ def test_start_stopped_does_not_import_candidates(
     )
 
     analysis.start({"mode": Base.AnalysisMode.NEW, "config": config})
-
-    assert fake_data_manager.import_count == 0
 
 
 def test_start_creates_progress_bar_for_pending_tasks(
@@ -594,160 +510,7 @@ def test_start_without_pending_tasks_skips_progress_bar(
     analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
 
 
-def test_analysis_import_glossary_emits_done_and_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    fake_data_manager.analysis_candidate_count = 1
-    analysis, emitted, logger = build_import_glossary_test_context(
-        monkeypatch,
-        fake_data_manager,
-    )
-
-    analysis.analysis_import_glossary()
-
-    assert_analysis_import_started(emitted)
-    assert (
-        Base.Event.PROJECT_CHECK,
-        {"sub_event": Base.SubEvent.REQUEST},
-    ) in emitted
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "imported_count": 1,
-            "message": "导入成功，新增 1 条 …",
-        },
-    ) in emitted
-    assert fake_data_manager.import_expected_paths == [fake_data_manager.lg_path]
-    assert logger.info_messages == ["处理中 …", "导入成功，新增 1 条 …"]
-    assert logger.print_messages == [""]
-
-
-def test_analysis_import_glossary_emits_success_event_when_zero_imported(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    analysis, emitted, logger = build_import_glossary_test_context(
-        monkeypatch,
-        fake_data_manager,
-    )
-
-    analysis.analysis_import_glossary()
-
-    assert_analysis_import_started(emitted)
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "imported_count": 0,
-            "message": "导入成功，新增 0 条 …",
-        },
-    ) in emitted
-    assert logger.info_messages == ["处理中 …", "导入成功，新增 0 条 …"]
-    assert logger.print_messages == [""]
-
-
-def test_analysis_import_glossary_skips_stale_project_after_switch(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    fake_data_manager.analysis_candidate_count = 1
-    analysis, emitted, logger = build_import_glossary_test_context(
-        monkeypatch,
-        fake_data_manager,
-    )
-
-    class SwitchingThread:
-        def __init__(self, target, args=(), daemon=None) -> None:
-            self.target = target
-            self.args = args
-            self.daemon = daemon
-
-        def start(self) -> None:
-            fake_data_manager.lg_path = "/workspace/demo/other-project.lg"
-            self.target(*self.args)
-
-    monkeypatch.setattr(analysis_module.threading, "Thread", SwitchingThread)
-
-    analysis.analysis_import_glossary()
-
-    assert_analysis_import_started(emitted)
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {"sub_event": Base.SubEvent.ERROR},
-    ) in emitted
-    assert fake_data_manager.import_count == 0
-    assert fake_data_manager.import_expected_paths == ["/workspace/demo/project.lg"]
-    assert logger.info_messages == ["处理中 …"]
-    assert logger.print_messages == [""]
-
-
-def test_analysis_import_glossary_emits_error_event_on_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    fake_data_manager.analysis_candidate_count = 1
-    analysis, emitted, logger = build_import_glossary_test_context(
-        monkeypatch,
-        fake_data_manager,
-    )
-
-    def raise_import_error(
-        dm,
-        *,
-        expected_lg_path: str,
-    ) -> int | None:
-        del dm, expected_lg_path
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(
-        analysis,
-        "import_analysis_candidates_sync",
-        raise_import_error,
-    )
-
-    analysis.analysis_import_glossary()
-
-    assert_analysis_import_started(emitted)
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {
-            "sub_event": Base.SubEvent.ERROR,
-            "message": "任务执行失败 …",
-        },
-    ) in emitted
-    assert logger.info_messages == ["处理中 …"]
-    assert logger.error_messages == ["任务执行失败 …"]
-    assert isinstance(logger.error_exceptions[0], RuntimeError)
-    assert logger.print_messages == [""]
-
-
-def test_import_analysis_candidates_sync_calls_new_entry(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    analysis = Analysis()
-    called: list[str | None] = []
-
-    def fake_import(expected_lg_path: str | None = None) -> int | None:
-        called.append(expected_lg_path)
-        return 1
-
-    fake_data_manager.import_analysis_candidates = fake_import
-    monkeypatch.setattr(analysis, "emit", lambda event, data: None)
-
-    assert (
-        analysis.import_analysis_candidates_sync(
-            fake_data_manager,
-            expected_lg_path="demo.lg",
-        )
-        == 1
-    )
-    assert called == ["demo.lg"]
-
-
-def test_start_success_emits_auto_import_glossary_request(
+def test_start_success_does_not_emit_followup_request(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -782,10 +545,11 @@ def test_start_success_emits_auto_import_glossary_request(
 
     analysis.start({"mode": Base.AnalysisMode.NEW, "config": config})
 
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {"sub_event": Base.SubEvent.REQUEST},
-    ) in emitted
+    assert emitted != []
+    assert all(
+        event in (Base.Event.ANALYSIS_PROGRESS, Base.Event.ANALYSIS_TASK)
+        for event, _data in emitted
+    )
 
 
 def test_start_uses_quality_snapshot_override(
@@ -822,35 +586,3 @@ def test_start_uses_quality_snapshot_override(
     )
 
     assert analysis.quality_snapshot is quality_snapshot
-
-
-def test_after_analysis_done_success_requests_import_glossary(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    install_analysis_logger(monkeypatch)
-    analysis = Analysis()
-    emitted = capture_emitted_events(monkeypatch, analysis)
-    fake_data_manager.analysis_candidate_count = 2
-
-    analysis.after_analysis_done(fake_data_manager, "SUCCESS")
-
-    assert (
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {"sub_event": Base.SubEvent.REQUEST},
-    ) in emitted
-
-
-def test_after_analysis_done_stopped_skips_import_glossary(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    install_analysis_logger(monkeypatch)
-    analysis = Analysis()
-    emitted = capture_emitted_events(monkeypatch, analysis)
-
-    analysis.after_analysis_done(fake_data_manager, "STOPPED")
-
-    assert not any(
-        event == Base.Event.ANALYSIS_IMPORT_GLOSSARY for event, _data in emitted
-    )

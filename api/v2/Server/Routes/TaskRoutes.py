@@ -13,7 +13,6 @@ class TaskRoutes:
     STOP_ANALYSIS_PATH: str = "/api/v2/tasks/stop-analysis"
     RESET_ANALYSIS_ALL_PATH: str = "/api/v2/tasks/reset-analysis-all"
     RESET_ANALYSIS_FAILED_PATH: str = "/api/v2/tasks/reset-analysis-failed"
-    IMPORT_ANALYSIS_GLOSSARY_PATH: str = "/api/v2/tasks/import-analysis-glossary"
     SNAPSHOT_PATH: str = "/api/v2/tasks/snapshot"
     EXPORT_TRANSLATION_PATH: str = "/api/v2/tasks/export-translation"
 
@@ -73,13 +72,6 @@ class TaskRoutes:
             cls.RESET_ANALYSIS_FAILED_PATH,
             lambda request: ApiResponse(
                 ok=True, data=task_app_service.reset_analysis_failed(request)
-            ),
-        )
-        core_api_server.add_json_route(
-            "POST",
-            cls.IMPORT_ANALYSIS_GLOSSARY_PATH,
-            lambda request: ApiResponse(
-                ok=True, data=task_app_service.import_analysis_glossary(request)
             ),
         )
         core_api_server.add_json_route(

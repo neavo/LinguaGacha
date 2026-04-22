@@ -19,7 +19,6 @@ from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
 from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
 from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
-from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 
@@ -34,7 +33,6 @@ class Analysis(Base):
         self.stop_requested: bool = False
         self.extras: dict[str, Any] = {}
         self.quality_snapshot: QualityRuleSnapshot | None = None
-        self.current_task_contexts: list[AnalysisTaskContext] = []
         self.scheduler = AnalysisScheduler(self)
         self.progress_tracker = AnalysisProgressTracker(self)
 
@@ -42,10 +40,6 @@ class Analysis(Base):
         self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.analysis_stop_event)
         self.subscribe(Base.Event.ANALYSIS_RESET_ALL, self.analysis_reset)
         self.subscribe(Base.Event.ANALYSIS_RESET_FAILED, self.analysis_reset)
-        self.subscribe(
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            self.analysis_import_glossary_event,
-        )
 
     # UI 只关心当前实际占用并发，这里保持薄包装方便以后替换限流器实现。
     def get_concurrency_in_use(self) -> int:
@@ -86,16 +80,6 @@ class Analysis(Base):
             return
         self.analysis_require_stop()
 
-    # 手动导入候选术语池也统一走事件链，避免页面直接跨线程碰数据层。
-    def analysis_import_glossary_event(
-        self, event: Base.Event, data: dict[str, Any]
-    ) -> None:
-        del event
-        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
-        if sub_event != Base.SubEvent.REQUEST:
-            return
-        self.analysis_import_glossary()
-
     # 这里先原子占用引擎状态，再把真正任务扔到后台线程，避免重复点击并发启动。
     def analysis_run(self, data: dict[str, Any]) -> None:
         self.stop_requested = False
@@ -119,126 +103,6 @@ class Analysis(Base):
             stop_event=Base.Event.ANALYSIS_REQUEST_STOP,
             mark_stop_requested=lambda: setattr(self, "stop_requested", True),
         )
-
-    def import_analysis_candidates_sync(
-        self,
-        dm: DataManager,
-        *,
-        expected_lg_path: str,
-    ) -> int | None:
-        """手动导入候选池时固定当前工程，避免后台线程串写到新工程。"""
-        imported_count = dm.import_analysis_candidates(
-            expected_lg_path=expected_lg_path
-        )
-        if imported_count is None:
-            return None
-
-        if dm.is_loaded() and dm.get_lg_path() == expected_lg_path:
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-        return imported_count
-
-    def emit_analysis_import_progress_start(self) -> None:
-        """导入开始时统一显示处理中提示，并同步写入控制台日志。"""
-        message = Localizer.get().task_processing
-        LogManager.get().info(message)
-
-    def finish_analysis_import_progress(self, *, failed: bool) -> None:
-        """导入结束时统一收掉进度提示和日志分隔，避免不同分支各自收尾。"""
-        del failed
-        LogManager.get().print("")
-
-    def emit_analysis_import_rejected(self, message: str) -> None:
-        """前置条件不满足时统一发警告，避免入口分支重复堆同样的事件。"""
-        self.emit(
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            {
-                "sub_event": Base.SubEvent.ERROR,
-                "message": message,
-            },
-        )
-
-    def build_analysis_import_context(self) -> tuple[DataManager, str] | None:
-        """在主线程统一校验导入前提，避免无效请求也启动后台线程。"""
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit_analysis_import_rejected(Localizer.get().task_running)
-            return None
-
-        dm = DataManager.get()
-        if not dm.is_loaded():
-            self.emit_analysis_import_rejected(Localizer.get().alert_project_not_loaded)
-            return None
-
-        expected_lg_path = dm.get_lg_path()
-        if not isinstance(expected_lg_path, str) or expected_lg_path == "":
-            self.emit_analysis_import_rejected(Localizer.get().alert_project_not_loaded)
-            return None
-        return dm, expected_lg_path
-
-    def analysis_import_glossary(self) -> None:
-        """把候选池导入单独放后台线程，避免 UI 点击后卡住主线程。"""
-        import_context = self.build_analysis_import_context()
-        if import_context is None:
-            return
-        dm, expected_lg_path = import_context
-
-        self.emit(
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            {"sub_event": Base.SubEvent.RUN},
-        )
-        self.emit_analysis_import_progress_start()
-
-        def task() -> None:
-            progress_failed = False
-            # 工程已切换时保持静默收口，只通知页面当前导入流程结束即可。
-            completion_event: dict[str, Any] = {"sub_event": Base.SubEvent.ERROR}
-            try:
-                imported_count = self.import_analysis_candidates_sync(
-                    dm,
-                    expected_lg_path=expected_lg_path,
-                )
-                if imported_count is not None:
-                    # 0 也视为成功：这里表示导入流程已完成，只是没有新增或补空条目。
-                    message = Localizer.get().analysis_page_import_success.replace(
-                        "{COUNT}", str(imported_count)
-                    )
-                    LogManager.get().info(message)
-                    completion_event = {
-                        "sub_event": Base.SubEvent.DONE,
-                        "imported_count": imported_count,
-                        "message": message,
-                    }
-            except Exception as e:
-                progress_failed = True
-                message = Localizer.get().task_failed
-                LogManager.get().error(message, e)
-                completion_event = {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": message,
-                }
-            finally:
-                self.finish_analysis_import_progress(failed=progress_failed)
-                self.emit(
-                    Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                    completion_event,
-                )
-
-        threading.Thread(target=task, daemon=True).start()
-
-    def should_auto_import_glossary(
-        self,
-        dm: DataManager,
-        final_status: str,
-    ) -> bool:
-        """只要本轮分析成功且候选池非空，就自动桥接到导入术语表。"""
-        if final_status != "SUCCESS":
-            return False
-        if not dm.is_loaded():
-            return False
-
-        return int(dm.get_analysis_candidate_count() or 0) > 0
 
     # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
     def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
@@ -399,24 +263,9 @@ class Analysis(Base):
                 on_after_execute=AnalysisTask.log_run_finish,
                 finalize=lambda final_status: None,
                 cleanup=dm.close_db,
-                after_done=lambda final_status: self.after_analysis_done(
-                    dm,
-                    final_status,
-                ),
+                after_done=lambda final_status: None,
             ),
         )
-
-    def after_analysis_done(
-        self,
-        dm: DataManager,
-        final_status: str,
-    ) -> None:
-        """分析任务进入 DONE 后，再决定是否桥接自动导入流程。"""
-        if self.should_auto_import_glossary(dm, final_status):
-            self.emit(
-                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
 
     # 并发和速率推导维持原有策略，只保留一个公开入口方便两边共用。
     def initialize_task_limits(self) -> tuple[int, int, int]:
@@ -443,7 +292,6 @@ class Analysis(Base):
     def execute_task_contexts(
         self, task_contexts: list[AnalysisTaskContext], *, max_workers: int
     ) -> str:
-        self.current_task_contexts = list(task_contexts)
         self.progress_tracker.reset_run_state()
         hooks = AnalysisTaskHooks(
             analysis=self,

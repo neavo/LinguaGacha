@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Any
 from typing import ClassVar
@@ -24,17 +23,19 @@ from module.Data.Project.ExportPathService import ExportPathService
 from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
 from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
+from module.Data.Project.ProjectRuntimeRevisionService import (
+    ProjectRuntimeRevisionService,
+)
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Data.Translation.TranslationResetService import TranslationResetService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Localizer.Localizer import Localizer
+from module.Utils.ZstdTool import ZstdTool
 
 if TYPE_CHECKING:
-    from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
     from module.Data.Core.DataTypes import ProjectItemChange
-    from module.Data.Core.DataTypes import ProjectFileMutationResult
     from module.Data.Core.DataTypes import ProjectPrefilterRequest
 
 
@@ -114,7 +115,6 @@ class DataManager(Base):
             self.batch_service,
             self.meta_service,
             self.item_service,
-            self.quality_rule_service,
         )
         self.translation_reset_service = TranslationResetService(
             self.session,
@@ -124,10 +124,9 @@ class DataManager(Base):
         )
         self.project_file_service = ProjectFileService(
             self.session,
-            self.item_service,
-            self.analysis_service,
             self.project_service.SUPPORTED_EXTENSIONS,
         )
+        self.runtime_revision_service = ProjectRuntimeRevisionService(self.meta_service)
 
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_activity)
         self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_activity)
@@ -135,7 +134,6 @@ class DataManager(Base):
             Base.Event.TRANSLATION_RESET_FAILED,
             self.on_translation_activity,
         )
-        self.subscribe(Base.Event.CONFIG_UPDATED, self.on_config_updated)
 
     @classmethod
     def get(cls) -> "DataManager":
@@ -403,16 +401,38 @@ class DataManager(Base):
             return None
 
         items = self.get_all_items()
-        return self.prefilter_service.apply_once(
+        result = self.prefilter_service.apply_once(
             request,
             items=items,
         )
+        if result is not None:
+            self.bump_project_runtime_section_revisions(("items", "analysis"))
+        return result
 
     def get_meta(self, key: str, default: Any = None) -> Any:
         return self.meta_service.get_meta(key, default)
 
     def set_meta(self, key: str, value: Any) -> None:
         self.meta_service.set_meta(key, value)
+
+    def assert_project_runtime_section_revision(
+        self,
+        section: str,
+        expected_revision: int,
+    ) -> int:
+        return self.runtime_revision_service.assert_revision(
+            section,
+            expected_revision,
+        )
+
+    def bump_project_runtime_section_revision(self, section: str) -> int:
+        return self.runtime_revision_service.bump_revision(section)
+
+    def bump_project_runtime_section_revisions(
+        self,
+        sections: tuple[str, ...] | list[str],
+    ) -> dict[str, int]:
+        return self.runtime_revision_service.bump_revisions(sections)
 
     def get_project_status(self) -> Base.ProjectStatus:
         raw = self.get_meta("project_status", Base.ProjectStatus.NONE.value)
@@ -516,37 +536,6 @@ class DataManager(Base):
             glossary_entries=glossary_entries,
             progress_snapshot=progress_snapshot,
         )
-
-    def build_analysis_glossary_from_candidates(self) -> list[dict[str, Any]]:
-        return self.analysis_service.build_analysis_glossary_from_candidates()
-
-    def build_analysis_glossary_import_preview(
-        self,
-        glossary_entries: list[dict[str, Any]],
-    ) -> AnalysisGlossaryImportPreview:
-        return self.analysis_service.build_analysis_glossary_import_preview(
-            glossary_entries
-        )
-
-    def filter_analysis_glossary_import_candidates(
-        self,
-        glossary_entries: list[dict[str, Any]],
-        preview: AnalysisGlossaryImportPreview,
-    ) -> list[dict[str, Any]]:
-        return self.analysis_service.filter_analysis_glossary_import_candidates(
-            glossary_entries,
-            preview,
-        )
-
-    def import_analysis_candidates(
-        self,
-        expected_lg_path: str | None = None,
-    ) -> int | None:
-        imported = self.analysis_service.import_analysis_candidates(expected_lg_path)
-        return imported
-
-    def sync_importable_analysis_candidate_count(self) -> int:
-        return self.analysis_service.sync_importable_analysis_candidate_count()
 
     def clear_analysis_progress(self) -> None:
         self.analysis_service.clear_analysis_progress()
@@ -789,6 +778,168 @@ class DataManager(Base):
             reason=reason,
         )
 
+    def merge_partial_item_payloads(
+        self,
+        item_payloads: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        existing_items = {
+            int(item_dict["id"]): dict(item_dict)
+            for item_dict in self.get_all_item_dicts()
+            if isinstance(item_dict.get("id"), int)
+        }
+        merged_items: list[dict[str, Any]] = []
+
+        for payload in item_payloads:
+            raw_item_id = payload.get("id", payload.get("item_id"))
+            if not isinstance(raw_item_id, int):
+                try:
+                    raw_item_id = int(raw_item_id)
+                except TypeError:
+                    continue
+                except ValueError:
+                    continue
+
+            existing_item = existing_items.get(raw_item_id)
+            if existing_item is None:
+                continue
+
+            merged_item = dict(existing_item)
+            merged_item["id"] = raw_item_id
+            if "file_path" in payload:
+                merged_item["file_path"] = str(payload.get("file_path", "") or "")
+            if "row" in payload or "row_number" in payload:
+                merged_item["row"] = int(
+                    payload.get("row", payload.get("row_number", 0)) or 0
+                )
+            if "src" in payload:
+                merged_item["src"] = str(payload.get("src", "") or "")
+            if "dst" in payload:
+                merged_item["dst"] = str(payload.get("dst", "") or "")
+            if "name_dst" in payload:
+                merged_item["name_dst"] = payload.get("name_dst")
+            if "status" in payload:
+                merged_item["status"] = str(payload.get("status", "") or "")
+            if "text_type" in payload:
+                merged_item["text_type"] = str(payload.get("text_type", "") or "")
+            if "retry_count" in payload:
+                merged_item["retry_count"] = int(payload.get("retry_count", 0) or 0)
+            merged_items.append(merged_item)
+
+        return merged_items
+
+    def build_analysis_reset_meta(
+        self,
+        *,
+        translation_extras: dict[str, Any],
+        project_status: str,
+        prefilter_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """统一收口会重建分析事实的同步 mutation meta 镜像。"""
+
+        return {
+            "translation_extras": dict(translation_extras),
+            "project_status": str(project_status),
+            "prefilter_config": dict(prefilter_config),
+            "analysis_extras": {},
+            "analysis_candidate_count": 0,
+        }
+
+    def persist_items_meta_and_clear_analysis_state(
+        self,
+        *,
+        items: list[dict[str, Any]] | None,
+        meta: dict[str, Any],
+        deleted_rel_paths: list[str] | None = None,
+    ) -> None:
+        """在同一事务里写 items/meta，并同时清空分析持久化事实。"""
+
+        with self.state_lock:
+            db = self.session.db
+            if db is None:
+                raise RuntimeError("工程未加载")
+
+            item_params = db.prepare_item_update_params(items)
+            meta_params = db.prepare_meta_upsert_params(meta)
+
+            with db.connection() as conn:
+                for rel_path in deleted_rel_paths or []:
+                    db.delete_items_by_file_path(rel_path, conn=conn)
+                    db.delete_asset(rel_path, conn=conn)
+
+                if item_params:
+                    conn.executemany(
+                        "UPDATE items SET data = ? WHERE id = ?",
+                        item_params,
+                    )
+
+                if meta_params:
+                    conn.executemany(
+                        "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                        meta_params,
+                    )
+
+                db.delete_analysis_item_checkpoints(conn=conn)
+                db.clear_analysis_candidate_aggregates(conn=conn)
+                conn.commit()
+
+            self.batch_service.sync_session_caches(
+                items=items,
+                rules=None,
+                meta=meta,
+            )
+
+    def apply_prefilter_payload(
+        self,
+        *,
+        item_payloads: list[dict[str, Any]],
+        translation_extras: dict[str, Any],
+        project_status: str,
+        prefilter_config: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None,
+    ) -> None:
+        with self.state_lock:
+            if not self.is_loaded():
+                raise RuntimeError("工程未加载")
+
+            if expected_section_revisions is not None:
+                if "items" in expected_section_revisions:
+                    self.assert_project_runtime_section_revision(
+                        "items",
+                        int(expected_section_revisions["items"]),
+                    )
+                if "analysis" in expected_section_revisions:
+                    self.assert_project_runtime_section_revision(
+                        "analysis",
+                        int(expected_section_revisions["analysis"]),
+                    )
+
+            merged_items = self.merge_partial_item_payloads(item_payloads)
+            self.persist_items_meta_and_clear_analysis_state(
+                items=merged_items or None,
+                meta=self.build_analysis_reset_meta(
+                    translation_extras=translation_extras,
+                    project_status=project_status,
+                    prefilter_config=prefilter_config,
+                ),
+            )
+            self.bump_project_runtime_section_revisions(("items", "analysis"))
+
+    def sync_project_settings_meta(
+        self,
+        *,
+        source_language: str,
+        target_language: str,
+    ) -> None:
+        if not self.is_loaded():
+            return
+
+        self.update_batch(
+            meta={
+                "source_language": str(source_language),
+                "target_language": str(target_language),
+            }
+        )
+
     def apply_translation_batch_update(
         self,
         finalized_items: list[dict[str, Any]],
@@ -835,6 +986,9 @@ class DataManager(Base):
     def get_all_asset_paths(self) -> list[str]:
         return self.asset_service.get_all_asset_paths()
 
+    def get_all_asset_records(self) -> list[dict[str, Any]]:
+        return self.asset_service.get_all_asset_records()
+
     def get_asset(self, rel_path: str) -> bytes | None:
         return self.asset_service.get_asset(rel_path)
 
@@ -849,40 +1003,6 @@ class DataManager(Base):
 
     def finish_file_operation(self) -> None:
         self.project_file_service.finish_file_operation()
-
-    def emit_project_runtime_refresh(
-        self,
-        *,
-        reason: str,
-        updated_sections: tuple[str, ...] = ("files", "items", "analysis"),
-    ) -> None:
-        """通知 V2 运行态在下一帧重新同步受影响 section。"""
-
-        normalized_sections = [
-            section
-            for section in updated_sections
-            if section
-            in (
-                "project",
-                "files",
-                "items",
-                "quality",
-                "prompts",
-                "analysis",
-                "proofreading",
-                "task",
-            )
-        ]
-        if not normalized_sections:
-            return
-
-        self.emit(
-            Base.Event.PROJECT_RUNTIME_REFRESH,
-            {
-                "source": reason,
-                "updatedSections": normalized_sections,
-            },
-        )
 
     def emit_project_runtime_patch(
         self,
@@ -919,6 +1039,12 @@ class DataManager(Base):
             "patch": patch,
         }
 
+        runtime_service = None
+        if section_revisions is None or project_revision is None:
+            from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
+
+            runtime_service = ProjectRuntimeService(self)
+
         if section_revisions:
             normalized_section_revisions = {
                 str(section): int(revision)
@@ -927,9 +1053,19 @@ class DataManager(Base):
             }
             if normalized_section_revisions:
                 payload["sectionRevisions"] = normalized_section_revisions
+        elif runtime_service is not None:
+            payload["sectionRevisions"] = {
+                section: int(runtime_service.get_section_revision(section) or 0)
+                for section in normalized_sections
+            }
 
         if project_revision is not None:
             payload["projectRevision"] = int(project_revision)
+        elif runtime_service is not None:
+            payload["projectRevision"] = max(
+                runtime_service.build_section_revisions().values(),
+                default=0,
+            )
 
         self.emit(Base.Event.PROJECT_RUNTIME_PATCH, payload)
 
@@ -943,59 +1079,6 @@ class DataManager(Base):
         if not self.try_begin_file_operation():
             raise ValueError(Localizer.get().task_running)
 
-    def schedule_guarded_file_operation(
-        self,
-        progress_message: str,
-        action: Callable[[], ProjectFileMutationResult],
-        error_message: str,
-    ) -> None:
-        """统一封装文件操作线程。"""
-
-        self.try_begin_guarded_file_operation()
-
-        def worker() -> None:
-            try:
-                self.complete_guarded_file_operation(
-                    progress_message,
-                    action,
-                    error_message,
-                )
-            except Exception:
-                return
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def complete_guarded_file_operation(
-        self,
-        progress_message: str,
-        action: Callable[[], ProjectFileMutationResult],
-        error_message: str,
-    ) -> ProjectFileMutationResult:
-        """执行文件操作并统一收口日志、预处理和运行态刷新。"""
-
-        should_refresh_runtime = False
-        try:
-            LogManager.get().info(progress_message)
-            result = action()
-            should_refresh_runtime = True
-            self.run_project_prefilter(
-                Config().load(),
-                reason="file_op",
-            )
-            return result
-        except ValueError as e:
-            LogManager.get().warning(str(e))
-            raise
-        except Exception as e:
-            LogManager.get().error(error_message, e)
-            raise
-        finally:
-            self.finish_file_operation()
-            if should_refresh_runtime:
-                # 为什么：文件操作真正成功后，必须补一次 V2 运行态刷新信号，
-                # 让页面缓存和 ProjectStore 都能推进到同一个完成态。
-                self.emit_project_runtime_refresh(reason="file_op")
-
     def require_loaded_lg_path(self) -> str:
         """读取当前工程路径；未加载工程时统一抛出同一条错误。"""
 
@@ -1004,71 +1087,365 @@ class DataManager(Base):
             raise RuntimeError("工程未加载，无法获取输出路径")
         return lg_path
 
-    def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
-        """同步重排工作台文件顺序，供前端拖拽后立即持久化。"""
+    def assert_expected_runtime_revisions(
+        self,
+        expected_section_revisions: dict[str, int] | None,
+        sections: tuple[str, ...] | list[str],
+    ) -> None:
+        if expected_section_revisions is None:
+            return
+
+        for section in sections:
+            if section not in expected_section_revisions:
+                continue
+            self.assert_project_runtime_section_revision(
+                str(section),
+                int(expected_section_revisions[section]),
+            )
+
+    def persist_reordered_files(
+        self,
+        ordered_rel_paths: list[str],
+        *,
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        """按前端确认后的完整顺序持久化文件顺序。"""
 
         from module.Engine.Engine import Engine
 
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
             raise ValueError(Localizer.get().task_running)
-
         if not self.try_begin_file_operation():
             raise ValueError(Localizer.get().task_running)
 
         try:
-            self.project_file_service.reorder_files(ordered_rel_paths)
+            with self.state_lock:
+                if not self.is_loaded():
+                    raise RuntimeError("工程未加载")
+
+                self.assert_expected_runtime_revisions(
+                    expected_section_revisions,
+                    ("files",),
+                )
+                self.project_file_service.reorder_files(ordered_rel_paths)
+                self.bump_project_runtime_section_revision("files")
         finally:
             self.finish_file_operation()
 
-        self.emit_project_runtime_refresh(
-            reason="file_reorder",
-            updated_sections=("files",),
-        )
+    def persist_reset_file(
+        self,
+        rel_path: str,
+        *,
+        item_payloads: list[dict[str, Any]],
+        translation_extras: dict[str, Any],
+        project_status: str,
+        prefilter_config: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        """持久化前端已确认的文件重置结果。"""
 
-    def add_file(self, file_path: str) -> None:
         self.try_begin_guarded_file_operation()
-        self.complete_guarded_file_operation(
-            Localizer.get().workbench_progress_adding_file,
-            lambda: self.project_file_service.add_file(file_path),
-            f"Failed to add file: {file_path}",
-        )
+        try:
+            with self.state_lock:
+                if not self.is_loaded():
+                    raise RuntimeError("工程未加载")
 
-    def replace_file(self, rel_path: str, new_file_path: str) -> dict[str, int]:
-        self.try_begin_guarded_file_operation()
-        result = self.complete_guarded_file_operation(
-            Localizer.get().task_processing,
-            lambda: self.project_file_service.replace_file(rel_path, new_file_path),
-            f"Failed to replace file: {rel_path} -> {new_file_path}",
+                self.assert_expected_runtime_revisions(
+                    expected_section_revisions,
+                    ("items", "analysis"),
+                )
+                if self.session.db is None:
+                    raise RuntimeError("工程未加载")
+                if not self.session.db.asset_path_exists(rel_path):
+                    raise ValueError(Localizer.get().workbench_msg_file_not_found)
+
+                merged_items = self.merge_partial_item_payloads(item_payloads)
+                self.persist_items_meta_and_clear_analysis_state(
+                    items=merged_items or None,
+                    meta=self.build_analysis_reset_meta(
+                        translation_extras=translation_extras,
+                        project_status=project_status,
+                        prefilter_config=prefilter_config,
+                    ),
+                )
+                self.bump_project_runtime_section_revisions(("items", "analysis"))
+
+            self.item_service.clear_item_cache()
+        finally:
+            self.finish_file_operation()
+
+    def persist_delete_files(
+        self,
+        rel_paths: list[str],
+        *,
+        translation_extras: dict[str, Any],
+        project_status: str,
+        prefilter_config: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        """持久化前端已确认的文件删除结果。"""
+
+        normalized_rel_paths = self.project_file_service.normalize_batch_rel_paths(
+            rel_paths
         )
-        return {
-            "matched": result.matched,
-            "new": result.new,
-            "total": result.total,
+        self.try_begin_guarded_file_operation()
+        try:
+            with self.state_lock:
+                if not self.is_loaded():
+                    raise RuntimeError("工程未加载")
+
+                self.assert_expected_runtime_revisions(
+                    expected_section_revisions,
+                    ("files", "items", "analysis"),
+                )
+                self.persist_items_meta_and_clear_analysis_state(
+                    items=None,
+                    meta=self.build_analysis_reset_meta(
+                        translation_extras=translation_extras,
+                        project_status=project_status,
+                        prefilter_config=prefilter_config,
+                    ),
+                    deleted_rel_paths=normalized_rel_paths,
+                )
+                self.bump_project_runtime_section_revisions(
+                    ("files", "items", "analysis")
+                )
+
+                for rel_path in normalized_rel_paths:
+                    self.session.asset_decompress_cache.pop(rel_path, None)
+
+            self.item_service.clear_item_cache()
+        finally:
+            self.finish_file_operation()
+
+    def sync_session_meta_cache(self, meta: dict[str, Any]) -> None:
+        for key, value in meta.items():
+            self.session.meta_cache[str(key)] = value
+
+    def replace_session_item_cache(self, items: list[dict[str, Any]]) -> None:
+        self.session.item_cache = [dict(item) for item in items]
+        self.session.item_cache_index = {
+            int(item["id"]): index
+            for index, item in enumerate(self.session.item_cache)
+            if isinstance(item.get("id"), int)
         }
 
-    def reset_file(self, rel_path: str) -> None:
-        self.try_begin_guarded_file_operation()
-        self.complete_guarded_file_operation(
-            Localizer.get().workbench_progress_resetting_file,
-            lambda: self.project_file_service.reset_file(rel_path),
-            f"Failed to reset file: {rel_path}",
-        )
+    def normalize_workbench_parsed_items(
+        self,
+        parsed_items: list[dict[str, Any]],
+        *,
+        target_rel_path: str,
+    ) -> list[dict[str, Any]]:
+        normalized_items: list[dict[str, Any]] = []
+        for payload in parsed_items:
+            item_id = payload.get("id")
+            normalized_item: dict[str, Any] = {
+                "src": str(payload.get("src", "") or ""),
+                "dst": str(payload.get("dst", "") or ""),
+                "name_src": payload.get("name_src"),
+                "name_dst": payload.get("name_dst"),
+                "extra_field": payload.get("extra_field", ""),
+                "tag": str(payload.get("tag", "") or ""),
+                "row": int(payload.get("row", 0) or 0),
+                "file_type": str(payload.get("file_type", "NONE") or "NONE"),
+                "file_path": target_rel_path,
+                "text_type": str(payload.get("text_type", "NONE") or "NONE"),
+                "status": str(payload.get("status", "NONE") or "NONE"),
+                "retry_count": int(payload.get("retry_count", 0) or 0),
+            }
+            if item_id is not None:
+                normalized_item["id"] = int(item_id)
+            normalized_items.append(normalized_item)
+        return normalized_items
 
-    def delete_file(self, rel_path: str) -> None:
-        self.try_begin_guarded_file_operation()
-        self.complete_guarded_file_operation(
-            Localizer.get().workbench_progress_deleting_file,
-            lambda: self.project_file_service.delete_file(rel_path),
-            f"Failed to delete file: {rel_path}",
-        )
+    def write_meta_in_connection(
+        self,
+        *,
+        conn: Any,
+        meta: dict[str, Any],
+    ) -> None:
+        if self.session.db is None:
+            raise RuntimeError("工程未加载")
 
-    def delete_file_batch(self, rel_paths: list[str]) -> None:
+        meta_params = self.session.db.prepare_meta_upsert_params(meta)
+        if meta_params:
+            conn.executemany(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                meta_params,
+            )
+
+    def persist_add_file_payload(
+        self,
+        source_path: str,
+        target_rel_path: str,
+        *,
+        file_record: dict[str, Any],
+        parsed_items: list[dict[str, Any]],
+        translation_extras: dict[str, Any],
+        project_status: str,
+        prefilter_config: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        """持久化前端已确认的新增文件结果。"""
+
         self.try_begin_guarded_file_operation()
-        self.complete_guarded_file_operation(
-            Localizer.get().workbench_progress_deleting_file,
-            lambda: self.project_file_service.delete_file_batch(rel_paths),
-            "Failed to delete files in batch",
-        )
+        try:
+            with self.state_lock:
+                if not self.is_loaded():
+                    raise RuntimeError("工程未加载")
+
+                self.assert_expected_runtime_revisions(
+                    expected_section_revisions,
+                    ("files", "items", "analysis"),
+                )
+                db = self.session.db
+                if db is None:
+                    raise RuntimeError("工程未加载")
+                if db.asset_path_exists(target_rel_path):
+                    raise ValueError(Localizer.get().workbench_msg_file_exists)
+
+                record_rel_path = str(file_record.get("rel_path", "") or "")
+                if record_rel_path not in {"", target_rel_path}:
+                    raise ValueError("工作台文件记录无效")
+
+                with open(source_path, "rb") as f:
+                    original_data = f.read()
+
+                next_items = [dict(item) for item in self.get_all_item_dicts()]
+                next_items.extend(
+                    self.normalize_workbench_parsed_items(
+                        parsed_items,
+                        target_rel_path=target_rel_path,
+                    )
+                )
+                meta = self.build_analysis_reset_meta(
+                    translation_extras=translation_extras,
+                    project_status=project_status,
+                    prefilter_config=prefilter_config,
+                )
+                sort_index = int(
+                    file_record.get(
+                        "sort_index",
+                        len(self.get_all_asset_records()),
+                    )
+                    or 0
+                )
+
+                compressed_data = ZstdTool.compress(original_data)
+                with db.connection() as conn:
+                    db.add_asset(
+                        target_rel_path,
+                        compressed_data,
+                        len(original_data),
+                        sort_order=sort_index,
+                        conn=conn,
+                    )
+                    db.set_items(next_items, conn=conn)
+                    self.write_meta_in_connection(conn=conn, meta=meta)
+                    db.delete_analysis_item_checkpoints(conn=conn)
+                    db.clear_analysis_candidate_aggregates(conn=conn)
+                    conn.commit()
+
+                self.replace_session_item_cache(next_items)
+                self.sync_session_meta_cache(meta)
+                self.session.asset_decompress_cache.pop(target_rel_path, None)
+                self.bump_project_runtime_section_revisions(
+                    ("files", "items", "analysis")
+                )
+        finally:
+            self.finish_file_operation()
+
+    def persist_replace_file_payload(
+        self,
+        source_path: str,
+        rel_path: str,
+        target_rel_path: str,
+        *,
+        file_record: dict[str, Any],
+        parsed_items: list[dict[str, Any]],
+        translation_extras: dict[str, Any],
+        project_status: str,
+        prefilter_config: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        """持久化前端已确认的替换文件结果。"""
+
+        self.try_begin_guarded_file_operation()
+        try:
+            with self.state_lock:
+                if not self.is_loaded():
+                    raise RuntimeError("工程未加载")
+
+                self.assert_expected_runtime_revisions(
+                    expected_section_revisions,
+                    ("files", "items", "analysis"),
+                )
+                db = self.session.db
+                if db is None:
+                    raise RuntimeError("工程未加载")
+                if not db.asset_path_exists(rel_path):
+                    raise ValueError(Localizer.get().workbench_msg_file_not_found)
+
+                record_rel_path = str(file_record.get("rel_path", "") or "")
+                if record_rel_path not in {"", target_rel_path}:
+                    raise ValueError("工作台文件记录无效")
+
+                if target_rel_path.casefold() != rel_path.casefold():
+                    self.project_file_service.ensure_replace_target_path_not_conflict(
+                        db.get_all_asset_paths(),
+                        rel_path,
+                        target_rel_path,
+                    )
+
+                with open(source_path, "rb") as f:
+                    original_data = f.read()
+
+                next_items = [
+                    dict(item)
+                    for item in self.get_all_item_dicts()
+                    if str(item.get("file_path", "")) != rel_path
+                ]
+                next_items.extend(
+                    self.normalize_workbench_parsed_items(
+                        parsed_items,
+                        target_rel_path=target_rel_path,
+                    )
+                )
+                meta = self.build_analysis_reset_meta(
+                    translation_extras=translation_extras,
+                    project_status=project_status,
+                    prefilter_config=prefilter_config,
+                )
+
+                compressed_data = ZstdTool.compress(original_data)
+                with db.connection() as conn:
+                    db.update_asset(
+                        rel_path,
+                        compressed_data,
+                        len(original_data),
+                        conn=conn,
+                    )
+                    if target_rel_path != rel_path:
+                        db.update_asset_path(
+                            rel_path,
+                            target_rel_path,
+                            conn=conn,
+                        )
+                    db.set_items(next_items, conn=conn)
+                    self.write_meta_in_connection(conn=conn, meta=meta)
+                    db.delete_analysis_item_checkpoints(conn=conn)
+                    db.clear_analysis_candidate_aggregates(conn=conn)
+                    conn.commit()
+
+                self.replace_session_item_cache(next_items)
+                self.sync_session_meta_cache(meta)
+                self.session.asset_decompress_cache.pop(rel_path, None)
+                self.session.asset_decompress_cache.pop(target_rel_path, None)
+                self.bump_project_runtime_section_revisions(
+                    ("files", "items", "analysis")
+                )
+        finally:
+            self.finish_file_operation()
 
     def timestamp_suffix_context(self) -> AbstractContextManager[None]:
         return self.export_path_service.timestamp_suffix_context(

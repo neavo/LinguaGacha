@@ -1,175 +1,226 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api_fetch } from '@/app/desktop-api'
+import { api_fetch } from "@/app/desktop-api";
+import { createProjectPrefilterClient } from "@/app/project-runtime/project-prefilter-client";
+import { apply_project_prefilter_mutation } from "@/app/project-runtime/project-prefilter-mutation";
 import {
   normalize_settings_snapshot,
+  type SettingsSnapshot,
   type SettingsSnapshotPayload,
-} from '@/app/state/desktop-runtime-context'
-import { useProjectPagesBarrier } from '@/app/state/project-pages-context'
-import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
-import { useDesktopToast } from '@/app/state/use-desktop-toast'
-import { useI18n } from '@/i18n'
+} from "@/app/state/desktop-runtime-context";
+import { useProjectPagesBarrier } from "@/app/state/project-pages-context";
+import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
+import { useDesktopToast } from "@/app/state/use-desktop-toast";
+import { useI18n } from "@/i18n";
 import {
   build_laboratory_snapshot,
   type LaboratoryPendingField,
   type LaboratoryPendingState,
   type LaboratorySnapshot,
-} from '@/pages/laboratory-page/types'
+} from "@/pages/laboratory-page/types";
 
-type SettingsUpdateRequest = Record<string, unknown>
+type SettingsUpdateRequest = Record<string, unknown>;
 
 type UseLaboratoryPageStateResult = {
-  snapshot: LaboratorySnapshot
-  pending_state: LaboratoryPendingState
-  refresh_error: string | null
-  is_refreshing: boolean
-  is_task_busy: boolean
-  refresh_snapshot: () => Promise<void>
-  update_mtool_optimizer_enable: (next_checked: boolean) => Promise<void>
-}
+  snapshot: LaboratorySnapshot;
+  pending_state: LaboratoryPendingState;
+  refresh_error: string | null;
+  is_refreshing: boolean;
+  is_task_busy: boolean;
+  refresh_snapshot: () => Promise<void>;
+  update_mtool_optimizer_enable: (next_checked: boolean) => Promise<void>;
+};
 
 function create_pending_state(): LaboratoryPendingState {
   return {
     mtool_optimizer_enable: false,
-  }
+  };
 }
 
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   const {
     settings_snapshot,
     task_snapshot,
+    project_snapshot,
+    project_store,
     set_settings_snapshot,
+    commit_local_project_patch,
+    refresh_project_runtime,
+    align_project_runtime_ack,
     refresh_settings,
-  } = useDesktopRuntime()
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier()
-  const { push_toast, run_modal_progress_toast } = useDesktopToast()
-  const { t } = useI18n()
+  } = useDesktopRuntime();
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
+  const { push_toast, run_modal_progress_toast } = useDesktopToast();
+  const { t } = useI18n();
   const [snapshot, set_snapshot] = useState<LaboratorySnapshot>(() => {
-    return build_laboratory_snapshot(settings_snapshot)
-  })
+    return build_laboratory_snapshot(settings_snapshot);
+  });
   const [pending_state, set_pending_state] = useState<LaboratoryPendingState>(() => {
-    return create_pending_state()
-  })
-  const [refresh_error, set_refresh_error] = useState<string | null>(null)
-  const [is_refreshing, set_is_refreshing] = useState<boolean>(false)
-  const snapshot_ref = useRef<LaboratorySnapshot>(snapshot)
+    return create_pending_state();
+  });
+  const [refresh_error, set_refresh_error] = useState<string | null>(null);
+  const [is_refreshing, set_is_refreshing] = useState<boolean>(false);
+  const snapshot_ref = useRef<LaboratorySnapshot>(snapshot);
+  const project_prefilter_client_ref = useRef(createProjectPrefilterClient());
   const context_snapshot = useMemo(() => {
-    return build_laboratory_snapshot(settings_snapshot)
-  }, [settings_snapshot])
+    return build_laboratory_snapshot(settings_snapshot);
+  }, [settings_snapshot]);
 
   useEffect(() => {
-    snapshot_ref.current = snapshot
-  }, [snapshot])
+    snapshot_ref.current = snapshot;
+  }, [snapshot]);
 
   useEffect(() => {
-    set_snapshot(context_snapshot)
-  }, [context_snapshot])
+    set_snapshot(context_snapshot);
+  }, [context_snapshot]);
 
-  const is_task_busy = task_snapshot.busy
+  const is_task_busy = task_snapshot.busy;
 
   const set_pending = useCallback((field: LaboratoryPendingField, next_pending: boolean): void => {
     set_pending_state((previous_state) => {
       return {
         ...previous_state,
         [field]: next_pending,
-      }
-    })
-  }, [])
+      };
+    });
+  }, []);
 
   const refresh_snapshot = useCallback(async (): Promise<void> => {
-    set_is_refreshing(true)
+    set_is_refreshing(true);
 
     try {
-      const next_settings_snapshot = await refresh_settings()
-      set_snapshot(build_laboratory_snapshot(next_settings_snapshot))
-      set_refresh_error(null)
+      const next_settings_snapshot = await refresh_settings();
+      set_snapshot(build_laboratory_snapshot(next_settings_snapshot));
+      set_refresh_error(null);
     } catch (error) {
       if (error instanceof Error) {
-        set_refresh_error(error.message)
+        set_refresh_error(error.message);
       } else {
-        set_refresh_error(t('laboratory_page.feedback.refresh_failed'))
+        set_refresh_error(t("laboratory_page.feedback.refresh_failed"));
       }
     } finally {
-      set_is_refreshing(false)
+      set_is_refreshing(false);
     }
-  }, [refresh_settings, t])
+  }, [refresh_settings, t]);
 
   useEffect(() => {
-    void refresh_snapshot()
-  }, [refresh_snapshot])
+    void refresh_snapshot();
+  }, [refresh_snapshot]);
+
+  useEffect(() => {
+    const project_prefilter_client = project_prefilter_client_ref.current;
+    return () => {
+      project_prefilter_client.dispose();
+    };
+  }, []);
 
   const commit_update = useCallback(
     async (
       field: LaboratoryPendingField,
       request: SettingsUpdateRequest,
       next_snapshot: LaboratorySnapshot,
-    ): Promise<boolean> => {
-      const previous_snapshot = snapshot_ref.current
-      set_snapshot(next_snapshot)
-      set_pending(field, true)
+    ): Promise<SettingsSnapshot | null> => {
+      const previous_snapshot = snapshot_ref.current;
+      set_snapshot(next_snapshot);
+      set_pending(field, true);
 
       try {
-        const payload = await api_fetch<SettingsSnapshotPayload>('/api/settings/update', request)
-        const next_settings_snapshot = normalize_settings_snapshot(payload)
-        set_settings_snapshot(next_settings_snapshot)
-        set_snapshot(build_laboratory_snapshot(next_settings_snapshot))
-        set_refresh_error(null)
-        return true
+        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", request);
+        const next_settings_snapshot = normalize_settings_snapshot(payload);
+        set_settings_snapshot(next_settings_snapshot);
+        set_snapshot(build_laboratory_snapshot(next_settings_snapshot));
+        set_refresh_error(null);
+        return next_settings_snapshot;
       } catch (error) {
         set_snapshot((current_snapshot) => {
           const reverted_snapshot = {
             ...current_snapshot,
+          };
+
+          if ("mtool_optimizer_enable" in request) {
+            reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable;
           }
 
-          if ('mtool_optimizer_enable' in request) {
-            reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable
-          }
-
-          return reverted_snapshot
-        })
+          return reverted_snapshot;
+        });
 
         if (error instanceof Error) {
-          push_toast('error', error.message)
+          push_toast("error", error.message);
         } else {
-          push_toast('error', t('laboratory_page.feedback.update_failed'))
+          push_toast("error", t("laboratory_page.feedback.update_failed"));
         }
-        return false
+        return null;
       } finally {
-        set_pending(field, false)
+        set_pending(field, false);
       }
     },
     [push_toast, set_pending, set_settings_snapshot, t],
-  )
+  );
+
+  const apply_prefilter_from_settings = useCallback(
+    async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
+      if (!project_snapshot.loaded) {
+        return;
+      }
+
+      await apply_project_prefilter_mutation({
+        state: project_store.getState(),
+        source_language: next_settings_snapshot.source_language,
+        mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+        compute_prefilter: (input) => {
+          return project_prefilter_client_ref.current.compute(input);
+        },
+        commit_local_project_patch,
+        align_project_runtime_ack,
+        refresh_project_runtime,
+      });
+    },
+    [
+      align_project_runtime_ack,
+      commit_local_project_patch,
+      project_snapshot.loaded,
+      project_store,
+      refresh_project_runtime,
+    ],
+  );
 
   const update_mtool_optimizer_enable = useCallback(
     async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current
+      const previous_snapshot = snapshot_ref.current;
 
       if (is_task_busy || previous_snapshot.mtool_optimizer_enable === next_checked) {
-        return
+        return;
       }
 
-      const barrier_checkpoint = create_barrier_checkpoint()
+      const barrier_checkpoint = create_barrier_checkpoint();
 
       await run_modal_progress_toast({
-        message: t('laboratory_page.feedback.mtool_optimizer_loading_toast'),
+        message: t("laboratory_page.feedback.mtool_optimizer_loading_toast"),
         task: async () => {
-          const succeeded = await commit_update('mtool_optimizer_enable', {
-            mtool_optimizer_enable: next_checked,
-          }, {
-            ...previous_snapshot,
-            mtool_optimizer_enable: next_checked,
-          })
+          const next_settings_snapshot = await commit_update(
+            "mtool_optimizer_enable",
+            {
+              mtool_optimizer_enable: next_checked,
+            },
+            {
+              ...previous_snapshot,
+              mtool_optimizer_enable: next_checked,
+            },
+          );
 
-          if (succeeded) {
-            await wait_for_barrier('project_cache_refresh', {
-              checkpoint: barrier_checkpoint,
-            })
+          if (next_settings_snapshot === null) {
+            return;
           }
+
+          await apply_prefilter_from_settings(next_settings_snapshot);
+          await wait_for_barrier("project_cache_refresh", {
+            checkpoint: barrier_checkpoint,
+          });
         },
-      })
+      });
     },
     [
+      apply_prefilter_from_settings,
       commit_update,
       create_barrier_checkpoint,
       is_task_busy,
@@ -177,7 +228,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       t,
       wait_for_barrier,
     ],
-  )
+  );
 
   const value = useMemo<UseLaboratoryPageStateResult>(() => {
     return {
@@ -188,7 +239,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       is_task_busy,
       refresh_snapshot,
       update_mtool_optimizer_enable,
-    }
+    };
   }, [
     is_refreshing,
     is_task_busy,
@@ -197,7 +248,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     refresh_snapshot,
     snapshot,
     update_mtool_optimizer_enable,
-  ])
+  ]);
 
-  return value
+  return value;
 }

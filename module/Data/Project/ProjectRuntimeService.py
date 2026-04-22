@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from api.v2.Models.ProjectRuntime import ProjectMutationAck
 from api.v2.Models.ProjectRuntime import RowBlock
 from module.Data.Core.Item import Item
 from module.Data.Quality.PromptService import PromptService
 from module.Data.Quality.QualityRuleSnapshotService import (
     QualityRuleSnapshotService,
+)
+from module.Data.Project.ProjectRuntimeRevisionService import (
+    ProjectRuntimeRevisionService,
 )
 from module.Data.Proofreading.ProofreadingRevisionService import (
     ProofreadingRevisionService,
@@ -14,12 +18,11 @@ from module.Data.Proofreading.ProofreadingRevisionService import (
 class ProjectRuntimeService:
     """把当前项目运行态编码成 V2 bootstrap 可消费的稳定分段块。"""
 
-    FILES_BLOCK_SCHEMA: str = "project-files.v1"
     FILES_BLOCK_FIELDS: tuple[str, ...] = (
         "rel_path",
         "file_type",
+        "sort_index",
     )
-    ITEMS_BLOCK_SCHEMA: str = "project-items.v1"
     ITEMS_BLOCK_FIELDS: tuple[str, ...] = (
         "item_id",
         "file_path",
@@ -49,6 +52,7 @@ class ProjectRuntimeService:
         )
         self.prompt_service = PromptService(quality_rule_service, meta_service)
         self.proofreading_revision_service = ProofreadingRevisionService(meta_service)
+        self.runtime_revision_service = ProjectRuntimeRevisionService(meta_service)
 
     def build_project_block(self) -> dict[str, object]:
         """构建最小项目骨架块，供前端先拿到加载态与项目路径。"""
@@ -77,12 +81,12 @@ class ProjectRuntimeService:
             (
                 str(record["rel_path"]),
                 str(record["file_type"]),
+                int(record["sort_index"]),
             )
             for record in self.build_file_records()
         )
 
         return RowBlock(
-            schema=self.FILES_BLOCK_SCHEMA,
             fields=self.FILES_BLOCK_FIELDS,
             rows=rows,
         ).to_dict()
@@ -105,7 +109,6 @@ class ProjectRuntimeService:
         )
 
         return RowBlock(
-            schema=self.ITEMS_BLOCK_SCHEMA,
             fields=self.ITEMS_BLOCK_FIELDS,
             rows=rows,
         ).to_dict()
@@ -125,8 +128,8 @@ class ProjectRuntimeService:
             if rel_paths is not None
             else None
         )
-        ordered_rel_paths = self.normalize_rel_paths(
-            self.call_data_manager("get_all_asset_paths", [])
+        ordered_asset_records = self.normalize_asset_records(
+            self.call_data_manager("get_all_asset_records", [])
         )
         records_by_path: dict[str, dict[str, object]] = {}
         for item in self.data_manager.get_items_all():
@@ -141,9 +144,10 @@ class ProjectRuntimeService:
                 "file_type": self.resolve_file_type_value(item),
             }
 
-        if ordered_rel_paths:
+        if ordered_asset_records:
             ordered_records: list[dict[str, object]] = []
-            for rel_path in ordered_rel_paths:
+            for asset_record in ordered_asset_records:
+                rel_path = asset_record["rel_path"]
                 if target_rel_paths is not None and rel_path not in target_rel_paths:
                     continue
 
@@ -154,11 +158,18 @@ class ProjectRuntimeService:
                             "file_type",
                             Item.FileType.NONE.value,
                         ),
+                        "sort_index": int(asset_record["sort_index"]),
                     }
                 )
             return ordered_records
 
-        return list(records_by_path.values())
+        return [
+            {
+                **record,
+                "sort_index": index,
+            }
+            for index, record in enumerate(records_by_path.values())
+        ]
 
     def build_item_records(
         self,
@@ -180,6 +191,7 @@ class ProjectRuntimeService:
                     "row_number": int(item.get_row() or 0),
                     "src": item.get_src(),
                     "dst": item.get_dst(),
+                    "name_dst": item.get_name_dst(),
                     "status": self.resolve_status_value(item),
                     "text_type": self.resolve_enum_value(item.get_text_type()),
                     "retry_count": int(item.get_retry_count() or 0),
@@ -212,6 +224,9 @@ class ProjectRuntimeService:
             "extras": self.call_data_manager("get_analysis_extras", {}),
             "candidate_count": int(
                 self.call_data_manager("get_analysis_candidate_count", 0) or 0
+            ),
+            "candidate_aggregate": self.call_data_manager(
+                "get_analysis_candidate_aggregate", {}
             ),
             "status_summary": self.call_data_manager("get_analysis_status_summary", {}),
         }
@@ -269,6 +284,8 @@ class ProjectRuntimeService:
         }
 
     def get_section_revision(self, stage: str) -> int:
+        if stage in ProjectRuntimeRevisionService.SUPPORTED_SECTIONS:
+            return int(self.runtime_revision_service.get_revision(stage))
         if stage == "quality":
             return max(
                 int(self.build_quality_rule_slice("glossary")["revision"]),
@@ -297,6 +314,21 @@ class ProjectRuntimeService:
             "task": self.get_section_revision("task"),
         }
 
+    def build_project_mutation_ack(
+        self,
+        updated_sections: tuple[str, ...] | list[str],
+    ) -> dict[str, object]:
+        section_revisions = {
+            str(section): self.get_section_revision(str(section))
+            for section in updated_sections
+        }
+        project_revision = max(self.build_section_revisions().values(), default=0)
+        return ProjectMutationAck(
+            accepted=True,
+            project_revision=project_revision,
+            section_revisions=section_revisions,
+        ).to_dict()
+
     def call_data_manager(
         self,
         method_name: str,
@@ -310,18 +342,33 @@ class ProjectRuntimeService:
             return method(*args)
         return fallback
 
-    def normalize_rel_paths(self, value: object) -> list[str]:
-        """把文件路径列表规整成稳定顺序，过滤空值并去重。"""
+    def normalize_asset_records(self, value: object) -> list[dict[str, object]]:
+        """把资产顺序规整成稳定 runtime 记录。"""
 
         if not isinstance(value, list):
             return []
 
-        normalized_rel_paths: list[str] = []
+        normalized_records: list[dict[str, object]] = []
         seen_rel_paths: set[str] = set()
-        for raw_rel_path in value:
-            rel_path = str(raw_rel_path).strip()
+        for raw_record in value:
+            if not isinstance(raw_record, dict):
+                continue
+            rel_path = str(
+                raw_record.get("path", raw_record.get("rel_path", ""))
+            ).strip()
             if rel_path == "" or rel_path in seen_rel_paths:
                 continue
             seen_rel_paths.add(rel_path)
-            normalized_rel_paths.append(rel_path)
-        return normalized_rel_paths
+            try:
+                sort_index = int(
+                    raw_record.get("sort_order", raw_record.get("sort_index", 0))
+                )
+            except TypeError, ValueError:
+                sort_index = 0
+            normalized_records.append(
+                {
+                    "rel_path": rel_path,
+                    "sort_index": max(0, sort_index),
+                }
+            )
+        return normalized_records

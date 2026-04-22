@@ -21,6 +21,9 @@ class StubItem:
     def get_dst(self):
         return "译文"
 
+    def get_name_dst(self):
+        return None
+
     def get_status(self):
         return StubStatus()
 
@@ -35,20 +38,19 @@ class StubItem:
 
 
 class StubDataManager:
-    def get_all_asset_paths(self):
-        return ["chapter01.txt"]
+    def get_all_asset_records(self):
+        return [{"path": "chapter01.txt", "sort_order": 0}]
 
     def get_items_all(self):
         return [StubItem()]
 
 
-def test_build_items_block_uses_schema_and_rows():
+def test_build_items_block_uses_fields_and_rows():
     data_manager = StubDataManager()
     service = ProjectRuntimeService(data_manager)
 
     block = service.build_items_block()
 
-    assert block["schema"] == "project-items.v1"
     assert block["fields"] == [
         "item_id",
         "file_path",
@@ -62,15 +64,14 @@ def test_build_items_block_uses_schema_and_rows():
     assert block["rows"] == [[1, "chapter01.txt", 0, "原文", "译文", "DONE", "", 0]]
 
 
-def test_build_files_block_uses_schema_and_rows():
+def test_build_files_block_uses_fields_and_rows():
     data_manager = StubDataManager()
     service = ProjectRuntimeService(data_manager)
 
     block = service.build_files_block()
 
-    assert block["schema"] == "project-files.v1"
-    assert block["fields"] == ["rel_path", "file_type"]
-    assert block["rows"] == [["chapter01.txt", "TXT"]]
+    assert block["fields"] == ["rel_path", "file_type", "sort_index"]
+    assert block["rows"] == [["chapter01.txt", "TXT", 0]]
 
 
 class OrderedStubItem:
@@ -94,6 +95,9 @@ class OrderedStubItem:
     def get_dst(self):
         return "译文"
 
+    def get_name_dst(self):
+        return None
+
     def get_status(self):
         return StubStatus()
 
@@ -108,8 +112,12 @@ class OrderedStubItem:
 
 
 class OrderedStubDataManager:
-    def get_all_asset_paths(self):
-        return ["script/a.txt", "script/b.txt", "script/c.txt"]
+    def get_all_asset_records(self):
+        return [
+            {"path": "script/a.txt", "sort_order": 0},
+            {"path": "script/b.txt", "sort_order": 1},
+            {"path": "script/c.txt", "sort_order": 2},
+        ]
 
     def get_items_all(self):
         return [
@@ -125,7 +133,7 @@ def test_build_files_block_preserves_asset_sort_order():
     block = service.build_files_block()
 
     assert block["rows"] == [
-        ["script/a.txt", "TXT"],
-        ["script/b.txt", "TXT"],
-        ["script/c.txt", "NONE"],
+        ["script/a.txt", "TXT", 0],
+        ["script/b.txt", "TXT", 1],
+        ["script/c.txt", "NONE", 2],
     ]

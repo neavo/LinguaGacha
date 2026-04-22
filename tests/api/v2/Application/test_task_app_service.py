@@ -1,7 +1,4 @@
-import pytest
-
 from base.Base import Base
-from module.Localizer.Localizer import Localizer
 
 
 def test_start_translation_returns_request_ack_and_emits_event(
@@ -259,75 +256,6 @@ def test_reset_analysis_failed_returns_latest_snapshot(
     ]
     assert fake_task_data_manager.reset_failed_analysis_checkpoints_calls == 1
     assert fake_task_data_manager.refresh_analysis_progress_snapshot_cache_calls == 1
-
-
-def test_import_analysis_glossary_returns_import_count_and_latest_candidate_count(
-    task_app_service,
-    fake_task_data_manager,
-) -> None:
-    fake_task_data_manager.analysis_snapshot["line"] = 8
-    fake_task_data_manager.analysis_snapshot["total_line"] = 10
-    fake_task_data_manager.analysis_candidate_count = 1
-    fake_task_data_manager.import_analysis_candidates_result = 3
-
-    result = task_app_service.import_analysis_glossary({})
-
-    assert result["accepted"] is True
-    assert result["imported_count"] == 3
-    assert result["task"]["task_type"] == "analysis"
-    assert result["task"]["analysis_candidate_count"] == 1
-    assert task_app_service.emitted_events == [
-        (
-            Base.Event.PROJECT_CHECK,
-            {"sub_event": Base.SubEvent.REQUEST},
-        ),
-        (
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            {
-                "sub_event": Base.SubEvent.DONE,
-                "imported_count": 3,
-            },
-        ),
-    ]
-
-
-def test_import_analysis_glossary_emits_error_event_when_import_fails_after_guard(
-    task_app_service,
-    fake_task_data_manager,
-) -> None:
-    fake_task_data_manager.import_analysis_candidates_result = None
-
-    with pytest.raises(ValueError, match=Localizer.get().alert_project_not_loaded):
-        task_app_service.import_analysis_glossary({})
-
-    assert task_app_service.emitted_events == [
-        (
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            {"sub_event": Base.SubEvent.ERROR},
-        )
-    ]
-
-
-def test_import_analysis_glossary_rejects_when_project_not_loaded(
-    task_app_service,
-    fake_task_data_manager,
-) -> None:
-    fake_task_data_manager.loaded = False
-
-    with pytest.raises(ValueError, match=Localizer.get().alert_project_not_loaded):
-        task_app_service.import_analysis_glossary({})
-    assert task_app_service.emitted_events == []
-
-
-def test_import_analysis_glossary_rejects_when_engine_busy(
-    task_app_service,
-    fake_engine,
-) -> None:
-    fake_engine.status = Base.TaskStatus.ANALYZING
-
-    with pytest.raises(ValueError, match=Localizer.get().task_running):
-        task_app_service.import_analysis_glossary({})
-    assert task_app_service.emitted_events == []
 
 
 def test_export_translation_emits_export_event_and_returns_accept_ack(

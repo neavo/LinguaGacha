@@ -118,56 +118,6 @@ class TaskAppService:
 
         return self.request_analysis_reset(request, reset_all=False)
 
-    def import_analysis_glossary(self, request: dict[str, Any]) -> dict[str, object]:
-        """把分析候选同步导入术语表，并把最新候选数回传给 UI。"""
-
-        del request
-        expected_lg_path = self.ensure_analysis_mutation_ready()
-        try:
-            imported_count = self.data_manager.import_analysis_candidates(
-                expected_lg_path=expected_lg_path
-            )
-            if imported_count is None:
-                raise ValueError(Localizer.get().alert_project_not_loaded)
-
-            refresh_candidate_count = getattr(
-                self.data_manager,
-                "sync_importable_analysis_candidate_count",
-                None,
-            )
-            if callable(refresh_candidate_count):
-                analysis_candidate_count = int(refresh_candidate_count() or 0)
-            else:
-                analysis_candidate_count = int(
-                    self.data_manager.get_analysis_candidate_count() or 0
-                )
-
-            self.event_emitter(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-            self.event_emitter(
-                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                {
-                    "sub_event": Base.SubEvent.DONE,
-                    "imported_count": int(imported_count),
-                },
-            )
-
-            task_snapshot = self.build_task_snapshot("analysis")
-            task_snapshot["analysis_candidate_count"] = analysis_candidate_count
-            return {
-                "accepted": True,
-                "imported_count": int(imported_count),
-                "task": task_snapshot,
-            }
-        except Exception:
-            self.event_emitter(
-                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                {"sub_event": Base.SubEvent.ERROR},
-            )
-            raise
-
     def export_translation(self, request: dict[str, Any]) -> dict[str, object]:
         """请求导出当前工程译文。"""
 

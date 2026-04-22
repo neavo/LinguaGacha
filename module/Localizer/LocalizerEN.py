@@ -85,7 +85,6 @@ class LocalizerEN(LocalizerZH):
     translation_resetting: str = "Resetting …"
 
     # 分析
-    analysis_page_import_success: str = "Import succeeded, added {COUNT} entries …"
     analysis_task_source_texts: str = "Analysis Input:"
     analysis_task_extracted_terms: str = "Extracted Terms:"
     analysis_task_no_terms: str = "No terms extracted"
@@ -98,11 +97,7 @@ class LocalizerEN(LocalizerZH):
     # 工作台
     workbench_msg_file_exists: str = "File already exists …"
     workbench_msg_unsupported_format: str = "Unsupported file format"
-    workbench_msg_replace_format_mismatch: str = "File format mismatch, cannot replace"
     workbench_msg_replace_name_conflict: str = "File already exists …"
-    workbench_progress_adding_file: str = "Adding file …"
-    workbench_progress_resetting_file: str = "Resetting file …"
-    workbench_progress_deleting_file: str = "Deleting file …"
     workbench_msg_file_not_found: str = "File not found"
 
     # 质量类通用

@@ -3,7 +3,6 @@ from collections.abc import Callable
 from api.v2.Application.TaskAppService import TaskAppService
 from api.v2.Client.ApiClient import ApiClient
 from api.v2.Client.TaskApiClient import TaskApiClient
-from api.v2.Models.Task import AnalysisGlossaryImportResult
 from api.v2.Models.Task import TaskSnapshot
 from api.v2.Server.Routes.TaskRoutes import TaskRoutes
 from tests.api.support.application_fakes import FakeEngine
@@ -61,31 +60,6 @@ def test_task_api_client_reset_methods_return_task_snapshot(
     assert analysis_all_result.task_type == "analysis"
     assert isinstance(analysis_failed_result, TaskSnapshot)
     assert analysis_failed_result.task_type == "analysis"
-
-
-def test_task_api_client_import_analysis_glossary_returns_objectified_result(
-    fake_task_data_manager: FakeTaskDataManager,
-    fake_engine: FakeEngine,
-    start_api_server: Callable[..., str],
-) -> None:
-    fake_task_data_manager.analysis_snapshot["line"] = 9
-    fake_task_data_manager.analysis_candidate_count = 6
-    fake_task_data_manager.import_analysis_candidates_result = 4
-    base_url = start_api_server(
-        task_app_service=TaskAppService(
-            data_manager=fake_task_data_manager,
-            engine=fake_engine,
-        )
-    )
-    task_client = TaskApiClient(ApiClient(base_url))
-
-    result = task_client.import_analysis_glossary()
-
-    assert isinstance(result, AnalysisGlossaryImportResult)
-    assert result.accepted is True
-    assert result.imported_count == 4
-    assert result.task.task_type == "analysis"
-    assert result.task.analysis_candidate_count == 6
 
 
 def test_task_api_client_start_and_stop_commands_use_snapshot_contract(

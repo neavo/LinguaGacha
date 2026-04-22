@@ -194,32 +194,7 @@ def test_publish_event_supports_v2_patch_bridge() -> None:
     assert envelope.data["patch"][0]["items"][0]["item_id"] == 1
 
 
-def test_publish_runtime_refresh_event_supports_v2_bootstrap_patch() -> None:
-    service = EventStreamService(
-        event_bridge=ProjectPatchEventBridge(
-            runtime_service=StubRuntimeService(),
-            task_snapshot_builder=build_task_snapshot,
-        )
-    )
-    subscriber = service.add_subscriber()
-
-    service.publish_internal_event(
-        Base.Event.PROJECT_RUNTIME_REFRESH,
-        {
-            "source": "file_op",
-            "updatedSections": ["files", "items", "analysis"],
-        },
-    )
-
-    envelope = subscriber.get_nowait()
-    assert envelope.topic == "project.patch"
-    assert envelope.data == {
-        "source": "file_op",
-        "updatedSections": ["files", "items", "analysis"],
-    }
-
-
-def test_publish_translation_reset_all_done_supports_runtime_refresh_patch() -> None:
+def test_publish_translation_reset_all_done_supports_section_reload_patch() -> None:
     service = EventStreamService(
         event_bridge=ProjectPatchEventBridge(
             runtime_service=StubRuntimeService(),
@@ -237,34 +212,14 @@ def test_publish_translation_reset_all_done_supports_runtime_refresh_patch() -> 
 
     envelope = subscriber.get_nowait()
     assert envelope.topic == "project.patch"
-    assert envelope.data == {
-        "source": "translation_reset_all",
-        "updatedSections": ["items", "analysis", "task"],
+    assert envelope.data["source"] == "translation_reset_all"
+    assert envelope.data["updatedSections"] == ["items", "analysis", "task"]
+    assert envelope.data["projectRevision"] == 8
+    assert envelope.data["sectionRevisions"] == {
+        "items": 0,
+        "analysis": 8,
+        "task": 6,
     }
-
-
-def test_publish_analysis_import_glossary_done_supports_quality_patch() -> None:
-    service = EventStreamService(
-        event_bridge=ProjectPatchEventBridge(
-            runtime_service=StubRuntimeService(),
-            task_snapshot_builder=build_task_snapshot,
-        )
-    )
-    subscriber = service.add_subscriber()
-
-    service.publish_internal_event(
-        Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "imported_count": 16,
-        },
-    )
-
-    envelope = subscriber.get_nowait()
-    assert envelope.topic == "project.patch"
-    assert envelope.data["source"] == "analysis_import_glossary"
-    assert envelope.data["updatedSections"] == ["quality", "analysis", "task"]
-    assert envelope.data["patch"][0]["op"] == "replace_quality"
 
 
 def test_publish_unmapped_event_with_patch_bridge_is_ignored() -> None:

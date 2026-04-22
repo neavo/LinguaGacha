@@ -9,9 +9,13 @@ class ProjectRoutes:
     CREATE_PATH: str = "/api/v2/project/create"
     SNAPSHOT_PATH: str = "/api/v2/project/snapshot"
     UNLOAD_PATH: str = "/api/v2/project/unload"
+    APPLY_PREFILTER_PATH: str = "/api/v2/project/apply-prefilter"
+    SETTINGS_SYNC_META_PATH: str = "/api/v2/project/settings/sync-meta"
+    ANALYSIS_IMPORT_GLOSSARY_PATH: str = "/api/v2/project/analysis/import-glossary"
     SOURCE_FILES_PATH: str = "/api/v2/project/source-files"
     PREVIEW_PATH: str = "/api/v2/project/preview"
     WORKBENCH_ADD_FILE_PATH: str = "/api/v2/project/workbench/add-file"
+    WORKBENCH_PARSE_FILE_PATH: str = "/api/v2/project/workbench/parse-file"
     WORKBENCH_REPLACE_FILE_PATH: str = "/api/v2/project/workbench/replace-file"
     WORKBENCH_RESET_FILE_PATH: str = "/api/v2/project/workbench/reset-file"
     WORKBENCH_DELETE_FILE_PATH: str = "/api/v2/project/workbench/delete-file"
@@ -69,6 +73,29 @@ class ProjectRoutes:
             )
             core_api_server.add_json_route(
                 "POST",
+                cls.APPLY_PREFILTER_PATH,
+                lambda request: ApiResponse(
+                    ok=True, data=project_app_service.apply_prefilter(request)
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
+                cls.SETTINGS_SYNC_META_PATH,
+                lambda request: ApiResponse(
+                    ok=True,
+                    data=project_app_service.sync_project_settings_meta(request),
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
+                cls.ANALYSIS_IMPORT_GLOSSARY_PATH,
+                lambda request: ApiResponse(
+                    ok=True,
+                    data=project_app_service.import_analysis_glossary(request),
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
                 cls.SOURCE_FILES_PATH,
                 lambda request: ApiResponse(
                     ok=True, data=project_app_service.collect_source_files(request)
@@ -82,6 +109,13 @@ class ProjectRoutes:
                 ),
             )
         if workbench_app_service is not None:
+            core_api_server.add_json_route(
+                "POST",
+                cls.WORKBENCH_PARSE_FILE_PATH,
+                lambda request: ApiResponse(
+                    ok=True, data=workbench_app_service.parse_file(request)
+                ),
+            )
             core_api_server.add_json_route(
                 "POST",
                 cls.WORKBENCH_ADD_FILE_PATH,

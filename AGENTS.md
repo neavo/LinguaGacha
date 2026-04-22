@@ -90,11 +90,13 @@ flowchart TD
 ### 5.1 最低验证要求
 | 变更类型 | 最低验证 |
 | --- | --- |
-| Python 业务逻辑、数据流、API 行为变化 | `uv run pytest` + 相关文件 `uv run ruff format` / `uv run ruff check --fix` |
-| API 契约、错误码、SSE topic 变化 | `uv run pytest`，并补齐或更新对应 `api` 测试 |
-| Electron 主进程、预加载、共享桥接变化 | `cd frontend && npm run lint` + `npx tsc -p tsconfig.node.json --noEmit` |
-| 渲染层结构、组件契约、样式边界、导航变化 | `cd frontend && npm run lint` + `npm run renderer:audit` + `npx tsc -p tsconfig.json --noEmit` + `npx tsc -p tsconfig.node.json --noEmit` |
+| Python 业务逻辑、数据流、API 行为变化 | 相关文件 `uv run ruff format` + `uv run ruff check --fix`，再执行 `uv run pytest` |
+| API 契约、错误码、SSE topic 变化 | 相关文件 `uv run ruff format` + `uv run ruff check --fix`，执行 `uv run pytest`，并补齐或更新对应 `api` 测试 |
+| Electron 主进程、预加载、共享桥接变化 | `cd frontend && npm run format` + `npm run format:check` + `npm run lint` + `npx tsc -p tsconfig.node.json --noEmit` |
+| 渲染层结构、组件契约、样式边界、导航变化 | `cd frontend && npm run format` + `npm run format:check` + `npm run lint` + `npm run renderer:audit` + `npx tsc -p tsconfig.json --noEmit` + `npx tsc -p tsconfig.node.json --noEmit` |
 | 仅文档改动 | 自检链接、命名、阅读路径和权威引用是否仍然准确 |
+
+- 本节列的是交付前必须完成的命令级下限；若对应子工程 `SPEC.md` 为当前改动声明了更具体的验证或格式化入口，按更具体者执行。
 
 ### 5.2 文档同步规则
 | 变更内容 | 必须同步 |

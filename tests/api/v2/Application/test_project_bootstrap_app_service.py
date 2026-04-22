@@ -9,13 +9,12 @@ class StubRuntimeService:
 
     def build_files_block(self):
         return {
-            "schema": "project-files.v1",
-            "fields": ["rel_path"],
-            "rows": [["a.txt"]],
+            "fields": ["rel_path", "file_type", "sort_index"],
+            "rows": [["a.txt", "TXT", 0]],
         }
 
     def build_items_block(self):
-        return {"schema": "project-items.v1", "fields": ["item_id"], "rows": [[1]]}
+        return {"fields": ["item_id"], "rows": [[1]]}
 
     def build_task_block(self):
         return {"task_type": "translation", "status": "IDLE"}

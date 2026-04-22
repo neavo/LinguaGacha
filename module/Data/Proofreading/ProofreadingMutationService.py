@@ -142,6 +142,102 @@ class ProofreadingMutationService:
             reason=reason,
         )
 
+    def normalize_finalized_item_payload(
+        self,
+        payload: dict[str, Any],
+        existing_items: dict[int, dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        raw_item_id = payload.get("id", payload.get("item_id"))
+        if not isinstance(raw_item_id, int):
+            try:
+                raw_item_id = int(raw_item_id)
+            except TypeError:
+                return None
+            except ValueError:
+                return None
+
+        existing_item = existing_items.get(raw_item_id)
+        if existing_item is None:
+            return None
+
+        normalized_item = dict(existing_item)
+        normalized_item["id"] = raw_item_id
+
+        if "file_path" in payload:
+            normalized_item["file_path"] = str(payload.get("file_path", "") or "")
+        if "row" in payload or "row_number" in payload:
+            normalized_item["row"] = int(
+                payload.get("row", payload.get("row_number", 0)) or 0
+            )
+        if "src" in payload:
+            normalized_item["src"] = str(payload.get("src", "") or "")
+        if "dst" in payload:
+            normalized_item["dst"] = str(payload.get("dst", "") or "")
+        if "status" in payload:
+            normalized_item["status"] = str(payload.get("status", "") or "")
+        if "text_type" in payload:
+            normalized_item["text_type"] = str(payload.get("text_type", "") or "")
+        if "retry_count" in payload:
+            normalized_item["retry_count"] = int(payload.get("retry_count", 0) or 0)
+
+        return normalized_item
+
+    def persist_finalized_items(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        translation_extras: dict[str, Any],
+        project_status: str,
+        expected_section_revisions: dict[str, int] | None,
+        reason: str,
+    ) -> ProjectItemChange:
+        with self._get_state_lock():
+            proofreading_revision = self.revision_service.get_revision(
+                self.REVISION_SCOPE
+            )
+            if expected_section_revisions is not None:
+                if "proofreading" in expected_section_revisions:
+                    proofreading_revision = self.revision_service.assert_revision(
+                        self.REVISION_SCOPE,
+                        int(expected_section_revisions["proofreading"]),
+                    )
+                if "items" in expected_section_revisions:
+                    self.data_manager.assert_project_runtime_section_revision(
+                        "items",
+                        int(expected_section_revisions["items"]),
+                    )
+
+            existing_items = {
+                int(item_dict["id"]): dict(item_dict)
+                for item_dict in self.data_manager.get_all_item_dicts()
+                if isinstance(item_dict.get("id"), int)
+            }
+            finalized_items = [
+                normalized_item
+                for normalized_item in (
+                    self.normalize_finalized_item_payload(payload, existing_items)
+                    for payload in items
+                    if isinstance(payload, dict)
+                )
+                if normalized_item is not None
+            ]
+
+            self.data_manager.update_batch(
+                items=finalized_items or None,
+                meta={
+                    "translation_extras": dict(translation_extras),
+                    "project_status": str(project_status),
+                },
+            )
+            self.data_manager.bump_project_runtime_section_revisions(("items",))
+            self._bump_revision(proofreading_revision)
+            change = self.build_project_item_change(
+                finalized_items,
+                reason=reason,
+            )
+
+        return change
+
     def save_item(
         self,
         item: Item,

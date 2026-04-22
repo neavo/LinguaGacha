@@ -1,4 +1,3 @@
-from api.v2.Models.Task import AnalysisGlossaryImportResult
 from api.v2.Models.Task import TaskProgressUpdate
 from api.v2.Models.Task import TaskSnapshot
 from api.v2.Models.Task import TaskStatusUpdate
@@ -53,48 +52,6 @@ def test_task_snapshot_merge_status_preserves_progress_fields() -> None:
     assert merged.processed_line == 2
 
 
-def test_analysis_glossary_import_result_from_dict_keeps_import_count_and_task() -> (
-    None
-):
-    result = AnalysisGlossaryImportResult.from_dict(
-        {
-            "accepted": True,
-            "imported_count": 7,
-            "task": {
-                "task_type": "analysis",
-                "status": "IDLE",
-                "analysis_candidate_count": 2,
-            },
-        }
-    )
-
-    assert result.accepted is True
-    assert result.imported_count == 7
-    assert result.task.task_type == "analysis"
-    assert result.task.analysis_candidate_count == 2
-
-
-def test_analysis_glossary_import_result_to_dict_keeps_nested_snapshot() -> None:
-    result = AnalysisGlossaryImportResult.from_dict(
-        {
-            "accepted": True,
-            "imported_count": 3,
-            "task": {
-                "task_type": "analysis",
-                "status": "IDLE",
-                "busy": False,
-            },
-        }
-    )
-
-    payload = result.to_dict()
-
-    assert payload["accepted"] is True
-    assert payload["imported_count"] == 3
-    assert payload["task"]["task_type"] == "analysis"
-    assert payload["task"]["status"] == "IDLE"
-
-
 def test_task_updates_distinguish_missing_fields_and_explicit_zero_values() -> None:
     status = TaskStatusUpdate.from_dict({})
     progress = TaskProgressUpdate.from_dict(
@@ -113,19 +70,3 @@ def test_task_updates_distinguish_missing_fields_and_explicit_zero_values() -> N
     assert progress.line == 0
     assert progress.time == 0.0
     assert progress.analysis_candidate_count == 0
-
-
-def test_analysis_glossary_import_result_uses_safe_defaults_for_invalid_task_payload() -> (
-    None
-):
-    result = AnalysisGlossaryImportResult.from_dict(
-        {
-            "accepted": True,
-            "imported_count": 0,
-            "task": "invalid",
-        }
-    )
-
-    assert result.accepted is True
-    assert result.imported_count == 0
-    assert result.task.to_dict() == TaskSnapshot().to_dict()

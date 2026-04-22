@@ -16,6 +16,7 @@ export type WorkbenchFileEntry = WorkbenchSnapshotEntry;
 export type WorkbenchSelectorFileRecord = {
   rel_path: string;
   file_type: string;
+  sort_index: number;
 };
 
 export type WorkbenchSelectorItemRecord = {
