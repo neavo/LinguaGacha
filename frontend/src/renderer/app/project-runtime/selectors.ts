@@ -51,11 +51,33 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
 
       return left_file.rel_path.localeCompare(right_file.rel_path, "zh-Hans-CN");
     });
+  const item_count_by_file_path = new Map<string, number>();
+  let translated = 0;
+  let translated_in_past = 0;
+  let error_count = 0;
+
+  for (const item of item_values) {
+    item_count_by_file_path.set(
+      item.file_path,
+      (item_count_by_file_path.get(item.file_path) ?? 0) + 1,
+    );
+
+    if (isTranslatedStatus(item.status)) {
+      translated += 1;
+    }
+    if (item.status === "PROCESSED_IN_PAST") {
+      translated_in_past += 1;
+    }
+    if (item.status === "ERROR") {
+      error_count += 1;
+    }
+  }
+
   const entries = file_values.map((file) => {
     return {
       rel_path: file.rel_path,
       file_type: file.file_type,
-      item_count: item_values.filter((item) => item.file_path === file.rel_path).length,
+      item_count: item_count_by_file_path.get(file.rel_path) ?? 0,
     };
   });
 
@@ -64,9 +86,9 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
     summary: {
       file_count: entries.length,
       total_items: item_values.length,
-      translated: item_values.filter((item) => isTranslatedStatus(item.status)).length,
-      translated_in_past: item_values.filter((item) => item.status === "PROCESSED_IN_PAST").length,
-      error_count: item_values.filter((item) => item.status === "ERROR").length,
+      translated,
+      translated_in_past,
+      error_count,
     },
   };
 }
