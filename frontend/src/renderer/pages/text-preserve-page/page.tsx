@@ -19,7 +19,6 @@ const TEXT_PRESERVE_SCOPE_LABEL_KEY_BY_SCOPE = {
 } satisfies Record<TextPreserveFilterScope, LocaleKey>;
 
 const TEXT_PRESERVE_FILTER_SCOPES: TextPreserveFilterScope[] = ["all", "src", "info"];
-
 export function TextPreservePage(props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();

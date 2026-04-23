@@ -20,7 +20,6 @@ const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
 } satisfies Record<GlossaryFilterScope, LocaleKey>;
 
 const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = ["all", "src", "dst", "info"];
-
 export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();

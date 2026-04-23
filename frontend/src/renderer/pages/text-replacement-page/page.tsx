@@ -24,7 +24,6 @@ const TEXT_REPLACEMENT_SCOPE_LABEL_KEY_BY_SCOPE = {
 } satisfies Record<TextReplacementFilterScope, LocaleKey>;
 
 const TEXT_REPLACEMENT_FILTER_SCOPES: TextReplacementFilterScope[] = ["all", "src", "dst"];
-
 export function TextReplacementPage(props: TextReplacementPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
