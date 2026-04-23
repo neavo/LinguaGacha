@@ -12,6 +12,7 @@ import { useProjectPagesBarrier } from "@/app/state/project-pages-context";
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 import { useDesktopToast } from "@/app/state/use-desktop-toast";
 import { useI18n } from "@/i18n";
+import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
   PROJECT_SAVE_MODE,
   REQUEST_TIMEOUT_MAX,
@@ -77,6 +78,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState<boolean>(false);
   const snapshot_ref = useRef<BasicSettingsSnapshot>(snapshot);
+  const settings_snapshot_ref = useRef<SettingsSnapshot>(settings_snapshot);
   const project_prefilter_client_ref = useRef(createProjectPrefilterClient());
   const context_snapshot = useMemo(() => {
     return build_basic_settings_snapshot(settings_snapshot);
@@ -85,6 +87,10 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   useEffect(() => {
     snapshot_ref.current = snapshot;
   }, [snapshot]);
+
+  useEffect(() => {
+    settings_snapshot_ref.current = settings_snapshot;
+  }, [settings_snapshot]);
 
   useEffect(() => {
     set_snapshot(context_snapshot);
@@ -233,9 +239,42 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     ],
   );
 
+  const rollback_source_language_after_prefilter_error = useCallback(
+    async (
+      previous_snapshot: BasicSettingsSnapshot,
+      previous_settings_snapshot: SettingsSnapshot,
+    ): Promise<void> => {
+      const rollback_settings_snapshot = await commit_update(
+        "source_language",
+        {
+          source_language: previous_snapshot.source_language,
+        },
+        previous_snapshot,
+      );
+      if (rollback_settings_snapshot === null) {
+        return;
+      }
+
+      try {
+        await sync_project_settings_meta(previous_settings_snapshot);
+      } catch (error) {
+        if (error instanceof Error) {
+          push_toast("error", error.message);
+        } else {
+          push_toast("error", t("basic_settings_page.feedback.update_failed"));
+        }
+        return;
+      }
+
+      push_toast("error", t("basic_settings_page.feedback.update_failed"));
+    },
+    [commit_update, push_toast, sync_project_settings_meta, t],
+  );
+
   const update_source_language = useCallback(
     async (next_language: string): Promise<void> => {
       const previous_snapshot = snapshot_ref.current;
+      const previous_settings_snapshot = settings_snapshot_ref.current;
 
       if (is_task_busy || previous_snapshot.source_language === next_language) {
         return;
@@ -243,37 +282,49 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
 
       const barrier_checkpoint = create_barrier_checkpoint();
 
-      await run_modal_progress_toast({
-        message: t("basic_settings_page.feedback.source_language_loading_toast"),
-        task: async () => {
-          const next_settings_snapshot = await commit_update(
-            "source_language",
-            {
-              source_language: next_language,
-            },
-            {
-              ...previous_snapshot,
-              source_language: next_language,
-            },
-          );
+      try {
+        await run_modal_progress_toast({
+          message: t("basic_settings_page.feedback.source_language_loading_toast"),
+          task: async () => {
+            const next_settings_snapshot = await commit_update(
+              "source_language",
+              {
+                source_language: next_language,
+              },
+              {
+                ...previous_snapshot,
+                source_language: next_language,
+              },
+            );
 
-          if (next_settings_snapshot === null) {
-            return;
-          }
+            if (next_settings_snapshot === null) {
+              return;
+            }
 
-          await sync_project_settings_meta(next_settings_snapshot);
-          await apply_prefilter_from_settings(next_settings_snapshot);
-          await wait_for_barrier("project_cache_refresh", {
-            checkpoint: barrier_checkpoint,
-          });
-        },
-      });
+            await sync_project_settings_meta(next_settings_snapshot);
+            await apply_prefilter_from_settings(next_settings_snapshot);
+            await wait_for_barrier("project_cache_refresh", {
+              checkpoint: barrier_checkpoint,
+            });
+          },
+        });
+      } catch (error) {
+        if (!is_worker_client_error(error)) {
+          throw error;
+        }
+
+        await rollback_source_language_after_prefilter_error(
+          previous_snapshot,
+          previous_settings_snapshot,
+        );
+      }
     },
     [
       apply_prefilter_from_settings,
       commit_update,
       create_barrier_checkpoint,
       is_task_busy,
+      rollback_source_language_after_prefilter_error,
       run_modal_progress_toast,
       sync_project_settings_meta,
       t,

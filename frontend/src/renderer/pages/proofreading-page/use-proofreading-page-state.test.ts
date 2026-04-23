@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { WorkerClientError } from "@/lib/worker-client-error";
 import { create_empty_proofreading_snapshot } from "@/pages/proofreading-page/types";
 import { useProofreadingPageState } from "@/pages/proofreading-page/use-proofreading-page-state";
 
@@ -35,6 +36,10 @@ type ProofreadingRuntimeClientFixture = {
   dispose: ReturnType<typeof vi.fn>;
 };
 
+type ToastFixture = {
+  push_toast: ReturnType<typeof vi.fn>;
+};
+
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
@@ -45,6 +50,10 @@ const navigation_fixture: { current: NavigationFixture } = {
 
 const proofreading_runtime_client_fixture: { current: ProofreadingRuntimeClientFixture } = {
   current: create_proofreading_runtime_client_fixture(),
+};
+
+const toast_fixture: { current: ToastFixture } = {
+  current: create_toast_fixture(),
 };
 
 (
@@ -62,9 +71,7 @@ vi.mock("@/app/state/use-desktop-runtime", () => {
 vi.mock("@/app/state/use-desktop-toast", () => {
   return {
     useDesktopToast: () => {
-      return {
-        push_toast: vi.fn(),
-      };
+      return toast_fixture.current;
     },
   };
 });
@@ -151,6 +158,12 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
   };
 }
 
+function create_toast_fixture(): ToastFixture {
+  return {
+    push_toast: vi.fn(),
+  };
+}
+
 describe("useProofreadingPageState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -170,6 +183,7 @@ describe("useProofreadingPageState", () => {
     runtime_fixture.current = create_runtime_fixture();
     navigation_fixture.current = create_navigation_fixture();
     proofreading_runtime_client_fixture.current = create_proofreading_runtime_client_fixture();
+    toast_fixture.current = create_toast_fixture();
   });
 
   function ProofreadingProbe(): JSX.Element | null {
@@ -231,5 +245,30 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
     expect(latest_state?.full_snapshot.revision).toBe(1);
+  });
+
+  it("worker 类错误会统一收口成页面已有的刷新失败提示", async () => {
+    proofreading_runtime_client_fixture.current.compute = vi.fn(async () => {
+      throw new WorkerClientError("底层 worker 初始化失败。", "init_failed");
+    });
+
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state).not.toBeNull();
+    expect(latest_state?.cache_status).toBe("error");
+    expect(latest_state?.refresh_error).toBe("proofreading_page.feedback.refresh_failed");
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "error",
+      "proofreading_page.feedback.refresh_failed",
+    );
   });
 });

@@ -12,6 +12,7 @@ import { useProjectPagesBarrier } from "@/app/state/project-pages-context";
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 import { useDesktopToast } from "@/app/state/use-desktop-toast";
 import { useI18n } from "@/i18n";
+import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
   build_laboratory_snapshot,
   type LaboratoryPendingField,
@@ -184,6 +185,24 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     ],
   );
 
+  const rollback_mtool_optimizer_after_prefilter_error = useCallback(
+    async (previous_snapshot: LaboratorySnapshot): Promise<void> => {
+      const rollback_settings_snapshot = await commit_update(
+        "mtool_optimizer_enable",
+        {
+          mtool_optimizer_enable: previous_snapshot.mtool_optimizer_enable,
+        },
+        previous_snapshot,
+      );
+      if (rollback_settings_snapshot === null) {
+        return;
+      }
+
+      push_toast("error", t("laboratory_page.feedback.update_failed"));
+    },
+    [commit_update, push_toast, t],
+  );
+
   const update_mtool_optimizer_enable = useCallback(
     async (next_checked: boolean): Promise<void> => {
       const previous_snapshot = snapshot_ref.current;
@@ -194,36 +213,45 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
 
       const barrier_checkpoint = create_barrier_checkpoint();
 
-      await run_modal_progress_toast({
-        message: t("laboratory_page.feedback.mtool_optimizer_loading_toast"),
-        task: async () => {
-          const next_settings_snapshot = await commit_update(
-            "mtool_optimizer_enable",
-            {
-              mtool_optimizer_enable: next_checked,
-            },
-            {
-              ...previous_snapshot,
-              mtool_optimizer_enable: next_checked,
-            },
-          );
+      try {
+        await run_modal_progress_toast({
+          message: t("laboratory_page.feedback.mtool_optimizer_loading_toast"),
+          task: async () => {
+            const next_settings_snapshot = await commit_update(
+              "mtool_optimizer_enable",
+              {
+                mtool_optimizer_enable: next_checked,
+              },
+              {
+                ...previous_snapshot,
+                mtool_optimizer_enable: next_checked,
+              },
+            );
 
-          if (next_settings_snapshot === null) {
-            return;
-          }
+            if (next_settings_snapshot === null) {
+              return;
+            }
 
-          await apply_prefilter_from_settings(next_settings_snapshot);
-          await wait_for_barrier("project_cache_refresh", {
-            checkpoint: barrier_checkpoint,
-          });
-        },
-      });
+            await apply_prefilter_from_settings(next_settings_snapshot);
+            await wait_for_barrier("project_cache_refresh", {
+              checkpoint: barrier_checkpoint,
+            });
+          },
+        });
+      } catch (error) {
+        if (!is_worker_client_error(error)) {
+          throw error;
+        }
+
+        await rollback_mtool_optimizer_after_prefilter_error(previous_snapshot);
+      }
     },
     [
       apply_prefilter_from_settings,
       commit_update,
       create_barrier_checkpoint,
       is_task_busy,
+      rollback_mtool_optimizer_after_prefilter_error,
       run_modal_progress_toast,
       t,
       wait_for_barrier,
