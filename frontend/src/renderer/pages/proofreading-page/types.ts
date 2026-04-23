@@ -212,6 +212,35 @@ export function resolve_proofreading_filter_source_items(
   return items.filter((item) => !excluded_status_set.has(item.status));
 }
 
+export function resolve_default_proofreading_statuses(available_statuses: string[]): string[] {
+  const ordered_default_statuses = PROOFREADING_STATUS_ORDER.filter((status) => {
+    return PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES.includes(
+      status as (typeof PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES)[number],
+    );
+  });
+  const extra_default_statuses = PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES.filter((status) => {
+    return !PROOFREADING_STATUS_ORDER.includes(status);
+  });
+
+  return ordered_default_statuses.length > 0 || extra_default_statuses.length > 0
+    ? [...ordered_default_statuses, ...extra_default_statuses]
+    : available_statuses;
+}
+
+export function resolve_default_proofreading_warning_types(
+  available_warning_types: string[],
+): string[] {
+  const known_warning_types: string[] = [...PROOFREADING_WARNING_CODES];
+  const known_warning_type_set = new Set<string>(known_warning_types);
+  const extra_warning_types = unique_strings(available_warning_types)
+    .filter((warning) => !known_warning_type_set.has(warning))
+    .sort((left_warning, right_warning) => {
+      return left_warning.localeCompare(right_warning, "zh-Hans-CN");
+    });
+
+  return [...known_warning_types, ...extra_warning_types];
+}
+
 function normalize_proofreading_summary(
   summary: Partial<ProofreadingSummary> | undefined,
 ): ProofreadingSummary {
@@ -256,11 +285,6 @@ function build_default_proofreading_filter_options(
 ): ProofreadingFilterOptions {
   const source_items = resolve_proofreading_filter_source_items(items);
   const available_statuses = unique_strings(source_items.map((item) => item.status));
-  const default_statuses = available_statuses.filter((status) => {
-    return PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES.includes(
-      status as (typeof PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES)[number],
-    );
-  });
   const available_warning_types = new Set<string>([PROOFREADING_NO_WARNING_CODE]);
   const available_file_paths = new Set<string>();
   const available_glossary_terms = new Map<string, ProofreadingGlossaryTerm>();
@@ -282,8 +306,8 @@ function build_default_proofreading_filter_options(
   });
 
   return {
-    warning_types: [...available_warning_types],
-    statuses: default_statuses.length > 0 ? default_statuses : available_statuses,
+    warning_types: resolve_default_proofreading_warning_types([...available_warning_types]),
+    statuses: resolve_default_proofreading_statuses(available_statuses),
     file_paths: [...available_file_paths],
     glossary_terms: [...available_glossary_terms.values()],
     include_without_glossary_miss: true,

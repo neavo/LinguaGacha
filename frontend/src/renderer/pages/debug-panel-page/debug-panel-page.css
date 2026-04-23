@@ -182,6 +182,6 @@
 }
 
 .debug-panel-page__meta-row code {
-  font-family: 'Geist Variable', sans-serif;
+  font-family: var(--ui-font-family-base);
   font-size: 12px;
 }

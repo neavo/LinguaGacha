@@ -9,6 +9,8 @@ import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
   normalize_proofreading_filter_options,
+  resolve_default_proofreading_statuses,
+  resolve_default_proofreading_warning_types,
   resolve_proofreading_status_sort_rank,
   type ProofreadingClientItem,
   type ProofreadingFilterOptions,
@@ -32,12 +34,6 @@ const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
   "DUPLICATED",
 ]);
 const PROOFREADING_REVIEW_EXCLUDED_STATUSES = new Set(["DUPLICATED", "RULE_SKIPPED"]);
-const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "PROCESSED_IN_PAST",
-]);
 const HIRAGANA_REGEX = /[\u3040-\u309F]/u;
 const KATAKANA_REGEX = /[\u30A0-\u30FF\u31F0-\u31FF\uFF65-\uFF9F]/u;
 const HANGEUL_REGEX = /[\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF]/u;
@@ -912,25 +908,11 @@ function build_default_filters_from_state(
       return compare_text(left_status, right_status);
     },
   );
-  const default_statuses = available_statuses.filter((status) => {
-    return PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES.has(status);
-  });
-
   const warning_type_set = new Set<string>([PROOFREADING_NO_WARNING_CODE]);
   for (const warning of state.warning_count_by_code.keys()) {
     warning_type_set.add(warning);
   }
-  const warning_types = [
-    ...PROOFREADING_WARNING_CODES.filter((warning) => warning_type_set.has(warning)),
-    ...[...warning_type_set]
-      .filter(
-        (warning) =>
-          !PROOFREADING_WARNING_CODES.includes(
-            warning as (typeof PROOFREADING_WARNING_CODES)[number],
-          ),
-      )
-      .sort(compare_text),
-  ];
+  const warning_types = resolve_default_proofreading_warning_types([...warning_type_set]);
 
   const file_paths = [...state.file_count_by_path.keys()].sort(compare_text);
   const glossary_terms = [...state.glossary_term_count_map.values()]
@@ -941,7 +923,7 @@ function build_default_filters_from_state(
 
   return {
     warning_types,
-    statuses: default_statuses.length > 0 ? default_statuses : available_statuses,
+    statuses: resolve_default_proofreading_statuses(available_statuses),
     file_paths,
     glossary_terms,
     include_without_glossary_miss: true,
