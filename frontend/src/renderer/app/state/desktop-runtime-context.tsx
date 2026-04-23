@@ -9,11 +9,7 @@ import {
 } from "react";
 
 import type { RouteId } from "@/app/navigation/types";
-import {
-  api_fetch,
-  open_v2_event_stream,
-  open_v2_project_bootstrap_stream,
-} from "@/app/desktop-api";
+import { api_fetch, open_event_stream, open_project_bootstrap_stream } from "@/app/desktop-api";
 import {
   createProjectStoreReplaceSectionPatch,
   createProjectStore,
@@ -27,7 +23,7 @@ import {
   type ProjectStoreSectionRevisions,
   snapshotProjectStoreSections,
 } from "@/app/project-runtime/project-store";
-import { createV2ProjectRuntime } from "@/app/project-runtime/use-project-runtime";
+import { createProjectRuntime } from "@/app/project-runtime/use-project-runtime";
 
 type RecentProjectEntry = {
   path: string;
@@ -678,10 +674,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null);
   const [is_app_language_updating, set_is_app_language_updating] = useState(false);
   const project_store_ref = useRef(createProjectStore());
-  const v2_project_runtime = useMemo(() => {
-    return createV2ProjectRuntime({
+  const project_runtime = useMemo(() => {
+    return createProjectRuntime({
       store: project_store_ref.current,
-      openBootstrapStream: open_v2_project_bootstrap_stream,
+      openBootstrapStream: open_project_bootstrap_stream,
     });
   }, []);
 
@@ -700,7 +696,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   }, [apply_settings_snapshot]);
 
   const refresh_task = useCallback(async (): Promise<TaskSnapshot> => {
-    const payload = await api_fetch<TaskSnapshotPayload>("/api/v2/tasks/snapshot", {});
+    const payload = await api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {});
     const next_snapshot = normalize_task_snapshot(payload);
     set_task_snapshot(next_snapshot);
     return next_snapshot;
@@ -812,7 +808,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     set_project_warmup_status("warming");
     set_project_warmup_stage(null);
     project_store_ref.current.reset();
-    await v2_project_runtime.bootstrap(project_snapshot.path, {
+    await project_runtime.bootstrap(project_snapshot.path, {
       onStageStarted: (stage) => {
         set_project_warmup_stage(stage);
       },
@@ -832,7 +828,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     project_snapshot.loaded,
     project_snapshot.path,
     set_project_warmup_status,
-    v2_project_runtime,
+    project_runtime,
   ]);
 
   const align_project_runtime_ack = useCallback((ack: ProjectMutationAck): void => {
@@ -916,8 +912,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         // 否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的 Py 应用状态一起清空。
         const [next_settings, next_project, next_task] = await Promise.all([
           api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
-          api_fetch<ProjectSnapshotPayload>("/api/v2/project/snapshot", {}),
-          api_fetch<TaskSnapshotPayload>("/api/v2/tasks/snapshot", {}),
+          api_fetch<ProjectSnapshotPayload>("/api/project/snapshot", {}),
+          api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {}),
         ]);
         if (cancelled) {
           return;
@@ -1075,7 +1071,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     async function attach_event_stream(): Promise<void> {
       try {
-        const next_event_source = await open_v2_event_stream();
+        const next_event_source = await open_event_stream();
         if (cancelled) {
           next_event_source.close();
           return;

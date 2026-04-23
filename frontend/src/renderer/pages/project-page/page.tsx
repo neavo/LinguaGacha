@@ -1,11 +1,4 @@
-import {
-  BadgeAlert,
-  File,
-  FolderOpen,
-  SquareMousePointer,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { BadgeAlert, File, FolderOpen, SquareMousePointer, X, type LucideIcon } from "lucide-react";
 import {
   forwardRef,
   type ComponentProps,
@@ -172,10 +165,7 @@ function extract_stem(file_name: string): string {
 }
 
 function extract_parent_dir(file_path: string): string {
-  const normalized_index = Math.max(
-    file_path.lastIndexOf("/"),
-    file_path.lastIndexOf("\\"),
-  );
+  const normalized_index = Math.max(file_path.lastIndexOf("/"), file_path.lastIndexOf("\\"));
   if (normalized_index <= 0) {
     return "";
   }
@@ -216,8 +206,7 @@ function format_project_error_message(args: {
   generic_text: string;
   error: unknown;
 }): string {
-  const error_detail =
-    args.error instanceof Error ? args.error.message.trim() : "";
+  const error_detail = args.error instanceof Error ? args.error.message.trim() : "";
 
   if (error_detail === "") {
     return args.generic_text;
@@ -234,9 +223,7 @@ function append_optional_unit_label(text: string, unit_label: string): string {
   }
 }
 
-function normalize_project_snapshot(
-  payload: ProjectSnapshotPayload,
-): ProjectSnapshot {
+function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
   return {
     path: String(payload.project?.path ?? ""),
     loaded: Boolean(payload.project?.loaded),
@@ -265,9 +252,7 @@ function normalize_project_preview(
   };
 }
 
-function open_context_menu_at_click_position(
-  event: MouseEvent<HTMLButtonElement>,
-): void {
+function open_context_menu_at_click_position(event: MouseEvent<HTMLButtonElement>): void {
   event.preventDefault();
   event.currentTarget.dispatchEvent(
     new MouseEvent("contextmenu", {
@@ -327,9 +312,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
         {...button_props}
         className={cn(
           "project-home__dropzone flex w-full flex-col items-center justify-center text-center",
-          tone === "blue"
-            ? "project-home__dropzone--blue"
-            : "project-home__dropzone--purple",
+          tone === "blue" ? "project-home__dropzone--blue" : "project-home__dropzone--purple",
           "h-[145px] px-5 py-4",
           className,
         )}
@@ -375,11 +358,7 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
 
   return (
     <div className="project-home__recent-row">
-      <button
-        className="project-home__recent-main"
-        type="button"
-        onClick={props.on_select}
-      >
+      <button className="project-home__recent-main" type="button" onClick={props.on_select}>
         <span className="project-home__recent-icon">
           <File className="size-[18px] stroke-[1.8]" />
         </span>
@@ -424,9 +403,7 @@ function RecentProjectEmptyState(): JSX.Element {
   return (
     <div className="project-home__recent-empty">
       <BadgeAlert className="project-home__recent-empty-icon size-16 stroke-[1.9]" />
-      <p className="project-home__recent-empty-text">
-        {t("project_page.open.empty")}
-      </p>
+      <p className="project-home__recent-empty-text">{t("project_page.open.empty")}</p>
     </div>
   );
 }
@@ -470,10 +447,7 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
     <Card className="project-home__preview-card">
       <CardContent className="space-y-4">
         {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="flex items-center justify-between gap-5"
-          >
+          <div key={stat.label} className="flex items-center justify-between gap-5">
             <span className="text-[12.32px] text-foreground">{stat.label}</span>
             <span className="max-w-[272px] break-all text-right text-[12.32px] text-foreground">
               {stat.value}
@@ -486,14 +460,9 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
             <span className="text-[12.32px] text-foreground">
               {t("project_page.preview.progress")}
             </span>
-            <span className="text-[12.32px] text-foreground">
-              {preview.progress_percent}%
-            </span>
+            <span className="text-[12.32px] text-foreground">{preview.progress_percent}%</span>
           </div>
-          <Progress
-            value={preview.progress_percent}
-            className="h-1.5 bg-muted"
-          />
+          <Progress value={preview.progress_percent} className="h-1.5 bg-muted" />
           <div className="flex items-center justify-between gap-4 text-[12.32px] text-foreground">
             <span>{translated_label}</span>
             <span>{total_label}</span>
@@ -515,11 +484,7 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
       disabled={props.disabled}
       onClick={props.on_click}
     >
-      {props.is_loading ? (
-        <Spinner data-icon="inline-start" />
-      ) : (
-        <Icon data-icon="inline-start" />
-      )}
+      {props.is_loading ? <Spinner data-icon="inline-start" /> : <Icon data-icon="inline-start" />}
       {props.is_loading ? props.loading_label : props.label}
     </Button>
   );
@@ -566,19 +531,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     refresh_settings,
     refresh_task,
   } = useDesktopRuntime();
-  const { create_barrier_checkpoint, wait_for_barrier } =
-    useProjectPagesBarrier();
-  const {
-    push_toast,
-    push_progress_toast,
-    update_progress_toast,
-    dismiss_toast,
-  } = useDesktopToast();
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
+  const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } =
+    useDesktopToast();
   const { t } = useI18n();
-  const [selected_source, set_selected_source] =
-    useState<SelectedSource | null>(null);
-  const [selected_project, set_selected_project] =
-    useState<SelectedProject | null>(null);
+  const [selected_source, set_selected_source] = useState<SelectedSource | null>(null);
+  const [selected_project, set_selected_project] = useState<SelectedProject | null>(null);
   const [is_source_checking, set_is_source_checking] = useState(false);
   const [is_preview_loading, set_is_preview_loading] = useState(false);
   const [is_creating_project, set_is_creating_project] = useState(false);
@@ -589,8 +547,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const project_loading_toast_id_ref = useRef<string | number | null>(null);
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5);
   const has_recent_projects = recent_projects.length > 0;
-  const create_footer_class_name =
-    "project-home__footer mt-auto justify-center";
+  const create_footer_class_name = "project-home__footer mt-auto justify-center";
   const open_footer_class_name = "project-home__footer mt-auto justify-center";
 
   function clear_selected_project(): void {
@@ -607,10 +564,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
   useEffect(() => {
     const toast_id = project_loading_toast_id_ref.current;
-    const next_message = resolve_project_loading_stage_message(
-      project_warmup_stage,
-      t,
-    );
+    const next_message = resolve_project_loading_stage_message(project_warmup_stage, t);
     const normalized_message = next_message?.trim() ?? "";
 
     if (toast_id === null || normalized_message === "") {
@@ -660,13 +614,10 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     });
 
     try {
-      const payload = await api_fetch<ProjectPreviewPayload>(
-        "/api/v2/project/preview",
-        { path: project_path },
-      );
-      set_selected_project(
-        normalize_project_preview(project_path, fallback_name, payload),
-      );
+      const payload = await api_fetch<ProjectPreviewPayload>("/api/project/preview", {
+        path: project_path,
+      });
+      set_selected_project(normalize_project_preview(project_path, fallback_name, payload));
     } catch (error) {
       if (
         recent_project_name !== undefined &&
@@ -698,13 +649,10 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     set_is_source_checking(true);
 
     try {
-      const payload = await api_fetch<ProjectSourceFilesPayload>(
-        "/api/v2/project/source-files",
-        { path: source_path },
-      );
-      const source_files = Array.isArray(payload.source_files)
-        ? payload.source_files
-        : [];
+      const payload = await api_fetch<ProjectSourceFilesPayload>("/api/project/source-files", {
+        path: source_path,
+      });
+      const source_files = Array.isArray(payload.source_files) ? payload.source_files : [];
 
       if (source_files.length === 0) {
         set_selected_source(null);
@@ -802,27 +750,20 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     await on_resolved_path(dropped_path.path);
   }
 
-  async function handle_source_drop(
-    event: DragEvent<HTMLButtonElement>,
-  ): Promise<void> {
+  async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     await handle_path_drop(event, handle_select_source_path);
   }
 
-  async function handle_project_drop(
-    event: DragEvent<HTMLButtonElement>,
-  ): Promise<void> {
+  async function handle_project_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     await handle_path_drop(event, select_project_path);
   }
 
-  async function resolve_project_output_path(
-    source_path: string,
-  ): Promise<string | null> {
+  async function resolve_project_output_path(source_path: string): Promise<string | null> {
     const default_file_name = build_default_project_file_name(source_path);
     const save_mode = settings_snapshot.project_save_mode;
 
     if (save_mode === "MANUAL") {
-      const result =
-        await window.desktopApp.pickProjectSavePath(default_file_name);
+      const result = await window.desktopApp.pickProjectSavePath(default_file_name);
       return result.canceled ? null : result.path;
     }
 
@@ -856,9 +797,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     set_is_creating_project(true);
 
     try {
-      const output_path = await resolve_project_output_path(
-        selected_source.path,
-      );
+      const output_path = await resolve_project_output_path(selected_source.path);
       if (output_path === null || output_path === "") {
         return;
       }
@@ -870,22 +809,16 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       await run_project_loading_modal({
         initial_message: t("project_page.create.loading_toast"),
         task: async () => {
-          const payload = await api_fetch<ProjectSnapshotPayload>(
-            "/api/v2/project/create",
-            {
-              source_path: selected_source.path,
-              path: normalized_output_path,
-            },
-          );
+          const payload = await api_fetch<ProjectSnapshotPayload>("/api/project/create", {
+            source_path: selected_source.path,
+            path: normalized_output_path,
+          });
           set_project_warmup_status("warming");
           set_project_snapshot(normalize_project_snapshot(payload));
-          await api_fetch<SettingsPayload>(
-            "/api/settings/recent-projects/add",
-            {
-              path: normalized_output_path,
-              name: extract_stem(extract_file_name(normalized_output_path)),
-            },
-          );
+          await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
+            path: normalized_output_path,
+            name: extract_stem(extract_file_name(normalized_output_path)),
+          });
           await Promise.all([
             refresh_recent_projects(),
             refresh_task(),
@@ -914,11 +847,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
   }
 
   async function handle_open_project(): Promise<void> {
-    if (
-      selected_project === null ||
-      selected_project.preview === null ||
-      is_opening_project
-    ) {
+    if (selected_project === null || selected_project.preview === null || is_opening_project) {
       return;
     }
 
@@ -930,21 +859,15 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       await run_project_loading_modal({
         initial_message: t("project_page.open.loading_toast"),
         task: async () => {
-          const payload = await api_fetch<ProjectSnapshotPayload>(
-            "/api/v2/project/load",
-            {
-              path: selected_project.path,
-            },
-          );
+          const payload = await api_fetch<ProjectSnapshotPayload>("/api/project/load", {
+            path: selected_project.path,
+          });
           set_project_warmup_status("warming");
           set_project_snapshot(normalize_project_snapshot(payload));
-          await api_fetch<SettingsPayload>(
-            "/api/settings/recent-projects/add",
-            {
-              path: selected_project.path,
-              name: selected_project.name,
-            },
-          );
+          await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
+            path: selected_project.path,
+            name: selected_project.name,
+          });
           await Promise.all([
             refresh_recent_projects(),
             refresh_task(),
@@ -977,9 +900,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     await select_project_path(project_path, project_name);
   }
 
-  async function handle_recent_project_remove(
-    project_path: string,
-  ): Promise<void> {
+  async function handle_recent_project_remove(project_path: string): Promise<void> {
     try {
       await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {
         path: project_path,
@@ -988,9 +909,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     } catch (error) {
       push_toast(
         "error",
-        error instanceof Error
-          ? error.message
-          : t("project_page.open.remove_unavailable"),
+        error instanceof Error ? error.message : t("project_page.open.remove_unavailable"),
       );
     }
   }
@@ -1182,10 +1101,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               name={project_item.name}
               path={project_item.path}
               on_select={() => {
-                void handle_recent_project_select(
-                  project_item.path,
-                  project_item.name,
-                );
+                void handle_recent_project_select(project_item.path, project_item.name);
               }}
               on_remove={() => {
                 void handle_recent_project_remove(project_item.path);
@@ -1222,12 +1138,9 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           }
 
           void (async () => {
-            await api_fetch<SettingsPayload>(
-              "/api/settings/recent-projects/remove",
-              {
-                path: target_path,
-              },
-            );
+            await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {
+              path: target_path,
+            });
             await refresh_recent_projects();
             set_missing_recent_project(null);
           })();
@@ -1274,11 +1187,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 label={t("project_page.create.action")}
                 loading_label={t("app.action.loading")}
                 is_loading={is_creating_project}
-                disabled={
-                  selected_source === null ||
-                  is_source_checking ||
-                  is_creating_project
-                }
+                disabled={selected_source === null || is_source_checking || is_creating_project}
                 on_click={() => {
                   void handle_create_project();
                 }}

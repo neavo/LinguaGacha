@@ -477,7 +477,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
       try {
         const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/v2/quality/rules/save-entries", {
+          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
             rule_type: TEXT_PRESERVE_RULE_TYPE,
             expected_revision: current_preserve_slice.revision,
             entries: normalized_entries,
@@ -533,7 +533,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<TextPreservePresetPayload>(
-      "/api/v2/quality/rules/presets",
+      "/api/quality/rules/presets",
       {
         preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
       },
@@ -682,7 +682,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
             try {
               const mutation_ack = normalize_project_mutation_ack(
-                await api_fetch<ProjectMutationAckPayload>("/api/v2/quality/rules/update-meta", {
+                await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/update-meta", {
                   rule_type: TEXT_PRESERVE_RULE_TYPE,
                   expected_revision: current_preserve_slice.revision,
                   meta: {
@@ -940,7 +940,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         }
 
         const payload = await api_fetch<{ entries?: Array<Record<string, unknown>> }>(
-          "/api/v2/quality/rules/import",
+          "/api/quality/rules/import",
           {
             rule_type: TEXT_PRESERVE_RULE_TYPE,
             expected_revision: revision_ref.current,
@@ -983,7 +983,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return;
       }
 
-      await api_fetch("/api/v2/quality/rules/export", {
+      await api_fetch("/api/quality/rules/export", {
         rule_type: TEXT_PRESERVE_RULE_TYPE,
         path: pick_result.path,
         entries: entries.map((entry) => {
@@ -1078,7 +1078,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     async (virtual_id: string): Promise<void> => {
       try {
         const payload = await api_fetch<{ entries: Array<Record<string, unknown>> }>(
-          "/api/v2/quality/rules/presets/read",
+          "/api/quality/rules/presets/read",
           {
             preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
             virtual_id,
@@ -1150,7 +1150,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
 
       try {
-        await api_fetch("/api/v2/quality/rules/presets/save", {
+        await api_fetch("/api/quality/rules/presets/save", {
           preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
           name: normalized_name,
           entries: entries
@@ -1180,7 +1180,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
       try {
         const payload = await api_fetch<{ item?: TextPreservePresetItem }>(
-          "/api/v2/quality/rules/presets/rename",
+          "/api/quality/rules/presets/rename",
           {
             preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
             virtual_id,
@@ -1454,7 +1454,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     } else if (confirm_state.kind === "delete-preset") {
       try {
         if (confirm_state.target_virtual_id !== null) {
-          await api_fetch("/api/v2/quality/rules/presets/delete", {
+          await api_fetch("/api/quality/rules/presets/delete", {
             preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
             virtual_id: confirm_state.target_virtual_id,
           });

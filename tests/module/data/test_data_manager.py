@@ -374,7 +374,7 @@ def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
     dm.schedule_prefilter_if_needed_with_result.assert_not_called()
 
 
-def test_apply_translation_batch_update_emits_items_patch_for_v2_runtime(
+def test_apply_translation_batch_update_emits_items_patch_for_project_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)

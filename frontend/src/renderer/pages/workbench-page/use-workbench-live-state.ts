@@ -1299,7 +1299,7 @@ export function useWorkbenchLiveState(
               target_rel_path?: unknown;
               file_type?: unknown;
               parsed_items?: unknown;
-            }>("/api/v2/project/workbench/parse-file", {
+            }>("/api/project/workbench/parse-file", {
               source_path: result.path,
             }),
           );
@@ -1315,7 +1315,7 @@ export function useWorkbenchLiveState(
             add_plan,
             async (body) => {
               return await api_fetch<ProjectMutationAckPayload>(
-                "/api/v2/project/workbench/add-file",
+                "/api/project/workbench/add-file",
                 body,
               );
             },
@@ -1402,7 +1402,7 @@ export function useWorkbenchLiveState(
           reorder_plan,
           async (body) => {
             return await api_fetch<ProjectMutationAckPayload>(
-              "/api/v2/project/workbench/reorder-files",
+              "/api/project/workbench/reorder-files",
               body,
             );
           },
@@ -1438,7 +1438,7 @@ export function useWorkbenchLiveState(
             target_rel_path?: unknown;
             file_type?: unknown;
             parsed_items?: unknown;
-          }>("/api/v2/project/workbench/parse-file", {
+          }>("/api/project/workbench/parse-file", {
             source_path: current_dialog_state.pending_path,
             rel_path: target_rel_path,
           }),
@@ -1456,7 +1456,7 @@ export function useWorkbenchLiveState(
           replace_plan,
           async (body) => {
             return await api_fetch<ProjectMutationAckPayload>(
-              "/api/v2/project/workbench/replace-file",
+              "/api/project/workbench/replace-file",
               body,
             );
           },
@@ -1484,7 +1484,7 @@ export function useWorkbenchLiveState(
           reset_plan,
           async (body) => {
             return await api_fetch<ProjectMutationAckPayload>(
-              "/api/v2/project/workbench/reset-file",
+              "/api/project/workbench/reset-file",
               body,
             );
           },
@@ -1513,8 +1513,8 @@ export function useWorkbenchLiveState(
           async (body) => {
             return await api_fetch<ProjectMutationAckPayload>(
               current_dialog_state.target_rel_paths.length === 1
-                ? "/api/v2/project/workbench/delete-file"
-                : "/api/v2/project/workbench/delete-file-batch",
+                ? "/api/project/workbench/delete-file"
+                : "/api/project/workbench/delete-file-batch",
               current_dialog_state.target_rel_paths.length === 1
                 ? {
                     ...body,
@@ -1531,7 +1531,7 @@ export function useWorkbenchLiveState(
       }
 
       if (current_dialog_state.kind === "export-translation") {
-        await api_fetch("/api/v2/tasks/export-translation", {});
+        await api_fetch("/api/tasks/export-translation", {});
         set_dialog_state(close_dialog_state());
         return;
       }
@@ -1541,7 +1541,7 @@ export function useWorkbenchLiveState(
         try {
           const payload = await api_fetch<{
             project?: { path?: string; loaded?: boolean };
-          }>("/api/v2/project/unload", {});
+          }>("/api/project/unload", {});
           set_project_snapshot({
             path: String(payload.project?.path ?? ""),
             loaded: Boolean(payload.project?.loaded),

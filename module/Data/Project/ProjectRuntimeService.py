@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from api.v2.Models.ProjectRuntime import ProjectMutationAck
-from api.v2.Models.ProjectRuntime import RowBlock
+from api.Models.ProjectRuntime import ProjectMutationAck
+from api.Models.ProjectRuntime import RowBlock
 from module.Data.Core.Item import Item
 from module.Data.Quality.PromptService import PromptService
 from module.Data.Quality.QualityRuleSnapshotService import (
@@ -16,7 +16,7 @@ from module.Data.Proofreading.ProofreadingRevisionService import (
 
 
 class ProjectRuntimeService:
-    """把当前项目运行态编码成 V2 bootstrap 可消费的稳定分段块。"""
+    """把当前项目运行态编码成 bootstrap 可消费的稳定分段块。"""
 
     FILES_BLOCK_FIELDS: tuple[str, ...] = (
         "rel_path",

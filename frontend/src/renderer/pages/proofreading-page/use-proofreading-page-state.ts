@@ -974,7 +974,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     try {
       await run_ack_only_mutation({
-        path: "/api/v2/project/proofreading/save-item",
+        path: "/api/project/proofreading/save-item",
         source: "proofreading_save_item",
         plan: create_save_item_plan({
           state: project_store.getState(),
@@ -1055,7 +1055,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     await run_ack_only_mutation({
-      path: "/api/v2/project/proofreading/save-item",
+      path: "/api/project/proofreading/save-item",
       source: "proofreading_save_item",
       plan: create_save_item_plan({
         state: project_store.getState(),
@@ -1122,7 +1122,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     });
 
     await run_ack_only_mutation({
-      path: "/api/v2/project/proofreading/replace-all",
+      path: "/api/project/proofreading/replace-all",
       source: "proofreading_replace_all",
       plan: replace_plan,
       fallback_error_key: "proofreading_page.feedback.replace_failed",
@@ -1198,7 +1198,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_pending_mutation(null);
     if (is_retranslate) {
       await run_mutation({
-        path: "/api/v2/project/proofreading/retranslate-items",
+        path: "/api/project/proofreading/retranslate-items",
         body: {
           items: target_items.map((item) => serialize_item(item)),
           expected_revision: server_snapshot.revision,
@@ -1214,7 +1214,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     await run_ack_only_mutation({
-      path: "/api/v2/project/proofreading/save-all",
+      path: "/api/project/proofreading/save-all",
       source: "proofreading_save_all",
       plan: create_reset_items_plan({
         state: project_store.getState(),

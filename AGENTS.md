@@ -24,7 +24,7 @@ flowchart TD
 | Python Core / 本地 API | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](api/SPEC.md) -> 对应 `module/*/SPEC.md` |
 | Electron 壳层 / preload / 共享桥接 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](frontend/SPEC.md) |
 | React 渲染层页面 / 组件 / 样式 | `docs/ARCHITECTURE.md` -> [`docs/DESIGN.md`](docs/DESIGN.md) -> [`frontend/SPEC.md`](frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](frontend/src/renderer/SPEC.md) |
-| V2 项目运行态 / bootstrap / patch | `docs/ARCHITECTURE.md` -> [`frontend/src/renderer/app/project-runtime/SPEC.md`](frontend/src/renderer/app/project-runtime/SPEC.md) -> [`api/SPEC.md`](api/SPEC.md) |
+| 项目运行态 / bootstrap / patch | `docs/ARCHITECTURE.md` -> [`frontend/src/renderer/app/project-runtime/SPEC.md`](frontend/src/renderer/app/project-runtime/SPEC.md) -> [`api/SPEC.md`](api/SPEC.md) |
 
 - 改代码前先确认状态由谁拥有、谁是唯一写入口、事件如何回流，不凭目录名和旧印象下结论。
 - 需要新增文档时，只记录后续开发会持续依赖的稳定边界、约束和阅读入口，不写项目历史、阶段性讨论或代码表面描述。
@@ -36,13 +36,13 @@ flowchart TD
 - LinguaGacha 是“无头 Python Core + Electron 桌面前端”的双进程工程。
 - `api/` 是 Python Core 对 Electron 暴露的唯一 HTTP / SSE 边界；接口路径、响应字段、错误码和 SSE topic 变化必须同步检查 [`api/SPEC.md`](api/SPEC.md)。
 - Electron 渲染层只通过 `window.desktopApp` 暴露的桌面能力接入宿主，再通过 `frontend/src/renderer/app/desktop-api.ts` 与 Core API 通信；禁止在前端直接导入 Python 模块或绕过 preload 直连 Node / Electron。
-- V2 项目运行态主路径固定为 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`；页面应消费 bootstrap + patch 流，而不是把整页 snapshot 当成唯一事实源。
+- 项目运行态主路径固定为 `/api/project/bootstrap/stream` 与 `/api/events/stream`；页面应消费 bootstrap + patch 流，而不是把整页 snapshot 当成唯一事实源。
 
 ### 2.2 领域职责与状态落点
 - `module/Data/` 持有工程事实与数据编排；工程、规则、分析、翻译结果、校对与 Extra 工具相关改动先判断是否应落在这里。
 - `module/Engine/` 只负责后台任务生命周期、请求调度、停止与重试；不要让数据层和界面层吞掉任务语义。
 - `module/File/` 只负责格式解析与回写；文件格式支持变化不应绕过这里散落在别处。
-- `api/v2/Client/` 与 `api/v2/Models/` 是 Python 侧对象化契约边界；响应结构变化要同步检查客户端对象与契约测试。
+- `api/Client/` 与 `api/Models/` 是 Python 侧对象化契约边界；响应结构变化要同步检查客户端对象与契约测试。
 - 新增项目级状态前，先判断它应归属 `ProjectSession`、某个领域 service、`DataManager`，还是渲染层应用级状态封装；同一业务语义只允许一个权威来源与一个写入口。
 - SQL 只允许落在 `Storage/LGDatabase.py`；API 层不得直接操作数据库，也不得持有 `ProjectSession`。
 
@@ -74,7 +74,7 @@ flowchart TD
 - 魔术值要收口到常量、枚举或冻结数据对象；模块对外只暴露类，常量与枚举优先设计为类属性。
 - 统一使用 `LogManager.get().debug/info/warning/error(msg, e)` 记录日志；记录异常时必须把 `e` 传入日志接口。
 - 只有“预期且无害”的场景才允许 `except: pass`，并且必须用注释说明为何可以静默忽略；需要包装语义时使用 `raise ... from e` 保留异常链。
-- 新增或调整本地 API 时，先判断它属于 `api/Application`、`api/Contract`、`api/v2/Server/Routes` 还是 `api/Bridge`，不要只在某一层补丁式加逻辑。
+- 新增或调整本地 API 时，先判断它属于 `api/Application`、`api/Contract`、`api/Server/Routes` 还是 `api/Bridge`，不要只在某一层补丁式加逻辑。
 
 ### 4.2 Electron / TypeScript / React
 - `frontend/src/main` 只负责 Electron 宿主、窗口、原生对话框与标题栏；`frontend/src/preload` 只负责 `contextBridge` 桥接；`frontend/src/shared` 只放跨端共享契约与桌面常量。

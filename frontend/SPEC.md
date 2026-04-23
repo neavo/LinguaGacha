@@ -16,7 +16,7 @@ flowchart LR
     A --> C["src/shared"]
     B --> C
     B --> D["src/renderer"]
-    D --> E["api/v2 HTTP / SSE / bootstrap"]
+    D --> E["api/ HTTP / SSE / bootstrap"]
     D --> F["src/test"]
 ```
 
@@ -76,7 +76,7 @@ flowchart LR
 ## 与渲染层的接缝
 - 渲染层的稳定入口在 [`src/renderer/SPEC.md`](./src/renderer/SPEC.md)。
 - `desktop-api.ts` 是渲染层访问 Core API 的唯一 HTTP / SSE 入口。
-- `app/project-runtime/` 负责消费 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`，不要在页面里重新拼第二套项目运行态客户端。
+- `app/project-runtime/` 负责消费 `/api/project/bootstrap/stream` 与 `/api/events/stream`，不要在页面里重新拼第二套项目运行态客户端。
 
 ## 命令与验证入口
 | 命令 | 用途 |
@@ -99,7 +99,7 @@ flowchart LR
 | 桌面桥接接口 | `src/shared/*` -> `src/preload/index.ts` -> 渲染层消费代码 |
 | Core API base URL 解析规则 | `src/shared/core-api-base-url.ts` |
 | 页面、导航、组件与样式 | [`src/renderer/SPEC.md`](./src/renderer/SPEC.md) |
-| `ProjectStore` 与 V2 运行态消费 | [`src/renderer/app/project-runtime/SPEC.md`](./src/renderer/app/project-runtime/SPEC.md) |
+| `ProjectStore` 与项目运行态消费 | [`src/renderer/app/project-runtime/SPEC.md`](./src/renderer/app/project-runtime/SPEC.md) |
 
 ## 维护约束
 - Electron 子工程只存在一套桌面桥接入口：`window.desktopApp`。

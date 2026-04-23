@@ -211,7 +211,7 @@ describe("useAnalysisTaskRuntime", () => {
 
   it("分析完成且存在候选术语时自动弹出导入确认框", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/v2/tasks/snapshot") {
+      if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
         };

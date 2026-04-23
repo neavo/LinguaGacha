@@ -227,7 +227,7 @@ export function useCustomPromptPageState(
   );
 
   const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
-    const payload = await api_fetch<PromptTemplatePayload>("/api/v2/quality/prompts/template", {
+    const payload = await api_fetch<PromptTemplatePayload>("/api/quality/prompts/template", {
       task_type: config.task_type,
     });
 
@@ -270,7 +270,7 @@ export function useCustomPromptPageState(
 
       try {
         const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/v2/quality/prompts/save", {
+          await api_fetch<ProjectMutationAckPayload>("/api/quality/prompts/save", {
             task_type: config.task_type,
             expected_revision: current_prompt_slice.revision,
             text: next_prompt_slice.text,
@@ -366,7 +366,7 @@ export function useCustomPromptPageState(
   }, [project_snapshot.loaded, refresh_template, settings_snapshot.app_language]);
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
-    const preset_payload = await api_fetch<PromptPresetPayload>("/api/v2/quality/prompts/presets", {
+    const preset_payload = await api_fetch<PromptPresetPayload>("/api/quality/prompts/presets", {
       task_type: config.task_type,
     });
     const default_virtual_id = String(settings_snapshot[config.default_preset_settings_key] ?? "");
@@ -434,7 +434,7 @@ export function useCustomPromptPageState(
         return;
       }
 
-      const payload = await api_fetch<PromptImportPayload>("/api/v2/quality/prompts/import", {
+      const payload = await api_fetch<PromptImportPayload>("/api/quality/prompts/import", {
         task_type: config.task_type,
         path: pick_result.path,
       });
@@ -460,7 +460,7 @@ export function useCustomPromptPageState(
         return;
       }
 
-      await api_fetch("/api/v2/quality/prompts/export", {
+      await api_fetch("/api/quality/prompts/export", {
         task_type: config.task_type,
         path: pick_result.path,
       });
@@ -487,7 +487,7 @@ export function useCustomPromptPageState(
   const apply_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
       try {
-        const payload = await api_fetch<{ text?: string }>("/api/v2/quality/prompts/presets/read", {
+        const payload = await api_fetch<{ text?: string }>("/api/quality/prompts/presets/read", {
           task_type: config.task_type,
           virtual_id,
         });
@@ -559,7 +559,7 @@ export function useCustomPromptPageState(
       }
 
       try {
-        await api_fetch("/api/v2/quality/prompts/presets/save", {
+        await api_fetch("/api/quality/prompts/presets/save", {
           task_type: config.task_type,
           name: normalized_name,
           text: normalize_prompt_text(prompt_text),
@@ -588,7 +588,7 @@ export function useCustomPromptPageState(
 
       try {
         const payload = await api_fetch<{ item?: CustomPromptPresetItem }>(
-          "/api/v2/quality/prompts/presets/rename",
+          "/api/quality/prompts/presets/rename",
           {
             task_type: config.task_type,
             virtual_id,
@@ -761,7 +761,7 @@ export function useCustomPromptPageState(
     } else if (confirm_state.kind === "delete-preset") {
       try {
         if (confirm_state.target_virtual_id !== null) {
-          await api_fetch("/api/v2/quality/prompts/presets/delete", {
+          await api_fetch("/api/quality/prompts/presets/delete", {
             task_type: config.task_type,
             virtual_id: confirm_state.target_virtual_id,
           });

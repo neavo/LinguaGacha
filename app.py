@@ -9,7 +9,7 @@ from types import TracebackType
 
 from rich.console import Console
 
-from api.v2.Server.ServerBootstrap import ServerBootstrap
+from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
 from base.BasePath import BasePath
 from base.LogManager import LogManager

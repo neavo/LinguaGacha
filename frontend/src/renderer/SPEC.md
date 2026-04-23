@@ -43,7 +43,7 @@
 ### `app/`
 - 真正承载：
   - `DesktopRuntimeContext`
-  - `ProjectStore` 与 V2 运行态装配
+  - `ProjectStore` 与项目运行态装配
   - 应用壳层 `AppSidebar` / `AppTitlebar`
   - 导航 schema 与 screen registry
 - 如果一个模块需要：
@@ -101,7 +101,7 @@
 ## 运行态入口约束
 - 渲染层访问 Core API 的唯一入口是 `app/desktop-api.ts`。
 - 项目运行态的唯一装配入口是 `app/project-runtime/` 与 `app/state/desktop-runtime-context.tsx`。
-- 页面不要重新发明第二套 `/api/v2/events/stream` 或 bootstrap 消费逻辑。
+- 页面不要重新发明第二套 `/api/events/stream` 或 bootstrap 消费逻辑。
 
 ## 验证与维护
 涉及渲染层结构、样式边界、导航或基础组件契约的改动，至少运行：

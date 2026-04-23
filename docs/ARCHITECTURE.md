@@ -18,7 +18,7 @@ flowchart LR
 
 规则：
 - Electron 渲染层只通过 `window.desktopApp` 暴露的宿主能力进入桌面环境，再通过 `frontend/src/renderer/app/desktop-api.ts` 访问 Core API。
-- Python Core 对前端暴露的唯一协议边界是 `api/`；运行态主路径固定为 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`。
+- Python Core 对前端暴露的唯一协议边界是 `api/`；运行态主路径固定为 `/api/project/bootstrap/stream` 与 `/api/events/stream`。
 - `module/Data` 持有工程事实与数据编排，`module/Engine` 负责任务生命周期，`module/File` 负责格式解析与写回；三者边界变化要回到对应 `SPEC.md` 调整。
 
 ## 文档地图
@@ -48,7 +48,7 @@ flowchart TD
 | 仓库整体结构 | `docs/ARCHITECTURE.md` -> `app.py` -> `base/*` |
 | Electron 壳层、桥接与构建入口 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) |
 | 渲染层页面、导航与组件落位 | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) |
-| V2 项目运行态 / `ProjectStore` / bootstrap | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) -> [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) -> [`api/SPEC.md`](../api/SPEC.md) |
+| 项目运行态 / `ProjectStore` / bootstrap | `docs/ARCHITECTURE.md` -> [`frontend/SPEC.md`](../frontend/SPEC.md) -> [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) -> [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) -> [`api/SPEC.md`](../api/SPEC.md) |
 | HTTP / SSE 契约与 Python 侧对象化客户端 | `docs/ARCHITECTURE.md` -> [`api/SPEC.md`](../api/SPEC.md) |
 | 工程加载、工作台、校对与质量规则数据流 | `docs/ARCHITECTURE.md` -> [`module/Data/SPEC.md`](../module/Data/SPEC.md) |
 | 任务调度、请求生命周期、停止与重试 | `docs/ARCHITECTURE.md` -> [`module/Engine/SPEC.md`](../module/Engine/SPEC.md) |
@@ -61,7 +61,7 @@ flowchart TD
 | --- | --- | --- |
 | Electron 宿主、预加载、共享契约 | [`frontend/SPEC.md`](../frontend/SPEC.md) | 只有 `window.desktopApp` 可以把桌面能力交给渲染层 |
 | React 页面、导航、样式归属 | [`frontend/src/renderer/SPEC.md`](../frontend/src/renderer/SPEC.md) | 页面逻辑在 `pages/`，跨页面稳定组合层在 `widgets/` |
-| V2 运行态、`ProjectStore`、变更信号 | [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) | 页面消费 bootstrap + `project.patch`，不重建第二套运行态客户端 |
+| 项目运行态、`ProjectStore`、变更信号 | [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) | 页面消费 bootstrap + `project.patch`，不重建第二套运行态客户端 |
 | 本地 HTTP / SSE / bootstrap 契约 | [`api/SPEC.md`](../api/SPEC.md) | `api/` 是前端进入 Python Core 的唯一协议边界 |
 | 工程事实、规则、分析、校对与 Extra 数据服务 | [`module/Data/SPEC.md`](../module/Data/SPEC.md) | `DataManager` 是工程级数据门面，SQL 仍只在 `Storage/LGDatabase.py` |
 | 任务生命周期、请求和停止语义 | [`module/Engine/SPEC.md`](../module/Engine/SPEC.md) | `Engine` 不持有项目事实，只负责任务执行骨架 |

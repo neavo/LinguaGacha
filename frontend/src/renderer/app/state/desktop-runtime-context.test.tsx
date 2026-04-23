@@ -11,20 +11,21 @@ import {
 import { DesktopRuntimeProvider } from "@/app/state/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 
-const { api_fetch_mock, open_v2_event_stream_mock, open_v2_project_bootstrap_stream_mock } =
-  vi.hoisted(() => {
+const { api_fetch_mock, open_event_stream_mock, open_project_bootstrap_stream_mock } = vi.hoisted(
+  () => {
     return {
       api_fetch_mock: vi.fn(),
-      open_v2_event_stream_mock: vi.fn(),
-      open_v2_project_bootstrap_stream_mock: vi.fn(),
+      open_event_stream_mock: vi.fn(),
+      open_project_bootstrap_stream_mock: vi.fn(),
     };
-  });
+  },
+);
 
 vi.mock("@/app/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
-    open_v2_event_stream: open_v2_event_stream_mock,
-    open_v2_project_bootstrap_stream: open_v2_project_bootstrap_stream_mock,
+    open_event_stream: open_event_stream_mock,
+    open_project_bootstrap_stream: open_project_bootstrap_stream_mock,
   };
 });
 
@@ -153,8 +154,8 @@ describe("DesktopRuntimeProvider", () => {
     root = null;
     container = null;
     api_fetch_mock.mockReset();
-    open_v2_event_stream_mock.mockReset();
-    open_v2_project_bootstrap_stream_mock.mockReset();
+    open_event_stream_mock.mockReset();
+    open_project_bootstrap_stream_mock.mockReset();
   });
 
   it("完成 bootstrap 后补发工作台与校对页刷新信号", async () => {
@@ -170,7 +171,7 @@ describe("DesktopRuntimeProvider", () => {
         };
       }
 
-      if (path === "/api/v2/project/snapshot") {
+      if (path === "/api/project/snapshot") {
         return {
           project: {
             path: "E:/demo/demo.lg",
@@ -179,7 +180,7 @@ describe("DesktopRuntimeProvider", () => {
         };
       }
 
-      if (path === "/api/v2/tasks/snapshot") {
+      if (path === "/api/tasks/snapshot") {
         return {
           task: {
             task_type: "translation",
@@ -192,9 +193,9 @@ describe("DesktopRuntimeProvider", () => {
       throw new Error(`未预期的请求：${path}`);
     });
 
-    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
 
-    open_v2_project_bootstrap_stream_mock.mockImplementation(() => {
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
       return (async function* () {
         yield {
           type: "stage_payload",
@@ -246,7 +247,7 @@ describe("DesktopRuntimeProvider", () => {
 
     const latest_snapshot = snapshots.at(-1);
 
-    expect(open_v2_project_bootstrap_stream_mock).toHaveBeenCalledWith();
+    expect(open_project_bootstrap_stream_mock).toHaveBeenCalledWith();
     expect(latest_snapshot).toMatchObject({
       workbenchSeq: 1,
       workbenchReason: "project_bootstrap",
@@ -271,7 +272,7 @@ describe("DesktopRuntimeProvider", () => {
         };
       }
 
-      if (path === "/api/v2/project/snapshot") {
+      if (path === "/api/project/snapshot") {
         return {
           project: {
             path: "E:/demo/demo.lg",
@@ -280,7 +281,7 @@ describe("DesktopRuntimeProvider", () => {
         };
       }
 
-      if (path === "/api/v2/tasks/snapshot") {
+      if (path === "/api/tasks/snapshot") {
         return {
           task: {
             task_type: "translation",
@@ -293,8 +294,8 @@ describe("DesktopRuntimeProvider", () => {
       throw new Error(`未预期的请求：${path}`);
     });
 
-    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    open_v2_project_bootstrap_stream_mock.mockImplementation(() => {
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
       return (async function* () {
         yield {
           type: "completed",
@@ -364,7 +365,7 @@ describe("DesktopRuntimeProvider", () => {
         };
       }
 
-      if (path === "/api/v2/project/snapshot") {
+      if (path === "/api/project/snapshot") {
         return {
           project: {
             path: "E:/demo/demo.lg",
@@ -373,7 +374,7 @@ describe("DesktopRuntimeProvider", () => {
         };
       }
 
-      if (path === "/api/v2/tasks/snapshot") {
+      if (path === "/api/tasks/snapshot") {
         return {
           task: {
             task_type: "translation",
@@ -386,8 +387,8 @@ describe("DesktopRuntimeProvider", () => {
       throw new Error(`未预期的请求：${path}`);
     });
 
-    open_v2_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    open_v2_project_bootstrap_stream_mock.mockImplementation(() => {
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
       return (async function* () {
         yield {
           type: "stage_payload",

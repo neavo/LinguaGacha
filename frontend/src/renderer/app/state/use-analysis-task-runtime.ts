@@ -374,7 +374,7 @@ export function useAnalysisTaskRuntime(
     }
 
     try {
-      const task_payload = await api_fetch<AnalysisTaskPayload>("/api/v2/tasks/snapshot", {
+      const task_payload = await api_fetch<AnalysisTaskPayload>("/api/tasks/snapshot", {
         task_type: "analysis",
       });
       apply_analysis_task_snapshot(normalize_analysis_task_snapshot_payload(task_payload));
@@ -411,7 +411,7 @@ export function useAnalysisTaskRuntime(
 
     try {
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-        "/api/v2/tasks/start-analysis",
+        "/api/tasks/start-analysis",
         {
           mode: should_continue ? "CONTINUE" : "NEW",
           quality_snapshot: serializeQualityRuntimeSnapshot(project_store.getState()),
@@ -505,7 +505,7 @@ export function useAnalysisTaskRuntime(
             );
             const mutation_ack = normalize_project_mutation_ack(
               await api_fetch<ProjectMutationAckPayload>(
-                "/api/v2/project/analysis/import-glossary",
+                "/api/project/analysis/import-glossary",
                 import_plan.request_body,
               ),
             );
@@ -571,11 +571,11 @@ export function useAnalysisTaskRuntime(
         return;
       }
 
-      let path = "/api/v2/tasks/stop-analysis";
+      let path = "/api/tasks/stop-analysis";
       if (analysis_confirm_state.kind === "reset-all") {
-        path = "/api/v2/tasks/reset-analysis-all";
+        path = "/api/tasks/reset-analysis-all";
       } else if (analysis_confirm_state.kind === "reset-failed") {
-        path = "/api/v2/tasks/reset-analysis-failed";
+        path = "/api/tasks/reset-analysis-failed";
       }
 
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>(path, {});

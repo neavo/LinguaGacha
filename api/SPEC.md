@@ -6,12 +6,12 @@
 ## 权威来源
 | 关注点 | 代码权威来源 |
 | --- | --- |
-| 服务启动、监听地址、错误映射 | `api/v2/Server/CoreApiServer.py`、`api/v2/Server/ServerBootstrap.py`、`api/v2/Server/CoreApiPortCatalog.py` |
-| 路由分组与精确路径 | `api/v2/Server/Routes/*.py` |
-| 请求归一化与业务约束 | `api/v2/Application/*.py` |
-| HTTP 载荷包装与 bootstrap / SSE 线格式 | `api/v2/Contract/*.py` |
-| 公开事件桥与 `project.patch` 生成 | `api/v2/Bridge/*.py` |
-| Python 客户端与对象化模型 | `api/v2/Client/*.py`、`api/v2/Models/*.py` |
+| 服务启动、监听地址、错误映射 | `api/Server/CoreApiServer.py`、`api/Server/ServerBootstrap.py`、`api/Server/CoreApiPortCatalog.py` |
+| 路由分组与精确路径 | `api/Server/Routes/*.py` |
+| 请求归一化与业务约束 | `api/Application/*.py` |
+| HTTP 载荷包装与 bootstrap / SSE 线格式 | `api/Contract/*.py` |
+| 公开事件桥与 `project.patch` 生成 | `api/Bridge/*.py` |
+| Python 客户端与对象化模型 | `api/Client/*.py`、`api/Models/*.py` |
 | Electron 接入点 | `frontend/src/renderer/app/desktop-api.ts`、`frontend/src/renderer/app/project-runtime/SPEC.md` |
 
 ## 阅读顺序
@@ -31,25 +31,25 @@ flowchart LR
     D --> F["Models / DTO"]
     G["frontend desktop-api.ts"] --> B
     H["frontend EventSource"] --> B
-    I["api/v2/Client/*"] --> B
+    I["api/Client/*"] --> B
 ```
 
 ### 1.2 目录职责
 | 目录 | 职责 |
 | --- | --- |
-| `api/v2/Server/` | 本地 HTTP 服务、路由注册、统一错误映射 |
-| `api/v2/Application/` | 读取 Core 状态、归一化请求、组织稳定语义 |
-| `api/v2/Contract/` | 把内部对象编码成 HTTP / SSE 有效载荷 |
-| `api/v2/Bridge/` | 把内部事件裁成公开 topic 与 `project.patch` |
-| `api/v2/Models/` | Python 冻结 DTO、bootstrap 行块与客户端共享模型 |
-| `api/v2/Client/` | Python 侧薄客户端与对象化返回包装 |
+| `api/Server/` | 本地 HTTP 服务、路由注册、统一错误映射 |
+| `api/Application/` | 读取 Core 状态、归一化请求、组织稳定语义 |
+| `api/Contract/` | 把内部对象编码成 HTTP / SSE 有效载荷 |
+| `api/Bridge/` | 把内部事件裁成公开 topic 与 `project.patch` |
+| `api/Models/` | Python 冻结 DTO、bootstrap 行块与客户端共享模型 |
+| `api/Client/` | Python 侧薄客户端与对象化返回包装 |
 
 ### 1.3 路径前缀与消费者
-- 主业务 API 统一落在 `api/v2/`。
+- 主业务 API 统一落在 `api/`。
 - 应用设置固定使用 `/api/settings/*`。
 - Extra 工具固定使用 `/api/extra/*`。
 - 新增主业务协议时，不扩展新的并行根前缀。
-- Electron 主路径只消费 `/api/v2/project/bootstrap/stream` 与 `/api/v2/events/stream`，其余页面写操作走普通 JSON 路由。
+- Electron 主路径只消费 `/api/project/bootstrap/stream` 与 `/api/events/stream`，其余页面写操作走普通 JSON 路由。
 
 ### 1.4 监听地址与端口
 - `CoreApiServer` 固定绑定 `127.0.0.1`，不是 `0.0.0.0`。
@@ -65,8 +65,8 @@ flowchart LR
 ### 2.1 HTTP 约定
 - 公开 `GET` 只有 3 个：
   - `/api/health`
-  - `/api/v2/events/stream`
-  - `/api/v2/project/bootstrap/stream`
+  - `/api/events/stream`
+  - `/api/project/bootstrap/stream`
 - 其余公开接口统一走 `POST + JSON body`。
 - `OPTIONS` 由 `CoreApiServer` 统一回 `204`。
 - CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
@@ -107,7 +107,7 @@ flowchart LR
 - API 当前没有稳定的业务错误码体系；调用方不能靠 `error.code` 区分所有业务分支。
 
 ### 2.4 SSE 线格式
-普通事件流 `/api/v2/events/stream` 由 `EventEnvelope.to_sse_payload()` 生成，协议特点是：
+普通事件流 `/api/events/stream` 由 `EventEnvelope.to_sse_payload()` 生成，协议特点是：
 - `event:` 直接写 topic
 - `data:` 直接写 payload JSON
 - 没有 `event_id`、`timestamp`、`topic` 回显
@@ -116,7 +116,7 @@ flowchart LR
 ## 3. 运行态事件协议
 
 ### 3.1 Bootstrap 是一次性阶段化首包
-`/api/v2/project/bootstrap/stream` 使用独立事件型别，不复用普通 topic：
+`/api/project/bootstrap/stream` 使用独立事件型别，不复用普通 topic：
 
 | `event:` | 字段 | 用途 |
 | --- | --- | --- |
@@ -180,16 +180,16 @@ flowchart LR
 | 前缀 | 关注点 |
 | --- | --- |
 | `/api/health` | 探活入口 |
-| `/api/v2/events/stream` | 长期事件流 |
-| `/api/v2/project/bootstrap/stream` | 一次性 bootstrap 首包 |
-| `/api/v2/project/*` | 工程、工作台、校对与同步 mutation |
-| `/api/v2/tasks/*` | 翻译 / 分析任务 |
-| `/api/v2/models/*` | 模型页 |
-| `/api/v2/quality/rules/*` 与 `/api/v2/quality/prompts/*` | 规则与提示词 |
+| `/api/events/stream` | 长期事件流 |
+| `/api/project/bootstrap/stream` | 一次性 bootstrap 首包 |
+| `/api/project/*` | 工程、工作台、校对与同步 mutation |
+| `/api/tasks/*` | 翻译 / 分析任务 |
+| `/api/models/*` | 模型页 |
+| `/api/quality/rules/*` 与 `/api/quality/prompts/*` | 规则与提示词 |
 | `/api/settings/*` | 应用设置 |
 | `/api/extra/*` | Extra 工具 |
 
-### 4.2 `/api/v2/project/*` 下的真实边界
+### 4.2 `/api/project/*` 下的真实边界
 - `project`、`workbench`、`proofreading` 共用前缀，但分别由不同 Application 服务负责。
 - 工作台和校对页的运行态真值来自 bootstrap + `ProjectStore`；API 不提供整页 `workbench` 快照，也不提供文件级并行 patch 路由。
 - `workbench/parse-file` 是只读解析路由：只读取本地文件并返回标准化 preview，不落库、不清缓存、不发事件。
@@ -199,7 +199,7 @@ flowchart LR
 ### 4.3 同步 mutation 与任务型接口
 - 工作台 `add-file / replace-file / reset-file / delete-file / delete-file-batch / reorder-files` 与校对 `save-item / save-all / replace-all` 都属于同步 mutation：前端先本地 patch，服务端持久化后返回 `ProjectMutationAck` 对齐 revision。
 - `retranslate-items`、翻译任务、分析任务与 reset 链路属于任务型接口，完成后仍通过任务事件和必要的 `project.patch` 推进运行态。
-- `/api/v2/project/analysis/import-glossary` 也是同步 mutation：前端提交已筛好的 `entries`、`analysis_candidate_count`、`expected_section_revisions`，以及单独的 `expected_glossary_revision`；服务端会分别校验运行态 section revision 与 glossary 自身 revision，再负责持久化与 revision 对齐。
+- `/api/project/analysis/import-glossary` 也是同步 mutation：前端提交已筛好的 `entries`、`analysis_candidate_count`、`expected_section_revisions`，以及单独的 `expected_glossary_revision`；服务端会分别校验运行态 section revision 与 glossary 自身 revision，再负责持久化与 revision 对齐。
 - `tasks/snapshot` 是按需快照，不是订阅入口；分析任务快照在可用时会额外带 `analysis_candidate_count`。
 - `export-translation` 只有最小 `accepted` 回执，没有稳定 DTO 边界。
 
@@ -212,7 +212,7 @@ flowchart LR
 - `text_preserve` 的非显然差异是 `meta` 使用 `{"mode": str}`，而不是 `{"enabled": bool}`。
 - `prompts/import` 只读取本地文本并返回 `{"text": ...}`，不承担导入即保存。
 - 规则统计由渲染层基于 `ProjectStore.items` 本地计算，公开 API 不提供独立统计路由。
-- `extra` 保持非 v2 前缀 `/api/extra/*`；`ts-conversion/start` 的进度与终态依赖 `extra.ts_conversion_progress`、`extra.ts_conversion_finished` 两个 SSE topic。
+- `extra` 保持独立前缀 `/api/extra/*`；`ts-conversion/start` 的进度与终态依赖 `extra.ts_conversion_progress`、`extra.ts_conversion_finished` 两个 SSE topic。
 
 ## 5. Python 客户端边界
 
@@ -239,8 +239,8 @@ flowchart LR
   - `status === "ok"`
   - `service === "linguagacha-core"`
 - 项目运行态主路径固定为：
-  - `/api/v2/project/bootstrap/stream`
-  - `/api/v2/events/stream`
+  - `/api/project/bootstrap/stream`
+  - `/api/events/stream`
 - 更细的 `ProjectStore`、bootstrap stage 落地、页面变更信号与本地统计任务，以 [`frontend/src/renderer/app/project-runtime/SPEC.md`](../frontend/src/renderer/app/project-runtime/SPEC.md) 为准。
 
 ## 7. 什么时候必须同步更新本文

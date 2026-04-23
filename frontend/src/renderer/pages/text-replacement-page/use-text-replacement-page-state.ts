@@ -510,7 +510,7 @@ export function useTextReplacementPageState(
 
       try {
         const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/v2/quality/rules/save-entries", {
+          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
             rule_type: config.rule_type,
             expected_revision: current_replacement_slice.revision,
             entries: normalized_entries,
@@ -572,7 +572,7 @@ export function useTextReplacementPageState(
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<TextReplacementPresetPayload>(
-      "/api/v2/quality/rules/presets",
+      "/api/quality/rules/presets",
       {
         preset_dir_name: config.preset_dir_name,
       },
@@ -702,7 +702,7 @@ export function useTextReplacementPageState(
 
       try {
         const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/v2/quality/rules/update-meta", {
+          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/update-meta", {
             rule_type: config.rule_type,
             expected_revision: current_replacement_slice.revision,
             meta: {
@@ -1053,7 +1053,7 @@ export function useTextReplacementPageState(
         }
 
         const payload = await api_fetch<{ entries?: TextReplacementEntry[] }>(
-          "/api/v2/quality/rules/import",
+          "/api/quality/rules/import",
           {
             rule_type: config.rule_type,
             expected_revision: revision_ref.current,
@@ -1094,7 +1094,7 @@ export function useTextReplacementPageState(
         return;
       }
 
-      await api_fetch("/api/v2/quality/rules/export", {
+      await api_fetch("/api/quality/rules/export", {
         rule_type: config.rule_type,
         path: pick_result.path,
         entries: entries.map((entry) => {
@@ -1188,7 +1188,7 @@ export function useTextReplacementPageState(
     async (virtual_id: string): Promise<void> => {
       try {
         const payload = await api_fetch<{ entries: TextReplacementEntry[] }>(
-          "/api/v2/quality/rules/presets/read",
+          "/api/quality/rules/presets/read",
           {
             preset_dir_name: config.preset_dir_name,
             virtual_id,
@@ -1261,7 +1261,7 @@ export function useTextReplacementPageState(
       }
 
       try {
-        await api_fetch("/api/v2/quality/rules/presets/save", {
+        await api_fetch("/api/quality/rules/presets/save", {
           preset_dir_name: config.preset_dir_name,
           name: normalized_name,
           entries: entries
@@ -1295,7 +1295,7 @@ export function useTextReplacementPageState(
 
       try {
         const payload = await api_fetch<{ item?: TextReplacementPresetItem }>(
-          "/api/v2/quality/rules/presets/rename",
+          "/api/quality/rules/presets/rename",
           {
             preset_dir_name: config.preset_dir_name,
             virtual_id,
@@ -1583,7 +1583,7 @@ export function useTextReplacementPageState(
     } else if (confirm_state.kind === "delete-preset") {
       try {
         if (confirm_state.target_virtual_id !== null) {
-          await api_fetch("/api/v2/quality/rules/presets/delete", {
+          await api_fetch("/api/quality/rules/presets/delete", {
             preset_dir_name: config.preset_dir_name,
             virtual_id: confirm_state.target_virtual_id,
           });

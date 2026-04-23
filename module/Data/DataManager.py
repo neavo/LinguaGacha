@@ -722,7 +722,7 @@ class DataManager(Base):
         return [dict(item) for item in self.item_service.get_all_item_dicts()]
 
     def get_items_all(self) -> list[Item]:
-        """提供 V2 runtime 使用的全量条目对象视图。"""
+        """提供项目运行态使用的全量条目对象视图。"""
 
         return [Item.from_dict(item_dict) for item_dict in self.get_all_item_dicts()]
 
@@ -1013,7 +1013,7 @@ class DataManager(Base):
         section_revisions: dict[str, int] | None = None,
         project_revision: int | None = None,
     ) -> None:
-        """直接推送 V2 运行态补丁，避免前端再整段重拉 bootstrap。"""
+        """直接推送项目运行态补丁，避免前端再整段重拉 bootstrap。"""
 
         normalized_sections = [
             section

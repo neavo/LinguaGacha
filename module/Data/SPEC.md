@@ -1,7 +1,7 @@
 # `module/Data` 规范说明
 
 ## 一句话总览
-`module/Data` 承担工程事实、规则、分析、翻译、校对辅助与 Extra 数据服务等“以数据为中心”的实现。`DataManager` 是工程级数据门面；`Proofreading/` 与 `Extra/` 通过 `api/v2/Application` 组合成用例层能力。
+`module/Data` 承担工程事实、规则、分析、翻译、校对辅助与 Extra 数据服务等“以数据为中心”的实现。`DataManager` 是工程级数据门面；`Proofreading/` 与 `Extra/` 通过 `api/Application` 组合成用例层能力。
 
 ## 阅读顺序
 | 任务类型 | 优先阅读 |
@@ -12,8 +12,8 @@
 | 规则页、提示词、预设 | `DataManager.py` -> `Quality/QualityRuleService.py` -> `Quality/QualityRuleFacadeService.py` / `PromptService.py` / `QualityRulePresetService.py` |
 | 分析进度、候选池、候选聚合 | `DataManager.py` -> `Analysis/AnalysisService.py` |
 | 翻译条目准备与重置 | `DataManager.py` -> `Translation/TranslationItemService.py` / `Translation/TranslationResetService.py` |
-| 校对页保存、重翻与本地 runtime 输入事实 | `api/v2/Application/ProofreadingAppService.py` -> `Proofreading/*` |
-| 繁简转换、姓名字段 | `api/v2/Application/ExtraAppService.py` -> `Extra/*` |
+| 校对页保存、重翻与本地 runtime 输入事实 | `api/Application/ProofreadingAppService.py` -> `Proofreading/*` |
+| 繁简转换、姓名字段 | `api/Application/ExtraAppService.py` -> `Extra/*` |
 | 外部文件格式解析与写回 | [`../File/SPEC.md`](../File/SPEC.md) -> `../File/FileManager.py` |
 | 后台任务执行、请求与停止语义 | [`../Engine/SPEC.md`](../Engine/SPEC.md) -> `../Engine/*` |
 | 会话缓存、meta、rules、items、assets | `Core/*` |
@@ -25,7 +25,7 @@
 | `DataManager.py` | 工程级数据入口；协调会话、规则、分析、翻译、工作台事件与跨 service 流程 |
 | `Core/` | `ProjectSession`、`Item`、`Project` 以及 `Meta/Rule/ItemService/Asset/Batch` 基础能力 |
 | `Storage/LGDatabase.py` | `.lg` 的 schema、SQL、事务与序列化实现 |
-| `Project/` | 工程创建/加载/卸载、文件操作、预过滤、导出路径，以及 V2 运行态编码 / patch / revision 支撑 |
+| `Project/` | 工程创建/加载/卸载、文件操作、预过滤、导出路径，以及项目运行态编码 / patch / revision 支撑 |
 | `Quality/` | 规则快照、变更、预设与提示词逻辑 |
 | `Analysis/` | 分析进度、候选聚合、checkpoint 与分析结果写回 |
 | `Proofreading/` | 校对条目范围判断、revision 冲突、保存、重检与重翻 |
@@ -70,7 +70,7 @@ flowchart TD
 | --- | --- |
 | 工程创建/加载/卸载 | `DataManager` -> `ProjectService` / `ProjectLifecycleService` |
 | 工作台文件增删改、批量文件操作与运行态事实同步 | `DataManager` -> `ProjectFileService` / `ProjectRuntimeService` |
-| V2 项目运行态 bootstrap / patch 构建 | `ProjectBootstrapAppService` / `ProjectRuntimeService` -> `DataManager` |
+| 项目运行态 bootstrap / patch 构建 | `ProjectBootstrapAppService` / `ProjectRuntimeService` -> `DataManager` |
 | 规则、提示词、预设 | `DataManager` -> `QualityRuleService` / `PromptService` / `QualityRulePresetService` |
 | 分析进度、候选聚合 | `DataManager` -> `AnalysisService` |
 | 翻译取条目、翻译重置 | `DataManager` -> `TranslationItemService` / `TranslationResetService` |
@@ -91,7 +91,7 @@ flowchart TD
 - `ProjectPrefilterService`：预过滤是否需要重跑与实际执行；比较口径只依赖 `source_language` 与 `mtool_optimizer_enable`
 - `ProjectFileService`：工作台文件的只读解析、路径/顺序校验与文件操作互斥控制
 - `ExportPathService`：导出路径规则
-- `Project/ProjectRuntimeService`：把工程实体编码成 V2 bootstrap block 与 task patch 可复用的稳定记录
+- `Project/ProjectRuntimeService`：把工程实体编码成项目 bootstrap block 与 task patch 可复用的稳定记录
 
 ### `Quality`
 - `QualityRuleService`：规则领域总门面

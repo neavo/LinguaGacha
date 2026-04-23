@@ -1,7 +1,7 @@
 # `app/project-runtime` 规范说明
 
 ## 一句话总览
-`frontend/src/renderer/app/project-runtime/` 负责把 V2 bootstrap 流和 `project.patch` 事件流收口成渲染层可消费的 `ProjectStore`。它不承担页面 UI，也不承担读写所有 HTTP 路由；它只负责建立项目运行态、合并补丁、暴露稳定 selector 和页面变更信号。
+`frontend/src/renderer/app/project-runtime/` 负责把 bootstrap 流和 `project.patch` 事件流收口成渲染层可消费的 `ProjectStore`。它不承担页面 UI，也不承担读写所有 HTTP 路由；它只负责建立项目运行态、合并补丁、暴露稳定 selector 和页面变更信号。
 
 ## 阅读顺序
 | 任务类型 | 优先阅读 |
@@ -9,7 +9,7 @@
 | 理解 `ProjectStore` 数据形状与 patch 语义 | `project-store.ts` |
 | 理解 bootstrap 事件如何落入 store | `bootstrap-stream.ts` -> `use-project-runtime.ts` |
 | 理解桌面运行时如何消费它 | `../state/desktop-runtime-context.tsx` |
-| 理解后端如何产生 stage / patch | [`api/SPEC.md`](../../../../../api/SPEC.md) -> `api/v2/Application/ProjectBootstrapAppService.py` -> `module/Data/Project/ProjectRuntimeService.py` |
+| 理解后端如何产生 stage / patch | [`api/SPEC.md`](../../../../../api/SPEC.md) -> `api/Application/ProjectBootstrapAppService.py` -> `module/Data/Project/ProjectRuntimeService.py` |
 
 ## 目录职责
 | 路径 | 职责 |
@@ -23,11 +23,11 @@
 ## 真实运行链路
 ```mermaid
 flowchart TD
-    A["desktop-api.ts"] --> B["/api/v2/project/bootstrap/stream"]
+    A["desktop-api.ts"] --> B["/api/project/bootstrap/stream"]
     B --> C["consumeBootstrapStream"]
-    C --> D["createV2ProjectRuntime.bootstrap()"]
+    C --> D["createProjectRuntime.bootstrap()"]
     D --> E["ProjectStore.applyBootstrapStage()"]
-    F["/api/v2/events/stream"] --> G["DesktopRuntimeContext"]
+    F["/api/events/stream"] --> G["DesktopRuntimeContext"]
     G --> H["ProjectStore.applyProjectPatch()"]
     H --> I["页面 selector / 变更信号"]
 ```
@@ -130,7 +130,7 @@ store 固定分成下面 8 个 stage / section：
 | 变更类型 | 优先落点 |
 | --- | --- |
 | bootstrap stage 名称、顺序或 payload 形状 | 本文 + `project-store.ts` + 后端 bootstrap 服务 |
-| 新增 / 删除 patch operation | 本文 + `project-store.ts` + `api/v2/Bridge/ProjectPatchEventBridge.py` |
+| 新增 / 删除 patch operation | 本文 + `project-store.ts` + `api/Bridge/ProjectPatchEventBridge.py` |
 | 页面如何把 patch 转成 change signal | `../state/desktop-runtime-context.tsx` |
 | 纯页面派生读取逻辑 | `selectors.ts` 或对应页面 hook |
 

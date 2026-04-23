@@ -198,7 +198,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         return;
       }
 
-      await api_fetch("/api/v2/project/settings/sync-meta", {
+      await api_fetch("/api/project/settings/sync-meta", {
         source_language: next_settings_snapshot.source_language,
         target_language: next_settings_snapshot.target_language,
       });

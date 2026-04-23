@@ -65,7 +65,7 @@ export async function apply_project_prefilter_mutation(
 
   try {
     const mutation_ack = normalize_project_mutation_ack(
-      await api_fetch<ProjectMutationAckPayload>("/api/v2/project/apply-prefilter", {
+      await api_fetch<ProjectMutationAckPayload>("/api/project/apply-prefilter", {
         items: serialize_prefilter_items(mutation_output.items),
         translation_extras: mutation_output.translation_extras,
         project_status: mutation_output.project_status,
