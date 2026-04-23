@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
 
 from api.Application.EventStreamService import EventStreamService
-from api.Application.ExtraAppService import ExtraAppService
 from api.Application.ModelAppService import ModelAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProjectBootstrapAppService import ProjectBootstrapAppService
@@ -16,7 +15,6 @@ from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
-from api.Server.Routes.ExtraRoutes import ExtraRoutes
 from api.Server.Routes.SettingsRoutes import SettingsRoutes
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.TaskRoutes import TaskRoutes
@@ -58,7 +56,6 @@ class ServerBootstrap:
         task_app_service = TaskAppService()
         workbench_app_service = WorkbenchAppService()
         settings_app_service = SettingsAppService()
-        extra_app_service = ExtraAppService()
         model_app_service = ModelAppService()
         project_bootstrap_app_service = ProjectBootstrapAppService(
             ProjectRuntimeService(DataManager.get())
@@ -70,7 +67,6 @@ class ServerBootstrap:
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
             settings_app_service=settings_app_service,
-            extra_app_service=extra_app_service,
             model_app_service=model_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
@@ -87,7 +83,6 @@ class ServerBootstrap:
         task_app_service: TaskAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
         settings_app_service: SettingsAppService | None = None,
-        extra_app_service: ExtraAppService | None = None,
         model_app_service: ModelAppService | None = None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
@@ -123,7 +118,6 @@ class ServerBootstrap:
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
             settings_app_service=settings_app_service,
-            extra_app_service=extra_app_service,
             model_app_service=model_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
             event_stream_service=event_stream_service,
@@ -167,7 +161,6 @@ class ServerBootstrap:
         task_app_service: TaskAppService | None,
         workbench_app_service: WorkbenchAppService | None,
         settings_app_service: SettingsAppService | None,
-        extra_app_service: ExtraAppService | None,
         model_app_service: ModelAppService | None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None,
         event_stream_service: EventStreamService,
@@ -180,8 +173,6 @@ class ServerBootstrap:
             core_api_server.register_routes()
             if settings_app_service is not None:
                 SettingsRoutes.register(core_api_server, settings_app_service)
-            if extra_app_service is not None:
-                ExtraRoutes.register(core_api_server, extra_app_service)
             cls.register_api_routes(
                 core_api_server,
                 project_app_service=project_app_service,

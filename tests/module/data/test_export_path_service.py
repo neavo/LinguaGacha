@@ -95,19 +95,3 @@ def test_get_paths_include_custom_and_timestamp_suffix(
 
     assert translated_path.name == "project_Translated_v2_20260110_123000"
     assert bilingual_path.name == "project_Translated_Bilingual_v2_20260110_123000"
-
-
-def test_ensure_paths_create_directories(
-    patched_localizer: None,
-    fs,
-) -> None:
-    del patched_localizer
-    del fs
-    service = ExportPathService()
-    lg_path = "/workspace/export_path/project.lg"
-
-    translated_path = Path(service.ensure_translated_path(lg_path))
-    bilingual_path = Path(service.ensure_bilingual_path(lg_path))
-
-    assert translated_path.is_dir()
-    assert bilingual_path.is_dir()

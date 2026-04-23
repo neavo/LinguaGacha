@@ -526,15 +526,11 @@ def test_reset_failed_analysis_with_snapshot_normalizes_and_returns_deleted_coun
     }
 
 
-def test_analysis_helpers_normalize_control_code_and_skipped_statuses() -> None:
+def test_analysis_helpers_match_skipped_status_contract() -> None:
     service, _session = build_analysis_service()
 
     assert service.is_skipped_analysis_status(Base.ProjectStatus.EXCLUDED) is True
     assert service.is_skipped_analysis_status(Base.ProjectStatus.PROCESSED) is False
-    assert service.is_analysis_control_code_text(r" \n[7] ") is True
-    assert service.is_analysis_control_code_text("前缀\\n[7]") is False
-    assert service.is_analysis_control_code_self_mapping(r" \n[7] ", r"\n[7]") is True
-    assert service.is_analysis_control_code_self_mapping(r"\n[7]", "名字") is False
 
 
 def test_get_analysis_candidate_count_cache_normalizes_invalid_values() -> None:

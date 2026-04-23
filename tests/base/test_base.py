@@ -93,16 +93,6 @@ def test_subscribe_and_unsubscribe_delegate_to_event_manager(
     ]
 
 
-def test_subscribe_busy_state_events_covers_all_busy_events() -> None:
-    subscribed_events: list[Base.Event] = []
-    subject = Base()
-    subject.subscribe = lambda event, handler: subscribed_events.append(event)
-
-    subject.subscribe_busy_state_events(lambda event, data: None)
-
-    assert subscribed_events == list(Base.BUSY_STATE_EVENTS)
-
-
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
@@ -131,6 +121,4 @@ def test_api_stream_source_events_cover_runtime_patch_and_task_events() -> None:
         Base.Event.ANALYSIS_REQUEST_STOP,
         Base.Event.ANALYSIS_PROGRESS,
         Base.Event.CONFIG_UPDATED,
-        Base.Event.EXTRA_TS_CONVERSION_PROGRESS,
-        Base.Event.EXTRA_TS_CONVERSION_FINISHED,
     )

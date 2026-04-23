@@ -217,57 +217,6 @@ class TaskRunnerLifecycle:
             payload["message"] = message
         owner.emit(task_event, payload)
 
-    @staticmethod
-    def run_reset_flow(
-        owner: Base,
-        *,
-        reset_event: Base.Event,
-        progress_message: str | None,
-        worker: Callable[[], None],
-        thread_factory: Callable[..., Any] = threading.Thread,
-        ensure_loaded: Callable[[], bool],
-    ) -> None:
-        """统一重置任务的边界事件、线程启动和异常提示。"""
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            owner.emit(
-                reset_event,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().task_running,
-                },
-            )
-            return
-
-        if not ensure_loaded():
-            owner.emit(
-                reset_event,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": Localizer.get().alert_project_not_loaded,
-                },
-            )
-            return
-
-        owner.emit(reset_event, {"sub_event": Base.SubEvent.RUN})
-        if progress_message:
-            LogManager.get().info(progress_message)
-
-        def task() -> None:
-            try:
-                worker()
-                owner.emit(reset_event, {"sub_event": Base.SubEvent.DONE})
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-                owner.emit(
-                    reset_event,
-                    {
-                        "sub_event": Base.SubEvent.ERROR,
-                        "message": Localizer.get().task_failed,
-                    },
-                )
-
-        thread_factory(target=task, daemon=True).start()
-
     @classmethod
     def run_task_flow(
         cls,

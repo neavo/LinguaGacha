@@ -100,7 +100,7 @@ def load_json_with_repair(path: Path) -> object:
 
     try:
         return JSONTool.load_file(path)
-    except (json.JSONDecodeError, orjson.JSONDecodeError):
+    except json.JSONDecodeError, orjson.JSONDecodeError:
         text: str = path.read_text(encoding="utf-8")
         return JSONTool.repair_loads(text)
 

@@ -7,8 +7,6 @@ from module.Data.Core.DataTypes import ProjectPrefilterRequest
 
 def test_project_prefilter_request_is_frozen() -> None:
     request = ProjectPrefilterRequest(
-        token=7,
-        seq=9,
         lg_path="demo/project.lg",
         reason="project_loaded",
         source_language="JA",

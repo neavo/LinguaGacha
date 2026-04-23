@@ -14,7 +14,6 @@ from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.AssetService import AssetService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.DataEnums import TextPreserveMode as DataTextPreserveMode
-from module.Data.Core.DataTypes import ProjectPrefilterScheduleResult
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
@@ -29,7 +28,6 @@ from module.Data.Project.ProjectRuntimeRevisionService import (
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
-from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Localizer.Localizer import Localizer
 from module.Utils.ZstdTool import ZstdTool
 
@@ -53,18 +51,6 @@ class DataManager(Base):
     )
     LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY: ClassVar[str] = (
         "translation_prompt_legacy_migrated"
-    )
-    PREFILTER_RELEVANT_CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "source_language",
-            "mtool_optimizer_enable",
-        }
-    )
-    PROJECT_LANGUAGE_META_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "source_language",
-            "target_language",
-        }
     )
     TextPreserveMode = DataTextPreserveMode
 
@@ -198,24 +184,6 @@ class DataManager(Base):
             return
         self.refresh_analysis_progress_snapshot_cache()
 
-    def on_config_updated(self, event: Base.Event, data: dict) -> None:
-        """关键配置变化后同步工程镜像，并按真实依赖补跑预过滤。"""
-
-        del event
-
-        keys = data.get("keys", [])
-        if not isinstance(keys, list):
-            keys = []
-        if not self.is_loaded():
-            return
-
-        normalized_keys = [str(key) for key in keys if isinstance(key, str)]
-        if any(key in self.PROJECT_LANGUAGE_META_KEYS for key in normalized_keys):
-            self.sync_project_language_meta()
-
-        if any(key in self.PREFILTER_RELEVANT_CONFIG_KEYS for key in normalized_keys):
-            self.schedule_prefilter_if_needed_with_result(reason="config_updated")
-
     def sync_project_language_meta(self) -> None:
         """把当前运行时语言镜像回已加载工程，避免项目摘要长期滞后。"""
 
@@ -229,24 +197,12 @@ class DataManager(Base):
     def schedule_prefilter_if_needed(self, *, reason: str) -> bool:
         """按当前配置判断是否需要补跑预过滤。"""
 
-        schedule_result = self.schedule_prefilter_if_needed_with_result(reason=reason)
-        return schedule_result.needed
-
-    def schedule_prefilter_if_needed_with_result(
-        self,
-        *,
-        reason: str,
-    ) -> ProjectPrefilterScheduleResult:
-        """返回预过滤是否需要、以及本次是否已成功接管重算请求。"""
-
         config = Config().load()
         if not self.is_prefilter_needed(config):
-            return ProjectPrefilterScheduleResult()
+            return False
 
-        return ProjectPrefilterScheduleResult(
-            needed=True,
-            accepted=self.schedule_project_prefilter(config, reason=reason),
-        )
+        self.schedule_project_prefilter(config, reason=reason)
+        return True
 
     def is_prefilter_needed(self, config: Config) -> bool:
         """判断当前工程是否需要重跑预过滤。"""
@@ -272,7 +228,7 @@ class DataManager(Base):
         if Engine.get().get_status() != Base.TaskStatus.IDLE:
             return False
 
-        request, start_worker = self.prefilter_service.enqueue_request(
+        _request, start_worker = self.prefilter_service.enqueue_request(
             config,
             reason=reason,
             lg_path=lg_path,
@@ -282,39 +238,11 @@ class DataManager(Base):
 
         threading.Thread(
             target=self.project_prefilter_worker,
-            args=(request.token,),
             daemon=True,
         ).start()
         return True
 
-    def run_project_prefilter(
-        self,
-        config: Config,
-        *,
-        reason: str,
-    ) -> bool:
-        """同步执行预过滤。"""
-
-        from module.Engine.Engine import Engine
-
-        lg_path = self.get_lg_path()
-        if not lg_path or not self.is_loaded():
-            return False
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            return False
-
-        request, should_run = self.prefilter_service.enqueue_sync_request(
-            config,
-            reason=reason,
-            lg_path=lg_path,
-        )
-        if not should_run or request is None:
-            return True
-
-        self.project_prefilter_worker(request.token)
-        return True
-
-    def project_prefilter_worker(self, token: int) -> None:
+    def project_prefilter_worker(self) -> None:
         """预过滤工作线程入口。"""
 
         last_request: ProjectPrefilterRequest | None = None
@@ -334,7 +262,6 @@ class DataManager(Base):
 
                 last_request = request
                 result = self.apply_project_prefilter_once(request)
-                self.prefilter_service.mark_request_handled(request)
                 if result is not None:
                     updated = True
                     last_result = result
@@ -446,17 +373,6 @@ class DataManager(Base):
     @staticmethod
     def is_skipped_analysis_status(status: Base.ProjectStatus) -> bool:
         return AnalysisService.is_skipped_analysis_status(status)
-
-    @staticmethod
-    def is_analysis_control_code_text(text: str) -> bool:
-        return AnalysisFakeNameInjector.is_control_code_text(str(text).strip())
-
-    @classmethod
-    def is_analysis_control_code_self_mapping(cls, src: str, dst: str) -> bool:
-        return AnalysisFakeNameInjector.is_control_code_self_mapping(
-            str(src).strip(),
-            str(dst).strip(),
-        )
 
     def get_analysis_extras(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_extras()
@@ -1618,9 +1534,6 @@ class DataManager(Base):
         return self.export_path_service.timestamp_suffix_context(
             self.require_loaded_lg_path()
         )
-
-    def export_custom_suffix_context(self, suffix: str) -> AbstractContextManager[None]:
-        return self.export_path_service.custom_suffix_context(suffix)
 
     def get_translated_path(self) -> str:
         return self.export_path_service.get_translated_path(

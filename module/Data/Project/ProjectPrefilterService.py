@@ -28,13 +28,8 @@ class ProjectPrefilterService:
         self.batch_service = batch_service
 
         self.prefilter_lock = threading.Lock()
-        self.prefilter_cond = threading.Condition(self.prefilter_lock)
         self.prefilter_running = False
         self.prefilter_pending = False
-        self.prefilter_token = 0
-        self.prefilter_active_token = 0
-        self.prefilter_request_seq = 0
-        self.prefilter_last_handled_seq = 0
         self.prefilter_latest_request: ProjectPrefilterRequest | None = None
 
     def is_prefilter_needed(self, current_config: object, config: Config) -> bool:
@@ -59,13 +54,8 @@ class ProjectPrefilterService:
         """压入一条异步预过滤请求。"""
 
         start_worker = False
-        with self.prefilter_cond:
-            if self.prefilter_running:
-                token = self.prefilter_active_token
-            else:
-                self.prefilter_token += 1
-                token = self.prefilter_token
-                self.prefilter_active_token = token
+        with self.prefilter_lock:
+            if not self.prefilter_running:
                 self.prefilter_running = True
                 start_worker = True
 
@@ -73,54 +63,10 @@ class ProjectPrefilterService:
                 config,
                 reason=reason,
                 lg_path=lg_path,
-                token=token,
             )
             self.prefilter_latest_request = request
             self.prefilter_pending = True
-            self.prefilter_cond.notify_all()
             return request, start_worker
-
-    def enqueue_sync_request(
-        self,
-        config: Config,
-        *,
-        reason: str,
-        lg_path: str,
-    ) -> tuple[ProjectPrefilterRequest | None, bool]:
-        """压入同步请求。
-
-        返回 `(request, True)` 表示调用方要在当前线程直接跑 worker。
-        返回 `(None, False)` 表示已有 worker 在跑，本次只合并请求并等待。
-        """
-
-        with self.prefilter_cond:
-            if self.prefilter_running:
-                request = self.build_request(
-                    config,
-                    reason=reason,
-                    lg_path=lg_path,
-                    token=self.prefilter_active_token,
-                )
-                self.prefilter_latest_request = request
-                self.prefilter_pending = True
-                self.prefilter_cond.notify_all()
-                self.prefilter_cond.wait_for(lambda: not self.prefilter_running)
-                return None, False
-
-            self.prefilter_token += 1
-            token = self.prefilter_token
-            self.prefilter_active_token = token
-            self.prefilter_running = True
-            request = self.build_request(
-                config,
-                reason=reason,
-                lg_path=lg_path,
-                token=token,
-            )
-            self.prefilter_latest_request = request
-            self.prefilter_pending = True
-            self.prefilter_cond.notify_all()
-            return request, True
 
     def build_request(
         self,
@@ -128,14 +74,10 @@ class ProjectPrefilterService:
         *,
         reason: str,
         lg_path: str,
-        token: int,
     ) -> ProjectPrefilterRequest:
         """统一构造冻结请求。"""
 
-        self.prefilter_request_seq += 1
         return ProjectPrefilterRequest(
-            token=token,
-            seq=self.prefilter_request_seq,
             lg_path=lg_path,
             reason=reason,
             source_language=str(config.source_language),
@@ -145,27 +87,18 @@ class ProjectPrefilterService:
     def pop_pending_request(self) -> ProjectPrefilterRequest | None:
         """弹出当前待处理的最新请求。"""
 
-        with self.prefilter_cond:
+        with self.prefilter_lock:
             if not self.prefilter_pending:
                 return None
             request = self.prefilter_latest_request
             self.prefilter_pending = False
             return request
 
-    def mark_request_handled(self, request: ProjectPrefilterRequest) -> None:
-        """记录某条请求已经处理完成。"""
-
-        with self.prefilter_cond:
-            self.prefilter_last_handled_seq = request.seq
-            self.prefilter_cond.notify_all()
-
     def finish_worker(self) -> None:
         """结束当前 worker 生命周期。"""
 
-        with self.prefilter_cond:
+        with self.prefilter_lock:
             self.prefilter_running = False
-            self.prefilter_active_token = 0
-            self.prefilter_cond.notify_all()
 
     def apply_once(
         self,

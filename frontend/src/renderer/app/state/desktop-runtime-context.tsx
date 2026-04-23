@@ -81,25 +81,19 @@ type TaskSnapshot = {
   analysis_candidate_count: number;
 };
 
-type ProofreadingChangeScope = "global" | "file" | "entry";
-type WorkbenchChangeScope = "global" | "file" | "order";
+type ProofreadingChangeScope = "global" | "entry";
+type WorkbenchChangeScope = "global" | "file";
 
 type ProofreadingChangeSignal = {
   seq: number;
   reason: string;
   scope: ProofreadingChangeScope;
-  item_ids: number[];
-  rel_paths: string[];
-  removed_rel_paths: string[];
 };
 
 type WorkbenchChangeSignal = {
   seq: number;
   reason: string;
   scope: WorkbenchChangeScope;
-  rel_paths: string[];
-  removed_rel_paths: string[];
-  order_changed: boolean;
 };
 
 type ProjectWarmupStatus = "idle" | "warming" | "ready";
@@ -238,18 +232,12 @@ const DEFAULT_PROOFREADING_CHANGE_SIGNAL: ProofreadingChangeSignal = {
   seq: 0,
   reason: "",
   scope: "global",
-  item_ids: [],
-  rel_paths: [],
-  removed_rel_paths: [],
 };
 
 const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
   seq: 0,
   reason: "",
   scope: "global",
-  rel_paths: [],
-  removed_rel_paths: [],
-  order_changed: false,
 };
 
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null);
@@ -534,9 +522,7 @@ function normalize_project_patch_event(
   };
 }
 
-function collect_project_patch_item_ids(event: ProjectStorePatchEvent): number[] {
-  const item_ids: number[] = [];
-
+function has_project_patch_item_ids(event: ProjectStorePatchEvent): boolean {
   for (const operation of event.patch) {
     if (operation.op !== "merge_items" && operation.op !== "replace_items") {
       continue;
@@ -544,25 +530,19 @@ function collect_project_patch_item_ids(event: ProjectStorePatchEvent): number[]
 
     for (const item of collect_operation_records(operation.items)) {
       const next_item_id = Number(item.item_id);
-      if (!Number.isInteger(next_item_id) || item_ids.includes(next_item_id)) {
-        continue;
+      if (Number.isInteger(next_item_id)) {
+        return true;
       }
-      item_ids.push(next_item_id);
     }
   }
 
-  return item_ids;
+  return false;
 }
 
-function collect_project_patch_rel_paths(event: ProjectStorePatchEvent): string[] {
-  const rel_paths: string[] = [];
-
-  function append_rel_path(value: unknown): void {
+function has_project_patch_rel_paths(event: ProjectStorePatchEvent): boolean {
+  function has_rel_path(value: unknown): boolean {
     const rel_path = String(value ?? "").trim();
-    if (rel_path === "" || rel_paths.includes(rel_path)) {
-      return;
-    }
-    rel_paths.push(rel_path);
+    return rel_path !== "";
   }
 
   for (const operation of event.patch) {
@@ -571,7 +551,9 @@ function collect_project_patch_rel_paths(event: ProjectStorePatchEvent): string[
       operation.items !== undefined
     ) {
       for (const item of collect_operation_records(operation.items)) {
-        append_rel_path(item.file_path);
+        if (has_rel_path(item.file_path)) {
+          return true;
+        }
       }
     }
 
@@ -580,12 +562,14 @@ function collect_project_patch_rel_paths(event: ProjectStorePatchEvent): string[
       operation.files !== undefined
     ) {
       for (const file of collect_operation_records(operation.files)) {
-        append_rel_path(file.rel_path ?? file.file_path);
+        if (has_rel_path(file.rel_path ?? file.file_path)) {
+          return true;
+        }
       }
     }
   }
 
-  return rel_paths;
+  return false;
 }
 
 function resolve_project_patch_task_payload(
@@ -722,28 +706,22 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   );
 
   const bump_workbench_runtime_signal = useCallback(
-    (args: { reason: string; relPaths: string[] }): void => {
+    (args: { reason: string; scope: WorkbenchChangeScope }): void => {
       set_workbench_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: args.reason,
-        scope: args.relPaths.length > 0 ? "file" : "global",
-        rel_paths: args.relPaths,
-        removed_rel_paths: [],
-        order_changed: false,
+        scope: args.scope,
       }));
     },
     [],
   );
 
   const bump_proofreading_runtime_signal = useCallback(
-    (args: { reason: string; itemIds: number[]; relPaths: string[] }): void => {
+    (args: { reason: string; scope: ProofreadingChangeScope }): void => {
       set_proofreading_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: args.reason,
-        scope: args.itemIds.length > 0 ? "entry" : "global",
-        item_ids: args.itemIds,
-        rel_paths: args.relPaths,
-        removed_rel_paths: [],
+        scope: args.scope,
       }));
     },
     [],
@@ -768,8 +746,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         });
       }
 
-      const item_ids = collect_project_patch_item_ids(patch_event);
-      const rel_paths = collect_project_patch_rel_paths(patch_event);
+      const has_item_ids = has_project_patch_item_ids(patch_event);
+      const has_rel_paths = has_project_patch_rel_paths(patch_event);
       if (
         patch_event.updatedSections.some((section) =>
           ["project", "files", "items"].includes(section),
@@ -777,7 +755,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       ) {
         bump_workbench_runtime_signal({
           reason: patch_event.source,
-          relPaths: rel_paths,
+          scope: has_rel_paths ? "file" : "global",
         });
       }
 
@@ -790,8 +768,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       ) {
         bump_proofreading_runtime_signal({
           reason: patch_event.source,
-          itemIds: item_ids,
-          relPaths: rel_paths,
+          scope: has_item_ids ? "entry" : "global",
         });
       }
     },
@@ -815,12 +792,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     });
     bump_workbench_runtime_signal({
       reason: "project_bootstrap",
-      relPaths: [],
+      scope: "global",
     });
     bump_proofreading_runtime_signal({
       reason: "project_bootstrap",
-      itemIds: [],
-      relPaths: [],
+      scope: "global",
     });
   }, [
     bump_proofreading_runtime_signal,
@@ -1041,7 +1017,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         if (updated_sections.some((section) => ["project", "files", "items"].includes(section))) {
           bump_workbench_runtime_signal({
             reason,
-            relPaths: [],
+            scope: "global",
           });
         }
 
@@ -1054,8 +1030,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         ) {
           bump_proofreading_runtime_signal({
             reason,
-            itemIds: [],
-            relPaths: [],
+            scope: "global",
           });
         }
 

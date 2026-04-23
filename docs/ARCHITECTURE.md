@@ -33,7 +33,7 @@ flowchart LR
 | --- | --- | --- |
 | Renderer -> Electron | 只能走 `window.desktopApp` | 防止页面绕过 preload 直接碰 Node / Electron |
 | Renderer -> Python Core | 只能走 `frontend/src/renderer/app/desktop-api.ts` -> `api/` | 保持前后端协议单点可维护 |
-| API -> Data | 工程事实、规则、分析、校对辅助与 Extra 数据能力由 `module/Data` 提供 | 防止 API 层直接拼装会话与数据库 |
+| API -> Data | 工程事实、规则、分析与校对辅助由 `module/Data` 提供 | 防止 API 层直接拼装会话与数据库 |
 | API -> Engine | 后台任务启动、停止、进度与终态语义由 `module/Engine` 提供 | 防止数据层和界面层偷持任务生命周期 |
 | Data -> File | 外部文件解析与写回只能委托 `module/File` | 防止格式支持散落在工程服务里 |
 | Data -> Storage | SQL 只允许落在 `module/Data/Storage/LGDatabase.py` | 防止事务与 schema 规则碎裂 |
@@ -90,7 +90,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `api/` | 本地 HTTP / SSE 契约、bootstrap、错误映射、事件桥 | `frontend/src/renderer`、`api/Client`、`module/*` | [`API.md`](./API.md) |
 | `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、`docs/DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
-| `module/Data` | 工程事实、规则、分析、翻译结果、校对辅助、Extra 数据能力 | `api/`、`module/File`、`Storage` | [`DATA.md`](./DATA.md) |
+| `module/Data` | 工程事实、规则、分析、翻译结果、校对辅助 | `api/`、`module/File`、`Storage` | [`DATA.md`](./DATA.md) |
 | `module/Engine` | 后台任务生命周期、请求调度、停止与重试 | `api/`、`module/Data` | [`DATA.md`](./DATA.md) |
 | `module/File` | 文件格式解析、资产读取、导出写回 | `module/Data` | [`DATA.md`](./DATA.md) |
 | `module/Model` | 模型配置类型、模板补齐、排序与默认回退 | `api/`、`Config` | [`DATA.md`](./DATA.md) |

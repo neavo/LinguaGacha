@@ -11,9 +11,6 @@ import module.Data.DataManager as data_manager_module
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Data.Core.Item import Item
-from module.Data.Core.DataTypes import (
-    ProjectPrefilterScheduleResult,
-)
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Localizer.Localizer import Localizer
 
@@ -222,20 +219,17 @@ def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
     request = SimpleNamespace(
         reason="file_op",
         lg_path="demo/project.lg",
-        token=7,
     )
     dm.prefilter_service = SimpleNamespace(
         pop_pending_request=MagicMock(side_effect=[request, None]),
-        mark_request_handled=MagicMock(),
         finish_worker=MagicMock(),
     )
     dm.apply_project_prefilter_once = MagicMock(return_value=SimpleNamespace())
     dm.log_prefilter_result = MagicMock()
 
-    dm.project_prefilter_worker(token=7)
+    dm.project_prefilter_worker()
 
     dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_called_once()
-    dm.prefilter_service.mark_request_handled.assert_called_once_with(request)
     dm.prefilter_service.finish_worker.assert_called_once()
     assert emitted_events == []
 
@@ -247,17 +241,15 @@ def test_project_prefilter_worker_can_skip_page_refresh_events(
     request = SimpleNamespace(
         reason="file_op",
         lg_path="demo/project.lg",
-        token=7,
     )
     dm.prefilter_service = SimpleNamespace(
         pop_pending_request=MagicMock(side_effect=[request, None]),
-        mark_request_handled=MagicMock(),
         finish_worker=MagicMock(),
     )
     dm.apply_project_prefilter_once = MagicMock(return_value=SimpleNamespace())
     dm.log_prefilter_result = MagicMock()
 
-    dm.project_prefilter_worker(token=7)
+    dm.project_prefilter_worker()
 
     assert emitted_events == []
 
@@ -274,105 +266,6 @@ def test_update_batch_no_longer_emits_legacy_quality_events(
 
     dm.batch_service.update_batch.assert_called_once()
     assert emitted_events == []
-
-
-def test_on_config_updated_defers_proofreading_refresh_when_prefilter_accepts(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed_with_result = MagicMock(
-        return_value=ProjectPrefilterScheduleResult(needed=True, accepted=True)
-    )
-    dm.sync_project_language_meta = MagicMock()
-
-    dm.on_config_updated(
-        Base.Event.CONFIG_UPDATED,
-        {"keys": ["source_language", "unrelated_key"]},
-    )
-
-    dm.sync_project_language_meta.assert_called_once_with()
-    dm.schedule_prefilter_if_needed_with_result.assert_called_once_with(
-        reason="config_updated"
-    )
-    assert emitted_events == []
-
-
-def test_on_config_updated_prefilter_rejected_no_longer_emits_legacy_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed_with_result = MagicMock(
-        return_value=ProjectPrefilterScheduleResult(needed=True, accepted=False)
-    )
-    dm.sync_project_language_meta = MagicMock()
-
-    dm.on_config_updated(
-        Base.Event.CONFIG_UPDATED,
-        {"keys": ["source_language", "unrelated_key"]},
-    )
-
-    dm.sync_project_language_meta.assert_called_once_with()
-    dm.schedule_prefilter_if_needed_with_result.assert_called_once_with(
-        reason="config_updated"
-    )
-    assert emitted_events == []
-
-
-@pytest.mark.parametrize(
-    ("changed_key"),
-    [
-        ("check_similarity"),
-        ("check_kana_residue"),
-        ("check_hangeul_residue"),
-    ],
-)
-def test_on_config_updated_ignores_checker_toggle_keys_for_page_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-    changed_key: str,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed_with_result = MagicMock()
-    dm.sync_project_language_meta = MagicMock()
-
-    dm.on_config_updated(
-        Base.Event.CONFIG_UPDATED,
-        {"keys": [changed_key]},
-    )
-
-    dm.schedule_prefilter_if_needed_with_result.assert_not_called()
-    dm.sync_project_language_meta.assert_not_called()
-    assert emitted_events == []
-
-
-def test_on_config_updated_syncs_target_language_without_triggering_page_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed_with_result = MagicMock()
-    dm.sync_project_language_meta = MagicMock()
-
-    dm.on_config_updated(
-        Base.Event.CONFIG_UPDATED,
-        {"keys": ["target_language"]},
-    )
-
-    dm.sync_project_language_meta.assert_called_once_with()
-    dm.schedule_prefilter_if_needed_with_result.assert_not_called()
-    assert emitted_events == []
-
-
-def test_on_config_updated_ignores_irrelevant_keys_and_unloaded_project(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, _events = build_data_manager(monkeypatch)
-    dm.schedule_prefilter_if_needed_with_result = MagicMock()
-
-    dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["ignored_key"]})
-    dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["app_language"]})
-    dm.session.db = None
-    dm.on_config_updated(Base.Event.CONFIG_UPDATED, {"keys": ["source_language"]})
-
-    dm.schedule_prefilter_if_needed_with_result.assert_not_called()
 
 
 def test_apply_translation_batch_update_emits_items_patch_for_project_runtime(
@@ -456,7 +349,6 @@ def test_output_path_helpers_delegate_to_export_service(
 
     assert dm.get_translated_path() == "/tmp/translated"
     assert dm.get_bilingual_path() == "/tmp/bilingual"
-    assert dm.export_custom_suffix_context("x") is not None
 
 
 def test_create_project_logs_when_presets_loaded(
