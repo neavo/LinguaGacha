@@ -522,6 +522,14 @@ function resolve_project_loading_stage_message(
   return null;
 }
 
+function wait_for_next_animation_frame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      resolve();
+    });
+  });
+}
+
 export function ProjectPage(props: ProjectPageProps): JSX.Element {
   const {
     project_warmup_stage,
@@ -589,6 +597,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
     try {
       await args.task();
+      await wait_for_next_animation_frame();
     } finally {
       if (project_loading_toast_id_ref.current === toast_id) {
         project_loading_toast_id_ref.current = null;

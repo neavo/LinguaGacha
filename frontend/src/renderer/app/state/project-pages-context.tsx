@@ -66,10 +66,6 @@ export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Elemen
   const warmup_target_project_path_ref = useRef("");
   const barrier_waiters_ref = useRef<Set<ProjectPagesBarrierWaiter>>(new Set());
 
-  const proofreading_warmup_ready =
-    project_snapshot.loaded &&
-    !proofreading_page_state.is_refreshing &&
-    proofreading_page_state.settled_project_path === project_snapshot.path;
   const workbench_warmup_ready =
     project_snapshot.loaded &&
     !workbench_live_state.is_refreshing &&
@@ -78,7 +74,7 @@ export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Elemen
     return {
       projectLoaded: project_snapshot.loaded,
       projectPath: project_snapshot.path,
-      projectWarmupReady: proofreading_warmup_ready && workbench_warmup_ready,
+      projectWarmupReady: workbench_warmup_ready,
       workbenchFileOpRunning: workbench_live_state.file_op_running,
       workbenchCacheStale: workbench_live_state.cache_stale,
       workbenchIsRefreshing: workbench_live_state.is_refreshing,
@@ -94,7 +90,6 @@ export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Elemen
     proofreading_page_state.is_refreshing,
     proofreading_page_state.last_loaded_at,
     proofreading_page_state.settled_project_path,
-    proofreading_warmup_ready,
     project_snapshot.loaded,
     project_snapshot.path,
     workbench_live_state.cache_stale,
@@ -198,14 +193,13 @@ export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Elemen
       return;
     }
 
-    if (proofreading_warmup_ready && workbench_warmup_ready) {
+    if (workbench_warmup_ready) {
       warmup_target_project_path_ref.current = "";
       set_project_warmup_status("ready");
     }
   }, [
     project_snapshot.loaded,
     project_snapshot.path,
-    proofreading_warmup_ready,
     set_project_warmup_status,
     workbench_warmup_ready,
   ]);

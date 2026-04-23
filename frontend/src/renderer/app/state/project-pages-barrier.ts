@@ -1,68 +1,70 @@
 export type ProjectPagesBarrierKind =
-  | 'project_warmup'
-  | 'workbench_file_mutation'
-  | 'project_cache_refresh'
-  | 'proofreading_cache_refresh'
+  | "project_warmup"
+  | "workbench_file_mutation"
+  | "project_cache_refresh"
+  | "proofreading_cache_refresh";
 
 export type ProjectPagesBarrierCheckpoint = {
-  projectPath: string
-  workbenchLastLoadedAt: number | null
-  proofreadingLastLoadedAt: number | null
-}
+  projectPath: string;
+  workbenchLastLoadedAt: number | null;
+  proofreadingLastLoadedAt: number | null;
+};
 
 export type ProjectPagesBarrierOptions = {
-  projectPath?: string
-  checkpoint?: ProjectPagesBarrierCheckpoint | null
-}
+  projectPath?: string;
+  checkpoint?: ProjectPagesBarrierCheckpoint | null;
+};
 
 export type ProjectPagesBarrierState = {
-  projectLoaded: boolean
-  projectPath: string
-  projectWarmupReady: boolean
-  workbenchFileOpRunning: boolean
-  workbenchCacheStale: boolean
-  workbenchIsRefreshing: boolean
-  workbenchLastLoadedAt: number | null
-  workbenchSettledProjectPath: string
-  proofreadingCacheStale: boolean
-  proofreadingIsRefreshing: boolean
-  proofreadingLastLoadedAt: number | null
-  proofreadingSettledProjectPath: string
-}
+  projectLoaded: boolean;
+  projectPath: string;
+  projectWarmupReady: boolean;
+  workbenchFileOpRunning: boolean;
+  workbenchCacheStale: boolean;
+  workbenchIsRefreshing: boolean;
+  workbenchLastLoadedAt: number | null;
+  workbenchSettledProjectPath: string;
+  proofreadingCacheStale: boolean;
+  proofreadingIsRefreshing: boolean;
+  proofreadingLastLoadedAt: number | null;
+  proofreadingSettledProjectPath: string;
+};
 
 type CacheBarrierState = {
-  cacheStale: boolean
-  isRefreshing: boolean
-  lastLoadedAt: number | null
-  settledProjectPath: string
-}
+  cacheStale: boolean;
+  isRefreshing: boolean;
+  lastLoadedAt: number | null;
+  settledProjectPath: string;
+};
 
-export function createProjectPagesBarrierCheckpoint(args: Pick<
-  ProjectPagesBarrierState,
-  'projectPath' | 'workbenchLastLoadedAt' | 'proofreadingLastLoadedAt'
->): ProjectPagesBarrierCheckpoint {
+export function createProjectPagesBarrierCheckpoint(
+  args: Pick<
+    ProjectPagesBarrierState,
+    "projectPath" | "workbenchLastLoadedAt" | "proofreadingLastLoadedAt"
+  >,
+): ProjectPagesBarrierCheckpoint {
   return {
     projectPath: args.projectPath,
     workbenchLastLoadedAt: args.workbenchLastLoadedAt,
     proofreadingLastLoadedAt: args.proofreadingLastLoadedAt,
-  }
+  };
 }
 
 function resolveTargetProjectPath(
   state: ProjectPagesBarrierState,
   options: ProjectPagesBarrierOptions,
 ): string {
-  const explicitProjectPath = options.projectPath?.trim() ?? ''
-  if (explicitProjectPath !== '') {
-    return explicitProjectPath
+  const explicitProjectPath = options.projectPath?.trim() ?? "";
+  if (explicitProjectPath !== "") {
+    return explicitProjectPath;
   }
 
-  const checkpointProjectPath = options.checkpoint?.projectPath.trim() ?? ''
-  if (checkpointProjectPath !== '') {
-    return checkpointProjectPath
+  const checkpointProjectPath = options.checkpoint?.projectPath.trim() ?? "";
+  if (checkpointProjectPath !== "") {
+    return checkpointProjectPath;
   }
 
-  return state.projectPath
+  return state.projectPath;
 }
 
 function hasLastLoadedAdvanced(
@@ -70,14 +72,14 @@ function hasLastLoadedAdvanced(
   previousLastLoadedAt: number | null,
 ): boolean {
   if (currentLastLoadedAt === null) {
-    return false
+    return false;
   }
 
   if (previousLastLoadedAt === null) {
-    return true
+    return true;
   }
 
-  return currentLastLoadedAt > previousLastLoadedAt
+  return currentLastLoadedAt > previousLastLoadedAt;
 }
 
 function hasWorkbenchMutationCacheAdvanced(
@@ -85,62 +87,59 @@ function hasWorkbenchMutationCacheAdvanced(
   checkpoint: ProjectPagesBarrierCheckpoint | null | undefined,
 ): boolean {
   if (checkpoint === null || checkpoint === undefined) {
-    return true
+    return true;
   }
 
   return (
-    hasLastLoadedAdvanced(
-      state.workbenchLastLoadedAt,
-      checkpoint.workbenchLastLoadedAt,
-    )
-    || hasLastLoadedAdvanced(
-      state.proofreadingLastLoadedAt,
-      checkpoint.proofreadingLastLoadedAt,
-    )
-  )
+    hasLastLoadedAdvanced(state.workbenchLastLoadedAt, checkpoint.workbenchLastLoadedAt) ||
+    hasLastLoadedAdvanced(state.proofreadingLastLoadedAt, checkpoint.proofreadingLastLoadedAt)
+  );
 }
 
 function isProjectWarmupReady(
   state: ProjectPagesBarrierState,
   targetProjectPath: string,
+  checkpoint: ProjectPagesBarrierCheckpoint | null | undefined,
 ): boolean {
-  return (
-    state.projectLoaded
-    && targetProjectPath !== ''
-    && state.projectPath === targetProjectPath
-    && state.projectWarmupReady
-  )
-}
-
-function isCacheBarrierReady(args: {
-  state: ProjectPagesBarrierState
-  cacheState: CacheBarrierState
-  targetProjectPath: string
-  previousLastLoadedAt: number | null
-}): boolean {
-  if (!args.state.projectLoaded) {
-    return true
-  }
-
   if (
-    args.targetProjectPath !== ''
-    && args.state.projectPath !== args.targetProjectPath
+    !state.projectLoaded ||
+    targetProjectPath === "" ||
+    state.projectPath !== targetProjectPath ||
+    !state.projectWarmupReady ||
+    state.workbenchSettledProjectPath !== targetProjectPath
   ) {
-    return true
-  }
-
-  if (args.cacheState.settledProjectPath !== args.targetProjectPath) {
-    return false
-  }
-
-  if (args.cacheState.cacheStale || args.cacheState.isRefreshing) {
-    return false
+    return false;
   }
 
   return hasLastLoadedAdvanced(
-    args.cacheState.lastLoadedAt,
-    args.previousLastLoadedAt,
-  )
+    state.workbenchLastLoadedAt,
+    checkpoint?.workbenchLastLoadedAt ?? null,
+  );
+}
+
+function isCacheBarrierReady(args: {
+  state: ProjectPagesBarrierState;
+  cacheState: CacheBarrierState;
+  targetProjectPath: string;
+  previousLastLoadedAt: number | null;
+}): boolean {
+  if (!args.state.projectLoaded) {
+    return true;
+  }
+
+  if (args.targetProjectPath !== "" && args.state.projectPath !== args.targetProjectPath) {
+    return true;
+  }
+
+  if (args.cacheState.settledProjectPath !== args.targetProjectPath) {
+    return false;
+  }
+
+  if (args.cacheState.cacheStale || args.cacheState.isRefreshing) {
+    return false;
+  }
+
+  return hasLastLoadedAdvanced(args.cacheState.lastLoadedAt, args.previousLastLoadedAt);
 }
 
 export function isProjectPagesBarrierReady(
@@ -148,31 +147,28 @@ export function isProjectPagesBarrierReady(
   state: ProjectPagesBarrierState,
   options: ProjectPagesBarrierOptions = {},
 ): boolean {
-  const targetProjectPath = resolveTargetProjectPath(state, options)
+  const targetProjectPath = resolveTargetProjectPath(state, options);
 
-  if (kind === 'project_warmup') {
-    return isProjectWarmupReady(state, targetProjectPath)
+  if (kind === "project_warmup") {
+    return isProjectWarmupReady(state, targetProjectPath, options.checkpoint);
   }
 
-  if (kind === 'workbench_file_mutation') {
+  if (kind === "workbench_file_mutation") {
     if (!state.projectLoaded) {
-      return true
+      return true;
     }
 
-    if (
-      targetProjectPath !== ''
-      && state.projectPath !== targetProjectPath
-    ) {
-      return true
+    if (targetProjectPath !== "" && state.projectPath !== targetProjectPath) {
+      return true;
     }
 
     if (state.workbenchFileOpRunning) {
-      return false
+      return false;
     }
 
     return (
-      hasWorkbenchMutationCacheAdvanced(state, options.checkpoint)
-      && isCacheBarrierReady({
+      hasWorkbenchMutationCacheAdvanced(state, options.checkpoint) &&
+      isCacheBarrierReady({
         state,
         cacheState: {
           cacheStale: state.workbenchCacheStale,
@@ -182,8 +178,8 @@ export function isProjectPagesBarrierReady(
         },
         targetProjectPath,
         previousLastLoadedAt: null,
-      })
-      && isCacheBarrierReady({
+      }) &&
+      isCacheBarrierReady({
         state,
         cacheState: {
           cacheStale: state.proofreadingCacheStale,
@@ -194,10 +190,10 @@ export function isProjectPagesBarrierReady(
         targetProjectPath,
         previousLastLoadedAt: null,
       })
-    )
+    );
   }
 
-  if (kind === 'project_cache_refresh') {
+  if (kind === "project_cache_refresh") {
     return isCacheBarrierReady({
       state,
       cacheState: {
@@ -208,7 +204,7 @@ export function isProjectPagesBarrierReady(
       },
       targetProjectPath,
       previousLastLoadedAt: options.checkpoint?.workbenchLastLoadedAt ?? null,
-    })
+    });
   }
 
   return isCacheBarrierReady({
@@ -221,5 +217,5 @@ export function isProjectPagesBarrierReady(
     },
     targetProjectPath,
     previousLastLoadedAt: options.checkpoint?.proofreadingLastLoadedAt ?? null,
-  })
+  });
 }

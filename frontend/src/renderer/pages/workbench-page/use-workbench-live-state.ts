@@ -776,8 +776,8 @@ export function useWorkbenchLiveState(
     useState<WorkbenchTaskKind | null>(null);
   const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>("translation");
   const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq);
-  const previous_project_loaded_ref = useRef(project_snapshot.loaded);
-  const previous_project_path_ref = useRef(project_snapshot.path);
+  const previous_project_loaded_ref = useRef(false);
+  const previous_project_path_ref = useRef("");
   const refresh_request_id_ref = useRef(0);
   const snapshot_ref = useRef(snapshot);
   const entries_ref = useRef<WorkbenchFileEntry[]>(entries);
@@ -827,6 +827,22 @@ export function useWorkbenchLiveState(
     selection_state_ref.current = current_selection_state;
   }, [current_selection_state]);
 
+  const clear_workbench_snapshot_state = useCallback((): void => {
+    refresh_request_id_ref.current = 0;
+    set_refresh_request_id(0);
+    snapshot_ref.current = EMPTY_SNAPSHOT;
+    set_snapshot(EMPTY_SNAPSHOT);
+    set_file_op_running(false);
+    set_entries([]);
+    apply_selection_state(create_empty_selection_state());
+    set_dialog_state(close_dialog_state());
+    set_refresh_error(null);
+    set_is_refreshing(false);
+    set_cache_stale(false);
+    set_last_loaded_at(null);
+    set_settled_project_path("");
+  }, [apply_selection_state]);
+
   const apply_refreshed_entries = useCallback(
     (next_snapshot: WorkbenchSnapshot, preferred_active_entry_id: string | null): void => {
       const previous_entries = entries_ref.current;
@@ -849,19 +865,8 @@ export function useWorkbenchLiveState(
   const refresh_snapshot = useCallback(
     async (preferred_active_entry_id: string | null = null): Promise<WorkbenchSnapshot> => {
       if (!project_snapshot.loaded) {
-        refresh_request_id_ref.current = 0;
-        set_refresh_request_id(0);
-        snapshot_ref.current = EMPTY_SNAPSHOT;
-        set_snapshot(EMPTY_SNAPSHOT);
-        set_file_op_running(false);
-        set_entries([]);
-        apply_selection_state(create_empty_selection_state());
-        set_refresh_error(null);
-        set_is_refreshing(false);
+        clear_workbench_snapshot_state();
         set_cache_status("idle");
-        set_cache_stale(false);
-        set_last_loaded_at(null);
-        set_settled_project_path("");
         return EMPTY_SNAPSHOT;
       }
 
@@ -914,7 +919,7 @@ export function useWorkbenchLiveState(
     },
     [
       apply_refreshed_entries,
-      apply_selection_state,
+      clear_workbench_snapshot_state,
       project_store,
       project_snapshot.loaded,
       project_snapshot.path,
@@ -924,36 +929,27 @@ export function useWorkbenchLiveState(
   );
 
   useEffect(() => {
-    let cancelled = false;
+    const previous_project_loaded = previous_project_loaded_ref.current;
+    const previous_project_path = previous_project_path_ref.current;
 
-    async function load_workbench_data(): Promise<void> {
-      if (!project_snapshot.loaded) {
-        set_snapshot(EMPTY_SNAPSHOT);
-        set_file_op_running(false);
-        set_entries([]);
-        apply_selection_state(create_empty_selection_state());
-        set_dialog_state(close_dialog_state());
-        set_refresh_error(null);
-        set_is_refreshing(false);
-        set_cache_status("idle");
-        set_cache_stale(false);
-        set_last_loaded_at(null);
-        set_settled_project_path("");
-        return;
-      }
+    previous_project_loaded_ref.current = project_snapshot.loaded;
+    previous_project_path_ref.current = project_snapshot.path;
 
-      await refresh_snapshot();
-      if (cancelled) {
-        return;
-      }
+    if (!project_snapshot.loaded) {
+      clear_workbench_snapshot_state();
+      set_cache_status("idle");
+      set_recent_workbench_task_kind(null);
+      set_stats_mode("translation");
+      return;
     }
 
-    void load_workbench_data();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [apply_selection_state, project_snapshot.loaded, refresh_snapshot]);
+    if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
+      clear_workbench_snapshot_state();
+      set_cache_status("refreshing");
+      set_recent_workbench_task_kind(null);
+      set_stats_mode("translation");
+    }
+  }, [clear_workbench_snapshot_state, project_snapshot.loaded, project_snapshot.path]);
 
   useEffect(() => {
     const previous_seq = previous_workbench_change_seq_ref.current;
@@ -997,25 +993,6 @@ export function useWorkbenchLiveState(
     raw_analysis_task_runtime.analysis_task_metrics.processed_count,
     snapshot,
   ]);
-
-  useEffect(() => {
-    const previous_project_loaded = previous_project_loaded_ref.current;
-    const previous_project_path = previous_project_path_ref.current;
-
-    previous_project_loaded_ref.current = project_snapshot.loaded;
-    previous_project_path_ref.current = project_snapshot.path;
-
-    if (!project_snapshot.loaded) {
-      set_recent_workbench_task_kind(null);
-      set_stats_mode("translation");
-      return;
-    }
-
-    if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
-      set_recent_workbench_task_kind(null);
-      set_stats_mode("translation");
-    }
-  }, [project_snapshot.loaded, project_snapshot.path]);
 
   const running_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
     if (!task_snapshot.busy) {
@@ -1286,6 +1263,7 @@ export function useWorkbenchLiveState(
     if (result.canceled || result.path === null) {
       return;
     }
+    const source_path = result.path;
 
     const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
 
@@ -1294,13 +1272,13 @@ export function useWorkbenchLiveState(
         message: t("workbench_page.feedback.add_file_loading_toast"),
         task: async () => {
           const parsed_file = normalize_workbench_file_parse_preview(
-            result.path,
+            source_path,
             await api_fetch<{
               target_rel_path?: unknown;
               file_type?: unknown;
               parsed_items?: unknown;
             }>("/api/project/workbench/parse-file", {
-              source_path: result.path,
+              source_path,
             }),
           );
           const add_plan = create_workbench_add_file_plan({
@@ -1371,11 +1349,12 @@ export function useWorkbenchLiveState(
     if (result.canceled || result.path === null) {
       return;
     }
+    const pending_path = result.path;
 
     set_dialog_state({
       kind: "replace-file",
       target_rel_paths: [entry_id],
-      pending_path: result.path,
+      pending_path,
       submitting: false,
     });
   }

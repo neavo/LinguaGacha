@@ -172,6 +172,30 @@ describe("ProjectPagesProvider", () => {
     expect(set_project_warmup_status.mock.calls).toEqual([["warming"], ["ready"]]);
   });
 
+  it("只要工作台 ready，project warmup 就可以回到 ready", async () => {
+    const set_project_warmup_status = runtime_fixture.current.set_project_warmup_status;
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_warmup_status: "warming",
+    };
+    proofreading_fixture.current = {
+      ...proofreading_fixture.current,
+      is_refreshing: true,
+      settled_project_path: "",
+    };
+    workbench_fixture.current = {
+      ...workbench_fixture.current,
+      is_refreshing: false,
+      settled_project_path: "E:/demo/sample.lg",
+      last_loaded_at: 2,
+    };
+
+    await render_provider();
+
+    expect(set_project_warmup_status.mock.calls).toEqual([["warming"], ["ready"]]);
+  });
+
   it("旧 render 捕获的 wait_for_barrier 也会读取最新 barrier 状态", async () => {
     runtime_fixture.current = {
       project_snapshot: {
@@ -209,6 +233,40 @@ describe("ProjectPagesProvider", () => {
       await wait_task?.then(() => {
         resolved = true;
       });
+    });
+
+    expect(resolved).toBe(true);
+  });
+
+  it("project_warmup barrier 会等待工作台 last_loaded_at 超过 checkpoint", async () => {
+    await render_provider();
+
+    const checkpoint = latest_barrier_api?.create_barrier_checkpoint();
+    expect(checkpoint).not.toBeNull();
+
+    let resolved = false;
+    const wait_task = latest_barrier_api?.wait_for_barrier("project_warmup", {
+      projectPath: "E:/demo/sample.lg",
+      checkpoint,
+    });
+    wait_task?.then(() => {
+      resolved = true;
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(resolved).toBe(false);
+
+    workbench_fixture.current = {
+      ...workbench_fixture.current,
+      last_loaded_at: 2,
+    };
+
+    await render_provider();
+
+    await act(async () => {
+      await wait_task;
     });
 
     expect(resolved).toBe(true);
