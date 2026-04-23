@@ -1,99 +1,97 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ThemeProvider, useTheme } from 'next-themes'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { ThemeProvider, useTheme } from "next-themes";
 
-import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from '@/app/navigation/schema'
-import { SCREEN_REGISTRY } from '@/app/navigation/screen-registry'
-import { AppNavigationProvider } from '@/app/navigation/navigation-context'
-import { DesktopRuntimeProvider } from '@/app/state/desktop-runtime-context'
-import { ProjectPagesProvider } from '@/app/state/project-pages-context'
-import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
-import {
-  DesktopProgressToastModalLayer,
-  useDesktopToast,
-} from '@/app/state/use-desktop-toast'
-import '@/app/shell/app-shell.css'
-import type { BottomActionId, RouteId } from '@/app/navigation/types'
-import { LocaleProvider, useI18n } from '@/i18n'
-import { SidebarInset, SidebarProvider } from '@/shadcn/sidebar'
-import { Toaster } from '@/shadcn/sonner'
-import { TooltipProvider } from '@/shadcn/tooltip'
-import { AppSidebar } from '@/app/shell/app-sidebar'
-import { AppTitlebar } from '@/app/shell/app-titlebar'
+import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from "@/app/navigation/schema";
+import { SCREEN_REGISTRY } from "@/app/navigation/screen-registry";
+import { AppNavigationProvider } from "@/app/navigation/navigation-context";
+import { DesktopRuntimeProvider } from "@/app/state/desktop-runtime-context";
+import { ProjectPagesProvider } from "@/app/state/project-pages-context";
+import { QualityStatisticsProvider } from "@/app/state/quality-statistics-context";
+import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
+import { DesktopProgressToastModalLayer, useDesktopToast } from "@/app/state/use-desktop-toast";
+import "@/app/shell/app-shell.css";
+import type { BottomActionId, RouteId } from "@/app/navigation/types";
+import { LocaleProvider, useI18n } from "@/i18n";
+import { SidebarInset, SidebarProvider } from "@/shadcn/sidebar";
+import { Toaster } from "@/shadcn/sonner";
+import { TooltipProvider } from "@/shadcn/tooltip";
+import { AppSidebar } from "@/app/shell/app-sidebar";
+import { AppTitlebar } from "@/app/shell/app-titlebar";
 
-const SIDEBAR_STORAGE_KEY = 'lg-sidebar-collapsed'
-const THEME_STORAGE_KEY = 'lg-theme-mode'
+const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
+const THEME_STORAGE_KEY = "lg-theme-mode";
 
-type ThemeMode = 'light' | 'dark'
+type ThemeMode = "light" | "dark";
 
 const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  'proofreading',
-  'workbench',
-  'glossary',
-  'text-preserve',
-  'pre-translation-replacement',
-  'post-translation-replacement',
-  'translation-prompt',
-  'analysis-prompt',
-  'laboratory',
-  'toolbox',
-])
+  "proofreading",
+  "workbench",
+  "glossary",
+  "text-preserve",
+  "pre-translation-replacement",
+  "post-translation-replacement",
+  "translation-prompt",
+  "analysis-prompt",
+  "laboratory",
+  "toolbox",
+]);
 
 const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
-  'glossary',
-  'text-preserve',
-  'pre-translation-replacement',
-  'post-translation-replacement',
-  'translation-prompt',
-  'analysis-prompt',
-  'laboratory',
-  'toolbox',
-])
+  "glossary",
+  "text-preserve",
+  "pre-translation-replacement",
+  "post-translation-replacement",
+  "translation-prompt",
+  "analysis-prompt",
+  "laboratory",
+  "toolbox",
+]);
 
-function resolve_toggled_app_language(app_language: 'ZH' | 'EN'): 'ZH' | 'EN' {
-  if (app_language === 'EN') {
-    return 'ZH'
+function resolve_toggled_app_language(app_language: "ZH" | "EN"): "ZH" | "EN" {
+  if (app_language === "EN") {
+    return "ZH";
   }
 
-  return 'EN'
+  return "EN";
 }
 
 function resolve_selectable_route(route_id: RouteId): RouteId {
-  if (route_id === 'text-replacement') {
-    return 'pre-translation-replacement'
-  } else if (route_id === 'custom-prompt') {
-    return 'translation-prompt'
+  if (route_id === "text-replacement") {
+    return "pre-translation-replacement";
+  } else if (route_id === "custom-prompt") {
+    return "translation-prompt";
   } else {
-    return route_id
+    return route_id;
   }
 }
 
 function has_registered_screen(route_id: RouteId): boolean {
-  return SCREEN_REGISTRY[route_id] !== undefined
+  return SCREEN_REGISTRY[route_id] !== undefined;
 }
 
 function read_sidebar_state(): boolean {
-  const stored_sidebar_state = window.localStorage.getItem(SIDEBAR_STORAGE_KEY)
+  const stored_sidebar_state = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
 
-  if (stored_sidebar_state === 'true') {
-    return true
+  if (stored_sidebar_state === "true") {
+    return true;
   } else {
-    return false
+    return false;
   }
 }
 
 function read_theme_mode(): ThemeMode {
-  if (typeof window === 'undefined') {
-    return 'light'
+  if (typeof window === "undefined") {
+    return "light";
   }
 
-  const stored_theme = window.localStorage.getItem(THEME_STORAGE_KEY)
+  const stored_theme = window.localStorage.getItem(THEME_STORAGE_KEY);
 
-  if (stored_theme === 'light' || stored_theme === 'dark') {
-    return stored_theme
-  } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
+  if (stored_theme === "light" || stored_theme === "dark") {
+    return stored_theme;
+  } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
   } else {
-    return 'light'
+    return "light";
   }
 }
 
@@ -107,75 +105,74 @@ function AppContent(): JSX.Element {
     settings_snapshot,
     set_pending_target_route,
     update_app_language,
-  } = useDesktopRuntime()
-  const { push_toast } = useDesktopToast()
-  const { t } = useI18n()
-  const { resolvedTheme, setTheme } = useTheme()
-  const shell_info = window.desktopApp.shell
-  const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID)
-  const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set())
-  const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() => read_sidebar_state())
-  const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded)
-  const previous_project_path_ref = useRef<string>(project_snapshot.path)
-  const previous_project_warmup_status_ref = useRef(project_warmup_status)
-  const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!
-  const ScreenComponent = active_screen.component
-  const document_title = `${t('app.metadata.app_name')} · ${t(active_screen.title_key)}`
-  const theme_mode: ThemeMode = resolvedTheme === 'dark'
-    ? 'dark'
-    : resolvedTheme === 'light'
-      ? 'light'
-      : read_theme_mode()
+  } = useDesktopRuntime();
+  const { push_toast } = useDesktopToast();
+  const { t } = useI18n();
+  const { resolvedTheme, setTheme } = useTheme();
+  const shell_info = window.desktopApp.shell;
+  const [selected_route, set_selected_route] = useState<RouteId>(DEFAULT_ROUTE_ID);
+  const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set());
+  const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
+    read_sidebar_state(),
+  );
+  const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
+  const previous_project_path_ref = useRef<string>(project_snapshot.path);
+  const previous_project_warmup_status_ref = useRef(project_warmup_status);
+  const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
+  const ScreenComponent = active_screen.component;
+  const document_title = `${t("app.metadata.app_name")} · ${t(active_screen.title_key)}`;
+  const theme_mode: ThemeMode =
+    resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
 
   useEffect(() => {
-    window.desktopApp.setTitleBarTheme(theme_mode)
-  }, [theme_mode])
+    window.desktopApp.setTitleBarTheme(theme_mode);
+  }, [theme_mode]);
 
   useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(is_sidebar_collapsed))
-  }, [is_sidebar_collapsed])
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(is_sidebar_collapsed));
+  }, [is_sidebar_collapsed]);
 
   useEffect(() => {
-    document.title = document_title
-  }, [document_title])
+    document.title = document_title;
+  }, [document_title]);
 
   useEffect(() => {
     if (!hydration_ready) {
-      return
+      return;
     }
 
-    const was_loaded = previous_project_loaded_ref.current
-    const previous_project_path = previous_project_path_ref.current
-    const previous_project_warmup_status = previous_project_warmup_status_ref.current
-    previous_project_loaded_ref.current = project_snapshot.loaded
-    previous_project_path_ref.current = project_snapshot.path
-    previous_project_warmup_status_ref.current = project_warmup_status
+    const was_loaded = previous_project_loaded_ref.current;
+    const previous_project_path = previous_project_path_ref.current;
+    const previous_project_warmup_status = previous_project_warmup_status_ref.current;
+    previous_project_loaded_ref.current = project_snapshot.loaded;
+    previous_project_path_ref.current = project_snapshot.path;
+    previous_project_warmup_status_ref.current = project_warmup_status;
 
     if (was_loaded && !project_snapshot.loaded) {
-      set_selected_route(DEFAULT_ROUTE_ID)
-      set_pending_target_route(null)
-      return
+      set_selected_route(DEFAULT_ROUTE_ID);
+      set_pending_target_route(null);
+      return;
     }
 
-    if (!project_snapshot.loaded || project_warmup_status !== 'ready') {
-      return
+    if (!project_snapshot.loaded || project_warmup_status !== "ready") {
+      return;
     }
 
-    const project_just_loaded = !was_loaded
-    const project_path_changed = previous_project_path !== project_snapshot.path
-    const warmup_just_completed = previous_project_warmup_status !== 'ready'
+    const project_just_loaded = !was_loaded;
+    const project_path_changed = previous_project_path !== project_snapshot.path;
+    const warmup_just_completed = previous_project_warmup_status !== "ready";
 
     if (project_just_loaded || project_path_changed || warmup_just_completed) {
       if (pending_target_route !== null) {
-        set_selected_route(resolve_selectable_route(pending_target_route))
-        set_pending_target_route(null)
+        set_selected_route(resolve_selectable_route(pending_target_route));
+        set_pending_target_route(null);
       } else if (
-        selected_route === DEFAULT_ROUTE_ID
-        || project_just_loaded
-        || project_path_changed
-        || warmup_just_completed
+        selected_route === DEFAULT_ROUTE_ID ||
+        project_just_loaded ||
+        project_path_changed ||
+        warmup_just_completed
       ) {
-        set_selected_route('workbench')
+        set_selected_route("workbench");
       }
     }
   }, [
@@ -186,116 +183,122 @@ function AppContent(): JSX.Element {
     project_warmup_status,
     selected_route,
     set_pending_target_route,
-  ])
+  ]);
 
   const disabled_route_ids = useMemo<ReadonlySet<RouteId>>(() => {
     if (!project_snapshot.loaded) {
-      return new Set(ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED)
+      return new Set(ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED);
     }
 
-    if (project_warmup_status === 'ready') {
-      return new Set()
+    if (project_warmup_status === "ready") {
+      return new Set();
     }
 
-    return new Set(PROJECT_DEPENDENT_ROUTE_IDS)
-  }, [project_snapshot.loaded, project_warmup_status])
+    return new Set(PROJECT_DEPENDENT_ROUTE_IDS);
+  }, [project_snapshot.loaded, project_warmup_status]);
 
   const visible_navigation_groups = useMemo(() => {
     return NAVIGATION_GROUPS.filter((group) => {
       return group.items.some((item) => {
         if ((item.children?.length ?? 0) > 0) {
-          return item.children?.some((child) => has_registered_screen(child.id)) ?? false
+          return item.children?.some((child) => has_registered_screen(child.id)) ?? false;
         }
 
-        return has_registered_screen(item.id)
-      })
+        return has_registered_screen(item.id);
+      });
     }).map((group) => {
       return {
         ...group,
         items: group.items
           .filter((item) => {
             if ((item.children?.length ?? 0) > 0) {
-              return item.children?.some((child) => has_registered_screen(child.id)) ?? false
+              return item.children?.some((child) => has_registered_screen(child.id)) ?? false;
             }
 
-            return has_registered_screen(item.id)
+            return has_registered_screen(item.id);
           })
           .map((item) => {
             if ((item.children?.length ?? 0) === 0) {
-              return item
+              return item;
             }
 
             return {
               ...item,
               children: item.children?.filter((child) => {
-                return has_registered_screen(child.id)
+                return has_registered_screen(child.id);
               }),
-            }
+            };
           }),
-      }
-    })
-  }, [])
+      };
+    });
+  }, []);
 
   function handle_select_route(route_id: RouteId): void {
-    const next_route = resolve_selectable_route(route_id)
+    const next_route = resolve_selectable_route(route_id);
 
     if (!project_snapshot.loaded && PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)) {
-      set_pending_target_route(next_route)
-      set_selected_route(DEFAULT_ROUTE_ID)
-      return
+      set_pending_target_route(next_route);
+      set_selected_route(DEFAULT_ROUTE_ID);
+      return;
     }
 
-    if (project_snapshot.loaded && project_warmup_status !== 'ready' && PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)) {
-      set_pending_target_route(next_route)
-      set_selected_route(DEFAULT_ROUTE_ID)
-      return
+    if (
+      project_snapshot.loaded &&
+      project_warmup_status !== "ready" &&
+      PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)
+    ) {
+      set_pending_target_route(next_route);
+      set_selected_route(DEFAULT_ROUTE_ID);
+      return;
     }
 
     if (!PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)) {
-      set_pending_target_route(null)
+      set_pending_target_route(null);
     }
 
-    set_selected_route(next_route)
+    set_selected_route(next_route);
   }
 
   function handle_toggle_group(route_id: RouteId): void {
     if (is_sidebar_collapsed) {
-      set_is_sidebar_collapsed(false)
+      set_is_sidebar_collapsed(false);
       set_expanded_items((previous_items) => {
-        const next_items = new Set(previous_items)
-        next_items.add(route_id)
-        return next_items
-      })
+        const next_items = new Set(previous_items);
+        next_items.add(route_id);
+        return next_items;
+      });
     } else {
       set_expanded_items((previous_items) => {
-        const next_items = new Set(previous_items)
+        const next_items = new Set(previous_items);
 
         if (next_items.has(route_id)) {
-          next_items.delete(route_id)
+          next_items.delete(route_id);
         } else {
-          next_items.add(route_id)
+          next_items.add(route_id);
         }
 
-        return next_items
-      })
+        return next_items;
+      });
     }
   }
 
   function handle_bottom_action(action_id: BottomActionId): void {
-    if (action_id === 'theme') {
-      if (theme_mode === 'light') {
-        setTheme('dark')
+    if (action_id === "theme") {
+      if (theme_mode === "light") {
+        setTheme("dark");
       } else {
-        setTheme('light')
+        setTheme("light");
       }
     } else {
-      void update_app_language(resolve_toggled_app_language(settings_snapshot.app_language)).catch((error: unknown) => {
-        if (error instanceof Error) {
-          push_toast('error', error.message)
-        } else {
-          push_toast('error', t('app.feedback.update_failed'))
-        }
-      })
+      void update_app_language(resolve_toggled_app_language(settings_snapshot.app_language)).catch(
+        (error: unknown) => {
+          if (error instanceof Error) {
+            push_toast("error", error.message);
+          } else {
+            push_toast("error", t("app.feedback.update_failed"));
+          }
+        },
+      );
     }
   }
 
@@ -304,12 +307,12 @@ function AppContent(): JSX.Element {
       open={!is_sidebar_collapsed}
       onOpenChange={(is_open) => {
         // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致。
-        set_is_sidebar_collapsed(!is_open)
+        set_is_sidebar_collapsed(!is_open);
       }}
       style={
         {
-          '--sidebar-width': '256px',
-          '--sidebar-width-icon': '72px',
+          "--sidebar-width": "256px",
+          "--sidebar-width-icon": "72px",
         } as CSSProperties
       }
     >
@@ -317,24 +320,26 @@ function AppContent(): JSX.Element {
         className="app-shell"
         style={
           {
-            '--titlebar-height': `${shell_info.titleBarHeight}px`,
-            '--titlebar-safe-area-start': `${shell_info.titleBarSafeAreaStart}px`,
-            '--titlebar-safe-area-end': `${shell_info.titleBarSafeAreaEnd}px`,
+            "--titlebar-height": `${shell_info.titleBarHeight}px`,
+            "--titlebar-safe-area-start": `${shell_info.titleBarSafeAreaStart}px`,
+            "--titlebar-safe-area-end": `${shell_info.titleBarSafeAreaEnd}px`,
           } as CSSProperties
         }
       >
         <AppTitlebar />
         <section className="shell-body">
-            <AppSidebar
-              groups={visible_navigation_groups}
-              bottom_actions={BOTTOM_ACTIONS}
-              selected_route={selected_route}
-              expanded_items={expanded_items}
-              disabled_route_ids={disabled_route_ids}
-              disabled_bottom_action_ids={is_app_language_updating ? new Set<BottomActionId>(['language']) : new Set()}
-              on_select_route={handle_select_route}
-              on_toggle_group={handle_toggle_group}
-              on_bottom_action={handle_bottom_action}
+          <AppSidebar
+            groups={visible_navigation_groups}
+            bottom_actions={BOTTOM_ACTIONS}
+            selected_route={selected_route}
+            expanded_items={expanded_items}
+            disabled_route_ids={disabled_route_ids}
+            disabled_bottom_action_ids={
+              is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
+            }
+            on_select_route={handle_select_route}
+            on_toggle_group={handle_toggle_group}
+            on_bottom_action={handle_bottom_action}
           />
 
           <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
@@ -343,14 +348,16 @@ function AppContent(): JSX.Element {
               navigate_to_route={handle_select_route}
             >
               <ProjectPagesProvider>
-                <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                <QualityStatisticsProvider>
+                  <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                </QualityStatisticsProvider>
               </ProjectPagesProvider>
             </AppNavigationProvider>
           </SidebarInset>
         </section>
       </main>
     </SidebarProvider>
-  )
+  );
 }
 
 function App(): JSX.Element {
@@ -362,7 +369,7 @@ function App(): JSX.Element {
           defaultTheme={read_theme_mode()}
           enableSystem={false}
           storageKey={THEME_STORAGE_KEY}
-          themes={['light', 'dark']}
+          themes={["light", "dark"]}
         >
           <TooltipProvider delayDuration={120}>
             <AppContent />
@@ -372,9 +379,7 @@ function App(): JSX.Element {
         </ThemeProvider>
       </LocaleProvider>
     </DesktopRuntimeProvider>
-  )
+  );
 }
 
-export default App
-
-
+export default App;

@@ -3,17 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectStoreState } from "@/app/project-runtime/project-store";
 import { create_analysis_glossary_import_plan } from "@/app/project-runtime/analysis-glossary-import";
 
-const { quality_statistics_compute_mock } = vi.hoisted(() => {
+const { quality_statistics_submit_mock } = vi.hoisted(() => {
   return {
-    quality_statistics_compute_mock: vi.fn(),
+    quality_statistics_submit_mock: vi.fn(),
   };
 });
 
-vi.mock("@/app/project-runtime/quality-statistics-client", () => {
+vi.mock("@/app/project-runtime/quality-statistics-worker-pool", () => {
   return {
-    createQualityStatisticsClient: () => ({
-      compute: quality_statistics_compute_mock,
-      dispose: vi.fn(),
+    getSharedQualityStatisticsWorkerPool: () => ({
+      submit: quality_statistics_submit_mock,
     }),
   };
 });
@@ -107,8 +106,8 @@ function create_test_state(): ProjectStoreState {
 
 describe("create_analysis_glossary_import_plan", () => {
   beforeEach(() => {
-    quality_statistics_compute_mock.mockReset();
-    quality_statistics_compute_mock.mockResolvedValue({
+    quality_statistics_submit_mock.mockReset();
+    quality_statistics_submit_mock.mockResolvedValue({
       results: {
         "艾琳|1": {
           matched_item_count: 1,
@@ -122,7 +121,7 @@ describe("create_analysis_glossary_import_plan", () => {
     const import_plan = await create_analysis_glossary_import_plan(create_test_state());
 
     expect(import_plan).not.toBeNull();
-    expect(quality_statistics_compute_mock).toHaveBeenCalledTimes(1);
+    expect(quality_statistics_submit_mock).toHaveBeenCalledTimes(1);
     expect(import_plan?.imported_count).toBe(1);
     expect(import_plan?.request_body.entries).toEqual([
       {
@@ -138,10 +137,13 @@ describe("create_analysis_glossary_import_plan", () => {
       quality: 12,
       analysis: 3,
     });
-    expect(quality_statistics_compute_mock).toHaveBeenCalledWith(
+    expect(quality_statistics_submit_mock).toHaveBeenCalledWith(
       expect.objectContaining({
         relationTargetCandidates: [{ key: "艾琳|1", src: "艾琳" }],
       }),
+      {
+        stale_key: "quality-statistics:analysis-glossary-import",
+      },
     );
   });
 });

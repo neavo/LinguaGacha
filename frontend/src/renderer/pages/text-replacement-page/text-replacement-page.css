@@ -133,8 +133,6 @@
   justify-content: center;
   font-size: 10px;
   transition:
-    transform 180ms ease,
-    filter 180ms ease,
     border-color 180ms ease,
     background-color 180ms ease,
     color 180ms ease;
@@ -142,19 +140,6 @@
 
 .text-replacement-page .replacement-page__statistics-badge--running {
   padding-inline: 7px;
-}
-
-.text-replacement-page
-  .replacement-page__statistics-badge-button:hover
-  .replacement-page__statistics-badge,
-.text-replacement-page
-  .replacement-page__statistics-badge-button:focus-visible
-  .replacement-page__statistics-badge,
-.text-replacement-page
-  .replacement-page__statistics-badge-button[data-state="open"]
-  .replacement-page__statistics-badge {
-  transform: translateY(-1px);
-  filter: saturate(1.08);
 }
 
 .text-replacement-page__dialog-scroll {

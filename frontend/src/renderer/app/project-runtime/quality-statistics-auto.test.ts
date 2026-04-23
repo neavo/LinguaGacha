@@ -198,9 +198,8 @@ describe("quality-statistics-auto", () => {
     });
 
     const execution_result = await executeQualityStatisticsAutoPlan({
-      client: {
+      executor: {
         compute: compute_mock,
-        dispose: vi.fn(),
       },
       current_snapshot: current_context.snapshot,
       completed_snapshot: completed_context.snapshot,

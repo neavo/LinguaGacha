@@ -3,11 +3,11 @@ import type {
   ProjectStoreState,
 } from "@/app/project-runtime/project-store";
 import { collect_project_item_texts } from "@/app/project-runtime/project-item-texts";
-import {
-  createQualityStatisticsClient,
-  type QualityStatisticsRelationCandidate,
-  type QualityStatisticsRuleInput,
-} from "@/app/project-runtime/quality-statistics-client";
+import type {
+  QualityStatisticsRelationCandidate,
+  QualityStatisticsRuleInput,
+} from "@/app/project-runtime/quality-statistics";
+import { getSharedQualityStatisticsWorkerPool } from "@/app/project-runtime/quality-statistics-worker-pool";
 import {
   getQualityRuleSlice,
   replaceQualityRuleSlice,
@@ -56,7 +56,7 @@ type AnalysisGlossaryImportPlan = {
 };
 
 const CONTROL_CODE_PATTERN = /\\(?:n|N){1,2}\[\d+\]/u;
-const quality_statistics_client = createQualityStatisticsClient();
+const quality_statistics_worker_pool = getSharedQualityStatisticsWorkerPool();
 
 function normalize_vote_map(value: unknown): Record<string, number> {
   if (typeof value !== "object" || value === null) {
@@ -355,13 +355,18 @@ async function filter_import_candidates(args: {
       };
     },
   );
-  const statistics_result = await quality_statistics_client.compute({
-    rules,
-    srcTexts,
-    dstTexts,
-    relationCandidates: relation_candidates,
-    relationTargetCandidates: relation_target_candidates,
-  });
+  const statistics_result = await quality_statistics_worker_pool.submit(
+    {
+      rules,
+      srcTexts,
+      dstTexts,
+      relationCandidates: relation_candidates,
+      relationTargetCandidates: relation_target_candidates,
+    },
+    {
+      stale_key: "quality-statistics:analysis-glossary-import",
+    },
+  );
   const key_by_src = new Map<string, string>();
   preview.entries.forEach((entry) => {
     key_by_src.set(entry.entry.src, build_glossary_stat_key(entry.entry));

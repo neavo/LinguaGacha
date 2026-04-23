@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  QualityStatisticsTaskInput,
+  QualityStatisticsTaskResult,
+} from "@/app/project-runtime/quality-statistics";
 import {
-  createQualityStatisticsClient,
-  type QualityStatisticsTaskInput,
-  type QualityStatisticsTaskResult,
-} from "./quality-statistics-client";
+  QUALITY_STATISTICS_STALE_ERROR_MESSAGE,
+  createQualityStatisticsWorkerPool,
+} from "@/app/project-runtime/quality-statistics-worker-pool";
 
 type WorkerRequestMessage = {
   id: number;
@@ -16,8 +19,9 @@ class MockWorker {
 
   posted_messages: WorkerRequestMessage[] = [];
   terminated = false;
-  private message_listener: ((event: MessageEvent<QualityStatisticsTaskResult>) => void) | null =
-    null;
+  private message_listener:
+    | ((event: MessageEvent<{ id: number; output: QualityStatisticsTaskResult }>) => void)
+    | null = null;
   private error_listener: ((event: Event) => void) | null = null;
 
   constructor(_url: URL | string, _options?: WorkerOptions) {
@@ -27,7 +31,7 @@ class MockWorker {
   addEventListener(type: string, listener: EventListener): void {
     if (type === "message") {
       this.message_listener = listener as (
-        event: MessageEvent<QualityStatisticsTaskResult>,
+        event: MessageEvent<{ id: number; output: QualityStatisticsTaskResult }>,
       ) => void;
       return;
     }
@@ -46,7 +50,10 @@ class MockWorker {
   }
 
   dispatch_message(data: { id: number; output: QualityStatisticsTaskResult }): void {
-    this.message_listener?.({ data } as unknown as MessageEvent<QualityStatisticsTaskResult>);
+    this.message_listener?.({ data } as MessageEvent<{
+      id: number;
+      output: QualityStatisticsTaskResult;
+    }>);
   }
 
   dispatch_error(): void {
@@ -81,7 +88,7 @@ function create_output(key: string, matched_item_count: number): QualityStatisti
   };
 }
 
-describe("createQualityStatisticsClient", () => {
+describe("createQualityStatisticsWorkerPool", () => {
   beforeEach(() => {
     MockWorker.instances = [];
     vi.stubGlobal("Worker", MockWorker as unknown as typeof Worker);
@@ -92,8 +99,10 @@ describe("createQualityStatisticsClient", () => {
   });
 
   it("正常返回 worker 统计结果", async () => {
-    const client = createQualityStatisticsClient();
-    const result_promise = client.compute(create_input("alpha"));
+    const pool = createQualityStatisticsWorkerPool({
+      worker_count: 1,
+    });
+    const result_promise = pool.submit(create_input("alpha"));
     const worker = MockWorker.instances[0];
 
     expect(worker?.posted_messages).toHaveLength(1);
@@ -104,39 +113,62 @@ describe("createQualityStatisticsClient", () => {
     });
 
     await expect(result_promise).resolves.toEqual(create_output("alpha", 2));
-    client.dispose();
+    pool.dispose();
   });
 
-  it("新请求会覆盖旧请求并丢弃过期响应", async () => {
-    const client = createQualityStatisticsClient();
-    const first_result = client.compute(create_input("first"));
+  it("同 stale_key 的旧请求结果会被丢弃", async () => {
+    const pool = createQualityStatisticsWorkerPool({
+      worker_count: 1,
+    });
+    const first_result = pool.submit(create_input("first"), {
+      stale_key: "glossary",
+    });
+    const second_result = pool.submit(create_input("second"), {
+      stale_key: "glossary",
+    });
     const worker = MockWorker.instances[0];
-    const second_result = client.compute(create_input("second"));
 
-    await expect(first_result).rejects.toThrow("quality statistics 请求已被更新请求覆盖。");
+    expect(worker?.posted_messages).toHaveLength(1);
 
     worker?.dispatch_message({
       id: 1,
       output: create_output("first", 1),
     });
+
+    await expect(first_result).rejects.toThrow(QUALITY_STATISTICS_STALE_ERROR_MESSAGE);
+    expect(worker?.posted_messages).toHaveLength(2);
+
     worker?.dispatch_message({
       id: 2,
       output: create_output("second", 3),
     });
 
     await expect(second_result).resolves.toEqual(create_output("second", 3));
-    client.dispose();
+    pool.dispose();
   });
 
-  it("worker 报错时向上抛出异常", async () => {
-    const client = createQualityStatisticsClient();
-    const result_promise = client.compute(create_input("broken"));
-    const worker = MockWorker.instances[0];
+  it("worker 出错后会回收并允许后续任务继续执行", async () => {
+    const pool = createQualityStatisticsWorkerPool({
+      worker_count: 1,
+    });
+    const first_result = pool.submit(create_input("broken"));
+    const first_worker = MockWorker.instances[0];
 
-    worker?.dispatch_error();
+    first_worker?.dispatch_error();
 
-    await expect(result_promise).rejects.toThrow("quality statistics worker 执行失败。");
-    expect(worker?.terminated).toBe(true);
-    client.dispose();
+    await expect(first_result).rejects.toThrow("quality statistics worker 执行失败。");
+    expect(first_worker?.terminated).toBe(true);
+
+    const second_result = pool.submit(create_input("next"));
+    const replacement_worker = MockWorker.instances[1];
+    expect(replacement_worker).not.toBeUndefined();
+
+    replacement_worker?.dispatch_message({
+      id: 2,
+      output: create_output("next", 4),
+    });
+
+    await expect(second_result).resolves.toEqual(create_output("next", 4));
+    pool.dispose();
   });
 });
