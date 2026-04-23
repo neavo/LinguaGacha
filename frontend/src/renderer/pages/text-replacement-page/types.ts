@@ -1,3 +1,4 @@
+import type { QualityStatisticsDependencySnapshot } from "@/app/project-runtime/quality-statistics-auto";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@/i18n";
@@ -35,7 +36,7 @@ export type TextReplacementFilterState = {
 
 export type TextReplacementStatisticsState = {
   running: boolean;
-  completed_revision: number | null;
+  completed_snapshot: QualityStatisticsDependencySnapshot | null;
   completed_entry_ids: TextReplacementEntryId[];
   matched_count_by_entry_id: Record<TextReplacementEntryId, number>;
   subset_parent_labels_by_entry_id: Record<TextReplacementEntryId, string[]>;
@@ -139,7 +140,6 @@ export type UseTextReplacementPageStateResult = {
   import_entries_from_path: (path: string) => Promise<void>;
   import_entries_from_picker: () => Promise<void>;
   export_entries_from_picker: () => Promise<void>;
-  run_statistics: () => Promise<void>;
   open_preset_menu: () => Promise<void>;
   apply_preset: (virtual_id: string) => Promise<void>;
   request_reset_entries: () => void;

@@ -49,7 +49,7 @@
     "electron-vite": "^5.0.0",
     "execa": "^9.6.1",
     "get-port": "^7.2.0",
-    "jsdom": "^29.0.2",
+    "happy-dom": "^20.9.0",
     "oxfmt": "^0.46.0",
     "oxlint": "^1.61.0",
     "tailwindcss": "^4.2.2",

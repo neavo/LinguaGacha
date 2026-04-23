@@ -2,12 +2,12 @@ import type {
   ProjectStoreQualityState,
   ProjectStoreState,
 } from "@/app/project-runtime/project-store";
+import { collect_project_item_texts } from "@/app/project-runtime/project-item-texts";
 import {
-  collect_project_item_texts,
-  run_quality_statistics_task,
+  createQualityStatisticsClient,
   type QualityStatisticsRelationCandidate,
   type QualityStatisticsRuleInput,
-} from "@/app/project-runtime/quality-statistics";
+} from "@/app/project-runtime/quality-statistics-client";
 import {
   getQualityRuleSlice,
   replaceQualityRuleSlice,
@@ -56,6 +56,7 @@ type AnalysisGlossaryImportPlan = {
 };
 
 const CONTROL_CODE_PATTERN = /\\(?:n|N){1,2}\[\d+\]/u;
+const quality_statistics_client = createQualityStatisticsClient();
 
 function normalize_vote_map(value: unknown): Record<string, number> {
   if (typeof value !== "object" || value === null) {
@@ -354,7 +355,7 @@ async function filter_import_candidates(args: {
       };
     },
   );
-  const statistics_result = await run_quality_statistics_task({
+  const statistics_result = await quality_statistics_client.compute({
     rules,
     srcTexts,
     dstTexts,
