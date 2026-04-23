@@ -244,10 +244,8 @@
 }
 
 .glossary-page__statistics-badge-button:hover .glossary-page__statistics-badge,
-.glossary-page__statistics-badge-button:focus-visible
-  .glossary-page__statistics-badge,
-.glossary-page__statistics-badge-button[data-state="open"]
-  .glossary-page__statistics-badge {
+.glossary-page__statistics-badge-button:focus-visible .glossary-page__statistics-badge,
+.glossary-page__statistics-badge-button[data-state="open"] .glossary-page__statistics-badge {
   transform: translateY(-1px);
   filter: saturate(1.08);
 }
