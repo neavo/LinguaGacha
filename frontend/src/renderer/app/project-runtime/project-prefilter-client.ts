@@ -1,8 +1,8 @@
-import {
-  compute_project_prefilter_mutation,
-  type ProjectPrefilterMutationInput,
-  type ProjectPrefilterMutationOutput,
+import type {
+  ProjectPrefilterMutationInput,
+  ProjectPrefilterMutationOutput,
 } from "@/app/project-runtime/project-prefilter";
+import { WorkerClientError } from "@/lib/worker-client-error";
 
 type PendingResolver = {
   resolve: (output: ProjectPrefilterMutationOutput) => void;
@@ -26,13 +26,13 @@ export function createProjectPrefilterClient() {
     pending_requests.clear();
   }
 
-  function ensure_worker(): Worker | null {
+  function ensure_worker(): Worker {
     if (worker !== null) {
       return worker;
     }
 
     if (typeof Worker === "undefined") {
-      return null;
+      throw new WorkerClientError("当前环境不支持 project prefilter worker。", "unsupported");
     }
 
     try {
@@ -41,7 +41,7 @@ export function createProjectPrefilterClient() {
       });
     } catch {
       worker = null;
-      return null;
+      throw new WorkerClientError("project prefilter worker 初始化失败。", "init_failed");
     }
 
     worker.addEventListener("message", (event: MessageEvent<ProjectPrefilterWorkerResponse>) => {
@@ -53,7 +53,7 @@ export function createProjectPrefilterClient() {
       resolver.resolve(event.data.output);
     });
     worker.addEventListener("error", () => {
-      reject_all(new Error("project prefilter worker 执行失败。"));
+      reject_all(new WorkerClientError("project prefilter worker 执行失败。", "execution_failed"));
       worker?.terminate();
       worker = null;
     });
@@ -63,9 +63,6 @@ export function createProjectPrefilterClient() {
   return {
     async compute(input: ProjectPrefilterMutationInput): Promise<ProjectPrefilterMutationOutput> {
       const runtime_worker = ensure_worker();
-      if (runtime_worker === null) {
-        return compute_project_prefilter_mutation(input);
-      }
 
       next_request_id += 1;
       const request_id = next_request_id;
@@ -78,7 +75,7 @@ export function createProjectPrefilterClient() {
       });
     },
     dispose(): void {
-      reject_all(new Error("project prefilter worker 已释放。"));
+      reject_all(new WorkerClientError("project prefilter worker 已释放。", "disposed"));
       worker?.terminate();
       worker = null;
     },

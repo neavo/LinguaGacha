@@ -9,6 +9,7 @@ import {
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 import { useDesktopToast } from "@/app/state/use-desktop-toast";
 import { useI18n } from "@/i18n";
+import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
   applyProofreadingFilters,
   buildProofreadingRuntimeInput,
@@ -697,10 +698,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           return;
         }
 
-        const message = resolve_error_message(
-          error,
-          t("proofreading_page.feedback.refresh_failed"),
-        );
+        const fallback_message = t("proofreading_page.feedback.refresh_failed");
+        const message = is_worker_client_error(error)
+          ? fallback_message
+          : resolve_error_message(error, fallback_message);
         set_refresh_error(message);
         set_cache_status("error");
         set_cache_stale(true);
