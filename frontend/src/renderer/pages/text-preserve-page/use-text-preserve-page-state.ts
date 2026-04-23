@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop-api";
-import { createProjectStoreReplaceSectionPatch } from "@/app/project-runtime/project-store";
 import {
-  collect_project_item_texts,
-  run_quality_statistics_task,
-} from "@/app/project-runtime/quality-statistics";
+  areQualityStatisticsSnapshotsEqual,
+  executeQualityStatisticsAutoPlan,
+  planQualityStatisticsAutoRun,
+  type QualityStatisticsAutoRuleDescriptor,
+  type QualityStatisticsDependencySnapshot,
+} from "@/app/project-runtime/quality-statistics-auto";
+import { createQualityStatisticsClient } from "@/app/project-runtime/quality-statistics-client";
+import { createProjectStoreReplaceSectionPatch } from "@/app/project-runtime/project-store";
+import { useQualityStatisticsAutoContext } from "@/app/project-runtime/use-quality-statistics-auto-context";
 import { useProjectPagesBarrier } from "@/app/state/project-pages-context";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import {
@@ -123,7 +128,7 @@ function create_empty_filter_state(): TextPreserveFilterState {
 function create_empty_statistics_state(): TextPreserveStatisticsState {
   return {
     running: false,
-    completed_revision: null,
+    completed_snapshot: null,
     completed_entry_ids: [],
     matched_count_by_entry_id: {},
     subset_parent_labels_by_entry_id: {},
@@ -248,6 +253,51 @@ function is_modal_progress_timeout_error(error: unknown): boolean {
   return error instanceof Error && error.message === MODAL_PROGRESS_TIMEOUT_MESSAGE;
 }
 
+function build_text_preserve_statistics_state(args: {
+  snapshot: QualityStatisticsDependencySnapshot;
+  results: Record<string, { matched_item_count?: number; subset_parents?: string[] }>;
+}): TextPreserveStatisticsState {
+  return {
+    running: false,
+    completed_snapshot: args.snapshot,
+    completed_entry_ids: args.snapshot.rules.map((rule) => {
+      return rule.key;
+    }),
+    matched_count_by_entry_id: Object.fromEntries(
+      Object.entries(args.results).map(([entry_id, result]) => {
+        return [entry_id, result.matched_item_count ?? 0];
+      }),
+    ),
+    subset_parent_labels_by_entry_id: Object.fromEntries(
+      Object.entries(args.results).map(([entry_id, result]) => {
+        return [entry_id, result.subset_parents ?? []];
+      }),
+    ),
+  };
+}
+
+function build_text_preserve_statistics_result_map(
+  statistics_state: TextPreserveStatisticsState,
+): Record<string, { matched_item_count: number; subset_parents: string[] }> {
+  const entry_ids = new Set<string>([
+    ...statistics_state.completed_entry_ids,
+    ...Object.keys(statistics_state.matched_count_by_entry_id),
+    ...Object.keys(statistics_state.subset_parent_labels_by_entry_id),
+  ]);
+
+  return Object.fromEntries(
+    [...entry_ids].map((entry_id) => {
+      return [
+        entry_id,
+        {
+          matched_item_count: statistics_state.matched_count_by_entry_id[entry_id] ?? 0,
+          subset_parents: statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? [],
+        },
+      ];
+    }),
+  );
+}
+
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n();
   const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
@@ -300,6 +350,18 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const revision_ref = useRef(revision);
   const mode_ref = useRef(mode);
   const mode_update_in_flight_ref = useRef(false);
+  const statistics_state_ref = useRef(statistics_state);
+  const dialog_state_ref = useRef(dialog_state);
+  const statistics_request_id_ref = useRef(0);
+  const statistics_inflight_snapshot_signature_ref = useRef<string | null>(null);
+  const statistics_failed_snapshot_signature_ref = useRef<string | null>(null);
+  const statistics_force_full_ref = useRef(false);
+  const quality_statistics_client_ref = useRef<ReturnType<
+    typeof createQualityStatisticsClient
+  > | null>(null);
+  if (quality_statistics_client_ref.current === null) {
+    quality_statistics_client_ref.current = createQualityStatisticsClient();
+  }
 
   useEffect(() => {
     revision_ref.current = revision;
@@ -308,6 +370,22 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   useEffect(() => {
     mode_ref.current = mode;
   }, [mode]);
+
+  useEffect(() => {
+    statistics_state_ref.current = statistics_state;
+  }, [statistics_state]);
+
+  useEffect(() => {
+    dialog_state_ref.current = dialog_state;
+  }, [dialog_state]);
+
+  useEffect(() => {
+    const quality_statistics_client = quality_statistics_client_ref.current;
+    return () => {
+      statistics_request_id_ref.current += 1;
+      quality_statistics_client?.dispose();
+    };
+  }, []);
 
   const entry_ids = useMemo<TextPreserveEntryId[]>(() => {
     return entries.map((entry, index) => {
@@ -318,6 +396,40 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const entry_index_by_id = useMemo(() => {
     return new Map(entry_ids.map((entry_id, index) => [entry_id, index]));
   }, [entry_ids]);
+  const statistics_rule_descriptors = useMemo<QualityStatisticsAutoRuleDescriptor[]>(() => {
+    return entries.flatMap((entry, index) => {
+      const normalized_src = entry.src.trim();
+      if (normalized_src === "") {
+        return [];
+      }
+
+      const entry_id = entry_ids[index] ?? build_text_preserve_entry_id(entry, index);
+      return [
+        {
+          key: entry_id,
+          dependency_parts: [entry.src],
+          relation_label: entry.src,
+          rule: {
+            key: entry_id,
+            pattern: entry.src,
+            mode: TEXT_PRESERVE_RULE_TYPE,
+            regex: true,
+            case_sensitive: false,
+          },
+        },
+      ];
+    });
+  }, [entries, entry_ids]);
+  const {
+    current_statistics_context,
+    pending: statistics_context_pending,
+    project_item_texts,
+  } = useQualityStatisticsAutoContext({
+    items: project_store_state.items,
+    item_revision: project_store_state.revisions.sections.items ?? 0,
+    text_source: "src",
+    descriptors: statistics_rule_descriptors,
+  });
 
   const resolve_create_insert_after_entry_id = useCallback((): TextPreserveEntryId | null => {
     if (active_entry_id !== null && entry_index_by_id.has(active_entry_id)) {
@@ -334,7 +446,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return null;
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
 
-  const statistics_ready = statistics_state.completed_revision === revision;
+  const statistics_ready =
+    current_statistics_context !== null &&
+    areQualityStatisticsSnapshotsEqual(
+      statistics_state.completed_snapshot,
+      current_statistics_context.snapshot,
+    );
   const completed_statistics_entry_id_set = useMemo<ReadonlySet<TextPreserveEntryId>>(() => {
     return new Set(statistics_state.completed_entry_ids);
   }, [statistics_state.completed_entry_ids]);
@@ -423,9 +540,20 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     );
   }, []);
 
-  const invalidate_statistics = useCallback((): void => {
-    set_statistics_state(create_empty_statistics_state());
-  }, []);
+  const apply_statistics_results = useCallback(
+    (
+      snapshot: QualityStatisticsDependencySnapshot,
+      results: Record<string, { matched_item_count?: number; subset_parents?: string[] }>,
+    ): void => {
+      set_statistics_state(
+        build_text_preserve_statistics_state({
+          snapshot,
+          results,
+        }),
+      );
+    },
+    [],
+  );
 
   const clear_selection_state = useCallback((): void => {
     set_selected_entry_ids([]);
@@ -438,6 +566,103 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       push_toast("error", resolve_text_preserve_error_message(error, unknown_error_message));
     },
     [push_toast, unknown_error_message],
+  );
+
+  const run_statistics_refresh = useCallback(
+    async (force_full: boolean): Promise<void> => {
+      if (current_statistics_context === null || project_item_texts === null) {
+        return;
+      }
+
+      const current_request_id = statistics_request_id_ref.current + 1;
+      statistics_request_id_ref.current = current_request_id;
+
+      const previous_statistics_state = statistics_state_ref.current;
+      const current_snapshot = current_statistics_context.snapshot;
+      const auto_plan = planQualityStatisticsAutoRun({
+        current_snapshot,
+        completed_snapshot: previous_statistics_state.completed_snapshot,
+        force_full,
+      });
+
+      if (auto_plan.kind === "noop") {
+        statistics_inflight_snapshot_signature_ref.current = null;
+        const execution_result = await executeQualityStatisticsAutoPlan({
+          client: quality_statistics_client_ref.current!,
+          current_snapshot,
+          completed_snapshot: previous_statistics_state.completed_snapshot,
+          previous_results: build_text_preserve_statistics_result_map(previous_statistics_state),
+          plan: auto_plan,
+          rules: current_statistics_context.rules,
+          relation_candidates: current_statistics_context.relation_candidates,
+          src_texts: project_item_texts.srcTexts,
+          dst_texts: project_item_texts.dstTexts,
+        });
+
+        if (
+          execution_result.kind !== "success" ||
+          statistics_request_id_ref.current !== current_request_id
+        ) {
+          return;
+        }
+
+        statistics_failed_snapshot_signature_ref.current = null;
+        apply_statistics_results(current_snapshot, execution_result.results);
+        return;
+      }
+
+      statistics_inflight_snapshot_signature_ref.current = current_snapshot.snapshot_signature;
+      set_statistics_state((previous_state) => {
+        return {
+          ...previous_state,
+          running: true,
+        };
+      });
+
+      try {
+        const execution_result = await executeQualityStatisticsAutoPlan({
+          client: quality_statistics_client_ref.current!,
+          current_snapshot,
+          completed_snapshot: previous_statistics_state.completed_snapshot,
+          previous_results: build_text_preserve_statistics_result_map(previous_statistics_state),
+          plan: auto_plan,
+          rules: current_statistics_context.rules,
+          relation_candidates: current_statistics_context.relation_candidates,
+          src_texts: project_item_texts.srcTexts,
+          dst_texts: project_item_texts.dstTexts,
+        });
+
+        if (
+          execution_result.kind !== "success" ||
+          statistics_request_id_ref.current !== current_request_id
+        ) {
+          return;
+        }
+
+        statistics_failed_snapshot_signature_ref.current = null;
+        apply_statistics_results(current_snapshot, execution_result.results);
+      } catch (error) {
+        if (statistics_request_id_ref.current !== current_request_id) {
+          return;
+        }
+
+        statistics_inflight_snapshot_signature_ref.current = null;
+        statistics_failed_snapshot_signature_ref.current = current_snapshot.snapshot_signature;
+        set_statistics_state((previous_state) => {
+          return {
+            ...previous_state,
+            running: false,
+          };
+        });
+        push_action_error_toast(error);
+      }
+    },
+    [
+      apply_statistics_results,
+      current_statistics_context,
+      project_item_texts,
+      push_action_error_toast,
+    ],
   );
 
   const apply_store_snapshot = useCallback((): void => {
@@ -514,7 +739,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
 
-      invalidate_statistics();
+      statistics_force_full_ref.current = true;
       clear_selection_state();
       push_toast("success", t("text_preserve_page.feedback.import_success"));
 
@@ -528,7 +753,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
       return true;
     },
-    [clear_selection_state, entries, invalidate_statistics, push_toast, save_entries_snapshot, t],
+    [clear_selection_state, entries, push_toast, save_entries_snapshot, t],
   );
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
@@ -565,6 +790,63 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
     apply_store_snapshot();
   }, [apply_snapshot, apply_store_snapshot, project_snapshot.loaded, project_snapshot.path]);
+
+  useEffect(() => {
+    if (current_statistics_context === null || statistics_context_pending) {
+      return;
+    }
+
+    const force_full = statistics_force_full_ref.current;
+    statistics_force_full_ref.current = false;
+
+    const auto_plan = planQualityStatisticsAutoRun({
+      current_snapshot: current_statistics_context.snapshot,
+      completed_snapshot: statistics_state.completed_snapshot,
+      force_full,
+    });
+
+    if (!force_full && auto_plan.kind === "noop" && statistics_ready && !statistics_state.running) {
+      return;
+    }
+
+    if (
+      !force_full &&
+      statistics_failed_snapshot_signature_ref.current ===
+        current_statistics_context.snapshot.snapshot_signature &&
+      !statistics_state.running
+    ) {
+      return;
+    }
+
+    if (
+      !force_full &&
+      auto_plan.kind !== "noop" &&
+      statistics_state.running &&
+      statistics_inflight_snapshot_signature_ref.current ===
+        current_statistics_context.snapshot.snapshot_signature
+    ) {
+      return;
+    }
+
+    if (auto_plan.reason === "text_changed") {
+      const timer_id = window.setTimeout(() => {
+        void run_statistics_refresh(force_full);
+      }, 200);
+
+      return () => {
+        window.clearTimeout(timer_id);
+      };
+    }
+
+    void run_statistics_refresh(force_full);
+  }, [
+    current_statistics_context,
+    run_statistics_refresh,
+    statistics_context_pending,
+    statistics_ready,
+    statistics_state.completed_snapshot,
+    statistics_state.running,
+  ]);
 
   useEffect(() => {
     if (statistics_ready || sort_state?.column_id !== "statistics") {
@@ -806,7 +1088,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return !target_set.has(entry_ids[index] ?? "");
       });
 
-      invalidate_statistics();
       set_entries(next_entries);
       clear_selection_state();
 
@@ -827,7 +1108,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       clear_selection_state,
       entries,
       entry_ids,
-      invalidate_statistics,
       save_entries_snapshot,
       selected_entry_ids,
       selection_anchor_entry_id,
@@ -868,21 +1148,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         over_entry_id,
       );
 
-      invalidate_statistics();
       set_entries(next_entries);
       const saved = await save_entries_snapshot(next_entries);
       if (!saved) {
         set_entries(previous_entries);
       }
     },
-    [
-      drag_disabled,
-      entries,
-      entry_ids,
-      invalidate_statistics,
-      save_entries_snapshot,
-      selected_entry_ids,
-    ],
+    [drag_disabled, entries, entry_ids, save_entries_snapshot, selected_entry_ids],
   );
 
   const query_entry_source = useCallback(
@@ -995,74 +1267,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       push_action_error_toast(error);
     }
   }, [entries, push_action_error_toast, push_toast, t]);
-
-  const run_statistics = useCallback(async (): Promise<void> => {
-    if (statistics_state.running) {
-      return;
-    }
-
-    const effective_entries = entries.flatMap((entry, index) => {
-      if (entry.src === "") {
-        return [];
-      }
-
-      return [
-        {
-          entry,
-          entry_id: entry_ids[index] ?? build_text_preserve_entry_id(entry, index),
-        },
-      ];
-    });
-
-    set_statistics_state({
-      running: true,
-      completed_revision: null,
-      completed_entry_ids: [],
-      matched_count_by_entry_id: {},
-      subset_parent_labels_by_entry_id: {},
-    });
-
-    try {
-      const item_texts = collect_project_item_texts(project_store.getState().items);
-      const worker_result = await run_quality_statistics_task({
-        rules: effective_entries.map((item) => ({
-          key: item.entry_id,
-          pattern: item.entry.src,
-          mode: TEXT_PRESERVE_RULE_TYPE,
-          regex: true,
-          case_sensitive: false,
-        })),
-        srcTexts: item_texts.srcTexts,
-        dstTexts: item_texts.dstTexts,
-        relationCandidates: effective_entries.map((item) => ({
-          key: item.entry_id,
-          src: item.entry.src,
-        })),
-      });
-      const results = worker_result.results;
-
-      set_statistics_state({
-        running: false,
-        completed_revision: revision_ref.current,
-        completed_entry_ids: effective_entries.map((item) => {
-          return item.entry_id;
-        }),
-        matched_count_by_entry_id: Object.fromEntries(
-          Object.entries(results).map(([entry_id, result]) => {
-            return [entry_id, result.matched_item_count ?? 0];
-          }),
-        ),
-        subset_parent_labels_by_entry_id: Object.fromEntries(
-          Object.entries(results).map(([entry_id, result]) => {
-            return [entry_id, result.subset_parents ?? []];
-          }),
-        ),
-      });
-    } catch (error) {
-      set_statistics_state(create_empty_statistics_state());
-      push_action_error_toast(error);
-    }
-  }, [entries, entry_ids, project_store, push_action_error_toast, statistics_state.running]);
 
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
@@ -1262,6 +1466,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   );
 
   const persist_dialog_entry = useCallback(async (): Promise<boolean> => {
+    const current_dialog_state = dialog_state;
     const normalized_entry = normalize_entry(dialog_state.draft_entry);
     const validation_message = validate_entry(normalized_entry);
     if (validation_message !== null) {
@@ -1305,29 +1510,24 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
               : entry;
           });
 
-    invalidate_statistics();
+    const reopen_dialog_state: TextPreserveDialogState = {
+      ...current_dialog_state,
+      saving: false,
+      validation_message: null,
+    };
+    set_dialog_state(create_empty_dialog_state());
+
     const saved = await save_entries_snapshot(next_entries);
     if (saved) {
       push_toast("success", t("app.feedback.save_success"));
-      set_dialog_state(create_empty_dialog_state());
       return true;
     }
 
-    set_dialog_state((previous_state) => ({
-      ...previous_state,
-      saving: false,
-    }));
+    if (!dialog_state_ref.current.open) {
+      set_dialog_state(reopen_dialog_state);
+    }
     return false;
-  }, [
-    dialog_state,
-    entries,
-    entry_ids,
-    invalidate_statistics,
-    push_toast,
-    save_entries_snapshot,
-    t,
-    validate_entry,
-  ]);
+  }, [dialog_state, entries, entry_ids, push_toast, save_entries_snapshot, t, validate_entry]);
 
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry();
@@ -1426,12 +1626,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       return false;
     }
 
-    invalidate_statistics();
+    statistics_force_full_ref.current = true;
     clear_selection_state();
     push_toast("success", t("text_preserve_page.feedback.reset_success"));
     set_preset_menu_open(false);
     return true;
-  }, [clear_selection_state, invalidate_statistics, push_toast, save_entries_snapshot, t]);
+  }, [clear_selection_state, push_toast, save_entries_snapshot, t]);
 
   const confirm_pending_action = useCallback(async (): Promise<void> => {
     if (!confirm_state.open || confirm_state.kind === null) {
@@ -1539,7 +1739,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     import_entries_from_path,
     import_entries_from_picker,
     export_entries_from_picker,
-    run_statistics,
     open_preset_menu,
     apply_preset,
     request_reset_entries,

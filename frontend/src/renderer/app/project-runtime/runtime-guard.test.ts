@@ -29,22 +29,22 @@ describe("runtime guard", () => {
     expect(glossary_state_source).not.toContain("isProjectRuntimeV2Enabled");
   });
 
-  it("桌面壳层不再监听 V1 事件流和旧 invalidation topic", () => {
+  it("桌面壳层通过统一事件流接收运行态更新，且不再监听旧 invalidation topic", () => {
     const source = read_source("../state/desktop-runtime-context.tsx");
-    const legacy_stream_symbol = ["open", "event", "stream"].join("_");
     const legacy_proofreading_topic = ["proofreading", "snapshot_invalidated"].join(".");
     const legacy_workbench_topic = ["workbench", "snapshot_changed"].join(".");
 
-    expect(source).not.toContain(legacy_stream_symbol);
+    expect(source).toContain("open_event_stream");
+    expect(source).toContain("settings.changed");
+    expect(source).toContain("project.patch");
     expect(source).not.toContain(legacy_proofreading_topic);
     expect(source).not.toContain(legacy_workbench_topic);
   });
 
-  it("desktop api 不再暴露旧 SSE 入口", () => {
+  it("desktop api 通过统一 SSE 路径暴露事件流入口", () => {
     const source = read_source("../desktop-api.ts");
-    const legacy_path = ["/api", "events", "stream"].join("/");
 
-    expect(source).not.toContain(legacy_path);
+    expect(source).toContain("open_event_stream");
     expect(source).toContain("/api/events/stream");
   });
 });

@@ -1,7 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectStoreState } from "@/app/project-runtime/project-store";
 import { create_analysis_glossary_import_plan } from "@/app/project-runtime/analysis-glossary-import";
+
+const { quality_statistics_compute_mock } = vi.hoisted(() => {
+  return {
+    quality_statistics_compute_mock: vi.fn(),
+  };
+});
+
+vi.mock("@/app/project-runtime/quality-statistics-client", () => {
+  return {
+    createQualityStatisticsClient: () => ({
+      compute: quality_statistics_compute_mock,
+      dispose: vi.fn(),
+    }),
+  };
+});
 
 function create_test_state(): ProjectStoreState {
   return {
@@ -91,10 +106,23 @@ function create_test_state(): ProjectStoreState {
 }
 
 describe("create_analysis_glossary_import_plan", () => {
+  beforeEach(() => {
+    quality_statistics_compute_mock.mockReset();
+    quality_statistics_compute_mock.mockResolvedValue({
+      results: {
+        "艾琳|1": {
+          matched_item_count: 1,
+          subset_parents: [],
+        },
+      },
+    });
+  });
+
   it("保留只出现一次的候选术语", async () => {
     const import_plan = await create_analysis_glossary_import_plan(create_test_state());
 
     expect(import_plan).not.toBeNull();
+    expect(quality_statistics_compute_mock).toHaveBeenCalledTimes(1);
     expect(import_plan?.imported_count).toBe(1);
     expect(import_plan?.request_body.entries).toEqual([
       {
@@ -110,5 +138,10 @@ describe("create_analysis_glossary_import_plan", () => {
       quality: 12,
       analysis: 3,
     });
+    expect(quality_statistics_compute_mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relationTargetCandidates: [{ key: "艾琳|1", src: "艾琳" }],
+      }),
+    );
   });
 });

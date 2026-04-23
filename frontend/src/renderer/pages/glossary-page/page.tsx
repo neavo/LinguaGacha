@@ -1,56 +1,53 @@
-import '@/pages/glossary-page/glossary-page.css'
-import type { ScreenComponentProps } from '@/app/navigation/types'
-import { useDesktopToast } from '@/app/state/use-desktop-toast'
-import { useI18n, type LocaleKey } from '@/i18n'
-import { GlossaryCommandBar } from '@/pages/glossary-page/components/glossary-command-bar'
-import { GlossaryConfirmDialog } from '@/pages/glossary-page/components/glossary-confirm-dialog'
-import { GlossaryEditDialog } from '@/pages/glossary-page/components/glossary-edit-dialog'
-import { GlossaryPresetInputDialog } from '@/pages/glossary-page/components/glossary-preset-input-dialog'
-import type { GlossaryFilterScope } from '@/pages/glossary-page/types'
-import { GlossaryTable } from '@/pages/glossary-page/components/glossary-table'
-import { useGlossaryPageState } from '@/pages/glossary-page/use-glossary-page-state'
-import { FileDropZone } from '@/widgets/file-drop-zone/file-drop-zone'
-import { SearchBar, type SearchBarScopeOption } from '@/widgets/search-bar/search-bar'
+import "@/pages/glossary-page/glossary-page.css";
+import type { ScreenComponentProps } from "@/app/navigation/types";
+import { useDesktopToast } from "@/app/state/use-desktop-toast";
+import { useI18n, type LocaleKey } from "@/i18n";
+import { GlossaryCommandBar } from "@/pages/glossary-page/components/glossary-command-bar";
+import { GlossaryConfirmDialog } from "@/pages/glossary-page/components/glossary-confirm-dialog";
+import { GlossaryEditDialog } from "@/pages/glossary-page/components/glossary-edit-dialog";
+import { GlossaryPresetInputDialog } from "@/pages/glossary-page/components/glossary-preset-input-dialog";
+import type { GlossaryFilterScope } from "@/pages/glossary-page/types";
+import { GlossaryTable } from "@/pages/glossary-page/components/glossary-table";
+import { useGlossaryPageState } from "@/pages/glossary-page/use-glossary-page-state";
+import { FileDropZone } from "@/widgets/file-drop-zone/file-drop-zone";
+import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
 
 const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
-  all: 'glossary_page.filter.scope.all',
-  src: 'glossary_page.filter.scope.source',
-  dst: 'glossary_page.filter.scope.translation',
-  info: 'glossary_page.filter.scope.description',
-} satisfies Record<GlossaryFilterScope, LocaleKey>
+  all: "glossary_page.filter.scope.all",
+  src: "glossary_page.filter.scope.source",
+  dst: "glossary_page.filter.scope.translation",
+  info: "glossary_page.filter.scope.description",
+} satisfies Record<GlossaryFilterScope, LocaleKey>;
 
-const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = [
-  'all',
-  'src',
-  'dst',
-  'info',
-]
+const GLOSSARY_FILTER_SCOPES: GlossaryFilterScope[] = ["all", "src", "dst", "info"];
 
 export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
-  const { t } = useI18n()
-  const { push_toast } = useDesktopToast()
-  const glossary_page_state = useGlossaryPageState()
+  const { t } = useI18n();
+  const { push_toast } = useDesktopToast();
+  const glossary_page_state = useGlossaryPageState();
   const regex_state_label = glossary_page_state.filter_state.is_regex
-    ? t('app.toggle.enabled')
-    : t('app.toggle.disabled')
-  const scope_button_label = glossary_page_state.filter_state.scope === 'all'
-    ? t('glossary_page.filter.scope.label')
-    : t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope])
+    ? t("app.toggle.enabled")
+    : t("app.toggle.disabled");
+  const scope_button_label =
+    glossary_page_state.filter_state.scope === "all"
+      ? t("glossary_page.filter.scope.label")
+      : t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope]);
   const scope_state_label = t(
     GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope],
-  )
-  const scope_tooltip = t('glossary_page.toggle.status')
-    .replace('{TITLE}', t('glossary_page.filter.scope.tooltip_label'))
-    .replace('{STATE}', scope_state_label)
-  const regex_tooltip = t('glossary_page.toggle.status')
-    .replace('{TITLE}', t('glossary_page.filter.regex_tooltip_label'))
-    .replace('{STATE}', regex_state_label)
-  const glossary_scope_options: SearchBarScopeOption<GlossaryFilterScope>[] = GLOSSARY_FILTER_SCOPES.map((scope) => {
-    return {
-      value: scope,
-      label: t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
-    }
-  })
+  );
+  const scope_tooltip = t("glossary_page.toggle.status")
+    .replace("{TITLE}", t("glossary_page.filter.scope.tooltip_label"))
+    .replace("{STATE}", scope_state_label);
+  const regex_tooltip = t("glossary_page.toggle.status")
+    .replace("{TITLE}", t("glossary_page.filter.regex_tooltip_label"))
+    .replace("{STATE}", regex_state_label);
+  const glossary_scope_options: SearchBarScopeOption<GlossaryFilterScope>[] =
+    GLOSSARY_FILTER_SCOPES.map((scope) => {
+      return {
+        value: scope,
+        label: t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[scope]),
+      };
+    });
 
   return (
     <div
@@ -60,40 +57,38 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
       <SearchBar
         variant="filter"
         keyword={glossary_page_state.filter_state.keyword}
-        placeholder={t('glossary_page.filter.placeholder')}
-        clear_label={t('glossary_page.filter.clear')}
+        placeholder={t("glossary_page.filter.placeholder")}
+        clear_label={t("glossary_page.filter.clear")}
         invalid_message={glossary_page_state.invalid_filter_message}
         on_keyword_change={glossary_page_state.update_filter_keyword}
         scope={{
           value: glossary_page_state.filter_state.scope,
           button_label: scope_button_label,
-          aria_label: t('glossary_page.filter.scope.label'),
+          aria_label: t("glossary_page.filter.scope.label"),
           tooltip: scope_tooltip,
           options: glossary_scope_options,
           on_change: glossary_page_state.update_filter_scope,
         }}
         regex={{
           value: glossary_page_state.filter_state.is_regex,
-          label: t('glossary_page.filter.regex'),
+          label: t("glossary_page.filter.regex"),
           tooltip: regex_tooltip,
-          enabled_label: t('app.toggle.enabled'),
-          disabled_label: t('app.toggle.disabled'),
+          enabled_label: t("app.toggle.enabled"),
+          disabled_label: t("app.toggle.disabled"),
           on_change: glossary_page_state.update_filter_regex,
         }}
       />
       <div className="glossary-page__table-host">
         <FileDropZone
-          label={t('app.drop.import_here')}
+          label={t("app.drop.import_here")}
           on_path_drop={(path) => {
-            void glossary_page_state.import_entries_from_path(path)
+            void glossary_page_state.import_entries_from_path(path);
           }}
           on_drop_issue={(issue) => {
             push_toast(
-              'warning',
-              issue === 'multiple'
-                ? t('app.drop.multiple_unavailable')
-                : t('app.drop.unavailable'),
-            )
+              "warning",
+              issue === "multiple" ? t("app.drop.multiple_unavailable") : t("app.drop.unavailable"),
+            );
           }}
         >
           <GlossaryTable
@@ -121,13 +116,11 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         preset_items={glossary_page_state.preset_items}
         preset_menu_open={glossary_page_state.preset_menu_open}
         selected_entry_count={glossary_page_state.selected_entry_ids.length}
-        statistics_running={glossary_page_state.statistics_state.running}
         on_toggle_enabled={glossary_page_state.update_enabled}
         on_create={glossary_page_state.open_create_dialog}
         on_delete_selected={glossary_page_state.delete_selected_entries}
         on_import={glossary_page_state.import_entries_from_picker}
         on_export={glossary_page_state.export_entries_from_picker}
-        on_statistics={glossary_page_state.run_statistics}
         on_open_preset_menu={glossary_page_state.open_preset_menu}
         on_apply_preset={glossary_page_state.apply_preset}
         on_request_reset={glossary_page_state.request_reset_entries}
@@ -150,7 +143,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
       <GlossaryConfirmDialog
         state={glossary_page_state.confirm_state}
         on_confirm={() => {
-          void glossary_page_state.confirm_pending_action()
+          void glossary_page_state.confirm_pending_action();
         }}
         on_close={glossary_page_state.close_confirm_dialog}
       />
@@ -158,10 +151,10 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         state={glossary_page_state.preset_input_state}
         on_change={glossary_page_state.update_preset_input_value}
         on_submit={() => {
-          void glossary_page_state.submit_preset_input()
+          void glossary_page_state.submit_preset_input();
         }}
         on_close={glossary_page_state.close_preset_input_dialog}
       />
     </div>
-  )
+  );
 }

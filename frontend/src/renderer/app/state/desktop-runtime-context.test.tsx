@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -37,6 +35,7 @@ type RuntimeSnapshot = {
   fileKeys: string[];
   itemKeys: string[];
   taskStatus: string;
+  sourceLanguage: string;
 };
 
 type RuntimeHandle = {
@@ -72,11 +71,13 @@ function RuntimeProbe(props: {
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: Object.keys(runtime.project_store.getState().items),
       taskStatus: runtime.task_snapshot.status,
+      sourceLanguage: runtime.settings_snapshot.source_language,
     });
   }, [
     props,
     runtime.proofreading_change_signal.reason,
     runtime.proofreading_change_signal.seq,
+    runtime.settings_snapshot.source_language,
     runtime.task_snapshot.status,
     runtime.project_store,
     runtime.workbench_change_signal.reason,
@@ -258,7 +259,7 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("source_language 设置变更会触发项目缓存刷新信号", async () => {
+  it("source_language 设置变更会更新设置快照且不额外触发项目缓存刷新信号", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
@@ -338,16 +339,17 @@ describe("DesktopRuntimeProvider", () => {
 
     await wait_for_condition(() => {
       const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.workbenchSeq === 2 && latest_snapshot?.proofreadingSeq === 2;
+      return latest_snapshot?.sourceLanguage === "EN";
     });
 
     const latest_snapshot = snapshots.at(-1);
 
     expect(latest_snapshot).toMatchObject({
-      workbenchSeq: 2,
-      workbenchReason: "config_updated",
-      proofreadingSeq: 2,
-      proofreadingReason: "config_updated",
+      sourceLanguage: "EN",
+      workbenchSeq: 1,
+      workbenchReason: "project_bootstrap",
+      proofreadingSeq: 1,
+      proofreadingReason: "project_bootstrap",
     });
   });
 
