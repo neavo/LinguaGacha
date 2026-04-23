@@ -3,10 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
+from api.Models.ProjectRuntime import ProjectMutationAck
 from api.Server.Routes.QualityRoutes import QualityRoutes
-from api.Models.QualityRule import ProofreadingLookupQuery
-from api.Models.QualityRule import QualityRuleSnapshot
-from api.Models.QualityRule import QualityRuleStatisticsSnapshot
 
 
 class QualityRuleApiClient:
@@ -15,20 +13,11 @@ class QualityRuleApiClient:
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
 
-    def get_rule_snapshot(self, rule_type: str) -> QualityRuleSnapshot:
-        """读取指定规则类型的快照。"""
-
-        response = self.api_client.post(
-            QualityRoutes.SNAPSHOT_PATH,
-            {"rule_type": rule_type},
-        )
-        return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
-
-    def save_entries(self, request: dict[str, Any]) -> QualityRuleSnapshot:
-        """保存规则条目列表，并返回最新快照。"""
+    def save_entries(self, request: dict[str, Any]) -> ProjectMutationAck:
+        """保存规则条目列表，并返回统一 mutation ack。"""
 
         response = self.api_client.post(QualityRoutes.SAVE_ENTRIES_PATH, request)
-        return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
+        return ProjectMutationAck.from_dict(response)
 
     def import_rules(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         """从本地路径读取规则条目，由页面决定后续合并与保存。"""
@@ -146,43 +135,11 @@ class QualityRuleApiClient:
         )
         return str(response.get("path", ""))
 
-    def update_meta(self, request: dict[str, Any]) -> QualityRuleSnapshot:
-        """更新规则 meta，并返回最新快照。"""
+    def update_meta(self, request: dict[str, Any]) -> ProjectMutationAck:
+        """更新规则 meta，并返回统一 mutation ack。"""
 
         response = self.api_client.post(QualityRoutes.UPDATE_META_PATH, request)
-        return QualityRuleSnapshot.from_dict(response.get("snapshot", {}))
-
-    def query_proofreading(
-        self,
-        request: dict[str, Any],
-    ) -> ProofreadingLookupQuery:
-        """把质量规则条目转换成校对页查询对象。"""
-
-        normalized_request = request if "entry" in request else {"entry": dict(request)}
-        response = self.api_client.post(
-            QualityRoutes.QUERY_PROOFREADING_PATH,
-            normalized_request,
-        )
-        return ProofreadingLookupQuery.from_dict(response.get("query", {}))
-
-    def build_rule_statistics(
-        self,
-        request: dict[str, Any],
-    ) -> QualityRuleStatisticsSnapshot:
-        """构建质量规则统计快照。"""
-
-        response = self.api_client.post(QualityRoutes.STATISTICS_PATH, request)
-        return QualityRuleStatisticsSnapshot.from_dict(response.get("statistics", {}))
-
-    def get_prompt_snapshot(self, task_type: str) -> dict[str, Any]:
-        """读取指定任务的提示词快照。"""
-
-        response = self.api_client.post(
-            QualityRoutes.PROMPT_SNAPSHOT_PATH,
-            {"task_type": task_type},
-        )
-        prompt_raw = response.get("prompt", {})
-        return dict(prompt_raw) if isinstance(prompt_raw, dict) else {}
+        return ProjectMutationAck.from_dict(response)
 
     def get_prompt_template(self, task_type: str) -> dict[str, str]:
         """读取提示词页展示所需的模板文本。"""
@@ -196,19 +153,17 @@ class QualityRuleApiClient:
             return {}
         return {str(key): str(value) for key, value in template_raw.items()}
 
-    def save_prompt(self, request: dict[str, Any]) -> dict[str, Any]:
-        """保存提示词正文与启用状态。"""
+    def save_prompt(self, request: dict[str, Any]) -> ProjectMutationAck:
+        """保存提示词正文与启用状态，并返回统一 mutation ack。"""
 
         response = self.api_client.post(QualityRoutes.PROMPT_SAVE_PATH, request)
-        prompt_raw = response.get("prompt", {})
-        return dict(prompt_raw) if isinstance(prompt_raw, dict) else {}
+        return ProjectMutationAck.from_dict(response)
 
-    def import_prompt(self, request: dict[str, Any]) -> dict[str, Any]:
-        """从本地路径导入提示词。"""
+    def read_prompt_import_text(self, request: dict[str, Any]) -> str:
+        """从本地路径读取提示词正文。"""
 
         response = self.api_client.post(QualityRoutes.PROMPT_IMPORT_PATH, request)
-        prompt_raw = response.get("prompt", {})
-        return dict(prompt_raw) if isinstance(prompt_raw, dict) else {}
+        return str(response.get("text", ""))
 
     def export_prompt(self, request: dict[str, Any]) -> str:
         """导出提示词到本地路径。"""

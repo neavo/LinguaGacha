@@ -14,29 +14,6 @@ export function build_text_replacement_entry_id(
   return `${entry.src.trim()}::${index.toString()}`
 }
 
-export function collect_text_replacement_range_selection(
-  ordered_entry_ids: TextReplacementEntryId[],
-  anchor_entry_id: TextReplacementEntryId | null,
-  target_entry_id: TextReplacementEntryId,
-): TextReplacementEntryId[] {
-  const anchor_index = anchor_entry_id === null
-    ? -1
-    : ordered_entry_ids.indexOf(anchor_entry_id)
-  const target_index = ordered_entry_ids.indexOf(target_entry_id)
-
-  if (target_index < 0) {
-    return []
-  }
-
-  if (anchor_index < 0) {
-    return [target_entry_id]
-  }
-
-  const start_index = Math.min(anchor_index, target_index)
-  const end_index = Math.max(anchor_index, target_index)
-  return ordered_entry_ids.slice(start_index, end_index + 1)
-}
-
 export function are_text_replacement_entry_ids_equal(
   left_entry_ids: TextReplacementEntryId[],
   right_entry_ids: TextReplacementEntryId[],

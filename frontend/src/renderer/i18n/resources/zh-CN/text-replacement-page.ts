@@ -76,31 +76,25 @@ export const zh_cn_text_replacement_page = {
     delete_selection: {
       title: '确认删除',
       description: '是否确认删除 {COUNT} 条记录？',
-      confirm: '确认删除',
     },
     delete_entry: {
       title: '确认删除',
       description: '是否确认删除 1 条记录？',
-      confirm: '确认删除',
     },
     delete_preset: {
       title: '删除预设',
       description: '是否确认删除预设“{NAME}”？',
-      confirm: '删除预设',
     },
     reset: {
       title: '确认重置',
       description: '是否确认重置数据 …?',
-      confirm: '重置',
     },
     overwrite_preset: {
       title: '覆盖预设',
       description: '预设“{NAME}”已存在，是否确认覆盖 …?',
-      confirm: '覆盖',
     },
   },
   feedback: {
-    refresh_failed: '替换页刷新失败',
     save_failed: '替换页保存失败',
     import_failed: '替换页导入失败',
     import_success: '数据已导入 …',

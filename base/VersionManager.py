@@ -326,7 +326,7 @@ class VersionManager(Base):
 
             self.set_status(__class__.Status.APPLYING)
             self.emit(
-                Base.Event.PROGRESS_TOAST,
+                Base.Event.APP_UPDATE_APPLY,
                 {
                     "sub_event": Base.SubEvent.UPDATE,
                     "message": Localizer.get().app_new_version_waiting_restart,
@@ -496,22 +496,11 @@ class VersionManager(Base):
 
         self.set_status(__class__.Status.FAILED)
         self.emit(
-            Base.Event.PROGRESS_TOAST,
-            {"sub_event": Base.SubEvent.DONE},
-        )
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.ERROR,
-                "message": f"{Localizer.get().app_new_version_apply_failed}\n{log_path}",
-                "duration": 60 * 1000,
-            },
-        )
-        self.emit(
             Base.Event.APP_UPDATE_APPLY,
             {
                 "sub_event": Base.SubEvent.ERROR,
                 "log_path": log_path,
+                "message": f"{Localizer.get().app_new_version_apply_failed}\n{log_path}",
             },
         )
 
@@ -537,20 +526,13 @@ class VersionManager(Base):
             if (int(a), int(b), int(c)) < (int(x), int(y), int(z)):
                 self.set_status(VersionManager.Status.NEW_VERSION)
                 self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().app_new_version_toast.replace(
-                            "{VERSION}", f"v{x}.{y}.{z}"
-                        ),
-                        "duration": 60 * 1000,
-                    },
-                )
-                self.emit(
                     Base.Event.APP_UPDATE_CHECK,
                     {
                         "sub_event": Base.SubEvent.DONE,
                         "new_version": True,
+                        "message": Localizer.get().app_new_version_found.replace(
+                            "{VERSION}", f"v{x}.{y}.{z}"
+                        ),
                     },
                 )
             else:
@@ -649,34 +631,22 @@ class VersionManager(Base):
 
                 self.set_status(VersionManager.Status.DOWNLOADED)
                 self.emit(
-                    Base.Event.TOAST,
-                    {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": Localizer.get().app_new_version_success,
-                        "duration": 60 * 1000,
-                    },
-                )
-                self.emit(
                     Base.Event.APP_UPDATE_DOWNLOAD,
                     {
                         "sub_event": Base.SubEvent.DONE,
                         "manual": False,
+                        "message": Localizer.get().app_new_version_success,
                     },
                 )
         except Exception as e:
             LogManager.get().error(Localizer.get().task_failed, e)
             self.set_status(VersionManager.Status.NEW_VERSION)
             self.emit(
-                Base.Event.TOAST,
-                {
-                    "type": Base.ToastType.ERROR,
-                    "message": Localizer.get().app_new_version_failure,
-                    "duration": 60 * 1000,
-                },
-            )
-            self.emit(
                 Base.Event.APP_UPDATE_DOWNLOAD,
-                {"sub_event": Base.SubEvent.ERROR},
+                {
+                    "sub_event": Base.SubEvent.ERROR,
+                    "message": Localizer.get().app_new_version_failure,
+                },
             )
 
     def get_status(self) -> Status:

@@ -1,28 +1,9 @@
-from dataclasses import dataclass
-
 from base.BaseLanguage import BaseLanguage
 from module.Localizer.LocalizerEN import LocalizerEN
 from module.Localizer.LocalizerZH import LocalizerZH
 
 class Localizer():
     # 统一管理当前应用语言与双语文本解析入口，避免调用侧重复分支。
-
-    @dataclass(frozen=True)
-    class UnionText:
-        # 统一的中英双语文本载体，按当前语言解析并自动回退。
-        zh: str | None = None
-        en: str | None = None
-
-        def resolve(self) -> str | None:
-            # 优先返回当前语言文本，当前语言缺失时回退到另一种语言。
-            app_language = Localizer.get_app_language()
-            if app_language == BaseLanguage.Enum.EN:
-                if self.en is not None:
-                    return self.en
-                return self.zh
-            if self.zh is not None:
-                return self.zh
-            return self.en
 
     APP_LANGUAGE: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 

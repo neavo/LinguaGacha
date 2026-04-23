@@ -120,7 +120,7 @@ class DummyLocalizer:
     project_store_ingesting_file = "ingesting {NAME}"
     project_store_parsing_items = "parsing items"
     project_store_created = "created"
-    toast_processing = "processing"
+    task_processing = "processing"
     engine_task_rule_filter = "rule {COUNT}"
     engine_task_language_filter = "lang {COUNT}"
     translation_mtool_optimizer_pre_log = "mtool {COUNT}"

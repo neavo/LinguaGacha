@@ -2,26 +2,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from api.Contract.QualityPayloads import ProofreadingLookupPayload
-from api.Contract.QualityPayloads import QualityRuleSnapshotPayload
-from api.Models.QualityRule import ProofreadingLookupQuery
-from api.Models.QualityRule import QualityRuleStatisticsSnapshot
 from module.Config import Config
 from module.Data.DataManager import DataManager
-from module.Data.Quality.ProofreadingImpactAnalyzer import (
-    ProofreadingImpactAnalyzer,
-)
+from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
 from module.Data.Quality.QualityRuleMutationService import QualityRuleMutationService
 from module.PromptBuilder import PromptBuilder
-from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
 
 class QualityRuleAppService:
     """质量规则用例层，负责把 Core 结果映射成稳定 API 载荷。"""
 
-    def __init__(self, quality_rule_facade: Any | None = None) -> None:
+    def __init__(
+        self,
+        quality_rule_facade: Any | None = None,
+        runtime_service: ProjectRuntimeService | None = None,
+    ) -> None:
         self.data_manager = DataManager.get()
+        self.runtime_service = (
+            runtime_service
+            if runtime_service is not None
+            else ProjectRuntimeService(self.data_manager)
+        )
         if quality_rule_facade is None:
             quality_rule_service = getattr(
                 self.data_manager,
@@ -36,18 +38,9 @@ class QualityRuleAppService:
             self.quality_rule_facade = QualityRuleFacadeService(
                 quality_rule_service,
                 meta_service,
-                event_emitter=self.data_manager,
-                impact_analyzer=ProofreadingImpactAnalyzer(self.data_manager),
             )
         else:
             self.quality_rule_facade = quality_rule_facade
-
-    def get_rule_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
-        """读取规则快照，并统一通过 payload 输出。"""
-
-        rule_type = str(request.get("rule_type", ""))
-        snapshot = self.quality_rule_facade.get_rule_snapshot(rule_type)
-        return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
 
     def save_rule_entries(self, request: dict[str, Any]) -> dict[str, object]:
         """保存完整规则条目列表。"""
@@ -61,12 +54,12 @@ class QualityRuleAppService:
                 if isinstance(entry, dict):
                     entries.append(dict(entry))
 
-        snapshot = self.quality_rule_facade.save_entries(
+        self.quality_rule_facade.save_entries(
             rule_type,
             expected_revision=expected_revision,
             entries=entries,
         )
-        return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
+        return self.runtime_service.build_project_mutation_ack(["quality"])
 
     def import_rules(self, request: dict[str, Any]) -> dict[str, object]:
         """从本地路径读取规则条目，返回给页面做后续合并。"""
@@ -191,90 +184,7 @@ class QualityRuleAppService:
 
             revision_raw = snapshot.get("revision", current_revision)
             current_revision = int(revision_raw or current_revision)
-
-        if snapshot is None:
-            snapshot = self.quality_rule_facade.get_rule_snapshot(rule_type)
-        return QualityRuleSnapshotPayload.from_dict(snapshot).to_dict()
-
-    def query_proofreading(self, request: dict[str, Any]) -> dict[str, object]:
-        """把质量规则条目转换成校对页可直接消费的查询参数。"""
-
-        rule_type = str(request.get("rule_type", ""))
-        entry_raw = request.get("entry", {})
-        if isinstance(entry_raw, dict):
-            keyword = str(entry_raw.get("src", "")).strip()
-            if rule_type == "text_preserve":
-                is_regex = True
-            else:
-                is_regex = bool(entry_raw.get("regex", False))
-        else:
-            keyword = ""
-            if rule_type == "text_preserve":
-                is_regex = True
-            else:
-                is_regex = bool(request.get("is_regex", False))
-
-        query = ProofreadingLookupQuery(keyword=keyword, is_regex=is_regex)
-        return ProofreadingLookupPayload(query=query).to_dict()
-
-    def build_rule_statistics(self, request: dict[str, Any]) -> dict[str, object]:
-        """构建质量规则统计快照。"""
-
-        rules_raw = request.get("rules", [])
-        rules: list[QualityRuleStatistics.RuleStatInput] = []
-        if isinstance(rules_raw, list):
-            for rule in rules_raw:
-                if not isinstance(rule, dict):
-                    continue
-                rules.append(
-                    QualityRuleStatistics.RuleStatInput(
-                        key=str(rule.get("key", "")),
-                        pattern=str(rule.get("pattern", "")),
-                        mode=QualityRuleStatistics.RuleStatMode(
-                            str(rule.get("mode", "glossary"))
-                        ),
-                        regex=bool(rule.get("regex", False)),
-                        case_sensitive=bool(rule.get("case_sensitive", False)),
-                    )
-                )
-
-        relation_candidates_raw = request.get("relation_candidates", [])
-        relation_candidates: tuple[tuple[str, str], ...] = tuple(
-            (
-                str(candidate.get("key", "")),
-                str(candidate.get("src", "")),
-            )
-            for candidate in relation_candidates_raw
-            if isinstance(candidate, dict)
-        )
-
-        src_texts, dst_texts = self.data_manager.collect_rule_statistics_texts()
-        snapshot = QualityRuleStatistics.build_rule_statistics_snapshot(
-            rules=tuple(rules),
-            src_texts=src_texts,
-            dst_texts=dst_texts,
-            relation_candidates=relation_candidates,
-        )
-        payload = QualityRuleStatisticsSnapshot.from_dict(
-            {
-                "available": True,
-                "results": {
-                    key: {
-                        "matched_item_count": result.matched_item_count,
-                        "subset_parents": list(snapshot.subset_parents.get(key, ())),
-                    }
-                    for key, result in snapshot.results.items()
-                },
-            }
-        )
-        return {"statistics": payload.to_dict()}
-
-    def get_prompt_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
-        """读取指定任务类型的提示词快照。"""
-
-        task_type = str(request.get("task_type", ""))
-        snapshot = self.quality_rule_facade.get_prompt_snapshot(task_type)
-        return {"prompt": snapshot}
+        return self.runtime_service.build_project_mutation_ack(["quality"])
 
     def get_prompt_template(self, request: dict[str, Any]) -> dict[str, object]:
         """读取提示词编辑页所需的模板文本。"""
@@ -312,34 +222,21 @@ class QualityRuleAppService:
         else:
             enabled = bool(enabled_raw)
 
-        snapshot = self.quality_rule_facade.save_prompt(
+        self.quality_rule_facade.save_prompt(
             task_type,
             expected_revision=expected_revision,
             text=text,
             enabled=enabled,
         )
-        return {"prompt": snapshot}
+        return self.runtime_service.build_project_mutation_ack(["prompts"])
 
-    def import_prompt(self, request: dict[str, Any]) -> dict[str, object]:
-        """从本地路径导入提示词。"""
+    def read_prompt_import_text(self, request: dict[str, Any]) -> dict[str, object]:
+        """从本地路径读取提示词文本，不直接写入项目状态。"""
 
         task_type = str(request.get("task_type", ""))
-        expected_revision = int(request.get("expected_revision", 0) or 0)
         path = str(request.get("path", ""))
-        enabled_raw = request.get("enabled")
-        enabled: bool | None
-        if enabled_raw is None:
-            enabled = None
-        else:
-            enabled = bool(enabled_raw)
-
-        snapshot = self.quality_rule_facade.import_prompt(
-            task_type,
-            path,
-            expected_revision=expected_revision,
-            enabled=enabled,
-        )
-        return {"prompt": snapshot}
+        text = self.quality_rule_facade.read_prompt_import_text(task_type, path)
+        return {"text": text}
 
     def export_prompt(self, request: dict[str, Any]) -> dict[str, object]:
         """导出提示词到本地路径。"""

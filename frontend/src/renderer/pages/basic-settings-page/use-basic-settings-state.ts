@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { DesktopApiError, api_fetch } from '@/app/desktop-api'
+import { DesktopApiError, api_fetch } from "@/app/desktop-api";
+import { createProjectPrefilterClient } from "@/app/project-runtime/project-prefilter-client";
+import { apply_project_prefilter_mutation } from "@/app/project-runtime/project-prefilter-mutation";
 import {
   normalize_settings_snapshot,
+  type SettingsSnapshot,
   type SettingsSnapshotPayload,
-} from '@/app/state/desktop-runtime-context'
-import { useProjectPagesBarrier } from '@/app/state/project-pages-context'
-import { useDesktopRuntime } from '@/app/state/use-desktop-runtime'
-import { useDesktopToast } from '@/app/state/use-desktop-toast'
-import { useI18n } from '@/i18n'
+} from "@/app/state/desktop-runtime-context";
+import { useProjectPagesBarrier } from "@/app/state/project-pages-context";
+import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
+import { useDesktopToast } from "@/app/state/use-desktop-toast";
+import { useI18n } from "@/i18n";
 import {
   PROJECT_SAVE_MODE,
   REQUEST_TIMEOUT_MAX,
@@ -18,23 +21,23 @@ import {
   type BasicSettingsSnapshot,
   type ProjectSaveMode,
   type SettingPendingState,
-} from '@/pages/basic-settings-page/types'
+} from "@/pages/basic-settings-page/types";
 
-type SettingsUpdateRequest = Record<string, unknown>
+type SettingsUpdateRequest = Record<string, unknown>;
 
 type UseBasicSettingsStateResult = {
-  snapshot: BasicSettingsSnapshot
-  pending_state: SettingPendingState
-  refresh_error: string | null
-  is_refreshing: boolean
-  is_task_busy: boolean
-  refresh_snapshot: () => Promise<void>
-  update_source_language: (next_language: string) => Promise<void>
-  update_target_language: (next_language: string) => Promise<void>
-  update_project_save_mode: (next_mode: ProjectSaveMode) => Promise<void>
-  update_output_folder_open_on_finish: (next_checked: boolean) => Promise<void>
-  update_request_timeout: (next_value: number) => Promise<void>
-}
+  snapshot: BasicSettingsSnapshot;
+  pending_state: SettingPendingState;
+  refresh_error: string | null;
+  is_refreshing: boolean;
+  is_task_busy: boolean;
+  refresh_snapshot: () => Promise<void>;
+  update_source_language: (next_language: string) => Promise<void>;
+  update_target_language: (next_language: string) => Promise<void>;
+  update_project_save_mode: (next_mode: ProjectSaveMode) => Promise<void>;
+  update_output_folder_open_on_finish: (next_checked: boolean) => Promise<void>;
+  update_request_timeout: (next_value: number) => Promise<void>;
+};
 
 function create_pending_state(): SettingPendingState {
   return {
@@ -43,269 +46,366 @@ function create_pending_state(): SettingPendingState {
     project_save_mode: false,
     output_folder_open_on_finish: false,
     request_timeout: false,
-  }
+  };
 }
 
 function clamp_request_timeout(next_value: number): number {
-  return Math.min(REQUEST_TIMEOUT_MAX, Math.max(REQUEST_TIMEOUT_MIN, next_value))
+  return Math.min(REQUEST_TIMEOUT_MAX, Math.max(REQUEST_TIMEOUT_MIN, next_value));
 }
 
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
   const {
     settings_snapshot,
     task_snapshot,
+    project_snapshot,
+    project_store,
     set_settings_snapshot,
+    commit_local_project_patch,
+    refresh_project_runtime,
+    align_project_runtime_ack,
     refresh_settings,
-  } = useDesktopRuntime()
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier()
-  const { push_toast, run_modal_progress_toast } = useDesktopToast()
-  const { t } = useI18n()
+  } = useDesktopRuntime();
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
+  const { push_toast, run_modal_progress_toast } = useDesktopToast();
+  const { t } = useI18n();
   const [snapshot, set_snapshot] = useState<BasicSettingsSnapshot>(() => {
-    return build_basic_settings_snapshot(settings_snapshot)
-  })
+    return build_basic_settings_snapshot(settings_snapshot);
+  });
   const [pending_state, set_pending_state] = useState<SettingPendingState>(() => {
-    return create_pending_state()
-  })
-  const [refresh_error, set_refresh_error] = useState<string | null>(null)
-  const [is_refreshing, set_is_refreshing] = useState<boolean>(false)
-  const snapshot_ref = useRef<BasicSettingsSnapshot>(snapshot)
+    return create_pending_state();
+  });
+  const [refresh_error, set_refresh_error] = useState<string | null>(null);
+  const [is_refreshing, set_is_refreshing] = useState<boolean>(false);
+  const snapshot_ref = useRef<BasicSettingsSnapshot>(snapshot);
+  const project_prefilter_client_ref = useRef(createProjectPrefilterClient());
   const context_snapshot = useMemo(() => {
-    return build_basic_settings_snapshot(settings_snapshot)
-  }, [settings_snapshot])
+    return build_basic_settings_snapshot(settings_snapshot);
+  }, [settings_snapshot]);
 
   useEffect(() => {
-    snapshot_ref.current = snapshot
-  }, [snapshot])
+    snapshot_ref.current = snapshot;
+  }, [snapshot]);
 
   useEffect(() => {
-    set_snapshot(context_snapshot)
-  }, [context_snapshot])
+    set_snapshot(context_snapshot);
+  }, [context_snapshot]);
 
-  const is_task_busy = task_snapshot.busy
+  const is_task_busy = task_snapshot.busy;
 
-  const set_pending = useCallback((field: BasicSettingsPendingField, next_pending: boolean): void => {
-    set_pending_state((previous_state) => {
-      return {
-        ...previous_state,
-        [field]: next_pending,
-      }
-    })
-  }, [])
+  const set_pending = useCallback(
+    (field: BasicSettingsPendingField, next_pending: boolean): void => {
+      set_pending_state((previous_state) => {
+        return {
+          ...previous_state,
+          [field]: next_pending,
+        };
+      });
+    },
+    [],
+  );
 
   const refresh_snapshot = useCallback(async (): Promise<void> => {
-    set_is_refreshing(true)
+    set_is_refreshing(true);
 
     try {
-      const next_settings_snapshot = await refresh_settings()
-      set_snapshot(build_basic_settings_snapshot(next_settings_snapshot))
-      set_refresh_error(null)
+      const next_settings_snapshot = await refresh_settings();
+      set_snapshot(build_basic_settings_snapshot(next_settings_snapshot));
+      set_refresh_error(null);
     } catch (error) {
       if (error instanceof Error) {
-        set_refresh_error(error.message)
+        set_refresh_error(error.message);
       } else {
-        set_refresh_error(t('basic_settings_page.feedback.refresh_failed'))
+        set_refresh_error(t("basic_settings_page.feedback.refresh_failed"));
       }
     } finally {
-      set_is_refreshing(false)
+      set_is_refreshing(false);
     }
-  }, [refresh_settings, t])
+  }, [refresh_settings, t]);
 
   useEffect(() => {
-    void refresh_snapshot()
-  }, [refresh_snapshot])
+    void refresh_snapshot();
+  }, [refresh_snapshot]);
+
+  useEffect(() => {
+    const project_prefilter_client = project_prefilter_client_ref.current;
+    return () => {
+      project_prefilter_client.dispose();
+    };
+  }, []);
 
   const commit_update = useCallback(
     async (
       field: BasicSettingsPendingField,
       request: SettingsUpdateRequest,
       next_snapshot: BasicSettingsSnapshot,
-    ): Promise<boolean> => {
-      const previous_snapshot = snapshot_ref.current
-      set_snapshot(next_snapshot)
-      set_pending(field, true)
+    ): Promise<SettingsSnapshot | null> => {
+      const previous_snapshot = snapshot_ref.current;
+      set_snapshot(next_snapshot);
+      set_pending(field, true);
 
       try {
-        const payload = await api_fetch<SettingsSnapshotPayload>('/api/settings/update', request)
-        const next_settings_snapshot = normalize_settings_snapshot(payload)
-        set_settings_snapshot(next_settings_snapshot)
-        set_snapshot(build_basic_settings_snapshot(next_settings_snapshot))
-        set_refresh_error(null)
-        return true
+        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", request);
+        const next_settings_snapshot = normalize_settings_snapshot(payload);
+        set_settings_snapshot(next_settings_snapshot);
+        set_snapshot(build_basic_settings_snapshot(next_settings_snapshot));
+        set_refresh_error(null);
+        return next_settings_snapshot;
       } catch (error) {
         set_snapshot((current_snapshot) => {
           const reverted_snapshot = {
             ...current_snapshot,
+          };
+
+          if ("source_language" in request) {
+            reverted_snapshot.source_language = previous_snapshot.source_language;
+          }
+          if ("target_language" in request) {
+            reverted_snapshot.target_language = previous_snapshot.target_language;
+          }
+          if ("project_save_mode" in request) {
+            reverted_snapshot.project_save_mode = previous_snapshot.project_save_mode;
+          }
+          if ("project_fixed_path" in request) {
+            reverted_snapshot.project_fixed_path = previous_snapshot.project_fixed_path;
+          }
+          if ("output_folder_open_on_finish" in request) {
+            reverted_snapshot.output_folder_open_on_finish =
+              previous_snapshot.output_folder_open_on_finish;
+          }
+          if ("request_timeout" in request) {
+            reverted_snapshot.request_timeout = previous_snapshot.request_timeout;
           }
 
-          if ('source_language' in request) {
-            reverted_snapshot.source_language = previous_snapshot.source_language
-          }
-          if ('target_language' in request) {
-            reverted_snapshot.target_language = previous_snapshot.target_language
-          }
-          if ('project_save_mode' in request) {
-            reverted_snapshot.project_save_mode = previous_snapshot.project_save_mode
-          }
-          if ('project_fixed_path' in request) {
-            reverted_snapshot.project_fixed_path = previous_snapshot.project_fixed_path
-          }
-          if ('output_folder_open_on_finish' in request) {
-            reverted_snapshot.output_folder_open_on_finish = previous_snapshot.output_folder_open_on_finish
-          }
-          if ('request_timeout' in request) {
-            reverted_snapshot.request_timeout = previous_snapshot.request_timeout
-          }
-
-          return reverted_snapshot
-        })
+          return reverted_snapshot;
+        });
 
         if (error instanceof Error) {
-          push_toast('error', error.message)
+          push_toast("error", error.message);
         } else {
-          push_toast('error', t('basic_settings_page.feedback.update_failed'))
+          push_toast("error", t("basic_settings_page.feedback.update_failed"));
         }
-        return false
+        return null;
       } finally {
-        set_pending(field, false)
+        set_pending(field, false);
       }
     },
     [push_toast, set_pending, set_settings_snapshot, t],
-  )
+  );
+
+  const sync_project_settings_meta = useCallback(
+    async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
+      if (!project_snapshot.loaded) {
+        return;
+      }
+
+      await api_fetch("/api/project/settings/sync-meta", {
+        source_language: next_settings_snapshot.source_language,
+        target_language: next_settings_snapshot.target_language,
+      });
+    },
+    [project_snapshot.loaded],
+  );
+
+  const apply_prefilter_from_settings = useCallback(
+    async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
+      if (!project_snapshot.loaded) {
+        return;
+      }
+
+      await apply_project_prefilter_mutation({
+        state: project_store.getState(),
+        source_language: next_settings_snapshot.source_language,
+        mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+        compute_prefilter: (input) => {
+          return project_prefilter_client_ref.current.compute(input);
+        },
+        commit_local_project_patch,
+        align_project_runtime_ack,
+        refresh_project_runtime,
+      });
+    },
+    [
+      align_project_runtime_ack,
+      commit_local_project_patch,
+      project_snapshot.loaded,
+      project_store,
+      refresh_project_runtime,
+    ],
+  );
 
   const update_source_language = useCallback(
     async (next_language: string): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current
+      const previous_snapshot = snapshot_ref.current;
 
       if (is_task_busy || previous_snapshot.source_language === next_language) {
-        return
+        return;
       }
 
-      const barrier_checkpoint = create_barrier_checkpoint()
+      const barrier_checkpoint = create_barrier_checkpoint();
 
       await run_modal_progress_toast({
-        message: t('basic_settings_page.feedback.source_language_loading_toast'),
+        message: t("basic_settings_page.feedback.source_language_loading_toast"),
         task: async () => {
-          const succeeded = await commit_update('source_language', {
-            source_language: next_language,
-          }, {
-            ...previous_snapshot,
-            source_language: next_language,
-          })
+          const next_settings_snapshot = await commit_update(
+            "source_language",
+            {
+              source_language: next_language,
+            },
+            {
+              ...previous_snapshot,
+              source_language: next_language,
+            },
+          );
 
-          if (succeeded) {
-            await wait_for_barrier('project_cache_refresh', {
-              checkpoint: barrier_checkpoint,
-            })
+          if (next_settings_snapshot === null) {
+            return;
           }
+
+          await sync_project_settings_meta(next_settings_snapshot);
+          await apply_prefilter_from_settings(next_settings_snapshot);
+          await wait_for_barrier("project_cache_refresh", {
+            checkpoint: barrier_checkpoint,
+          });
         },
-      })
+      });
     },
     [
+      apply_prefilter_from_settings,
       commit_update,
       create_barrier_checkpoint,
       is_task_busy,
       run_modal_progress_toast,
+      sync_project_settings_meta,
       t,
       wait_for_barrier,
     ],
-  )
+  );
 
   const update_target_language = useCallback(
     async (next_language: string): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current
+      const previous_snapshot = snapshot_ref.current;
 
       if (is_task_busy || previous_snapshot.target_language === next_language) {
-        return
+        return;
       }
 
-      await commit_update('target_language', {
-        target_language: next_language,
-      }, {
-        ...previous_snapshot,
-        target_language: next_language,
-      })
+      const next_settings_snapshot = await commit_update(
+        "target_language",
+        {
+          target_language: next_language,
+        },
+        {
+          ...previous_snapshot,
+          target_language: next_language,
+        },
+      );
+      if (next_settings_snapshot === null) {
+        return;
+      }
+      await sync_project_settings_meta(next_settings_snapshot);
     },
-    [commit_update, is_task_busy],
-  )
+    [commit_update, is_task_busy, sync_project_settings_meta],
+  );
 
   const update_project_save_mode = useCallback(
     async (next_mode: ProjectSaveMode): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current
+      const previous_snapshot = snapshot_ref.current;
 
       if (previous_snapshot.project_save_mode === next_mode) {
-        return
+        return;
       }
 
       if (next_mode === PROJECT_SAVE_MODE.FIXED) {
         try {
-          const result = await window.desktopApp.pickFixedProjectDirectory(previous_snapshot.project_fixed_path)
-          if (result.canceled || result.path === null || result.path === '') {
-            return
+          const result = await window.desktopApp.pickFixedProjectDirectory(
+            previous_snapshot.project_fixed_path,
+          );
+          if (result.canceled || result.path === null || result.path === "") {
+            return;
           }
 
-          await commit_update('project_save_mode', {
-            project_save_mode: next_mode,
-            project_fixed_path: result.path,
-          }, {
-            ...previous_snapshot,
-            project_save_mode: next_mode,
-            project_fixed_path: result.path,
-          })
+          await commit_update(
+            "project_save_mode",
+            {
+              project_save_mode: next_mode,
+              project_fixed_path: result.path,
+            },
+            {
+              ...previous_snapshot,
+              project_save_mode: next_mode,
+              project_fixed_path: result.path,
+            },
+          );
         } catch (error) {
           if (error instanceof DesktopApiError) {
-            push_toast('error', error.message)
+            push_toast("error", error.message);
           } else {
-            push_toast('error', t('basic_settings_page.feedback.pick_directory_failed'))
+            push_toast("error", t("basic_settings_page.feedback.pick_directory_failed"));
           }
         }
       } else {
-        await commit_update('project_save_mode', {
-          project_save_mode: next_mode,
-        }, {
-          ...previous_snapshot,
-          project_save_mode: next_mode,
-        })
+        await commit_update(
+          "project_save_mode",
+          {
+            project_save_mode: next_mode,
+          },
+          {
+            ...previous_snapshot,
+            project_save_mode: next_mode,
+          },
+        );
       }
     },
     [commit_update, push_toast, t],
-  )
+  );
 
   const update_output_folder_open_on_finish = useCallback(
     async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current
+      const previous_snapshot = snapshot_ref.current;
 
       if (previous_snapshot.output_folder_open_on_finish === next_checked) {
-        return
+        return;
       }
 
-      await commit_update('output_folder_open_on_finish', {
-        output_folder_open_on_finish: next_checked,
-      }, {
-        ...previous_snapshot,
-        output_folder_open_on_finish: next_checked,
-      })
+      await commit_update(
+        "output_folder_open_on_finish",
+        {
+          output_folder_open_on_finish: next_checked,
+        },
+        {
+          ...previous_snapshot,
+          output_folder_open_on_finish: next_checked,
+        },
+      );
     },
     [commit_update],
-  )
+  );
 
   const update_request_timeout = useCallback(
     async (next_value: number): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current
-      const normalized_timeout = clamp_request_timeout(next_value)
+      const previous_snapshot = snapshot_ref.current;
+      const normalized_timeout = clamp_request_timeout(next_value);
 
-      if (Number.isNaN(normalized_timeout) || previous_snapshot.request_timeout === normalized_timeout) {
-        return
+      if (
+        Number.isNaN(normalized_timeout) ||
+        previous_snapshot.request_timeout === normalized_timeout
+      ) {
+        return;
       }
 
-      await commit_update('request_timeout', {
-        request_timeout: normalized_timeout,
-      }, {
-        ...previous_snapshot,
-        request_timeout: normalized_timeout,
-      })
+      await commit_update(
+        "request_timeout",
+        {
+          request_timeout: normalized_timeout,
+        },
+        {
+          ...previous_snapshot,
+          request_timeout: normalized_timeout,
+        },
+      );
     },
     [commit_update],
-  )
+  );
 
   const value = useMemo<UseBasicSettingsStateResult>(() => {
     return {
@@ -320,7 +420,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       update_project_save_mode,
       update_output_folder_open_on_finish,
       update_request_timeout,
-    }
+    };
   }, [
     is_refreshing,
     is_task_busy,
@@ -333,8 +433,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     update_request_timeout,
     update_source_language,
     update_target_language,
-  ])
+  ]);
 
-  return value
+  return value;
 }
-

@@ -255,20 +255,3 @@ class NameFieldTranslateResult:
             "success_count": self.success_count,
             "failed_count": self.failed_count,
         }
-
-
-@dataclass(frozen=True)
-class ExtraToolEntry:
-    """把 Extra 工具箱条目冻结，避免工具列表继续散落为匿名字典。"""
-
-    tool_id: str = ""
-    title: str = ""
-    description: str = ""
-    route_path: str = ""
-
-
-@dataclass(frozen=True)
-class ExtraToolSnapshot:
-    """把 Extra 工具列表集中为快照，避免页面各自拼装导航元数据。"""
-
-    entries: tuple[ExtraToolEntry, ...] = ()

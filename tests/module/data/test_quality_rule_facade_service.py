@@ -21,6 +21,7 @@ def test_facade_forwards_preset_and_prompt_methods() -> None:
     facade.prompt_service = SimpleNamespace(
         get_prompt_snapshot=MagicMock(return_value={"task_type": "translation"}),
         save_prompt=MagicMock(return_value={"task_type": "translation"}),
+        read_prompt_import_text=MagicMock(return_value="导入文本"),
         get_default_preset_text=MagicMock(return_value="默认预设"),
     )
 
@@ -46,6 +47,9 @@ def test_facade_forwards_preset_and_prompt_methods() -> None:
         text="新内容",
         enabled=True,
     ) == {"task_type": "translation"}
+    assert (
+        facade.read_prompt_import_text("translation", "/tmp/prompt.txt") == "导入文本"
+    )
 
 
 def test_facade_forwards_snapshot_and_mutation_methods() -> None:

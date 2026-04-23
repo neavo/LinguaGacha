@@ -52,8 +52,6 @@ export const en_us_debug_panel_page = {
     route_title_label: 'Active title',
     sidebar_label: 'Sidebar state',
     toast_label: 'Progress toast state',
-    title_key_label: 'Title key',
-    proofreading_lookup_intent_label: 'Proofreading lookup intent',
     sidebar_expanded: 'Sidebar width 256px',
     sidebar_collapsed: 'Sidebar width 72px',
     toast_idle: 'No progress toast is currently mounted.',

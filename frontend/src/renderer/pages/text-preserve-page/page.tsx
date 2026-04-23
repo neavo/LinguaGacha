@@ -119,6 +119,7 @@ export function TextPreservePage(
       <TextPreserveCommandBar
         title_key={page_state.title_key}
         mode={page_state.mode}
+        mode_updating={page_state.mode_updating}
         preset_items={page_state.preset_items}
         preset_menu_open={page_state.preset_menu_open}
         selected_entry_count={page_state.selected_entry_ids.length}

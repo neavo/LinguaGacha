@@ -1,8 +1,8 @@
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
-from api.Server.Routes.ModelRoutes import ModelRoutes
 from api.Models.Model import ModelPageSnapshot
+from api.Server.Routes.ModelRoutes import ModelRoutes
 
 
 class ModelApiClient:
@@ -80,17 +80,6 @@ class ModelApiClient:
         return self.post_snapshot(
             ModelRoutes.RESET_PRESET_PATH,
             {"model_id": model_id},
-        )
-
-    def reorder_model(self, model_id: str, operation: str) -> ModelPageSnapshot:
-        """兼容旧前端的离散排序动作，并返回最新快照。"""
-
-        return self.post_snapshot(
-            ModelRoutes.REORDER_PATH,
-            {
-                "model_id": model_id,
-                "operation": operation,
-            },
         )
 
     def reorder_models(self, ordered_model_ids: list[str]) -> ModelPageSnapshot:

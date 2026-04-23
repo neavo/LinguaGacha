@@ -89,7 +89,7 @@ def patch_version_runtime(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         task_failed="task_failed",
         app_new_version_waiting_restart="waiting_restart",
         app_new_version_apply_failed="apply_failed",
-        app_new_version_toast="发现新版本 {VERSION}",
+        app_new_version_found="发现新版本 {VERSION}",
         app_new_version_success="download_success",
         app_new_version_failure="download_failure",
     )
@@ -578,26 +578,18 @@ def test_emit_apply_failure_logs_and_emits_error_events(
     assert logger.error_messages == ["task_failed"]
     assert isinstance(logger.error_exceptions[0], RuntimeError)
     assert emitted == [
-        (Base.Event.PROGRESS_TOAST, {"sub_event": Base.SubEvent.DONE}),
-        (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.ERROR,
-                "message": "apply_failed\nC:/runtime/update.log",
-                "duration": 60 * 1000,
-            },
-        ),
         (
             Base.Event.APP_UPDATE_APPLY,
             {
                 "sub_event": Base.SubEvent.ERROR,
                 "log_path": "C:/runtime/update.log",
+                "message": "apply_failed\nC:/runtime/update.log",
             },
         ),
     ]
 
 
-def test_app_update_check_start_task_emits_new_version_toast(
+def test_app_update_check_start_task_reports_new_version_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manager = VersionManager.get()
@@ -615,16 +607,12 @@ def test_app_update_check_start_task_emits_new_version_toast(
     assert manager.get_status() == VersionManager.Status.NEW_VERSION
     assert emitted == [
         (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": "发现新版本 v1.2.0",
-                "duration": 60 * 1000,
-            },
-        ),
-        (
             Base.Event.APP_UPDATE_CHECK,
-            {"sub_event": Base.SubEvent.DONE, "new_version": True},
+            {
+                "sub_event": Base.SubEvent.DONE,
+                "new_version": True,
+                "message": "发现新版本 v1.2.0",
+            },
         ),
     ]
 
@@ -774,16 +762,12 @@ def test_app_update_download_start_task_windows_writes_package_and_emits_progres
             },
         ),
         (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.SUCCESS,
-                "message": "download_success",
-                "duration": 60 * 1000,
-            },
-        ),
-        (
             Base.Event.APP_UPDATE_DOWNLOAD,
-            {"sub_event": Base.SubEvent.DONE, "manual": False},
+            {
+                "sub_event": Base.SubEvent.DONE,
+                "manual": False,
+                "message": "download_success",
+            },
         ),
     ]
 
@@ -811,16 +795,11 @@ def test_app_update_download_start_task_windows_failure_resets_status_and_emits_
     assert isinstance(logger.error_exceptions[0], RuntimeError)
     assert emitted == [
         (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.ERROR,
-                "message": "download_failure",
-                "duration": 60 * 1000,
-            },
-        ),
-        (
             Base.Event.APP_UPDATE_DOWNLOAD,
-            {"sub_event": Base.SubEvent.ERROR},
+            {
+                "sub_event": Base.SubEvent.ERROR,
+                "message": "download_failure",
+            },
         ),
     ]
 
@@ -857,7 +836,7 @@ def test_app_update_extract_task_generates_runtime_script_and_terminates_process
     assert manager.get_status() == VersionManager.Status.APPLYING
     assert emitted == [
         (
-            Base.Event.PROGRESS_TOAST,
+            Base.Event.APP_UPDATE_APPLY,
             {
                 "sub_event": Base.SubEvent.UPDATE,
                 "message": "waiting_restart",

@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 
 import { toast, type ExternalToast } from 'sonner'

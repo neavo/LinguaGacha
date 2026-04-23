@@ -28,8 +28,8 @@ def test_get_returns_singleton_instance() -> None:
 def test_status_and_request_counters() -> None:
     engine = Engine()
 
-    engine.set_status(Base.TaskStatus.TESTING)
-    assert engine.get_status() == Base.TaskStatus.TESTING
+    engine.set_status(Base.TaskStatus.ANALYZING)
+    assert engine.get_status() == Base.TaskStatus.ANALYZING
 
     engine.inc_request_in_flight()
     engine.inc_request_in_flight()
@@ -88,23 +88,15 @@ def test_translate_single_item_delegates_to_translation_task(
     assert calls[0][1] is config
 
 
-def test_run_initializes_api_test_analysis_and_translation(
+def test_run_initializes_analysis_and_translation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeAPITest:
-        pass
-
     class FakeAnalysis:
         pass
 
     class FakeTranslation:
         pass
 
-    monkeypatch.setitem(
-        sys.modules,
-        "module.Engine.APITest.APITest",
-        SimpleNamespace(APITest=FakeAPITest),
-    )
     monkeypatch.setitem(
         sys.modules,
         "module.Engine.Analysis.Analysis",
@@ -119,7 +111,6 @@ def test_run_initializes_api_test_analysis_and_translation(
     engine = Engine()
     engine.run()
 
-    assert isinstance(engine.api_test, FakeAPITest)
     assert isinstance(engine.analysis, FakeAnalysis)
     assert isinstance(engine.translation, FakeTranslation)
 

@@ -10,8 +10,6 @@ from module.Data.Core.Item import Item
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Data.Storage.LGDatabase import LGDatabase
-from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
 ANALYSIS_TIME = "2026-03-10T10:00:00"
@@ -44,16 +42,6 @@ def build_analysis_service() -> tuple[AnalysisService, ProjectSession]:
         get_all_items=MagicMock(return_value=[]),
         get_all_item_dicts=MagicMock(return_value=[]),
     )
-    quality_rule_service = SimpleNamespace(
-        get_glossary=MagicMock(return_value=[]),
-        merge_glossary_incoming=MagicMock(
-            side_effect=lambda incoming, **kwargs: (
-                incoming,
-                QualityRuleMerger.Report(1, 0, 0, 0, 0, ()),
-            )
-        ),
-        collect_rule_statistics_texts=MagicMock(return_value=((), ())),
-    )
     batch_service = BatchService(session)
     batch_service.update_batch = MagicMock()
     service = AnalysisService(
@@ -61,7 +49,6 @@ def build_analysis_service() -> tuple[AnalysisService, ProjectSession]:
         batch_service,
         meta_service,
         item_service,
-        quality_rule_service,
     )
     return service, session
 
@@ -422,6 +409,123 @@ def test_clear_analysis_progress_clears_tables_and_meta() -> None:
     assert service.get_analysis_candidate_count_cache() == 0
 
 
+def test_preview_failed_reset_status_summary_excludes_error_checkpoints() -> None:
+    service, _session = build_analysis_service()
+    service.item_service.get_all_items.return_value = [
+        Item.from_dict(
+            {
+                "id": 1,
+                "src": "Alice",
+                "file_path": "story.txt",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ),
+        Item.from_dict(
+            {
+                "id": 2,
+                "src": "Bob",
+                "file_path": "story.txt",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ),
+    ]
+    service.repository.get_item_checkpoints = MagicMock(
+        return_value={
+            1: {
+                "item_id": 1,
+                "status": Base.ProjectStatus.PROCESSED,
+                "updated_at": ANALYSIS_TIME,
+                "error_count": 0,
+            },
+            2: {
+                "item_id": 2,
+                "status": Base.ProjectStatus.ERROR,
+                "updated_at": ANALYSIS_TIME,
+                "error_count": 1,
+            },
+        }
+    )
+
+    summary = service.preview_failed_reset_status_summary()
+
+    assert summary == {
+        "total_line": 2,
+        "processed_line": 1,
+        "error_line": 0,
+        "line": 1,
+    }
+
+
+def test_clear_analysis_progress_with_snapshot_normalizes_and_persists_snapshot() -> (
+    None
+):
+    service, _session = build_analysis_service()
+
+    snapshot = service.clear_analysis_progress_with_snapshot(
+        {
+            "start_time": "1.5",
+            "time": "2.0",
+            "total_line": "5",
+        }
+    )
+
+    assert snapshot == {
+        "start_time": 1.5,
+        "time": 2.0,
+        "total_line": 5,
+        "line": 0,
+        "processed_line": 0,
+        "error_line": 0,
+        "total_tokens": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+    }
+    assert service.get_analysis_candidate_count_cache() == 0
+
+
+def test_reset_failed_analysis_with_snapshot_normalizes_and_returns_deleted_count() -> (
+    None
+):
+    service, _session = build_analysis_service()
+    service.repository.reset_failed_checkpoints_with_snapshot = MagicMock(
+        return_value=(
+            2,
+            {
+                "start_time": "3.0",
+                "time": "4.0",
+                "total_line": "5",
+                "line": "3",
+                "processed_line": "3",
+                "error_line": "0",
+            },
+        )
+    )
+
+    deleted, snapshot = service.reset_failed_analysis_with_snapshot(
+        {
+            "start_time": 3.0,
+            "time": 4.0,
+            "total_line": 5,
+            "line": 3,
+            "processed_line": 3,
+            "error_line": 0,
+        }
+    )
+
+    assert deleted == 2
+    assert snapshot == {
+        "start_time": 3.0,
+        "time": 4.0,
+        "total_line": 5,
+        "line": 3,
+        "processed_line": 3,
+        "error_line": 0,
+        "total_tokens": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+    }
+
+
 def test_analysis_helpers_normalize_control_code_and_skipped_statuses() -> None:
     service, _session = build_analysis_service()
 
@@ -523,112 +627,3 @@ def test_get_pending_analysis_items_returns_only_schedulable_items() -> None:
     result = service.get_pending_analysis_items()
 
     assert result == [pending_item]
-
-
-def test_import_analysis_candidates_returns_zero_when_no_candidate() -> None:
-    service, _session = build_analysis_service()
-    service.build_analysis_glossary_from_candidates = MagicMock(return_value=[])
-
-    assert service.import_analysis_candidates() == 0
-
-
-def test_import_analysis_candidates_returns_none_when_project_not_loaded() -> None:
-    service, session = build_analysis_service()
-    session.db = None
-
-    assert service.import_analysis_candidates() is None
-
-
-def test_import_analysis_candidates_returns_none_when_project_context_changed() -> None:
-    service, session = build_analysis_service()
-
-    session.lg_path = "demo/other.lg"
-
-    assert service.import_analysis_candidates("demo/project.lg") is None
-
-
-def test_import_analysis_candidates_returns_zero_when_preview_filters_everything() -> (
-    None
-):
-    service, _session = build_analysis_service()
-    service.build_analysis_glossary_from_candidates = MagicMock(
-        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
-    )
-    service.build_analysis_glossary_import_preview = MagicMock(return_value="preview")
-    service.filter_analysis_glossary_import_candidates = MagicMock(return_value=[])
-
-    assert service.import_analysis_candidates() == 0
-
-
-def test_import_analysis_candidates_returns_zero_when_merge_rejects_write() -> None:
-    service, _session = build_analysis_service()
-    service.build_analysis_glossary_from_candidates = MagicMock(
-        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
-    )
-    service.build_analysis_glossary_import_preview = MagicMock(return_value="preview")
-    service.filter_analysis_glossary_import_candidates = MagicMock(
-        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
-    )
-    service.quality_rule_service.merge_glossary_incoming = MagicMock(
-        return_value=(
-            None,
-            QualityRuleMerger.Report(
-                added=0,
-                updated=0,
-                filled=0,
-                deduped=0,
-                skipped_empty_src=0,
-                conflicts=(),
-            ),
-        )
-    )
-
-    assert service.import_analysis_candidates() == 0
-
-
-def test_import_analysis_candidates_updates_glossary_batch_and_returns_report_count() -> (
-    None
-):
-    service, _session = build_analysis_service()
-    captured: dict[str, Any] = {}
-
-    def capture_batch(
-        *,
-        items: list[dict[str, Any]] | None = None,
-        rules: dict[object, object] | None = None,
-        meta: dict[str, Any] | None = None,
-    ) -> None:
-        captured["items"] = items
-        captured["rules"] = rules
-        captured["meta"] = meta
-
-    service.batch_service.update_batch = MagicMock(side_effect=capture_batch)
-    service.build_analysis_glossary_from_candidates = MagicMock(
-        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
-    )
-    service.build_analysis_glossary_import_preview = MagicMock(return_value="preview")
-    service.filter_analysis_glossary_import_candidates = MagicMock(
-        return_value=[{"src": "Alice", "dst": "爱丽丝"}]
-    )
-    service.quality_rule_service.merge_glossary_incoming = MagicMock(
-        return_value=(
-            [{"src": "Alice", "dst": "爱丽丝"}],
-            QualityRuleMerger.Report(
-                added=1,
-                updated=0,
-                filled=2,
-                deduped=0,
-                skipped_empty_src=0,
-                conflicts=(),
-            ),
-        )
-    )
-
-    imported = service.import_analysis_candidates()
-
-    assert imported == 3
-    assert captured["rules"] == {
-        LGDatabase.RuleType.GLOSSARY: [{"src": "Alice", "dst": "爱丽丝"}]
-    }
-    assert captured["items"] is None
-    assert captured["meta"] is None

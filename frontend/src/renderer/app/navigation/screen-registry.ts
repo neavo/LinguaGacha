@@ -1,8 +1,8 @@
 import { createElement } from 'react'
 
-import { create_debug_panel_screen } from '@/pages/debug-panel-page/create-debug-panel-screen'
 import { BasicSettingsPage } from '@/pages/basic-settings-page/page'
 import { CustomPromptPage } from '@/pages/custom-prompt-page/page'
+import { DebugPanelPage } from '@/pages/debug-panel-page/page'
 import { ExpertSettingsPage } from '@/pages/expert-settings-page/page'
 import { GlossaryPage } from '@/pages/glossary-page/page'
 import { LaboratoryPage } from '@/pages/laboratory-page/page'
@@ -97,9 +97,7 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
     title_key: 'laboratory_page.title',
   },
   toolbox: {
-    component: create_debug_panel_screen({
-      title_key: 'toolbox_page.title',
-    }),
+    component: DebugPanelPage,
     title_key: 'toolbox_page.title',
   },
 }

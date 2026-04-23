@@ -142,38 +142,101 @@ class ProofreadingMutationService:
             reason=reason,
         )
 
-    def emit_project_item_change(self, change: ProjectItemChange) -> None:
-        """把条目写入后的精确刷新统一补发出去。"""
+    def normalize_finalized_item_payload(
+        self,
+        payload: dict[str, Any],
+        existing_items: dict[int, dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        raw_item_id = payload.get("id", payload.get("item_id"))
+        if not isinstance(raw_item_id, int):
+            try:
+                raw_item_id = int(raw_item_id)
+            except TypeError:
+                return None
+            except ValueError:
+                return None
 
-        emit_change = getattr(
-            self.data_manager, "emit_project_item_change_refresh", None
-        )
-        if callable(emit_change):
-            emit_change(change)
-            return
+        existing_item = existing_items.get(raw_item_id)
+        if existing_item is None:
+            return None
 
-        emit = getattr(self.data_manager, "emit", None)
-        if not callable(emit):
-            return
-        if change.rel_paths:
-            emit(
-                Base.Event.WORKBENCH_REFRESH,
-                {
-                    "reason": change.reason,
-                    "scope": "file",
-                    "rel_paths": list(change.rel_paths),
+        normalized_item = dict(existing_item)
+        normalized_item["id"] = raw_item_id
+
+        if "file_path" in payload:
+            normalized_item["file_path"] = str(payload.get("file_path", "") or "")
+        if "row" in payload or "row_number" in payload:
+            normalized_item["row"] = int(
+                payload.get("row", payload.get("row_number", 0)) or 0
+            )
+        if "src" in payload:
+            normalized_item["src"] = str(payload.get("src", "") or "")
+        if "dst" in payload:
+            normalized_item["dst"] = str(payload.get("dst", "") or "")
+        if "status" in payload:
+            normalized_item["status"] = str(payload.get("status", "") or "")
+        if "text_type" in payload:
+            normalized_item["text_type"] = str(payload.get("text_type", "") or "")
+        if "retry_count" in payload:
+            normalized_item["retry_count"] = int(payload.get("retry_count", 0) or 0)
+
+        return normalized_item
+
+    def persist_finalized_items(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        translation_extras: dict[str, Any],
+        project_status: str,
+        expected_section_revisions: dict[str, int] | None,
+        reason: str,
+    ) -> ProjectItemChange:
+        with self._get_state_lock():
+            proofreading_revision = self.revision_service.get_revision(
+                self.REVISION_SCOPE
+            )
+            if expected_section_revisions is not None:
+                if "proofreading" in expected_section_revisions:
+                    proofreading_revision = self.revision_service.assert_revision(
+                        self.REVISION_SCOPE,
+                        int(expected_section_revisions["proofreading"]),
+                    )
+                if "items" in expected_section_revisions:
+                    self.data_manager.assert_project_runtime_section_revision(
+                        "items",
+                        int(expected_section_revisions["items"]),
+                    )
+
+            existing_items = {
+                int(item_dict["id"]): dict(item_dict)
+                for item_dict in self.data_manager.get_all_item_dicts()
+                if isinstance(item_dict.get("id"), int)
+            }
+            finalized_items = [
+                normalized_item
+                for normalized_item in (
+                    self.normalize_finalized_item_payload(payload, existing_items)
+                    for payload in items
+                    if isinstance(payload, dict)
+                )
+                if normalized_item is not None
+            ]
+
+            self.data_manager.update_batch(
+                items=finalized_items or None,
+                meta={
+                    "translation_extras": dict(translation_extras),
+                    "project_status": str(project_status),
                 },
             )
-        if change.item_ids:
-            emit(
-                Base.Event.PROOFREADING_REFRESH,
-                {
-                    "reason": change.reason,
-                    "scope": "entry",
-                    "item_ids": list(change.item_ids),
-                    "rel_paths": list(change.rel_paths),
-                },
+            self.data_manager.bump_project_runtime_section_revisions(("items",))
+            self._bump_revision(proofreading_revision)
+            change = self.build_project_item_change(
+                finalized_items,
+                reason=reason,
             )
+
+        return change
 
     def save_item(
         self,
@@ -194,7 +257,6 @@ class ProofreadingMutationService:
                 [saved_item],
                 reason=self.SAVE_ITEM_REASON,
             )
-        self.emit_project_item_change(change)
         return change
 
     def save_all(
@@ -214,7 +276,6 @@ class ProofreadingMutationService:
                 items,
                 reason=self.SAVE_ALL_REASON,
             )
-        self.emit_project_item_change(change)
         return change
 
     def replace_batch(
@@ -234,27 +295,7 @@ class ProofreadingMutationService:
                 items,
                 reason=self.REPLACE_ALL_REASON,
             )
-        self.emit_project_item_change(change)
         return change
-
-    @staticmethod
-    def replace_once_in_text(
-        *,
-        text: str,
-        search_text: str,
-        replace_text: str,
-        is_regex: bool,
-    ) -> tuple[str, int]:
-        """执行一次替换，和页面现有匹配语义保持一致。"""
-
-        if is_regex:
-            pattern = re.compile(search_text, re.IGNORECASE)
-            return pattern.subn(replace_text, text, count=1)
-        if not search_text:
-            return text, 0
-
-        pattern = re.compile(re.escape(search_text), re.IGNORECASE)
-        return pattern.subn(lambda match: replace_text, text, count=1)
 
     @staticmethod
     def replace_all_in_text(
@@ -338,8 +379,6 @@ class ProofreadingMutationService:
             else:
                 change = ProjectItemChange(reason=self.REPLACE_ALL_REASON)
 
-        if change.item_ids:
-            self.emit_project_item_change(change)
         return change
 
     def apply_manual_edit(
@@ -370,5 +409,4 @@ class ProofreadingMutationService:
                 [saved_item],
                 reason=self.SAVE_ITEM_REASON,
             )
-        self.emit_project_item_change(change)
         return change

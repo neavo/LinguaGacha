@@ -8,17 +8,10 @@ from module.Data.Analysis.AnalysisCandidateService import AnalysisCandidateServi
 from module.Data.Analysis.AnalysisProgressService import AnalysisProgressService
 from module.Data.Analysis.AnalysisRepository import AnalysisRepository
 from module.Data.Core.BatchService import BatchService
-from module.Data.Core.DataTypes import AnalysisGlossaryImportPreview
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Data.Quality.QualityRuleGlossaryImportService import (
-    QualityRuleGlossaryImportService,
-)
-from module.Data.Quality.QualityRuleService import QualityRuleService
-from module.Data.Storage.LGDatabase import LGDatabase
 from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
-from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
 class AnalysisService:
@@ -34,13 +27,11 @@ class AnalysisService:
         batch_service: BatchService,
         meta_service: MetaService,
         item_service: ItemService,
-        quality_rule_service: QualityRuleService,
     ) -> None:
         self.session = session
         self.batch_service = batch_service
         self.meta_service = meta_service
         self.item_service = item_service
-        self.quality_rule_service = quality_rule_service
 
         self.candidate_service = AnalysisCandidateService()
         self.progress_service = AnalysisProgressService()
@@ -48,9 +39,6 @@ class AnalysisService:
             session,
             self.candidate_service,
             self.progress_service,
-        )
-        self.glossary_import_service = QualityRuleGlossaryImportService(
-            quality_rule_service
         )
 
     @staticmethod
@@ -205,87 +193,6 @@ class AnalysisService:
             self.get_analysis_candidate_aggregate()
         )
 
-    def build_importable_analysis_glossary_from_candidates(
-        self,
-    ) -> list[dict[str, Any]]:
-        """候选数在导入闭环里要按“当前仍可导入”口径回写缓存。"""
-
-        glossary_entries = self.build_analysis_glossary_from_candidates()
-        if not glossary_entries:
-            return []
-
-        preview = self.build_analysis_glossary_import_preview(glossary_entries)
-        return self.filter_analysis_glossary_import_candidates(
-            glossary_entries,
-            preview,
-        )
-
-    def sync_importable_analysis_candidate_count(self) -> int:
-        """显式重算当前仍可导入的候选数，并回写缓存。"""
-
-        return self.set_analysis_candidate_count_cache(
-            len(self.build_importable_analysis_glossary_from_candidates())
-        )
-
-    def build_analysis_glossary_import_preview(
-        self,
-        glossary_entries: list[dict[str, Any]],
-    ) -> AnalysisGlossaryImportPreview:
-        return self.glossary_import_service.build_preview(glossary_entries)
-
-    def filter_analysis_glossary_import_candidates(
-        self,
-        glossary_entries: list[dict[str, Any]],
-        preview: AnalysisGlossaryImportPreview,
-    ) -> list[dict[str, Any]]:
-        return self.glossary_import_service.filter_candidates(
-            glossary_entries,
-            preview,
-        )
-
-    def import_analysis_candidates(
-        self,
-        expected_lg_path: str | None = None,
-    ) -> int | None:
-        """把候选池按“新增 + 补空”导入正式术语表。"""
-
-        with self.session.state_lock:
-            if self.session.db is None or self.session.lg_path is None:
-                return None
-            if (
-                expected_lg_path is not None
-                and self.session.lg_path != expected_lg_path
-            ):
-                return None
-
-        glossary_entries = self.build_analysis_glossary_from_candidates()
-        if not glossary_entries:
-            return 0
-
-        preview = self.build_analysis_glossary_import_preview(glossary_entries)
-        filtered_glossary_entries = self.filter_analysis_glossary_import_candidates(
-            glossary_entries,
-            preview,
-        )
-        if not filtered_glossary_entries:
-            return 0
-
-        merged, report = self.quality_rule_service.merge_glossary_incoming(
-            filtered_glossary_entries,
-            merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
-            save=False,
-        )
-        if merged is None:
-            return 0
-
-        self.batch_service.update_batch(
-            items=None,
-            rules={LGDatabase.RuleType.GLOSSARY: merged},
-            meta=None,
-        )
-        self.sync_importable_analysis_candidate_count()
-        return int(report.added) + int(report.filled)
-
     def clear_analysis_progress(self) -> None:
         self.repository.clear_progress()
         self.set_analysis_extras({})
@@ -296,6 +203,44 @@ class AnalysisService:
 
     def reset_failed_analysis_checkpoints(self) -> int:
         return self.repository.reset_failed_checkpoints()
+
+    def preview_failed_reset_status_summary(self) -> dict[str, Any]:
+        checkpoints = {
+            item_id: dict(checkpoint)
+            for item_id, checkpoint in self.get_analysis_item_checkpoints().items()
+            if checkpoint.get("status") != Base.ProjectStatus.ERROR
+        }
+        return self.progress_service.build_status_summary(
+            self.item_service.get_all_items(),
+            checkpoints,
+            skipped_statuses=(
+                Base.ProjectStatus.EXCLUDED,
+                Base.ProjectStatus.RULE_SKIPPED,
+                Base.ProjectStatus.LANGUAGE_SKIPPED,
+                Base.ProjectStatus.DUPLICATED,
+            ),
+        )
+
+    def clear_analysis_progress_with_snapshot(
+        self,
+        snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        normalized_snapshot = self.normalize_analysis_progress_snapshot(snapshot)
+        persisted_snapshot = self.repository.clear_progress_with_snapshot(
+            normalized_snapshot
+        )
+        self.set_analysis_candidate_count_cache(0)
+        return self.normalize_analysis_progress_snapshot(persisted_snapshot)
+
+    def reset_failed_analysis_with_snapshot(
+        self,
+        snapshot: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        normalized_snapshot = self.normalize_analysis_progress_snapshot(snapshot)
+        deleted, persisted_snapshot = (
+            self.repository.reset_failed_checkpoints_with_snapshot(normalized_snapshot)
+        )
+        return deleted, self.normalize_analysis_progress_snapshot(persisted_snapshot)
 
     def get_analysis_status_summary(self) -> dict[str, Any]:
         return self.progress_service.build_status_summary(

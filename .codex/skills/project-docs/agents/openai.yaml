@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Docs"
+  short_description: "筛选、删除、归位并整理项目级长期文档中的稳定规则与边界"
+  default_prompt: "使用 $project-docs 将当前项目的长期文档整理为固定交付形态：`AGENTS.md` 加 `docs/ARCHITECTURE.md`、`API.md`、`FRONTEND.md`、`DESIGN.md`、`WORKFLOW.md`、`DATA.md`。先盘点现有文档与遗留目录级文档，判断哪些内容该删、该并、该移、该补，再直接重写目标文档，无需遵循最小化修改原则，勇于进行整节/整篇重构，避免补丁式修改，迁移完成后删除已失去价值的遗留目录级文档。"

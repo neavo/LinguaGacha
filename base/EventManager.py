@@ -164,15 +164,7 @@ class EventManager:
         event_key = self.get_event_value(event)
         if event_key in self.COALESCE_EVENT_VALUES:
             return True
-
-        if event_key != "PROGRESS_TOAST":
-            return False
-        if not isinstance(data, dict):
-            return False
-
-        sub_event = data.get("sub_event")
-        sub_event_value = getattr(sub_event, "value", sub_event)
-        return isinstance(sub_event_value, str) and sub_event_value == "UPDATE"
+        return False
 
     def emit_event(self, event: StrEnum, data: object) -> None:
         """后台线程安全入队；高频快照只保留最后一帧。"""

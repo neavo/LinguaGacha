@@ -1,10 +1,21 @@
 from queue import Empty
 from queue import Queue
+from typing import Protocol
 from typing import Any
 
 from base.Base import Base
-from api.Bridge.EventBridge import EventBridge
+from api.Bridge.PublicEventBridge import PublicEventBridge
 from api.Contract.EventEnvelope import EventEnvelope
+
+
+class EventBridgeProtocol(Protocol):
+    """约束事件映射器最小能力，便于切换公开事件桥或 patch 事件桥。"""
+
+    def map_event(
+        self,
+        event: Base.Event,
+        data: dict[str, Any],
+    ) -> tuple[str | None, dict[str, Any]]: ...
 
 
 class EventStreamService:
@@ -12,8 +23,10 @@ class EventStreamService:
 
     KEEPALIVE_BYTES: bytes = b": keepalive\n\n"
 
-    def __init__(self, event_bridge: EventBridge | None = None) -> None:
-        self.event_bridge = event_bridge if event_bridge is not None else EventBridge()
+    def __init__(self, event_bridge: EventBridgeProtocol | None = None) -> None:
+        self.event_bridge = (
+            event_bridge if event_bridge is not None else PublicEventBridge()
+        )
         self.subscribers: list[Queue[EventEnvelope]] = []
         self.subscribed_events: tuple[Base.Event, ...] = Base.API_STREAM_SOURCE_EVENTS
         self.subscribe_internal_events()
@@ -79,7 +92,11 @@ class EventStreamService:
                 except Empty:
                     handler.wfile.write(self.KEEPALIVE_BYTES)
                 handler.wfile.flush()
-        except BrokenPipeError, ConnectionResetError, ConnectionAbortedError:
+        except (
+            BrokenPipeError,
+            ConnectionResetError,
+            ConnectionAbortedError,
+        ):
             # 浏览器刷新、标签页关闭或 Windows 10053/10054 断连都属于预期收尾，
             # 这里直接吞掉，避免把正常的 SSE 断线放大成控制台 traceback。
             pass

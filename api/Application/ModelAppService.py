@@ -11,6 +11,8 @@ from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from api.Models.Model import ModelEntrySnapshot
 from api.Models.Model import ModelPageSnapshot
+from api.Models.ModelTest import ModelApiTestResult
+from api.Models.ModelTest import ModelKeyTestResult
 from module.Model.Types import ModelType
 from module.Config import Config
 from module.Model.Manager import ModelManager
@@ -193,70 +195,33 @@ class ModelAppService:
         """把排序规则留在 Core 侧，避免页面自己拼全局顺序。"""
 
         ordered_model_ids_raw = request.get("ordered_model_ids")
-        if isinstance(ordered_model_ids_raw, list):
-            ordered_model_ids = [
-                str(model_id).strip()
-                for model_id in ordered_model_ids_raw
-                if str(model_id).strip() != ""
-            ]
-            if not ordered_model_ids:
-                raise ValueError("ordered_model_ids is empty")
+        if not isinstance(ordered_model_ids_raw, list):
+            raise ValueError("ordered_model_ids must be a list")
 
-            config = self.load_config()
-            target_model = self.get_model_or_raise(config, ordered_model_ids[0])
-            target_type = str(target_model.get("type", ModelType.PRESET.value))
-            expected_group_ids = self.collect_group_model_ids(
-                config.models or [],
-                target_type,
-            )
-            if len(ordered_model_ids) != len(expected_group_ids) or set(
-                ordered_model_ids
-            ) != set(expected_group_ids):
-                raise ValueError("ordered_model_ids must match one model group exactly")
+        ordered_model_ids = [
+            str(model_id).strip()
+            for model_id in ordered_model_ids_raw
+            if str(model_id).strip() != ""
+        ]
+        if not ordered_model_ids:
+            raise ValueError("ordered_model_ids is empty")
 
-            global_order_ids = ModelManager.build_global_ordered_ids_for_group(
-                config.models or [],
-                target_type,
-                ordered_model_ids,
-            )
-            self.prepare_manager(config)
-            self.model_manager.reorder_models(global_order_ids)
-            self.sync_config_from_manager(config)
-            return self.persist_config_and_build_snapshot(config)
-
-        return self.reorder_model_by_operation(request)
-
-    def reorder_model_by_operation(
-        self,
-        request: dict[str, object],
-    ) -> dict[str, object]:
-        """旧前端仍使用操作枚举重排，因此兼容逻辑单独收口。"""
-
-        model_id = str(request.get("model_id", ""))
-        operation_value = str(request.get("operation", ""))
         config = self.load_config()
-        target_model = self.get_model_or_raise(config, model_id)
-
-        try:
-            operation = ModelManager.ReorderOperation(operation_value)
-        except ValueError as e:
-            raise ValueError(f"unknown reorder operation: {operation_value}") from e
-
+        target_model = self.get_model_or_raise(config, ordered_model_ids[0])
         model_type = str(target_model.get("type", ModelType.PRESET.value))
-        group_model_ids = self.collect_group_model_ids(config.models or [], model_type)
-        reordered_group_ids = ModelManager.build_group_reordered_ids(
-            group_model_ids,
-            model_id,
-            operation,
+        expected_group_ids = self.collect_group_model_ids(
+            config.models or [],
+            model_type,
         )
-
-        if reordered_group_ids == group_model_ids:
-            return self.build_snapshot_response(config)
+        if len(ordered_model_ids) != len(expected_group_ids) or set(
+            ordered_model_ids
+        ) != set(expected_group_ids):
+            raise ValueError("ordered_model_ids must match one model group exactly")
 
         ordered_ids = ModelManager.build_global_ordered_ids_for_group(
             config.models or [],
             model_type,
-            reordered_group_ids,
+            ordered_model_ids,
         )
         self.prepare_manager(config)
         self.model_manager.reorder_models(ordered_ids)
@@ -373,15 +338,13 @@ class ModelAppService:
     def default_api_test_runner(self, model: dict[str, object]) -> dict[str, object]:
         """真实环境下复用请求器执行模型测试，并返回稳定的聚合结果。"""
 
-        from module.Engine.APITest.APITestResult import APITestResult
-        from module.Engine.APITest.APITestResult import KeyTestResult
         from module.Engine.TaskRequester import TaskRequester
         from module.Localizer.Localizer import Localizer
 
         config = Config().load()
         messages = self.build_api_test_messages(str(model.get("api_format", "")))
         api_keys = self.collect_api_keys(model)
-        key_results: list[KeyTestResult] = []
+        key_results: list[ModelKeyTestResult] = []
 
         TaskRequester.reset()
         for api_key in api_keys:
@@ -400,7 +363,7 @@ class ModelAppService:
 
             if exception is None:
                 key_results.append(
-                    KeyTestResult(
+                    ModelKeyTestResult(
                         masked_key=self.mask_api_key(api_key),
                         success=True,
                         input_tokens=input_tokens,
@@ -416,7 +379,7 @@ class ModelAppService:
                     Localizer.get().api_test_timeout,
                 )
                 key_results.append(
-                    KeyTestResult(
+                    ModelKeyTestResult(
                         masked_key=self.mask_api_key(api_key),
                         success=False,
                         input_tokens=0,
@@ -438,7 +401,7 @@ class ModelAppService:
             .replace("{SUCCESS}", str(len(success_results)))
             .replace("{FAILURE}", str(len(failure_results)))
         )
-        api_test_result = APITestResult(
+        api_test_result = ModelApiTestResult(
             success=len(failure_results) == 0,
             result_msg=result_msg,
             total_count=len(api_keys),
@@ -449,18 +412,7 @@ class ModelAppService:
             ),
             key_results=tuple(key_results),
         )
-        event_payload = api_test_result.to_event_dict()
-        return {
-            "success": bool(event_payload.get("result", False)),
-            "result_msg": str(event_payload.get("result_msg", "")),
-            "total_count": int(event_payload.get("total_count", 0)),
-            "success_count": int(event_payload.get("success_count", 0)),
-            "failure_count": int(event_payload.get("failure_count", 0)),
-            "total_response_time_ms": int(
-                event_payload.get("total_response_time_ms", 0)
-            ),
-            "key_results": list(event_payload.get("key_results", [])),
-        }
+        return api_test_result.to_dict()
 
     def persist_config_and_build_snapshot(
         self,

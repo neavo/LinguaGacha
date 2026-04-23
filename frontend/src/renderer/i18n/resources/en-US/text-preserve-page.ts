@@ -89,22 +89,18 @@ export const en_us_text_preserve_page = {
     delete_selection: {
       title: 'Confirm Delete',
       description: 'Are you sure you want to delete {COUNT} record(s)?',
-      confirm: 'Confirm Delete',
     },
     delete_preset: {
       title: 'Delete Preset',
       description: 'Are you sure you want to delete preset "{NAME}"?',
-      confirm: 'Delete Preset',
     },
     reset: {
       title: 'Confirm Reset',
       description: 'Are you sure you want to reset data …?',
-      confirm: 'Reset',
     },
     overwrite_preset: {
       title: 'Overwrite Preset',
       description: 'Preset "{NAME}" already exists. Do you want to overwrite it …?',
-      confirm: 'Overwrite',
     },
   },
   feedback: {
@@ -121,5 +117,6 @@ export const en_us_text_preserve_page = {
     regex_invalid: 'Invalid regular expression',
     merge_warning: 'Duplicate entries were merged …',
     reset_success: 'Reset completed …',
+    mode_refresh_pending: 'The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly.',
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_preserve_page>

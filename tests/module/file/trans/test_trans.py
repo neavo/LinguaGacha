@@ -25,16 +25,14 @@ def test_get_processor_routes_by_game_engine(config: Config) -> None:
     assert handler.get_processor({"gameEngine": "kag"}).TEXT_TYPE == Item.TextType.KAG
     assert handler.get_processor({"gameEngine": "wolf"}).TEXT_TYPE == Item.TextType.WOLF
     assert (
-        handler.get_processor({"gameEngine": "renpy"}).TEXT_TYPE
-        == Item.TextType.RENPY
+        handler.get_processor({"gameEngine": "renpy"}).TEXT_TYPE == Item.TextType.RENPY
     )
     assert (
         handler.get_processor({"gameEngine": "rmmz"}).TEXT_TYPE
         == Item.TextType.RPGMAKER
     )
     assert (
-        handler.get_processor({"gameEngine": "unknown"}).TEXT_TYPE
-        == Item.TextType.NONE
+        handler.get_processor({"gameEngine": "unknown"}).TEXT_TYPE == Item.TextType.NONE
     )
 
 
@@ -1305,5 +1303,3 @@ def test_legacy_fallback_skips_unknown_file_key_in_items(
         output["project"]["files"][existing_key]
         == payload["project"]["files"][existing_key]
     )
-
-

@@ -31,7 +31,6 @@ export const en_us_project_page = {
     remove_unavailable: 'Unable to remove this recent project entry right now. Please try again later.',
     missing_file_title: 'File Not Found',
     missing_file_description: 'Project file has been moved or deleted:\n{PATH}\nRemove it from recent projects?',
-    missing_file_confirm: 'Remove Entry',
   },
   preview: {
     project_name: 'Project Name',
@@ -42,6 +41,16 @@ export const en_us_project_page = {
     translated: 'Translated:',
     total: 'Total:',
     rows_unit: '',
+  },
+  loading_stages: {
+    project: 'Loading project skeleton …',
+    files: 'Loading project files …',
+    items: 'Loading project items …',
+    quality: 'Loading quality rules …',
+    prompts: 'Loading prompt settings …',
+    analysis: 'Loading analysis results …',
+    proofreading: 'Loading proofreading view …',
+    task: 'Loading task status …',
   },
   formats: {
     title: 'Supported File Formats',

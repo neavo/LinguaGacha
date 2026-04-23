@@ -49,6 +49,7 @@ import {
 type TextPreserveCommandBarProps = {
   title_key: LocaleKey
   mode: TextPreserveMode
+  mode_updating: boolean
   preset_items: TextPreservePresetItem[]
   preset_menu_open: boolean
   selected_entry_count: number
@@ -311,6 +312,7 @@ export function TextPreserveCommandBar(
                 className="text-preserve-page__mode-toggle"
                 item_class_name="text-preserve-page__mode-toggle-item"
                 size="sm"
+                disabled={props.mode_updating}
                 value={props.mode}
                 options={mode_options}
                 on_value_change={(next_value) => {

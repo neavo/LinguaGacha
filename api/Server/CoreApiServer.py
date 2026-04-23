@@ -1,4 +1,3 @@
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
@@ -7,6 +6,7 @@ from typing import Any
 
 from api.Contract.ApiError import ApiError
 from api.Contract.ApiResponse import ApiResponse
+from module.Utils.JSONTool import JSONTool
 
 
 class CoreApiServer:
@@ -209,7 +209,7 @@ class CoreApiServer:
     ) -> None:
         """统一输出 JSON，避免各路由重复处理响应头和编码。"""
 
-        payload_bytes = json.dumps(response.to_dict()).encode("utf-8")
+        payload_bytes = JSONTool.dumps_bytes(response.to_dict(), indent=0)
         handler.send_response(status_code)
         handler.send_header("Content-Type", self.CONTENT_TYPE_JSON)
         handler.send_header("Content-Length", str(len(payload_bytes)))
@@ -260,4 +260,4 @@ class CoreApiServer:
         payload_bytes = handler.rfile.read(content_length)
         if payload_bytes == b"":
             return {}
-        return dict(json.loads(payload_bytes.decode("utf-8")))
+        return dict(JSONTool.loads(payload_bytes))

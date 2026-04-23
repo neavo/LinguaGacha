@@ -28,7 +28,6 @@ export const zh_cn_project_page = {
     remove_unavailable: '当前无法移除这条最近使用记录，请稍后重试。',
     missing_file_title: '文件不存在',
     missing_file_description: '工程文件已被移动或删除：\n{PATH}\n是否从最近打开中移除？',
-    missing_file_confirm: '移除记录',
   },
   preview: {
     project_name: '项目名称',
@@ -39,6 +38,16 @@ export const zh_cn_project_page = {
     translated: '已翻译:',
     total: '总计:',
     rows_unit: '行',
+  },
+  loading_stages: {
+    project: '正在加载项目骨架 …',
+    files: '正在加载项目文件 …',
+    items: '正在加载项目条目 …',
+    quality: '正在加载质量规则 …',
+    prompts: '正在加载提示词配置 …',
+    analysis: '正在加载分析结果 …',
+    proofreading: '正在加载校对视图 …',
+    task: '正在加载任务状态 …',
   },
   formats: {
     title: '支持文件格式',
