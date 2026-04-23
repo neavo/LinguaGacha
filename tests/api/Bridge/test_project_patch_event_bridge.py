@@ -160,36 +160,6 @@ def test_project_patch_event_bridge_maps_translation_task_done_event_to_task_pat
     assert payload["patch"][0]["items"][0]["item_id"] == 3
 
 
-def test_project_patch_event_bridge_maps_translation_reset_all_done_to_section_reload():
-    topic, payload = ProjectPatchEventBridge().map_event(
-        Base.Event.TRANSLATION_RESET_ALL,
-        {
-            "sub_event": Base.SubEvent.DONE,
-        },
-    )
-
-    assert topic == "project.patch"
-    assert payload["source"] == "translation_reset_all"
-    assert payload["updatedSections"] == ["items", "analysis", "task"]
-    assert payload["projectRevision"] == 0
-    assert payload["sectionRevisions"] == {}
-
-
-def test_project_patch_event_bridge_maps_analysis_reset_failed_done_to_section_reload():
-    topic, payload = ProjectPatchEventBridge().map_event(
-        Base.Event.ANALYSIS_RESET_FAILED,
-        {
-            "sub_event": Base.SubEvent.DONE,
-        },
-    )
-
-    assert topic == "project.patch"
-    assert payload["source"] == "analysis_reset_failed"
-    assert payload["updatedSections"] == ["analysis", "task"]
-    assert payload["projectRevision"] == 0
-    assert payload["sectionRevisions"] == {}
-
-
 def test_project_patch_event_bridge_ignores_unmapped_events():
     topic, payload = ProjectPatchEventBridge().map_event(
         Base.Event.PROJECT_CHECK,

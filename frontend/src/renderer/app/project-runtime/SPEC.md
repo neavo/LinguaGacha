@@ -93,9 +93,9 @@ store 固定分成下面 8 个 stage / section：
 
 ### 稳定语义
 - 带 `patch` 数组的事件表示增量补丁，由 `ProjectStore.applyProjectPatch(...)` 直接合并。
-- 只带 `updatedSections` 的事件表示刷新信号；渲染层会对受影响 section 重新 bootstrap，而不是假设服务器一定给出完整 patch。
-- 翻译、分析、reset 和校对重译这类异步链路会使用服务器 `project.patch`。
-- 质量规则、提示词、校对同步写、预过滤、分析候选导入术语和工作台文件操作属于同步 mutation；这类路径以本地 patch + `ProjectMutationAck` 对齐 revision，不等待额外 SSE 回灌。
+- `project.patch` 现在只承载可直接合并的运行态补丁，不再承担 reset 刷新提示语义。
+- 翻译、分析与校对重译这类异步链路，以及后端显式发出的 `PROJECT_RUNTIME_PATCH`，会使用服务器 `project.patch`。
+- 质量规则、提示词、校对同步写、预过滤、分析候选导入术语、工作台文件操作、translation reset 与 analysis reset 都属于同步 mutation；这类路径以本地 patch + `ProjectMutationAck` 对齐 revision，不等待额外 SSE 回灌。
 
 ## `DesktopRuntimeContext` 与页面信号
 `DesktopRuntimeContext` 做三件事：

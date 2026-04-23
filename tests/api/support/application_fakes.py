@@ -16,7 +16,6 @@ from module.Model.Types import Model
 from module.Model.Types import ModelType
 from module.Config import Config
 from module.Data.Core.DataEnums import TextPreserveMode
-from module.Data.Core.DataTypes import ProjectItemChange
 
 
 class FakeProjectManager:
@@ -143,7 +142,6 @@ class FakeTaskDataManager:
         self.set_translation_extras_calls: list[dict[str, int | float]] = []
         self.set_project_status_calls: list[Base.ProjectStatus] = []
         self.run_project_prefilter_calls: list[tuple[object, str]] = []
-        self.reset_failed_translation_items_sync_calls: int = 0
         self.clear_analysis_candidates_and_progress_calls: int = 0
         self.reset_failed_analysis_checkpoints_calls: int = 0
         self.refresh_analysis_progress_snapshot_cache_calls: int = 0
@@ -268,20 +266,6 @@ class FakeTaskDataManager:
     def refresh_analysis_progress_snapshot_cache(self) -> dict[str, int | float]:
         self.refresh_analysis_progress_snapshot_cache_calls += 1
         return self.get_analysis_progress_snapshot()
-
-    def reset_failed_translation_items_sync(
-        self,
-    ) -> tuple[ProjectItemChange, dict[str, int | float]]:
-        self.reset_failed_translation_items_sync_calls += 1
-        self.translation_extras["error_line"] = 0
-        return (
-            ProjectItemChange(
-                item_ids=(1, 2),
-                rel_paths=("script/a.txt", "script/b.txt"),
-                reason="translation_reset_failed",
-            ),
-            dict(self.translation_extras),
-        )
 
     def emit_project_runtime_patch(
         self,

@@ -865,6 +865,55 @@ class LGDatabase(Base):
             local_conn.commit()
             return ids
 
+    def preview_replace_all_item_ids(
+        self,
+        items: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> list[int]:
+        """预演 `set_items()` 将实际落库的 id 序列。"""
+
+        if conn is None:
+            with self.connection() as local_conn:
+                return self.preview_replace_all_item_ids(items, conn=local_conn)
+
+        sequence_row = conn.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'items'"
+        ).fetchone()
+        sequence_value = (
+            int(sequence_row["seq"] or 0) if sequence_row is not None else 0
+        )
+        max_row = conn.execute("SELECT MAX(id) AS max_id FROM items").fetchone()
+        current_max_id = max(
+            sequence_value,
+            int(max_row["max_id"] or 0) if max_row is not None else 0,
+        )
+
+        preview_ids: list[int] = []
+        for item in items:
+            raw_item_id = item.get("id")
+            item_id: int | None
+            if raw_item_id is None or raw_item_id == "":
+                item_id = None
+            elif isinstance(raw_item_id, int):
+                item_id = raw_item_id
+            else:
+                try:
+                    item_id = int(raw_item_id)
+                except TypeError:
+                    item_id = None
+                except ValueError:
+                    item_id = None
+
+            if item_id is None:
+                current_max_id += 1
+                preview_ids.append(current_max_id)
+                continue
+
+            current_max_id = max(current_max_id, item_id)
+            preview_ids.append(item_id)
+
+        return preview_ids
+
     def insert_items(
         self,
         items: list[dict[str, Any]],

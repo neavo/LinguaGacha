@@ -37,8 +37,6 @@ class Analysis(Base):
 
         self.subscribe(Base.Event.ANALYSIS_TASK, self.analysis_run_event)
         self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.analysis_stop_event)
-        self.subscribe(Base.Event.ANALYSIS_RESET_ALL, self.analysis_reset)
-        self.subscribe(Base.Event.ANALYSIS_RESET_FAILED, self.analysis_reset)
 
     # UI 只关心当前实际占用并发，这里保持薄包装方便以后替换限流器实现。
     def get_concurrency_in_use(self) -> int:
@@ -101,47 +99,6 @@ class Analysis(Base):
             self,
             stop_event=Base.Event.ANALYSIS_REQUEST_STOP,
             mark_stop_requested=lambda: setattr(self, "stop_requested", True),
-        )
-
-    # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
-    def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
-        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
-        if sub_event != Base.SubEvent.REQUEST:
-            return
-
-        if event == Base.Event.ANALYSIS_RESET_ALL:
-            reset_event = Base.Event.ANALYSIS_RESET_ALL
-            is_reset_all = True
-        else:
-            reset_event = Base.Event.ANALYSIS_RESET_FAILED
-            is_reset_all = False
-
-        dm = DataManager.get()
-
-        def run_reset_worker() -> None:
-            if is_reset_all:
-                dm.clear_analysis_candidates_and_progress()
-                refreshed_snapshot = dm.refresh_analysis_progress_snapshot_cache()
-                self.extras = dict(refreshed_snapshot)
-                self.emit(Base.Event.ANALYSIS_PROGRESS, dict(refreshed_snapshot))
-            else:
-                dm.reset_failed_analysis_checkpoints()
-                refreshed_snapshot = dm.refresh_analysis_progress_snapshot_cache()
-                self.extras = dict(refreshed_snapshot)
-                self.emit(Base.Event.ANALYSIS_PROGRESS, dict(refreshed_snapshot))
-
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-
-        TaskRunnerLifecycle.run_reset_flow(
-            self,
-            reset_event=reset_event,
-            progress_message=None,
-            worker=run_reset_worker,
-            thread_factory=threading.Thread,
-            ensure_loaded=dm.is_loaded,
         )
 
     # 启动主流程时只在这里串联准备、执行、收尾，其他细节都交给流水线。

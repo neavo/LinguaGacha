@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from base.Base import Base
 from module.Data.Core.Item import Item
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.ProjectSession import ProjectSession
@@ -193,6 +194,58 @@ def test_replace_all_items_raises_when_project_not_loaded() -> None:
 
     with pytest.raises(RuntimeError, match="工程未加载"):
         service.replace_all_items([Item(src="A")])
+
+
+def test_preview_replace_all_item_ids_delegates_to_db() -> None:
+    db = SimpleNamespace(
+        preview_replace_all_item_ids=MagicMock(return_value=[5, 6]),
+    )
+    service, _session = build_service(db)
+
+    ids = service.preview_replace_all_item_ids([Item(src="A"), Item(src="B")])
+
+    assert ids == [5, 6]
+    db.preview_replace_all_item_ids.assert_called_once_with(
+        [
+            {
+                "id": None,
+                "src": "A",
+                "dst": "",
+                "name_src": None,
+                "name_dst": None,
+                "extra_field": "",
+                "tag": "",
+                "row": 0,
+                "file_type": Item.FileType.NONE,
+                "file_path": "",
+                "text_type": Item.TextType.NONE,
+                "status": Base.ProjectStatus.NONE,
+                "retry_count": 0,
+            },
+            {
+                "id": None,
+                "src": "B",
+                "dst": "",
+                "name_src": None,
+                "name_dst": None,
+                "extra_field": "",
+                "tag": "",
+                "row": 0,
+                "file_type": Item.FileType.NONE,
+                "file_path": "",
+                "text_type": Item.TextType.NONE,
+                "status": Base.ProjectStatus.NONE,
+                "retry_count": 0,
+            },
+        ]
+    )
+
+
+def test_preview_replace_all_item_ids_raises_when_project_not_loaded() -> None:
+    service, _session = build_service(None)
+
+    with pytest.raises(RuntimeError, match="工程未加载"):
+        service.preview_replace_all_item_ids([Item(src="A")])
 
 
 def test_update_item_cache_by_dicts_updates_loaded_entries_only() -> None:

@@ -2,10 +2,18 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 
 import { api_fetch } from "@/app/desktop-api";
 import { serializeQualityRuntimeSnapshot } from "@/app/project-runtime/quality-runtime";
+import {
+  create_translation_reset_all_plan,
+  create_translation_reset_failed_plan,
+} from "@/app/project-runtime/translation-reset";
 import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
 } from "@/app/state/project-pages-barrier";
+import {
+  normalize_project_mutation_ack,
+  type ProjectMutationAckPayload,
+} from "@/app/state/desktop-runtime-context";
 import { WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS } from "@/app/state/workbench-progress-constants";
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 import { useDesktopToast } from "@/app/state/use-desktop-toast";
@@ -147,7 +155,16 @@ export function useTranslationTaskRuntime(
 ): TranslationTaskRuntime {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { project_store, project_snapshot, set_task_snapshot, task_snapshot } = useDesktopRuntime();
+  const {
+    project_store,
+    project_snapshot,
+    settings_snapshot,
+    set_task_snapshot,
+    task_snapshot,
+    commit_local_project_patch,
+    refresh_project_runtime,
+    align_project_runtime_ack,
+  } = useDesktopRuntime();
   const [translation_task_snapshot, set_translation_task_snapshot] =
     useState<TranslationTaskSnapshot>(() => {
       return create_empty_translation_task_snapshot();
@@ -451,14 +468,51 @@ export function useTranslationTaskRuntime(
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
       } else {
-        const reset_path =
+        const reset_plan =
           task_confirm_state.kind === "reset-all"
-            ? "/api/tasks/reset-translation-all"
-            : "/api/tasks/reset-translation-failed";
-        const task_payload = await api_fetch<TranslationTaskCommandPayload>(reset_path, {});
-        const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
-        apply_translation_task_snapshot(next_snapshot);
-        sync_runtime_task_snapshot(next_snapshot);
+            ? await create_translation_reset_all_plan({
+                state: project_store.getState(),
+                source_language: String(settings_snapshot.source_language ?? "ALL"),
+                mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
+                request_preview: async () => {
+                  return await api_fetch<{
+                    items?: Array<Record<string, unknown>>;
+                  }>("/api/project/translation/reset-preview", {
+                    mode: "all",
+                  });
+                },
+              })
+            : create_translation_reset_failed_plan({
+                state: project_store.getState(),
+              });
+        const local_commit = commit_local_project_patch({
+          source:
+            task_confirm_state.kind === "reset-all"
+              ? "translation_reset_all"
+              : "translation_reset_failed",
+          updatedSections: reset_plan.updatedSections,
+          patch: reset_plan.patch,
+        });
+
+        try {
+          apply_translation_task_snapshot(
+            normalize_translation_task_snapshot_payload({
+              task: reset_plan.next_task_snapshot,
+            }),
+          );
+          const mutation_ack = normalize_project_mutation_ack(
+            await api_fetch<ProjectMutationAckPayload>(
+              "/api/project/translation/reset",
+              reset_plan.requestBody,
+            ),
+          );
+          align_project_runtime_ack(mutation_ack);
+        } catch (error) {
+          local_commit.rollback();
+          void refresh_project_runtime().catch(() => {});
+          throw error;
+        }
+
         if (options.waitForProjectPagesBarrier !== undefined) {
           await options.waitForProjectPagesBarrier("proofreading_cache_refresh", {
             checkpoint: barrierCheckpoint,
@@ -489,8 +543,14 @@ export function useTranslationTaskRuntime(
     }
   }, [
     apply_translation_task_snapshot,
+    align_project_runtime_ack,
+    commit_local_project_patch,
     options,
+    project_store,
+    refresh_project_runtime,
     push_toast,
+    settings_snapshot.mtool_optimizer_enable,
+    settings_snapshot.source_language,
     sync_runtime_task_snapshot,
     t,
     task_confirm_state,

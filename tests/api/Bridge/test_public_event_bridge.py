@@ -244,10 +244,10 @@ def test_unknown_event_is_ignored() -> None:
     assert payload == {}
 
 
-def test_event_bridge_ignores_reset_events_without_public_contract() -> None:
+def test_event_bridge_ignores_project_runtime_patch_without_public_contract() -> None:
     topic, payload = PublicEventBridge().map_event(
-        Base.Event.TRANSLATION_RESET_ALL,
-        {"sub_event": Base.SubEvent.DONE},
+        Base.Event.PROJECT_RUNTIME_PATCH,
+        {"source": "mutation"},
     )
 
     assert topic is None

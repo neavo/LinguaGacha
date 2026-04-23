@@ -28,7 +28,6 @@ from module.Data.Project.ProjectRuntimeRevisionService import (
 )
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
-from module.Data.Translation.TranslationResetService import TranslationResetService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Localizer.Localizer import Localizer
@@ -116,12 +115,6 @@ class DataManager(Base):
             self.meta_service,
             self.item_service,
         )
-        self.translation_reset_service = TranslationResetService(
-            self.session,
-            self.batch_service,
-            self.meta_service,
-            self.item_service,
-        )
         self.project_file_service = ProjectFileService(
             self.session,
             self.project_service.SUPPORTED_EXTENSIONS,
@@ -129,11 +122,6 @@ class DataManager(Base):
         self.runtime_revision_service = ProjectRuntimeRevisionService(self.meta_service)
 
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_activity)
-        self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.on_translation_activity)
-        self.subscribe(
-            Base.Event.TRANSLATION_RESET_FAILED,
-            self.on_translation_activity,
-        )
 
     @classmethod
     def get(cls) -> "DataManager":
@@ -546,6 +534,53 @@ class DataManager(Base):
     def reset_failed_analysis_checkpoints(self) -> int:
         return self.analysis_service.reset_failed_analysis_checkpoints()
 
+    def preview_analysis_reset_failed(self) -> dict[str, Any]:
+        return self.analysis_service.preview_failed_reset_status_summary()
+
+    def apply_analysis_reset_all_payload(
+        self,
+        *,
+        analysis_extras: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None,
+    ) -> dict[str, Any]:
+        with self.state_lock:
+            if not self.is_loaded():
+                raise RuntimeError("工程未加载")
+
+            self.assert_expected_runtime_revisions(
+                expected_section_revisions,
+                ("analysis",),
+            )
+            normalized_snapshot = (
+                self.analysis_service.clear_analysis_progress_with_snapshot(
+                    analysis_extras
+                )
+            )
+            self.bump_project_runtime_section_revision("analysis")
+            return normalized_snapshot
+
+    def apply_analysis_reset_failed_payload(
+        self,
+        *,
+        analysis_extras: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None,
+    ) -> tuple[int, dict[str, Any]]:
+        with self.state_lock:
+            if not self.is_loaded():
+                raise RuntimeError("工程未加载")
+
+            self.assert_expected_runtime_revisions(
+                expected_section_revisions,
+                ("analysis",),
+            )
+            deleted, normalized_snapshot = (
+                self.analysis_service.reset_failed_analysis_with_snapshot(
+                    analysis_extras
+                )
+            )
+            self.bump_project_runtime_section_revision("analysis")
+            return deleted, normalized_snapshot
+
     def get_analysis_status_summary(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_status_summary()
 
@@ -581,12 +616,82 @@ class DataManager(Base):
             progress_snapshot=progress_snapshot,
         )
 
-    def reset_failed_translation_items_sync(
+    def preview_translation_reset_all(
         self,
-    ) -> tuple["ProjectItemChange", dict[str, Any]] | None:
-        """翻译域统一入口，避免继续从分析服务借道。"""
+        config: Config,
+    ) -> list[dict[str, Any]]:
+        if not self.is_loaded():
+            raise RuntimeError("工程未加载")
 
-        return self.translation_reset_service.reset_failed_translation_items_sync()
+        items = self.translation_item_service.get_items_for_translation(
+            config,
+            Base.TranslationMode.RESET,
+        )
+        preview_ids = self.item_service.preview_replace_all_item_ids(items)
+
+        preview_payloads: list[dict[str, Any]] = []
+        for item, item_id in zip(items, preview_ids):
+            payload = item.to_dict()
+            payload["id"] = int(item_id)
+            preview_payloads.append(payload)
+
+        return preview_payloads
+
+    def apply_translation_reset_all_payload(
+        self,
+        *,
+        item_payloads: list[dict[str, Any]],
+        translation_extras: dict[str, Any],
+        project_status: str,
+        prefilter_config: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None,
+    ) -> list[dict[str, Any]]:
+        with self.state_lock:
+            if not self.is_loaded():
+                raise RuntimeError("工程未加载")
+
+            self.assert_expected_runtime_revisions(
+                expected_section_revisions,
+                ("items", "analysis"),
+            )
+            normalized_items = self.normalize_full_item_payloads(item_payloads)
+            self.persist_replaced_items_meta_and_clear_analysis_state(
+                items=normalized_items,
+                meta=self.build_analysis_reset_meta(
+                    translation_extras=translation_extras,
+                    project_status=project_status,
+                    prefilter_config=prefilter_config,
+                ),
+            )
+            self.bump_project_runtime_section_revisions(("items", "analysis"))
+            return normalized_items
+
+    def apply_translation_reset_failed_payload(
+        self,
+        *,
+        item_payloads: list[dict[str, Any]],
+        translation_extras: dict[str, Any],
+        project_status: str,
+        expected_section_revisions: dict[str, int] | None,
+    ) -> list[dict[str, Any]]:
+        with self.state_lock:
+            if not self.is_loaded():
+                raise RuntimeError("工程未加载")
+
+            self.assert_expected_runtime_revisions(
+                expected_section_revisions,
+                ("items",),
+            )
+            merged_items = self.merge_partial_item_payloads(item_payloads)
+            self.update_batch(
+                items=merged_items or None,
+                meta={
+                    "translation_extras": dict(translation_extras),
+                    "project_status": str(project_status),
+                },
+            )
+            self.bump_project_runtime_section_revision("items")
+            return merged_items
 
     def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
         return self.quality_rule_service.get_rules_cached(rule_type)
@@ -827,6 +932,45 @@ class DataManager(Base):
 
         return merged_items
 
+    def normalize_full_item_payloads(
+        self,
+        item_payloads: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        normalized_items: list[dict[str, Any]] = []
+
+        for payload in item_payloads:
+            raw_item_id = payload.get("id")
+            if not isinstance(raw_item_id, int):
+                try:
+                    raw_item_id = int(raw_item_id)
+                except TypeError:
+                    continue
+                except ValueError:
+                    continue
+
+            if raw_item_id <= 0:
+                continue
+
+            normalized_items.append(
+                {
+                    "id": raw_item_id,
+                    "src": str(payload.get("src", "") or ""),
+                    "dst": str(payload.get("dst", "") or ""),
+                    "name_src": payload.get("name_src"),
+                    "name_dst": payload.get("name_dst"),
+                    "extra_field": payload.get("extra_field", ""),
+                    "tag": str(payload.get("tag", "") or ""),
+                    "row": int(payload.get("row", payload.get("row_number", 0)) or 0),
+                    "file_type": str(payload.get("file_type", "NONE") or "NONE"),
+                    "file_path": str(payload.get("file_path", "") or ""),
+                    "text_type": str(payload.get("text_type", "NONE") or "NONE"),
+                    "status": str(payload.get("status", "NONE") or "NONE"),
+                    "retry_count": int(payload.get("retry_count", 0) or 0),
+                }
+            )
+
+        return normalized_items
+
     def build_analysis_reset_meta(
         self,
         *,
@@ -843,6 +987,29 @@ class DataManager(Base):
             "analysis_extras": {},
             "analysis_candidate_count": 0,
         }
+
+    def persist_replaced_items_meta_and_clear_analysis_state(
+        self,
+        *,
+        items: list[dict[str, Any]],
+        meta: dict[str, Any],
+    ) -> None:
+        """在同一事务里整段替换 items，并同步 meta 与分析持久化事实。"""
+
+        with self.state_lock:
+            db = self.session.db
+            if db is None:
+                raise RuntimeError("工程未加载")
+
+            with db.connection() as conn:
+                db.set_items(items, conn=conn)
+                self.write_meta_in_connection(conn=conn, meta=meta)
+                db.delete_analysis_item_checkpoints(conn=conn)
+                db.clear_analysis_candidate_aggregates(conn=conn)
+                conn.commit()
+
+            self.replace_session_item_cache(items)
+            self.sync_session_meta_cache(meta)
 
     def persist_items_meta_and_clear_analysis_state(
         self,

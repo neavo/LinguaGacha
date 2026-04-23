@@ -12,6 +12,10 @@ class ProjectRoutes:
     APPLY_PREFILTER_PATH: str = "/api/project/apply-prefilter"
     SETTINGS_SYNC_META_PATH: str = "/api/project/settings/sync-meta"
     ANALYSIS_IMPORT_GLOSSARY_PATH: str = "/api/project/analysis/import-glossary"
+    TRANSLATION_RESET_PREVIEW_PATH: str = "/api/project/translation/reset-preview"
+    TRANSLATION_RESET_PATH: str = "/api/project/translation/reset"
+    ANALYSIS_RESET_PREVIEW_PATH: str = "/api/project/analysis/reset-preview"
+    ANALYSIS_RESET_PATH: str = "/api/project/analysis/reset"
     SOURCE_FILES_PATH: str = "/api/project/source-files"
     PREVIEW_PATH: str = "/api/project/preview"
     WORKBENCH_ADD_FILE_PATH: str = "/api/project/workbench/add-file"
@@ -90,6 +94,38 @@ class ProjectRoutes:
                 lambda request: ApiResponse(
                     ok=True,
                     data=project_app_service.import_analysis_glossary(request),
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
+                cls.TRANSLATION_RESET_PREVIEW_PATH,
+                lambda request: ApiResponse(
+                    ok=True,
+                    data=project_app_service.preview_translation_reset(request),
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
+                cls.TRANSLATION_RESET_PATH,
+                lambda request: ApiResponse(
+                    ok=True,
+                    data=project_app_service.apply_translation_reset(request),
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
+                cls.ANALYSIS_RESET_PREVIEW_PATH,
+                lambda request: ApiResponse(
+                    ok=True,
+                    data=project_app_service.preview_analysis_reset(request),
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
+                cls.ANALYSIS_RESET_PATH,
+                lambda request: ApiResponse(
+                    ok=True,
+                    data=project_app_service.apply_analysis_reset(request),
                 ),
             )
             core_api_server.add_json_route(

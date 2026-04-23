@@ -242,6 +242,56 @@ def test_clear_progress_clears_snapshot_checkpoints_and_candidate_pool(
     assert session.meta_cache["analysis_extras"] == {}
 
 
+def test_clear_progress_with_snapshot_persists_given_snapshot_and_resets_candidate_count(
+    repository_env: tuple[AnalysisRepository, ProjectSession, LGDatabase],
+) -> None:
+    repository, session, db = repository_env
+    repository.commit_task_batch(
+        success_checkpoints=[
+            {
+                "item_id": 1,
+                "status": Base.ProjectStatus.PROCESSED.value,
+                "updated_at": "2026-03-10T10:00:00",
+                "error_count": 0,
+            }
+        ],
+        glossary_entries=[
+            {
+                "src": "Alice",
+                "dst": "爱丽丝",
+                "info": "女性人名",
+                "case_sensitive": False,
+            }
+        ],
+        error_checkpoints=[],
+        progress_snapshot={"processed_line": 1, "line": 1},
+    )
+
+    snapshot = repository.clear_progress_with_snapshot(
+        {
+            "start_time": 0.0,
+            "time": 0.0,
+            "total_line": 5,
+            "line": 0,
+            "processed_line": 0,
+            "error_line": 0,
+        }
+    )
+
+    assert repository.get_item_checkpoints() == {}
+    assert repository.get_candidate_aggregate() == {}
+    assert snapshot == {
+        "start_time": 0.0,
+        "time": 0.0,
+        "total_line": 5,
+        "line": 0,
+        "processed_line": 0,
+        "error_line": 0,
+    }
+    assert db.get_meta("analysis_candidate_count") == 0
+    assert session.meta_cache["analysis_candidate_count"] == 0
+
+
 def test_reset_failed_checkpoints_only_deletes_error_rows(
     repository_env: tuple[AnalysisRepository, ProjectSession, LGDatabase],
 ) -> None:
@@ -274,6 +324,59 @@ def test_reset_failed_checkpoints_only_deletes_error_rows(
             "error_count": 0,
         }
     }
+
+
+def test_reset_failed_checkpoints_with_snapshot_keeps_success_rows_and_updates_snapshot(
+    repository_env: tuple[AnalysisRepository, ProjectSession, LGDatabase],
+) -> None:
+    repository, session, db = repository_env
+    repository.upsert_item_checkpoints(
+        [
+            {
+                "item_id": 1,
+                "status": Base.ProjectStatus.PROCESSED.value,
+                "updated_at": "2026-03-10T10:00:00",
+                "error_count": 0,
+            },
+            {
+                "item_id": 2,
+                "status": Base.ProjectStatus.ERROR.value,
+                "updated_at": "2026-03-10T10:01:00",
+                "error_count": 1,
+            },
+        ]
+    )
+
+    deleted, snapshot = repository.reset_failed_checkpoints_with_snapshot(
+        {
+            "start_time": 4.0,
+            "time": 6.0,
+            "total_line": 5,
+            "line": 3,
+            "processed_line": 3,
+            "error_line": 0,
+        }
+    )
+
+    assert deleted == 1
+    assert repository.get_item_checkpoints() == {
+        1: {
+            "item_id": 1,
+            "status": Base.ProjectStatus.PROCESSED,
+            "updated_at": "2026-03-10T10:00:00",
+            "error_count": 0,
+        }
+    }
+    assert snapshot == {
+        "start_time": 4.0,
+        "time": 6.0,
+        "total_line": 5,
+        "line": 3,
+        "processed_line": 3,
+        "error_line": 0,
+    }
+    assert db.get_meta("analysis_extras") == snapshot
+    assert session.meta_cache["analysis_extras"] == snapshot
 
 
 def test_getters_return_empty_when_project_not_loaded() -> None:

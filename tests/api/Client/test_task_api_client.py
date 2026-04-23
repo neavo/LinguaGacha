@@ -31,37 +31,6 @@ def test_task_api_client_get_task_snapshot_supports_requested_task_type(
     assert result.analysis_candidate_count == 3
 
 
-def test_task_api_client_reset_methods_return_task_snapshot(
-    fake_task_data_manager: FakeTaskDataManager,
-    fake_engine: FakeEngine,
-    start_api_server: Callable[..., str],
-) -> None:
-    fake_task_data_manager.translation_extras["error_line"] = 5
-    fake_task_data_manager.analysis_snapshot["error_line"] = 4
-    base_url = start_api_server(
-        task_app_service=TaskAppService(
-            data_manager=fake_task_data_manager,
-            engine=fake_engine,
-            config_loader=lambda: object(),
-        )
-    )
-    task_client = TaskApiClient(ApiClient(base_url))
-
-    translation_all_result = task_client.reset_translation_all()
-    translation_failed_result = task_client.reset_translation_failed()
-    analysis_all_result = task_client.reset_analysis_all()
-    analysis_failed_result = task_client.reset_analysis_failed()
-
-    assert isinstance(translation_all_result, TaskSnapshot)
-    assert translation_all_result.task_type == "translation"
-    assert isinstance(translation_failed_result, TaskSnapshot)
-    assert translation_failed_result.task_type == "translation"
-    assert isinstance(analysis_all_result, TaskSnapshot)
-    assert analysis_all_result.task_type == "analysis"
-    assert isinstance(analysis_failed_result, TaskSnapshot)
-    assert analysis_failed_result.task_type == "analysis"
-
-
 def test_task_api_client_start_and_stop_commands_use_snapshot_contract(
     recording_api_client,
 ) -> None:

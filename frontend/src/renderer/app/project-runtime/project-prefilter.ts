@@ -1,20 +1,15 @@
 import type { ProjectStoreState } from "@/app/project-runtime/project-store";
+import {
+  build_analysis_status_summary,
+  build_translation_task_and_project_state,
+  clone_runtime_project_item_record,
+  normalize_runtime_project_item_record,
+  type RuntimeProjectItemRecord,
+} from "@/app/project-runtime/reset-derived";
 
 type ProjectPrefilterFileRecord = {
   rel_path: string;
   file_type: string;
-};
-
-type ProjectPrefilterItemRecord = {
-  item_id: number;
-  file_path: string;
-  row_number: number;
-  src: string;
-  dst: string;
-  name_dst: unknown;
-  status: string;
-  text_type: string;
-  retry_count: number;
 };
 
 type ProjectPrefilterStats = {
@@ -80,14 +75,6 @@ const RULE_FILTER_PATTERNS = [
   /^\{#file_time\}/iu,
 ];
 
-const TRACKED_TRANSLATION_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
-const ANALYSIS_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
 const SPECIAL_PUNCTUATION_SET = new Set(["·", "・", "♥"]);
 
 function normalize_file_record(value: unknown): ProjectPrefilterFileRecord | null {
@@ -98,36 +85,6 @@ function normalize_file_record(value: unknown): ProjectPrefilterFileRecord | nul
   return {
     rel_path: String((value as ProjectPrefilterFileRecord).rel_path ?? ""),
     file_type: String((value as ProjectPrefilterFileRecord).file_type ?? "NONE"),
-  };
-}
-
-function normalize_item_record(value: unknown): ProjectPrefilterItemRecord | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  const item_id = Number(candidate.item_id ?? candidate.id ?? 0);
-  if (!Number.isInteger(item_id)) {
-    return null;
-  }
-
-  return {
-    item_id,
-    file_path: String(candidate.file_path ?? ""),
-    row_number: Number(candidate.row_number ?? candidate.row ?? 0),
-    src: String(candidate.src ?? ""),
-    dst: String(candidate.dst ?? ""),
-    name_dst: candidate.name_dst ?? null,
-    status: String(candidate.status ?? ""),
-    text_type: String(candidate.text_type ?? "NONE"),
-    retry_count: Number(candidate.retry_count ?? 0),
-  };
-}
-
-function clone_item_record(item: ProjectPrefilterItemRecord): ProjectPrefilterItemRecord {
-  return {
-    ...item,
   };
 }
 
@@ -199,89 +156,6 @@ function should_language_filter(text: string, source_language: string): boolean 
   return !has_target_language_character(text, source_language);
 }
 
-function build_translation_extras(task_snapshot: Record<string, unknown>): Record<string, unknown> {
-  const translation_extras: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(task_snapshot)) {
-    if (
-      key === "task_type" ||
-      key === "status" ||
-      key === "busy" ||
-      key === "request_in_flight_count" ||
-      key === "analysis_candidate_count"
-    ) {
-      continue;
-    }
-    translation_extras[key] = value;
-  }
-  return translation_extras;
-}
-
-function build_task_and_project_state(args: {
-  task_snapshot: Record<string, unknown>;
-  items: Map<number, ProjectPrefilterItemRecord>;
-}): {
-  translation_extras: Record<string, unknown>;
-  project_status: string;
-  task_snapshot: Record<string, unknown>;
-} {
-  let processed_line = 0;
-  let error_line = 0;
-  let total_line = 0;
-  let has_pending = false;
-
-  for (const item of args.items.values()) {
-    if (item.status === "PROCESSED") {
-      processed_line += 1;
-    }
-    if (item.status === "ERROR") {
-      error_line += 1;
-    }
-    if (item.status === "NONE") {
-      has_pending = true;
-    }
-    if (TRACKED_TRANSLATION_STATUSES.has(item.status)) {
-      total_line += 1;
-    }
-  }
-
-  const translation_extras = build_translation_extras(args.task_snapshot);
-  translation_extras.processed_line = processed_line;
-  translation_extras.error_line = error_line;
-  translation_extras.total_line = total_line;
-  translation_extras.line = processed_line + error_line;
-
-  const project_status = total_line <= 0 ? "NONE" : has_pending ? "PROCESSING" : "PROCESSED";
-
-  return {
-    translation_extras,
-    project_status,
-    task_snapshot: {
-      ...args.task_snapshot,
-      ...translation_extras,
-      analysis_candidate_count: 0,
-    },
-  };
-}
-
-function build_analysis_status_summary(
-  items: Map<number, ProjectPrefilterItemRecord>,
-): Record<string, unknown> {
-  let total_line = 0;
-  for (const item of items.values()) {
-    if (item.src.trim() === "" || ANALYSIS_SKIPPED_STATUSES.has(item.status)) {
-      continue;
-    }
-    total_line += 1;
-  }
-
-  return {
-    total_line,
-    processed_line: 0,
-    error_line: 0,
-    line: 0,
-  };
-}
-
 export function compute_project_prefilter_mutation(
   input: ProjectPrefilterMutationInput,
 ): ProjectPrefilterMutationOutput {
@@ -294,19 +168,19 @@ export function compute_project_prefilter_mutation(
     file_type_by_path.set(file.rel_path, file.file_type);
   }
 
-  const item_index = new Map<number, ProjectPrefilterItemRecord>();
+  const item_index = new Map<number, RuntimeProjectItemRecord>();
   for (const value of Object.values(input.state.items)) {
-    const item = normalize_item_record(value);
+    const item = normalize_runtime_project_item_record(value);
     if (item === null) {
       continue;
     }
-    item_index.set(item.item_id, clone_item_record(item));
+    item_index.set(item.item_id, clone_runtime_project_item_record(item));
   }
 
   let rule_skipped = 0;
   let language_skipped = 0;
   let mtool_skipped = 0;
-  const kvjson_items_by_path = new Map<string, ProjectPrefilterItemRecord[]>();
+  const kvjson_items_by_path = new Map<string, RuntimeProjectItemRecord[]>();
 
   for (const item of item_index.values()) {
     if (item.status === "RULE_SKIPPED" || item.status === "LANGUAGE_SKIPPED") {
@@ -379,9 +253,10 @@ export function compute_project_prefilter_mutation(
     };
   }
 
-  const derived_task_state = build_task_and_project_state({
+  const derived_task_state = build_translation_task_and_project_state({
     task_snapshot: input.state.task,
     items: item_index,
+    analysis_candidate_count: 0,
   });
 
   return {
@@ -390,7 +265,7 @@ export function compute_project_prefilter_mutation(
       extras: {},
       candidate_count: 0,
       candidate_aggregate: {},
-      status_summary: build_analysis_status_summary(item_index),
+      status_summary: build_analysis_status_summary(item_index.values()),
     },
     translation_extras: derived_task_state.translation_extras,
     project_status: derived_task_state.project_status,

@@ -204,6 +204,44 @@ class AnalysisService:
     def reset_failed_analysis_checkpoints(self) -> int:
         return self.repository.reset_failed_checkpoints()
 
+    def preview_failed_reset_status_summary(self) -> dict[str, Any]:
+        checkpoints = {
+            item_id: dict(checkpoint)
+            for item_id, checkpoint in self.get_analysis_item_checkpoints().items()
+            if checkpoint.get("status") != Base.ProjectStatus.ERROR
+        }
+        return self.progress_service.build_status_summary(
+            self.item_service.get_all_items(),
+            checkpoints,
+            skipped_statuses=(
+                Base.ProjectStatus.EXCLUDED,
+                Base.ProjectStatus.RULE_SKIPPED,
+                Base.ProjectStatus.LANGUAGE_SKIPPED,
+                Base.ProjectStatus.DUPLICATED,
+            ),
+        )
+
+    def clear_analysis_progress_with_snapshot(
+        self,
+        snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        normalized_snapshot = self.normalize_analysis_progress_snapshot(snapshot)
+        persisted_snapshot = self.repository.clear_progress_with_snapshot(
+            normalized_snapshot
+        )
+        self.set_analysis_candidate_count_cache(0)
+        return self.normalize_analysis_progress_snapshot(persisted_snapshot)
+
+    def reset_failed_analysis_with_snapshot(
+        self,
+        snapshot: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        normalized_snapshot = self.normalize_analysis_progress_snapshot(snapshot)
+        deleted, persisted_snapshot = (
+            self.repository.reset_failed_checkpoints_with_snapshot(normalized_snapshot)
+        )
+        return deleted, self.normalize_analysis_progress_snapshot(persisted_snapshot)
+
     def get_analysis_status_summary(self) -> dict[str, Any]:
         return self.progress_service.build_status_summary(
             self.item_service.get_all_items(),

@@ -194,7 +194,7 @@ def test_publish_event_supports_project_patch_bridge() -> None:
     assert envelope.data["patch"][0]["items"][0]["item_id"] == 1
 
 
-def test_publish_translation_reset_all_done_supports_section_reload_patch() -> None:
+def test_publish_project_runtime_patch_supports_direct_patch_payload() -> None:
     service = EventStreamService(
         event_bridge=ProjectPatchEventBridge(
             runtime_service=StubRuntimeService(),
@@ -204,21 +204,24 @@ def test_publish_translation_reset_all_done_supports_section_reload_patch() -> N
     subscriber = service.add_subscriber()
 
     service.publish_internal_event(
-        Base.Event.TRANSLATION_RESET_ALL,
+        Base.Event.PROJECT_RUNTIME_PATCH,
         {
-            "sub_event": Base.SubEvent.DONE,
+            "source": "mutation",
+            "updatedSections": ["items", "analysis"],
+            "patch": [{"op": "replace_analysis", "analysis": {"candidate_count": 0}}],
+            "projectRevision": 9,
+            "sectionRevisions": {"items": 9, "analysis": 9},
         },
     )
 
     envelope = subscriber.get_nowait()
     assert envelope.topic == "project.patch"
-    assert envelope.data["source"] == "translation_reset_all"
-    assert envelope.data["updatedSections"] == ["items", "analysis", "task"]
-    assert envelope.data["projectRevision"] == 8
+    assert envelope.data["source"] == "mutation"
+    assert envelope.data["updatedSections"] == ["items", "analysis"]
+    assert envelope.data["projectRevision"] == 9
     assert envelope.data["sectionRevisions"] == {
-        "items": 0,
-        "analysis": 8,
-        "task": 6,
+        "items": 9,
+        "analysis": 9,
     }
 
 

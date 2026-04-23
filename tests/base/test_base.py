@@ -104,23 +104,6 @@ def test_subscribe_busy_state_events_covers_all_busy_events() -> None:
 
 
 @pytest.mark.parametrize(
-    ("event", "sub_event", "expected"),
-    [
-        (Base.Event.TRANSLATION_RESET_ALL, Base.SubEvent.DONE, True),
-        (Base.Event.ANALYSIS_RESET_FAILED, Base.SubEvent.ERROR, True),
-        (Base.Event.TRANSLATION_RESET_ALL, Base.SubEvent.REQUEST, False),
-        (Base.Event.PROJECT_LOADED, Base.SubEvent.DONE, False),
-    ],
-)
-def test_is_terminal_reset_event_only_matches_reset_terminal_states(
-    event: Base.Event,
-    sub_event: Base.SubEvent,
-    expected: bool,
-) -> None:
-    assert Base.is_terminal_reset_event(event, {"sub_event": sub_event}) is expected
-
-
-@pytest.mark.parametrize(
     ("status", "expected"),
     [
         (Base.TaskStatus.TRANSLATING, True),
@@ -136,8 +119,18 @@ def test_is_engine_busy_matches_declared_busy_statuses(
     assert Base.is_engine_busy(status) is expected
 
 
-def test_api_stream_source_events_include_reset_events() -> None:
-    assert Base.Event.TRANSLATION_RESET_ALL in Base.API_STREAM_SOURCE_EVENTS
-    assert Base.Event.TRANSLATION_RESET_FAILED in Base.API_STREAM_SOURCE_EVENTS
-    assert Base.Event.ANALYSIS_RESET_ALL in Base.API_STREAM_SOURCE_EVENTS
-    assert Base.Event.ANALYSIS_RESET_FAILED in Base.API_STREAM_SOURCE_EVENTS
+def test_api_stream_source_events_cover_runtime_patch_and_task_events() -> None:
+    assert Base.API_STREAM_SOURCE_EVENTS == (
+        Base.Event.PROJECT_LOADED,
+        Base.Event.PROJECT_UNLOADED,
+        Base.Event.PROJECT_RUNTIME_PATCH,
+        Base.Event.TRANSLATION_TASK,
+        Base.Event.TRANSLATION_REQUEST_STOP,
+        Base.Event.TRANSLATION_PROGRESS,
+        Base.Event.ANALYSIS_TASK,
+        Base.Event.ANALYSIS_REQUEST_STOP,
+        Base.Event.ANALYSIS_PROGRESS,
+        Base.Event.CONFIG_UPDATED,
+        Base.Event.EXTRA_TS_CONVERSION_PROGRESS,
+        Base.Event.EXTRA_TS_CONVERSION_FINISHED,
+    )

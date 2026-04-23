@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop-api";
+import {
+  create_analysis_reset_all_plan,
+  create_analysis_reset_failed_plan,
+} from "@/app/project-runtime/analysis-reset";
 import { create_analysis_glossary_import_plan } from "@/app/project-runtime/analysis-glossary-import";
 import { createProjectStoreReplaceSectionPatch } from "@/app/project-runtime/project-store";
 import { serializeQualityRuntimeSnapshot } from "@/app/project-runtime/quality-runtime";
@@ -571,18 +575,61 @@ export function useAnalysisTaskRuntime(
         return;
       }
 
-      let path = "/api/tasks/stop-analysis";
-      if (analysis_confirm_state.kind === "reset-all") {
-        path = "/api/tasks/reset-analysis-all";
-      } else if (analysis_confirm_state.kind === "reset-failed") {
-        path = "/api/tasks/reset-analysis-failed";
+      if (analysis_confirm_state.kind === "stop-analysis") {
+        const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
+          "/api/tasks/stop-analysis",
+          {},
+        );
+        const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
+        apply_analysis_task_snapshot(next_snapshot);
+        sync_runtime_task_snapshot(next_snapshot);
+        set_analysis_confirm_state(null);
+        return;
       }
 
-      const task_payload = await api_fetch<AnalysisTaskCommandPayload>(path, {});
-      const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
-      apply_analysis_task_snapshot(next_snapshot);
-      sync_runtime_task_snapshot(next_snapshot);
-      // 为什么：分析 reset 不直接改工作台快照；这里若等待 workbench barrier，确认弹窗会卡在一个不会推进的 loading 态。
+      const reset_plan =
+        analysis_confirm_state.kind === "reset-all"
+          ? create_analysis_reset_all_plan({
+              state: project_store.getState(),
+            })
+          : await create_analysis_reset_failed_plan({
+              state: project_store.getState(),
+              request_preview: async () => {
+                return await api_fetch<{
+                  status_summary?: Record<string, unknown>;
+                }>("/api/project/analysis/reset-preview", {
+                  mode: "failed",
+                });
+              },
+            });
+      const local_commit = commit_local_project_patch({
+        source:
+          analysis_confirm_state.kind === "reset-all"
+            ? "analysis_reset_all"
+            : "analysis_reset_failed",
+        updatedSections: reset_plan.updatedSections,
+        patch: reset_plan.patch,
+      });
+
+      try {
+        apply_analysis_task_snapshot(
+          normalize_analysis_task_snapshot_payload({
+            task: reset_plan.next_task_snapshot,
+          }),
+        );
+        const mutation_ack = normalize_project_mutation_ack(
+          await api_fetch<ProjectMutationAckPayload>(
+            "/api/project/analysis/reset",
+            reset_plan.requestBody,
+          ),
+        );
+        align_project_runtime_ack(mutation_ack);
+      } catch (error) {
+        local_commit.rollback();
+        void refresh_project_runtime().catch(() => {});
+        throw error;
+      }
+
       set_analysis_confirm_state(null);
     } catch (error) {
       let fallback_message = t("workbench_page.analysis_task.feedback.stop_failed");
@@ -608,9 +655,13 @@ export function useAnalysisTaskRuntime(
     }
   }, [
     analysis_confirm_state,
+    align_project_runtime_ack,
     apply_analysis_task_snapshot,
+    commit_local_project_patch,
     execute_analysis_glossary_import,
+    project_store,
     push_toast,
+    refresh_project_runtime,
     sync_runtime_task_snapshot,
     t,
   ]);

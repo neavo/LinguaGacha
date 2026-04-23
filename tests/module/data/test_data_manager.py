@@ -10,6 +10,7 @@ import pytest
 import module.Data.DataManager as data_manager_module
 from base.Base import Base
 from module.Data.DataManager import DataManager
+from module.Data.Core.Item import Item
 from module.Data.Core.DataTypes import (
     ProjectPrefilterScheduleResult,
 )
@@ -582,3 +583,184 @@ def test_persist_replace_file_payload_compresses_asset_before_store(
         conn=connection,
     )
     db.update_asset_path.assert_not_called()
+
+
+def test_preview_translation_reset_all_assigns_preview_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    parsed_items = [Item(src="A"), Item(src="B")]
+    dm.translation_item_service = SimpleNamespace(
+        get_items_for_translation=MagicMock(return_value=parsed_items)
+    )
+    dm.item_service = SimpleNamespace(
+        preview_replace_all_item_ids=MagicMock(return_value=[9, 10])
+    )
+
+    preview_items = dm.preview_translation_reset_all(SimpleNamespace())
+
+    assert [item["id"] for item in preview_items] == [9, 10]
+    assert [item["src"] for item in preview_items] == ["A", "B"]
+
+
+def test_apply_translation_reset_all_payload_replaces_items_and_clears_analysis_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    connection = SimpleNamespace(commit=MagicMock())
+    db = SimpleNamespace(
+        connection=MagicMock(return_value=contextlib.nullcontext(connection)),
+        set_items=MagicMock(),
+        delete_analysis_item_checkpoints=MagicMock(),
+        clear_analysis_candidate_aggregates=MagicMock(),
+    )
+    dm.session.db = db
+    dm.write_meta_in_connection = MagicMock()
+    dm.replace_session_item_cache = MagicMock()
+    dm.sync_session_meta_cache = MagicMock()
+    dm.assert_expected_runtime_revisions = MagicMock()
+    dm.bump_project_runtime_section_revisions = MagicMock()
+
+    items = dm.apply_translation_reset_all_payload(
+        item_payloads=[
+            {
+                "id": 11,
+                "src": "原文",
+                "dst": "",
+                "name_src": "Alice",
+                "name_dst": None,
+                "extra_field": "",
+                "tag": "",
+                "row": 1,
+                "file_type": "TXT",
+                "file_path": "script/a.txt",
+                "text_type": "NONE",
+                "status": "NONE",
+                "retry_count": 0,
+            }
+        ],
+        translation_extras={"line": 0},
+        project_status="NONE",
+        prefilter_config={"source_language": "JA"},
+        expected_section_revisions={"items": 1, "analysis": 2},
+    )
+
+    assert items == [
+        {
+            "id": 11,
+            "src": "原文",
+            "dst": "",
+            "name_src": "Alice",
+            "name_dst": None,
+            "extra_field": "",
+            "tag": "",
+            "row": 1,
+            "file_type": "TXT",
+            "file_path": "script/a.txt",
+            "text_type": "NONE",
+            "status": "NONE",
+            "retry_count": 0,
+        }
+    ]
+    db.set_items.assert_called_once_with(items, conn=connection)
+    db.delete_analysis_item_checkpoints.assert_called_once_with(conn=connection)
+    db.clear_analysis_candidate_aggregates.assert_called_once_with(conn=connection)
+    dm.replace_session_item_cache.assert_called_once_with(items)
+    dm.sync_session_meta_cache.assert_called_once()
+    dm.bump_project_runtime_section_revisions.assert_called_once_with(
+        ("items", "analysis")
+    )
+
+
+def test_apply_translation_reset_failed_payload_updates_items_and_meta_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    dm.merge_partial_item_payloads = MagicMock(
+        return_value=[
+            {
+                "id": 11,
+                "src": "原文",
+                "dst": "",
+                "status": "NONE",
+                "retry_count": 0,
+            }
+        ]
+    )
+    dm.update_batch = MagicMock()
+    dm.assert_expected_runtime_revisions = MagicMock()
+    dm.bump_project_runtime_section_revision = MagicMock()
+
+    items = dm.apply_translation_reset_failed_payload(
+        item_payloads=[{"id": 11, "dst": "", "status": "NONE", "retry_count": 0}],
+        translation_extras={"line": 3, "error_line": 0},
+        project_status="PROCESSING",
+        expected_section_revisions={"items": 2},
+    )
+
+    assert items == [
+        {
+            "id": 11,
+            "src": "原文",
+            "dst": "",
+            "status": "NONE",
+            "retry_count": 0,
+        }
+    ]
+    dm.update_batch.assert_called_once_with(
+        items=items,
+        meta={
+            "translation_extras": {"line": 3, "error_line": 0},
+            "project_status": "PROCESSING",
+        },
+    )
+    dm.bump_project_runtime_section_revision.assert_called_once_with("items")
+
+
+def test_apply_analysis_reset_all_payload_uses_analysis_service_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    dm.analysis_service = SimpleNamespace(
+        clear_analysis_progress_with_snapshot=MagicMock(
+            return_value={"line": 0, "total_line": 5}
+        )
+    )
+    dm.assert_expected_runtime_revisions = MagicMock()
+    dm.bump_project_runtime_section_revision = MagicMock()
+
+    snapshot = dm.apply_analysis_reset_all_payload(
+        analysis_extras={"line": 0, "total_line": 5},
+        expected_section_revisions={"analysis": 3},
+    )
+
+    assert snapshot == {"line": 0, "total_line": 5}
+    dm.analysis_service.clear_analysis_progress_with_snapshot.assert_called_once_with(
+        {"line": 0, "total_line": 5}
+    )
+    dm.bump_project_runtime_section_revision.assert_called_once_with("analysis")
+
+
+def test_apply_analysis_reset_failed_payload_uses_analysis_service_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dm, _events = build_data_manager(monkeypatch)
+    dm.analysis_service = SimpleNamespace(
+        reset_failed_analysis_with_snapshot=MagicMock(
+            return_value=(2, {"line": 3, "processed_line": 3, "error_line": 0})
+        )
+    )
+    dm.assert_expected_runtime_revisions = MagicMock()
+    dm.bump_project_runtime_section_revision = MagicMock()
+
+    deleted, snapshot = dm.apply_analysis_reset_failed_payload(
+        analysis_extras={"line": 3, "processed_line": 3, "error_line": 0},
+        expected_section_revisions={"analysis": 4},
+    )
+
+    assert deleted == 2
+    assert snapshot == {"line": 3, "processed_line": 3, "error_line": 0}
+    dm.analysis_service.reset_failed_analysis_with_snapshot.assert_called_once_with(
+        {"line": 3, "processed_line": 3, "error_line": 0}
+    )
+    dm.bump_project_runtime_section_revision.assert_called_once_with("analysis")

@@ -409,6 +409,123 @@ def test_clear_analysis_progress_clears_tables_and_meta() -> None:
     assert service.get_analysis_candidate_count_cache() == 0
 
 
+def test_preview_failed_reset_status_summary_excludes_error_checkpoints() -> None:
+    service, _session = build_analysis_service()
+    service.item_service.get_all_items.return_value = [
+        Item.from_dict(
+            {
+                "id": 1,
+                "src": "Alice",
+                "file_path": "story.txt",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ),
+        Item.from_dict(
+            {
+                "id": 2,
+                "src": "Bob",
+                "file_path": "story.txt",
+                "status": Base.ProjectStatus.NONE,
+            }
+        ),
+    ]
+    service.repository.get_item_checkpoints = MagicMock(
+        return_value={
+            1: {
+                "item_id": 1,
+                "status": Base.ProjectStatus.PROCESSED,
+                "updated_at": ANALYSIS_TIME,
+                "error_count": 0,
+            },
+            2: {
+                "item_id": 2,
+                "status": Base.ProjectStatus.ERROR,
+                "updated_at": ANALYSIS_TIME,
+                "error_count": 1,
+            },
+        }
+    )
+
+    summary = service.preview_failed_reset_status_summary()
+
+    assert summary == {
+        "total_line": 2,
+        "processed_line": 1,
+        "error_line": 0,
+        "line": 1,
+    }
+
+
+def test_clear_analysis_progress_with_snapshot_normalizes_and_persists_snapshot() -> (
+    None
+):
+    service, _session = build_analysis_service()
+
+    snapshot = service.clear_analysis_progress_with_snapshot(
+        {
+            "start_time": "1.5",
+            "time": "2.0",
+            "total_line": "5",
+        }
+    )
+
+    assert snapshot == {
+        "start_time": 1.5,
+        "time": 2.0,
+        "total_line": 5,
+        "line": 0,
+        "processed_line": 0,
+        "error_line": 0,
+        "total_tokens": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+    }
+    assert service.get_analysis_candidate_count_cache() == 0
+
+
+def test_reset_failed_analysis_with_snapshot_normalizes_and_returns_deleted_count() -> (
+    None
+):
+    service, _session = build_analysis_service()
+    service.repository.reset_failed_checkpoints_with_snapshot = MagicMock(
+        return_value=(
+            2,
+            {
+                "start_time": "3.0",
+                "time": "4.0",
+                "total_line": "5",
+                "line": "3",
+                "processed_line": "3",
+                "error_line": "0",
+            },
+        )
+    )
+
+    deleted, snapshot = service.reset_failed_analysis_with_snapshot(
+        {
+            "start_time": 3.0,
+            "time": 4.0,
+            "total_line": 5,
+            "line": 3,
+            "processed_line": 3,
+            "error_line": 0,
+        }
+    )
+
+    assert deleted == 2
+    assert snapshot == {
+        "start_time": 3.0,
+        "time": 4.0,
+        "total_line": 5,
+        "line": 3,
+        "processed_line": 3,
+        "error_line": 0,
+        "total_tokens": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+    }
+
+
 def test_analysis_helpers_normalize_control_code_and_skipped_statuses() -> None:
     service, _session = build_analysis_service()
 

@@ -1,7 +1,10 @@
 from typing import Any
 
+from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
+from module.Engine.Engine import Engine
+from module.Localizer.Localizer import Localizer
 from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
 from api.Contract.ProjectPayloads import ProjectPreviewPayload
 from api.Contract.ProjectPayloads import ProjectSnapshotPayload
@@ -10,9 +13,18 @@ from api.Contract.ProjectPayloads import ProjectSnapshotPayload
 class ProjectAppService:
     """工程用例层，负责把数据层调用收口为稳定响应载荷。"""
 
-    def __init__(self, project_manager: Any | None = None) -> None:
+    def __init__(
+        self,
+        project_manager: Any | None = None,
+        engine: Any | None = None,
+        config_loader: Any | None = None,
+    ) -> None:
         self.project_manager = (
             project_manager if project_manager is not None else DataManager.get()
+        )
+        self.engine = engine if engine is not None else Engine.get()
+        self.config_loader = (
+            config_loader if config_loader is not None else lambda: Config().load()
         )
         quality_rule_service = getattr(
             self.project_manager,
@@ -114,6 +126,101 @@ class ProjectAppService:
         )
         return self.runtime_service.build_project_mutation_ack(["items", "analysis"])
 
+    def preview_translation_reset(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, object]:
+        mode = str(request.get("mode", "") or "").lower()
+        if mode != "all":
+            raise ValueError("translation reset preview 仅支持 mode=all")
+
+        self.ensure_translation_mutation_ready()
+        items = self.project_manager.preview_translation_reset_all(self.config_loader())
+        return {"items": [dict(item) for item in items]}
+
+    def apply_translation_reset(self, request: dict[str, Any]) -> dict[str, object]:
+        mode = str(request.get("mode", "") or "").lower()
+        self.ensure_translation_mutation_ready()
+
+        expected_section_revisions = self.normalize_expected_section_revisions(
+            request.get("expected_section_revisions")
+        )
+        if mode == "all":
+            items_raw = request.get("items", [])
+            item_payloads = (
+                [dict(item) for item in items_raw if isinstance(item, dict)]
+                if isinstance(items_raw, list)
+                else []
+            )
+            translation_extras = self.normalize_dict_payload(
+                request.get("translation_extras")
+            )
+            prefilter_config = self.normalize_dict_payload(
+                request.get("prefilter_config")
+            )
+            self.project_manager.apply_translation_reset_all_payload(
+                item_payloads=item_payloads,
+                translation_extras=translation_extras,
+                project_status=str(request.get("project_status", "NONE") or "NONE"),
+                prefilter_config=prefilter_config,
+                expected_section_revisions=expected_section_revisions,
+            )
+            return self.runtime_service.build_project_mutation_ack(
+                ["items", "analysis"]
+            )
+
+        if mode == "failed":
+            items_raw = request.get("items", [])
+            item_payloads = (
+                [dict(item) for item in items_raw if isinstance(item, dict)]
+                if isinstance(items_raw, list)
+                else []
+            )
+            translation_extras = self.normalize_dict_payload(
+                request.get("translation_extras")
+            )
+            self.project_manager.apply_translation_reset_failed_payload(
+                item_payloads=item_payloads,
+                translation_extras=translation_extras,
+                project_status=str(request.get("project_status", "NONE") or "NONE"),
+                expected_section_revisions=expected_section_revisions,
+            )
+            return self.runtime_service.build_project_mutation_ack(["items"])
+
+        raise ValueError("translation reset 仅支持 mode=all 或 mode=failed")
+
+    def preview_analysis_reset(self, request: dict[str, Any]) -> dict[str, object]:
+        mode = str(request.get("mode", "") or "").lower()
+        if mode != "failed":
+            raise ValueError("analysis reset preview 仅支持 mode=failed")
+
+        self.ensure_analysis_mutation_ready()
+        return {"status_summary": self.project_manager.preview_analysis_reset_failed()}
+
+    def apply_analysis_reset(self, request: dict[str, Any]) -> dict[str, object]:
+        mode = str(request.get("mode", "") or "").lower()
+        self.ensure_analysis_mutation_ready()
+
+        analysis_extras = self.normalize_dict_payload(request.get("analysis_extras"))
+        expected_section_revisions = self.normalize_expected_section_revisions(
+            request.get("expected_section_revisions")
+        )
+        if mode == "all":
+            self.project_manager.apply_analysis_reset_all_payload(
+                analysis_extras=analysis_extras,
+                expected_section_revisions=expected_section_revisions,
+            )
+            return self.runtime_service.build_project_mutation_ack(["analysis"])
+
+        if mode == "failed":
+            self.project_manager.apply_analysis_reset_failed_payload(
+                analysis_extras=analysis_extras,
+                expected_section_revisions=expected_section_revisions,
+            )
+            return self.runtime_service.build_project_mutation_ack(["analysis"])
+
+        raise ValueError("analysis reset 仅支持 mode=all 或 mode=failed")
+
     def sync_project_settings_meta(self, request: dict[str, Any]) -> dict[str, object]:
         """把当前设置里的项目镜像字段写回 .lg。"""
 
@@ -188,3 +295,46 @@ class ProjectAppService:
 
         is_loaded = bool(self.project_manager.is_loaded())
         return ProjectSnapshotPayload(path=project_path, loaded=is_loaded).to_dict()
+
+    def ensure_analysis_mutation_ready(self) -> str:
+        """分析 reset preview/apply 共用的前置校验。"""
+
+        if bool(getattr(self.engine, "is_busy", lambda: False)()):
+            raise ValueError(Localizer.get().task_running)
+
+        is_loaded = getattr(self.project_manager, "is_loaded", None)
+        get_lg_path = getattr(self.project_manager, "get_lg_path", None)
+        if not callable(is_loaded) or not callable(get_lg_path) or not is_loaded():
+            raise ValueError(Localizer.get().alert_project_not_loaded)
+
+        lg_path = str(get_lg_path() or "")
+        if lg_path == "":
+            raise ValueError(Localizer.get().alert_project_not_loaded)
+        return lg_path
+
+    def ensure_translation_mutation_ready(self) -> str:
+        """翻译 reset preview/apply 共用的前置校验。"""
+
+        return self.ensure_analysis_mutation_ready()
+
+    def normalize_dict_payload(self, value: Any) -> dict[str, Any]:
+        return dict(value) if isinstance(value, dict) else {}
+
+    def normalize_expected_section_revisions(
+        self,
+        value: Any,
+    ) -> dict[str, int] | None:
+        if not isinstance(value, dict):
+            return None
+
+        normalized: dict[str, int] = {}
+        for section, revision in value.items():
+            if not isinstance(section, str):
+                continue
+            try:
+                normalized[section] = int(revision)
+            except TypeError:
+                continue
+            except ValueError:
+                continue
+        return normalized

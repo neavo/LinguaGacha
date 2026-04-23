@@ -11,7 +11,7 @@
 | 预过滤重跑 | `DataManager.py` -> `Project/ProjectPrefilterService.py` |
 | 规则页、提示词、预设 | `DataManager.py` -> `Quality/QualityRuleService.py` -> `Quality/QualityRuleFacadeService.py` / `PromptService.py` / `QualityRulePresetService.py` |
 | 分析进度、候选池、候选聚合 | `DataManager.py` -> `Analysis/AnalysisService.py` |
-| 翻译条目准备与重置 | `DataManager.py` -> `Translation/TranslationItemService.py` / `Translation/TranslationResetService.py` |
+| 翻译条目准备与 reset apply | `DataManager.py` -> `Translation/TranslationItemService.py` / `Analysis/AnalysisService.py` |
 | 校对页保存、重翻与本地 runtime 输入事实 | `api/Application/ProofreadingAppService.py` -> `Proofreading/*` |
 | 繁简转换、姓名字段 | `api/Application/ExtraAppService.py` -> `Extra/*` |
 | 外部文件格式解析与写回 | [`../File/SPEC.md`](../File/SPEC.md) -> `../File/FileManager.py` |
@@ -30,7 +30,7 @@
 | `Analysis/` | 分析进度、候选聚合、checkpoint 与分析结果写回 |
 | `Proofreading/` | 校对条目范围判断、revision 冲突、保存、重检与重翻 |
 | `Extra/` | 繁简转换、姓名字段提取与导入术语 |
-| `Translation/` | 翻译任务取条目与翻译失败/重置后的数据整理 |
+| `Translation/` | 翻译任务取条目与任务输入整理 |
 
 ## 边界与入口
 - `DataManager` 持有 `ProjectSession`，负责工程加载态、条目与规则缓存、事件发射和跨 service 编排。
@@ -73,7 +73,7 @@ flowchart TD
 | 项目运行态 bootstrap / patch 构建 | `ProjectBootstrapAppService` / `ProjectRuntimeService` -> `DataManager` |
 | 规则、提示词、预设 | `DataManager` -> `QualityRuleService` / `PromptService` / `QualityRulePresetService` |
 | 分析进度、候选聚合 | `DataManager` -> `AnalysisService` |
-| 翻译取条目、翻译重置 | `DataManager` -> `TranslationItemService` / `TranslationResetService` |
+| 翻译取条目、translation/analysis reset apply | `DataManager` -> `TranslationItemService` / `AnalysisService` |
 | 校对页保存、重翻与 revision | `ProofreadingAppService` -> `ProofreadingMutationService` / `ProofreadingRetranslateService` / `ProofreadingRevisionService` |
 | 繁简转换、姓名字段 | `ExtraAppService` -> `TsConversionService` / `NameFieldExtractionService` |
 
@@ -118,7 +118,6 @@ flowchart TD
 
 ### `Translation`
 - `TranslationItemService`：翻译任务取条目
-- `TranslationResetService`：翻译失败/重置后的进度整理与状态回写
 
 ## 页面快照真实依赖与失效判定
 ### 工作台快照
@@ -151,8 +150,9 @@ flowchart TD
 - 工作台 `add / replace / reset / delete / delete-batch / reorder` 的最终业务事实由前端 planner 先在 `ProjectStore` 中生成并本地 patch；Python 侧持久化 finalized payload 后返回 `ProjectMutationAck`。
 - 会重建 `items` 或 `analysis` 事实的工作台同步 mutation，必须在同一事务里同时写入 items/meta，并清空 `analysis_item_checkpoint` 与 `analysis_candidate_aggregate`。
 - `ProjectItemChange` 只用于条目级增量 patch，例如翻译任务批量提交终态条目。
+- `translation reset all/failed` 与 `analysis reset all/failed` 也是同步 mutation：前端 planner 先产出本地 patch，`DataManager` 再持久化 items / meta / analysis 事实并回传 `ProjectMutationAck`。
 - 校对 `save-item`、`replace-all`、`save-all(reset)` 也是同步 mutation；`retranslate-items` 保持任务型链路。
-- 对 Electron 主路径来说，同步 mutation 通过 `commit_local_project_patch(...) + ProjectMutationAck` 对齐 `ProjectStore` revision；`project.patch` 只留给异步任务、reset 和校对重译等链路。
+- 对 Electron 主路径来说，同步 mutation 通过 `commit_local_project_patch(...) + ProjectMutationAck` 对齐 `ProjectStore` revision；`project.patch` 只留给异步任务、校对重译与后端显式运行态补丁链路。
 
 ## 修改建议
 | 变更类型 | 优先落点 |
@@ -164,7 +164,8 @@ flowchart TD
 | 分析 checkpoint、候选池、候选聚合 | `Analysis/` |
 | 校对页条目范围、保存、重检、重翻 | `Proofreading/` |
 | 繁简转换、姓名字段 | `Extra/` |
-| 翻译取条目与重置 | `Translation/` |
+| 翻译取条目 | `Translation/` |
+| translation / analysis reset preview 与 apply | `DataManager.py` / `Analysis/` |
 
 ### 什么时候改 `DataManager`
 - 需要新增对外公开方法时

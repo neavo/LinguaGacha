@@ -8,10 +8,9 @@ from typing import Any
 
 from base.Base import Base
 from base.LogManager import LogManager
-from module.Data.Core.Item import Item
 from module.Config import Config
+from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
-from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskPipeline import TaskPipeline
@@ -27,6 +26,7 @@ from module.Engine.Translation.TranslationTaskHooks import TranslationTaskHooks
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 
 # 翻译器
@@ -66,11 +66,6 @@ class Translation(Base):
         self.subscribe(Base.Event.TRANSLATION_TASK, self.translation_run_event)
         self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.translation_stop_event)
         self.subscribe(Base.Event.TRANSLATION_EXPORT, self.translation_export)
-        self.subscribe(Base.Event.TRANSLATION_RESET_ALL, self.translation_reset)
-        self.subscribe(
-            Base.Event.TRANSLATION_RESET_FAILED,
-            self.translation_reset,
-        )
 
     def get_concurrency_in_use(self) -> int:
         limiter = self.task_limiter
@@ -204,57 +199,7 @@ class Translation(Base):
         )
         # 同步流式下 stop 依赖底层 SDK/HTTP 超时收尾，响应可能有延迟；后续可优化为可中断 IO。
 
-    # 翻译重置事件
-    def translation_reset(self, event: Base.Event, data: dict) -> None:
-        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
-        if sub_event != Base.SubEvent.REQUEST:
-            return
-
-        reset_event: Base.Event
-        is_reset_all = event == Base.Event.TRANSLATION_RESET_ALL
-        if is_reset_all:
-            reset_event = Base.Event.TRANSLATION_RESET_ALL
-        else:
-            reset_event = Base.Event.TRANSLATION_RESET_FAILED
-
-        dm = DataManager.get()
-
-        def run_reset_worker() -> None:
-            if is_reset_all:
-                # 这里必须强制重解析 assets，避免沿用旧数据库里残留的条目和进度。
-                items = dm.get_items_for_translation(
-                    self.config, Base.TranslationMode.RESET
-                )
-                dm.replace_all_items(items)
-                dm.set_translation_extras({})
-                dm.set_project_status(Base.ProjectStatus.NONE)
-                self.extras = dm.get_translation_extras()
-                dm.run_project_prefilter(
-                    self.config,
-                    reason="translation_reset",
-                )
-            else:
-                reset_result = dm.reset_failed_translation_items_sync()
-                if reset_result is not None:
-                    _change, extras = reset_result
-                    self.extras = extras
-
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-
-        TaskRunnerLifecycle.run_reset_flow(
-            self,
-            reset_event=reset_event,
-            progress_message=Localizer.get().translation_resetting,
-            worker=run_reset_worker,
-            thread_factory=threading.Thread,
-            ensure_loaded=dm.is_loaded,
-        )
-
     # 翻译结果手动导出事件
-
     def should_use_runtime_export_items(self, source: ExportSource) -> bool:
         """判断当前导出是否应该优先信任翻译运行态快照。"""
         if self.items_cache is None:

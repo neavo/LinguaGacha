@@ -285,56 +285,6 @@ def test_start_continue_without_pending_tasks_does_not_emit_followup_event(
     )
 
 
-def test_analysis_reset_failed_rebuilds_progress_without_clearing_candidates(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_data_manager,
-) -> None:
-    fake_data_manager.analysis_extras = {
-        "time": 9.0,
-        "total_input_tokens": 4,
-        "total_output_tokens": 6,
-        "total_tokens": 10,
-    }
-    fake_data_manager.analysis_candidate_count = 5
-    fake_data_manager.analysis_item_checkpoints = {
-        1: {"status": Base.ProjectStatus.PROCESSED},
-        2: {"status": Base.ProjectStatus.ERROR},
-    }
-    monkeypatch.setattr(
-        analysis_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
-
-    analysis = Analysis()
-
-    monkeypatch.setattr(analysis_module.threading, "Thread", ImmediateThread)
-    monkeypatch.setattr(
-        analysis,
-        "build_progress_snapshot",
-        lambda previous_extras, continue_mode: build_analysis_progress_snapshot(
-            total_line=2,
-            line=1,
-            processed_line=1,
-            error_line=0,
-            time_value=9.0,
-            total_tokens=10,
-            total_input_tokens=4,
-            total_output_tokens=6,
-        ),
-    )
-
-    analysis.analysis_reset(
-        Base.Event.ANALYSIS_RESET_FAILED,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert 2 not in fake_data_manager.analysis_item_checkpoints
-    assert fake_data_manager.analysis_candidate_count == 5
-    assert fake_data_manager.analysis_extras["processed_line"] == 1
-    assert fake_data_manager.analysis_extras["error_line"] == 0
-
-
 def test_start_stopped_does_not_import_candidates(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,

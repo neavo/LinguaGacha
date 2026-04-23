@@ -37,18 +37,6 @@ class ProjectPatchEventBridge:
         if self.is_analysis_done_event(event, data):
             return self.PROJECT_PATCH_TOPIC, self.build_analysis_task_patch(data)
 
-        if self.is_translation_reset_done_event(event, data):
-            return (
-                self.PROJECT_PATCH_TOPIC,
-                self.build_translation_reset_refresh_patch(event),
-            )
-
-        if self.is_analysis_reset_done_event(event, data):
-            return (
-                self.PROJECT_PATCH_TOPIC,
-                self.build_analysis_reset_refresh_patch(event),
-            )
-
         return self.event_bridge.map_event(event, data)
 
     def build_translation_task_patch(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -130,46 +118,6 @@ class ProjectPatchEventBridge:
             "sectionRevisions": section_revisions,
         }
 
-    def build_translation_reset_refresh_patch(
-        self,
-        event: Base.Event,
-    ) -> dict[str, Any]:
-        """翻译 reset 完成后，要求前端重拉受影响运行态，解除工作台确认态。"""
-
-        if event == Base.Event.TRANSLATION_RESET_ALL:
-            updated_sections = ["items", "analysis", "task"]
-            source = "translation_reset_all"
-        else:
-            updated_sections = ["items", "task"]
-            source = "translation_reset_failed"
-
-        section_revisions = self.build_section_revisions(updated_sections)
-        return {
-            "source": source,
-            "projectRevision": max(section_revisions.values(), default=0),
-            "updatedSections": updated_sections,
-            "sectionRevisions": section_revisions,
-        }
-
-    def build_analysis_reset_refresh_patch(
-        self,
-        event: Base.Event,
-    ) -> dict[str, Any]:
-        """分析 reset 完成后，要求前端重拉分析相关运行态。"""
-
-        source = (
-            "analysis_reset_all"
-            if event == Base.Event.ANALYSIS_RESET_ALL
-            else "analysis_reset_failed"
-        )
-        section_revisions = self.build_section_revisions(["analysis", "task"])
-        return {
-            "source": source,
-            "projectRevision": max(section_revisions.values(), default=0),
-            "updatedSections": ["analysis", "task"],
-            "sectionRevisions": section_revisions,
-        }
-
     def is_translation_done_event(
         self,
         event: Base.Event,
@@ -191,38 +139,6 @@ class ProjectPatchEventBridge:
 
         return (
             event == Base.Event.ANALYSIS_TASK
-            and data.get("sub_event") == Base.SubEvent.DONE
-        )
-
-    def is_translation_reset_done_event(
-        self,
-        event: Base.Event,
-        data: dict[str, Any],
-    ) -> bool:
-        """翻译 reset 只在成功终态时推进运行态刷新。"""
-
-        return (
-            event
-            in (
-                Base.Event.TRANSLATION_RESET_ALL,
-                Base.Event.TRANSLATION_RESET_FAILED,
-            )
-            and data.get("sub_event") == Base.SubEvent.DONE
-        )
-
-    def is_analysis_reset_done_event(
-        self,
-        event: Base.Event,
-        data: dict[str, Any],
-    ) -> bool:
-        """分析 reset 只在成功终态时推进运行态刷新。"""
-
-        return (
-            event
-            in (
-                Base.Event.ANALYSIS_RESET_ALL,
-                Base.Event.ANALYSIS_RESET_FAILED,
-            )
             and data.get("sub_event") == Base.SubEvent.DONE
         )
 

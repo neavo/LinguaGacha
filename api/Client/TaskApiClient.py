@@ -27,23 +27,11 @@ class TaskApiClient:
     def stop_translation(self) -> TaskSnapshot:
         return self.post_task_snapshot(TaskRoutes.STOP_TRANSLATION_PATH)
 
-    def reset_translation_all(self) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.RESET_TRANSLATION_ALL_PATH)
-
-    def reset_translation_failed(self) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.RESET_TRANSLATION_FAILED_PATH)
-
     def start_analysis(self, request: dict[str, Any]) -> TaskSnapshot:
         return self.post_task_snapshot(TaskRoutes.START_ANALYSIS_PATH, request)
 
     def stop_analysis(self) -> TaskSnapshot:
         return self.post_task_snapshot(TaskRoutes.STOP_ANALYSIS_PATH)
-
-    def reset_analysis_all(self) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.RESET_ANALYSIS_ALL_PATH)
-
-    def reset_analysis_failed(self) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.RESET_ANALYSIS_FAILED_PATH)
 
     def export_translation(self) -> dict[str, Any]:
         return self.api_client.post(TaskRoutes.EXPORT_TRANSLATION_PATH, {})

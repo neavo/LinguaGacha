@@ -162,16 +162,16 @@ flowchart LR
 | `settings.changed` | 只是设置广播，不等于页面必须整体刷新 |
 | `project.patch` | 是 `ProjectPatchEventBridge` 额外补出的运行态补丁，不属于普通公开 topic 枚举 |
 
-### 3.5 `project.patch` 只有两类稳定语义
-`project.patch` 至少包含 `source` 与 `updatedSections`，其余字段按语义选择性出现：
+### 3.5 `project.patch` 只承载运行态补丁
+`project.patch` 至少包含 `source`、`updatedSections` 与 `patch`，并在可用时带 `projectRevision`、`sectionRevisions`：
 
 | 语义 | 形状 | 典型来源 |
 | --- | --- | --- |
-| 增量补丁 | `projectRevision + patch + sectionRevisions` | 翻译任务提交条目、分析任务终态、显式运行态 patch |
-| 刷新信号 | `updatedSections + sectionRevisions` | 翻译 reset、分析 reset、前端需重拉受影响 section 的场景 |
+| 任务终态补丁 | `source + updatedSections + patch + sectionRevisions + projectRevision` | 翻译任务 DONE、分析任务 DONE |
+| 显式运行态补丁 | `source + updatedSections + patch + sectionRevisions + projectRevision` | `PROJECT_RUNTIME_PATCH` 事件 |
 
 规则：
-- 调用方不能假设所有 `project.patch` 都自带 `patch` 数组。
+- 调用方可以把 `project.patch` 当成可直接合并到 `ProjectStore` 的补丁事件，而不是刷新提示。
 - 同步 mutation 成功路径不依赖额外 `project.patch` 确认事实落地；修订号对齐由 `ProjectMutationAck` 负责。
 
 ## 4. 路由族与真正需要记住的约束
@@ -193,12 +193,14 @@ flowchart LR
 - `project`、`workbench`、`proofreading` 共用前缀，但分别由不同 Application 服务负责。
 - 工作台和校对页的运行态真值来自 bootstrap + `ProjectStore`；API 不提供整页 `workbench` 快照，也不提供文件级并行 patch 路由。
 - `workbench/parse-file` 是只读解析路由：只读取本地文件并返回标准化 preview，不落库、不清缓存、不发事件。
+- `translation/reset-preview`、`translation/reset`、`analysis/reset-preview`、`analysis/reset` 也落在 `/api/project/*`，因为它们属于项目运行态同步 mutation，而不是后台线程任务路由。
 - 工作台同步写接口和校对同步保存接口都以 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` 作为统一回执。
 - `reorder-files` 的隐藏硬约束是 `ordered_rel_paths` 必须完整覆盖当前文件集合。
 
 ### 4.3 同步 mutation 与任务型接口
-- 工作台 `add-file / replace-file / reset-file / delete-file / delete-file-batch / reorder-files` 与校对 `save-item / save-all / replace-all` 都属于同步 mutation：前端先本地 patch，服务端持久化后返回 `ProjectMutationAck` 对齐 revision。
-- `retranslate-items`、翻译任务、分析任务与 reset 链路属于任务型接口，完成后仍通过任务事件和必要的 `project.patch` 推进运行态。
+- 工作台 `add-file / replace-file / reset-file / delete-file / delete-file-batch / reorder-files`、校对 `save-item / save-all / replace-all`，以及 `translation/reset`、`analysis/reset` 都属于同步 mutation：前端先本地 patch，服务端持久化后返回 `ProjectMutationAck` 对齐 revision。
+- `translation/reset-preview` 与 `analysis/reset-preview` 是 reset planner 的只读预演入口，不改运行态事实。
+- `retranslate-items`、翻译任务与分析任务才属于任务型接口，完成后通过任务事件和必要的 `project.patch` 推进运行态。
 - `/api/project/analysis/import-glossary` 也是同步 mutation：前端提交已筛好的 `entries`、`analysis_candidate_count`、`expected_section_revisions`，以及单独的 `expected_glossary_revision`；服务端会分别校验运行态 section revision 与 glossary 自身 revision，再负责持久化与 revision 对齐。
 - `tasks/snapshot` 是按需快照，不是订阅入口；分析任务快照在可用时会额外带 `analysis_candidate_count`。
 - `export-translation` 只有最小 `accepted` 回执，没有稳定 DTO 边界。

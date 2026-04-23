@@ -9,20 +9,16 @@ class Base:
     REPO_URL: str = "https://github.com/neavo/LinguaGacha"
     USER_AGENT_NAME: str = "LinguaGacha"
 
-    # 翻译/分析事件速查表（优先看这里）：
+    # 翻译/分析事件速查表：
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
     # | 事件名                        | sub_event                     | 语义                                           | 常见字段                                                  |
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
     # | TRANSLATION_TASK              | REQUEST / RUN / DONE / ERROR | 发起或继续翻译任务，并回传任务终态            | mode, final_status(SUCCESS/STOPPED/FAILED), message      |
     # | TRANSLATION_REQUEST_STOP      | REQUEST / RUN                | 请求停止当前正在执行的翻译任务（不单独发 DONE）| 无                                                        |
     # | TRANSLATION_PROGRESS          | （按快照事件处理）           | 上报翻译进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
-    # | TRANSLATION_RESET_ALL         | REQUEST / RUN / DONE / ERROR | 重置全部条目                                   | 无                                                        |
-    # | TRANSLATION_RESET_FAILED      | REQUEST / RUN / DONE / ERROR | 仅重置失败条目                                 | 无                                                        |
     # | ANALYSIS_TASK                 | REQUEST / RUN / DONE / ERROR | 发起或继续术语分析任务，并回传任务终态         | mode, final_status(SUCCESS/STOPPED/FAILED), message      |
     # | ANALYSIS_REQUEST_STOP         | REQUEST / RUN                | 请求停止当前正在执行的分析任务（不单独发 DONE）| 无                                                        |
     # | ANALYSIS_PROGRESS             | （按快照事件处理）           | 上报分析进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
-    # | ANALYSIS_RESET_ALL            | REQUEST / RUN / DONE / ERROR | 重置全部分析进度                               | 无                                                        |
-    # | ANALYSIS_RESET_FAILED         | REQUEST / RUN / DONE / ERROR | 仅重置失败的分析进度                           | 无                                                        |
     # | PROJECT_RUNTIME_PATCH         | UPDATE                       | 直接推送 V2 运行态补丁                        | updatedSections, patch, sectionRevisions, projectRevision |
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
 
@@ -36,15 +32,11 @@ class Base:
         )
         TRANSLATION_PROGRESS = "TRANSLATION_PROGRESS"  # 翻译 - 进度快照更新
         TRANSLATION_EXPORT = "TRANSLATION_EXPORT"  # 翻译 - 导出
-        TRANSLATION_RESET_ALL = "TRANSLATION_RESET_ALL"  # 翻译 - 重置全部
-        TRANSLATION_RESET_FAILED = "TRANSLATION_RESET_FAILED"  # 翻译 - 仅重置失败项
         ANALYSIS_TASK = "ANALYSIS_TASK"  # 分析 - 任务生命周期事件（发起/运行/结束）
         ANALYSIS_REQUEST_STOP = (
             "ANALYSIS_REQUEST_STOP"  # 分析 - 停止当前任务请求链路（REQUEST/RUN）
         )
         ANALYSIS_PROGRESS = "ANALYSIS_PROGRESS"  # 分析 - 进度快照更新
-        ANALYSIS_RESET_ALL = "ANALYSIS_RESET_ALL"  # 分析 - 重置全部
-        ANALYSIS_RESET_FAILED = "ANALYSIS_RESET_FAILED"  # 分析 - 仅重置失败项
         APP_UPDATE_CHECK = "APP_UPDATE_CHECK"  # 更新 - 检查生命周期事件
         APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"  # 更新 - 下载生命周期事件
         APP_UPDATE_APPLY = "APP_UPDATE_APPLY"  # 更新 - 应用流程
@@ -118,18 +110,8 @@ class Base:
     BUSY_STATE_EVENTS: tuple[Event, ...] = (
         Event.TRANSLATION_TASK,
         Event.TRANSLATION_REQUEST_STOP,
-        Event.TRANSLATION_RESET_ALL,
-        Event.TRANSLATION_RESET_FAILED,
         Event.ANALYSIS_TASK,
         Event.ANALYSIS_REQUEST_STOP,
-        Event.ANALYSIS_RESET_ALL,
-        Event.ANALYSIS_RESET_FAILED,
-    )
-    RESET_PROGRESS_EVENTS: tuple[Event, ...] = (
-        Event.TRANSLATION_RESET_ALL,
-        Event.TRANSLATION_RESET_FAILED,
-        Event.ANALYSIS_RESET_ALL,
-        Event.ANALYSIS_RESET_FAILED,
     )
     API_STREAM_SOURCE_EVENTS: tuple[Event, ...] = (
         Event.PROJECT_LOADED,
@@ -138,13 +120,9 @@ class Base:
         Event.TRANSLATION_TASK,
         Event.TRANSLATION_REQUEST_STOP,
         Event.TRANSLATION_PROGRESS,
-        Event.TRANSLATION_RESET_ALL,
-        Event.TRANSLATION_RESET_FAILED,
         Event.ANALYSIS_TASK,
         Event.ANALYSIS_REQUEST_STOP,
         Event.ANALYSIS_PROGRESS,
-        Event.ANALYSIS_RESET_ALL,
-        Event.ANALYSIS_RESET_FAILED,
         Event.CONFIG_UPDATED,
         Event.EXTRA_TS_CONVERSION_PROGRESS,
         Event.EXTRA_TS_CONVERSION_FINISHED,
@@ -196,14 +174,6 @@ class Base:
 
         for event in self.BUSY_STATE_EVENTS:
             self.subscribe(event, handler)
-
-    @classmethod
-    def is_terminal_reset_event(cls, event: Event, data: dict) -> bool:
-        """仅在重置事件进入终态时返回 True，避免请求态误刷新 UI。"""
-
-        if event not in cls.RESET_PROGRESS_EVENTS:
-            return False
-        return data.get("sub_event") in (cls.SubEvent.DONE, cls.SubEvent.ERROR)
 
     @classmethod
     def is_engine_busy(cls, status: TaskStatus) -> bool:

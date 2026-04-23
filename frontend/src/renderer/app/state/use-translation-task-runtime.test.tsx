@@ -4,7 +4,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useAnalysisTaskRuntime } from "@/app/state/use-analysis-task-runtime";
+import { useTranslationTaskRuntime } from "@/app/state/use-translation-task-runtime";
 
 const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   return {
@@ -12,12 +12,6 @@ const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
     push_toast_mock: vi.fn(),
   };
 });
-
-const run_modal_progress_toast_mock = vi.fn(
-  async <T,>(args: { message: string; task: () => Promise<T> }): Promise<T> => {
-    return await args.task();
-  },
-);
 
 type RuntimeFixture = {
   project_store: {
@@ -27,9 +21,9 @@ type RuntimeFixture = {
     loaded: boolean;
     path: string;
   };
-  workbench_change_signal: {
-    seq: number;
-    reason: string;
+  settings_snapshot: {
+    source_language: string;
+    mtool_optimizer_enable: boolean;
   };
   set_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
@@ -39,12 +33,7 @@ type RuntimeFixture = {
 };
 
 const runtime_fixture: { current: RuntimeFixture } = {
-  current: create_runtime_fixture(
-    create_task_snapshot({
-      status: "RUN",
-      busy: true,
-    }),
-  ),
+  current: create_runtime_fixture(),
 };
 
 vi.mock("@/app/desktop-api", () => {
@@ -63,7 +52,6 @@ vi.mock("@/app/state/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
-      run_modal_progress_toast: run_modal_progress_toast_mock,
     }),
   };
 });
@@ -76,29 +64,7 @@ vi.mock("@/i18n", () => {
   };
 });
 
-function create_task_snapshot(
-  overrides: Partial<Record<string, unknown>> = {},
-): Record<string, unknown> {
-  return {
-    task_type: "analysis",
-    status: "IDLE",
-    busy: false,
-    request_in_flight_count: 0,
-    line: 0,
-    total_line: 10,
-    processed_line: 0,
-    error_line: 0,
-    total_tokens: 0,
-    total_output_tokens: 0,
-    total_input_tokens: 0,
-    time: 0,
-    start_time: 0,
-    analysis_candidate_count: 0,
-    ...overrides,
-  };
-}
-
-function create_runtime_fixture(task_snapshot: Record<string, unknown>): RuntimeFixture {
+function create_runtime_fixture(): RuntimeFixture {
   const rollback = vi.fn();
 
   return {
@@ -120,80 +86,58 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
             item_id: 1,
             file_path: "script/a.txt",
             row_number: 1,
-            src: "alpha",
-            dst: "",
-            status: "NONE",
+            src: "failed",
+            dst: "old",
+            status: "ERROR",
             text_type: "NONE",
-            retry_count: 0,
+            retry_count: 1,
           },
         },
         quality: {
-          glossary: {
-            entries: [],
-            enabled: true,
-            mode: "custom",
-            revision: 1,
-          },
-          pre_replacement: {
-            entries: [],
-            enabled: false,
-            mode: "off",
-            revision: 0,
-          },
-          post_replacement: {
-            entries: [],
-            enabled: false,
-            mode: "off",
-            revision: 0,
-          },
-          text_preserve: {
-            entries: [],
-            enabled: false,
-            mode: "off",
-            revision: 0,
-          },
+          glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
+          pre_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
+          post_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
+          text_preserve: { entries: [], enabled: false, mode: "off", revision: 0 },
         },
         prompts: {
-          translation: {
-            text: "",
-            enabled: false,
-            revision: 0,
-          },
-          analysis: {
-            text: "",
-            enabled: false,
-            revision: 0,
-          },
+          translation: { text: "", enabled: false, revision: 0 },
+          analysis: { text: "", enabled: false, revision: 0 },
         },
         analysis: {
-          extras: {
-            start_time: 12,
-            time: 6,
-            total_line: 5,
-            line: 4,
-            processed_line: 3,
-            error_line: 1,
-            total_tokens: 18,
-            total_input_tokens: 10,
-            total_output_tokens: 8,
-          },
-          candidate_count: 3,
+          extras: {},
+          candidate_count: 2,
           candidate_aggregate: {},
           status_summary: {
-            total_line: 5,
-            line: 4,
-            processed_line: 3,
+            total_line: 1,
+            processed_line: 0,
             error_line: 1,
+            line: 1,
           },
         },
         proofreading: {
           revision: 0,
         },
-        task: task_snapshot,
+        task: {
+          task_type: "translation",
+          status: "IDLE",
+          busy: false,
+          request_in_flight_count: 0,
+          line: 1,
+          total_line: 1,
+          processed_line: 0,
+          error_line: 1,
+          total_tokens: 0,
+          total_output_tokens: 0,
+          total_input_tokens: 0,
+          time: 0,
+          start_time: 0,
+          analysis_candidate_count: 2,
+        },
         revisions: {
-          projectRevision: 8,
+          projectRevision: 9,
           sections: {
-            analysis: 4,
+            items: 4,
+            analysis: 6,
           },
         },
       }),
@@ -202,12 +146,27 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
       loaded: true,
       path: "E:/demo/sample.lg",
     },
-    workbench_change_signal: {
-      seq: 0,
-      reason: "idle",
+    settings_snapshot: {
+      source_language: "EN",
+      mtool_optimizer_enable: false,
     },
     set_task_snapshot: vi.fn(),
-    task_snapshot,
+    task_snapshot: {
+      task_type: "translation",
+      status: "IDLE",
+      busy: false,
+      request_in_flight_count: 0,
+      line: 0,
+      total_line: 0,
+      processed_line: 0,
+      error_line: 0,
+      total_tokens: 0,
+      total_output_tokens: 0,
+      total_input_tokens: 0,
+      time: 0,
+      start_time: 0,
+      analysis_candidate_count: 2,
+    },
     commit_local_project_patch: vi.fn(() => ({
       rollback,
     })),
@@ -223,9 +182,9 @@ function flush_microtasks(): Promise<void> {
 }
 
 function Probe(props: {
-  on_ready: (state: ReturnType<typeof useAnalysisTaskRuntime>) => void;
+  on_ready: (state: ReturnType<typeof useTranslationTaskRuntime>) => void;
 }): JSX.Element | null {
-  const state = useAnalysisTaskRuntime();
+  const state = useTranslationTaskRuntime();
 
   useEffect(() => {
     props.on_ready(state);
@@ -234,10 +193,10 @@ function Probe(props: {
   return null;
 }
 
-describe("useAnalysisTaskRuntime", () => {
+describe("useTranslationTaskRuntime", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let latest_state: ReturnType<typeof useAnalysisTaskRuntime> | null = null;
+  let latest_state: ReturnType<typeof useTranslationTaskRuntime> | null = null;
 
   afterEach(async () => {
     if (root !== null) {
@@ -250,15 +209,9 @@ describe("useAnalysisTaskRuntime", () => {
     container = null;
     root = null;
     latest_state = null;
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        status: "RUN",
-        busy: true,
-      }),
-    );
+    runtime_fixture.current = create_runtime_fixture();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
-    run_modal_progress_toast_mock.mockClear();
   });
 
   async function render_probe(): Promise<void> {
@@ -279,59 +232,41 @@ describe("useAnalysisTaskRuntime", () => {
     });
   }
 
-  it("分析完成且存在候选术语时自动弹出导入确认框", async () => {
+  it("translation reset all 成功时走本地 patch + apply + ack", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
       }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    await render_probe();
-    await flush_microtasks();
-
-    expect(latest_state?.analysis_confirm_state).toBeNull();
-
-    runtime_fixture.current = create_runtime_fixture(
-      create_task_snapshot({
-        status: "DONE",
-        busy: false,
-        line: 10,
-        processed_line: 10,
-        analysis_candidate_count: 2,
-      }),
-    );
-
-    await render_probe();
-    await flush_microtasks();
-
-    expect(latest_state?.analysis_confirm_state).toMatchObject({
-      kind: "import-glossary",
-      open: true,
-      submitting: false,
-    });
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "success",
-      "workbench_page.analysis_task.feedback.done",
-    );
-  });
-
-  it("analysis reset all 成功时走本地 patch + apply + ack", async () => {
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/tasks/snapshot") {
+      if (path === "/api/project/translation/reset-preview") {
         return {
-          task: runtime_fixture.current.task_snapshot,
+          items: [
+            {
+              id: 11,
+              src: "hello",
+              dst: "",
+              name_src: "Alice",
+              name_dst: null,
+              extra_field: "",
+              tag: "",
+              row: 1,
+              file_type: "TXT",
+              file_path: "script/a.txt",
+              text_type: "NONE",
+              status: "NONE",
+              retry_count: 0,
+            },
+          ],
         };
       }
-      if (path === "/api/project/analysis/reset") {
+      if (path === "/api/project/translation/reset") {
         return {
           accepted: true,
-          projectRevision: 11,
+          projectRevision: 12,
           sectionRevisions: {
-            analysis: 5,
+            items: 5,
+            analysis: 7,
           },
         };
       }
@@ -339,72 +274,59 @@ describe("useAnalysisTaskRuntime", () => {
       throw new Error(`未预期的请求：${path}`);
     });
 
-    runtime_fixture.current = create_runtime_fixture(create_task_snapshot());
-
     await render_probe();
     await flush_microtasks();
 
     await act(async () => {
-      latest_state?.request_analysis_task_action_confirmation("reset-all");
+      latest_state?.request_task_action_confirmation("reset-all");
     });
     await flush_microtasks();
 
     await act(async () => {
-      await latest_state?.confirm_analysis_task_action();
+      await latest_state?.confirm_task_action();
     });
     await flush_microtasks();
 
     expect(runtime_fixture.current.commit_local_project_patch).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.commit_local_project_patch.mock.calls[0]?.[0]).toMatchObject({
-      source: "analysis_reset_all",
-      updatedSections: ["analysis", "task"],
+      source: "translation_reset_all",
+      updatedSections: ["items", "analysis", "task"],
     });
     expect(runtime_fixture.current.align_project_runtime_ack).toHaveBeenCalledWith({
       accepted: true,
-      projectRevision: 11,
+      projectRevision: 12,
       sectionRevisions: {
-        analysis: 5,
+        items: 5,
+        analysis: 7,
       },
     });
     expect(runtime_fixture.current.refresh_project_runtime).not.toHaveBeenCalled();
   });
 
-  it("analysis reset failed 失败时会回滚并刷新运行态", async () => {
+  it("translation reset failed 失败时会回滚并刷新运行态", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
       }
-      if (path === "/api/project/analysis/reset-preview") {
-        return {
-          status_summary: {
-            total_line: 5,
-            processed_line: 3,
-            error_line: 0,
-            line: 3,
-          },
-        };
-      }
-      if (path === "/api/project/analysis/reset") {
-        throw new Error("analysis reset boom");
+      if (path === "/api/project/translation/reset") {
+        throw new Error("reset boom");
       }
 
       throw new Error(`未预期的请求：${path}`);
     });
 
-    runtime_fixture.current = create_runtime_fixture(create_task_snapshot());
-
     await render_probe();
     await flush_microtasks();
 
     await act(async () => {
-      latest_state?.request_analysis_task_action_confirmation("reset-failed");
+      latest_state?.request_task_action_confirmation("reset-failed");
     });
     await flush_microtasks();
 
     await act(async () => {
-      await latest_state?.confirm_analysis_task_action();
+      await latest_state?.confirm_task_action();
     });
     await flush_microtasks();
 
@@ -412,6 +334,6 @@ describe("useAnalysisTaskRuntime", () => {
       .rollback as ReturnType<typeof vi.fn>;
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "analysis reset boom");
+    expect(push_toast_mock).toHaveBeenCalledWith("error", "reset boom");
   });
 });

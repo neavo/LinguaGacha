@@ -10,7 +10,6 @@ import pytest
 from base.Base import Base
 from module.Data.Core.Item import Item
 from module.Config import Config
-from module.Data.Core.DataTypes import ProjectItemChange
 import module.Engine.Translation.Translation as translation_module
 from module.Engine.Translation.Translation import Translation
 
@@ -177,7 +176,6 @@ def build_localizer() -> Any:
     return SimpleNamespace(
         task_running="task_running",
         task_failed="task_failed",
-        translation_resetting="resetting",
         export_translation_start="export_start",
         export_translation_success="export_success",
         export_translation_failed="export_failed",
@@ -218,17 +216,6 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         set_translation_extras=MagicMock(),
         set_project_status=MagicMock(),
         run_project_prefilter=MagicMock(),
-        reset_failed_translation_items_sync=MagicMock(
-            return_value=(
-                ProjectItemChange(
-                    item_ids=(1,),
-                    rel_paths=("script/a.txt",),
-                    reason="translation_reset_failed",
-                ),
-                {"line": 7},
-            )
-        ),
-        reset_failed_items_sync=MagicMock(return_value={"line": 7}),
         get_all_items=MagicMock(return_value=item_list),
         state_lock=threading.Lock(),
         update_batch=MagicMock(),
@@ -784,188 +771,6 @@ def test_translation_run_emits_error_when_thread_start_fails(
         },
     )
     assert logger.error_messages == ["task_failed"]
-
-
-def test_translation_reset_returns_when_project_not_loaded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine()
-    dm = create_data_manager(loaded=False)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-
-    Translation.translation_reset(
-        translation,
-        Base.Event.TRANSLATION_RESET_ALL,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert emitted_events(translation) == [
-        (
-            Base.Event.TRANSLATION_RESET_ALL,
-            {
-                "sub_event": Base.SubEvent.ERROR,
-                "message": "project_not_loaded",
-            },
-        )
-    ]
-
-
-def test_translation_reset_ignores_non_request_sub_event() -> None:
-    translation = create_translation_stub()
-
-    Translation.translation_reset(
-        translation,
-        Base.Event.TRANSLATION_RESET_ALL,
-        {"sub_event": Base.SubEvent.DONE},
-    )
-
-    assert emitted_events(translation) == []
-
-
-def test_translation_reset_emits_busy_error_when_engine_busy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine(Base.TaskStatus.TRANSLATING)
-    dm = create_data_manager(loaded=True)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-
-    Translation.translation_reset(
-        translation,
-        Base.Event.TRANSLATION_RESET_FAILED,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert has_emitted(
-        translation,
-        Base.Event.TRANSLATION_RESET_FAILED,
-        {
-            "sub_event": Base.SubEvent.ERROR,
-            "message": "task_running",
-        },
-    )
-
-
-def test_translation_reset_all_runs_reset_task_and_emits_done(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine()
-    items = [Item(src="a")]
-    dm = create_data_manager(loaded=True, items=items)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
-
-    Translation.translation_reset(
-        translation,
-        Base.Event.TRANSLATION_RESET_ALL,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    dm.get_items_for_translation.assert_called_once_with(
-        translation.config,
-        Base.TranslationMode.RESET,
-    )
-    dm.replace_all_items.assert_called_once_with(items)
-    dm.set_project_status.assert_called_once_with(Base.ProjectStatus.NONE)
-    dm.run_project_prefilter.assert_called_once_with(
-        translation.config,
-        reason="translation_reset",
-    )
-    assert has_emitted(
-        translation,
-        Base.Event.TRANSLATION_RESET_ALL,
-        {"sub_event": Base.SubEvent.DONE},
-    )
-
-
-def test_translation_reset_failed_updates_extras_when_returned(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine()
-    dm = create_data_manager(loaded=True)
-    dm.reset_failed_translation_items_sync = MagicMock(
-        return_value=(
-            ProjectItemChange(
-                item_ids=(3,),
-                rel_paths=("script/a.txt",),
-                reason="translation_reset_failed",
-            ),
-            {"line": 22},
-        )
-    )
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
-
-    Translation.translation_reset(
-        translation,
-        Base.Event.TRANSLATION_RESET_FAILED,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert translation.extras == {"line": 22}
-
-
-def test_translation_reset_failed_keeps_extras_when_reset_returns_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.extras = {"line": 1}
-    engine = create_engine()
-    dm = create_data_manager(loaded=True)
-    dm.reset_failed_translation_items_sync = MagicMock(return_value=None)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
-
-    Translation.translation_reset(
-        translation,
-        Base.Event.TRANSLATION_RESET_FAILED,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert translation.extras == {"line": 1}
-
-
-def test_translation_reset_emits_error_when_task_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine()
-    dm = create_data_manager(loaded=True)
-    dm.reset_failed_translation_items_sync = MagicMock(side_effect=RuntimeError("boom"))
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
-
-    Translation.translation_reset(
-        translation,
-        Base.Event.TRANSLATION_RESET_FAILED,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert has_emitted(
-        translation,
-        Base.Event.TRANSLATION_RESET_FAILED,
-        {
-            "sub_event": Base.SubEvent.ERROR,
-            "message": "task_failed",
-        },
-    )
-    assert has_emitted(
-        translation,
-        Base.Event.TRANSLATION_RESET_FAILED,
-        {
-            "sub_event": Base.SubEvent.ERROR,
-            "message": "task_failed",
-        },
-    )
 
 
 def test_run_translation_export_finishes_progress_when_no_items(

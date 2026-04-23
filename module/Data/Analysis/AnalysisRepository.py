@@ -310,6 +310,27 @@ class AnalysisRepository:
                 self.persist_analysis_candidate_count_with_db(db, conn, 0)
                 conn.commit()
 
+    def clear_progress_with_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        """清空分析事实，并把调用方确认后的快照一并落库。"""
+
+        normalized_snapshot = dict(snapshot)
+        with self.session.state_lock:
+            db = self.session.db
+            if db is None:
+                return {}
+            with db.connection() as conn:
+                db.delete_analysis_item_checkpoints(conn=conn)
+                db.clear_analysis_candidate_aggregates(conn=conn)
+                persisted_snapshot = self.persist_progress_snapshot_with_db(
+                    db,
+                    conn,
+                    normalized_snapshot,
+                )
+                self.persist_analysis_candidate_count_with_db(db, conn, 0)
+                conn.commit()
+
+        return {} if persisted_snapshot is None else dict(persisted_snapshot)
+
     def reset_failed_checkpoints(self) -> int:
         """仅清除失败检查点，不动候选池和成功检查点。"""
 
@@ -320,6 +341,31 @@ class AnalysisRepository:
             return db.delete_analysis_item_checkpoints(
                 status=Base.ProjectStatus.ERROR.value
             )
+
+    def reset_failed_checkpoints_with_snapshot(
+        self,
+        snapshot: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        """删除失败检查点，并把最新分析快照同事务写回。"""
+
+        normalized_snapshot = dict(snapshot)
+        with self.session.state_lock:
+            db = self.session.db
+            if db is None:
+                return 0, {}
+            with db.connection() as conn:
+                deleted = db.delete_analysis_item_checkpoints(
+                    status=Base.ProjectStatus.ERROR.value,
+                    conn=conn,
+                )
+                persisted_snapshot = self.persist_progress_snapshot_with_db(
+                    db,
+                    conn,
+                    normalized_snapshot,
+                )
+                conn.commit()
+
+        return deleted, {} if persisted_snapshot is None else dict(persisted_snapshot)
 
     def update_task_error(
         self,
