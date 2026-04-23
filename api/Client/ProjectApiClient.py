@@ -1,9 +1,9 @@
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
-from api.Server.Routes.ProjectRoutes import ProjectRoutes
 from api.Models.Project import ProjectPreview
 from api.Models.Project import ProjectSnapshot
+from api.Server.Routes.ProjectRoutes import ProjectRoutes
 
 
 class ProjectApiClient:
@@ -35,13 +35,6 @@ class ProjectApiClient:
 
         response = self.api_client.post(ProjectRoutes.UNLOAD_PATH, {})
         return ProjectSnapshot.from_dict(response.get("project", {}))
-
-    def get_supported_extensions(self) -> list[str]:
-        """读取源文件选择器支持的扩展名。"""
-
-        response = self.api_client.post(ProjectRoutes.EXTENSIONS_PATH, {})
-        extensions = response.get("extensions", [])
-        return [str(extension) for extension in extensions]
 
     def collect_source_files(self, path: str) -> list[str]:
         """探测给定路径下可导入的源文件列表。"""

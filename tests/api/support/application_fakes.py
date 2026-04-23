@@ -8,17 +8,14 @@
 
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING
+from threading import RLock
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Model.Types import Model
 from module.Model.Types import ModelType
 from module.Config import Config
-from module.Data.Core.DataTypes import ProjectItemChange
-
-if TYPE_CHECKING:
-    from module.Data.Core.DataTypes import WorkbenchSnapshot
+from module.Data.Core.DataEnums import TextPreserveMode
 
 
 class FakeProjectManager:
@@ -48,9 +45,6 @@ class FakeProjectManager:
 
     def get_lg_path(self) -> str:
         return self.project_path
-
-    def get_supported_extensions(self) -> set[str]:
-        return {".txt", ".json"}
 
     def collect_source_files(self, path: str) -> list[str]:
         return [path]
@@ -99,8 +93,25 @@ class FakeTaskDataManager:
     """提供任务快照所需的最小数据桩。"""
 
     def __init__(self) -> None:
+        self.session = type("FakeSession", (), {"state_lock": RLock()})()
+        self.quality_rule_service = self
+        self.meta_service = self
         self.loaded: bool = True
         self.lg_path: str = "demo/project.lg"
+        self.meta: dict[str, object] = {}
+        self.project_runtime_patches: list[dict[str, object]] = []
+        self.glossary_entries: list[dict[str, str]] = []
+        self.glossary_enable: bool = True
+        self.text_preserve_entries: list[dict[str, str | bool]] = []
+        self.text_preserve_mode: TextPreserveMode = TextPreserveMode.OFF
+        self.pre_replacement_entries: list[dict[str, str | bool]] = []
+        self.pre_replacement_enable: bool = False
+        self.post_replacement_entries: list[dict[str, str | bool]] = []
+        self.post_replacement_enable: bool = False
+        self.translation_prompt_enable: bool = False
+        self.translation_prompt: str = ""
+        self.analysis_prompt_enable: bool = False
+        self.analysis_prompt: str = ""
         self.translation_extras: dict[str, int | float] = {
             "line": 0,
             "total_line": 0,
@@ -124,18 +135,13 @@ class FakeTaskDataManager:
             "start_time": 0.0,
         }
         self.analysis_candidate_count: int = 0
-        self.import_analysis_candidates_result: int | None = 0
         self.translation_reset_items: list[object] = []
         self.project_status: Base.ProjectStatus = Base.ProjectStatus.NONE
         self.get_items_for_translation_calls: list[tuple[object, object]] = []
         self.replace_all_items_calls: list[list[object]] = []
         self.set_translation_extras_calls: list[dict[str, int | float]] = []
         self.set_project_status_calls: list[Base.ProjectStatus] = []
-        self.run_project_prefilter_calls: list[tuple[object, str, bool]] = []
-        self.reset_failed_translation_items_sync_calls: int = 0
-        self.project_item_change_refresh_calls: list[
-            tuple[ProjectItemChange, Base.Event | None]
-        ] = []
+        self.run_project_prefilter_calls: list[tuple[object, str]] = []
         self.clear_analysis_candidates_and_progress_calls: int = 0
         self.reset_failed_analysis_checkpoints_calls: int = 0
         self.refresh_analysis_progress_snapshot_cache_calls: int = 0
@@ -159,6 +165,54 @@ class FakeTaskDataManager:
 
     def get_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
+
+    def get_glossary(self) -> list[dict[str, str]]:
+        return deepcopy(self.glossary_entries)
+
+    def get_glossary_enable(self) -> bool:
+        return self.glossary_enable
+
+    def get_text_preserve(self) -> list[dict[str, str | bool]]:
+        return deepcopy(self.text_preserve_entries)
+
+    def get_text_preserve_mode(self) -> TextPreserveMode:
+        return self.text_preserve_mode
+
+    def get_pre_replacement(self) -> list[dict[str, str | bool]]:
+        return deepcopy(self.pre_replacement_entries)
+
+    def get_pre_replacement_enable(self) -> bool:
+        return self.pre_replacement_enable
+
+    def get_post_replacement(self) -> list[dict[str, str | bool]]:
+        return deepcopy(self.post_replacement_entries)
+
+    def get_post_replacement_enable(self) -> bool:
+        return self.post_replacement_enable
+
+    def get_translation_prompt_enable(self) -> bool:
+        return self.translation_prompt_enable
+
+    def get_translation_prompt(self) -> str:
+        return self.translation_prompt
+
+    def get_analysis_prompt_enable(self) -> bool:
+        return self.analysis_prompt_enable
+
+    def get_analysis_prompt(self) -> str:
+        return self.analysis_prompt
+
+    def get_analysis_extras(self) -> dict[str, int | float]:
+        return self.get_analysis_progress_snapshot()
+
+    def get_analysis_status_summary(self) -> dict[str, int]:
+        return {"candidate_count": self.analysis_candidate_count}
+
+    def get_meta(self, key: str, default: object = None) -> object:
+        return self.meta.get(key, default)
+
+    def set_meta(self, key: str, value: object) -> None:
+        self.meta[key] = value
 
     def get_items_for_translation(
         self,
@@ -186,9 +240,8 @@ class FakeTaskDataManager:
         config: object,
         *,
         reason: str,
-        emit_refresh_events: bool = True,
     ) -> None:
-        self.run_project_prefilter_calls.append((config, reason, emit_refresh_events))
+        self.run_project_prefilter_calls.append((config, reason))
 
     def clear_analysis_candidates_and_progress(self) -> None:
         self.clear_analysis_candidates_and_progress_calls += 1
@@ -214,127 +267,185 @@ class FakeTaskDataManager:
         self.refresh_analysis_progress_snapshot_cache_calls += 1
         return self.get_analysis_progress_snapshot()
 
-    def reset_failed_translation_items_sync(
+    def emit_project_runtime_patch(
         self,
-    ) -> tuple[ProjectItemChange, dict[str, int | float]]:
-        self.reset_failed_translation_items_sync_calls += 1
-        self.translation_extras["error_line"] = 0
-        return (
-            ProjectItemChange(
-                item_ids=(1, 2),
-                rel_paths=("script/a.txt", "script/b.txt"),
-                reason="translation_reset_failed",
-            ),
-            dict(self.translation_extras),
-        )
-
-    def emit_project_item_change_refresh(
-        self,
-        change: ProjectItemChange,
         *,
-        source_event: Base.Event | None = None,
+        reason: str,
+        updated_sections: tuple[str, ...],
+        patch: list[dict[str, object]],
+        section_revisions: dict[str, int],
+        project_revision: int,
     ) -> None:
-        self.project_item_change_refresh_calls.append((change, source_event))
-
-    def import_analysis_candidates(
-        self, expected_lg_path: str | None = None
-    ) -> int | None:
-        if expected_lg_path is not None and expected_lg_path != self.lg_path:
-            return None
-        return self.import_analysis_candidates_result
-
-    def sync_importable_analysis_candidate_count(self) -> int:
-        return self.analysis_candidate_count
+        self.project_runtime_patches.append(
+            {
+                "reason": reason,
+                "updated_sections": updated_sections,
+                "patch": deepcopy(patch),
+                "section_revisions": dict(section_revisions),
+                "project_revision": project_revision,
+            }
+        )
 
 
 class FakeWorkbenchManager:
-    """提供工作台快照与文件操作所需的最小数据桩。"""
+    """提供工作台文件操作所需的最小数据桩。"""
 
     def __init__(self) -> None:
         self.file_op_running: bool = False
-        self.supported_extensions: set[str] = {".txt", ".json"}
-        self.snapshot: dict[str, int | tuple[dict[str, str | int], ...]] = {
-            "file_count": 1,
-            "total_items": 2,
-            "translated": 1,
-            "translated_in_past": 0,
-            "error_count": 0,
-            "untranslated": 1,
-            "entries": (
-                {
-                    "rel_path": "script/a.txt",
-                    "item_count": 2,
-                    "file_type": "TXT",
-                },
-            ),
-        }
         self.add_calls: list[str] = []
+        self.add_payloads: list[dict[str, object]] = []
+        self.parse_calls: list[tuple[str, str | None]] = []
         self.replace_calls: list[tuple[str, str]] = []
-        self.replace_batch_calls: list[list[tuple[str, str]]] = []
+        self.replace_payloads: list[dict[str, object]] = []
         self.reset_calls: list[str] = []
-        self.reset_batch_calls: list[list[str]] = []
         self.delete_calls: list[str] = []
         self.delete_batch_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
 
-    def build_workbench_snapshot(self) -> "WorkbenchSnapshot":
-        from module.Data.Core.DataTypes import WorkbenchFileEntrySnapshot
-        from module.Data.Core.DataTypes import WorkbenchSnapshot
-        from module.Data.Core.Item import Item
-
-        entry_dict = self.snapshot["entries"][0]
-        entry = WorkbenchFileEntrySnapshot(
-            rel_path=str(entry_dict["rel_path"]),
-            item_count=int(entry_dict["item_count"]),
-            file_type=Item.FileType(str(entry_dict["file_type"])),
-        )
-        return WorkbenchSnapshot(
-            file_count=int(self.snapshot["file_count"]),
-            total_items=int(self.snapshot["total_items"]),
-            translated=int(self.snapshot["translated"]),
-            translated_in_past=int(self.snapshot["translated_in_past"]),
-            error_count=int(self.snapshot["error_count"]),
-            untranslated=int(self.snapshot["untranslated"]),
-            entries=(entry,),
-        )
-
     def is_file_op_running(self) -> bool:
         return self.file_op_running
 
-    def build_workbench_entry_patch(self, rel_paths: list[str]):
-        from module.Data.Project.WorkbenchService import WorkbenchService
-
-        return WorkbenchService().build_entry_patch(
-            self.build_workbench_snapshot(),
-            rel_paths,
-        )
-
-    def get_supported_extensions(self) -> set[str]:
-        return set(self.supported_extensions)
-
-    def schedule_add_file(self, path: str) -> None:
+    def add_file(self, path: str) -> None:
         self.add_calls.append(path)
 
-    def schedule_replace_file(self, rel_path: str, path: str) -> None:
+    def parse_file_preview(
+        self,
+        file_path: str,
+        *,
+        current_rel_path: str | None = None,
+    ) -> dict[str, object]:
+        self.parse_calls.append((file_path, current_rel_path))
+        target_rel_path = current_rel_path or "script/b.txt"
+        return {
+            "target_rel_path": target_rel_path,
+            "file_type": "TXT",
+            "parsed_items": [
+                {
+                    "src": "line-1",
+                    "dst": "",
+                    "row": 1,
+                    "file_type": "TXT",
+                    "file_path": target_rel_path,
+                    "text_type": "NONE",
+                    "status": "NONE",
+                    "retry_count": 0,
+                }
+            ],
+        }
+
+    def replace_file(self, rel_path: str, path: str) -> None:
         self.replace_calls.append((rel_path, path))
 
-    def schedule_replace_file_batch(self, operations: list[tuple[str, str]]) -> None:
-        self.replace_batch_calls.append(list(operations))
+    def persist_add_file_payload(
+        self,
+        source_path: str,
+        target_rel_path: str,
+        *,
+        file_record: dict[str, object],
+        parsed_items: list[dict[str, object]],
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del translation_extras, project_status, prefilter_config
+        del expected_section_revisions
+        self.add_calls.append(source_path)
+        self.add_payloads.append(
+            {
+                "source_path": source_path,
+                "target_rel_path": target_rel_path,
+                "file_record": dict(file_record),
+                "parsed_items": [dict(item) for item in parsed_items],
+            }
+        )
 
-    def schedule_reset_file(self, rel_path: str) -> None:
+    def reset_file(self, rel_path: str) -> None:
         self.reset_calls.append(rel_path)
 
-    def schedule_reset_file_batch(self, rel_paths: list[str]) -> None:
-        self.reset_batch_calls.append(list(rel_paths))
+    def persist_reset_file(
+        self,
+        rel_path: str,
+        *,
+        item_payloads: list[dict[str, object]],
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del item_payloads, translation_extras, project_status, prefilter_config
+        del expected_section_revisions
+        self.reset_calls.append(rel_path)
 
-    def schedule_delete_file(self, rel_path: str) -> None:
+    def delete_file(self, rel_path: str) -> None:
         self.delete_calls.append(rel_path)
 
-    def schedule_delete_file_batch(self, rel_paths: list[str]) -> None:
+    def delete_file_batch(self, rel_paths: list[str]) -> None:
         self.delete_batch_calls.append(list(rel_paths))
 
-    def schedule_reorder_files(self, ordered_rel_paths: list[str]) -> None:
+    def persist_replace_file_payload(
+        self,
+        source_path: str,
+        rel_path: str,
+        target_rel_path: str,
+        *,
+        file_record: dict[str, object],
+        parsed_items: list[dict[str, object]],
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del translation_extras, project_status, prefilter_config
+        del expected_section_revisions
+        self.replace_calls.append((rel_path, source_path))
+        self.replace_payloads.append(
+            {
+                "source_path": source_path,
+                "rel_path": rel_path,
+                "target_rel_path": target_rel_path,
+                "file_record": dict(file_record),
+                "parsed_items": [dict(item) for item in parsed_items],
+            }
+        )
+
+    def persist_delete_files(
+        self,
+        rel_paths: list[str],
+        *,
+        translation_extras: dict[str, object],
+        project_status: str,
+        prefilter_config: dict[str, object],
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del translation_extras, project_status, prefilter_config
+        del expected_section_revisions
+        if len(rel_paths) == 1:
+            self.delete_calls.append(rel_paths[0])
+            return
+        self.delete_batch_calls.append(list(rel_paths))
+
+    def persist_reordered_files(
+        self,
+        ordered_rel_paths: list[str],
+        *,
+        expected_section_revisions: dict[str, int] | None = None,
+    ) -> None:
+        del expected_section_revisions
         self.reorder_calls.append(list(ordered_rel_paths))
+
+    def build_project_mutation_ack(
+        self,
+        updated_sections: tuple[str, ...] | list[str],
+    ) -> dict[str, object]:
+        return {
+            "accepted": True,
+            "projectRevision": 9,
+            "sectionRevisions": {
+                str(section): index + 1
+                for index, section in enumerate(updated_sections)
+            },
+        }
 
 
 class FakeSettingsConfig:

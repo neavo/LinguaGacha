@@ -1,11 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
-
-from module.Data.Core.Item import Item
-from module.QualityRule.QualityRuleMerger import QualityRuleMerger
-from module.QualityRule.QualityRuleStatistics import QualityRuleStatistics
 
 
 @dataclass(frozen=True)
@@ -18,7 +13,6 @@ class ProjectPrefilterRequest:
     reason: str
     source_language: str
     mtool_optimizer_enable: bool
-    emit_refresh_events: bool = True
 
 
 @dataclass(frozen=True)
@@ -26,84 +20,11 @@ class ProjectPrefilterScheduleResult:
     """预过滤调度结果。
 
     `needed` 表示当前配置语义上是否需要重跑预过滤。
-    `accepted` 表示本次是否已经成功把刷新职责交给预过滤链。
+    `accepted` 表示本次是否已经成功把重算请求交给预过滤链。
     """
 
     needed: bool = False
     accepted: bool = False
-
-
-@dataclass(frozen=True)
-class WorkbenchFileEntrySnapshot:
-    """工作台文件行快照。"""
-
-    rel_path: str
-    item_count: int
-    file_type: Item.FileType
-
-
-@dataclass(frozen=True)
-class WorkbenchSnapshot:
-    """工作台整体快照。"""
-
-    file_count: int
-    total_items: int
-    translated: int
-    translated_in_past: int
-    error_count: int
-    untranslated: int
-    entries: tuple[WorkbenchFileEntrySnapshot, ...]
-
-
-@dataclass(frozen=True)
-class AnalysisGlossaryImportPreviewEntry:
-    """分析候选导入预演中的单条快照。"""
-
-    entry: dict[str, Any]
-    statistics_key: str
-    is_new: bool
-    incoming_indexes: tuple[int, ...]
-
-
-@dataclass(frozen=True)
-class AnalysisGlossaryImportPreview:
-    """分析候选导入预演结果。"""
-
-    merged_entries: tuple[dict[str, Any], ...]
-    report: QualityRuleMerger.Report
-    entries: tuple[AnalysisGlossaryImportPreviewEntry, ...]
-    statistics_results: dict[str, QualityRuleStatistics.RuleStatResult]
-    subset_parents: dict[str, tuple[str, ...]]
-
-
-@dataclass(frozen=True)
-class ProjectFileMutationResult:
-    """工程文件变更结果。"""
-
-    rel_paths: tuple[str, ...] = ()
-    removed_rel_paths: tuple[str, ...] = ()
-    matched: int = 0
-    new: int = 0
-    total: int = 0
-    order_changed: bool = False
-
-    @property
-    def rel_path(self) -> str:
-        """兼容旧调用方读取单文件主路径。"""
-
-        if self.rel_paths:
-            return self.rel_paths[0]
-        if self.removed_rel_paths:
-            return self.removed_rel_paths[0]
-        return ""
-
-    @property
-    def old_rel_path(self) -> str | None:
-        """兼容旧调用方读取被替换前的旧路径。"""
-
-        if self.rel_paths and self.removed_rel_paths:
-            return self.removed_rel_paths[0]
-        return None
 
 
 @dataclass(frozen=True)

@@ -202,24 +202,15 @@ class PromptService:
         )
         return export_path.as_posix()
 
-    def import_prompt(
+    def read_prompt_import_text(
         self,
         task_type: str | PromptPathResolver.TaskType,
         path: str | Path,
-        *,
-        expected_revision: int,
-        enabled: bool | None = None,
-    ) -> dict[str, object]:
-        """从纯文本文件导入提示词，并复用保存逻辑。"""
+    ) -> str:
+        """从纯文本文件读取提示词正文，交给上层决定是否保存。"""
 
         import_path = Path(path)
-        text = import_path.read_text(encoding="utf-8-sig").strip()
-        return self.save_prompt(
-            task_type,
-            expected_revision=expected_revision,
-            text=text,
-            enabled=enabled,
-        )
+        return import_path.read_text(encoding="utf-8-sig").strip()
 
     def list_presets(
         self,

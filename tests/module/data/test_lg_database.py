@@ -118,6 +118,23 @@ def test_set_items_replaces_all_and_preserves_given_ids(database: LGDatabase) ->
     assert items[1]["dst"] == "二"
 
 
+def test_preview_replace_all_item_ids_follows_sequence_and_explicit_ids(
+    database: LGDatabase,
+) -> None:
+    database.set_item({"src": "old-a"})
+    database.set_item({"src": "old-b"})
+
+    preview_ids = database.preview_replace_all_item_ids(
+        [
+            {"src": "first"},
+            {"id": 9, "src": "second"},
+            {"src": "third"},
+        ]
+    )
+
+    assert preview_ids == [3, 9, 10]
+
+
 def test_update_batch_updates_items_rules_and_meta(database: LGDatabase) -> None:
     item_id = database.set_item({"src": "before", "dst": "old"})
 

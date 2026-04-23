@@ -137,20 +137,15 @@ def test_import_and_export_prompt_round_trip(fs) -> None:
     input_path.write_text("导入的分析提示词", encoding="utf-8")
 
     exported_path = service.export_prompt("analysis", output_path)
-    imported_snapshot = service.import_prompt(
-        "analysis",
-        input_path,
-        expected_revision=0,
-        enabled=True,
-    )
+    imported_text = service.read_prompt_import_text("analysis", input_path)
 
     assert exported_path == output_path.as_posix()
     assert output_path.read_text(encoding="utf-8") == "请分析以下内容。"
-    assert imported_snapshot["text"] == "导入的分析提示词"
-    assert imported_snapshot["meta"]["enabled"] is True
+    assert imported_text == "导入的分析提示词"
+    assert meta_store[service.build_revision_meta_key("analysis")] == 0
 
 
-def test_import_prompt_strips_bom_and_trailing_newline(fs) -> None:
+def test_read_prompt_import_text_strips_bom_and_trailing_newline(fs) -> None:
     del fs
     service, meta_store = build_service()
     meta_store[service.build_revision_meta_key("analysis")] = 0
@@ -158,14 +153,9 @@ def test_import_prompt_strips_bom_and_trailing_newline(fs) -> None:
     input_path.parent.mkdir(parents=True, exist_ok=True)
     input_path.write_bytes("\ufeff  导入的分析提示词  \r\n".encode("utf-8"))
 
-    imported_snapshot = service.import_prompt(
-        "analysis",
-        input_path,
-        expected_revision=0,
-        enabled=True,
-    )
+    imported_text = service.read_prompt_import_text("analysis", input_path)
 
-    assert imported_snapshot["text"] == "导入的分析提示词"
+    assert imported_text == "导入的分析提示词"
 
 
 def test_export_prompt_adds_txt_suffix_and_strips_text(fs) -> None:

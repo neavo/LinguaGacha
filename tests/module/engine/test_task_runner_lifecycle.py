@@ -102,13 +102,6 @@ def test_start_background_run_emits_busy_warning_when_engine_not_idle(
 
     assert owner.events == [
         (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.WARNING,
-                "message": "task_running",
-            },
-        ),
-        (
             Base.Event.ANALYSIS_TASK,
             {
                 "sub_event": Base.SubEvent.ERROR,
@@ -213,13 +206,6 @@ def test_start_background_run_restores_idle_when_thread_factory_fails(
             },
         ),
         (
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.ERROR,
-                "message": "failed",
-            },
-        ),
-        (
             Base.Event.TRANSLATION_TASK,
             {
                 "sub_event": Base.SubEvent.ERROR,
@@ -271,7 +257,6 @@ def test_run_task_flow_skips_finalize_and_done_when_plan_has_no_items(
             on_before_execute=MagicMock(),
             execute=MagicMock(return_value="SUCCESS"),
             on_after_execute=MagicMock(),
-            terminal_toast=MagicMock(),
             finalize=finalize,
             cleanup=cleanup,
             after_done=after_done,
@@ -280,9 +265,9 @@ def test_run_task_flow_skips_finalize_and_done_when_plan_has_no_items(
 
     assert owner.events == [
         (
-            Base.Event.TOAST,
+            Base.Event.TRANSLATION_TASK,
             {
-                "type": Base.ToastType.WARNING,
+                "sub_event": Base.SubEvent.ERROR,
                 "message": "no_items",
             },
         )

@@ -185,21 +185,6 @@ class ResultChecker(Base):
         src_repl, dst_repl = self.get_replaced_text(item)
         return self.get_failed_glossary_terms_from_replaced(src_repl, dst_repl)
 
-    def get_matched_glossary_terms_from_replaced(
-        self,
-        src_repl: str,
-    ) -> list[tuple[str, str]]:
-        """获取当前条目命中的全部术语，供 UI 计算“生效 / 部分生效 / 全部失效”状态。"""
-
-        matched_terms: list[tuple[str, str]] = []
-        for term in self.prepared_glossary_data:
-            glossary_src = term.get("src", "")
-            glossary_dst = term.get("dst", "")
-            if glossary_src and glossary_src in src_repl:
-                matched_terms.append((glossary_src, glossary_dst))
-
-        return matched_terms
-
     def partition_glossary_terms_from_replaced(
         self,
         src_repl: str,
@@ -240,18 +225,6 @@ class ResultChecker(Base):
             self.partition_glossary_terms_from_replaced(src_repl, dst_repl)
         )
         return list(failed_terms)
-
-    def get_applied_glossary_terms_from_replaced(
-        self,
-        src_repl: str,
-        dst_repl: str,
-    ) -> list[tuple[str, str]]:
-        """获取当前条目已生效的术语列表。"""
-
-        _matched_terms, _failed_terms, applied_terms = (
-            self.partition_glossary_terms_from_replaced(src_repl, dst_repl)
-        )
-        return list(applied_terms)
 
     def has_untranslated_error(self, item: Item) -> bool:
         """检查是否未翻译"""

@@ -1,8 +1,8 @@
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
-from api.Server.Routes.WorkbenchRoutes import WorkbenchRoutes
-from api.Models.Workbench import WorkbenchSnapshot
+from api.Models.ProjectRuntime import ProjectMutationAck
+from api.Server.Routes.ProjectRoutes import ProjectRoutes
 
 
 class WorkbenchApiClient:
@@ -11,93 +11,137 @@ class WorkbenchApiClient:
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
 
-    def get_snapshot(self) -> WorkbenchSnapshot:
-        """读取工作台快照，供页面首屏和主动刷新共用。"""
-
-        response = self.api_client.post(WorkbenchRoutes.SNAPSHOT_PATH, {})
-        return WorkbenchSnapshot.from_dict(response.get("snapshot", {}))
-
-    def add_file(self, path: str) -> dict[str, Any]:
-        """调度新增文件操作。"""
-
-        return self.api_client.post(WorkbenchRoutes.ADD_FILE_PATH, {"path": path})
-
-    def replace_file(self, rel_path: str, path: str) -> dict[str, Any]:
-        """调度替换文件操作。"""
-
-        return self.api_client.post(
-            WorkbenchRoutes.REPLACE_FILE_PATH,
-            {"rel_path": rel_path, "path": path},
-        )
-
-    def replace_file_batch(self, operations: list[dict[str, str]]) -> dict[str, Any]:
-        """调度批量替换文件操作。"""
-
-        return self.api_client.post(
-            WorkbenchRoutes.REPLACE_FILE_BATCH_PATH,
-            {"operations": operations},
-        )
-
-    def reset_file(self, rel_path: str) -> dict[str, Any]:
-        """调度重置文件操作。"""
-
-        return self.api_client.post(
-            WorkbenchRoutes.RESET_FILE_PATH, {"rel_path": rel_path}
-        )
-
-    def reset_file_batch(self, rel_paths: list[str]) -> dict[str, Any]:
-        """调度批量重置文件操作。"""
-
-        return self.api_client.post(
-            WorkbenchRoutes.RESET_FILE_BATCH_PATH,
-            {"rel_paths": rel_paths},
-        )
-
-    def delete_file(self, rel_path: str) -> dict[str, Any]:
-        """调度删除文件操作。"""
-
-        return self.api_client.post(
-            WorkbenchRoutes.DELETE_FILE_PATH,
-            {"rel_path": rel_path},
-        )
-
-    def delete_file_batch(self, rel_paths: list[str]) -> dict[str, Any]:
-        """调度批量删除文件操作。"""
-
-        return self.api_client.post(
-            WorkbenchRoutes.DELETE_FILE_BATCH_PATH,
-            {"rel_paths": rel_paths},
-        )
-
-    def reorder_files(self, ordered_rel_paths: list[str]) -> dict[str, Any]:
-        """持久化工作台文件顺序，供拖拽排序后立即写回工程。"""
-
-        return self.api_client.post(
-            WorkbenchRoutes.REORDER_FILES_PATH,
-            {"ordered_rel_paths": ordered_rel_paths},
-        )
-
-    def get_file_patch(
+    def parse_file(
         self,
-        *,
-        rel_paths: list[str],
-        removed_rel_paths: list[str],
-        include_order: bool,
+        source_path: str,
+        rel_path: str | None = None,
     ) -> dict[str, Any]:
-        """按文件路径读取工作台局部补丁。"""
-
+        request: dict[str, Any] = {"source_path": source_path}
+        if rel_path:
+            request["rel_path"] = rel_path
         return self.api_client.post(
-            WorkbenchRoutes.FILE_PATCH_PATH,
+            ProjectRoutes.WORKBENCH_PARSE_FILE_PATH,
+            request,
+        )
+
+    def add_file(
+        self,
+        source_path: str,
+        target_rel_path: str,
+        file_record: dict[str, Any],
+        parsed_items: list[dict[str, Any]],
+        derived_meta: dict[str, Any],
+        expected_section_revisions: dict[str, int],
+    ) -> ProjectMutationAck:
+        """执行新增文件操作。"""
+
+        response = self.api_client.post(
+            ProjectRoutes.WORKBENCH_ADD_FILE_PATH,
             {
-                "rel_paths": rel_paths,
-                "removed_rel_paths": removed_rel_paths,
-                "include_order": include_order,
+                "source_path": source_path,
+                "target_rel_path": target_rel_path,
+                "file_record": file_record,
+                "parsed_items": parsed_items,
+                "derived_meta": derived_meta,
+                "expected_section_revisions": expected_section_revisions,
             },
         )
+        return ProjectMutationAck.from_dict(response)
 
-    def get_supported_extensions(self) -> list[str]:
-        """读取工作台导入文件选择器支持的扩展名。"""
+    def replace_file(
+        self,
+        source_path: str,
+        rel_path: str,
+        target_rel_path: str,
+        file_record: dict[str, Any],
+        parsed_items: list[dict[str, Any]],
+        derived_meta: dict[str, Any],
+        expected_section_revisions: dict[str, int],
+    ) -> ProjectMutationAck:
+        """执行替换文件操作。"""
 
-        response = self.api_client.post(WorkbenchRoutes.EXTENSIONS_PATH, {})
-        extensions = response.get("extensions", [])
-        return [str(extension) for extension in extensions]
+        response = self.api_client.post(
+            ProjectRoutes.WORKBENCH_REPLACE_FILE_PATH,
+            {
+                "source_path": source_path,
+                "rel_path": rel_path,
+                "target_rel_path": target_rel_path,
+                "file_record": file_record,
+                "parsed_items": parsed_items,
+                "derived_meta": derived_meta,
+                "expected_section_revisions": expected_section_revisions,
+            },
+        )
+        return ProjectMutationAck.from_dict(response)
+
+    def reset_file(
+        self,
+        rel_path: str,
+        items: list[dict[str, Any]],
+        derived_meta: dict[str, Any],
+        expected_section_revisions: dict[str, int],
+    ) -> ProjectMutationAck:
+        """执行重置文件操作。"""
+
+        response = self.api_client.post(
+            ProjectRoutes.WORKBENCH_RESET_FILE_PATH,
+            {
+                "rel_path": rel_path,
+                "items": items,
+                "derived_meta": derived_meta,
+                "expected_section_revisions": expected_section_revisions,
+            },
+        )
+        return ProjectMutationAck.from_dict(response)
+
+    def delete_file(
+        self,
+        rel_path: str,
+        derived_meta: dict[str, Any],
+        expected_section_revisions: dict[str, int],
+    ) -> ProjectMutationAck:
+        """执行删除文件操作。"""
+
+        response = self.api_client.post(
+            ProjectRoutes.WORKBENCH_DELETE_FILE_PATH,
+            {
+                "rel_path": rel_path,
+                "derived_meta": derived_meta,
+                "expected_section_revisions": expected_section_revisions,
+            },
+        )
+        return ProjectMutationAck.from_dict(response)
+
+    def delete_file_batch(
+        self,
+        rel_paths: list[str],
+        derived_meta: dict[str, Any],
+        expected_section_revisions: dict[str, int],
+    ) -> ProjectMutationAck:
+        """执行批量删除文件操作。"""
+
+        response = self.api_client.post(
+            ProjectRoutes.WORKBENCH_DELETE_FILE_BATCH_PATH,
+            {
+                "rel_paths": rel_paths,
+                "derived_meta": derived_meta,
+                "expected_section_revisions": expected_section_revisions,
+            },
+        )
+        return ProjectMutationAck.from_dict(response)
+
+    def reorder_files(
+        self,
+        ordered_rel_paths: list[str],
+        expected_section_revisions: dict[str, int],
+    ) -> ProjectMutationAck:
+        """持久化工作台文件顺序，供拖拽排序后立即写回工程。"""
+
+        response = self.api_client.post(
+            ProjectRoutes.WORKBENCH_REORDER_FILES_PATH,
+            {
+                "ordered_rel_paths": ordered_rel_paths,
+                "expected_section_revisions": expected_section_revisions,
+            },
+        )
+        return ProjectMutationAck.from_dict(response)

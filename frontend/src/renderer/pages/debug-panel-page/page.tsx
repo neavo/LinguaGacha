@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { useAppNavigation } from '@/app/navigation/navigation-context'
+import type { ScreenComponentProps } from '@/app/navigation/types'
 import { useDesktopToast } from '@/app/state/use-desktop-toast'
 import { useI18n, type LocaleKey } from '@/i18n'
 import '@/pages/debug-panel-page/debug-panel-page.css'
@@ -17,11 +17,6 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-
-type DebugPanelPageProps = {
-  title_key: LocaleKey
-  is_sidebar_collapsed: boolean
-}
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error'
 
@@ -68,14 +63,13 @@ function resolve_progress_inline_title(progress_percent: number, t: (key: Locale
   }
 }
 
-export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
+export function DebugPanelPage(props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n()
-  const { proofreading_lookup_intent } = useAppNavigation()
   const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } = useDesktopToast()
   const [progress_percent, set_progress_percent] = useState<number>(35)
   const [is_progress_indeterminate, set_is_progress_indeterminate] = useState<boolean>(false)
   const [progress_toast_id, set_progress_toast_id] = useState<ToastIdentifier | null>(null)
-  const title = t(props.title_key)
+  const title = t('toolbox_page.title')
   const sidebar_state = props.is_sidebar_collapsed
     ? t('debug_panel_page.shell.sidebar_collapsed')
     : t('debug_panel_page.shell.sidebar_expanded')
@@ -301,22 +295,6 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
                     : t('debug_panel_page.shell.toast_running')}
                 </dd>
               </div>
-              <div className="debug-panel-page__meta-row">
-                <dt>{t('debug_panel_page.shell.title_key_label')}</dt>
-                <dd>
-                  <code>{props.title_key}</code>
-                </dd>
-              </div>
-              {props.title_key === 'proofreading_page.title' && proofreading_lookup_intent !== null
-                ? (
-                    <div className="debug-panel-page__meta-row">
-                      <dt>{t('debug_panel_page.shell.proofreading_lookup_intent_label')}</dt>
-                      <dd>
-                        <code>{JSON.stringify(proofreading_lookup_intent)}</code>
-                      </dd>
-                    </div>
-                  )
-                : null}
             </dl>
           </CardContent>
         </Card>
@@ -324,5 +302,3 @@ export function DebugPanelPage(props: DebugPanelPageProps): JSX.Element {
     </div>
   )
 }
-
-

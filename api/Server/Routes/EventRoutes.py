@@ -3,7 +3,7 @@ from api.Server.CoreApiServer import CoreApiServer
 
 
 class EventRoutes:
-    """集中注册事件流相关路由。"""
+    """集中注册运行态 patch 事件流。"""
 
     STREAM_PATH: str = "/api/events/stream"
 
@@ -13,7 +13,7 @@ class EventRoutes:
         core_api_server: CoreApiServer,
         event_stream_service: EventStreamService,
     ) -> None:
-        """事件流是长连接，单独注册为 stream 路由。"""
+        """事件流沿用 SSE 传输层，并独立暴露稳定 URL。"""
 
         core_api_server.add_stream_route(
             cls.STREAM_PATH,

@@ -1,7 +1,7 @@
 import { AlertCircle, LoaderCircle } from 'lucide-react'
 
 import type { ScreenComponentProps } from '@/app/navigation/types'
-import { useI18n } from '@/i18n'
+import { useI18n, type LocaleKey } from '@/i18n'
 import '@/pages/laboratory-page/laboratory-page.css'
 import { useLaboratoryPageState } from '@/pages/laboratory-page/use-laboratory-page-state'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shadcn/alert'
@@ -21,6 +21,10 @@ const HELP_URL_BY_FIELD = {
   },
 } as const satisfies Record<'zh-CN' | 'en-US', Record<LaboratoryHelpField, string>>
 
+const HELP_LABEL_KEY_BY_FIELD: Record<LaboratoryHelpField, LocaleKey> = {
+  mtool_optimizer_enable: 'laboratory_page.fields.mtool_optimizer_enable.help_label',
+}
+
 export function LaboratoryPage(props: ScreenComponentProps): JSX.Element {
   const { locale, t } = useI18n()
   const laboratory_page_state = useLaboratoryPageState()
@@ -37,11 +41,12 @@ export function LaboratoryPage(props: ScreenComponentProps): JSX.Element {
 
   function render_help_button(field: LaboratoryHelpField): JSX.Element {
     const help_url = HELP_URL_BY_FIELD[locale][field]
+    const help_label_key = HELP_LABEL_KEY_BY_FIELD[field]
 
     return (
       <SettingHelpButton
         url={help_url}
-        aria_label={t(`laboratory_page.fields.${field}.help_label`)}
+        aria_label={t(help_label_key)}
         className="laboratory-page__help-button"
       />
     )

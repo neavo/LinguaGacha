@@ -9,7 +9,7 @@ class LocalizerEN(LocalizerZH):
     task_failed: str = "Task failed …"
     task_success: str = "Task succeeded …"
     task_running: str = "Task is running …"
-    toast_processing: str = "Processing …"
+    task_processing: str = "Processing …"
     export_translation_start: str = "Generating translation …"
     export_translation_done: str = "Translation files saved to [blue]{PATH}[/blue] …"
     export_translation_success: str = "Translation files generated …"
@@ -19,7 +19,7 @@ class LocalizerEN(LocalizerZH):
 
     # 主页面
     app_exit_countdown: str = "Exiting … {SECONDS} …"
-    app_new_version_toast: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
+    app_new_version_found: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
     app_new_version_failure: str = "New version download failed …"
     app_new_version_success: str = "New version download successful …"
     app_new_version_apply_failed: str = "Update failed and rolled back …"
@@ -37,8 +37,6 @@ class LocalizerEN(LocalizerZH):
 
     # 日志
     log_crash: str = "A critical error has occurred, app will now exit, error detail has been saved to the log file …"
-    log_proxy: str = "Network proxy enabled …"
-    log_expert_mode: str = "Expert Mode Enabled …"
     log_api_test_fail: str = (
         "API test failed …"
         "\n"
@@ -47,57 +45,6 @@ class LocalizerEN(LocalizerZH):
     log_read_file_fail: str = "File reading failed …"
     log_write_file_fail: str = "File writing failed …"
     log_unknown_reason: str = "Unknown Reason"
-    log_cli_verify_language: str = "parameter error: invalid language …"
-    log_cli_target_language_all_unsupported: str = "ALL is not supported …"
-    log_cli_create_deprecated: str = "CLI argument --create is deprecated, project creation is now decided only by --input …"
-    log_cli_continue_deprecated: str = "CLI argument --continue is deprecated, task mode is now inferred automatically from current progress …"
-    log_cli_quality_rule_file_not_found: str = (
-        "parameter error: rule file not found …"
-        "\n"
-        "Argument: {ARG}"
-        "\n"
-        "Path: {PATH}"
-    )
-    log_cli_quality_rule_file_unsupported: str = (
-        "parameter error: unsupported rule file format (only .json/.xlsx) …"
-        "\n"
-        "Argument: {ARG}"
-        "\n"
-        "Path: {PATH}"
-    )
-    log_cli_quality_rule_import_failed: str = (
-        "quality rule import failed …"
-        "\n"
-        "Argument: {ARG}"
-        "\n"
-        "Path: {PATH}"
-        "\n"
-        "Reason: {REASON}"
-    )
-    log_cli_text_preserve_mode_invalid: str = (
-        "parameter error: invalid text preserve options …"
-        "\n"
-        "--text_preserve_mode: {MODE}"
-        "\n"
-        "--text_preserve: {PATH}"
-        "\n"
-        "Note: mode=custom requires --text_preserve; providing --text_preserve requires mode=custom"
-    )
-    log_cli_analysis_export_start: str = "Exporting glossary files …"
-    log_cli_analysis_export_success: str = (
-        "Glossary export completed …"
-        "\n"
-        "Directory: {DIR}"
-        "\n"
-        "JSON: {JSON}"
-        "\n"
-        "XLSX: {XLSX}"
-        "\n"
-        "Glossary Entries: {COUNT}"
-        "\n"
-        "Imported This Run: {IMPORTED}"
-    )
-    log_cli_analysis_export_failed: str = "Glossary export failed …"
 
     # 引擎
     engine_no_items: str = "No items to process were found, please check …"
@@ -114,12 +61,8 @@ class LocalizerEN(LocalizerZH):
     translation_task_force_accept_info: str = " | Forced Accept: {REASON}"
     engine_api_name: str = "API Name"
     engine_api_model: str = "API Model"
-    api_test_key: str = "Testing Key:"
-    api_test_messages: str = "Task Prompts:"
     api_test_timeout: str = "Request timed out ({SECONDS}s)"
     api_test_result: str = "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …"
-    api_test_result_failure: str = "Failed Keys:"
-    api_test_token_info: str = "Token usage: input {INPUT}, output {OUTPUT}, time {TIME}s"
     translation_mtool_optimizer_pre_log: str = "MToolOptimizer pre-processing completed, {COUNT} entries containing duplicate clauses were filtered in total …"
     translation_mtool_optimizer_post_log: str = "MToolOptimizer post-processing completed …"
     translation_response_check_fail: str = "Data error, will automatically retry, Reason: {REASON}"
@@ -139,10 +82,9 @@ class LocalizerEN(LocalizerZH):
     project_store_file_not_found: str = "Project file not found: {PATH}"
 
     # 翻译
-    translation_page_toast_resetting: str = "Resetting …"
+    translation_resetting: str = "Resetting …"
 
     # 分析
-    analysis_page_import_success: str = "Import succeeded, added {COUNT} entries …"
     analysis_task_source_texts: str = "Analysis Input:"
     analysis_task_extracted_terms: str = "Extracted Terms:"
     analysis_task_no_terms: str = "No terms extracted"
@@ -155,12 +97,8 @@ class LocalizerEN(LocalizerZH):
     # 工作台
     workbench_msg_file_exists: str = "File already exists …"
     workbench_msg_unsupported_format: str = "Unsupported file format"
-    workbench_msg_replace_format_mismatch: str = "File format mismatch, cannot replace"
     workbench_msg_replace_name_conflict: str = "File already exists …"
-    workbench_progress_adding_file: str = "Adding file …"
-    workbench_progress_resetting_file: str = "Resetting file …"
-    workbench_progress_deleting_file: str = "Deleting file …"
     workbench_msg_file_not_found: str = "File not found"
 
     # 质量类通用
-    quality_default_preset_loaded_toast: str = "Default preset loaded: {NAME} …"
+    quality_default_preset_loaded_message: str = "Default preset loaded: {NAME} …"

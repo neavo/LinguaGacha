@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from typing import Any
 
 from base.LogManager import LogManager
 from module.Data.Core.ProjectSession import ProjectSession
@@ -24,6 +25,13 @@ class AssetService:
             if db is None:
                 return []
             return db.get_all_asset_paths()
+
+    def get_all_asset_records(self) -> list[dict[str, Any]]:
+        with self.session.state_lock:
+            db = self.session.db
+            if db is None:
+                return []
+            return db.get_all_asset_records()
 
     def get_asset(self, rel_path: str) -> bytes | None:
         with self.session.state_lock:

@@ -129,22 +129,22 @@ def test_unsubscribe_handles_bound_method_owner_identity() -> None:
     assert calls == ["second"]
 
 
-def test_progress_toast_only_coalesces_update_payloads() -> None:
+def test_translation_progress_only_coalesces_latest_payload() -> None:
     manager = build_manager()
-    received: list[str] = []
+    received: list[int] = []
     manager.subscribe(
-        Base.Event.PROGRESS_TOAST,
-        lambda event, data: received.append(str(data["sub_event"])),
+        Base.Event.TRANSLATION_PROGRESS,
+        lambda event, data: received.append(int(data["line"])),
     )
 
     manager.emit_event(
-        Base.Event.PROGRESS_TOAST,
-        {"sub_event": Base.SubEvent.UPDATE, "line": 1},
+        Base.Event.TRANSLATION_PROGRESS,
+        {"line": 1},
     )
     manager.emit_event(
-        Base.Event.PROGRESS_TOAST,
-        {"sub_event": Base.SubEvent.UPDATE, "line": 2},
+        Base.Event.TRANSLATION_PROGRESS,
+        {"line": 2},
     )
     manager.wait_for_idle(timeout=1.0)
 
-    assert received == [Base.SubEvent.UPDATE.value]
+    assert received == [2]

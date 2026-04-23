@@ -31,10 +31,6 @@ class Engine:
         return cls.__instance__
 
     def run(self) -> None:
-        from module.Engine.APITest.APITest import APITest
-
-        self.api_test = APITest()
-
         from module.Engine.Analysis.Analysis import Analysis
 
         self.analysis = Analysis()

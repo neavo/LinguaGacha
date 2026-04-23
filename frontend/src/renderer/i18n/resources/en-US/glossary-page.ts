@@ -80,26 +80,21 @@ export const en_us_glossary_page = {
     delete_selection: {
       title: 'Confirm Deletion',
       description: 'Confirm deleting {COUNT} item(s)?',
-      confirm: 'Delete',
     },
     delete_preset: {
       title: 'Delete Preset',
       description: 'Delete preset "{NAME}"?',
-      confirm: 'Delete Preset',
     },
     reset: {
       title: 'Confirm Reset',
       description: 'Confirm reset data …?',
-      confirm: 'Reset',
     },
     overwrite_preset: {
       title: 'Overwrite Preset',
       description: 'Preset "{NAME}" already exists, confirm overwrite …?',
-      confirm: 'Overwrite',
     },
   },
   feedback: {
-    refresh_failed: 'Failed to refresh the glossary.',
     save_failed: 'Failed to save the glossary.',
     import_failed: 'Failed to import the glossary.',
     import_success: 'Data imported …',

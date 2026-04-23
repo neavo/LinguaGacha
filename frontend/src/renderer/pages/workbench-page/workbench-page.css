@@ -135,14 +135,6 @@
   flex: 0 1 auto;
 }
 
-.workbench-page__task-summary-group {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .workbench-page__task-summary {
   width: auto;
   max-width: 100%;
@@ -176,13 +168,6 @@
 }
 
 .workbench-page__table-file-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workbench-page__table-text {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;

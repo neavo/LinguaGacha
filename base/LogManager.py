@@ -1,24 +1,15 @@
 import logging
 import os
 import queue
-import threading
 import traceback
-from datetime import datetime
 from logging.handlers import QueueHandler
 from logging.handlers import QueueListener
 from logging.handlers import TimedRotatingFileHandler
-from types import TracebackType
 from typing import Self
 
 from base.BasePath import BasePath
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.progress import BarColumn
-from rich.progress import Progress
-from rich.progress import TaskID
-from rich.progress import TextColumn
-from rich.progress import TimeElapsedColumn
-from rich.progress import TimeRemainingColumn
 
 
 class LogTargetFilter(logging.Filter):
@@ -67,115 +58,11 @@ class PlainConsoleHandler(logging.Handler):
 class LogManager:
     """统一管理异步日志和崩溃兜底，避免工作线程被日志 I/O 拖慢。"""
 
-    class ProgressSession:
-        """共享控制台进度会话。
-
-        为什么收敛到 LogManager：
-        - 终端里的结构化日志、裸输出、rich 表格和 live 进度必须共用同一个 Console，
-          否则 rich 会把它们当成不同渲染上下文，容易出现进度条残影或重复行。
-        - 会话对象只代表“本次借用共享进度区域”的生命周期，不代表一个独立控件。
-        """
-
-        def __init__(self, manager: "LogManager", transient: bool) -> None:
-            self.manager = manager
-            self.transient = transient
-            self.task_ids: set[TaskID] = set()
-
-        def get_session_key(self) -> int:
-            """会话状态用稳定键管理，避免在 enter/exit 里重复写同一表达式。"""
-            return id(self)
-
-        def ensure_progress_started(self) -> Progress:
-            """首次进入时创建共享 Progress，后续会话直接复用同一实例。"""
-            manager = self.manager
-            progress = manager.console_progress
-            if progress is None:
-                progress = manager.create_console_progress(transient=self.transient)
-                progress.start()
-                manager.console_progress = progress
-            return progress
-
-        def stop_session_tasks(self, progress: Progress) -> None:
-            """会话结束时只回收自己创建的任务，避免误伤其他并发会话。"""
-            for task_id in tuple(self.task_ids):
-                progress.stop_task(task_id)
-                if self.transient:
-                    progress.remove_task(task_id)
-
-        def __enter__(self) -> "LogManager.ProgressSession":
-            manager = self.manager
-            with manager.progress_lock:
-                self.ensure_progress_started()
-                manager.progress_session_states[self.get_session_key()] = self
-            return self
-
-        def __exit__(
-            self,
-            exc_type: type[BaseException] | None,
-            exc_val: BaseException | None,
-            exc_tb: TracebackType | None,
-        ) -> None:
-            del exc_type
-            del exc_val
-            del exc_tb
-
-            manager = self.manager
-            with manager.progress_lock:
-                progress = manager.console_progress
-                session = manager.progress_session_states.pop(
-                    self.get_session_key(),
-                    None,
-                )
-                if progress is None or session is None:
-                    return
-
-                session.stop_session_tasks(progress)
-
-                if manager.progress_session_states:
-                    return
-
-                progress.stop()
-                manager.console_progress = None
-
-        def new_task(self, total: int | None = None, completed: int = 0) -> TaskID:
-            manager = self.manager
-            with manager.progress_lock:
-                progress = manager.console_progress
-                if progress is None:
-                    raise RuntimeError("Progress is not started")
-
-                task_id = progress.add_task("", total=total, completed=completed)
-                self.task_ids.add(task_id)
-                return task_id
-
-        def update_task(
-            self,
-            task_id: TaskID,
-            *,
-            total: int | None = None,
-            advance: int | None = None,
-            completed: int | None = None,
-        ) -> None:
-            manager = self.manager
-            with manager.progress_lock:
-                progress = manager.console_progress
-                if progress is not None:
-                    progress.update(
-                        task_id,
-                        total=total,
-                        advance=advance,
-                        completed=completed,
-                    )
-
     def __init__(self) -> None:
         super().__init__()
 
         # 控制台对象只保留一个，避免普通输出和兜底输出风格飘来飘去。
         self.console = Console()
-        # 进度渲染必须和日志共用同一个 Console，才能让 rich 正确协调 live 区域。
-        self.console_progress: Progress | None = None
-        self.progress_session_states: dict[int, LogManager.ProgressSession] = {}
-        self.progress_lock = threading.RLock()
         self.async_enabled: bool = False
         self.shutdown_complete: bool = False
 
@@ -270,32 +157,12 @@ class LogManager:
         return cls.__instance__
 
     def get_console(self) -> Console:
-        """所有 rich 终端输出都必须走同一个 Console，避免 live 渲染互相打架。"""
+        """所有 rich 终端输出都必须走同一个 Console，避免渲染风格漂移。"""
         return self.console
 
     def print_rich(self, renderable: object) -> None:
         """rich 表格和简略日志统一走共享 Console，避免退回默认全局 Console。"""
         self.console.print(renderable)
-
-    def create_console_progress(self, *, transient: bool) -> Progress:
-        """共享进度条样式集中在这里，保证不同任务线的控制台展示完全一致。"""
-        return Progress(
-            TextColumn(datetime.now().strftime("[%H:%M:%S]"), style="log.time"),
-            TextColumn("INFO    ", style="logging.level.info"),
-            BarColumn(bar_width=None),
-            "•",
-            TextColumn("{task.completed}/{task.total}", justify="right"),
-            "•",
-            TimeElapsedColumn(),
-            "/",
-            TimeRemainingColumn(),
-            transient=transient,
-            console=self.console,
-        )
-
-    def progress(self, *, transient: bool) -> "LogManager.ProgressSession":
-        """通过会话对象管理共享进度区域，避免业务侧直接碰底层 Progress。"""
-        return LogManager.ProgressSession(self, transient)
 
     def print(
         self,
@@ -527,11 +394,6 @@ class LogManager:
             return
 
         self.shutdown_complete = True
-        with self.progress_lock:
-            if self.console_progress is not None:
-                self.console_progress.stop()
-                self.console_progress = None
-            self.progress_session_states.clear()
         if self.queue_listener is not None:
             self.queue_listener.stop()
             self.queue_listener = None

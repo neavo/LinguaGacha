@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 from typing import Any
 
 from base.Base import Base
-from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
@@ -20,8 +18,6 @@ from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
 from module.Engine.TaskRunnerLifecycle import TaskRunnerExecutionPlan
 from module.Engine.TaskRunnerLifecycle import TaskRunnerHooks
 from module.Engine.TaskRunnerLifecycle import TaskRunnerLifecycle
-from module.Localizer.Localizer import Localizer
-from module.QualityRule.QualityRuleIO import QualityRuleIO
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 
@@ -36,19 +32,11 @@ class Analysis(Base):
         self.stop_requested: bool = False
         self.extras: dict[str, Any] = {}
         self.quality_snapshot: QualityRuleSnapshot | None = None
-        self.cli_auto_export_glossary: bool = False
-        self.current_task_contexts: list[AnalysisTaskContext] = []
         self.scheduler = AnalysisScheduler(self)
         self.progress_tracker = AnalysisProgressTracker(self)
 
         self.subscribe(Base.Event.ANALYSIS_TASK, self.analysis_run_event)
         self.subscribe(Base.Event.ANALYSIS_REQUEST_STOP, self.analysis_stop_event)
-        self.subscribe(Base.Event.ANALYSIS_RESET_ALL, self.analysis_reset)
-        self.subscribe(Base.Event.ANALYSIS_RESET_FAILED, self.analysis_reset)
-        self.subscribe(
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            self.analysis_import_glossary_event,
-        )
 
     # UI 只关心当前实际占用并发，这里保持薄包装方便以后替换限流器实现。
     def get_concurrency_in_use(self) -> int:
@@ -89,16 +77,6 @@ class Analysis(Base):
             return
         self.analysis_require_stop()
 
-    # 手动导入候选术语池也统一走事件链，避免页面直接跨线程碰数据层。
-    def analysis_import_glossary_event(
-        self, event: Base.Event, data: dict[str, Any]
-    ) -> None:
-        del event
-        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
-        if sub_event != Base.SubEvent.REQUEST:
-            return
-        self.analysis_import_glossary()
-
     # 这里先原子占用引擎状态，再把真正任务扔到后台线程，避免重复点击并发启动。
     def analysis_run(self, data: dict[str, Any]) -> None:
         self.stop_requested = False
@@ -123,392 +101,6 @@ class Analysis(Base):
             mark_stop_requested=lambda: setattr(self, "stop_requested", True),
         )
 
-    def import_analysis_candidates_sync(
-        self,
-        dm: DataManager,
-        *,
-        expected_lg_path: str,
-    ) -> int | None:
-        """手动导入候选池时固定当前工程，避免后台线程串写到新工程。"""
-        imported_count = dm.import_analysis_candidates(
-            expected_lg_path=expected_lg_path
-        )
-        if imported_count is None:
-            return None
-
-        if dm.is_loaded() and dm.get_lg_path() == expected_lg_path:
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-        return imported_count
-
-    def emit_analysis_import_progress_start(self) -> None:
-        """导入开始时统一显示处理中提示，并同步写入控制台日志。"""
-        message = Localizer.get().toast_processing
-        LogManager.get().info(message)
-        self.emit(
-            Base.Event.PROGRESS_TOAST,
-            {
-                "sub_event": Base.SubEvent.RUN,
-                "message": message,
-                "indeterminate": True,
-            },
-        )
-
-    def emit_analysis_import_progress_end(self, *, failed: bool) -> None:
-        """统一结束导入中的进度提示，复用窗口层既有的延迟隐藏规则。"""
-        self.emit(
-            Base.Event.PROGRESS_TOAST,
-            {
-                "sub_event": Base.SubEvent.ERROR if failed else Base.SubEvent.DONE,
-            },
-        )
-
-    def finish_analysis_import_progress(self, *, failed: bool) -> None:
-        """导入结束时统一收掉进度提示和日志分隔，避免不同分支各自收尾。"""
-        self.emit_analysis_import_progress_end(failed=failed)
-        LogManager.get().print("")
-
-    def emit_analysis_import_rejected(self, message: str) -> None:
-        """前置条件不满足时统一发警告，避免入口分支重复堆同样的事件。"""
-        self.emit(
-            Base.Event.TOAST,
-            {
-                "type": Base.ToastType.WARNING,
-                "message": message,
-            },
-        )
-        self.emit(
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            {
-                "sub_event": Base.SubEvent.ERROR,
-                "message": message,
-            },
-        )
-
-    def build_analysis_import_context(self) -> tuple[DataManager, str] | None:
-        """在主线程统一校验导入前提，避免无效请求也启动后台线程。"""
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            self.emit_analysis_import_rejected(Localizer.get().task_running)
-            return None
-
-        dm = DataManager.get()
-        if not dm.is_loaded():
-            self.emit_analysis_import_rejected(Localizer.get().alert_project_not_loaded)
-            return None
-
-        expected_lg_path = dm.get_lg_path()
-        if not isinstance(expected_lg_path, str) or expected_lg_path == "":
-            self.emit_analysis_import_rejected(Localizer.get().alert_project_not_loaded)
-            return None
-        return dm, expected_lg_path
-
-    def analysis_import_glossary(self) -> None:
-        """把候选池导入单独放后台线程，避免 UI 点击后卡住主线程。"""
-        import_context = self.build_analysis_import_context()
-        if import_context is None:
-            return
-        dm, expected_lg_path = import_context
-
-        self.emit(
-            Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-            {"sub_event": Base.SubEvent.RUN},
-        )
-        self.emit_analysis_import_progress_start()
-
-        def task() -> None:
-            progress_failed = False
-            toast_payload: dict[str, Any] | None = None
-            # 工程已切换时保持静默收口，只通知页面当前导入流程结束即可。
-            completion_event: dict[str, Any] = {"sub_event": Base.SubEvent.ERROR}
-            try:
-                imported_count = self.import_analysis_candidates_sync(
-                    dm,
-                    expected_lg_path=expected_lg_path,
-                )
-                if imported_count is not None:
-                    # 0 也视为成功：这里表示导入流程已完成，只是没有新增或补空条目。
-                    message = Localizer.get().analysis_page_import_success.replace(
-                        "{COUNT}", str(imported_count)
-                    )
-                    LogManager.get().info(message)
-                    toast_payload = {
-                        "type": Base.ToastType.SUCCESS,
-                        "message": message,
-                    }
-                    completion_event = {
-                        "sub_event": Base.SubEvent.DONE,
-                        "imported_count": imported_count,
-                    }
-            except Exception as e:
-                progress_failed = True
-                message = Localizer.get().task_failed
-                LogManager.get().error(message, e)
-                toast_payload = {
-                    "type": Base.ToastType.ERROR,
-                    "message": message,
-                }
-                completion_event = {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "message": message,
-                }
-            finally:
-                if toast_payload is not None:
-                    self.emit(Base.Event.TOAST, toast_payload)
-                self.finish_analysis_import_progress(failed=progress_failed)
-                self.emit(
-                    Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                    completion_event,
-                )
-
-        threading.Thread(target=task, daemon=True).start()
-
-    def should_auto_import_glossary(
-        self,
-        dm: DataManager,
-        final_status: str,
-    ) -> bool:
-        """只要本轮分析成功且候选池非空，就自动桥接到导入术语表。"""
-        if final_status != "SUCCESS":
-            return False
-        if not dm.is_loaded():
-            return False
-
-        return int(dm.get_analysis_candidate_count() or 0) > 0
-
-    def build_cli_glossary_export_paths(
-        self, expected_lg_path: str
-    ) -> tuple[Path, str, str, str]:
-        """CLI 默认总是把导出目录锚定到工程旁边，保证脚本重复执行路径稳定。"""
-        project_path = Path(expected_lg_path)
-        export_dir = project_path.parent / f"{project_path.stem}_glossary"
-        path_base = export_dir / "glossary"
-        return (
-            export_dir,
-            str(path_base),
-            str(path_base.with_suffix(".json")),
-            str(path_base.with_suffix(".xlsx")),
-        )
-
-    def build_cli_glossary_export_payload(
-        self,
-        *,
-        sub_event: Base.SubEvent,
-        json_path: str | None = None,
-        xlsx_path: str | None = None,
-        imported_count: int | None = None,
-        exported_count: int | None = None,
-        message: str | None = None,
-    ) -> dict[str, Any]:
-        """导出事件统一走同一套载荷结构，避免不同分支手写字典时漏字段。"""
-        payload: dict[str, Any] = {"sub_event": sub_event}
-        if json_path is not None:
-            payload["json_path"] = json_path
-        if xlsx_path is not None:
-            payload["xlsx_path"] = xlsx_path
-        if imported_count is not None:
-            payload["imported_count"] = imported_count
-        if exported_count is not None:
-            payload["exported_count"] = exported_count
-        if message is not None:
-            payload["message"] = message
-        return payload
-
-    def build_cli_glossary_export_success_message(
-        self,
-        *,
-        export_dir: Path,
-        json_path: str,
-        xlsx_path: str,
-        exported_count: int,
-        imported_count: int,
-    ) -> str:
-        """成功文案只在一处拼装，减少占位符替换散落在业务流程里。"""
-        return (
-            Localizer.get()
-            .log_cli_analysis_export_success.replace("{DIR}", str(export_dir))
-            .replace("{JSON}", json_path)
-            .replace("{XLSX}", xlsx_path)
-            .replace("{COUNT}", str(exported_count))
-            .replace("{IMPORTED}", str(imported_count))
-        )
-
-    def export_glossary_for_cli(
-        self,
-        dm: DataManager,
-        *,
-        expected_lg_path: str,
-        imported_count: int,
-    ) -> None:
-        """CLI 分析成功后导出最终术语表，让结果可直接被脚本或人工消费。"""
-        if not dm.is_loaded() or dm.get_lg_path() != expected_lg_path:
-            message = Localizer.get().task_failed
-            self.emit(
-                Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-                self.build_cli_glossary_export_payload(
-                    sub_event=Base.SubEvent.ERROR,
-                    message=message,
-                ),
-            )
-            return
-
-        export_dir, path_base, json_path, xlsx_path = (
-            self.build_cli_glossary_export_paths(expected_lg_path)
-        )
-        glossary_entries = dm.get_glossary()
-        exported_count = len(glossary_entries)
-
-        LogManager.get().info(Localizer.get().log_cli_analysis_export_start)
-        self.emit(
-            Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-            self.build_cli_glossary_export_payload(
-                sub_event=Base.SubEvent.RUN,
-                json_path=json_path,
-                xlsx_path=xlsx_path,
-                imported_count=imported_count,
-                exported_count=exported_count,
-            ),
-        )
-
-        try:
-            export_dir.mkdir(parents=True, exist_ok=True)
-            QualityRuleIO.export_rules(path_base, glossary_entries)
-            message = self.build_cli_glossary_export_success_message(
-                export_dir=export_dir,
-                json_path=json_path,
-                xlsx_path=xlsx_path,
-                exported_count=exported_count,
-                imported_count=imported_count,
-            )
-            LogManager.get().info(message)
-            self.emit(
-                Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-                self.build_cli_glossary_export_payload(
-                    sub_event=Base.SubEvent.DONE,
-                    json_path=json_path,
-                    xlsx_path=xlsx_path,
-                    imported_count=imported_count,
-                    exported_count=exported_count,
-                    message=message,
-                ),
-            )
-        except Exception as e:
-            message = Localizer.get().log_cli_analysis_export_failed
-            LogManager.get().error(message, e)
-            self.emit(
-                Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-                self.build_cli_glossary_export_payload(
-                    sub_event=Base.SubEvent.ERROR,
-                    json_path=json_path,
-                    xlsx_path=xlsx_path,
-                    imported_count=imported_count,
-                    exported_count=exported_count,
-                    message=message,
-                ),
-            )
-
-    def emit_cli_analysis_export_error(
-        self,
-        message: str,
-        e: Exception | None = None,
-    ) -> None:
-        """CLI 收尾失败时统一记录并发终态事件，避免调用方永远等不到退出信号。"""
-        if e is not None:
-            LogManager.get().error(message, e)
-        self.emit(
-            Base.Event.ANALYSIS_EXPORT_GLOSSARY,
-            {
-                "sub_event": Base.SubEvent.ERROR,
-                "message": message,
-            },
-        )
-
-    def finalize_cli_analysis_result(
-        self,
-        dm: DataManager,
-        final_status: str,
-    ) -> None:
-        """CLI 成功场景要跑到最终可交付文件，失败和停止则直接交给 CLI 退出。"""
-        if final_status != "SUCCESS":
-            return
-        try:
-            if not dm.is_loaded():
-                self.emit_cli_analysis_export_error(Localizer.get().task_failed)
-                return
-
-            expected_lg_path = dm.get_lg_path()
-            if not isinstance(expected_lg_path, str) or expected_lg_path == "":
-                self.emit_cli_analysis_export_error(Localizer.get().task_failed)
-                return
-
-            imported_count = self.import_analysis_candidates_sync(
-                dm,
-                expected_lg_path=expected_lg_path,
-            )
-            if imported_count is None:
-                self.emit_cli_analysis_export_error(Localizer.get().task_failed)
-                return
-
-            LogManager.get().info(
-                Localizer.get().analysis_page_import_success.replace(
-                    "{COUNT}",
-                    str(imported_count),
-                )
-            )
-            self.export_glossary_for_cli(
-                dm,
-                expected_lg_path=expected_lg_path,
-                imported_count=imported_count,
-            )
-        except Exception as e:
-            self.emit_cli_analysis_export_error(Localizer.get().task_failed, e)
-
-    def emit_analysis_terminal_toast(self, final_status: str) -> None:
-        """分析终态提示只维护一处，避免空跑和正常执行两条路径各改一遍。"""
-        TaskRunnerLifecycle.emit_terminal_toast(self, final_status=final_status)
-
-    # 重置入口只管任务边界和事件发射，具体数据层操作交给 DataManager。
-    def analysis_reset(self, event: Base.Event, data: dict[str, Any]) -> None:
-        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
-        if sub_event != Base.SubEvent.REQUEST:
-            return
-
-        if event == Base.Event.ANALYSIS_RESET_ALL:
-            reset_event = Base.Event.ANALYSIS_RESET_ALL
-            is_reset_all = True
-        else:
-            reset_event = Base.Event.ANALYSIS_RESET_FAILED
-            is_reset_all = False
-
-        dm = DataManager.get()
-
-        def run_reset_worker() -> None:
-            if is_reset_all:
-                dm.clear_analysis_candidates_and_progress()
-                refreshed_snapshot = dm.refresh_analysis_progress_snapshot_cache()
-                self.extras = dict(refreshed_snapshot)
-                self.emit(Base.Event.ANALYSIS_PROGRESS, dict(refreshed_snapshot))
-            else:
-                dm.reset_failed_analysis_checkpoints()
-                refreshed_snapshot = dm.refresh_analysis_progress_snapshot_cache()
-                self.extras = dict(refreshed_snapshot)
-                self.emit(Base.Event.ANALYSIS_PROGRESS, dict(refreshed_snapshot))
-
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
-
-        TaskRunnerLifecycle.run_reset_flow(
-            self,
-            reset_event=reset_event,
-            progress_message=None,
-            worker=run_reset_worker,
-            thread_factory=threading.Thread,
-            ensure_loaded=dm.is_loaded,
-        )
-
     # 启动主流程时只在这里串联准备、执行、收尾，其他细节都交给流水线。
     def start(self, data: dict[str, Any]) -> None:
         dm = DataManager.get()
@@ -528,15 +120,17 @@ class Analysis(Base):
             run_state["mode"] = mode
 
             self.config = config if isinstance(config, Config) else Config().load()
-            self.cli_auto_export_glossary = bool(
-                data.get("cli_auto_export_glossary", False)
-            )
-            if not TaskRunnerLifecycle.ensure_project_loaded(self, dm=dm):
+            if not TaskRunnerLifecycle.ensure_project_loaded(
+                self,
+                dm=dm,
+                task_event=Base.Event.ANALYSIS_TASK,
+            ):
                 return False
 
             self.model = TaskRunnerLifecycle.resolve_active_model(
                 self,
                 config=self.config,
+                task_event=Base.Event.ANALYSIS_TASK,
             )
             if self.model is None:
                 return False
@@ -596,19 +190,10 @@ class Analysis(Base):
             if not isinstance(task_contexts, list):
                 return "FAILED"
 
-            with LogManager.get().progress(transient=True) as progress:
-                task_id = progress.new_task(
-                    total=int(self.extras.get("total_line", 0) or 0),
-                    completed=int(self.extras.get("line", 0) or 0),
-                )
-                self.progress_tracker.bind_console_progress(progress, task_id)
-                try:
-                    return self.execute_task_contexts(
-                        task_contexts,
-                        max_workers=max_workers,
-                    )
-                finally:
-                    self.progress_tracker.clear_console_progress()
+            return self.execute_task_contexts(
+                task_contexts,
+                max_workers=max_workers,
+            )
 
         TaskRunnerLifecycle.run_task_flow(
             self,
@@ -623,31 +208,11 @@ class Analysis(Base):
                 on_before_execute=lambda: AnalysisTask.log_run_start(self),
                 execute=execute,
                 on_after_execute=AnalysisTask.log_run_finish,
-                terminal_toast=self.emit_analysis_terminal_toast,
                 finalize=lambda final_status: None,
                 cleanup=dm.close_db,
-                after_done=lambda final_status: self.after_analysis_done(
-                    dm,
-                    final_status,
-                ),
+                after_done=lambda final_status: None,
             ),
         )
-
-    def after_analysis_done(
-        self,
-        dm: DataManager,
-        final_status: str,
-    ) -> None:
-        """分析任务进入 DONE 后，再决定是否桥接自动导入流程。"""
-        if self.cli_auto_export_glossary:
-            self.finalize_cli_analysis_result(dm, final_status)
-            return
-
-        if self.should_auto_import_glossary(dm, final_status):
-            self.emit(
-                Base.Event.ANALYSIS_IMPORT_GLOSSARY,
-                {"sub_event": Base.SubEvent.REQUEST},
-            )
 
     # 并发和速率推导维持原有策略，只保留一个公开入口方便两边共用。
     def initialize_task_limits(self) -> tuple[int, int, int]:
@@ -674,7 +239,6 @@ class Analysis(Base):
     def execute_task_contexts(
         self, task_contexts: list[AnalysisTaskContext], *, max_workers: int
     ) -> str:
-        self.current_task_contexts = list(task_contexts)
         self.progress_tracker.reset_run_state()
         hooks = AnalysisTaskHooks(
             analysis=self,

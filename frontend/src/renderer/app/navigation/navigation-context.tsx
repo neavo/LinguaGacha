@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useContext,
@@ -9,7 +8,7 @@ import {
 
 import type { RouteId } from '@/app/navigation/types'
 
-export type ProofreadingLookupIntent = {
+type ProofreadingLookupIntent = {
   keyword: string
   is_regex: boolean
 }

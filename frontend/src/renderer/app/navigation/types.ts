@@ -1,56 +1,52 @@
-import type { LocaleKey } from '@/i18n'
-import type { LucideIcon } from 'lucide-react'
-import type { ComponentType } from 'react'
+import type { LocaleKey } from "@/i18n";
+import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 
-export const ROUTE_IDS = [
-  'project-home',
-  'model',
-  'proofreading',
-  'workbench',
-  'basic-settings',
-  'expert-settings',
-  'glossary',
-  'text-preserve',
-  'text-replacement',
-  'pre-translation-replacement',
-  'post-translation-replacement',
-  'custom-prompt',
-  'translation-prompt',
-  'analysis-prompt',
-  'laboratory',
-  'toolbox',
-] as const
-
-export type RouteId = (typeof ROUTE_IDS)[number]
+export type RouteId =
+  | "project-home"
+  | "model"
+  | "proofreading"
+  | "workbench"
+  | "basic-settings"
+  | "expert-settings"
+  | "glossary"
+  | "text-preserve"
+  | "text-replacement"
+  | "pre-translation-replacement"
+  | "post-translation-replacement"
+  | "custom-prompt"
+  | "translation-prompt"
+  | "analysis-prompt"
+  | "laboratory"
+  | "toolbox";
 
 type NavigationNode = {
-  id: RouteId
-  icon: LucideIcon
-  title_key: LocaleKey
-  children?: NavigationNode[]
-}
+  id: RouteId;
+  icon: LucideIcon;
+  title_key: LocaleKey;
+  children?: NavigationNode[];
+};
 
 export type NavigationGroup = {
-  id: string
-  items: NavigationNode[]
-}
+  id: string;
+  items: NavigationNode[];
+};
 
-export type BottomActionId = 'theme' | 'language'
+export type BottomActionId = "theme" | "language";
 
 export type BottomAction = {
-  id: BottomActionId
-  label_key: LocaleKey
-  icon: LucideIcon
-  route_id?: RouteId
-}
+  id: BottomActionId;
+  label_key: LocaleKey;
+  icon: LucideIcon;
+};
 
 export type ScreenComponentProps = {
-  is_sidebar_collapsed: boolean
-}
+  is_sidebar_collapsed: boolean;
+};
 
 type ScreenModule = {
-  component: ComponentType<ScreenComponentProps>
-  title_key: LocaleKey
-}
+  component: ComponentType<ScreenComponentProps>;
+  title_key: LocaleKey;
+};
 
-export type ScreenRegistry = Partial<Record<RouteId, ScreenModule>>
+export type ScreenRegistry = Partial<Record<RouteId, ScreenModule>>;

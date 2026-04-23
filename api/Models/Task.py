@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from dataclasses import field
 from typing import Any
 
 
@@ -262,39 +261,4 @@ class TaskSnapshot:
             "time": self.time,
             "start_time": self.start_time,
             "analysis_candidate_count": self.analysis_candidate_count,
-        }
-
-
-@dataclass(frozen=True)
-class AnalysisGlossaryImportResult:
-    """分析候选导入结果统一收口导入计数与最新任务快照。"""
-
-    accepted: bool = False
-    imported_count: int = 0
-    task: TaskSnapshot = field(default_factory=TaskSnapshot)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> "AnalysisGlossaryImportResult":
-        """把导入术语表响应转换成稳定对象，避免调用方继续拆字典。"""
-
-        normalized: dict[str, Any]
-        if isinstance(data, dict):
-            normalized = data
-        else:
-            normalized = {}
-
-        task_raw = normalized.get("task", {})
-        return cls(
-            accepted=bool(normalized.get("accepted", False)),
-            imported_count=int(normalized.get("imported_count", 0) or 0),
-            task=TaskSnapshot.from_dict(task_raw if isinstance(task_raw, dict) else {}),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """把导入结果恢复为 JSON 字典，供边界层与测试断言复用。"""
-
-        return {
-            "accepted": self.accepted,
-            "imported_count": self.imported_count,
-            "task": self.task.to_dict(),
         }

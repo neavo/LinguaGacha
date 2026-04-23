@@ -547,22 +547,44 @@ class LGDatabase(Base):
 
     # ========== 资产操作 ==========
 
-    def add_asset(self, path: str, data: bytes, original_size: int) -> int:
+    def add_asset(
+        self,
+        path: str,
+        data: bytes,
+        original_size: int,
+        *,
+        sort_order: int | None = None,
+        conn: sqlite3.Connection | None = None,
+    ) -> int:
         """添加资产（已压缩的数据）"""
-        with self.connection() as conn:
-            sort_order = self.get_next_asset_sort_order(conn)
+        if conn is not None:
+            effective_sort_order = (
+                int(sort_order)
+                if sort_order is not None
+                else self.get_next_asset_sort_order(conn)
+            )
             cursor = conn.execute(
                 """
                 INSERT INTO assets (
                     path, sort_order, data, original_size, compressed_size
                 ) VALUES (?, ?, ?, ?, ?)
                 """,
-                (path, sort_order, data, original_size, len(data)),
+                (path, effective_sort_order, data, original_size, len(data)),
             )
-            conn.commit()
             if cursor.lastrowid is None:
                 raise ValueError("Failed to get lastrowid")
-            return cursor.lastrowid
+            return int(cursor.lastrowid)
+
+        with self.connection() as local_conn:
+            asset_id = self.add_asset(
+                path,
+                data,
+                original_size,
+                sort_order=sort_order,
+                conn=local_conn,
+            )
+            local_conn.commit()
+            return asset_id
 
     def update_asset(
         self,
@@ -648,6 +670,21 @@ class LGDatabase(Base):
                 "SELECT path FROM assets ORDER BY sort_order ASC, id ASC"
             )
             return [row["path"] for row in cursor.fetchall()]
+
+    def get_all_asset_records(self) -> list[dict[str, Any]]:
+        """获取所有资产的稳定顺序记录。"""
+
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC"
+            )
+            return [
+                {
+                    "path": row["path"],
+                    "sort_order": int(row["sort_order"]),
+                }
+                for row in cursor.fetchall()
+            ]
 
     def update_asset_sort_orders(
         self,
@@ -796,9 +833,13 @@ class LGDatabase(Base):
             conn.commit()
             return int(item_id)
 
-    def set_items(self, items: list[dict[str, Any]]) -> list[int]:
+    def set_items(
+        self,
+        items: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> list[int]:
         """批量保存翻译条目（清空后重新写入，并保留原始 ID）"""
-        with self.connection() as conn:
+        if conn is not None:
             conn.execute("DELETE FROM items")
             ids = []
             for item in items:
@@ -817,8 +858,61 @@ class LGDatabase(Base):
                         "INSERT INTO items (data) VALUES (?)", (data_json,)
                     )
                     ids.append(cursor.lastrowid)
-            conn.commit()
             return ids
+
+        with self.connection() as local_conn:
+            ids = self.set_items(items, conn=local_conn)
+            local_conn.commit()
+            return ids
+
+    def preview_replace_all_item_ids(
+        self,
+        items: list[dict[str, Any]],
+        conn: sqlite3.Connection | None = None,
+    ) -> list[int]:
+        """预演 `set_items()` 将实际落库的 id 序列。"""
+
+        if conn is None:
+            with self.connection() as local_conn:
+                return self.preview_replace_all_item_ids(items, conn=local_conn)
+
+        sequence_row = conn.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'items'"
+        ).fetchone()
+        sequence_value = (
+            int(sequence_row["seq"] or 0) if sequence_row is not None else 0
+        )
+        max_row = conn.execute("SELECT MAX(id) AS max_id FROM items").fetchone()
+        current_max_id = max(
+            sequence_value,
+            int(max_row["max_id"] or 0) if max_row is not None else 0,
+        )
+
+        preview_ids: list[int] = []
+        for item in items:
+            raw_item_id = item.get("id")
+            item_id: int | None
+            if raw_item_id is None or raw_item_id == "":
+                item_id = None
+            elif isinstance(raw_item_id, int):
+                item_id = raw_item_id
+            else:
+                try:
+                    item_id = int(raw_item_id)
+                except TypeError:
+                    item_id = None
+                except ValueError:
+                    item_id = None
+
+            if item_id is None:
+                current_max_id += 1
+                preview_ids.append(current_max_id)
+                continue
+
+            current_max_id = max(current_max_id, item_id)
+            preview_ids.append(item_id)
+
+        return preview_ids
 
     def insert_items(
         self,

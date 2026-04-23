@@ -20,7 +20,6 @@ def build_data_manager() -> SimpleNamespace:
         set_project_status=MagicMock(),
         get_translation_extras=MagicMock(return_value={"line": 0}),
         set_translation_extras=MagicMock(),
-        emit_project_item_change_refresh=MagicMock(),
     )
 
 
@@ -53,7 +52,6 @@ def test_retranslate_items_returns_project_item_change_and_emits_refresh() -> No
     assert change.rel_paths == ("script/a.txt",)
     assert change.reason == "proofreading_retranslate_items"
     data_manager.save_item.assert_called_once()
-    data_manager.emit_project_item_change_refresh.assert_called_once()
 
 
 def test_retranslate_items_marks_failed_items_as_error() -> None:

@@ -110,7 +110,6 @@ class ProofreadingRetranslateService:
             ),
             reason=self.RETRANSLATE_REASON,
         )
-        self.emit_project_item_change(change)
         return change
 
     def translate_item(self, item: Item, config: Config) -> bool:
@@ -166,36 +165,3 @@ class ProofreadingRetranslateService:
         )
         extras["line"] = translated_count
         self.data_manager.set_translation_extras(extras)
-
-    def emit_project_item_change(self, change: ProjectItemChange) -> None:
-        """把重译后的精确影响范围映射成页面刷新。"""
-
-        emit_change = getattr(
-            self.data_manager, "emit_project_item_change_refresh", None
-        )
-        if callable(emit_change):
-            emit_change(change)
-            return
-
-        emit = getattr(self.data_manager, "emit", None)
-        if not callable(emit):
-            return
-        if change.rel_paths:
-            emit(
-                Base.Event.WORKBENCH_REFRESH,
-                {
-                    "reason": change.reason,
-                    "scope": "file",
-                    "rel_paths": list(change.rel_paths),
-                },
-            )
-        if change.item_ids:
-            emit(
-                Base.Event.PROOFREADING_REFRESH,
-                {
-                    "reason": change.reason,
-                    "scope": "entry",
-                    "item_ids": list(change.item_ids),
-                    "rel_paths": list(change.rel_paths),
-                },
-            )
