@@ -62,6 +62,7 @@ flowchart TD
 - Electron 侧 Core API 默认地址来自 `frontend/src/shared/core-api-base-url.ts`，默认端口是 `38191`，也支持环境变量 `LINGUAGACHA_CORE_API_BASE_URL` 与启动参数 `--core-api-base-url=...` 覆盖。
 - 渲染层项目运行态由 bootstrap 首包和事件流共同驱动，而不是单次整页快照。
 - `ProjectStore` 是渲染层项目运行态最小事实仓库；页面本地筛选、弹窗、交互态不应上提到这里。
+- 校对页不会把 warnings、筛选面板 facets、搜索排序结果等派生事实塞回 `ProjectStore`；这些派生缓存由独立 worker 持有，主线程只同步原始 `project / items / quality` 输入并消费查询结果。
 
 ## 文档地图与推荐阅读顺序
 

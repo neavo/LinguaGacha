@@ -1,15 +1,53 @@
-import type { ProofreadingSnapshot } from "@/pages/proofreading-page/types";
-import { type ProofreadingRuntimeInput } from "@/pages/proofreading-page/proofreading-runtime";
+import type {
+  ProofreadingFilterPanelState,
+  ProofreadingListView,
+} from "@/pages/proofreading-page/types";
+import type {
+  ProofreadingFilterPanelQuery,
+  ProofreadingListViewQuery,
+  ProofreadingRuntimeDeltaInput,
+  ProofreadingRuntimeHydrationInput,
+  ProofreadingRuntimeSyncState,
+} from "@/pages/proofreading-page/proofreading-runtime-engine";
 import { WorkerClientError } from "@/lib/worker-client-error";
 
 type PendingResolver = {
-  resolve: (snapshot: ProofreadingSnapshot) => void;
+  resolve: (result: unknown) => void;
   reject: (error: Error) => void;
 };
 
+type ProofreadingRuntimeWorkerRequest =
+  | {
+      id: number;
+      type: "hydrate_full";
+      input: ProofreadingRuntimeHydrationInput;
+    }
+  | {
+      id: number;
+      type: "apply_item_delta";
+      input: ProofreadingRuntimeDeltaInput;
+    }
+  | {
+      id: number;
+      type: "build_list_view";
+      input: ProofreadingListViewQuery;
+    }
+  | {
+      id: number;
+      type: "build_filter_panel";
+      input: ProofreadingFilterPanelQuery;
+    }
+  | {
+      id: number;
+      type: "dispose_project";
+      input: {
+        project_id?: string;
+      };
+    };
+
 type ProofreadingRuntimeWorkerResponse = {
   id: number;
-  snapshot: ProofreadingSnapshot;
+  result: unknown;
 };
 
 export function createProofreadingRuntimeClient() {
@@ -48,7 +86,7 @@ export function createProofreadingRuntimeClient() {
         return;
       }
       pending_requests.delete(event.data.id);
-      resolver.resolve(event.data.snapshot);
+      resolver.resolve(event.data.result);
     });
     worker.addEventListener("error", () => {
       rejectAll(
@@ -60,18 +98,62 @@ export function createProofreadingRuntimeClient() {
     return worker;
   }
 
-  return {
-    async compute(input: ProofreadingRuntimeInput): Promise<ProofreadingSnapshot> {
-      const runtime_worker = ensureWorker();
+  async function post_request<TResult>(
+    request: Omit<ProofreadingRuntimeWorkerRequest, "id">,
+  ): Promise<TResult> {
+    const runtime_worker = ensureWorker();
 
-      next_request_id += 1;
-      const request_id = next_request_id;
-      return await new Promise<ProofreadingSnapshot>((resolve, reject) => {
-        pending_requests.set(request_id, { resolve, reject });
-        runtime_worker.postMessage({
-          id: request_id,
-          input,
-        });
+    next_request_id += 1;
+    const request_id = next_request_id;
+    return await new Promise<TResult>((resolve, reject) => {
+      pending_requests.set(request_id, {
+        resolve: (result) => {
+          resolve(result as TResult);
+        },
+        reject,
+      });
+      runtime_worker.postMessage({
+        id: request_id,
+        ...request,
+      });
+    });
+  }
+
+  return {
+    hydrate_full(input: ProofreadingRuntimeHydrationInput): Promise<ProofreadingRuntimeSyncState> {
+      return post_request({
+        type: "hydrate_full",
+        input,
+      });
+    },
+    apply_item_delta(input: ProofreadingRuntimeDeltaInput): Promise<ProofreadingRuntimeSyncState> {
+      return post_request({
+        type: "apply_item_delta",
+        input,
+      });
+    },
+    build_list_view(input: ProofreadingListViewQuery): Promise<ProofreadingListView> {
+      return post_request({
+        type: "build_list_view",
+        input,
+      });
+    },
+    build_filter_panel(input: ProofreadingFilterPanelQuery): Promise<ProofreadingFilterPanelState> {
+      return post_request({
+        type: "build_filter_panel",
+        input,
+      });
+    },
+    async dispose_project(project_id?: string): Promise<void> {
+      if (worker === null) {
+        return;
+      }
+
+      await post_request<void>({
+        type: "dispose_project",
+        input: {
+          project_id,
+        },
       });
     },
     dispose(): void {

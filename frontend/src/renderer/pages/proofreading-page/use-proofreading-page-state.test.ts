@@ -3,11 +3,16 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkerClientError } from "@/lib/worker-client-error";
-import { create_empty_proofreading_snapshot } from "@/pages/proofreading-page/types";
+import {
+  create_empty_proofreading_filter_panel_state,
+  create_empty_proofreading_list_view,
+} from "@/pages/proofreading-page/types";
 import { useProofreadingPageState } from "@/pages/proofreading-page/use-proofreading-page-state";
 
 type RuntimeFixture = {
-  settings_snapshot: Record<string, unknown>;
+  settings_snapshot: {
+    source_language: string;
+  };
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -20,6 +25,9 @@ type RuntimeFixture = {
   };
   proofreading_change_signal: {
     seq: number;
+    mode: "full" | "delta" | "noop";
+    item_ids: Array<number | string>;
+    updated_sections: string[];
   };
   commit_local_project_patch: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
@@ -32,7 +40,11 @@ type NavigationFixture = {
 };
 
 type ProofreadingRuntimeClientFixture = {
-  compute: ReturnType<typeof vi.fn>;
+  hydrate_full: ReturnType<typeof vi.fn>;
+  apply_item_delta: ReturnType<typeof vi.fn>;
+  build_list_view: ReturnType<typeof vi.fn>;
+  build_filter_panel: ReturnType<typeof vi.fn>;
+  dispose_project: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
 
@@ -92,18 +104,6 @@ vi.mock("@/i18n", () => {
   };
 });
 
-vi.mock("@/pages/proofreading-page/proofreading-runtime", () => {
-  return {
-    applyProofreadingFilters: ({ snapshot, filters }: Record<string, any>) => {
-      return {
-        ...snapshot,
-        filters,
-      };
-    },
-    buildProofreadingRuntimeInput: ({ state }: Record<string, any>) => state,
-  };
-});
-
 vi.mock("@/pages/proofreading-page/proofreading-runtime-client", () => {
   return {
     createProofreadingRuntimeClient: () => proofreading_runtime_client_fixture.current,
@@ -118,14 +118,61 @@ vi.mock("@/app/desktop-api", () => {
 
 function create_runtime_fixture(): RuntimeFixture {
   return {
-    settings_snapshot: {},
+    settings_snapshot: {
+      source_language: "JA",
+    },
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",
     },
     project_store: {
       getState: () => {
-        return {};
+        return {
+          project: {
+            path: "E:/demo/sample.lg",
+          },
+          proofreading: {
+            revision: 1,
+          },
+          quality: {
+            glossary: {
+              enabled: false,
+              mode: "off",
+              revision: 0,
+              entries: [],
+            },
+            pre_replacement: {
+              enabled: false,
+              mode: "off",
+              revision: 0,
+              entries: [],
+            },
+            post_replacement: {
+              enabled: false,
+              mode: "off",
+              revision: 0,
+              entries: [],
+            },
+            text_preserve: {
+              enabled: false,
+              mode: "off",
+              revision: 0,
+              entries: [],
+            },
+          },
+          items: {
+            "1": {
+              item_id: 1,
+              file_path: "chapter01.txt",
+              row_number: 1,
+              src: "foo",
+              dst: "bar",
+              status: "NONE",
+              text_type: "NONE",
+              retry_count: 0,
+            },
+          },
+        };
       },
     },
     task_snapshot: {
@@ -133,6 +180,9 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     proofreading_change_signal: {
       seq: 0,
+      mode: "full",
+      item_ids: [],
+      updated_sections: [],
     },
     commit_local_project_patch: vi.fn(() => {
       return {
@@ -151,9 +201,88 @@ function create_navigation_fixture(): NavigationFixture {
   };
 }
 
+function create_sync_state() {
+  return {
+    revision: 1,
+    project_id: "E:/demo/sample.lg",
+    total_item_count: 1,
+    review_item_count: 1,
+    warning_item_count: 0,
+    default_filters: {
+      warning_types: ["NO_WARNING"],
+      statuses: ["NONE"],
+      file_paths: ["chapter01.txt"],
+      glossary_terms: [],
+      include_without_glossary_miss: true,
+    },
+  };
+}
+
+function create_list_view() {
+  return {
+    ...create_empty_proofreading_list_view(),
+    revision: 1,
+    project_id: "E:/demo/sample.lg",
+    default_filters: create_sync_state().default_filters,
+    filters: create_sync_state().default_filters,
+    summary: {
+      total_items: 1,
+      filtered_items: 1,
+      warning_items: 0,
+    },
+    items: [
+      {
+        row_id: "1",
+        item: {
+          item_id: 1,
+          row_id: "1",
+          file_path: "chapter01.txt",
+          row_number: 1,
+          src: "foo",
+          dst: "bar",
+          status: "NONE",
+          warnings: [],
+          applied_glossary_terms: [],
+          failed_glossary_terms: [],
+          compressed_src: "foo",
+          compressed_dst: "bar",
+        },
+        compressed_src: "foo",
+        compressed_dst: "bar",
+      },
+    ],
+  };
+}
+
+function create_filter_panel() {
+  return {
+    ...create_empty_proofreading_filter_panel_state(),
+    filters: create_sync_state().default_filters,
+    available_statuses: ["NONE"],
+    status_count_by_code: {
+      NONE: 1,
+    },
+    available_warning_types: ["NO_WARNING"],
+    warning_count_by_code: {
+      NO_WARNING: 1,
+    },
+    all_file_paths: ["chapter01.txt"],
+    available_file_paths: ["chapter01.txt"],
+    file_count_by_path: {
+      "chapter01.txt": 1,
+    },
+    glossary_term_entries: [],
+    without_glossary_miss_count: 1,
+  };
+}
+
 function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClientFixture {
   return {
-    compute: vi.fn(async () => create_empty_proofreading_snapshot()),
+    hydrate_full: vi.fn(async () => create_sync_state()),
+    apply_item_delta: vi.fn(async () => create_sync_state()),
+    build_list_view: vi.fn(async () => create_list_view()),
+    build_filter_panel: vi.fn(async () => create_filter_panel()),
+    dispose_project: vi.fn(async () => {}),
     dispose: vi.fn(),
   };
 }
@@ -195,6 +324,7 @@ describe("useProofreadingPageState", () => {
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
     });
   }
 
@@ -211,44 +341,101 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
   }
 
-  it("项目路径切换后会先保持未 settled，不会对空 store 立刻计算缓存", async () => {
+  it("项目路径切换后会先保持 refreshing，不会对空缓存立刻做 worker 同步", async () => {
     await render_hook();
 
     expect(latest_state).not.toBeNull();
-    expect(proofreading_runtime_client_fixture.current.compute).not.toHaveBeenCalled();
+    expect(proofreading_runtime_client_fixture.current.hydrate_full).not.toHaveBeenCalled();
+    expect(proofreading_runtime_client_fixture.current.apply_item_delta).not.toHaveBeenCalled();
     expect(latest_state?.cache_status).toBe("refreshing");
     expect(latest_state?.settled_project_path).toBe("");
     expect(latest_state?.last_loaded_at).toBeNull();
   });
 
-  it("收到校对页变更信号后才会刷新并进入 ready", async () => {
-    proofreading_runtime_client_fixture.current.compute = vi.fn(async () => {
-      return {
-        ...create_empty_proofreading_snapshot(),
-        revision: 1,
-      };
-    });
-
+  it("缓存 ready 后再次收到 delta 信号时会走增量路径而不是全量 hydrate", async () => {
     await render_hook();
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
       proofreading_change_signal: {
         seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
       },
     };
-
     await render_hook();
 
-    expect(latest_state).not.toBeNull();
-    expect(proofreading_runtime_client_fixture.current.compute).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
-    expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
-    expect(latest_state?.full_snapshot.revision).toBe(1);
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 2,
+        mode: "delta",
+        item_ids: [1],
+        updated_sections: ["items"],
+      },
+    };
+    await render_hook();
+
+    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.apply_item_delta).toHaveBeenCalledTimes(1);
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.visible_items).toHaveLength(1);
+  });
+
+  it("打开筛选弹窗时不会再触发首次面板计算", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.filter_dialog_open).toBe(true);
+    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+  });
+
+  it("搜索输入更新时输入本身不会被后台列表查询阻塞", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("needle");
+    });
+
+    expect(latest_state?.search_keyword).toBe("needle");
   });
 
   it("worker 类错误会统一收口成页面已有的刷新失败提示", async () => {
-    proofreading_runtime_client_fixture.current.compute = vi.fn(async () => {
+    proofreading_runtime_client_fixture.current.hydrate_full = vi.fn(async () => {
       throw new WorkerClientError("底层 worker 初始化失败。", "init_failed");
     });
 
@@ -258,9 +445,11 @@ describe("useProofreadingPageState", () => {
       ...runtime_fixture.current,
       proofreading_change_signal: {
         seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
       },
     };
-
     await render_hook();
 
     expect(latest_state).not.toBeNull();

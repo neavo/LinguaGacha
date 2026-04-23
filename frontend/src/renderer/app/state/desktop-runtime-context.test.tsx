@@ -32,6 +32,9 @@ type RuntimeSnapshot = {
   workbenchReason: string;
   proofreadingSeq: number;
   proofreadingReason: string;
+  proofreadingMode: "full" | "delta" | "noop";
+  proofreadingUpdatedSections: string[];
+  proofreadingItemIds: Array<number | string>;
   fileKeys: string[];
   itemKeys: string[];
   taskStatus: string;
@@ -68,6 +71,9 @@ function RuntimeProbe(props: {
       workbenchReason: runtime.workbench_change_signal.reason,
       proofreadingSeq: runtime.proofreading_change_signal.seq,
       proofreadingReason: runtime.proofreading_change_signal.reason,
+      proofreadingMode: runtime.proofreading_change_signal.mode,
+      proofreadingUpdatedSections: runtime.proofreading_change_signal.updated_sections,
+      proofreadingItemIds: runtime.proofreading_change_signal.item_ids,
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: Object.keys(runtime.project_store.getState().items),
       taskStatus: runtime.task_snapshot.status,
@@ -76,6 +82,7 @@ function RuntimeProbe(props: {
   }, [
     props,
     runtime.proofreading_change_signal.reason,
+    runtime.proofreading_change_signal.mode,
     runtime.proofreading_change_signal.seq,
     runtime.settings_snapshot.source_language,
     runtime.task_snapshot.status,
@@ -254,6 +261,9 @@ describe("DesktopRuntimeProvider", () => {
       workbenchReason: "project_bootstrap",
       proofreadingSeq: 1,
       proofreadingReason: "project_bootstrap",
+      proofreadingMode: "full",
+      proofreadingUpdatedSections: ["project", "items", "quality"],
+      proofreadingItemIds: [],
       fileKeys: ["chapter01.txt"],
       itemKeys: ["1"],
     });
@@ -537,6 +547,7 @@ describe("DesktopRuntimeProvider", () => {
       workbenchSeq: 1,
       proofreadingSeq: 2,
       proofreadingReason: "quality_rule_save_entries",
+      proofreadingMode: "full",
       taskStatus: "RUNNING",
     });
 
@@ -559,7 +570,231 @@ describe("DesktopRuntimeProvider", () => {
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingSeq: 3,
       proofreadingReason: "quality_rule_save_entries_rollback",
+      proofreadingMode: "full",
       taskStatus: "IDLE",
+    });
+  });
+
+  it("merge_items patch 会把校对页信号标成 delta 并携带 item_ids", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return {
+          settings: {
+            app_language: "ZH",
+          },
+        };
+      }
+
+      if (path === "/api/project/snapshot") {
+        return {
+          project: {
+            path: "E:/demo/demo.lg",
+            loaded: true,
+          },
+        };
+      }
+
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: {
+            task_type: "translation",
+            status: "IDLE",
+            busy: false,
+          },
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
+      return (async function* () {
+        yield {
+          type: "completed",
+          projectRevision: 1,
+          sectionRevisions: {},
+        };
+      })();
+    });
+
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.proofreadingSeq === 1;
+    });
+
+    await act(async () => {
+      event_stream.emit("project.patch", {
+        source: "proofreading_save_item",
+        projectRevision: 2,
+        updatedSections: ["items", "proofreading", "task"],
+        patch: [
+          {
+            op: "merge_items",
+            items: [
+              {
+                item_id: 1,
+                file_path: "chapter01.txt",
+                row_number: 1,
+                src: "foo",
+                dst: "bar",
+                status: "NONE",
+              },
+            ],
+          },
+          {
+            op: "replace_proofreading",
+            proofreading: {
+              revision: 2,
+            },
+          },
+          {
+            op: "replace_task",
+            task: {
+              task_type: "translation",
+              status: "IDLE",
+              busy: false,
+            },
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.proofreadingSeq === 2;
+    });
+
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingSeq: 2,
+      proofreadingReason: "proofreading_save_item",
+      proofreadingMode: "delta",
+      proofreadingUpdatedSections: ["items", "proofreading", "task"],
+      proofreadingItemIds: [1],
+      itemKeys: ["1"],
+    });
+  });
+
+  it("只改 proofreading/task 且没有 item 载荷时会发 noop 信号", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return {
+          settings: {
+            app_language: "ZH",
+          },
+        };
+      }
+
+      if (path === "/api/project/snapshot") {
+        return {
+          project: {
+            path: "E:/demo/demo.lg",
+            loaded: true,
+          },
+        };
+      }
+
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: {
+            task_type: "translation",
+            status: "IDLE",
+            busy: false,
+          },
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
+      return (async function* () {
+        yield {
+          type: "completed",
+          projectRevision: 1,
+          sectionRevisions: {},
+        };
+      })();
+    });
+
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.proofreadingSeq === 1;
+    });
+
+    await act(async () => {
+      event_stream.emit("project.patch", {
+        source: "task_status_refresh",
+        projectRevision: 2,
+        updatedSections: ["proofreading", "task"],
+        patch: [
+          {
+            op: "replace_proofreading",
+            proofreading: {
+              revision: 2,
+            },
+          },
+          {
+            op: "replace_task",
+            task: {
+              task_type: "translation",
+              status: "RUNNING",
+              busy: true,
+            },
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.proofreadingSeq === 2;
+    });
+
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingSeq: 2,
+      proofreadingReason: "task_status_refresh",
+      proofreadingMode: "noop",
+      proofreadingUpdatedSections: ["proofreading", "task"],
+      proofreadingItemIds: [],
+      taskStatus: "RUNNING",
     });
   });
 });
