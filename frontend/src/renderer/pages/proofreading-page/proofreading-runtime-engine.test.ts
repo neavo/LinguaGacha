@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createProofreadingRuntimeEngine } from "./proofreading-runtime-engine";
+import { PROOFREADING_WARNING_CODES } from "./types";
 
 function create_quality_state() {
   return {
@@ -68,6 +69,28 @@ function create_hydration_input() {
   };
 }
 
+function create_excluded_only_hydration_input() {
+  return {
+    project_id: "demo",
+    revision: 4,
+    total_item_count: 1,
+    quality: create_quality_state(),
+    source_language: "JA",
+    items: [
+      {
+        item_id: 3,
+        file_path: "c.txt",
+        row_number: 3,
+        src: "gamma",
+        dst: "delta",
+        status: "EXCLUDED",
+        text_type: "NONE",
+        retry_count: 0,
+      },
+    ],
+  };
+}
+
 describe("createProofreadingRuntimeEngine", () => {
   it("hydrate_full 后列表、默认筛选与筛选面板会基于 worker 缓存一致产出", () => {
     const engine = createProofreadingRuntimeEngine();
@@ -80,14 +103,12 @@ describe("createProofreadingRuntimeEngine", () => {
       review_item_count: 2,
       warning_item_count: 1,
       default_filters: {
-        statuses: ["NONE", "PROCESSED"],
+        warning_types: [...PROOFREADING_WARNING_CODES],
+        statuses: ["NONE", "PROCESSED", "PROCESSED_IN_PAST", "ERROR"],
         file_paths: ["a.txt", "b.txt"],
         glossary_terms: [["foo", "baz"]],
       },
     });
-    expect(sync_state.default_filters.warning_types).toEqual(
-      expect.arrayContaining(["NO_WARNING", "GLOSSARY"]),
-    );
 
     const list_view = engine.build_list_view({
       filters: sync_state.default_filters,
@@ -111,6 +132,7 @@ describe("createProofreadingRuntimeEngine", () => {
     const filter_panel = engine.build_filter_panel({
       filters: sync_state.default_filters,
     });
+    expect(filter_panel.filters.warning_types).toEqual([...PROOFREADING_WARNING_CODES]);
     expect(filter_panel.status_count_by_code).toMatchObject({
       NONE: 1,
       PROCESSED: 1,
@@ -161,11 +183,11 @@ describe("createProofreadingRuntimeEngine", () => {
       review_item_count: 2,
       warning_item_count: 0,
       default_filters: {
+        warning_types: [...PROOFREADING_WARNING_CODES],
         file_paths: ["a.txt", "b.txt"],
         glossary_terms: [],
       },
     });
-    expect(delta_state.default_filters.warning_types).toEqual(["NO_WARNING"]);
 
     const list_view = engine.build_list_view({
       filters: sync_state.default_filters,
@@ -191,5 +213,30 @@ describe("createProofreadingRuntimeEngine", () => {
     });
     expect(filter_panel.glossary_term_entries).toEqual([]);
     expect(filter_panel.without_glossary_miss_count).toBe(2);
+  });
+
+  it("零计数的默认状态也会保留在默认筛选中", () => {
+    const engine = createProofreadingRuntimeEngine();
+
+    const sync_state = engine.hydrate_full(create_excluded_only_hydration_input());
+    expect(sync_state.default_filters.statuses).toEqual([
+      "NONE",
+      "PROCESSED",
+      "PROCESSED_IN_PAST",
+      "ERROR",
+    ]);
+
+    const filter_panel = engine.build_filter_panel({
+      filters: sync_state.default_filters,
+    });
+    expect(filter_panel.filters.statuses).toEqual([
+      "NONE",
+      "PROCESSED",
+      "PROCESSED_IN_PAST",
+      "ERROR",
+    ]);
+    expect(filter_panel.status_count_by_code).toMatchObject({
+      EXCLUDED: 1,
+    });
   });
 });

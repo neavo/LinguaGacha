@@ -69,7 +69,7 @@ function FilterToggleButton(props: {
       <span className="proofreading-page__filter-toggle-label">{props.label}</span>
       <Badge
         variant="secondary"
-        className="proofreading-page__filter-count-badge proofreading-page__filter-count-badge--toggle justify-center font-mono tabular-nums"
+        className="proofreading-page__filter-count-badge proofreading-page__filter-count-badge--toggle justify-center tabular-nums"
       >
         {props.count.toString()}
       </Badge>
@@ -93,7 +93,7 @@ function FilterListRow(props: {
       <span className="proofreading-page__filter-list-row-copy">{props.label}</span>
       <Badge
         variant="secondary"
-        className="proofreading-page__filter-count-badge min-w-5 justify-center font-mono tabular-nums"
+        className="proofreading-page__filter-count-badge min-w-5 justify-center tabular-nums"
       >
         {props.count.toString()}
       </Badge>
