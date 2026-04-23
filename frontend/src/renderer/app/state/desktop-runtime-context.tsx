@@ -81,13 +81,15 @@ type TaskSnapshot = {
   analysis_candidate_count: number;
 };
 
-type ProofreadingChangeScope = "global" | "entry";
+type ProofreadingChangeMode = "full" | "delta" | "noop";
 type WorkbenchChangeScope = "global" | "file";
 
 type ProofreadingChangeSignal = {
   seq: number;
   reason: string;
-  scope: ProofreadingChangeScope;
+  mode: ProofreadingChangeMode;
+  updated_sections: ProjectStoreStage[];
+  item_ids: Array<number | string>;
 };
 
 type WorkbenchChangeSignal = {
@@ -231,7 +233,9 @@ const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
 const DEFAULT_PROOFREADING_CHANGE_SIGNAL: ProofreadingChangeSignal = {
   seq: 0,
   reason: "",
-  scope: "global",
+  mode: "full",
+  updated_sections: [],
+  item_ids: [],
 };
 
 const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
@@ -522,21 +526,140 @@ function normalize_project_patch_event(
   };
 }
 
-function has_project_patch_item_ids(event: ProjectStorePatchEvent): boolean {
+function collect_project_patch_item_ids(event: ProjectStorePatchEvent): Array<number | string> {
+  const item_ids: Array<number | string> = [];
+
   for (const operation of event.patch) {
     if (operation.op !== "merge_items" && operation.op !== "replace_items") {
       continue;
     }
 
     for (const item of collect_operation_records(operation.items)) {
-      const next_item_id = Number(item.item_id);
-      if (Number.isInteger(next_item_id)) {
-        return true;
+      const raw_item_id = item.item_id ?? item.id;
+      if (raw_item_id === undefined || raw_item_id === null) {
+        continue;
+      }
+
+      const normalized_item_id =
+        typeof raw_item_id === "number" && Number.isInteger(raw_item_id)
+          ? raw_item_id
+          : String(raw_item_id).trim();
+      if (
+        (typeof normalized_item_id === "number" && Number.isInteger(normalized_item_id)) ||
+        (typeof normalized_item_id === "string" && normalized_item_id !== "")
+      ) {
+        item_ids.push(normalized_item_id);
       }
     }
   }
 
-  return false;
+  return [...new Set(item_ids)];
+}
+
+function patch_event_includes_operation(
+  event: ProjectStorePatchEvent,
+  operation_names: ProjectStorePatchOperation["op"][],
+): boolean {
+  return event.patch.some((operation) => operation_names.includes(operation.op));
+}
+
+function resolve_proofreading_change_signal(args: {
+  reason: string;
+  updated_sections: ProjectStoreStage[];
+  patch_event: ProjectStorePatchEvent | null;
+}): {
+  reason: string;
+  mode: ProofreadingChangeMode;
+  updated_sections: ProjectStoreStage[];
+  item_ids: Array<number | string>;
+} | null {
+  const updated_sections = args.updated_sections;
+  if (updated_sections.length === 0) {
+    return null;
+  }
+
+  const has_full_input_section = updated_sections.some((section) =>
+    ["project", "items", "quality"].includes(section),
+  );
+  const has_task_only_section = updated_sections.some((section) =>
+    ["proofreading", "task"].includes(section),
+  );
+  if (args.patch_event === null) {
+    if (has_full_input_section) {
+      return {
+        reason: args.reason,
+        mode: "full",
+        updated_sections,
+        item_ids: [],
+      };
+    }
+
+    if (has_task_only_section) {
+      return {
+        reason: args.reason,
+        mode: "noop",
+        updated_sections,
+        item_ids: [],
+      };
+    }
+
+    return null;
+  }
+
+  const patch_event = args.patch_event;
+  if (
+    updated_sections.includes("project") ||
+    updated_sections.includes("quality") ||
+    patch_event_includes_operation(patch_event, [
+      "replace_project",
+      "replace_quality",
+      "replace_items",
+    ])
+  ) {
+    return {
+      reason: args.reason,
+      mode: "full",
+      updated_sections,
+      item_ids: [],
+    };
+  }
+
+  if (updated_sections.every((section) => ["proofreading", "task"].includes(section))) {
+    return {
+      reason: args.reason,
+      mode: "noop",
+      updated_sections,
+      item_ids: [],
+    };
+  }
+
+  const item_ids = collect_project_patch_item_ids(patch_event);
+  const contains_items = updated_sections.includes("items");
+  const delta_sections_only = updated_sections.every((section) =>
+    ["items", "proofreading", "task"].includes(section),
+  );
+  const delta_operations_only = patch_event.patch.every((operation) =>
+    ["merge_items", "replace_proofreading", "replace_task"].includes(operation.op),
+  );
+  if (contains_items && item_ids.length > 0 && delta_sections_only && delta_operations_only) {
+    return {
+      reason: args.reason,
+      mode: "delta",
+      updated_sections,
+      item_ids,
+    };
+  }
+
+  if (contains_items || has_task_only_section) {
+    return {
+      reason: args.reason,
+      mode: "full",
+      updated_sections,
+      item_ids: [],
+    };
+  }
+
+  return null;
 }
 
 function has_project_patch_rel_paths(event: ProjectStorePatchEvent): boolean {
@@ -717,11 +840,18 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   );
 
   const bump_proofreading_runtime_signal = useCallback(
-    (args: { reason: string; scope: ProofreadingChangeScope }): void => {
+    (args: {
+      reason: string;
+      mode: ProofreadingChangeMode;
+      updated_sections: ProjectStoreStage[];
+      item_ids: Array<number | string>;
+    }): void => {
       set_proofreading_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: args.reason,
-        scope: args.scope,
+        mode: args.mode,
+        updated_sections: [...args.updated_sections],
+        item_ids: [...args.item_ids],
       }));
     },
     [],
@@ -746,7 +876,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         });
       }
 
-      const has_item_ids = has_project_patch_item_ids(patch_event);
       const has_rel_paths = has_project_patch_rel_paths(patch_event);
       if (
         patch_event.updatedSections.some((section) =>
@@ -759,17 +888,13 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         });
       }
 
-      if (
-        patch_event.updatedSections.some((section) =>
-          ["project", "items", "quality", "prompts", "analysis", "proofreading", "task"].includes(
-            section,
-          ),
-        )
-      ) {
-        bump_proofreading_runtime_signal({
-          reason: patch_event.source,
-          scope: has_item_ids ? "entry" : "global",
-        });
+      const proofreading_change_signal = resolve_proofreading_change_signal({
+        reason: patch_event.source,
+        updated_sections: patch_event.updatedSections,
+        patch_event,
+      });
+      if (proofreading_change_signal !== null) {
+        bump_proofreading_runtime_signal(proofreading_change_signal);
       }
     },
     [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
@@ -796,7 +921,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     });
     bump_proofreading_runtime_signal({
       reason: "project_bootstrap",
-      scope: "global",
+      mode: "full",
+      updated_sections: ["project", "items", "quality"],
+      item_ids: [],
     });
   }, [
     bump_proofreading_runtime_signal,
@@ -1021,17 +1148,13 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           });
         }
 
-        if (
-          updated_sections.some((section) =>
-            ["project", "items", "quality", "prompts", "analysis", "proofreading", "task"].includes(
-              section,
-            ),
-          )
-        ) {
-          bump_proofreading_runtime_signal({
-            reason,
-            scope: "global",
-          });
+        const proofreading_change_signal = resolve_proofreading_change_signal({
+          reason,
+          updated_sections,
+          patch_event: null,
+        });
+        if (proofreading_change_signal !== null) {
+          bump_proofreading_runtime_signal(proofreading_change_signal);
         }
 
         return;

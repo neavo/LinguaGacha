@@ -84,17 +84,19 @@ flowchart TD
 
 ### 页面变更信号
 
-| 信号 | 作用域 | 主要消费者 |
+| 信号 | 稳定载荷 / 模式 | 主要消费者 |
 | --- | --- | --- |
 | `workbench_change_signal` | 当前稳定发出 `global` / `file` | 工作台页 |
-| `proofreading_change_signal` | 当前稳定发出 `global` / `entry` | 校对页 |
+| `proofreading_change_signal` | 当前稳定发出 `full` / `delta` / `noop`，并携带 `updated_sections` 与 `item_ids` | 校对页 |
 
 补充说明：
 - `project.changed`、`task.*`、`settings.changed` 与 `project.patch` 都由 `DesktopRuntimeContext` 收口，再决定是否刷新页面派生状态。
 - 若 `project.patch` 载荷不合法，当前实现会回退为 `refresh_project_runtime()`，而不是让页面直接猜测修复策略。
 - 工作台与校对页在工程切换后都会先清空本地快照，再等待各自的 change signal 驱动首次有效刷新；不会在空 `ProjectStore` 上做 eager refresh。
 - `ProjectPagesProvider` 当前把 `project_warmup` 定义为“工作台首屏已基于本次 bootstrap 完成刷新”，`wait_for_barrier("project_warmup", { checkpoint })` 会要求工作台 `last_loaded_at` 晚于该 checkpoint；校对页缓存仍通过独立 barrier 维护。
-- 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`，不再复用 `project_warmup` 作为可操作条件。
+- 校对页只把 `project / items / quality` 视为后台派生真实输入；`prompts`、`analysis` 单独变化不再触发校对缓存失效，`proofreading / task` 仅在没有 item 载荷时发 `noop`。
+- 校对页把 `ProjectStore` 原始状态同步到独立 worker cache：`hydrate_full` 负责项目级全量同步，`apply_item_delta` 只重算变更条目，`build_list_view` 与 `build_filter_panel` 负责列表与筛选面板查询；warnings、默认 filters、筛选 facets 与排序结果都由 worker 持有，主线程只保留选区、游标、弹窗等轻状态。
+- 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`；其中 `proofreading_cache_refresh` 的 ready 定义是“当前列表查询已结算，且 `current_filters` 对应的筛选面板已预热完成”，不再复用 `project_warmup` 作为可操作条件。
 - glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续只根据 `items` revision 与对应 quality slice revision 后台刷新；规则页本身不再创建 worker 或维护统计刷新 effect。
 
 ## 页面 / widget / shadcn / 样式归属

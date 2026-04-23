@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { api_fetch } from "@/app/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
+import type { ProjectStoreState } from "@/app/project-runtime/project-store";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
@@ -11,10 +20,6 @@ import { useDesktopToast } from "@/app/state/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
-  applyProofreadingFilters,
-  buildProofreadingRuntimeInput,
-} from "@/pages/proofreading-page/proofreading-runtime";
-import {
   create_replace_all_plan,
   create_reset_items_plan,
   create_save_item_plan,
@@ -22,16 +27,22 @@ import {
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
 import { createProofreadingRuntimeClient } from "@/pages/proofreading-page/proofreading-runtime-client";
 import type {
+  ProofreadingRuntimeDeltaInput,
+  ProofreadingRuntimeHydrationInput,
+  ProofreadingRuntimeItemRecord,
+  ProofreadingRuntimeSyncState,
+} from "@/pages/proofreading-page/proofreading-runtime-engine";
+import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
 import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
-  create_empty_proofreading_snapshot,
+  create_empty_proofreading_filter_panel_state,
+  create_empty_proofreading_list_view,
   normalize_proofreading_mutation_payload,
   type ProofreadingClientItem,
-  resolve_proofreading_status_sort_rank,
   type ProofreadingDialogState,
   type ProofreadingFilterOptions,
   type ProofreadingGlossaryTerm,
@@ -39,7 +50,6 @@ import {
   type ProofreadingMutationPayload,
   type ProofreadingPendingMutation,
   type ProofreadingSearchScope,
-  type ProofreadingSnapshot,
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
 
@@ -58,8 +68,10 @@ type UseProofreadingPageStateResult = {
   search_scope: ProofreadingSearchScope;
   is_regex: boolean;
   invalid_regex_message: string | null;
-  full_snapshot: ProofreadingSnapshot;
   current_filters: ProofreadingFilterOptions;
+  filter_dialog_filters: ProofreadingFilterOptions;
+  filter_panel: ReturnType<typeof create_empty_proofreading_filter_panel_state>;
+  filter_panel_loading: boolean;
   visible_items: ProofreadingVisibleItem[];
   sort_state: AppTableSortState | null;
   selected_row_ids: string[];
@@ -78,7 +90,8 @@ type UseProofreadingPageStateResult = {
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void;
   open_filter_dialog: () => void;
   close_filter_dialog: () => void;
-  apply_filter_options: (next_filters: ProofreadingFilterOptions) => Promise<void>;
+  update_filter_dialog_filters: (next_filters: ProofreadingFilterOptions) => void;
+  confirm_filter_dialog_filters: () => Promise<void>;
   open_edit_dialog: (row_id: string) => void;
   request_close_dialog: () => void;
   update_dialog_draft: (next_draft_dst: string) => void;
@@ -90,6 +103,16 @@ type UseProofreadingPageStateResult = {
   confirm_pending_mutation: () => Promise<void>;
   close_pending_mutation: () => void;
 };
+
+function create_empty_filter_options(): ProofreadingFilterOptions {
+  return {
+    warning_types: [],
+    statuses: [],
+    file_paths: [],
+    glossary_terms: [],
+    include_without_glossary_miss: true,
+  };
+}
 
 function create_empty_dialog_state(): ProofreadingDialogState {
   return {
@@ -165,25 +188,6 @@ function matches_search_pattern(
   return text.toLocaleLowerCase().includes(normalized_keyword.toLocaleLowerCase());
 }
 
-function matches_proofreading_search_scope(args: {
-  item: ProofreadingItem;
-  search_pattern: RegExp | null;
-  keyword: string;
-  is_regex: boolean;
-  scope: ProofreadingSearchScope;
-}): boolean {
-  if (args.scope === "src") {
-    return matches_search_pattern(args.item.src, args.search_pattern, args.keyword, args.is_regex);
-  } else if (args.scope === "dst") {
-    return matches_search_pattern(args.item.dst, args.search_pattern, args.keyword, args.is_regex);
-  } else {
-    return (
-      matches_search_pattern(args.item.src, args.search_pattern, args.keyword, args.is_regex) ||
-      matches_search_pattern(args.item.dst, args.search_pattern, args.keyword, args.is_regex)
-    );
-  }
-}
-
 function replace_first_visible_match(
   text: string,
   search_pattern: RegExp,
@@ -196,97 +200,14 @@ function replace_first_visible_match(
   };
 }
 
-function normalize_sort_direction(direction: "ascending" | "descending"): number {
-  return direction === "ascending" ? 1 : -1;
-}
-
-function compare_text(left: string, right: string): number {
-  return left.localeCompare(right, "zh-Hans-CN");
-}
-
-const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
-  column_id: "file",
-  direction: "ascending",
-};
-
-function compare_visible_items(
-  left_item: ProofreadingClientItem,
-  right_item: ProofreadingClientItem,
-  sort_state: AppTableSortState,
-): number {
-  const direction = normalize_sort_direction(sort_state.direction);
-
-  if (sort_state.column_id === "file") {
-    const file_path_result = compare_text(left_item.file_path, right_item.file_path);
-    if (file_path_result !== 0) {
-      return file_path_result * direction;
-    }
-
-    return (left_item.row_number - right_item.row_number) * direction;
-  }
-
-  if (sort_state.column_id === "status") {
-    const status_rank_result =
-      resolve_proofreading_status_sort_rank(left_item.status) -
-      resolve_proofreading_status_sort_rank(right_item.status);
-    if (status_rank_result !== 0) {
-      return status_rank_result * direction;
-    }
-
-    return compare_text(left_item.status, right_item.status) * direction;
-  }
-
-  if (sort_state.column_id === "src") {
-    return compare_text(left_item.src, right_item.src) * direction;
-  }
-
-  if (sort_state.column_id === "dst") {
-    return compare_text(left_item.dst, right_item.dst) * direction;
-  }
-
-  return 0;
-}
-
-function sort_visible_items(
-  items: ProofreadingClientItem[],
-  sort_state: AppTableSortState | null,
-): ProofreadingClientItem[] {
-  const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE;
-
-  return [...items].sort((left_item, right_item) => {
-    const result = compare_visible_items(left_item, right_item, effective_sort_state);
-    if (result !== 0) {
-      return result;
-    }
-
-    // 为什么：校对页需要先回到文件内自然阅读顺序，否则已有译文可能被数据库插入顺序压到列表尾部。
-    if (effective_sort_state.column_id !== PROOFREADING_NATURAL_SORT_STATE.column_id) {
-      const natural_order_result = compare_visible_items(
-        left_item,
-        right_item,
-        PROOFREADING_NATURAL_SORT_STATE,
-      );
-      if (natural_order_result !== 0) {
-        return natural_order_result;
-      }
-    }
-
-    return compare_text(left_item.row_id, right_item.row_id);
-  });
-}
-
-function build_filter_signature(filters: ProofreadingFilterOptions | null): string {
-  if (filters === null) {
-    return "null";
-  }
-
+function build_filter_signature(filters: ProofreadingFilterOptions): string {
   return JSON.stringify({
     warning_types: [...filters.warning_types].sort(),
     statuses: [...filters.statuses].sort(),
     file_paths: [...filters.file_paths].sort(),
     glossary_terms: serialize_glossary_terms(filters.glossary_terms).sort(
       (left_term, right_term) => {
-        return compare_text(left_term.join("→"), right_term.join("→"));
+        return left_term.join("→").localeCompare(right_term.join("→"), "zh-Hans-CN");
       },
     ),
     include_without_glossary_miss: filters.include_without_glossary_miss,
@@ -366,16 +287,10 @@ function reconcile_filter_dimension<T>(args: {
 }
 
 function reconcile_proofreading_filter_options(args: {
-  previous_applied: ProofreadingFilterOptions | null;
+  previous_applied: ProofreadingFilterOptions;
   previous_default: ProofreadingFilterOptions;
   next_default: ProofreadingFilterOptions;
 }): ProofreadingFilterOptions {
-  if (args.previous_applied === null) {
-    return clone_proofreading_filter_options(args.next_default);
-  }
-
-  // 为什么：如果当前维度仍保持“上一版默认全选”，刷新后要自动接住新出现的选项；
-  // 只有用户真的改过这个维度时，才继续保留他们的子集选择。
   return {
     warning_types: reconcile_filter_dimension({
       previous_applied: args.previous_applied.warning_types,
@@ -413,44 +328,107 @@ function reconcile_proofreading_filter_options(args: {
   };
 }
 
-function filter_local_visible_items(args: {
-  items: ProofreadingClientItem[];
-  keyword: string;
-  is_regex: boolean;
-  scope: ProofreadingSearchScope;
-}): { items: ProofreadingClientItem[]; invalid_regex_message: string | null } {
-  const trimmed_keyword = args.keyword.trim();
-  if (trimmed_keyword === "") {
-    return {
-      items: args.items,
-      invalid_regex_message: null,
-    };
+function normalize_runtime_item_from_state(record: unknown): ProofreadingRuntimeItemRecord | null {
+  if (typeof record !== "object" || record === null) {
+    return null;
   }
 
-  let search_pattern: RegExp | null = null;
-  try {
-    search_pattern = create_search_pattern(trimmed_keyword, args.is_regex);
-  } catch (error) {
-    return {
-      items: args.items,
-      invalid_regex_message: error instanceof Error ? error.message : null,
-    };
+  const candidate = record as Record<string, unknown>;
+  const item_id = Number(candidate.item_id ?? candidate.id ?? 0);
+  if (!Number.isInteger(item_id)) {
+    return null;
   }
 
-  const next_items = args.items.filter((item) => {
-    return matches_proofreading_search_scope({
-      item,
-      search_pattern,
-      keyword: trimmed_keyword,
-      is_regex: args.is_regex,
-      scope: args.scope,
-    });
+  return {
+    item_id,
+    file_path: String(candidate.file_path ?? ""),
+    row_number: Number(candidate.row_number ?? candidate.row ?? 0),
+    src: String(candidate.src ?? ""),
+    dst: String(candidate.dst ?? ""),
+    status: String(candidate.status ?? ""),
+    text_type: String(candidate.text_type ?? "NONE"),
+    retry_count: Number(candidate.retry_count ?? 0),
+  };
+}
+
+function collect_full_sync_input(args: {
+  state: ProjectStoreState;
+  source_language: string;
+}): ProofreadingRuntimeHydrationInput {
+  return {
+    project_id: args.state.project.path,
+    revision: Number(args.state.proofreading.revision ?? 0),
+    total_item_count: Object.keys(args.state.items).length,
+    items: Object.values(args.state.items).flatMap((record) => {
+      const normalized_item = normalize_runtime_item_from_state(record);
+      return normalized_item === null ? [] : [normalized_item];
+    }),
+    quality: args.state.quality,
+    source_language: args.source_language,
+  };
+}
+
+function collect_delta_sync_input(args: {
+  state: ProjectStoreState;
+  item_ids: Array<number | string>;
+}): ProofreadingRuntimeDeltaInput {
+  const items = args.item_ids.flatMap((item_id) => {
+    const item_record = args.state.items[String(item_id)];
+    const normalized_item = normalize_runtime_item_from_state(item_record);
+    return normalized_item === null ? [] : [normalized_item];
   });
 
   return {
-    items: next_items,
-    invalid_regex_message: null,
+    project_id: args.state.project.path,
+    revision: Number(args.state.proofreading.revision ?? 0),
+    total_item_count: Object.keys(args.state.items).length,
+    items,
   };
+}
+
+function build_list_query_signature(args: {
+  revision: number;
+  filters: ProofreadingFilterOptions;
+  keyword: string;
+  scope: ProofreadingSearchScope;
+  is_regex: boolean;
+  sort_state: AppTableSortState | null;
+}): string {
+  return JSON.stringify({
+    revision: args.revision,
+    filters: build_filter_signature(args.filters),
+    keyword: args.keyword,
+    scope: args.scope,
+    is_regex: args.is_regex,
+    sort: build_sort_signature(args.sort_state),
+  });
+}
+
+function build_filter_panel_signature(args: {
+  revision: number;
+  filters: ProofreadingFilterOptions;
+}): string {
+  return JSON.stringify({
+    revision: args.revision,
+    filters: build_filter_signature(args.filters),
+  });
+}
+
+function resolve_requested_sync_mode(args: {
+  cache_status: "idle" | "refreshing" | "ready" | "error";
+  runtime_sync_state: ProofreadingRuntimeSyncState | null;
+  project_path: string;
+  signal_mode: "full" | "delta" | "noop";
+}): "full" | "delta" | "noop" {
+  if (
+    args.cache_status === "error" ||
+    args.runtime_sync_state === null ||
+    args.runtime_sync_state.project_id !== args.project_path
+  ) {
+    return "full";
+  }
+
+  return args.signal_mode;
 }
 
 export function useProofreadingPageState(): UseProofreadingPageStateResult {
@@ -467,13 +445,19 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     refresh_project_runtime,
     align_project_runtime_ack,
   } = useDesktopRuntime();
-  const [full_snapshot, set_full_snapshot] = useState<ProofreadingSnapshot>(() => {
-    return create_empty_proofreading_snapshot();
+  const [list_view, set_list_view] = useState(() => create_empty_proofreading_list_view());
+  const [current_filters, set_current_filters] = useState<ProofreadingFilterOptions>(() => {
+    return create_empty_filter_options();
   });
-  const [server_snapshot, set_server_snapshot] = useState<ProofreadingSnapshot>(() => {
-    return create_empty_proofreading_snapshot();
+  const [filter_dialog_filters, set_filter_dialog_filters] = useState<ProofreadingFilterOptions>(
+    () => {
+      return create_empty_filter_options();
+    },
+  );
+  const [filter_panel, set_filter_panel] = useState(() => {
+    return create_empty_proofreading_filter_panel_state();
   });
-  const [applied_filters, set_applied_filters] = useState<ProofreadingFilterOptions | null>(null);
+  const [filter_panel_loading, set_filter_panel_loading] = useState(false);
   const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState(false);
   const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(
@@ -499,9 +483,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [pending_mutation, set_pending_mutation] = useState<ProofreadingPendingMutation | null>(
     null,
   );
+  const deferred_search_keyword = useDeferredValue(search_keyword);
+  const deferred_search_scope = useDeferredValue(search_scope);
+  const deferred_is_regex = useDeferredValue(is_regex);
+  const deferred_sort_state = useDeferredValue(sort_state);
   const refresh_request_id_ref = useRef(0);
-  const applied_filters_ref = useRef<ProofreadingFilterOptions | null>(applied_filters);
-  const full_snapshot_ref = useRef<ProofreadingSnapshot>(full_snapshot);
+  const list_view_request_id_ref = useRef(0);
+  const filter_panel_request_id_ref = useRef(0);
+  const current_filters_ref = useRef(current_filters);
+  const filter_dialog_filters_ref = useRef(filter_dialog_filters);
+  const runtime_sync_state_ref = useRef<ProofreadingRuntimeSyncState | null>(null);
+  const default_filters_ref = useRef(create_empty_filter_options());
   const proofreading_runtime_client_ref = useRef(createProofreadingRuntimeClient());
   const preferred_row_id_ref = useRef<string | null>(null);
   const should_select_first_visible_ref = useRef(false);
@@ -514,6 +506,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
   const previous_proofreading_change_seq_ref = useRef(proofreading_change_signal.seq);
+  const search_keyword_ref = useRef(search_keyword);
+  const search_scope_ref = useRef(search_scope);
+  const is_regex_ref = useRef(is_regex);
+  const sort_state_ref = useRef(sort_state);
+  const last_list_query_signature_ref = useRef("");
+  const last_filter_panel_signature_ref = useRef("");
 
   useEffect(() => {
     const proofreading_runtime_client = proofreading_runtime_client_ref.current;
@@ -523,12 +521,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, []);
 
   useEffect(() => {
-    applied_filters_ref.current = applied_filters;
-  }, [applied_filters]);
+    current_filters_ref.current = current_filters;
+  }, [current_filters]);
 
   useEffect(() => {
-    full_snapshot_ref.current = full_snapshot;
-  }, [full_snapshot]);
+    filter_dialog_filters_ref.current = filter_dialog_filters;
+  }, [filter_dialog_filters]);
 
   useEffect(() => {
     selected_row_ids_ref.current = selected_row_ids;
@@ -542,9 +540,62 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     anchor_row_id_ref.current = anchor_row_id;
   }, [anchor_row_id]);
 
+  useEffect(() => {
+    search_keyword_ref.current = search_keyword;
+  }, [search_keyword]);
+
+  useEffect(() => {
+    search_scope_ref.current = search_scope;
+  }, [search_scope]);
+
+  useEffect(() => {
+    is_regex_ref.current = is_regex;
+  }, [is_regex]);
+
+  useEffect(() => {
+    sort_state_ref.current = sort_state;
+  }, [sort_state]);
+
+  const visible_items = list_view.items;
+  const visible_row_ids = useMemo(() => {
+    return visible_items.map((item) => item.row_id);
+  }, [visible_items]);
+  const visible_item_by_id = useMemo(() => {
+    return new Map(
+      visible_items.map((item) => {
+        return [item.row_id, item.item] as const;
+      }),
+    );
+  }, [visible_items]);
+  const dialog_item =
+    dialog_state.target_row_id === null
+      ? null
+      : (visible_item_by_id.get(dialog_state.target_row_id) ?? null);
+  const readonly = task_snapshot.busy;
+  const invalid_regex_message =
+    list_view.invalid_regex_message === null
+      ? null
+      : `${t("proofreading_page.feedback.regex_invalid")}: ${list_view.invalid_regex_message}`;
+  const current_filter_signature = useMemo(() => {
+    return build_filter_signature(current_filters);
+  }, [current_filters]);
+  const sort_signature = useMemo(() => {
+    return build_sort_signature(sort_state);
+  }, [sort_state]);
+
+  const handle_api_error = useCallback(
+    (error: unknown, fallback_message: string): void => {
+      const message = resolve_error_message(error, fallback_message);
+      push_toast("error", message);
+    },
+    [push_toast],
+  );
+
   const clear_transient_state_for_new_project = useCallback((): void => {
-    // 为什么：工程切换后旧筛选、旧搜索和旧选区都不再可信，直接清空才能避免跨工程串味。
-    set_applied_filters(null);
+    set_current_filters(create_empty_filter_options());
+    set_filter_dialog_filters(create_empty_filter_options());
+    set_filter_panel(create_empty_proofreading_filter_panel_state());
+    set_filter_panel_loading(false);
     set_refresh_error(null);
     set_cache_stale(false);
     set_last_loaded_at(null);
@@ -566,186 +617,269 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     preferred_row_id_ref.current = null;
     should_select_first_visible_ref.current = false;
     pending_reset_filters_ref.current = false;
+    last_list_query_signature_ref.current = "";
+    last_filter_panel_signature_ref.current = "";
   }, []);
 
-  const clear_snapshot_state = useCallback((): void => {
-    set_full_snapshot(create_empty_proofreading_snapshot());
-    set_server_snapshot(create_empty_proofreading_snapshot());
+  const clear_cache_state = useCallback((): void => {
+    const current_project_id = runtime_sync_state_ref.current?.project_id;
+    runtime_sync_state_ref.current = null;
+    default_filters_ref.current = create_empty_filter_options();
+    set_list_view(create_empty_proofreading_list_view());
+    set_filter_panel(create_empty_proofreading_filter_panel_state());
+    set_filter_panel_loading(false);
     set_is_refreshing(false);
     set_cache_status("idle");
     set_is_mutating(false);
+    if (current_project_id !== undefined) {
+      void proofreading_runtime_client_ref.current.dispose_project(current_project_id);
+    }
   }, []);
 
-  const visible_source_result = useMemo(() => {
-    return filter_local_visible_items({
-      items: server_snapshot.items,
-      keyword: search_keyword,
-      is_regex,
-      scope: search_scope,
-    });
-  }, [is_regex, search_keyword, search_scope, server_snapshot.items]);
-
-  const invalid_regex_message =
-    visible_source_result.invalid_regex_message === null
-      ? null
-      : `${t("proofreading_page.feedback.regex_invalid")}: ${visible_source_result.invalid_regex_message}`;
-
-  const visible_client_items = useMemo(() => {
-    return sort_visible_items(visible_source_result.items, sort_state);
-  }, [sort_state, visible_source_result.items]);
-
-  const visible_items = useMemo<ProofreadingVisibleItem[]>(() => {
-    return visible_client_items.map((item) => {
-      return {
-        row_id: item.row_id,
-        item,
-        compressed_src: item.compressed_src,
-        compressed_dst: item.compressed_dst,
-      };
-    });
-  }, [visible_client_items]);
-
-  const visible_row_ids = useMemo(() => {
-    return visible_client_items.map((item) => item.row_id);
-  }, [visible_client_items]);
-
-  const applied_filter_signature = useMemo(() => {
-    return build_filter_signature(applied_filters);
-  }, [applied_filters]);
-
-  const sort_signature = useMemo(() => {
-    return build_sort_signature(sort_state);
-  }, [sort_state]);
-
-  const visible_item_by_id = useMemo(() => {
-    return new Map(
-      visible_client_items.map((item) => {
-        return [item.row_id, item] as const;
-      }),
-    );
-  }, [visible_client_items]);
-
-  const dialog_item =
-    dialog_state.target_row_id === null
-      ? null
-      : (visible_item_by_id.get(dialog_state.target_row_id) ?? null);
-
-  const readonly = server_snapshot.readonly || task_snapshot.busy;
-  const current_filters = applied_filters ?? full_snapshot.filters;
-
-  const handle_api_error = useCallback(
-    (error: unknown, fallback_message: string): void => {
-      const message = resolve_error_message(error, fallback_message);
-      push_toast("error", message);
-    },
-    [push_toast],
-  );
-
-  const refresh_snapshot = useCallback(
-    async (options?: {
-      preferred_row_id?: string | null;
-      reset_filters?: boolean;
-    }): Promise<void> => {
-      if (!project_snapshot.loaded) {
-        clear_transient_state_for_new_project();
-        clear_snapshot_state();
-        return;
+  const run_list_view_query = useCallback(
+    async (
+      args: {
+        filters: ProofreadingFilterOptions;
+        keyword: string;
+        scope: ProofreadingSearchScope;
+        is_regex: boolean;
+        sort_state: AppTableSortState | null;
+      },
+      options?: {
+        force?: boolean;
+      },
+    ) => {
+      const runtime_sync_state = runtime_sync_state_ref.current;
+      if (runtime_sync_state === null) {
+        return null;
       }
 
-      // 为什么：校对快照刷新本身就是项目 warmup 的完成条件之一，这里若等待 ready
-      // 会与 ProjectPagesProvider 对 settled_project_path 的等待形成循环。
-      const request_id = refresh_request_id_ref.current + 1;
-      refresh_request_id_ref.current = request_id;
-      set_refresh_request_id(request_id);
-      set_is_refreshing(true);
-      set_cache_status("refreshing");
+      const query_signature = build_list_query_signature({
+        revision: runtime_sync_state.revision,
+        filters: args.filters,
+        keyword: args.keyword,
+        scope: args.scope,
+        is_regex: args.is_regex,
+        sort_state: args.sort_state,
+      });
+      if (!options?.force && query_signature === last_list_query_signature_ref.current) {
+        return list_view;
+      }
+
+      list_view_request_id_ref.current += 1;
+      const request_id = list_view_request_id_ref.current;
+      const next_list_view = await proofreading_runtime_client_ref.current.build_list_view({
+        filters: args.filters,
+        keyword: args.keyword,
+        scope: args.scope,
+        is_regex: args.is_regex,
+        sort_state: args.sort_state,
+      });
+      if (request_id !== list_view_request_id_ref.current) {
+        return null;
+      }
+
+      last_list_query_signature_ref.current = query_signature;
+      startTransition(() => {
+        set_list_view(next_list_view);
+      });
+      return next_list_view;
+    },
+    [list_view],
+  );
+
+  const run_filter_panel_query = useCallback(
+    async (
+      filters: ProofreadingFilterOptions,
+      options?: {
+        force?: boolean;
+        mark_loading?: boolean;
+      },
+    ) => {
+      const runtime_sync_state = runtime_sync_state_ref.current;
+      if (runtime_sync_state === null) {
+        return null;
+      }
+
+      const query_signature = build_filter_panel_signature({
+        revision: runtime_sync_state.revision,
+        filters,
+      });
+      if (!options?.force && query_signature === last_filter_panel_signature_ref.current) {
+        return filter_panel;
+      }
+
+      filter_panel_request_id_ref.current += 1;
+      const request_id = filter_panel_request_id_ref.current;
+      if (options?.mark_loading !== false) {
+        set_filter_panel_loading(true);
+      }
 
       try {
-        const next_full_snapshot = await proofreading_runtime_client_ref.current.compute(
-          buildProofreadingRuntimeInput({
-            state: project_store.getState(),
-            settings_snapshot,
-          }),
-        );
-        const next_applied_filters =
-          options?.reset_filters === true
-            ? clone_proofreading_filter_options(next_full_snapshot.filters)
-            : reconcile_proofreading_filter_options({
-                previous_applied: applied_filters_ref.current,
-                previous_default: full_snapshot_ref.current.filters,
-                next_default: next_full_snapshot.filters,
-              });
-        const next_server_snapshot = applyProofreadingFilters({
-          snapshot: next_full_snapshot,
-          filters: next_applied_filters,
+        const next_filter_panel = await proofreading_runtime_client_ref.current.build_filter_panel({
+          filters,
         });
-
-        if (request_id !== refresh_request_id_ref.current) {
-          return;
+        if (request_id !== filter_panel_request_id_ref.current) {
+          return null;
         }
 
-        preferred_row_id_ref.current = options?.preferred_row_id ?? active_row_id_ref.current;
-        set_full_snapshot(next_full_snapshot);
-        set_server_snapshot(next_server_snapshot);
-        set_applied_filters(next_applied_filters);
-        set_refresh_error(null);
-        set_cache_status("ready");
-        set_cache_stale(false);
-        set_last_loaded_at(Date.now());
-        set_settled_project_path(project_snapshot.path);
-      } catch (error) {
-        if (request_id !== refresh_request_id_ref.current) {
-          return;
-        }
-
-        const fallback_message = t("proofreading_page.feedback.refresh_failed");
-        const message = is_worker_client_error(error)
-          ? fallback_message
-          : resolve_error_message(error, fallback_message);
-        set_refresh_error(message);
-        set_cache_status("error");
-        set_cache_stale(true);
-        set_settled_project_path(project_snapshot.path);
-        push_toast("error", message);
+        last_filter_panel_signature_ref.current = query_signature;
+        startTransition(() => {
+          set_filter_panel(next_filter_panel);
+        });
+        return next_filter_panel;
       } finally {
-        if (request_id === refresh_request_id_ref.current) {
-          set_is_refreshing(false);
+        if (request_id === filter_panel_request_id_ref.current) {
+          set_filter_panel_loading(false);
         }
       }
     },
-    [
-      project_snapshot.loaded,
-      project_snapshot.path,
-      project_store,
-      settings_snapshot,
-      clear_snapshot_state,
-      clear_transient_state_for_new_project,
-      push_toast,
-      t,
-    ],
+    [filter_panel],
   );
 
-  const apply_filter_options = useCallback(
-    async (next_filters: ProofreadingFilterOptions): Promise<void> => {
-      if (!project_snapshot.loaded || cache_status !== "ready" || is_refreshing) {
+  const settle_list_view_and_filter_panel = useCallback(
+    async (args: {
+      filters: ProofreadingFilterOptions;
+      keyword: string;
+      scope: ProofreadingSearchScope;
+      is_regex: boolean;
+      sort_state: AppTableSortState | null;
+      force?: boolean;
+    }) => {
+      const [next_list_view, next_filter_panel] = await Promise.all([
+        run_list_view_query(
+          {
+            filters: args.filters,
+            keyword: args.keyword,
+            scope: args.scope,
+            is_regex: args.is_regex,
+            sort_state: args.sort_state,
+          },
+          {
+            force: args.force,
+          },
+        ),
+        run_filter_panel_query(args.filters, {
+          force: args.force,
+          mark_loading: false,
+        }),
+      ]);
+
+      return next_list_view !== null && next_filter_panel !== null;
+    },
+    [run_filter_panel_query, run_list_view_query],
+  );
+
+  const refresh_snapshot = useCallback(async (): Promise<void> => {
+    if (!project_snapshot.loaded) {
+      clear_transient_state_for_new_project();
+      clear_cache_state();
+      return;
+    }
+
+    const request_id = refresh_request_id_ref.current + 1;
+    refresh_request_id_ref.current = request_id;
+    set_refresh_request_id(request_id);
+    set_is_refreshing(true);
+    set_cache_status("refreshing");
+
+    try {
+      const current_state = project_store.getState();
+      const sync_mode = resolve_requested_sync_mode({
+        cache_status,
+        runtime_sync_state: runtime_sync_state_ref.current,
+        project_path: project_snapshot.path,
+        signal_mode: proofreading_change_signal.mode,
+      });
+      let runtime_sync_state = runtime_sync_state_ref.current;
+      if (sync_mode === "full") {
+        runtime_sync_state = await proofreading_runtime_client_ref.current.hydrate_full(
+          collect_full_sync_input({
+            state: current_state,
+            source_language: settings_snapshot.source_language,
+          }),
+        );
+      } else if (sync_mode === "delta") {
+        runtime_sync_state = await proofreading_runtime_client_ref.current.apply_item_delta(
+          collect_delta_sync_input({
+            state: current_state,
+            item_ids: proofreading_change_signal.item_ids,
+          }),
+        );
+      }
+
+      if (request_id !== refresh_request_id_ref.current || runtime_sync_state === null) {
         return;
       }
 
-      set_filter_dialog_open(false);
-      const normalized_filters = clone_proofreading_filter_options(next_filters);
-      const next_server_snapshot = applyProofreadingFilters({
-        snapshot: full_snapshot_ref.current,
-        filters: normalized_filters,
-      });
+      const next_default_filters = clone_proofreading_filter_options(
+        runtime_sync_state.default_filters,
+      );
+      const next_current_filters = pending_reset_filters_ref.current
+        ? clone_proofreading_filter_options(next_default_filters)
+        : reconcile_proofreading_filter_options({
+            previous_applied: current_filters_ref.current,
+            previous_default: default_filters_ref.current,
+            next_default: next_default_filters,
+          });
 
-      preferred_row_id_ref.current = null;
-      should_select_first_visible_ref.current = true;
-      set_server_snapshot(next_server_snapshot);
-      set_applied_filters(clone_proofreading_filter_options(normalized_filters));
+      runtime_sync_state_ref.current = runtime_sync_state;
+      default_filters_ref.current = clone_proofreading_filter_options(next_default_filters);
+      set_current_filters(clone_proofreading_filter_options(next_current_filters));
+      set_filter_dialog_filters(clone_proofreading_filter_options(next_current_filters));
+
+      const settled = await settle_list_view_and_filter_panel({
+        filters: next_current_filters,
+        keyword: search_keyword_ref.current,
+        scope: search_scope_ref.current,
+        is_regex: is_regex_ref.current,
+        sort_state: sort_state_ref.current,
+        force: true,
+      });
+      if (!settled || request_id !== refresh_request_id_ref.current) {
+        return;
+      }
+
+      preferred_row_id_ref.current = active_row_id_ref.current;
       set_refresh_error(null);
-    },
-    [cache_status, is_refreshing, project_snapshot.loaded],
-  );
+      set_cache_status("ready");
+      set_cache_stale(false);
+      set_last_loaded_at(Date.now());
+      set_settled_project_path(project_snapshot.path);
+    } catch (error) {
+      if (request_id !== refresh_request_id_ref.current) {
+        return;
+      }
+
+      const fallback_message = t("proofreading_page.feedback.refresh_failed");
+      const message = is_worker_client_error(error)
+        ? fallback_message
+        : resolve_error_message(error, fallback_message);
+      set_refresh_error(message);
+      set_cache_status("error");
+      set_cache_stale(true);
+      set_settled_project_path(project_snapshot.path);
+      push_toast("error", message);
+    } finally {
+      pending_reset_filters_ref.current = false;
+      if (request_id === refresh_request_id_ref.current) {
+        set_is_refreshing(false);
+      }
+    }
+  }, [
+    cache_status,
+    clear_cache_state,
+    clear_transient_state_for_new_project,
+    project_snapshot.loaded,
+    project_snapshot.path,
+    project_store,
+    proofreading_change_signal.item_ids,
+    proofreading_change_signal.mode,
+    push_toast,
+    settings_snapshot.source_language,
+    settle_list_view_and_filter_panel,
+    t,
+  ]);
 
   const run_ack_only_mutation = useCallback(
     async (args: {
@@ -892,12 +1026,65 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, []);
 
   const open_filter_dialog = useCallback((): void => {
+    set_filter_dialog_filters(clone_proofreading_filter_options(current_filters_ref.current));
     set_filter_dialog_open(true);
   }, []);
 
   const close_filter_dialog = useCallback((): void => {
     set_filter_dialog_open(false);
-  }, []);
+    const restored_filters = clone_proofreading_filter_options(current_filters_ref.current);
+    set_filter_dialog_filters(restored_filters);
+    void run_filter_panel_query(restored_filters, {
+      force: true,
+      mark_loading: false,
+    });
+  }, [run_filter_panel_query]);
+
+  const update_filter_dialog_filters = useCallback(
+    (next_filters: ProofreadingFilterOptions): void => {
+      set_filter_dialog_filters(clone_proofreading_filter_options(next_filters));
+    },
+    [],
+  );
+
+  const confirm_filter_dialog_filters = useCallback(async (): Promise<void> => {
+    if (!project_snapshot.loaded || cache_status !== "ready" || is_refreshing) {
+      return;
+    }
+
+    const normalized_filters = clone_proofreading_filter_options(filter_dialog_filters_ref.current);
+    preferred_row_id_ref.current = null;
+    should_select_first_visible_ref.current = true;
+    set_current_filters(clone_proofreading_filter_options(normalized_filters));
+    set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
+    set_filter_dialog_open(false);
+    set_refresh_error(null);
+
+    try {
+      await settle_list_view_and_filter_panel({
+        filters: normalized_filters,
+        keyword: search_keyword_ref.current,
+        scope: search_scope_ref.current,
+        is_regex: is_regex_ref.current,
+        sort_state: sort_state_ref.current,
+        force: true,
+      });
+    } catch (error) {
+      const fallback_message = t("proofreading_page.feedback.refresh_failed");
+      const message = is_worker_client_error(error)
+        ? fallback_message
+        : resolve_error_message(error, fallback_message);
+      set_refresh_error(message);
+      push_toast("error", message);
+    }
+  }, [
+    cache_status,
+    is_refreshing,
+    project_snapshot.loaded,
+    push_toast,
+    settle_list_view_and_filter_panel,
+    t,
+  ]);
 
   const open_edit_dialog = useCallback(
     (row_id: string): void => {
@@ -1182,7 +1369,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         path: "/api/project/proofreading/retranslate-items",
         body: {
           items: target_items.map((item) => serialize_item(item)),
-          expected_revision: server_snapshot.revision,
+          expected_revision: list_view.revision,
         },
         fallback_error_key: "proofreading_page.feedback.retranslate_failed",
         preferred_row_id: active_row_id_ref.current,
@@ -1211,11 +1398,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     });
   }, [
     dialog_state.open,
+    list_view.revision,
     pending_mutation,
     project_store,
     run_ack_only_mutation,
     run_mutation,
-    server_snapshot.revision,
     t,
     visible_item_by_id,
   ]);
@@ -1229,22 +1416,22 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     if (!project_snapshot.loaded) {
       clear_transient_state_for_new_project();
-      clear_snapshot_state();
+      clear_cache_state();
       set_cache_status("idle");
       return;
     }
 
     if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
       clear_transient_state_for_new_project();
+      clear_cache_state();
       set_cache_status("refreshing");
       pending_reset_filters_ref.current = true;
     }
   }, [
+    clear_cache_state,
+    clear_transient_state_for_new_project,
     project_snapshot.loaded,
     project_snapshot.path,
-    clear_snapshot_state,
-    clear_transient_state_for_new_project,
-    refresh_snapshot,
   ]);
 
   useEffect(() => {
@@ -1257,12 +1444,69 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     if (previous_seq !== proofreading_change_signal.seq) {
       set_cache_stale(true);
-      void refresh_snapshot({
-        reset_filters: pending_reset_filters_ref.current,
-      });
-      pending_reset_filters_ref.current = false;
+      void refresh_snapshot();
     }
   }, [project_snapshot.loaded, proofreading_change_signal.seq, refresh_snapshot]);
+
+  useEffect(() => {
+    if (cache_status !== "ready" || is_refreshing || runtime_sync_state_ref.current === null) {
+      return;
+    }
+
+    void run_list_view_query({
+      filters: current_filters,
+      keyword: deferred_search_keyword,
+      scope: deferred_search_scope,
+      is_regex: deferred_is_regex,
+      sort_state: deferred_sort_state,
+    }).catch((error) => {
+      const fallback_message = t("proofreading_page.feedback.refresh_failed");
+      const message = is_worker_client_error(error)
+        ? fallback_message
+        : resolve_error_message(error, fallback_message);
+      set_refresh_error(message);
+      push_toast("error", message);
+    });
+  }, [
+    cache_status,
+    current_filters,
+    deferred_is_regex,
+    deferred_search_keyword,
+    deferred_search_scope,
+    deferred_sort_state,
+    is_refreshing,
+    push_toast,
+    run_list_view_query,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (
+      !filter_dialog_open ||
+      cache_status !== "ready" ||
+      runtime_sync_state_ref.current === null
+    ) {
+      return;
+    }
+
+    void run_filter_panel_query(filter_dialog_filters, {
+      mark_loading: true,
+    }).catch((error) => {
+      const fallback_message = t("proofreading_page.feedback.refresh_failed");
+      const message = is_worker_client_error(error)
+        ? fallback_message
+        : resolve_error_message(error, fallback_message);
+      set_refresh_error(message);
+      push_toast("error", message);
+    });
+  }, [
+    cache_status,
+    filter_dialog_filters,
+    filter_dialog_open,
+    push_toast,
+    run_filter_panel_query,
+    t,
+  ]);
 
   useEffect(() => {
     if (proofreading_lookup_intent === null) {
@@ -1283,16 +1527,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    // 为什么：搜索条件、排序或服务端快照变化后，“下一次替换”必须重新从新的可见顺序起点开始计算。
     replace_cursor_ref.current = 0;
   }, [
-    applied_filter_signature,
+    current_filter_signature,
     is_regex,
+    list_view.revision,
     search_keyword,
     search_scope,
-    server_snapshot.revision,
     sort_signature,
-    visible_client_items,
+    visible_items,
   ]);
 
   useEffect(() => {
@@ -1353,8 +1596,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       search_scope,
       is_regex,
       invalid_regex_message,
-      full_snapshot,
       current_filters,
+      filter_dialog_filters,
+      filter_panel,
+      filter_panel_loading,
       visible_items,
       sort_state,
       selected_row_ids,
@@ -1373,7 +1618,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       apply_table_sort_state,
       open_filter_dialog,
       close_filter_dialog,
-      apply_filter_options,
+      update_filter_dialog_filters,
+      confirm_filter_dialog_filters,
       open_edit_dialog,
       request_close_dialog,
       update_dialog_draft,
@@ -1386,50 +1632,53 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       close_pending_mutation,
     };
   }, [
-    cache_status,
-    cache_stale,
-    last_loaded_at,
-    refresh_request_id,
-    settled_project_path,
-    refresh_error,
-    is_refreshing,
-    is_mutating,
-    readonly,
-    search_keyword,
-    replace_text,
-    search_scope,
-    is_regex,
-    invalid_regex_message,
-    full_snapshot,
-    current_filters,
-    visible_items,
-    sort_state,
-    selected_row_ids,
     active_row_id,
     anchor_row_id,
-    filter_dialog_open,
-    dialog_state,
-    dialog_item,
-    pending_mutation,
-    refresh_snapshot,
-    update_search_keyword,
-    update_replace_text,
-    update_search_scope,
-    update_regex,
     apply_table_selection,
     apply_table_sort_state,
-    open_filter_dialog,
+    cache_stale,
+    cache_status,
     close_filter_dialog,
-    apply_filter_options,
-    open_edit_dialog,
-    request_close_dialog,
-    update_dialog_draft,
-    save_dialog_entry,
-    replace_next_visible_match,
-    replace_all_visible_matches,
-    request_retranslate_row_ids,
-    request_reset_row_ids,
-    confirm_pending_mutation,
     close_pending_mutation,
+    confirm_filter_dialog_filters,
+    confirm_pending_mutation,
+    current_filters,
+    dialog_item,
+    dialog_state,
+    filter_dialog_filters,
+    filter_dialog_open,
+    filter_panel,
+    filter_panel_loading,
+    invalid_regex_message,
+    is_mutating,
+    is_refreshing,
+    is_regex,
+    last_loaded_at,
+    open_edit_dialog,
+    open_filter_dialog,
+    pending_mutation,
+    readonly,
+    refresh_error,
+    refresh_request_id,
+    refresh_snapshot,
+    replace_all_visible_matches,
+    replace_next_visible_match,
+    replace_text,
+    request_close_dialog,
+    request_reset_row_ids,
+    request_retranslate_row_ids,
+    save_dialog_entry,
+    search_keyword,
+    search_scope,
+    selected_row_ids,
+    settled_project_path,
+    sort_state,
+    update_dialog_draft,
+    update_filter_dialog_filters,
+    update_regex,
+    update_replace_text,
+    update_search_keyword,
+    update_search_scope,
+    visible_items,
   ]);
 }
