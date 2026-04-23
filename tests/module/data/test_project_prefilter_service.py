@@ -37,23 +37,19 @@ def build_service() -> tuple[ProjectPrefilterService, ProjectSession]:
 def test_enqueue_request_starts_worker_on_first_request() -> None:
     service, _session = build_service()
 
-    request, start_worker = service.enqueue_request(
+    _request, start_worker = service.enqueue_request(
         make_config(),
         reason="unit_test",
         lg_path="demo/project.lg",
     )
 
     assert start_worker is True
-    assert request.token == 1
-    assert request.seq == 1
     assert service.prefilter_running is True
 
 
 def test_enqueue_request_merges_when_running() -> None:
     service, _session = build_service()
     service.prefilter_running = True
-    service.prefilter_active_token = 9
-    service.prefilter_request_seq = 4
 
     request, start_worker = service.enqueue_request(
         make_config(),
@@ -62,8 +58,7 @@ def test_enqueue_request_merges_when_running() -> None:
     )
 
     assert start_worker is False
-    assert request.token == 9
-    assert request.seq == 5
+    assert request.reason == "merge"
 
 
 def test_is_prefilter_needed_only_skips_when_config_matches_exactly() -> None:
@@ -95,50 +90,7 @@ def test_is_prefilter_needed_only_skips_when_config_matches_exactly() -> None:
     assert service.is_prefilter_needed("bad-config", config) is True
 
 
-def test_enqueue_sync_request_waits_when_running(monkeypatch) -> None:
-    service, _session = build_service()
-    service.prefilter_running = True
-    service.prefilter_active_token = 5
-
-    wait_called = {"value": False}
-
-    def fake_wait_for(predicate):
-        service.prefilter_running = False
-        wait_called["value"] = True
-        return bool(predicate())
-
-    monkeypatch.setattr(service.prefilter_cond, "wait_for", fake_wait_for)
-
-    request, should_run = service.enqueue_sync_request(
-        make_config(),
-        reason="running",
-        lg_path="demo/project.lg",
-    )
-
-    assert request is None
-    assert should_run is False
-    assert wait_called["value"] is True
-
-
-def test_enqueue_sync_request_returns_request_when_idle() -> None:
-    service, _session = build_service()
-
-    request, should_run = service.enqueue_sync_request(
-        make_config(),
-        reason="sync",
-        lg_path="demo/project.lg",
-    )
-
-    assert request is not None
-    assert request.token == 1
-    assert request.seq == 1
-    assert should_run is True
-    assert service.prefilter_running is True
-
-
-def test_pop_pending_request_mark_handled_and_finish_worker_reset_runtime_flags() -> (
-    None
-):
+def test_pop_pending_request_and_finish_worker_reset_runtime_flags() -> None:
     service, _session = build_service()
     request, _start_worker = service.enqueue_request(
         make_config(),
@@ -147,14 +99,11 @@ def test_pop_pending_request_mark_handled_and_finish_worker_reset_runtime_flags(
     )
 
     popped = service.pop_pending_request()
-    service.mark_request_handled(request)
     service.finish_worker()
 
     assert popped == request
     assert service.pop_pending_request() is None
-    assert service.prefilter_last_handled_seq == request.seq
     assert service.prefilter_running is False
-    assert service.prefilter_active_token == 0
 
 
 def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> None:
@@ -183,7 +132,6 @@ def test_apply_once_updates_batch_and_clears_analysis_tables(monkeypatch) -> Non
             make_config(),
             reason="apply",
             lg_path="demo/project.lg",
-            token=1,
         ),
         items=items,
     )
@@ -207,7 +155,6 @@ def test_apply_once_returns_none_when_project_not_loaded() -> None:
             make_config(),
             reason="apply",
             lg_path="demo/project.lg",
-            token=1,
         ),
         items=[Item(id=1, src="A")],
     )
@@ -248,7 +195,6 @@ def test_apply_once_ignores_stale_request_when_project_path_changes(
             make_config(),
             reason="apply",
             lg_path="demo/project.lg",
-            token=1,
         ),
         items=items,
     )

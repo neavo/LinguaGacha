@@ -89,7 +89,6 @@ flowchart TD
 | `proofreading_change_signal` | 当前稳定发出 `global` / `entry` | 校对页 |
 
 补充说明：
-- `ProofreadingChangeSignal` 与 `WorkbenchChangeSignal` 的 TS 类型比当前运行时发出的 scope 更宽，但文档只记录当前真实发出的稳定语义。
 - `project.changed`、`task.*`、`settings.changed` 与 `project.patch` 都由 `DesktopRuntimeContext` 收口，再决定是否刷新页面派生状态。
 - 若 `project.patch` 载荷不合法，当前实现会回退为 `refresh_project_runtime()`，而不是让页面直接猜测修复策略。
 - 工作台与校对页在工程切换后都会先清空本地快照，再等待各自的 change signal 驱动首次有效刷新；不会在空 `ProjectStore` 上做 eager refresh。

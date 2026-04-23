@@ -30,7 +30,6 @@
 | 模型页 | `/api/models/*` | 快照、更新、激活、增删、重排、测试与可选模型查询 |
 | 质量规则与提示词 | `/api/quality/rules/*`、`/api/quality/prompts/*` | 规则、预设与提示词读写 |
 | 应用设置 | `/api/settings/*` | 应用设置快照、更新、最近项目维护 |
-| Extra 工具 | `/api/extra/*` | 繁简转换、姓名字段等 |
 
 路径不变量：
 - 主业务协议统一落在 `/api/` 前缀，不扩展新的并行根前缀。
@@ -129,7 +128,6 @@ flowchart TD
 | `task.status_changed` | `DONE / ERROR / IDLE` 是桥接层对内部终态的公开解释 |
 | `settings.changed` | 是设置广播，不等于页面必须整页刷新 |
 | `project.patch` | 由 `ProjectPatchEventBridge` 额外补出的运行态补丁事件 |
-| `extra.ts_conversion_progress` / `extra.ts_conversion_finished` | Extra 长任务进度与终态依赖这两个 topic，而不是单独轮询 |
 
 `project.patch` 的稳定语义：
 - 至少包含 `source`、`updatedSections` 与 `patch`，在可用时带 `projectRevision`、`sectionRevisions`。
@@ -156,7 +154,7 @@ flowchart TD
 | 关注点 | 当前规则 |
 | --- | --- |
 | `ApiClient` | 默认只取响应体中的 `data`，不会校验 `ok`、保留 `error` 或主动抛出结构化业务异常 |
-| 对象化覆盖 | `SettingsApiClient`、`ExtraApiClient`、`ProjectApiClient`、`ProofreadingApiClient` 主路径以对象化结果为主 |
+| 对象化覆盖 | `SettingsApiClient`、`ProjectApiClient`、`ProofreadingApiClient` 主路径以对象化结果为主 |
 | 混合返回 | `TaskApiClient.export_translation()`、`ModelApiClient.test_model()`、`WorkbenchApiClient.parse_file()` 仍可能返回原始结构 |
 
 这意味着：

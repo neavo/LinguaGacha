@@ -32,12 +32,3 @@ SETTINGS_ROUTE_PATHS: tuple[str, ...] = (
     "/api/settings/recent-projects/add",
     "/api/settings/recent-projects/remove",
 )
-
-EXTRA_ROUTE_PATHS: tuple[str, ...] = (
-    "/api/extra/ts-conversion/options",
-    "/api/extra/ts-conversion/start",
-    "/api/extra/name-fields/snapshot",
-    "/api/extra/name-fields/extract",
-    "/api/extra/name-fields/translate",
-    "/api/extra/name-fields/save-to-glossary",
-)

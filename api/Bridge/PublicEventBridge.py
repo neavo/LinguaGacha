@@ -2,13 +2,10 @@ from typing import Any
 
 from api.Bridge.PublicEventTopic import PublicEventTopic
 from base.Base import Base
-from api.Models.Extra import ExtraTaskState
 
 
 class PublicEventBridge:
     """把内部事件裁剪为对外稳定 topic。"""
-
-    EXTRA_TS_CONVERSION_TASK_ID: str = "extra_ts_conversion"
 
     def map_event(
         self,
@@ -75,16 +72,6 @@ class PublicEventBridge:
             return (
                 PublicEventTopic.SETTINGS_CHANGED.value,
                 payload,
-            )
-        elif event == Base.Event.EXTRA_TS_CONVERSION_PROGRESS:
-            return (
-                PublicEventTopic.EXTRA_TS_CONVERSION_PROGRESS.value,
-                self.build_extra_task_payload(data, finished=False),
-            )
-        elif event == Base.Event.EXTRA_TS_CONVERSION_FINISHED:
-            return (
-                PublicEventTopic.EXTRA_TS_CONVERSION_FINISHED.value,
-                self.build_extra_task_payload(data, finished=True),
             )
         else:
             return None, {}
@@ -165,32 +152,3 @@ class PublicEventBridge:
         if final_status == "STOPPED":
             return "IDLE"
         return "DONE"
-
-    def build_extra_task_payload(
-        self,
-        data: dict[str, Any],
-        *,
-        finished: bool,
-    ) -> dict[str, Any]:
-        """Extra 长任务只暴露页面需要的最小进度字段，避免协议提前膨胀。"""
-
-        return {
-            "task_id": str(
-                data.get("task_id", self.EXTRA_TS_CONVERSION_TASK_ID)
-                or self.EXTRA_TS_CONVERSION_TASK_ID
-            ),
-            "phase": str(
-                data.get(
-                    "phase",
-                    (
-                        ExtraTaskState.PHASE_FINISHED
-                        if finished
-                        else ExtraTaskState.PHASE_RUNNING
-                    ),
-                )
-            ),
-            "message": str(data.get("message", "")),
-            "current": int(data.get("current", 0) or 0),
-            "total": int(data.get("total", 0) or 0),
-            "finished": finished,
-        }

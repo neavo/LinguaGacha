@@ -45,12 +45,6 @@ class Base:
         PROJECT_RUNTIME_PATCH = "PROJECT_RUNTIME_PATCH"  # 工程 - V2 运行态直接补丁
         PROJECT_CHECK = "PROJECT_CHECK"  # 工程 - 检查生命周期事件
         CONFIG_UPDATED = "CONFIG_UPDATED"  # 配置 - 已更新
-        EXTRA_TS_CONVERSION_PROGRESS = (
-            "EXTRA_TS_CONVERSION_PROGRESS"  # Extra - 繁简转换进度更新
-        )
-        EXTRA_TS_CONVERSION_FINISHED = (
-            "EXTRA_TS_CONVERSION_FINISHED"  # Extra - 繁简转换结束通知
-        )
 
     # 通用生命周期子事件
     # 为什么需要它：多数事件都遵循“请求 -> 运行 -> 更新 -> 完成/失败”的同构流程，
@@ -106,13 +100,6 @@ class Base:
         CONTINUE = "CONTINUE"  # 继续分析：跳过已完成文件，仅继续剩余文件
         RESET = "RESET"  # 重置任务：用于外部显式声明“重新构建分析语料”
 
-    # 会影响页面锁定状态的事件统一收口在这里，避免每个页面都维护一份重复列表。
-    BUSY_STATE_EVENTS: tuple[Event, ...] = (
-        Event.TRANSLATION_TASK,
-        Event.TRANSLATION_REQUEST_STOP,
-        Event.ANALYSIS_TASK,
-        Event.ANALYSIS_REQUEST_STOP,
-    )
     API_STREAM_SOURCE_EVENTS: tuple[Event, ...] = (
         Event.PROJECT_LOADED,
         Event.PROJECT_UNLOADED,
@@ -124,8 +111,6 @@ class Base:
         Event.ANALYSIS_REQUEST_STOP,
         Event.ANALYSIS_PROGRESS,
         Event.CONFIG_UPDATED,
-        Event.EXTRA_TS_CONVERSION_PROGRESS,
-        Event.EXTRA_TS_CONVERSION_FINISHED,
     )
     ENGINE_BUSY_STATUSES: tuple[TaskStatus, ...] = (
         TaskStatus.TRANSLATING,
@@ -168,12 +153,6 @@ class Base:
     # 取消订阅事件
     def unsubscribe(self, event: Event, hanlder: Callable) -> None:
         EventManager.get().unsubscribe(event, hanlder)
-
-    def subscribe_busy_state_events(self, handler: Callable) -> None:
-        """订阅所有会影响页面可操作状态的任务事件。"""
-
-        for event in self.BUSY_STATE_EVENTS:
-            self.subscribe(event, handler)
 
     @classmethod
     def is_engine_busy(cls, status: TaskStatus) -> bool:

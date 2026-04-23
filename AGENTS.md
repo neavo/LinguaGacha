@@ -46,7 +46,7 @@ flowchart TD
 - 项目运行态主路径固定为 `/api/project/bootstrap/stream` 与 `/api/events/stream`；页面消费的是 bootstrap + `project.patch`，不是整页快照轮询。
 
 ### 2.2 状态落点与唯一写入口
-- `module/Data` 持有工程事实与数据编排；工程、规则、分析、翻译结果、校对辅助与 Extra 数据能力优先判断是否属于这里。
+- `module/Data` 持有工程事实与数据编排；工程、规则、分析、翻译结果与校对辅助优先判断是否属于这里。
 - `module/Engine` 只负责后台任务生命周期、请求调度、停止与重试；不要让数据层或界面层吞掉任务语义。
 - `module/File` 只负责格式解析与写回；文件格式支持变化不应散落在别处。
 - `module/Model` 只负责模型配置类型、模板补齐、排序与默认回退，不承载页面快照或 HTTP 壳。

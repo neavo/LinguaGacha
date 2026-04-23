@@ -199,41 +199,6 @@ def test_analysis_progress_maps_candidate_count_to_task_progress() -> None:
     assert payload["request_in_flight_count"] == 1
 
 
-def test_event_bridge_maps_extra_progress_topic() -> None:
-    topic, payload = PublicEventBridge().map_event(
-        Base.Event.EXTRA_TS_CONVERSION_PROGRESS,
-        {
-            "current": 2,
-            "total": 10,
-            "message": "running",
-            "phase": "RUNNING",
-        },
-    )
-
-    assert topic == "extra.ts_conversion_progress"
-    assert payload["task_id"] == "extra_ts_conversion"
-    assert payload["phase"] == "RUNNING"
-    assert payload["current"] == 2
-    assert payload["finished"] is False
-
-
-def test_event_bridge_maps_extra_finished_topic() -> None:
-    topic, payload = PublicEventBridge().map_event(
-        Base.Event.EXTRA_TS_CONVERSION_FINISHED,
-        {
-            "message": "done",
-            "current": 10,
-            "total": 10,
-        },
-    )
-
-    assert topic == "extra.ts_conversion_finished"
-    assert payload["task_id"] == "extra_ts_conversion"
-    assert payload["phase"] == "FINISHED"
-    assert payload["message"] == "done"
-    assert payload["finished"] is True
-
-
 def test_unknown_event_is_ignored() -> None:
     topic, payload = PublicEventBridge().map_event(
         Base.Event.PROJECT_CHECK,

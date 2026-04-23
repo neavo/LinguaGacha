@@ -11,7 +11,6 @@ from module.Data.Core.BatchService import BatchService
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 
 
 class AnalysisService:
@@ -50,21 +49,6 @@ class AnalysisService:
             Base.ProjectStatus.RULE_SKIPPED,
             Base.ProjectStatus.LANGUAGE_SKIPPED,
             Base.ProjectStatus.DUPLICATED,
-        )
-
-    @staticmethod
-    def is_analysis_control_code_text(text: str) -> bool:
-        """分析术语里只有纯控制码需要特殊放行。"""
-
-        return AnalysisFakeNameInjector.is_control_code_text(str(text).strip())
-
-    @classmethod
-    def is_analysis_control_code_self_mapping(cls, src: str, dst: str) -> bool:
-        """纯控制码自映射代表占位符本体，不走普通自映射过滤。"""
-
-        return AnalysisFakeNameInjector.is_control_code_self_mapping(
-            str(src).strip(),
-            str(dst).strip(),
         )
 
     def get_analysis_extras(self) -> dict[str, Any]:

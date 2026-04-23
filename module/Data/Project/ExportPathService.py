@@ -94,13 +94,3 @@ class ExportPathService:
             f"{self.get_timestamp_suffix()}"
         )
         return str(project_dir / folder_name)
-
-    def ensure_translated_path(self, lg_path: str) -> str:
-        path = self.get_translated_path(lg_path)
-        Path(path).mkdir(parents=True, exist_ok=True)
-        return path
-
-    def ensure_bilingual_path(self, lg_path: str) -> str:
-        path = self.get_bilingual_path(lg_path)
-        Path(path).mkdir(parents=True, exist_ok=True)
-        return path
