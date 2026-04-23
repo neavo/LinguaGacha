@@ -2,19 +2,13 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useTextReplacementPageState } from "./use-text-replacement-page-state";
+import type { QualityStatisticsCacheSnapshot } from "@/app/project-runtime/quality-statistics-store";
+import { useTextReplacementPageState } from "@/pages/text-replacement-page/use-text-replacement-page-state";
 
-const {
-  api_fetch_mock,
-  push_toast_mock,
-  quality_statistics_compute_mock,
-  quality_statistics_dispose_mock,
-} = vi.hoisted(() => {
+const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
-    quality_statistics_compute_mock: vi.fn(),
-    quality_statistics_dispose_mock: vi.fn(),
   };
 });
 
@@ -99,18 +93,64 @@ const runtime_state = {
   },
 };
 
-const project_store_listeners = new Set<() => void>();
-let current_project_store_state = runtime_state;
-
 const project_store = {
-  subscribe: (listener: () => void) => {
-    project_store_listeners.add(listener);
-    return () => {
-      project_store_listeners.delete(listener);
-    };
-  },
-  getState: () => current_project_store_state,
+  subscribe: vi.fn(() => {
+    return () => {};
+  }),
+  getState: () => runtime_state,
 };
+
+let current_statistics_cache: QualityStatisticsCacheSnapshot;
+
+function create_statistics_cache(
+  args: Partial<QualityStatisticsCacheSnapshot>,
+): QualityStatisticsCacheSnapshot {
+  return {
+    running: false,
+    ready: true,
+    stale: false,
+    failed: false,
+    current_snapshot: {
+      text_source: "src",
+      text_signature: "texts",
+      dependency_signature: "deps",
+      snapshot_signature: "snapshot",
+      rules: [
+        {
+          key: "hero::0",
+          dependency_signature: "hero",
+          relation_label: "hero",
+          token: "hero",
+        },
+      ],
+    },
+    completed_snapshot: {
+      text_source: "src",
+      text_signature: "texts",
+      dependency_signature: "deps",
+      snapshot_signature: "snapshot",
+      rules: [
+        {
+          key: "hero::0",
+          dependency_signature: "hero",
+          relation_label: "hero",
+          token: "hero",
+        },
+      ],
+    },
+    completed_entry_ids: ["hero::0"],
+    matched_count_by_entry_id: {
+      "hero::0": 1,
+    },
+    subset_parent_labels_by_entry_id: {
+      "hero::0": [],
+    },
+    last_error: null,
+    request_token: 1,
+    updated_at: 1,
+    ...args,
+  };
+}
 
 vi.mock("@/app/desktop-api", () => {
   return {
@@ -134,7 +174,9 @@ vi.mock("@/app/state/use-desktop-runtime", () => {
       project_store,
       settings_snapshot: {},
       set_settings_snapshot: vi.fn(),
-      commit_local_project_patch: vi.fn(),
+      commit_local_project_patch: vi.fn(() => ({
+        rollback: vi.fn(),
+      })),
       refresh_project_runtime: vi.fn(),
       align_project_runtime_ack: vi.fn(),
     }),
@@ -149,19 +191,16 @@ vi.mock("@/app/state/use-desktop-toast", () => {
   };
 });
 
+vi.mock("@/app/state/quality-statistics-context", () => {
+  return {
+    useQualityStatistics: () => current_statistics_cache,
+  };
+});
+
 vi.mock("@/i18n", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,
-    }),
-  };
-});
-
-vi.mock("@/app/project-runtime/quality-statistics-client", () => {
-  return {
-    createQualityStatisticsClient: () => ({
-      compute: quality_statistics_compute_mock,
-      dispose: quality_statistics_dispose_mock,
     }),
   };
 });
@@ -184,46 +223,9 @@ describe("useTextReplacementPageState", () => {
   let latest_state: ReturnType<typeof useTextReplacementPageState> | null = null;
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    quality_statistics_compute_mock.mockReset();
-    quality_statistics_dispose_mock.mockReset();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
-    quality_statistics_compute_mock.mockResolvedValue({
-      results: {
-        "hero::0": {
-          matched_item_count: 1,
-          subset_parents: [],
-        },
-      },
-    });
-    current_project_store_state = {
-      ...runtime_state,
-      items: {
-        "1": {
-          item_id: 1,
-          file_path: "chapter01.txt",
-          src: "hero appears",
-          dst: "hero 登场",
-        },
-      },
-      quality: {
-        ...runtime_state.quality,
-        pre_replacement: {
-          entries: [
-            {
-              src: "hero",
-              dst: "勇者",
-              regex: false,
-              case_sensitive: false,
-            },
-          ],
-          enabled: true,
-          mode: "custom",
-          revision: 2,
-        },
-      },
-    };
+    current_statistics_cache = create_statistics_cache({});
   });
 
   afterEach(async () => {
@@ -233,19 +235,11 @@ describe("useTextReplacementPageState", () => {
       });
     }
 
-    vi.useRealTimers();
     container?.remove();
     container = null;
     root = null;
     latest_state = null;
-    project_store_listeners.clear();
   });
-
-  async function flush_microtasks(): Promise<void> {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
 
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
@@ -261,50 +255,47 @@ describe("useTextReplacementPageState", () => {
         />,
       );
     });
-
-    await flush_microtasks();
   }
 
-  async function flush_statistics_context(): Promise<void> {
-    await act(async () => {
-      vi.advanceTimersByTime(0);
-      await Promise.resolve();
-    });
-  }
+  it("首次进入页面时直接读取预热后的统计结果", async () => {
+    await mount_probe();
 
-  async function emit_store_change(): Promise<void> {
+    expect(latest_state?.statistics_ready).toBe(true);
+    expect(latest_state?.statistics_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
+  });
+
+  it("统计未 ready 时不会启用 statistics 排序", async () => {
+    await mount_probe();
+
     await act(async () => {
-      project_store_listeners.forEach((listener) => {
-        listener();
+      latest_state?.apply_table_sort_state({
+        column_id: "statistics",
+        direction: "descending",
       });
     });
-  }
+    expect(latest_state?.sort_state?.column_id).toBe("statistics");
 
-  it("页面首次挂载时自动触发统计", async () => {
-    await mount_probe();
-    expect(quality_statistics_compute_mock).not.toHaveBeenCalled();
-    expect(latest_state).not.toBeNull();
+    current_statistics_cache = create_statistics_cache({
+      ready: false,
+      stale: true,
+    });
+    await act(async () => {
+      root?.render(
+        <Probe
+          on_ready={(state) => {
+            latest_state = state;
+          }}
+        />,
+      );
+    });
 
-    await flush_statistics_context();
-
-    expect(quality_statistics_compute_mock).toHaveBeenCalledTimes(1);
-    expect(quality_statistics_compute_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        srcTexts: ["hero appears"],
-        rules: [
-          expect.objectContaining({
-            mode: "pre_replacement",
-            pattern: "hero",
-          }),
-        ],
-      }),
-    );
-    expect(latest_state?.statistics_ready).toBe(true);
+    expect(latest_state?.statistics_ready).toBe(false);
+    expect(latest_state?.sort_state).toBeNull();
+    expect(latest_state?.statistics_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
   });
 
   it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {
     await mount_probe();
-    await flush_statistics_context();
     api_fetch_mock.mockReturnValueOnce(new Promise(() => {}));
 
     await act(async () => {
@@ -325,77 +316,5 @@ describe("useTextReplacementPageState", () => {
     });
 
     expect(latest_state?.dialog_state.open).toBe(false);
-  });
-
-  it("相关文本变化后会在 200ms 防抖后自动重算", async () => {
-    await mount_probe();
-    await flush_statistics_context();
-    quality_statistics_compute_mock.mockClear();
-
-    current_project_store_state = {
-      ...current_project_store_state,
-      items: {
-        ...current_project_store_state.items,
-        "1": {
-          ...current_project_store_state.items["1"],
-          src: "hero returns",
-        },
-      },
-    };
-
-    await emit_store_change();
-    expect(quality_statistics_compute_mock).not.toHaveBeenCalled();
-
-    await act(async () => {
-      vi.advanceTimersByTime(0);
-      await Promise.resolve();
-    });
-    expect(quality_statistics_compute_mock).not.toHaveBeenCalled();
-
-    await act(async () => {
-      vi.advanceTimersByTime(199);
-      await Promise.resolve();
-    });
-    expect(quality_statistics_compute_mock).not.toHaveBeenCalled();
-
-    await act(async () => {
-      vi.advanceTimersByTime(1);
-      await Promise.resolve();
-    });
-
-    expect(quality_statistics_compute_mock).toHaveBeenCalledTimes(1);
-    expect(quality_statistics_compute_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        srcTexts: ["hero returns"],
-      }),
-    );
-  });
-
-  it("不相关字段变化不会触发自动统计", async () => {
-    await mount_probe();
-    await flush_statistics_context();
-    quality_statistics_compute_mock.mockClear();
-
-    current_project_store_state = {
-      ...current_project_store_state,
-      items: {
-        ...current_project_store_state.items,
-        "1": {
-          ...current_project_store_state.items["1"],
-          dst: "勇者登场",
-        },
-      },
-    };
-
-    await emit_store_change();
-    await act(async () => {
-      vi.advanceTimersByTime(0);
-      await Promise.resolve();
-    });
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-    });
-
-    expect(quality_statistics_compute_mock).not.toHaveBeenCalled();
   });
 });

@@ -210,7 +210,7 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
                   <TriangleAlert />
                 </InputGroupButton>
               </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={8}>
+              <TooltipContent side="left" sideOffset={10}>
                 <p className="search-bar__invalid-tooltip">{props.invalid_message}</p>
               </TooltipContent>
             </Tooltip>

@@ -6,8 +6,8 @@ import type {
 import { casefold_text } from "@/app/project-runtime/quality-statistics";
 import {
   isQualityStatisticsStaleError,
-  type QualityStatisticsClient,
-} from "@/app/project-runtime/quality-statistics-client";
+  type QualityStatisticsTaskExecutor,
+} from "@/app/project-runtime/quality-statistics-worker-pool";
 
 export type QualityStatisticsAutoTextSource = "src" | "dst";
 
@@ -487,7 +487,7 @@ export function planQualityStatisticsAutoRun(args: {
 }
 
 export async function executeQualityStatisticsAutoPlan(args: {
-  client: QualityStatisticsClient;
+  executor: QualityStatisticsTaskExecutor;
   current_snapshot: QualityStatisticsDependencySnapshot;
   completed_snapshot: QualityStatisticsDependencySnapshot | null;
   previous_results: QualityStatisticsResultMap;
@@ -531,7 +531,7 @@ export async function executeQualityStatisticsAutoPlan(args: {
   }
 
   try {
-    const worker_result = await args.client.compute({
+    const worker_result = await args.executor.compute({
       rules: target_rules,
       srcTexts: args.src_texts,
       dstTexts: args.dst_texts,

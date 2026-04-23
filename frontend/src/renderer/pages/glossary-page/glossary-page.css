@@ -232,8 +232,6 @@
   justify-content: center;
   font-size: 10px;
   transition:
-    transform 180ms ease,
-    filter 180ms ease,
     border-color 180ms ease,
     background-color 180ms ease,
     color 180ms ease;
@@ -241,11 +239,4 @@
 
 .glossary-page__statistics-badge--running {
   padding-inline: 7px;
-}
-
-.glossary-page__statistics-badge-button:hover .glossary-page__statistics-badge,
-.glossary-page__statistics-badge-button:focus-visible .glossary-page__statistics-badge,
-.glossary-page__statistics-badge-button[data-state="open"] .glossary-page__statistics-badge {
-  transform: translateY(-1px);
-  filter: saturate(1.08);
 }

@@ -70,8 +70,6 @@
   justify-content: center;
   font-size: 10px;
   transition:
-    transform 180ms ease,
-    filter 180ms ease,
     border-color 180ms ease,
     background-color 180ms ease,
     color 180ms ease;
@@ -79,17 +77,6 @@
 
 .text-preserve-page .preserve-page__statistics-badge--running {
   padding-inline: 7px;
-}
-
-.text-preserve-page .preserve-page__statistics-badge-button:hover .preserve-page__statistics-badge,
-.text-preserve-page
-  .preserve-page__statistics-badge-button:focus-visible
-  .preserve-page__statistics-badge,
-.text-preserve-page
-  .preserve-page__statistics-badge-button[data-state="open"]
-  .preserve-page__statistics-badge {
-  transform: translateY(-1px);
-  filter: saturate(1.08);
 }
 
 .text-preserve-page__mode-cluster {

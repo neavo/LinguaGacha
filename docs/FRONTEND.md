@@ -68,6 +68,7 @@ flowchart TD
 - `frontend/src/renderer/app/project-runtime/` 负责把 bootstrap 流与 `project.patch` 收口成渲染层可消费的最小项目运行态。
 - 稳定 section 固定为：`project`、`files`、`items`、`quality`、`prompts`、`analysis`、`proofreading`、`task`。
 - `revisions` 额外维护 `projectRevision` 与 `sections[stage]`。
+- 质量规则统计常驻缓存不进入 `ProjectStore`；应用根的 `QualityStatisticsProvider` 会在 warmup ready 后预热四类统计，并由规则页通过 `useQualityStatistics(ruleType)` 消费。
 
 ### bootstrap 落地规则
 - `files` 使用 `rel_path` 作为 key。
@@ -94,6 +95,7 @@ flowchart TD
 - 工作台与校对页在工程切换后都会先清空本地快照，再等待各自的 change signal 驱动首次有效刷新；不会在空 `ProjectStore` 上做 eager refresh。
 - `ProjectPagesProvider` 当前把 `project_warmup` 定义为“工作台首屏已基于本次 bootstrap 完成刷新”，`wait_for_barrier("project_warmup", { checkpoint })` 会要求工作台 `last_loaded_at` 晚于该 checkpoint；校对页缓存仍通过独立 barrier 维护。
 - 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`，不再复用 `project_warmup` 作为可操作条件。
+- glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续只根据 `items` revision 与对应 quality slice revision 后台刷新；规则页本身不再创建 worker 或维护统计刷新 effect。
 
 ## 页面 / widget / shadcn / 样式归属
 
