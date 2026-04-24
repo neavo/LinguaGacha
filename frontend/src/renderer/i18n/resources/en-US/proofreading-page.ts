@@ -94,10 +94,8 @@ export const en_us_proofreading_page = {
     edit_title: "Edit Entry",
   },
   confirm: {
-    retranslate_title: "Retranslate",
-    retranslate_description: "Retranslate all {COUNT} entries?",
-    reset_title: "Reset Translation",
-    reset_description: "Reset translation for all {COUNT} entries?",
+    retranslate_description: "Confirm retranslating {COUNT} entries …?",
+    reset_description: "Confirm resetting the translation status of {COUNT} entries …?",
   },
   empty: {
     title: "No Results",

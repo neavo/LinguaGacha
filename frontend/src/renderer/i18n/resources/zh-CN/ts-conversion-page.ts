@@ -8,7 +8,8 @@ export const zh_cn_ts_conversion_page = {
   fields: {
     direction: {
       title: "转换模式",
-      description: "简繁转换功能由 <emphasis>OpenCC</emphasis> 实现，简体到繁体使用 S2TW 规则，繁体到简体使用 T2S 规则",
+      description:
+        "简繁转换功能由 <emphasis>OpenCC</emphasis> 实现，简体到繁体使用 S2TW 规则，繁体到简体使用 T2S 规则",
     },
     preserve_text: {
       title: "遵循文本保护规则",
@@ -26,8 +27,7 @@ export const zh_cn_ts_conversion_page = {
     progress: "正在执行简繁转换，第 {CURRENT} 项，共 {TOTAL} 项 …",
   },
   confirm: {
-    title: "提醒",
-    description: "是否开始执行简繁转换 …?",
+    description: "是否确认开始执行简繁转换 …?",
   },
   feedback: {
     task_success: "任务执行成功 …",

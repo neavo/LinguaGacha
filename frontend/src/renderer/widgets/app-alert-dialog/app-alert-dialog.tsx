@@ -16,7 +16,7 @@ type AppAlertDialogSize = "default" | "sm";
 
 type AppAlertDialogProps = {
   open: boolean;
-  title: string;
+  title?: string;
   description: string;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
@@ -24,13 +24,7 @@ type AppAlertDialogProps = {
   size?: AppAlertDialogSize;
   confirmLabel?: string;
   cancelLabel?: string;
-  confirmVariant?:
-    | "default"
-    | "destructive"
-    | "secondary"
-    | "outline"
-    | "ghost"
-    | "link";
+  confirmVariant?: "default" | "destructive" | "secondary" | "outline" | "ghost" | "link";
   contentClassName?: string;
   descriptionClassName?: string;
 };
@@ -46,6 +40,7 @@ function preventDialogClose(event: ClosableEvent): void {
 export function AppAlertDialog(props: AppAlertDialogProps): JSX.Element {
   const { t } = useI18n();
   const submitting = props.submitting ?? false;
+  const title = props.title ?? t("app.action.confirm");
 
   return (
     <AlertDialog
@@ -62,12 +57,9 @@ export function AppAlertDialog(props: AppAlertDialogProps): JSX.Element {
         onEscapeKeyDown={submitting ? preventDialogClose : undefined}
       >
         <AlertDialogHeader className="place-items-start text-left">
-          <AlertDialogTitle>{props.title}</AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription
-            className={cn(
-              "whitespace-pre-line text-left",
-              props.descriptionClassName,
-            )}
+            className={cn("whitespace-pre-line text-left", props.descriptionClassName)}
           >
             {props.description}
           </AlertDialogDescription>

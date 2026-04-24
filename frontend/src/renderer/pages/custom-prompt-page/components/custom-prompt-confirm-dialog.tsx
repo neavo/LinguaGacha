@@ -9,46 +9,32 @@ type CustomPromptConfirmDialogProps = {
 };
 
 type ConfirmCopy = {
-  title_key: LocaleKey;
   description_key: LocaleKey;
 };
 
-const CONFIRM_COPY_BY_KIND: Record<
-  NonNullable<CustomPromptConfirmState["kind"]>,
-  ConfirmCopy
-> = {
+const CONFIRM_COPY_BY_KIND: Record<NonNullable<CustomPromptConfirmState["kind"]>, ConfirmCopy> = {
   reset: {
-    title_key: "custom_prompt_page.confirm.reset.title",
     description_key: "custom_prompt_page.confirm.reset.description",
   },
   "delete-preset": {
-    title_key: "custom_prompt_page.confirm.delete_preset.title",
     description_key: "custom_prompt_page.confirm.delete_preset.description",
   },
   "overwrite-preset": {
-    title_key: "custom_prompt_page.confirm.overwrite_preset.title",
     description_key: "custom_prompt_page.confirm.overwrite_preset.description",
   },
 };
 
-export function CustomPromptConfirmDialog(
-  props: CustomPromptConfirmDialogProps,
-): JSX.Element {
+export function CustomPromptConfirmDialog(props: CustomPromptConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
-  const dialog_copy =
-    props.state.kind === null ? null : CONFIRM_COPY_BY_KIND[props.state.kind];
+  const dialog_copy = props.state.kind === null ? null : CONFIRM_COPY_BY_KIND[props.state.kind];
   const description =
     dialog_copy === null
       ? ""
-      : t(dialog_copy.description_key).replace(
-          "{NAME}",
-          props.state.preset_name,
-        );
+      : t(dialog_copy.description_key).replace("{NAME}", props.state.preset_name);
 
   return (
     <AppAlertDialog
       open={props.state.open}
-      title={dialog_copy === null ? "" : t(dialog_copy.title_key)}
       description={description}
       submitting={props.state.submitting}
       onConfirm={props.on_confirm}

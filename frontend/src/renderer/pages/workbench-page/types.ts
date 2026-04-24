@@ -81,7 +81,6 @@ export type WorkbenchTaskDetailViewModel = {
 
 export type WorkbenchTaskConfirmDialogViewModel = {
   open: boolean;
-  title: string;
   description: string;
   submitting: boolean;
 };

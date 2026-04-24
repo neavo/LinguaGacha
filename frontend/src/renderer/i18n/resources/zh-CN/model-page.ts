@@ -42,12 +42,10 @@ export const zh_cn_model_page = {
   },
   confirm: {
     delete: {
-      title: "确认",
-      description: "确认删除数据 …?",
+      description: "是否确认删除模型 …?",
     },
     reset: {
-      title: "确认",
-      description: "确认重置数据 …?",
+      description: "是否确认重置模型 …?",
     },
   },
   feedback: {

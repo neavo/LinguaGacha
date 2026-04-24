@@ -91,10 +91,8 @@ export const zh_cn_proofreading_page = {
     edit_title: "编辑条目",
   },
   confirm: {
-    retranslate_title: "重新翻译",
-    retranslate_description: "确定重新翻译全部 {COUNT} 个条目？",
-    reset_title: "重置翻译状态",
-    reset_description: "确定重置全部 {COUNT} 个条目的翻译？",
+    retranslate_description: "是否确认重新翻译 {COUNT} 个条目 …?",
+    reset_description: "是否确认重置 {COUNT} 个条目的翻译状态 …?",
   },
   empty: {
     title: "无结果",

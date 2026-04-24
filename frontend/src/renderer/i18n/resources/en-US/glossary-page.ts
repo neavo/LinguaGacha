@@ -78,20 +78,16 @@ export const en_us_glossary_page = {
   },
   confirm: {
     delete_selection: {
-      title: "Confirm Deletion",
-      description: "Confirm deleting {COUNT} item(s)?",
+      description: "Confirm deleting {COUNT} records …?",
     },
     delete_preset: {
-      title: "Delete Preset",
-      description: 'Delete preset "{NAME}"?',
+      description: 'Confirm deleting preset "{NAME}" …?',
     },
     reset: {
-      title: "Confirm Reset",
-      description: "Confirm reset data …?",
+      description: "Confirm resetting data …?",
     },
     overwrite_preset: {
-      title: "Overwrite Preset",
-      description: 'Preset "{NAME}" already exists, confirm overwrite …?',
+      description: 'Confirm overwriting preset "{NAME}" …?',
     },
   },
   feedback: {

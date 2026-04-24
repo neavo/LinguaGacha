@@ -616,7 +616,6 @@ function build_translation_task_confirm_dialog_view_model(
   if (state.kind === "reset-all") {
     return {
       open: state.open,
-      title: t("workbench_page.translation_task.confirm.reset_all_title"),
       description: t("workbench_page.translation_task.confirm.reset_all_description"),
       submitting: state.submitting,
     };
@@ -625,7 +624,6 @@ function build_translation_task_confirm_dialog_view_model(
   if (state.kind === "reset-failed") {
     return {
       open: state.open,
-      title: t("workbench_page.translation_task.confirm.reset_failed_title"),
       description: t("workbench_page.translation_task.confirm.reset_failed_description"),
       submitting: state.submitting,
     };
@@ -633,7 +631,6 @@ function build_translation_task_confirm_dialog_view_model(
 
   return {
     open: state.open,
-    title: t("workbench_page.translation_task.confirm.stop_title"),
     description: t("workbench_page.translation_task.confirm.stop_description"),
     submitting: state.submitting,
   };
@@ -650,7 +647,6 @@ function build_analysis_task_confirm_dialog_view_model(
   if (state.kind === "reset-all") {
     return {
       open: state.open,
-      title: t("workbench_page.analysis_task.confirm.reset_all_title"),
       description: t("workbench_page.analysis_task.confirm.reset_all_description"),
       submitting: state.submitting,
     };
@@ -659,7 +655,6 @@ function build_analysis_task_confirm_dialog_view_model(
   if (state.kind === "reset-failed") {
     return {
       open: state.open,
-      title: t("workbench_page.analysis_task.confirm.reset_failed_title"),
       description: t("workbench_page.analysis_task.confirm.reset_failed_description"),
       submitting: state.submitting,
     };
@@ -668,7 +663,6 @@ function build_analysis_task_confirm_dialog_view_model(
   if (state.kind === "import-glossary") {
     return {
       open: state.open,
-      title: t("workbench_page.analysis_task.confirm.import_glossary_title"),
       description: t("workbench_page.analysis_task.confirm.import_glossary_description"),
       submitting: state.submitting,
     };
@@ -676,7 +670,6 @@ function build_analysis_task_confirm_dialog_view_model(
 
   return {
     open: state.open,
-    title: t("workbench_page.analysis_task.confirm.stop_title"),
     description: t("workbench_page.analysis_task.confirm.stop_description"),
     submitting: state.submitting,
   };

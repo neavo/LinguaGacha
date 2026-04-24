@@ -8,15 +8,10 @@ type ProofreadingConfirmDialogProps = {
   on_close: () => void;
 };
 
-export function ProofreadingConfirmDialog(
-  props: ProofreadingConfirmDialogProps,
-): JSX.Element {
+export function ProofreadingConfirmDialog(props: ProofreadingConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   const selection_count = props.state?.target_row_ids.length ?? 0;
   const is_retranslate = props.state?.kind === "retranslate-items";
-  const title = is_retranslate
-    ? t("proofreading_page.confirm.retranslate_title")
-    : t("proofreading_page.confirm.reset_title");
   const description = is_retranslate
     ? t("proofreading_page.confirm.retranslate_description").replace(
         "{COUNT}",
@@ -30,7 +25,6 @@ export function ProofreadingConfirmDialog(
   return (
     <AppAlertDialog
       open={props.state !== null}
-      title={title}
       description={description}
       onConfirm={props.on_confirm}
       onClose={props.on_close}
