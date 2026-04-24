@@ -12,29 +12,34 @@ export const PROOFREADING_WARNING_CODES = [
 
 const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = [
   "NONE",
+  "PROCESSING",
   "PROCESSED",
-  "ERROR",
   "PROCESSED_IN_PAST",
+  "ERROR",
 ] as const;
-
-const PROOFREADING_FILTER_SOURCE_EXCLUDED_STATUS_CODES = ["DUPLICATED", "RULE_SKIPPED"] as const;
 
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
+  "PROCESSING",
   "PROCESSED",
   "PROCESSED_IN_PAST",
   "ERROR",
-  "EXCLUDED",
   "LANGUAGE_SKIPPED",
+  "EXCLUDED",
+  "RULE_SKIPPED",
+  "DUPLICATED",
 ] as const;
 
 export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   NONE: "proofreading_page.status.none",
+  PROCESSING: "proofreading_page.status.processing",
   PROCESSED: "proofreading_page.status.processed",
   PROCESSED_IN_PAST: "proofreading_page.status.processed_in_past",
-  ERROR: "proofreading_page.status.error",
   EXCLUDED: "proofreading_page.status.excluded",
+  RULE_SKIPPED: "proofreading_page.status.rule_skipped",
   LANGUAGE_SKIPPED: "proofreading_page.status.non_target_source_language",
+  DUPLICATED: "proofreading_page.status.duplicated",
+  ERROR: "proofreading_page.status.error",
 } as const;
 
 export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
@@ -208,8 +213,7 @@ export function create_empty_proofreading_summary(): ProofreadingSummary {
 export function resolve_proofreading_filter_source_items(
   items: ProofreadingItem[],
 ): ProofreadingItem[] {
-  const excluded_status_set = new Set<string>(PROOFREADING_FILTER_SOURCE_EXCLUDED_STATUS_CODES);
-  return items.filter((item) => !excluded_status_set.has(item.status));
+  return [...items];
 }
 
 export function resolve_default_proofreading_statuses(available_statuses: string[]): string[] {

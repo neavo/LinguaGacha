@@ -33,9 +33,8 @@ const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
   "EXCLUDED",
   "DUPLICATED",
 ]);
-const PROOFREADING_REVIEW_EXCLUDED_STATUSES = new Set(["DUPLICATED", "RULE_SKIPPED"]);
-const HIRAGANA_REGEX = /[\u3040-\u309F]/u;
-const KATAKANA_REGEX = /[\u30A0-\u30FF\u31F0-\u31FF\uFF65-\uFF9F]/u;
+const EXCLUDED_HIRAGANA_CODE_POINTS = new Set([0x309b, 0x309c]);
+const EXCLUDED_KATAKANA_CODE_POINTS = new Set([0xff65, 0x30fb, 0x30fc]);
 const HANGEUL_REGEX = /[\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF]/u;
 
 type ProofreadingRuntimeGlossaryEntry = {
@@ -361,9 +360,36 @@ function collect_non_blank_preserved_segments(text: string, sample_regex: RegExp
   return segments;
 }
 
+function is_hiragana_residue_character(character: string): boolean {
+  const code_point = character.codePointAt(0);
+  return (
+    code_point !== undefined &&
+    code_point >= 0x3040 &&
+    code_point <= 0x309f &&
+    !EXCLUDED_HIRAGANA_CODE_POINTS.has(code_point)
+  );
+}
+
+function is_katakana_residue_character(character: string): boolean {
+  const code_point = character.codePointAt(0);
+  return (
+    code_point !== undefined &&
+    ((code_point >= 0x30a0 && code_point <= 0x30ff) ||
+      (code_point >= 0x31f0 && code_point <= 0x31ff) ||
+      (code_point >= 0xff65 && code_point <= 0xff9f)) &&
+    !EXCLUDED_KATAKANA_CODE_POINTS.has(code_point)
+  );
+}
+
+function has_kana_residue(text: string): boolean {
+  return Array.from(text).some((character) => {
+    return is_hiragana_residue_character(character) || is_katakana_residue_character(character);
+  });
+}
+
 function replace_all_literal(text: string, search_text: string, replace_text: string): string {
   if (search_text === "") {
-    return text;
+    return `${replace_text}${Array.from(text).join(replace_text)}${replace_text}`;
   }
 
   return text.split(search_text).join(replace_text);
@@ -406,7 +432,7 @@ function build_glossary_entries(
   }
 
   return quality.glossary.entries.flatMap((entry) => {
-    const src = String(entry.src ?? "").trim();
+    const src = String(entry.src ?? "");
     const dst = String(entry.dst ?? "");
     return src === "" ? [] : [{ src, dst }];
   });
@@ -429,7 +455,7 @@ function partition_glossary_terms(args: {
     }
 
     const term = [entry.src, entry.dst] as const;
-    if (entry.dst !== "" && args.dst_replaced.includes(entry.dst)) {
+    if (args.dst_replaced.includes(entry.dst)) {
       applied_terms.push(term);
     } else {
       failed_terms.push(term);
@@ -507,10 +533,6 @@ function evaluate_proofreading_item(args: {
   source_language: string;
   sample_regex_cache: Map<string, RegExp | null>;
 }): ProofreadingClientItem | null {
-  if (args.item.src.trim() === "" || PROOFREADING_REVIEW_EXCLUDED_STATUSES.has(args.item.status)) {
-    return null;
-  }
-
   const warnings: string[] = [];
   const failed_terms: ProofreadingGlossaryTerm[] = [];
   const applied_terms: ProofreadingGlossaryTerm[] = [];
@@ -536,10 +558,7 @@ function evaluate_proofreading_item(args: {
 
   const { src_replaced, dst_replaced } = apply_quality_replacements(args.item, args.quality);
   const normalized_dst = strip_preserved_segments(args.item.dst, sample_regex);
-  if (
-    args.source_language === "JA" &&
-    (HIRAGANA_REGEX.test(normalized_dst) || KATAKANA_REGEX.test(normalized_dst))
-  ) {
+  if (args.source_language === "JA" && has_kana_residue(normalized_dst)) {
     warnings.push("KANA");
   }
 
