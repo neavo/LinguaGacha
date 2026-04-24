@@ -319,4 +319,48 @@ describe("useGlossaryPageState wiring", () => {
 
     expect(latest_state?.dialog_state.open).toBe(false);
   });
+
+  it("保存仅修改翻译或说明时保留旧统计 ready 与 badge", async () => {
+    await mount_probe();
+    api_fetch_mock.mockResolvedValueOnce({
+      accepted: true,
+      projectRevision: 2,
+      sectionRevisions: {
+        quality: 2,
+      },
+    });
+
+    expect(latest_state?.statistics_ready).toBe(true);
+    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
+
+    await act(async () => {
+      latest_state?.open_edit_dialog("苹果::0");
+    });
+
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        dst: "Malus",
+        info: "新的说明",
+      });
+    });
+
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "glossary",
+      expected_revision: 1,
+      entries: [
+        {
+          src: "苹果",
+          dst: "Malus",
+          info: "新的说明",
+          case_sensitive: false,
+        },
+      ],
+    });
+    expect(latest_state?.statistics_ready).toBe(true);
+    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
+  });
 });

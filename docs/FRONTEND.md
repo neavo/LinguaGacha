@@ -97,7 +97,7 @@ flowchart TD
 - 校对页只把 `project / items / quality` 视为后台派生真实输入；`prompts`、`analysis` 单独变化不再触发校对缓存失效，`proofreading / task` 仅在没有 item 载荷时发 `noop`。
 - 校对页把 `ProjectStore` 原始状态同步到独立 worker cache：`hydrate_full` 负责项目级全量同步，`apply_item_delta` 只重算变更条目，`build_list_view` 与 `build_filter_panel` 负责列表与筛选面板查询；warnings、默认 filters、筛选 facets 与排序结果都由 worker 持有，主线程只保留选区、游标、弹窗等轻状态。
 - 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`；其中 `proofreading_cache_refresh` 的 ready 定义是“当前列表查询已结算，且 `current_filters` 对应的筛选面板已预热完成”，不再复用 `project_warmup` 作为可操作条件。
-- glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续只根据 `items` revision 与对应 quality slice revision 后台刷新；规则页本身不再创建 worker 或维护统计刷新 effect。
+- glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续比较统计依赖签名（项目相关文本、规则 key 与 descriptor 依赖字段）决定是否后台刷新；规则页本身不再创建 worker 或维护统计刷新 effect。
 
 ## 页面 / widget / shadcn / 样式归属
 

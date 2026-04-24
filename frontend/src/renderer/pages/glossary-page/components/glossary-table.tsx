@@ -19,7 +19,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shadcn/dropdown-menu";
-import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
 import type {
@@ -33,7 +32,6 @@ type GlossaryTableProps = {
   entries: GlossaryVisibleEntry[];
   sort_state: GlossarySortState;
   drag_disabled: boolean;
-  statistics_running: boolean;
   statistics_ready: boolean;
   selected_entry_ids: GlossaryEntryId[];
   active_entry_id: GlossaryEntryId | null;
@@ -166,7 +164,6 @@ function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
 
 type GlossaryStatisticsBadgeProps = {
   entry_id: GlossaryEntryId;
-  statistics_running: boolean;
   badge_state: GlossaryStatisticsBadgeState | null;
   on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>;
   on_search_entry_relations: (entry_id: GlossaryEntryId) => void;
@@ -174,24 +171,6 @@ type GlossaryStatisticsBadgeProps = {
 
 function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Element | null {
   const { t } = useI18n();
-
-  if (props.statistics_running) {
-    return (
-      <span
-        data-glossary-ignore-box-select="true"
-        data-glossary-ignore-row-click="true"
-        className="glossary-page__statistics-badge-wrap"
-      >
-        <Badge
-          variant="outline"
-          className="glossary-page__statistics-badge glossary-page__statistics-badge--running [&>svg]:!size-[10px]"
-        >
-          <Spinner data-icon="inline-start" />
-          <span className="sr-only">{t("glossary_page.statistics.running")}</span>
-        </Badge>
-      </span>
-    );
-  }
 
   if (props.badge_state === null) {
     return null;
@@ -435,7 +414,6 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           return (
             <GlossaryStatisticsBadge
               entry_id={payload.row_id}
-              statistics_running={props.statistics_running}
               badge_state={props.statistics_badge_by_entry_id[payload.row_id] ?? null}
               on_query_entry_source={props.on_query_entry_source}
               on_search_entry_relations={props.on_search_entry_relations}

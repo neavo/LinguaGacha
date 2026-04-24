@@ -11,10 +11,12 @@ import {
 import { createQualityStatisticsScheduler } from "@/app/project-runtime/quality-statistics-scheduler";
 import {
   createQualityStatisticsStore,
+  QUALITY_STATISTICS_RULE_TYPES,
   type QualityStatisticsCacheSnapshot,
   type QualityStatisticsRuleType,
   type QualityStatisticsStore,
 } from "@/app/project-runtime/quality-statistics-store";
+import { prepareQualityStatisticsRuleContext } from "@/app/project-runtime/quality-statistics-descriptors";
 import type { ProjectStoreState } from "@/app/project-runtime/project-store";
 import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
 
@@ -25,15 +27,15 @@ type QualityStatisticsContextValue = {
 
 const QualityStatisticsContext = createContext<QualityStatisticsContextValue | null>(null);
 
-function extract_quality_revisions(
+function extract_quality_dependency_signatures(
   state: ProjectStoreState,
-): Record<QualityStatisticsRuleType, number> {
-  return {
-    glossary: Number(state.quality.glossary.revision ?? 0),
-    pre_replacement: Number(state.quality.pre_replacement.revision ?? 0),
-    post_replacement: Number(state.quality.post_replacement.revision ?? 0),
-    text_preserve: Number(state.quality.text_preserve.revision ?? 0),
-  };
+): Record<QualityStatisticsRuleType, string> {
+  return Object.fromEntries(
+    QUALITY_STATISTICS_RULE_TYPES.map((rule_type) => {
+      const prepared_context = prepareQualityStatisticsRuleContext(state, rule_type);
+      return [rule_type, prepared_context.current_statistics_context.snapshot.snapshot_signature];
+    }),
+  ) as Record<QualityStatisticsRuleType, string>;
 }
 
 export function QualityStatisticsProvider(props: { children: ReactNode }): JSX.Element {
@@ -61,13 +63,9 @@ export function QualityStatisticsProvider(props: { children: ReactNode }): JSX.E
   }
 
   const previous_project_path_ref = useRef("");
-  const previous_items_revision_ref = useRef<number | null>(null);
-  const previous_quality_revisions_ref = useRef<Record<QualityStatisticsRuleType, number>>({
-    glossary: 0,
-    pre_replacement: 0,
-    post_replacement: 0,
-    text_preserve: 0,
-  });
+  const previous_quality_signatures_ref = useRef<Record<QualityStatisticsRuleType, string> | null>(
+    null,
+  );
   const previous_warmup_ready_ref = useRef(false);
 
   useEffect(() => {
@@ -85,13 +83,7 @@ export function QualityStatisticsProvider(props: { children: ReactNode }): JSX.E
 
     if (!project_snapshot.loaded || project_snapshot.path === "") {
       previous_project_path_ref.current = "";
-      previous_items_revision_ref.current = null;
-      previous_quality_revisions_ref.current = {
-        glossary: 0,
-        pre_replacement: 0,
-        post_replacement: 0,
-        text_preserve: 0,
-      };
+      previous_quality_signatures_ref.current = null;
       previous_warmup_ready_ref.current = false;
       scheduler.resetProject("");
       return;
@@ -99,18 +91,12 @@ export function QualityStatisticsProvider(props: { children: ReactNode }): JSX.E
 
     if (previous_project_path_ref.current !== project_snapshot.path) {
       previous_project_path_ref.current = project_snapshot.path;
-      previous_items_revision_ref.current = Number(
-        project_store_state.revisions.sections.items ?? 0,
-      );
-      previous_quality_revisions_ref.current = extract_quality_revisions(project_store_state);
+      previous_quality_signatures_ref.current =
+        extract_quality_dependency_signatures(project_store_state);
       previous_warmup_ready_ref.current = false;
       scheduler.resetProject(project_snapshot.path);
     }
-  }, [
-    project_snapshot.loaded,
-    project_snapshot.path,
-    project_store_state.revisions.sections.items,
-  ]);
+  }, [project_snapshot.loaded, project_snapshot.path, project_store_state]);
 
   useEffect(() => {
     const scheduler = scheduler_ref.current;
@@ -133,41 +119,21 @@ export function QualityStatisticsProvider(props: { children: ReactNode }): JSX.E
       return;
     }
 
-    const current_items_revision = Number(project_store_state.revisions.sections.items ?? 0);
-    const current_quality_revisions = extract_quality_revisions(project_store_state);
+    const current_quality_signatures = extract_quality_dependency_signatures(project_store_state);
 
     if (project_warmup_status === "ready") {
-      if (
-        previous_items_revision_ref.current !== null &&
-        previous_items_revision_ref.current !== current_items_revision
-      ) {
-        scheduler.markItemsDirty();
-      }
-
-      (Object.keys(current_quality_revisions) as QualityStatisticsRuleType[]).forEach(
-        (rule_type) => {
-          if (
-            previous_quality_revisions_ref.current[rule_type] !==
-            current_quality_revisions[rule_type]
-          ) {
+      const previous_quality_signatures = previous_quality_signatures_ref.current;
+      if (previous_quality_signatures !== null) {
+        QUALITY_STATISTICS_RULE_TYPES.forEach((rule_type) => {
+          if (previous_quality_signatures[rule_type] !== current_quality_signatures[rule_type]) {
             scheduler.markQualityDirty(rule_type);
           }
-        },
-      );
+        });
+      }
     }
 
-    previous_items_revision_ref.current = current_items_revision;
-    previous_quality_revisions_ref.current = current_quality_revisions;
-  }, [
-    project_snapshot.loaded,
-    project_snapshot.path,
-    project_store_state.quality.glossary.revision,
-    project_store_state.quality.pre_replacement.revision,
-    project_store_state.quality.post_replacement.revision,
-    project_store_state.quality.text_preserve.revision,
-    project_store_state.revisions.sections.items,
-    project_warmup_status,
-  ]);
+    previous_quality_signatures_ref.current = current_quality_signatures;
+  }, [project_snapshot.loaded, project_snapshot.path, project_store_state, project_warmup_status]);
 
   const context_value = useMemo<QualityStatisticsContextValue>(() => {
     return {

@@ -94,7 +94,6 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
             entries={glossary_page_state.filtered_entries}
             sort_state={glossary_page_state.sort_state}
             drag_disabled={glossary_page_state.drag_disabled}
-            statistics_running={glossary_page_state.statistics_state.running}
             statistics_ready={glossary_page_state.statistics_ready}
             selected_entry_ids={glossary_page_state.selected_entry_ids}
             active_entry_id={glossary_page_state.active_entry_id}
