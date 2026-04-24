@@ -434,7 +434,7 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.search_keyword).toBe("needle");
   });
 
-  it("worker 类错误会统一收口成页面已有的刷新失败提示", async () => {
+  it("worker 类错误会统一收口成刷新失败 toast", async () => {
     proofreading_runtime_client_fixture.current.hydrate_full = vi.fn(async () => {
       throw new WorkerClientError("底层 worker 初始化失败。", "init_failed");
     });
@@ -454,7 +454,6 @@ describe("useProofreadingPageState", () => {
 
     expect(latest_state).not.toBeNull();
     expect(latest_state?.cache_status).toBe("error");
-    expect(latest_state?.refresh_error).toBe("proofreading_page.feedback.refresh_failed");
     expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
       "error",
       "proofreading_page.feedback.refresh_failed",

@@ -29,7 +29,6 @@ type SettingsUpdateRequest = Record<string, unknown>;
 type UseBasicSettingsStateResult = {
   snapshot: BasicSettingsSnapshot;
   pending_state: SettingPendingState;
-  refresh_error: string | null;
   is_refreshing: boolean;
   is_task_busy: boolean;
   refresh_snapshot: () => Promise<void>;
@@ -75,7 +74,6 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   const [pending_state, set_pending_state] = useState<SettingPendingState>(() => {
     return create_pending_state();
   });
-  const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState<boolean>(false);
   const snapshot_ref = useRef<BasicSettingsSnapshot>(snapshot);
   const settings_snapshot_ref = useRef<SettingsSnapshot>(settings_snapshot);
@@ -116,17 +114,15 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     try {
       const next_settings_snapshot = await refresh_settings();
       set_snapshot(build_basic_settings_snapshot(next_settings_snapshot));
-      set_refresh_error(null);
     } catch (error) {
-      if (error instanceof Error) {
-        set_refresh_error(error.message);
-      } else {
-        set_refresh_error(t("basic_settings_page.feedback.refresh_failed"));
-      }
+      push_toast(
+        "error",
+        error instanceof Error ? error.message : t("basic_settings_page.feedback.refresh_failed"),
+      );
     } finally {
       set_is_refreshing(false);
     }
-  }, [refresh_settings, t]);
+  }, [push_toast, refresh_settings, t]);
 
   useEffect(() => {
     void refresh_snapshot();
@@ -154,7 +150,6 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         const next_settings_snapshot = normalize_settings_snapshot(payload);
         set_settings_snapshot(next_settings_snapshot);
         set_snapshot(build_basic_settings_snapshot(next_settings_snapshot));
-        set_refresh_error(null);
         return next_settings_snapshot;
       } catch (error) {
         set_snapshot((current_snapshot) => {
@@ -462,7 +457,6 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     return {
       snapshot,
       pending_state,
-      refresh_error,
       is_refreshing,
       is_task_busy,
       refresh_snapshot,
@@ -476,7 +470,6 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     is_refreshing,
     is_task_busy,
     pending_state,
-    refresh_error,
     refresh_snapshot,
     snapshot,
     update_output_folder_open_on_finish,

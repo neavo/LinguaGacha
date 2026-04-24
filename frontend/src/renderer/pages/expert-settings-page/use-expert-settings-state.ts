@@ -22,7 +22,6 @@ type SettingsUpdateRequest = Record<string, unknown>;
 type UseExpertSettingsStateResult = {
   snapshot: ExpertSettingsSnapshot;
   pending_state: ExpertSettingsPendingState;
-  refresh_error: string | null;
   is_refreshing: boolean;
   refresh_snapshot: () => Promise<void>;
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
@@ -67,7 +66,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
   const [pending_state, set_pending_state] = useState<ExpertSettingsPendingState>(() => {
     return create_pending_state();
   });
-  const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState<boolean>(false);
   const snapshot_ref = useRef<ExpertSettingsSnapshot>(snapshot);
   const context_snapshot = useMemo(() => {
@@ -100,17 +98,15 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     try {
       const next_settings_snapshot = await refresh_settings();
       set_snapshot(build_expert_settings_snapshot(next_settings_snapshot));
-      set_refresh_error(null);
     } catch (error) {
-      if (error instanceof Error) {
-        set_refresh_error(error.message);
-      } else {
-        set_refresh_error(t("expert_settings_page.feedback.refresh_failed"));
-      }
+      push_toast(
+        "error",
+        error instanceof Error ? error.message : t("expert_settings_page.feedback.refresh_failed"),
+      );
     } finally {
       set_is_refreshing(false);
     }
-  }, [refresh_settings, t]);
+  }, [push_toast, refresh_settings, t]);
 
   useEffect(() => {
     void refresh_snapshot();
@@ -131,7 +127,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
         const next_settings_snapshot = normalize_settings_snapshot(payload);
         set_settings_snapshot(next_settings_snapshot);
         set_snapshot(build_expert_settings_snapshot(next_settings_snapshot));
-        set_refresh_error(null);
       } catch (error) {
         set_snapshot((current_snapshot) => {
           const reverted_snapshot = {
@@ -391,7 +386,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     return {
       snapshot,
       pending_state,
-      refresh_error,
       is_refreshing,
       refresh_snapshot,
       update_preceding_lines_threshold,
@@ -407,7 +401,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
   }, [
     is_refreshing,
     pending_state,
-    refresh_error,
     refresh_snapshot,
     snapshot,
     update_auto_process_prefix_suffix_preserved_text,

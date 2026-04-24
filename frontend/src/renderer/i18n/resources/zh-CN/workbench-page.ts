@@ -32,7 +32,6 @@ export const zh_cn_workbench_page = {
     clear: "清除排序",
   },
   feedback: {
-    refresh_failed_title: "工作台刷新失败",
     refresh_failed: "工作台刷新失败",
     add_file_loading_toast: "正在添加文件并刷新缓存 …",
     file_action_failed: "文件操作失败，请稍后重试。",

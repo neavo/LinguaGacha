@@ -2,10 +2,6 @@
   min-height: 100%;
 }
 
-.basic-settings-page__notice {
-  align-items: start;
-}
-
 .basic-settings-page__list {
   display: flex;
   flex-direction: column;

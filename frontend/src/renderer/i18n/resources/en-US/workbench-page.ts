@@ -35,7 +35,6 @@ export const en_us_workbench_page = {
     clear: "Clear sort",
   },
   feedback: {
-    refresh_failed_title: "Failed to refresh workbench.",
     refresh_failed: "Failed to refresh workbench.",
     add_file_loading_toast: "Adding file and refreshing cache …",
     file_action_failed: "File operation failed. Please try again later.",

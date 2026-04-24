@@ -25,7 +25,6 @@ type SettingsUpdateRequest = Record<string, unknown>;
 type UseLaboratoryPageStateResult = {
   snapshot: LaboratorySnapshot;
   pending_state: LaboratoryPendingState;
-  refresh_error: string | null;
   is_refreshing: boolean;
   is_task_busy: boolean;
   refresh_snapshot: () => Promise<void>;
@@ -59,7 +58,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   const [pending_state, set_pending_state] = useState<LaboratoryPendingState>(() => {
     return create_pending_state();
   });
-  const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState<boolean>(false);
   const snapshot_ref = useRef<LaboratorySnapshot>(snapshot);
   const project_prefilter_client_ref = useRef(createProjectPrefilterClient());
@@ -92,17 +90,15 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     try {
       const next_settings_snapshot = await refresh_settings();
       set_snapshot(build_laboratory_snapshot(next_settings_snapshot));
-      set_refresh_error(null);
     } catch (error) {
-      if (error instanceof Error) {
-        set_refresh_error(error.message);
-      } else {
-        set_refresh_error(t("laboratory_page.feedback.refresh_failed"));
-      }
+      push_toast(
+        "error",
+        error instanceof Error ? error.message : t("laboratory_page.feedback.refresh_failed"),
+      );
     } finally {
       set_is_refreshing(false);
     }
-  }, [refresh_settings, t]);
+  }, [push_toast, refresh_settings, t]);
 
   useEffect(() => {
     void refresh_snapshot();
@@ -130,7 +126,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         const next_settings_snapshot = normalize_settings_snapshot(payload);
         set_settings_snapshot(next_settings_snapshot);
         set_snapshot(build_laboratory_snapshot(next_settings_snapshot));
-        set_refresh_error(null);
         return next_settings_snapshot;
       } catch (error) {
         set_snapshot((current_snapshot) => {
@@ -262,7 +257,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     return {
       snapshot,
       pending_state,
-      refresh_error,
       is_refreshing,
       is_task_busy,
       refresh_snapshot,
@@ -272,7 +266,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     is_refreshing,
     is_task_busy,
     pending_state,
-    refresh_error,
     refresh_snapshot,
     snapshot,
     update_mtool_optimizer_enable,
