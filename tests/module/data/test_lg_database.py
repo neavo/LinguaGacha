@@ -10,6 +10,7 @@ import pytest
 
 import module.Data.Storage.LGDatabase as lg_database_module
 from module.Data.Storage.LGDatabase import LGDatabase
+from module.Utils.JSONTool import JSONTool
 
 
 class FakeLogManager:
@@ -373,6 +374,49 @@ def test_ensure_schema_backfills_asset_sort_order_for_legacy_db(fs) -> None:
                 ("b.txt", 0),
                 ("a.txt", 1),
             ]
+        finally:
+            db.close()
+
+
+def test_ensure_schema_migrates_legacy_project_status_for_legacy_db(fs) -> None:
+    with real_db_path(fs, "legacy_project_status") as db_path:
+        if db_path.exists():
+            db_path.unlink()
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute(
+                """
+                CREATE TABLE meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO items (data) VALUES (?)",
+                (JSONTool.dumps({"src": "old", "status": "PROCESSED_IN_PAST"}),),
+            )
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?)",
+                ("project_status", JSONTool.dumps("PROCESSED_IN_PAST")),
+            )
+            conn.commit()
+
+        db = LGDatabase(str(db_path))
+        db.open()
+        try:
+            assert db.get_all_items() == [
+                {"id": 1, "src": "old", "status": "PROCESSED"}
+            ]
+            assert db.get_meta("project_status") == "PROCESSED"
         finally:
             db.close()
 

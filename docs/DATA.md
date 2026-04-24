@@ -112,6 +112,17 @@ flowchart TD
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
 - 校对 `save-item`、`save-all`、`replace-all` 属于同步 mutation；`retranslate-items` 仍是任务型链路。
 
+### 迁移入口
+
+| 场景 | 迁移入口 | 保持在原领域的内容 |
+| --- | --- | --- |
+| 启动期 userdata/config/preset 布局升级 | `module/Migration/UserDataMigrationService.py` | 配置读写仍由 `Config` 与路径 resolver 提供权威路径 |
+| `.lg` 打开期 schema 与项目状态升级 | `module/Migration/ProjectSchemaMigrationService.py` | 建表、索引和 SQL 细节仍只落在 `module/Data/Storage/LGDatabase.py` |
+| 工程加载期 meta/rule 旧字段升级 | `module/Migration/ProjectMetaMigrationService.py`、`module/Migration/ProjectRuleMigrationService.py` | `ProjectLifecycleService` 只维持加载时机、cache 刷新和清理 |
+| 模型初始化期旧 PRESET 分类升级 | `module/Migration/ModelConfigMigrationService.py` | 模板补齐、排序和默认回退仍由 `module/Model/Manager.py` 负责 |
+
+迁移目录只承接会写回旧数据、旧磁盘布局或旧配置事实的行为；读取兼容、payload 归一和文件格式 fallback 保留在原领域。例如 `LGDatabase.get_rules()` 的旧规则读取兼容、`Item/DataManager` 的状态边界归一，以及 EPUB/RenPy/TRANS writer fallback 都不是迁移入口。
+
 ### 引擎域
 - `Engine.status` 是全局忙碌态的唯一权威来源，翻译与分析不会并行运行。
 - `request_in_flight_count` 表示“真正发出去的请求数”，不是限流器上限，也不是队列长度。

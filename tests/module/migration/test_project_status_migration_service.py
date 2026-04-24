@@ -1,118 +1,52 @@
-import sqlite3
-
 from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
-from module.Utils.JSONTool import JSONTool
 
 
-def create_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-        """
+def test_normalize_item_payload_rewrites_legacy_status_and_preserves_fields() -> None:
+    item_data = {
+        "src": "old",
+        "dst": "done",
+        "status": "PROCESSED_IN_PAST",
+        "extra_field": {"keep": True},
+    }
+
+    normalized_data, changed = ProjectStatusMigrationService.normalize_item_payload(
+        item_data
     )
-    conn.execute(
-        """
-        CREATE TABLE items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT NOT NULL
-        )
-        """
-    )
-    return conn
-
-
-def read_items(conn: sqlite3.Connection) -> list[dict]:
-    rows = conn.execute("SELECT data FROM items ORDER BY id").fetchall()
-    return [JSONTool.loads(row["data"]) for row in rows]
-
-
-def test_migrate_rewrites_legacy_item_status_and_project_status_meta() -> None:
-    conn = create_connection()
-    conn.execute(
-        "INSERT INTO items (data) VALUES (?)",
-        (
-            JSONTool.dumps(
-                {
-                    "src": "old",
-                    "dst": "done",
-                    "status": "PROCESSED_IN_PAST",
-                    "extra_field": {"keep": True},
-                }
-            ),
-        ),
-    )
-    conn.execute(
-        "INSERT INTO items (data) VALUES (?)",
-        (JSONTool.dumps({"src": "new", "status": "NONE"}),),
-    )
-    conn.execute(
-        "INSERT INTO meta (key, value) VALUES (?, ?)",
-        ("project_status", JSONTool.dumps("PROCESSED_IN_PAST")),
-    )
-
-    changed = ProjectStatusMigrationService.migrate(conn)
 
     assert changed is True
-    assert read_items(conn) == [
-        {
-            "src": "old",
-            "dst": "done",
-            "status": "PROCESSED",
-            "extra_field": {"keep": True},
-        },
-        {"src": "new", "status": "NONE"},
-    ]
-    row = conn.execute(
-        "SELECT value FROM meta WHERE key = ?",
-        ("project_status",),
-    ).fetchone()
-    assert JSONTool.loads(row["value"]) == "PROCESSED"
+    assert normalized_data == {
+        "src": "old",
+        "dst": "done",
+        "status": "PROCESSED",
+        "extra_field": {"keep": True},
+    }
+    assert item_data["status"] == "PROCESSED_IN_PAST"
 
 
-def test_migrate_is_idempotent_after_first_rewrite() -> None:
-    conn = create_connection()
-    conn.execute(
-        "INSERT INTO items (data) VALUES (?)",
-        (JSONTool.dumps({"src": "old", "status": "PROCESSED_IN_PAST"}),),
+def test_normalize_item_payload_leaves_current_status_untouched() -> None:
+    item_data = {"src": "new", "status": "PROCESSED"}
+
+    normalized_data, changed = ProjectStatusMigrationService.normalize_item_payload(
+        item_data
     )
-
-    first_changed = ProjectStatusMigrationService.migrate(conn)
-    second_changed = ProjectStatusMigrationService.migrate(conn)
-
-    assert first_changed is True
-    assert second_changed is False
-    assert read_items(conn) == [{"src": "old", "status": "PROCESSED"}]
-
-
-def test_migrate_leaves_other_fields_and_statuses_untouched() -> None:
-    conn = create_connection()
-    conn.execute(
-        "INSERT INTO items (data) VALUES (?)",
-        (JSONTool.dumps({"src": "todo", "status": "NONE", "tag": "keep"}),),
-    )
-    conn.execute(
-        "INSERT INTO items (data) VALUES (?)",
-        (JSONTool.dumps({"src": "done", "status": "PROCESSED"}),),
-    )
-    conn.execute(
-        "INSERT INTO meta (key, value) VALUES (?, ?)",
-        ("project_status", JSONTool.dumps("PROCESSING")),
-    )
-
-    changed = ProjectStatusMigrationService.migrate(conn)
 
     assert changed is False
-    assert read_items(conn) == [
-        {"src": "todo", "status": "NONE", "tag": "keep"},
-        {"src": "done", "status": "PROCESSED"},
-    ]
-    row = conn.execute(
-        "SELECT value FROM meta WHERE key = ?",
-        ("project_status",),
-    ).fetchone()
-    assert JSONTool.loads(row["value"]) == "PROCESSING"
+    assert normalized_data is item_data
+
+
+def test_normalize_project_status_meta_rewrites_legacy_status() -> None:
+    normalized_status, changed = (
+        ProjectStatusMigrationService.normalize_project_status_meta("PROCESSED_IN_PAST")
+    )
+
+    assert changed is True
+    assert normalized_status == "PROCESSED"
+
+
+def test_normalize_project_status_meta_leaves_current_status_untouched() -> None:
+    normalized_status, changed = (
+        ProjectStatusMigrationService.normalize_project_status_meta("PROCESSING")
+    )
+
+    assert changed is False
+    assert normalized_status == "PROCESSING"
