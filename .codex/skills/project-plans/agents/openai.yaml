@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Plans"
+  short_description: "在计划模式下创建现实可靠可执行的项目实施计划并提醒清理现场"
+  default_prompt: "使用 $project-plans 根据当前上下文创建一份现实可执行的实施计划。"

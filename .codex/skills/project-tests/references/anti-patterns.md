@@ -10,6 +10,8 @@
 - 最终状态和可读取快照
 - 公开事件和回调载荷
 - 文件内容、数据库记录、持久化结果
+- DOM、Hook/Context 暴露状态、renderer 公开回调
+- API topic、初始化分片、公开更新载荷
 
 ## 命名含糊
 
@@ -21,6 +23,16 @@ def test_it_works(): ...
 # ✅ 直接写清业务意图
 def test_returns_empty_list_when_input_is_none(): ...
 def test_raises_value_error_for_negative_amount(): ...
+```
+
+```ts
+// ❌ 看不出业务含义
+it("works", () => {});
+it("handles state", () => {});
+
+// ✅ 直接说明行为
+it("合并服务端更新后推进 records revision", () => {});
+it("点击保存后提交当前表单值", () => {});
 ```
 
 ## 测试数据没语义
@@ -60,6 +72,18 @@ def test_rejects_order_without_customer_id():
     assert result.error_code == "missing_customer_id"
 ```
 
+```ts
+// ❌ 随手凑对象，看不出协议语义
+store.applyServerUpdate({ source: "x", updatedSections: ["a"], operations: [] });
+
+// ✅ 数据自己说明场景
+store.applyServerUpdate({
+  source: "record.saved",
+  updatedSections: ["records"],
+  operations: [{ op: "merge_records", records: [{ id: 1, label: "新值" }] }],
+});
+```
+
 ## 无意义断言
 
 ```python
@@ -74,6 +98,16 @@ def test_returns_zero_for_empty_list():
 
 def test_handles_negative_values():
     assert calculate_total([-5, 10]) == 5
+```
+
+```ts
+// ❌ 只证明对象存在
+expect(result).toBeDefined();
+expect(container.querySelector("button")).not.toBeNull();
+
+// ✅ 证明用户可观察行为
+expect(result.status).toBe("queued");
+expect(button?.disabled).toBe(false);
 ```
 
 ## 控制台噪声
@@ -93,6 +127,14 @@ def test_cli_prints_summary(capsys):
 ```
 
 测试默认不应该向控制台打印文本。只有当输出本身就是需求，或者确实需要临时定位问题时，才允许留下输出验证。
+
+```ts
+// ❌ 调试输出留在测试里
+console.log(store.getState());
+
+// ✅ 输出是行为时才断言
+expect(messages).toEqual(["保存成功"]);
+```
 
 ## 盯内部实现
 
@@ -138,6 +180,21 @@ with patch("module.service.ExternalClient") as mock_client:
 
 不要用 `Class.__new__(Class)` 或手工塞属性去拼一个“看起来能跑”的实例。优先走真实构造，再 patch 网络、线程、事件订阅这类副作用边界。
 
+```ts
+// ❌ 手工拼半套运行态对象，绕过真实初始化
+const runtime = {
+  project_store: { state: {} },
+  proofreading_change_signal: { seq: 1 },
+} as unknown as DesktopRuntime;
+
+// ✅ 通过真实 provider、store 工厂或公开 builder 产生状态
+const store = createSessionStore();
+store.applyInitialSection("records", {
+  records: { 1: { id: 1, status: "DONE" } },
+  revisions: { sections: { records: 1 } },
+});
+```
+
 ## Mock 用错地方
 
 ```python
@@ -146,6 +203,13 @@ with patch("module.service.ExternalClient") as mock_client:
 
 # ✅ patch 在使用点
 @patch("module.service.helper")
+```
+
+```ts
+// ✅ mock UI 对外使用点
+vi.mock("./transport", () => {
+  return { request: requestMock };
+});
 ```
 
 ## 只看 mock 调用，不看结果
@@ -165,6 +229,31 @@ def test_sends_processed_payload(mock_send):
     assert result["status"] == "queued"
     mock_send.assert_called_once_with({"id": 1, "state": "ready"})
 ```
+
+```ts
+// ❌ 只看 mock 有没有被调用
+expect(requestMock).toHaveBeenCalled();
+
+// ✅ 先看公开结果，再补调用约束
+expect(result.settings.language).toBe("ja");
+expect(requestMock).toHaveBeenCalledWith("/settings");
+```
+
+## 测试文件拆散
+
+```text
+❌ 同一业务文件被多个测试文件覆盖
+src/session-store.ts
+tests/session-store.merge.test.ts
+tests/session-store.error.test.ts
+tests/session-store.mocking.test.ts
+
+✅ 一个业务文件只对应一个测试文件
+src/session-store.ts
+tests/session-store.test.ts
+```
+
+公用夹具、测试工具和数据 builder 可以独立成文件；它们不能承载 `session-store.ts` 的具体行为断言。
 
 ## 文件隔离做歪了
 
@@ -194,6 +283,25 @@ def test_load(fs):
 ```
 
 新增测试不要再用 `tmp_path`、`tempfile`、`mock_open`。
+
+## React 测试盯实现细节
+
+```tsx
+// ❌ 断言 Hook 内部 setter 或私有字段
+expect(setStateMock).toHaveBeenCalledWith({ open: true });
+
+// ✅ 断言 DOM 或公开回调
+button.click();
+expect(dialog?.getAttribute("data-state")).toBe("open");
+```
+
+```tsx
+// ❌ 固定睡眠等待异步状态
+await new Promise((resolve) => setTimeout(resolve, 200));
+
+// ✅ 等明确条件
+await waitForCondition(() => snapshots.at(-1)?.taskStatus === "DONE");
+```
 
 ## 测试互相污染
 
@@ -263,8 +371,10 @@ def test_process_invalid_raises():
 
 ## 旧白盒测试整改顺序
 
-1. 先扫：`rg -n "__new__|call_args|call_args_list|tmp_path|mock_open|print\(" tests`
-2. 说清这个测试到底要证明什么业务行为
-3. 把内部调用断言换成结果快照、事件序列或持久化断言
-4. 把重复准备逻辑收进最近的 `conftest.py`
-5. 能用内存数据库和虚拟文件系统，就别再手造假的系统壳
+1. 先扫 Python：`__new__`、`call_args`、`call_args_list`、`tmp_path`、`mock_open`、`print\(`
+2. 再扫前端：`toHaveBeenCalled` 滥用、`mock.calls`、宽泛 `vi.mock`、`console.`、固定 `setTimeout`
+3. 说清这个测试到底要证明什么业务行为
+4. 把内部调用断言换成结果快照、事件序列或持久化断言
+5. Python 重复准备逻辑收进最近的 `conftest.py`；前端重复准备逻辑收进同目录 helper 或测试工厂
+6. 合并同一业务文件的平行测试文件，只保留一个对应测试文件
+7. 能用内存数据库、虚拟文件系统、真实 store、EventSource stub，就别再手造假的系统壳
