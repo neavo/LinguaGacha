@@ -133,18 +133,6 @@ class DataManager(Base):
         if old_path:
             self.emit(Base.Event.PROJECT_UNLOADED, {"path": old_path})
 
-    def migrate_legacy_translation_prompt_text_once(self) -> None:
-        self.lifecycle_service.migrate_legacy_translation_prompt_text_once()
-
-    def get_preferred_legacy_translation_prompt_types(self) -> tuple[str, str]:
-        return self.lifecycle_service.get_preferred_legacy_translation_prompt_types()
-
-    def get_first_available_legacy_translation_prompt(self, db: LGDatabase) -> str:
-        return self.lifecycle_service.get_first_available_legacy_translation_prompt(db)
-
-    def mark_legacy_translation_prompt_migrated(self, db: LGDatabase) -> None:
-        self.lifecycle_service.mark_legacy_translation_prompt_migrated(db)
-
     def is_loaded(self) -> bool:
         with self.state_lock:
             return self.session.db is not None and self.session.lg_path is not None
@@ -376,9 +364,6 @@ class DataManager(Base):
 
     def get_analysis_extras(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_extras()
-
-    def set_analysis_extras(self, extras: dict[str, Any]) -> None:
-        self.analysis_service.set_analysis_extras(extras)
 
     def normalize_analysis_progress_snapshot(
         self,
