@@ -488,11 +488,8 @@ class TRANS(Base):
                     tags_out.append(extra_field.get("tag", []))
                     context_out.append(extra_field.get("context", []))
 
-                    # 当翻译状态为 已排除、过去已翻译 时，直接使用原始参数
-                    if status in (
-                        Base.ProjectStatus.EXCLUDED,
-                        Base.ProjectStatus.PROCESSED_IN_PAST,
-                    ):
+                    # 已排除项不参与分区翻译参数重建，避免改写原始过滤语义。
+                    if status == Base.ProjectStatus.EXCLUDED:
                         parameter_raw = extra_field.get("parameter", [])
                         parameters_out.append(
                             [v for v in parameter_raw if isinstance(v, dict)]

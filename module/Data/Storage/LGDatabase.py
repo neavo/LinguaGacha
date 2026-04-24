@@ -10,6 +10,7 @@ from typing import Generator
 
 from base.Base import Base
 from base.LogManager import LogManager
+from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
 from module.Utils.JSONTool import JSONTool
 
 
@@ -168,6 +169,7 @@ class LGDatabase(Base):
         target_conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status)"
         )
+        ProjectStatusMigrationService.migrate(target_conn)
         target_conn.commit()
 
     def ensure_asset_sort_order_schema(self, conn: sqlite3.Connection) -> None:

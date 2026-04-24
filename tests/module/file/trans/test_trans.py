@@ -480,7 +480,7 @@ def test_write_to_path_cleans_empty_tags_and_parameters(
         {
             "src": "src",
             "dst": "dst",
-            "status": Base.ProjectStatus.PROCESSED_IN_PAST,
+            "status": Base.ProjectStatus.PROCESSED,
             "tag": tag_path,
             "row": 0,
             "file_type": Item.FileType.TRANS,
@@ -648,7 +648,7 @@ def test_legacy_fallback_writes_when_trans_ref_missing(
     assert row == ["src", "", "dst"]
 
 
-def test_processed_in_past_row_can_patch_partition_parameters_without_changing_dst(
+def test_processed_row_writes_dst_and_regenerates_partition_parameters(
     config: Config,
     dummy_data_manager: DummyDataManager,
     monkeypatch: pytest.MonkeyPatch,
@@ -682,10 +682,9 @@ def test_processed_in_past_row_can_patch_partition_parameters_without_changing_d
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED_IN_PAST
+    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
 
-    # 即使 dst 被意外改动，写回也不得改动翻译列。
-    items[0].set_dst("SHOULD_NOT_WRITE")
+    items[0].set_dst("SHOULD_WRITE")
     handler.write_to_path(items)
 
     output = json.loads(
@@ -693,7 +692,7 @@ def test_processed_in_past_row_can_patch_partition_parameters_without_changing_d
     )
     file_obj = output["project"]["files"][file_key]
 
-    assert file_obj["data"][0] == ["src", "old_dst"]
+    assert file_obj["data"][0] == ["src", "SHOULD_WRITE"]
     assert file_obj["tags"][0] == ["gold"]
     assert file_obj["parameters"][0] == [
         {"contextStr": "c1", "translation": "src"},
@@ -736,7 +735,7 @@ def test_patch_writer_does_not_inject_partition_fields_into_span_parameters(
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED_IN_PAST
+    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
 
     handler.write_to_path(items)
 
@@ -877,7 +876,7 @@ def test_patch_writer_creates_tags_and_parameters_when_fields_have_wrong_types(
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED_IN_PAST
+    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
 
     handler.write_to_path(items)
 

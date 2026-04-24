@@ -108,7 +108,7 @@ class RenPyExtractor(Base):
         if src == "":
             return Base.ProjectStatus.EXCLUDED
         if dst != "" and src != dst:
-            return Base.ProjectStatus.PROCESSED_IN_PAST
+            return Base.ProjectStatus.PROCESSED
         return Base.ProjectStatus.NONE
 
     def build_extra_field(

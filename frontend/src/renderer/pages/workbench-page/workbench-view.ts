@@ -6,7 +6,7 @@ type BuildWorkbenchViewArgs = {
 };
 
 function isTranslatedStatus(status: string): boolean {
-  return ["DONE", "PROCESSED", "PROCESSED_IN_PAST"].includes(status);
+  return ["DONE", "PROCESSED"].includes(status);
 }
 
 function normalizeWorkbenchFileRecord(value: unknown): WorkbenchSelectorFileRecord | null {
@@ -50,7 +50,6 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
     });
   const item_count_by_file_path = new Map<string, number>();
   let translated = 0;
-  let translated_in_past = 0;
   let error_count = 0;
 
   for (const item of item_values) {
@@ -61,9 +60,6 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
 
     if (isTranslatedStatus(item.status)) {
       translated += 1;
-    }
-    if (item.status === "PROCESSED_IN_PAST") {
-      translated_in_past += 1;
     }
     if (item.status === "ERROR") {
       error_count += 1;
@@ -84,7 +80,6 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
       file_count: entries.length,
       total_items: item_values.length,
       translated,
-      translated_in_past,
       error_count,
     },
   };

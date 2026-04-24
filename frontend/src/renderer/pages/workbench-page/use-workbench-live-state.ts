@@ -60,7 +60,6 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   file_count: 0,
   total_items: 0,
   translated: 0,
-  translated_in_past: 0,
   error_count: 0,
   entries: [],
 };

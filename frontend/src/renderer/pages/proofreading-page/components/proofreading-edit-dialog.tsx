@@ -41,9 +41,6 @@ function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
   if (status === "ERROR") {
     return "failure";
   }
-  if (status === "PROCESSED_IN_PAST") {
-    return "warning";
-  }
 
   return "neutral";
 }

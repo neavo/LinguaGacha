@@ -44,7 +44,6 @@ export const zh_cn_proofreading_page = {
     none: "未翻译",
     processing: "处理中",
     processed: "翻译完成",
-    processed_in_past: "历史完成",
     excluded: "已排除",
     rule_skipped: "规则跳过",
     non_target_source_language: "非目标语言",

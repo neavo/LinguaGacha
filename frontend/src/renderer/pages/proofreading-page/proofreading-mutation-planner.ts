@@ -96,10 +96,6 @@ function build_store_item_index(state: ProjectStoreState): Map<number, Proofread
 }
 
 function resolve_status_after_manual_edit(old_status: string, new_dst: string): string {
-  if (old_status === "PROCESSED_IN_PAST") {
-    return "PROCESSED";
-  }
-
   if (new_dst === "") {
     return old_status;
   }

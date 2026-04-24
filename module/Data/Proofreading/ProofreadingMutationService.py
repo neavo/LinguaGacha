@@ -116,7 +116,9 @@ class ProofreadingMutationService:
         if "dst" in payload:
             normalized_item["dst"] = str(payload.get("dst", "") or "")
         if "status" in payload:
-            normalized_item["status"] = str(payload.get("status", "") or "")
+            normalized_item["status"] = DataManager.normalize_project_status_value(
+                payload.get("status", "")
+            )
         if "text_type" in payload:
             normalized_item["text_type"] = str(payload.get("text_type", "") or "")
         if "retry_count" in payload:
@@ -168,7 +170,9 @@ class ProofreadingMutationService:
                 items=finalized_items or None,
                 meta={
                     "translation_extras": dict(translation_extras),
-                    "project_status": str(project_status),
+                    "project_status": DataManager.normalize_project_status_value(
+                        project_status
+                    ),
                 },
             )
             self.data_manager.bump_project_runtime_section_revisions(("items",))

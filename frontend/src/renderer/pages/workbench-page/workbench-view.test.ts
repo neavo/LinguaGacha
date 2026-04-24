@@ -41,7 +41,7 @@ describe("buildWorkbenchView", () => {
         "3": {
           item_id: 3,
           file_path: "chapter01.txt",
-          status: "PROCESSED_IN_PAST",
+          status: "PROCESSED",
         },
         "4": {
           item_id: 4,
@@ -82,7 +82,6 @@ describe("buildWorkbenchView", () => {
       file_count: 4,
       total_items: 5,
       translated: 3,
-      translated_in_past: 1,
       error_count: 1,
     });
   });

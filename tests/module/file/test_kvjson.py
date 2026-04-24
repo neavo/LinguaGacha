@@ -28,7 +28,7 @@ def test_read_from_stream_sets_status_by_src_dst(
 
     assert len(items) == 3
     assert items[0].get_status() == Base.ProjectStatus.EXCLUDED
-    assert items[1].get_status() == Base.ProjectStatus.PROCESSED_IN_PAST
+    assert items[1].get_status() == Base.ProjectStatus.PROCESSED
     assert items[2].get_status() == Base.ProjectStatus.NONE
     # value==key 视为未翻译：dst 需为空字符串。
     assert items[2].get_src() == "待翻"

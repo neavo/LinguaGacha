@@ -84,7 +84,7 @@ class XLSX(Base):
                             "row": row,
                             "file_type": Item.FileType.XLSX,
                             "file_path": rel_path,
-                            "status": Base.ProjectStatus.PROCESSED_IN_PAST,
+                            "status": Base.ProjectStatus.PROCESSED,
                         }
                     )
                 )
