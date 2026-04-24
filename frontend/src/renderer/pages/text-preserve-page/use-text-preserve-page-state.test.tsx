@@ -199,6 +199,25 @@ vi.mock("@/app/state/use-desktop-toast", () => {
   };
 });
 
+vi.mock("@/app/state/quality-statistics-context", () => {
+  return {
+    useQualityStatistics: () => ({
+      running: false,
+      ready: true,
+      stale: false,
+      failed: false,
+      current_snapshot: null,
+      completed_snapshot: null,
+      completed_entry_ids: [],
+      matched_count_by_entry_id: {},
+      subset_parent_labels_by_entry_id: {},
+      last_error: null,
+      request_token: 0,
+      updated_at: 0,
+    }),
+  };
+});
+
 vi.mock("@/i18n", () => {
   return {
     useI18n: () => ({

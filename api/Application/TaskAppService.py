@@ -1,8 +1,10 @@
+import threading
 from typing import Any
 
 from base.Base import Base
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.Data.Core.Item import Item
 from module.Engine.Engine import Engine
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from api.Contract.TaskPayloads import TaskSnapshotPayload
@@ -100,6 +102,40 @@ class TaskAppService:
             {"sub_event": Base.SubEvent.REQUEST},
         )
         return {"accepted": True}
+
+    def translate_single(self, request: dict[str, Any]) -> dict[str, object]:
+        """同步等待单条临时翻译，供前端页面派生工具低频调用。"""
+
+        text = str(request.get("text", "")).strip()
+        if text == "":
+            raise ValueError("待翻译文本不能为空。")
+
+        config = self.config_loader()
+        get_active_model = getattr(config, "get_active_model", None)
+        if callable(get_active_model) and get_active_model() is None:
+            return {
+                "success": False,
+                "status": "NO_ACTIVE_MODEL",
+                "dst": "",
+            }
+
+        item = Item(src=text)
+        completed = threading.Event()
+        result: dict[str, object] = {
+            "success": False,
+            "status": "TRANSLATION_FAILED",
+            "dst": "",
+        }
+
+        def callback(translated_item: Item, success: bool) -> None:
+            result["success"] = success
+            result["status"] = "OK" if success else "TRANSLATION_FAILED"
+            result["dst"] = translated_item.get_dst()
+            completed.set()
+
+        self.engine.translate_single_item(item, config, callback)
+        completed.wait()
+        return result
 
     def get_task_snapshot(self, request: dict[str, Any]) -> dict[str, object]:
         """显式查询当前任务快照。"""

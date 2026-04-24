@@ -26,6 +26,7 @@
 | 长期事件流 | `/api/events/stream` | 公开 SSE topic 与 `project.patch` |
 | bootstrap 首包 | `/api/project/bootstrap/stream` | 一次性阶段化项目首包 |
 | 项目与同步 mutation | `/api/project/*` | 工程、工作台、校对、reset、导入术语等 |
+| 项目派生工具 | `/api/project/text-preserve/preset-rules`、`/api/project/export-converted-translation` | 为 TS 侧工具页提供预置规则读取与转换结果文件写出 |
 | 后台任务 | `/api/tasks/*` | 翻译与分析任务启动、停止、快照 |
 | 模型页 | `/api/models/*` | 快照、更新、激活、增删、重排、测试与可选模型查询 |
 | 质量规则与提示词 | `/api/quality/rules/*`、`/api/quality/prompts/*` | 规则、预设与提示词读写 |
@@ -115,7 +116,7 @@ flowchart TD
 | stage | 字段顺序 | 渲染层落地键 |
 | --- | --- | --- |
 | `files` | `rel_path`、`file_type`、`sort_index` | `files[rel_path]` |
-| `items` | `item_id`、`file_path`、`row_number`、`src`、`dst`、`status`、`text_type`、`retry_count` | `items[item_id]` |
+| `items` | `item_id`、`file_path`、`row_number`、`src`、`dst`、`name_src`、`name_dst`、`status`、`text_type`、`retry_count` | `items[item_id]` |
 
 块类型由 stage 决定，不额外携带 `schema` 标签。
 
@@ -142,7 +143,12 @@ flowchart TD
 | 只读预演 | `translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
 | 异步任务 | `tasks/*`、`retranslate-items` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
 
+项目派生工具补充：
+- 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
+- `/api/project/text-preserve/preset-rules` 只读取指定 `text_type` 的预置文本保护规则，供 TS 侧按当前文本保护模式自行编译与分段保护。
+
 额外约束：
+- `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
 - `reorder-files` 的 `ordered_rel_paths` 必须完整覆盖当前文件集合。
 - `analysis/import-glossary` 会分别校验运行态 section revision 与 glossary 自身 revision。
 - `tasks/snapshot` 是按需快照，不是订阅入口。

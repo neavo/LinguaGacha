@@ -1,0 +1,79 @@
+.toolbox-page {
+  min-height: 100%;
+}
+
+.toolbox-page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 300px));
+  gap: 8px;
+  align-content: start;
+  justify-content: start;
+}
+
+.toolbox-page__card {
+  width: 300px;
+  min-height: 150px;
+}
+
+.toolbox-page__card[data-clickable="true"] {
+  cursor: pointer;
+}
+
+.toolbox-page__card[data-clickable="true"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.toolbox-page__card:hover {
+  box-shadow: var(--card-shadow-hover-current);
+}
+
+.toolbox-page__card:hover::after {
+  border-color: var(--card-border-hover-current);
+}
+
+.toolbox-page__card-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 12px;
+}
+
+.toolbox-page__card-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.toolbox-page__card-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--foreground);
+}
+
+.toolbox-page__separator {
+  margin-inline: 16px;
+  width: auto;
+  background: color-mix(in srgb, var(--border) 88%, var(--foreground) 12%);
+}
+
+.toolbox-page__card-content {
+  padding: 14px 16px 16px;
+}
+
+.toolbox-page__description {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.toolbox-page__description-emphasis {
+  color: var(--primary);
+}

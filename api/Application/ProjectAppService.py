@@ -1,11 +1,15 @@
 from typing import Any
 
+from base.BasePath import BasePath
 from module.Config import Config
+from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
 from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 from module.Engine.Engine import Engine
+from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
+from module.Utils.JSONTool import JSONTool
 from api.Contract.ProjectPayloads import ProjectPreviewPayload
 from api.Contract.ProjectPayloads import ProjectSnapshotPayload
 
@@ -18,6 +22,7 @@ class ProjectAppService:
         project_manager: Any | None = None,
         engine: Any | None = None,
         config_loader: Any | None = None,
+        file_manager_factory: Any | None = None,
     ) -> None:
         self.project_manager = (
             project_manager if project_manager is not None else DataManager.get()
@@ -25,6 +30,11 @@ class ProjectAppService:
         self.engine = engine if engine is not None else Engine.get()
         self.config_loader = (
             config_loader if config_loader is not None else lambda: Config().load()
+        )
+        self.file_manager_factory = (
+            file_manager_factory
+            if file_manager_factory is not None
+            else lambda config: FileManager(config)
         )
         quality_rule_service = getattr(
             self.project_manager,
@@ -84,6 +94,66 @@ class ProjectAppService:
         path = str(request.get("path", ""))
         preview = self.project_manager.get_project_preview(path)
         return {"preview": ProjectPreviewPayload.from_dict(preview).to_dict()}
+
+    def get_text_preserve_preset_rules(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, object]:
+        """读取文本保护预置规则，供 TS 侧执行页面派生转换。"""
+
+        raw_text_types = request.get("text_types", [])
+        text_types = raw_text_types if isinstance(raw_text_types, list) else []
+        rules: dict[str, list[str]] = {}
+        for raw_text_type in text_types:
+            try:
+                text_type = Item.TextType(str(raw_text_type).upper())
+            except ValueError:
+                continue
+
+            rules[text_type.value] = self.load_text_preserve_preset_rules(text_type)
+        return {"rules": rules}
+
+    def export_converted_translation(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, object]:
+        """导出 TS 侧已完成简繁转换的条目，不写回工程运行态。"""
+
+        is_loaded = getattr(self.project_manager, "is_loaded", None)
+        if not callable(is_loaded) or not is_loaded():
+            raise ValueError(Localizer.get().alert_project_not_loaded)
+
+        suffix = str(request.get("suffix", "") or "")
+        if suffix not in ("_S2T", "_T2S"):
+            raise ValueError(Localizer.get().alert_invalid_export_data)
+
+        converted_items_raw = request.get("items", [])
+        converted_items = (
+            [dict(item) for item in converted_items_raw if isinstance(item, dict)]
+            if isinstance(converted_items_raw, list)
+            else []
+        )
+        if len(converted_items) == 0:
+            raise ValueError(Localizer.get().alert_no_data)
+
+        current_items = self.project_manager.get_items_all()
+        if len(current_items) == 0:
+            raise ValueError(Localizer.get().alert_no_data)
+
+        converted_item_by_id = self.build_converted_item_map(converted_items)
+        export_items = [
+            self.apply_converted_item_payload(item, converted_item_by_id)
+            for item in current_items
+        ]
+
+        with self.project_manager.export_custom_suffix_context(suffix):
+            output_path = self.file_manager_factory(self.config_loader()).write_to_path(
+                export_items
+            )
+
+        if str(output_path).strip() == "":
+            raise RuntimeError(Localizer.get().export_translation_failed)
+        return {"accepted": True, "output_path": str(output_path)}
 
     def apply_prefilter(self, request: dict[str, Any]) -> dict[str, object]:
         """持久化 TS 端预过滤后的最终条目与镜像 meta。"""
@@ -295,6 +365,73 @@ class ProjectAppService:
 
         is_loaded = bool(self.project_manager.is_loaded())
         return ProjectSnapshotPayload(path=project_path, loaded=is_loaded).to_dict()
+
+    def load_text_preserve_preset_rules(self, text_type: Item.TextType) -> list[str]:
+        path = (
+            f"{BasePath.get_text_preserve_preset_dir()}/{text_type.value.lower()}.json"
+        )
+        try:
+            raw_entries = JSONTool.load_file(path)
+        except Exception:
+            # 不是每个文本类型都有预置保护规则，缺失时按空规则交给 TS 侧处理。
+            return []
+
+        if not isinstance(raw_entries, list):
+            return []
+
+        rules: list[str] = []
+        for entry in raw_entries:
+            if not isinstance(entry, dict):
+                continue
+            src = entry.get("src", "")
+            if isinstance(src, str) and src.strip():
+                rules.append(src.strip())
+        return rules
+
+    def build_converted_item_map(
+        self,
+        converted_items: list[dict[str, Any]],
+    ) -> dict[int, dict[str, Any]]:
+        item_by_id: dict[int, dict[str, Any]] = {}
+        for converted_item in converted_items:
+            raw_item_id = converted_item.get("item_id", converted_item.get("id"))
+            try:
+                item_id = int(raw_item_id)
+            except TypeError:
+                continue
+            except ValueError:
+                continue
+
+            item_by_id[item_id] = dict(converted_item)
+        return item_by_id
+
+    def apply_converted_item_payload(
+        self,
+        item: Item,
+        converted_item_by_id: dict[int, dict[str, Any]],
+    ) -> Item:
+        item_id = item.get_id()
+        export_item = Item.from_dict(item.to_dict())
+        if item_id is None:
+            return export_item
+
+        converted_item = converted_item_by_id.get(int(item_id))
+        if converted_item is None:
+            return export_item
+
+        export_item.set_dst(str(converted_item.get("dst", export_item.get_dst()) or ""))
+        if "name_dst" in converted_item:
+            export_item.set_name_dst(
+                self.normalize_name_dst_payload(converted_item.get("name_dst"))
+            )
+        return export_item
+
+    def normalize_name_dst_payload(self, value: Any) -> str | list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return [str(name) for name in value]
+        return str(value)
 
     def ensure_analysis_mutation_ready(self) -> str:
         """分析 reset preview/apply 共用的前置校验。"""

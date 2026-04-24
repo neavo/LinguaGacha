@@ -14,7 +14,6 @@ dependencies = [
 
     # Tools
     "rich",
-    "opencc_pyo3",
     "openpyxl",
     "orjson",
     "json-repair",

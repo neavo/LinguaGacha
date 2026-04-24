@@ -16,6 +16,8 @@ class LocalizerZH:
     export_translation_failed: str = "译文生成失败 …"
     alert_project_not_loaded: str = "请先加载工程文件 …"
     alert_no_active_model: str = "未找到激活的模型配置 …"
+    alert_no_data: str = "没有有效数据 …"
+    alert_invalid_export_data: str = "导出数据无效 …"
 
     # 主页面
     app_exit_countdown: str = "退出中 … {SECONDS} …"

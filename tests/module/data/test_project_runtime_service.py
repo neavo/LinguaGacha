@@ -21,8 +21,11 @@ class StubItem:
     def get_dst(self):
         return "译文"
 
+    def get_name_src(self):
+        return "爱丽丝"
+
     def get_name_dst(self):
-        return None
+        return "Alice"
 
     def get_status(self):
         return StubStatus()
@@ -57,11 +60,15 @@ def test_build_items_block_uses_fields_and_rows():
         "row_number",
         "src",
         "dst",
+        "name_src",
+        "name_dst",
         "status",
         "text_type",
         "retry_count",
     ]
-    assert block["rows"] == [[1, "chapter01.txt", 0, "原文", "译文", "DONE", "", 0]]
+    assert block["rows"] == [
+        [1, "chapter01.txt", 0, "原文", "译文", "爱丽丝", "Alice", "DONE", "", 0]
+    ]
 
 
 def test_build_files_block_uses_fields_and_rows():
@@ -94,6 +101,9 @@ class OrderedStubItem:
 
     def get_dst(self):
         return "译文"
+
+    def get_name_src(self):
+        return None
 
     def get_name_dst(self):
         return None

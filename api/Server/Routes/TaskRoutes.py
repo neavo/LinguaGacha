@@ -11,6 +11,7 @@ class TaskRoutes:
     STOP_ANALYSIS_PATH: str = "/api/tasks/stop-analysis"
     SNAPSHOT_PATH: str = "/api/tasks/snapshot"
     EXPORT_TRANSLATION_PATH: str = "/api/tasks/export-translation"
+    TRANSLATE_SINGLE_PATH: str = "/api/tasks/translate-single"
 
     @classmethod
     def register(cls, core_api_server: CoreApiServer, task_app_service) -> None:
@@ -54,5 +55,12 @@ class TaskRoutes:
             cls.EXPORT_TRANSLATION_PATH,
             lambda request: ApiResponse(
                 ok=True, data=task_app_service.export_translation(request)
+            ),
+        )
+        core_api_server.add_json_route(
+            "POST",
+            cls.TRANSLATE_SINGLE_PATH,
+            lambda request: ApiResponse(
+                ok=True, data=task_app_service.translate_single(request)
             ),
         )

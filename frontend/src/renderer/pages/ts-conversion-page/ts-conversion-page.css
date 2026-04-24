@@ -1,0 +1,42 @@
+.ts-conversion-page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.ts-conversion-page__list {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--ui-list-gap-dense);
+}
+
+.ts-conversion-page__select {
+  width: 128px;
+}
+
+.ts-conversion-page__command-bar {
+  margin-top: auto;
+}
+
+.ts-conversion-page__summary-trigger {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.ts-conversion-page__summary-badge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.ts-conversion-page__summary-badge--neutral {
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--muted-foreground);
+}

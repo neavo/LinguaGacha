@@ -15,5 +15,9 @@ def test_server_bootstrap_registers_task_routes():
         core_api_server.route_map[("POST", "/api/tasks/start-translation")].mode
         == "json"
     )
+    assert (
+        core_api_server.route_map[("POST", "/api/tasks/translate-single")].mode
+        == "json"
+    )
     assert ("POST", "/api/tasks/reset-analysis-failed") not in core_api_server.route_map
     assert ("POST", "/api/tasks/reset-translation-all") not in core_api_server.route_map

@@ -51,6 +51,12 @@ vi.mock("@/app/desktop-api", () => {
   };
 });
 
+vi.mock("@/app/project-runtime/analysis-glossary-import", () => {
+  return {
+    create_analysis_glossary_import_plan: vi.fn(async () => null),
+  };
+});
+
 vi.mock("@/app/state/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,

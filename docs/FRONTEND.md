@@ -133,7 +133,9 @@ flowchart TD
 | `custom-prompt` | 仅侧边栏父节点 | 没有独立屏幕 |
 | `pre-translation-replacement` / `post-translation-replacement` | 同一个 `TextReplacementPage`，靠 `variant` 区分 | 不要再建平行页面目录 |
 | `translation-prompt` / `analysis-prompt` | 同一个 `CustomPromptPage`，靠 `variant` 区分 | 不要再建平行页面目录 |
-| `toolbox` | `pages/debug-panel-page/page.tsx` | 直接复用 debug panel 页面 |
+| `toolbox` | `pages/toolbox-page/page.tsx` | 百宝箱一级入口页；工具二级页不在侧边栏注册 |
+| `name-field-extraction` | `pages/name-field-extraction-page/page.tsx` | 从 `ProjectStore.items` 的 `name_src/src` 本地派生姓名表；单条 LLM 翻译只走 `desktop-api.ts` 调 `/api/tasks/translate-single`，导入术语表复用质量规则同步 mutation |
+| `ts-conversion` | `pages/ts-conversion-page/page.tsx` | 从 `ProjectStore.items / quality.text_preserve` 本地派生转换结果；OpenCC 与文本保护分段在 TS 侧执行，Python Core 只提供预置保护规则读取与文件写出 |
 
 ## 前端与 API / DESIGN 的接缝
 

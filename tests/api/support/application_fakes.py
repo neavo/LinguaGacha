@@ -71,6 +71,9 @@ class FakeEngine:
         self.status: Base.TaskStatus = Base.TaskStatus.IDLE
         self.request_in_flight_count: int = 0
         self.active_task_type: str = ""
+        self.translate_single_success: bool = True
+        self.translate_single_dst: str = "【Alice】"
+        self.translate_single_calls: list[object] = []
 
     def get_status(self) -> Base.TaskStatus:
         return self.status
@@ -87,6 +90,12 @@ class FakeEngine:
 
     def get_active_task_type(self) -> str:
         return self.active_task_type
+
+    def translate_single_item(self, item, config, callback) -> None:
+        del config
+        self.translate_single_calls.append(item)
+        item.set_dst(self.translate_single_dst)
+        callback(item, self.translate_single_success)
 
 
 class FakeTaskDataManager:
@@ -444,6 +453,7 @@ class FakeSettingsConfig:
 
     def __init__(self) -> None:
         self.app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
+        self.activate_model_id: str = "preset-1"
         self.source_language: BaseLanguage.Enum | str = BaseLanguage.Enum.JA
         self.target_language: BaseLanguage.Enum | str = BaseLanguage.Enum.ZH
         self.project_save_mode: str = Config.ProjectSaveMode.MANUAL
@@ -473,6 +483,11 @@ class FakeSettingsConfig:
     def load(self) -> "FakeSettingsConfig":
         self.load_calls += 1
         return self
+
+    def get_active_model(self) -> dict[str, object] | None:
+        if self.activate_model_id == "":
+            return None
+        return {"id": self.activate_model_id}
 
     def save(self, *, raise_on_error: bool = False) -> "FakeSettingsConfig":
         del raise_on_error
