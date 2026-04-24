@@ -71,6 +71,14 @@
   padding: 0;
 }
 
+.app-editor .cm-selectionBackground,
+.app-editor .cm-content::selection,
+.app-editor .cm-content *::selection,
+.app-editor .cm-line::selection,
+.app-editor .cm-line *::selection {
+  background-color: transparent !important;
+}
+
 .app-editor .cm-highlightSpace,
 .app-editor .cm-highlightTab,
 .app-editor .cm-specialChar {
@@ -93,7 +101,6 @@
   background: color-mix(in srgb, var(--muted) 36%, var(--popover) 64%);
 }
 
-.app-editor--readonly .cm-activeLine,
 .app-editor--readonly .cm-activeLineGutter {
   background: color-mix(in srgb, var(--muted) 48%, var(--popover) 52%);
 }

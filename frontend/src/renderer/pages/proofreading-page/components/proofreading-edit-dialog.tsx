@@ -59,9 +59,7 @@ function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
   return format_proofreading_glossary_term(term);
 }
 
-function dedupe_glossary_terms(
-  terms: ProofreadingGlossaryTerm[],
-): ProofreadingGlossaryTerm[] {
+function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingGlossaryTerm[] {
   const term_map = new Map<string, ProofreadingGlossaryTerm>();
   terms.forEach((term) => {
     term_map.set(build_glossary_term_key(term), term);
@@ -69,10 +67,7 @@ function dedupe_glossary_terms(
   return [...term_map.values()];
 }
 
-function is_glossary_term_applied(
-  term: ProofreadingGlossaryTerm,
-  draft_dst: string,
-): boolean {
+function is_glossary_term_applied(term: ProofreadingGlossaryTerm, draft_dst: string): boolean {
   return term[1].trim().length > 0 && draft_dst.includes(term[1]);
 }
 
@@ -88,12 +83,8 @@ function partition_glossary_terms(
     ...item.applied_glossary_terms,
     ...item.failed_glossary_terms,
   ]);
-  const applied_terms = all_terms.filter((term) =>
-    is_glossary_term_applied(term, draft_dst),
-  );
-  const failed_terms = all_terms.filter(
-    (term) => !is_glossary_term_applied(term, draft_dst),
-  );
+  const applied_terms = all_terms.filter((term) => is_glossary_term_applied(term, draft_dst));
+  const failed_terms = all_terms.filter((term) => !is_glossary_term_applied(term, draft_dst));
 
   return {
     applied_terms,
@@ -109,8 +100,7 @@ function find_text_match_ranges(
     return [];
   }
 
-  const ranges: Array<Pick<ProofreadingCodeEditorHighlight, "start" | "end">> =
-    [];
+  const ranges: Array<Pick<ProofreadingCodeEditorHighlight, "start" | "end">> = [];
   let search_start = 0;
 
   while (search_start < text.length) {
@@ -139,10 +129,7 @@ function build_glossary_highlights(
   translation_highlights: ProofreadingCodeEditorHighlight[];
 } {
   // 为什么：命中的术语要同时标亮原文和译文，未命中的术语只在原文保留警告提示，方便人工补齐。
-  const { applied_terms, failed_terms } = partition_glossary_terms(
-    item,
-    draft_dst,
-  );
+  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_dst);
   const source_highlights: ProofreadingCodeEditorHighlight[] = [];
   const translation_highlights: ProofreadingCodeEditorHighlight[] = [];
 
@@ -187,10 +174,7 @@ function resolve_glossary_badge_state(
   label: string;
   tone: ProofreadingBadgeTone;
 } | null {
-  const { applied_terms, failed_terms } = partition_glossary_terms(
-    item,
-    draft_dst,
-  );
+  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_dst);
 
   if (applied_terms.length === 0 && failed_terms.length === 0) {
     return null;
@@ -216,9 +200,7 @@ function resolve_glossary_badge_state(
   };
 }
 
-export function ProofreadingEditDialog(
-  props: ProofreadingEditDialogProps,
-): JSX.Element | null {
+export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const item = props.item;
   const save_label = t("proofreading_page.action.save");
@@ -240,15 +222,13 @@ export function ProofreadingEditDialog(
       item.status as keyof typeof PROOFREADING_STATUS_LABEL_KEY_BY_CODE
     ];
   const status_badge_tone = resolve_status_badge_tone(item.status);
-  const status_label =
-    status_label_key === undefined ? item.status : t(status_label_key);
-  const glossary_badge_state = resolve_glossary_badge_state(
+  const status_label = status_label_key === undefined ? item.status : t(status_label_key);
+  const glossary_badge_state = resolve_glossary_badge_state(item, props.draft_dst, t);
+  const { source_highlights, translation_highlights } = build_glossary_highlights(
     item,
     props.draft_dst,
     t,
   );
-  const { source_highlights, translation_highlights } =
-    build_glossary_highlights(item, props.draft_dst, t);
   const visible_warning_codes =
     glossary_badge_state === null
       ? item.warnings
@@ -310,9 +290,7 @@ export function ProofreadingEditDialog(
               }}
             >
               {save_label}
-              <Kbd className="bg-background/18 text-primary-foreground">
-                Ctrl+S
-              </Kbd>
+              <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
             </Button>
           </div>
         </>
@@ -323,9 +301,7 @@ export function ProofreadingEditDialog(
           <div className="proofreading-page__dialog-main-panel">
             <div className="proofreading-page__dialog-main-panel-content">
               <section className="proofreading-page__dialog-file-card">
-                <span className="proofreading-page__dialog-file-path">
-                  {item.file_path}
-                </span>
+                <span className="proofreading-page__dialog-file-path">{item.file_path}</span>
               </section>
 
               <section className="proofreading-page__dialog-editor-block">
@@ -338,10 +314,7 @@ export function ProofreadingEditDialog(
                     aria_label={t("proofreading_page.fields.source")}
                     read_only
                     highlights={source_highlights}
-                    class_name={[
-                      "proofreading-page__dialog-editor-host",
-                      "proofreading-page__dialog-editor-host--readonly",
-                    ].join(" ")}
+                    class_name="proofreading-page__dialog-editor-host"
                   />
                 </label>
 
@@ -383,9 +356,7 @@ export function ProofreadingEditDialog(
                       variant="outline"
                       className={[
                         "proofreading-page__dialog-status-badge",
-                        resolve_badge_tone_class_name(
-                          glossary_badge_state.tone,
-                        ),
+                        resolve_badge_tone_class_name(glossary_badge_state.tone),
                       ].join(" ")}
                     >
                       {glossary_badge_state.label}
@@ -402,9 +373,7 @@ export function ProofreadingEditDialog(
                         variant="outline"
                         className={[
                           "proofreading-page__dialog-status-badge",
-                          resolve_badge_tone_class_name(
-                            resolve_warning_badge_tone(),
-                          ),
+                          resolve_badge_tone_class_name(resolve_warning_badge_tone()),
                         ].join(" ")}
                       >
                         {label_key === undefined ? warning : t(label_key)}
