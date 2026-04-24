@@ -74,24 +74,19 @@ export const zh_cn_text_replacement_page = {
   },
   confirm: {
     delete_selection: {
-      title: "确认删除",
-      description: "是否确认删除 {COUNT} 条记录？",
+      description: "是否确认删除 {COUNT} 条记录 …?",
     },
     delete_entry: {
-      title: "确认删除",
-      description: "是否确认删除 1 条记录？",
+      description: "是否确认删除 1 条记录 …?",
     },
     delete_preset: {
-      title: "删除预设",
-      description: "是否确认删除预设“{NAME}”？",
+      description: "是否确认删除预设“{NAME}” …?",
     },
     reset: {
-      title: "确认重置",
       description: "是否确认重置数据 …?",
     },
     overwrite_preset: {
-      title: "覆盖预设",
-      description: "预设“{NAME}”已存在，是否确认覆盖 …?",
+      description: "是否确认覆盖预设“{NAME}” …?",
     },
   },
   feedback: {

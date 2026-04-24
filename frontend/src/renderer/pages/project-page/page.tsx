@@ -1126,20 +1126,13 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       <ProjectPreviewPanel project={selected_project} />
     ) : null;
   const missing_recent_project_description =
-    missing_recent_project === null
-      ? ""
-      : t("project_page.open.missing_file_description").replace(
-          "{PATH}",
-          missing_recent_project.path,
-        );
+    missing_recent_project === null ? "" : t("project_page.open.missing_file_description");
 
   return (
     <>
       <AppAlertDialog
         open={missing_recent_project !== null}
-        title={t("project_page.open.missing_file_title")}
         description={missing_recent_project_description}
-        descriptionClassName="whitespace-pre-line"
         onConfirm={() => {
           const target_path = missing_recent_project?.path;
           if (target_path === undefined) {

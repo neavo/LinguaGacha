@@ -154,10 +154,8 @@ export function TsConversionPage(props: ScreenComponentProps): JSX.Element {
 
       <AppAlertDialog
         open={page_state.confirm_state.open}
-        title={t("ts_conversion_page.confirm.title")}
         description={t("ts_conversion_page.confirm.description")}
         submitting={page_state.confirm_state.submitting}
-        confirmLabel={t("app.action.confirm")}
         onConfirm={page_state.confirm_conversion}
         onClose={page_state.close_confirm_dialog}
       />

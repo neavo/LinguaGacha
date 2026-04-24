@@ -7,13 +7,10 @@ type TaskRuntimeConfirmDialogProps = {
   on_close: () => void;
 };
 
-export function TaskRuntimeConfirmDialog(
-  props: TaskRuntimeConfirmDialogProps,
-): JSX.Element {
+export function TaskRuntimeConfirmDialog(props: TaskRuntimeConfirmDialogProps): JSX.Element {
   return (
     <AppAlertDialog
       open={props.view_model?.open ?? false}
-      title={props.view_model?.title ?? ""}
       description={props.view_model?.description ?? ""}
       submitting={props.view_model?.submitting ?? false}
       onConfirm={props.on_confirm}

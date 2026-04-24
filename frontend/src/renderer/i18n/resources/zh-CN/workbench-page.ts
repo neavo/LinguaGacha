@@ -87,14 +87,10 @@ export const zh_cn_workbench_page = {
       candidate_count: "候选术语",
     },
     confirm: {
-      reset_all_title: "重置全部分析",
-      reset_all_description: "确定重置整个项目的分析进度吗 …?",
-      reset_failed_title: "重置失败分析进度",
-      reset_failed_description: "确定只重置失败的分析进度吗 …?",
-      import_glossary_title: "导入候选术语",
-      import_glossary_description: "任务已完成，是否将候选术语导入术语表 …?",
-      stop_title: "停止分析",
-      stop_description: "确定停止当前分析任务吗 …?",
+      reset_all_description: "是否确认重置整个项目的分析进度 …?",
+      reset_failed_description: "是否确认重置失败的分析进度 …?",
+      import_glossary_description: "是否确认将候选术语导入术语表 …?",
+      stop_description: "是否确认停止当前分析任务 …?",
     },
     feedback: {
       refresh_failed: "分析任务状态刷新失败",
@@ -132,12 +128,9 @@ export const zh_cn_workbench_page = {
       active_requests: "实时任务数",
     },
     confirm: {
-      reset_all_title: "重置全部翻译",
-      reset_all_description: "确定重置整个项目的翻译进度吗？",
-      reset_failed_title: "重置失败条目",
-      reset_failed_description: "确定只重置失败的翻译条目吗？",
-      stop_title: "停止翻译",
-      stop_description: "确定停止当前翻译任务吗？",
+      reset_all_description: "是否确认重置整个项目的翻译进度 …?",
+      reset_failed_description: "是否确认重置失败的翻译条目 …?",
+      stop_description: "是否确认停止当前翻译任务 …?",
     },
     feedback: {
       refresh_failed: "翻译任务状态刷新失败",
@@ -157,24 +150,19 @@ export const zh_cn_workbench_page = {
   },
   dialog: {
     replace: {
-      title: "确认",
-      description: "当前文件的翻译数据将尽可能的保留",
+      description: "是否确认替换文件 …?",
     },
     reset: {
-      title: "确认",
-      description: "确定要重置该文件的翻译状态吗 …?",
+      description: "是否确认重置该文件的翻译状态 …?",
     },
     delete: {
-      title: "确认",
-      description: "确定要删除所选文件及其所有翻译条目吗 …?",
+      description: "是否确认删除所选文件及其所有翻译条目 …?",
     },
     export: {
-      title: "确认",
-      description: "确定要生成译文文件吗 …?",
+      description: "是否确认生成译文文件 …?",
     },
     close_project: {
-      title: "确认",
-      description: "确定要关闭当前工程吗 …?",
+      description: "是否确认关闭当前工程 …?",
     },
   },
 } as const;

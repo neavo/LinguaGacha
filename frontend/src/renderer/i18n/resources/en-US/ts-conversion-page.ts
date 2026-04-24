@@ -25,8 +25,9 @@ export const en_us_ts_conversion_page = {
     target_name: {
       title: "Convert Name Field Translations",
       description:
-        "In some <emphasis>GalGame</emphasis>, name field is bound to resource, which may cause errors after translation"
-        + "\n" + "You can disable this feature in that case, enabled by default",
+        "In some <emphasis>GalGame</emphasis>, name field is bound to resource, which may cause errors after translation" +
+        "\n" +
+        "You can disable this feature in that case, enabled by default",
     },
   },
   action: {
@@ -35,8 +36,7 @@ export const en_us_ts_conversion_page = {
     progress: "Converting Traditional-Simplified, item {CURRENT} of {TOTAL} …",
   },
   confirm: {
-    title: "Alert",
-    description: "Start Traditional-Simplified conversion …?",
+    description: "Confirm starting Chinese script conversion …?",
   },
   feedback: {
     task_success: "Task succeeded …",

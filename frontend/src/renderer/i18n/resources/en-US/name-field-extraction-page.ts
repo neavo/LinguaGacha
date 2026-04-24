@@ -54,8 +54,7 @@ export const en_us_name_field_extraction_page = {
   },
   confirm: {
     delete_selection: {
-      title: "Delete name entries",
-      description: "{COUNT} name entries will be removed from the current page results.",
+      description: "Confirm deleting {COUNT} name entries …?",
     },
   },
   feedback: {

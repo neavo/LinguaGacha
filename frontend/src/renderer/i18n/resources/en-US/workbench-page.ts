@@ -90,14 +90,10 @@ export const en_us_workbench_page = {
       candidate_count: "Candidate Terms",
     },
     confirm: {
-      reset_all_title: "Reset All Analysis",
-      reset_all_description: "Reset analysis progress for the entire project …?",
-      reset_failed_title: "Reset Failed Analysis Progress",
-      reset_failed_description: "Reset only failed analysis progress …?",
-      import_glossary_title: "Import Candidate Terms",
-      import_glossary_description: "Task completed. Import candidate terms into the glossary …?",
-      stop_title: "Stop Analysis",
-      stop_description: "Stop the current analysis task …?",
+      reset_all_description: "Confirm resetting the analysis progress for the entire project …?",
+      reset_failed_description: "Confirm resetting failed analysis progress …?",
+      import_glossary_description: "Confirm importing candidate terms into the glossary …?",
+      stop_description: "Confirm stopping the current analysis task …?",
     },
     feedback: {
       refresh_failed: "Failed to refresh analysis task state",
@@ -135,12 +131,9 @@ export const en_us_workbench_page = {
       active_requests: "Real Time Tasks",
     },
     confirm: {
-      reset_all_title: "Reset All Translation",
-      reset_all_description: "Reset translation progress for the whole project?",
-      reset_failed_title: "Reset Failed Entries",
-      reset_failed_description: "Reset only failed translation entries?",
-      stop_title: "Stop Translation",
-      stop_description: "Stop the current translation task?",
+      reset_all_description: "Confirm resetting the translation progress for the entire project …?",
+      reset_failed_description: "Confirm resetting failed translation entries …?",
+      stop_description: "Confirm stopping the current translation task …?",
     },
     feedback: {
       refresh_failed: "Failed to refresh the translation task.",
@@ -160,24 +153,19 @@ export const en_us_workbench_page = {
   },
   dialog: {
     replace: {
-      title: "Confirm",
-      description: "Current translations will be preserved as much as possible",
+      description: "Confirm replacing the file …?",
     },
     reset: {
-      title: "Confirm",
-      description: "Reset translation status for this file …?",
+      description: "Confirm resetting this file's translation status …?",
     },
     delete: {
-      title: "Confirm",
-      description: "Delete the selected files and all their translation items …?",
+      description: "Confirm deleting the selected file and all of its translation entries …?",
     },
     export: {
-      title: "Confirm",
-      description: "Confirm to generate the translation file?",
+      description: "Confirm generating the translated file …?",
     },
     close_project: {
-      title: "Confirm",
-      description: "Are you sure you want to close the current project?",
+      description: "Confirm closing the current project …?",
     },
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_workbench_page>;

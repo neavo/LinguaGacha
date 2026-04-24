@@ -47,13 +47,6 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
     <>
       <AppAlertDialog
         open={model_page_state.confirm_state.kind !== null}
-        title={
-          model_page_state.confirm_state.kind === "delete"
-            ? t("model_page.confirm.delete.title")
-            : model_page_state.confirm_state.kind === "reset"
-              ? t("model_page.confirm.reset.title")
-              : ""
-        }
         description={
           model_page_state.confirm_state.kind === "delete"
             ? t("model_page.confirm.delete.description")

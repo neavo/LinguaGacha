@@ -9,7 +9,6 @@ type TextReplacementConfirmDialogProps = {
 };
 
 type ConfirmCopy = {
-  title_key: LocaleKey;
   description_key: LocaleKey;
 };
 
@@ -18,26 +17,19 @@ const CONFIRM_COPY_BY_KIND: Record<
   ConfirmCopy
 > = {
   "delete-selection": {
-    title_key: "text_replacement_page.confirm.delete_selection.title",
-    description_key:
-      "text_replacement_page.confirm.delete_selection.description",
+    description_key: "text_replacement_page.confirm.delete_selection.description",
   },
   "delete-entry": {
-    title_key: "text_replacement_page.confirm.delete_entry.title",
     description_key: "text_replacement_page.confirm.delete_entry.description",
   },
   "delete-preset": {
-    title_key: "text_replacement_page.confirm.delete_preset.title",
     description_key: "text_replacement_page.confirm.delete_preset.description",
   },
   reset: {
-    title_key: "text_replacement_page.confirm.reset.title",
     description_key: "text_replacement_page.confirm.reset.description",
   },
   "overwrite-preset": {
-    title_key: "text_replacement_page.confirm.overwrite_preset.title",
-    description_key:
-      "text_replacement_page.confirm.overwrite_preset.description",
+    description_key: "text_replacement_page.confirm.overwrite_preset.description",
   },
 };
 
@@ -45,8 +37,7 @@ export function TextReplacementConfirmDialog(
   props: TextReplacementConfirmDialogProps,
 ): JSX.Element {
   const { t } = useI18n();
-  const dialog_copy =
-    props.state.kind === null ? null : CONFIRM_COPY_BY_KIND[props.state.kind];
+  const dialog_copy = props.state.kind === null ? null : CONFIRM_COPY_BY_KIND[props.state.kind];
   const description =
     dialog_copy === null
       ? ""
@@ -57,7 +48,6 @@ export function TextReplacementConfirmDialog(
   return (
     <AppAlertDialog
       open={props.state.open}
-      title={dialog_copy === null ? "" : t(dialog_copy.title_key)}
       description={description}
       submitting={props.state.submitting}
       onConfirm={props.on_confirm}

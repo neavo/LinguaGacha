@@ -50,8 +50,7 @@ export const zh_cn_name_field_extraction_page = {
   },
   confirm: {
     delete_selection: {
-      title: "删除姓名条目",
-      description: "将从当前页面结果中移除 {COUNT} 个姓名条目。",
+      description: "是否确认删除 {COUNT} 个姓名条目 …?",
     },
   },
   feedback: {
