@@ -38,6 +38,18 @@ def test_server_bootstrap_registers_project_command_routes():
     assert core_api_server.route_map[("POST", "/api/project/preview")].mode == "json"
     assert (
         core_api_server.route_map[
+            ("POST", "/api/project/text-preserve/preset-rules")
+        ].mode
+        == "json"
+    )
+    assert (
+        core_api_server.route_map[
+            ("POST", "/api/project/export-converted-translation")
+        ].mode
+        == "json"
+    )
+    assert (
+        core_api_server.route_map[
             ("POST", "/api/project/translation/reset-preview")
         ].mode
         == "json"

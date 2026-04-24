@@ -1,7 +1,9 @@
+from contextlib import contextmanager
 from threading import RLock
 from types import SimpleNamespace
 
 from api.Application.ProjectAppService import ProjectAppService
+from module.Data.Core.Item import Item
 
 
 class _FakeProjectManagerForAnalysisGlossaryImport:
@@ -175,6 +177,54 @@ class _FakeProjectManagerForResetMutations:
             "projectRevision": max(section_revisions.values(), default=0),
             "sectionRevisions": section_revisions,
         }
+
+
+class _FakeProjectManagerForConvertedExport:
+    def __init__(self) -> None:
+        self.loaded = True
+        self.custom_suffixes: list[str] = []
+        self.items = [
+            Item(
+                id=1,
+                src="源文",
+                dst="旧译文",
+                name_dst="旧姓名",
+                row=7,
+                file_type=Item.FileType.TXT,
+                file_path="script.txt",
+                text_type=Item.TextType.NONE,
+            ),
+            Item(
+                id=2,
+                src="第二行",
+                dst="保持原样",
+                name_dst=["甲", "乙"],
+                row=8,
+                file_type=Item.FileType.TXT,
+                file_path="script.txt",
+                text_type=Item.TextType.NONE,
+            ),
+        ]
+
+    def is_loaded(self) -> bool:
+        return self.loaded
+
+    def get_items_all(self) -> list[Item]:
+        return self.items
+
+    @contextmanager
+    def export_custom_suffix_context(self, suffix: str):
+        self.custom_suffixes.append(suffix)
+        yield
+
+
+class _FakeConvertedExportFileManager:
+    def __init__(self) -> None:
+        self.items: list[Item] = []
+
+    def write_to_path(self, items: list[Item]) -> str:
+        self.items = items
+        return "E:/Project/LinguaGacha/output/demo_译文_S2T"
 
 
 def test_load_project_returns_loaded_snapshot(
@@ -536,3 +586,73 @@ def test_apply_analysis_reset_failed_returns_analysis_ack() -> None:
             "analysis": 8,
         },
     }
+
+
+def test_get_text_preserve_preset_rules_returns_rules_by_text_type() -> None:
+    project_app_service = ProjectAppService(_FakeProjectManagerForConvertedExport())
+    project_app_service.load_text_preserve_preset_rules = lambda text_type: [
+        f"{text_type.value}:rule"
+    ]
+
+    result = project_app_service.get_text_preserve_preset_rules(
+        {"text_types": ["renpy", "NONE", "unknown"]}
+    )
+
+    assert result == {
+        "rules": {
+            "RENPY": ["RENPY:rule"],
+            "NONE": ["NONE:rule"],
+        }
+    }
+
+
+def test_export_converted_translation_uses_converted_snapshot_without_mutating_project() -> (
+    None
+):
+    fake_project_manager = _FakeProjectManagerForConvertedExport()
+    fake_file_manager = _FakeConvertedExportFileManager()
+    project_app_service = ProjectAppService(
+        fake_project_manager,
+        config_loader=lambda: object(),
+        file_manager_factory=lambda config: fake_file_manager,
+    )
+
+    result = project_app_service.export_converted_translation(
+        {
+            "suffix": "_S2T",
+            "items": [
+                {"item_id": 1, "dst": "新譯文", "name_dst": "新姓名"},
+                {"item_id": 2, "dst": "保持原樣", "name_dst": ["甲", "乙"]},
+            ],
+        }
+    )
+
+    assert result == {
+        "accepted": True,
+        "output_path": "E:/Project/LinguaGacha/output/demo_译文_S2T",
+    }
+    assert fake_project_manager.custom_suffixes == ["_S2T"]
+    assert [item.get_dst() for item in fake_file_manager.items] == [
+        "新譯文",
+        "保持原樣",
+    ]
+    assert fake_file_manager.items[0].get_name_dst() == "新姓名"
+    assert fake_file_manager.items[1].get_name_dst() == ["甲", "乙"]
+    assert fake_project_manager.items[0].get_dst() == "旧译文"
+    assert fake_project_manager.items[0].get_name_dst() == "旧姓名"
+
+
+def test_export_converted_translation_rejects_invalid_suffix() -> None:
+    project_app_service = ProjectAppService(_FakeProjectManagerForConvertedExport())
+
+    try:
+        project_app_service.export_converted_translation(
+            {
+                "suffix": "_BAD",
+                "items": [{"item_id": 1, "dst": "新譯文"}],
+            }
+        )
+    except ValueError as error:
+        assert str(error) != ""
+    else:
+        raise AssertionError("应拒绝无效导出后缀")

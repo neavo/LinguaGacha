@@ -1,0 +1,166 @@
+.name-field-extraction-page {
+  display: flex;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.name-field-extraction-page__table-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.name-field-extraction-page__table-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.name-field-extraction-page__table-card-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.name-field-extraction-page__table-source-head,
+.name-field-extraction-page__table-source-cell,
+.name-field-extraction-page__table-translation-head,
+.name-field-extraction-page__table-translation-cell {
+  text-align: left;
+}
+
+.name-field-extraction-page__table-drag-head,
+.name-field-extraction-page__table-drag-cell {
+  text-align: center;
+}
+
+.name-field-extraction-page__table-text {
+  display: block;
+  overflow: hidden;
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name-field-extraction-page__table-translating {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.name-field-extraction-page__table-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.name-field-extraction-page__command-bar {
+  min-height: 0;
+}
+
+.name-field-extraction-page__command-bar .command-bar__hint {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.name-field-extraction-page__summary {
+  display: inline-flex;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.name-field-extraction-page__summary-trigger {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.name-field-extraction-page__summary-badge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.name-field-extraction-page__summary-badge--clickable {
+  cursor: pointer;
+}
+
+.name-field-extraction-page__summary-badge--neutral {
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--muted-foreground);
+}
+
+.name-field-extraction-page__dialog-scroll {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.name-field-extraction-page__dialog-form {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  height: 100%;
+  flex: 1;
+}
+
+.name-field-extraction-page__dialog-main-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+}
+
+.name-field-extraction-page__dialog-main-panel-content {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.name-field-extraction-page__dialog-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.name-field-extraction-page__dialog-section--context {
+  grid-column: 1 / -1;
+}
+
+.name-field-extraction-page__dialog-section-title {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.name-field-extraction-page__dialog-editor {
+  min-height: 0;
+  flex: 1 1 0;
+}

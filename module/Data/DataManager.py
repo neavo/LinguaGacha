@@ -1520,6 +1520,9 @@ class DataManager(Base):
             self.require_loaded_lg_path()
         )
 
+    def export_custom_suffix_context(self, suffix: str) -> AbstractContextManager[None]:
+        return self.export_path_service.custom_suffix_context(suffix)
+
     def get_translated_path(self) -> str:
         return self.export_path_service.get_translated_path(
             self.require_loaded_lg_path()

@@ -16,6 +16,8 @@ class LocalizerEN(LocalizerZH):
     export_translation_failed: str = "Failed to generate translation files …"
     alert_project_not_loaded: str = "Please load a project first …"
     alert_no_active_model: str = "No active model configuration found …"
+    alert_no_data: str = "No valid data …"
+    alert_invalid_export_data: str = "Invalid export data …"
 
     # 主页面
     app_exit_countdown: str = "Exiting … {SECONDS} …"
