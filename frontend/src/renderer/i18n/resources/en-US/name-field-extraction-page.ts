@@ -11,18 +11,12 @@ export const en_us_name_field_extraction_page = {
   },
   fields: {
     drag: "Drag",
-    index: "No.",
     source: "Source",
     translation: "Translation",
     context: "Context",
-    status: "Status",
   },
   status: {
-    untranslated: "Untranslated",
-    translated: "Translated",
     translating: "Translating",
-    format_error: "Format Error",
-    network_error: "Network Error",
   },
   action: {
     extract: "Extract",

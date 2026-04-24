@@ -7,7 +7,7 @@ import {
   type AnalysisTaskActionKind,
   type AnalysisTaskMetrics,
   type AnalysisTaskSnapshot,
-} from "@/lib/analysis-task";
+} from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import { Badge } from "@/shadcn/badge";
 import { Button } from "@/shadcn/button";
 import {

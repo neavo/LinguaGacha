@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -57,7 +58,7 @@ class FakeResponse:
     def raise_for_status(self) -> None:
         return None
 
-    def json(self):
+    def json(self) -> object:
         return self.json_data
 
 
@@ -72,7 +73,7 @@ class FakeStreamResponse(FakeResponse):
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         del exc_type, exc_val, exc_tb
 
-    def iter_bytes(self, chunk_size: int):
+    def iter_bytes(self, chunk_size: int) -> Iterator[bytes]:
         del chunk_size
         yield from self.chunks
 

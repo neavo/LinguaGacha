@@ -83,18 +83,10 @@ class LocalizerZH:
     project_store_created: str = "工程创建完成 …"
     project_store_file_not_found: str = "工程文件不存在: {PATH}"
 
-    # 翻译
-    translation_resetting: str = "正在重置 …"
-
     # 分析
     analysis_task_source_texts: str = "分析输入："
     analysis_task_extracted_terms: str = "提取术语："
     analysis_task_no_terms: str = "未提取到术语"
-
-    # 校对
-    proofreading_page_status_none: str = "未翻译"
-    proofreading_page_status_processed: str = "翻译完成"
-    proofreading_page_status_error: str = "翻译失败"
 
     # 工作台
     workbench_msg_file_exists: str = "文件已存在 …"

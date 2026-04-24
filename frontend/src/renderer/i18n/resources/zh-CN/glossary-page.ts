@@ -96,7 +96,6 @@ export const zh_cn_glossary_page = {
     import_success: "数据已导入 …",
     export_failed: "术语表导出失败",
     export_success: "数据已导出 …",
-    statistics_failed: "术语表统计失败",
     preset_failed: "术语表预设加载失败",
     preset_saved: "预设已保存 …",
     preset_renamed: "预设已重命名 …",

@@ -1,7 +1,5 @@
 import re
 
-from rich import print
-
 from module.Data.Core.Item import Item
 from module.Config import Config
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
@@ -100,10 +98,3 @@ class CodeFixer:
 
         # 如果所有 x 元素都匹配成功，返回 True
         return True, mismatchs
-
-    @classmethod
-    def test(cls, config: Config) -> None:
-        x = "合計　\\V[62]！　やったやった♪　私の勝ちね！\n\\c[17]――レナリスの勝ち！　【３０００ G】手に入れた！\\c[0]\n\\$"
-        y = "总计　\\V[62]！　哈哈！　我赢了！\n\\c[17]――雷纳里斯赢了！ 获得了\\c[2]【3000 G】\\c[0]！\\c[0]\n\\$"
-        z = cls().fix(x, y, Item.TextType.RPGMAKER, config)
-        print(f"{repr(x)}\n{repr(y)}\n{repr(z)}")

@@ -3,15 +3,11 @@ import threading
 from typing import Any
 from typing import Self
 
-from base.Base import Base
-
 
 @dataclasses.dataclass
 class Project:
     # 默认值
     id: str = ""  # 项目 ID
-    status: Base.ProjectStatus = Base.ProjectStatus.NONE  # 任务状态
-    extras: dict[str, Any] = dataclasses.field(default_factory=dict)  # 额外数据
 
     # 线程锁
     lock: threading.Lock = dataclasses.field(
@@ -39,19 +35,3 @@ class Project:
     def set_id(self, id: str) -> None:
         with self.lock:
             self.id = id
-
-    def get_status(self) -> Base.ProjectStatus:
-        with self.lock:
-            return self.status
-
-    def set_status(self, status: Base.ProjectStatus) -> None:
-        with self.lock:
-            self.status = status
-
-    def get_extras(self) -> dict[str, Any]:
-        with self.lock:
-            return self.extras
-
-    def set_extras(self, extras: dict[str, Any]) -> None:
-        with self.lock:
-            self.extras = extras

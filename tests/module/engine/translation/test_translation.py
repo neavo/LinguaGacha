@@ -443,20 +443,6 @@ def test_save_translation_state_persists_extras_and_status(
     fake_dm.set_project_status.assert_called_once_with(Base.ProjectStatus.PROCESSING)
 
 
-def test_initialize_task_limits_covers_default_and_auto_derive() -> None:
-    translation = create_translation_stub()
-    if hasattr(translation, "model"):
-        del translation.model
-
-    assert Translation.initialize_task_limits(translation) == (8, 8, 0)
-
-    translation.model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 120}}
-    assert Translation.initialize_task_limits(translation) == (8, 0, 120)
-
-    translation.model = {"threshold": {"concurrency_limit": 5, "rpm_limit": 0}}
-    assert Translation.initialize_task_limits(translation) == (5, 5, 0)
-
-
 def test_get_task_buffer_size_has_lower_and_upper_bounds() -> None:
     translation = create_translation_stub()
     assert Translation.get_task_buffer_size(translation, 1) == 64
@@ -1157,13 +1143,6 @@ def test_save_translation_state_without_extras_still_sets_status(
     dm.set_project_status.assert_called_once_with(Base.ProjectStatus.PROCESSED)
 
 
-def test_initialize_task_limits_defaults_when_rpm_and_concurrency_are_zero() -> None:
-    translation = create_translation_stub()
-    translation.model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 0}}
-
-    assert Translation.initialize_task_limits(translation) == (8, 8, 0)
-
-
 def test_start_translation_pipeline_builds_pipeline_and_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1196,7 +1175,6 @@ def test_start_translation_pipeline_builds_pipeline_and_runs(
     assert called["translation"] is translation
     assert called["max_workers"] == 2
     assert isinstance(called["hooks"], FakeHooks)
-    assert translation.task_hooks is None
     assert called["ran"] is True
 
 

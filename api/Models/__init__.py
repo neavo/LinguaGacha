@@ -12,9 +12,7 @@ from api.Models.QualityRule import QualityRuleEntry
 from api.Models.QualityRule import QualityRuleSnapshot
 from api.Models.Settings import AppSettingsSnapshot
 from api.Models.Settings import RecentProjectEntry
-from api.Models.Task import TaskProgressUpdate
 from api.Models.Task import TaskSnapshot
-from api.Models.Task import TaskStatusUpdate
 
 __all__ = [
     "AppSettingsSnapshot",
@@ -31,7 +29,5 @@ __all__ = [
     "QualityRuleEntry",
     "QualityRuleSnapshot",
     "RecentProjectEntry",
-    "TaskProgressUpdate",
     "TaskSnapshot",
-    "TaskStatusUpdate",
 ]

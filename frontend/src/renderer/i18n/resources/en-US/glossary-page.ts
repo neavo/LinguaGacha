@@ -100,7 +100,6 @@ export const en_us_glossary_page = {
     import_success: "Data imported …",
     export_failed: "Failed to export the glossary.",
     export_success: "Data exported …",
-    statistics_failed: "Failed to build glossary statistics.",
     preset_failed: "Failed to load glossary presets.",
     preset_saved: "Preset saved …",
     preset_renamed: "Preset renamed …",

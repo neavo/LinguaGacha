@@ -7,18 +7,12 @@ export const zh_cn_name_field_extraction_page = {
   },
   fields: {
     drag: "拖拽",
-    index: "序号",
     source: "原文",
     translation: "译文",
     context: "上下文",
-    status: "状态",
   },
   status: {
-    untranslated: "未翻译",
-    translated: "翻译完成",
     translating: "翻译中",
-    format_error: "Format Error",
-    network_error: "Network Error",
   },
   action: {
     extract: "提取",

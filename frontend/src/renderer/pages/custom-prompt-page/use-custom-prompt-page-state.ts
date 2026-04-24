@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop-api";
-import { createProjectStoreReplaceSectionPatch } from "@/app/project-runtime/project-store";
-import { getPromptSlice, replacePromptSlice } from "@/app/project-runtime/quality-runtime";
+import { createProjectStoreReplaceSectionPatch } from "@/app/project/store/project-store";
+import { getPromptSlice, replacePromptSlice } from "@/app/project/quality/quality-runtime";
 import {
   normalize_project_mutation_ack,
   normalize_settings_snapshot,
   type ProjectMutationAckPayload,
   type SettingsSnapshotPayload,
-} from "@/app/state/desktop-runtime-context";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+} from "@/app/runtime/desktop/desktop-runtime-context";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import {
   CUSTOM_PROMPT_VARIANT_CONFIG,

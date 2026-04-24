@@ -376,8 +376,9 @@ def test_create_project_logs_when_presets_loaded(
 
 def test_persist_add_file_payload_compresses_asset_before_store(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    fs,
 ) -> None:
+    del fs
     dm, _events = build_data_manager(monkeypatch)
     connection = SimpleNamespace(commit=MagicMock())
     db = SimpleNamespace(
@@ -399,7 +400,8 @@ def test_persist_add_file_payload_compresses_asset_before_store(
     dm.try_begin_guarded_file_operation = MagicMock()
     dm.finish_file_operation = MagicMock()
 
-    source_path = tmp_path / "sample_02.txt"
+    source_path = Path("/workspace/sample_02.txt")
+    source_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.write_bytes(b"new content")
 
     compress = MagicMock(return_value=b"compressed")
@@ -427,8 +429,9 @@ def test_persist_add_file_payload_compresses_asset_before_store(
 
 def test_persist_replace_file_payload_compresses_asset_before_store(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    fs,
 ) -> None:
+    del fs
     dm, _events = build_data_manager(monkeypatch)
     connection = SimpleNamespace(commit=MagicMock())
     db = SimpleNamespace(
@@ -450,7 +453,8 @@ def test_persist_replace_file_payload_compresses_asset_before_store(
     dm.try_begin_guarded_file_operation = MagicMock()
     dm.finish_file_operation = MagicMock()
 
-    source_path = tmp_path / "sample_01.txt"
+    source_path = Path("/workspace/sample_01.txt")
+    source_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.write_bytes(b"updated content")
 
     compress = MagicMock(return_value=b"compressed")

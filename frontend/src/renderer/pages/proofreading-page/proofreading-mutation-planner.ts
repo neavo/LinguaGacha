@@ -4,7 +4,7 @@ import {
   type ProjectStoreProofreadingState,
   type ProjectStoreSectionRevisions,
   type ProjectStoreState,
-} from "@/app/project-runtime/project-store";
+} from "@/app/project/store/project-store";
 
 type ProofreadingStoreItem = {
   item_id: number;

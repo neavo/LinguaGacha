@@ -2,7 +2,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { QualityStatisticsCacheSnapshot } from "@/app/project-runtime/quality-statistics-store";
+import type { QualityStatisticsCacheSnapshot } from "@/app/project/quality/quality-statistics-store";
 import { useTextReplacementPageState } from "@/pages/text-replacement-page/use-text-replacement-page-state";
 
 const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
@@ -167,7 +167,7 @@ vi.mock("@/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@/app/state/use-desktop-runtime", () => {
+vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       project_snapshot: runtime_state.project,
@@ -183,7 +183,7 @@ vi.mock("@/app/state/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/state/use-desktop-toast", () => {
+vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -191,7 +191,7 @@ vi.mock("@/app/state/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/app/state/quality-statistics-context", () => {
+vi.mock("@/app/project/quality/quality-statistics-context", () => {
   return {
     useQualityStatistics: () => current_statistics_cache,
   };

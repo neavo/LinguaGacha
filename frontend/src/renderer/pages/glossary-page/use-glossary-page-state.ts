@@ -2,23 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import { createProjectStoreReplaceSectionPatch } from "@/app/project-runtime/project-store";
-import type { QualityStatisticsDependencySnapshot } from "@/app/project-runtime/quality-statistics-auto";
+import { createProjectStoreReplaceSectionPatch } from "@/app/project/store/project-store";
+import type { QualityStatisticsDependencySnapshot } from "@/app/project/quality/quality-statistics-auto";
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
   replaceQualityRuleSlice,
-} from "@/app/project-runtime/quality-runtime";
-import type { QualityStatisticsCacheSnapshot } from "@/app/project-runtime/quality-statistics-store";
+} from "@/app/project/quality/quality-runtime";
+import type { QualityStatisticsCacheSnapshot } from "@/app/project/quality/quality-statistics-store";
 import {
   normalize_project_mutation_ack,
   normalize_settings_snapshot,
   type ProjectMutationAckPayload,
   type SettingsSnapshotPayload,
-} from "@/app/state/desktop-runtime-context";
-import { useQualityStatistics } from "@/app/state/quality-statistics-context";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+} from "@/app/runtime/desktop/desktop-runtime-context";
+import { useQualityStatistics } from "@/app/project/quality/quality-statistics-context";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/i18n";
 import {
   build_glossary_filter_result,

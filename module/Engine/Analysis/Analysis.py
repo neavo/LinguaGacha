@@ -214,26 +214,10 @@ class Analysis(Base):
             ),
         )
 
-    # 并发和速率推导维持原有策略，只保留一个公开入口方便两边共用。
-    def initialize_task_limits(self) -> tuple[int, int, int]:
-        return TaskRunnerLifecycle.build_task_limits(self.model)
-
     # 停止判断收口成一个入口，流水线和主流程都不用重复看两处状态。
     def should_stop(self) -> bool:
         return (
             Engine.get().get_status() == Base.TaskStatus.STOPPING or self.stop_requested
-        )
-
-    def build_progress_snapshot(
-        self,
-        *,
-        previous_extras: dict[str, Any],
-        continue_mode: bool,
-    ) -> TaskProgressSnapshot:
-        """保留控制器公开入口，避免重置流程和测试直接依赖调度器实例。"""
-        return self.scheduler.build_progress_snapshot(
-            previous_extras=previous_extras,
-            continue_mode=continue_mode,
         )
 
     def execute_task_contexts(

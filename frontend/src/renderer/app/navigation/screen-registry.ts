@@ -15,6 +15,12 @@ import { TextReplacementPage } from "@/pages/text-replacement-page/page";
 import { TsConversionPage } from "@/pages/ts-conversion-page/page";
 import { WorkbenchPage } from "@/pages/workbench-page/page";
 import type { ScreenComponentProps, ScreenRegistry } from "@/app/navigation/types";
+import type {
+  ProjectPagesRuntimeAdapterOptions,
+  ProjectPagesRuntimeAdapters,
+} from "@/app/runtime/project-pages/project-pages-runtime-adapter";
+import { useProofreadingPageState } from "@/pages/proofreading-page/use-proofreading-page-state";
+import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
 
 function PreTranslationReplacementScreen(
   props: ScreenComponentProps,
@@ -34,6 +40,15 @@ function TranslationPromptScreen(props: ScreenComponentProps): ReturnType<typeof
 
 function AnalysisPromptScreen(props: ScreenComponentProps): ReturnType<typeof createElement> {
   return createElement(CustomPromptPage, { ...props, variant: "analysis" });
+}
+
+export function useProjectPagesRuntimeAdapters(
+  options: ProjectPagesRuntimeAdapterOptions,
+): ProjectPagesRuntimeAdapters {
+  return {
+    proofreading_page_state: useProofreadingPageState(),
+    workbench_live_state: useWorkbenchLiveState(options),
+  };
 }
 
 export const SCREEN_REGISTRY: ScreenRegistry = {

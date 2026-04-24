@@ -1,3 +1,5 @@
+import pytest
+
 from base.Base import Base
 
 
@@ -204,9 +206,5 @@ def test_translate_single_returns_failed_status(
 
 
 def test_translate_single_rejects_empty_text(task_app_service) -> None:
-    try:
+    with pytest.raises(ValueError, match="待翻译文本不能为空。"):
         task_app_service.translate_single({"text": " "})
-    except ValueError as e:
-        assert str(e) == "待翻译文本不能为空。"
-    else:
-        raise AssertionError("empty text should raise ValueError")

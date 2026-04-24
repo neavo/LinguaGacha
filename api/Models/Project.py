@@ -47,7 +47,6 @@ class ProjectPreview:
     total_items: int = 0
     translated_items: int = 0
     progress: float = 0.0
-    has_progress: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ProjectPreview":
@@ -70,7 +69,6 @@ class ProjectPreview:
             total_items=int(normalized.get("total_items", 0) or 0),
             translated_items=int(normalized.get("translated_items", 0) or 0),
             progress=float(normalized.get("progress", 0.0) or 0.0),
-            has_progress="progress" in normalized,
         )
 
     def to_dict(self) -> dict[str, Any]:

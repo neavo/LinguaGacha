@@ -83,18 +83,10 @@ class LocalizerEN(LocalizerZH):
     project_store_created: str = "Project creation completed …"
     project_store_file_not_found: str = "Project file not found: {PATH}"
 
-    # 翻译
-    translation_resetting: str = "Resetting …"
-
     # 分析
     analysis_task_source_texts: str = "Analysis Input:"
     analysis_task_extracted_terms: str = "Extracted Terms:"
     analysis_task_no_terms: str = "No terms extracted"
-
-    # 校对
-    proofreading_page_status_none: str = "Untranslated"
-    proofreading_page_status_processed: str = "Translation Completed"
-    proofreading_page_status_error: str = "Translation Failed"
 
     # 工作台
     workbench_msg_file_exists: str = "File already exists …"

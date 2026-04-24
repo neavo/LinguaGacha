@@ -2,6 +2,8 @@ from contextlib import contextmanager
 from threading import RLock
 from types import SimpleNamespace
 
+import pytest
+
 from api.Application.ProjectAppService import ProjectAppService
 from module.Data.Core.Item import Item
 
@@ -230,12 +232,13 @@ class _FakeConvertedExportFileManager:
 def test_load_project_returns_loaded_snapshot(
     project_app_service,
     fake_project_manager,
-    lg_path: str,
 ) -> None:
-    result = project_app_service.load_project({"path": lg_path})
+    project_path = "E:/Project/LinguaGacha/output/demo.lg"
 
-    assert fake_project_manager.load_calls == [lg_path]
-    assert result["project"]["path"] == lg_path
+    result = project_app_service.load_project({"path": project_path})
+
+    assert fake_project_manager.load_calls == [project_path]
+    assert result["project"]["path"] == project_path
     assert result["project"]["loaded"] is True
 
 
@@ -645,14 +648,10 @@ def test_export_converted_translation_uses_converted_snapshot_without_mutating_p
 def test_export_converted_translation_rejects_invalid_suffix() -> None:
     project_app_service = ProjectAppService(_FakeProjectManagerForConvertedExport())
 
-    try:
+    with pytest.raises(ValueError):
         project_app_service.export_converted_translation(
             {
                 "suffix": "_BAD",
                 "items": [{"item_id": 1, "dst": "新譯文"}],
             }
         )
-    except ValueError as error:
-        assert str(error) != ""
-    else:
-        raise AssertionError("应拒绝无效导出后缀")

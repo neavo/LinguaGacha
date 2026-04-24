@@ -4,11 +4,14 @@ import { ThemeProvider, useTheme } from "next-themes";
 import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from "@/app/navigation/schema";
 import { SCREEN_REGISTRY } from "@/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@/app/navigation/navigation-context";
-import { DesktopRuntimeProvider } from "@/app/state/desktop-runtime-context";
-import { ProjectPagesProvider } from "@/app/state/project-pages-context";
-import { QualityStatisticsProvider } from "@/app/state/quality-statistics-context";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { DesktopProgressToastModalLayer, useDesktopToast } from "@/app/state/use-desktop-toast";
+import { DesktopRuntimeProvider } from "@/app/runtime/desktop/desktop-runtime-context";
+import { ProjectPagesProvider } from "@/app/runtime/project-pages/project-pages-context";
+import { QualityStatisticsProvider } from "@/app/project/quality/quality-statistics-context";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import {
+  DesktopProgressToastModalLayer,
+  useDesktopToast,
+} from "@/app/runtime/toast/use-desktop-toast";
 import "@/app/shell/app-shell.css";
 import type { BottomActionId, RouteId } from "@/app/navigation/types";
 import { LocaleProvider, useI18n } from "@/i18n";

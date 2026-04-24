@@ -75,9 +75,8 @@ def test_project_preview_to_dict_returns_explicit_modeled_fields() -> None:
     }
 
 
-def test_project_preview_from_dict_marks_missing_progress_as_absent() -> None:
+def test_project_preview_from_dict_defaults_missing_progress_to_zero() -> None:
     preview = ProjectPreview.from_dict({"name": "Draft"})
 
     assert preview.name == "Draft"
     assert preview.progress == 0.0
-    assert preview.has_progress is False

@@ -74,13 +74,13 @@ const toast_fixture: { current: ToastFixture } = {
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/app/state/use-desktop-runtime", () => {
+vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/state/use-desktop-toast", () => {
+vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => {
       return toast_fixture.current;

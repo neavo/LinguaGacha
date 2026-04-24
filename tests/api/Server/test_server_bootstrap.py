@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from api.Application.SettingsAppService import SettingsAppService
+from api.Server.CoreApiServer import CoreApiServer
 from api.Server.ServerBootstrap import ServerBootstrap
 from tests.api.support.application_fakes import FakeSettingsConfig
 
@@ -62,6 +63,54 @@ def test_start_for_test_registers_provided_settings_service() -> None:
         assert update_response.json()["error"]["code"] == "invalid_request"
     finally:
         shutdown()
+
+
+def test_register_api_routes_delegates_active_route_groups() -> None:
+    # Arrange
+    core_api_server = CoreApiServer()
+
+    # Act
+    ServerBootstrap.register_api_routes(
+        core_api_server,
+        event_stream_service=SimpleNamespace(
+            stream_to_handler=lambda handler: None,
+        ),
+        project_app_service=object(),
+        workbench_app_service=object(),
+        proofreading_app_service=object(),
+        project_bootstrap_app_service=SimpleNamespace(
+            stream_to_handler=lambda handler: None,
+        ),
+        task_app_service=object(),
+        model_app_service=object(),
+        quality_rule_app_service=object(),
+    )
+
+    # Assert
+    active_route_modes = {
+        path: core_api_server.route_map[(method, path)].mode
+        for method, path in (
+            ("GET", "/api/events/stream"),
+            ("GET", "/api/project/bootstrap/stream"),
+            ("POST", "/api/project/load"),
+            ("POST", "/api/project/workbench/add-file"),
+            ("POST", "/api/project/proofreading/save-item"),
+            ("POST", "/api/tasks/start-translation"),
+            ("POST", "/api/models/snapshot"),
+            ("POST", "/api/quality/rules/save-entries"),
+        )
+    }
+
+    assert active_route_modes == {
+        "/api/events/stream": "stream",
+        "/api/project/bootstrap/stream": "stream",
+        "/api/project/load": "json",
+        "/api/project/workbench/add-file": "json",
+        "/api/project/proofreading/save-item": "json",
+        "/api/tasks/start-translation": "json",
+        "/api/models/snapshot": "json",
+        "/api/quality/rules/save-entries": "json",
+    }
 
 
 def test_start_for_test_binds_next_candidate_port_when_previous_is_occupied() -> None:

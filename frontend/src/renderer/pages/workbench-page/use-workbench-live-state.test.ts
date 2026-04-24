@@ -92,13 +92,13 @@ const analysis_runtime_fixture: { current: AnalysisTaskRuntimeFixture } = {
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/app/state/use-desktop-runtime", () => {
+vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/state/use-desktop-toast", () => {
+vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => {
       return {
@@ -111,13 +111,13 @@ vi.mock("@/app/state/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/app/state/use-translation-task-runtime", () => {
+vi.mock("@/pages/workbench-page/task-runtime/use-translation-task-runtime", () => {
   return {
     useTranslationTaskRuntime: () => translation_runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/state/use-analysis-task-runtime", () => {
+vi.mock("@/pages/workbench-page/task-runtime/use-analysis-task-runtime", () => {
   return {
     useAnalysisTaskRuntime: () => analysis_runtime_fixture.current,
   };

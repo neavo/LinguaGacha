@@ -171,6 +171,11 @@ def test_model_api_client_supports_activate_delete_reset_commands(
     assert activated.active_model_id == "preset-1"
     assert isinstance(deleted, ModelPageSnapshot)
     assert isinstance(reset, ModelPageSnapshot)
+    assert recording_api_client.post_requests == [
+        (ModelRoutes.ACTIVATE_PATH, {"model_id": "preset-2"}),
+        (ModelRoutes.DELETE_PATH, {"model_id": "custom-openai-1"}),
+        (ModelRoutes.RESET_PRESET_PATH, {"model_id": "preset-1"}),
+    ]
 
 
 def test_model_api_client_list_available_models_returns_empty_list_for_invalid_payload(

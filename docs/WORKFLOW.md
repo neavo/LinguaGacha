@@ -52,6 +52,20 @@ flowchart TD
 
 ## 文档同步规则
 
+长期权威文档固定收口为：
+- `AGENTS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/API.md`
+- `docs/FRONTEND.md`
+- `docs/DESIGN.md`
+- `docs/WORKFLOW.md`
+- `docs/DATA.md`
+
+不参与长期权威竞争的 Markdown：
+- `README*.md` 面向用户、发布页和公开项目介绍，不承载 Agent 维护规则。
+- `.codex/skills/**` 是技能说明，按技能生命周期维护。
+- `output/**`、`input_bak/**`、`.pytest_cache/**` 是生成物、样例、缓存或临时材料，有明确子目录与生命周期。
+
 | 变更内容 | 必须同步 |
 | --- | --- |
 | 系统分层、跨层边界、阅读路径、模块关系矩阵 | `docs/ARCHITECTURE.md` |
@@ -64,7 +78,7 @@ flowchart TD
 同步原则：
 - 若同一改动同时影响架构边界与设计语义，先更新权威文档，再调整实现与局部说明。
 - 文档之间只保留一个权威版本；其他文档只做必要引用，不复制大段规则。
-- 不把历史迁移过程、阶段性方案或“之前怎样、现在怎样”的叙事写进长期文档。
+- 长期文档只陈述当前有效规则；任务过程、阶段性方案和变更叙事留给 Git、PR 或任务记录。
 
 ## 交付前自检清单
 

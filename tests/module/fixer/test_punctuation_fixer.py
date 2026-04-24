@@ -2,13 +2,22 @@ from base.BaseLanguage import BaseLanguage
 from module.Fixer.PunctuationFixer import PunctuationFixer
 
 
+def fix_punctuation(
+    src: str,
+    dst: str,
+    source_language: BaseLanguage.Enum,
+    target_language: BaseLanguage.Enum,
+) -> str:
+    return PunctuationFixer.fix(src, dst, source_language, target_language)
+
+
 class TestPunctuationFixer:
     def test_fix_aligns_corner_quotes_with_source_boundaries(self) -> None:
         src = "「你好」"
         dst = '"你好"'
 
         assert (
-            PunctuationFixer.fix(
+            fix_punctuation(
                 src,
                 dst,
                 BaseLanguage.Enum.JA,
@@ -22,7 +31,7 @@ class TestPunctuationFixer:
         dst = "A：B"
 
         assert (
-            PunctuationFixer.fix(
+            fix_punctuation(
                 src,
                 dst,
                 BaseLanguage.Enum.EN,
@@ -36,7 +45,7 @@ class TestPunctuationFixer:
         dst = "A：B"
 
         assert (
-            PunctuationFixer.fix(
+            fix_punctuation(
                 src,
                 dst,
                 BaseLanguage.Enum.EN,
@@ -50,7 +59,7 @@ class TestPunctuationFixer:
         dst = "A:B"
 
         assert (
-            PunctuationFixer.fix(
+            fix_punctuation(
                 src,
                 dst,
                 BaseLanguage.Enum.JA,
@@ -64,7 +73,7 @@ class TestPunctuationFixer:
         dst = '"你好"'
 
         assert (
-            PunctuationFixer.fix(
+            fix_punctuation(
                 src,
                 dst,
                 BaseLanguage.Enum.ZH,
@@ -78,7 +87,7 @@ class TestPunctuationFixer:
         dst = '"你好"'
 
         assert (
-            PunctuationFixer.fix(
+            fix_punctuation(
                 src,
                 dst,
                 BaseLanguage.Enum.ZH,
@@ -92,7 +101,7 @@ class TestPunctuationFixer:
         dst = "\u201chello\u201d"
 
         assert (
-            PunctuationFixer.fix(
+            fix_punctuation(
                 src,
                 dst,
                 BaseLanguage.Enum.JA,

@@ -1,22 +1,28 @@
 from api.Server.Routes.SettingsRoutes import SettingsRoutes
+from tests.api.Server.Routes.route_contracts import JsonRouteCase
+from tests.api.Server.Routes.route_contracts import RecordingRouteService
 from tests.api.Server.Routes.route_contracts import RouteRecorder
-from tests.api.Server.Routes.route_contracts import SETTINGS_ROUTE_PATHS
+from tests.api.Server.Routes.route_contracts import (
+    assert_registered_json_routes_delegate_to_service,
+)
 
 
-def test_settings_routes_paths_match_expected_contract() -> None:
-    actual_paths = (
-        SettingsRoutes.SNAPSHOT_PATH,
-        SettingsRoutes.UPDATE_PATH,
-        SettingsRoutes.ADD_RECENT_PROJECT_PATH,
-        SettingsRoutes.REMOVE_RECENT_PROJECT_PATH,
-    )
-
-    assert actual_paths == SETTINGS_ROUTE_PATHS
+SETTINGS_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
+    JsonRouteCase("/api/settings/app", "get_app_settings"),
+    JsonRouteCase("/api/settings/update", "update_app_settings"),
+    JsonRouteCase("/api/settings/recent-projects/add", "add_recent_project"),
+    JsonRouteCase("/api/settings/recent-projects/remove", "remove_recent_project"),
+)
 
 
 def test_settings_routes_register_expected_http_contract() -> None:
     recorder = RouteRecorder()
+    service = RecordingRouteService()
 
-    SettingsRoutes.register(recorder, object())
+    SettingsRoutes.register(recorder, service)
 
-    assert recorder.json_routes == [("POST", path) for path in SETTINGS_ROUTE_PATHS]
+    assert_registered_json_routes_delegate_to_service(
+        recorder,
+        SETTINGS_ROUTE_CASES,
+        service,
+    )

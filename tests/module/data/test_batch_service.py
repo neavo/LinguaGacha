@@ -1,7 +1,6 @@
-from typing import cast
+from typing import Any, cast
 from types import SimpleNamespace
 import threading
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -67,6 +66,56 @@ class GuardedList(list):
         super().__setitem__(index, value)
 
 
+class RecordingPreparedBatchDb:
+    def __init__(self) -> None:
+        self.prepared_payload: dict[str, Any] | None = None
+
+    def prepare_item_update_params(
+        self,
+        items: list[dict[str, Any]] | None,
+    ) -> dict[str, list[dict[str, Any]] | None]:
+        return {"items": items}
+
+    def prepare_rule_delete_params(
+        self,
+        rules: dict[LGDatabase.RuleType, Any] | None,
+    ) -> dict[str, object]:
+        return {"rules": rules, "kind": "delete"}
+
+    def prepare_rule_insert_params(
+        self,
+        rules: dict[LGDatabase.RuleType, Any] | None,
+    ) -> dict[str, object]:
+        return {"rules": rules, "kind": "insert"}
+
+    def prepare_meta_upsert_params(
+        self,
+        meta: dict[str, Any] | None,
+    ) -> dict[str, dict[str, Any] | None]:
+        return {"meta": meta}
+
+    def update_batch_prepared(self, **payload: Any) -> None:
+        self.prepared_payload = payload
+
+
+class RecordingFallbackBatchDb:
+    def __init__(self) -> None:
+        self.payload: dict[str, Any] | None = None
+
+    def update_batch(
+        self,
+        *,
+        items: list[dict[str, Any]] | None = None,
+        rules: dict[LGDatabase.RuleType, Any] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        self.payload = {
+            "items": items,
+            "rules": rules,
+            "meta": meta,
+        }
+
+
 def build_service(db: object | None) -> tuple[BatchService, SimpleNamespace]:
     state_lock = TrackingRLock()
     session = SimpleNamespace(
@@ -91,35 +140,72 @@ def test_update_batch_raises_when_db_missing() -> None:
 
 
 def test_update_batch_syncs_db_and_caches() -> None:
-    db = MagicMock()
+    db = RecordingPreparedBatchDb()
     service, session = build_service(db)
+    glossary = [{"src": "HP", "dst": "生命值"}]
 
     service.update_batch(
         items=[{"id": 1, "src": "new"}, {"id": 2, "src": "skip"}],
-        rules={LGDatabase.RuleType.GLOSSARY: [{"src": "HP", "dst": "生命值"}]},
+        rules={LGDatabase.RuleType.GLOSSARY: glossary},
         meta={"source_language": "JA"},
     )
 
-    db.prepare_item_update_params.assert_called_once()
-    db.prepare_rule_delete_params.assert_called_once()
-    db.prepare_rule_insert_params.assert_called_once()
-    db.prepare_meta_upsert_params.assert_called_once()
-    db.update_batch_prepared.assert_called_once()
+    assert db.prepared_payload == {
+        "item_params": {
+            "items": [{"id": 1, "src": "new"}, {"id": 2, "src": "skip"}],
+        },
+        "rule_delete_params": {
+            "rules": {LGDatabase.RuleType.GLOSSARY: glossary},
+            "kind": "delete",
+        },
+        "rule_insert_params": {
+            "rules": {LGDatabase.RuleType.GLOSSARY: glossary},
+            "kind": "insert",
+        },
+        "meta_params": {"meta": {"source_language": "JA"}},
+    }
     assert session.meta_cache["source_language"] == "JA"
-    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == [
-        {"src": "HP", "dst": "生命值"}
-    ]
+    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == glossary
     assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
     assert session.item_cache[0]["src"] == "new"
 
 
+def test_update_batch_uses_fallback_db_writer_when_prepared_api_is_missing() -> None:
+    db = RecordingFallbackBatchDb()
+    service, session = build_service(db)
+    rules = {LGDatabase.RuleType.GLOSSARY: [{"src": "MP", "dst": "魔力"}]}
+
+    service.update_batch(
+        items=[{"id": 1, "src": "fallback"}],
+        rules=rules,
+        meta={"target_language": "zh-CN"},
+    )
+
+    assert db.payload == {
+        "items": [{"id": 1, "src": "fallback"}],
+        "rules": rules,
+        "meta": {"target_language": "zh-CN"},
+    }
+    assert session.meta_cache["target_language"] == "zh-CN"
+    assert (
+        session.rule_cache[LGDatabase.RuleType.GLOSSARY]
+        == rules[LGDatabase.RuleType.GLOSSARY]
+    )
+    assert session.item_cache[0]["src"] == "fallback"
+
+
 def test_update_batch_noop_cache_sync_when_all_payloads_none() -> None:
-    db = MagicMock()
+    db = RecordingPreparedBatchDb()
     service, session = build_service(db)
 
     service.update_batch()
 
-    db.update_batch_prepared.assert_called_once()
+    assert db.prepared_payload == {
+        "item_params": {"items": None},
+        "rule_delete_params": {"rules": None, "kind": "delete"},
+        "rule_insert_params": {"rules": None, "kind": "insert"},
+        "meta_params": {"meta": None},
+    }
     assert session.meta_cache == {}
     assert session.rule_cache == {}
     assert session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] == "cached"
@@ -127,28 +213,28 @@ def test_update_batch_noop_cache_sync_when_all_payloads_none() -> None:
 
 
 def test_update_batch_does_not_touch_item_cache_when_not_loaded() -> None:
-    db = MagicMock()
+    db = RecordingPreparedBatchDb()
     service, session = build_service(db)
     session.item_cache = None
 
     service.update_batch(items=[{"id": 1, "src": "new"}])
 
-    db.update_batch_prepared.assert_called_once()
+    assert db.prepared_payload is not None
     assert session.item_cache is None
 
 
 def test_update_batch_skips_item_when_id_is_not_int() -> None:
-    db = MagicMock()
+    db = RecordingPreparedBatchDb()
     service, session = build_service(db)
 
     service.update_batch(items=[{"id": "1", "src": "new"}])
 
-    db.update_batch_prepared.assert_called_once()
+    assert db.prepared_payload is not None
     assert session.item_cache[0]["src"] == "old"
 
 
 def test_update_batch_syncs_caches_while_state_lock_is_held() -> None:
-    db = MagicMock()
+    db = RecordingPreparedBatchDb()
     service, session = build_service(db)
 
     service.update_batch(

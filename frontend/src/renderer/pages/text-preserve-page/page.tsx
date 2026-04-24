@@ -1,6 +1,6 @@
 import "@/pages/text-preserve-page/text-preserve-page.css";
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/i18n";
 import { TextPreserveCommandBar } from "@/pages/text-preserve-page/components/text-preserve-command-bar";
 import { TextPreserveConfirmDialog } from "@/pages/text-preserve-page/components/text-preserve-confirm-dialog";

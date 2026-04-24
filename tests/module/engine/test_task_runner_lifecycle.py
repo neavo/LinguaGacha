@@ -72,6 +72,19 @@ def test_reset_request_runtime_resets_optional_text_processor(
     assert calls == ["requester", "prompt", "requester", "prompt", "text"]
 
 
+def test_build_task_limits_covers_default_and_auto_derive() -> None:
+    assert TaskRunnerLifecycle.build_task_limits(None) == (8, 8, 0)
+
+    auto_model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 120}}
+    assert TaskRunnerLifecycle.build_task_limits(auto_model) == (8, 0, 120)
+
+    fixed_model = {"threshold": {"concurrency_limit": 5, "rpm_limit": 0}}
+    assert TaskRunnerLifecycle.build_task_limits(fixed_model) == (5, 5, 0)
+
+    zero_model = {"threshold": {"concurrency_limit": 0, "rpm_limit": 0}}
+    assert TaskRunnerLifecycle.build_task_limits(zero_model) == (8, 8, 0)
+
+
 def test_start_background_run_emits_busy_warning_when_engine_not_idle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

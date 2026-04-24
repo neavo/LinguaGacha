@@ -1,64 +1,58 @@
-import { AlertCircle, LoaderCircle } from 'lucide-react'
+import { AlertCircle, LoaderCircle } from "lucide-react";
 
-import { useCachedWorkbenchLiveState } from '@/app/state/project-pages-context'
-import { WorkbenchCommandBar } from '@/pages/workbench-page/components/workbench-command-bar'
-import { WorkbenchDialogs } from '@/pages/workbench-page/components/workbench-dialogs'
-import { WorkbenchFileTable } from '@/pages/workbench-page/components/workbench-file-table'
-import { WorkbenchStatsSection } from '@/pages/workbench-page/components/workbench-stats-section'
-import { TaskRuntimeConfirmDialog } from '@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog'
-import { TaskRuntimeDetailSheet } from '@/pages/workbench-page/components/task-runtime/task-runtime-detail-sheet'
-import '@/pages/workbench-page/workbench-page.css'
-import { useI18n } from '@/i18n'
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from '@/shadcn/alert'
-import { Button } from '@/shadcn/button'
+import { useCachedWorkbenchLiveState } from "@/app/runtime/project-pages/project-pages-context";
+import type { UseWorkbenchLiveStateResult } from "@/pages/workbench-page/use-workbench-live-state";
+import { WorkbenchCommandBar } from "@/pages/workbench-page/components/workbench-command-bar";
+import { WorkbenchDialogs } from "@/pages/workbench-page/components/workbench-dialogs";
+import { WorkbenchFileTable } from "@/pages/workbench-page/components/workbench-file-table";
+import { WorkbenchStatsSection } from "@/pages/workbench-page/components/workbench-stats-section";
+import { TaskRuntimeConfirmDialog } from "@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog";
+import { TaskRuntimeDetailSheet } from "@/pages/workbench-page/components/task-runtime/task-runtime-detail-sheet";
+import "@/pages/workbench-page/workbench-page.css";
+import { useI18n } from "@/i18n";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/shadcn/alert";
+import { Button } from "@/shadcn/button";
 
 type WorkbenchPageProps = {
-  is_sidebar_collapsed: boolean
-}
+  is_sidebar_collapsed: boolean;
+};
 
 export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
-  const { t } = useI18n()
-  const workbench_state = useCachedWorkbenchLiveState()
+  const { t } = useI18n();
+  const workbench_state = useCachedWorkbenchLiveState<UseWorkbenchLiveStateResult>();
 
   return (
     <div
       className="workbench-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
-      {workbench_state.refresh_error === null
-        ? null
-        : (
-            <Alert variant="destructive">
-              <AlertCircle />
-              <AlertTitle>{t('workbench_page.feedback.refresh_failed_title')}</AlertTitle>
-              <AlertDescription>{workbench_state.refresh_error}</AlertDescription>
-              <AlertAction>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={workbench_state.is_refreshing}
-                  onClick={() => {
-                    void workbench_state.refresh_snapshot()
-                  }}
-                >
-                  {workbench_state.is_refreshing
-                    ? (
-                        <>
-                          <LoaderCircle className="animate-spin" data-icon="inline-start" />
-                          {t('app.action.loading')}
-                        </>
-                      )
-                    : t('app.action.retry')}
-                </Button>
-              </AlertAction>
-            </Alert>
-          )}
+      {workbench_state.refresh_error === null ? null : (
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertTitle>{t("workbench_page.feedback.refresh_failed_title")}</AlertTitle>
+          <AlertDescription>{workbench_state.refresh_error}</AlertDescription>
+          <AlertAction>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={workbench_state.is_refreshing}
+              onClick={() => {
+                void workbench_state.refresh_snapshot();
+              }}
+            >
+              {workbench_state.is_refreshing ? (
+                <>
+                  <LoaderCircle className="animate-spin" data-icon="inline-start" />
+                  {t("app.action.loading")}
+                </>
+              ) : (
+                t("app.action.retry")
+              )}
+            </Button>
+          </AlertAction>
+        </Alert>
+      )}
       <WorkbenchStatsSection
         stats={workbench_state.stats}
         stats_mode={workbench_state.stats_mode}
@@ -73,12 +67,12 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         on_selection_change={workbench_state.apply_table_selection}
         on_prepare_entry_action={workbench_state.prepare_entry_action}
         on_replace={(entry_id) => {
-          void workbench_state.request_replace_file(entry_id)
+          void workbench_state.request_replace_file(entry_id);
         }}
         on_reset={workbench_state.request_reset_file}
         on_delete={workbench_state.request_delete_file}
         on_reorder={(ordered_entry_ids) => {
-          void workbench_state.request_reorder_entries(ordered_entry_ids)
+          void workbench_state.request_reorder_entries(ordered_entry_ids);
         }}
       />
       <WorkbenchCommandBar
@@ -91,7 +85,7 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         can_export_translation={workbench_state.can_export_translation}
         can_close_project={workbench_state.can_close_project}
         on_add_file={() => {
-          void workbench_state.request_add_file()
+          void workbench_state.request_add_file();
         }}
         on_delete_selected={workbench_state.request_delete_selected_files}
         on_export_translation={workbench_state.request_export_translation}
@@ -100,7 +94,7 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
       <WorkbenchDialogs
         dialog_state={workbench_state.dialog_state}
         on_confirm={() => {
-          void workbench_state.confirm_dialog()
+          void workbench_state.confirm_dialog();
         }}
         on_close={workbench_state.close_dialog}
       />
@@ -114,31 +108,31 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         on_confirm={workbench_state.analysis_task_runtime.confirm_analysis_task_action}
         on_close={workbench_state.analysis_task_runtime.close_analysis_task_action_confirmation}
       />
-      {workbench_state.active_workbench_task_view.task_kind === 'analysis'
-        && workbench_state.active_workbench_task_detail !== null
-        ? (
-            <TaskRuntimeDetailSheet
-              open={workbench_state.analysis_task_runtime.analysis_detail_sheet_open}
-              view_model={workbench_state.active_workbench_task_detail}
-              on_close={workbench_state.analysis_task_runtime.close_analysis_detail_sheet}
-              on_request_stop_confirmation={() => {
-                workbench_state.analysis_task_runtime.request_analysis_task_action_confirmation('stop-analysis')
-              }}
-            />
-          )
-        : workbench_state.active_workbench_task_view.task_kind === 'translation'
-          && workbench_state.active_workbench_task_detail !== null
-          ? (
-            <TaskRuntimeDetailSheet
-              open={workbench_state.translation_task_runtime.translation_detail_sheet_open}
-              view_model={workbench_state.active_workbench_task_detail}
-              on_close={workbench_state.translation_task_runtime.close_translation_detail_sheet}
-              on_request_stop_confirmation={() => {
-                workbench_state.translation_task_runtime.request_task_action_confirmation('stop-translation')
-              }}
-            />
-            )
-          : null}
+      {workbench_state.active_workbench_task_view.task_kind === "analysis" &&
+      workbench_state.active_workbench_task_detail !== null ? (
+        <TaskRuntimeDetailSheet
+          open={workbench_state.analysis_task_runtime.analysis_detail_sheet_open}
+          view_model={workbench_state.active_workbench_task_detail}
+          on_close={workbench_state.analysis_task_runtime.close_analysis_detail_sheet}
+          on_request_stop_confirmation={() => {
+            workbench_state.analysis_task_runtime.request_analysis_task_action_confirmation(
+              "stop-analysis",
+            );
+          }}
+        />
+      ) : workbench_state.active_workbench_task_view.task_kind === "translation" &&
+        workbench_state.active_workbench_task_detail !== null ? (
+        <TaskRuntimeDetailSheet
+          open={workbench_state.translation_task_runtime.translation_detail_sheet_open}
+          view_model={workbench_state.active_workbench_task_detail}
+          on_close={workbench_state.translation_task_runtime.close_translation_detail_sheet}
+          on_request_stop_confirmation={() => {
+            workbench_state.translation_task_runtime.request_task_action_confirmation(
+              "stop-translation",
+            );
+          }}
+        />
+      ) : null}
     </div>
-  )
+  );
 }

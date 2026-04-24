@@ -1,4 +1,4 @@
-import type { QualityStatisticsDependencySnapshot } from "@/app/project-runtime/quality-statistics-auto";
+import type { QualityStatisticsDependencySnapshot } from "@/app/project/quality/quality-statistics-auto";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@/i18n";

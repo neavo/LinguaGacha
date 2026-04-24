@@ -1,4 +1,4 @@
-import type { ProjectStoreQualityState } from "@/app/project-runtime/project-store";
+import type { ProjectStoreQualityState } from "@/app/project/store/project-store";
 import {
   PROOFREADING_NO_WARNING_CODE,
   PROOFREADING_STATUS_ORDER,

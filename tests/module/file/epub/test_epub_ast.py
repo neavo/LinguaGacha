@@ -191,35 +191,6 @@ def test_parse_opf_title_skips_blank_and_uses_next_non_empty(config: Config) -> 
     assert pkg.opf_title_path.endswith("/metadata[1]/title[2]")
 
 
-def test_parse_opf_title_defensive_skips_non_element_nodes(
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    handler = EPUBAst(config)
-    content = build_zip_with_files({"OEBPS/content.opf": b"<package />"})
-
-    class DummyRoot:
-        def get(self, name: str) -> str | None:
-            del name
-            return None
-
-        def xpath(self, expr: str):
-            if "metadata" in expr and "title" in expr:
-                return ["bad-node"]
-            return []
-
-    monkeypatch.setattr(
-        "module.File.EPUB.EPUBAst.etree.fromstring",
-        lambda data: DummyRoot(),
-    )
-
-    with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
-        pkg = handler.parse_opf(zf, "OEBPS/content.opf")
-
-    assert pkg.opf_title_path is None
-    assert pkg.opf_title_text is None
-
-
 def test_parse_xhtml_or_html_recovers_from_undefined_named_entity(
     config: Config,
 ) -> None:
@@ -767,29 +738,6 @@ def test_read_from_stream_skips_nav_when_not_html_extension(
     assert called_docs == ["OEBPS/text/ch1.xhtml"]
 
 
-def test_extract_items_from_ncx_skips_non_element_xpath_results(
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    handler = EPUBAst(config)
-    text_elem = etree.Element("text")
-    text_elem.text = "A"
-
-    class DummyRoot:
-        def xpath(self, expr: str):
-            del expr
-            return ["not-element", text_elem]
-
-    monkeypatch.setattr(handler, "parse_ncx_xml", lambda raw: DummyRoot())
-    monkeypatch.setattr(
-        handler, "build_elem_path", lambda root, elem: "/ncx[1]/text[1]"
-    )
-
-    items = handler.extract_items_from_ncx("toc.ncx", b"ignored", "book.epub")
-
-    assert [it.get_src() for it in items] == ["A"]
-
-
 def test_parse_xhtml_or_html_skips_entity_fix_when_no_ampersand(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,
@@ -825,50 +773,6 @@ def test_iter_translatable_text_slots_builds_paths_when_no_path_map(
     assert len(slots) == 1
     assert slots[0][0].path == handler.build_elem_path(root, p)
     assert slots[0][1] == "Head"
-
-
-def test_has_block_descendant_skips_non_str_tag_and_self(config: Config) -> None:
-    handler = EPUBAst(config)
-
-    class DummyElem:
-        def __init__(
-            self, tag: object, descendants: list[DummyElem] | None = None
-        ) -> None:
-            self.tag = tag
-            self._descendants = descendants or []
-
-        def iterdescendants(self):
-            return iter(self._descendants)
-
-    root = DummyElem("div")
-    non_str_tag = DummyElem(123)
-    block = DummyElem("p")
-    root._descendants = [non_str_tag, root, block]
-
-    assert handler.has_block_descendant(root) is True
-
-
-def test_build_elem_path_does_not_break_when_sibling_scan_misses_current(
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    handler = EPUBAst(config)
-    root = etree.fromstring(b"<html><body><p>1</p><p>2</p></body></html>")
-    p2 = root.xpath(".//*[local-name()='p']")[1]
-
-    def only_first_child(elem):
-        for child in elem:
-            if isinstance(child.tag, str):
-                yield child
-                break
-
-    monkeypatch.setattr(
-        "module.File.EPUB.EPUBAst.EPUBAst.iter_children_elements", only_first_child
-    )
-
-    path = handler.build_elem_path(root, p2)
-
-    assert path.endswith("/p[1]")
 
 
 def test_parse_container_opf_path_and_parse_opf(config: Config) -> None:

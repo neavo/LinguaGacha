@@ -26,18 +26,11 @@ class HasNonCallableClose:
     close = 123
 
 
-def test_stream_control_create_passes_through() -> None:
-    control = StreamControl.create(stop_checker=None, deadline_monotonic=1.25)
-    assert control.stop_checker is None
-    assert control.deadline_monotonic == 1.25
-
-
-def test_safe_close_resource_no_close_is_noop() -> None:
+def test_safe_close_resource_ignores_objects_without_callable_close() -> None:
     safe_close_resource(object())
-
-
-def test_safe_close_resource_non_callable_close_is_noop() -> None:
-    safe_close_resource(HasNonCallableClose())
+    resource = HasNonCallableClose()
+    safe_close_resource(resource)
+    assert resource.close == 123
 
 
 def test_safe_close_resource_calls_close() -> None:

@@ -59,7 +59,6 @@ class Translation(Base):
 
         self.scheduler: TranslationScheduler | None = None
         self.progress_tracker = TranslationProgressTracker(self)
-        self.task_hooks: TranslationTaskHooks | None = None
 
         # 注册事件
         self.subscribe(Base.Event.PROJECT_CHECK, self.project_check_run)
@@ -531,15 +530,6 @@ class Translation(Base):
         # 设置项目状态
         dm.set_project_status(status)
 
-    def initialize_task_limits(self) -> tuple[int, int, int]:
-        """推导任务并发与速率上限。
-
-        - `concurrency_limit=0` 表示自动：根据 rpm 估算。
-        - 未配置 rpm 时，沿用旧行为：rps 默认为 concurrency，避免短时间突发。
-        """
-        model = self.model if hasattr(self, "model") else None
-        return TaskRunnerLifecycle.build_task_limits(model)
-
     def get_task_buffer_size(self, max_workers: int) -> int:
         # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。
         return max(64, min(4096, max_workers * 4))
@@ -578,17 +568,13 @@ class Translation(Base):
         normal_queue_size, high_queue_size, commit_queue_size = (
             hooks.build_pipeline_sizes()
         )
-        self.task_hooks = hooks
-        try:
-            TaskPipeline(
-                hooks=hooks,
-                max_workers=max_workers,
-                normal_queue_size=normal_queue_size,
-                high_queue_size=high_queue_size,
-                commit_queue_size=commit_queue_size,
-            ).run()
-        finally:
-            self.task_hooks = None
+        TaskPipeline(
+            hooks=hooks,
+            max_workers=max_workers,
+            normal_queue_size=normal_queue_size,
+            high_queue_size=high_queue_size,
+            commit_queue_size=commit_queue_size,
+        ).run()
 
     # MTool 优化器后处理
     def mtool_optimizer_postprocess(self, items: list[Item]) -> None:

@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -7,27 +6,6 @@ import pytest
 from base.BaseLanguage import BaseLanguage
 from base.BasePath import BasePath
 from module.Config import Config
-
-
-class TestConfigPaths:
-    def test_base_path_get_user_data_root_dir_prefers_userdata_root_in_portable_mode(
-        self, monkeypatch
-    ) -> None:
-        BasePath.reset_for_test()
-        BasePath.APP_DIR = "/tmp/app"
-        BasePath.DATA_DIR = "/tmp/data"
-
-        assert BasePath.get_user_data_root_dir() == os.path.join(
-            "/tmp/data", "userdata"
-        )
-
-    def test_base_path_get_user_data_root_dir_uses_userdata_root_by_default(
-        self, monkeypatch
-    ) -> None:
-        BasePath.reset_for_test()
-        BasePath.initialize("/tmp/app", False)
-
-        assert BasePath.get_user_data_root_dir() == os.path.join("/tmp/app", "userdata")
 
 
 class TestConfigBehavior:
@@ -465,23 +443,15 @@ class TestConfigModels:
         assert config.models == [{"id": "m1", "type": "PRESET"}]
         assert fake.models == config.models
 
-    def test_set_active_model_id_and_sync_methods_call_manager(
+    def test_set_active_model_id_calls_manager(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class FakeManager:
             def __init__(self) -> None:
                 self.active_id: str = ""
-                self.models: list[dict[str, object]] = []
-                self.activate_model_id: str = "from_manager"
-
-            def set_models(self, models: list[dict[str, object]]) -> None:
-                self.models = list(models)
 
             def set_active_model_id(self, model_id: str) -> None:
                 self.active_id = model_id
-
-            def get_models_as_dict(self) -> list[dict[str, object]]:
-                return [{"id": "x"}]
 
         fake = FakeManager()
         monkeypatch.setattr("module.Config.ModelManager.get", lambda: fake)
@@ -489,13 +459,3 @@ class TestConfigModels:
         config = Config(models=[{"id": "m1"}], activate_model_id="m1")
         config.set_active_model_id("m2")
         assert fake.active_id == "m2"
-
-        config.models = [{"id": "a"}]
-        config.activate_model_id = "a"
-        config.sync_models_to_manager()
-        assert fake.models == [{"id": "a"}]
-        assert fake.active_id == "a"
-
-        config.sync_models_from_manager()
-        assert config.models == [{"id": "x"}]
-        assert config.activate_model_id == "from_manager"

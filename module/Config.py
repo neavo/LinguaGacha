@@ -261,20 +261,6 @@ class Config:
         self.activate_model_id = model_id
         ModelManager.get().set_active_model_id(model_id)
 
-    # 同步模型数据到 ModelManager
-    def sync_models_to_manager(self) -> None:
-        """将 Config 中的 models 同步到 ModelManager"""
-        manager = ModelManager.get()
-        manager.set_models(self.models or [])
-        manager.set_active_model_id(self.activate_model_id)
-
-    # 从 ModelManager 同步模型数据
-    def sync_models_from_manager(self) -> None:
-        """从 ModelManager 同步数据到 Config"""
-        manager = ModelManager.get()
-        self.models = manager.get_models_as_dict()
-        self.activate_model_id = manager.activate_model_id
-
     # ========== 最近打开的工程 ==========
     def add_recent_project(self, path: str, name: str) -> None:
         """添加最近打开的工程"""

@@ -1,5 +1,4 @@
 import compression.zstd
-from pathlib import Path
 
 
 class ZstdTool:
@@ -17,19 +16,3 @@ class ZstdTool:
     def decompress(cls, data: bytes) -> bytes:
         """解压数据"""
         return compression.zstd.decompress(data)
-
-    @classmethod
-    def compress_file(cls, file_path: str) -> tuple[bytes, int]:
-        """压缩文件，返回 (压缩后的数据, 原始大小)"""
-        with open(file_path, "rb") as f:
-            original_data = f.read()
-        compressed_data = cls.compress(original_data)
-        return compressed_data, len(original_data)
-
-    @classmethod
-    def decompress_to_file(cls, data: bytes, file_path: str) -> None:
-        """解压数据并写入文件"""
-        Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-        decompressed_data = cls.decompress(data)
-        with open(file_path, "wb") as f:
-            f.write(decompressed_data)

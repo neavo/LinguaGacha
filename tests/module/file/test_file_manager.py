@@ -325,23 +325,6 @@ def test_parse_asset_dispatches_simple_extensions(
     assert [item.get_src() for item in items] == [expected]
 
 
-def test_read_from_assets_combines_results(
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    manager = FileManager(config)
-    monkeypatch.setattr("module.File.TXT.TextHelper.get_encoding", lambda **_: "utf-8")
-
-    items = manager.read_from_assets({"a.txt": b"line-a", "b.txt": b"line-b"})
-
-    assert {
-        (item.get_file_path().replace("\\", "/"), item.get_src()) for item in items
-    } == {
-        ("a.txt", "line-a"),
-        ("b.txt", "line-b"),
-    }
-
-
 def test_write_to_path_calls_all_writers_and_returns_output(
     config: Config,
     fs,

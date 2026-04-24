@@ -57,7 +57,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     A["desktop-api.ts"] --> B["/api/project/bootstrap/stream"]
-    B --> C["createProjectRuntime.bootstrap()"]
+    B --> C["createProjectBootstrapLoader.bootstrap()"]
     C --> D["ProjectStore.applyBootstrapStage()"]
     E["/api/events/stream"] --> F["DesktopRuntimeContext"]
     F --> G["ProjectStore.applyProjectPatch()"]
@@ -65,7 +65,7 @@ flowchart TD
 ```
 
 ### `ProjectStore` 的职责
-- `frontend/src/renderer/app/project-runtime/` 负责把 bootstrap 流与 `project.patch` 收口成渲染层可消费的最小项目运行态。
+- `frontend/src/renderer/app/project/store/` 负责把 bootstrap 流与 `project.patch` 收口成渲染层可消费的最小项目运行态。
 - 稳定 section 固定为：`project`、`files`、`items`、`quality`、`prompts`、`analysis`、`proofreading`、`task`。
 - `revisions` 额外维护 `projectRevision` 与 `sections[stage]`。
 - 质量规则统计常驻缓存不进入 `ProjectStore`；应用根的 `QualityStatisticsProvider` 会在 warmup ready 后预热四类统计，并由规则页通过 `useQualityStatistics(ruleType)` 消费。
@@ -94,17 +94,22 @@ flowchart TD
 - 若 `project.patch` 载荷不合法，当前实现会回退为 `refresh_project_runtime()`，而不是让页面直接猜测修复策略。
 - 工作台与校对页在工程切换后都会先清空本地快照，再等待各自的 change signal 驱动首次有效刷新；不会在空 `ProjectStore` 上做 eager refresh。
 - `ProjectPagesProvider` 当前把 `project_warmup` 定义为“工作台首屏已基于本次 bootstrap 完成刷新”，`wait_for_barrier("project_warmup", { checkpoint })` 会要求工作台 `last_loaded_at` 晚于该 checkpoint；校对页缓存仍通过独立 barrier 维护。
-- 校对页只把 `project / items / quality` 视为后台派生真实输入；`prompts`、`analysis` 单独变化不再触发校对缓存失效，`proofreading / task` 仅在没有 item 载荷时发 `noop`。
+- `ProjectPagesProvider` 只消费页面运行态 adapter 暴露的缓存状态和 barrier 字段；工作台、校对页自己的 hook 仍归页面侧维护，`app/runtime` 不直接导入页面私有 hook。
+- 校对页只把 `project / items / quality` 视为后台派生真实输入；`prompts`、`analysis` 单独变化不会触发校对缓存失效，`proofreading / task` 仅在没有 item 载荷时发 `noop`。
 - 校对页把 `ProjectStore` 原始状态同步到独立 worker cache：`hydrate_full` 负责项目级全量同步，`apply_item_delta` 只重算变更条目，`build_list_view` 与 `build_filter_panel` 负责列表与筛选面板查询；warnings、默认 filters、筛选 facets 与排序结果都由 worker 持有，主线程只保留选区、游标、弹窗等轻状态。
-- 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`；其中 `proofreading_cache_refresh` 的 ready 定义是“当前列表查询已结算，且 `current_filters` 对应的筛选面板已预热完成”，不再复用 `project_warmup` 作为可操作条件。
-- glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续比较统计依赖签名（项目相关文本、规则 key 与 descriptor 依赖字段）决定是否后台刷新；规则页本身不再创建 worker 或维护统计刷新 effect。
+- 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`；其中 `proofreading_cache_refresh` 的 ready 定义是“当前列表查询已结算，且 `current_filters` 对应的筛选面板已预热完成”，可操作条件独立于 `project_warmup`。
+- glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续比较统计依赖签名（项目相关文本、规则 key 与 descriptor 依赖字段）决定是否后台刷新；规则页通过 provider 消费统计，不创建独立 worker 或维护统计刷新 effect。
 
 ## 页面 / widget / shadcn / 样式归属
 
 | 路径 | 稳定职责 | 归属规则 |
 | --- | --- | --- |
-| `app/` | 应用根、导航、壳层组件、桌面运行时上下文、项目运行态装配 | 需要全局上下文、bridge 接缝、统一运行态时留在这里 |
-| `pages/` | 页面入口、页面私有组件、页面 CSS、页面私有 hook 与辅助模块 | 每个页面目录以 `page.tsx` 为入口，不被其他页面反向依赖 |
+| `app/` | 应用根、导航、壳层组件、应用运行态、项目事实仓库、项目派生与质量统计 | 需要全局上下文、bridge 接缝、统一运行态或项目领域规则时留在这里；除导航注册表外，不直接依赖页面私有实现 |
+| `app/runtime/` | 桌面运行态、项目页面 barrier、toast 运行态 | 只放应用生命周期、上下文和页面注册边界需要的窄接口，不承载项目事实派生规则 |
+| `app/project/store/` | `ProjectStore`、bootstrap loader、项目条目文本采集 | 渲染层项目事实的权威仓库与 bootstrap 消费入口 |
+| `app/project/derived/` | 项目 prefilter、翻译 / 分析重置、分析术语导入规划 | 只放基于项目事实生成 mutation 或派生计划的规则 |
+| `app/project/quality/` | 质量规则运行态、统计 worker、统计缓存与 provider | 质量规则切片与统计缓存归这里，页面只消费 provider 或纯函数 |
+| `pages/` | 页面入口、页面私有组件、页面 CSS、页面私有 hook 与辅助模块 | 每个页面目录以 `page.tsx` 为入口，不被其他页面反向依赖；页面派生视图与页面 mutation planner 留在对应页面目录 |
 | `widgets/` | 跨页面复用的组合组件 | `app-table`、`command-bar`、`setting-card-row` 等稳定组合层放这里 |
 | `shadcn/` | shadcn CLI 管理的基础组件源码与项目内定制 | 业务组合组件不得混入 |
 | `hooks/` | 跨页面复用的交互 hook | 不承载页面语义 |
@@ -123,6 +128,10 @@ flowchart TD
 - `app/navigation/types.ts`
 - `app/navigation/schema.ts`
 - `app/navigation/screen-registry.ts`
+
+补充规则：
+- `screen-registry.ts` 是 `app/` 中唯一允许直接导入页面入口和页面运行态 adapter 的文件；其它 `app/` 模块如果需要页面缓存状态，只消费 `ProjectPagesProvider` 提供的窄接口。
+- 工作台任务 UI 运行态只归 `pages/workbench-page/task-runtime/`，翻译 / 分析任务模型与波形工具不从 `app/` 或 `lib/` 暴露。
 
 稳定但不显然的映射如下：
 
