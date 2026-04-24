@@ -30,8 +30,8 @@ export const en_us_app = {
     import_here: "Release to import the rule file",
   },
   toggle: {
-    disabled: "Disabled",
-    enabled: "Enabled",
+    disabled: "OFF",
+    enabled: "ON",
   },
   drag: {
     enabled: "Drag to reorder",
