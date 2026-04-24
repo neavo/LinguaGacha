@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/shadcn/badge";
 import { Button } from "@/shadcn/button";
 import { Kbd } from "@/shadcn/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 
 type ProofreadingEditDialogProps = {
@@ -53,6 +54,125 @@ function resolve_warning_badge_tone(): ProofreadingBadgeTone {
 
 function resolve_badge_tone_class_name(tone: ProofreadingBadgeTone): string {
   return `proofreading-page__dialog-status-badge--tone-${tone}`;
+}
+
+function render_fragment_section(title: string, fragments: string[]): JSX.Element | null {
+  if (fragments.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="proofreading-page__dialog-badge-tooltip-section">
+      <p className="proofreading-page__dialog-badge-tooltip-title font-medium">{title}</p>
+      <ul className="proofreading-page__dialog-badge-tooltip-list">
+        {fragments.map((fragment) => (
+          <li key={fragment} className="proofreading-page__dialog-badge-tooltip-item">
+            {fragment}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function render_glossary_tooltip_content(
+  applied_terms: ProofreadingGlossaryTerm[],
+  failed_terms: ProofreadingGlossaryTerm[],
+  t: ReturnType<typeof useI18n>["t"],
+): JSX.Element | null {
+  if (applied_terms.length === 0 && failed_terms.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="proofreading-page__dialog-badge-tooltip-copy">
+      {render_fragment_section(
+        t("proofreading_page.tooltip.glossary_applied_terms"),
+        applied_terms.map((term) => `${term[0]} -> ${term[1]}`),
+      )}
+      {render_fragment_section(
+        t("proofreading_page.tooltip.glossary_failed_terms"),
+        failed_terms.map((term) => term[0]),
+      )}
+    </div>
+  );
+}
+
+function render_warning_tooltip_content(
+  item: ProofreadingItem,
+  warning: string,
+  t: ReturnType<typeof useI18n>["t"],
+): JSX.Element | null {
+  if (warning === "KANA") {
+    const fragments = item.warning_fragments_by_code.KANA ?? [];
+    return fragments.length === 0 ? null : (
+      <div className="proofreading-page__dialog-badge-tooltip-copy">
+        {render_fragment_section(t("proofreading_page.tooltip.kana_fragments"), fragments)}
+      </div>
+    );
+  }
+
+  if (warning === "HANGEUL") {
+    const fragments = item.warning_fragments_by_code.HANGEUL ?? [];
+    return fragments.length === 0 ? null : (
+      <div className="proofreading-page__dialog-badge-tooltip-copy">
+        {render_fragment_section(t("proofreading_page.tooltip.hangeul_fragments"), fragments)}
+      </div>
+    );
+  }
+
+  if (warning === "TEXT_PRESERVE") {
+    const fragments = item.warning_fragments_by_code.TEXT_PRESERVE;
+    if (fragments === undefined) {
+      return null;
+    }
+
+    return (
+      <div className="proofreading-page__dialog-badge-tooltip-copy">
+        {render_fragment_section(t("proofreading_page.tooltip.text_preserve_failed"), fragments)}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function render_status_badge(args: {
+  label: string;
+  tone: ProofreadingBadgeTone;
+  tooltip_content?: JSX.Element | null;
+}): JSX.Element {
+  const class_name = [
+    "proofreading-page__dialog-status-badge",
+    resolve_badge_tone_class_name(args.tone),
+  ].join(" ");
+  const badge = (
+    <Badge
+      variant="outline"
+      tabIndex={args.tooltip_content === null || args.tooltip_content === undefined ? undefined : 0}
+      className={class_name}
+    >
+      {args.label}
+    </Badge>
+  );
+
+  if (args.tooltip_content === null || args.tooltip_content === undefined) {
+    return badge;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{badge}</TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="proofreading-page__dialog-badge-tooltip"
+      >
+        {args.tooltip_content}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
@@ -224,6 +344,12 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const status_badge_tone = resolve_status_badge_tone(item.status);
   const status_label = status_label_key === undefined ? item.status : t(status_label_key);
   const glossary_badge_state = resolve_glossary_badge_state(item, props.draft_dst, t);
+  const glossary_terms = partition_glossary_terms(item, props.draft_dst);
+  const glossary_tooltip_content = render_glossary_tooltip_content(
+    glossary_terms.applied_terms,
+    glossary_terms.failed_terms,
+    t,
+  );
   const { source_highlights, translation_highlights } = build_glossary_highlights(
     item,
     props.draft_dst,
@@ -340,44 +466,35 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                   {t("proofreading_page.fields.status")}
                 </h3>
                 <div className="proofreading-page__dialog-status-strip">
-                  <Badge
-                    variant="outline"
-                    className={[
-                      "proofreading-page__dialog-status-badge",
-                      resolve_badge_tone_class_name(status_badge_tone),
-                    ]
-                      .join(" ")
-                      .trim()}
-                  >
-                    {status_label}
-                  </Badge>
-                  {glossary_badge_state === null ? null : (
-                    <Badge
-                      variant="outline"
-                      className={[
-                        "proofreading-page__dialog-status-badge",
-                        resolve_badge_tone_class_name(glossary_badge_state.tone),
-                      ].join(" ")}
-                    >
-                      {glossary_badge_state.label}
-                    </Badge>
-                  )}
+                  {render_status_badge({
+                    label: status_label,
+                    tone: status_badge_tone,
+                  })}
+                  {glossary_badge_state === null
+                    ? null
+                    : render_status_badge({
+                        label: glossary_badge_state.label,
+                        tone: glossary_badge_state.tone,
+                        tooltip_content: glossary_tooltip_content,
+                      })}
                   {visible_warning_codes.map((warning) => {
                     const label_key =
                       PROOFREADING_WARNING_LABEL_KEY_BY_CODE[
                         warning as keyof typeof PROOFREADING_WARNING_LABEL_KEY_BY_CODE
                       ];
+                    const warning_tooltip_content = render_warning_tooltip_content(
+                      item,
+                      warning,
+                      t,
+                    );
                     return (
-                      <Badge
-                        key={warning}
-                        variant="outline"
-                        className={[
-                          "proofreading-page__dialog-status-badge",
-                          resolve_badge_tone_class_name(resolve_warning_badge_tone()),
-                        ].join(" ")}
-                      >
-                        {label_key === undefined ? warning : t(label_key)}
-                      </Badge>
+                      <span key={warning} className="proofreading-page__dialog-status-badge-wrap">
+                        {render_status_badge({
+                          label: label_key === undefined ? warning : t(label_key),
+                          tone: resolve_warning_badge_tone(),
+                          tooltip_content: warning_tooltip_content,
+                        })}
+                      </span>
                     );
                   })}
                 </div>

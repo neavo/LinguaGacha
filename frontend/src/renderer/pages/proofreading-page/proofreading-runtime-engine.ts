@@ -20,6 +20,7 @@ import {
   type ProofreadingListView,
   type ProofreadingSearchScope,
   type ProofreadingVisibleItem,
+  type ProofreadingWarningFragmentsByCode,
 } from "@/pages/proofreading-page/types";
 import { TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE } from "@/pages/proofreading-page/text-preserve-smart-patterns";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
@@ -360,6 +361,57 @@ function collect_non_blank_preserved_segments(text: string, sample_regex: RegExp
   return segments;
 }
 
+function build_text_preserve_failed_fragments(args: {
+  source_segments: string[];
+  translation_segments: string[];
+}): string[] {
+  const failed_fragments: string[] = [];
+  const max_length = Math.max(args.source_segments.length, args.translation_segments.length);
+
+  for (let index = 0; index < max_length; index += 1) {
+    const source_segment = args.source_segments[index];
+    const translation_segment = args.translation_segments[index];
+    if (source_segment === translation_segment) {
+      continue;
+    }
+
+    if (source_segment !== undefined) {
+      failed_fragments.push(source_segment);
+    }
+    if (translation_segment !== undefined) {
+      failed_fragments.push(translation_segment);
+    }
+  }
+
+  return unique_strings(failed_fragments);
+}
+
+function collect_contiguous_text_segments(
+  text: string,
+  is_fragment_character: (character: string) => boolean,
+): string[] {
+  const segments: string[] = [];
+  let current_segment = "";
+
+  Array.from(text).forEach((character) => {
+    if (is_fragment_character(character)) {
+      current_segment += character;
+      return;
+    }
+
+    if (current_segment !== "") {
+      segments.push(current_segment);
+      current_segment = "";
+    }
+  });
+
+  if (current_segment !== "") {
+    segments.push(current_segment);
+  }
+
+  return unique_strings(segments);
+}
+
 function is_hiragana_residue_character(character: string): boolean {
   const code_point = character.codePointAt(0);
   return (
@@ -381,9 +433,15 @@ function is_katakana_residue_character(character: string): boolean {
   );
 }
 
-function has_kana_residue(text: string): boolean {
-  return Array.from(text).some((character) => {
+function collect_kana_residue_fragments(text: string): string[] {
+  return collect_contiguous_text_segments(text, (character) => {
     return is_hiragana_residue_character(character) || is_katakana_residue_character(character);
+  });
+}
+
+function collect_hangeul_residue_fragments(text: string): string[] {
+  return collect_contiguous_text_segments(text, (character) => {
+    return HANGEUL_REGEX.test(character);
   });
 }
 
@@ -503,6 +561,7 @@ function has_similarity_error(args: {
 function create_proofreading_client_item(args: {
   item: ProofreadingRuntimeItemRecord;
   warnings: string[];
+  warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
   failed_terms: ProofreadingGlossaryTerm[];
   applied_terms: ProofreadingGlossaryTerm[];
 }): ProofreadingClientItem {
@@ -514,6 +573,7 @@ function create_proofreading_client_item(args: {
     dst: args.item.dst,
     status: args.item.status,
     warnings: [...args.warnings],
+    warning_fragments_by_code: clone_warning_fragments_by_code(args.warning_fragments_by_code),
     failed_glossary_terms: args.failed_terms.map((term) => {
       return [term[0], term[1]] as const;
     }),
@@ -534,6 +594,7 @@ function evaluate_proofreading_item(args: {
   sample_regex_cache: Map<string, RegExp | null>;
 }): ProofreadingClientItem | null {
   const warnings: string[] = [];
+  const warning_fragments_by_code: ProofreadingWarningFragmentsByCode = {};
   const failed_terms: ProofreadingGlossaryTerm[] = [];
   const applied_terms: ProofreadingGlossaryTerm[] = [];
   const sample_regex_cache_key = `${args.item.text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;
@@ -551,6 +612,7 @@ function evaluate_proofreading_item(args: {
     return create_proofreading_client_item({
       item: args.item,
       warnings,
+      warning_fragments_by_code,
       failed_terms,
       applied_terms,
     });
@@ -558,19 +620,34 @@ function evaluate_proofreading_item(args: {
 
   const { src_replaced, dst_replaced } = apply_quality_replacements(args.item, args.quality);
   const normalized_dst = strip_preserved_segments(args.item.dst, sample_regex);
-  if (args.source_language === "JA" && has_kana_residue(normalized_dst)) {
+  const kana_fragments =
+    args.source_language === "JA" ? collect_kana_residue_fragments(normalized_dst) : [];
+  if (kana_fragments.length > 0) {
     warnings.push("KANA");
+    warning_fragments_by_code.KANA = kana_fragments;
   }
 
-  if (args.source_language === "KO" && HANGEUL_REGEX.test(normalized_dst)) {
+  const hangeul_fragments =
+    args.source_language === "KO" ? collect_hangeul_residue_fragments(normalized_dst) : [];
+  if (hangeul_fragments.length > 0) {
     warnings.push("HANGEUL");
+    warning_fragments_by_code.HANGEUL = hangeul_fragments;
   }
 
-  if (
-    collect_non_blank_preserved_segments(src_replaced, sample_regex).join("\u0000") !==
-    collect_non_blank_preserved_segments(dst_replaced, sample_regex).join("\u0000")
-  ) {
+  const source_preserved_segments = collect_non_blank_preserved_segments(
+    src_replaced,
+    sample_regex,
+  );
+  const translation_preserved_segments = collect_non_blank_preserved_segments(
+    dst_replaced,
+    sample_regex,
+  );
+  if (source_preserved_segments.join("\u0000") !== translation_preserved_segments.join("\u0000")) {
     warnings.push("TEXT_PRESERVE");
+    warning_fragments_by_code.TEXT_PRESERVE = build_text_preserve_failed_fragments({
+      source_segments: source_preserved_segments,
+      translation_segments: translation_preserved_segments,
+    });
   }
 
   if (
@@ -603,6 +680,7 @@ function evaluate_proofreading_item(args: {
   return create_proofreading_client_item({
     item: args.item,
     warnings,
+    warning_fragments_by_code,
     failed_terms,
     applied_terms,
   });
@@ -614,6 +692,22 @@ function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
 
 function unique_strings(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function clone_warning_fragments_by_code(
+  warning_fragments_by_code: ProofreadingWarningFragmentsByCode,
+): ProofreadingWarningFragmentsByCode {
+  return {
+    ...(warning_fragments_by_code.KANA === undefined
+      ? {}
+      : { KANA: [...warning_fragments_by_code.KANA] }),
+    ...(warning_fragments_by_code.HANGEUL === undefined
+      ? {}
+      : { HANGEUL: [...warning_fragments_by_code.HANGEUL] }),
+    ...(warning_fragments_by_code.TEXT_PRESERVE === undefined
+      ? {}
+      : { TEXT_PRESERVE: [...warning_fragments_by_code.TEXT_PRESERVE] }),
+  };
 }
 
 function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossaryTerm {

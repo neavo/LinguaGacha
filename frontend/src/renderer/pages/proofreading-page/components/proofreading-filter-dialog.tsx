@@ -189,9 +189,13 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                 <h3 className="proofreading-page__filter-section-title">
                   {t("proofreading_page.filter.status_title")}
                 </h3>
-                {props.loading ? (
+                <span
+                  className="proofreading-page__filter-loading-slot"
+                  data-loading={props.loading ? "true" : undefined}
+                  aria-hidden={!props.loading}
+                >
                   <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-                ) : null}
+                </span>
               </div>
               <div className="proofreading-page__filter-toggle-grid">
                 {props.panel.available_statuses.map((status) => {
