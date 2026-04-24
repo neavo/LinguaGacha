@@ -69,6 +69,11 @@ export const zh_cn_proofreading_page = {
   result_check_title: "结果检查",
   tooltip: {
     warning_title: "警告",
+    glossary_applied_terms: "生效",
+    glossary_failed_terms: "未生效",
+    text_preserve_failed: "未生效",
+    kana_fragments: "假名残留片段",
+    hangeul_fragments: "谚文残留片段",
   },
   filter: {
     status_title: "翻译状态",

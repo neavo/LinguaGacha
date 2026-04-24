@@ -72,6 +72,11 @@ export const en_us_proofreading_page = {
   result_check_title: "Result Check",
   tooltip: {
     warning_title: "Warning",
+    glossary_applied_terms: "Applied",
+    glossary_failed_terms: "Not Applied",
+    text_preserve_failed: "Not Applied",
+    kana_fragments: "Kana Residue Fragments",
+    hangeul_fragments: "Hangeul Residue Fragments",
   },
   filter: {
     status_title: "Translation Status",

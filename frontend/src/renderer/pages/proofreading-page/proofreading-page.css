@@ -182,6 +182,20 @@
   gap: 6px;
 }
 
+.proofreading-page__filter-loading-slot {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  visibility: hidden;
+}
+
+.proofreading-page__filter-loading-slot[data-loading="true"] {
+  visibility: visible;
+}
+
 .proofreading-page__filter-list-row {
   display: flex;
   min-width: 0;
@@ -365,6 +379,10 @@
   border-color: color-mix(in srgb, var(--border) 90%, white 10%);
 }
 
+.proofreading-page__dialog-status-badge-wrap {
+  display: inline-flex;
+}
+
 .proofreading-page__dialog-status-badge--tone-neutral {
   background: color-mix(in srgb, var(--muted) 58%, var(--popover));
   color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground) 22%);
@@ -386,6 +404,46 @@
   border-color: color-mix(in srgb, var(--ui-failure) 48%, var(--border));
   background: color-mix(in srgb, var(--ui-failure) 12%, var(--popover));
   color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground) 18%);
+}
+
+.proofreading-page__dialog-badge-tooltip {
+  max-width: min(360px, calc(100vw - 64px));
+  align-items: stretch;
+  padding: 8px 10px;
+}
+
+.proofreading-page__dialog-badge-tooltip-copy {
+  display: grid;
+  gap: 8px;
+  color: inherit;
+}
+
+.proofreading-page__dialog-badge-tooltip-section {
+  display: grid;
+  gap: 4px;
+}
+
+.proofreading-page__dialog-badge-tooltip-title {
+  margin: 0;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proofreading-page__dialog-badge-tooltip-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proofreading-page__dialog-badge-tooltip-item {
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--background) 88%, var(--foreground) 12%);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .proofreading-page__dialog-editor-title {

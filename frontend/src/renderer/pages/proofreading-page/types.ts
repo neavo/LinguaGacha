@@ -54,6 +54,12 @@ export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
 
 export type ProofreadingGlossaryTerm = readonly [string, string];
 
+export type ProofreadingWarningFragmentsByCode = {
+  KANA?: string[];
+  HANGEUL?: string[];
+  TEXT_PRESERVE?: string[];
+};
+
 export type ProofreadingSummary = {
   total_items: number;
   filtered_items: number;
@@ -76,6 +82,7 @@ export type ProofreadingItem = {
   dst: string;
   status: string;
   warnings: string[];
+  warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
   applied_glossary_terms: ProofreadingGlossaryTerm[];
   failed_glossary_terms: ProofreadingGlossaryTerm[];
 };
@@ -369,6 +376,7 @@ function normalize_proofreading_item(
     warnings: Array.isArray(item.warnings)
       ? unique_strings(item.warnings.map((warning) => String(warning)))
       : [],
+    warning_fragments_by_code: {},
     applied_glossary_terms: normalize_glossary_terms(item.applied_glossary_terms),
     failed_glossary_terms: normalize_glossary_terms(item.failed_glossary_terms),
   };

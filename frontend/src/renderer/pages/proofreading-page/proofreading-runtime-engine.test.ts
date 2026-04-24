@@ -380,9 +380,15 @@ describe("createProofreadingRuntimeEngine", () => {
         return [item.row_id, item.item.warnings];
       }),
     );
+    const item_by_row_id = new Map(
+      list_view.items.map((item) => {
+        return [item.row_id, item.item];
+      }),
+    );
     expect(warning_by_row_id.get("9")).toEqual([]);
     expect(warning_by_row_id.get("10")).toEqual(["KANA"]);
     expect(warning_by_row_id.get("11")).toEqual([]);
+    expect(item_by_row_id.get("10")?.warning_fragments_by_code.KANA).toEqual(["かな"]);
 
     const english_engine = createProofreadingRuntimeEngine();
     const english_sync_state = english_engine.hydrate_full({
@@ -406,6 +412,7 @@ describe("createProofreadingRuntimeEngine", () => {
       sort_state: null,
     });
     expect(english_list_view.items[0]?.item.warnings).toEqual([]);
+    expect(english_list_view.items[0]?.item.warning_fragments_by_code).toEqual({});
   });
 
   it("谚文残留只在韩文源语言检查", () => {
@@ -432,6 +439,7 @@ describe("createProofreadingRuntimeEngine", () => {
       sort_state: null,
     });
     expect(list_view.items[0]?.item.warnings).toEqual(["HANGEUL"]);
+    expect(list_view.items[0]?.item.warning_fragments_by_code.HANGEUL).toEqual(["번역"]);
   });
 
   it("空译文会跳过检查，文本保护按非空保护段的顺序和值比较", () => {
@@ -484,6 +492,10 @@ describe("createProofreadingRuntimeEngine", () => {
     });
     expect(list_view.items[0]?.item.warnings).toEqual([]);
     expect(list_view.items[1]?.item.warnings).toEqual(["TEXT_PRESERVE"]);
+    expect(list_view.items[1]?.item.warning_fragments_by_code.TEXT_PRESERVE).toEqual([
+      "{a}",
+      "{b}",
+    ]);
     expect(list_view.items[2]?.item.warnings).toEqual([]);
   });
 
