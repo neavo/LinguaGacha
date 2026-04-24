@@ -56,10 +56,6 @@ class LGDatabase(Base):
             self.keep_alive_conn.close()
             self.keep_alive_conn = None
 
-    def is_open(self) -> bool:
-        """检查数据库是否已打开"""
-        return self.keep_alive_conn is not None
-
     @contextlib.contextmanager
     def connection(self) -> Generator[sqlite3.Connection, None, None]:
         """获取数据库连接上下文管理器
@@ -705,12 +701,6 @@ class LGDatabase(Base):
             self.update_asset_sort_orders(ordered_paths, conn=local_conn)
             local_conn.commit()
 
-    def get_asset_count(self) -> int:
-        """获取资产数量"""
-        with self.connection() as conn:
-            cursor = conn.execute("SELECT COUNT(*) FROM assets")
-            return cursor.fetchone()[0]
-
     # ========== 翻译条目操作 ==========
 
     def get_all_items(self) -> list[dict[str, Any]]:
@@ -723,35 +713,6 @@ class LGDatabase(Base):
                 data["id"] = row["id"]
                 result.append(data)
             return result
-
-    def get_items_by_file_path(self, file_path: str) -> list[dict[str, Any]]:
-        """按 file_path（JSON 内字段）获取翻译条目"""
-        with self.connection() as conn:
-            try:
-                cursor = conn.execute(
-                    "SELECT id, data FROM items WHERE json_extract(data, '$.file_path') = ? ORDER BY id",
-                    (file_path,),
-                )
-                result: list[dict[str, Any]] = []
-                for row in cursor:
-                    data = JSONTool.loads(row["data"])
-                    data["id"] = row["id"]
-                    result.append(data)
-                return result
-            except sqlite3.OperationalError as e:
-                # 部分运行环境可能缺少 SQLite JSON1 扩展（json_extract 不可用）。
-                if "json_extract" not in str(e):
-                    raise
-
-                cursor = conn.execute("SELECT id, data FROM items ORDER BY id")
-                result = []
-                for row in cursor:
-                    data = JSONTool.loads(row["data"])
-                    if data.get("file_path") != file_path:
-                        continue
-                    data["id"] = row["id"]
-                    result.append(data)
-                return result
 
     def delete_items_by_file_path(
         self, file_path: str, conn: sqlite3.Connection | None = None
@@ -913,39 +874,6 @@ class LGDatabase(Base):
             preview_ids.append(item_id)
 
         return preview_ids
-
-    def insert_items(
-        self,
-        items: list[dict[str, Any]],
-        conn: sqlite3.Connection | None = None,
-    ) -> list[int]:
-        """批量插入翻译条目（不清空已有记录），返回新 ID 列表"""
-        if conn is not None:
-            ids = []
-            for item in items:
-                data_json = JSONTool.dumps({k: v for k, v in item.items() if k != "id"})
-                cursor = conn.execute(
-                    "INSERT INTO items (data) VALUES (?)",
-                    (data_json,),
-                )
-                if cursor.lastrowid is None:
-                    raise ValueError("Failed to get lastrowid")
-                ids.append(int(cursor.lastrowid))
-            return ids
-
-        with self.connection() as local_conn:
-            ids = []
-            for item in items:
-                data_json = JSONTool.dumps({k: v for k, v in item.items() if k != "id"})
-                cursor = local_conn.execute(
-                    "INSERT INTO items (data) VALUES (?)",
-                    (data_json,),
-                )
-                if cursor.lastrowid is None:
-                    raise ValueError("Failed to get lastrowid")
-                ids.append(int(cursor.lastrowid))
-            local_conn.commit()
-            return ids
 
     def update_batch(
         self,

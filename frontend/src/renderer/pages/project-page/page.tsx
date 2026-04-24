@@ -10,10 +10,10 @@ import {
   useState,
 } from "react";
 
-import { type ProjectSnapshot } from "@/app/state/desktop-runtime-context";
-import { useProjectPagesBarrier } from "@/app/state/project-pages-context";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
+import { type ProjectSnapshot } from "@/app/runtime/desktop/desktop-runtime-context";
+import { useProjectPagesBarrier } from "@/app/runtime/project-pages/project-pages-context";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
 import { Button } from "@/shadcn/button";
 import {
   Card,
@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 import "@/pages/project-page/project-page.css";
 import { PROJECT_FORMAT_SUPPORT_ITEMS } from "@/pages/project-page/support-formats";
 import { DesktopApiError, api_fetch } from "@/app/desktop-api";
-import { type ProjectStoreStage } from "@/app/project-runtime/project-store";
+import { type ProjectStoreStage } from "@/app/project/store/project-store";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
 type ProjectPageProps = {

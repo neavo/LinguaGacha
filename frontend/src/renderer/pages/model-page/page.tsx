@@ -12,7 +12,7 @@ import {
 
 import { useI18n } from "@/i18n";
 import "@/pages/model-page/model-page.css";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { ModelCategoryCard } from "@/pages/model-page/components/model-category-card";
 import { ModelItemChip } from "@/pages/model-page/components/model-item-chip";
 import { ModelAdvancedSettingsDialog } from "@/pages/model-page/dialogs/model-advanced-settings-dialog";
@@ -20,12 +20,7 @@ import { ModelBasicSettingsDialog } from "@/pages/model-page/dialogs/model-basic
 import { ModelSelectorDialog } from "@/pages/model-page/dialogs/model-selector-dialog";
 import { ModelTaskSettingsDialog } from "@/pages/model-page/dialogs/model-task-settings-dialog";
 import { useModelPageState } from "@/pages/model-page/use-model-page-state";
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from "@/shadcn/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/shadcn/alert";
 import { Button } from "@/shadcn/button";
 import {
   DropdownMenuContent,
@@ -75,22 +70,15 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
         model={model_page_state.active_dialog_model}
         readonly={model_page_state.readonly}
         onPatch={(patch) =>
-          model_page_state.update_model_patch(
-            model_page_state.dialog_state.model_id ?? "",
-            patch,
-          )
+          model_page_state.update_model_patch(model_page_state.dialog_state.model_id ?? "", patch)
         }
         onRequestOpenSelector={() => {
           if (model_page_state.dialog_state.model_id !== null) {
-            model_page_state.open_selector_dialog(
-              model_page_state.dialog_state.model_id,
-            );
+            model_page_state.open_selector_dialog(model_page_state.dialog_state.model_id);
           }
         }}
         onRequestTestModel={() =>
-          model_page_state.request_test_model(
-            model_page_state.dialog_state.model_id ?? "",
-          )
+          model_page_state.request_test_model(model_page_state.dialog_state.model_id ?? "")
         }
         onClose={model_page_state.close_dialog}
       />
@@ -100,10 +88,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
         model={model_page_state.active_dialog_model}
         readonly={model_page_state.readonly}
         onPatch={(patch) =>
-          model_page_state.update_model_patch(
-            model_page_state.dialog_state.model_id ?? "",
-            patch,
-          )
+          model_page_state.update_model_patch(model_page_state.dialog_state.model_id ?? "", patch)
         }
         onClose={model_page_state.close_dialog}
       />
@@ -113,10 +98,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
         model={model_page_state.active_dialog_model}
         readonly={model_page_state.readonly}
         onPatch={(patch) =>
-          model_page_state.update_model_patch(
-            model_page_state.dialog_state.model_id ?? "",
-            patch,
-          )
+          model_page_state.update_model_patch(model_page_state.dialog_state.model_id ?? "", patch)
         }
         onJsonFormatError={() => {
           push_toast("warning", t("model_page.feedback.json_format_error"));
@@ -144,9 +126,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
           <Alert variant="destructive" className="model-page__notice">
             <AlertCircle />
             <AlertTitle>{t("model_page.feedback.refresh_failed")}</AlertTitle>
-            <AlertDescription>
-              {model_page_state.refresh_error}
-            </AlertDescription>
+            <AlertDescription>{model_page_state.refresh_error}</AlertDescription>
             <AlertAction>
               <Button
                 variant="outline"
@@ -158,10 +138,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
               >
                 {model_page_state.is_refreshing ? (
                   <>
-                    <LoaderCircle
-                      className="animate-spin"
-                      data-icon="inline-start"
-                    />
+                    <LoaderCircle className="animate-spin" data-icon="inline-start" />
                     {t("app.action.loading")}
                   </>
                 ) : (
@@ -172,10 +149,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
           </Alert>
         ) : null}
 
-        <section
-          className="model-page__list"
-          aria-label={t("model_page.title")}
-        >
+        <section className="model-page__list" aria-label={t("model_page.title")}>
           {model_page_state.grouped_categories.map((category) => (
             <ModelCategoryCard
               key={category.type}
@@ -199,19 +173,14 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                 ) : null
               }
               on_reorder={(ordered_model_ids) => {
-                void model_page_state.request_reorder_models(
-                  category.type,
-                  ordered_model_ids,
-                );
+                void model_page_state.request_reorder_models(category.type, ordered_model_ids);
               }}
             >
               {category.models.map((model) => (
                 <ModelItemChip
                   key={model.id}
                   model={model}
-                  active={
-                    model.id === model_page_state.snapshot.active_model_id
-                  }
+                  active={model.id === model_page_state.snapshot.active_model_id}
                   drag_disabled={model_page_state.readonly}
                   drag_aria_label={t("workbench_page.table.drag_handle_aria")}
                   menu={
@@ -219,9 +188,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                       <DropdownMenuGroup>
                         <DropdownMenuItem
                           onSelect={() => {
-                            void model_page_state.request_activate_model(
-                              model.id,
-                            );
+                            void model_page_state.request_activate_model(model.id);
                           }}
                         >
                           <Check />

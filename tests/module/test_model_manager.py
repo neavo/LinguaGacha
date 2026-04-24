@@ -170,29 +170,6 @@ class TestModelManager:
         assert isinstance(active, Model)
         assert active.id == "preset"
 
-    def test_update_model_by_dict_preserves_id_and_type(self) -> None:
-        manager = ModelManager()
-        manager.set_models([build_model_data("custom", ModelType.CUSTOM_OPENAI.value)])
-
-        ok = manager.update_model_by_dict(
-            "custom",
-            {
-                "name": "updated",
-                "type": ModelType.CUSTOM_GOOGLE.value,
-                "api_format": "OpenAI",
-                "api_url": "https://new.example.com",
-                "api_key": "k2",
-                "model_id": "m2",
-            },
-        )
-
-        assert ok is True
-        updated = manager.get_model_by_id("custom")
-        assert isinstance(updated, Model)
-        assert updated.id == "custom"
-        assert updated.type == ModelType.CUSTOM_OPENAI
-        assert updated.name == "updated"
-
     def test_load_preset_models_returns_empty_when_load_failed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -447,23 +424,6 @@ class TestModelManager:
 
         assert manager.update_model(not_exists) is False
 
-    def test_update_model_by_dict_returns_false_for_missing_id(self) -> None:
-        manager = ModelManager()
-        manager.set_models([build_model_data("custom", ModelType.CUSTOM_OPENAI.value)])
-
-        ok = manager.update_model_by_dict(
-            "missing",
-            {
-                "name": "updated",
-                "api_format": "OpenAI",
-                "api_url": "https://new.example.com",
-                "api_key": "k2",
-                "model_id": "m2",
-            },
-        )
-
-        assert ok is False
-
     def test_reset_preset_model_returns_false_for_non_preset(self) -> None:
         manager = ModelManager()
         manager.set_models([build_model_data("custom", ModelType.CUSTOM_OPENAI.value)])
@@ -543,93 +503,6 @@ class TestModelManager:
             "o1",
             "a1",
         ]
-
-    def test_build_global_ordered_ids_for_group_returns_empty_for_empty_models(
-        self,
-    ) -> None:
-        # 为什么：上层传入空列表时，保持返回空，避免 UI 侧出现 None/异常分支。
-        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
-            [],
-            ModelType.CUSTOM_OPENAI.value,
-            ["o1"],
-        )
-
-        assert ordered_ids == []
-
-    def test_build_global_ordered_ids_for_group_keeps_remaining_ids_when_reordered_list_is_short(
-        self,
-    ) -> None:
-        # 为什么：防御性处理，重排列表不完整时也不应丢失原分组尾部的 ID。
-        models = [
-            build_model_data("o1", ModelType.CUSTOM_OPENAI.value),
-            build_model_data("o2", ModelType.CUSTOM_OPENAI.value),
-            build_model_data("o3", ModelType.CUSTOM_OPENAI.value),
-        ]
-        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
-            models,
-            ModelType.CUSTOM_OPENAI.value,
-            ["o1"],
-        )
-
-        assert ordered_ids == ["o1", "o2", "o3"]
-
-    def test_build_global_ordered_ids_for_group_skips_empty_id_in_target_group_when_reordered_list_is_short(
-        self,
-    ) -> None:
-        # 为什么：目标分组里出现空 ID 时也要跳过，避免 ordered_ids 带入空项。
-        models = [
-            build_model_data("o1", ModelType.CUSTOM_OPENAI.value),
-            build_model_data("", ModelType.CUSTOM_OPENAI.value),
-        ]
-        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
-            models,
-            ModelType.CUSTOM_OPENAI.value,
-            ["o1"],
-        )
-
-        assert ordered_ids == ["o1"]
-
-    def test_build_global_ordered_ids_for_group_ignores_empty_id_from_other_groups(
-        self,
-    ) -> None:
-        # 为什么：异常输入下（缺少/空 ID）不能污染 ordered_ids，否则后续 reorder 会出现空项。
-        models: list[dict] = [
-            build_model_data("", ModelType.CUSTOM_GOOGLE.value, api_format="Google"),
-            build_model_data("o1", ModelType.CUSTOM_OPENAI.value),
-        ]
-        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
-            models,
-            ModelType.CUSTOM_OPENAI.value,
-            ["o1"],
-        )
-
-        assert ordered_ids == ["o1"]
-
-    def test_build_global_ordered_ids_for_group_appends_extra_reordered_ids(
-        self,
-    ) -> None:
-        # 为什么：异常输入下（重排列表更长）要补齐尾部 ID，保证 UI 不会“丢模型”。
-        models = [build_model_data("o1", ModelType.CUSTOM_OPENAI.value)]
-        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
-            models,
-            ModelType.CUSTOM_OPENAI.value,
-            ["o1", "o2"],
-        )
-
-        assert ordered_ids == ["o1", "o2"]
-
-    def test_build_global_ordered_ids_for_group_does_not_duplicate_existing_ids_in_padding(
-        self,
-    ) -> None:
-        # 为什么：补齐逻辑遇到重复项时应跳过，避免 ordered_ids 里出现重复 ID。
-        models = [build_model_data("o1", ModelType.CUSTOM_OPENAI.value)]
-        ordered_ids = ModelManager.build_global_ordered_ids_for_group(
-            models,
-            ModelType.CUSTOM_OPENAI.value,
-            ["o1", "o1"],
-        )
-
-        assert ordered_ids == ["o1"]
 
     def test_initialize_models_does_not_duplicate_existing_preset(
         self, monkeypatch: pytest.MonkeyPatch

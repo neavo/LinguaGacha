@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop-api";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import {
   build_ts_conversion_converted_items,

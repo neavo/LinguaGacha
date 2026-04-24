@@ -151,17 +151,6 @@ def test_extract_opf_title_sync_pair_rejects_multiline_titles(config: Config) ->
     assert writer.extract_opf_title_sync_pair(by_doc) is None
 
 
-def test_sync_xhtml_title_skips_non_element_xpath_node(config: Config) -> None:
-    writer = EPUBAstWriter(config)
-
-    class DummyRoot:
-        def xpath(self, expr: str):
-            del expr
-            return [123]
-
-    assert writer.sync_xhtml_title(DummyRoot(), "Old", "New") is False
-
-
 def test_sync_xhtml_title_skips_when_source_mismatch(config: Config) -> None:
     writer = EPUBAstWriter(config)
     root = etree.fromstring(b"<html><head><title>Other</title></head><body /></html>")
@@ -711,18 +700,6 @@ def test_build_epub_uses_tag_as_doc_path_and_keeps_original_on_parse_failure(
 
     assert chapter == b"<html><body><p>old</p></body></html>"
     assert warnings != []
-
-
-def test_is_nav_page_ignores_non_element_nav_nodes(config: Config) -> None:
-    writer = EPUBAstWriter(config)
-    nav = etree.Element("nav", attrib={"id": "not-toc"})
-
-    class DummyRoot:
-        def xpath(self, expr: str):
-            del expr
-            return [123, nav]
-
-    assert writer.is_nav_page(DummyRoot()) is False
 
 
 def test_apply_items_to_tree_writes_tail_slot_without_bilingual_clone(

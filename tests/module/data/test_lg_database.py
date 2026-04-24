@@ -71,7 +71,7 @@ def test_memory_mode_supports_open_close_and_crud() -> None:
     finally:
         db.close()
 
-    assert db.is_open() is False
+    assert db.keep_alive_conn is None
 
 
 def test_meta_roundtrip_and_default(database: LGDatabase) -> None:
@@ -259,7 +259,7 @@ def test_create_creates_persistent_db_file_and_sets_base_meta(fs) -> None:
     with real_db_path(fs, "create") as db_path:
         db = LGDatabase.create(str(db_path), "Demo")
 
-        assert db.is_open() is False
+        assert db.keep_alive_conn is None
         assert db_path.exists() is True
         assert db.get_meta("name") == "Demo"
         assert db.get_meta("schema_version") == LGDatabase.SCHEMA_VERSION
@@ -275,14 +275,13 @@ def test_add_asset_and_get_asset_roundtrip(database: LGDatabase) -> None:
     assert database.get_asset("missing.bin") is None
 
 
-def test_get_all_asset_paths_and_count_preserve_insert_order(
+def test_get_all_asset_paths_preserves_insert_order(
     database: LGDatabase,
 ) -> None:
     database.add_asset("a.txt", b"1", 1)
     database.add_asset("b.txt", b"2", 1)
 
     assert database.get_all_asset_paths() == ["a.txt", "b.txt"]
-    assert database.get_asset_count() == 2
 
     # 更新路径不应改变展示顺序（按 id 排序）。
     database.update_asset_path("a.txt", "c.txt")
@@ -404,17 +403,6 @@ def test_get_rule_text_by_name_supports_legacy_string_payload(
     )
 
 
-def test_get_items_by_file_path_filters_by_json_extract(database: LGDatabase) -> None:
-    id_a1 = database.set_item({"src": "a1", "file_path": "a.txt"})
-    database.set_item({"src": "b1", "file_path": "b.txt"})
-    id_a2 = database.set_item({"src": "a2", "file_path": "a.txt"})
-
-    items = database.get_items_by_file_path("a.txt")
-
-    assert [item["id"] for item in items] == [id_a1, id_a2]
-    assert [item["src"] for item in items] == ["a1", "a2"]
-
-
 class FakeConn:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
@@ -457,26 +445,6 @@ class JsonExtractErrorConn:
         return
 
 
-def test_get_items_by_file_path_falls_back_when_json_extract_missing(
-    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    id_a1 = database.set_item({"src": "a1", "file_path": "a.txt"})
-    database.set_item({"src": "b1", "file_path": "b.txt"})
-    id_a2 = database.set_item({"src": "a2", "file_path": "a.txt"})
-    assert database.keep_alive_conn is not None
-
-    fake = FakeConn(database.keep_alive_conn)
-
-    @contextlib.contextmanager
-    def fake_connection():
-        yield fake
-
-    monkeypatch.setattr(database, "connection", fake_connection)
-
-    items = database.get_items_by_file_path("a.txt")
-    assert [item["id"] for item in items] == [id_a1, id_a2]
-
-
 def test_delete_items_by_file_path_removes_matching_items(database: LGDatabase) -> None:
     database.set_item({"src": "a1", "file_path": "a.txt"})
     id_b1 = database.set_item({"src": "b1", "file_path": "b.txt"})
@@ -486,10 +454,6 @@ def test_delete_items_by_file_path_removes_matching_items(database: LGDatabase) 
 
     assert deleted == 2
     assert database.get_all_items() == [
-        {"id": id_b1, "src": "b1", "file_path": "b.txt"}
-    ]
-    assert database.get_items_by_file_path("a.txt") == []
-    assert database.get_items_by_file_path("b.txt") == [
         {"id": id_b1, "src": "b1", "file_path": "b.txt"}
     ]
 
@@ -566,7 +530,7 @@ def test_update_asset_replaces_data(database: LGDatabase) -> None:
     assert database.get_asset("a.bin") == b"v2"
 
 
-def test_update_asset_path_update_asset_delete_asset_and_insert_items_support_conn_param(
+def test_update_asset_path_update_asset_and_delete_asset_support_conn_param(
     fs,
 ) -> None:
     with real_db_path(fs, "conn_param") as db_path:
@@ -583,31 +547,11 @@ def test_update_asset_path_update_asset_delete_asset_and_insert_items_support_co
                 conn.commit()
                 assert db.get_asset("b.bin") == b"v2"
 
-                ids = db.insert_items([{"src": "A"}, {"src": "B"}], conn=conn)
-                conn.commit()
-                assert ids and all(isinstance(v, int) for v in ids)
-
                 db.delete_asset("b.bin", conn=conn)
                 conn.commit()
                 assert db.get_asset("b.bin") is None
         finally:
             db.close()
-
-
-def test_insert_items_appends_without_clearing(database: LGDatabase) -> None:
-    id_old = database.set_item({"src": "old", "file_path": "old.txt"})
-
-    ids_new = database.insert_items(
-        [
-            {"src": "n1", "file_path": "new.txt"},
-            {"src": "n2", "file_path": "new.txt"},
-        ]
-    )
-
-    assert len(ids_new) == 2
-    items = database.get_all_items()
-    assert [item["id"] for item in items] == [id_old, *ids_new]
-    assert [item["src"] for item in items] == ["old", "n1", "n2"]
 
 
 def test_asset_path_exists_returns_correct_bool(database: LGDatabase) -> None:
@@ -648,45 +592,6 @@ def test_set_item_raises_when_insert_cursor_has_no_lastrowid(
         database.set_item({"src": "x"})
 
 
-def test_insert_items_raises_when_conn_cursor_has_no_lastrowid() -> None:
-    db = LGDatabase(":memory:")
-
-    with pytest.raises(ValueError, match="Failed to get lastrowid"):
-        db.insert_items(
-            [{"src": "x"}], conn=cast(sqlite3.Connection, NoLastRowIdConn())
-        )
-
-
-def test_insert_items_raises_when_local_cursor_has_no_lastrowid(
-    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_conn = NoLastRowIdConn()
-
-    @contextlib.contextmanager
-    def fake_connection() -> Generator[NoLastRowIdConn, None, None]:
-        yield fake_conn
-
-    monkeypatch.setattr(database, "connection", fake_connection)
-
-    with pytest.raises(ValueError, match="Failed to get lastrowid"):
-        database.insert_items([{"src": "x"}])
-
-
-def test_get_items_by_file_path_reraises_non_json_extract_operational_error(
-    database: LGDatabase, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_conn = JsonExtractErrorConn("database is locked")
-
-    @contextlib.contextmanager
-    def fake_connection() -> Generator[JsonExtractErrorConn, None, None]:
-        yield fake_conn
-
-    monkeypatch.setattr(database, "connection", fake_connection)
-
-    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
-        database.get_items_by_file_path("a.txt")
-
-
 def test_delete_items_by_file_path_with_conn_uses_json_extract_delete(
     database: LGDatabase,
 ) -> None:
@@ -698,7 +603,7 @@ def test_delete_items_by_file_path_with_conn_uses_json_extract_delete(
         conn.commit()
 
     assert deleted == 1
-    assert database.get_items_by_file_path("a.txt") == []
+    assert database.get_all_items() == [{"id": 2, "src": "b1", "file_path": "b.txt"}]
 
 
 def test_delete_items_by_file_path_with_conn_reraises_non_json_extract_error() -> None:

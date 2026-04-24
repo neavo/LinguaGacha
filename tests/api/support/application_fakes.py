@@ -8,14 +8,12 @@
 
 from copy import deepcopy
 from pathlib import Path
-from threading import RLock
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Model.Types import Model
 from module.Model.Types import ModelType
 from module.Config import Config
-from module.Data.Core.DataEnums import TextPreserveMode
 
 
 class FakeProjectManager:
@@ -102,25 +100,6 @@ class FakeTaskDataManager:
     """提供任务快照所需的最小数据桩。"""
 
     def __init__(self) -> None:
-        self.session = type("FakeSession", (), {"state_lock": RLock()})()
-        self.quality_rule_service = self
-        self.meta_service = self
-        self.loaded: bool = True
-        self.lg_path: str = "demo/project.lg"
-        self.meta: dict[str, object] = {}
-        self.project_runtime_patches: list[dict[str, object]] = []
-        self.glossary_entries: list[dict[str, str]] = []
-        self.glossary_enable: bool = True
-        self.text_preserve_entries: list[dict[str, str | bool]] = []
-        self.text_preserve_mode: TextPreserveMode = TextPreserveMode.OFF
-        self.pre_replacement_entries: list[dict[str, str | bool]] = []
-        self.pre_replacement_enable: bool = False
-        self.post_replacement_entries: list[dict[str, str | bool]] = []
-        self.post_replacement_enable: bool = False
-        self.translation_prompt_enable: bool = False
-        self.translation_prompt: str = ""
-        self.analysis_prompt_enable: bool = False
-        self.analysis_prompt: str = ""
         self.translation_extras: dict[str, int | float] = {
             "line": 0,
             "total_line": 0,
@@ -144,15 +123,6 @@ class FakeTaskDataManager:
             "start_time": 0.0,
         }
         self.analysis_candidate_count: int = 0
-        self.translation_reset_items: list[object] = []
-        self.project_status: Base.ProjectStatus = Base.ProjectStatus.NONE
-        self.get_items_for_translation_calls: list[tuple[object, object]] = []
-        self.replace_all_items_calls: list[list[object]] = []
-        self.set_translation_extras_calls: list[dict[str, int | float]] = []
-        self.set_project_status_calls: list[Base.ProjectStatus] = []
-        self.clear_analysis_candidates_and_progress_calls: int = 0
-        self.reset_failed_analysis_checkpoints_calls: int = 0
-        self.refresh_analysis_progress_snapshot_cache_calls: int = 0
 
     def get_translation_extras(self) -> dict[str, int | float]:
         return dict(self.translation_extras)
@@ -165,133 +135,14 @@ class FakeTaskDataManager:
             return self.get_analysis_progress_snapshot()
         return self.get_translation_extras()
 
-    def is_loaded(self) -> bool:
-        return self.loaded
-
-    def get_lg_path(self) -> str:
-        return self.lg_path
-
     def get_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
-
-    def get_glossary(self) -> list[dict[str, str]]:
-        return deepcopy(self.glossary_entries)
-
-    def get_glossary_enable(self) -> bool:
-        return self.glossary_enable
-
-    def get_text_preserve(self) -> list[dict[str, str | bool]]:
-        return deepcopy(self.text_preserve_entries)
-
-    def get_text_preserve_mode(self) -> TextPreserveMode:
-        return self.text_preserve_mode
-
-    def get_pre_replacement(self) -> list[dict[str, str | bool]]:
-        return deepcopy(self.pre_replacement_entries)
-
-    def get_pre_replacement_enable(self) -> bool:
-        return self.pre_replacement_enable
-
-    def get_post_replacement(self) -> list[dict[str, str | bool]]:
-        return deepcopy(self.post_replacement_entries)
-
-    def get_post_replacement_enable(self) -> bool:
-        return self.post_replacement_enable
-
-    def get_translation_prompt_enable(self) -> bool:
-        return self.translation_prompt_enable
-
-    def get_translation_prompt(self) -> str:
-        return self.translation_prompt
-
-    def get_analysis_prompt_enable(self) -> bool:
-        return self.analysis_prompt_enable
-
-    def get_analysis_prompt(self) -> str:
-        return self.analysis_prompt
-
-    def get_analysis_extras(self) -> dict[str, int | float]:
-        return self.get_analysis_progress_snapshot()
-
-    def get_analysis_status_summary(self) -> dict[str, int]:
-        return {"candidate_count": self.analysis_candidate_count}
-
-    def get_meta(self, key: str, default: object = None) -> object:
-        return self.meta.get(key, default)
-
-    def set_meta(self, key: str, value: object) -> None:
-        self.meta[key] = value
-
-    def get_items_for_translation(
-        self,
-        config: object,
-        mode: object,
-    ) -> list[object]:
-        self.get_items_for_translation_calls.append((config, mode))
-        return list(self.translation_reset_items)
-
-    def replace_all_items(self, items: list[object]) -> list[int]:
-        self.replace_all_items_calls.append(list(items))
-        return list(range(1, len(items) + 1))
-
-    def set_translation_extras(self, extras: dict[str, int | float]) -> None:
-        normalized_extras = dict(extras)
-        self.set_translation_extras_calls.append(normalized_extras)
-        self.translation_extras = normalized_extras
-
-    def set_project_status(self, status: Base.ProjectStatus) -> None:
-        self.set_project_status_calls.append(status)
-        self.project_status = status
-
-    def clear_analysis_candidates_and_progress(self) -> None:
-        self.clear_analysis_candidates_and_progress_calls += 1
-        self.analysis_snapshot = {
-            "line": 0,
-            "total_line": 0,
-            "processed_line": 0,
-            "error_line": 0,
-            "total_tokens": 0,
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-            "time": 0.0,
-            "start_time": 0.0,
-        }
-        self.analysis_candidate_count = 0
-
-    def reset_failed_analysis_checkpoints(self) -> int:
-        self.reset_failed_analysis_checkpoints_calls += 1
-        self.analysis_snapshot["error_line"] = 0
-        return 0
-
-    def refresh_analysis_progress_snapshot_cache(self) -> dict[str, int | float]:
-        self.refresh_analysis_progress_snapshot_cache_calls += 1
-        return self.get_analysis_progress_snapshot()
-
-    def emit_project_runtime_patch(
-        self,
-        *,
-        reason: str,
-        updated_sections: tuple[str, ...],
-        patch: list[dict[str, object]],
-        section_revisions: dict[str, int],
-        project_revision: int,
-    ) -> None:
-        self.project_runtime_patches.append(
-            {
-                "reason": reason,
-                "updated_sections": updated_sections,
-                "patch": deepcopy(patch),
-                "section_revisions": dict(section_revisions),
-                "project_revision": project_revision,
-            }
-        )
 
 
 class FakeWorkbenchManager:
     """提供工作台文件操作所需的最小数据桩。"""
 
     def __init__(self) -> None:
-        self.file_op_running: bool = False
         self.add_calls: list[str] = []
         self.add_payloads: list[dict[str, object]] = []
         self.parse_calls: list[tuple[str, str | None]] = []
@@ -301,12 +152,6 @@ class FakeWorkbenchManager:
         self.delete_calls: list[str] = []
         self.delete_batch_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
-
-    def is_file_op_running(self) -> bool:
-        return self.file_op_running
-
-    def add_file(self, path: str) -> None:
-        self.add_calls.append(path)
 
     def parse_file_preview(
         self,
@@ -333,9 +178,6 @@ class FakeWorkbenchManager:
             ],
         }
 
-    def replace_file(self, rel_path: str, path: str) -> None:
-        self.replace_calls.append((rel_path, path))
-
     def persist_add_file_payload(
         self,
         source_path: str,
@@ -360,9 +202,6 @@ class FakeWorkbenchManager:
             }
         )
 
-    def reset_file(self, rel_path: str) -> None:
-        self.reset_calls.append(rel_path)
-
     def persist_reset_file(
         self,
         rel_path: str,
@@ -376,12 +215,6 @@ class FakeWorkbenchManager:
         del item_payloads, translation_extras, project_status, prefilter_config
         del expected_section_revisions
         self.reset_calls.append(rel_path)
-
-    def delete_file(self, rel_path: str) -> None:
-        self.delete_calls.append(rel_path)
-
-    def delete_file_batch(self, rel_paths: list[str]) -> None:
-        self.delete_batch_calls.append(list(rel_paths))
 
     def persist_replace_file_payload(
         self,

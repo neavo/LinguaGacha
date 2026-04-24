@@ -16,7 +16,6 @@ def create_translation_stub() -> SimpleNamespace:
     translation = SimpleNamespace()
     translation.extras = {}
     translation.items_cache = None
-    translation.task_hooks = None
     translation.dm = SimpleNamespace(get_translation_extras=lambda: {})
     translation.saved_statuses: list[Base.ProjectStatus] = []
     translation.emitted_events: list[tuple[Base.Event, dict[str, object]]] = []

@@ -62,6 +62,12 @@ def test_task_api_client_start_and_stop_commands_use_snapshot_contract(
     assert stop_translation.status == "STOPPING"
     assert start_analysis.task_type == "analysis"
     assert stop_analysis.status == "STOPPING"
+    assert recording_api_client.post_requests == [
+        (TaskRoutes.START_TRANSLATION_PATH, {"mode": "NEW"}),
+        (TaskRoutes.STOP_TRANSLATION_PATH, {}),
+        (TaskRoutes.START_ANALYSIS_PATH, {"mode": "RESET"}),
+        (TaskRoutes.STOP_ANALYSIS_PATH, {}),
+    ]
 
 
 def test_task_api_client_export_translation_returns_raw_payload(

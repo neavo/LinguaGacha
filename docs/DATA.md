@@ -102,7 +102,7 @@ flowchart TD
 稳定事实：
 - `FileManager.read_from_path()` 和 `parse_asset()` 是格式分发入口。
 - `write_to_path()` 在 `DataManager.timestamp_suffix_context()` 内统一调用具体 writer。
-- 输出路径规则由 `DataManager` 决定，具体 writer 不再发明第二套目录策略。
+- 输出路径规则由 `DataManager` 决定，具体 writer 只执行目标格式写回。
 
 ## 非显然规则速查
 

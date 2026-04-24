@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
-
 from base.Base import Base
 
 
@@ -46,18 +44,4 @@ class AnalysisTaskResult:
     stopped: bool
     input_tokens: int = 0
     output_tokens: int = 0
-    glossary_entries: tuple[dict[str, Any], ...] = tuple()
-
-
-# 这里保留项目级候选池单项结构，方便接口和测试都围绕同一份口径断言。
-@dataclass(frozen=True)
-class AnalysisCandidateAggregate:
-    """项目级候选池聚合条目。"""
-
-    src: str
-    dst_votes: dict[str, int]
-    info_votes: dict[str, int]
-    observation_count: int
-    first_seen_at: str
-    last_seen_at: str
-    case_sensitive: bool
+    glossary_entries: tuple[dict[str, object], ...] = tuple()

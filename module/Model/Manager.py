@@ -270,17 +270,6 @@ class ModelManager:
                 return True
         return False
 
-    def update_model_by_dict(self, model_id: str, data: dict) -> bool:
-        """通过字典更新模型配置"""
-        for i, model in enumerate(self.models):
-            if model.id == model_id:
-                # 保留 ID 和 type
-                data["id"] = model.id
-                data["type"] = model.type.value
-                self.models[i] = Model.from_dict(data)
-                return True
-        return False
-
     def reset_preset_model(self, model_id: str) -> bool:
         """
         重置预设模型为初始状态

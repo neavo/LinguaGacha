@@ -24,7 +24,6 @@ import pytest
 from base.Base import Base
 
 from module.File.RenPy.RenPyAst import RenPyDocument
-from module.File.RenPy.RenPyAst import Slot
 
 
 def build_stmt(
@@ -223,34 +222,6 @@ def test_extract_covers_skip_missing_none_and_sort(
     assert [item.get_src() for item in items] == ["src-70", "src-10"]
 
 
-def test_build_item_branches_with_monkeypatched_slots(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    extractor = RenPyExtractor()
-    block = build_block("start", BlockKind.LABEL, [])
-    template_stmt = build_stmt(
-        1, 'e "name" "hello"', StmtKind.TEMPLATE, BlockKind.LABEL
-    )
-    target_stmt = build_stmt(2, 'e "name" "world"', StmtKind.TARGET, BlockKind.LABEL)
-
-    monkeypatch.setattr(extractor, "select_slots", lambda b, s: [])
-    assert extractor.build_item(block, template_stmt, target_stmt, "a.rpy") is None
-
-    monkeypatch.setattr(
-        extractor,
-        "select_slots",
-        lambda b, s: [Slot(role=SlotRole.NAME, lit_index=0)],
-    )
-    assert extractor.build_item(block, template_stmt, target_stmt, "a.rpy") is None
-
-    monkeypatch.setattr(
-        extractor,
-        "select_slots",
-        lambda b, s: [Slot(role=SlotRole.DIALOGUE, lit_index=99)],
-    )
-    assert extractor.build_item(block, template_stmt, target_stmt, "a.rpy") is None
-
-
 def test_get_status_and_get_literal_value() -> None:
     extractor = RenPyExtractor()
     stmt = build_stmt(1, 'e "a"', StmtKind.TARGET, BlockKind.LABEL)
@@ -262,7 +233,7 @@ def test_get_status_and_get_literal_value() -> None:
     assert extractor.get_literal_value(stmt, 99) == ""
 
 
-def test_select_slots_for_strings_covers_all_guards() -> None:
+def test_select_slots_for_strings_ignores_non_translation_rows() -> None:
     extractor = RenPyExtractor()
 
     assert (
@@ -291,7 +262,7 @@ def test_select_slots_for_strings_covers_all_guards() -> None:
     )
 
 
-def test_select_slots_for_label_covers_dialogue_group_and_name_guards(
+def test_select_slots_for_label_ignores_non_dialogue_and_resource_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     extractor = RenPyExtractor()

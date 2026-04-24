@@ -71,7 +71,6 @@ def build_translation_hooks(
     )
     translation.apply_batch_update_sync = MagicMock()
     translation.update_pipeline_progress = MagicMock()
-    translation.task_hooks = None
     hooks = TranslationTaskHooks(
         translation=translation,
         max_workers=2,

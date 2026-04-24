@@ -3,10 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
-} from "@/app/state/project-pages-barrier";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
-import { buildWorkbenchView } from "@/app/project-runtime/selectors";
+} from "@/app/runtime/project-pages/project-pages-barrier";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import {
   create_workbench_add_file_plan,
   create_workbench_delete_files_plan,
@@ -15,27 +14,31 @@ import {
   create_workbench_replace_file_plan,
   type WorkbenchFileParsePreview,
   type WorkbenchProjectMutationPlan,
-} from "@/app/project-runtime/workbench-mutation-planner";
+} from "@/pages/workbench-page/workbench-mutation-planner";
+import { buildWorkbenchView } from "@/pages/workbench-page/workbench-view";
 import {
   useAnalysisTaskRuntime,
   type AnalysisTaskRuntime,
-} from "@/app/state/use-analysis-task-runtime";
+} from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
 import {
   useTranslationTaskRuntime,
   type TranslationTaskRuntime,
-} from "@/app/state/use-translation-task-runtime";
+} from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
-} from "@/app/state/desktop-runtime-context";
+} from "@/app/runtime/desktop/desktop-runtime-context";
 import { useI18n } from "@/i18n";
 import { api_fetch } from "@/app/desktop-api";
 import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,
   AnalysisTaskSnapshot,
-} from "@/lib/analysis-task";
-import type { TranslationTaskConfirmState, TranslationTaskMetrics } from "@/lib/translation-task";
+} from "@/pages/workbench-page/task-runtime/analysis-task-model";
+import type {
+  TranslationTaskConfirmState,
+  TranslationTaskMetrics,
+} from "@/pages/workbench-page/task-runtime/translation-task-model";
 import type { AppTableSelectionChange } from "@/widgets/app-table/app-table-types";
 import type {
   WorkbenchTaskConfirmDialogViewModel,
@@ -679,7 +682,7 @@ function build_analysis_task_confirm_dialog_view_model(
   };
 }
 
-type UseWorkbenchLiveStateResult = {
+export type UseWorkbenchLiveStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   cache_stale: boolean;
   last_loaded_at: number | null;
@@ -722,7 +725,7 @@ type UseWorkbenchLiveStateResult = {
   close_dialog: () => void;
 };
 
-type UseWorkbenchLiveStateOptions = {
+export type UseWorkbenchLiveStateOptions = {
   createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
   waitForProjectPagesBarrier?: (
     kind: Exclude<ProjectPagesBarrierKind, "project_warmup">,

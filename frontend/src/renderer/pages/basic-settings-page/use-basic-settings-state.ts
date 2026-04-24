@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DesktopApiError, api_fetch } from "@/app/desktop-api";
-import { createProjectPrefilterClient } from "@/app/project-runtime/project-prefilter-client";
-import { apply_project_prefilter_mutation } from "@/app/project-runtime/project-prefilter-mutation";
+import { createProjectPrefilterClient } from "@/app/project/derived/project-prefilter-client";
+import { apply_project_prefilter_mutation } from "@/app/project/derived/project-prefilter-mutation";
 import {
   normalize_settings_snapshot,
   type SettingsSnapshot,
   type SettingsSnapshotPayload,
-} from "@/app/state/desktop-runtime-context";
-import { useProjectPagesBarrier } from "@/app/state/project-pages-context";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+} from "@/app/runtime/desktop/desktop-runtime-context";
+import { useProjectPagesBarrier } from "@/app/runtime/project-pages/project-pages-context";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {

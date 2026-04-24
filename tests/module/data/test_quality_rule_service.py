@@ -65,65 +65,51 @@ def test_set_glossary_dedupes_casefold_and_drops_empty_src() -> None:
     assert normalized[0]["dst"] == "b"
 
 
-def test_merge_glossary_incoming_returns_none_when_no_changes() -> None:
+def test_merge_glossary_incoming_returns_none_when_import_has_no_rows() -> None:
     service = build_service()
-    service.get_glossary = MagicMock(return_value=[{"src": "A", "dst": "B"}])
-    service.set_glossary = MagicMock()
+    normalized_entry = {
+        "src": "A",
+        "dst": "B",
+        "info": "",
+        "regex": False,
+        "case_sensitive": False,
+    }
+    service.set_glossary([normalized_entry], save=False)
 
-    empty_report = QualityRuleMerger.Report(
-        added=0,
-        updated=0,
-        filled=0,
-        deduped=0,
-        skipped_empty_src=0,
-        conflicts=(),
+    merged, report = service.merge_glossary_incoming(
+        incoming=[],
+        merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
+        save=True,
     )
-    original_merge = QualityRuleMerger.merge
-    QualityRuleMerger.merge = MagicMock(
-        return_value=([{"src": "A", "dst": "B"}], empty_report)
-    )
-    try:
-        merged, report = service.merge_glossary_incoming(
-            incoming=[{"src": "A", "dst": "B"}],
-            merge_mode=QualityRuleMerger.MergeMode.OVERWRITE,
-            save=True,
-        )
-    finally:
-        QualityRuleMerger.merge = original_merge
 
     assert merged is None
-    assert report == empty_report
-    service.set_glossary.assert_not_called()
+    assert report.added == 0
+    assert report.updated == 0
+    assert report.filled == 0
+    assert service.get_glossary() == [normalized_entry]
 
 
 def test_merge_glossary_incoming_saves_when_report_has_changes() -> None:
     service = build_service()
-    service.get_glossary = MagicMock(return_value=[{"src": "A", "dst": ""}])
-    service.set_glossary = MagicMock()
-    changed_report = QualityRuleMerger.Report(
-        added=0,
-        updated=0,
-        filled=1,
-        deduped=0,
-        skipped_empty_src=0,
-        conflicts=(),
-    )
-    original_merge = QualityRuleMerger.merge
-    QualityRuleMerger.merge = MagicMock(
-        return_value=([{"src": "A", "dst": "B"}], changed_report)
-    )
-    try:
-        merged, report = service.merge_glossary_incoming(
-            incoming=[{"src": "A", "dst": "B"}],
-            merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
-            save=True,
-        )
-    finally:
-        QualityRuleMerger.merge = original_merge
+    service.set_glossary([{"src": "A", "dst": ""}], save=False)
 
-    assert merged == [{"src": "A", "dst": "B"}]
-    assert report == changed_report
-    service.set_glossary.assert_called_once_with([{"src": "A", "dst": "B"}], save=True)
+    merged, report = service.merge_glossary_incoming(
+        incoming=[{"src": "A", "dst": "B"}],
+        merge_mode=QualityRuleMerger.MergeMode.FILL_EMPTY,
+        save=True,
+    )
+
+    assert merged == [
+        {
+            "src": "A",
+            "dst": "B",
+            "info": "",
+            "regex": False,
+            "case_sensitive": False,
+        }
+    ]
+    assert report.filled == 1
+    assert service.get_glossary() == merged
 
 
 def test_text_preserve_mode_normalizes_invalid_to_smart_or_off() -> None:

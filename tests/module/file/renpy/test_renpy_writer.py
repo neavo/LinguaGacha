@@ -268,7 +268,7 @@ def test_apply_item_supports_strings_block() -> None:
     assert lines[1] == '    new "new"'
 
 
-def test_build_replacements_and_replace_literals_cover_guards() -> None:
+def test_build_replacements_ignores_invalid_slots_and_replaces_known_literals() -> None:
     writer = RenPyWriter()
     item = Item.from_dict({"dst": "台词", "name_dst": ""})
 

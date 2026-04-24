@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from typing import Any
 from typing import cast
 
+import pytest
+
 import base.EventManager as event_manager_module
 from base.Base import Base
 from base.EventManager import EventManager
@@ -13,22 +15,30 @@ def build_manager() -> EventManager:
     return EventManager.get()
 
 
-def test_coalesced_progress_only_keeps_latest_payload() -> None:
+@pytest.mark.parametrize(
+    "event",
+    [Base.Event.TRANSLATION_PROGRESS, Base.Event.ANALYSIS_PROGRESS],
+)
+def test_progress_snapshot_events_only_deliver_latest_payload(
+    event: Base.Event,
+) -> None:
     manager = build_manager()
     received: list[int] = []
     manager.subscribe(
-        Base.Event.TRANSLATION_PROGRESS,
+        event,
         lambda event, data: received.append(int(data["line"])),
     )
 
-    manager.emit_event(Base.Event.TRANSLATION_PROGRESS, {"line": 1})
-    manager.emit_event(Base.Event.TRANSLATION_PROGRESS, {"line": 2})
+    manager.emit_event(event, {"line": 1})
+    manager.emit_event(event, {"line": 2})
     manager.wait_for_idle(timeout=1.0)
 
     assert received == [2]
 
 
-def test_handler_error_does_not_stop_following_handlers(monkeypatch) -> None:
+def test_handler_error_does_not_stop_following_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     manager = build_manager()
     calls: list[str] = []
     errors: list[str] = []
@@ -38,7 +48,7 @@ def test_handler_error_does_not_stop_following_handlers(monkeypatch) -> None:
         lambda: SimpleNamespace(error=lambda msg, e=None: errors.append(msg)),
     )
 
-    def broken_handler(event, data) -> None:
+    def broken_handler(event: object, data: object) -> None:
         del event, data
         raise RuntimeError("boom")
 
@@ -69,11 +79,11 @@ def test_unsubscribe_removes_only_requested_plain_handler() -> None:
     manager = build_manager()
     calls: list[str] = []
 
-    def first_handler(event, data) -> None:
+    def first_handler(event: object, data: object) -> None:
         del event, data
         calls.append("first")
 
-    def second_handler(event, data) -> None:
+    def second_handler(event: object, data: object) -> None:
         del event, data
         calls.append("second")
 
@@ -91,7 +101,7 @@ def test_bound_method_handler_is_weakly_tracked_and_auto_removed() -> None:
     calls: list[str] = []
 
     class Listener:
-        def handle(self, event, data) -> None:
+        def handle(self, event: object, data: object) -> None:
             del event, data
             calls.append("alive")
 
@@ -114,7 +124,7 @@ def test_unsubscribe_handles_bound_method_owner_identity() -> None:
         def __init__(self, name: str) -> None:
             self.name = name
 
-        def handle(self, event, data) -> None:
+        def handle(self, event: object, data: object) -> None:
             del event, data
             calls.append(self.name)
 
@@ -127,24 +137,3 @@ def test_unsubscribe_handles_bound_method_owner_identity() -> None:
     manager.wait_for_idle(timeout=1.0)
 
     assert calls == ["second"]
-
-
-def test_translation_progress_only_coalesces_latest_payload() -> None:
-    manager = build_manager()
-    received: list[int] = []
-    manager.subscribe(
-        Base.Event.TRANSLATION_PROGRESS,
-        lambda event, data: received.append(int(data["line"])),
-    )
-
-    manager.emit_event(
-        Base.Event.TRANSLATION_PROGRESS,
-        {"line": 1},
-    )
-    manager.emit_event(
-        Base.Event.TRANSLATION_PROGRESS,
-        {"line": 2},
-    )
-    manager.wait_for_idle(timeout=1.0)
-
-    assert received == [2]

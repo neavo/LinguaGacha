@@ -246,34 +246,3 @@ def test_preview_replace_all_item_ids_raises_when_project_not_loaded() -> None:
 
     with pytest.raises(RuntimeError, match="工程未加载"):
         service.preview_replace_all_item_ids([Item(src="A")])
-
-
-def test_update_item_cache_by_dicts_updates_loaded_entries_only() -> None:
-    db = SimpleNamespace()
-    service, session = build_service(db)
-    session.item_cache = [
-        {"id": 1, "src": "A", "dst": "甲"},
-        {"id": 2, "src": "B", "dst": "乙"},
-    ]
-    session.item_cache_index = {1: 0, 2: 1}
-
-    service.update_item_cache_by_dicts(
-        [
-            {"id": 2, "src": "B2", "dst": "乙2"},
-            {"id": 99, "src": "X"},
-            {"src": "no-id"},
-        ]
-    )
-
-    assert session.item_cache[0]["src"] == "A"
-    assert session.item_cache[1]["src"] == "B2"
-
-
-def test_update_item_cache_by_dicts_noop_when_cache_not_loaded() -> None:
-    db = SimpleNamespace()
-    service, session = build_service(db)
-    assert session.item_cache is None
-
-    service.update_item_cache_by_dicts([{"id": 1, "src": "A"}])
-
-    assert session.item_cache is None

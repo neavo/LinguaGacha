@@ -1,31 +1,22 @@
-from types import SimpleNamespace
-
-from api.Application.EventStreamService import EventStreamService
-from api.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
-from api.Server.CoreApiServer import CoreApiServer
 from api.Server.Routes.EventRoutes import EventRoutes
-from api.Server.ServerBootstrap import ServerBootstrap
+from tests.api.Server.Routes.route_contracts import RouteRecorder
 
 
-def test_event_routes_register_expected_stream_contract():
-    core_api_server = CoreApiServer()
+class StubEventStreamService:
+    def __init__(self) -> None:
+        self.streamed_handlers: list[object] = []
 
-    EventRoutes.register(
-        core_api_server,
-        SimpleNamespace(stream_to_handler=object()),
-    )
-
-    route_definition = core_api_server.route_map[("GET", "/api/events/stream")]
-    assert route_definition.mode == "stream"
+    def stream_to_handler(self, handler) -> None:
+        self.streamed_handlers.append(handler)
 
 
-def test_server_bootstrap_registers_event_stream_route():
-    core_api_server = CoreApiServer()
+def test_event_routes_register_expected_stream_contract() -> None:
+    recorder = RouteRecorder()
+    event_stream_service = StubEventStreamService()
 
-    ServerBootstrap.register_api_routes(
-        core_api_server,
-        event_stream_service=EventStreamService(event_bridge=ProjectPatchEventBridge()),
-    )
+    EventRoutes.register(recorder, event_stream_service)
+    recorder.stream_handlers["/api/events/stream"]("handler")
 
-    route_definition = core_api_server.route_map[("GET", "/api/events/stream")]
-    assert route_definition.mode == "stream"
+    assert recorder.stream_routes == ["/api/events/stream"]
+    assert recorder.json_routes == []
+    assert event_stream_service.streamed_handlers == ["handler"]

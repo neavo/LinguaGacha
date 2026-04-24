@@ -168,19 +168,6 @@ class FileManager(Base):
 
         return items
 
-    # 从资产读取
-    def read_from_assets(self, assets: dict[str, bytes]) -> list[Item]:
-        """从 Assets 字典读取并解析翻译条目
-
-        Args:
-            assets: 相对路径 -> 字节数据的字典
-        """
-        items: list[Item] = []
-        for rel_path, content in assets.items():
-            items.extend(self.parse_asset(rel_path, content))
-
-        return items
-
     # 写
     def write_to_path(self, items: list[Item]) -> str:
         """写入翻译结果到文件，返回实际输出目录路径（带时间戳）"""

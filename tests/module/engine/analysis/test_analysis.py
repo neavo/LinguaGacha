@@ -285,7 +285,7 @@ def test_start_continue_without_pending_tasks_does_not_emit_followup_event(
     )
 
 
-def test_start_stopped_does_not_import_candidates(
+def test_start_stopped_execution_emits_stopped_done_without_importing_candidates(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -297,6 +297,7 @@ def test_start_stopped_does_not_import_candidates(
     )
 
     analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
     config = build_start_config()
     patch_start_runtime(
         monkeypatch,
@@ -316,6 +317,25 @@ def test_start_stopped_does_not_import_candidates(
     )
 
     analysis.start({"mode": Base.AnalysisMode.NEW, "config": config})
+
+    task_events = [
+        (event, data) for event, data in emitted if event == Base.Event.ANALYSIS_TASK
+    ]
+    progress_events = [
+        data for event, data in emitted if event == Base.Event.ANALYSIS_PROGRESS
+    ]
+
+    assert fake_data_manager.updated_rules == []
+    assert progress_events[-1]["total_line"] == 2
+    assert task_events == [
+        (
+            Base.Event.ANALYSIS_TASK,
+            {
+                "sub_event": Base.SubEvent.DONE,
+                "final_status": "STOPPED",
+            },
+        )
+    ]
 
 
 def test_start_with_pending_tasks_runs_without_console_progress(
@@ -380,7 +400,7 @@ def test_start_with_pending_tasks_runs_without_console_progress(
     assert executed["called"] is True
 
 
-def test_start_without_pending_tasks_skips_console_progress(
+def test_start_without_pending_tasks_emits_success_done(
     monkeypatch: pytest.MonkeyPatch,
     fake_data_manager,
     quality_snapshot,
@@ -392,6 +412,7 @@ def test_start_without_pending_tasks_skips_console_progress(
     )
 
     analysis = Analysis()
+    emitted = capture_emitted_events(monkeypatch, analysis)
     config = build_start_config()
     patch_start_runtime(
         monkeypatch,
@@ -418,6 +439,16 @@ def test_start_without_pending_tasks_skips_console_progress(
     )
 
     analysis.start({"mode": Base.AnalysisMode.CONTINUE, "config": config})
+
+    assert emitted == [
+        (
+            Base.Event.ANALYSIS_TASK,
+            {
+                "sub_event": Base.SubEvent.DONE,
+                "final_status": "SUCCESS",
+            },
+        )
+    ]
 
 
 def test_start_success_does_not_emit_followup_request(

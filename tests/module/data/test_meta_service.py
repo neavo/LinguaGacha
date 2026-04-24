@@ -1,8 +1,22 @@
 from types import SimpleNamespace
 import threading
-from unittest.mock import MagicMock
+from typing import Any
 
 from module.Data.Core.MetaService import MetaService
+
+
+class RecordingMetaDb:
+    def __init__(self, initial: dict[str, Any] | None = None) -> None:
+        self.values = dict(initial or {})
+
+    def get_all_meta(self) -> dict[str, Any]:
+        return dict(self.values)
+
+    def get_meta(self, key: str, default: Any = None) -> Any:
+        return self.values.get(key, default)
+
+    def set_meta(self, key: str, value: Any) -> None:
+        self.values[key] = value
 
 
 def build_service(db: object | None) -> tuple[MetaService, SimpleNamespace]:
@@ -21,14 +35,14 @@ def test_refresh_cache_from_db_handles_none_and_loads_data() -> None:
     service.refresh_cache_from_db()
     assert session.meta_cache == {}
 
-    db = SimpleNamespace(get_all_meta=MagicMock(return_value={"k": "v"}))
+    db = RecordingMetaDb({"k": "v"})
     service_with_db, session_with_db = build_service(db)
     service_with_db.refresh_cache_from_db()
     assert session_with_db.meta_cache == {"k": "v"}
 
 
 def test_get_meta_reads_cache_and_returns_deep_copy_for_mutable() -> None:
-    db = SimpleNamespace(get_meta=MagicMock(return_value={"n": [1]}))
+    db = RecordingMetaDb({"missing": {"n": [1]}})
     service, session = build_service(db)
     session.meta_cache["cached"] = {"items": ["a"]}
 
@@ -39,17 +53,16 @@ def test_get_meta_reads_cache_and_returns_deep_copy_for_mutable() -> None:
 
     loaded = service.get_meta("missing", {"fallback": True})
     assert loaded == {"n": [1]}
-    db.get_meta.assert_called_once_with("missing", {"fallback": True})
     assert session.meta_cache["missing"] == {"n": [1]}
 
 
 def test_set_meta_updates_db_and_cache() -> None:
-    db = SimpleNamespace(set_meta=MagicMock())
+    db = RecordingMetaDb()
     service, session = build_service(db)
 
     service.set_meta("lang", "zh")
 
-    db.set_meta.assert_called_once_with("lang", "zh")
+    assert db.values["lang"] == "zh"
     assert session.meta_cache["lang"] == "zh"
 
 

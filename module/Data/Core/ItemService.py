@@ -128,18 +128,3 @@ class ItemService:
             raise RuntimeError("工程未加载")
 
         return db.preview_replace_all_item_ids(items_dict)
-
-    def update_item_cache_by_dicts(self, items: list[dict[str, Any]]) -> None:
-        """在缓存已加载时做增量同步（BatchService 用）。"""
-        with self.session.state_lock:
-            if not items or self.session.item_cache is None:
-                return
-
-            for item in items:
-                item_id = item.get("id")
-                if not isinstance(item_id, int):
-                    continue
-                idx = self.session.item_cache_index.get(item_id)
-                if idx is None:
-                    continue
-                self.session.item_cache[idx] = item

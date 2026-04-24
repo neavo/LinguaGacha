@@ -2,6 +2,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { QualityStatisticsCacheSnapshot } from "@/app/project/quality/quality-statistics-store";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
 
 const { api_fetch_mock, push_toast_mock, wait_for_barrier_mock, create_barrier_checkpoint_mock } =
@@ -118,13 +119,65 @@ const project_store = {
   getState: () => runtime_state,
 };
 
+let current_statistics_cache: QualityStatisticsCacheSnapshot;
+
+function create_statistics_cache(
+  args: Partial<QualityStatisticsCacheSnapshot>,
+): QualityStatisticsCacheSnapshot {
+  return {
+    running: false,
+    ready: true,
+    stale: false,
+    failed: false,
+    current_snapshot: {
+      text_source: "src",
+      text_signature: "texts",
+      dependency_signature: "deps",
+      snapshot_signature: "snapshot",
+      rules: [
+        {
+          key: "foo::0",
+          dependency_signature: "foo",
+          relation_label: "foo",
+          token: "foo",
+        },
+      ],
+    },
+    completed_snapshot: {
+      text_source: "src",
+      text_signature: "texts",
+      dependency_signature: "deps",
+      snapshot_signature: "snapshot",
+      rules: [
+        {
+          key: "foo::0",
+          dependency_signature: "foo",
+          relation_label: "foo",
+          token: "foo",
+        },
+      ],
+    },
+    completed_entry_ids: ["foo::0"],
+    matched_count_by_entry_id: {
+      "foo::0": 1,
+    },
+    subset_parent_labels_by_entry_id: {
+      "foo::0": [],
+    },
+    last_error: null,
+    request_token: 1,
+    updated_at: 1,
+    ...args,
+  };
+}
+
 vi.mock("@/app/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
   };
 });
 
-vi.mock("@/app/state/project-pages-context", () => {
+vi.mock("@/app/runtime/project-pages/project-pages-context", () => {
   return {
     useProjectPagesBarrier: () => ({
       create_barrier_checkpoint: create_barrier_checkpoint_mock,
@@ -142,7 +195,7 @@ vi.mock("@/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@/app/state/use-desktop-runtime", () => {
+vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       project_snapshot: {
@@ -190,7 +243,7 @@ vi.mock("@/app/state/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/state/use-desktop-toast", () => {
+vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -199,22 +252,9 @@ vi.mock("@/app/state/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/app/state/quality-statistics-context", () => {
+vi.mock("@/app/project/quality/quality-statistics-context", () => {
   return {
-    useQualityStatistics: () => ({
-      running: false,
-      ready: true,
-      stale: false,
-      failed: false,
-      current_snapshot: null,
-      completed_snapshot: null,
-      completed_entry_ids: [],
-      matched_count_by_entry_id: {},
-      subset_parent_labels_by_entry_id: {},
-      last_error: null,
-      request_token: 0,
-      updated_at: 0,
-    }),
+    useQualityStatistics: () => current_statistics_cache,
   };
 });
 
@@ -245,6 +285,7 @@ describe("useTextPreservePageState", () => {
 
   beforeEach(() => {
     project_store_listeners.clear();
+    current_statistics_cache = create_statistics_cache({});
     create_barrier_checkpoint_mock.mockReturnValue({
       projectPath: "E:/demo/sample.lg",
       proofreadingLastLoadedAt: 1,
@@ -378,5 +419,66 @@ describe("useTextPreservePageState", () => {
 
     expect(latest_state?.mode).toBe("smart");
     expect(latest_state?.mode_updating).toBe(false);
+  });
+
+  it("首次进入页面时直接读取预热后的统计结果", async () => {
+    await mount_probe();
+
+    expect(latest_state?.statistics_ready).toBe(true);
+    expect(latest_state?.statistics_badge_by_entry_id["foo::0"]?.matched_count).toBe(1);
+  });
+
+  it("统计未 ready 时不会保留旧 statistics 排序", async () => {
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.apply_table_sort_state({
+        column_id: "statistics",
+        direction: "descending",
+      });
+    });
+    expect(latest_state?.sort_state?.column_id).toBe("statistics");
+
+    current_statistics_cache = create_statistics_cache({
+      ready: false,
+      stale: true,
+    });
+    await act(async () => {
+      root?.render(
+        <Probe
+          on_ready={(state) => {
+            latest_state = state;
+          }}
+        />,
+      );
+    });
+
+    expect(latest_state?.statistics_ready).toBe(false);
+    expect(latest_state?.sort_state).toBeNull();
+    expect(latest_state?.statistics_badge_by_entry_id["foo::0"]?.matched_count).toBe(1);
+  });
+
+  it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {
+    await mount_probe();
+    api_fetch_mock.mockReturnValueOnce(new Promise(() => {}));
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    expect(latest_state?.dialog_state.open).toBe(true);
+
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "bar",
+        info: "新规则",
+      });
+    });
+
+    await act(async () => {
+      void latest_state?.save_dialog_entry();
+      await Promise.resolve();
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(false);
   });
 });

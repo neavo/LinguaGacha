@@ -15,34 +15,6 @@ class StubRuntimeService:
             for item_id in item_ids
         ]
 
-    def build_quality_block(self) -> dict[str, object]:
-        return {
-            "glossary": {
-                "entries": [{"src": "绿之塔", "dst": "绿塔"}],
-                "enabled": True,
-                "mode": "off",
-                "revision": 4,
-            },
-            "pre_replacement": {
-                "entries": [],
-                "enabled": False,
-                "mode": "off",
-                "revision": 0,
-            },
-            "post_replacement": {
-                "entries": [],
-                "enabled": False,
-                "mode": "off",
-                "revision": 0,
-            },
-            "text_preserve": {
-                "entries": [],
-                "enabled": False,
-                "mode": "off",
-                "revision": 0,
-            },
-        }
-
     def build_analysis_block(self) -> dict[str, object]:
         return {
             "candidate_count": 3,
@@ -67,7 +39,7 @@ def build_task_snapshot(task_type: str) -> dict[str, object]:
     }
 
 
-def test_project_patch_event_bridge_maps_translation_task_done_to_store_patch():
+def test_project_patch_event_bridge_maps_translation_task_done_to_store_patch() -> None:
     bridge = ProjectPatchEventBridge(
         runtime_service=StubRuntimeService(),
         task_snapshot_builder=build_task_snapshot,
@@ -78,12 +50,17 @@ def test_project_patch_event_bridge_maps_translation_task_done_to_store_patch():
         {
             "sub_event": Base.SubEvent.DONE,
             "item_ids": [1, 2],
-            "revision": 5,
+            "revision": 8,
         },
     )
 
     assert topic == "project.patch"
     assert payload["source"] == "task"
+    assert payload["projectRevision"] == 8
+    assert payload["sectionRevisions"] == {
+        "items": 0,
+        "task": 6,
+    }
     assert payload["updatedSections"] == ["items", "task"]
     assert payload["patch"][0] == {
         "op": "merge_items",
@@ -114,7 +91,7 @@ def test_project_patch_event_bridge_maps_translation_task_done_to_store_patch():
     }
 
 
-def test_project_patch_event_bridge_maps_analysis_task_done_event_to_store_patch():
+def test_project_patch_event_bridge_maps_analysis_done_to_store_patch() -> None:
     bridge = ProjectPatchEventBridge(
         runtime_service=StubRuntimeService(),
         task_snapshot_builder=build_task_snapshot,
@@ -130,6 +107,10 @@ def test_project_patch_event_bridge_maps_analysis_task_done_event_to_store_patch
 
     assert topic == "project.patch"
     assert payload["projectRevision"] == 8
+    assert payload["sectionRevisions"] == {
+        "analysis": 8,
+        "task": 6,
+    }
     assert payload["updatedSections"] == ["analysis", "task"]
     assert payload["patch"][0] == {
         "op": "replace_analysis",
@@ -140,27 +121,7 @@ def test_project_patch_event_bridge_maps_analysis_task_done_event_to_store_patch
     }
 
 
-def test_project_patch_event_bridge_maps_translation_task_done_event_to_task_patch():
-    bridge = ProjectPatchEventBridge(
-        runtime_service=StubRuntimeService(),
-        task_snapshot_builder=build_task_snapshot,
-    )
-
-    topic, payload = bridge.map_event(
-        Base.Event.TRANSLATION_TASK,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "item_ids": [3],
-            "revision": 8,
-        },
-    )
-
-    assert topic == "project.patch"
-    assert payload["projectRevision"] == 8
-    assert payload["patch"][0]["items"][0]["item_id"] == 3
-
-
-def test_project_patch_event_bridge_ignores_unmapped_events():
+def test_project_patch_event_bridge_ignores_unmapped_events() -> None:
     topic, payload = ProjectPatchEventBridge().map_event(
         Base.Event.PROJECT_CHECK,
         {

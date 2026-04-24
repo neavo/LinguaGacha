@@ -10,13 +10,13 @@ import {
 
 import { api_fetch } from "@/app/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import type { ProjectStoreState } from "@/app/project-runtime/project-store";
+import type { ProjectStoreState } from "@/app/project/store/project-store";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
-} from "@/app/state/desktop-runtime-context";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+} from "@/app/runtime/desktop/desktop-runtime-context";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
@@ -53,7 +53,7 @@ import {
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
 
-type UseProofreadingPageStateResult = {
+export type UseProofreadingPageStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   cache_stale: boolean;
   last_loaded_at: number | null;

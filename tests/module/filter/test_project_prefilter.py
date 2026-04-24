@@ -209,105 +209,10 @@ class TestProjectPrefilterInputContract:
             )
 
 
-class TestMToolOptimizerPreprocess:
-    """MTool 优化器预处理：标记 KVJSON 中的子句。"""
-
-    def test_marks_subclauses_as_skipped(self) -> None:
-        # 多行条目包含 "Line A" 和 "Line B"
-        multi_line = make_item(
-            src="Line A\nLine B",
-            file_type=Item.FileType.KVJSON,
-            file_path="file1.json",
-        )
-        # 独立条目匹配子句
-        clause_a = make_item(
-            src="Line A",
-            file_type=Item.FileType.KVJSON,
-            file_path="file1.json",
-        )
-        clause_b = make_item(
-            src="Line B",
-            file_type=Item.FileType.KVJSON,
-            file_path="file1.json",
-        )
-        # 不匹配的独立条目
-        other = make_item(
-            src="Other text",
-            file_type=Item.FileType.KVJSON,
-            file_path="file1.json",
-        )
-
-        items_kvjson = [multi_line, clause_a, clause_b, other]
-        skipped = ProjectPrefilter.mtool_optimizer_preprocess(items_kvjson)
-
-        assert skipped == 2
-        assert clause_a.get_status() == Base.ProjectStatus.RULE_SKIPPED
-        assert clause_b.get_status() == Base.ProjectStatus.RULE_SKIPPED
-        assert other.get_status() == Base.ProjectStatus.NONE
-
-    def test_empty_list_returns_zero(self) -> None:
-        assert ProjectPrefilter.mtool_optimizer_preprocess([]) == 0
-
-    def test_skips_non_none_status_items(self) -> None:
-        multi_line = make_item(
-            src="Line A\nLine B",
-            file_type=Item.FileType.KVJSON,
-            file_path="f.json",
-        )
-        # clause_a 已经是 PROCESSED，不应被改为 RULE_SKIPPED
-        clause_a = make_item(
-            src="Line A",
-            file_type=Item.FileType.KVJSON,
-            file_path="f.json",
-            status=Base.ProjectStatus.PROCESSED,
-        )
-        items_kvjson = [multi_line, clause_a]
-        skipped = ProjectPrefilter.mtool_optimizer_preprocess(items_kvjson)
-
-        assert skipped == 0
-        assert clause_a.get_status() == Base.ProjectStatus.PROCESSED
-
-    def test_groups_by_file_path(self) -> None:
-        # 不同文件的子句不应互相影响
-        multi_line = make_item(
-            src="Shared\nClause",
-            file_type=Item.FileType.KVJSON,
-            file_path="file1.json",
-        )
-        clause_other_file = make_item(
-            src="Clause",
-            file_type=Item.FileType.KVJSON,
-            file_path="file2.json",
-        )
-        items_kvjson = [multi_line, clause_other_file]
-        skipped = ProjectPrefilter.mtool_optimizer_preprocess(items_kvjson)
-
-        assert skipped == 0
-        assert clause_other_file.get_status() == Base.ProjectStatus.NONE
-
-    def test_ignores_blank_lines_in_multiline(self) -> None:
-        # 多行文本中的空行不应成为匹配目标
-        multi_line = make_item(
-            src="Line A\n\nLine B",
-            file_type=Item.FileType.KVJSON,
-            file_path="f.json",
-        )
-        blank_item = make_item(
-            src="",
-            file_type=Item.FileType.KVJSON,
-            file_path="f.json",
-        )
-        items_kvjson = [multi_line, blank_item]
-        skipped = ProjectPrefilter.mtool_optimizer_preprocess(items_kvjson)
-
-        # 空字符串 "" 不在 target 中（空行被过滤），不应被标记
-        assert skipped == 0
-
-
 class TestProjectPrefilterMToolIntegration:
     """MTool 优化器通过 apply 入口的集成行为。"""
 
-    def test_apply_with_mtool_enabled(self) -> None:
+    def test_apply_marks_kvjson_subclauses_when_mtool_enabled(self) -> None:
         multi_line = make_item(
             src="Line A\nLine B",
             file_type=Item.FileType.KVJSON,
@@ -323,16 +228,24 @@ class TestProjectPrefilterMToolIntegration:
             file_type=Item.FileType.KVJSON,
             file_path="game.json",
         )
+        other_file_clause = make_item(
+            src="Line B",
+            file_type=Item.FileType.KVJSON,
+            file_path="other.json",
+        )
 
         result = ProjectPrefilter.apply(
-            [multi_line, clause, normal],
+            [multi_line, clause, normal, other_file_clause],
             source_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=True,
         )
+
         assert result.stats.mtool_skipped == 1
         assert clause.get_status() == Base.ProjectStatus.RULE_SKIPPED
+        assert normal.get_status() == Base.ProjectStatus.NONE
+        assert other_file_clause.get_status() == Base.ProjectStatus.NONE
 
-    def test_apply_with_mtool_disabled(self) -> None:
+    def test_apply_keeps_subclauses_when_mtool_disabled(self) -> None:
         multi_line = make_item(
             src="Line A\nLine B",
             file_type=Item.FileType.KVJSON,
@@ -350,8 +263,52 @@ class TestProjectPrefilterMToolIntegration:
             mtool_optimizer_enable=False,
         )
         assert result.stats.mtool_skipped == 0
-        # clause 不应被 mtool 标记（但可能被 RuleFilter/LanguageFilter 标记）
         assert clause.get_status() == Base.ProjectStatus.NONE
+
+    def test_apply_does_not_replace_existing_item_status_with_mtool_skip(
+        self,
+    ) -> None:
+        multi_line = make_item(
+            src="Line A\nLine B",
+            file_type=Item.FileType.KVJSON,
+            file_path="game.json",
+        )
+        processed_clause = make_item(
+            src="Line A",
+            status=Base.ProjectStatus.PROCESSED,
+            file_type=Item.FileType.KVJSON,
+            file_path="game.json",
+        )
+
+        result = ProjectPrefilter.apply(
+            [multi_line, processed_clause],
+            source_language=BaseLanguage.Enum.EN,
+            mtool_optimizer_enable=True,
+        )
+
+        assert result.stats.mtool_skipped == 0
+        assert processed_clause.get_status() == Base.ProjectStatus.PROCESSED
+
+    def test_apply_ignores_blank_subclauses_when_mtool_enabled(self) -> None:
+        multi_line = make_item(
+            src="Line A\n\nLine B",
+            file_type=Item.FileType.KVJSON,
+            file_path="game.json",
+        )
+        blank_item = make_item(
+            src="",
+            file_type=Item.FileType.KVJSON,
+            file_path="game.json",
+        )
+
+        result = ProjectPrefilter.apply(
+            [multi_line, blank_item],
+            source_language=BaseLanguage.ALL,
+            mtool_optimizer_enable=True,
+        )
+
+        assert result.stats.mtool_skipped == 0
+        assert blank_item.get_status() == Base.ProjectStatus.NONE
 
 
 class TestProjectPrefilterEmptyInputAndPhaseProgress:
@@ -372,22 +329,7 @@ class TestProjectPrefilterEmptyInputAndPhaseProgress:
         assert result.stats.mtool_skipped == 0
         assert progress_steps == []
 
-    def test_mtool_preprocess_reports_existing_progress_when_no_kvjson_items(
-        self,
-    ) -> None:
-        progress_steps: list[tuple[int, int]] = []
-
-        skipped = ProjectPrefilter.mtool_optimizer_preprocess(
-            [],
-            progress_cb=lambda current, total: progress_steps.append((current, total)),
-            progress_offset=3,
-            progress_total=10,
-        )
-
-        assert skipped == 0
-        assert progress_steps == [(3, 10)]
-
-    def test_mtool_preprocess_reports_phase_completion(self) -> None:
+    def test_apply_with_mtool_reports_phase_completion(self) -> None:
         progress_steps: list[tuple[int, int]] = []
         multi_line = make_item(
             src="Line A\nLine B",
@@ -400,13 +342,30 @@ class TestProjectPrefilterEmptyInputAndPhaseProgress:
             file_path="game.json",
         )
 
-        skipped = ProjectPrefilter.mtool_optimizer_preprocess(
+        result = ProjectPrefilter.apply(
             [multi_line, clause],
+            source_language=BaseLanguage.Enum.EN,
+            mtool_optimizer_enable=True,
             progress_cb=lambda current, total: progress_steps.append((current, total)),
-            progress_offset=6,
-            progress_total=18,
             progress_every=100,
         )
 
-        assert skipped == 1
-        assert progress_steps[-1] == (18, 18)
+        assert result.stats.mtool_skipped == 1
+        assert progress_steps[-1] == (6, 6)
+
+    def test_apply_with_mtool_reports_phase_offset_when_project_has_no_kvjson(
+        self,
+    ) -> None:
+        progress_steps: list[tuple[int, int]] = []
+        item = make_item(src="Hello", file_type=Item.FileType.TXT)
+
+        result = ProjectPrefilter.apply(
+            [item],
+            source_language=BaseLanguage.Enum.EN,
+            mtool_optimizer_enable=True,
+            progress_cb=lambda current, total: progress_steps.append((current, total)),
+        )
+
+        assert result.stats.mtool_skipped == 0
+        assert (2, 3) in progress_steps
+        assert progress_steps[-1] == (3, 3)

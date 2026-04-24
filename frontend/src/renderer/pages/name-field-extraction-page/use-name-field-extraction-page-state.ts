@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop-api";
-import { createProjectStoreReplaceSectionPatch } from "@/app/project-runtime/project-store";
+import { createProjectStoreReplaceSectionPatch } from "@/app/project/store/project-store";
 import {
   getQualityRuleSlice,
   replaceQualityRuleSlice,
-} from "@/app/project-runtime/quality-runtime";
+} from "@/app/project/quality/quality-runtime";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
-} from "@/app/state/desktop-runtime-context";
-import { useDesktopRuntime } from "@/app/state/use-desktop-runtime";
-import { useDesktopToast } from "@/app/state/use-desktop-toast";
+} from "@/app/runtime/desktop/desktop-runtime-context";
+import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { merge_glossary_entries } from "@/pages/glossary-page/merge";
 import type { GlossaryEntry } from "@/pages/glossary-page/types";

@@ -15,12 +15,6 @@ from module.Utils.SpreadsheetTool import SpreadsheetTool
 class WOLFXLSX(Base):
     FILL_COLOR_WHITELIST: tuple = (9,)  # 白色
 
-    FILL_COLOR_BLACKLIST: tuple = (
-        44,  # 蓝色
-        47,  # 土黄
-        55,  # 灰色
-    )
-
     COL_SRC_TEXT = 6
     COL_DST_TEXT = 7
 

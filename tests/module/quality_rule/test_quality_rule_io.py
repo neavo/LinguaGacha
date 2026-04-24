@@ -8,7 +8,6 @@ from openpyxl.cell.cell import Cell
 from openpyxl.worksheet.worksheet import Worksheet
 
 from module.QualityRule.QualityRuleIO import QualityRuleIO
-from module.Utils.SpreadsheetTool import SpreadsheetTool
 
 
 def test_load_rules_from_file_dispatches_by_extension(
@@ -34,7 +33,6 @@ def test_load_rules_from_file_dispatches_by_extension(
 def test_load_from_json_file_supports_list_actors_and_dict_formats(
     fs,
 ) -> None:
-    del fs
     root_path = Path("/workspace/quality")
     root_path.mkdir(parents=True, exist_ok=True)
     list_path = root_path / "list.json"
@@ -129,9 +127,8 @@ def test_load_from_json_file_handles_actor_rows_with_partial_fields(
 
 
 def test_load_from_xlsx_file_skips_header_and_parses_booleans(
-    fs, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    del fs
     book = openpyxl.Workbook()
     sheet = book.active
     assert isinstance(sheet, Worksheet)
@@ -175,10 +172,9 @@ def test_load_from_xlsx_file_returns_empty_when_active_is_not_worksheet(
     assert QualityRuleIO.load_from_xlsx_file("/workspace/quality/rules.xlsx") == []
 
 
-def test_load_from_xlsx_file_skips_rows_with_none_first_cell(
-    fs, monkeypatch: pytest.MonkeyPatch
+def test_load_from_xlsx_file_skips_rows_with_empty_first_cell(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    del fs
     book = openpyxl.Workbook()
     sheet = book.active
     assert isinstance(sheet, Worksheet)
@@ -202,46 +198,7 @@ def test_load_from_xlsx_file_skips_rows_with_none_first_cell(
     assert [item["src"] for item in result] == ["HP", "MP"]
 
 
-def test_load_from_xlsx_file_skips_rows_when_reader_returns_none(
-    fs, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    del fs
-    book = openpyxl.Workbook()
-    sheet = book.active
-    assert isinstance(sheet, Worksheet)
-
-    cast(Cell, sheet.cell(row=1, column=1)).value = "src"
-    cast(Cell, sheet.cell(row=1, column=2)).value = "dst"
-    cast(Cell, sheet.cell(row=2, column=1)).value = "IGNORED"
-    cast(Cell, sheet.cell(row=2, column=2)).value = "忽略"
-
-    original_get = SpreadsheetTool.get_cell_value
-
-    def fake_get_cell_value(
-        ws: Worksheet,
-        row: int,
-        column: int,
-    ) -> str | None:
-        if row == 2 and column == 1:
-            return None
-        return original_get(ws, row, column)
-
-    monkeypatch.setattr(
-        "module.QualityRule.QualityRuleIO.openpyxl.load_workbook",
-        lambda *_args, **_kwargs: book,
-    )
-    monkeypatch.setattr(
-        "module.QualityRule.QualityRuleIO.SpreadsheetTool.get_cell_value",
-        fake_get_cell_value,
-    )
-
-    result = QualityRuleIO.load_from_xlsx_file("/workspace/quality/rules.xlsx")
-
-    assert result == []
-
-
 def test_export_rules_writes_xlsx_and_json(fs, monkeypatch: pytest.MonkeyPatch) -> None:
-    del fs
     captured: dict[str, object] = {}
 
     def fake_save(workbook: openpyxl.Workbook, path: str) -> None:

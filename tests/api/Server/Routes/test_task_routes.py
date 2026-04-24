@@ -1,23 +1,31 @@
-from api.Server.CoreApiServer import CoreApiServer
-from api.Server.ServerBootstrap import ServerBootstrap
+from api.Server.Routes.TaskRoutes import TaskRoutes
+from tests.api.Server.Routes.route_contracts import JsonRouteCase
+from tests.api.Server.Routes.route_contracts import RecordingRouteService
+from tests.api.Server.Routes.route_contracts import RouteRecorder
+from tests.api.Server.Routes.route_contracts import (
+    assert_registered_json_routes_delegate_to_service,
+)
 
 
-def test_server_bootstrap_registers_task_routes():
-    core_api_server = CoreApiServer()
+TASK_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
+    JsonRouteCase("/api/tasks/start-translation", "start_translation"),
+    JsonRouteCase("/api/tasks/stop-translation", "stop_translation"),
+    JsonRouteCase("/api/tasks/start-analysis", "start_analysis"),
+    JsonRouteCase("/api/tasks/stop-analysis", "stop_analysis"),
+    JsonRouteCase("/api/tasks/snapshot", "get_task_snapshot"),
+    JsonRouteCase("/api/tasks/export-translation", "export_translation"),
+    JsonRouteCase("/api/tasks/translate-single", "translate_single"),
+)
 
-    ServerBootstrap.register_api_routes(
-        core_api_server,
-        task_app_service=object(),
+
+def test_task_routes_register_expected_http_contract() -> None:
+    recorder = RouteRecorder()
+    service = RecordingRouteService()
+
+    TaskRoutes.register(recorder, service)
+
+    assert_registered_json_routes_delegate_to_service(
+        recorder,
+        TASK_ROUTE_CASES,
+        service,
     )
-
-    assert core_api_server.route_map[("POST", "/api/tasks/snapshot")].mode == "json"
-    assert (
-        core_api_server.route_map[("POST", "/api/tasks/start-translation")].mode
-        == "json"
-    )
-    assert (
-        core_api_server.route_map[("POST", "/api/tasks/translate-single")].mode
-        == "json"
-    )
-    assert ("POST", "/api/tasks/reset-analysis-failed") not in core_api_server.route_map
-    assert ("POST", "/api/tasks/reset-translation-all") not in core_api_server.route_map

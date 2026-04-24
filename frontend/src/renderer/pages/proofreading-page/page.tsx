@@ -1,8 +1,9 @@
 import { AlertCircle, Funnel, LoaderCircle } from "lucide-react";
 
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useCachedProofreadingPageState } from "@/app/state/project-pages-context";
+import { useCachedProofreadingPageState } from "@/app/runtime/project-pages/project-pages-context";
 import "@/pages/proofreading-page/proofreading-page.css";
+import type { UseProofreadingPageStateResult } from "@/pages/proofreading-page/use-proofreading-page-state";
 import { ProofreadingConfirmDialog } from "@/pages/proofreading-page/components/proofreading-confirm-dialog";
 import { ProofreadingEditDialog } from "@/pages/proofreading-page/components/proofreading-edit-dialog";
 import { ProofreadingFilterDialog } from "@/pages/proofreading-page/components/proofreading-filter-dialog";
@@ -23,7 +24,7 @@ const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = ["all", "src", "ds
 
 export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
-  const proofreading_page_state = useCachedProofreadingPageState();
+  const proofreading_page_state = useCachedProofreadingPageState<UseProofreadingPageStateResult>();
   const toolbar_disabled =
     proofreading_page_state.readonly ||
     proofreading_page_state.is_refreshing ||

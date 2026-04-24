@@ -106,7 +106,7 @@ def test_speakers_are_compatible_requires_same_identifier_speaker() -> None:
     assert speakers_are_compatible(narrator, plain) is False
 
 
-def test_statements_equal_covers_all_matching_strategies() -> None:
+def test_statements_equal_matches_normalized_speakers_and_rejects_mismatches() -> None:
     assert (
         statements_equal(
             build_stmt(1, StmtKind.TEMPLATE, "a", "a", string_count=1),
