@@ -33,7 +33,6 @@ type InFlightRefresh = {
 
 type QualityStatisticsScheduler = {
   warmupAll: () => void;
-  markItemsDirty: () => void;
   markQualityDirty: (rule_type: QualityStatisticsRuleType) => void;
   requestForeground: (rule_type: QualityStatisticsRuleType) => void;
   resetProject: (project_path: string) => void;
@@ -310,21 +309,6 @@ export function createQualityStatisticsScheduler(args: {
     });
   }
 
-  function markItemsDirty(): void {
-    schedule_refresh("glossary", {
-      priority: "background",
-    });
-    schedule_refresh("pre_replacement", {
-      priority: "background",
-    });
-    schedule_refresh("post_replacement", {
-      priority: "background",
-    });
-    schedule_refresh("text_preserve", {
-      priority: "background",
-    });
-  }
-
   function markQualityDirty(rule_type: QualityStatisticsRuleType): void {
     schedule_refresh(rule_type, {
       priority: "background",
@@ -352,7 +336,6 @@ export function createQualityStatisticsScheduler(args: {
 
   return {
     warmupAll,
-    markItemsDirty,
     markQualityDirty,
     requestForeground,
     resetProject,

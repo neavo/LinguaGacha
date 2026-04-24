@@ -186,45 +186,6 @@ describe("createQualityStatisticsScheduler", () => {
     scheduler.dispose();
   });
 
-  it("items 变更时会在后台刷新四类统计", async () => {
-    let current_state = create_test_state();
-    const store = createQualityStatisticsStore();
-    const compute_by_rule_type = {
-      glossary: vi.fn(async (input: QualityStatisticsTaskInput) => create_success_result(input)),
-      pre_replacement: vi.fn(async (input: QualityStatisticsTaskInput) =>
-        create_success_result(input),
-      ),
-      post_replacement: vi.fn(async (input: QualityStatisticsTaskInput) =>
-        create_success_result(input),
-      ),
-      text_preserve: vi.fn(async (input: QualityStatisticsTaskInput) =>
-        create_success_result(input),
-      ),
-    };
-    const scheduler = createQualityStatisticsScheduler({
-      store,
-      get_project_state: () => current_state,
-      get_executor: (rule_type) => {
-        return {
-          compute: compute_by_rule_type[rule_type],
-        };
-      },
-    });
-
-    scheduler.resetProject(current_state.project.path);
-    scheduler.markItemsDirty();
-
-    await vi.advanceTimersByTimeAsync(REFRESH_DELAY_BY_PRIORITY.background - 1);
-    expect(compute_by_rule_type.glossary).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(compute_by_rule_type.glossary).toHaveBeenCalledTimes(1);
-    expect(compute_by_rule_type.pre_replacement).toHaveBeenCalledTimes(1);
-    expect(compute_by_rule_type.post_replacement).toHaveBeenCalledTimes(1);
-    expect(compute_by_rule_type.text_preserve).toHaveBeenCalledTimes(1);
-    scheduler.dispose();
-  });
-
   it("quality slice 变更时只刷新对应 rule type", async () => {
     const current_state = create_test_state();
     const store = createQualityStatisticsStore();
