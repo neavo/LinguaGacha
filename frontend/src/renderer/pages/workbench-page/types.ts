@@ -29,7 +29,6 @@ export type WorkbenchSnapshot = {
   file_count: number;
   total_items: number;
   translated: number;
-  translated_in_past: number;
   error_count: number;
   entries: WorkbenchSnapshotEntry[];
 };

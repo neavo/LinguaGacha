@@ -35,7 +35,7 @@ def test_check_handles_empty_aqua_and_processed_rows() -> None:
     assert tag == ["aqua"]
 
     _, _, _, status, _ = processor.check("a", ["src", "dst"], [], ["ctx"])
-    assert status == Base.ProjectStatus.PROCESSED_IN_PAST
+    assert status == Base.ProjectStatus.PROCESSED
 
 
 def test_check_sets_empty_dst_when_translation_column_missing() -> None:

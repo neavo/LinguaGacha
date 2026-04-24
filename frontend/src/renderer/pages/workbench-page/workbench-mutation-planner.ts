@@ -398,7 +398,7 @@ type WorkbenchParsedItemRecord = {
   retry_count: number;
 };
 
-const INHERITABLE_STATUSES = new Set(["PROCESSED", "PROCESSED_IN_PAST"]);
+const INHERITABLE_STATUSES = new Set(["PROCESSED"]);
 const STRUCTURAL_STATUSES = new Set(["EXCLUDED", "RULE_SKIPPED", "LANGUAGE_SKIPPED", "DUPLICATED"]);
 
 function normalize_casefold_path(value: string): string {

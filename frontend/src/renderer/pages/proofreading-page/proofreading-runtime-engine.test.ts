@@ -4,7 +4,7 @@ import { createProofreadingRuntimeEngine } from "./proofreading-runtime-engine";
 import { PROOFREADING_STATUS_ORDER, PROOFREADING_WARNING_CODES } from "./types";
 
 const ALL_STATUS_FILTERS = [...PROOFREADING_STATUS_ORDER];
-const DEFAULT_STATUS_FILTERS = ["NONE", "PROCESSING", "PROCESSED", "PROCESSED_IN_PAST", "ERROR"];
+const DEFAULT_STATUS_FILTERS = ["NONE", "PROCESSING", "PROCESSED", "ERROR"];
 
 function create_quality_state() {
   return {

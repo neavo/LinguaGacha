@@ -157,11 +157,7 @@ class ProofreadingRetranslateService:
         translated_count = sum(
             1
             for item in review_items
-            if item.get_status()
-            in (
-                Base.ProjectStatus.PROCESSED,
-                Base.ProjectStatus.PROCESSED_IN_PAST,
-            )
+            if item.get_status() == Base.ProjectStatus.PROCESSED
         )
         extras["line"] = translated_count
         self.data_manager.set_translation_extras(extras)

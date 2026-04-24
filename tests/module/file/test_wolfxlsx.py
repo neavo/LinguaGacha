@@ -61,7 +61,7 @@ def test_read_from_stream_sets_status_from_color_and_dst(config: Config) -> None
 
     assert len(items) == 3
     assert items[0].get_status() == Base.ProjectStatus.NONE
-    assert items[1].get_status() == Base.ProjectStatus.PROCESSED_IN_PAST
+    assert items[1].get_status() == Base.ProjectStatus.PROCESSED
     assert items[2].get_status() == Base.ProjectStatus.EXCLUDED
 
 

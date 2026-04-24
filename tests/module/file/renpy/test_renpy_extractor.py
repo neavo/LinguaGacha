@@ -227,7 +227,7 @@ def test_get_status_and_get_literal_value() -> None:
     stmt = build_stmt(1, 'e "a"', StmtKind.TARGET, BlockKind.LABEL)
 
     assert extractor.get_status("", "x") == Base.ProjectStatus.EXCLUDED
-    assert extractor.get_status("a", "b") == Base.ProjectStatus.PROCESSED_IN_PAST
+    assert extractor.get_status("a", "b") == Base.ProjectStatus.PROCESSED
     assert extractor.get_status("a", "a") == Base.ProjectStatus.NONE
     assert extractor.get_literal_value(stmt, -1) == ""
     assert extractor.get_literal_value(stmt, 99) == ""

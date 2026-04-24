@@ -9,6 +9,7 @@ from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.RuleService import RuleService
+from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -20,7 +21,6 @@ class QualityRuleService:
             Base.ProjectStatus.NONE,
             Base.ProjectStatus.PROCESSING,
             Base.ProjectStatus.PROCESSED,
-            Base.ProjectStatus.PROCESSED_IN_PAST,
             Base.ProjectStatus.ERROR,
         }
     )
@@ -223,9 +223,10 @@ class QualityRuleService:
 
         if isinstance(value, Base.ProjectStatus):
             return value
-        if isinstance(value, str):
+        normalized_value = ProjectStatusMigrationService.normalize_status_value(value)
+        if isinstance(normalized_value, str):
             try:
-                return Base.ProjectStatus(value)
+                return Base.ProjectStatus(normalized_value)
             except ValueError:
                 return Base.ProjectStatus.NONE
         return Base.ProjectStatus.NONE

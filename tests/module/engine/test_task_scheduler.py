@@ -68,7 +68,7 @@ def test_generate_item_chunks_skips_non_none_status_items() -> None:
 def test_generate_item_chunks_returns_empty_when_all_items_are_skipped() -> None:
     items = [
         create_item("line-1", Base.ProjectStatus.PROCESSED),
-        create_item("line-2", Base.ProjectStatus.PROCESSED_IN_PAST),
+        create_item("line-2", Base.ProjectStatus.PROCESSED),
     ]
 
     chunks, preceding_chunks = TaskScheduler.generate_item_chunks(

@@ -14,7 +14,6 @@ const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = [
   "NONE",
   "PROCESSING",
   "PROCESSED",
-  "PROCESSED_IN_PAST",
   "ERROR",
 ] as const;
 
@@ -22,7 +21,6 @@ export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSING",
   "PROCESSED",
-  "PROCESSED_IN_PAST",
   "ERROR",
   "LANGUAGE_SKIPPED",
   "EXCLUDED",
@@ -34,7 +32,6 @@ export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   NONE: "proofreading_page.status.none",
   PROCESSING: "proofreading_page.status.processing",
   PROCESSED: "proofreading_page.status.processed",
-  PROCESSED_IN_PAST: "proofreading_page.status.processed_in_past",
   EXCLUDED: "proofreading_page.status.excluded",
   RULE_SKIPPED: "proofreading_page.status.rule_skipped",
   LANGUAGE_SKIPPED: "proofreading_page.status.non_target_source_language",

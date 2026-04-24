@@ -13,6 +13,7 @@ import tiktoken_ext
 from tiktoken_ext import openai_public
 
 from base.Base import Base
+from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
 from module.Text.TextBase import TextBase
 
 TOKEN_ENCODING_NAME = "o200k_base"
@@ -120,7 +121,24 @@ class Item:
     def from_dict(cls, data: dict) -> Self:
         class_fields = {f.name for f in dataclasses.fields(cls)}
         filtered_data = {k: v for k, v in data.items() if k in class_fields}
+        if "status" in filtered_data:
+            filtered_data["status"] = cls.normalize_status(filtered_data["status"])
         return cls(**filtered_data)
+
+    @classmethod
+    def normalize_status(cls, status: Any) -> Base.ProjectStatus:
+        """旧项目载荷仍可能带旧状态，进入内存前统一并入已处理。"""
+
+        if isinstance(status, Base.ProjectStatus):
+            return status
+
+        normalized_status = ProjectStatusMigrationService.normalize_status_value(status)
+        if isinstance(normalized_status, str):
+            try:
+                return Base.ProjectStatus(normalized_status)
+            except ValueError:
+                return Base.ProjectStatus.NONE
+        return Base.ProjectStatus.NONE
 
     def to_dict(self) -> dict[str, Any]:
         with self.lock:
@@ -280,9 +298,9 @@ class Item:
             return self.status
 
     # 设置翻译状态
-    def set_status(self, status: Base.ProjectStatus) -> None:
+    def set_status(self, status: Base.ProjectStatus | str) -> None:
         with self.lock:
-            self.status = status
+            self.status = self.normalize_status(status)
 
     # 获取重试次数
     def get_retry_count(self) -> int:

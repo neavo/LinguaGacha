@@ -68,7 +68,7 @@ class NONE:
             skip_internal_filter: bool = True
         # 如果 第一列、第二列 都有文本，则跳过
         elif dst != "" and src != dst:
-            status: str = Base.ProjectStatus.PROCESSED_IN_PAST
+            status: str = Base.ProjectStatus.PROCESSED
             skip_internal_filter: bool = False
         else:
             block: list[bool] = self.filter(src, path, updated_tag, context)

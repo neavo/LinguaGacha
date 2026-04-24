@@ -83,7 +83,7 @@ class KVJSON(Base):
                                 "row": len(items),
                                 "file_type": Item.FileType.KVJSON,
                                 "file_path": rel_path,
-                                "status": Base.ProjectStatus.PROCESSED_IN_PAST,
+                                "status": Base.ProjectStatus.PROCESSED,
                             }
                         )
                     )

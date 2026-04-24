@@ -77,7 +77,7 @@ class WOLFXLSX(Base):
             ):
                 status = Base.ProjectStatus.EXCLUDED
             elif dst != "" and src != dst:
-                status = Base.ProjectStatus.PROCESSED_IN_PAST
+                status = Base.ProjectStatus.PROCESSED
 
             items.append(
                 Item.from_dict(
