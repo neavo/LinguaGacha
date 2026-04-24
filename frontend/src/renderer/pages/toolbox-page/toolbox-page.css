@@ -12,7 +12,7 @@
 
 .toolbox-page__card {
   width: 300px;
-  min-height: 150px;
+  min-height: 128px;
 }
 
 .toolbox-page__card[data-clickable="true"] {
@@ -43,7 +43,7 @@
 .toolbox-page__card-title {
   margin: 0;
   color: var(--foreground);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 650;
   line-height: 1.25;
   letter-spacing: 0;
@@ -69,7 +69,7 @@
 .toolbox-page__description {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
