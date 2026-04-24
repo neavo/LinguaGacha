@@ -9,10 +9,6 @@
   gap: var(--proofreading-page-gap);
 }
 
-.proofreading-page__notice {
-  margin: 0;
-}
-
 .proofreading-page__table-host {
   display: flex;
   min-height: 0;

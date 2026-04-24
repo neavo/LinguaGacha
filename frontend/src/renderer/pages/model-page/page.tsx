@@ -1,9 +1,7 @@
 import {
-  AlertCircle,
   Check,
   GraduationCap,
   ListTodo,
-  LoaderCircle,
   Plus,
   Recycle,
   SlidersHorizontal,
@@ -20,7 +18,6 @@ import { ModelBasicSettingsDialog } from "@/pages/model-page/dialogs/model-basic
 import { ModelSelectorDialog } from "@/pages/model-page/dialogs/model-selector-dialog";
 import { ModelTaskSettingsDialog } from "@/pages/model-page/dialogs/model-task-settings-dialog";
 import { useModelPageState } from "@/pages/model-page/use-model-page-state";
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/shadcn/alert";
 import { Button } from "@/shadcn/button";
 import {
   DropdownMenuContent,
@@ -115,33 +112,6 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
         className="model-page page-shell page-shell--full"
         data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
       >
-        {model_page_state.refresh_error !== null ? (
-          <Alert variant="destructive" className="model-page__notice">
-            <AlertCircle />
-            <AlertTitle>{t("model_page.feedback.refresh_failed")}</AlertTitle>
-            <AlertDescription>{model_page_state.refresh_error}</AlertDescription>
-            <AlertAction>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={model_page_state.is_refreshing}
-                onClick={() => {
-                  void model_page_state.refresh_snapshot();
-                }}
-              >
-                {model_page_state.is_refreshing ? (
-                  <>
-                    <LoaderCircle className="animate-spin" data-icon="inline-start" />
-                    {t("app.action.loading")}
-                  </>
-                ) : (
-                  t("app.action.retry")
-                )}
-              </Button>
-            </AlertAction>
-          </Alert>
-        ) : null}
-
         <section className="model-page__list" aria-label={t("model_page.title")}>
           {model_page_state.grouped_categories.map((category) => (
             <ModelCategoryCard

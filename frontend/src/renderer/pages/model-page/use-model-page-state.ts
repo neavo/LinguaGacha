@@ -37,7 +37,6 @@ type ModelTestPayload = Partial<ModelTestResult> & {
 type UseModelPageStateResult = {
   snapshot: ModelPageSnapshot;
   grouped_categories: ModelCategorySnapshot[];
-  refresh_error: string | null;
   is_refreshing: boolean;
   readonly: boolean;
   dialog_state: ModelDialogState;
@@ -458,7 +457,6 @@ export function useModelPageState(): UseModelPageStateResult {
   const { push_toast } = useDesktopToast();
   const { task_snapshot } = useDesktopRuntime();
   const [snapshot, set_snapshot] = useState<ModelPageSnapshot>(EMPTY_SNAPSHOT);
-  const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState(false);
   const [is_action_running, set_is_action_running] = useState(false);
   const [dialog_state, set_dialog_state] = useState<ModelDialogState>(close_dialog_state());
@@ -480,17 +478,15 @@ export function useModelPageState(): UseModelPageStateResult {
       const payload = await api_fetch<ModelPageSnapshotPayload>("/api/models/snapshot", {});
       const next_snapshot = normalize_model_page_snapshot(payload);
       set_snapshot(next_snapshot);
-      set_refresh_error(null);
     } catch (error) {
-      if (error instanceof Error) {
-        set_refresh_error(error.message);
-      } else {
-        set_refresh_error(t("model_page.feedback.refresh_failed"));
-      }
+      push_toast(
+        "error",
+        error instanceof Error ? error.message : t("model_page.feedback.refresh_failed"),
+      );
     } finally {
       set_is_refreshing(false);
     }
-  }, [t]);
+  }, [push_toast, t]);
 
   useEffect(() => {
     void refresh_snapshot();
@@ -538,7 +534,6 @@ export function useModelPageState(): UseModelPageStateResult {
         const next_snapshot = normalize_model_page_snapshot(payload);
         if (latest_patch_request_id_by_model_ref.current[model_id] === request_id) {
           set_snapshot(next_snapshot);
-          set_refresh_error(null);
         }
       } catch (error) {
         if (latest_patch_request_id_by_model_ref.current[model_id] === request_id) {
@@ -567,7 +562,6 @@ export function useModelPageState(): UseModelPageStateResult {
           model_type,
         });
         set_snapshot(normalize_model_page_snapshot(payload));
-        set_refresh_error(null);
       } catch (error) {
         if (error instanceof Error) {
           push_toast("error", error.message);
@@ -597,7 +591,6 @@ export function useModelPageState(): UseModelPageStateResult {
           model_id,
         });
         set_snapshot(normalize_model_page_snapshot(payload));
-        set_refresh_error(null);
       } catch (error) {
         if (error instanceof Error) {
           push_toast("error", error.message);
@@ -675,7 +668,6 @@ export function useModelPageState(): UseModelPageStateResult {
           ordered_model_ids,
         });
         set_snapshot(normalize_model_page_snapshot(payload));
-        set_refresh_error(null);
       } catch {
         set_snapshot(previous_snapshot);
         push_toast("error", t("model_page.feedback.reorder_failed"));
@@ -760,7 +752,6 @@ export function useModelPageState(): UseModelPageStateResult {
         set_snapshot(normalize_model_page_snapshot(payload));
         push_toast("success", t("model_page.feedback.reset_success"));
       }
-      set_refresh_error(null);
     } catch (error) {
       if (error instanceof Error) {
         push_toast("error", error.message);
@@ -868,7 +859,6 @@ export function useModelPageState(): UseModelPageStateResult {
   return {
     snapshot,
     grouped_categories,
-    refresh_error,
     is_refreshing,
     readonly,
     dialog_state,

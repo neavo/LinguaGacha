@@ -102,7 +102,6 @@ export const en_us_proofreading_page = {
     description: "No matches found",
   },
   feedback: {
-    refresh_failed_title: "Failed to refresh proofreading.",
     refresh_failed: "Failed to refresh proofreading.",
     save_failed: "Save failed",
     replace_failed: "Replace failed",

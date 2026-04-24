@@ -2,10 +2,6 @@
   min-height: 100%;
 }
 
-.expert-settings-page__notice {
-  align-items: start;
-}
-
 .expert-settings-page__list {
   display: flex;
   flex-direction: column;

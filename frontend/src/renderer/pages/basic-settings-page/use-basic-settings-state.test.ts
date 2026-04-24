@@ -308,4 +308,24 @@ describe("useBasicSettingsState", () => {
       ],
     ]);
   });
+
+  it("刷新失败时保留当前基础设置并弹出错误 toast", async () => {
+    runtime_fixture.current.refresh_settings = vi.fn(async () => {
+      throw new Error("基础设置刷新失败");
+    });
+
+    await render_hook();
+
+    expect(latest_state).not.toBeNull();
+    toast_fixture.current.push_toast.mockClear();
+
+    await act(async () => {
+      await latest_state?.refresh_snapshot();
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.snapshot.request_timeout).toBe(300);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", "基础设置刷新失败");
+  });
 });

@@ -99,7 +99,6 @@ export const zh_cn_proofreading_page = {
     description: "未找到匹配项",
   },
   feedback: {
-    refresh_failed_title: "校对页刷新失败",
     refresh_failed: "校对页刷新失败",
     save_failed: "保存失败",
     replace_failed: "替换失败",

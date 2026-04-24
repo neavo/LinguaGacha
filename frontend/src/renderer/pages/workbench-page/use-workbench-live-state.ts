@@ -681,7 +681,6 @@ export type UseWorkbenchLiveStateResult = {
   last_loaded_at: number | null;
   refresh_request_id: number;
   settled_project_path: string;
-  refresh_error: string | null;
   is_refreshing: boolean;
   file_op_running: boolean;
   stats: WorkbenchStats;
@@ -760,7 +759,6 @@ export function useWorkbenchLiveState(
   const [last_loaded_at, set_last_loaded_at] = useState<number | null>(null);
   const [refresh_request_id, set_refresh_request_id] = useState(0);
   const [settled_project_path, set_settled_project_path] = useState("");
-  const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState(false);
   const [file_op_running, set_file_op_running] = useState(false);
   const [selected_entry_ids, set_selected_entry_ids] = useState<string[]>([]);
@@ -832,7 +830,6 @@ export function useWorkbenchLiveState(
     set_entries([]);
     apply_selection_state(create_empty_selection_state());
     set_dialog_state(close_dialog_state());
-    set_refresh_error(null);
     set_is_refreshing(false);
     set_cache_stale(false);
     set_last_loaded_at(null);
@@ -888,7 +885,6 @@ export function useWorkbenchLiveState(
         set_snapshot(next_snapshot);
         apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
         set_file_op_running(false);
-        set_refresh_error(null);
         set_cache_status("ready");
         set_cache_stale(false);
         set_last_loaded_at(Date.now());
@@ -900,7 +896,6 @@ export function useWorkbenchLiveState(
         }
 
         const message = resolve_error_message(error, t("workbench_page.feedback.refresh_failed"));
-        set_refresh_error(message);
         set_cache_status("error");
         set_cache_stale(true);
         set_file_op_running(false);
@@ -1578,7 +1573,6 @@ export function useWorkbenchLiveState(
     last_loaded_at,
     refresh_request_id,
     settled_project_path,
-    refresh_error,
     is_refreshing,
     file_op_running,
     stats,

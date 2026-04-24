@@ -59,7 +59,6 @@ export type UseProofreadingPageStateResult = {
   last_loaded_at: number | null;
   refresh_request_id: number;
   settled_project_path: string;
-  refresh_error: string | null;
   is_refreshing: boolean;
   is_mutating: boolean;
   readonly: boolean;
@@ -458,7 +457,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     return create_empty_proofreading_filter_panel_state();
   });
   const [filter_panel_loading, set_filter_panel_loading] = useState(false);
-  const [refresh_error, set_refresh_error] = useState<string | null>(null);
   const [is_refreshing, set_is_refreshing] = useState(false);
   const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(
     "idle",
@@ -596,7 +594,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_filter_dialog_filters(create_empty_filter_options());
     set_filter_panel(create_empty_proofreading_filter_panel_state());
     set_filter_panel_loading(false);
-    set_refresh_error(null);
     set_cache_stale(false);
     set_last_loaded_at(null);
     set_refresh_request_id(0);
@@ -841,7 +838,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       }
 
       preferred_row_id_ref.current = active_row_id_ref.current;
-      set_refresh_error(null);
       set_cache_status("ready");
       set_cache_stale(false);
       set_last_loaded_at(Date.now());
@@ -855,7 +851,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const message = is_worker_client_error(error)
         ? fallback_message
         : resolve_error_message(error, fallback_message);
-      set_refresh_error(message);
       set_cache_status("error");
       set_cache_stale(true);
       set_settled_project_path(project_snapshot.path);
@@ -1058,7 +1053,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_current_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_open(false);
-    set_refresh_error(null);
 
     try {
       await settle_list_view_and_filter_panel({
@@ -1074,7 +1068,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const message = is_worker_client_error(error)
         ? fallback_message
         : resolve_error_message(error, fallback_message);
-      set_refresh_error(message);
       push_toast("error", message);
     }
   }, [
@@ -1464,7 +1457,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const message = is_worker_client_error(error)
         ? fallback_message
         : resolve_error_message(error, fallback_message);
-      set_refresh_error(message);
       push_toast("error", message);
     });
   }, [
@@ -1496,7 +1488,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const message = is_worker_client_error(error)
         ? fallback_message
         : resolve_error_message(error, fallback_message);
-      set_refresh_error(message);
       push_toast("error", message);
     });
   }, [
@@ -1587,7 +1578,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       last_loaded_at,
       refresh_request_id,
       settled_project_path,
-      refresh_error,
       is_refreshing,
       is_mutating,
       readonly,
@@ -1658,7 +1648,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     open_filter_dialog,
     pending_mutation,
     readonly,
-    refresh_error,
     refresh_request_id,
     refresh_snapshot,
     replace_all_visible_matches,

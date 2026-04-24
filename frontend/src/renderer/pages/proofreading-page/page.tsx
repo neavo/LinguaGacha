@@ -1,4 +1,4 @@
-import { AlertCircle, Funnel, LoaderCircle } from "lucide-react";
+import { Funnel } from "lucide-react";
 
 import type { ScreenComponentProps } from "@/app/navigation/types";
 import { useCachedProofreadingPageState } from "@/app/runtime/project-pages/project-pages-context";
@@ -9,7 +9,6 @@ import { ProofreadingEditDialog } from "@/pages/proofreading-page/components/pro
 import { ProofreadingFilterDialog } from "@/pages/proofreading-page/components/proofreading-filter-dialog";
 import { ProofreadingTable } from "@/pages/proofreading-page/components/proofreading-table";
 import type { ProofreadingSearchScope } from "@/pages/proofreading-page/types";
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/shadcn/alert";
 import { Button } from "@/shadcn/button";
 import { useI18n, type LocaleKey } from "@/i18n";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
@@ -58,34 +57,6 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
       className="proofreading-page page-shell page-shell--full"
       data-sidebar-collapsed={String(props.is_sidebar_collapsed)}
     >
-      {proofreading_page_state.refresh_error === null ? null : (
-        <Alert variant="destructive" className="proofreading-page__notice">
-          <AlertCircle />
-          <AlertTitle>{t("proofreading_page.feedback.refresh_failed_title")}</AlertTitle>
-          <AlertDescription>{proofreading_page_state.refresh_error}</AlertDescription>
-          <AlertAction>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={proofreading_page_state.is_refreshing}
-              onClick={() => {
-                void proofreading_page_state.refresh_snapshot();
-              }}
-            >
-              {proofreading_page_state.is_refreshing ? (
-                <>
-                  <LoaderCircle className="animate-spin" data-icon="inline-start" />
-                  {t("app.action.loading")}
-                </>
-              ) : (
-                t("app.action.retry")
-              )}
-            </Button>
-          </AlertAction>
-        </Alert>
-      )}
-
       <SearchBar
         variant="replace"
         keyword={proofreading_page_state.search_keyword}
