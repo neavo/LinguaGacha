@@ -1,6 +1,3 @@
-from module.Data.Proofreading.ProofreadingFilterService import (
-    ProofreadingFilterService as ProofreadingFilterService,
-)
 from module.Data.Proofreading.ProofreadingMutationService import (
     ProofreadingMutationService as ProofreadingMutationService,
 )
