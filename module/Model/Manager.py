@@ -5,6 +5,7 @@ from typing import ClassVar
 from base.BasePath import BasePath
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
+from module.Migration.ModelConfigMigrationService import ModelConfigMigrationService
 from module.Model.Types import Model
 from module.Model.Types import ModelType
 from module.Utils.JSONTool import JSONTool
@@ -68,15 +69,6 @@ class ModelManager:
             return None
         return os.path.join(self.get_preset_dir(), file_name)
 
-    def resolve_custom_model_type(self, api_format: str) -> ModelType:
-        """旧预设模型迁移时统一按 api_format 归类，避免散落在循环里。"""
-
-        if api_format == "Google":
-            return ModelType.CUSTOM_GOOGLE
-        if api_format == "Anthropic":
-            return ModelType.CUSTOM_ANTHROPIC
-        return ModelType.CUSTOM_OPENAI
-
     def has_model_type(self, models: list[dict], model_type: ModelType) -> bool:
         """补默认模型前先走同一判断入口，避免各处自己扫列表。"""
 
@@ -119,21 +111,12 @@ class ModelManager:
         """
         preset_models = self.load_preset_models()
         preset_ids = {preset.get("id") for preset in preset_models}
-        migrated_count = 0
 
         # 1. 迁移旧预设模型
-        if existing_models:
-            for model in existing_models:
-                # 仅处理标记为 PRESET 但 ID 已不在最新预设列表中的模型
-                if (
-                    model.get("type") == ModelType.PRESET.value
-                    and model.get("id") not in preset_ids
-                ):
-                    migrated_type = self.resolve_custom_model_type(
-                        str(model.get("api_format", ""))
-                    )
-                    model["type"] = migrated_type.value
-                    migrated_count += 1
+        migrated_count = ModelConfigMigrationService.migrate_legacy_preset_models(
+            existing_models,
+            preset_ids,
+        )
 
         # 2. 初始预设加载 / 补充
         if not existing_models:

@@ -10,6 +10,7 @@ from typing import Generator
 
 from base.Base import Base
 from base.LogManager import LogManager
+from module.Migration.ProjectSchemaMigrationService import ProjectSchemaMigrationService
 from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
 from module.Utils.JSONTool import JSONTool
 
@@ -164,21 +165,24 @@ class LGDatabase(Base):
         target_conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path)"
         )
-        self.ensure_asset_sort_order_schema(target_conn)
+        ProjectSchemaMigrationService.migrate(
+            target_conn,
+            self.ensure_asset_sort_order_schema,
+            self.migrate_project_status_schema,
+        )
         target_conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type)")
         target_conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status)"
         )
-        ProjectStatusMigrationService.migrate(target_conn)
         target_conn.commit()
 
-    def ensure_asset_sort_order_schema(self, conn: sqlite3.Connection) -> None:
+    def ensure_asset_sort_order_schema(self, conn: sqlite3.Connection) -> bool:
         """确保 assets.sort_order 存在，并把旧工程按原 id 顺序回填。"""
 
         cursor = conn.execute("PRAGMA table_info(assets)")
         columns = [str(row["name"]) for row in cursor.fetchall()]
         if "sort_order" in columns:
-            return
+            return False
 
         conn.execute(
             "ALTER TABLE assets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
@@ -190,6 +194,82 @@ class LGDatabase(Base):
                 "UPDATE assets SET sort_order = ? WHERE id = ?",
                 (sort_order, int(row["id"])),
             )
+        return True
+
+    def migrate_project_status_schema(self, conn: sqlite3.Connection) -> bool:
+        """迁移旧工程中已持久化的历史完成状态，SQL 只留在 storage 层。"""
+
+        items_changed = self.migrate_project_status_items(conn)
+        meta_changed = self.migrate_project_status_meta(conn)
+        return items_changed or meta_changed
+
+    def migrate_project_status_items(self, conn: sqlite3.Connection) -> bool:
+        """扫描 items.data JSON，只改写 status 旧值并保留其他字段。"""
+
+        changed = False
+        rows = conn.execute("SELECT id, data FROM items ORDER BY id").fetchall()
+        for row in rows:
+            item_id = int(row["id"])
+            raw_data = str(row["data"])
+            try:
+                item_data = JSONTool.loads(raw_data)
+            except Exception as e:
+                LogManager.get().warning(
+                    f"Failed to migrate legacy project status item: id={item_id}",
+                    e,
+                )
+                continue
+
+            if not isinstance(item_data, dict):
+                continue
+
+            normalized_data, item_changed = (
+                ProjectStatusMigrationService.normalize_item_payload(item_data)
+            )
+            if not item_changed:
+                continue
+
+            conn.execute(
+                "UPDATE items SET data = ? WHERE id = ?",
+                (JSONTool.dumps(normalized_data), item_id),
+            )
+            changed = True
+
+        return changed
+
+    def migrate_project_status_meta(self, conn: sqlite3.Connection) -> bool:
+        """同步迁移极端旧工程里 meta.project_status 的旧状态。"""
+
+        row = conn.execute(
+            "SELECT value FROM meta WHERE key = ?",
+            (ProjectStatusMigrationService.PROJECT_STATUS_META_KEY,),
+        ).fetchone()
+        if row is None:
+            return False
+
+        try:
+            raw_status = JSONTool.loads(row["value"])
+        except Exception as e:
+            LogManager.get().warning(
+                "Failed to migrate legacy project status meta",
+                e,
+            )
+            return False
+
+        normalized_status, status_changed = (
+            ProjectStatusMigrationService.normalize_project_status_meta(raw_status)
+        )
+        if not status_changed:
+            return False
+
+        conn.execute(
+            "UPDATE meta SET value = ? WHERE key = ?",
+            (
+                JSONTool.dumps(normalized_status),
+                ProjectStatusMigrationService.PROJECT_STATUS_META_KEY,
+            ),
+        )
+        return True
 
     def get_next_asset_sort_order(
         self,
