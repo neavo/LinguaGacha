@@ -1,6 +1,10 @@
 const TRANSLATION_TASK_ACTIVE_STATUSES = ["REQUEST", "RUN", "TRANSLATING", "STOPPING"] as const;
 
-export type TranslationTaskActionKind = "reset-all" | "reset-failed" | "stop-translation";
+export type TranslationTaskActionKind =
+  | "reset-all"
+  | "reset-failed"
+  | "stop-translation"
+  | "export-translation";
 
 export type TranslationTaskSnapshot = {
   task_type: string;

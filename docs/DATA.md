@@ -85,6 +85,7 @@ flowchart TD
 - `Engine` 负责执行骨架，`DataManager` 负责落库与工程事实更新。
 - `TaskPipeline` 的 commit loop 是唯一允许生成 retry context 的地方。
 - 停止语义是先切到 `STOPPING`，再由流水线与超时收尾，不是立刻中断网络 IO。
+- 翻译任务终态只保存项目事实；译文文件写出属于用户确认后的显式导出动作，不挂在任务完成收尾上。
 
 ### 文件导入与导出
 

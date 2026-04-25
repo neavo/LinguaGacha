@@ -62,7 +62,31 @@ vi.mock("@/i18n", () => {
   };
 });
 
-function create_runtime_fixture(): RuntimeFixture {
+function create_task_snapshot(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  return {
+    task_type: "translation",
+    status: "IDLE",
+    busy: false,
+    request_in_flight_count: 0,
+    line: 0,
+    total_line: 0,
+    processed_line: 0,
+    error_line: 0,
+    total_tokens: 0,
+    total_output_tokens: 0,
+    total_input_tokens: 0,
+    time: 0,
+    start_time: 0,
+    analysis_candidate_count: 2,
+    ...overrides,
+  };
+}
+
+function create_runtime_fixture(
+  task_snapshot: Record<string, unknown> = create_task_snapshot(),
+): RuntimeFixture {
   const rollback = vi.fn();
 
   return {
@@ -149,22 +173,7 @@ function create_runtime_fixture(): RuntimeFixture {
       mtool_optimizer_enable: false,
     },
     set_task_snapshot: vi.fn(),
-    task_snapshot: {
-      task_type: "translation",
-      status: "IDLE",
-      busy: false,
-      request_in_flight_count: 0,
-      line: 0,
-      total_line: 0,
-      processed_line: 0,
-      error_line: 0,
-      total_tokens: 0,
-      total_output_tokens: 0,
-      total_input_tokens: 0,
-      time: 0,
-      start_time: 0,
-      analysis_candidate_count: 2,
-    },
+    task_snapshot,
     commit_local_project_patch: vi.fn(() => ({
       rollback,
     })),
@@ -229,6 +238,133 @@ describe("useTranslationTaskRuntime", () => {
       );
     });
   }
+
+  it("翻译完成后自动弹出生成译文确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "RUN",
+        busy: true,
+        total_line: 2,
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.task_confirm_state).toBeNull();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "DONE",
+        busy: false,
+        line: 2,
+        total_line: 2,
+        processed_line: 2,
+        total_output_tokens: 8,
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.task_confirm_state).toMatchObject({
+      kind: "export-translation",
+      open: true,
+      submitting: false,
+    });
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "success",
+      "workbench_page.translation_task.feedback.done",
+    );
+    expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/tasks/export-translation", {});
+  });
+
+  it("首屏加载已完成翻译快照时不自动弹生成译文确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "DONE",
+        busy: false,
+        line: 2,
+        total_line: 2,
+        processed_line: 2,
+        total_output_tokens: 8,
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.task_confirm_state).toBeNull();
+    expect(push_toast_mock).not.toHaveBeenCalledWith(
+      "success",
+      "workbench_page.translation_task.feedback.done",
+    );
+  });
+
+  it("确认生成译文时调用导出接口", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "RUN",
+        busy: true,
+        total_line: 1,
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/tasks/export-translation") {
+        return {};
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "DONE",
+        busy: false,
+        line: 1,
+        total_line: 1,
+        processed_line: 1,
+        total_output_tokens: 4,
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.confirm_task_action();
+    });
+    await flush_microtasks();
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/tasks/export-translation", {});
+    expect(latest_state?.task_confirm_state).toBeNull();
+  });
 
   it("translation reset all 成功时走本地 patch + apply + ack", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {

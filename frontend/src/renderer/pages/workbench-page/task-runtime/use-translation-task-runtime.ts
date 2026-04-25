@@ -150,6 +150,25 @@ function resolve_translation_terminal_feedback_message(args: {
   return null;
 }
 
+function should_prompt_translation_export_confirmation(args: {
+  previous_status: string;
+  next_status: string;
+  has_result: boolean;
+}): boolean {
+  if (
+    args.previous_status === "STOPPING" ||
+    !is_active_translation_task_status(args.previous_status)
+  ) {
+    return false;
+  }
+
+  if (args.next_status === "DONE") {
+    return true;
+  }
+
+  return args.next_status === "IDLE" && args.has_result;
+}
+
 export function useTranslationTaskRuntime(
   options: TranslationTaskRuntimeOptions = {},
 ): TranslationTaskRuntime {
@@ -467,6 +486,9 @@ export function useTranslationTaskRuntime(
         apply_translation_task_snapshot(next_snapshot);
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
+      } else if (task_confirm_state.kind === "export-translation") {
+        await api_fetch("/api/tasks/export-translation", {});
+        set_task_confirm_state(null);
       } else {
         const reset_plan =
           task_confirm_state.kind === "reset-all"
@@ -527,6 +549,8 @@ export function useTranslationTaskRuntime(
         fallback_message = t("workbench_page.translation_task.feedback.reset_all_failed");
       } else if (task_confirm_state.kind === "reset-failed") {
         fallback_message = t("workbench_page.translation_task.feedback.reset_failed_failed");
+      } else if (task_confirm_state.kind === "export-translation") {
+        fallback_message = t("workbench_page.translation_task.feedback.export_failed");
       }
 
       push_toast("error", resolve_error_message(error, fallback_message));
@@ -624,10 +648,22 @@ export function useTranslationTaskRuntime(
     if (feedback_message !== null) {
       push_toast("success", feedback_message);
     }
+
+    if (
+      task_confirm_state === null &&
+      should_prompt_translation_export_confirmation({
+        previous_status,
+        next_status,
+        has_result: has_translation_task_progress(translation_task_display_snapshot),
+      })
+    ) {
+      set_task_confirm_state(create_task_confirm_state("export-translation"));
+    }
   }, [
     project_snapshot.loaded,
     push_toast,
     t,
+    task_confirm_state,
     translation_task_display_snapshot,
     translation_task_snapshot.status,
   ]);

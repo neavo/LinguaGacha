@@ -33,7 +33,6 @@ from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 class Translation(Base):
     class ExportSource(StrEnum):
         MANUAL = "MANUAL"
-        AUTO_ON_FINISH = "AUTO_ON_FINISH"
 
     def __init__(self) -> None:
         super().__init__()
@@ -47,7 +46,7 @@ class Translation(Base):
         # 当前翻译任务的限流器（用于 UI 展示真实并发）
         self.task_limiter: TaskLimiter | None = None
 
-        # 停止请求标记（用于避免手动停止后自动生成译文）
+        # 停止请求标记用于让终态判定和日志口径保持一致。
         self.stop_requested: bool = False
 
         # 配置
@@ -203,8 +202,6 @@ class Translation(Base):
         """判断当前导出是否应该优先信任翻译运行态快照。"""
         if self.items_cache is None:
             return False
-        elif source == self.ExportSource.AUTO_ON_FINISH:
-            return True
         elif source == self.ExportSource.MANUAL:
             # 手动导出只在翻译仍进行中时信任运行态快照；
             # 引擎空闲后应回到工程事实，避免替换文件后的旧快照覆盖新数据。
@@ -236,7 +233,7 @@ class Translation(Base):
         source: ExportSource,
         apply_mtool_postprocess: bool = True,
     ) -> None:
-        """统一执行译文导出流程，避免手动/自动链路的交互与日志分叉。"""
+        """统一执行译文导出流程，让写文件行为只由显式导出入口触发。"""
         source_value = str(source.value)
         try:
             LogManager.get().info(Localizer.get().export_translation_start)
@@ -261,7 +258,6 @@ class Translation(Base):
                 )
                 return
 
-            # 自动导出在翻译收尾阶段已对 items_cache 执行过后处理，此处避免重复追加拆分行。
             if apply_mtool_postprocess:
                 self.mtool_optimizer_postprocess(items)
             output_path = self.check_and_wirte_result(items)
@@ -468,7 +464,7 @@ class Translation(Base):
         self.progress_tracker.update_pipeline_progress(extras_snapshot)
 
     def finalize_translation_run(self, final_status: str) -> None:
-        """共享骨架只负责调度，翻译域自己的落库和导出留在这里。"""
+        """共享骨架只负责调度，翻译域自己的落库留在这里。"""
 
         del final_status
         time.sleep(1.0)
@@ -482,16 +478,6 @@ class Translation(Base):
             else Base.ProjectStatus.PROCESSING
         )
         self.save_translation_state(final_project_status)
-
-        if (
-            self.items_cache
-            and not self.stop_requested
-            and Engine.get().get_status() != Base.TaskStatus.STOPPING
-        ):
-            self.run_translation_export(
-                source=self.ExportSource.AUTO_ON_FINISH,
-                apply_mtool_postprocess=False,
-            )
 
     def cleanup_translation_run(self) -> None:
         """无论任务是否真正落地，都要把翻译期资源安全回收。"""

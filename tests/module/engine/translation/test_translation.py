@@ -323,30 +323,6 @@ def test_resolve_export_items_reads_data_manager_for_manual_export_when_engine_i
     ) == [loaded_item]
 
 
-def test_resolve_export_items_uses_runtime_cache_for_auto_export(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    cached_item = Item(src="live")
-    translation.items_cache = [cached_item]
-    copied_item = Item(src="copied")
-    translation.copy_items = lambda: [copied_item]
-
-    def fail_if_read_data_manager() -> None:
-        raise AssertionError("不应读取 DataManager")
-
-    monkeypatch.setattr(
-        translation_module.DataManager,
-        "get",
-        staticmethod(fail_if_read_data_manager),
-    )
-
-    assert Translation.resolve_export_items(
-        translation,
-        Translation.ExportSource.AUTO_ON_FINISH,
-    ) == [copied_item]
-
-
 def test_resolve_export_items_reads_data_manager_when_cache_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -786,67 +762,6 @@ def test_run_translation_export_finishes_progress_when_no_items(
     )
 
 
-def test_run_translation_export_auto_source_emits_error_event(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine()
-    dm = create_data_manager(loaded=True)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
-    translation.mtool_optimizer_postprocess = MagicMock()
-    translation.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
-
-    Translation.run_translation_export(
-        translation,
-        source=Translation.ExportSource.AUTO_ON_FINISH,
-        apply_mtool_postprocess=False,
-    )
-
-    translation.mtool_optimizer_postprocess.assert_not_called()
-    assert has_emitted(
-        translation,
-        Base.Event.TRANSLATION_EXPORT,
-        {
-            "sub_event": Base.SubEvent.ERROR,
-            "source": "AUTO_ON_FINISH",
-            "message": "export_failed",
-        },
-    )
-
-
-def test_run_translation_export_auto_source_emits_done_event(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine()
-    dm = create_data_manager(loaded=True)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
-    translation.mtool_optimizer_postprocess = MagicMock()
-    translation.check_and_wirte_result = MagicMock(return_value="E:/tmp/output.txt")
-
-    Translation.run_translation_export(
-        translation,
-        source=Translation.ExportSource.AUTO_ON_FINISH,
-        apply_mtool_postprocess=True,
-    )
-
-    translation.mtool_optimizer_postprocess.assert_called_once()
-    assert has_emitted(
-        translation,
-        Base.Event.TRANSLATION_EXPORT,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "source": "AUTO_ON_FINISH",
-            "output_path": "E:/tmp/output.txt",
-            "message": "export_success",
-        },
-    )
-
-
 def test_translation_export_spawns_thread_when_not_stopping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -976,7 +891,7 @@ def test_start_emits_error_when_items_are_empty(
     dm.set_project_status.assert_not_called()
 
 
-def test_start_success_flow_triggers_auto_export(
+def test_start_success_flow_saves_project_fact_without_writing_translation_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -1017,10 +932,7 @@ def test_start_success_flow_triggers_auto_export(
         {"config": config, "mode": Base.TranslationMode.NEW},
     )
 
-    translation.run_translation_export.assert_called_once_with(
-        source=Translation.ExportSource.AUTO_ON_FINISH,
-        apply_mtool_postprocess=False,
-    )
+    translation.run_translation_export.assert_not_called()
     assert any(
         event == Base.Event.TRANSLATION_TASK
         and payload.get("final_status") == "SUCCESS"

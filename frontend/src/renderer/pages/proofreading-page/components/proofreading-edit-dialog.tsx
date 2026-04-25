@@ -144,11 +144,7 @@ function render_status_badge(args: {
     resolve_badge_tone_class_name(args.tone),
   ].join(" ");
   const badge = (
-    <Badge
-      variant="outline"
-      tabIndex={args.tooltip_content === null || args.tooltip_content === undefined ? undefined : 0}
-      className={class_name}
-    >
+    <Badge variant="outline" className={class_name}>
       {args.label}
     </Badge>
   );
