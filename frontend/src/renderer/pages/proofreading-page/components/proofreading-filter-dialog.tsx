@@ -13,7 +13,6 @@ import {
 } from "@/pages/proofreading-page/types";
 import { Badge } from "@/shadcn/badge";
 import { Button } from "@/shadcn/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shadcn/empty";
 import { Input } from "@/shadcn/input";
 import { ScrollArea } from "@/shadcn/scroll-area";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
@@ -364,47 +363,45 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
 
             <ScrollArea className="proofreading-page__filter-list proofreading-page__filter-list--compact">
               <div className="proofreading-page__filter-list-body proofreading-page__filter-list-body--compact">
-                <FilterListRow
-                  key="without_glossary_miss"
-                  label={t("proofreading_page.filter.without_glossary_miss")}
-                  count={props.panel.without_glossary_miss_count}
-                  selected={props.filters.include_without_glossary_miss}
-                  onClick={() => {
-                    props.on_change({
-                      ...clone_proofreading_filter_options(props.filters),
-                      include_without_glossary_miss: !props.filters.include_without_glossary_miss,
-                    });
-                  }}
-                />
                 {visible_term_entries.length > 0 ? (
-                  visible_term_entries.map((entry) => (
+                  <>
                     <FilterListRow
-                      key={build_term_key(entry.term)}
-                      label={build_term_key(entry.term)}
-                      count={entry.count}
-                      selected={props.filters.glossary_terms.some((term) => {
-                        return build_term_key(term) === build_term_key(entry.term);
-                      })}
+                      key="without_glossary_miss"
+                      label={t("proofreading_page.filter.without_glossary_miss")}
+                      count={props.panel.without_glossary_miss_count}
+                      selected={props.filters.include_without_glossary_miss}
                       onClick={() => {
                         props.on_change({
                           ...clone_proofreading_filter_options(props.filters),
-                          glossary_terms: toggle_term(props.filters.glossary_terms, entry.term),
+                          include_without_glossary_miss:
+                            !props.filters.include_without_glossary_miss,
                         });
                       }}
                     />
-                  ))
+                    {visible_term_entries.map((entry) => (
+                      <FilterListRow
+                        key={build_term_key(entry.term)}
+                        label={build_term_key(entry.term)}
+                        count={entry.count}
+                        selected={props.filters.glossary_terms.some((term) => {
+                          return build_term_key(term) === build_term_key(entry.term);
+                        })}
+                        onClick={() => {
+                          props.on_change({
+                            ...clone_proofreading_filter_options(props.filters),
+                            glossary_terms: toggle_term(props.filters.glossary_terms, entry.term),
+                          });
+                        }}
+                      />
+                    ))}
+                  </>
                 ) : (
-                  <Empty
-                    variant="dashed"
+                  <div
                     className="proofreading-page__filter-empty proofreading-page__filter-empty--compact"
+                    role="status"
                   >
-                    <EmptyHeader>
-                      <EmptyTitle>{t("proofreading_page.filter.no_glossary_error")}</EmptyTitle>
-                      <EmptyDescription>
-                        {t("proofreading_page.filter.no_glossary_error_description")}
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
+                    {t("proofreading_page.filter.no_glossary_error")}
+                  </div>
                 )}
               </div>
             </ScrollArea>

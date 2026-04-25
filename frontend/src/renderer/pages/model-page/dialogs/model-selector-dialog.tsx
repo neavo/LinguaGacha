@@ -3,12 +3,6 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { useI18n } from "@/i18n";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@/shadcn/empty";
 import { Input } from "@/shadcn/input";
 import { ScrollArea } from "@/shadcn/scroll-area";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
@@ -25,9 +19,7 @@ type ModelSelectorDialogProps = {
   onClose: () => void;
 };
 
-export function ModelSelectorDialog(
-  props: ModelSelectorDialogProps,
-): JSX.Element | null {
+export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const requested_model_id_ref = useRef<string | null>(null);
   const {
@@ -61,9 +53,7 @@ export function ModelSelectorDialog(
     if (keyword === "") {
       return available_models;
     } else {
-      return available_models.filter((model_name) =>
-        model_name.toLowerCase().includes(keyword),
-      );
+      return available_models.filter((model_name) => model_name.toLowerCase().includes(keyword));
     }
   }, [available_models, filter_text]);
 
@@ -97,14 +87,9 @@ export function ModelSelectorDialog(
                 <span>{t("model_page.dialog.selector.loading")}</span>
               </div>
             ) : filtered_models.length === 0 ? (
-              <Empty variant="dashed" className="model-page__selector-empty">
-                <EmptyHeader>
-                  <EmptyTitle>
-                    {t("model_page.dialog.selector.empty")}
-                  </EmptyTitle>
-                  <EmptyDescription>{model.model_id}</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
+              <div className="model-page__selector-empty" role="status">
+                {t("model_page.dialog.selector.empty")}
+              </div>
             ) : (
               <div className="model-page__selector-options">
                 {filtered_models.map((model_name) => (

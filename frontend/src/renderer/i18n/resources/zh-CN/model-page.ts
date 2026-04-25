@@ -34,7 +34,7 @@ export const zh_cn_model_page = {
     selector: {
       loading: "正在获取模型列表 …",
       search_placeholder: "筛选模型 …",
-      empty: "没有找到匹配的模型 …",
+      empty: "没有有效数据 …",
     },
     model_id_input: {
       confirm: "确认",

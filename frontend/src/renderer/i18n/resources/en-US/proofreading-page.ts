@@ -86,8 +86,7 @@ export const en_us_proofreading_page = {
     glossary_detail: "Glossary Misses",
     without_glossary_miss: "No glossary terms or all glossary terms applied",
     no_warning: "No Warning",
-    no_glossary_error: "No glossary misses in current scope",
-    no_glossary_error_description: "No glossary terms are currently missing.",
+    no_glossary_error: "No valid data …",
   },
   dialog: {
     edit_title: "Edit Entry",
@@ -95,10 +94,6 @@ export const en_us_proofreading_page = {
   confirm: {
     retranslate_description: "Confirm retranslating {COUNT} entries …?",
     reset_description: "Confirm resetting the translation status of {COUNT} entries …?",
-  },
-  empty: {
-    title: "No Results",
-    description: "No matches found",
   },
   feedback: {
     refresh_failed: "Failed to refresh proofreading.",
