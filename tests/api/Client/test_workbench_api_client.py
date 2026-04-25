@@ -57,57 +57,6 @@ import pytest
             {"accepted": True, "projectRevision": 9, "sectionRevisions": {"files": 4}},
         ),
         (
-            "replace_file",
-            {
-                "source_path": "C:/next/a.txt",
-                "rel_path": "script/a.txt",
-                "target_rel_path": "script/a.txt",
-                "file_record": {
-                    "rel_path": "script/a.txt",
-                    "file_type": "TXT",
-                    "sort_index": 0,
-                },
-                "parsed_items": [{"id": 201, "src": "line-1"}],
-                "derived_meta": {
-                    "translation_extras": {"line": 1},
-                    "project_status": "PROCESSING",
-                    "prefilter_config": {
-                        "source_language": "JA",
-                        "mtool_optimizer_enable": True,
-                    },
-                },
-                "expected_section_revisions": {"files": 1, "items": 2, "analysis": 3},
-            },
-            (
-                ProjectRoutes.WORKBENCH_REPLACE_FILE_PATH,
-                {
-                    "source_path": "C:/next/a.txt",
-                    "rel_path": "script/a.txt",
-                    "target_rel_path": "script/a.txt",
-                    "file_record": {
-                        "rel_path": "script/a.txt",
-                        "file_type": "TXT",
-                        "sort_index": 0,
-                    },
-                    "parsed_items": [{"id": 201, "src": "line-1"}],
-                    "derived_meta": {
-                        "translation_extras": {"line": 1},
-                        "project_status": "PROCESSING",
-                        "prefilter_config": {
-                            "source_language": "JA",
-                            "mtool_optimizer_enable": True,
-                        },
-                    },
-                    "expected_section_revisions": {
-                        "files": 1,
-                        "items": 2,
-                        "analysis": 3,
-                    },
-                },
-            ),
-            {"accepted": True, "projectRevision": 9, "sectionRevisions": {"files": 4}},
-        ),
-        (
             "reset_file",
             {
                 "rel_path": "script/a.txt",

@@ -140,7 +140,7 @@
   max-width: 100%;
 }
 
-.workbench-page__table [data-slot='table-cell'] {
+.workbench-page__table [data-slot="table-cell"] {
   color: color-mix(in srgb, var(--foreground) 92%, var(--muted-foreground) 8%);
 }
 
@@ -185,11 +185,10 @@
   border-radius: 999px;
 }
 
-.workbench-page__row-action[data-slot='button'] {
+.workbench-page__row-action[data-slot="button"] {
   width: 20px;
   height: 20px;
   min-width: 20px;
   min-height: 20px;
   padding: 0;
 }
-

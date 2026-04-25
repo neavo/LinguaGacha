@@ -64,56 +64,6 @@ def test_parse_file_routes_through_workbench_manager(
     assert fake_workbench_manager.parse_calls == [("C:/next/b.txt", None)]
 
 
-def test_replace_file_routes_through_workbench_manager(
-    workbench_app_service,
-    fake_workbench_manager,
-) -> None:
-    result = workbench_app_service.replace_file(
-        {
-            "source_path": "C:/next/a.txt",
-            "rel_path": "script/a.txt",
-            "target_rel_path": "script/a.txt",
-            "file_record": {
-                "rel_path": "script/a.txt",
-                "file_type": "TXT",
-                "sort_index": 0,
-            },
-            "parsed_items": [
-                {
-                    "id": 201,
-                    "src": "line-1",
-                    "dst": "",
-                    "row": 1,
-                    "file_type": "TXT",
-                    "file_path": "script/a.txt",
-                    "text_type": "NONE",
-                    "status": "NONE",
-                    "retry_count": 0,
-                }
-            ],
-            "derived_meta": {
-                "translation_extras": {"line": 1},
-                "project_status": "PROCESSING",
-                "prefilter_config": {
-                    "source_language": "JA",
-                    "mtool_optimizer_enable": True,
-                },
-            },
-            "expected_section_revisions": {
-                "files": 3,
-                "items": 5,
-                "analysis": 2,
-            },
-        }
-    )
-
-    assert result["accepted"] is True
-    assert fake_workbench_manager.replace_calls == [("script/a.txt", "C:/next/a.txt")]
-    assert (
-        fake_workbench_manager.replace_payloads[0]["target_rel_path"] == "script/a.txt"
-    )
-
-
 def test_reorder_files_routes_through_workbench_manager(
     workbench_app_service,
     fake_workbench_manager,

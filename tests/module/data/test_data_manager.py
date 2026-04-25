@@ -427,60 +427,6 @@ def test_persist_add_file_payload_compresses_asset_before_store(
     )
 
 
-def test_persist_replace_file_payload_compresses_asset_before_store(
-    monkeypatch: pytest.MonkeyPatch,
-    fs,
-) -> None:
-    del fs
-    dm, _events = build_data_manager(monkeypatch)
-    connection = SimpleNamespace(commit=MagicMock())
-    db = SimpleNamespace(
-        asset_path_exists=MagicMock(return_value=True),
-        update_asset=MagicMock(),
-        update_asset_path=MagicMock(),
-        set_items=MagicMock(),
-        delete_analysis_item_checkpoints=MagicMock(),
-        clear_analysis_candidate_aggregates=MagicMock(),
-        connection=MagicMock(return_value=contextlib.nullcontext(connection)),
-    )
-    dm.session.db = db
-    dm.session.asset_decompress_cache = {}
-    dm.build_analysis_reset_meta = MagicMock(return_value={})
-    dm.write_meta_in_connection = MagicMock()
-    dm.replace_session_item_cache = MagicMock()
-    dm.sync_session_meta_cache = MagicMock()
-    dm.bump_project_runtime_section_revisions = MagicMock()
-    dm.try_begin_guarded_file_operation = MagicMock()
-    dm.finish_file_operation = MagicMock()
-
-    source_path = Path("/workspace/sample_01.txt")
-    source_path.parent.mkdir(parents=True, exist_ok=True)
-    source_path.write_bytes(b"updated content")
-
-    compress = MagicMock(return_value=b"compressed")
-    monkeypatch.setattr(data_manager_module.ZstdTool, "compress", compress)
-
-    dm.persist_replace_file_payload(
-        str(source_path),
-        "sample_01.txt",
-        "sample_01.txt",
-        file_record={"rel_path": "sample_01.txt"},
-        parsed_items=[],
-        translation_extras={},
-        project_status="IDLE",
-        prefilter_config={},
-    )
-
-    compress.assert_called_once_with(b"updated content")
-    db.update_asset.assert_called_once_with(
-        "sample_01.txt",
-        b"compressed",
-        len(b"updated content"),
-        conn=connection,
-    )
-    db.update_asset_path.assert_not_called()
-
-
 def test_preview_translation_reset_all_assigns_preview_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

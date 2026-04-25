@@ -46,7 +46,6 @@ export const en_us_workbench_page = {
     delete_file: "Delete File",
     export_translation: "Generate",
     close_project: "Close Project",
-    replace: "Replace File",
     reset: "Reset Translation",
     delete: "Delete",
     translation_task: "Translation",
@@ -151,8 +150,10 @@ export const en_us_workbench_page = {
     failed: "Failed to save the file order. Please try again later.",
   },
   dialog: {
-    replace: {
-      description: "Confirm replacing the file …?",
+    inherit_add: {
+      description: "Use completed translations from the current project to fill the new file …?",
+      confirm: "Reuse",
+      cancel: "Do Not Reuse",
     },
     reset: {
       description: "Confirm resetting this file's translation status …?",

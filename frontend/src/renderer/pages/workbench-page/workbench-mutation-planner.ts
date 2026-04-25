@@ -28,6 +28,8 @@ type WorkbenchPlannerItemRecord = {
   retry_count: number;
 };
 
+export type WorkbenchTranslationInheritanceMode = "none" | "inherit";
+
 type WorkbenchDerivedMeta = {
   translation_extras: Record<string, unknown>;
   project_status: string;
@@ -498,18 +500,6 @@ function convert_parsed_item_to_runtime_record(
   };
 }
 
-function sort_items_by_row_and_id(
-  items: WorkbenchPlannerItemRecord[],
-): WorkbenchPlannerItemRecord[] {
-  return [...items].sort((left_item, right_item) => {
-    const row_result = left_item.row_number - right_item.row_number;
-    if (row_result !== 0) {
-      return row_result;
-    }
-    return left_item.item_id - right_item.item_id;
-  });
-}
-
 function assign_item_ids_for_add(args: {
   state: ProjectStoreState;
   parsed_items: WorkbenchParsedItemRecord[];
@@ -523,109 +513,94 @@ function assign_item_ids_for_add(args: {
   });
 }
 
-function assign_item_ids_for_replace(args: {
-  state: ProjectStoreState;
-  rel_path: string;
-  parsed_items: WorkbenchParsedItemRecord[];
-}): WorkbenchParsedItemRecord[] {
-  const old_items = sort_items_by_row_and_id(
-    [...build_item_map(args.state).values()].filter((item) => {
-      return item.file_path === args.rel_path;
-    }),
-  );
-  const used_item_ids = new Set(old_items.map((item) => item.item_id));
-  let next_item_id = build_next_item_id_seed(args.state) + 1;
-
-  return args.parsed_items.map((item, index) => {
-    const reused_item_id = old_items[index]?.item_id ?? null;
-    if (reused_item_id !== null) {
-      return {
-        ...clone_parsed_item_record(item),
-        id: reused_item_id,
-      };
-    }
-
-    while (used_item_ids.has(next_item_id)) {
-      next_item_id += 1;
-    }
-    const assigned_item_id = next_item_id;
-    used_item_ids.add(assigned_item_id);
-    next_item_id += 1;
-    return {
-      ...clone_parsed_item_record(item),
-      id: assigned_item_id,
-    };
-  });
-}
-
 function normalize_status_value(value: unknown): string {
   const normalized_value = String(value ?? "NONE").trim();
   return normalized_value === "" ? "NONE" : normalized_value;
+}
+
+type TranslationInheritanceCandidate = {
+  dst: string;
+  name_dst: unknown;
+  retry_count: number;
+  status: string;
+  count: number;
+  first_index: number;
+};
+
+function build_translation_inheritance_candidates(
+  old_items: WorkbenchPlannerItemRecord[],
+): Map<string, TranslationInheritanceCandidate[]> {
+  const src_candidates = new Map<string, Map<string, TranslationInheritanceCandidate>>();
+  let global_index = 0;
+
+  for (const item of old_items) {
+    const status = normalize_status_value(item.status);
+    const dst = item.dst.trim();
+    if (!INHERITABLE_STATUSES.has(status) || dst === "") {
+      global_index += 1;
+      continue;
+    }
+
+    const candidates_by_dst = src_candidates.get(item.src) ?? new Map();
+    const existing_candidate = candidates_by_dst.get(item.dst);
+    if (existing_candidate === undefined) {
+      candidates_by_dst.set(item.dst, {
+        dst: item.dst,
+        name_dst: item.name_dst ?? null,
+        retry_count: item.retry_count,
+        status,
+        count: 1,
+        first_index: global_index,
+      });
+    } else {
+      existing_candidate.count += 1;
+    }
+    src_candidates.set(item.src, candidates_by_dst);
+    global_index += 1;
+  }
+
+  const candidate_map = new Map<string, TranslationInheritanceCandidate[]>();
+  for (const [src, candidates_by_dst] of src_candidates.entries()) {
+    candidate_map.set(
+      src,
+      [...candidates_by_dst.values()].sort((left_candidate, right_candidate) => {
+        if (left_candidate.count !== right_candidate.count) {
+          return right_candidate.count - left_candidate.count;
+        }
+        return left_candidate.first_index - right_candidate.first_index;
+      }),
+    );
+  }
+  return candidate_map;
+}
+
+function create_normalized_add_parsed_items(
+  parsed_file: WorkbenchFileParsePreview,
+): WorkbenchParsedItemRecord[] {
+  return parsed_file.parsed_items.map((item) => {
+    return normalize_parsed_item_record(item, parsed_file.target_rel_path);
+  });
 }
 
 function inherit_completed_translations(args: {
   old_items: WorkbenchPlannerItemRecord[];
   next_items: WorkbenchParsedItemRecord[];
 }): void {
-  const src_seen_order = new Map<string, WorkbenchPlannerItemRecord[]>();
-  for (const item of args.old_items) {
-    const existing_items = src_seen_order.get(item.src);
-    if (existing_items === undefined) {
-      src_seen_order.set(item.src, [item]);
-    } else {
-      existing_items.push(item);
-    }
-  }
-
-  const src_best = new Map<string, WorkbenchPlannerItemRecord>();
-  for (const [src, candidates] of src_seen_order.entries()) {
-    const dst_count = new Map<string, number>();
-    const first_index = new Map<string, number>();
-    const first_item = new Map<string, WorkbenchPlannerItemRecord>();
-
-    candidates.forEach((candidate, index) => {
-      const dst_key = candidate.dst;
-      dst_count.set(dst_key, (dst_count.get(dst_key) ?? 0) + 1);
-      if (!first_index.has(dst_key)) {
-        first_index.set(dst_key, index);
-        first_item.set(dst_key, candidate);
-      }
-    });
-
-    let best_dst_key = "";
-    let best_count = -1;
-    let best_index = Number.POSITIVE_INFINITY;
-    for (const [dst_key, count] of dst_count.entries()) {
-      const current_first_index = first_index.get(dst_key) ?? Number.POSITIVE_INFINITY;
-      if (count > best_count || (count === best_count && current_first_index < best_index)) {
-        best_dst_key = dst_key;
-        best_count = count;
-        best_index = current_first_index;
-      }
-    }
-
-    const best_item = first_item.get(best_dst_key);
-    if (best_item !== undefined) {
-      src_best.set(src, best_item);
-    }
-  }
+  const candidate_map = build_translation_inheritance_candidates(args.old_items);
 
   for (const item of args.next_items) {
-    const old_item = src_best.get(item.src);
-    if (old_item === undefined) {
+    const candidates = candidate_map.get(item.src);
+    if (candidates === undefined || candidates.length === 0) {
       continue;
     }
 
-    const old_status = normalize_status_value(old_item.status);
-    if (!INHERITABLE_STATUSES.has(old_status)) {
-      continue;
-    }
+    const candidate = candidates[0];
 
-    item.dst = old_item.dst;
-    item.name_dst = old_item.name_dst ?? null;
-    item.retry_count = old_item.retry_count;
+    item.dst = candidate.dst;
+    item.name_dst = candidate.name_dst ?? null;
+    item.retry_count = candidate.retry_count;
     if (!STRUCTURAL_STATUSES.has(normalize_status_value(item.status))) {
-      item.status = old_status;
+      item.status = candidate.status;
     }
   }
 }
@@ -651,7 +626,7 @@ function ensure_target_path_not_conflict(args: {
   }
 }
 
-function create_add_or_replace_runtime_plan(args: {
+function create_file_mutation_runtime_plan(args: {
   state: ProjectStoreState;
   file_map: Map<string, WorkbenchPlannerFileRecord>;
   next_file_map: Map<string, WorkbenchPlannerFileRecord>;
@@ -692,6 +667,7 @@ export function create_workbench_add_file_plan(args: {
   state: ProjectStoreState;
   parsed_file: WorkbenchFileParsePreview;
   settings: WorkbenchPlannerSettings;
+  inheritance_mode?: WorkbenchTranslationInheritanceMode;
 }): WorkbenchProjectMutationPlan {
   const file_map = build_file_map(args.state);
   ensure_target_path_not_conflict({
@@ -701,10 +677,14 @@ export function create_workbench_add_file_plan(args: {
 
   const normalized_parsed_items = assign_item_ids_for_add({
     state: args.state,
-    parsed_items: args.parsed_file.parsed_items.map((item) => {
-      return normalize_parsed_item_record(item, args.parsed_file.target_rel_path);
-    }),
+    parsed_items: create_normalized_add_parsed_items(args.parsed_file),
   });
+  if (args.inheritance_mode === "inherit") {
+    inherit_completed_translations({
+      old_items: [...build_item_map(args.state).values()],
+      next_items: normalized_parsed_items,
+    });
+  }
   const next_item_map = build_item_map(args.state);
   for (const item of normalized_parsed_items) {
     const runtime_item = convert_parsed_item_to_runtime_record(item);
@@ -718,7 +698,7 @@ export function create_workbench_add_file_plan(args: {
     sort_index: build_next_sort_index(file_map),
   });
 
-  return create_add_or_replace_runtime_plan({
+  return create_file_mutation_runtime_plan({
     state: args.state,
     file_map,
     next_file_map,
@@ -731,90 +711,6 @@ export function create_workbench_add_file_plan(args: {
         rel_path: args.parsed_file.target_rel_path,
         file_type: args.parsed_file.file_type,
         sort_index: build_next_sort_index(file_map),
-      },
-      parsed_items: serialize_full_parsed_item_payloads(normalized_parsed_items),
-    },
-  });
-}
-
-export function create_workbench_replace_file_plan(args: {
-  state: ProjectStoreState;
-  rel_path: string;
-  parsed_file: WorkbenchFileParsePreview;
-  settings: WorkbenchPlannerSettings;
-}): WorkbenchProjectMutationPlan {
-  const current_rel_path = String(args.rel_path).trim();
-  if (current_rel_path === "") {
-    throw new Error("工作台文件路径无效。");
-  }
-
-  const file_map = build_file_map(args.state);
-  const current_file = file_map.get(current_rel_path);
-  if (current_file === undefined) {
-    throw new Error("目标文件不存在。");
-  }
-  if (current_file.file_type !== args.parsed_file.file_type) {
-    throw new Error("替换文件格式不一致。");
-  }
-  if (
-    normalize_casefold_path(args.parsed_file.target_rel_path) !==
-    normalize_casefold_path(current_rel_path)
-  ) {
-    ensure_target_path_not_conflict({
-      file_map,
-      current_rel_path,
-      target_rel_path: args.parsed_file.target_rel_path,
-    });
-  }
-
-  const normalized_parsed_items = assign_item_ids_for_replace({
-    state: args.state,
-    rel_path: current_rel_path,
-    parsed_items: args.parsed_file.parsed_items.map((item) => {
-      return normalize_parsed_item_record(item, args.parsed_file.target_rel_path);
-    }),
-  });
-  inherit_completed_translations({
-    old_items: [...build_item_map(args.state).values()].filter((item) => {
-      return item.file_path === current_rel_path;
-    }),
-    next_items: normalized_parsed_items,
-  });
-
-  const next_item_map = new Map<number, WorkbenchPlannerItemRecord>();
-  for (const item of build_item_map(args.state).values()) {
-    if (item.file_path === current_rel_path) {
-      continue;
-    }
-    next_item_map.set(item.item_id, clone_item_record(item));
-  }
-  for (const item of normalized_parsed_items) {
-    const runtime_item = convert_parsed_item_to_runtime_record(item);
-    next_item_map.set(runtime_item.item_id, runtime_item);
-  }
-
-  const next_file_map = new Map(file_map);
-  next_file_map.delete(current_rel_path);
-  next_file_map.set(args.parsed_file.target_rel_path, {
-    rel_path: args.parsed_file.target_rel_path,
-    file_type: args.parsed_file.file_type,
-    sort_index: current_file.sort_index,
-  });
-
-  return create_add_or_replace_runtime_plan({
-    state: args.state,
-    file_map,
-    next_file_map,
-    next_item_map,
-    settings: args.settings,
-    request_body: {
-      source_path: args.parsed_file.source_path,
-      rel_path: current_rel_path,
-      target_rel_path: args.parsed_file.target_rel_path,
-      file_record: {
-        rel_path: args.parsed_file.target_rel_path,
-        file_type: args.parsed_file.file_type,
-        sort_index: current_file.sort_index,
       },
       parsed_items: serialize_full_parsed_item_payloads(normalized_parsed_items),
     },

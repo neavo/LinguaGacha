@@ -106,36 +106,6 @@ class WorkbenchAppService:
         )
         return self.build_project_mutation_ack(("files", "items", "analysis"))
 
-    def replace_file(self, request: dict[str, Any]) -> dict[str, object]:
-        """执行替换文件操作，失败时直接把异常交给 HTTP 边界。"""
-
-        rel_path = str(request.get("rel_path", ""))
-        source_path = str(request.get("source_path", ""))
-        target_rel_path = str(request.get("target_rel_path", ""))
-        raw_file_record = request.get("file_record", {})
-        file_record = dict(raw_file_record) if isinstance(raw_file_record, dict) else {}
-        parsed_items_raw = request.get("parsed_items", [])
-        parsed_items = (
-            [dict(item) for item in parsed_items_raw if isinstance(item, dict)]
-            if isinstance(parsed_items_raw, list)
-            else []
-        )
-        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
-            request
-        )
-        self.data_manager.persist_replace_file_payload(
-            source_path,
-            rel_path,
-            target_rel_path,
-            file_record=file_record,
-            parsed_items=parsed_items,
-            translation_extras=translation_extras,
-            project_status=project_status,
-            prefilter_config=prefilter_config,
-            expected_section_revisions=self.parse_expected_section_revisions(request),
-        )
-        return self.build_project_mutation_ack(("files", "items", "analysis"))
-
     def reset_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行重置文件操作，失败时直接把异常交给 HTTP 边界。"""
 

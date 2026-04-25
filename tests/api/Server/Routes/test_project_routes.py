@@ -36,7 +36,6 @@ PROJECT_COMMAND_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
 WORKBENCH_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/workbench/parse-file", "parse_file"),
     JsonRouteCase("/api/project/workbench/add-file", "add_file"),
-    JsonRouteCase("/api/project/workbench/replace-file", "replace_file"),
     JsonRouteCase("/api/project/workbench/reset-file", "reset_file"),
     JsonRouteCase("/api/project/workbench/delete-file", "delete_file"),
     JsonRouteCase("/api/project/workbench/delete-file-batch", "delete_file_batch"),

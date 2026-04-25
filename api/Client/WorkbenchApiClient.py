@@ -48,32 +48,6 @@ class WorkbenchApiClient:
         )
         return ProjectMutationAck.from_dict(response)
 
-    def replace_file(
-        self,
-        source_path: str,
-        rel_path: str,
-        target_rel_path: str,
-        file_record: dict[str, Any],
-        parsed_items: list[dict[str, Any]],
-        derived_meta: dict[str, Any],
-        expected_section_revisions: dict[str, int],
-    ) -> ProjectMutationAck:
-        """执行替换文件操作。"""
-
-        response = self.api_client.post(
-            ProjectRoutes.WORKBENCH_REPLACE_FILE_PATH,
-            {
-                "source_path": source_path,
-                "rel_path": rel_path,
-                "target_rel_path": target_rel_path,
-                "file_record": file_record,
-                "parsed_items": parsed_items,
-                "derived_meta": derived_meta,
-                "expected_section_revisions": expected_section_revisions,
-            },
-        )
-        return ProjectMutationAck.from_dict(response)
-
     def reset_file(
         self,
         rel_path: str,

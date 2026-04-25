@@ -1,5 +1,5 @@
 type WorkbenchActionKind =
-  | "replace-file"
+  | "inherit-add-file"
   | "reset-file"
   | "delete-file"
   | "export-translation"

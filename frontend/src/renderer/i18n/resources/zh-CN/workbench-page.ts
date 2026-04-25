@@ -43,7 +43,6 @@ export const zh_cn_workbench_page = {
     delete_file: "删除文件",
     export_translation: "生成译文",
     close_project: "关闭项目",
-    replace: "替换文件",
     reset: "重置翻译状态",
     delete: "删除",
     translation_task: "翻译",
@@ -148,8 +147,10 @@ export const zh_cn_workbench_page = {
     failed: "文件顺序保存失败，请稍后再试。",
   },
   dialog: {
-    replace: {
-      description: "是否确认替换文件 …?",
+    inherit_add: {
+      description: "是否使用当前项目中已完成的翻译文本填充新文件 …?",
+      confirm: "继承",
+      cancel: "不继承",
     },
     reset: {
       description: "是否确认重置该文件的翻译状态 …?",

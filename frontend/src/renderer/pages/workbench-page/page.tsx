@@ -1,4 +1,5 @@
 import { useCachedWorkbenchLiveState } from "@/app/runtime/project-pages/project-pages-context";
+import { useI18n } from "@/i18n";
 import type { UseWorkbenchLiveStateResult } from "@/pages/workbench-page/use-workbench-live-state";
 import { WorkbenchCommandBar } from "@/pages/workbench-page/components/workbench-command-bar";
 import { WorkbenchDialogs } from "@/pages/workbench-page/components/workbench-dialogs";
@@ -6,6 +7,7 @@ import { WorkbenchFileTable } from "@/pages/workbench-page/components/workbench-
 import { WorkbenchStatsSection } from "@/pages/workbench-page/components/workbench-stats-section";
 import { TaskRuntimeConfirmDialog } from "@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog";
 import { TaskRuntimeDetailSheet } from "@/pages/workbench-page/components/task-runtime/task-runtime-detail-sheet";
+import { FileDropZone } from "@/widgets/file-drop-zone/file-drop-zone";
 import "@/pages/workbench-page/workbench-page.css";
 
 type WorkbenchPageProps = {
@@ -13,6 +15,7 @@ type WorkbenchPageProps = {
 };
 
 export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
+  const { t } = useI18n();
   const workbench_state = useCachedWorkbenchLiveState<UseWorkbenchLiveStateResult>();
 
   return (
@@ -25,23 +28,29 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         stats_mode={workbench_state.stats_mode}
         on_toggle_stats_mode={workbench_state.toggle_stats_mode}
       />
-      <WorkbenchFileTable
-        entries={workbench_state.entries}
-        selected_entry_ids={workbench_state.selected_entry_ids}
-        active_entry_id={workbench_state.active_entry_id}
-        anchor_entry_id={workbench_state.anchor_entry_id}
-        readonly={workbench_state.readonly}
-        on_selection_change={workbench_state.apply_table_selection}
-        on_prepare_entry_action={workbench_state.prepare_entry_action}
-        on_replace={(entry_id) => {
-          void workbench_state.request_replace_file(entry_id);
+      <FileDropZone
+        label={t("app.drop.import_here")}
+        disabled={!workbench_state.can_edit_files}
+        on_path_drop={(path) => {
+          void workbench_state.request_add_file_from_path(path);
         }}
-        on_reset={workbench_state.request_reset_file}
-        on_delete={workbench_state.request_delete_file}
-        on_reorder={(ordered_entry_ids) => {
-          void workbench_state.request_reorder_entries(ordered_entry_ids);
-        }}
-      />
+        on_drop_issue={workbench_state.notify_add_file_drop_issue}
+      >
+        <WorkbenchFileTable
+          entries={workbench_state.entries}
+          selected_entry_ids={workbench_state.selected_entry_ids}
+          active_entry_id={workbench_state.active_entry_id}
+          anchor_entry_id={workbench_state.anchor_entry_id}
+          readonly={workbench_state.readonly}
+          on_selection_change={workbench_state.apply_table_selection}
+          on_prepare_entry_action={workbench_state.prepare_entry_action}
+          on_reset={workbench_state.request_reset_file}
+          on_delete={workbench_state.request_delete_file}
+          on_reorder={(ordered_entry_ids) => {
+            void workbench_state.request_reorder_entries(ordered_entry_ids);
+          }}
+        />
+      </FileDropZone>
       <WorkbenchCommandBar
         translation_task_runtime={workbench_state.translation_task_runtime}
         analysis_task_runtime={workbench_state.analysis_task_runtime}
@@ -62,6 +71,9 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         dialog_state={workbench_state.dialog_state}
         on_confirm={() => {
           void workbench_state.confirm_dialog();
+        }}
+        on_cancel={() => {
+          void workbench_state.cancel_dialog();
         }}
         on_close={workbench_state.close_dialog}
       />
