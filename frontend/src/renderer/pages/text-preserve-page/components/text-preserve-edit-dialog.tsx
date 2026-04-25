@@ -1,13 +1,10 @@
 import { useI18n } from "@/i18n";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
-import type {
-  TextPreserveDialogMode,
-  TextPreserveEntry,
-} from "@/pages/text-preserve-page/types";
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
+import type { TextPreserveDialogMode, TextPreserveEntry } from "@/pages/text-preserve-page/types";
 import { Button } from "@/shadcn/button";
-import { Kbd } from "@/shadcn/kbd";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type TextPreserveEditDialogProps = {
   open: boolean;
@@ -20,9 +17,7 @@ type TextPreserveEditDialogProps = {
   on_close: () => Promise<void>;
 };
 
-export function TextPreserveEditDialog(
-  props: TextPreserveEditDialogProps,
-): JSX.Element {
+export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("text_preserve_page.action.save");
   const title =
@@ -30,9 +25,10 @@ export function TextPreserveEditDialog(
       ? t("text_preserve_page.dialog.create_title")
       : t("text_preserve_page.dialog.edit_title");
 
-  useSaveShortcut({
+  useActionShortcut({
+    action: "save",
     enabled: props.open && !props.saving,
-    on_save: () => {
+    on_trigger: () => {
       void props.on_save();
     },
   });
@@ -67,9 +63,7 @@ export function TextPreserveEditDialog(
             }}
           >
             {save_label}
-            <Kbd className="bg-background/18 text-primary-foreground">
-              Ctrl+S
-            </Kbd>
+            <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
           </Button>
         </>
       }

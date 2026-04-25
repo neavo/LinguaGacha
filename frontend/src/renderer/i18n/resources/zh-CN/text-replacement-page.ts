@@ -76,9 +76,6 @@ export const zh_cn_text_replacement_page = {
     delete_selection: {
       description: "是否确认删除 {COUNT} 条记录 …?",
     },
-    delete_entry: {
-      description: "是否确认删除 1 条记录 …?",
-    },
     delete_preset: {
       description: "是否确认删除预设“{NAME}” …?",
     },

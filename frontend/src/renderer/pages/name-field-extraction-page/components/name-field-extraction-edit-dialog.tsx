@@ -1,10 +1,10 @@
 import { useI18n } from "@/i18n";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { NameFieldDialogState, NameFieldRow } from "@/pages/name-field-extraction-page/types";
 import { Button } from "@/shadcn/button";
-import { Kbd } from "@/shadcn/kbd";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type NameFieldExtractionEditDialogProps = {
   state: NameFieldDialogState;
@@ -19,9 +19,10 @@ export function NameFieldExtractionEditDialog(
   const { t } = useI18n();
   const save_label = t("name_field_extraction_page.action.save");
 
-  useSaveShortcut({
+  useActionShortcut({
+    action: "save",
     enabled: props.state.open && !props.state.saving,
-    on_save: () => {
+    on_trigger: () => {
       void props.on_save();
     },
   });
@@ -56,7 +57,7 @@ export function NameFieldExtractionEditDialog(
             }}
           >
             {save_label}
-            <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
+            <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
           </Button>
         </>
       }

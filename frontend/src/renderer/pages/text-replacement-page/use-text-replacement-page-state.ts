@@ -115,7 +115,6 @@ function create_empty_confirm_state(): TextReplacementConfirmState {
     preset_input_value: "",
     submitting: false,
     target_virtual_id: null,
-    target_entry_id: null,
   };
 }
 
@@ -842,25 +841,8 @@ export function useTextReplacementPageState(
       preset_input_value: "",
       submitting: false,
       target_virtual_id: null,
-      target_entry_id: null,
     });
   }, [selected_entry_ids]);
-
-  const request_delete_entry = useCallback((entry_id: TextReplacementEntryId): void => {
-    set_active_entry_id(entry_id);
-    set_selected_entry_ids([entry_id]);
-    set_selection_anchor_entry_id(entry_id);
-    set_confirm_state({
-      open: true,
-      kind: "delete-entry",
-      selection_count: 1,
-      preset_name: "",
-      preset_input_value: "",
-      submitting: false,
-      target_virtual_id: null,
-      target_entry_id: entry_id,
-    });
-  }, []);
 
   const toggle_regex_for_selected = useCallback(
     async (next_value: boolean): Promise<void> => {
@@ -1136,7 +1118,6 @@ export function useTextReplacementPageState(
       preset_input_value: "",
       submitting: false,
       target_virtual_id: null,
-      target_entry_id: null,
     });
   }, []);
 
@@ -1169,7 +1150,6 @@ export function useTextReplacementPageState(
       preset_input_value: "",
       submitting: false,
       target_virtual_id: preset_item.virtual_id,
-      target_entry_id: null,
     });
   }, []);
 
@@ -1419,7 +1399,6 @@ export function useTextReplacementPageState(
         preset_input_value: normalized_name,
         submitting: false,
         target_virtual_id: null,
-        target_entry_id: null,
       });
       return;
     }
@@ -1490,10 +1469,6 @@ export function useTextReplacementPageState(
 
     if (confirm_state.kind === "delete-selection") {
       succeeded = await commit_remove_entry_ids(selected_entry_ids);
-    } else if (confirm_state.kind === "delete-entry") {
-      succeeded = await commit_remove_entry_ids(
-        confirm_state.target_entry_id === null ? [] : [confirm_state.target_entry_id],
-      );
     } else if (confirm_state.kind === "reset") {
       succeeded = await reset_entries();
     } else if (confirm_state.kind === "delete-preset") {
@@ -1598,7 +1573,6 @@ export function useTextReplacementPageState(
     set_default_preset,
     cancel_default_preset,
     delete_selected_entries,
-    request_delete_entry,
     toggle_regex_for_selected,
     toggle_case_sensitive_for_selected,
     reorder_selected_entries,

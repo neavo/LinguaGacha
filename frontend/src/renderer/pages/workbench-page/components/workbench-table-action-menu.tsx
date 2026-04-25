@@ -1,4 +1,4 @@
-import { CircleEllipsis, Recycle, Trash2 } from "lucide-react";
+import { CircleEllipsis, Recycle } from "lucide-react";
 
 import { Button } from "@/shadcn/button";
 import {
@@ -11,7 +11,6 @@ import {
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
-  AppDropdownMenuSeparator,
   AppDropdownMenuTrigger,
 } from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { useI18n } from "@/i18n";
@@ -20,7 +19,6 @@ type WorkbenchTableActionMenuProps = {
   disabled: boolean;
   on_prepare_open: () => void;
   on_reset: () => void;
-  on_delete: () => void;
 };
 
 type WorkbenchTableMenuActionProps = {
@@ -28,11 +26,7 @@ type WorkbenchTableMenuActionProps = {
   on_reset: () => void;
 };
 
-type WorkbenchTableActionMenuContentProps = WorkbenchTableMenuActionProps & {
-  on_delete: () => void;
-};
-
-function WorkbenchTableActionMenuContent(props: WorkbenchTableActionMenuContentProps): JSX.Element {
+function WorkbenchTableActionMenuContent(props: WorkbenchTableMenuActionProps): JSX.Element {
   const { t } = useI18n();
 
   return (
@@ -40,15 +34,6 @@ function WorkbenchTableActionMenuContent(props: WorkbenchTableActionMenuContentP
       <AppDropdownMenuItem disabled={props.disabled} onClick={props.on_reset}>
         <Recycle data-icon="inline-start" />
         {t("workbench_page.action.reset")}
-      </AppDropdownMenuItem>
-      <AppDropdownMenuSeparator />
-      <AppDropdownMenuItem
-        disabled={props.disabled}
-        variant="destructive"
-        onClick={props.on_delete}
-      >
-        <Trash2 data-icon="inline-start" />
-        {t("workbench_page.action.delete")}
       </AppDropdownMenuItem>
     </AppDropdownMenuGroup>
   );
@@ -81,11 +66,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
         </Button>
       </AppDropdownMenuTrigger>
       <AppDropdownMenuContent align="center">
-        <WorkbenchTableActionMenuContent
-          disabled={props.disabled}
-          on_reset={props.on_reset}
-          on_delete={props.on_delete}
-        />
+        <WorkbenchTableActionMenuContent disabled={props.disabled} on_reset={props.on_reset} />
       </AppDropdownMenuContent>
     </AppDropdownMenu>
   );

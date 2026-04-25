@@ -19,9 +19,6 @@ const CONFIRM_COPY_BY_KIND: Record<
   "delete-selection": {
     description_key: "text_replacement_page.confirm.delete_selection.description",
   },
-  "delete-entry": {
-    description_key: "text_replacement_page.confirm.delete_entry.description",
-  },
   "delete-preset": {
     description_key: "text_replacement_page.confirm.delete_preset.description",
   },

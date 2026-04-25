@@ -74,17 +74,15 @@ export type TextReplacementConfirmState =
       preset_input_value: string;
       submitting: boolean;
       target_virtual_id: string | null;
-      target_entry_id: TextReplacementEntryId | null;
     }
   | {
       open: true;
-      kind: "delete-selection" | "delete-preset" | "reset" | "overwrite-preset" | "delete-entry";
+      kind: "delete-selection" | "delete-preset" | "reset" | "overwrite-preset";
       selection_count: number;
       preset_name: string;
       preset_input_value: string;
       submitting: boolean;
       target_virtual_id: string | null;
-      target_entry_id: TextReplacementEntryId | null;
     };
 
 export type TextReplacementPresetInputState =
@@ -149,7 +147,6 @@ export type UseTextReplacementPageStateResult = {
   set_default_preset: (virtual_id: string) => Promise<void>;
   cancel_default_preset: () => Promise<void>;
   delete_selected_entries: () => Promise<void>;
-  request_delete_entry: (entry_id: TextReplacementEntryId) => void;
   toggle_regex_for_selected: (next_value: boolean) => Promise<void>;
   toggle_case_sensitive_for_selected: (next_value: boolean) => Promise<void>;
   reorder_selected_entries: (

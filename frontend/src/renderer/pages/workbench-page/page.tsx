@@ -45,7 +45,6 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
           on_selection_change={workbench_state.apply_table_selection}
           on_prepare_entry_action={workbench_state.prepare_entry_action}
           on_reset={workbench_state.request_reset_file}
-          on_delete={workbench_state.request_delete_file}
           on_reorder={(ordered_entry_ids) => {
             void workbench_state.request_reorder_entries(ordered_entry_ids);
           }}
