@@ -288,14 +288,12 @@ class BasePath:
         )
 
     @classmethod
-    def get_model_preset_dir(cls, language: BaseLanguage.Enum) -> str:
-        """根据 UI 语言返回模型预设目录。"""
+    def get_model_preset_dir(cls) -> str:
+        """返回单套内置模型预设目录。"""
 
-        lang_dir = "zh" if language == BaseLanguage.Enum.ZH else "en"
         return cls.get_resource_path(
-            cls.PRESET_DIR_NAME,
             cls.MODEL_DIR_NAME,
-            lang_dir,
+            cls.PRESET_DIR_NAME,
         )
 
     @classmethod

@@ -1,10 +1,10 @@
 {
-    "type": "CUSTOM_ANTHROPIC",
-    "name": "自定义 Anthropic 模型",
-    "api_format": "Anthropic",
-    "api_url": "https://api.anthropic.com",
+    "type": "CUSTOM_OPENAI",
+    "name": "自定义 OpenAI 模型",
+    "api_format": "OpenAI",
+    "api_url": "https://api.openai.com/v1",
     "api_key": "no_key_required",
-    "model_id": "claude-3-5-haiku",
+    "model_id": "gpt-4.1-mini",
     "request": {
         "extra_headers": {},
         "extra_body": {},

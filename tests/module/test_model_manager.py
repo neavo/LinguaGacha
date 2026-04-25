@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from base.BaseLanguage import BaseLanguage
 from base.BasePath import BasePath
 from module.Model.Types import Model
 from module.Model.Types import ModelType
@@ -45,19 +44,15 @@ class TestModelManager:
         second = ModelManager.get()
         assert first is not second
 
-    def test_get_preset_dir_uses_app_language(self) -> None:
+    def test_get_preset_dir_uses_single_model_preset_path(self) -> None:
         manager = ModelManager()
         BasePath.initialize("/workspace/app", False)
 
-        manager.set_app_language(BaseLanguage.Enum.ZH)
-        zh_path = manager.get_preset_dir()
-        manager.set_app_language(BaseLanguage.Enum.EN)
-        en_path = manager.get_preset_dir()
+        preset_path = manager.get_preset_dir()
 
-        assert zh_path.replace("\\", "/") == "/workspace/app/resource/preset/model/zh"
-        assert en_path.replace("\\", "/") == "/workspace/app/resource/preset/model/en"
+        assert preset_path.replace("\\", "/") == "/workspace/app/resource/model/preset"
 
-    def test_initialize_models_migrates_and_fills_missing_types(
+    def test_initialize_models_keeps_existing_preset_and_fills_missing_types(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         manager = ModelManager()
@@ -91,8 +86,8 @@ class TestModelManager:
 
         models, migrated_count = manager.initialize_models(existing_models)
 
-        assert migrated_count == 1
-        assert models[0]["type"] == ModelType.CUSTOM_GOOGLE.value
+        assert migrated_count == 0
+        assert models[0]["type"] == ModelType.PRESET.value
         assert any(v.get("id") == "preset-new" for v in models)
         assert any(v.get("type") == ModelType.CUSTOM_ANTHROPIC.value for v in models)
 
@@ -128,12 +123,11 @@ class TestModelManager:
 
         assert manager.load_preset_models() == []
 
-    def test_load_template_reads_template_from_current_language_dir(self, fs) -> None:
+    def test_load_template_reads_template_from_single_preset_dir(self, fs) -> None:
         del fs
         manager = ModelManager()
         BasePath.initialize("/workspace/app", False)
-        manager.set_app_language(BaseLanguage.Enum.EN)
-        preset_dir = Path("/workspace/app/resource/preset/model/en")
+        preset_dir = Path("/workspace/app/resource/model/preset")
         preset_dir.mkdir(parents=True, exist_ok=True)
         (preset_dir / manager.PRESET_CUSTOM_GOOGLE_FILENAME).write_text(
             '{"name": "google-template"}',
@@ -200,7 +194,7 @@ class TestModelManager:
         monkeypatch.setattr(
             BasePath,
             "get_model_preset_dir",
-            lambda language: "/tmp/preset",
+            lambda: "/tmp/preset",
         )
         monkeypatch.setattr(
             "module.Model.Manager.JSONTool.load_file", lambda _: ["bad"]
@@ -215,7 +209,7 @@ class TestModelManager:
         monkeypatch.setattr(
             BasePath,
             "get_model_preset_dir",
-            lambda language: "/tmp/preset",
+            lambda: "/tmp/preset",
         )
 
         class DummyLogger:
@@ -270,7 +264,7 @@ class TestModelManager:
             ModelType.CUSTOM_ANTHROPIC.value,
         }
 
-    def test_initialize_models_migrates_anthropic_and_openai_default(
+    def test_initialize_models_keeps_unmatched_presets_in_preset_group(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         manager = ModelManager()
@@ -293,9 +287,9 @@ class TestModelManager:
 
         models, migrated_count = manager.initialize_models(existing_models)
 
-        assert migrated_count == 2
-        assert models[0]["type"] == ModelType.CUSTOM_ANTHROPIC.value
-        assert models[1]["type"] == ModelType.CUSTOM_OPENAI.value
+        assert migrated_count == 0
+        assert models[0]["type"] == ModelType.PRESET.value
+        assert models[1]["type"] == ModelType.PRESET.value
 
     def test_get_models_and_get_models_as_dict(self) -> None:
         manager = ModelManager()

@@ -209,10 +209,8 @@ class Config:
 
     # 初始化模型管理器
     def initialize_models(self) -> int:
-        """初始化模型列表，如果没有则从预设复制。返回已被迁移的失效预设模型数量。"""
+        """初始化模型列表，如果没有则从预设复制。返回兼容保留的固定迁移数量。"""
         manager = ModelManager.get()
-        # 设置 UI 语言以确定预设目录
-        manager.set_app_language(self.app_language)
         self.models, migrated_count = manager.initialize_models(self.models or [])
         manager.set_models(self.models)
         # 如果没有激活模型，设置为第一个

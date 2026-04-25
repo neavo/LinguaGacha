@@ -3,9 +3,7 @@ import threading
 from typing import ClassVar
 
 from base.BasePath import BasePath
-from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
-from module.Migration.ModelConfigMigrationService import ModelConfigMigrationService
 from module.Model.Types import Model
 from module.Model.Types import ModelType
 from module.Utils.JSONTool import JSONTool
@@ -34,8 +32,6 @@ class ModelManager:
     def __init__(self) -> None:
         self.models: list[Model] = []
         self.activate_model_id: str = ""
-        # 当前使用的 UI 语言，用于确定预设目录
-        self.app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
 
     @classmethod
     def get(cls) -> "ModelManager":
@@ -52,14 +48,10 @@ class ModelManager:
         with cls._lock:
             cls._instance = None
 
-    def set_app_language(self, language: BaseLanguage.Enum) -> None:
-        """设置 UI 语言，用于确定预设目录"""
-        self.app_language = language
-
     def get_preset_dir(self) -> str:
-        """统一返回当前语言对应的模型预设目录，避免多处重复取 BasePath。"""
+        """统一返回单套模型预设目录，避免多处重复取 BasePath。"""
 
-        return BasePath.get_model_preset_dir(self.app_language)
+        return BasePath.get_model_preset_dir()
 
     def get_template_path(self, model_type: ModelType) -> str | None:
         """根据模型类型返回模板文件路径，未知类型直接返回 None。"""
@@ -105,20 +97,13 @@ class ModelManager:
     def initialize_models(self, existing_models: list[dict]) -> tuple[list[dict], int]:
         """
         初始化模型列表
-        1. 检查现有模型：如果某个 PRESET 模型的 ID 在预设文件中不存在，将其迁移为自定义模型
+        1. 加载单套内置模型预设
         2. 补充缺失的预设模型
-        返回：(更新后的模型列表, 迁移的模型数量)
+        3. 补充缺失的自定义模型模板
+        返回：(更新后的模型列表, 兼容保留的迁移数量)
         """
         preset_models = self.load_preset_models()
-        preset_ids = {preset.get("id") for preset in preset_models}
 
-        # 1. 迁移旧预设模型
-        migrated_count = ModelConfigMigrationService.migrate_legacy_preset_models(
-            existing_models,
-            preset_ids,
-        )
-
-        # 2. 初始预设加载 / 补充
         if not existing_models:
             existing_models = []
 
@@ -128,7 +113,7 @@ class ModelManager:
             if preset.get("id") not in existing_ids:
                 existing_models.append(preset)
 
-        # 3. 检查自定义分类，如果为空则生成默认条目
+        # 检查自定义分类，如果为空则生成默认条目
         custom_types = [
             ModelType.CUSTOM_GOOGLE,
             ModelType.CUSTOM_OPENAI,
@@ -143,7 +128,7 @@ class ModelManager:
                 template["type"] = model_type.value
                 existing_models.append(template)
 
-        return existing_models, migrated_count
+        return existing_models, 0
 
     def get_models(self) -> list[Model]:
         """获取所有模型"""
