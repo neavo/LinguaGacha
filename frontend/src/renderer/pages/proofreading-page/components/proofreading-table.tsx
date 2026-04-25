@@ -6,7 +6,6 @@ import {
   PencilLine,
   Recycle,
   RefreshCcw,
-  Search,
   TriangleAlert,
 } from "lucide-react";
 import { useMemo } from "react";
@@ -24,7 +23,6 @@ import {
   AppContextMenuGroup,
   AppContextMenuItem,
 } from "@/widgets/app-context-menu/app-context-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/shadcn/empty";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@/widgets/app-table/app-table-drag-indicator";
@@ -284,27 +282,6 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
       },
     ];
   }, [t]);
-
-  if (props.items.length === 0) {
-    return (
-      <Card variant="table" className="proofreading-page__table-card">
-        <CardHeader className="sr-only">
-          <CardTitle>{t("proofreading_page.title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="proofreading-page__table-empty-card">
-          <Empty variant="inset" className="proofreading-page__table-empty">
-            <EmptyHeader>
-              <EmptyMedia>
-                <Search />
-              </EmptyMedia>
-              <EmptyTitle>{t("proofreading_page.empty.title")}</EmptyTitle>
-              <EmptyDescription>{t("proofreading_page.empty.description")}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card variant="table" className="proofreading-page__table-card">

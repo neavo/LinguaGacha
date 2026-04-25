@@ -37,7 +37,7 @@ export const en_us_model_page = {
     selector: {
       loading: "Loading model list …",
       search_placeholder: "Filter models …",
-      empty: "No models matched the current filter",
+      empty: "No valid data …",
     },
     model_id_input: {
       confirm: "Confirm",

@@ -83,8 +83,7 @@ export const zh_cn_proofreading_page = {
     glossary_detail: "未生效的术语",
     without_glossary_miss: "不含术语或术语全部生效",
     no_warning: "无警告",
-    no_glossary_error: "当前范围内无未生效术语",
-    no_glossary_error_description: "当前范围内没有术语未命中项。",
+    no_glossary_error: "没有有效数据 …",
   },
   dialog: {
     edit_title: "编辑条目",
@@ -92,10 +91,6 @@ export const zh_cn_proofreading_page = {
   confirm: {
     retranslate_description: "是否确认重新翻译 {COUNT} 个条目 …?",
     reset_description: "是否确认重置 {COUNT} 个条目的翻译状态 …?",
-  },
-  empty: {
-    title: "无结果",
-    description: "未找到匹配项",
   },
   feedback: {
     refresh_failed: "校对页刷新失败",

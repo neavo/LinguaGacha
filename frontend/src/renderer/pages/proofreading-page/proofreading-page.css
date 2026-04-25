@@ -17,8 +17,7 @@
 }
 
 .proofreading-page__table-card,
-.proofreading-page__table-card-content,
-.proofreading-page__table-empty-card {
+.proofreading-page__table-card-content {
   display: flex;
   min-height: 0;
   flex: 1;
@@ -27,16 +26,6 @@
 .proofreading-page__table-card-content {
   overflow: hidden;
   padding: 0;
-}
-
-.proofreading-page__table-empty-card {
-  align-items: stretch;
-  justify-content: stretch;
-  padding: 16px;
-}
-
-.proofreading-page__table-empty {
-  width: 100%;
 }
 
 .proofreading-page__table-drag-head,
@@ -285,14 +274,22 @@
 }
 
 .proofreading-page__filter-empty {
-  min-height: 180px;
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 5px 8px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .proofreading-page__filter-empty--compact {
   width: 100%;
-  min-height: 220px;
-  flex: 1;
-  border-radius: calc(var(--ui-radius-card) + 1px);
+  flex: 0 0 auto;
 }
 
 .proofreading-page__dialog-scroll {
