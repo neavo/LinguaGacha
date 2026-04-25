@@ -1,15 +1,19 @@
 import { CircleEllipsis, Recycle, Trash2 } from "lucide-react";
 
 import { Button } from "@/shadcn/button";
-import { ContextMenuContent, ContextMenuGroup, ContextMenuItem } from "@/shadcn/context-menu";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/shadcn/dropdown-menu";
+  AppContextMenuContent,
+  AppContextMenuGroup,
+  AppContextMenuItem,
+} from "@/widgets/app-context-menu/app-context-menu";
+import {
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuSeparator,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { useI18n } from "@/i18n";
 
 type WorkbenchTableActionMenuProps = {
@@ -30,29 +34,23 @@ type WorkbenchTableActionMenuContentProps = WorkbenchTableMenuActionProps & {
 
 function WorkbenchTableActionMenuContent(props: WorkbenchTableActionMenuContentProps): JSX.Element {
   const { t } = useI18n();
-  const menu_item_class_name = "whitespace-nowrap";
 
   return (
-    <DropdownMenuGroup>
-      <DropdownMenuItem
-        className={menu_item_class_name}
-        disabled={props.disabled}
-        onClick={props.on_reset}
-      >
+    <AppDropdownMenuGroup>
+      <AppDropdownMenuItem disabled={props.disabled} onClick={props.on_reset}>
         <Recycle data-icon="inline-start" />
         {t("workbench_page.action.reset")}
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        className={menu_item_class_name}
+      </AppDropdownMenuItem>
+      <AppDropdownMenuSeparator />
+      <AppDropdownMenuItem
         disabled={props.disabled}
         variant="destructive"
         onClick={props.on_delete}
       >
         <Trash2 data-icon="inline-start" />
         {t("workbench_page.action.delete")}
-      </DropdownMenuItem>
-    </DropdownMenuGroup>
+      </AppDropdownMenuItem>
+    </AppDropdownMenuGroup>
   );
 }
 
@@ -60,7 +58,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
   const { t } = useI18n();
 
   return (
-    <DropdownMenu
+    <AppDropdownMenu
       modal={false}
       onOpenChange={(next_open) => {
         if (next_open) {
@@ -68,7 +66,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
         }
       }}
     >
-      <DropdownMenuTrigger asChild>
+      <AppDropdownMenuTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -81,15 +79,15 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
         >
           <CircleEllipsis data-icon="inline-start" />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="center">
+      </AppDropdownMenuTrigger>
+      <AppDropdownMenuContent align="center">
         <WorkbenchTableActionMenuContent
           disabled={props.disabled}
           on_reset={props.on_reset}
           on_delete={props.on_delete}
         />
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </AppDropdownMenuContent>
+    </AppDropdownMenu>
   );
 }
 
@@ -97,21 +95,15 @@ export function WorkbenchTableContextMenuContent(
   props: WorkbenchTableMenuActionProps,
 ): JSX.Element {
   const { t } = useI18n();
-  const menu_item_class_name = "whitespace-nowrap";
-  const menu_content_class_name = "w-auto min-w-max";
 
   return (
-    <ContextMenuContent className={menu_content_class_name}>
-      <ContextMenuGroup>
-        <ContextMenuItem
-          className={menu_item_class_name}
-          disabled={props.disabled}
-          onClick={props.on_reset}
-        >
+    <AppContextMenuContent>
+      <AppContextMenuGroup>
+        <AppContextMenuItem disabled={props.disabled} onClick={props.on_reset}>
           <Recycle data-icon="inline-start" />
           {t("workbench_page.action.reset")}
-        </ContextMenuItem>
-      </ContextMenuGroup>
-    </ContextMenuContent>
+        </AppContextMenuItem>
+      </AppContextMenuGroup>
+    </AppContextMenuContent>
   );
 }

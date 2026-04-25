@@ -6,12 +6,12 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/shadcn/button";
 import { Card, CardContent } from "@/shadcn/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/shadcn/dropdown-menu";
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuRadioGroup,
+  AppDropdownMenuRadioItem,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import {
   InputGroup,
   InputGroupAddon,
@@ -230,10 +230,10 @@ function SearchBarScopeAction<scope_value extends string = string>(
   props: SearchBarScopeActionProps<scope_value>,
 ): JSX.Element {
   return (
-    <DropdownMenu>
+    <AppDropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
+          <AppDropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="ghost"
@@ -246,27 +246,27 @@ function SearchBarScopeAction<scope_value extends string = string>(
               <ListFilter data-icon="inline-start" />
               {props.scope.button_label}
             </Button>
-          </DropdownMenuTrigger>
+          </AppDropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="left" sideOffset={10}>
           <p>{props.scope.tooltip}</p>
         </TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="center">
-        <DropdownMenuRadioGroup
+      <AppDropdownMenuContent align="center">
+        <AppDropdownMenuRadioGroup
           value={props.scope.value}
           onValueChange={(next_value) => {
             props.scope.on_change(next_value as scope_value);
           }}
         >
           {props.scope.options.map((option) => (
-            <DropdownMenuRadioItem key={option.value} value={option.value}>
+            <AppDropdownMenuRadioItem key={option.value} value={option.value}>
               {option.label}
-            </DropdownMenuRadioItem>
+            </AppDropdownMenuRadioItem>
           ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </AppDropdownMenuRadioGroup>
+      </AppDropdownMenuContent>
+    </AppDropdownMenu>
   );
 }
 
@@ -279,10 +279,10 @@ function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
   const regex_menu_value = props.regex.value ? "enabled" : "disabled";
 
   return (
-    <DropdownMenu>
+    <AppDropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
+          <AppDropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="ghost"
@@ -294,26 +294,28 @@ function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
               <Regex data-icon="inline-start" />
               {props.regex.label}
             </Button>
-          </DropdownMenuTrigger>
+          </AppDropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="left" sideOffset={10}>
           <p>{props.regex.tooltip}</p>
         </TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="center">
-        <DropdownMenuRadioGroup
+      <AppDropdownMenuContent align="center">
+        <AppDropdownMenuRadioGroup
           value={regex_menu_value}
           onValueChange={(next_value) => {
             props.regex.on_change(next_value === "enabled");
           }}
         >
-          <DropdownMenuRadioItem value="enabled">{props.regex.enabled_label}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="disabled">
+          <AppDropdownMenuRadioItem value="enabled">
+            {props.regex.enabled_label}
+          </AppDropdownMenuRadioItem>
+          <AppDropdownMenuRadioItem value="disabled">
             {props.regex.disabled_label}
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </AppDropdownMenuRadioItem>
+        </AppDropdownMenuRadioGroup>
+      </AppDropdownMenuContent>
+    </AppDropdownMenu>
   );
 }
 

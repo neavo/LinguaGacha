@@ -10,13 +10,13 @@ import type { WorkbenchStats } from "@/pages/workbench-page/types";
 import { WorkbenchSegmentedProgress } from "@/pages/workbench-page/components/workbench-segmented-progress";
 import { Button } from "@/shadcn/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/shadcn/dropdown-menu";
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuSeparator,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { Spinner } from "@/shadcn/spinner";
 
 type TranslationTaskMenuProps = {
@@ -38,15 +38,15 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
   const main_action_icon = <Play data-icon="inline-start" />;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <AppDropdownMenu>
+      <AppDropdownMenuTrigger asChild>
         <Button type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
           {trigger_icon}
           {t("workbench_page.action.translation_task")}
         </Button>
-      </DropdownMenuTrigger>
+      </AppDropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="task-runtime__menu">
+      <AppDropdownMenuContent align="start" className="task-runtime__menu">
         <div className="task-runtime__menu-progress">
           <div className="task-runtime__menu-progress-head">
             <span className="task-runtime__menu-progress-label">
@@ -68,10 +68,10 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
           />
         </div>
 
-        <DropdownMenuSeparator />
+        <AppDropdownMenuSeparator />
 
-        <DropdownMenuGroup>
-          <DropdownMenuItem
+        <AppDropdownMenuGroup>
+          <AppDropdownMenuItem
             disabled={action_items_disabled}
             onSelect={() => {
               void props.on_start_or_continue();
@@ -83,13 +83,13 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
               main_action_icon
             )}
             {t("workbench_page.action.start_translation")}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+          </AppDropdownMenuItem>
+        </AppDropdownMenuGroup>
 
-        <DropdownMenuSeparator />
+        <AppDropdownMenuSeparator />
 
-        <DropdownMenuGroup>
-          <DropdownMenuItem
+        <AppDropdownMenuGroup>
+          <AppDropdownMenuItem
             variant="destructive"
             disabled={action_items_disabled}
             onSelect={() => {
@@ -102,8 +102,8 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
               <BrushCleaning data-icon="inline-start" />
             )}
             {t("workbench_page.action.reset_translation_all")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
+          </AppDropdownMenuItem>
+          <AppDropdownMenuItem
             variant="destructive"
             disabled={action_items_disabled}
             onSelect={() => {
@@ -116,9 +116,9 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
               <Paintbrush data-icon="inline-start" />
             )}
             {t("workbench_page.action.reset_translation_failed")}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </AppDropdownMenuItem>
+        </AppDropdownMenuGroup>
+      </AppDropdownMenuContent>
+    </AppDropdownMenu>
   );
 }

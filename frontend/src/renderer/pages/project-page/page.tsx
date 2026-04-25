@@ -24,11 +24,11 @@ import {
   CardTitle,
 } from "@/shadcn/card";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/shadcn/context-menu";
+  AppContextMenu,
+  AppContextMenuContent,
+  AppContextMenuItem,
+  AppContextMenuTrigger,
+} from "@/widgets/app-context-menu/app-context-menu";
 import { Progress } from "@/shadcn/progress";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
@@ -925,8 +925,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
   const source_dropzone =
     selected_source === null ? (
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
+      <AppContextMenu>
+        <AppContextMenuTrigger asChild>
           <DropZoneCard
             icon="source"
             tone="blue"
@@ -944,26 +944,26 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
               void handle_source_drop(event);
             }}
           />
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-40">
-          <ContextMenuItem
+        </AppContextMenuTrigger>
+        <AppContextMenuContent>
+          <AppContextMenuItem
             onSelect={() => {
               void handle_select_source_file();
             }}
           >
             <File className="size-4" />
             {t("app.action.select_file")}
-          </ContextMenuItem>
-          <ContextMenuItem
+          </AppContextMenuItem>
+          <AppContextMenuItem
             onSelect={() => {
               void handle_select_source_folder();
             }}
           >
             <FolderOpen className="size-4" />
             {t("app.action.select_folder")}
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+          </AppContextMenuItem>
+        </AppContextMenuContent>
+      </AppContextMenu>
     ) : (
       <div
         className="project-home__selected-card project-home__selected-card--blue relative"
@@ -979,8 +979,8 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           <X className="size-4" />
         </Button>
 
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
+        <AppContextMenu>
+          <AppContextMenuTrigger asChild>
             <button
               className="project-home__selected-content w-full"
               type="button"
@@ -1010,26 +1010,26 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
                 </p>
               </div>
             </button>
-          </ContextMenuTrigger>
-          <ContextMenuContent className="w-40">
-            <ContextMenuItem
+          </AppContextMenuTrigger>
+          <AppContextMenuContent>
+            <AppContextMenuItem
               onSelect={() => {
                 void handle_select_source_file();
               }}
             >
               <File className="size-4" />
               {t("app.action.select_file")}
-            </ContextMenuItem>
-            <ContextMenuItem
+            </AppContextMenuItem>
+            <AppContextMenuItem
               onSelect={() => {
                 void handle_select_source_folder();
               }}
             >
               <FolderOpen className="size-4" />
               {t("app.action.select_folder")}
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+            </AppContextMenuItem>
+          </AppContextMenuContent>
+        </AppContextMenu>
       </div>
     );
 

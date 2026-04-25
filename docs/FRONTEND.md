@@ -110,8 +110,8 @@ flowchart TD
 | `app/project/derived/` | 项目 prefilter、翻译 / 分析重置、分析术语导入规划 | 只放基于项目事实生成 mutation 或派生计划的规则 |
 | `app/project/quality/` | 质量规则运行态、统计 worker、统计缓存与 provider | 质量规则切片与统计缓存归这里，页面只消费 provider 或纯函数 |
 | `pages/` | 页面入口、页面私有组件、页面 CSS、页面私有 hook 与辅助模块 | 每个页面目录以 `page.tsx` 为入口，不被其他页面反向依赖；页面派生视图与页面 mutation planner 留在对应页面目录 |
-| `widgets/` | 跨页面复用的组合组件 | `app-table`、`command-bar`、`setting-card-row` 等稳定组合层放这里 |
-| `shadcn/` | shadcn CLI 管理的基础组件源码与项目内定制 | 业务组合组件不得混入 |
+| `widgets/` | 跨页面复用的组合组件 | `app-table`、`command-bar`、`setting-card-row`、`app-dropdown-menu`、`app-context-menu` 等稳定组合层放这里 |
+| `shadcn/` | shadcn CLI 管理的基础组件源码 | 业务组合组件与应用默认视觉不得混入；菜单类项目默认样式走 `widgets/app-*-menu` |
 | `hooks/` | 跨页面复用的交互 hook | 不承载页面语义 |
 | `i18n/` | 文案资源与翻译入口 | 长期文案不写进组件体内 |
 | `lib/` | 无页面语义的纯逻辑工具 | 不承载 UI 或页面状态 |

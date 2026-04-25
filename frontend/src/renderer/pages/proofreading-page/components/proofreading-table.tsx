@@ -19,7 +19,11 @@ import {
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
-import { ContextMenuContent, ContextMenuGroup, ContextMenuItem } from "@/shadcn/context-menu";
+import {
+  AppContextMenuContent,
+  AppContextMenuGroup,
+  AppContextMenuItem,
+} from "@/widgets/app-context-menu/app-context-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/shadcn/empty";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
@@ -331,17 +335,17 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
             );
 
             return (
-              <ContextMenuContent>
-                <ContextMenuGroup>
-                  <ContextMenuItem
+              <AppContextMenuContent>
+                <AppContextMenuGroup>
+                  <AppContextMenuItem
                     onClick={() => {
                       props.on_open_edit(payload.row_id);
                     }}
                   >
                     <PencilLine />
                     {t("proofreading_page.action.edit")}
-                  </ContextMenuItem>
-                  <ContextMenuItem
+                  </AppContextMenuItem>
+                  <AppContextMenuItem
                     disabled={props.readonly}
                     onClick={() => {
                       props.on_request_retranslate_row_ids(target_row_ids);
@@ -349,8 +353,8 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   >
                     <RefreshCcw />
                     {t("proofreading_page.action.retranslate")}
-                  </ContextMenuItem>
-                  <ContextMenuItem
+                  </AppContextMenuItem>
+                  <AppContextMenuItem
                     disabled={props.readonly}
                     onClick={() => {
                       props.on_request_reset_row_ids(target_row_ids);
@@ -358,9 +362,9 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   >
                     <Recycle />
                     {t("proofreading_page.action.reset_translation")}
-                  </ContextMenuItem>
-                </ContextMenuGroup>
-              </ContextMenuContent>
+                  </AppContextMenuItem>
+                </AppContextMenuGroup>
+              </AppContextMenuContent>
             );
           }}
           ignore_row_click_target={should_ignore_row_click_target}

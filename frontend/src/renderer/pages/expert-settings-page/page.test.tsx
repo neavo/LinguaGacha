@@ -50,15 +50,15 @@ vi.mock("@/widgets/segmented-toggle/segmented-toggle", () => {
   };
 });
 
-vi.mock("@/shadcn/dropdown-menu", () => {
+vi.mock("@/widgets/app-dropdown-menu/app-dropdown-menu", () => {
   return {
-    DropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    DropdownMenuCheckboxItem: (props: { children: ReactNode }) => (
+    AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    AppDropdownMenuCheckboxItem: (props: { children: ReactNode }) => (
       <button type="button">{props.children}</button>
     ),
-    DropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    DropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    DropdownMenuTrigger: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    AppDropdownMenuTrigger: (props: { children: ReactNode }) => <div>{props.children}</div>,
   };
 });
 

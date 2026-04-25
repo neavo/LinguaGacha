@@ -13,12 +13,12 @@ import type {
 import { Badge } from "@/shadcn/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/shadcn/dropdown-menu";
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
 import type {
@@ -235,10 +235,10 @@ function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Eleme
   }
 
   return (
-    <DropdownMenu>
+    <AppDropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
+          <AppDropdownMenuTrigger asChild>
             <button
               type="button"
               data-glossary-ignore-box-select="true"
@@ -250,29 +250,29 @@ function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Eleme
             >
               {badge}
             </button>
-          </DropdownMenuTrigger>
+          </AppDropdownMenuTrigger>
         </TooltipTrigger>
         {tooltip_content}
       </Tooltip>
-      <DropdownMenuContent align="center">
-        <DropdownMenuGroup>
-          <DropdownMenuItem
+      <AppDropdownMenuContent align="center">
+        <AppDropdownMenuGroup>
+          <AppDropdownMenuItem
             onClick={() => {
               void props.on_query_entry_source(props.entry_id);
             }}
           >
             {t("glossary_page.statistics.action.query_source")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
+          </AppDropdownMenuItem>
+          <AppDropdownMenuItem
             onClick={() => {
               props.on_search_entry_relations(props.entry_id);
             }}
           >
             {t("glossary_page.statistics.action.search_relation")}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </AppDropdownMenuItem>
+        </AppDropdownMenuGroup>
+      </AppDropdownMenuContent>
+    </AppDropdownMenu>
   );
 }
 

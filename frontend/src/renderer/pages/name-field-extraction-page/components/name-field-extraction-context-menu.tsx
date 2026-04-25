@@ -1,7 +1,11 @@
 import { PencilLine } from "lucide-react";
 
 import { useI18n } from "@/i18n";
-import { ContextMenuContent, ContextMenuGroup, ContextMenuItem } from "@/shadcn/context-menu";
+import {
+  AppContextMenuContent,
+  AppContextMenuGroup,
+  AppContextMenuItem,
+} from "@/widgets/app-context-menu/app-context-menu";
 
 type NameFieldExtractionContextMenuContentProps = {
   on_edit: () => void;
@@ -13,13 +17,13 @@ export function NameFieldExtractionContextMenuContent(
   const { t } = useI18n();
 
   return (
-    <ContextMenuContent>
-      <ContextMenuGroup>
-        <ContextMenuItem onSelect={props.on_edit}>
+    <AppContextMenuContent>
+      <AppContextMenuGroup>
+        <AppContextMenuItem onSelect={props.on_edit}>
           <PencilLine />
           {t("name_field_extraction_page.action.edit")}
-        </ContextMenuItem>
-      </ContextMenuGroup>
-    </ContextMenuContent>
+        </AppContextMenuItem>
+      </AppContextMenuGroup>
+    </AppContextMenuContent>
   );
 }
