@@ -16,7 +16,7 @@ flowchart LR
 
 | 层 | 职责 | 不该做什么 |
 | --- | --- | --- |
-| `src/main` | Electron 宿主、窗口、标题栏、原生对话框、外链打开、开发态调试端口 | 不持有页面状态，不组织 HTTP 请求，不写 React 逻辑 |
+| `src/main` | Electron 宿主、窗口、标题栏、原生对话框、外链打开、开发态调试端口、Python Core 伴生进程生命周期 | 不持有页面状态，不组织页面业务 HTTP 请求，不写 React 逻辑 |
 | `src/preload` | 通过 `contextBridge` 暴露 `window.desktopApp` | 不维护页面缓存，不承载 UI 状态 |
 | `src/shared` | 跨端共享契约、桌面壳层常量、Core API 地址解析 | 不放页面语义或业务组件 |
 | `src/renderer` | React 页面、导航、状态编排、组件与样式实现 | 不绕过 bridge 直接碰 Node / Electron |
@@ -26,6 +26,7 @@ flowchart LR
 - `frontend/package.json` 是前端命令入口，稳定命令包括 `dev`、`build`、`format`、`format:check`、`lint`、`test`、`renderer:audit`、`preview`。
 - `electron.vite.config.ts` 固定 renderer root 为 `src/renderer`，开发态 host 固定为 `127.0.0.1`。
 - `src/main/index.ts` 在开发态打开 Chromium remote debugging 端口 `9222`，方便 Electron 真机调试与自动化。
+- `src/main/core-lifecycle/` 是 Python Core 伴生进程生命周期的唯一前端侧落点；开发态、预览态和正式环境都由 Electron main 通过源码启动 Core。
 
 ## `window.desktopApp` 与 `desktop-api.ts` 的唯一入口约束
 
@@ -37,14 +38,17 @@ flowchart LR
   - 文件 / 目录选择
   - 外链打开
   - 标题栏主题同步
+  - 窗口关闭确认请求订阅
   - `getPathForFile()`
 
 ### Core API 地址来源
+- 应用正常启动时，Electron main 的 `CoreLifecycleManager` 会先启动 Python Core，校验 `/api/health` 返回的实例 token，再把实际地址写入 `LINGUAGACHA_CORE_API_BASE_URL`。
 - `src/shared/core-api-base-url.ts` 按固定顺序解析 Core API 地址：
   1. 环境变量 `LINGUAGACHA_CORE_API_BASE_URL`
   2. 启动参数 `--core-api-base-url=...`
   3. 默认地址 `http://127.0.0.1:38191`
 - 渲染层不会盲信这个地址；`desktop-api.ts` 仍会先请求 `/api/health` 做探活确认。
+- `LINGUAGACHA_CORE_SOURCE_ROOT` 与 `LINGUAGACHA_UV_BIN` 只属于 Electron main 启动 Core 的调试覆盖入口，不暴露给 renderer 作为运行态状态。
 
 ### `desktop-api.ts`
 - 它是渲染层访问 Core API 的唯一 HTTP / SSE 入口。

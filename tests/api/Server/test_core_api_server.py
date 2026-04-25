@@ -156,3 +156,35 @@ def test_core_api_server_read_json_request_uses_json_tool() -> None:
     handler.rfile = BytesIO(payload_bytes)
 
     assert server.read_json_request(handler) == {"text": "勇者"}
+
+
+def test_core_api_server_health_includes_instance_token_when_configured() -> None:
+    server = CoreApiServer(instance_token="core-token")
+
+    response = server.handle_health()
+
+    assert response.to_dict()["data"] == {
+        "status": "ok",
+        "service": "linguagacha-core",
+        "instanceToken": "core-token",
+    }
+
+
+def test_core_api_server_context_json_route_can_read_request_headers() -> None:
+    server = CoreApiServer()
+    handler = RecordingRequestHandler(path="/api/internal")
+    handler.headers["X-Demo"] = "accepted"
+
+    server.add_context_json_route(
+        "POST",
+        "/api/internal",
+        lambda request, current_handler: ApiResponse(
+            ok=True,
+            data={"header": current_handler.headers["X-Demo"]},
+        ),
+    )
+
+    server.handle_http_request(handler, "POST")
+
+    assert handler.status_code == 200
+    assert JSONTool.loads(handler.wfile.getvalue())["data"] == {"header": "accepted"}

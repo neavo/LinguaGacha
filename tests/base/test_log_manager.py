@@ -212,3 +212,56 @@ def test_rich_handler_uses_shared_console_and_print_rich_reuses_it(
         assert messages == [{"table": "demo"}]
     finally:
         manager.shutdown()
+
+
+def test_log_manager_can_force_rich_console_for_managed_electron_output(
+    fs: FakeFilesystem,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Electron 托管 Core stdout 时仍应允许 Rich 输出颜色。"""
+    log_dir = create_log_dir(fs)
+    monkeypatch.setenv(log_manager_module.LogManager.RICH_CONSOLE_ENV_NAME, "1")
+    manager, _, _ = build_log_manager(monkeypatch, log_dir)
+
+    try:
+        assert manager.get_console().is_terminal is True
+    finally:
+        manager.shutdown()
+
+
+def test_log_manager_uses_managed_console_width(
+    fs: FakeFilesystem,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Electron 托管 Core stdout 时应同步真实终端宽度，避免 Rich 表格过早折行。"""
+    log_dir = create_log_dir(fs)
+    monkeypatch.setenv(log_manager_module.LogManager.RICH_CONSOLE_ENV_NAME, "1")
+    monkeypatch.setenv(log_manager_module.LogManager.CORE_CONSOLE_WIDTH_ENV_NAME, "188")
+    manager, _, _ = build_log_manager(monkeypatch, log_dir)
+
+    try:
+        assert manager.get_console().width == 188
+    finally:
+        manager.shutdown()
+
+
+def test_log_manager_uses_default_width_when_forced_width_is_invalid(
+    fs: FakeFilesystem,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """强制 Rich 终端但宽度缺失时保留一个宽松默认值，别退回 pipe 窄宽度。"""
+    log_dir = create_log_dir(fs)
+    monkeypatch.setenv(log_manager_module.LogManager.RICH_CONSOLE_ENV_NAME, "1")
+    monkeypatch.setenv(
+        log_manager_module.LogManager.CORE_CONSOLE_WIDTH_ENV_NAME,
+        "invalid",
+    )
+    manager, _, _ = build_log_manager(monkeypatch, log_dir)
+
+    try:
+        assert (
+            manager.get_console().width
+            == log_manager_module.LogManager.DEFAULT_RICH_CONSOLE_WIDTH
+        )
+    finally:
+        manager.shutdown()

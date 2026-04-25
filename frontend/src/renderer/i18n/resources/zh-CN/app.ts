@@ -20,6 +20,9 @@ export const zh_cn_app = {
     no_valid_data: "没有有效数据 …",
     update_failed: "更新失败 …",
   },
+  close_confirm: {
+    description: "是否确认退出应用 …?",
+  },
   drop: {
     multiple_unavailable: "一次只能拖拽一个文件",
     unavailable: "当前无法读取拖拽文件的本地路径，请换用点击导入。",

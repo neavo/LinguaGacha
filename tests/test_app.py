@@ -60,6 +60,13 @@ class RecordingVersionManager:
         self.versions.append(version)
 
 
+class FakeLifecycleRequestHandler:
+    def __init__(self, *, token: str) -> None:
+        self.headers = {
+            app_module.CoreLifecycleAppService.SHUTDOWN_TOKEN_HEADER: token,
+        }
+
+
 @pytest.mark.parametrize(
     ("has_runtime", "project_loaded"),
     [(True, True), (False, False)],
@@ -93,7 +100,11 @@ def test_run_headless_mode_cleans_up_after_keyboard_interrupt(
     runtime = RecordingServerRuntime()
     cleanup_calls: list[tuple[RecordingServerRuntime, RecordingLogger]] = []
 
-    monkeypatch.setattr(app_module.ServerBootstrap, "start", lambda: runtime)
+    monkeypatch.setattr(
+        app_module.ServerBootstrap,
+        "start",
+        lambda **kwargs: runtime,
+    )
 
     def raise_keyboard_interrupt() -> None:
         raise KeyboardInterrupt()
@@ -108,13 +119,94 @@ def test_run_headless_mode_cleans_up_after_keyboard_interrupt(
     monkeypatch.setattr(
         app_module,
         "wait_for_headless_shutdown",
-        raise_keyboard_interrupt,
+        lambda event: raise_keyboard_interrupt(),
+    )
+    monkeypatch.setattr(
+        app_module,
+        "install_shutdown_signal_handlers",
+        lambda shutdown_event: None,
+    )
+    monkeypatch.setattr(
+        app_module,
+        "start_parent_process_watchdog",
+        lambda *, shutdown_event, logger: None,
     )
     monkeypatch.setattr(app_module, "cleanup_runtime", record_cleanup)
 
     app_module.run_headless_mode(logger=logger)
 
     assert cleanup_calls == [(runtime, logger)]
+
+
+def test_run_headless_mode_registers_lifecycle_shutdown_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = RecordingLogger()
+    runtime = RecordingServerRuntime()
+    captured_services: list[app_module.CoreLifecycleAppService] = []
+
+    monkeypatch.setenv(app_module.CORE_INSTANCE_TOKEN_ENV_NAME, "core-token")
+    monkeypatch.setattr(
+        app_module.ServerBootstrap,
+        "start",
+        lambda **kwargs: (
+            captured_services.append(kwargs["core_lifecycle_app_service"]) or runtime
+        ),
+    )
+    monkeypatch.setattr(
+        app_module,
+        "install_shutdown_signal_handlers",
+        lambda shutdown_event: None,
+    )
+    monkeypatch.setattr(
+        app_module,
+        "start_parent_process_watchdog",
+        lambda *, shutdown_event, logger: None,
+    )
+    monkeypatch.setattr(
+        app_module,
+        "cleanup_runtime",
+        lambda *, local_api_server_runtime, logger: None,
+    )
+
+    def request_shutdown(shutdown_event) -> None:
+        captured_services[0].shutdown(
+            {},
+            FakeLifecycleRequestHandler(token="core-token"),
+        )
+        assert shutdown_event.wait(timeout=1)
+
+    monkeypatch.setattr(app_module, "wait_for_headless_shutdown", request_shutdown)
+    monkeypatch.setattr(
+        app_module,
+        "request_shutdown_after_response",
+        lambda shutdown_event: shutdown_event.set(),
+    )
+
+    app_module.run_headless_mode(logger=logger)
+
+    assert len(captured_services) == 1
+
+
+def test_load_parent_pid_rejects_missing_or_invalid_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(app_module.PARENT_PID_ENV_NAME, raising=False)
+    assert app_module.load_parent_pid() is None
+
+    monkeypatch.setenv(app_module.PARENT_PID_ENV_NAME, "not-a-pid")
+    assert app_module.load_parent_pid() is None
+
+    monkeypatch.setenv(app_module.PARENT_PID_ENV_NAME, "-1")
+    assert app_module.load_parent_pid() is None
+
+
+def test_load_parent_pid_returns_positive_integer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(app_module.PARENT_PID_ENV_NAME, "4321")
+
+    assert app_module.load_parent_pid() == 4321
 
 
 def test_main_ignores_legacy_cli_args_and_runs_headless_mode(

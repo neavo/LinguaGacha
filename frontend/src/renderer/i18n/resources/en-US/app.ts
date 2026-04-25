@@ -23,6 +23,9 @@ export const en_us_app = {
     no_valid_data: "No valid data …",
     update_failed: "Update failed …",
   },
+  close_confirm: {
+    description: "Confirm exiting the app …?",
+  },
   drop: {
     multiple_unavailable: "Only one file can be dropped at a time",
     unavailable:

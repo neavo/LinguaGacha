@@ -20,6 +20,7 @@ import { Toaster } from "@/shadcn/sonner";
 import { TooltipProvider } from "@/shadcn/tooltip";
 import { AppSidebar } from "@/app/shell/app-sidebar";
 import { AppTitlebar } from "@/app/shell/app-titlebar";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const THEME_STORAGE_KEY = "lg-theme-mode";
@@ -118,6 +119,8 @@ function AppContent(): JSX.Element {
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
   );
+  const [close_confirm_open, set_close_confirm_open] = useState<boolean>(false);
+  const [close_confirm_submitting, set_close_confirm_submitting] = useState<boolean>(false);
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
   const previous_project_path_ref = useRef<string>(project_snapshot.path);
   const previous_project_warmup_status_ref = useRef(project_warmup_status);
@@ -138,6 +141,12 @@ function AppContent(): JSX.Element {
   useEffect(() => {
     document.title = document_title;
   }, [document_title]);
+
+  useEffect(() => {
+    return window.desktopApp.onWindowCloseRequest(() => {
+      set_close_confirm_open(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (!hydration_ready) {
@@ -305,61 +314,87 @@ function AppContent(): JSX.Element {
     }
   }
 
-  return (
-    <SidebarProvider
-      open={!is_sidebar_collapsed}
-      onOpenChange={(is_open) => {
-        // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致。
-        set_is_sidebar_collapsed(!is_open);
-      }}
-      style={
-        {
-          "--sidebar-width": "256px",
-          "--sidebar-width-icon": "72px",
-        } as CSSProperties
+  async function handle_confirm_window_close(): Promise<void> {
+    set_close_confirm_submitting(true);
+    try {
+      await window.desktopApp.quitApp();
+    } catch (error) {
+      set_close_confirm_submitting(false);
+      if (error instanceof Error) {
+        push_toast("error", error.message);
+      } else {
+        push_toast("error", t("app.feedback.update_failed"));
       }
-    >
-      <main
-        className="app-shell"
+    }
+  }
+
+  return (
+    <>
+      <SidebarProvider
+        open={!is_sidebar_collapsed}
+        onOpenChange={(is_open) => {
+          // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致。
+          set_is_sidebar_collapsed(!is_open);
+        }}
         style={
           {
-            "--titlebar-height": `${shell_info.titleBarHeight}px`,
-            "--titlebar-safe-area-start": `${shell_info.titleBarSafeAreaStart}px`,
-            "--titlebar-safe-area-end": `${shell_info.titleBarSafeAreaEnd}px`,
+            "--sidebar-width": "256px",
+            "--sidebar-width-icon": "72px",
           } as CSSProperties
         }
       >
-        <AppTitlebar />
-        <section className="shell-body">
-          <AppSidebar
-            groups={visible_navigation_groups}
-            bottom_actions={BOTTOM_ACTIONS}
-            selected_route={selected_route}
-            expanded_items={expanded_items}
-            disabled_route_ids={disabled_route_ids}
-            disabled_bottom_action_ids={
-              is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
-            }
-            on_select_route={handle_select_route}
-            on_toggle_group={handle_toggle_group}
-            on_bottom_action={handle_bottom_action}
-          />
-
-          <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
-            <AppNavigationProvider
+        <main
+          className="app-shell"
+          style={
+            {
+              "--titlebar-height": `${shell_info.titleBarHeight}px`,
+              "--titlebar-safe-area-start": `${shell_info.titleBarSafeAreaStart}px`,
+              "--titlebar-safe-area-end": `${shell_info.titleBarSafeAreaEnd}px`,
+            } as CSSProperties
+          }
+        >
+          <AppTitlebar />
+          <section className="shell-body">
+            <AppSidebar
+              groups={visible_navigation_groups}
+              bottom_actions={BOTTOM_ACTIONS}
               selected_route={selected_route}
-              navigate_to_route={handle_select_route}
-            >
-              <ProjectPagesProvider>
-                <QualityStatisticsProvider>
-                  <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                </QualityStatisticsProvider>
-              </ProjectPagesProvider>
-            </AppNavigationProvider>
-          </SidebarInset>
-        </section>
-      </main>
-    </SidebarProvider>
+              expanded_items={expanded_items}
+              disabled_route_ids={disabled_route_ids}
+              disabled_bottom_action_ids={
+                is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
+              }
+              on_select_route={handle_select_route}
+              on_toggle_group={handle_toggle_group}
+              on_bottom_action={handle_bottom_action}
+            />
+
+            <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
+              <AppNavigationProvider
+                selected_route={selected_route}
+                navigate_to_route={handle_select_route}
+              >
+                <ProjectPagesProvider>
+                  <QualityStatisticsProvider>
+                    <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                  </QualityStatisticsProvider>
+                </ProjectPagesProvider>
+              </AppNavigationProvider>
+            </SidebarInset>
+          </section>
+        </main>
+      </SidebarProvider>
+
+      <AppAlertDialog
+        open={close_confirm_open}
+        description={t("app.close_confirm.description")}
+        submitting={close_confirm_submitting}
+        onConfirm={handle_confirm_window_close}
+        onClose={() => {
+          set_close_confirm_open(false);
+        }}
+      />
+    </>
   );
 }
 

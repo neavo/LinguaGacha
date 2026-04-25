@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
@@ -17,6 +18,7 @@ class CoreApiServer:
 
     HEALTH_PATH: str = "/api/health"
     HEALTH_SERVICE_NAME: str = "linguagacha-core"
+    CORE_INSTANCE_TOKEN_ENV_NAME: str = "LINGUAGACHA_CORE_INSTANCE_TOKEN"
     CONTENT_TYPE_JSON: str = "application/json; charset=utf-8"
     ACCESS_CONTROL_ALLOW_ORIGIN: str = "*"
     ACCESS_CONTROL_ALLOW_METHODS: str = "GET,POST,OPTIONS"
@@ -34,9 +36,20 @@ class CoreApiServer:
         mode: str
         handler: Callable[..., Any]
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 0) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 0,
+        *,
+        instance_token: str | None = None,
+    ) -> None:
         self.host = host
         self.port = port
+        self.instance_token = (
+            os.environ.get(self.CORE_INSTANCE_TOKEN_ENV_NAME, "").strip()
+            if instance_token is None
+            else instance_token.strip()
+        )
         self.route_map: dict[tuple[str, str], CoreApiServer.RouteDefinition] = {}
 
     def register_routes(self) -> None:
@@ -129,7 +142,10 @@ class CoreApiServer:
         else:
             try:
                 request_body = self.read_json_request(handler)
-                response = route_definition.handler(request_body)
+                if route_definition.mode == "context_json":
+                    response = route_definition.handler(request_body, handler)
+                else:
+                    response = route_definition.handler(request_body)
                 if isinstance(response, dict):
                     response = ApiResponse(ok=True, data=response)
                 self.write_json(
@@ -168,13 +184,13 @@ class CoreApiServer:
     def handle_health(self) -> ApiResponse:
         """最小健康检查接口，用于验证服务已启动并可响应 JSON。"""
 
-        return ApiResponse(
-            ok=True,
-            data={
-                "status": "ok",
-                "service": self.HEALTH_SERVICE_NAME,
-            },
-        )
+        data = {
+            "status": "ok",
+            "service": self.HEALTH_SERVICE_NAME,
+        }
+        if self.instance_token != "":
+            data["instanceToken"] = self.instance_token
+        return ApiResponse(ok=True, data=data)
 
     def add_json_route(
         self,
@@ -185,6 +201,19 @@ class CoreApiServer:
         """JSON 路由统一走响应包装，避免后续手写重复模板。"""
 
         self.route_map[(method, path)] = self.RouteDefinition("json", handler)
+
+    def add_context_json_route(
+        self,
+        method: str,
+        path: str,
+        handler: Callable[[dict[str, Any], BaseHTTPRequestHandler], ApiResponse],
+    ) -> None:
+        """需要读取请求头的内部路由使用上下文模式，避免普通业务接口碰 handler。"""
+
+        self.route_map[(method, path)] = self.RouteDefinition(
+            "context_json",
+            handler,
+        )
 
     def add_stream_route(
         self,

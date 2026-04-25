@@ -11,6 +11,21 @@
     "dist",
     "dist-electron"
   ],
+  "extraResources": [
+    {
+      "from": "..",
+      "to": "core",
+      "filter": [
+        "app.py",
+        "pyproject.toml",
+        "uv.lock",
+        "version.txt",
+        "api/**",
+        "base/**",
+        "module/**"
+      ]
+    }
+  ],
   "mac": {
     "target": [
       "dmg"
