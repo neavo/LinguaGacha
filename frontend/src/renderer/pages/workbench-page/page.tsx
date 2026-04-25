@@ -56,6 +56,8 @@ export function WorkbenchPage(props: WorkbenchPageProps): JSX.Element {
         analysis_task_runtime={workbench_state.analysis_task_runtime}
         active_workbench_task_view={workbench_state.active_workbench_task_view}
         active_workbench_task_summary={workbench_state.active_workbench_task_summary}
+        translation_stats={workbench_state.translation_stats}
+        analysis_stats={workbench_state.analysis_stats}
         can_edit_files={workbench_state.can_edit_files}
         selected_entry_count={workbench_state.selected_entry_ids.length}
         can_export_translation={workbench_state.can_export_translation}

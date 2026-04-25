@@ -16,6 +16,7 @@ type RuntimeFixture = {
     getState: () => {
       files: Record<string, unknown>;
       items: Record<string, unknown>;
+      analysis?: Record<string, unknown>;
     };
   };
   refresh_project_runtime: ReturnType<typeof vi.fn>;
@@ -403,8 +404,113 @@ describe("useWorkbenchLiveState", () => {
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
     expect(latest_state?.entries).toHaveLength(1);
     expect(latest_state?.stats.total_items).toBe(1);
-    expect(latest_state?.stats.completed_count).toBe(1);
+    expect(latest_state?.stats.completed_count).toBe(0);
+    expect(latest_state?.stats.skipped_count).toBe(1);
+    expect(latest_state?.stats.completion_percent).toBe(100);
     expect(latest_state?.entries.map((entry) => entry.rel_path)).toEqual(["chapter01.txt"]);
+  });
+
+  it("运行中翻译统计仍只按 ProjectStore.items.status 派生", async () => {
+    translation_runtime_fixture.current = {
+      ...translation_runtime_fixture.current,
+      translation_task_metrics: {
+        ...translation_runtime_fixture.current.translation_task_metrics,
+        active: true,
+        processed_count: 99,
+        failed_count: 10,
+        completion_percent: 88,
+      },
+    };
+    analysis_runtime_fixture.current = {
+      ...analysis_runtime_fixture.current,
+      analysis_task_metrics: {
+        ...analysis_runtime_fixture.current.analysis_task_metrics,
+        active: true,
+        processed_count: 77,
+        failed_count: 6,
+        completion_percent: 66,
+      },
+    };
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => {
+          return {
+            files: {
+              "chapter01.txt": {
+                rel_path: "chapter01.txt",
+                file_type: "TXT",
+                sort_index: 1,
+              },
+            },
+            items: {
+              "1": {
+                item_id: 1,
+                file_path: "chapter01.txt",
+                status: "PROCESSED",
+              },
+              "2": {
+                item_id: 2,
+                file_path: "chapter01.txt",
+                status: "ERROR",
+              },
+              "3": {
+                item_id: 3,
+                file_path: "chapter01.txt",
+                status: "NONE",
+              },
+              "4": {
+                item_id: 4,
+                file_path: "chapter01.txt",
+                status: "RULE_SKIPPED",
+              },
+              "5": {
+                item_id: 5,
+                file_path: "chapter01.txt",
+                status: "DONE",
+              },
+            },
+            analysis: {
+              status_summary: {
+                total_line: 4,
+                processed_line: 2,
+                error_line: 1,
+                line: 3,
+              },
+            },
+          };
+        },
+      },
+      workbench_change_signal: {
+        seq: 1,
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state?.stats).toMatchObject({
+      total_items: 5,
+      completed_count: 1,
+      failed_count: 1,
+      pending_count: 1,
+      skipped_count: 2,
+      completion_percent: 60,
+    });
+
+    act(() => {
+      latest_state?.toggle_stats_mode();
+    });
+
+    expect(latest_state?.stats).toMatchObject({
+      total_items: 5,
+      completed_count: 2,
+      failed_count: 1,
+      pending_count: 1,
+      skipped_count: 1,
+      completion_percent: 60,
+    });
   });
 
   it("添加文件解析成功后会先打开继承确认", async () => {

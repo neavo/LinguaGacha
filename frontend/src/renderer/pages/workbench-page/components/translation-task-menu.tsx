@@ -1,13 +1,13 @@
-import { BrushCleaning, Paintbrush, Play, RotateCw, ScanText } from "lucide-react";
+import { BrushCleaning, Paintbrush, Play, ScanText } from "lucide-react";
 
 import "@/pages/workbench-page/components/task-runtime/task-runtime.css";
 import { useI18n } from "@/i18n";
 import {
-  has_translation_task_progress,
   type TranslationTaskActionKind,
   type TranslationTaskMetrics,
-  type TranslationTaskSnapshot,
 } from "@/pages/workbench-page/task-runtime/translation-task-model";
+import type { WorkbenchStats } from "@/pages/workbench-page/types";
+import { WorkbenchSegmentedProgress } from "@/pages/workbench-page/components/workbench-segmented-progress";
 import { Button } from "@/shadcn/button";
 import {
   DropdownMenu,
@@ -17,12 +17,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shadcn/dropdown-menu";
-import { Progress } from "@/shadcn/progress";
 import { Spinner } from "@/shadcn/spinner";
 
 type TranslationTaskMenuProps = {
-  translation_task_display_snapshot: TranslationTaskSnapshot | null;
   translation_task_metrics: TranslationTaskMetrics;
+  workbench_stats: WorkbenchStats;
   disabled: boolean;
   busy: boolean;
   active_task_action_kind: TranslationTaskActionKind | null;
@@ -30,25 +29,13 @@ type TranslationTaskMenuProps = {
   on_request_confirmation: (kind: TranslationTaskActionKind) => void;
 };
 
-function resolve_summary_progress_percent(metrics: TranslationTaskMetrics): number {
-  return Number.isFinite(metrics.completion_percent) ? metrics.completion_percent : 0;
-}
-
 export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Element {
   const { t } = useI18n();
-  const has_progress = has_translation_task_progress(props.translation_task_display_snapshot);
-  const main_action_label = has_progress
-    ? t("workbench_page.action.continue_translation")
-    : t("workbench_page.action.start_translation");
   const action_items_disabled =
     props.translation_task_metrics.active || props.busy || props.disabled;
-  const progress_percent = resolve_summary_progress_percent(props.translation_task_metrics);
+  const progress_percent = props.workbench_stats.completion_percent;
   const trigger_icon = <ScanText data-icon="inline-start" />;
-  const main_action_icon = has_progress ? (
-    <RotateCw data-icon="inline-start" />
-  ) : (
-    <Play data-icon="inline-start" />
-  );
+  const main_action_icon = <Play data-icon="inline-start" />;
 
   return (
     <DropdownMenu>
@@ -69,7 +56,16 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
               {progress_percent.toFixed(2)}%
             </span>
           </div>
-          <Progress value={progress_percent} />
+          <WorkbenchSegmentedProgress
+            stats={props.workbench_stats}
+            labels={{
+              skipped: t("workbench_page.stats.translation_skipped"),
+              failed: t("workbench_page.stats.error_count"),
+              completed: t("workbench_page.stats.translated"),
+              pending: t("workbench_page.stats.untranslated"),
+              total: t("workbench_page.stats.total_lines"),
+            }}
+          />
         </div>
 
         <DropdownMenuSeparator />
@@ -86,7 +82,7 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
             ) : (
               main_action_icon
             )}
-            {main_action_label}
+            {t("workbench_page.action.start_translation")}
           </DropdownMenuItem>
         </DropdownMenuGroup>
 

@@ -6,6 +6,7 @@ import { useI18n, type LocaleKey } from "@/i18n";
 import type { AnalysisTaskActionKind } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import type { TranslationTaskActionKind } from "@/pages/workbench-page/task-runtime/translation-task-model";
 import type {
+  WorkbenchStats,
   WorkbenchTaskSummaryViewModel,
   WorkbenchTaskViewState,
 } from "@/pages/workbench-page/types";
@@ -24,6 +25,8 @@ type WorkbenchCommandBarProps = {
   analysis_task_runtime: AnalysisTaskRuntime;
   active_workbench_task_view: WorkbenchTaskViewState;
   active_workbench_task_summary: WorkbenchTaskSummaryViewModel;
+  translation_stats: WorkbenchStats;
+  analysis_stats: WorkbenchStats;
   can_edit_files: boolean;
   selected_entry_count: number;
   can_export_translation: boolean;
@@ -94,10 +97,8 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
         <>
           <CommandBarGroup>
             <TranslationTaskMenu
-              translation_task_display_snapshot={
-                props.translation_task_runtime.translation_task_display_snapshot
-              }
               translation_task_metrics={props.translation_task_runtime.translation_task_metrics}
+              workbench_stats={props.translation_stats}
               disabled={props.translation_task_runtime.translation_task_menu_disabled}
               busy={props.translation_task_runtime.translation_task_menu_busy}
               active_task_action_kind={active_translation_task_action_kind}
@@ -109,10 +110,8 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               }
             />
             <AnalysisTaskMenu
-              analysis_task_display_snapshot={
-                props.analysis_task_runtime.analysis_task_display_snapshot
-              }
               analysis_task_metrics={props.analysis_task_runtime.analysis_task_metrics}
+              workbench_stats={props.analysis_stats}
               disabled={props.analysis_task_runtime.analysis_task_menu_disabled}
               busy={props.analysis_task_runtime.analysis_task_menu_busy}
               importing={props.analysis_task_runtime.analysis_importing}
