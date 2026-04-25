@@ -600,6 +600,14 @@ function build_translation_task_confirm_dialog_view_model(
     };
   }
 
+  if (state.kind === "export-translation") {
+    return {
+      open: state.open,
+      description: t("workbench_page.translation_task.confirm.export_description"),
+      submitting: state.submitting,
+    };
+  }
+
   return {
     open: state.open,
     description: t("workbench_page.translation_task.confirm.stop_description"),

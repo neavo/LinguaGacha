@@ -143,6 +143,10 @@ flowchart TD
 | 只读预演 | `translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
 | 异步任务 | `tasks/*`、`retranslate-items` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
 
+翻译任务补充：
+- 翻译任务完成只保存项目事实，不自动写出译文文件。
+- 生成译文文件由前端确认后显式调用 `/api/tasks/export-translation`，该接口仍复用现有 `POST + JSON body` 形状。
+
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - `/api/project/text-preserve/preset-rules` 只读取指定 `text_type` 的预置文本保护规则，供 TS 侧按当前文本保护模式自行编译与分段保护。

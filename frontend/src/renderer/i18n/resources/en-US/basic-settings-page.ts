@@ -26,9 +26,9 @@ export const en_us_basic_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "Open Output Folder When Finished",
+      title: "Open Output Folder When Translation File Is Generated",
       description:
-        "When enabled, the output folder will be automatically opened upon task completion",
+        "When enabled, the output folder will be opened after the translated file is generated successfully",
     },
     request_timeout: {
       title: "Request Timeout",

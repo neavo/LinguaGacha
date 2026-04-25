@@ -131,6 +131,7 @@ export const en_us_workbench_page = {
     confirm: {
       reset_all_description: "Confirm resetting the translation progress for the entire project …?",
       reset_failed_description: "Confirm resetting failed translation entries …?",
+      export_description: "Confirm generating the translated file …?",
       stop_description: "Confirm stopping the current translation task …?",
     },
     feedback: {
@@ -141,6 +142,7 @@ export const en_us_workbench_page = {
       stopped: "Stopped …",
       reset_all_failed: "Failed to reset all translation progress.",
       reset_failed_failed: "Failed to reset failed translation entries.",
+      export_failed: "Failed to generate the translated file.",
     },
   },
   command: {

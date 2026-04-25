@@ -20,8 +20,8 @@ export const zh_cn_basic_settings_page = {
       },
     },
     output_folder_open_on_finish: {
-      title: "任务完成时打开输出文件夹",
-      description: "启用此功能后，将在任务完成时自动打开输出文件夹",
+      title: "生成译文文件时打开输出文件夹",
+      description: "启用此功能后，将在译文文件生成成功时自动打开输出文件夹",
     },
     request_timeout: {
       title: "请求超时时间",

@@ -128,6 +128,7 @@ export const zh_cn_workbench_page = {
     confirm: {
       reset_all_description: "是否确认重置整个项目的翻译进度 …?",
       reset_failed_description: "是否确认重置失败的翻译条目 …?",
+      export_description: "是否确认生成译文文件 …?",
       stop_description: "是否确认停止当前翻译任务 …?",
     },
     feedback: {
@@ -138,6 +139,7 @@ export const zh_cn_workbench_page = {
       stopped: "已停止 …",
       reset_all_failed: "重置全部翻译失败",
       reset_failed_failed: "重置失败条目失败",
+      export_failed: "生成译文失败",
     },
   },
   command: {
