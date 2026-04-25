@@ -1,6 +1,6 @@
 {
     "type": "CUSTOM_GOOGLE",
-    "name": "Custom Google",
+    "name": "自定义 Google 模型",
     "api_format": "Google",
     "api_url": "https://generativelanguage.googleapis.com",
     "api_key": "no_key_required",

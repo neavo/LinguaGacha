@@ -37,7 +37,6 @@ def test_update_app_settings_persists_selected_keys(
     assert settings["preceding_lines_threshold"] == 4
     assert fake_settings_config.save_calls == 1
     assert settings_app_service.applied_localizer_languages == []
-    assert settings_app_service.applied_model_languages == []
     assert settings_app_service.emitted_events == [
         (
             Base.Event.CONFIG_UPDATED,
@@ -68,7 +67,6 @@ def test_update_app_settings_persists_laboratory_toggle_keys(
     assert settings["mtool_optimizer_enable"] is True
     assert fake_settings_config.mtool_optimizer_enable is True
     assert settings_app_service.applied_localizer_languages == []
-    assert settings_app_service.applied_model_languages == []
     assert settings_app_service.emitted_events == [
         (
             Base.Event.CONFIG_UPDATED,
@@ -95,7 +93,6 @@ def test_update_app_settings_syncs_runtime_language_when_app_language_changes(
     assert settings["app_language"] == BaseLanguage.Enum.EN
     assert fake_settings_config.app_language == BaseLanguage.Enum.EN
     assert settings_app_service.applied_localizer_languages == [BaseLanguage.Enum.EN]
-    assert settings_app_service.applied_model_languages == [BaseLanguage.Enum.EN]
     assert settings_app_service.emitted_events == [
         (
             Base.Event.CONFIG_UPDATED,
@@ -123,7 +120,6 @@ def test_update_app_settings_rejects_unsupported_app_language(
     assert fake_settings_config.app_language == BaseLanguage.Enum.ZH
     assert fake_settings_config.save_calls == 0
     assert settings_app_service.applied_localizer_languages == []
-    assert settings_app_service.applied_model_languages == []
     assert settings_app_service.emitted_events == []
 
 

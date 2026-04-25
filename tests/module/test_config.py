@@ -319,9 +319,6 @@ class TestConfigModels:
                 self.activate_model_id: str = ""
                 self.models: list[dict[str, object]] = []
 
-            def set_app_language(self, language: BaseLanguage.Enum) -> None:
-                self.calls.append(("set_app_language", language))
-
             def initialize_models(
                 self, models: list[dict[str, object]]
             ) -> tuple[list[dict[str, object]], int]:
@@ -349,7 +346,6 @@ class TestConfigModels:
         assert config.models == [{"id": "m1"}]
         assert config.activate_model_id == "m1"
         assert fake.activate_model_id == "m1"
-        assert ("set_app_language", BaseLanguage.Enum.EN) in fake.calls
 
     def test_initialize_models_keeps_existing_active_model_id(
         self, monkeypatch: pytest.MonkeyPatch
@@ -358,9 +354,6 @@ class TestConfigModels:
             def __init__(self) -> None:
                 self.activate_model_id: str = ""
                 self.models: list[dict[str, object]] = []
-
-            def set_app_language(self, language: BaseLanguage.Enum) -> None:
-                del language
 
             def initialize_models(
                 self, models: list[dict[str, object]]

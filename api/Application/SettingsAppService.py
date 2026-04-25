@@ -5,7 +5,6 @@ from base.Base import Base
 from base.BaseLanguage import BaseLanguage
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from module.Model.Manager import ModelManager
 
 
 class SettingsAppService:
@@ -48,7 +47,6 @@ class SettingsAppService:
         config_loader: Callable[[], Config] | None = None,
         event_emitter: Any | None = None,
         localizer_language_setter: Callable[[BaseLanguage.Enum], None] | None = None,
-        model_language_setter: Callable[[BaseLanguage.Enum], None] | None = None,
     ) -> None:
         self.config_loader = (
             config_loader if config_loader is not None else self.default_config_loader
@@ -60,11 +58,6 @@ class SettingsAppService:
             localizer_language_setter
             if localizer_language_setter is not None
             else Localizer.set_app_language
-        )
-        self.model_language_setter = (
-            model_language_setter
-            if model_language_setter is not None
-            else self.default_set_model_language
         )
 
     def get_app_settings(self, request: dict[str, Any]) -> dict[str, object]:
@@ -185,7 +178,6 @@ class SettingsAppService:
         app_language = self.normalize_app_language(config.app_language)
         config.app_language = app_language
         self.localizer_language_setter(app_language)
-        self.model_language_setter(app_language)
 
     def load_config(self, persist_defaults: bool = False) -> Config:
         """统一加载并持久化默认配置，避免页面自己分散做初始化。"""
@@ -200,11 +192,6 @@ class SettingsAppService:
         """默认从真实配置单例创建读取对象。"""
 
         return Config()
-
-    def default_set_model_language(self, language: BaseLanguage.Enum) -> None:
-        """默认把应用语言同步给模型管理器，保持预设目录解析一致。"""
-
-        ModelManager.get().set_app_language(language)
 
     def default_emit(self, event: Base.Event, data: dict[str, object]) -> None:
         """默认把设置更新继续发回现有事件总线。"""

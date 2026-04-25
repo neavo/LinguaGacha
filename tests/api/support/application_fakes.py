@@ -508,11 +508,7 @@ class FakeModelManager:
     def __init__(self) -> None:
         self.models: list[Model] = []
         self.activate_model_id: str = ""
-        self.app_language: BaseLanguage.Enum = BaseLanguage.Enum.ZH
         self.add_counter: int = 1
-
-    def set_app_language(self, language: BaseLanguage.Enum) -> None:
-        self.app_language = language
 
     def set_models(self, models_data: list[dict[str, object]]) -> None:
         self.models = [Model.from_dict(deepcopy(dict(model))) for model in models_data]

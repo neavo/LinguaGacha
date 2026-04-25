@@ -213,12 +213,8 @@ def test_can_write_directory_returns_false_when_probe_creation_fails(
             os.path.join("C:/app", "resource", "preset", "text_preserve", "ko"),
         ),
         (
-            lambda: BasePath.get_model_preset_dir(BaseLanguage.Enum.ZH),
-            os.path.join("C:/app", "resource", "preset", "model", "zh"),
-        ),
-        (
-            lambda: BasePath.get_model_preset_dir(BaseLanguage.Enum.EN),
-            os.path.join("C:/app", "resource", "preset", "model", "en"),
+            lambda: BasePath.get_model_preset_dir(),
+            os.path.join("C:/app", "resource", "model", "preset"),
         ),
         (
             lambda: BasePath.get_text_preserve_preset_dir(),

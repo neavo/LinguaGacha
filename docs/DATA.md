@@ -119,8 +119,6 @@ flowchart TD
 | 启动期 userdata/config/preset 布局升级 | `module/Migration/UserDataMigrationService.py` | 配置读写仍由 `Config` 与路径 resolver 提供权威路径 |
 | `.lg` 打开期 schema 与项目状态升级 | `module/Migration/ProjectSchemaMigrationService.py` | 建表、索引和 SQL 细节仍只落在 `module/Data/Storage/LGDatabase.py` |
 | 工程加载期 meta/rule 旧字段升级 | `module/Migration/ProjectMetaMigrationService.py`、`module/Migration/ProjectRuleMigrationService.py` | `ProjectLifecycleService` 只维持加载时机、cache 刷新和清理 |
-| 模型初始化期旧 PRESET 分类升级 | `module/Migration/ModelConfigMigrationService.py` | 模板补齐、排序和默认回退仍由 `module/Model/Manager.py` 负责 |
-
 迁移目录只承接会写回旧数据、旧磁盘布局或旧配置事实的行为；读取兼容、payload 归一和文件格式 fallback 保留在原领域。例如 `LGDatabase.get_rules()` 的旧规则读取兼容、`Item/DataManager` 的状态边界归一，以及 EPUB/RenPy/TRANS writer fallback 都不是迁移入口。
 
 ### 引擎域
@@ -139,6 +137,7 @@ flowchart TD
 
 ### 模型域
 - `module/Model/Manager.py` 是模型列表整理、分组排序、模板补齐和激活模型回退的唯一规则入口。
+- 内置模型预设固定读取 `resource/model/preset` 单套资源，UI 语言切换不改变模型预设集合，也不会把现有 `PRESET` 模型改写成自定义模型。
 - 新增模型供应商或模板时，优先扩展 `ModelType`、模板映射和预设资源，不把分支散到调用方。
 
 ## 新状态应归属哪里的判断规则

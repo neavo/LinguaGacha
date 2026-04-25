@@ -7,7 +7,6 @@ from typing import Protocol
 
 from api.Contract.ModelPayloads import ModelPageSnapshotPayload
 from base.Base import Base
-from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from api.Models.Model import ModelEntrySnapshot
 from api.Models.Model import ModelPageSnapshot
@@ -21,7 +20,6 @@ from module.Model.Manager import ModelManager
 class ModelConfigLike(Protocol):
     """约束模型应用服务依赖的最小配置接口，避免类型退化成 Any。"""
 
-    app_language: BaseLanguage.Enum
     activate_model_id: str
     models: list[dict[str, object]] | None
 
@@ -42,8 +40,6 @@ class ModelManagerLike(Protocol):
     """约束模型应用服务依赖的最小模型管理接口，保证真实对象与测试桩同构。"""
 
     activate_model_id: str
-
-    def set_app_language(self, language: BaseLanguage.Enum) -> None: ...
 
     def set_models(self, models_data: list[dict[str, object]]) -> None: ...
 
@@ -426,7 +422,6 @@ class ModelAppService:
     def prepare_manager(self, config: ModelConfigLike) -> None:
         """在执行动作前先让模型管理器与配置真相对齐。"""
 
-        self.model_manager.set_app_language(config.app_language)
         self.model_manager.set_models(config.models or [])
         self.model_manager.set_active_model_id(config.activate_model_id)
 
