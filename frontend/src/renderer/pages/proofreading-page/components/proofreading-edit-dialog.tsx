@@ -1,7 +1,7 @@
 import { Recycle, RefreshCcw } from "lucide-react";
 
 import { useI18n } from "@/i18n";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import {
   ProofreadingCodeEditor,
   type ProofreadingCodeEditorHighlight,
@@ -15,9 +15,9 @@ import {
 } from "@/pages/proofreading-page/types";
 import { Badge } from "@/shadcn/badge";
 import { Button } from "@/shadcn/button";
-import { Kbd } from "@/shadcn/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type ProofreadingEditDialogProps = {
   open: boolean;
@@ -319,9 +319,10 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
   const save_label = t("proofreading_page.action.save");
   const save_disabled = props.readonly || props.saving;
 
-  useSaveShortcut({
+  useActionShortcut({
+    action: "save",
     enabled: props.open && !save_disabled,
-    on_save: () => {
+    on_trigger: () => {
       void props.on_save();
     },
   });
@@ -409,7 +410,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
               }}
             >
               {save_label}
-              <Kbd className="bg-background/18 text-primary-foreground">Ctrl+S</Kbd>
+              <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
             </Button>
           </div>
         </>

@@ -1,16 +1,16 @@
 import { CaseSensitive, Regex } from "lucide-react";
 
 import { useI18n } from "@/i18n";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type {
   TextReplacementDialogMode,
   TextReplacementEntry,
 } from "@/pages/text-replacement-page/types";
 import { Button } from "@/shadcn/button";
-import { Kbd } from "@/shadcn/kbd";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type TextReplacementEditDialogProps = {
   open: boolean;
@@ -23,9 +23,7 @@ type TextReplacementEditDialogProps = {
   on_close: () => Promise<void>;
 };
 
-export function TextReplacementEditDialog(
-  props: TextReplacementEditDialogProps,
-): JSX.Element {
+export function TextReplacementEditDialog(props: TextReplacementEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("text_replacement_page.action.save");
   const boolean_segmented_options = [
@@ -43,9 +41,10 @@ export function TextReplacementEditDialog(
       ? t("text_replacement_page.dialog.create_title")
       : t("text_replacement_page.dialog.edit_title");
 
-  useSaveShortcut({
+  useActionShortcut({
+    action: "save",
     enabled: props.open && !props.saving,
-    on_save: () => {
+    on_trigger: () => {
       void props.on_save();
     },
   });
@@ -80,9 +79,7 @@ export function TextReplacementEditDialog(
             }}
           >
             {save_label}
-            <Kbd className="bg-background/18 text-primary-foreground">
-              Ctrl+S
-            </Kbd>
+            <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
           </Button>
         </>
       }
@@ -132,10 +129,7 @@ export function TextReplacementEditDialog(
           <div className="text-replacement-page__dialog-rule-grid">
             <div className="text-replacement-page__dialog-rule-item">
               <div className="text-replacement-page__dialog-rule-copy">
-                <span
-                  className="text-replacement-page__rule-badge-wrap"
-                  aria-hidden="true"
-                >
+                <span className="text-replacement-page__rule-badge-wrap" aria-hidden="true">
                   <span
                     data-state={props.entry.regex ? "active" : "inactive"}
                     className="text-replacement-page__rule-badge text-replacement-page__dialog-rule-badge"
@@ -163,14 +157,9 @@ export function TextReplacementEditDialog(
 
             <div className="text-replacement-page__dialog-rule-item">
               <div className="text-replacement-page__dialog-rule-copy">
-                <span
-                  className="text-replacement-page__rule-badge-wrap"
-                  aria-hidden="true"
-                >
+                <span className="text-replacement-page__rule-badge-wrap" aria-hidden="true">
                   <span
-                    data-state={
-                      props.entry.case_sensitive ? "active" : "inactive"
-                    }
+                    data-state={props.entry.case_sensitive ? "active" : "inactive"}
                     className="text-replacement-page__rule-badge text-replacement-page__dialog-rule-badge"
                   >
                     <CaseSensitive />

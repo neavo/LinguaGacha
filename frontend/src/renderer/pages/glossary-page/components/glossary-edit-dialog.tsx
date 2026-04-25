@@ -1,16 +1,13 @@
 import { CaseSensitive } from "lucide-react";
 
 import { useI18n } from "@/i18n";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
-import type {
-  GlossaryDialogMode,
-  GlossaryEntry,
-} from "@/pages/glossary-page/types";
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
+import type { GlossaryDialogMode, GlossaryEntry } from "@/pages/glossary-page/types";
 import { Button } from "@/shadcn/button";
-import { Kbd } from "@/shadcn/kbd";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type GlossaryEditDialogProps = {
   open: boolean;
@@ -22,9 +19,7 @@ type GlossaryEditDialogProps = {
   on_close: () => Promise<void>;
 };
 
-export function GlossaryEditDialog(
-  props: GlossaryEditDialogProps,
-): JSX.Element {
+export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("glossary_page.action.save");
   const boolean_segmented_options = [
@@ -42,9 +37,10 @@ export function GlossaryEditDialog(
       ? t("glossary_page.dialog.create_title")
       : t("glossary_page.dialog.edit_title");
 
-  useSaveShortcut({
+  useActionShortcut({
+    action: "save",
     enabled: props.open && !props.saving,
-    on_save: () => {
+    on_trigger: () => {
       void props.on_save();
     },
   });
@@ -79,9 +75,7 @@ export function GlossaryEditDialog(
             }}
           >
             {save_label}
-            <Kbd className="bg-background/18 text-primary-foreground">
-              Ctrl+S
-            </Kbd>
+            <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
           </Button>
         </>
       }
@@ -140,10 +134,7 @@ export function GlossaryEditDialog(
           <div className="glossary-page__dialog-rule-grid">
             <div className="glossary-page__dialog-rule-item">
               <div className="glossary-page__dialog-rule-copy">
-                <span
-                  className="glossary-page__rule-badge-wrap"
-                  aria-hidden="true"
-                >
+                <span className="glossary-page__rule-badge-wrap" aria-hidden="true">
                   <span
                     data-state="inactive"
                     className="glossary-page__rule-badge glossary-page__dialog-rule-badge"

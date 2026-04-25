@@ -26,7 +26,6 @@ type WorkbenchFileTableProps = {
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_prepare_entry_action: (entry_id: string) => void;
   on_reset: (entry_id: string) => void;
-  on_delete: (entry_id: string) => void;
   on_reorder: (ordered_entry_ids: string[]) => void;
 };
 
@@ -207,7 +206,6 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                 props.on_prepare_entry_action(payload.row_id);
               }}
               on_reset={() => props.on_reset(payload.row_id)}
-              on_delete={() => props.on_delete(payload.row_id)}
             />
           );
         },

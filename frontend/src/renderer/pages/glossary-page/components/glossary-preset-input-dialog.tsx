@@ -1,10 +1,10 @@
 import { useI18n, type LocaleKey } from "@/i18n";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { GlossaryPresetInputState } from "@/pages/glossary-page/types";
 import { Button } from "@/shadcn/button";
 import { Input } from "@/shadcn/input";
-import { Kbd } from "@/shadcn/kbd";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type GlossaryPresetInputDialogProps = {
   state: GlossaryPresetInputState;
@@ -32,20 +32,17 @@ const PRESET_DIALOG_COPY_BY_MODE: Record<
   },
 };
 
-export function GlossaryPresetInputDialog(
-  props: GlossaryPresetInputDialogProps,
-): JSX.Element {
+export function GlossaryPresetInputDialog(props: GlossaryPresetInputDialogProps): JSX.Element {
   const { t } = useI18n();
   const dialog_copy =
-    props.state.mode === null
-      ? null
-      : PRESET_DIALOG_COPY_BY_MODE[props.state.mode];
+    props.state.mode === null ? null : PRESET_DIALOG_COPY_BY_MODE[props.state.mode];
   const is_save_mode = props.state.mode === "save";
   const confirm_label = dialog_copy === null ? "" : t(dialog_copy.confirm_key);
 
-  useSaveShortcut({
+  useActionShortcut({
+    action: "save",
     enabled: props.state.open && is_save_mode && !props.state.submitting,
-    on_save: () => {
+    on_trigger: () => {
       void props.on_submit();
     },
   });
@@ -77,9 +74,7 @@ export function GlossaryPresetInputDialog(
               }}
             >
               {confirm_label}
-              <Kbd className="bg-background/18 text-primary-foreground">
-                Ctrl+S
-              </Kbd>
+              <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
             </Button>
           ) : (
             <Button

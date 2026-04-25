@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n, type LocaleKey } from "@/i18n";
 import type { TextPreserveMode, TextPreservePresetItem } from "@/pages/text-preserve-page/types";
 import { Button } from "@/shadcn/button";
@@ -37,6 +38,7 @@ import {
   SegmentedToggle,
   type SegmentedToggleOption,
 } from "@/widgets/segmented-toggle/segmented-toggle";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type TextPreserveCommandBarProps = {
   title_key: LocaleKey;
@@ -89,6 +91,19 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
     .replace("{TITLE}", t("text_preserve_page.mode.label"))
     .replace("{STATE}", t(MODE_LABEL_KEY_BY_MODE[props.mode]));
 
+  useActionShortcut({
+    action: "create",
+    enabled: true,
+    on_trigger: props.on_create,
+  });
+  useActionShortcut({
+    action: "delete",
+    enabled: props.selected_entry_count > 0,
+    on_trigger: () => {
+      void props.on_delete_selected();
+    },
+  });
+
   return (
     <CommandBar
       title={t(props.title_key)}
@@ -98,6 +113,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             <Button variant="ghost" size="toolbar" onClick={props.on_create}>
               <Plus data-icon="inline-start" />
               {t("text_preserve_page.action.create")}
+              <ShortcutKbd action="create" />
             </Button>
             <Button
               variant="ghost"
@@ -109,6 +125,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             >
               <Trash2 data-icon="inline-start" />
               {t("text_preserve_page.action.delete")}
+              <ShortcutKbd action="delete" />
             </Button>
           </CommandBarGroup>
           <CommandBarSeparator />

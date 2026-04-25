@@ -40,6 +40,8 @@ describe("GlossaryCommandBar", () => {
     );
 
     expect(html).toContain("glossary_page.action.create");
+    expect(html).toContain("Ctrl+N");
+    expect(html).toContain("Del");
     expect(html).toContain("glossary_page.action.preset");
     expect(html).not.toContain("glossary_page.action.statistics");
   });

@@ -1,5 +1,6 @@
 import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "lucide-react";
 
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { AnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
 import type { TranslationTaskRuntime } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
 import { useI18n, type LocaleKey } from "@/i18n";
@@ -19,6 +20,7 @@ import {
   CommandBarGroup,
   CommandBarSeparator,
 } from "@/widgets/command-bar/command-bar";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type WorkbenchCommandBarProps = {
   translation_task_runtime: TranslationTaskRuntime;
@@ -57,19 +59,21 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       : props.active_workbench_task_view.task_kind === "translation"
         ? props.translation_task_runtime.open_translation_detail_sheet
         : () => {};
+  const add_file_disabled = !props.can_edit_files;
+  const delete_file_disabled = !props.can_edit_files || props.selected_entry_count === 0;
   const actions: CommandAction[] = [
     {
       id: "add-file",
       icon: FilePlus2,
       label_key: "workbench_page.action.add_file",
-      disabled: !props.can_edit_files,
+      disabled: add_file_disabled,
       on_click: props.on_add_file,
     },
     {
       id: "delete-file",
       icon: Trash2,
       label_key: "workbench_page.action.delete_file",
-      disabled: !props.can_edit_files || props.selected_entry_count === 0,
+      disabled: delete_file_disabled,
       on_click: props.on_delete_selected,
     },
     {
@@ -87,6 +91,17 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       on_click: props.on_close_project,
     },
   ];
+
+  useActionShortcut({
+    action: "create",
+    enabled: !add_file_disabled,
+    on_trigger: props.on_add_file,
+  });
+  useActionShortcut({
+    action: "delete",
+    enabled: !delete_file_disabled,
+    on_trigger: props.on_delete_selected,
+  });
 
   return (
     <CommandBar
@@ -139,6 +154,8 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
                 >
                   <Icon data-icon="inline-start" />
                   {t(action.label_key)}
+                  {action.id === "add-file" ? <ShortcutKbd action="create" /> : null}
+                  {action.id === "delete-file" ? <ShortcutKbd action="delete" /> : null}
                 </Button>
               </div>
             );

@@ -41,6 +41,8 @@ describe("TextReplacementCommandBar", () => {
     );
 
     expect(html).toContain("text_replacement_page.action.create");
+    expect(html).toContain("Ctrl+N");
+    expect(html).toContain("Del");
     expect(html).toContain("text_replacement_page.action.preset");
     expect(html).not.toContain("text_replacement_page.action.statistics");
   });

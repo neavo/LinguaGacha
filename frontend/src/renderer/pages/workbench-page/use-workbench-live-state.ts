@@ -692,7 +692,6 @@ export type UseWorkbenchLiveStateResult = {
   request_export_translation: () => void;
   request_close_project: () => void;
   request_reset_file: (entry_id: string) => void;
-  request_delete_file: (entry_id: string) => void;
   request_delete_selected_files: () => void;
   request_reorder_entries: (ordered_entry_ids: string[]) => Promise<void>;
   confirm_dialog: () => Promise<void>;
@@ -1338,10 +1337,6 @@ export function useWorkbenchLiveState(
     });
   }
 
-  function request_delete_file(entry_id: string): void {
-    request_delete_entries([entry_id]);
-  }
-
   function request_delete_selected_files(): void {
     request_delete_entries(selection_state_ref.current.selected_entry_ids);
   }
@@ -1602,7 +1597,6 @@ export function useWorkbenchLiveState(
     request_export_translation,
     request_close_project,
     request_reset_file,
-    request_delete_file,
     request_delete_selected_files,
     request_reorder_entries,
     confirm_dialog,

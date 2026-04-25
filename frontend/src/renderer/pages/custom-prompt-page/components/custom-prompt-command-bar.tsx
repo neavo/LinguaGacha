@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 import { useI18n, type LocaleKey } from "@/i18n";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { CustomPromptPresetItem } from "@/pages/custom-prompt-page/types";
 import { Button } from "@/shadcn/button";
 import {
@@ -27,7 +27,6 @@ import {
   AppDropdownMenuSubTrigger,
   AppDropdownMenuTrigger,
 } from "@/widgets/app-dropdown-menu/app-dropdown-menu";
-import { Kbd } from "@/shadcn/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import {
   CommandBar,
@@ -35,6 +34,7 @@ import {
   CommandBarSeparator,
 } from "@/widgets/command-bar/command-bar";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type CustomPromptCommandBarProps = {
   title_key: LocaleKey;
@@ -79,9 +79,10 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
     .replace("{TITLE}", t(props.header_title_key))
     .replace("{STATE}", t(toggle_state_key));
 
-  useSaveShortcut({
+  useActionShortcut({
+    action: "save",
     enabled: props.save_shortcut_enabled,
-    on_save: () => {
+    on_trigger: () => {
       void props.on_save();
     },
   });
@@ -123,7 +124,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
           >
             <Save data-icon="inline-start" />
             {save_label}
-            <Kbd>Ctrl+S</Kbd>
+            <ShortcutKbd action="save" />
           </Button>
           <CommandBarSeparator />
           <AppDropdownMenu

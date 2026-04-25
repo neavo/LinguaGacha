@@ -1,5 +1,6 @@
 import { FileDown, Fingerprint, ScanText, Trash2 } from "lucide-react";
 
+import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n } from "@/i18n";
 import type { NameFieldRunState } from "@/pages/name-field-extraction-page/types";
 import { Badge } from "@/shadcn/badge";
@@ -11,6 +12,7 @@ import {
   CommandBarGroup,
   CommandBarSeparator,
 } from "@/widgets/command-bar/command-bar";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
 
 type NameFieldExtractionCommandBarProps = {
   row_count: number;
@@ -29,6 +31,13 @@ export function NameFieldExtractionCommandBar(
 ): JSX.Element {
   const { t } = useI18n();
   const detail_tooltip_text = `${t("name_field_extraction_page.summary.description")} ${t("name_field_extraction_page.summary.emphasis")}`;
+  const delete_disabled = props.selected_count === 0 || props.is_running;
+
+  useActionShortcut({
+    action: "delete",
+    enabled: !delete_disabled,
+    on_trigger: props.on_delete,
+  });
 
   return (
     <CommandBar
@@ -77,11 +86,12 @@ export function NameFieldExtractionCommandBar(
             <Button
               variant="ghost"
               size="toolbar"
-              disabled={props.selected_count === 0 || props.is_running}
+              disabled={delete_disabled}
               onClick={props.on_delete}
             >
               <Trash2 data-icon="inline-start" />
               {t("name_field_extraction_page.action.delete")}
+              <ShortcutKbd action="delete" />
             </Button>
           </CommandBarGroup>
           <CommandBarSeparator />

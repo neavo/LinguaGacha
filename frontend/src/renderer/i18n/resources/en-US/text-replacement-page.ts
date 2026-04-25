@@ -79,9 +79,6 @@ export const en_us_text_replacement_page = {
     delete_selection: {
       description: "Confirm deleting {COUNT} records …?",
     },
-    delete_entry: {
-      description: "Confirm deleting 1 record …?",
-    },
     delete_preset: {
       description: 'Confirm deleting preset "{NAME}" …?',
     },
