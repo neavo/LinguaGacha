@@ -22,14 +22,15 @@ export type WorkbenchSelectorFileRecord = {
 export type WorkbenchSelectorItemRecord = {
   item_id: number;
   file_path: string;
+  src: string;
   status: string;
 };
 
 export type WorkbenchSnapshot = {
   file_count: number;
   total_items: number;
-  translated: number;
-  error_count: number;
+  translation_stats: WorkbenchStats;
+  analysis_stats: WorkbenchStats;
   entries: WorkbenchSnapshotEntry[];
 };
 
@@ -89,4 +90,6 @@ export type WorkbenchStats = {
   completed_count: number;
   failed_count: number;
   pending_count: number;
+  skipped_count: number;
+  completion_percent: number;
 };

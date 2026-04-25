@@ -1,13 +1,13 @@
-import { BrushCleaning, FileDown, Paintbrush, Play, Radar, RotateCw } from "lucide-react";
+import { BrushCleaning, FileDown, Paintbrush, Play, Radar } from "lucide-react";
 
 import "@/pages/workbench-page/components/task-runtime/task-runtime.css";
 import { useI18n } from "@/i18n";
 import {
-  has_analysis_task_progress,
   type AnalysisTaskActionKind,
   type AnalysisTaskMetrics,
-  type AnalysisTaskSnapshot,
 } from "@/pages/workbench-page/task-runtime/analysis-task-model";
+import type { WorkbenchStats } from "@/pages/workbench-page/types";
+import { WorkbenchSegmentedProgress } from "@/pages/workbench-page/components/workbench-segmented-progress";
 import { Badge } from "@/shadcn/badge";
 import { Button } from "@/shadcn/button";
 import {
@@ -18,12 +18,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shadcn/dropdown-menu";
-import { Progress } from "@/shadcn/progress";
 import { Spinner } from "@/shadcn/spinner";
 
 type AnalysisTaskMenuProps = {
-  analysis_task_display_snapshot: AnalysisTaskSnapshot | null;
   analysis_task_metrics: AnalysisTaskMetrics;
+  workbench_stats: WorkbenchStats;
   disabled: boolean;
   busy: boolean;
   importing: boolean;
@@ -33,26 +32,14 @@ type AnalysisTaskMenuProps = {
   on_import_glossary: () => Promise<void>;
 };
 
-function resolve_summary_progress_percent(metrics: AnalysisTaskMetrics): number {
-  return Number.isFinite(metrics.completion_percent) ? metrics.completion_percent : 0;
-}
-
 export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
   const { t } = useI18n();
-  const has_progress = has_analysis_task_progress(props.analysis_task_display_snapshot);
-  const main_action_label = has_progress
-    ? t("workbench_page.action.continue_analysis")
-    : t("workbench_page.action.start_analysis");
   const action_items_disabled = props.analysis_task_metrics.active || props.busy || props.disabled;
   const import_disabled =
     action_items_disabled || props.importing || props.analysis_task_metrics.candidate_count <= 0;
-  const progress_percent = resolve_summary_progress_percent(props.analysis_task_metrics);
+  const progress_percent = props.workbench_stats.completion_percent;
   const trigger_icon = <Radar data-icon="inline-start" />;
-  const main_action_icon = has_progress ? (
-    <RotateCw data-icon="inline-start" />
-  ) : (
-    <Play data-icon="inline-start" />
-  );
+  const main_action_icon = <Play data-icon="inline-start" />;
 
   return (
     <DropdownMenu>
@@ -73,7 +60,16 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
               {progress_percent.toFixed(2)}%
             </span>
           </div>
-          <Progress value={progress_percent} />
+          <WorkbenchSegmentedProgress
+            stats={props.workbench_stats}
+            labels={{
+              skipped: t("workbench_page.stats.analysis_skipped"),
+              failed: t("workbench_page.stats.analysis_failed"),
+              completed: t("workbench_page.stats.analysis_completed"),
+              pending: t("workbench_page.stats.analysis_pending"),
+              total: t("workbench_page.stats.total_lines"),
+            }}
+          />
         </div>
 
         <DropdownMenuSeparator />
@@ -90,7 +86,7 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
             ) : (
               main_action_icon
             )}
-            {main_action_label}
+            {t("workbench_page.action.start_analysis")}
           </DropdownMenuItem>
         </DropdownMenuGroup>
 
