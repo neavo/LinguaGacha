@@ -10,12 +10,12 @@ import {
 } from "@/pages/expert-settings-page/types";
 import { Button } from "@/shadcn/button";
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuTrigger,
-} from "@/shadcn/dropdown-menu";
+  AppDropdownMenu,
+  AppDropdownMenuCheckboxItem,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { Input } from "@/shadcn/input";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
@@ -163,13 +163,13 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
           title={t("expert_settings_page.fields.response_check_settings.title")}
           description={t("expert_settings_page.fields.response_check_settings.description")}
           action={
-            <DropdownMenu
+            <AppDropdownMenu
               open={is_response_check_menu_open}
               onOpenChange={(next_open) => {
                 set_is_response_check_menu_open(next_open);
               }}
             >
-              <DropdownMenuTrigger asChild>
+              <AppDropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   className="expert-settings-page__menu-button"
@@ -179,10 +179,10 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                 >
                   {t("expert_settings_page.fields.response_check_settings.button")}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center">
-                <DropdownMenuGroup>
-                  <DropdownMenuCheckboxItem
+              </AppDropdownMenuTrigger>
+              <AppDropdownMenuContent align="center">
+                <AppDropdownMenuGroup>
+                  <AppDropdownMenuCheckboxItem
                     checked={expert_settings_state.snapshot.check_kana_residue}
                     disabled={expert_settings_state.pending_state.check_kana_residue}
                     onCheckedChange={(next_checked) => {
@@ -192,8 +192,8 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                     }}
                   >
                     {t("expert_settings_page.fields.response_check_settings.options.kana_residue")}
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
+                  </AppDropdownMenuCheckboxItem>
+                  <AppDropdownMenuCheckboxItem
                     checked={expert_settings_state.snapshot.check_hangeul_residue}
                     disabled={expert_settings_state.pending_state.check_hangeul_residue}
                     onCheckedChange={(next_checked) => {
@@ -205,8 +205,8 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                     {t(
                       "expert_settings_page.fields.response_check_settings.options.hangeul_residue",
                     )}
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
+                  </AppDropdownMenuCheckboxItem>
+                  <AppDropdownMenuCheckboxItem
                     checked={expert_settings_state.snapshot.check_similarity}
                     disabled={expert_settings_state.pending_state.check_similarity}
                     onCheckedChange={(next_checked) => {
@@ -216,10 +216,10 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                     }}
                   >
                     {t("expert_settings_page.fields.response_check_settings.options.similarity")}
-                  </DropdownMenuCheckboxItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  </AppDropdownMenuCheckboxItem>
+                </AppDropdownMenuGroup>
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
           }
         />
 

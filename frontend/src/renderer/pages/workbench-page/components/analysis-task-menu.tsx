@@ -11,13 +11,13 @@ import { WorkbenchSegmentedProgress } from "@/pages/workbench-page/components/wo
 import { Badge } from "@/shadcn/badge";
 import { Button } from "@/shadcn/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/shadcn/dropdown-menu";
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuSeparator,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { Spinner } from "@/shadcn/spinner";
 
 type AnalysisTaskMenuProps = {
@@ -42,15 +42,15 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
   const main_action_icon = <Play data-icon="inline-start" />;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <AppDropdownMenu>
+      <AppDropdownMenuTrigger asChild>
         <Button type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
           {trigger_icon}
           {t("workbench_page.action.analysis_task")}
         </Button>
-      </DropdownMenuTrigger>
+      </AppDropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="task-runtime__menu">
+      <AppDropdownMenuContent align="start" className="task-runtime__menu">
         <div className="task-runtime__menu-progress">
           <div className="task-runtime__menu-progress-head">
             <span className="task-runtime__menu-progress-label">
@@ -72,10 +72,10 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
           />
         </div>
 
-        <DropdownMenuSeparator />
+        <AppDropdownMenuSeparator />
 
-        <DropdownMenuGroup>
-          <DropdownMenuItem
+        <AppDropdownMenuGroup>
+          <AppDropdownMenuItem
             disabled={action_items_disabled}
             onSelect={() => {
               void props.on_start_or_continue();
@@ -87,13 +87,13 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
               main_action_icon
             )}
             {t("workbench_page.action.start_analysis")}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+          </AppDropdownMenuItem>
+        </AppDropdownMenuGroup>
 
-        <DropdownMenuSeparator />
+        <AppDropdownMenuSeparator />
 
-        <DropdownMenuGroup>
-          <DropdownMenuItem
+        <AppDropdownMenuGroup>
+          <AppDropdownMenuItem
             variant="destructive"
             disabled={action_items_disabled}
             onSelect={() => {
@@ -106,8 +106,8 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
               <BrushCleaning data-icon="inline-start" />
             )}
             {t("workbench_page.action.reset_analysis_all")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
+          </AppDropdownMenuItem>
+          <AppDropdownMenuItem
             variant="destructive"
             disabled={action_items_disabled}
             onSelect={() => {
@@ -120,13 +120,13 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
               <Paintbrush data-icon="inline-start" />
             )}
             {t("workbench_page.action.reset_analysis_failed")}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+          </AppDropdownMenuItem>
+        </AppDropdownMenuGroup>
 
-        <DropdownMenuSeparator />
+        <AppDropdownMenuSeparator />
 
-        <DropdownMenuGroup>
-          <DropdownMenuItem
+        <AppDropdownMenuGroup>
+          <AppDropdownMenuItem
             disabled={import_disabled}
             onSelect={() => {
               void props.on_import_glossary();
@@ -143,9 +143,9 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
                 {props.analysis_task_metrics.candidate_count}
               </Badge>
             ) : null}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </AppDropdownMenuItem>
+        </AppDropdownMenuGroup>
+      </AppDropdownMenuContent>
+    </AppDropdownMenu>
   );
 }

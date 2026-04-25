@@ -62,11 +62,12 @@ flowchart TD
 | `app-table` | 主数据承载面 | 新的数据页优先复用这套表格语言 |
 | `command-bar` | 页面操作组织层 | 表达页面能做什么，不承担品牌装饰 |
 | `setting-card-row` | 设置页与检查页的标准行骨架 | 每行只承载一个意图，标题短、说明短、动作明确 |
+| `app-dropdown-menu` / `app-context-menu` | 跨页面菜单默认实现 | 普通菜单字号、浮层和宽度策略统一由 App 菜单封装承载 |
 | 页面局部 `page-shell` 类骨架 | 页面分区与节奏 | 新页面先套现有骨架，再判断是否需要抽新 widget |
 
 边界规则：
 - `widgets/` 只收口跨页面稳定组合层；页面私有视觉语言留在对应 `pages/*`。
-- `shadcn/` 只放基础组件源码与项目内定制，不混入业务组合组件。
+- `shadcn/` 只放基础组件源码；应用级菜单视觉默认值收口在 `widgets/app-dropdown-menu` 与 `widgets/app-context-menu`。
 - 如果你改变了表格、命令栏、设置行这类长期样本的视觉语义，就先改本文，再落代码。
 
 ## 主题、交互与文案语义

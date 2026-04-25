@@ -20,11 +20,11 @@ import { ModelTaskSettingsDialog } from "@/pages/model-page/dialogs/model-task-s
 import { useModelPageState } from "@/pages/model-page/use-model-page-state";
 import { Button } from "@/shadcn/button";
 import {
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/shadcn/dropdown-menu";
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuSeparator,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
 type ModelPageProps = {
@@ -147,53 +147,53 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                   drag_disabled={model_page_state.readonly}
                   drag_aria_label={t("workbench_page.table.drag_handle_aria")}
                   menu={
-                    <DropdownMenuContent align="center">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
+                    <AppDropdownMenuContent align="center">
+                      <AppDropdownMenuGroup>
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             void model_page_state.request_activate_model(model.id);
                           }}
                         >
                           <Check />
                           {t("model_page.action.activate")}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuSeparator />
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             model_page_state.open_dialog("basic", model.id);
                           }}
                         >
                           <SlidersHorizontal />
                           {t("model_page.action.basic_settings")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             model_page_state.open_dialog("task", model.id);
                           }}
                         >
                           <ListTodo />
                           {t("model_page.action.task_settings")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             model_page_state.open_dialog("advanced", model.id);
                           }}
                         >
                           <GraduationCap />
                           {t("model_page.action.advanced_settings")}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuSeparator />
                         {model.type === "PRESET" ? (
-                          <DropdownMenuItem
+                          <AppDropdownMenuItem
                             onSelect={() => {
                               model_page_state.request_reset_model(model.id);
                             }}
                           >
                             <Recycle />
                             {t("model_page.action.reset")}
-                          </DropdownMenuItem>
+                          </AppDropdownMenuItem>
                         ) : (
-                          <DropdownMenuItem
+                          <AppDropdownMenuItem
                             variant="destructive"
                             onSelect={() => {
                               model_page_state.request_delete_model(model.id);
@@ -201,10 +201,10 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                           >
                             <Trash2 />
                             {t("model_page.action.delete")}
-                          </DropdownMenuItem>
+                          </AppDropdownMenuItem>
                         )}
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
+                      </AppDropdownMenuGroup>
+                    </AppDropdownMenuContent>
                   }
                 />
               ))}

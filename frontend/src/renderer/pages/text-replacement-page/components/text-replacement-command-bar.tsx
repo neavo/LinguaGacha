@@ -17,16 +17,16 @@ import { useI18n, type LocaleKey } from "@/i18n";
 import type { TextReplacementPresetItem } from "@/pages/text-replacement-page/types";
 import { Button } from "@/shadcn/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/shadcn/dropdown-menu";
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuSeparator,
+  AppDropdownMenuSub,
+  AppDropdownMenuSubContent,
+  AppDropdownMenuSubTrigger,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import {
   CommandBar,
@@ -122,7 +122,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             </Button>
           </CommandBarGroup>
           <CommandBarSeparator />
-          <DropdownMenu
+          <AppDropdownMenu
             open={props.preset_menu_open}
             onOpenChange={(next_open) => {
               props.on_preset_menu_open_change(next_open);
@@ -131,131 +131,131 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               }
             }}
           >
-            <DropdownMenuTrigger asChild>
+            <AppDropdownMenuTrigger asChild>
               <Button variant="ghost" size="toolbar">
                 <FolderOpen data-icon="inline-start" />
                 {t("text_replacement_page.action.preset")}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center">
-              <DropdownMenuGroup>
-                <DropdownMenuItem onSelect={props.on_request_reset}>
+            </AppDropdownMenuTrigger>
+            <AppDropdownMenuContent align="center">
+              <AppDropdownMenuGroup>
+                <AppDropdownMenuItem onSelect={props.on_request_reset}>
                   <Recycle />
                   {t("app.action.reset")}
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={props.on_request_save_preset}>
+                </AppDropdownMenuItem>
+                <AppDropdownMenuItem onSelect={props.on_request_save_preset}>
                   <Save />
                   {t("text_replacement_page.preset.save")}
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
+                </AppDropdownMenuItem>
+              </AppDropdownMenuGroup>
               {builtin_preset_items.length > 0 || user_preset_items.length > 0 ? (
-                <DropdownMenuSeparator />
+                <AppDropdownMenuSeparator />
               ) : null}
               {builtin_preset_items.length > 0 ? (
-                <DropdownMenuGroup>
+                <AppDropdownMenuGroup>
                   {builtin_preset_items.map((item) => (
-                    <DropdownMenuSub key={item.virtual_id}>
-                      <DropdownMenuSubTrigger>
+                    <AppDropdownMenuSub key={item.virtual_id}>
+                      <AppDropdownMenuSubTrigger>
                         {item.is_default ? <FolderHeart /> : <Folder />}
                         {item.name}
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        <DropdownMenuItem
+                      </AppDropdownMenuSubTrigger>
+                      <AppDropdownMenuSubContent>
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
                         >
                           <FileDown />
                           {t("text_replacement_page.preset.apply")}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuSeparator />
                         {item.is_default ? (
-                          <DropdownMenuItem
+                          <AppDropdownMenuItem
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
                           >
                             <HeartOff />
                             {t("text_replacement_page.preset.cancel_default")}
-                          </DropdownMenuItem>
+                          </AppDropdownMenuItem>
                         ) : (
-                          <DropdownMenuItem
+                          <AppDropdownMenuItem
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
                           >
                             <Heart />
                             {t("text_replacement_page.preset.set_default")}
-                          </DropdownMenuItem>
+                          </AppDropdownMenuItem>
                         )}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
+                      </AppDropdownMenuSubContent>
+                    </AppDropdownMenuSub>
                   ))}
-                </DropdownMenuGroup>
+                </AppDropdownMenuGroup>
               ) : null}
               {builtin_preset_items.length > 0 && user_preset_items.length > 0 ? (
-                <DropdownMenuSeparator />
+                <AppDropdownMenuSeparator />
               ) : null}
               {user_preset_items.length > 0 ? (
-                <DropdownMenuGroup>
+                <AppDropdownMenuGroup>
                   {user_preset_items.map((item) => (
-                    <DropdownMenuSub key={item.virtual_id}>
-                      <DropdownMenuSubTrigger>
+                    <AppDropdownMenuSub key={item.virtual_id}>
+                      <AppDropdownMenuSubTrigger>
                         {item.is_default ? <FolderHeart /> : <Folder />}
                         {item.name}
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        <DropdownMenuItem
+                      </AppDropdownMenuSubTrigger>
+                      <AppDropdownMenuSubContent>
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
                         >
                           <FileDown />
                           {t("text_replacement_page.preset.apply")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             props.on_request_rename_preset(item);
                           }}
                         >
                           <PencilLine />
                           {t("text_replacement_page.preset.rename")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuItem
                           onSelect={() => {
                             props.on_request_delete_preset(item);
                           }}
                         >
                           <Trash2 />
                           {t("text_replacement_page.preset.delete")}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuSeparator />
                         {item.is_default ? (
-                          <DropdownMenuItem
+                          <AppDropdownMenuItem
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
                           >
                             <HeartOff />
                             {t("text_replacement_page.preset.cancel_default")}
-                          </DropdownMenuItem>
+                          </AppDropdownMenuItem>
                         ) : (
-                          <DropdownMenuItem
+                          <AppDropdownMenuItem
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
                           >
                             <Heart />
                             {t("text_replacement_page.preset.set_default")}
-                          </DropdownMenuItem>
+                          </AppDropdownMenuItem>
                         )}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
+                      </AppDropdownMenuSubContent>
+                    </AppDropdownMenuSub>
                   ))}
-                </DropdownMenuGroup>
+                </AppDropdownMenuGroup>
               ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </AppDropdownMenuContent>
+          </AppDropdownMenu>
         </>
       }
       hint={
