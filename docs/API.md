@@ -139,7 +139,7 @@ flowchart TD
 
 | 类型 | 代表接口 | 运行态推进方式 |
 | --- | --- | --- |
-| 同步 mutation | 工作台 `add-file / replace-file / reset-file / delete-file / delete-file-batch / reorder-files`，校对 `save-item / save-all / replace-all`，`translation/reset`，`analysis/reset`，`analysis/import-glossary` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
+| 同步 mutation | 工作台 `add-file / reset-file / delete-file / delete-file-batch / reorder-files`，校对 `save-item / save-all / replace-all`，`translation/reset`，`analysis/reset`，`analysis/import-glossary` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
 | 只读预演 | `translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
 | 异步任务 | `tasks/*`、`retranslate-items` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
 

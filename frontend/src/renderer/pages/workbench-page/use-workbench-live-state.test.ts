@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { api_fetch } from "@/app/desktop-api";
 import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
 
 type RuntimeFixture = {
@@ -74,6 +75,15 @@ type AnalysisTaskRuntimeFixture = {
   refresh_analysis_task_snapshot: ReturnType<typeof vi.fn>;
 };
 
+type WorkbenchPickerFixture = {
+  pickWorkbenchFilePath: ReturnType<typeof vi.fn>;
+};
+
+type ToastFixture = {
+  push_toast: ReturnType<typeof vi.fn>;
+  run_modal_progress_toast: ReturnType<typeof vi.fn>;
+};
+
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
@@ -86,11 +96,26 @@ const analysis_runtime_fixture: { current: AnalysisTaskRuntimeFixture } = {
   current: create_analysis_task_runtime_fixture(),
 };
 
+const workbench_picker_fixture: { current: WorkbenchPickerFixture } = {
+  current: {
+    pickWorkbenchFilePath: vi.fn(),
+  },
+};
+
+const toast_fixture: { current: ToastFixture } = {
+  current: create_toast_fixture(),
+};
+
 (
   globalThis as typeof globalThis & {
     IS_REACT_ACT_ENVIRONMENT?: boolean;
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+Object.defineProperty(window, "desktopApp", {
+  value: workbench_picker_fixture.current,
+  configurable: true,
+});
 
 vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
   return {
@@ -101,12 +126,7 @@ vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
 vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => {
-      return {
-        push_toast: vi.fn(),
-        run_modal_progress_toast: vi.fn(async (task: () => Promise<void>) => {
-          await task();
-        }),
-      };
+      return toast_fixture.current;
     },
   };
 });
@@ -221,6 +241,73 @@ function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
   };
 }
 
+function create_toast_fixture(): ToastFixture {
+  return {
+    push_toast: vi.fn(),
+    run_modal_progress_toast: vi.fn(async (options: { task: () => Promise<void> }) => {
+      await options.task();
+    }),
+  };
+}
+
+function create_project_store_state(items: Record<string, unknown>) {
+  return {
+    project: {
+      path: "E:/demo/sample.lg",
+      loaded: true,
+    },
+    files: {
+      "old.txt": {
+        rel_path: "old.txt",
+        file_type: "TXT",
+        sort_index: 0,
+      },
+    },
+    items,
+    quality: {
+      glossary: { entries: [], enabled: true, mode: "default", revision: 0 },
+      pre_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
+      post_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
+      text_preserve: { entries: [], enabled: true, mode: "default", revision: 0 },
+    },
+    prompts: {
+      translation: { text: "", enabled: true, revision: 0 },
+      analysis: { text: "", enabled: true, revision: 0 },
+    },
+    analysis: {},
+    proofreading: {
+      revision: 0,
+    },
+    task: {},
+    revisions: {
+      projectRevision: 1,
+      sections: {
+        files: 1,
+        items: 2,
+        analysis: 3,
+      },
+    },
+  };
+}
+
+function create_project_item(args: {
+  item_id: number;
+  src: string;
+  dst: string;
+}): Record<string, unknown> {
+  return {
+    item_id: args.item_id,
+    file_path: "old.txt",
+    row_number: args.item_id,
+    src: args.src,
+    dst: args.dst,
+    name_dst: null,
+    status: "PROCESSED",
+    text_type: "NONE",
+    retry_count: 0,
+  };
+}
+
 describe("useWorkbenchLiveState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -240,6 +327,9 @@ describe("useWorkbenchLiveState", () => {
     runtime_fixture.current = create_runtime_fixture();
     translation_runtime_fixture.current = create_translation_task_runtime_fixture();
     analysis_runtime_fixture.current = create_analysis_task_runtime_fixture();
+    toast_fixture.current = create_toast_fixture();
+    workbench_picker_fixture.current.pickWorkbenchFilePath.mockReset();
+    vi.mocked(api_fetch).mockReset();
   });
 
   function WorkbenchProbe(): JSX.Element | null {
@@ -315,5 +405,161 @@ describe("useWorkbenchLiveState", () => {
     expect(latest_state?.stats.total_items).toBe(1);
     expect(latest_state?.stats.completed_count).toBe(1);
     expect(latest_state?.entries.map((entry) => entry.rel_path)).toEqual(["chapter01.txt"]);
+  });
+
+  it("添加文件解析成功后会先打开继承确认", async () => {
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      target_rel_path: "new.txt",
+      file_type: "TXT",
+      parsed_items: [{ src: "hello", dst: "", row: 1 }],
+    });
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_file_from_path("E:/demo/new.txt");
+    });
+
+    expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
+    expect(workbench_picker_fixture.current.pickWorkbenchFilePath).not.toHaveBeenCalled();
+    expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
+      source_path: "E:/demo/new.txt",
+    });
+    expect(api_fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("选择器添加文件会委托到同一条按路径解析流程", async () => {
+    workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
+      canceled: false,
+      path: "E:/demo/new.txt",
+    });
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      target_rel_path: "new.txt",
+      file_type: "TXT",
+      parsed_items: [{ src: "hello", dst: "", row: 1 }],
+    });
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_file();
+    });
+
+    expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
+    expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
+      source_path: "E:/demo/new.txt",
+    });
+  });
+
+  it("拖拽失败提示会复用全局 drop warning 文案", async () => {
+    await render_hook();
+
+    act(() => {
+      latest_state?.notify_add_file_drop_issue("multiple");
+      latest_state?.notify_add_file_drop_issue("unavailable");
+    });
+
+    expect(toast_fixture.current.push_toast).toHaveBeenNthCalledWith(
+      1,
+      "warning",
+      "app.drop.multiple_unavailable",
+    );
+    expect(toast_fixture.current.push_toast).toHaveBeenNthCalledWith(
+      2,
+      "warning",
+      "app.drop.unavailable",
+    );
+  });
+
+  it("选择不继承会直接提交 add-file", async () => {
+    workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
+      canceled: false,
+      path: "E:/demo/new.txt",
+    });
+    vi.mocked(api_fetch)
+      .mockResolvedValueOnce({
+        target_rel_path: "new.txt",
+        file_type: "TXT",
+        parsed_items: [{ src: "hello", dst: "", row: 1 }],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {},
+      });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => create_project_store_state({}),
+      },
+      settings_snapshot: {
+        source_language: "JA",
+        mtool_optimizer_enable: false,
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_file();
+    });
+    await act(async () => {
+      await latest_state?.cancel_dialog();
+    });
+
+    expect(api_fetch).toHaveBeenLastCalledWith(
+      "/api/project/workbench/add-file",
+      expect.objectContaining({
+        target_rel_path: "new.txt",
+        parsed_items: [expect.objectContaining({ dst: "" })],
+      }),
+    );
+  });
+
+  it("选择继承且存在多候选时会直接提交最高频译文", async () => {
+    workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
+      canceled: false,
+      path: "E:/demo/new.txt",
+    });
+    vi.mocked(api_fetch)
+      .mockResolvedValueOnce({
+        target_rel_path: "new.txt",
+        file_type: "TXT",
+        parsed_items: [{ src: "hello", dst: "", row: 1 }],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {},
+      });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () =>
+          create_project_store_state({
+            "1": create_project_item({ item_id: 1, src: "hello", dst: "甲" }),
+            "2": create_project_item({ item_id: 2, src: "hello", dst: "乙" }),
+            "3": create_project_item({ item_id: 3, src: "hello", dst: "甲" }),
+          }),
+      },
+      settings_snapshot: {
+        source_language: "JA",
+        mtool_optimizer_enable: false,
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_file();
+    });
+    await act(async () => {
+      await latest_state?.confirm_dialog();
+    });
+
+    expect(latest_state?.dialog_state.kind).toBeNull();
+    expect(api_fetch).toHaveBeenLastCalledWith(
+      "/api/project/workbench/add-file",
+      expect.objectContaining({
+        target_rel_path: "new.txt",
+        parsed_items: [expect.objectContaining({ src: "hello", dst: "甲" })],
+      }),
+    );
   });
 });

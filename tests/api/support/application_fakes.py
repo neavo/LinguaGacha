@@ -146,8 +146,6 @@ class FakeWorkbenchManager:
         self.add_calls: list[str] = []
         self.add_payloads: list[dict[str, object]] = []
         self.parse_calls: list[tuple[str, str | None]] = []
-        self.replace_calls: list[tuple[str, str]] = []
-        self.replace_payloads: list[dict[str, object]] = []
         self.reset_calls: list[str] = []
         self.delete_calls: list[str] = []
         self.delete_batch_calls: list[list[str]] = []
@@ -215,32 +213,6 @@ class FakeWorkbenchManager:
         del item_payloads, translation_extras, project_status, prefilter_config
         del expected_section_revisions
         self.reset_calls.append(rel_path)
-
-    def persist_replace_file_payload(
-        self,
-        source_path: str,
-        rel_path: str,
-        target_rel_path: str,
-        *,
-        file_record: dict[str, object],
-        parsed_items: list[dict[str, object]],
-        translation_extras: dict[str, object],
-        project_status: str,
-        prefilter_config: dict[str, object],
-        expected_section_revisions: dict[str, int] | None = None,
-    ) -> None:
-        del translation_extras, project_status, prefilter_config
-        del expected_section_revisions
-        self.replace_calls.append((rel_path, source_path))
-        self.replace_payloads.append(
-            {
-                "source_path": source_path,
-                "rel_path": rel_path,
-                "target_rel_path": target_rel_path,
-                "file_record": dict(file_record),
-                "parsed_items": [dict(item) for item in parsed_items],
-            }
-        )
 
     def persist_delete_files(
         self,

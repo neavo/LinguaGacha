@@ -19,6 +19,7 @@ type AppAlertDialogProps = {
   title?: string;
   description: string;
   onConfirm: () => void | Promise<void>;
+  onCancel?: () => void | Promise<void>;
   onClose: () => void;
   submitting?: boolean;
   size?: AppAlertDialogSize;
@@ -65,7 +66,17 @@ export function AppAlertDialog(props: AppAlertDialogProps): JSX.Element {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel size="sm" disabled={submitting}>
+          <AlertDialogCancel
+            size="sm"
+            disabled={submitting}
+            onClick={(event) => {
+              if (props.onCancel === undefined) {
+                return;
+              }
+              event.preventDefault();
+              void props.onCancel();
+            }}
+          >
             {props.cancelLabel ?? t("app.action.cancel")}
           </AlertDialogCancel>
           <AlertDialogAction

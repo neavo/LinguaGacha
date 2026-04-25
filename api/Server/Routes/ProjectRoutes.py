@@ -22,7 +22,6 @@ class ProjectRoutes:
     EXPORT_CONVERTED_TRANSLATION_PATH: str = "/api/project/export-converted-translation"
     WORKBENCH_ADD_FILE_PATH: str = "/api/project/workbench/add-file"
     WORKBENCH_PARSE_FILE_PATH: str = "/api/project/workbench/parse-file"
-    WORKBENCH_REPLACE_FILE_PATH: str = "/api/project/workbench/replace-file"
     WORKBENCH_RESET_FILE_PATH: str = "/api/project/workbench/reset-file"
     WORKBENCH_DELETE_FILE_PATH: str = "/api/project/workbench/delete-file"
     WORKBENCH_DELETE_FILE_BATCH_PATH: str = "/api/project/workbench/delete-file-batch"
@@ -173,13 +172,6 @@ class ProjectRoutes:
                 cls.WORKBENCH_ADD_FILE_PATH,
                 lambda request: ApiResponse(
                     ok=True, data=workbench_app_service.add_file(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.WORKBENCH_REPLACE_FILE_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=workbench_app_service.replace_file(request)
                 ),
             )
             core_api_server.add_json_route(

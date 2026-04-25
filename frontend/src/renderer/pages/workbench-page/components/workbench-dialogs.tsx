@@ -5,16 +5,21 @@ import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 type WorkbenchDialogsProps = {
   dialog_state: WorkbenchDialogState;
   on_confirm: () => void;
+  on_cancel: () => void;
   on_close: () => void;
 };
 
 type DialogCopy = {
   description_key: LocaleKey;
+  confirm_key?: LocaleKey;
+  cancel_key?: LocaleKey;
 };
 
 const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState["kind"]>, DialogCopy> = {
-  "replace-file": {
-    description_key: "workbench_page.dialog.replace.description",
+  "inherit-add-file": {
+    description_key: "workbench_page.dialog.inherit_add.description",
+    confirm_key: "workbench_page.dialog.inherit_add.confirm",
+    cancel_key: "workbench_page.dialog.inherit_add.cancel",
   },
   "reset-file": {
     description_key: "workbench_page.dialog.reset.description",
@@ -47,7 +52,10 @@ export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
       description={dialog_copy === null ? "" : t(dialog_copy.description_key)}
       submitting={props.dialog_state.submitting}
       onConfirm={props.on_confirm}
+      onCancel={props.on_cancel}
       onClose={props.on_close}
+      confirmLabel={dialog_copy?.confirm_key === undefined ? undefined : t(dialog_copy.confirm_key)}
+      cancelLabel={dialog_copy?.cancel_key === undefined ? undefined : t(dialog_copy.cancel_key)}
     />
   );
 }
