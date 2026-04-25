@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import copy
-import time
 from collections.abc import Callable
 from typing import Protocol
 
@@ -87,7 +85,7 @@ class ModelAppService:
         config_loader: Callable[[], ModelConfigLike] | None = None,
         model_manager: ModelManagerLike | None = None,
         available_models_loader: Callable[[dict[str, object]], list[str]] | None = None,
-        api_test_runner: Callable[[dict[str, object]], dict[str, object]] | None = None,
+        api_test_runner: Callable[[dict[str, object]], object] | None = None,
     ) -> None:
         self.config_loader = (
             config_loader if config_loader is not None else self.default_config_loader
@@ -236,7 +234,7 @@ class ModelAppService:
 
         config = self.load_config()
         model = self.get_model_or_raise(config, str(request.get("model_id", "")))
-        return dict(self.api_test_runner(model))
+        return self.build_api_test_response(self.api_test_runner(model))
 
     def build_snapshot(self, config: ModelConfigLike) -> ModelPageSnapshot:
         """把配置对象裁剪成模型页真正依赖的冻结快照。"""
@@ -331,82 +329,40 @@ class ModelAppService:
             LogManager.get().warning("获取模型列表失败。", e)
             raise ValueError("获取模型列表失败，请检查接口配置。") from e
 
-    def default_api_test_runner(self, model: dict[str, object]) -> dict[str, object]:
-        """真实环境下复用请求器执行模型测试，并返回稳定的聚合结果。"""
+    def default_api_test_runner(self, model: dict[str, object]) -> object:
+        """真实环境下委托引擎侧 runner 执行模型测试。"""
 
-        from module.Engine.TaskRequester import TaskRequester
-        from module.Localizer.Localizer import Localizer
+        from module.Engine.ModelApiTestRunner import ModelApiTestRunner
 
-        config = Config().load()
-        messages = self.build_api_test_messages(str(model.get("api_format", "")))
-        api_keys = self.collect_api_keys(model)
-        key_results: list[ModelKeyTestResult] = []
+        return ModelApiTestRunner().run(model)
 
-        TaskRequester.reset()
-        for api_key in api_keys:
-            model_for_test = copy.deepcopy(model)
-            model_for_test["api_key"] = api_key
-            requester = TaskRequester(config, model_for_test)
-            start_time_ns = time.perf_counter_ns()
-            (
-                exception,
-                _response_think,
-                _response_result,
-                input_tokens,
-                output_tokens,
-            ) = requester.request(messages)
-            response_time_ms = (time.perf_counter_ns() - start_time_ns) // 1_000_000
+    def build_api_test_response(self, runner_result: object) -> dict[str, object]:
+        """把 runner 结果映射到现有模型测试 API 响应契约。"""
 
-            if exception is None:
-                key_results.append(
-                    ModelKeyTestResult(
-                        masked_key=self.mask_api_key(api_key),
-                        success=True,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        response_time_ms=response_time_ms,
-                        error_reason="",
-                    )
-                )
-            else:
-                reason = self.build_api_test_error_reason(
-                    exception,
-                    int(config.request_timeout),
-                    Localizer.get().api_test_timeout,
-                )
-                key_results.append(
-                    ModelKeyTestResult(
-                        masked_key=self.mask_api_key(api_key),
-                        success=False,
-                        input_tokens=0,
-                        output_tokens=0,
-                        response_time_ms=response_time_ms,
-                        error_reason=reason,
-                    )
-                )
-                LogManager.get().warning(
-                    Localizer.get().log_api_test_fail.replace("{REASON}", reason),
-                    exception,
-                )
+        if isinstance(runner_result, dict):
+            return dict(runner_result)
 
-        success_results = [result for result in key_results if result.success]
-        failure_results = [result for result in key_results if not result.success]
-        result_msg = (
-            Localizer.get()
-            .api_test_result.replace("{COUNT}", str(len(api_keys)))
-            .replace("{SUCCESS}", str(len(success_results)))
-            .replace("{FAILURE}", str(len(failure_results)))
+        key_results = tuple(
+            ModelKeyTestResult(
+                masked_key=str(getattr(key_result, "masked_key")),
+                success=bool(getattr(key_result, "success")),
+                input_tokens=int(getattr(key_result, "input_tokens")),
+                output_tokens=int(getattr(key_result, "output_tokens")),
+                response_time_ms=int(getattr(key_result, "response_time_ms")),
+                error_reason=str(getattr(key_result, "error_reason")),
+            )
+            for key_result in getattr(runner_result, "key_results")
         )
         api_test_result = ModelApiTestResult(
-            success=len(failure_results) == 0,
-            result_msg=result_msg,
-            total_count=len(api_keys),
-            success_count=len(success_results),
-            failure_count=len(failure_results),
-            total_response_time_ms=sum(
-                result.response_time_ms for result in key_results
+            success=bool(getattr(runner_result, "success")),
+            result_msg=str(getattr(runner_result, "result_msg")),
+            total_count=int(getattr(runner_result, "total_count")),
+            success_count=int(getattr(runner_result, "success_count")),
+            failure_count=int(getattr(runner_result, "failure_count")),
+            total_response_time_ms=int(
+                getattr(runner_result, "total_response_time_ms")
             ),
-            key_results=tuple(key_results),
+            key_results=key_results,
         )
         return api_test_result.to_dict()
 
@@ -525,59 +481,3 @@ class ModelAppService:
                 for key, value in extra_headers.items():
                     headers[str(key)] = str(value)
         return headers
-
-    def build_api_test_messages(self, api_format: str) -> list[dict[str, str]]:
-        """模型测试统一复用旧测试入口的提示词，避免不同入口结论漂移。"""
-
-        if api_format == Base.APIFormat.SAKURALLM:
-            return [
-                {
-                    "role": "system",
-                    "content": "你是一个轻小说翻译模型，可以流畅通顺地以日本轻小说的风格将日文翻译成简体中文，并联系上下文正确使用人称代词，不擅自添加原文中没有的代词。",
-                },
-                {
-                    "role": "user",
-                    "content": "将下面的日文文本翻译成中文：魔導具師ダリヤはうつむかない",
-                },
-            ]
-
-        return [
-            {
-                "role": "system",
-                "content": "任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。",
-            },
-            {
-                "role": "user",
-                "content": '{"0":"魔導具師ダリヤはうつむかない"}',
-            },
-        ]
-
-    def build_api_test_error_reason(
-        self,
-        exception: Exception,
-        request_timeout: int,
-        timeout_template: str,
-    ) -> str:
-        """统一归一化测试失败原因，避免页面和日志看到不同口径。"""
-
-        from module.Engine.TaskRequestErrors import RequestHardTimeoutError
-
-        if isinstance(exception, RequestHardTimeoutError):
-            return timeout_template.replace("{SECONDS}", str(request_timeout))
-
-        exception_text = str(exception).strip()
-        if exception_text != "":
-            return f"{exception.__class__.__name__}: {exception_text}"
-        return exception.__class__.__name__
-
-    def mask_api_key(self, key: str) -> str:
-        """结果里只暴露脱敏后的密钥片段，避免测试反馈把敏感信息带回 UI。"""
-
-        normalized_key = key.strip()
-        if len(normalized_key) <= 16:
-            return normalized_key
-        return (
-            f"{normalized_key[:8]}"
-            f"{'*' * (len(normalized_key) - 16)}"
-            f"{normalized_key[-8:]}"
-        )
