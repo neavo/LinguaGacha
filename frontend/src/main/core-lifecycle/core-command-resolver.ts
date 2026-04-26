@@ -5,9 +5,18 @@ import type { CoreLaunchCommand, CoreLaunchEnvironment } from "./core-lifecycle-
 
 export const UV_BIN_ENV_NAME = "LINGUAGACHA_UV_BIN";
 export const NPM_INITIAL_CWD_ENV_NAME = "INIT_CWD";
-const CORE_EXECUTABLE_FILE_NAME = "core.exe";
+const WINDOWS_CORE_EXECUTABLE_FILE_NAME = "core.exe";
+const POSIX_CORE_EXECUTABLE_FILE_NAME = "core";
 const REQUIRED_SOURCE_FILES = ["app.py", "pyproject.toml"] as const;
 const WINDOWS_PATH_DELIMITER = ";";
+
+function resolve_core_executable_file_name(platform: NodeJS.Platform): string {
+  if (platform === "win32") {
+    return WINDOWS_CORE_EXECUTABLE_FILE_NAME;
+  }
+
+  return POSIX_CORE_EXECUTABLE_FILE_NAME;
+}
 
 function assert_source_app_root(app_root: string): void {
   for (const required_file of REQUIRED_SOURCE_FILES) {
@@ -86,7 +95,10 @@ function resolve_app_root(environment: CoreLaunchEnvironment): string {
 
 export function resolve_core_launch_command(environment: CoreLaunchEnvironment): CoreLaunchCommand {
   const app_root = resolve_app_root(environment);
-  const core_executable_path = path.join(app_root, CORE_EXECUTABLE_FILE_NAME);
+  const core_executable_path = path.join(
+    app_root,
+    resolve_core_executable_file_name(environment.platform),
+  );
 
   if (fs.existsSync(core_executable_path)) {
     return {

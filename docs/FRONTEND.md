@@ -26,9 +26,9 @@ flowchart LR
 - `frontend/package.json` 是前端命令入口，稳定命令包括 `dev`、`build`、`format`、`format:check`、`lint`、`test`、`renderer:audit`。
 - `electron.vite.config.ts` 固定 renderer root 为 `src/renderer`，开发态 host 固定为 `127.0.0.1`。
 - `src/main/index.ts` 在开发态打开 Chromium remote debugging 端口 `9222`，方便 Electron 真机调试与自动化。
-- `src/main/core-lifecycle/` 是 Python Core 伴生进程生命周期的唯一前端侧落点；Electron main 从启动根目录优先拉起 `core.exe`，不存在时回退到 `uv run app.py`。
+- `src/main/core-lifecycle/` 是 Python Core 伴生进程生命周期的唯一前端侧落点；Electron main 从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`。
 - `src/main/index.ts` 中用于查找 `dist/`、`public/` 的是前端 bundle 根，不是应用根；应用根语义只用于 `CoreLifecycleManager.appRoot` 和 Python Core 的 `APP_ROOT`。
-- Windows 打包产物把 PyInstaller 生成的 `core.exe`、`_internal/`、`resource/` 与 `version.txt` 放在应用根目录；不再把 Python 源码目录复制到 `resources/core`。
+- 打包产物把 PyInstaller 生成的 Core helper、`_internal/`、`resource/` 与 `version.txt` 放在应用根目录；Windows / Linux 应用根是 Electron 可执行文件所在目录，macOS 应用根是 `.app/Contents/MacOS`。不再把 Python 源码目录复制到 `resources/core`。
 
 ## `window.desktopApp` 与 `desktop-api.ts` 的唯一入口约束
 
@@ -50,7 +50,7 @@ flowchart LR
   2. 启动参数 `--core-api-base-url=...`
   3. 默认地址 `http://127.0.0.1:38191`
 - 渲染层不会盲信这个地址；`desktop-api.ts` 仍会先请求 `/api/health` 做探活确认。
-- 开发态应用根优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态应用根固定为 `app.exe` 所在目录。`LINGUAGACHA_UV_BIN` 只在应用根没有 `core.exe`、回退到 `uv run app.py` 时覆盖 uv 路径，不暴露给 renderer 作为运行态状态。
+- 开发态应用根优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态应用根固定为 Electron 可执行文件所在目录。`LINGUAGACHA_UV_BIN` 只在应用根没有平台 Core helper、回退到 `uv run app.py` 时覆盖 uv 路径，不暴露给 renderer 作为运行态状态。
 
 ### `desktop-api.ts`
 - 它是渲染层访问 Core API 的唯一 HTTP / SSE 入口。

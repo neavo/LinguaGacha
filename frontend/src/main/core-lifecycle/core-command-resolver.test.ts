@@ -80,6 +80,60 @@ describe("resolve_core_launch_command", () => {
     });
   });
 
+  it("macOS 打包态从 .app 的 Contents/MacOS 启动同目录 core", () => {
+    const executable_root = path.resolve("LinguaGacha.app", "Contents", "MacOS");
+    const core_executable = path.join(executable_root, "core");
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate_path) => {
+      return String(candidate_path) === core_executable;
+    });
+
+    const result = resolve_core_launch_command(
+      create_environment(
+        {
+          PATH: "",
+        },
+        {
+          appRoot: executable_root,
+          platform: "darwin",
+        },
+      ),
+    );
+
+    expect(result).toEqual({
+      kind: "executable",
+      command: core_executable,
+      args: [],
+      cwd: executable_root,
+    });
+  });
+
+  it("Linux AppImage 打包态优先启动应用根下的 core", () => {
+    const executable_root = path.resolve("appimage-mount");
+    const core_executable = path.join(executable_root, "core");
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate_path) => {
+      return String(candidate_path) === core_executable;
+    });
+
+    const result = resolve_core_launch_command(
+      create_environment(
+        {
+          PATH: "",
+        },
+        {
+          appRoot: executable_root,
+          platform: "linux",
+        },
+      ),
+    );
+
+    expect(result).toEqual({
+      kind: "executable",
+      command: core_executable,
+      args: [],
+      cwd: executable_root,
+    });
+  });
+
   it("没有 core.exe 时从当前路径回退到 uv run app.py", () => {
     const app_root = path.resolve("repo");
     const uv_bin = path.resolve("tools", "uv.exe");
@@ -98,6 +152,37 @@ describe("resolve_core_launch_command", () => {
         },
         {
           appRoot: app_root,
+        },
+      ),
+    );
+
+    expect(result).toEqual({
+      kind: "source",
+      command: uv_bin,
+      args: ["run", "app.py"],
+      cwd: app_root,
+    });
+  });
+
+  it("非 Windows 没有 core 时仍从当前路径回退到 uv run app.py", () => {
+    const app_root = path.resolve("repo");
+    const uv_bin = path.resolve("tools", "uv");
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate_path) => {
+      return [
+        path.join(app_root, "app.py"),
+        path.join(app_root, "pyproject.toml"),
+        uv_bin,
+      ].includes(String(candidate_path));
+    });
+
+    const result = resolve_core_launch_command(
+      create_environment(
+        {
+          [UV_BIN_ENV_NAME]: uv_bin,
+        },
+        {
+          appRoot: app_root,
+          platform: "linux",
         },
       ),
     );

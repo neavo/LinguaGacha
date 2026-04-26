@@ -12,12 +12,6 @@
     "dist/**/*",
     "dist-electron/**/*",
   ],
-  extraFiles: [
-    { from: "../core.exe", to: "core.exe" },
-    { from: "../_internal", to: "_internal" },
-    { from: "../resource", to: "resource" },
-    { from: "../version.txt", to: "version.txt" },
-  ],
   win: {
     target: [
       {
@@ -25,8 +19,52 @@
         arch: ["x64"],
       },
     ],
-    artifactName: "${productName}_v${version}.${ext}",
+    artifactName: "${productName}_v${version}_Windows_${arch}.${ext}",
     executableName: "app",
     icon: "icon.png",
+    extraFiles: [
+      { from: "../core.exe", to: "core.exe" },
+      { from: "../_internal", to: "_internal" },
+      { from: "../resource", to: "resource" },
+      { from: "../version.txt", to: "version.txt" },
+    ],
+  },
+  mac: {
+    target: [
+      {
+        target: "dmg",
+        arch: ["x64", "arm64"],
+      },
+    ],
+    artifactName: "${productName}_v${version}_macOS_${arch}.${ext}",
+    category: "public.app-category.productivity",
+    icon: "icon.png",
+    identity: null,
+    extraFiles: [
+      { from: "../core", to: "MacOS/core" },
+      { from: "../_internal", to: "MacOS/_internal" },
+      { from: "../resource", to: "MacOS/resource" },
+      { from: "../version.txt", to: "MacOS/version.txt" },
+    ],
+  },
+  dmg: {
+    sign: false,
+  },
+  linux: {
+    target: [
+      {
+        target: "AppImage",
+        arch: ["x64"],
+      },
+    ],
+    artifactName: "${productName}_v${version}_Linux_${arch}.${ext}",
+    category: "Utility",
+    icon: "icon.png",
+    extraFiles: [
+      { from: "../core", to: "core" },
+      { from: "../_internal", to: "_internal" },
+      { from: "../resource", to: "resource" },
+      { from: "../version.txt", to: "version.txt" },
+    ],
   },
 }

@@ -3,6 +3,7 @@
 .coverage
 __pycache__
 
+/core
 /core.exe
 /_internal
 
