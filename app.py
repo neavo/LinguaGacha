@@ -9,11 +9,11 @@ from types import TracebackType
 
 from rich.console import Console
 
+from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
 from base.BasePath import BasePath
 from base.LogManager import LogManager
-from base.VersionManager import VersionManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
@@ -21,6 +21,12 @@ from module.Localizer.Localizer import Localizer
 from module.Migration.UserDataMigrationService import UserDataMigrationService
 
 APP_VERSION_FILE_NAME: str = "version.txt"
+CORE_INSTANCE_TOKEN_ENV_NAME: str = "LINGUAGACHA_CORE_INSTANCE_TOKEN"
+PARENT_PID_ENV_NAME: str = "LINGUAGACHA_PARENT_PID"
+SHUTDOWN_API_RESPONSE_DELAY_SECONDS: float = 0.05
+PARENT_WATCH_INTERVAL_SECONDS: float = 1.0
+WINDOWS_STILL_ACTIVE_EXIT_CODE: int = 259
+WINDOWS_PROCESS_QUERY_LIMITED_INFORMATION: int = 0x1000
 
 
 def excepthook(
@@ -94,10 +100,10 @@ def disable_windows_quick_edit_mode() -> None:
 
 def bootstrap_runtime() -> LogManager:
     """统一收敛无头 Core API 入口共享的启动阶段。"""
-    app_dir = BasePath.resolve_app_dir()
+    app_root = BasePath.resolve_app_root()
     is_frozen = getattr(sys, "frozen", False)
 
-    BasePath.initialize(app_dir, is_frozen)
+    BasePath.initialize(app_root, is_frozen)
 
     sys.excepthook = excepthook
     sys.unraisablehook = unraisable_hook
@@ -105,27 +111,26 @@ def bootstrap_runtime() -> LogManager:
 
     disable_windows_quick_edit_mode()
 
-    if app_dir not in sys.path:
-        sys.path.append(app_dir)
+    if app_root not in sys.path:
+        sys.path.append(app_root)
 
-    os.chdir(app_dir)
+    os.chdir(app_root)
 
-    VersionManager.cleanup_update_temp_on_startup()
     UserDataMigrationService.run_startup_migrations()
 
     config = Config().load()
     Localizer.set_app_language(config.app_language)
     logger = LogManager.get()
 
-    version_path = os.path.join(BasePath.get_app_dir(), APP_VERSION_FILE_NAME)
+    version_path = os.path.join(BasePath.get_app_root(), APP_VERSION_FILE_NAME)
     with open(version_path, "r", encoding="utf-8-sig") as reader:
         version = reader.read().strip()
 
-    logger.info(f"{Base.APP_NAME} {version}")
+    Base.APP_VERSION = version
+    logger.info(f"{Base.APP_NAME} v{version}")
     logger.print("")
 
     Engine.get().run()
-    VersionManager.get().set_version(version)
 
     return logger
 
@@ -147,20 +152,149 @@ def cleanup_runtime(
     logger.shutdown()
 
 
-def wait_for_headless_shutdown() -> None:
+def wait_for_headless_shutdown(
+    shutdown_event: threading.Event | None = None,
+) -> None:
     """无头模式持续驻留，直到收到中断信号。"""
-    stop_event = threading.Event()
-    while not stop_event.wait(0.5):
+    resolved_shutdown_event = (
+        threading.Event() if shutdown_event is None else shutdown_event
+    )
+    while not resolved_shutdown_event.wait(0.5):
         continue
+
+
+def request_shutdown_after_response(shutdown_event: threading.Event) -> None:
+    """HTTP 响应先写回，再异步触发统一清理路径。"""
+
+    shutdown_timer = threading.Timer(
+        SHUTDOWN_API_RESPONSE_DELAY_SECONDS,
+        shutdown_event.set,
+    )
+    shutdown_timer.daemon = True
+    shutdown_timer.start()
+
+
+def install_shutdown_signal_handlers(shutdown_event: threading.Event) -> None:
+    """Electron 关闭或终端中断都汇入同一个 shutdown event。"""
+
+    def handle_signal(signal_number: int, frame) -> None:
+        del signal_number
+        del frame
+        shutdown_event.set()
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+
+def load_parent_pid() -> int | None:
+    """读取 Electron main 传入的父进程 PID；缺失时跳过守护。"""
+
+    raw_parent_pid = os.environ.get(PARENT_PID_ENV_NAME, "").strip()
+    if raw_parent_pid == "":
+        return None
+
+    try:
+        parent_pid = int(raw_parent_pid)
+    except ValueError:
+        return None
+
+    if parent_pid <= 0:
+        return None
+    return parent_pid
+
+
+def is_windows_process_alive(pid: int) -> bool:
+    """Windows 下用进程句柄查询存活状态，避免向父进程发送信号。"""
+
+    kernel32 = ctypes.windll.kernel32
+    process_handle = kernel32.OpenProcess(
+        WINDOWS_PROCESS_QUERY_LIMITED_INFORMATION,
+        False,
+        pid,
+    )
+    if process_handle == 0:
+        return False
+
+    exit_code = ctypes.c_ulong()
+    try:
+        if not kernel32.GetExitCodeProcess(
+            process_handle,
+            ctypes.byref(exit_code),
+        ):
+            return False
+        return exit_code.value == WINDOWS_STILL_ACTIVE_EXIT_CODE
+    finally:
+        kernel32.CloseHandle(process_handle)
+
+
+def is_posix_process_alive(pid: int) -> bool:
+    """POSIX 下 signal 0 只做存在性探测，不会终止目标进程。"""
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def is_parent_process_alive(pid: int) -> bool:
+    """跨平台判断 Electron main 是否仍然存在。"""
+
+    if os.name == "nt":
+        return is_windows_process_alive(pid)
+    return is_posix_process_alive(pid)
+
+
+def start_parent_process_watchdog(
+    *,
+    shutdown_event: threading.Event,
+    logger: LogManager,
+) -> threading.Thread | None:
+    """父进程消失时自动触发清理，避免 Core 成为孤儿进程。"""
+
+    parent_pid = load_parent_pid()
+    if parent_pid is None:
+        return None
+
+    def watch_parent_process() -> None:
+        while not shutdown_event.wait(PARENT_WATCH_INTERVAL_SECONDS):
+            if not is_parent_process_alive(parent_pid):
+                logger.warning(
+                    f"Parent process is gone, shutting down Core: {parent_pid}"
+                )
+                shutdown_event.set()
+                return
+
+    watchdog_thread = threading.Thread(
+        target=watch_parent_process,
+        daemon=True,
+        name="CoreParentProcessWatchdog",
+    )
+    watchdog_thread.start()
+    return watchdog_thread
 
 
 def run_headless_mode(*, logger: LogManager) -> None:
     """无头模式负责本地 Core API 生命周期与统一清理。"""
-    local_api_server_runtime = ServerBootstrap.start()
+    shutdown_event = threading.Event()
+    install_shutdown_signal_handlers(shutdown_event)
+    start_parent_process_watchdog(
+        shutdown_event=shutdown_event,
+        logger=logger,
+    )
+    core_lifecycle_app_service = CoreLifecycleAppService(
+        instance_token=os.environ.get(CORE_INSTANCE_TOKEN_ENV_NAME, ""),
+        request_shutdown=lambda: request_shutdown_after_response(shutdown_event),
+    )
+    local_api_server_runtime = ServerBootstrap.start(
+        core_lifecycle_app_service=core_lifecycle_app_service,
+    )
     try:
-        wait_for_headless_shutdown()
+        wait_for_headless_shutdown(shutdown_event)
     except KeyboardInterrupt:
-        return
+        shutdown_event.set()
     finally:
         cleanup_runtime(
             local_api_server_runtime=local_api_server_runtime,

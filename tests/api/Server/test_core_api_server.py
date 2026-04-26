@@ -6,6 +6,7 @@ import pytest
 
 from api.Contract.ApiResponse import ApiResponse
 from api.Server.CoreApiServer import CoreApiServer
+from base.Base import Base
 from module.Utils.JSONTool import JSONTool
 
 
@@ -156,3 +157,39 @@ def test_core_api_server_read_json_request_uses_json_tool() -> None:
     handler.rfile = BytesIO(payload_bytes)
 
     assert server.read_json_request(handler) == {"text": "勇者"}
+
+
+def test_core_api_server_health_includes_runtime_metadata_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Base, "APP_VERSION", "9.9.9")
+    server = CoreApiServer(instance_token="core-token")
+
+    response = server.handle_health()
+
+    assert response.to_dict()["data"] == {
+        "status": "ok",
+        "service": "linguagacha-core",
+        "version": "9.9.9",
+        "instanceToken": "core-token",
+    }
+
+
+def test_core_api_server_context_json_route_can_read_request_headers() -> None:
+    server = CoreApiServer()
+    handler = RecordingRequestHandler(path="/api/internal")
+    handler.headers["X-Demo"] = "accepted"
+
+    server.add_context_json_route(
+        "POST",
+        "/api/internal",
+        lambda request, current_handler: ApiResponse(
+            ok=True,
+            data={"header": current_handler.headers["X-Demo"]},
+        ),
+    )
+
+    server.handle_http_request(handler, "POST")
+
+    assert handler.status_code == 200
+    assert JSONTool.loads(handler.wfile.getvalue())["data"] == {"header": "accepted"}

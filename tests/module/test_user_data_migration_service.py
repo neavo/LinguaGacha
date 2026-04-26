@@ -229,10 +229,10 @@ def test_run_startup_migrations_prefers_resource_config_in_desktop_upgrade(
 def test_run_startup_migrations_prefers_data_config_in_portable_upgrade(
     migration_root: Path,
 ) -> None:
-    data_dir = migration_root / "portable_data"
-    BasePath.APP_DIR = str(migration_root)
-    BasePath.DATA_DIR = str(data_dir)
-    data_legacy_path = data_dir / "config.json"
+    data_root = migration_root / "portable_data"
+    BasePath.APP_ROOT = str(migration_root)
+    BasePath.DATA_ROOT = str(data_root)
+    data_legacy_path = data_root / "config.json"
     resource_legacy_path = migration_root / "resource" / "config.json"
     root_legacy_path = migration_root / "config.json"
     data_legacy_path.parent.mkdir(parents=True, exist_ok=True)
@@ -253,7 +253,7 @@ def test_run_startup_migrations_prefers_data_config_in_portable_upgrade(
     UserDataMigrationService.run_startup_migrations()
 
     assert Config().load().clean_ruby is True
-    assert (data_dir / "userdata" / "config.json").exists()
+    assert (data_root / "userdata" / "config.json").exists()
 
 
 def test_run_startup_migrations_keeps_existing_userdata_config(
@@ -293,25 +293,3 @@ def test_normalize_quality_rule_default_preset_value_returns_empty_for_unknown_j
     assert reset_migration_service.warning_messages == [
         "Failed to normalize default preset value: glossary -> resource/not_glossary/demo.json"
     ]
-
-
-def test_migrate_update_runtime_artifacts_moves_runtime_files_to_userdata(
-    migration_root: Path,
-) -> None:
-    legacy_dir = migration_root / "resource" / "update"
-    runtime_dir = migration_root / "userdata" / "update"
-    legacy_dir.mkdir(parents=True, exist_ok=True)
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-
-    (legacy_dir / "update.log").write_text("old log", encoding="utf-8")
-    (legacy_dir / "result.json").write_text(
-        json.dumps({"status": "failed"}),
-        encoding="utf-8",
-    )
-    (legacy_dir / "update.ps1").write_text("template", encoding="utf-8")
-
-    UserDataMigrationService.migrate_update_runtime_artifacts_if_needed()
-
-    assert (runtime_dir / "update.log").exists()
-    assert (runtime_dir / "result.json").exists()
-    assert (legacy_dir / "update.ps1").exists()

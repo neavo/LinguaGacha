@@ -48,18 +48,23 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A["Electron main"] --> B["preload 暴露 window.desktopApp"]
-    B --> C["renderer 启动 desktop-api.ts"]
-    C --> D["/api/health 探活"]
-    D --> E["/api/project/bootstrap/stream"]
-    E --> F["ProjectStore 建立最小运行态"]
-    C --> G["/api/events/stream"]
-    G --> H["settings.changed / task.* / project.patch"]
-    H --> I["页面通过 change signal 与 selectors 消费运行态"]
+    A["Electron main"] --> B["CoreLifecycleManager 从启动根目录解析 Core 目标"]
+    B --> C["优先启动平台 Core helper，否则 uv run app.py"]
+    C --> D["/api/health 校验实例 token"]
+    D --> E["preload 暴露 window.desktopApp"]
+    E --> F["renderer 启动 desktop-api.ts"]
+    F --> G["/api/project/bootstrap/stream"]
+    G --> H["ProjectStore 建立最小运行态"]
+    F --> I["/api/events/stream"]
+    I --> J["settings.changed / task.* / project.patch"]
+    J --> K["页面通过 change signal 与 selectors 消费运行态"]
 ```
 
 运行时主链路的稳定事实：
-- Electron 侧 Core API 默认地址来自 `frontend/src/shared/core-api-base-url.ts`，默认端口是 `38191`，也支持环境变量 `LINGUAGACHA_CORE_API_BASE_URL` 与启动参数 `--core-api-base-url=...` 覆盖。
+- Electron main 是 Python Core 伴生进程的生命周期拥有者；启动时由 `CoreLifecycleManager` 在高位端口范围内选择本机端口，并从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`，再校验 `/api/health` 实例 token 并创建窗口。开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 Electron 可执行文件所在目录，macOS 为 `.app/Contents/MacOS`。
+- Python Core 的运行时路径统一收敛为两根：`APP_ROOT` 是应用根，开发态为仓库根、发布态为程序运行目录，承载 `resource/`、`version.txt` 和 Core 启动目标；`DATA_ROOT` 是可写数据根，承载 `userdata/` 与 `log/`。AppImage 与 macOS `.app` 固定把 `DATA_ROOT` 放到 `~/LinguaGacha`，其他场景优先使用可写的 `APP_ROOT`，不可写时回退 `~/LinguaGacha`。
+- Electron 侧 Core API 地址由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL`；`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
+- 应用退出时 Electron main 会优先调用内部 `/api/lifecycle/shutdown`，失败或超时后按平台清理 Core 进程树；渲染层不直接管理后端进程。
 - 渲染层项目运行态由 bootstrap 首包和事件流共同驱动，而不是单次整页快照。
 - `ProjectStore` 是渲染层项目运行态最小事实仓库；页面本地筛选、弹窗、交互态不应上提到这里。
 - 校对页不会把 warnings、筛选面板 facets、搜索排序结果等派生事实塞回 `ProjectStore`；这些派生缓存由独立 worker 持有，主线程只同步原始 `project / items / quality` 输入并消费查询结果。

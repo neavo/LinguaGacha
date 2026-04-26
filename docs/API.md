@@ -22,7 +22,8 @@
 
 | 路由族 | 代表路径 | 用途 |
 | --- | --- | --- |
-| 探活 | `/api/health` | 渲染层启动前探活 |
+| 探活 | `/api/health` | Electron main 与渲染层启动前探活 |
+| 生命周期 | `/api/lifecycle/shutdown` | Electron main 请求 Core 优雅关闭的内部入口 |
 | 长期事件流 | `/api/events/stream` | 公开 SSE topic 与 `project.patch` |
 | bootstrap 首包 | `/api/project/bootstrap/stream` | 一次性阶段化项目首包 |
 | 项目与同步 mutation | `/api/project/*` | 工程、工作台、校对、reset、导入术语等 |
@@ -35,7 +36,10 @@
 路径不变量：
 - 主业务协议统一落在 `/api/` 前缀，不扩展新的并行根前缀。
 - 公开 `GET` 稳定只有 `/api/health`、`/api/events/stream`、`/api/project/bootstrap/stream` 三类；其余公开接口默认走 `POST + JSON body`。
+- `/api/lifecycle/shutdown` 是内部生命周期接口，只供 Electron main 调用；它要求 `X-LinguaGacha-Core-Token` 与当前 Core 实例 token 一致。
 - `OPTIONS` 由服务器统一回 `204`，CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
+
+`/api/health` 成功响应固定包含 `status`、`service` 与纯数值 `version`；当 Core 由 Electron main 启动并带有实例 token 时，响应 `data` 额外包含 `instanceToken`，用于避免误连旧进程。
 
 ## HTTP 响应壳
 

@@ -20,6 +20,12 @@ export const zh_cn_app = {
     no_valid_data: "没有有效数据 …",
     update_failed: "更新失败 …",
   },
+  close_confirm: {
+    description: "是否确认退出应用 …?",
+  },
+  update: {
+    toast: "发现新版本，点击左下角更新入口下载新版本 …",
+  },
   drop: {
     multiple_unavailable: "一次只能拖拽一个文件",
     unavailable: "当前无法读取拖拽文件的本地路径，请换用点击导入。",
@@ -59,5 +65,8 @@ export const zh_cn_app = {
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
+    status_tooltip: "打开 GitHub 项目主页",
+    update_available: "点击下载新版本 …!",
+    update_available_tooltip: "打开 GitHub Release 页面",
   },
 } as const;

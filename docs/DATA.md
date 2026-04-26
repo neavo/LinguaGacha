@@ -109,6 +109,7 @@ flowchart TD
 
 ### 数据域
 - `Config` 是运行时语言设置的权威来源；工程 `.lg` 中的 `source_language` / `target_language` 只是镜像摘要。
+- Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。
 - 分析候选导入术语的预演和筛选属于前端 planner；Python 数据层保留候选聚合、候选数缓存和分析结果持久化。
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
 - 校对 `save-item`、`save-all`、`replace-all` 属于同步 mutation；`retranslate-items` 仍是任务型链路。

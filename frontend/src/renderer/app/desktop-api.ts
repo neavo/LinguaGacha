@@ -10,6 +10,21 @@ type ApiEnvelope<data_type> = {
 type HealthPayload = {
   status?: string;
   service?: string;
+  version?: string;
+};
+
+type GithubReleasePayload = {
+  tag_name?: unknown;
+  html_url?: unknown;
+};
+
+export type CoreMetadata = {
+  version: string;
+};
+
+export type GithubReleaseUpdate = {
+  latest_version: string;
+  release_url: string;
 };
 
 type EventSourceJsonEvent = {
@@ -17,11 +32,19 @@ type EventSourceJsonEvent = {
   [key: string]: unknown;
 };
 
+type SemanticVersion = {
+  major: number;
+  minor: number;
+  patch: number;
+};
+
 const CORE_API_HEALTH_PATH = "/api/health";
 const CORE_API_SERVICE_NAME = "linguagacha-core";
 const CORE_API_PROBE_TIMEOUT_MS = 300;
+const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest";
 
 let cached_core_api_base_url: string | null = null;
+let cached_core_metadata: CoreMetadata | null = null;
 let pending_core_api_base_url_resolution: Promise<string> | null = null;
 
 export class DesktopApiError extends Error {
@@ -63,7 +86,70 @@ function parse_event_source_payload(event: MessageEvent<string>): Record<string,
   }
 }
 
-async function probe_core_api_candidate(base_url: string): Promise<boolean> {
+function normalize_core_metadata(payload: HealthPayload): CoreMetadata | null {
+  const version = payload.version?.trim();
+  if (version === undefined || version === "") {
+    return null;
+  }
+
+  return { version };
+}
+
+function parse_semantic_version(value: string): SemanticVersion | null {
+  const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
+  if (version_match === null) {
+    return null;
+  }
+
+  return {
+    major: Number(version_match[1]),
+    minor: Number(version_match[2]),
+    patch: Number(version_match[3]),
+  };
+}
+
+function compare_semantic_version(left: SemanticVersion, right: SemanticVersion): number {
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor;
+  }
+
+  return left.patch - right.patch;
+}
+
+function normalize_github_release_update(
+  payload: GithubReleasePayload,
+  current_version: string,
+): GithubReleaseUpdate | null {
+  const current_semantic_version = parse_semantic_version(current_version);
+  if (current_semantic_version === null) {
+    return null;
+  }
+
+  if (typeof payload.tag_name !== "string" || typeof payload.html_url !== "string") {
+    return null;
+  }
+
+  const latest_semantic_version = parse_semantic_version(payload.tag_name);
+  const release_url = payload.html_url.trim();
+  if (latest_semantic_version === null || release_url === "") {
+    return null;
+  }
+
+  if (compare_semantic_version(latest_semantic_version, current_semantic_version) <= 0) {
+    return null;
+  }
+
+  return {
+    latest_version: `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
+    release_url,
+  };
+}
+
+async function probe_core_api_candidate(base_url: string): Promise<CoreMetadata | null> {
   const abort_controller = new AbortController();
   const timeout_id = window.setTimeout(() => {
     abort_controller.abort();
@@ -75,25 +161,25 @@ async function probe_core_api_candidate(base_url: string): Promise<boolean> {
       signal: abort_controller.signal,
     });
     if (!response.ok) {
-      return false;
+      return null;
     }
 
     const payload = (await response.json()) as ApiEnvelope<HealthPayload>;
     if (payload.ok !== true || payload.data === undefined) {
-      return false;
+      return null;
     }
 
     if (payload.data.status !== "ok") {
-      return false;
+      return null;
     }
 
     if (payload.data.service !== CORE_API_SERVICE_NAME) {
-      return false;
+      return null;
     }
 
-    return true;
+    return normalize_core_metadata(payload.data);
   } catch {
-    return false;
+    return null;
   } finally {
     window.clearTimeout(timeout_id);
   }
@@ -110,9 +196,10 @@ async function resolve_core_api_base_url(): Promise<string> {
 
   pending_core_api_base_url_resolution = (async () => {
     const base_url = read_core_api_base_url();
-    const is_available = await probe_core_api_candidate(base_url);
-    if (is_available) {
+    const core_metadata = await probe_core_api_candidate(base_url);
+    if (core_metadata !== null) {
       cached_core_api_base_url = base_url;
+      cached_core_metadata = core_metadata;
       return base_url;
     }
 
@@ -123,6 +210,36 @@ async function resolve_core_api_base_url(): Promise<string> {
     return await pending_core_api_base_url_resolution;
   } finally {
     pending_core_api_base_url_resolution = null;
+  }
+}
+
+export async function get_core_metadata(): Promise<CoreMetadata> {
+  await resolve_core_api_base_url();
+  if (cached_core_metadata === null) {
+    throw new DesktopApiError("Core 元信息不可用。", "core_metadata_unavailable", 503);
+  }
+
+  return cached_core_metadata;
+}
+
+export async function check_github_release_update(
+  current_version: string,
+): Promise<GithubReleaseUpdate | null> {
+  try {
+    const response = await fetch(GITHUB_LATEST_RELEASE_URL, {
+      method: "GET",
+      headers: {
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as GithubReleasePayload;
+    return normalize_github_release_update(payload, current_version);
+  } catch {
+    return null;
   }
 }
 

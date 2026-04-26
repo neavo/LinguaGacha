@@ -88,7 +88,7 @@ class PromptPathResolver:
 
     @classmethod
     def get_user_preset_dir(cls, task_type: TaskType) -> str:
-        """用户预设必须走 data_dir，对外收口为单一入口。"""
+        """用户预设必须走 DATA_ROOT，对外收口为单一入口。"""
 
         return BasePath.get_prompt_user_preset_dir(cls.get_task_dir_name(task_type))
 
