@@ -25,6 +25,7 @@ type ProgressToastState = {
 
 type DesktopToastApi = {
   push_toast: (kind: DesktopToastKind, message: string) => DesktopToastId;
+  push_persistent_toast: (kind: DesktopToastKind, message: string) => DesktopToastId;
   push_progress_toast: (options: ProgressToastOptions) => DesktopToastId;
   update_progress_toast: (
     toast_id: DesktopToastId,
@@ -207,6 +208,19 @@ export function useDesktopToast(): DesktopToastApi {
     return toast_id;
   }, []);
 
+  const push_persistent_toast = useCallback(
+    (kind: DesktopToastKind, message: string): DesktopToastId => {
+      const send_toast = resolve_toast_sender(kind);
+      const toast_id = send_toast(normalize_toast_message(message), {
+        duration: Number.POSITIVE_INFINITY,
+        closeButton: true,
+      });
+      regular_toast_id_set.add(toast_id);
+      return toast_id;
+    },
+    [],
+  );
+
   const push_progress_toast = useCallback((options: ProgressToastOptions): DesktopToastId => {
     const owner_token = create_progress_toast_owner_token();
     const normalized_options: ProgressToastOptions = {
@@ -293,6 +307,7 @@ export function useDesktopToast(): DesktopToastApi {
   return useMemo<DesktopToastApi>(() => {
     return {
       push_toast,
+      push_persistent_toast,
       push_progress_toast,
       update_progress_toast,
       dismiss_toast,
@@ -300,6 +315,7 @@ export function useDesktopToast(): DesktopToastApi {
     };
   }, [
     dismiss_toast,
+    push_persistent_toast,
     push_progress_toast,
     push_toast,
     run_modal_progress_toast,

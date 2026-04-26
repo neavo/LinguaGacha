@@ -5,15 +5,14 @@
   "type": "module",
   "main": "dist-electron/index.js",
   "scripts": {
-    "dev": "node ./scripts/dev-launcher.mjs",
+    "dev": "electron-vite dev",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && electron-builder",
     "format": "node ./scripts/format-related-files.mjs",
     "format:check": "node ./scripts/format-related-files.mjs --check",
     "lint": "oxlint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "renderer:audit": "node ./scripts/check-renderer-design-system.mjs",
-    "preview": "electron-vite preview"
+    "renderer:audit": "node ./scripts/check-renderer-design-system.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
@@ -48,14 +47,12 @@
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "execa": "^9.6.1",
-    "get-port": "^7.2.0",
     "happy-dom": "^20.9.0",
     "oxfmt": "^0.46.0",
     "oxlint": "^1.61.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "vite": "^7.3.2",
-    "vitest": "^4.1.4",
-    "wait-on": "^8.0.5"
+    "vitest": "^4.1.4"
   }
 }

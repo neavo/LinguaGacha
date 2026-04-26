@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
 
 from api.Application.EventStreamService import EventStreamService
+from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.ModelAppService import ModelAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProjectBootstrapAppService import ProjectBootstrapAppService
@@ -17,6 +18,7 @@ from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
 from api.Server.Routes.SettingsRoutes import SettingsRoutes
 from api.Server.Routes.EventRoutes import EventRoutes
+from api.Server.Routes.LifecycleRoutes import LifecycleRoutes
 from api.Server.Routes.TaskRoutes import TaskRoutes
 from api.Server.Routes.ModelRoutes import ModelRoutes
 from api.Server.Routes.QualityRoutes import QualityRoutes
@@ -47,7 +49,11 @@ class ServerBootstrap:
         return cls.TEST_SERVE_FOREVER_POLL_INTERVAL_SECONDS
 
     @classmethod
-    def start(cls) -> ServerRuntime:
+    def start(
+        cls,
+        *,
+        core_lifecycle_app_service: CoreLifecycleAppService | None = None,
+    ) -> ServerRuntime:
         """应用 UI 模式使用的默认启动入口。"""
 
         project_app_service = ProjectAppService()
@@ -69,6 +75,7 @@ class ServerBootstrap:
             settings_app_service=settings_app_service,
             model_app_service=model_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
+            core_lifecycle_app_service=core_lifecycle_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
             as_runtime=True,
         )
@@ -85,6 +92,7 @@ class ServerBootstrap:
         settings_app_service: SettingsAppService | None = None,
         model_app_service: ModelAppService | None = None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None = None,
+        core_lifecycle_app_service: CoreLifecycleAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
@@ -120,6 +128,7 @@ class ServerBootstrap:
             settings_app_service=settings_app_service,
             model_app_service=model_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
+            core_lifecycle_app_service=core_lifecycle_app_service,
             event_stream_service=event_stream_service,
         )
         serve_forever_poll_interval = cls.get_serve_forever_poll_interval(
@@ -163,6 +172,7 @@ class ServerBootstrap:
         settings_app_service: SettingsAppService | None,
         model_app_service: ModelAppService | None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None,
+        core_lifecycle_app_service: CoreLifecycleAppService | None,
         event_stream_service: EventStreamService,
     ) -> ThreadingHTTPServer:
         """按候选端口顺序尝试绑定，确保前后端发现顺序一致。"""
@@ -182,6 +192,7 @@ class ServerBootstrap:
                 task_app_service=task_app_service,
                 model_app_service=model_app_service,
                 quality_rule_app_service=quality_rule_app_service,
+                core_lifecycle_app_service=core_lifecycle_app_service,
                 event_stream_service=event_stream_service,
             )
 
@@ -206,11 +217,14 @@ class ServerBootstrap:
         task_app_service: TaskAppService | None = None,
         model_app_service: ModelAppService | None = None,
         quality_rule_app_service: QualityRuleAppService | None = None,
+        core_lifecycle_app_service: CoreLifecycleAppService | None = None,
         event_stream_service: EventStreamService | None = None,
     ) -> None:
         """统一收口 API 路由注册入口，确保服务端只暴露单一版本边界。"""
 
         del cls
+        if core_lifecycle_app_service is not None:
+            LifecycleRoutes.register(core_api_server, core_lifecycle_app_service)
         if event_stream_service is not None:
             EventRoutes.register(core_api_server, event_stream_service)
         if (

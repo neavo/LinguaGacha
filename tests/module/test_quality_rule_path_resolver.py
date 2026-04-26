@@ -148,12 +148,12 @@ def test_user_preset_guards_invalid_payload_builtin_mutation_and_empty_name(
         )
 
 
-def test_user_preset_uses_runtime_data_dir_when_split(
+def test_user_preset_uses_runtime_data_root_when_split(
     resolver_root: Path,
 ) -> None:
-    data_dir = resolver_root / "portable_data"
-    BasePath.APP_DIR = str(resolver_root)
-    BasePath.DATA_DIR = str(data_dir)
+    data_root = resolver_root / "portable_data"
+    BasePath.APP_ROOT = str(resolver_root)
+    BasePath.DATA_ROOT = str(data_root)
 
     saved_item = QualityRulePathResolver.save_user_preset(
         "glossary",
@@ -162,5 +162,5 @@ def test_user_preset_uses_runtime_data_dir_when_split(
     )
 
     assert saved_item["path"].replace("\\", "/") == str(
-        data_dir / "userdata" / "glossary" / "portable.json"
+        data_root / "userdata" / "glossary" / "portable.json"
     ).replace("\\", "/")

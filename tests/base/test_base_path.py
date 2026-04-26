@@ -17,23 +17,23 @@ def reset_base_path_state() -> None:
     BasePath.reset_for_test()
 
 
-def test_initialize_caches_app_dir_and_resolved_data_dir(
+def test_initialize_caches_app_root_and_resolved_data_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         BasePath,
-        "resolve_data_dir",
-        lambda app_dir, is_frozen: ("C:/data", "app_dir_not_writable"),
+        "resolve_data_root",
+        lambda app_root, is_frozen: ("C:/data", "app_root_not_writable"),
     )
 
     reason = BasePath.initialize("C:/app", is_frozen=True)
 
-    assert reason == "app_dir_not_writable"
-    assert BasePath.APP_DIR == "C:/app"
-    assert BasePath.DATA_DIR == "C:/data"
+    assert reason == "app_root_not_writable"
+    assert BasePath.APP_ROOT == "C:/app"
+    assert BasePath.DATA_ROOT == "C:/data"
 
 
-def test_resolve_app_dir_uses_frozen_executable_directory(
+def test_resolve_app_root_uses_frozen_executable_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(base_path_module.sys, "frozen", True, raising=False)
@@ -43,7 +43,7 @@ def test_resolve_app_dir_uses_frozen_executable_directory(
         "C:/Program Files/LinguaGacha/LinguaGacha.exe",
     )
 
-    result = BasePath.resolve_app_dir()
+    result = BasePath.resolve_app_root()
 
     assert result == os.path.abspath("C:/Program Files/LinguaGacha")
 
@@ -65,11 +65,11 @@ def test_resolve_app_dir_uses_frozen_executable_directory(
             False,
             False,
             False,
-            ("C:/Users/demo/LinguaGacha", "app_dir_not_writable"),
+            ("C:/Users/demo/LinguaGacha", "app_root_not_writable"),
         ),
     ],
 )
-def test_resolve_data_dir_selects_single_writable_location(
+def test_resolve_data_root_selects_single_writable_location(
     monkeypatch: pytest.MonkeyPatch,
     is_frozen: bool,
     is_appimage: bool,
@@ -78,28 +78,28 @@ def test_resolve_data_dir_selects_single_writable_location(
     expected: tuple[str, str | None],
 ) -> None:
     monkeypatch.setattr(
-        BasePath, "get_home_data_dir", lambda: "C:/Users/demo/LinguaGacha"
+        BasePath, "get_home_data_root", lambda: "C:/Users/demo/LinguaGacha"
     )
     monkeypatch.setattr(BasePath, "is_appimage_runtime", lambda: is_appimage)
     monkeypatch.setattr(
-        BasePath, "is_macos_app_bundle", lambda app_dir: is_macos_bundle
+        BasePath, "is_macos_app_bundle", lambda app_root: is_macos_bundle
     )
-    monkeypatch.setattr(BasePath, "can_write_directory", lambda app_dir: can_write)
+    monkeypatch.setattr(BasePath, "can_write_directory", lambda app_root: can_write)
 
-    result = BasePath.resolve_data_dir("C:/app", is_frozen)
+    result = BasePath.resolve_data_root("C:/app", is_frozen)
 
     assert result == expected
 
 
-def test_get_app_dir_and_data_dir_fall_back_to_resolved_runtime_path(
+def test_get_app_root_and_data_root_fall_back_to_resolved_runtime_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(BasePath, "resolve_app_dir", lambda: "C:/runtime")
+    monkeypatch.setattr(BasePath, "resolve_app_root", lambda: "C:/runtime")
 
-    assert BasePath.get_app_dir() == "C:/runtime"
-    assert BasePath.get_data_dir() == "C:/runtime"
-    assert BasePath.APP_DIR == "C:/runtime"
-    assert BasePath.DATA_DIR == "C:/runtime"
+    assert BasePath.get_app_root() == "C:/runtime"
+    assert BasePath.get_data_root() == "C:/runtime"
+    assert BasePath.APP_ROOT == "C:/runtime"
+    assert BasePath.DATA_ROOT == "C:/runtime"
 
 
 def test_can_write_directory_uses_real_probe_file(fs) -> None:
@@ -142,22 +142,6 @@ def test_can_write_directory_returns_false_when_probe_creation_fails(
             os.path.join("C:/data", "userdata", "config.json"),
         ),
         (lambda: BasePath.get_log_dir(), os.path.join("C:/data", "log")),
-        (
-            lambda: BasePath.get_update_template_dir(),
-            os.path.join("C:/app", "resource", "update"),
-        ),
-        (
-            lambda: BasePath.get_update_runtime_dir(),
-            os.path.join("C:/data", "userdata", "update"),
-        ),
-        (
-            lambda: BasePath.get_update_legacy_runtime_dir(),
-            os.path.join("C:/app", "resource", "update"),
-        ),
-        (
-            lambda: BasePath.get_update_dir(),
-            os.path.join("C:/data", "userdata", "update"),
-        ),
         (
             lambda: BasePath.get_prompt_user_preset_dir("translation"),
             os.path.join("C:/data", "userdata", "translation"),
@@ -226,8 +210,8 @@ def test_path_helpers_build_paths_from_cached_roots(
     resolver: Callable[[], str],
     expected: str,
 ) -> None:
-    BasePath.APP_DIR = "C:/app"
-    BasePath.DATA_DIR = "C:/data"
+    BasePath.APP_ROOT = "C:/app"
+    BasePath.DATA_ROOT = "C:/data"
 
     assert resolver() == expected
 

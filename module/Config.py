@@ -83,7 +83,7 @@ class Config:
 
     @classmethod
     def get_default_path(cls) -> str:
-        """统一返回默认配置文件路径，避免读写两边各自拼接。"""
+        """统一返回默认配置文件路径，固定派生自 DATA_ROOT/userdata。"""
 
         return os.path.join(BasePath.get_user_data_root_dir(), cls.CONFIG_FILE_NAME)
 
@@ -111,26 +111,26 @@ class Config:
     def get_legacy_default_paths(cls) -> list[str]:
         """收口旧版默认配置位置，便于启动时做一次性迁移。"""
 
-        data_dir = BasePath.get_data_dir()
-        app_dir = BasePath.get_app_dir()
+        data_root = BasePath.get_data_root()
+        app_root = BasePath.get_app_root()
 
         # 迁移优先级必须与 main 分支旧默认读取规则一致：
-        # 1. 便携/只读安装场景优先沿用 data_dir/config.json。
+        # 1. 便携/只读安装场景优先沿用 DATA_ROOT/config.json。
         # 2. 普通桌面场景优先沿用 resource/config.json。
-        # 3. app_dir/config.json 仅作为更早历史残留的兜底来源。
-        if os.path.normcase(os.path.normpath(data_dir)) != os.path.normcase(
-            os.path.normpath(app_dir)
+        # 3. APP_ROOT/config.json 仅作为更早历史残留的兜底来源。
+        if os.path.normcase(os.path.normpath(data_root)) != os.path.normcase(
+            os.path.normpath(app_root)
         ):
             candidate_paths: list[str] = [
-                os.path.join(data_dir, cls.CONFIG_FILE_NAME),
+                os.path.join(data_root, cls.CONFIG_FILE_NAME),
                 os.path.join(BasePath.get_resource_dir(), cls.CONFIG_FILE_NAME),
-                os.path.join(app_dir, cls.CONFIG_FILE_NAME),
+                os.path.join(app_root, cls.CONFIG_FILE_NAME),
             ]
         else:
             candidate_paths = [
                 os.path.join(BasePath.get_resource_dir(), cls.CONFIG_FILE_NAME),
-                os.path.join(data_dir, cls.CONFIG_FILE_NAME),
-                os.path.join(app_dir, cls.CONFIG_FILE_NAME),
+                os.path.join(data_root, cls.CONFIG_FILE_NAME),
+                os.path.join(app_root, cls.CONFIG_FILE_NAME),
             ]
 
         unique_paths: list[str] = []
@@ -148,7 +148,7 @@ class Config:
 
     @classmethod
     def migrate_default_config_if_needed(cls, target_path: str) -> None:
-        """把旧默认位置的配置复制到 userdata，后续优先读取新位置。"""
+        """把旧默认位置的配置复制到 DATA_ROOT/userdata，后续优先读取新位置。"""
 
         if os.path.isfile(target_path):
             return

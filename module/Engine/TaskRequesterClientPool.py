@@ -9,7 +9,6 @@ from google import genai
 from google.genai import types
 
 from base.Base import Base
-from base.VersionManager import VersionManager
 
 
 class TaskRequesterClientPool:
@@ -75,8 +74,7 @@ class TaskRequesterClientPool:
     def get_default_headers() -> dict:
         return {
             "User-Agent": (
-                f"{Base.USER_AGENT_NAME}/{VersionManager.get().get_version()} "
-                f"({Base.REPO_URL})"
+                f"{Base.USER_AGENT_NAME}/v{Base.APP_VERSION} ({Base.REPO_URL})"
             )
         }
 

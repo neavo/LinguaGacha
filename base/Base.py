@@ -6,6 +6,7 @@ from base.EventManager import EventManager
 
 class Base:
     APP_NAME: str = "LinguaGacha"
+    APP_VERSION: str = "0.0.0"
     REPO_URL: str = "https://github.com/neavo/LinguaGacha"
     USER_AGENT_NAME: str = "LinguaGacha"
 
@@ -37,9 +38,6 @@ class Base:
             "ANALYSIS_REQUEST_STOP"  # 分析 - 停止当前任务请求链路（REQUEST/RUN）
         )
         ANALYSIS_PROGRESS = "ANALYSIS_PROGRESS"  # 分析 - 进度快照更新
-        APP_UPDATE_CHECK = "APP_UPDATE_CHECK"  # 更新 - 检查生命周期事件
-        APP_UPDATE_DOWNLOAD = "APP_UPDATE_DOWNLOAD"  # 更新 - 下载生命周期事件
-        APP_UPDATE_APPLY = "APP_UPDATE_APPLY"  # 更新 - 应用流程
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
         PROJECT_RUNTIME_PATCH = "PROJECT_RUNTIME_PATCH"  # 工程 - V2 运行态直接补丁

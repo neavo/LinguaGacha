@@ -7,6 +7,11 @@ import { AppNavigationProvider } from "@/app/navigation/navigation-context";
 import { DesktopRuntimeProvider } from "@/app/runtime/desktop/desktop-runtime-context";
 import { ProjectPagesProvider } from "@/app/runtime/project-pages/project-pages-context";
 import { QualityStatisticsProvider } from "@/app/project/quality/quality-statistics-context";
+import {
+  check_github_release_update,
+  get_core_metadata,
+  open_external_url,
+} from "@/app/desktop-api";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
 import {
   DesktopProgressToastModalLayer,
@@ -20,9 +25,11 @@ import { Toaster } from "@/shadcn/sonner";
 import { TooltipProvider } from "@/shadcn/tooltip";
 import { AppSidebar } from "@/app/shell/app-sidebar";
 import { AppTitlebar } from "@/app/shell/app-titlebar";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const THEME_STORAGE_KEY = "lg-theme-mode";
+const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 
 type ThemeMode = "light" | "dark";
 
@@ -109,7 +116,7 @@ function AppContent(): JSX.Element {
     set_pending_target_route,
     update_app_language,
   } = useDesktopRuntime();
-  const { push_toast } = useDesktopToast();
+  const { push_persistent_toast, push_toast } = useDesktopToast();
   const { t } = useI18n();
   const { resolvedTheme, setTheme } = useTheme();
   const shell_info = window.desktopApp.shell;
@@ -118,12 +125,20 @@ function AppContent(): JSX.Element {
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
   );
+  const [app_version, set_app_version] = useState<string | null>(null);
+  const [update_release_url, set_update_release_url] = useState<string | null>(null);
+  const [close_confirm_open, set_close_confirm_open] = useState<boolean>(false);
+  const [close_confirm_submitting, set_close_confirm_submitting] = useState<boolean>(false);
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
   const previous_project_path_ref = useRef<string>(project_snapshot.path);
   const previous_project_warmup_status_ref = useRef(project_warmup_status);
+  const update_toast_shown_ref = useRef<boolean>(false);
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
-  const document_title = `${t("app.metadata.app_name")} · ${t(active_screen.title_key)}`;
+  const app_title =
+    app_version === null
+      ? t("app.metadata.app_name")
+      : `${t("app.metadata.app_name")} v${app_version}`;
   const theme_mode: ThemeMode =
     resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
 
@@ -136,8 +151,61 @@ function AppContent(): JSX.Element {
   }, [is_sidebar_collapsed]);
 
   useEffect(() => {
-    document.title = document_title;
-  }, [document_title]);
+    let is_disposed = false;
+
+    void get_core_metadata()
+      .then((metadata) => {
+        if (!is_disposed) {
+          set_app_version(metadata.version);
+        }
+      })
+      .catch(() => {
+        if (!is_disposed) {
+          set_app_version(null);
+        }
+      });
+
+    return () => {
+      is_disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (app_version === null) {
+      return;
+    }
+
+    let is_disposed = false;
+
+    void check_github_release_update(app_version).then((release_update) => {
+      if (!is_disposed && release_update !== null) {
+        set_update_release_url(release_update.release_url);
+      }
+    });
+
+    return () => {
+      is_disposed = true;
+    };
+  }, [app_version]);
+
+  useEffect(() => {
+    if (update_release_url === null || update_toast_shown_ref.current) {
+      return;
+    }
+
+    update_toast_shown_ref.current = true;
+    push_persistent_toast("warning", t("app.update.toast"));
+  }, [push_persistent_toast, t, update_release_url]);
+
+  useEffect(() => {
+    document.title = app_title;
+  }, [app_title]);
+
+  useEffect(() => {
+    return window.desktopApp.onWindowCloseRequest(() => {
+      set_close_confirm_open(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (!hydration_ready) {
@@ -305,61 +373,109 @@ function AppContent(): JSX.Element {
     }
   }
 
-  return (
-    <SidebarProvider
-      open={!is_sidebar_collapsed}
-      onOpenChange={(is_open) => {
-        // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致。
-        set_is_sidebar_collapsed(!is_open);
-      }}
-      style={
-        {
-          "--sidebar-width": "256px",
-          "--sidebar-width-icon": "72px",
-        } as CSSProperties
+  function handle_profile_action(): void {
+    const target_url = update_release_url ?? GITHUB_REPOSITORY_URL;
+
+    void open_external_url(target_url).catch((error: unknown) => {
+      if (error instanceof Error) {
+        push_toast("error", error.message);
+      } else {
+        push_toast("error", t("app.feedback.update_failed"));
       }
-    >
-      <main
-        className="app-shell"
+    });
+  }
+
+  async function handle_confirm_window_close(): Promise<void> {
+    set_close_confirm_submitting(true);
+    try {
+      await window.desktopApp.quitApp();
+    } catch (error) {
+      set_close_confirm_submitting(false);
+      if (error instanceof Error) {
+        push_toast("error", error.message);
+      } else {
+        push_toast("error", t("app.feedback.update_failed"));
+      }
+    }
+  }
+
+  return (
+    <>
+      <SidebarProvider
+        open={!is_sidebar_collapsed}
+        onOpenChange={(is_open) => {
+          // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致。
+          set_is_sidebar_collapsed(!is_open);
+        }}
         style={
           {
-            "--titlebar-height": `${shell_info.titleBarHeight}px`,
-            "--titlebar-safe-area-start": `${shell_info.titleBarSafeAreaStart}px`,
-            "--titlebar-safe-area-end": `${shell_info.titleBarSafeAreaEnd}px`,
+            "--sidebar-width": "256px",
+            "--sidebar-width-icon": "72px",
           } as CSSProperties
         }
       >
-        <AppTitlebar />
-        <section className="shell-body">
-          <AppSidebar
-            groups={visible_navigation_groups}
-            bottom_actions={BOTTOM_ACTIONS}
-            selected_route={selected_route}
-            expanded_items={expanded_items}
-            disabled_route_ids={disabled_route_ids}
-            disabled_bottom_action_ids={
-              is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
-            }
-            on_select_route={handle_select_route}
-            on_toggle_group={handle_toggle_group}
-            on_bottom_action={handle_bottom_action}
-          />
-
-          <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
-            <AppNavigationProvider
+        <main
+          className="app-shell"
+          style={
+            {
+              "--titlebar-height": `${shell_info.titleBarHeight}px`,
+              "--titlebar-safe-area-start": `${shell_info.titleBarSafeAreaStart}px`,
+              "--titlebar-safe-area-end": `${shell_info.titleBarSafeAreaEnd}px`,
+            } as CSSProperties
+          }
+        >
+          <AppTitlebar title={app_title} />
+          <section className="shell-body">
+            <AppSidebar
+              groups={visible_navigation_groups}
+              bottom_actions={BOTTOM_ACTIONS}
               selected_route={selected_route}
-              navigate_to_route={handle_select_route}
-            >
-              <ProjectPagesProvider>
-                <QualityStatisticsProvider>
-                  <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                </QualityStatisticsProvider>
-              </ProjectPagesProvider>
-            </AppNavigationProvider>
-          </SidebarInset>
-        </section>
-      </main>
-    </SidebarProvider>
+              expanded_items={expanded_items}
+              disabled_route_ids={disabled_route_ids}
+              disabled_bottom_action_ids={
+                is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
+              }
+              profile_label_key={
+                update_release_url === null ? "app.profile.status" : "app.profile.update_available"
+              }
+              profile_tooltip_key={
+                update_release_url === null
+                  ? "app.profile.status_tooltip"
+                  : "app.profile.update_available_tooltip"
+              }
+              is_profile_update_available={update_release_url !== null}
+              on_select_route={handle_select_route}
+              on_toggle_group={handle_toggle_group}
+              on_bottom_action={handle_bottom_action}
+              on_profile_action={handle_profile_action}
+            />
+
+            <SidebarInset className="workspace-frame" aria-label={t(active_screen.title_key)}>
+              <AppNavigationProvider
+                selected_route={selected_route}
+                navigate_to_route={handle_select_route}
+              >
+                <ProjectPagesProvider>
+                  <QualityStatisticsProvider>
+                    <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                  </QualityStatisticsProvider>
+                </ProjectPagesProvider>
+              </AppNavigationProvider>
+            </SidebarInset>
+          </section>
+        </main>
+      </SidebarProvider>
+
+      <AppAlertDialog
+        open={close_confirm_open}
+        description={t("app.close_confirm.description")}
+        submitting={close_confirm_submitting}
+        onConfirm={handle_confirm_window_close}
+        onClose={() => {
+          set_close_confirm_open(false);
+        }}
+      />
+    </>
   );
 }
 

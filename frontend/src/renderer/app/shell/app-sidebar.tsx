@@ -21,9 +21,11 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/shadcn/sidebar";
-import { useI18n } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import "@/app/shell/app-sidebar.css";
+
+const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).toString();
 
 type AppSidebarProps = {
   groups: NavigationGroup[];
@@ -32,9 +34,13 @@ type AppSidebarProps = {
   expanded_items: ReadonlySet<RouteId>;
   disabled_route_ids: ReadonlySet<RouteId>;
   disabled_bottom_action_ids: ReadonlySet<BottomActionId>;
+  profile_label_key: LocaleKey;
+  profile_tooltip_key: LocaleKey;
+  is_profile_update_available: boolean;
   on_select_route: (route_id: RouteId) => void;
   on_toggle_group: (route_id: RouteId) => void;
   on_bottom_action: (action_id: BottomActionId) => void;
+  on_profile_action: () => void;
 };
 
 export function AppSidebar(props: AppSidebarProps): JSX.Element {
@@ -200,11 +206,28 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
 
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="sidebar-profile" tooltip={t("app.profile.status")}>
+            <SidebarMenuButton
+              className={cn(
+                "sidebar-profile",
+                props.is_profile_update_available && "sidebar-profile--update",
+              )}
+              tooltip={t(props.profile_tooltip_key)}
+              aria-label={t(props.profile_tooltip_key)}
+              onClick={props.on_profile_action}
+            >
               <span className="sidebar-profile__avatar">
-                <img className="sidebar-profile__avatar-image" src="/icon.png" alt="LinguaGacha" />
+                <img
+                  className="sidebar-profile__avatar-image"
+                  src={SIDEBAR_PROFILE_ICON_URL}
+                  alt="LinguaGacha"
+                />
+                {props.is_profile_update_available ? (
+                  <span className="sidebar-profile__update-dot" aria-hidden="true" />
+                ) : null}
               </span>
-              <span className="sidebar-profile__text font-medium">{t("app.profile.status")}</span>
+              <span className="sidebar-profile__text font-medium">
+                {t(props.profile_label_key)}
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

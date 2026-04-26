@@ -58,11 +58,33 @@ class PlainConsoleHandler(logging.Handler):
 class LogManager:
     """统一管理异步日志和崩溃兜底，避免工作线程被日志 I/O 拖慢。"""
 
+    RICH_CONSOLE_ENV_NAME: str = "LINGUAGACHA_CORE_RICH_CONSOLE"
+    CORE_CONSOLE_WIDTH_ENV_NAME: str = "LINGUAGACHA_CORE_CONSOLE_WIDTH"
+    DEFAULT_RICH_CONSOLE_WIDTH: int = 160
+
     def __init__(self) -> None:
         super().__init__()
 
         # 控制台对象只保留一个，避免普通输出和兜底输出风格飘来飘去。
-        self.console = Console()
+        force_rich_console = (
+            os.environ.get(self.RICH_CONSOLE_ENV_NAME, "").strip() == "1"
+        )
+        console_width = self.resolve_console_width(
+            os.environ.get(self.CORE_CONSOLE_WIDTH_ENV_NAME)
+            or os.environ.get("COLUMNS"),
+            force_rich_console=force_rich_console,
+        )
+        console_environ = self.build_console_environ(
+            console_width,
+            force_rich_console=force_rich_console,
+        )
+        self.console = Console(
+            force_terminal=force_rich_console,
+            color_system="truecolor" if force_rich_console else "auto",
+            legacy_windows=False if force_rich_console else None,
+            width=console_width,
+            _environ=console_environ,
+        )
         self.async_enabled: bool = False
         self.shutdown_complete: bool = False
 
@@ -155,6 +177,46 @@ class LogManager:
             cls.__instance__ = cls()
 
         return cls.__instance__
+
+    @classmethod
+    def resolve_console_width(
+        cls,
+        width_text: str | None,
+        *,
+        force_rich_console: bool,
+    ) -> int | None:
+        """Electron pipe 托管时 Rich 需要显式宽度，否则会回退到窄默认值。"""
+        if width_text is not None:
+            try:
+                width = int(width_text.strip())
+                if width > 0:
+                    return width
+            except ValueError:
+                pass
+
+        if force_rich_console:
+            return cls.DEFAULT_RICH_CONSOLE_WIDTH
+
+        return None
+
+    @classmethod
+    def build_console_environ(
+        cls,
+        console_width: int | None,
+        *,
+        force_rich_console: bool,
+    ) -> dict[str, str]:
+        """给 Rich 一个稳定的终端环境，避免 Windows pipe 被识别成 dumb terminal。"""
+        console_environ = dict(os.environ)
+
+        if console_width is not None:
+            console_environ["COLUMNS"] = str(console_width)
+
+        term = console_environ.get("TERM", "").strip().lower()
+        if force_rich_console and term in {"", "dumb"}:
+            console_environ["TERM"] = "xterm-256color"
+
+        return console_environ
 
     def get_console(self) -> Console:
         """所有 rich 终端输出都必须走同一个 Console，避免渲染风格漂移。"""

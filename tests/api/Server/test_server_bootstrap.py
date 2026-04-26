@@ -4,9 +4,11 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.SettingsAppService import SettingsAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.ServerBootstrap import ServerBootstrap
+from base.Base import Base
 from tests.api.support.application_fakes import FakeSettingsConfig
 
 
@@ -19,8 +21,11 @@ def reserve_tcp_socket() -> socket.socket:
     return reserved_socket
 
 
-def test_start_for_test_exposes_health_endpoint() -> None:
+def test_start_for_test_exposes_health_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
+    monkeypatch.setattr(Base, "APP_VERSION", "9.9.9")
     base_url, shutdown = ServerBootstrap.start_for_test()
 
     try:
@@ -33,6 +38,7 @@ def test_start_for_test_exposes_health_endpoint() -> None:
         assert response.json()["data"] == {
             "status": "ok",
             "service": "linguagacha-core",
+            "version": "9.9.9",
         }
     finally:
         shutdown()
@@ -65,6 +71,36 @@ def test_start_for_test_registers_provided_settings_service() -> None:
         shutdown()
 
 
+def test_start_for_test_registers_lifecycle_shutdown_route() -> None:
+    # Arrange
+    shutdown_calls: list[str] = []
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        core_lifecycle_app_service=CoreLifecycleAppService(
+            instance_token="core-token",
+            request_shutdown=lambda: shutdown_calls.append("shutdown"),
+        )
+    )
+
+    try:
+        # Act
+        rejected_response = httpx.post(f"{base_url}/api/lifecycle/shutdown")
+        accepted_response = httpx.post(
+            f"{base_url}/api/lifecycle/shutdown",
+            headers={
+                CoreLifecycleAppService.SHUTDOWN_TOKEN_HEADER: "core-token",
+            },
+        )
+
+        # Assert
+        assert rejected_response.status_code == 400
+        assert rejected_response.json()["ok"] is False
+        assert accepted_response.status_code == 200
+        assert accepted_response.json()["data"] == {"accepted": True}
+        assert shutdown_calls == ["shutdown"]
+    finally:
+        shutdown()
+
+
 def test_register_api_routes_delegates_active_route_groups() -> None:
     # Arrange
     core_api_server = CoreApiServer()
@@ -84,6 +120,9 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         task_app_service=object(),
         model_app_service=object(),
         quality_rule_app_service=object(),
+        core_lifecycle_app_service=SimpleNamespace(
+            shutdown=lambda request, handler: {"accepted": True},
+        ),
     )
 
     # Assert
@@ -98,6 +137,7 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             ("POST", "/api/tasks/start-translation"),
             ("POST", "/api/models/snapshot"),
             ("POST", "/api/quality/rules/save-entries"),
+            ("POST", "/api/lifecycle/shutdown"),
         )
     }
 
@@ -110,6 +150,7 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         "/api/tasks/start-translation": "json",
         "/api/models/snapshot": "json",
         "/api/quality/rules/save-entries": "json",
+        "/api/lifecycle/shutdown": "context_json",
     }
 
 

@@ -393,8 +393,8 @@ class TestPromptBuilder:
         (en_dir / "thinking.txt").write_text("THINKING_SUFFIX_EN", encoding="utf-8-sig")
 
         monkeypatch.chdir(str(root))
-        BasePath.APP_DIR = str(root)
-        BasePath.DATA_DIR = str(root)
+        BasePath.APP_ROOT = str(root)
+        BasePath.DATA_ROOT = str(root)
 
         assert PromptBuilder.get_base(BaseLanguage.Enum.ZH) == "BASE"
         assert PromptBuilder.get_prefix(BaseLanguage.Enum.ZH) == "PREFIX"
@@ -448,8 +448,8 @@ class TestPromptBuilder:
         )
 
         monkeypatch.chdir(str(root))
-        BasePath.APP_DIR = str(root)
-        BasePath.DATA_DIR = str(root)
+        BasePath.APP_ROOT = str(root)
+        BasePath.DATA_ROOT = str(root)
 
         builder = PromptBuilder(
             config=Config(target_language=BaseLanguage.Enum.ZH),
@@ -596,8 +596,8 @@ class TestPromptBuilder:
         )
 
         monkeypatch.chdir(str(root))
-        BasePath.APP_DIR = str(root)
-        BasePath.DATA_DIR = str(root)
+        BasePath.APP_ROOT = str(root)
+        BasePath.DATA_ROOT = str(root)
 
         assert PromptBuilder.get_analysis_base(BaseLanguage.Enum.ZH) == "ANALYSIS_BASE"
         assert (
