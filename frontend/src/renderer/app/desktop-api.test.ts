@@ -41,6 +41,7 @@ describe("desktop-api", () => {
           data: {
             status: "ok",
             service: "linguagacha-core",
+            version: "9.9.9",
           },
         }),
       } as Response;
@@ -50,9 +51,11 @@ describe("desktop-api", () => {
     vi.stubGlobal("fetch", fetch_mock);
     vi.stubGlobal("EventSource", EventSourceStub);
 
-    const { open_event_stream } = await import("./desktop-api");
+    const { get_core_metadata, open_event_stream } = await import("./desktop-api");
     const event_source = await open_event_stream();
+    const core_metadata = await get_core_metadata();
 
+    expect(fetch_mock).toHaveBeenCalledTimes(1);
     expect(fetch_mock).toHaveBeenCalledWith(
       "http://127.0.0.1:38191/api/health",
       expect.objectContaining({
@@ -63,5 +66,6 @@ describe("desktop-api", () => {
     expect((event_source as unknown as EventSourceStub).url).toBe(
       "http://127.0.0.1:38191/api/events/stream",
     );
+    expect(core_metadata).toEqual({ version: "9.9.9" });
   });
 });

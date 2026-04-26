@@ -74,7 +74,7 @@ class TaskRequesterClientPool:
     def get_default_headers() -> dict:
         return {
             "User-Agent": (
-                f"{Base.USER_AGENT_NAME}/{Base.APP_VERSION} ({Base.REPO_URL})"
+                f"{Base.USER_AGENT_NAME}/v{Base.APP_VERSION} ({Base.REPO_URL})"
             )
         }
 

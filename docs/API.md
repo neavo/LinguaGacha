@@ -39,7 +39,7 @@
 - `/api/lifecycle/shutdown` 是内部生命周期接口，只供 Electron main 调用；它要求 `X-LinguaGacha-Core-Token` 与当前 Core 实例 token 一致。
 - `OPTIONS` 由服务器统一回 `204`，CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
 
-`/api/health` 成功响应固定包含 `status` 与 `service`；当 Core 由 Electron main 启动并带有实例 token 时，响应 `data` 额外包含 `instanceToken`，用于避免误连旧进程。
+`/api/health` 成功响应固定包含 `status`、`service` 与纯数值 `version`；当 Core 由 Electron main 启动并带有实例 token 时，响应 `data` 额外包含 `instanceToken`，用于避免误连旧进程。
 
 ## HTTP 响应壳
 

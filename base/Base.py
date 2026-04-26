@@ -6,7 +6,7 @@ from base.EventManager import EventManager
 
 class Base:
     APP_NAME: str = "LinguaGacha"
-    APP_VERSION: str = "v0.0.0"
+    APP_VERSION: str = "0.0.0"
     REPO_URL: str = "https://github.com/neavo/LinguaGacha"
     USER_AGENT_NAME: str = "LinguaGacha"
 

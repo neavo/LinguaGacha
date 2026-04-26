@@ -7,6 +7,7 @@ from typing import Any
 
 from api.Contract.ApiError import ApiError
 from api.Contract.ApiResponse import ApiResponse
+from base.Base import Base
 from module.Utils.JSONTool import JSONTool
 
 
@@ -187,6 +188,7 @@ class CoreApiServer:
         data = {
             "status": "ok",
             "service": self.HEALTH_SERVICE_NAME,
+            "version": Base.APP_VERSION,
         }
         if self.instance_token != "":
             data["instanceToken"] = self.instance_token

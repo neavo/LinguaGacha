@@ -6,6 +6,7 @@ import pytest
 
 from api.Contract.ApiResponse import ApiResponse
 from api.Server.CoreApiServer import CoreApiServer
+from base.Base import Base
 from module.Utils.JSONTool import JSONTool
 
 
@@ -158,7 +159,10 @@ def test_core_api_server_read_json_request_uses_json_tool() -> None:
     assert server.read_json_request(handler) == {"text": "勇者"}
 
 
-def test_core_api_server_health_includes_instance_token_when_configured() -> None:
+def test_core_api_server_health_includes_runtime_metadata_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Base, "APP_VERSION", "9.9.9")
     server = CoreApiServer(instance_token="core-token")
 
     response = server.handle_health()
@@ -166,6 +170,7 @@ def test_core_api_server_health_includes_instance_token_when_configured() -> Non
     assert response.to_dict()["data"] == {
         "status": "ok",
         "service": "linguagacha-core",
+        "version": "9.9.9",
         "instanceToken": "core-token",
     }
 

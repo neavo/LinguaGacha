@@ -10,6 +10,11 @@ type ApiEnvelope<data_type> = {
 type HealthPayload = {
   status?: string;
   service?: string;
+  version?: string;
+};
+
+export type CoreMetadata = {
+  version: string;
 };
 
 type EventSourceJsonEvent = {
@@ -22,6 +27,7 @@ const CORE_API_SERVICE_NAME = "linguagacha-core";
 const CORE_API_PROBE_TIMEOUT_MS = 300;
 
 let cached_core_api_base_url: string | null = null;
+let cached_core_metadata: CoreMetadata | null = null;
 let pending_core_api_base_url_resolution: Promise<string> | null = null;
 
 export class DesktopApiError extends Error {
@@ -63,7 +69,16 @@ function parse_event_source_payload(event: MessageEvent<string>): Record<string,
   }
 }
 
-async function probe_core_api_candidate(base_url: string): Promise<boolean> {
+function normalize_core_metadata(payload: HealthPayload): CoreMetadata | null {
+  const version = payload.version?.trim();
+  if (version === undefined || version === "") {
+    return null;
+  }
+
+  return { version };
+}
+
+async function probe_core_api_candidate(base_url: string): Promise<CoreMetadata | null> {
   const abort_controller = new AbortController();
   const timeout_id = window.setTimeout(() => {
     abort_controller.abort();
@@ -75,25 +90,25 @@ async function probe_core_api_candidate(base_url: string): Promise<boolean> {
       signal: abort_controller.signal,
     });
     if (!response.ok) {
-      return false;
+      return null;
     }
 
     const payload = (await response.json()) as ApiEnvelope<HealthPayload>;
     if (payload.ok !== true || payload.data === undefined) {
-      return false;
+      return null;
     }
 
     if (payload.data.status !== "ok") {
-      return false;
+      return null;
     }
 
     if (payload.data.service !== CORE_API_SERVICE_NAME) {
-      return false;
+      return null;
     }
 
-    return true;
+    return normalize_core_metadata(payload.data);
   } catch {
-    return false;
+    return null;
   } finally {
     window.clearTimeout(timeout_id);
   }
@@ -110,9 +125,10 @@ async function resolve_core_api_base_url(): Promise<string> {
 
   pending_core_api_base_url_resolution = (async () => {
     const base_url = read_core_api_base_url();
-    const is_available = await probe_core_api_candidate(base_url);
-    if (is_available) {
+    const core_metadata = await probe_core_api_candidate(base_url);
+    if (core_metadata !== null) {
       cached_core_api_base_url = base_url;
+      cached_core_metadata = core_metadata;
       return base_url;
     }
 
@@ -124,6 +140,15 @@ async function resolve_core_api_base_url(): Promise<string> {
   } finally {
     pending_core_api_base_url_resolution = null;
   }
+}
+
+export async function get_core_metadata(): Promise<CoreMetadata> {
+  await resolve_core_api_base_url();
+  if (cached_core_metadata === null) {
+    throw new DesktopApiError("Core 元信息不可用。", "core_metadata_unavailable", 503);
+  }
+
+  return cached_core_metadata;
 }
 
 export async function api_fetch<data_type>(

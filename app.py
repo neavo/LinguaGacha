@@ -127,7 +127,7 @@ def bootstrap_runtime() -> LogManager:
         version = reader.read().strip()
 
     Base.APP_VERSION = version
-    logger.info(f"{Base.APP_NAME} {version}")
+    logger.info(f"{Base.APP_NAME} v{version}")
     logger.print("")
 
     Engine.get().run()

@@ -128,7 +128,7 @@ def test_get_default_headers_includes_app_name(monkeypatch: pytest.MonkeyPatch) 
     headers = TaskRequesterClientPool.get_default_headers()
 
     assert "User-Agent" in headers
-    assert "LinguaGacha/9.9.9" in headers["User-Agent"]
+    assert "LinguaGacha/v9.9.9" in headers["User-Agent"]
 
 
 def test_get_client_returns_cached_instance() -> None:

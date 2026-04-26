@@ -252,7 +252,7 @@ def test_bootstrap_runtime_loads_version_and_initializes_runtime(
     changed_dirs: list[str] = []
 
     fs.create_dir(str(app_root))
-    version_path.write_text("v9.9.9\n", encoding="utf-8")
+    version_path.write_text("9.9.9\n", encoding="utf-8")
 
     class StubConfig:
         def load(self) -> SimpleNamespace:
@@ -299,7 +299,7 @@ def test_bootstrap_runtime_loads_version_and_initializes_runtime(
     )
     monkeypatch.setattr(app_module.LogManager, "get", lambda: logger)
     monkeypatch.setattr(app_module.Engine, "get", lambda: engine)
-    monkeypatch.setattr(app_module.Base, "APP_VERSION", "v0.0.0")
+    monkeypatch.setattr(app_module.Base, "APP_VERSION", "0.0.0")
 
     result = app_module.bootstrap_runtime()
 
@@ -310,7 +310,7 @@ def test_bootstrap_runtime_loads_version_and_initializes_runtime(
     assert app_module.BasePath.get_app_root() == str(app_root)
     assert str(app_root) in app_module.sys.path
     assert engine.run_calls == 1
-    assert app_module.Base.APP_VERSION == "v9.9.9"
+    assert app_module.Base.APP_VERSION == "9.9.9"
     assert logger.info_messages == [f"{app_module.Base.APP_NAME} v9.9.9"]
     assert logger.print_messages == [""]
     assert app_module.sys.excepthook is app_module.excepthook

@@ -7,6 +7,7 @@ import { AppNavigationProvider } from "@/app/navigation/navigation-context";
 import { DesktopRuntimeProvider } from "@/app/runtime/desktop/desktop-runtime-context";
 import { ProjectPagesProvider } from "@/app/runtime/project-pages/project-pages-context";
 import { QualityStatisticsProvider } from "@/app/project/quality/quality-statistics-context";
+import { get_core_metadata } from "@/app/desktop-api";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
 import {
   DesktopProgressToastModalLayer,
@@ -119,6 +120,7 @@ function AppContent(): JSX.Element {
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
   );
+  const [app_version, set_app_version] = useState<string | null>(null);
   const [close_confirm_open, set_close_confirm_open] = useState<boolean>(false);
   const [close_confirm_submitting, set_close_confirm_submitting] = useState<boolean>(false);
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
@@ -126,7 +128,10 @@ function AppContent(): JSX.Element {
   const previous_project_warmup_status_ref = useRef(project_warmup_status);
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
-  const document_title = `${t("app.metadata.app_name")} · ${t(active_screen.title_key)}`;
+  const app_title =
+    app_version === null
+      ? t("app.metadata.app_name")
+      : `${t("app.metadata.app_name")} v${app_version}`;
   const theme_mode: ThemeMode =
     resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
 
@@ -139,8 +144,28 @@ function AppContent(): JSX.Element {
   }, [is_sidebar_collapsed]);
 
   useEffect(() => {
-    document.title = document_title;
-  }, [document_title]);
+    let is_disposed = false;
+
+    void get_core_metadata()
+      .then((metadata) => {
+        if (!is_disposed) {
+          set_app_version(metadata.version);
+        }
+      })
+      .catch(() => {
+        if (!is_disposed) {
+          set_app_version(null);
+        }
+      });
+
+    return () => {
+      is_disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    document.title = app_title;
+  }, [app_title]);
 
   useEffect(() => {
     return window.desktopApp.onWindowCloseRequest(() => {
@@ -353,7 +378,7 @@ function AppContent(): JSX.Element {
             } as CSSProperties
           }
         >
-          <AppTitlebar />
+          <AppTitlebar title={app_title} />
           <section className="shell-body">
             <AppSidebar
               groups={visible_navigation_groups}

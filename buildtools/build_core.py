@@ -44,7 +44,7 @@ def build_command() -> list[str]:
     else:
         cmd = [
             "./app.py",
-            "--name=core.exe",
+            "--name=core",
             "--clean",
             "--onedir",
             "--noconfirm",

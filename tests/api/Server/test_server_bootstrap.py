@@ -8,6 +8,7 @@ from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.SettingsAppService import SettingsAppService
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.ServerBootstrap import ServerBootstrap
+from base.Base import Base
 from tests.api.support.application_fakes import FakeSettingsConfig
 
 
@@ -20,8 +21,11 @@ def reserve_tcp_socket() -> socket.socket:
     return reserved_socket
 
 
-def test_start_for_test_exposes_health_endpoint() -> None:
+def test_start_for_test_exposes_health_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
+    monkeypatch.setattr(Base, "APP_VERSION", "9.9.9")
     base_url, shutdown = ServerBootstrap.start_for_test()
 
     try:
@@ -34,6 +38,7 @@ def test_start_for_test_exposes_health_endpoint() -> None:
         assert response.json()["data"] == {
             "status": "ok",
             "service": "linguagacha-core",
+            "version": "9.9.9",
         }
     finally:
         shutdown()
