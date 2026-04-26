@@ -110,7 +110,7 @@ describe("resolve_core_launch_command", () => {
     });
   });
 
-  it("npm --prefix 启动时优先使用 INIT_CWD 作为应用根", () => {
+  it("npm --prefix 启动时使用 INIT_CWD 修正开发态应用根", () => {
     const npm_script_cwd = path.resolve("repo", "frontend");
     const initial_cwd = path.resolve("repo");
     const uv_bin = path.resolve("tools", "uv.exe");

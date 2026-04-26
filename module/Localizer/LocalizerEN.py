@@ -21,11 +21,6 @@ class LocalizerEN(LocalizerZH):
 
     # 主页面
     app_exit_countdown: str = "Exiting … {SECONDS} …"
-    app_new_version_found: str = "New version found, version: {VERSION}. Please click the button on the bottom left to download and update …"
-    app_new_version_failure: str = "New version download failed …"
-    app_new_version_success: str = "New version download successful …"
-    app_new_version_apply_failed: str = "Update failed and rolled back …"
-    app_new_version_waiting_restart: str = "Update completed, application will close soon …"
     app_glossary_page: str = "Glossary"
     app_text_preserve_page: str = "Text Preserve"
     app_pre_translation_replacement_page: str = "Pre-Translation"

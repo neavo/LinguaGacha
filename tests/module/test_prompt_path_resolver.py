@@ -186,19 +186,19 @@ def test_user_preset_guards_builtin_mutation_and_empty_name(
         )
 
 
-def test_user_preset_round_trip_uses_data_dir_when_runtime_env_is_split(
+def test_user_preset_round_trip_uses_data_root_when_runtime_env_is_split(
     resolver_root: Path,
 ) -> None:
-    data_dir = resolver_root / "portable_data"
-    BasePath.APP_DIR = str(resolver_root)
-    BasePath.DATA_DIR = str(data_dir)
+    data_root = resolver_root / "portable_data"
+    BasePath.APP_ROOT = str(resolver_root)
+    BasePath.DATA_ROOT = str(data_root)
 
     saved_path = PromptPathResolver.save_user_preset(
         PromptPathResolver.TaskType.TRANSLATION,
         "portable",
         "hello",
     )
-    expected_path = data_dir / "userdata" / "translation_prompt" / "portable.txt"
+    expected_path = data_root / "userdata" / "translation_prompt" / "portable.txt"
 
     assert saved_path.replace("\\", "/") == str(expected_path).replace("\\", "/")
     assert (

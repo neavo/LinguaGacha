@@ -52,14 +52,6 @@ class RecordingEngine:
         self.run_calls += 1
 
 
-class RecordingVersionManager:
-    def __init__(self) -> None:
-        self.versions: list[str] = []
-
-    def set_version(self, version: str) -> None:
-        self.versions.append(version)
-
-
 class FakeLifecycleRequestHandler:
     def __init__(self, *, token: str) -> None:
         self.headers = {
@@ -251,17 +243,15 @@ def test_bootstrap_runtime_loads_version_and_initializes_runtime(
     fs,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app_dir = Path(app_module.os.path.abspath(app_module.os.sep)) / "linguagacha-app"
-    version_path = app_dir / app_module.APP_VERSION_FILE_NAME
+    app_root = Path(app_module.os.path.abspath(app_module.os.sep)) / "linguagacha-app"
+    version_path = app_root / app_module.APP_VERSION_FILE_NAME
     logger = RecordingLogger()
     engine = RecordingEngine()
-    version_manager = RecordingVersionManager()
-    cleanup_calls: list[str] = []
     migration_calls: list[str] = []
     language_calls: list[str] = []
     changed_dirs: list[str] = []
 
-    fs.create_dir(str(app_dir))
+    fs.create_dir(str(app_root))
     version_path.write_text("v9.9.9\n", encoding="utf-8")
 
     class StubConfig:
@@ -283,8 +273,8 @@ def test_bootstrap_runtime_loads_version_and_initializes_runtime(
     monkeypatch.setattr(app_module.threading, "excepthook", lambda args: None)
     monkeypatch.setattr(
         app_module.BasePath,
-        "resolve_app_dir",
-        lambda: str(app_dir),
+        "resolve_app_root",
+        lambda: str(app_root),
     )
     monkeypatch.setattr(
         app_module.os,
@@ -295,11 +285,6 @@ def test_bootstrap_runtime_loads_version_and_initializes_runtime(
         app_module,
         "disable_windows_quick_edit_mode",
         lambda: None,
-    )
-    monkeypatch.setattr(
-        app_module.VersionManager,
-        "cleanup_update_temp_on_startup",
-        lambda: cleanup_calls.append("cleanup"),
     )
     monkeypatch.setattr(
         app_module.UserDataMigrationService,
@@ -314,23 +299,18 @@ def test_bootstrap_runtime_loads_version_and_initializes_runtime(
     )
     monkeypatch.setattr(app_module.LogManager, "get", lambda: logger)
     monkeypatch.setattr(app_module.Engine, "get", lambda: engine)
-    monkeypatch.setattr(
-        app_module.VersionManager,
-        "get",
-        lambda: version_manager,
-    )
+    monkeypatch.setattr(app_module.Base, "APP_VERSION", "v0.0.0")
 
     result = app_module.bootstrap_runtime()
 
     assert result is logger
-    assert cleanup_calls == ["cleanup"]
     assert migration_calls == ["migrated"]
     assert language_calls == ["en"]
-    assert changed_dirs == [str(app_dir)]
-    assert app_module.BasePath.get_app_dir() == str(app_dir)
-    assert str(app_dir) in app_module.sys.path
+    assert changed_dirs == [str(app_root)]
+    assert app_module.BasePath.get_app_root() == str(app_root)
+    assert str(app_root) in app_module.sys.path
     assert engine.run_calls == 1
-    assert version_manager.versions == ["v9.9.9"]
+    assert app_module.Base.APP_VERSION == "v9.9.9"
     assert logger.info_messages == [f"{app_module.Base.APP_NAME} v9.9.9"]
     assert logger.print_messages == [""]
     assert app_module.sys.excepthook is app_module.excepthook

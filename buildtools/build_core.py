@@ -23,32 +23,32 @@ def build_command() -> list[str]:
 
     if is_macos:
         cmd = [
-            f"./app.py",
-            f"--name=LinguaGacha",
-            f"--osx-bundle-identifier=me.neavo.linguagacha",
-            f"--clean",
-            f"--onedir",
-            f"--windowed",
-            f"--noconfirm",
-            f"--distpath=./dist",
+            "./app.py",
+            "--name=LinguaGacha",
+            "--osx-bundle-identifier=me.neavo.linguagacha",
+            "--clean",
+            "--onedir",
+            "--windowed",
+            "--noconfirm",
+            "--distpath=./dist",
         ] + common_args
     elif is_linux:
         cmd = [
-            f"./app.py",
-            f"--name=LinguaGacha",
-            f"--clean",
-            f"--onedir",
-            f"--noconfirm",
-            f"--distpath=./dist",
+            "./app.py",
+            "--name=LinguaGacha",
+            "--clean",
+            "--onedir",
+            "--noconfirm",
+            "--distpath=./dist",
         ] + common_args
     else:
         cmd = [
-            f"./app.py",
-            f"--name=core.exe",
-            f"--clean",
-            f"--onedir",
-            f"--noconfirm",
-            f"--distpath=./dist",
+            "./app.py",
+            "--name=core.exe",
+            "--clean",
+            "--onedir",
+            "--noconfirm",
+            "--distpath=./dist",
         ] + common_args
 
     return cmd

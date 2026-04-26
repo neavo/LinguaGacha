@@ -34,14 +34,6 @@ class UserDataMigrationService:
     QUALITY_RULE_PRESET_DIR_NAMES: tuple[str, ...] = tuple(
         QUALITY_RULE_PRESET_CONFIG_KEYS.values()
     )
-    UPDATE_RUNTIME_FILE_NAMES: tuple[str, ...] = (
-        "app.zip.temp",
-        "update.log",
-        ".lock",
-        "result.json",
-        "update.runtime.ps1",
-    )
-    UPDATE_RUNTIME_DIR_NAMES: tuple[str, ...] = ("stage", "backup")
 
     @classmethod
     def run_startup_migrations(cls) -> None:
@@ -51,12 +43,11 @@ class UserDataMigrationService:
         cls.migrate_prompt_user_presets()
         cls.migrate_quality_rule_user_presets()
         cls.migrate_quality_rule_builtin_layout()
-        cls.migrate_update_runtime_artifacts_if_needed()
         cls.normalize_default_preset_config_values()
 
     @classmethod
     def migrate_default_config_if_needed(cls) -> None:
-        """把旧默认配置复制到 userdata，后续统一只读新位置。"""
+        """把旧默认配置复制到 DATA_ROOT/userdata，后续统一读取新位置。"""
 
         from module.Config import Config
 
@@ -113,26 +104,6 @@ class UserDataMigrationService:
                     destination_dir=destination_dir,
                     extension=QualityRulePathResolver.PRESET_EXTENSION,
                 )
-
-    @classmethod
-    def migrate_update_runtime_artifacts_if_needed(cls) -> None:
-        """把旧版 resource/update 下的运行时产物迁到 userdata/update。"""
-
-        legacy_dir = BasePath.get_update_legacy_runtime_dir()
-        runtime_dir = BasePath.get_update_runtime_dir()
-        os.makedirs(runtime_dir, exist_ok=True)
-
-        for file_name in cls.UPDATE_RUNTIME_FILE_NAMES:
-            cls.move_path_if_needed(
-                source_path=os.path.join(legacy_dir, file_name),
-                destination_path=os.path.join(runtime_dir, file_name),
-            )
-
-        for dir_name in cls.UPDATE_RUNTIME_DIR_NAMES:
-            cls.move_path_if_needed(
-                source_path=os.path.join(legacy_dir, dir_name),
-                destination_path=os.path.join(runtime_dir, dir_name),
-            )
 
     @classmethod
     def iter_quality_rule_builtin_source_dirs(
@@ -355,9 +326,9 @@ class UserDataMigrationService:
         raw_dir_normalized = os.path.normcase(os.path.normpath(raw_dir))
         candidate_dirs = {os.path.normcase(os.path.normpath(expected_dir))}
 
-        for base_dir in (BasePath.get_app_dir(), BasePath.get_data_dir()):
+        for base_root in (BasePath.get_app_root(), BasePath.get_data_root()):
             try:
-                relative_dir = os.path.relpath(expected_dir, base_dir)
+                relative_dir = os.path.relpath(expected_dir, base_root)
             except ValueError:
                 continue
             candidate_dirs.add(os.path.normcase(os.path.normpath(relative_dir)))

@@ -4,16 +4,10 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from base.Base import Base
 from module.Engine.TaskRequesterClientPool import TaskRequesterClientPool
-
-
-@dataclass
-class FakeVersionManager:
-    version: str
-
-    def get_version(self) -> str:
-        return self.version
 
 
 @dataclass
@@ -128,12 +122,11 @@ def test_parse_google_api_url_variants() -> None:
     )
 
 
-def test_get_default_headers_includes_app_name() -> None:
-    with patch(
-        "module.Engine.TaskRequesterClientPool.VersionManager.get",
-        return_value=FakeVersionManager("9.9.9"),
-    ):
-        headers = TaskRequesterClientPool.get_default_headers()
+def test_get_default_headers_includes_app_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Base, "APP_VERSION", "9.9.9")
+
+    headers = TaskRequesterClientPool.get_default_headers()
+
     assert "User-Agent" in headers
     assert "LinguaGacha/9.9.9" in headers["User-Agent"]
 
@@ -236,33 +229,33 @@ def test_get_client_builds_anthropic_client() -> None:
     assert isinstance(client, FakeAnthropic)
 
 
-def test_get_client_builds_google_client_with_and_without_base_url() -> None:
+def test_get_client_builds_google_client_with_and_without_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Base, "APP_VERSION", "1.0.0")
+
     with patch(
-        "module.Engine.TaskRequesterClientPool.VersionManager.get",
-        return_value=FakeVersionManager("1.0.0"),
+        "module.Engine.TaskRequesterClientPool.types.HttpOptions",
+        side_effect=lambda **kw: FakeHttpOptions(**kw),
     ):
         with patch(
-            "module.Engine.TaskRequesterClientPool.types.HttpOptions",
-            side_effect=lambda **kw: FakeHttpOptions(**kw),
+            "module.Engine.TaskRequesterClientPool.genai.Client",
+            side_effect=lambda **kw: FakeGenAIClient(**kw),
         ):
-            with patch(
-                "module.Engine.TaskRequesterClientPool.genai.Client",
-                side_effect=lambda **kw: FakeGenAIClient(**kw),
-            ):
-                client_with = TaskRequesterClientPool.get_client(
-                    url="https://g/v1beta",
-                    key="k",
-                    api_format=Base.APIFormat.GOOGLE,
-                    timeout=2,
-                    extra_headers_tuple=(("X", "1"),),
-                )
-                client_without = TaskRequesterClientPool.get_client(
-                    url="",
-                    key="k",
-                    api_format=Base.APIFormat.GOOGLE,
-                    timeout=2,
-                    extra_headers_tuple=(),
-                )
+            client_with = TaskRequesterClientPool.get_client(
+                url="https://g/v1beta",
+                key="k",
+                api_format=Base.APIFormat.GOOGLE,
+                timeout=2,
+                extra_headers_tuple=(("X", "1"),),
+            )
+            client_without = TaskRequesterClientPool.get_client(
+                url="",
+                key="k",
+                api_format=Base.APIFormat.GOOGLE,
+                timeout=2,
+                extra_headers_tuple=(),
+            )
 
     assert isinstance(client_with, FakeGenAIClient)
     assert isinstance(client_with.http_options, FakeHttpOptions)

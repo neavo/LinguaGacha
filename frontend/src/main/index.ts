@@ -89,7 +89,7 @@ const PROMPT_FILE_FILTERS: Electron.FileFilter[] = [
   },
 ];
 
-// The built directory structure
+// 前端构建产物目录结构：
 //
 // ├─┬─┬ dist
 // │ │ └── index.html
@@ -98,14 +98,15 @@ const PROMPT_FILE_FILTERS: Electron.FileFilter[] = [
 // │ │ ├── index.js
 // │ │ └── index.mjs
 // │
-process.env.APP_ROOT = path.join(__dirname, "..");
+// 这里的根目录只用于定位前端 dist/public，不承载应用 APP_ROOT 语义。
+const FRONTEND_BUNDLE_ROOT = path.join(__dirname, "..");
 
 // electron-vite 在开发态通过 ELECTRON_RENDERER_URL 暴露唯一权威的 renderer dev server 地址。
 const RENDERER_DEV_SERVER_URL = process.env["ELECTRON_RENDERER_URL"] ?? null;
-const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
+const RENDERER_DIST = path.join(FRONTEND_BUNDLE_ROOT, "dist");
 
 process.env.VITE_PUBLIC = RENDERER_DEV_SERVER_URL
-  ? path.join(process.env.APP_ROOT, "public")
+  ? path.join(FRONTEND_BUNDLE_ROOT, "public")
   : RENDERER_DIST;
 const VITE_PUBLIC = process.env.VITE_PUBLIC ?? RENDERER_DIST;
 
@@ -489,7 +490,6 @@ function createWindow(): void {
     show_window_if_hidden(win);
     void win.loadURL(RENDERER_DEV_SERVER_URL);
   } else {
-    // win.loadFile('dist/index.html')
     void win.loadFile(path.join(RENDERER_DIST, "index.html"));
   }
 }

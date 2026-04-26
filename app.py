@@ -14,7 +14,6 @@ from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
 from base.BasePath import BasePath
 from base.LogManager import LogManager
-from base.VersionManager import VersionManager
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
@@ -101,10 +100,10 @@ def disable_windows_quick_edit_mode() -> None:
 
 def bootstrap_runtime() -> LogManager:
     """统一收敛无头 Core API 入口共享的启动阶段。"""
-    app_dir = BasePath.resolve_app_dir()
+    app_root = BasePath.resolve_app_root()
     is_frozen = getattr(sys, "frozen", False)
 
-    BasePath.initialize(app_dir, is_frozen)
+    BasePath.initialize(app_root, is_frozen)
 
     sys.excepthook = excepthook
     sys.unraisablehook = unraisable_hook
@@ -112,27 +111,26 @@ def bootstrap_runtime() -> LogManager:
 
     disable_windows_quick_edit_mode()
 
-    if app_dir not in sys.path:
-        sys.path.append(app_dir)
+    if app_root not in sys.path:
+        sys.path.append(app_root)
 
-    os.chdir(app_dir)
+    os.chdir(app_root)
 
-    VersionManager.cleanup_update_temp_on_startup()
     UserDataMigrationService.run_startup_migrations()
 
     config = Config().load()
     Localizer.set_app_language(config.app_language)
     logger = LogManager.get()
 
-    version_path = os.path.join(BasePath.get_app_dir(), APP_VERSION_FILE_NAME)
+    version_path = os.path.join(BasePath.get_app_root(), APP_VERSION_FILE_NAME)
     with open(version_path, "r", encoding="utf-8-sig") as reader:
         version = reader.read().strip()
 
+    Base.APP_VERSION = version
     logger.info(f"{Base.APP_NAME} {version}")
     logger.print("")
 
     Engine.get().run()
-    VersionManager.get().set_version(version)
 
     return logger
 

@@ -62,6 +62,7 @@ flowchart TD
 
 运行时主链路的稳定事实：
 - Electron main 是 Python Core 伴生进程的生命周期拥有者；启动时由 `CoreLifecycleManager` 在高位端口范围内选择本机端口，并从启动根目录优先拉起 `core.exe`，不存在时回退到 `uv run app.py`，再校验 `/api/health` 实例 token 并创建窗口。开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 `app.exe` 所在目录。
+- Python Core 的运行时路径统一收敛为两根：`APP_ROOT` 是应用根，开发态为仓库根、发布态为程序运行目录，承载 `resource/`、`version.txt` 和 Core 启动目标；`DATA_ROOT` 是可写数据根，承载 `userdata/` 与 `log/`。AppImage 与 macOS `.app` 固定把 `DATA_ROOT` 放到 `~/LinguaGacha`，其他场景优先使用可写的 `APP_ROOT`，不可写时回退 `~/LinguaGacha`。
 - Electron 侧 Core API 地址由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL`；`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
 - 应用退出时 Electron main 会优先调用内部 `/api/lifecycle/shutdown`，失败或超时后按平台清理 Core 进程树；渲染层不直接管理后端进程。
 - 渲染层项目运行态由 bootstrap 首包和事件流共同驱动，而不是单次整页快照。
