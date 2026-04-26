@@ -65,6 +65,8 @@ export const en_us_app = {
   },
   navigation_action: {
     theme: "Theme",
+    switch_theme: "Switch Theme",
+    toggle_lg_base_font: "Switch Font",
     language: "Language",
   },
   profile: {

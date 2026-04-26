@@ -36,6 +36,8 @@ export type NavigationGroup = {
 
 export type BottomActionId = "theme" | "language";
 
+export type AppearanceMenuActionId = "theme-mode" | "font-family";
+
 export type BottomAction = {
   id: BottomActionId;
   label_key: LocaleKey;

@@ -59,15 +59,8 @@
 
 :root {
   --ui-font-family-base:
-    "LGMono",
-    "LGBaseFont",
-    "Segoe UI",
-    "Microsoft YaHei UI",
-    "PingFang SC",
-    system-ui,
-    sans-serif;
-  font-family:
-    var(--ui-font-family-base);
+    "LGMono", "LGBaseFont", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  font-family: var(--ui-font-family-base);
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -146,8 +139,7 @@
   --ui-card-toolbar-shadow-hover:
     0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent),
     0 18px 32px -24px color-mix(in srgb, var(--foreground) 22%, transparent);
-  --ui-shadow-overlay:
-    0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent);
+  --ui-shadow-overlay: 0 18px 48px -24px color-mix(in srgb, var(--foreground) 30%, transparent);
   --ui-space-card-x: 16px;
   --ui-space-card-y: 16px;
   --ui-space-panel-x: 24px;
@@ -180,6 +172,11 @@
   --ui-table-selected: color-mix(in srgb, var(--accent) 96%, transparent);
 }
 
+:root[data-lg-base-font="disabled"] {
+  --ui-font-family-base:
+    "LGMono", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+}
+
 html,
 body,
 #root {
@@ -207,8 +204,8 @@ input,
 textarea,
 select,
 a,
-[role='button'],
-[data-slot='button'] {
+[role="button"],
+[data-slot="button"] {
   -webkit-app-region: no-drag;
 }
 
@@ -334,8 +331,7 @@ a,
   --ui-card-toolbar-shadow-hover:
     0 2px 6px color-mix(in srgb, black 48%, transparent),
     0 18px 34px -24px color-mix(in srgb, black 64%, transparent);
-  --ui-shadow-overlay:
-    0 24px 52px -20px color-mix(in srgb, black 72%, transparent);
+  --ui-shadow-overlay: 0 24px 52px -20px color-mix(in srgb, black 72%, transparent);
   --ui-table-divider: color-mix(in srgb, var(--border) 80%, transparent);
   --ui-table-divider-soft: color-mix(in srgb, var(--border) 62%, transparent);
   --ui-table-hover: color-mix(in srgb, var(--accent) 86%, transparent);
@@ -343,7 +339,7 @@ a,
 }
 
 @layer base {
-  [data-slot='card'] {
+  [data-slot="card"] {
     --card-surface-current: var(--ui-card-default-surface);
     --card-border-current: var(--ui-card-default-border);
     --card-border-hover-current: var(--ui-card-default-border-hover);
@@ -361,7 +357,7 @@ a,
     --card-footer-gap: var(--ui-space-card-footer-gap);
   }
 
-  [data-slot='card'][data-variant='panel'] {
+  [data-slot="card"][data-variant="panel"] {
     --card-surface-current: var(--ui-card-panel-surface);
     --card-border-current: var(--ui-card-panel-border);
     --card-border-hover-current: var(--ui-card-panel-border-hover);
@@ -376,7 +372,7 @@ a,
     --card-footer-bottom: var(--ui-space-panel-y);
   }
 
-  [data-slot='card'][data-variant='table'] {
+  [data-slot="card"][data-variant="table"] {
     --card-surface-current: var(--ui-card-table-surface);
     --card-border-current: var(--ui-card-table-border);
     --card-border-hover-current: var(--ui-card-table-border-hover);
@@ -386,7 +382,7 @@ a,
     --card-padding-x: 0px;
   }
 
-  [data-slot='card'][data-variant='toolbar'] {
+  [data-slot="card"][data-variant="toolbar"] {
     --card-surface-current: var(--ui-card-toolbar-surface);
     --card-border-current: var(--ui-card-toolbar-border);
     --card-border-hover-current: var(--ui-card-toolbar-border-hover);
@@ -416,7 +412,7 @@ a,
   }
 
   .card-surface::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
     border: 1px solid var(--card-border-current);
@@ -425,43 +421,43 @@ a,
     transition: border-color 180ms ease;
   }
 
-  [data-slot='card'][data-interactive='true'] {
+  [data-slot="card"][data-interactive="true"] {
     cursor: pointer;
   }
 
-  [data-slot='card'][data-interactive='true']:hover {
+  [data-slot="card"][data-interactive="true"]:hover {
     box-shadow: var(--card-shadow-hover-current);
   }
 
-  [data-slot='card'][data-interactive='true']:hover::after {
+  [data-slot="card"][data-interactive="true"]:hover::after {
     border-color: var(--card-border-hover-current);
   }
 
-  [data-slot='card'][data-interactive='true']:active {
+  [data-slot="card"][data-interactive="true"]:active {
     transform: translateY(1px);
   }
 
-  [data-slot='card-header'] {
+  [data-slot="card-header"] {
     display: flex;
     flex-direction: column;
     gap: var(--card-header-gap);
     padding: var(--card-header-top) var(--card-padding-x) var(--card-header-bottom);
   }
 
-  [data-slot='card-content'] {
+  [data-slot="card-content"] {
     padding: var(--card-content-top) var(--card-padding-x) var(--card-content-bottom);
   }
 
-  [data-slot='card-header'] + [data-slot='card-content'] {
+  [data-slot="card-header"] + [data-slot="card-content"] {
     padding-top: 0px;
   }
 
-  [data-slot='card-footer'] {
+  [data-slot="card-footer"] {
     gap: var(--card-footer-gap);
     padding: var(--card-footer-top) var(--card-padding-x) var(--card-footer-bottom);
   }
 
-  [data-slot='table'] {
+  [data-slot="table"] {
     --table-divider-current: var(--ui-table-divider);
     --table-divider-soft-current: var(--ui-table-divider-soft);
     --table-head-height-current: var(--ui-table-head-height);
@@ -472,15 +468,19 @@ a,
     --table-header-bg-current: transparent;
   }
 
-  [data-slot='card'][data-variant='table'] [data-slot='table'] {
-    --table-header-bg-current: color-mix(in srgb, var(--ui-card-table-surface) 94%, var(--background) 6%);
+  [data-slot="card"][data-variant="table"] [data-slot="table"] {
+    --table-header-bg-current: color-mix(
+      in srgb,
+      var(--ui-card-table-surface) 94%,
+      var(--background) 6%
+    );
   }
 
-  [data-slot='table-header'] > [data-slot='table-row'] {
+  [data-slot="table-header"] > [data-slot="table-row"] {
     border-bottom: 1px solid var(--table-divider-current);
   }
 
-  [data-slot='table-head'] {
+  [data-slot="table-head"] {
     height: var(--table-head-height-current);
     padding-inline: var(--table-cell-x-current);
     font-size: 12px;
@@ -488,19 +488,21 @@ a,
     background: var(--table-header-bg-current);
   }
 
-  [data-slot='table-body'] > [data-slot='table-row'] {
+  [data-slot="table-body"] > [data-slot="table-row"] {
     border-bottom: 1px solid var(--table-divider-current);
   }
 
-  [data-slot='table-body'] > [data-slot='table-row']:hover > [data-slot='table-cell'] {
+  [data-slot="table-body"] > [data-slot="table-row"]:hover > [data-slot="table-cell"] {
     background: var(--table-hover-current);
   }
 
-  [data-slot='table-body'] > [data-slot='table-row'][data-state='selected'] > [data-slot='table-cell'] {
+  [data-slot="table-body"]
+    > [data-slot="table-row"][data-state="selected"]
+    > [data-slot="table-cell"] {
     background: var(--table-selected-current);
   }
 
-  [data-slot='table-cell'] {
+  [data-slot="table-cell"] {
     height: var(--table-row-height-current);
     padding-inline: var(--table-cell-x-current);
     font-size: 13px;
@@ -625,7 +627,7 @@ a,
     z-index: 9999;
   }
 
-  [data-sonner-toaster][data-sonner-theme='dark'] .cn-toast__description {
+  [data-sonner-toaster][data-sonner-theme="dark"] .cn-toast__description {
     color: hsl(0 0% 91%);
   }
 }
