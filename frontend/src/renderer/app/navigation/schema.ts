@@ -8,6 +8,7 @@ import {
   GraduationCap,
   Grid2x2Check,
   LayoutDashboard,
+  Palette,
   Radar,
   ReplaceAll,
   ScanText,
@@ -15,130 +16,128 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  SunMoon,
-} from 'lucide-react'
+} from "lucide-react";
 
-import type { BottomAction, NavigationGroup, RouteId } from '@/app/navigation/types'
+import type { BottomAction, NavigationGroup, RouteId } from "@/app/navigation/types";
 
-export const DEFAULT_ROUTE_ID: RouteId = 'project-home'
+export const DEFAULT_ROUTE_ID: RouteId = "project-home";
 
 export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {
-    id: 'project',
+    id: "project",
     items: [
       {
-        id: 'model',
+        id: "model",
         icon: Boxes,
-        title_key: 'model_page.title',
+        title_key: "model_page.title",
       },
     ],
   },
   {
-    id: 'task',
+    id: "task",
     items: [
       {
-        id: 'proofreading',
+        id: "proofreading",
         icon: Grid2x2Check,
-        title_key: 'proofreading_page.title',
+        title_key: "proofreading_page.title",
       },
       {
-        id: 'workbench',
+        id: "workbench",
         icon: LayoutDashboard,
-        title_key: 'workbench_page.title',
+        title_key: "workbench_page.title",
       },
     ],
   },
   {
-    id: 'setting',
+    id: "setting",
     items: [
       {
-        id: 'basic-settings',
+        id: "basic-settings",
         icon: SlidersHorizontal,
-        title_key: 'basic_settings_page.title',
+        title_key: "basic_settings_page.title",
       },
       {
-        id: 'expert-settings',
+        id: "expert-settings",
         icon: GraduationCap,
-        title_key: 'expert_settings_page.title',
+        title_key: "expert_settings_page.title",
       },
     ],
   },
   {
-    id: 'quality',
+    id: "quality",
     items: [
       {
-        id: 'glossary',
+        id: "glossary",
         icon: BookA,
-        title_key: 'glossary_page.title',
+        title_key: "glossary_page.title",
       },
       {
-        id: 'text-preserve',
+        id: "text-preserve",
         icon: ShieldCheck,
-        title_key: 'text_preserve_page.title',
+        title_key: "text_preserve_page.title",
       },
       {
-        id: 'text-replacement',
+        id: "text-replacement",
         icon: ReplaceAll,
-        title_key: 'text_replacement_page.title',
+        title_key: "text_replacement_page.title",
         children: [
           {
-            id: 'pre-translation-replacement',
+            id: "pre-translation-replacement",
             icon: BetweenVerticalStart,
-            title_key: 'pre_translation_replacement_page.title',
+            title_key: "pre_translation_replacement_page.title",
           },
           {
-            id: 'post-translation-replacement',
+            id: "post-translation-replacement",
             icon: BetweenVerticalEnd,
-            title_key: 'post_translation_replacement_page.title',
+            title_key: "post_translation_replacement_page.title",
           },
         ],
       },
       {
-        id: 'custom-prompt',
+        id: "custom-prompt",
         icon: BookOpenCheck,
-        title_key: 'custom_prompt_page.title',
+        title_key: "custom_prompt_page.title",
         children: [
           {
-            id: 'translation-prompt',
+            id: "translation-prompt",
             icon: ScanText,
-            title_key: 'translation_prompt_page.title',
+            title_key: "translation_prompt_page.title",
           },
           {
-            id: 'analysis-prompt',
+            id: "analysis-prompt",
             icon: Radar,
-            title_key: 'analysis_prompt_page.title',
+            title_key: "analysis_prompt_page.title",
           },
         ],
       },
     ],
   },
   {
-    id: 'extra',
+    id: "extra",
     items: [
       {
-        id: 'laboratory',
+        id: "laboratory",
         icon: FlaskConical,
-        title_key: 'laboratory_page.title',
+        title_key: "laboratory_page.title",
       },
       {
-        id: 'toolbox',
+        id: "toolbox",
         icon: Sparkles,
-        title_key: 'toolbox_page.title',
+        title_key: "toolbox_page.title",
       },
     ],
   },
-]
+];
 
 export const BOTTOM_ACTIONS: BottomAction[] = [
   {
-    id: 'theme',
-    label_key: 'app.navigation_action.theme',
-    icon: SunMoon,
+    id: "theme",
+    label_key: "app.navigation_action.theme",
+    icon: Palette,
   },
   {
-    id: 'language',
-    label_key: 'app.navigation_action.language',
+    id: "language",
+    label_key: "app.navigation_action.language",
     icon: Languages,
   },
-]
-
+];

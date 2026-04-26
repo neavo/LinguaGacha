@@ -18,7 +18,7 @@ import {
   useDesktopToast,
 } from "@/app/runtime/toast/use-desktop-toast";
 import "@/app/shell/app-shell.css";
-import type { BottomActionId, RouteId } from "@/app/navigation/types";
+import type { AppearanceMenuActionId, BottomActionId, RouteId } from "@/app/navigation/types";
 import { LocaleProvider, useI18n } from "@/i18n";
 import { SidebarInset, SidebarProvider } from "@/shadcn/sidebar";
 import { Toaster } from "@/shadcn/sonner";
@@ -29,6 +29,7 @@ import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const THEME_STORAGE_KEY = "lg-theme-mode";
+const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode";
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 
 type ThemeMode = "light" | "dark";
@@ -105,6 +106,20 @@ function read_theme_mode(): ThemeMode {
   }
 }
 
+function read_lg_base_font_enabled(): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  const stored_font_mode = window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY);
+
+  if (stored_font_mode === "disabled") {
+    return false;
+  } else {
+    return true;
+  }
+}
+
 function AppContent(): JSX.Element {
   const {
     hydration_ready,
@@ -124,6 +139,9 @@ function AppContent(): JSX.Element {
   const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set());
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
+  );
+  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useState<boolean>(() =>
+    read_lg_base_font_enabled(),
   );
   const [app_version, set_app_version] = useState<string | null>(null);
   const [update_release_url, set_update_release_url] = useState<string | null>(null);
@@ -149,6 +167,13 @@ function AppContent(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(is_sidebar_collapsed));
   }, [is_sidebar_collapsed]);
+
+  useEffect(() => {
+    const font_mode = is_lg_base_font_enabled ? "enabled" : "disabled";
+
+    document.documentElement.dataset.lgBaseFont = font_mode;
+    window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, font_mode);
+  }, [is_lg_base_font_enabled]);
 
   useEffect(() => {
     let is_disposed = false;
@@ -354,22 +379,32 @@ function AppContent(): JSX.Element {
   }
 
   function handle_bottom_action(action_id: BottomActionId): void {
-    if (action_id === "theme") {
+    if (action_id !== "language") {
+      return;
+    }
+
+    void update_app_language(resolve_toggled_app_language(settings_snapshot.app_language)).catch(
+      (error: unknown) => {
+        if (error instanceof Error) {
+          push_toast("error", error.message);
+        } else {
+          push_toast("error", t("app.feedback.update_failed"));
+        }
+      },
+    );
+  }
+
+  function handle_appearance_menu_action(action_id: AppearanceMenuActionId): void {
+    if (action_id === "theme-mode") {
       if (theme_mode === "light") {
         setTheme("dark");
       } else {
         setTheme("light");
       }
     } else {
-      void update_app_language(resolve_toggled_app_language(settings_snapshot.app_language)).catch(
-        (error: unknown) => {
-          if (error instanceof Error) {
-            push_toast("error", error.message);
-          } else {
-            push_toast("error", t("app.feedback.update_failed"));
-          }
-        },
-      );
+      set_is_lg_base_font_enabled((previous_value) => {
+        return !previous_value;
+      });
     }
   }
 
@@ -447,6 +482,7 @@ function AppContent(): JSX.Element {
               on_select_route={handle_select_route}
               on_toggle_group={handle_toggle_group}
               on_bottom_action={handle_bottom_action}
+              on_appearance_menu_action={handle_appearance_menu_action}
               on_profile_action={handle_profile_action}
             />
 

@@ -1,6 +1,7 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, SunMoon, Type } from "lucide-react";
 
 import type {
+  AppearanceMenuActionId,
   BottomAction,
   BottomActionId,
   NavigationGroup,
@@ -23,6 +24,13 @@ import {
 } from "@/shadcn/sidebar";
 import { useI18n, type LocaleKey } from "@/i18n";
 import { cn } from "@/lib/utils";
+import {
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 import "@/app/shell/app-sidebar.css";
 
 const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).toString();
@@ -40,6 +48,7 @@ type AppSidebarProps = {
   on_select_route: (route_id: RouteId) => void;
   on_toggle_group: (route_id: RouteId) => void;
   on_bottom_action: (action_id: BottomActionId) => void;
+  on_appearance_menu_action: (action_id: AppearanceMenuActionId) => void;
   on_profile_action: () => void;
 };
 
@@ -184,6 +193,51 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
           {props.bottom_actions.map((action) => {
             const ActionIcon = action.icon;
             const is_action_disabled = props.disabled_bottom_action_ids.has(action.id);
+
+            if (action.id === "theme") {
+              return (
+                <SidebarMenuItem key={action.id}>
+                  <AppDropdownMenu>
+                    <AppDropdownMenuTrigger asChild>
+                      <SidebarMenuButton
+                        className="sidebar-bottom-button"
+                        disabled={is_action_disabled}
+                        aria-label={t(action.label_key)}
+                      >
+                        <ActionIcon size={16} className="sidebar-bottom-button__icon" />
+                        <span className="sidebar-bottom-button__text">{t(action.label_key)}</span>
+                      </SidebarMenuButton>
+                    </AppDropdownMenuTrigger>
+                    <AppDropdownMenuContent
+                      side={is_collapsed ? "right" : "top"}
+                      align="center"
+                      sideOffset={is_collapsed ? 8 : 4}
+                      matchTriggerWidth={!is_collapsed}
+                      className={cn(!is_collapsed && "w-(--radix-dropdown-menu-trigger-width)")}
+                    >
+                      <AppDropdownMenuGroup>
+                        <AppDropdownMenuItem
+                          onSelect={() => {
+                            props.on_appearance_menu_action("font-family");
+                          }}
+                        >
+                          <Type size={16} />
+                          <span>{t("app.navigation_action.toggle_lg_base_font")}</span>
+                        </AppDropdownMenuItem>
+                        <AppDropdownMenuItem
+                          onSelect={() => {
+                            props.on_appearance_menu_action("theme-mode");
+                          }}
+                        >
+                          <SunMoon size={16} />
+                          <span>{t("app.navigation_action.switch_theme")}</span>
+                        </AppDropdownMenuItem>
+                      </AppDropdownMenuGroup>
+                    </AppDropdownMenuContent>
+                  </AppDropdownMenu>
+                </SidebarMenuItem>
+              );
+            }
 
             return (
               <SidebarMenuItem key={action.id}>

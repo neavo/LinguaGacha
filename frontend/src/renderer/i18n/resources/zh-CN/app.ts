@@ -61,6 +61,8 @@ export const zh_cn_app = {
   },
   navigation_action: {
     theme: "变换自如",
+    switch_theme: "切换主题",
+    toggle_lg_base_font: "切换字体",
     language: "字字珠玑",
   },
   profile: {
