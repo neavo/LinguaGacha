@@ -12,8 +12,7 @@
     "lint": "oxlint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "renderer:audit": "node ./scripts/check-renderer-design-system.mjs",
-    "preview": "electron-vite preview"
+    "renderer:audit": "node ./scripts/check-renderer-design-system.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

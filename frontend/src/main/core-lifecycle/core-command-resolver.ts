@@ -1,39 +1,24 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { CoreLifecycleEnvironment, CoreRuntimePaths } from "./core-lifecycle-types";
+import type { CoreLaunchCommand, CoreLaunchEnvironment } from "./core-lifecycle-types";
 
-export const CORE_SOURCE_ROOT_ENV_NAME = "LINGUAGACHA_CORE_SOURCE_ROOT";
 export const UV_BIN_ENV_NAME = "LINGUAGACHA_UV_BIN";
-const CORE_RESOURCE_DIRECTORY_NAME = "core";
-const REQUIRED_CORE_FILES = ["app.py", "pyproject.toml"] as const;
+export const NPM_INITIAL_CWD_ENV_NAME = "INIT_CWD";
+const CORE_EXECUTABLE_FILE_NAME = "core.exe";
+const REQUIRED_SOURCE_FILES = ["app.py", "pyproject.toml"] as const;
+const WINDOWS_PATH_DELIMITER = ";";
 
-function assert_core_source_root(core_source_root: string): void {
-  for (const required_file of REQUIRED_CORE_FILES) {
-    const required_path = path.join(core_source_root, required_file);
+function assert_source_app_root(app_root: string): void {
+  for (const required_file of REQUIRED_SOURCE_FILES) {
+    const required_path = path.join(app_root, required_file);
     if (!fs.existsSync(required_path)) {
-      throw new Error(`Python Core 源码目录缺少 ${required_file}：${core_source_root}`);
+      throw new Error(`当前启动路径缺少 ${required_file}，无法回退到 uv run app.py：${app_root}`);
     }
   }
 }
 
-function resolve_core_source_root(environment: CoreLifecycleEnvironment): string {
-  const overridden_source_root = environment.env[CORE_SOURCE_ROOT_ENV_NAME];
-
-  if (typeof overridden_source_root === "string" && overridden_source_root.trim() !== "") {
-    const core_source_root = path.resolve(overridden_source_root.trim());
-    assert_core_source_root(core_source_root);
-    return core_source_root;
-  }
-
-  const core_source_root = environment.isPackaged
-    ? path.join(environment.resourcesPath, CORE_RESOURCE_DIRECTORY_NAME)
-    : path.resolve(environment.appRoot, "..");
-  assert_core_source_root(core_source_root);
-  return core_source_root;
-}
-
-function build_path_extensions(environment: CoreLifecycleEnvironment): string[] {
+function build_path_extensions(environment: CoreLaunchEnvironment): string[] {
   if (environment.platform !== "win32") {
     return [""];
   }
@@ -44,7 +29,7 @@ function build_path_extensions(environment: CoreLifecycleEnvironment): string[] 
   }
 
   const extensions = raw_path_ext
-    .split(path.delimiter)
+    .split(WINDOWS_PATH_DELIMITER)
     .map((extension) => extension.trim())
     .filter((extension) => extension !== "");
   return [...extensions, ""];
@@ -52,10 +37,11 @@ function build_path_extensions(environment: CoreLifecycleEnvironment): string[] 
 
 function find_command_in_path(
   command_name: string,
-  environment: CoreLifecycleEnvironment,
+  environment: CoreLaunchEnvironment,
 ): string | null {
   const raw_path = environment.env["PATH"] ?? "";
-  const search_paths = raw_path.split(path.delimiter).filter((entry) => entry !== "");
+  const path_delimiter = environment.platform === "win32" ? WINDOWS_PATH_DELIMITER : path.delimiter;
+  const search_paths = raw_path.split(path_delimiter).filter((entry) => entry !== "");
   const extensions = build_path_extensions(environment);
 
   for (const search_path of search_paths) {
@@ -70,7 +56,7 @@ function find_command_in_path(
   return null;
 }
 
-function resolve_uv_command(environment: CoreLifecycleEnvironment): string {
+function resolve_uv_command(environment: CoreLaunchEnvironment): string {
   const overridden_uv_bin = environment.env[UV_BIN_ENV_NAME];
 
   if (typeof overridden_uv_bin === "string" && overridden_uv_bin.trim() !== "") {
@@ -89,11 +75,33 @@ function resolve_uv_command(environment: CoreLifecycleEnvironment): string {
   return found_uv_command;
 }
 
-export function resolve_core_runtime_paths(
-  environment: CoreLifecycleEnvironment,
-): CoreRuntimePaths {
+function resolve_app_root(environment: CoreLaunchEnvironment): string {
+  const initial_cwd = environment.env[NPM_INITIAL_CWD_ENV_NAME];
+  if (typeof initial_cwd === "string" && initial_cwd.trim() !== "") {
+    return path.resolve(initial_cwd.trim());
+  }
+
+  return path.resolve(environment.appRoot);
+}
+
+export function resolve_core_launch_command(environment: CoreLaunchEnvironment): CoreLaunchCommand {
+  const app_root = resolve_app_root(environment);
+  const core_executable_path = path.join(app_root, CORE_EXECUTABLE_FILE_NAME);
+
+  if (fs.existsSync(core_executable_path)) {
+    return {
+      kind: "executable",
+      command: core_executable_path,
+      args: [],
+      cwd: app_root,
+    };
+  }
+
+  assert_source_app_root(app_root);
   return {
-    coreSourceRoot: resolve_core_source_root(environment),
-    uvCommand: resolve_uv_command(environment),
+    kind: "source",
+    command: resolve_uv_command(environment),
+    args: ["run", "app.py"],
+    cwd: app_root,
   };
 }

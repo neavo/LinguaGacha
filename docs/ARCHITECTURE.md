@@ -48,19 +48,20 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A["Electron main"] --> B["CoreLifecycleManager 启动 Python Core"]
-    B --> C["/api/health 校验实例 token"]
-    C --> D["preload 暴露 window.desktopApp"]
-    D --> E["renderer 启动 desktop-api.ts"]
-    E --> F["/api/project/bootstrap/stream"]
-    F --> G["ProjectStore 建立最小运行态"]
-    E --> H["/api/events/stream"]
-    H --> I["settings.changed / task.* / project.patch"]
-    I --> J["页面通过 change signal 与 selectors 消费运行态"]
+    A["Electron main"] --> B["CoreLifecycleManager 从启动根目录解析 Core 目标"]
+    B --> C["优先启动 core.exe，否则 uv run app.py"]
+    C --> D["/api/health 校验实例 token"]
+    D --> E["preload 暴露 window.desktopApp"]
+    E --> F["renderer 启动 desktop-api.ts"]
+    F --> G["/api/project/bootstrap/stream"]
+    G --> H["ProjectStore 建立最小运行态"]
+    F --> I["/api/events/stream"]
+    I --> J["settings.changed / task.* / project.patch"]
+    J --> K["页面通过 change signal 与 selectors 消费运行态"]
 ```
 
 运行时主链路的稳定事实：
-- Electron main 是 Python Core 伴生进程的生命周期拥有者；启动时由 `CoreLifecycleManager` 选择本机端口、通过 `uv` 源码启动 Core、校验 `/api/health` 实例 token，再创建窗口。
+- Electron main 是 Python Core 伴生进程的生命周期拥有者；启动时由 `CoreLifecycleManager` 在高位端口范围内选择本机端口，并从启动根目录优先拉起 `core.exe`，不存在时回退到 `uv run app.py`，再校验 `/api/health` 实例 token 并创建窗口。开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 `app.exe` 所在目录。
 - Electron 侧 Core API 地址由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL`；`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
 - 应用退出时 Electron main 会优先调用内部 `/api/lifecycle/shutdown`，失败或超时后按平台清理 Core 进程树；渲染层不直接管理后端进程。
 - 渲染层项目运行态由 bootstrap 首包和事件流共同驱动，而不是单次整页快照。

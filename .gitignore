@@ -1,8 +1,10 @@
 /.venv
 /uv.lock
-/openspec
 .coverage
 __pycache__
+
+/core.exe
+/_internal
 
 /*log*
 /*input*

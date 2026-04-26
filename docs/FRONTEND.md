@@ -23,10 +23,11 @@ flowchart LR
 | `src/test` | Vitest 测试装配 | 不承担运行时代码路径 |
 
 稳定事实：
-- `frontend/package.json` 是前端命令入口，稳定命令包括 `dev`、`build`、`format`、`format:check`、`lint`、`test`、`renderer:audit`、`preview`。
+- `frontend/package.json` 是前端命令入口，稳定命令包括 `dev`、`build`、`format`、`format:check`、`lint`、`test`、`renderer:audit`。
 - `electron.vite.config.ts` 固定 renderer root 为 `src/renderer`，开发态 host 固定为 `127.0.0.1`。
 - `src/main/index.ts` 在开发态打开 Chromium remote debugging 端口 `9222`，方便 Electron 真机调试与自动化。
-- `src/main/core-lifecycle/` 是 Python Core 伴生进程生命周期的唯一前端侧落点；开发态、预览态和正式环境都由 Electron main 通过源码启动 Core。
+- `src/main/core-lifecycle/` 是 Python Core 伴生进程生命周期的唯一前端侧落点；Electron main 从启动根目录优先拉起 `core.exe`，不存在时回退到 `uv run app.py`。
+- Windows 打包产物把 PyInstaller 生成的 `core.exe`、`_internal/`、`resource/` 与 `version.txt` 放在应用根目录；不再把 Python 源码目录复制到 `resources/core`。
 
 ## `window.desktopApp` 与 `desktop-api.ts` 的唯一入口约束
 
@@ -42,13 +43,13 @@ flowchart LR
   - `getPathForFile()`
 
 ### Core API 地址来源
-- 应用正常启动时，Electron main 的 `CoreLifecycleManager` 会先启动 Python Core，校验 `/api/health` 返回的实例 token，再把实际地址写入 `LINGUAGACHA_CORE_API_BASE_URL`。
+- 应用正常启动时，Electron main 的 `CoreLifecycleManager` 会先在高位端口范围内选择本机端口，再从启动根目录启动 Python Core，校验 `/api/health` 返回的实例 token，最后把实际地址写入 `LINGUAGACHA_CORE_API_BASE_URL`。
 - `src/shared/core-api-base-url.ts` 按固定顺序解析 Core API 地址：
   1. 环境变量 `LINGUAGACHA_CORE_API_BASE_URL`
   2. 启动参数 `--core-api-base-url=...`
   3. 默认地址 `http://127.0.0.1:38191`
 - 渲染层不会盲信这个地址；`desktop-api.ts` 仍会先请求 `/api/health` 做探活确认。
-- `LINGUAGACHA_CORE_SOURCE_ROOT` 与 `LINGUAGACHA_UV_BIN` 只属于 Electron main 启动 Core 的调试覆盖入口，不暴露给 renderer 作为运行态状态。
+- 开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 `app.exe` 所在目录。`LINGUAGACHA_UV_BIN` 只在启动根目录没有 `core.exe`、回退到 `uv run app.py` 时覆盖 uv 路径，不暴露给 renderer 作为运行态状态。
 
 ### `desktop-api.ts`
 - 它是渲染层访问 Core API 的唯一 HTTP / SSE 入口。

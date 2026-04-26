@@ -1,13 +1,14 @@
 import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 
-import { resolve_core_runtime_paths } from "./core-command-resolver";
+import { resolve_core_launch_command } from "./core-command-resolver";
 import { wait_for_core_health } from "./core-health-check";
 import { format_lifecycle_error, write_ts_lifecycle_log } from "./core-lifecycle-log";
 import { build_core_api_base_url, allocate_core_api_port } from "./core-port-allocator";
 import { force_kill_process_tree, wait_for_process_exit } from "./core-process-terminator";
 import { attach_core_process_output } from "./core-process-output";
 import type {
+  CoreLaunchCommand,
   CoreLifecycleManagerOptions,
   CoreLifecycleStartResult,
   CoreLifecycleState,
@@ -24,6 +25,18 @@ const CORE_SHUTDOWN_PATH = "/api/lifecycle/shutdown";
 const CORE_SHUTDOWN_HTTP_TIMEOUT_MS = 1_000;
 const DEFAULT_CORE_CONSOLE_WIDTH = 160;
 const WINDOWS_CONSOLE_WIDTH_QUERY_TIMEOUT_MS = 1_000;
+
+export interface CoreProcessSpawnRequest {
+  command: string;
+  args: string[];
+  options: {
+    cwd: string;
+    detached: boolean;
+    env: NodeJS.ProcessEnv;
+    stdio: ["ignore", "pipe", "pipe"];
+    windowsHide: boolean;
+  };
+}
 
 function create_instance_token(): string {
   return crypto.randomBytes(24).toString("hex");
@@ -109,6 +122,26 @@ export function build_core_process_env(
   return core_process_env;
 }
 
+export function build_core_process_spawn_request(
+  launch_command: CoreLaunchCommand,
+  base_url: string,
+  instance_token: string,
+  console_width: string,
+  platform: NodeJS.Platform = process.platform,
+): CoreProcessSpawnRequest {
+  return {
+    command: launch_command.command,
+    args: launch_command.args,
+    options: {
+      cwd: launch_command.cwd,
+      detached: platform !== "win32",
+      env: build_core_process_env(base_url, instance_token, console_width),
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  };
+}
+
 async function request_core_shutdown(base_url: string, instance_token: string): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
@@ -155,30 +188,24 @@ export class CoreLifecycleManager {
     const port = await allocate_core_api_port();
     const base_url = build_core_api_base_url(port);
     const console_width = resolve_core_console_width(process.stdout.columns);
-    const runtime_paths = resolve_core_runtime_paths({
+    const launch_command = resolve_core_launch_command({
       appRoot: this.options.appRoot,
       env: process.env,
-      isPackaged: this.options.isPackaged,
       platform: process.platform,
-      resourcesPath: this.options.resourcesPath,
     });
 
     write_ts_lifecycle_log(`正在启动 Python Core - ${base_url}`);
-    write_ts_lifecycle_log(`源码目录 - ${runtime_paths.coreSourceRoot}`);
-    write_ts_lifecycle_log(`uv 路径 - ${runtime_paths.uvCommand}`);
+    write_ts_lifecycle_log(`启动目标 - ${launch_command.command}`);
+    write_ts_lifecycle_log(`启动目录 - ${launch_command.cwd}`);
     write_ts_lifecycle_log(`Rich 控制台宽度 - ${console_width}`);
 
-    const core_process = spawn(
-      runtime_paths.uvCommand,
-      ["--project", runtime_paths.coreSourceRoot, "run", "app.py"],
-      {
-        cwd: runtime_paths.coreSourceRoot,
-        detached: process.platform !== "win32",
-        env: build_core_process_env(base_url, instance_token, console_width),
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-      },
+    const spawn_request = build_core_process_spawn_request(
+      launch_command,
+      base_url,
+      instance_token,
+      console_width,
     );
+    const core_process = spawn(spawn_request.command, spawn_request.args, spawn_request.options);
     attach_core_process_output(core_process);
     write_ts_lifecycle_log(`Python Core 进程已启动 - pid=${core_process.pid ?? "unknown"}`);
     const handle = {

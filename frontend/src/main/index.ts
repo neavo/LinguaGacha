@@ -118,9 +118,7 @@ let win: BrowserWindow | null;
 let is_app_shutdown_in_progress = false;
 let is_renderer_confirmed_app_quit = false;
 const core_lifecycle_manager = new CoreLifecycleManager({
-  appRoot: process.env.APP_ROOT ?? path.join(__dirname, ".."),
-  isPackaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
+  appRoot: app.isPackaged ? path.dirname(process.execPath) : process.cwd(),
   onUnexpectedExit: (result) => {
     const exit_code_text = result.exitCode === null ? "null" : result.exitCode.toString();
     const signal_text = result.signal === null ? "null" : result.signal;

@@ -2,17 +2,19 @@ import type { ChildProcess } from "node:child_process";
 
 export type CoreLifecycleState = "idle" | "starting" | "ready" | "stopping" | "stopped" | "failed";
 
-export interface CoreLifecycleEnvironment {
+export type CoreLaunchCommandKind = "executable" | "source";
+
+export interface CoreLaunchEnvironment {
   env: NodeJS.ProcessEnv;
   appRoot: string;
-  resourcesPath: string;
-  isPackaged: boolean;
   platform: NodeJS.Platform;
 }
 
-export interface CoreRuntimePaths {
-  coreSourceRoot: string;
-  uvCommand: string;
+export interface CoreLaunchCommand {
+  kind: CoreLaunchCommandKind;
+  command: string;
+  args: string[];
+  cwd: string;
 }
 
 export interface CoreProcessHandle {
@@ -32,7 +34,5 @@ export interface CoreLifecycleStartResult {
 
 export interface CoreLifecycleManagerOptions {
   appRoot: string;
-  resourcesPath: string;
-  isPackaged: boolean;
   onUnexpectedExit?: (result: CoreProcessExitResult) => void;
 }

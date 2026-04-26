@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   build_core_process_env,
+  build_core_process_spawn_request,
   parse_windows_console_columns,
   resolve_core_console_width,
 } from "./core-lifecycle-manager";
+import type { CoreLaunchCommand } from "./core-lifecycle-types";
 
 describe("resolve_core_console_width", () => {
   it("优先使用当前终端列宽", () => {
@@ -50,5 +52,57 @@ describe("build_core_process_env", () => {
     const env = build_core_process_env("http://127.0.0.1:3107", "token", "188");
 
     expect(env["NO_COLOR"]).toBeUndefined();
+  });
+});
+
+describe("build_core_process_spawn_request", () => {
+  const base_url = "http://127.0.0.1:50123";
+  const instance_token = "token";
+
+  it("使用 core.exe 启动目标并注入生命周期环境变量", () => {
+    const launch_command: CoreLaunchCommand = {
+      kind: "executable",
+      command: "E:\\Project\\LinguaGacha\\core.exe",
+      args: [],
+      cwd: "E:\\Project\\LinguaGacha",
+    };
+
+    const request = build_core_process_spawn_request(
+      launch_command,
+      base_url,
+      instance_token,
+      "188",
+      "win32",
+    );
+
+    expect(request.command).toBe(launch_command.command);
+    expect(request.args).toEqual([]);
+    expect(request.options.cwd).toBe(launch_command.cwd);
+    expect(request.options.detached).toBe(false);
+    expect(request.options.env["LINGUAGACHA_CORE_API_BASE_URL"]).toBe(base_url);
+    expect(request.options.env["LINGUAGACHA_CORE_INSTANCE_TOKEN"]).toBe(instance_token);
+  });
+
+  it("使用 uv run app.py 启动目标并复用同一套环境变量", () => {
+    const launch_command: CoreLaunchCommand = {
+      kind: "source",
+      command: "E:\\tools\\uv.exe",
+      args: ["run", "app.py"],
+      cwd: "E:\\Project\\LinguaGacha",
+    };
+
+    const request = build_core_process_spawn_request(
+      launch_command,
+      base_url,
+      instance_token,
+      "188",
+      "win32",
+    );
+
+    expect(request.command).toBe(launch_command.command);
+    expect(request.args).toEqual(["run", "app.py"]);
+    expect(request.options.cwd).toBe(launch_command.cwd);
+    expect(request.options.env["LINGUAGACHA_CORE_API_BASE_URL"]).toBe(base_url);
+    expect(request.options.env["LINGUAGACHA_CORE_INSTANCE_TOKEN"]).toBe(instance_token);
   });
 });
