@@ -32,6 +32,16 @@ type EventSourceJsonEvent = {
   [key: string]: unknown;
 };
 
+export type LogLevel = "debug" | "info" | "warning" | "error" | "fatal";
+
+export type LogEvent = {
+  id: string;
+  sequence: number;
+  created_at: string;
+  level: LogLevel;
+  message: string;
+};
+
 type SemanticVersion = {
   major: number;
   minor: number;
@@ -372,6 +382,55 @@ export function open_project_bootstrap_stream(): AsyncIterable<EventSourceJsonEv
     path: "/api/project/bootstrap/stream",
     event_types: ["stage_started", "stage_payload", "stage_completed", "completed", "failed"],
   });
+}
+
+function normalize_log_level(value: unknown): LogLevel {
+  if (
+    value === "debug" ||
+    value === "info" ||
+    value === "warning" ||
+    value === "error" ||
+    value === "fatal"
+  ) {
+    return value;
+  }
+
+  return "info";
+}
+
+function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {
+  if (typeof payload.id !== "string") {
+    return null;
+  }
+  if (typeof payload.sequence !== "number") {
+    return null;
+  }
+  if (typeof payload.created_at !== "string") {
+    return null;
+  }
+  if (typeof payload.message !== "string") {
+    return null;
+  }
+
+  return {
+    id: payload.id,
+    sequence: payload.sequence,
+    created_at: payload.created_at,
+    level: normalize_log_level(payload.level),
+    message: payload.message,
+  };
+}
+
+export async function* open_log_stream(): AsyncIterable<LogEvent> {
+  for await (const event of open_json_event_source_stream({
+    path: "/api/logs/stream",
+    event_types: ["log.appended"],
+  })) {
+    const log_event = normalize_log_event(event);
+    if (log_event !== null) {
+      yield log_event;
+    }
+  }
 }
 
 export async function open_external_url(url: string): Promise<void> {

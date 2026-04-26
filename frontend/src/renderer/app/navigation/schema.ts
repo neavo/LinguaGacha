@@ -9,6 +9,7 @@ import {
   Grid2x2Check,
   LayoutDashboard,
   Palette,
+  ScrollText,
   Radar,
   ReplaceAll,
   ScanText,
@@ -130,6 +131,11 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
 ];
 
 export const BOTTOM_ACTIONS: BottomAction[] = [
+  {
+    id: "logs",
+    label_key: "app.navigation_action.logs",
+    icon: ScrollText,
+  },
   {
     id: "theme",
     label_key: "app.navigation_action.theme",

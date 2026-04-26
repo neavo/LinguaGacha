@@ -26,6 +26,7 @@ import { TooltipProvider } from "@/shadcn/tooltip";
 import { AppSidebar } from "@/app/shell/app-sidebar";
 import { AppTitlebar } from "@/app/shell/app-titlebar";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { LogWindowPage } from "@/pages/log-window-page/page";
 
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const THEME_STORAGE_KEY = "lg-theme-mode";
@@ -120,6 +121,21 @@ function read_lg_base_font_enabled(): boolean {
   }
 }
 
+function is_log_window_mode(): boolean {
+  return new URLSearchParams(window.location.search).get("window") === "logs";
+}
+
+function format_app_titlebar_title(app_name: string, version: string | null): string {
+  const normalized_version = version?.trim();
+  if (normalized_version === undefined || normalized_version === "") {
+    return app_name;
+  }
+
+  const version_label =
+    normalized_version.match(/^v/iu) === null ? `v${normalized_version}` : normalized_version;
+  return `${app_name} ${version_label}`;
+}
+
 function AppContent(): JSX.Element {
   const {
     hydration_ready,
@@ -150,13 +166,13 @@ function AppContent(): JSX.Element {
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
   const previous_project_path_ref = useRef<string>(project_snapshot.path);
   const previous_project_warmup_status_ref = useRef(project_warmup_status);
+  const log_badge_project_path_ref = useRef<string | null>(null);
   const update_toast_shown_ref = useRef<boolean>(false);
+  const [log_badge_visible, set_log_badge_visible] = useState<boolean>(false);
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
-  const app_title =
-    app_version === null
-      ? t("app.metadata.app_name")
-      : `${t("app.metadata.app_name")} v${app_version}`;
+  const app_title = t("app.metadata.app_name");
+  const app_titlebar_title = format_app_titlebar_title(app_title, app_version);
   const theme_mode: ThemeMode =
     resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
 
@@ -292,6 +308,9 @@ function AppContent(): JSX.Element {
 
     return new Set(PROJECT_DEPENDENT_ROUTE_IDS);
   }, [project_snapshot.loaded, project_warmup_status]);
+  const badged_bottom_action_ids = useMemo<ReadonlySet<BottomActionId>>(() => {
+    return log_badge_visible ? new Set<BottomActionId>(["logs"]) : new Set();
+  }, [log_badge_visible]);
 
   const visible_navigation_groups = useMemo(() => {
     return NAVIGATION_GROUPS.filter((group) => {
@@ -355,6 +374,26 @@ function AppContent(): JSX.Element {
     set_selected_route(next_route);
   }
 
+  useEffect(() => {
+    if (!project_snapshot.loaded) {
+      log_badge_project_path_ref.current = null;
+      set_log_badge_visible(false);
+      return;
+    }
+
+    const project_path = project_snapshot.path.trim();
+    if (project_path === "" || project_warmup_status !== "ready") {
+      return;
+    }
+
+    if (log_badge_project_path_ref.current === project_path) {
+      return;
+    }
+
+    log_badge_project_path_ref.current = project_path;
+    set_log_badge_visible(true);
+  }, [project_snapshot.loaded, project_snapshot.path, project_warmup_status]);
+
   function handle_toggle_group(route_id: RouteId): void {
     if (is_sidebar_collapsed) {
       set_is_sidebar_collapsed(false);
@@ -379,6 +418,18 @@ function AppContent(): JSX.Element {
   }
 
   function handle_bottom_action(action_id: BottomActionId): void {
+    if (action_id === "logs") {
+      set_log_badge_visible(false);
+      void window.desktopApp.openLogWindow().catch((error: unknown) => {
+        if (error instanceof Error) {
+          push_toast("error", error.message);
+        } else {
+          push_toast("error", t("app.feedback.update_failed"));
+        }
+      });
+      return;
+    }
+
     if (action_id !== "language") {
       return;
     }
@@ -459,7 +510,7 @@ function AppContent(): JSX.Element {
             } as CSSProperties
           }
         >
-          <AppTitlebar title={app_title} />
+          <AppTitlebar title={app_titlebar_title} />
           <section className="shell-body">
             <AppSidebar
               groups={visible_navigation_groups}
@@ -470,6 +521,7 @@ function AppContent(): JSX.Element {
               disabled_bottom_action_ids={
                 is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
               }
+              badged_bottom_action_ids={badged_bottom_action_ids}
               profile_label_key={
                 update_release_url === null ? "app.profile.status" : "app.profile.update_available"
               }
@@ -516,6 +568,8 @@ function AppContent(): JSX.Element {
 }
 
 function App(): JSX.Element {
+  const log_window_mode = is_log_window_mode();
+
   return (
     <DesktopRuntimeProvider>
       <LocaleProvider>
@@ -527,8 +581,8 @@ function App(): JSX.Element {
           themes={["light", "dark"]}
         >
           <TooltipProvider delayDuration={120}>
-            <AppContent />
-            <DesktopProgressToastModalLayer />
+            {log_window_mode ? <LogWindowPage /> : <AppContent />}
+            {!log_window_mode ? <DesktopProgressToastModalLayer /> : null}
             <Toaster />
           </TooltipProvider>
         </ThemeProvider>

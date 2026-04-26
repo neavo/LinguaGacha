@@ -68,6 +68,7 @@ export const en_us_app = {
     switch_theme: "Switch Theme",
     toggle_lg_base_font: "Switch Font",
     language: "Language",
+    logs: "Logs",
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",

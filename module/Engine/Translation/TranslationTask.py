@@ -4,10 +4,6 @@ import time
 from functools import lru_cache
 from typing import Callable
 
-from rich import box
-from rich import markup
-from rich.table import Table
-
 from base.Base import Base
 from base.LogManager import LogManager
 from module.Data.Core.Item import Item
@@ -381,53 +377,44 @@ class TranslationTask(Base):
 
         # 确定日志样式和消息
         if is_force_accept:
-            style = "#9ACD32"
             message = Localizer.get().translation_response_check_fail_force
             log_func = LogManager.get().warning
         elif all(v == ResponseChecker.Error.UNKNOWN for v in checks):
-            style = "red"
             message = Localizer.get().translation_response_check_fail.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_TIMEOUT for v in checks):
-            style = "red"
             message = Localizer.get().translation_response_check_fail_all.replace(
                 "{REASON}", Localizer.get().response_checker_fail_timeout
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_DEGRADATION for v in checks):
-            style = "red"
             message = Localizer.get().translation_response_check_fail_all.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_DATA for v in checks):
-            style = "red"
             message = Localizer.get().translation_response_check_fail.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v == ResponseChecker.Error.FAIL_LINE_COUNT for v in checks):
-            style = "red"
             message = Localizer.get().translation_response_check_fail.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif all(v in ResponseChecker.LINE_ERROR for v in checks):
-            style = "red"
             message = Localizer.get().translation_response_check_fail_all.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().error
         elif any(v in ResponseChecker.LINE_ERROR for v in checks):
-            style = "yellow"
             message = Localizer.get().translation_response_check_fail_part.replace(
                 "{REASON}", reason
             )
             log_func = LogManager.get().warning
         else:
-            style = "green"
             message = stats_info
             log_func = LogManager.get().info
 
@@ -438,91 +425,45 @@ class TranslationTask(Base):
         if sub_info:
             header_logs.append(sub_info)
 
-        for i, log in enumerate(header_logs):
-            file_log.insert(i, log)
-            console_log.insert(i, log)
+        for index, log in enumerate(header_logs):
+            file_log.insert(index, log)
+            console_log.insert(index, log)
 
-        # 写入日志到文件
-        file_rows = self.generate_log_rows(srcs, dsts, file_log, console=False)
-        log_func("\n" + "\n\n".join(file_rows) + "\n", file=True, console=False)
-
-        # 根据线程数判断是否需要打印表格
-        if Engine.get().get_running_task_count() > 32:
-            # 简略模式下的状态文本
-            status_text = (
-                message if message != stats_info else Localizer.get().task_success
-            )
-
-            # 构建三行简略日志
-            # 第一行：染色前缀 + 状态
-            prefix = (
-                f"[{style}][{Localizer.get().engine_task_simple_log_prefix}][/{style}]"
-            )
-            line1 = f"{prefix} {status_text}"
-
-            # 第二行：统计信息
-            line2 = stats_info
-
-            # 组合日志
-            display_msg = line1 + "\n" + line2
-            if sub_info:
-                # 第三行：子任务信息
-                display_msg += "\n" + sub_info
-
-            LogManager.get().print_rich("\n" + display_msg + "\n")
-        else:
-            LogManager.get().print_rich(
-                self.generate_log_table(
-                    self.generate_log_rows(srcs, dsts, console_log, console=True),
-                    style,
-                )
-            )
+        rows = self.generate_log_rows(srcs, dsts, console_log)
+        log_func("\n" + "\n\n".join(rows) + "\n", file=True, console=True)
 
     # 生成日志行
     def generate_log_rows(
-        self, srcs: list[str], dsts: list[str], extra: list[str], console: bool
+        self,
+        srcs: list[str],
+        dsts: list[str],
+        extra: list[str],
+        *,
+        console: bool = False,
     ) -> list[str]:
-        rows = []
+        del console
+        rows: list[str] = []
 
         # 添加额外日志
-        for v in extra:
-            rows.append(markup.escape(v.strip()))
+        for text in extra:
+            stripped = text.strip()
+            if stripped != "":
+                rows.append(stripped)
 
         # 原文译文对比
-        pair = ""
-        for src, dst in itertools.zip_longest(srcs, dsts, fillvalue=""):
-            if not console:
-                pair = pair + "\n" + f"{src} --> {dst}"
-            else:
-                pair = (
-                    pair
-                    + "\n"
-                    + f"{markup.escape(src)} [bright_blue]-->[/] {markup.escape(dst)}"
-                )
-        rows.append(pair.strip())
+        pair_lines: list[str] = []
+        for index, (src, dst) in enumerate(
+            itertools.zip_longest(srcs, dsts, fillvalue=""),
+            start=1,
+        ):
+            pair_lines.append(f"[{index}]")
+            pair_lines.append(f"SRC: {src}")
+            pair_lines.append(f"DST: {dst}")
+
+        if pair_lines:
+            rows.append("\n".join(pair_lines))
 
         return rows
-
-    # 生成日志表格
-    def generate_log_table(self, rows: list, style: str) -> Table:
-        table = Table(
-            box=box.ASCII2,
-            expand=True,
-            title=" ",
-            caption=" ",
-            highlight=True,
-            show_lines=True,
-            show_header=False,
-            show_footer=False,
-            collapse_padding=True,
-            border_style=style,
-        )
-        table.add_column("", style="white", ratio=1, overflow="fold")
-
-        for row in rows:
-            table.add_row(row)
-
-        return table
 
     @classmethod
     @lru_cache(maxsize=None)

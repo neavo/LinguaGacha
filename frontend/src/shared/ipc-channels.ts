@@ -1,6 +1,7 @@
 export const IPC_CHANNEL_TITLE_BAR_THEME = "window:set-title-bar-theme";
 export const IPC_CHANNEL_QUIT_APP = "window:quit-app";
 export const IPC_CHANNEL_WINDOW_CLOSE_REQUEST = "window:close-request";
+export const IPC_CHANNEL_OPEN_LOG_WINDOW = "window:open-log-window";
 export const IPC_CHANNEL_OPEN_EXTERNAL_URL = "window:open-external-url";
 export const IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH = "dialog:pick-project-source-file-path";
 export const IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH =

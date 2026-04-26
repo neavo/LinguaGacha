@@ -22,13 +22,19 @@ import {
   IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
 } from "../shared/ipc-channels";
-import { DESKTOP_TITLE_BAR_HEIGHT, uses_title_bar_overlay } from "../shared/desktop-shell";
+import { DESKTOP_TITLE_BAR_OVERLAY_HEIGHT, uses_title_bar_overlay } from "../shared/desktop-shell";
 import { type DesktopPathPickResult, type ThemeMode } from "../shared/desktop-types";
 import { CoreLifecycleManager } from "./core-lifecycle/core-lifecycle-manager";
+import {
+  LogWindowManager,
+  LOG_WINDOW_QUERY_KEY,
+  LOG_WINDOW_QUERY_VALUE,
+} from "./log-window-manager";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 与 PySide 版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线。
@@ -116,6 +122,7 @@ if (RENDERER_DEV_SERVER_URL) {
 }
 
 let win: BrowserWindow | null;
+let log_window_manager: LogWindowManager | null = null;
 let is_app_shutdown_in_progress = false;
 let is_renderer_confirmed_app_quit = false;
 const core_lifecycle_manager = new CoreLifecycleManager({
@@ -359,8 +366,14 @@ function show_window_if_hidden(target_window: BrowserWindow): void {
   }
 }
 
-function register_window_runtime_events(target_window: BrowserWindow): void {
+function register_window_runtime_events(
+  target_window: BrowserWindow,
+  options: { confirm_on_close: boolean } = { confirm_on_close: true },
+): void {
   target_window.on("close", (event) => {
+    if (!options.confirm_on_close) {
+      return;
+    }
     if (is_app_shutdown_in_progress || is_renderer_confirmed_app_quit) {
       return;
     }
@@ -417,31 +430,61 @@ function build_title_bar_overlay(theme_mode: ThemeMode): Electron.TitleBarOverla
     return {
       color: DARK_TITLE_BAR_OVERLAY_COLOR,
       symbolColor: DARK_TITLE_BAR_SYMBOL_COLOR,
-      height: DESKTOP_TITLE_BAR_HEIGHT,
+      height: DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
     };
   } else {
     return {
       color: LIGHT_TITLE_BAR_OVERLAY_COLOR,
       symbolColor: LIGHT_TITLE_BAR_SYMBOL_COLOR,
-      height: DESKTOP_TITLE_BAR_HEIGHT,
+      height: DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
     };
   }
 }
 
-function sync_title_bar_overlay(theme_mode: ThemeMode): void {
-  if (win === null) {
+function sync_title_bar_overlay(target_window: BrowserWindow | null, theme_mode: ThemeMode): void {
+  if (target_window === null) {
     return;
   }
   if (!uses_title_bar_overlay(process.platform)) {
     return;
   }
 
-  win.setTitleBarOverlay(build_title_bar_overlay(theme_mode));
+  target_window.setTitleBarOverlay(build_title_bar_overlay(theme_mode));
+}
+
+function load_renderer_entry(target_window: BrowserWindow, query?: Record<string, string>): void {
+  if (RENDERER_DEV_SERVER_URL) {
+    const target_url = new URL(RENDERER_DEV_SERVER_URL);
+    for (const [key, value] of Object.entries(query ?? {})) {
+      target_url.searchParams.set(key, value);
+    }
+    void target_window.loadURL(target_url.toString());
+  } else {
+    void target_window.loadFile(path.join(RENDERER_DIST, "index.html"), {
+      query,
+    });
+  }
+}
+
+function create_log_window_manager(): LogWindowManager {
+  return new LogWindowManager({
+    createWindowOptions,
+    registerWindow: (target_window) => {
+      register_development_devtools_shortcut(target_window);
+      register_window_runtime_events(target_window, { confirm_on_close: false });
+    },
+    loadTarget: (target_window) => {
+      load_renderer_entry(target_window, {
+        [LOG_WINDOW_QUERY_KEY]: LOG_WINDOW_QUERY_VALUE,
+      });
+    },
+  });
 }
 
 function createWindowOptions(): BrowserWindowConstructorOptions {
   // 统一在这里定义窗口能力，避免主进程别处偷偷改动窗口边框策略。
   const window_options: BrowserWindowConstructorOptions = {
+    title: "LinguaGacha",
     width: WINDOW_STANDARD_WIDTH,
     height: WINDOW_STANDARD_HEIGHT,
     minWidth: WINDOW_STANDARD_WIDTH,
@@ -481,6 +524,11 @@ function createWindow(): void {
   register_development_devtools_shortcut(win);
   register_window_runtime_events(win);
 
+  win.on("closed", () => {
+    win = null;
+    log_window_manager?.close();
+  });
+
   win.once("ready-to-show", () => {
     win?.show();
   });
@@ -488,9 +536,9 @@ function createWindow(): void {
   if (RENDERER_DEV_SERVER_URL) {
     // 开发态优先让窗口可见，这样就算首屏挂掉也能直接看到错误页和 DevTools。
     show_window_if_hidden(win);
-    void win.loadURL(RENDERER_DEV_SERVER_URL);
+    load_renderer_entry(win);
   } else {
-    void win.loadFile(path.join(RENDERER_DIST, "index.html"));
+    load_renderer_entry(win);
   }
 }
 
@@ -557,6 +605,7 @@ async function quit_app_after_core_shutdown(exit_code: number): Promise<void> {
 
 app.on("window-all-closed", () => {
   win = null;
+  log_window_manager?.close();
   app.quit();
 });
 
@@ -579,6 +628,7 @@ app.on("activate", () => {
 app.whenReady().then(async () => {
   try {
     await core_lifecycle_manager.start();
+    log_window_manager = create_log_window_manager();
     createWindow();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Python Core 启动失败。";
@@ -587,13 +637,17 @@ app.whenReady().then(async () => {
   }
 });
 
-ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (_event, theme_mode: ThemeMode) => {
-  sync_title_bar_overlay(theme_mode);
+ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (event, theme_mode: ThemeMode) => {
+  sync_title_bar_overlay(BrowserWindow.fromWebContents(event.sender), theme_mode);
 });
 
 ipcMain.handle(IPC_CHANNEL_QUIT_APP, async () => {
   is_renderer_confirmed_app_quit = true;
   app.quit();
+});
+
+ipcMain.handle(IPC_CHANNEL_OPEN_LOG_WINDOW, async () => {
+  log_window_manager?.toggle();
 });
 
 ipcMain.handle(IPC_CHANNEL_OPEN_EXTERNAL_URL, async (_event, url: string) => {

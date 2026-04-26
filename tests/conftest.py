@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import importlib
 import linecache
-import os
 import sys
 from pathlib import Path
 
@@ -52,14 +50,6 @@ def prime_linecache_for_repo_sources() -> None:
 
         for python_file in source_dir.rglob("*.py"):
             prime_linecache_for_path(python_file)
-
-
-def import_rich_windows_support() -> None:
-    """Windows 下预先导入 rich 的控制台特性模块，避免在 fs 激活后再走 open_code。"""
-    if os.name != "nt":
-        return
-
-    importlib.import_module("rich._windows")
 
 
 def shutdown_log_manager_singleton() -> None:
@@ -120,4 +110,3 @@ def stabilize_runtime_state(request: pytest.FixtureRequest) -> None:
 
 prime_linecache_for_loaded_modules()
 prime_linecache_for_repo_sources()
-import_rich_windows_support()

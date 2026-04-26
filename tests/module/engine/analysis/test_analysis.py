@@ -60,7 +60,6 @@ class FakeLogManager:
         self.error_messages: list[str] = []
         self.error_exceptions: list[BaseException | None] = []
         self.print_messages: list[str] = []
-        self.rich_messages: list[object] = []
 
     def info(self, msg: str, e: BaseException | None = None) -> None:
         del e
@@ -73,9 +72,6 @@ class FakeLogManager:
     def error(self, msg: str, e: BaseException | None = None) -> None:
         self.error_messages.append(msg)
         self.error_exceptions.append(e)
-
-    def print_rich(self, renderable: object) -> None:
-        self.rich_messages.append(renderable)
 
 
 def install_analysis_logger(

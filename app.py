@@ -7,8 +7,6 @@ import threading
 import time
 from types import TracebackType
 
-from rich.console import Console
-
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
@@ -87,7 +85,7 @@ def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
 
 def disable_windows_quick_edit_mode() -> None:
     """无头运行时仍复用旧终端保护，避免误选中文本卡住进程。"""
-    if os.name == "nt" and Console().color_system != "truecolor":
+    if os.name == "nt":
         kernel32 = ctypes.windll.kernel32
 
         h_stdin = kernel32.GetStdHandle(-10)

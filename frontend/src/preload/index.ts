@@ -11,6 +11,7 @@ import {
   IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
   IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
@@ -56,6 +57,9 @@ contextBridge.exposeInMainWorld("desktopApp", {
   },
   async quitApp(): Promise<void> {
     await ipcRenderer.invoke(IPC_CHANNEL_QUIT_APP);
+  },
+  async openLogWindow(): Promise<void> {
+    await ipcRenderer.invoke(IPC_CHANNEL_OPEN_LOG_WINDOW);
   },
   onWindowCloseRequest(callback: () => void): () => void {
     const listener = (): void => {

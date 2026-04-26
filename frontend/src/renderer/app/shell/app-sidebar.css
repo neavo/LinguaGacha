@@ -400,6 +400,8 @@
 }
 
 .sidebar-bottom-button__icon,
+.sidebar-bottom-button__icon-wrap,
+.sidebar-bottom-button__badge-dot,
 .sidebar-bottom-button__text,
 .sidebar-profile__text,
 .sidebar-profile__avatar,
@@ -408,10 +410,31 @@
   z-index: 2;
 }
 
+.sidebar-bottom-button__icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
 .sidebar-bottom-button__icon {
   flex-shrink: 0;
   color: currentColor;
   stroke-width: 2;
+}
+
+.sidebar-bottom-button__badge-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ui-failure);
+  box-shadow: 0 0 0 2px var(--sidebar);
 }
 
 .sidebar-bottom-button:hover::after,
