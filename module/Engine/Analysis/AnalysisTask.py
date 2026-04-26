@@ -5,17 +5,12 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 from typing import Any
 
-from rich import box
-from rich import markup
-from rich.table import Table
-
 from base.Base import Base
 from base.LogManager import LogManager
 from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
-from module.Engine.Engine import Engine
 from module.Engine.TaskRequestErrors import RequestHardTimeoutError
 from module.Engine.TaskRequestExecutor import TaskRequestExecutor
 from module.Engine.TaskRequester import TaskRequester
@@ -97,7 +92,6 @@ class AnalysisTask:
                 response_result=request_response.cleaned_response_result,
                 status_text=status_text,
                 log_func=LogManager.get().warning,
-                style="yellow",
             )
             return AnalysisTaskResult(
                 context=self.context,
@@ -135,7 +129,6 @@ class AnalysisTask:
                 response_result=request_response.cleaned_response_result,
                 status_text=Localizer.get().response_checker_fail_data,
                 log_func=LogManager.get().warning,
-                style="yellow",
             )
             return AnalysisTaskResult(
                 context=self.context,
@@ -155,7 +148,6 @@ class AnalysisTask:
             response_result=request_response.cleaned_response_result,
             status_text="",
             log_func=LogManager.get().info,
-            style="green",
         )
         return AnalysisTaskResult(
             context=self.context,
@@ -302,9 +294,10 @@ class AnalysisTask:
         response_result: str,
         status_text: str,
         log_func: Callable[..., None],
-        style: str,
+        style: str | None = None,
     ) -> None:
         """任务块日志统一格式，方便并发时快速定位哪个批次出了问题。"""
+        del style
         stats_info = (
             Localizer.get()
             .engine_task_success.replace("{TIME}", f"{(time.time() - start):.2f}")
@@ -313,11 +306,9 @@ class AnalysisTask:
             .replace("{CT}", f"{ct}")
         )
 
-        file_logs = [stats_info]
-        console_logs = [stats_info]
+        logs = [stats_info]
         if status_text != "":
-            file_logs.append(status_text)
-            console_logs.append(status_text)
+            logs.append(status_text)
 
         normalized_think = ResponseCleaner.normalize_blank_lines(response_think).strip()
         normalized_result = response_result.strip()
@@ -325,42 +316,20 @@ class AnalysisTask:
             think_log = (
                 Localizer.get().engine_task_response_think + "\n" + normalized_think
             )
-            file_logs.append(think_log)
-            console_logs.append(think_log)
+            logs.append(think_log)
         if normalized_result != "":
             result_log = (
                 Localizer.get().engine_task_response_result + "\n" + normalized_result
             )
-            file_logs.append(result_log)
-            console_logs.append(result_log)
+            logs.append(result_log)
 
-        file_rows = self.generate_log_rows(
+        rows = self.generate_log_rows(
             srcs,
             glossary_entries,
-            file_logs,
+            logs,
             console=False,
         )
-        log_func("\n" + "\n\n".join(file_rows) + "\n", file=True, console=False)
-
-        if Engine.get().get_running_task_count() > 32:
-            summary_text = status_text or Localizer.get().task_success
-            prefix = (
-                f"[{style}][{Localizer.get().engine_task_simple_log_prefix}][/{style}]"
-            )
-            display_msg = "\n".join([prefix + " " + summary_text, stats_info])
-            LogManager.get().print_rich("\n" + display_msg + "\n")
-            return
-
-        table = self.generate_log_table(
-            self.generate_log_rows(
-                srcs,
-                glossary_entries,
-                console_logs,
-                console=True,
-            ),
-            style,
-        )
-        LogManager.get().print_rich(table)
+        log_func("\n" + "\n\n".join(rows) + "\n", file=True, console=True)
 
     def generate_log_rows(
         self,
@@ -368,19 +337,17 @@ class AnalysisTask:
         glossary_entries: list[dict[str, Any]],
         extra: list[str],
         *,
-        console: bool,
+        console: bool = False,
     ) -> list[str]:
         """先组装成纯文本行，让文件日志和控制台日志能共用同一套内容。"""
+        del console
         rows: list[str] = []
         for text in extra:
             stripped = text.strip()
-            rows.append(markup.escape(stripped) if console else stripped)
+            if stripped != "":
+                rows.append(stripped)
 
-        source_lines = [
-            markup.escape(text.strip()) if console else text.strip()
-            for text in srcs
-            if text.strip() != ""
-        ]
+        source_lines = [f"SRC: {text.strip()}" for text in srcs if text.strip() != ""]
         if source_lines:
             rows.append(
                 Localizer.get().analysis_task_source_texts
@@ -388,7 +355,7 @@ class AnalysisTask:
                 + "\n".join(source_lines)
             )
 
-        term_lines = self.build_glossary_log_lines(glossary_entries, console=console)
+        term_lines = self.build_glossary_log_lines(glossary_entries)
         terms_body = (
             "\n".join(term_lines)
             if term_lines
@@ -400,8 +367,6 @@ class AnalysisTask:
     def build_glossary_log_lines(
         self,
         glossary_entries: list[dict[str, Any]],
-        *,
-        console: bool,
     ) -> list[str]:
         """术语展示文本统一收口，避免文件日志和控制台展示内容跑偏。"""
         rows: list[str] = []
@@ -412,28 +377,8 @@ class AnalysisTask:
             if src == "" or dst == "":
                 continue
 
-            text = f"{src} -> {dst}"
+            text = f"TERM: {src} -> {dst}"
             if info != "":
                 text += f" #{info}"
-            rows.append(markup.escape(text) if console else text)
+            rows.append(text)
         return rows
-
-    @staticmethod
-    def generate_log_table(rows: list[str], style: str) -> Table:
-        """rich 表格样式统一由 Task 维护，方便以后整体改展示。"""
-        table = Table(
-            box=box.ASCII2,
-            expand=True,
-            title=" ",
-            caption=" ",
-            highlight=True,
-            show_lines=True,
-            show_header=False,
-            show_footer=False,
-            collapse_padding=True,
-            border_style=style,
-        )
-        table.add_column("", style="white", ratio=1, overflow="fold")
-        for row in rows:
-            table.add_row(row)
-        return table

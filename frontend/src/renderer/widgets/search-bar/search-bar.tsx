@@ -48,6 +48,7 @@ type SearchBarSharedProps<scope_value extends string = string> = React.Component
     disabled_label: React.ReactNode;
     on_change: (next_value: boolean) => void;
   };
+  extra_actions?: React.ReactNode;
 };
 
 type SearchBarFilterProps<scope_value extends string = string> =
@@ -66,7 +67,6 @@ type SearchBarReplaceProps<scope_value extends string = string> =
     replace_all_label: string;
     on_replace_next: () => void | Promise<void>;
     on_replace_all: () => void | Promise<void>;
-    extra_actions?: React.ReactNode;
   };
 
 type SearchBarProps<scope_value extends string = string> =
@@ -79,6 +79,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
   if (props.variant === "replace") {
     const {
       variant,
+      className,
       keyword,
       placeholder,
       clear_label,
@@ -100,6 +101,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
     } = props;
 
     void variant;
+    void className;
     void keyword;
     void placeholder;
     void clear_label;
@@ -123,6 +125,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
 
   const {
     variant,
+    className,
     keyword,
     placeholder,
     clear_label,
@@ -131,10 +134,12 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
     disabled,
     scope,
     regex,
+    extra_actions,
     ...card_props
   } = props;
 
   void variant;
+  void className;
   void keyword;
   void placeholder;
   void clear_label;
@@ -143,6 +148,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
   void disabled;
   void scope;
   void regex;
+  void extra_actions;
 
   return card_props;
 }
@@ -210,7 +216,7 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
                   <TriangleAlert />
                 </InputGroupButton>
               </TooltipTrigger>
-              <TooltipContent side="left" sideOffset={10}>
+              <TooltipContent side="bottom" sideOffset={8}>
                 <p className="search-bar__invalid-tooltip">{props.invalid_message}</p>
               </TooltipContent>
             </Tooltip>
@@ -248,7 +254,7 @@ function SearchBarScopeAction<scope_value extends string = string>(
             </Button>
           </AppDropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="left" sideOffset={10}>
+        <TooltipContent side="bottom" sideOffset={8}>
           <p>{props.scope.tooltip}</p>
         </TooltipContent>
       </Tooltip>
@@ -276,46 +282,28 @@ type SearchBarRegexActionProps = {
 };
 
 function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
-  const regex_menu_value = props.regex.value ? "enabled" : "disabled";
-
   return (
-    <AppDropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <AppDropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="toolbar"
-              disabled={props.disabled}
-              className="search-bar__action-trigger"
-              data-active={props.regex.value ? "true" : undefined}
-            >
-              <Regex data-icon="inline-start" />
-              {props.regex.label}
-            </Button>
-          </AppDropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="left" sideOffset={10}>
-          <p>{props.regex.tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-      <AppDropdownMenuContent align="center">
-        <AppDropdownMenuRadioGroup
-          value={regex_menu_value}
-          onValueChange={(next_value) => {
-            props.regex.on_change(next_value === "enabled");
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="toolbar"
+          disabled={props.disabled}
+          className="search-bar__action-trigger"
+          data-active={props.regex.value ? "true" : undefined}
+          onClick={() => {
+            props.regex.on_change(!props.regex.value);
           }}
         >
-          <AppDropdownMenuRadioItem value="enabled">
-            {props.regex.enabled_label}
-          </AppDropdownMenuRadioItem>
-          <AppDropdownMenuRadioItem value="disabled">
-            {props.regex.disabled_label}
-          </AppDropdownMenuRadioItem>
-        </AppDropdownMenuRadioGroup>
-      </AppDropdownMenuContent>
-    </AppDropdownMenu>
+          <Regex data-icon="inline-start" />
+          {props.regex.label}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={8}>
+        <p>{props.regex.tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -491,7 +479,7 @@ export function SearchBar<scope_value extends string = string>(
           <div className="search-bar__actions">
             <SearchBarScopeAction disabled={disabled} scope={scope} />
             <SearchBarRegexAction disabled={disabled} regex={regex} />
-            {variant === "replace" ? props.extra_actions : null}
+            {props.extra_actions}
           </div>
         </div>
       </CardContent>

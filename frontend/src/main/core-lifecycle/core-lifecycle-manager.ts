@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 
 import { resolve_core_launch_command } from "./core-command-resolver";
@@ -22,13 +22,9 @@ import type {
 
 const CORE_API_BASE_URL_ENV_NAME = "LINGUAGACHA_CORE_API_BASE_URL";
 const CORE_INSTANCE_TOKEN_ENV_NAME = "LINGUAGACHA_CORE_INSTANCE_TOKEN";
-const CORE_RICH_CONSOLE_ENV_NAME = "LINGUAGACHA_CORE_RICH_CONSOLE";
-const CORE_CONSOLE_WIDTH_ENV_NAME = "LINGUAGACHA_CORE_CONSOLE_WIDTH";
 const PARENT_PID_ENV_NAME = "LINGUAGACHA_PARENT_PID";
 const CORE_SHUTDOWN_PATH = "/api/lifecycle/shutdown";
 const CORE_SHUTDOWN_HTTP_TIMEOUT_MS = 1_000;
-const DEFAULT_CORE_CONSOLE_WIDTH = 160;
-const WINDOWS_CONSOLE_WIDTH_QUERY_TIMEOUT_MS = 1_000;
 
 export interface CoreProcessSpawnRequest {
   command: string;
@@ -56,73 +52,17 @@ function create_exit_promise(
   });
 }
 
-function normalize_core_console_width(value: number | string | undefined | null): string | null {
-  if (value === undefined || value === null) {
-    return null;
-  }
-
-  const normalized_value = Number(value);
-  if (Number.isFinite(normalized_value) && normalized_value > 0) {
-    return Math.floor(normalized_value).toString();
-  }
-
-  return null;
-}
-
-export function parse_windows_console_columns(output: string): string | null {
-  const match = /Columns:\s*(\d+)/i.exec(output);
-  return normalize_core_console_width(match?.[1] ?? null);
-}
-
-function read_windows_console_width(): string | null {
-  if (process.platform !== "win32") {
-    return null;
-  }
-
-  try {
-    const output = execFileSync("cmd.exe", ["/d", "/s", "/c", "mode con"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: WINDOWS_CONSOLE_WIDTH_QUERY_TIMEOUT_MS,
-    });
-    return parse_windows_console_columns(output);
-  } catch {
-    return null;
-  }
-}
-
-export function resolve_core_console_width(
-  columns: number | undefined,
-  env: NodeJS.ProcessEnv = process.env,
-  windows_console_width: string | null = read_windows_console_width(),
-): string {
-  return (
-    normalize_core_console_width(env[CORE_CONSOLE_WIDTH_ENV_NAME]) ??
-    normalize_core_console_width(columns) ??
-    normalize_core_console_width(env["COLUMNS"]) ??
-    normalize_core_console_width(windows_console_width) ??
-    DEFAULT_CORE_CONSOLE_WIDTH.toString()
-  );
-}
-
 export function build_core_process_env(
   base_url: string,
   instance_token: string,
-  console_width: string = resolve_core_console_width(process.stdout.columns),
 ): NodeJS.ProcessEnv {
   const core_process_env: NodeJS.ProcessEnv = {
     ...process.env,
     [CORE_API_BASE_URL_ENV_NAME]: base_url,
     [CORE_INSTANCE_TOKEN_ENV_NAME]: instance_token,
-    [CORE_CONSOLE_WIDTH_ENV_NAME]: console_width,
-    [CORE_RICH_CONSOLE_ENV_NAME]: "1",
-    COLUMNS: console_width,
-    CLICOLOR_FORCE: "1",
-    FORCE_COLOR: process.env["FORCE_COLOR"] ?? "1",
     [PARENT_PID_ENV_NAME]: process.pid.toString(),
     PYTHONUNBUFFERED: "1",
   };
-  delete core_process_env["NO_COLOR"];
   return core_process_env;
 }
 
@@ -130,7 +70,6 @@ export function build_core_process_spawn_request(
   launch_command: CoreLaunchCommand,
   base_url: string,
   instance_token: string,
-  console_width: string,
   platform: NodeJS.Platform = process.platform,
 ): CoreProcessSpawnRequest {
   return {
@@ -139,7 +78,7 @@ export function build_core_process_spawn_request(
     options: {
       cwd: launch_command.cwd,
       detached: platform !== "win32",
-      env: build_core_process_env(base_url, instance_token, console_width),
+      env: build_core_process_env(base_url, instance_token),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
@@ -191,7 +130,6 @@ export class CoreLifecycleManager {
     const instance_token = create_instance_token();
     const port = await allocate_core_api_port();
     const base_url = build_core_api_base_url(port);
-    const console_width = resolve_core_console_width(process.stdout.columns);
     const launch_command = resolve_core_launch_command({
       appRoot: this.options.appRoot,
       env: process.env,
@@ -205,7 +143,6 @@ export class CoreLifecycleManager {
       launch_command,
       base_url,
       instance_token,
-      console_width,
     );
     const core_process = spawn(spawn_request.command, spawn_request.args, spawn_request.options);
     attach_core_process_output(core_process);

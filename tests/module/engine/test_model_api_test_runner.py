@@ -134,7 +134,7 @@ def test_model_api_test_runner_reports_mixed_results_and_console_logs(
     assert summary.total_response_time_ms == 3000
     assert summary.key_results[0].error_reason == "ValueError: bad"
     assert summary.key_results[1].masked_key == "abcdefgh********qrstuvwx"
-    assert any("密钥：\n[green]k1[/]" == msg for msg in fake_logger.info_messages)
+    assert any("密钥：\nk1" == msg for msg in fake_logger.info_messages)
     assert any("提示词：" in msg for msg in fake_logger.info_messages)
     assert any("回复\nok1" == msg for msg in fake_logger.info_messages)
     assert any("思考\nthinking" == msg for msg in fake_logger.info_messages)
@@ -172,6 +172,4 @@ def test_model_api_test_runner_uses_placeholder_key_and_sakura_prompt(
     assert summary.total_response_time_ms == 500
     assert summary.key_results[0].masked_key == "no_key_required"
     assert summary.key_results[0].error_reason == "超时 12"
-    assert any(
-        "密钥：\n[green]no_key_required[/]" == msg for msg in fake_logger.info_messages
-    )
+    assert any("密钥：\nno_key_required" == msg for msg in fake_logger.info_messages)

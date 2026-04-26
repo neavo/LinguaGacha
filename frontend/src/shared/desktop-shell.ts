@@ -2,6 +2,8 @@ import type { TitleBarControlSide } from "./desktop-types";
 
 // 统一由共享层定义标题栏高度，避免主进程和渲染层各自维护一套像素常量。
 export const DESKTOP_TITLE_BAR_HEIGHT = 40;
+// Windows/Linux 的原生 overlay 会盖住网页内容；少占 1px，让标题栏底部分隔线仍由渲染层完整绘制。
+export const DESKTOP_TITLE_BAR_OVERLAY_HEIGHT = DESKTOP_TITLE_BAR_HEIGHT - 1;
 // macOS 预留左侧红绿灯安全区，优先贴合系统原生布局而不是做镜像对称。
 const MACOS_TITLE_BAR_SAFE_AREA_START = 80;
 const MACOS_TITLE_BAR_SAFE_AREA_END = 0;

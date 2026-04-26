@@ -13,7 +13,6 @@ dependencies = [
     "tiktoken",
 
     # Tools
-    "rich",
     "openpyxl",
     "orjson",
     "json-repair",
@@ -41,8 +40,7 @@ addopts = "--cov=module --cov-branch --cov-report=term-missing"
 data_file = "tests/.coverage"
 
 [tool.ruff]
-# line-length = 256
-force-exclude = true        # 强制应用排除规则
+force-exclude = true
 extend-exclude = [
     "module/Localizer/",
 ]

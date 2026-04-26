@@ -5,6 +5,7 @@ from http.server import ThreadingHTTPServer
 
 from api.Application.EventStreamService import EventStreamService
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
+from api.Application.LogStreamService import LogStreamService
 from api.Application.ModelAppService import ModelAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProjectBootstrapAppService import ProjectBootstrapAppService
@@ -19,6 +20,7 @@ from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
 from api.Server.Routes.SettingsRoutes import SettingsRoutes
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.LifecycleRoutes import LifecycleRoutes
+from api.Server.Routes.LogRoutes import LogRoutes
 from api.Server.Routes.TaskRoutes import TaskRoutes
 from api.Server.Routes.ModelRoutes import ModelRoutes
 from api.Server.Routes.QualityRoutes import QualityRoutes
@@ -115,6 +117,7 @@ class ServerBootstrap:
                 task_snapshot_builder=task_snapshot_builder,
             )
         )
+        log_stream_service = LogStreamService()
         resolved_candidate_ports = (
             cls.TEST_DEFAULT_PORTS if candidate_ports is None else candidate_ports
         )
@@ -130,6 +133,7 @@ class ServerBootstrap:
             project_bootstrap_app_service=project_bootstrap_app_service,
             core_lifecycle_app_service=core_lifecycle_app_service,
             event_stream_service=event_stream_service,
+            log_stream_service=log_stream_service,
         )
         serve_forever_poll_interval = cls.get_serve_forever_poll_interval(
             as_runtime=as_runtime
@@ -174,6 +178,7 @@ class ServerBootstrap:
         project_bootstrap_app_service: ProjectBootstrapAppService | None,
         core_lifecycle_app_service: CoreLifecycleAppService | None,
         event_stream_service: EventStreamService,
+        log_stream_service: LogStreamService,
     ) -> ThreadingHTTPServer:
         """按候选端口顺序尝试绑定，确保前后端发现顺序一致。"""
 
@@ -194,6 +199,7 @@ class ServerBootstrap:
                 quality_rule_app_service=quality_rule_app_service,
                 core_lifecycle_app_service=core_lifecycle_app_service,
                 event_stream_service=event_stream_service,
+                log_stream_service=log_stream_service,
             )
 
             try:
@@ -219,6 +225,7 @@ class ServerBootstrap:
         quality_rule_app_service: QualityRuleAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
         event_stream_service: EventStreamService | None = None,
+        log_stream_service: LogStreamService | None = None,
     ) -> None:
         """统一收口 API 路由注册入口，确保服务端只暴露单一版本边界。"""
 
@@ -227,6 +234,8 @@ class ServerBootstrap:
             LifecycleRoutes.register(core_api_server, core_lifecycle_app_service)
         if event_stream_service is not None:
             EventRoutes.register(core_api_server, event_stream_service)
+        if log_stream_service is not None:
+            LogRoutes.register(core_api_server, log_stream_service)
         if (
             project_app_service is not None
             or workbench_app_service is not None

@@ -22,7 +22,6 @@ class FakePipelineLogger:
         self.info_messages: list[str] = []
         self.warning_messages: list[str] = []
         self.print_messages: list[str] = []
-        self.rich_messages: list[object] = []
 
     def info(self, msg: str, *args, **kwargs) -> None:
         del args, kwargs
@@ -35,9 +34,6 @@ class FakePipelineLogger:
     def print(self, msg: str, *args, **kwargs) -> None:
         del args, kwargs
         self.print_messages.append(msg)
-
-    def print_rich(self, renderable: object) -> None:
-        self.rich_messages.append(renderable)
 
 
 def build_analysis_task(
@@ -66,19 +62,15 @@ def install_print_chunk_log_runtime(
     monkeypatch: pytest.MonkeyPatch,
     *,
     running_task_count: int = 0,
-) -> tuple[FakePipelineLogger, list[object]]:
+) -> tuple[FakePipelineLogger, list[str]]:
+    del running_task_count
     logger = FakePipelineLogger()
     monkeypatch.setattr(
         analysis_task_module.LogManager,
         "get",
         lambda: logger,
     )
-    monkeypatch.setattr(
-        analysis_task_module.Engine,
-        "get",
-        lambda: SimpleNamespace(get_running_task_count=lambda: running_task_count),
-    )
-    return logger, logger.rich_messages
+    return logger, logger.print_messages
 
 
 def test_analysis_task_execute_request_uses_shared_response_decoder_glossary_flow(
@@ -216,8 +208,8 @@ def test_analysis_task_print_chunk_log_writes_source_and_extracted_terms(
     combined = "\n".join(logger.info_messages)
     assert Localizer.get().analysis_task_source_texts in combined
     assert Localizer.get().analysis_task_extracted_terms in combined
-    assert "圣女艾琳 -> Saint Eileen #女性人名" in combined
-    assert console_objects != []
+    assert "TERM: 圣女艾琳 -> Saint Eileen #女性人名" in combined
+    assert console_objects == []
 
 
 def test_analysis_task_print_chunk_log_summary_mode_omits_candidate_count(
@@ -243,9 +235,10 @@ def test_analysis_task_print_chunk_log_summary_mode_omits_candidate_count(
         style="green",
     )
 
-    combined = "\n".join(str(output) for output in console_outputs)
-    assert Localizer.get().engine_task_simple_log_prefix in combined
-    assert "候选术语" not in combined
+    combined = "\n".join(logger.info_messages)
+    assert Localizer.get().analysis_task_extracted_terms in combined
+    assert "TERM: 圣女艾琳 -> Saint Eileen #女性人名" in combined
+    assert console_outputs == []
 
 
 def test_analysis_task_print_chunk_log_always_includes_result_log_in_console_rows(
@@ -271,19 +264,9 @@ def test_analysis_task_print_chunk_log_always_includes_result_log_in_console_row
         lambda: FakePipelineLogger(),
     )
     monkeypatch.setattr(
-        analysis_task_module.Engine,
-        "get",
-        lambda: SimpleNamespace(get_running_task_count=lambda: 1),
-    )
-    monkeypatch.setattr(
         task,
         "generate_log_rows",
         capture_rows,
-    )
-    monkeypatch.setattr(
-        task,
-        "generate_log_table",
-        lambda rows, style: {"rows": rows, "style": style},
     )
 
     task.print_chunk_log(
@@ -302,10 +285,7 @@ def test_analysis_task_print_chunk_log_always_includes_result_log_in_console_row
     assert any(
         Localizer.get().engine_task_response_result in row for row in captured["file"]
     )
-    assert any(
-        Localizer.get().engine_task_response_result in row
-        for row in captured["console"]
-    )
+    assert "console" not in captured
 
 
 @pytest.mark.parametrize(

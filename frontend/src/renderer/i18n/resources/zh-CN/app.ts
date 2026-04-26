@@ -64,6 +64,7 @@ export const zh_cn_app = {
     switch_theme: "切换主题",
     toggle_lg_base_font: "切换字体",
     language: "字字珠玑",
+    logs: "日志",
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",

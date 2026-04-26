@@ -34,7 +34,7 @@ export type NavigationGroup = {
   items: NavigationNode[];
 };
 
-export type BottomActionId = "theme" | "language";
+export type BottomActionId = "theme" | "language" | "logs";
 
 export type AppearanceMenuActionId = "theme-mode" | "font-family";
 

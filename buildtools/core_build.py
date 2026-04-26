@@ -11,9 +11,6 @@ if str(ROOT_DIR) not in sys.path:
 def build_command() -> list[str]:
     """统一生成 Python Core helper 的打包参数，避免和 Electron 应用命名混用。"""
 
-    common_args = [
-        "--collect-all=rich",
-    ]
     return [
         "./app.py",
         "--name=core",
@@ -21,7 +18,7 @@ def build_command() -> list[str]:
         "--onedir",
         "--noconfirm",
         "--distpath=./dist",
-    ] + common_args
+    ]
 
 
 def main() -> int:

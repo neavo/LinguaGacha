@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-import logging
 from pathlib import Path
 
 import base.LogManager as log_manager_module
@@ -8,70 +5,17 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest import MonkeyPatch
 
 
-class CapturingStructuredHandler(logging.Handler):
-    """用内存收集结构化控制台日志，避免测试依赖真实终端。"""
-
-    instances: list["CapturingStructuredHandler"] = []
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        del args, kwargs
-        super().__init__(level=logging.INFO)
-        self.records: list[logging.LogRecord] = []
-        type(self).instances.append(self)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """记录收到的日志，方便断言路由是否正确。"""
-        self.records.append(record)
-
-
-class CapturingPlainHandler(logging.Handler):
-    """用内存收集 print 通道日志，验证裸控制台输出没有串到 Rich 通道。"""
-
-    instances: list["CapturingPlainHandler"] = []
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        del args, kwargs
-        super().__init__(level=logging.INFO)
-        self.records: list[logging.LogRecord] = []
-        type(self).instances.append(self)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """记录收到的日志，方便断言 print 的路由结果。"""
-        self.records.append(record)
-
-
 def build_log_manager(
     monkeypatch: MonkeyPatch,
     log_dir: Path,
-) -> tuple[
-    log_manager_module.LogManager,
-    CapturingStructuredHandler,
-    CapturingPlainHandler,
-]:
-    """给每个测试单独造一套日志基础设施，避免单例和真实终端互相污染。"""
-    CapturingStructuredHandler.instances = []
-    CapturingPlainHandler.instances = []
-
+) -> log_manager_module.LogManager:
+    """给每个测试单独造一套日志基础设施，避免单例和真实文件互相污染。"""
     monkeypatch.setattr(
         log_manager_module.BasePath,
         "get_log_dir",
         staticmethod(lambda: str(log_dir)),
     )
-    monkeypatch.setattr(
-        log_manager_module,
-        "RichHandler",
-        CapturingStructuredHandler,
-    )
-    monkeypatch.setattr(
-        log_manager_module,
-        "PlainConsoleHandler",
-        CapturingPlainHandler,
-    )
-
-    manager = log_manager_module.LogManager()
-    structured_handler = CapturingStructuredHandler.instances[0]
-    plain_handler = CapturingPlainHandler.instances[0]
-    return manager, structured_handler, plain_handler
+    return log_manager_module.LogManager()
 
 
 def create_log_dir(fs: FakeFilesystem) -> Path:
@@ -92,7 +36,7 @@ def test_error_flushes_async_file_log(
 ) -> None:
     """普通错误日志应先异步入队，并在 shutdown 时稳定落盘。"""
     log_dir = create_log_dir(fs)
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
+    manager = build_log_manager(monkeypatch, log_dir)
 
     try:
         manager.error("任务失败", RuntimeError("boom"), console=False)
@@ -105,41 +49,64 @@ def test_error_flushes_async_file_log(
         manager.shutdown()
 
 
-def test_error_routes_full_traceback_to_console_by_default(
+def test_console_log_publishes_log_event(
     fs: FakeFilesystem,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """控制台默认也应保留完整异常堆栈，避免详细排障信息再被隐藏。"""
+    """console=True 旧语义现在表示进入日志窗口事件流。"""
     log_dir = create_log_dir(fs)
-    manager, structured_handler, _ = build_log_manager(monkeypatch, log_dir)
+    manager = build_log_manager(monkeypatch, log_dir)
 
     try:
-        manager.error("任务失败", RuntimeError("boom"), file=False, console=True)
-        manager.shutdown()
+        subscriber = manager.subscribe_events()
+        manager.warning("窗口日志", file=False, console=True)
 
-        assert len(structured_handler.records) == 1
-        console_message = structured_handler.records[0].getMessage()
-        assert "任务失败" in console_message
-        assert "RuntimeError: boom" in console_message
-        assert console_message.endswith("RuntimeError: boom\n")
+        event = subscriber.get_nowait()
+        assert event.level == "warning"
+        assert event.message == "窗口日志"
+        assert event.sequence == 1
+        assert event.id == "log-1"
     finally:
         manager.shutdown()
 
 
-def test_fatal_writes_file_immediately(
+def test_console_false_does_not_publish_log_event(
     fs: FakeFilesystem,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """fatal 应该同步直写，不能等监听线程慢慢刷盘。"""
+    """console=False 保留为只写文件，不进入日志窗口。"""
     log_dir = create_log_dir(fs)
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
+    manager = build_log_manager(monkeypatch, log_dir)
 
     try:
-        manager.fatal("应用崩溃", RuntimeError("fatal"), console=False)
+        subscriber = manager.subscribe_events()
+        manager.info("只进文件", console=False)
+        manager.shutdown()
+
+        assert subscriber.empty() is True
+        assert "只进文件" in read_log_text(log_dir)
+    finally:
+        manager.shutdown()
+
+
+def test_fatal_writes_file_immediately_and_marks_event_fatal(
+    fs: FakeFilesystem,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """fatal 应同步直写文件，并在日志窗口里标记 fatal。"""
+    log_dir = create_log_dir(fs)
+    manager = build_log_manager(monkeypatch, log_dir)
+
+    try:
+        subscriber = manager.subscribe_events()
+        manager.fatal("应用崩溃", RuntimeError("fatal"))
 
         text = read_log_text(log_dir)
+        event = subscriber.get_nowait()
         assert "应用崩溃" in text
         assert "RuntimeError: fatal" in text
+        assert event.level == "fatal"
+        assert "RuntimeError: fatal" in event.message
     finally:
         manager.shutdown()
 
@@ -150,7 +117,7 @@ def test_shutdown_closes_file_handler_stream(
 ) -> None:
     """shutdown 应主动释放文件句柄，别把资源回收留给垃圾回收阶段。"""
     log_dir = create_log_dir(fs)
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
+    manager = build_log_manager(monkeypatch, log_dir)
 
     try:
         manager.info("收尾日志", console=False)
@@ -161,107 +128,41 @@ def test_shutdown_closes_file_handler_stream(
         manager.shutdown()
 
 
-def test_print_routes_to_plain_console_only(
+def test_subscribe_events_replays_ring_buffer(
     fs: FakeFilesystem,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """print 应该走裸控制台通道，别混进结构化控制台日志里。"""
+    """新订阅者应拿到当前进程内最近日志快照。"""
     log_dir = create_log_dir(fs)
-    manager, structured_handler, plain_handler = build_log_manager(
-        monkeypatch,
-        log_dir,
-    )
+    manager = build_log_manager(monkeypatch, log_dir)
 
     try:
-        manager.info("结构化日志", file=False, console=True)
-        manager.print("普通输出", file=False, console=True)
-        manager.shutdown()
+        manager.info("第一条", file=False)
+        manager.error("第二条", file=False)
 
-        assert [record.getMessage() for record in structured_handler.records] == [
-            "结构化日志"
-        ]
-        assert [record.getMessage() for record in plain_handler.records] == ["普通输出"]
+        subscriber = manager.subscribe_events()
+        replayed_events = [subscriber.get_nowait(), subscriber.get_nowait()]
+
+        assert [event.message for event in replayed_events] == ["第一条", "第二条"]
+        assert [event.sequence for event in replayed_events] == [1, 2]
     finally:
         manager.shutdown()
 
 
-def test_rich_handler_uses_shared_console_and_print_rich_reuses_it(
+def test_log_event_ring_buffer_keeps_recent_limit(
     fs: FakeFilesystem,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """rich handler 和手动 rich 输出必须共用一个 Console，避免 live 进度分裂。"""
+    """ring buffer 只保留最近固定数量日志，避免日志窗口长期占用内存。"""
     log_dir = create_log_dir(fs)
-    manager, structured_handler, _ = build_log_manager(monkeypatch, log_dir)
+    manager = build_log_manager(monkeypatch, log_dir)
+    manager.log_events = log_manager_module.deque(maxlen=2)
 
     try:
-        assert structured_handler is manager.structured_console_handler
-        assert (
-            getattr(structured_handler, "console", manager.get_console())
-            is manager.get_console()
-        )
+        manager.info("一", file=False)
+        manager.info("二", file=False)
+        manager.info("三", file=False)
 
-        messages: list[object] = []
-        monkeypatch.setattr(
-            manager.get_console(),
-            "print",
-            lambda renderable: messages.append(renderable),
-        )
-
-        manager.print_rich({"table": "demo"})
-
-        assert messages == [{"table": "demo"}]
-    finally:
-        manager.shutdown()
-
-
-def test_log_manager_can_force_rich_console_for_managed_electron_output(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """Electron 托管 Core stdout 时仍应允许 Rich 输出颜色。"""
-    log_dir = create_log_dir(fs)
-    monkeypatch.setenv(log_manager_module.LogManager.RICH_CONSOLE_ENV_NAME, "1")
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        assert manager.get_console().is_terminal is True
-    finally:
-        manager.shutdown()
-
-
-def test_log_manager_uses_managed_console_width(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """Electron 托管 Core stdout 时应同步真实终端宽度，避免 Rich 表格过早折行。"""
-    log_dir = create_log_dir(fs)
-    monkeypatch.setenv(log_manager_module.LogManager.RICH_CONSOLE_ENV_NAME, "1")
-    monkeypatch.setenv(log_manager_module.LogManager.CORE_CONSOLE_WIDTH_ENV_NAME, "188")
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        assert manager.get_console().width == 188
-    finally:
-        manager.shutdown()
-
-
-def test_log_manager_uses_default_width_when_forced_width_is_invalid(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """强制 Rich 终端但宽度缺失时保留一个宽松默认值，别退回 pipe 窄宽度。"""
-    log_dir = create_log_dir(fs)
-    monkeypatch.setenv(log_manager_module.LogManager.RICH_CONSOLE_ENV_NAME, "1")
-    monkeypatch.setenv(
-        log_manager_module.LogManager.CORE_CONSOLE_WIDTH_ENV_NAME,
-        "invalid",
-    )
-    manager, _, _ = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        assert (
-            manager.get_console().width
-            == log_manager_module.LogManager.DEFAULT_RICH_CONSOLE_WIDTH
-        )
+        assert [event.message for event in manager.snapshot_events()] == ["二", "三"]
     finally:
         manager.shutdown()

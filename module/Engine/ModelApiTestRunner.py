@@ -57,9 +57,7 @@ class ModelApiTestRunner:
             requester = TaskRequester(config, model_for_test)
 
             LogManager.get().print("")
-            LogManager.get().info(
-                Localizer.get().api_test_key + "\n" + f"[green]{masked_key}[/]"
-            )
+            LogManager.get().info(Localizer.get().api_test_key + "\n" + masked_key)
             LogManager.get().info(
                 Localizer.get().api_test_messages + "\n" + f"{messages}"
             )

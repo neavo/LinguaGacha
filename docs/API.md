@@ -9,6 +9,7 @@
 | --- | --- | --- |
 | Electron 渲染层 | `frontend/src/renderer/app/desktop-api.ts` | 页面不得绕过它直连 `fetch` / `EventSource` 到随意路径 |
 | 渲染层项目运行态 | `/api/project/bootstrap/stream` + `/api/events/stream` | `ProjectStore` 依赖 bootstrap + `project.patch` 建立最小事实源 |
+| Electron 独立日志窗口 | `/api/logs/stream` | 只消费 `LogManager` 诊断日志事件，不进入项目运行态 |
 | Python 侧对象化客户端 | `api/Client/*.py` + `api/Models/*.py` | 客户端负责请求包装与对象化，不负责运行态缓存 |
 
 协议层真实分工：
@@ -25,6 +26,7 @@
 | 探活 | `/api/health` | Electron main 与渲染层启动前探活 |
 | 生命周期 | `/api/lifecycle/shutdown` | Electron main 请求 Core 优雅关闭的内部入口 |
 | 长期事件流 | `/api/events/stream` | 公开 SSE topic 与 `project.patch` |
+| 诊断日志流 | `/api/logs/stream` | 独立日志窗口订阅 `LogManager` 纯文本日志 |
 | bootstrap 首包 | `/api/project/bootstrap/stream` | 一次性阶段化项目首包 |
 | 项目与同步 mutation | `/api/project/*` | 工程、工作台、校对、reset、导入术语等 |
 | 项目派生工具 | `/api/project/text-preserve/preset-rules`、`/api/project/export-converted-translation` | 为 TS 侧工具页提供预置规则读取与转换结果文件写出 |
@@ -35,7 +37,7 @@
 
 路径不变量：
 - 主业务协议统一落在 `/api/` 前缀，不扩展新的并行根前缀。
-- 公开 `GET` 稳定只有 `/api/health`、`/api/events/stream`、`/api/project/bootstrap/stream` 三类；其余公开接口默认走 `POST + JSON body`。
+- 公开 `GET` 稳定只有 `/api/health`、`/api/events/stream`、`/api/logs/stream`、`/api/project/bootstrap/stream` 四类；其余公开接口默认走 `POST + JSON body`。
 - `/api/lifecycle/shutdown` 是内部生命周期接口，只供 Electron main 调用；它要求 `X-LinguaGacha-Core-Token` 与当前 Core 实例 token 一致。
 - `OPTIONS` 由服务器统一回 `204`，CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
 
@@ -91,6 +93,13 @@ flowchart TD
 - `/api/events/stream` 使用 `EventEnvelope.to_sse_payload()` 生成 SSE 载荷。
 - 线格式只包含 `event:` 与 `data:`，没有额外 `event_id`、`timestamp` 或 `topic` 回显。
 - 空闲时服务端发送 `: keepalive`。
+
+### 诊断日志流
+- `/api/logs/stream` 独立于 `/api/events/stream`，只推送日志窗口需要的诊断日志，不混入 `ProjectStore` 运行态。
+- 连接建立后先回放当前进程内 `LogManager` ring buffer，再持续推送新增日志；持久排障历史仍以 `DATA_ROOT/log/app.log` 为准。
+- SSE 事件名固定为 `log.appended`，`data` 是扁平 `LogEvent`：`id`、`sequence`、`created_at`、`level`、`message`。
+- `level` 只使用 `debug / info / warning / error / fatal`；`message` 永远是纯文本，多行详情靠换行、缩进和 ASCII 标签表达。
+- 旧 `console=False` 日志调用只写文件，不进入 `/api/logs/stream`。
 
 ### bootstrap 首包
 

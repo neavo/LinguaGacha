@@ -1,92 +1,67 @@
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import asdict
+from dataclasses import dataclass
+from datetime import datetime
+from datetime import timezone
 import logging
 import os
 import queue
+import sys
 import traceback
+from collections.abc import Sequence
 from logging.handlers import QueueHandler
 from logging.handlers import QueueListener
 from logging.handlers import TimedRotatingFileHandler
 from typing import Self
 
 from base.BasePath import BasePath
-from rich.console import Console
-from rich.logging import RichHandler
+
+
+@dataclass(frozen=True)
+class LogEvent:
+    """日志窗口的唯一跨层载荷，只携带纯文本诊断信息。"""
+
+    id: str
+    sequence: int
+    created_at: str
+    level: str
+    message: str
+
+    def to_dict(self) -> dict[str, object]:
+        """SSE 层统一消费普通字典，避免暴露 dataclass 实例。"""
+        return asdict(self)
 
 
 class LogTargetFilter(logging.Filter):
-    """按目标和渲染方式分流日志，避免业务线程自己挑 handler。"""
+    """按目标分流日志，避免业务线程自己挑 handler。"""
 
     def __init__(
         self,
         *,
         emit_key: str,
-        render_plain_console: bool | None = None,
     ) -> None:
         super().__init__()
         self.emit_key: str = emit_key
-        self.render_plain_console: bool | None = render_plain_console
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """只让目标匹配的记录通过，保证文件/控制台职责单一。"""
-        should_emit = bool(getattr(record, self.emit_key, False))
-        if not should_emit:
-            return False
-
-        if self.render_plain_console is None:
-            return True
-
-        return bool(getattr(record, "render_plain_console", False)) == bool(
-            self.render_plain_console
-        )
-
-
-class PlainConsoleHandler(logging.Handler):
-    """保留原来 print 风格的裸控制台输出，避免空行也被 Rich 包装。"""
-
-    def __init__(self, console: Console) -> None:
-        super().__init__(level=logging.INFO)
-        self.console: Console = console
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """用 Rich Console 直接打印消息，保持 print 语义不变。"""
-        try:
-            message = self.format(record)
-            self.console.print(message)
-        except Exception:
-            self.handleError(record)
+        """只让目标匹配的记录通过，保证文件职责单一。"""
+        return bool(getattr(record, self.emit_key, False))
 
 
 class LogManager:
     """统一管理异步日志和崩溃兜底，避免工作线程被日志 I/O 拖慢。"""
 
-    RICH_CONSOLE_ENV_NAME: str = "LINGUAGACHA_CORE_RICH_CONSOLE"
-    CORE_CONSOLE_WIDTH_ENV_NAME: str = "LINGUAGACHA_CORE_CONSOLE_WIDTH"
-    DEFAULT_RICH_CONSOLE_WIDTH: int = 160
+    DEFAULT_RING_BUFFER_SIZE: int = 1000
 
     def __init__(self) -> None:
         super().__init__()
-
-        # 控制台对象只保留一个，避免普通输出和兜底输出风格飘来飘去。
-        force_rich_console = (
-            os.environ.get(self.RICH_CONSOLE_ENV_NAME, "").strip() == "1"
-        )
-        console_width = self.resolve_console_width(
-            os.environ.get(self.CORE_CONSOLE_WIDTH_ENV_NAME)
-            or os.environ.get("COLUMNS"),
-            force_rich_console=force_rich_console,
-        )
-        console_environ = self.build_console_environ(
-            console_width,
-            force_rich_console=force_rich_console,
-        )
-        self.console = Console(
-            force_terminal=force_rich_console,
-            color_system="truecolor" if force_rich_console else "auto",
-            legacy_windows=False if force_rich_console else None,
-            width=console_width,
-            _environ=console_environ,
-        )
         self.async_enabled: bool = False
         self.shutdown_complete: bool = False
+        self.next_event_sequence: int = 1
+        self.log_events: deque[LogEvent] = deque(maxlen=self.DEFAULT_RING_BUFFER_SIZE)
+        self.event_subscribers: list[queue.Queue[LogEvent]] = []
 
         log_path = BasePath.get_log_dir()
         os.makedirs(log_path, exist_ok=True)
@@ -108,35 +83,6 @@ class LogManager:
         )
         self.file_handler.addFilter(LogTargetFilter(emit_key="emit_file"))
 
-        # 结构化控制台日志继续交给 RichHandler，方便平时看级别和时间。
-        self.structured_console_handler = RichHandler(
-            console=self.console,
-            markup=True,
-            show_path=False,
-            rich_tracebacks=False,
-            tracebacks_extra_lines=0,
-            log_time_format="[%X]",
-            omit_repeated_times=False,
-        )
-        self.structured_console_handler.setLevel(logging.DEBUG)
-        self.structured_console_handler.addFilter(
-            LogTargetFilter(
-                emit_key="emit_console",
-                render_plain_console=False,
-            )
-        )
-
-        # print 专用控制台 handler 单独保留，避免把空行也打成带级别的日志。
-        self.plain_console_handler = PlainConsoleHandler(self.console)
-        self.plain_console_handler.setLevel(logging.INFO)
-        self.plain_console_handler.setFormatter(logging.Formatter("%(message)s"))
-        self.plain_console_handler.addFilter(
-            LogTargetFilter(
-                emit_key="emit_console",
-                render_plain_console=True,
-            )
-        )
-
         # 统一入口 logger 只负责把记录塞进队列，具体落地点交给监听线程。
         self.log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
         self.queue_handler = QueueHandler(self.log_queue)
@@ -151,8 +97,6 @@ class LogManager:
             self.queue_listener = QueueListener(
                 self.log_queue,
                 self.file_handler,
-                self.structured_console_handler,
-                self.plain_console_handler,
                 respect_handler_level=True,
             )
             self.queue_listener.start()
@@ -166,8 +110,7 @@ class LogManager:
                 "日志队列监听器启动失败，已降级为同步日志。",
                 e=e,
                 file=True,
-                console=True,
-                render_plain_console=False,
+                console=False,
             )
 
     @classmethod
@@ -177,54 +120,6 @@ class LogManager:
             cls.__instance__ = cls()
 
         return cls.__instance__
-
-    @classmethod
-    def resolve_console_width(
-        cls,
-        width_text: str | None,
-        *,
-        force_rich_console: bool,
-    ) -> int | None:
-        """Electron pipe 托管时 Rich 需要显式宽度，否则会回退到窄默认值。"""
-        if width_text is not None:
-            try:
-                width = int(width_text.strip())
-                if width > 0:
-                    return width
-            except ValueError:
-                pass
-
-        if force_rich_console:
-            return cls.DEFAULT_RICH_CONSOLE_WIDTH
-
-        return None
-
-    @classmethod
-    def build_console_environ(
-        cls,
-        console_width: int | None,
-        *,
-        force_rich_console: bool,
-    ) -> dict[str, str]:
-        """给 Rich 一个稳定的终端环境，避免 Windows pipe 被识别成 dumb terminal。"""
-        console_environ = dict(os.environ)
-
-        if console_width is not None:
-            console_environ["COLUMNS"] = str(console_width)
-
-        term = console_environ.get("TERM", "").strip().lower()
-        if force_rich_console and term in {"", "dumb"}:
-            console_environ["TERM"] = "xterm-256color"
-
-        return console_environ
-
-    def get_console(self) -> Console:
-        """所有 rich 终端输出都必须走同一个 Console，避免渲染风格漂移。"""
-        return self.console
-
-    def print_rich(self, renderable: object) -> None:
-        """rich 表格和简略日志统一走共享 Console，避免退回默认全局 Console。"""
-        self.console.print(renderable)
 
     def print(
         self,
@@ -252,7 +147,14 @@ class LogManager:
         console: bool = True,
     ) -> None:
         """调试日志默认异步化，尽量别阻塞后台任务线程。"""
-        self.log(logging.DEBUG, msg, e=e, file=file, console=console, sync=False)
+        self.log(
+            logging.DEBUG,
+            msg,
+            e=e,
+            file=file,
+            console=console,
+            sync=False,
+        )
 
     def info(
         self,
@@ -262,7 +164,14 @@ class LogManager:
         console: bool = True,
     ) -> None:
         """信息日志默认异步化，维持现有调用口不变。"""
-        self.log(logging.INFO, msg, e=e, file=file, console=console, sync=False)
+        self.log(
+            logging.INFO,
+            msg,
+            e=e,
+            file=file,
+            console=console,
+            sync=False,
+        )
 
     def warning(
         self,
@@ -272,7 +181,14 @@ class LogManager:
         console: bool = True,
     ) -> None:
         """警告日志默认异步化，减少高并发下的 handler 锁竞争。"""
-        self.log(logging.WARNING, msg, e=e, file=file, console=console, sync=False)
+        self.log(
+            logging.WARNING,
+            msg,
+            e=e,
+            file=file,
+            console=console,
+            sync=False,
+        )
 
     def error(
         self,
@@ -282,7 +198,14 @@ class LogManager:
         console: bool = True,
     ) -> None:
         """错误日志默认异步化，平时场景优先保证业务线程吞吐。"""
-        self.log(logging.ERROR, msg, e=e, file=file, console=console, sync=False)
+        self.log(
+            logging.ERROR,
+            msg,
+            e=e,
+            file=file,
+            console=console,
+            sync=False,
+        )
 
     def fatal(
         self,
@@ -290,7 +213,7 @@ class LogManager:
         e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
-        level: int = logging.ERROR,
+        level: int = logging.CRITICAL,
     ) -> None:
         """崩溃兜底日志强制同步直写，避免进程退出前队列来不及刷盘。"""
         self.log(
@@ -329,13 +252,9 @@ class LogManager:
             )
 
         if console:
-            self.dispatch(
+            self.publish_log_event(
                 level,
                 console_message,
-                file=False,
-                console=True,
-                render_plain_console=render_plain_console,
-                sync=sync,
             )
 
     def build_messages(
@@ -363,12 +282,12 @@ class LogManager:
         sync: bool,
     ) -> None:
         """根据当前状态决定走异步队列还是同步直写。"""
+        del console
+        del render_plain_console
         record = self.create_record(
             level,
             message,
             file=file,
-            console=console,
-            render_plain_console=render_plain_console,
         )
 
         if sync or not self.async_enabled or self.shutdown_complete:
@@ -384,9 +303,8 @@ class LogManager:
         e: Exception | BaseException | None = None,
         file: bool = True,
         console: bool = True,
-        render_plain_console: bool = False,
     ) -> None:
-        """日志系统自救时直接写 handler，避免依赖队列可用性。"""
+        """日志系统自救时直接写文件，并用 stderr 做极小兜底。"""
         file_message, console_message = self.build_messages(msg, e)
 
         if file:
@@ -395,29 +313,16 @@ class LogManager:
                     level,
                     file_message,
                     file=True,
-                    console=False,
-                    render_plain_console=False,
                 )
             )
 
         if console:
-            self.handle_record(
-                self.create_record(
-                    level,
-                    console_message,
-                    file=False,
-                    console=True,
-                    render_plain_console=render_plain_console,
-                )
-            )
+            sys.stderr.write(f"{console_message}\n")
+            sys.stderr.flush()
 
     def get_handlers(self) -> tuple[logging.Handler, ...]:
         """把 handler 列表收拢到一起，避免同步写和 flush 各自维护一份。"""
-        return (
-            self.file_handler,
-            self.structured_console_handler,
-            self.plain_console_handler,
-        )
+        return (self.file_handler,)
 
     def create_record(
         self,
@@ -425,8 +330,6 @@ class LogManager:
         message: str,
         *,
         file: bool,
-        console: bool,
-        render_plain_console: bool,
     ) -> logging.LogRecord:
         """把目标信息塞进 LogRecord，方便监听线程无状态分流。"""
         return self.app_logger.makeRecord(
@@ -439,8 +342,6 @@ class LogManager:
             exc_info=None,
             extra={
                 "emit_file": file,
-                "emit_console": console,
-                "render_plain_console": render_plain_console,
             },
         )
 
@@ -493,3 +394,59 @@ class LogManager:
     def get_trackback(self, e: Exception | BaseException) -> str:
         """兼容旧调用名，避免其他模块意外引用时断掉。"""
         return self.get_traceback(e)
+
+    def subscribe_events(self, *, replay: bool = True) -> queue.Queue[LogEvent]:
+        """给日志 SSE 分配独立队列，并按需回放最近日志。"""
+        subscriber: queue.Queue[LogEvent] = queue.Queue()
+        if replay:
+            for event in self.snapshot_events():
+                subscriber.put(event)
+        self.event_subscribers.append(subscriber)
+        return subscriber
+
+    def unsubscribe_events(self, subscriber: queue.Queue[LogEvent]) -> None:
+        """连接断开后移除订阅队列，避免日志窗口重复打开后泄漏。"""
+        if subscriber in self.event_subscribers:
+            self.event_subscribers.remove(subscriber)
+
+    def snapshot_events(self) -> Sequence[LogEvent]:
+        """返回不可变快照，避免调用方拿到内部 ring buffer 引用。"""
+        return tuple(self.log_events)
+
+    def publish_log_event(
+        self,
+        level: int,
+        message: str,
+    ) -> LogEvent:
+        """生成纯文本日志事件，并广播给当前订阅者。"""
+        sequence = self.next_event_sequence
+        self.next_event_sequence += 1
+        event = LogEvent(
+            id=f"log-{sequence}",
+            sequence=sequence,
+            created_at=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            level=self.normalize_event_level(level),
+            message=self.normalize_message(message),
+        )
+        self.log_events.append(event)
+        for subscriber in list(self.event_subscribers):
+            subscriber.put(event)
+        return event
+
+    @classmethod
+    def normalize_event_level(cls, level: int) -> str:
+        """把 logging 级别收敛成日志窗口第一版协议。"""
+        if level >= logging.CRITICAL:
+            return "fatal"
+        if level >= logging.ERROR:
+            return "error"
+        if level >= logging.WARNING:
+            return "warning"
+        if level >= logging.INFO:
+            return "info"
+        return "debug"
+
+    @classmethod
+    def normalize_message(cls, message: str) -> str:
+        """统一纯文本换行，避免日志窗口收到终端控制格式。"""
+        return str(message).replace("\r\n", "\n").replace("\r", "\n")

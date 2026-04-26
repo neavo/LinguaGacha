@@ -42,6 +42,7 @@ type AppSidebarProps = {
   expanded_items: ReadonlySet<RouteId>;
   disabled_route_ids: ReadonlySet<RouteId>;
   disabled_bottom_action_ids: ReadonlySet<BottomActionId>;
+  badged_bottom_action_ids: ReadonlySet<BottomActionId>;
   profile_label_key: LocaleKey;
   profile_tooltip_key: LocaleKey;
   is_profile_update_available: boolean;
@@ -193,6 +194,7 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
           {props.bottom_actions.map((action) => {
             const ActionIcon = action.icon;
             const is_action_disabled = props.disabled_bottom_action_ids.has(action.id);
+            const has_badge = props.badged_bottom_action_ids.has(action.id);
 
             if (action.id === "theme") {
               return (
@@ -250,7 +252,12 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                     props.on_bottom_action(action.id);
                   }}
                 >
-                  <ActionIcon size={16} className="sidebar-bottom-button__icon" />
+                  <span className="sidebar-bottom-button__icon-wrap">
+                    <ActionIcon size={16} className="sidebar-bottom-button__icon" />
+                    {has_badge ? (
+                      <span className="sidebar-bottom-button__badge-dot" aria-hidden="true" />
+                    ) : null}
+                  </span>
                   <span className="sidebar-bottom-button__text">{t(action.label_key)}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>

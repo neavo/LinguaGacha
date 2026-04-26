@@ -39,6 +39,7 @@ flowchart LR
   - `coreApi.baseUrl`
   - 文件 / 目录选择
   - 外链打开
+  - 独立日志窗口打开 / 聚焦
   - 标题栏主题同步
   - 窗口关闭确认请求订阅
   - `getPathForFile()`
@@ -57,6 +58,15 @@ flowchart LR
 - 页面不要重新发明第二套 `fetch` 包装、`EventSource` 接入或健康检查逻辑。
 - 如果你要改 HTTP 路径、bootstrap 事件、SSE topic 或 `ProjectMutationAck` 对齐逻辑，必须联读 [`API.md`](./API.md)。
 - bootstrap 流消费者当前会监听 `stage_started`、`stage_payload`、`stage_completed`、`completed`，并为未来兼容预留 `failed` 监听。
+- 独立日志窗口只通过 `desktop-api.ts` 的 `/api/logs/stream` 订阅 `log.appended`，不消费 `/api/events/stream`，也不把日志写进 `ProjectStore`。
+
+## 独立日志窗口
+
+- Electron main 通过 `window.desktopApp.openLogWindow()` 维护日志窗口单例；主窗口项目 warmup ready 后只在侧栏日志入口显示红点提醒，不自动打开日志窗口。侧栏日志入口在窗口隐藏时显示并聚焦，窗口已显示时关闭，点击入口会清除本次提醒，关闭日志窗口不关闭主窗口。
+- 日志窗口复用同一个 renderer bundle，通过 `?window=logs` 进入日志模式；该模式不渲染主工作台 sidebar，也不注册为导航屏幕。
+- 主窗口侧栏底部动作区提供日志入口；入口只调用 preload 暴露能力，不直接触碰 Electron / Node。
+- 日志窗口主体复用 `widgets/app-table` 展示时间和消息摘要，级别以前缀形式并入消息列；选中行在详情区展示完整纯文本 `message`。
+- 日志窗口的筛选、搜索、正则模式、自动滚动和详情区展开都是窗口本地状态，不属于项目运行态。
 
 ## 运行态消费与 `ProjectStore`
 

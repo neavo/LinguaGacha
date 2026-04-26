@@ -80,7 +80,6 @@ class FakeLogManager:
         self.info_messages: list[str] = []
         self.warning_messages: list[str] = []
         self.error_messages: list[str] = []
-        self.rich_messages: list[object] = []
         self.progress_sessions: list["FakeProgressSession"] = []
 
     def print(self, msg: str = "") -> None:
@@ -97,9 +96,6 @@ class FakeLogManager:
     def error(self, msg: str, e: Exception | BaseException | None = None) -> None:
         del e
         self.error_messages.append(msg)
-
-    def print_rich(self, renderable: object) -> None:
-        self.rich_messages.append(renderable)
 
     def progress(self, *, transient: bool) -> "FakeProgressSession":
         session = FakeProgressSession(transient=transient)
