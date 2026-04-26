@@ -205,19 +205,26 @@ function partition_glossary_terms(
   };
 }
 
-function find_text_match_ranges(
+function normalize_code_editor_match_text(text: string): string {
+  return text.replace(/\r\n|\r/gu, "\n");
+}
+
+export function find_text_match_ranges(
   text: string,
   fragment: string,
 ): Array<Pick<ProofreadingCodeEditorHighlight, "start" | "end">> {
-  if (fragment.length === 0) {
+  const editor_text = normalize_code_editor_match_text(text);
+  const editor_fragment = normalize_code_editor_match_text(fragment);
+
+  if (editor_fragment.length === 0) {
     return [];
   }
 
   const ranges: Array<Pick<ProofreadingCodeEditorHighlight, "start" | "end">> = [];
   let search_start = 0;
 
-  while (search_start < text.length) {
-    const match_start = text.indexOf(fragment, search_start);
+  while (search_start < editor_text.length) {
+    const match_start = editor_text.indexOf(editor_fragment, search_start);
 
     if (match_start < 0) {
       break;
@@ -225,9 +232,9 @@ function find_text_match_ranges(
 
     ranges.push({
       start: match_start,
-      end: match_start + fragment.length,
+      end: match_start + editor_fragment.length,
     });
-    search_start = match_start + fragment.length;
+    search_start = match_start + editor_fragment.length;
   }
 
   return ranges;

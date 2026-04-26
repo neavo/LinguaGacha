@@ -103,6 +103,8 @@ type WorkbenchChangeSignal = {
   scope: WorkbenchChangeScope;
 };
 
+const WORKBENCH_REFRESH_SECTIONS = ["project", "files", "items", "analysis"];
+
 type ProjectWarmupStatus = "idle" | "warming" | "ready";
 
 type DesktopRuntimeContextValue = {
@@ -836,9 +838,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
       const has_rel_paths = has_project_patch_rel_paths(patch_event);
       if (
-        patch_event.updatedSections.some((section) =>
-          ["project", "files", "items"].includes(section),
-        )
+        patch_event.updatedSections.some((section) => WORKBENCH_REFRESH_SECTIONS.includes(section))
       ) {
         bump_workbench_runtime_signal({
           reason: patch_event.source,
@@ -1099,7 +1099,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           return;
         }
 
-        if (updated_sections.some((section) => ["project", "files", "items"].includes(section))) {
+        if (updated_sections.some((section) => WORKBENCH_REFRESH_SECTIONS.includes(section))) {
           bump_workbench_runtime_signal({
             reason,
             scope: "global",
