@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop-api";
+import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
 
 type RuntimeFixture = {
@@ -54,7 +55,7 @@ type TranslationTaskRuntimeFixture = {
 };
 
 type AnalysisTaskRuntimeFixture = {
-  analysis_task_display_snapshot: null;
+  analysis_task_display_snapshot: AnalysisTaskSnapshot | null;
   analysis_task_metrics: {
     active: boolean;
     stopping: boolean;
@@ -309,6 +310,28 @@ function create_project_item(args: {
   };
 }
 
+function create_analysis_task_snapshot(
+  overrides: Partial<AnalysisTaskSnapshot> = {},
+): AnalysisTaskSnapshot {
+  return {
+    task_type: "analysis",
+    status: "RUNNING",
+    busy: true,
+    request_in_flight_count: 1,
+    line: 0,
+    total_line: 0,
+    processed_line: 0,
+    error_line: 0,
+    total_tokens: 0,
+    total_output_tokens: 0,
+    total_input_tokens: 0,
+    time: 0,
+    start_time: 0,
+    analysis_candidate_count: 0,
+    ...overrides,
+  };
+}
+
 describe("useWorkbenchLiveState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -510,6 +533,248 @@ describe("useWorkbenchLiveState", () => {
       pending_count: 1,
       skipped_count: 1,
       completion_percent: 60,
+    });
+  });
+
+  it("运行中分析统计会优先使用分析任务快照展示", async () => {
+    analysis_runtime_fixture.current = {
+      ...analysis_runtime_fixture.current,
+      analysis_task_display_snapshot: create_analysis_task_snapshot({
+        total_line: 4,
+        processed_line: 2,
+        error_line: 1,
+        line: 3,
+      }),
+      analysis_task_metrics: {
+        ...analysis_runtime_fixture.current.analysis_task_metrics,
+        active: true,
+        processed_count: 2,
+        failed_count: 1,
+        completion_percent: 75,
+      },
+    };
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      task_snapshot: {
+        busy: true,
+        task_type: "analysis",
+      },
+      project_store: {
+        getState: () => {
+          return {
+            files: {
+              "chapter01.txt": {
+                rel_path: "chapter01.txt",
+                file_type: "TXT",
+                sort_index: 1,
+              },
+            },
+            items: {
+              "1": {
+                item_id: 1,
+                file_path: "chapter01.txt",
+                src: "一",
+                status: "NONE",
+              },
+              "2": {
+                item_id: 2,
+                file_path: "chapter01.txt",
+                src: "二",
+                status: "NONE",
+              },
+              "3": {
+                item_id: 3,
+                file_path: "chapter01.txt",
+                src: "三",
+                status: "NONE",
+              },
+              "4": {
+                item_id: 4,
+                file_path: "chapter01.txt",
+                src: "四",
+                status: "NONE",
+              },
+              "5": {
+                item_id: 5,
+                file_path: "chapter01.txt",
+                src: "五",
+                status: "RULE_SKIPPED",
+              },
+            },
+            analysis: {
+              status_summary: {
+                total_line: 4,
+                processed_line: 0,
+                error_line: 0,
+                line: 0,
+              },
+            },
+          };
+        },
+      },
+      workbench_change_signal: {
+        seq: 1,
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state?.stats_mode).toBe("analysis");
+    expect(latest_state?.stats).toMatchObject({
+      total_items: 5,
+      completed_count: 2,
+      failed_count: 1,
+      pending_count: 1,
+      skipped_count: 1,
+      completion_percent: 60,
+    });
+    expect(latest_state?.analysis_stats).toMatchObject(latest_state?.stats ?? {});
+  });
+
+  it("分析任务快照无有效总量时会回退到 ProjectStore 分析统计", async () => {
+    analysis_runtime_fixture.current = {
+      ...analysis_runtime_fixture.current,
+      analysis_task_display_snapshot: create_analysis_task_snapshot({
+        total_line: 0,
+        processed_line: 9,
+        error_line: 1,
+      }),
+      analysis_task_metrics: {
+        ...analysis_runtime_fixture.current.analysis_task_metrics,
+        active: true,
+      },
+    };
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      task_snapshot: {
+        busy: true,
+        task_type: "analysis",
+      },
+      project_store: {
+        getState: () => {
+          return {
+            files: {
+              "chapter01.txt": {
+                rel_path: "chapter01.txt",
+                file_type: "TXT",
+                sort_index: 1,
+              },
+            },
+            items: {
+              "1": {
+                item_id: 1,
+                file_path: "chapter01.txt",
+                src: "一",
+                status: "NONE",
+              },
+              "2": {
+                item_id: 2,
+                file_path: "chapter01.txt",
+                src: "二",
+                status: "NONE",
+              },
+            },
+            analysis: {
+              status_summary: {
+                total_line: 2,
+                processed_line: 1,
+                error_line: 0,
+                line: 1,
+              },
+            },
+          };
+        },
+      },
+      workbench_change_signal: {
+        seq: 1,
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state?.analysis_stats).toMatchObject({
+      total_items: 2,
+      completed_count: 1,
+      failed_count: 0,
+      pending_count: 1,
+      skipped_count: 0,
+      completion_percent: 50,
+    });
+  });
+
+  it("翻译统计会在 items 信号后继续按 ProjectStore 状态刷新", async () => {
+    translation_runtime_fixture.current = {
+      ...translation_runtime_fixture.current,
+      translation_task_metrics: {
+        ...translation_runtime_fixture.current.translation_task_metrics,
+        active: true,
+        processed_count: 99,
+        failed_count: 10,
+        completion_percent: 88,
+      },
+    };
+    await render_hook();
+
+    let item_status = "NONE";
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => {
+          return {
+            files: {
+              "chapter01.txt": {
+                rel_path: "chapter01.txt",
+                file_type: "TXT",
+                sort_index: 1,
+              },
+            },
+            items: {
+              "1": {
+                item_id: 1,
+                file_path: "chapter01.txt",
+                status: item_status,
+              },
+            },
+          };
+        },
+      },
+      workbench_change_signal: {
+        seq: 1,
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state?.translation_stats).toMatchObject({
+      total_items: 1,
+      completed_count: 0,
+      failed_count: 0,
+      pending_count: 1,
+      skipped_count: 0,
+      completion_percent: 0,
+    });
+
+    item_status = "PROCESSED";
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      workbench_change_signal: {
+        seq: 2,
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state?.translation_stats).toMatchObject({
+      total_items: 1,
+      completed_count: 1,
+      failed_count: 0,
+      pending_count: 0,
+      skipped_count: 0,
+      completion_percent: 100,
     });
   });
 

@@ -3,7 +3,11 @@ import crypto from "node:crypto";
 
 import { resolve_core_launch_command } from "./core-command-resolver";
 import { wait_for_core_health } from "./core-health-check";
-import { format_lifecycle_error, write_ts_lifecycle_log } from "./core-lifecycle-log";
+import {
+  format_core_shutdown_completed_log,
+  format_lifecycle_error,
+  write_ts_lifecycle_log,
+} from "./core-lifecycle-log";
 import { build_core_api_base_url, allocate_core_api_port } from "./core-port-allocator";
 import { force_kill_process_tree, wait_for_process_exit } from "./core-process-terminator";
 import { attach_core_process_output } from "./core-process-output";
@@ -193,11 +197,9 @@ export class CoreLifecycleManager {
       env: process.env,
       platform: process.platform,
     });
+    let has_logged_start_failure = false;
 
-    write_ts_lifecycle_log(`正在启动 Python Core - ${base_url}`);
-    write_ts_lifecycle_log(`启动目标 - ${launch_command.command}`);
-    write_ts_lifecycle_log(`启动目录 - ${launch_command.cwd}`);
-    write_ts_lifecycle_log(`Rich 控制台宽度 - ${console_width}`);
+    write_ts_lifecycle_log("Python Core 正在启动 …");
 
     const spawn_request = build_core_process_spawn_request(
       launch_command,
@@ -207,7 +209,9 @@ export class CoreLifecycleManager {
     );
     const core_process = spawn(spawn_request.command, spawn_request.args, spawn_request.options);
     attach_core_process_output(core_process);
-    write_ts_lifecycle_log(`Python Core 进程已启动 - pid=${core_process.pid ?? "unknown"}`);
+    if (core_process.pid !== undefined) {
+      write_ts_lifecycle_log(`Python Core PID[${core_process.pid}] 实例已启动 - ${base_url}`);
+    }
     const handle = {
       process: core_process,
       exitPromise: create_exit_promise(core_process),
@@ -221,6 +225,7 @@ export class CoreLifecycleManager {
       if (this.state === "starting") {
         this.state = "failed";
       }
+      has_logged_start_failure = true;
       write_ts_lifecycle_log(`Python Core 启动失败 - ${format_lifecycle_error(error)}`);
     });
 
@@ -240,18 +245,24 @@ export class CoreLifecycleManager {
         }),
       ]);
     } catch (error) {
+      if (!has_logged_start_failure) {
+        write_ts_lifecycle_log(`Python Core 启动失败 - ${format_lifecycle_error(error)}`);
+      }
       this.state = "failed";
-      await this.stop();
+      await this.stop_core(false);
       throw error;
     }
 
     process.env[CORE_API_BASE_URL_ENV_NAME] = base_url;
     this.state = "ready";
-    write_ts_lifecycle_log(`Python Core 已就绪 - ${base_url}`);
     return { baseUrl: base_url, instanceToken: instance_token };
   }
 
   public async stop(): Promise<void> {
+    await this.stop_core(true);
+  }
+
+  private async stop_core(should_log_lifecycle: boolean): Promise<void> {
     if (this.handle === null) {
       this.state = "stopped";
       return;
@@ -265,23 +276,25 @@ export class CoreLifecycleManager {
     const current_handle = this.handle;
     const current_base_url = this.base_url;
     const current_instance_token = this.instance_token;
+    const current_pid = current_handle.process.pid;
     this.state = "stopping";
-    write_ts_lifecycle_log("正在关闭 Python Core");
+    if (should_log_lifecycle) {
+      write_ts_lifecycle_log("Python Core 正在关闭 …");
+    }
+
+    let was_force_killed = false;
 
     if (current_base_url !== null && current_instance_token !== null) {
       try {
-        write_ts_lifecycle_log(`请求 Python Core 优雅关闭 - ${current_base_url}`);
         await request_core_shutdown(current_base_url, current_instance_token);
-      } catch (error) {
-        write_ts_lifecycle_log(`请求 Python Core 优雅关闭失败 - ${format_lifecycle_error(error)}`);
+      } catch {
+        // 关闭结果由最终日志统一呈现，避免终端在正常退出路径中堆叠中间状态。
       }
     }
 
     const exited = await wait_for_process_exit(current_handle);
     if (!exited && current_handle.process.pid !== undefined) {
-      write_ts_lifecycle_log(
-        `Python Core 未按时退出，准备强制清理进程树 - pid=${current_handle.process.pid.toString()}`,
-      );
+      was_force_killed = true;
       await force_kill_process_tree(current_handle.process.pid, process.platform);
       await wait_for_process_exit(current_handle);
     }
@@ -290,6 +303,8 @@ export class CoreLifecycleManager {
     this.base_url = null;
     this.instance_token = null;
     this.state = "stopped";
-    write_ts_lifecycle_log("Python Core 已关闭");
+    if (should_log_lifecycle) {
+      write_ts_lifecycle_log(format_core_shutdown_completed_log(current_pid, was_force_killed));
+    }
   }
 }

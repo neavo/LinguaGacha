@@ -47,6 +47,7 @@ type RuntimeHandle = {
       quality: {
         glossary: Record<string, unknown>;
       };
+      analysis: Record<string, unknown>;
     };
   };
   commit_local_project_patch: (input: {
@@ -572,6 +573,253 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingReason: "quality_rule_save_entries_rollback",
       proofreadingMode: "full",
       taskStatus: "IDLE",
+    });
+  });
+
+  it("analysis project patch 会触发工作台刷新信号", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return {
+          settings: {
+            app_language: "ZH",
+          },
+        };
+      }
+
+      if (path === "/api/project/snapshot") {
+        return {
+          project: {
+            path: "E:/demo/demo.lg",
+            loaded: true,
+          },
+        };
+      }
+
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: {
+            task_type: "analysis",
+            status: "IDLE",
+            busy: false,
+          },
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
+      return (async function* () {
+        yield {
+          type: "completed",
+          projectRevision: 1,
+          sectionRevisions: {},
+        };
+      })();
+    });
+
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.workbenchSeq === 1;
+    });
+
+    await act(async () => {
+      event_stream.emit("project.patch", {
+        source: "analysis_task_done",
+        projectRevision: 2,
+        updatedSections: ["analysis", "task"],
+        patch: [
+          {
+            op: "replace_analysis",
+            analysis: {
+              status_summary: {
+                total_line: 2,
+                processed_line: 1,
+                error_line: 0,
+                line: 1,
+              },
+            },
+          },
+          {
+            op: "replace_task",
+            task: {
+              task_type: "analysis",
+              status: "DONE",
+              busy: false,
+            },
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.workbenchSeq === 2;
+    });
+
+    expect(snapshots.at(-1)).toMatchObject({
+      workbenchSeq: 2,
+      workbenchReason: "analysis_task_done",
+      taskStatus: "DONE",
+    });
+  });
+
+  it("本地 analysis patch 与回滚都会触发工作台刷新信号", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    let runtime_handle: RuntimeHandleRef = null;
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return {
+          settings: {
+            app_language: "ZH",
+          },
+        };
+      }
+
+      if (path === "/api/project/snapshot") {
+        return {
+          project: {
+            path: "E:/demo/demo.lg",
+            loaded: true,
+          },
+        };
+      }
+
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: {
+            task_type: "analysis",
+            status: "IDLE",
+            busy: false,
+          },
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
+      return (async function* () {
+        yield {
+          type: "completed",
+          projectRevision: 1,
+          sectionRevisions: {},
+        };
+      })();
+    });
+
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+          <RuntimeHandleProbe
+            onRuntime={(runtime) => {
+              runtime_handle = runtime;
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => {
+      return runtime_handle !== null && snapshots.at(-1)?.workbenchSeq === 1;
+    });
+
+    let rollback_local_patch: (() => void) | null = null;
+    await act(async () => {
+      if (runtime_handle === null) {
+        throw new Error("运行时句柄未准备好。");
+      }
+
+      const local_commit = runtime_handle.commit_local_project_patch({
+        source: "analysis_reset_all",
+        updatedSections: ["analysis", "task"],
+        patch: [
+          createProjectStoreReplaceSectionPatch("analysis", {
+            status_summary: {
+              total_line: 2,
+              processed_line: 0,
+              error_line: 0,
+              line: 0,
+            },
+          }),
+          createProjectStoreReplaceSectionPatch("task", {
+            task_type: "analysis",
+            status: "IDLE",
+            busy: false,
+          }),
+        ],
+      });
+
+      rollback_local_patch = () => {
+        local_commit.rollback();
+      };
+      await Promise.resolve();
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.workbenchSeq === 2;
+    });
+
+    const stable_runtime = runtime_handle as RuntimeHandleRef;
+    if (stable_runtime === null) {
+      throw new Error("运行时句柄未准备好。");
+    }
+
+    expect(stable_runtime.project_store.getState().analysis).toMatchObject({
+      status_summary: {
+        total_line: 2,
+        processed_line: 0,
+      },
+    });
+    expect(snapshots.at(-1)).toMatchObject({
+      workbenchSeq: 2,
+      workbenchReason: "analysis_reset_all",
+    });
+
+    await act(async () => {
+      rollback_local_patch?.();
+      await Promise.resolve();
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.workbenchSeq === 3;
+    });
+
+    expect(stable_runtime.project_store.getState().analysis).toEqual({});
+    expect(snapshots.at(-1)).toMatchObject({
+      workbenchSeq: 3,
+      workbenchReason: "analysis_reset_all_rollback",
     });
   });
 
