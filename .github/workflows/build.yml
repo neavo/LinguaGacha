@@ -94,30 +94,17 @@ jobs:
         run: |
           npm --prefix frontend install
 
-      - name: Build Electron Installer
+      - name: Build Electron Zip Package
         shell: bash
         run: |
           npm --prefix frontend run build -- --publish never
-
-      - name: Generate Windows Installer SHA256
-        shell: bash
-        run: |
-          version="${{ needs.prepare.outputs.version }}"
-          installer="$(find "frontend/release/${version}" -maxdepth 1 -type f -name '*Setup.exe' | head -n 1)"
-          if [ -z "$installer" ]; then
-            echo "ERROR: Windows installer not found"
-            find frontend/release -type f || true
-            exit 1
-          fi
-          sha256sum "$installer" > "$installer.sha256"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows
           path: |
-            frontend/release/${{ needs.prepare.outputs.version }}/*Setup.exe
-            frontend/release/${{ needs.prepare.outputs.version }}/*Setup.exe.sha256
+            frontend/release/${{ needs.prepare.outputs.version }}/*.zip
 
   create-release:
     needs: [prepare, build-windows]
@@ -140,10 +127,9 @@ jobs:
       - name: Create Release And Upload Assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MANUAL_BUILD_${{ needs.prepare.outputs.version }}
+          tag_name: MANUAL_BUILD_v${{ needs.prepare.outputs.version }}
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}
           draft: true
           prerelease: false
           files: |
-            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows/*Setup.exe
-            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows/*Setup.exe.sha256
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows/*.zip

@@ -21,18 +21,12 @@
   win: {
     target: [
       {
-        target: "nsis",
+        target: "zip",
         arch: ["x64"],
       },
     ],
-    artifactName: "${productName}-Windows-${version}-Setup.${ext}",
+    artifactName: "${productName}_v${version}.${ext}",
     executableName: "app",
     icon: "icon.png",
-  },
-  nsis: {
-    oneClick: false,
-    perMachine: false,
-    allowToChangeInstallationDirectory: true,
-    deleteAppDataOnUninstall: false,
   },
 }

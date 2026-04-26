@@ -13,8 +13,18 @@ type HealthPayload = {
   version?: string;
 };
 
+type GithubReleasePayload = {
+  tag_name?: unknown;
+  html_url?: unknown;
+};
+
 export type CoreMetadata = {
   version: string;
+};
+
+export type GithubReleaseUpdate = {
+  latest_version: string;
+  release_url: string;
 };
 
 type EventSourceJsonEvent = {
@@ -22,9 +32,16 @@ type EventSourceJsonEvent = {
   [key: string]: unknown;
 };
 
+type SemanticVersion = {
+  major: number;
+  minor: number;
+  patch: number;
+};
+
 const CORE_API_HEALTH_PATH = "/api/health";
 const CORE_API_SERVICE_NAME = "linguagacha-core";
 const CORE_API_PROBE_TIMEOUT_MS = 300;
+const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest";
 
 let cached_core_api_base_url: string | null = null;
 let cached_core_metadata: CoreMetadata | null = null;
@@ -76,6 +93,60 @@ function normalize_core_metadata(payload: HealthPayload): CoreMetadata | null {
   }
 
   return { version };
+}
+
+function parse_semantic_version(value: string): SemanticVersion | null {
+  const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
+  if (version_match === null) {
+    return null;
+  }
+
+  return {
+    major: Number(version_match[1]),
+    minor: Number(version_match[2]),
+    patch: Number(version_match[3]),
+  };
+}
+
+function compare_semantic_version(left: SemanticVersion, right: SemanticVersion): number {
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor;
+  }
+
+  return left.patch - right.patch;
+}
+
+function normalize_github_release_update(
+  payload: GithubReleasePayload,
+  current_version: string,
+): GithubReleaseUpdate | null {
+  const current_semantic_version = parse_semantic_version(current_version);
+  if (current_semantic_version === null) {
+    return null;
+  }
+
+  if (typeof payload.tag_name !== "string" || typeof payload.html_url !== "string") {
+    return null;
+  }
+
+  const latest_semantic_version = parse_semantic_version(payload.tag_name);
+  const release_url = payload.html_url.trim();
+  if (latest_semantic_version === null || release_url === "") {
+    return null;
+  }
+
+  if (compare_semantic_version(latest_semantic_version, current_semantic_version) <= 0) {
+    return null;
+  }
+
+  return {
+    latest_version: `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
+    release_url,
+  };
 }
 
 async function probe_core_api_candidate(base_url: string): Promise<CoreMetadata | null> {
@@ -149,6 +220,27 @@ export async function get_core_metadata(): Promise<CoreMetadata> {
   }
 
   return cached_core_metadata;
+}
+
+export async function check_github_release_update(
+  current_version: string,
+): Promise<GithubReleaseUpdate | null> {
+  try {
+    const response = await fetch(GITHUB_LATEST_RELEASE_URL, {
+      method: "GET",
+      headers: {
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as GithubReleasePayload;
+    return normalize_github_release_update(payload, current_version);
+  } catch {
+    return null;
+  }
 }
 
 export async function api_fetch<data_type>(

@@ -26,6 +26,9 @@ export const en_us_app = {
   close_confirm: {
     description: "Confirm exiting the app …?",
   },
+  update: {
+    toast: "New version is available, click the bottom-left update entry to download it …",
+  },
   drop: {
     multiple_unavailable: "Only one file can be dropped at a time",
     unavailable:
@@ -66,5 +69,8 @@ export const en_us_app = {
   },
   profile: {
     status: "Ciallo～(∠・ω< )⌒✮",
+    status_tooltip: "Open the GitHub repository",
+    update_available: "Download new version …!",
+    update_available_tooltip: "Open the GitHub Release page",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;
