@@ -94,6 +94,12 @@ class EPUBAst(Base):
     )
     RE_HTML_NAMED_ENTITY = re.compile(rb"&([A-Za-z][A-Za-z0-9._:-]*);")
     RE_CDATA_SECTION = re.compile(rb"<!\[CDATA\[.*?\]\]>", re.DOTALL)
+    HTML_DOCUMENT_EXTENSIONS: tuple[str, ...] = (
+        ".xhtml",
+        ".html",
+        ".htm",
+        ".xhtm",
+    )
 
     SKIP_SUBTREE_TAGS: frozenset[str] = frozenset(
         {
@@ -141,6 +147,10 @@ class EPUBAst(Base):
         path = path.replace("\\", "/")
         path = unicodedata.normalize("NFC", path)
         return path
+
+    @classmethod
+    def is_html_document_path(cls, path: str) -> bool:
+        return path.lower().endswith(cls.HTML_DOCUMENT_EXTENSIONS)
 
     @staticmethod
     def resolve_href(base_dir: str, href: str) -> str:
@@ -906,8 +916,7 @@ class EPUBAst(Base):
             processed_paths: set[str] = set()
 
             for spine_index, doc_path in enumerate(pkg.spine_paths):
-                lower = doc_path.lower()
-                if not lower.endswith((".xhtml", ".html", ".htm")):
+                if not self.is_html_document_path(doc_path):
                     continue
                 try:
                     with zip_reader.open(doc_path) as f:
@@ -928,8 +937,7 @@ class EPUBAst(Base):
 
             # v3 nav.xhtml（目录通常不在 spine，必须显式处理）
             if pkg.nav_path and pkg.nav_path not in processed_paths:
-                nav_lower = pkg.nav_path.lower()
-                if nav_lower.endswith((".xhtml", ".html", ".htm")):
+                if self.is_html_document_path(pkg.nav_path):
                     try:
                         with zip_reader.open(pkg.nav_path) as f:
                             raw = f.read()

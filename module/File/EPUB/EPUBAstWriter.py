@@ -426,6 +426,7 @@ class EPUBAstWriter(Base):
 
                 for name in zip_reader.namelist():
                     lower = name.lower()
+                    is_html_document = EPUBAst.is_html_document_path(name)
 
                     # OPF/CSS 清理（保持旧行为）
                     if lower.endswith(".opf"):
@@ -485,12 +486,9 @@ class EPUBAstWriter(Base):
                         continue
 
                     # 内容文档回写
-                    if lower.endswith((".xhtml", ".html", ".htm", ".ncx")) and (
+                    if (is_html_document or lower.endswith(".ncx")) and (
                         name in by_doc
-                        or (
-                            opf_title_sync_pair is not None
-                            and lower.endswith((".xhtml", ".html", ".htm"))
-                        )
+                        or (opf_title_sync_pair is not None and is_html_document)
                     ):
                         raw = zip_reader.read(name)
                         doc_items = by_doc.get(name, [])
@@ -503,9 +501,7 @@ class EPUBAstWriter(Base):
                                 )
                                 changed = True
 
-                            if opf_title_sync_pair is not None and lower.endswith(
-                                (".xhtml", ".html", ".htm")
-                            ):
+                            if opf_title_sync_pair is not None and is_html_document:
                                 src_title, dst_title = opf_title_sync_pair
                                 if self.sync_xhtml_title(root, src_title, dst_title):
                                     changed = True

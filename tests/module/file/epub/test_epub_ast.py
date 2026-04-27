@@ -359,6 +359,49 @@ def test_read_from_stream_processes_nav_and_ncx_and_skips_non_html_spine(
     assert any(item.get_src().endswith("toc.ncx") for item in items)
 
 
+def test_read_from_stream_extracts_xhtm_spine_and_nav_documents(
+    config: Config,
+) -> None:
+    handler = EPUBAst(config)
+    container = b"""<?xml version='1.0'?>
+<container xmlns='urn:oasis:names:tc:opendocument:xmlns:container'>
+  <rootfiles>
+    <rootfile full-path='OEBPS/content.opf'/>
+  </rootfiles>
+</container>
+"""
+    opf = b"""<?xml version='1.0'?>
+<package version='3.0' xmlns='http://www.idpf.org/2007/opf'>
+  <manifest>
+    <item id='chap1' href='text/ch1.xhtm' media-type='application/xhtml+xml'/>
+    <item id='nav' href='nav.xhtm' media-type='application/xhtml+xml' properties='nav'/>
+  </manifest>
+  <spine>
+    <itemref idref='chap1'/>
+  </spine>
+</package>
+"""
+    epub_bytes = build_zip_with_files(
+        {
+            "META-INF/container.xml": container,
+            "OEBPS/content.opf": opf,
+            "OEBPS/text/ch1.xhtm": "<html><body><p>正文</p></body></html>".encode(
+                "utf-8"
+            ),
+            "OEBPS/nav.xhtm": (
+                "<html><body><nav><ol><li>目录</li></ol></nav></body></html>"
+            ).encode("utf-8"),
+        }
+    )
+
+    items = handler.read_from_stream(epub_bytes, "book.epub")
+
+    by_src = {item.get_src(): item for item in items}
+    assert {"正文", "目录"} <= set(by_src)
+    assert by_src["正文"].get_extra_field()["epub"]["doc_path"] == "OEBPS/text/ch1.xhtm"
+    assert by_src["目录"].get_extra_field()["epub"]["is_nav"] is True
+
+
 def test_build_elem_path_records_sibling_index(config: Config) -> None:
     handler = EPUBAst(config)
     root = etree.fromstring(b"<html><body><p>1</p><p>2</p><p>3</p></body></html>")
