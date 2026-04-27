@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          uv version "$version" --frozen --no-sync
+          uv version "$version" --frozen
           npm --prefix frontend version "$version" --no-git-tag-version --allow-same-version
 
       - name: Sync Python Dependencies
@@ -130,7 +130,7 @@ jobs:
         shell: bash
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          uv version "$version" --frozen --no-sync
+          uv version "$version" --frozen
           npm --prefix frontend version "$version" --no-git-tag-version --allow-same-version
 
       - name: Sync Python Dependencies
@@ -194,7 +194,7 @@ jobs:
         shell: bash
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          uv version "$version" --frozen --no-sync
+          uv version "$version" --frozen
           npm --prefix frontend version "$version" --no-git-tag-version --allow-same-version
 
       - name: Sync Python Dependencies
