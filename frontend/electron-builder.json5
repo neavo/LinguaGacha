@@ -42,7 +42,7 @@
     identity: null,
     extraFiles: [
       { from: "../core", to: "MacOS/core" },
-      { from: "../_internal", to: "MacOS/_internal" },
+      { from: "../_internal", to: "Frameworks" },
       { from: "../resource", to: "MacOS/resource" },
       { from: "../version.txt", to: "MacOS/version.txt" },
     ],
