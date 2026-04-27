@@ -16,9 +16,9 @@
 - Supports various text types and formats such as `Subtitle`, `E-Book`, and `Game Text`
 - Supports both local and online interfaces such as `Claude`, `ChatGPT`, `DeepSeek`, `SakuraLLM`
 
-> <img src="https://github.com/user-attachments/assets/99f7d74e-ab5b-4645-b736-6f665782b4af" style="width: 80%;">
+> <img width="2570" height="1605" alt="sample_01" src="https://github.com/user-attachments/assets/038a9bc3-4821-4b19-8221-eec32e823599" />
 
-> <img src="https://github.com/user-attachments/assets/c0d7e898-f6fa-432f-a3cd-e231b657c4b5" style="width: 80%;">
+> <img width="2570" height="1605" alt="sample_02" src="https://github.com/user-attachments/assets/0fcd4749-53cd-496a-bfe6-f1270cf727f0" />
 
 ## Special Notice ⚠️
 - If you use [LinguaGacha](https://github.com/neavo/LinguaGacha) during translation, please include clear attribution in prominent locations of your work's information or release pages!
@@ -82,14 +82,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260320 v0.60.1
-  - Optimizations and Improvements #465 #476 #477 #481
-
-- 20260317 v0.60.0
-  - feat - Added `Analysis Task (Glossary Extraction)`
-    - Removed `Auto-complete Glossary`
-  - perf - Support text reverse lookup for quality rules
-  - perf - Support thinking level settings for Gemini-3.1-Flash
+- 2026427 v0.99.0
+  - Completely redesigned the user interface, faster, higher, stronger
+  - Temporarily removed `CLI` mode
 
 ### Development Guide 🛠️
 - This project consists of `Python Core` and an `Electron` frontend. We recommend preparing [**uv**](https://github.com/astral-sh/uv) and [`Node.js 24`](https://nodejs.org/)
