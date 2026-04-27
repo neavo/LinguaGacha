@@ -27,11 +27,13 @@ flowchart LR
 | 应用壳层与布局节奏 | `frontend/src/renderer/app/shell/*` | 标题栏、侧栏、工作区边界的长期样本 |
 | 页面骨架与页面级样式 | `frontend/src/renderer/pages/*/page.tsx` + 页面 CSS | 页面布局与局部工作流的真实落点 |
 | 稳定组合组件语言 | `frontend/src/renderer/widgets/*` | `app-table`、`command-bar`、`setting-card-row` 是最重要的视觉样本 |
+| 自动设计门闩 | `frontend/scripts/check-renderer-design-system.mjs` | `renderer:audit` 只承接能从源码稳定判定的硬违规 |
 | 长期文案语义 | `frontend/src/renderer/i18n/` | 持久文案不直接硬编码在组件体内 |
 
 权威源规则：
 - 具体 token 数值、组件 slot 结构、像素尺寸以代码为准，本文不复述代码表面事实。
 - 新视觉语义优先复用现有 token；只有现有语义无法表达时，才回到 `index.css` 扩充变量。
+- 设计审查脚本只表达可自动判定的底线；若脚本与新界面意图冲突，先判断是否要更新本文的长期规则，再调整脚本或实现。
 
 ## 页面骨架与稳定组件语言
 

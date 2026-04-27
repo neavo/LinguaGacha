@@ -87,10 +87,11 @@
   - 改进 - 支持 Gemini-3.1-Flash 思考等级设置
 
 ### 开发指南 🛠️
-- 本项目使用 [**uv**](https://github.com/astral-sh/uv) 管理
-- 安装依赖 `uv sync -U`
-- 运行应用 `uv run app.py`
-- 提交 PR 前请务必执行 `uv run ruff check --fix` 及 `uv run ruff format` 确保代码规范
+- 本项目由 `Python Core` 与 `Electron` 前端组成，推荐准备 [**uv**](https://github.com/astral-sh/uv) 与 [`Node.js 24`](https://nodejs.org/)
+- 安装依赖 `uv sync -U --extra test` `npm --prefix frontend install`
+- 更新依赖 `uv sync -U --extra test` `npm --prefix frontend update`
+- 运行应用 `npm --prefix frontend run dev`
+- 提交 PR 前请根据改动范围执行 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) 中的对应验证
 - 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 
 ## 问题反馈 😥

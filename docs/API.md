@@ -152,7 +152,7 @@ flowchart TD
 
 | 类型 | 代表接口 | 运行态推进方式 |
 | --- | --- | --- |
-| 同步 mutation | 工作台 `add-file / reset-file / delete-file / delete-file-batch / reorder-files`，校对 `save-item / save-all / replace-all`，`translation/reset`，`analysis/reset`，`analysis/import-glossary` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
+| 同步 mutation | 工作台 `add-file / reset-file / delete-file / delete-file-batch / reorder-files`，项目 `apply-prefilter`、`translation/reset`、`analysis/reset`、`analysis/import-glossary`，质量规则 `rules/save-entries / rules/update-meta`，提示词 `prompts/save`，校对 `save-item / save-all / replace-all` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
 | 只读预演 | `translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
 | 异步任务 | `tasks/*`、`retranslate-items` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
 
@@ -167,6 +167,8 @@ flowchart TD
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
 - `reorder-files` 的 `ordered_rel_paths` 必须完整覆盖当前文件集合。
+- `apply-prefilter`、`translation/reset`、`analysis/reset` 会持久化 TS 侧 planner 生成的最终条目或分析载荷；它们属于同步 mutation，不走后台任务生命周期。
+- `quality/rules/save-entries`、`quality/rules/update-meta` 与 `quality/prompts/save` 会回 `ProjectMutationAck`，页面需要用它们对齐 `quality` 或 `prompts` section revision。
 - `analysis/import-glossary` 会分别校验运行态 section revision 与 glossary 自身 revision。
 - `tasks/snapshot` 是按需快照，不是订阅入口。
 - `settings/update` 只处理 `SettingsAppService.SETTING_KEYS` 白名单字段；应用语言只支持 `ZH` / `EN`。

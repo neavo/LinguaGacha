@@ -81,10 +81,11 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ### 開発ガイド 🛠️
-- 本プロジェクトは [**uv**](https://github.com/astral-sh/uv) で管理されています
-- 依存関係のインストール: `uv sync -U`
-- アプリの実行: `uv run app.py`
-- PRを提出する前に、コード規約を遵守するために `uv run ruff check --fix` および `uv run ruff format` を必ず実行してください
+- 本プロジェクトは `Python Core` と `Electron` フロントエンドで構成されています。[**uv**](https://github.com/astral-sh/uv) と [`Node.js 24`](https://nodejs.org/) の準備を推奨します
+- 依存関係のインストール: `uv sync -U --extra test` `npm --prefix frontend install`
+- 依存関係の更新: `uv sync -U --extra test` `npm --prefix frontend update`
+- アプリの実行: `npm --prefix frontend run dev`
+- PRを提出する前に、変更範囲に応じて [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) の対応する検証を実行してください
 - 非開発者の方は [リリースページ](https://github.com/neavo/LinguaGacha/releases) からビルド済みバージョンをダウンロードすることをお勧めします
 
 ## サポート 😥

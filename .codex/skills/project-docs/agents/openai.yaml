@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Docs"
   short_description: "筛选、删除、归位并整理项目级长期文档中的稳定规则与边界"
-  default_prompt: "使用 $project-docs 整理当前项目的长期权威文档，将稳定规则收口到 `AGENTS.md` 与 `docs/ARCHITECTURE.md`、`API.md`、`FRONTEND.md`、`DESIGN.md`、`WORKFLOW.md`、`DATA.md`。先盘点现有文档、遗留目录级文档与潜在并行权威文档，判断哪些内容该删、该并、该移、该补；按章节或信息块重组目标文档，让 diff 保持可审阅。删除遗留文档前，确认稳定规则已迁移、链接与引用已更新，且该文件不是阅读路径、工具链或用户指定入口。生成物、归档、临时任务材料或外部规范镜像若有明确子目录和生命周期，不按并行长期权威文档处理。"
+  default_prompt: "在充分理解当前代码库事实的基础上，基于事实而不是想象和预估，使用 $project-docs 整理当前项目的长期权威文档，将稳定规则收口到 `AGENTS.md` 与 `docs/ARCHITECTURE.md`、`API.md`、`FRONTEND.md`、`DESIGN.md`、`WORKFLOW.md`、`DATA.md`。先盘点现有文档、遗留目录级文档与潜在并行权威文档，判断哪些内容该删、该并、该移、该补；按章节或信息块重组目标文档，让 diff 保持可审阅。删除遗留文档前，确认稳定规则已迁移、链接与引用已更新，且该文件不是阅读路径、工具链或用户指定入口。生成物、归档、临时任务材料或外部规范镜像若有明确子目录和生命周期，不按并行长期权威文档处理。"
