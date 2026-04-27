@@ -143,7 +143,7 @@ class FakeWorkbenchManager:
     """提供工作台文件操作所需的最小数据桩。"""
 
     def __init__(self) -> None:
-        self.add_calls: list[str] = []
+        self.add_batch_calls: list[list[str]] = []
         self.add_payloads: list[dict[str, object]] = []
         self.parse_calls: list[tuple[str, str | None]] = []
         self.reset_calls: list[str] = []
@@ -176,13 +176,10 @@ class FakeWorkbenchManager:
             ],
         }
 
-    def persist_add_file_payload(
+    def persist_add_files_payload(
         self,
-        source_path: str,
-        target_rel_path: str,
+        files: list[dict[str, object]],
         *,
-        file_record: dict[str, object],
-        parsed_items: list[dict[str, object]],
         translation_extras: dict[str, object],
         project_status: str,
         prefilter_config: dict[str, object],
@@ -190,15 +187,10 @@ class FakeWorkbenchManager:
     ) -> None:
         del translation_extras, project_status, prefilter_config
         del expected_section_revisions
-        self.add_calls.append(source_path)
-        self.add_payloads.append(
-            {
-                "source_path": source_path,
-                "target_rel_path": target_rel_path,
-                "file_record": dict(file_record),
-                "parsed_items": [dict(item) for item in parsed_items],
-            }
+        self.add_batch_calls.append(
+            [str(file.get("source_path", "")) for file in files]
         )
+        self.add_payloads.extend(dict(file) for file in files)
 
     def persist_reset_file(
         self,

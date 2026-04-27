@@ -1364,19 +1364,16 @@ class DataManager(Base):
                 meta_params,
             )
 
-    def persist_add_file_payload(
+    def persist_add_files_payload(
         self,
-        source_path: str,
-        target_rel_path: str,
+        files: list[dict[str, Any]],
         *,
-        file_record: dict[str, Any],
-        parsed_items: list[dict[str, Any]],
         translation_extras: dict[str, Any],
         project_status: str,
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        """持久化前端已确认的新增文件结果。"""
+        """在一个事务内持久化前端已确认的批量新增文件结果。"""
 
         self.try_begin_guarded_file_operation()
         try:
@@ -1391,45 +1388,96 @@ class DataManager(Base):
                 db = self.session.db
                 if db is None:
                     raise RuntimeError("工程未加载")
-                if db.asset_path_exists(target_rel_path):
-                    raise ValueError(Localizer.get().workbench_msg_file_exists)
+                if len(files) == 0:
+                    raise ValueError("没有可添加的工作台文件")
 
-                record_rel_path = str(file_record.get("rel_path", "") or "")
-                if record_rel_path not in {"", target_rel_path}:
-                    raise ValueError("工作台文件记录无效")
+                existing_asset_records = self.get_all_asset_records()
+                existing_target_path_set = {
+                    str(record.get("path", "") or "").lower()
+                    for record in existing_asset_records
+                }
+                normalized_files: list[dict[str, Any]] = []
+                target_rel_path_set: set[str] = set()
+                asset_count = len(existing_asset_records)
+                for index, payload in enumerate(files):
+                    source_path = str(payload.get("source_path", "") or "")
+                    target_rel_path = str(payload.get("target_rel_path", "") or "")
+                    file_record_raw = payload.get("file_record", {})
+                    file_record = (
+                        dict(file_record_raw)
+                        if isinstance(file_record_raw, dict)
+                        else {}
+                    )
+                    parsed_items_raw = payload.get("parsed_items", [])
+                    parsed_items = (
+                        [
+                            dict(item)
+                            for item in parsed_items_raw
+                            if isinstance(item, dict)
+                        ]
+                        if isinstance(parsed_items_raw, list)
+                        else []
+                    )
+                    if source_path == "" or target_rel_path == "":
+                        raise ValueError("工作台文件记录无效")
 
-                with open(source_path, "rb") as f:
-                    original_data = f.read()
+                    target_key = target_rel_path.lower()
+                    if (
+                        target_key in target_rel_path_set
+                        or target_key in existing_target_path_set
+                        or db.asset_path_exists(target_rel_path)
+                    ):
+                        raise ValueError(Localizer.get().workbench_msg_file_exists)
+                    target_rel_path_set.add(target_key)
+
+                    record_rel_path = str(file_record.get("rel_path", "") or "")
+                    if record_rel_path not in {"", target_rel_path}:
+                        raise ValueError("工作台文件记录无效")
+
+                    sort_index = int(
+                        file_record.get(
+                            "sort_index",
+                            asset_count + index,
+                        )
+                        or 0
+                    )
+                    with open(source_path, "rb") as f:
+                        original_data = f.read()
+
+                    normalized_files.append(
+                        {
+                            "target_rel_path": target_rel_path,
+                            "sort_index": sort_index,
+                            "original_data": original_data,
+                            "parsed_items": parsed_items,
+                        }
+                    )
 
                 next_items = [dict(item) for item in self.get_all_item_dicts()]
-                next_items.extend(
-                    self.normalize_workbench_parsed_items(
-                        parsed_items,
-                        target_rel_path=target_rel_path,
+                for normalized_file in normalized_files:
+                    next_items.extend(
+                        self.normalize_workbench_parsed_items(
+                            normalized_file["parsed_items"],
+                            target_rel_path=str(normalized_file["target_rel_path"]),
+                        )
                     )
-                )
                 meta = self.build_analysis_reset_meta(
                     translation_extras=translation_extras,
                     project_status=project_status,
                     prefilter_config=prefilter_config,
                 )
-                sort_index = int(
-                    file_record.get(
-                        "sort_index",
-                        len(self.get_all_asset_records()),
-                    )
-                    or 0
-                )
 
-                compressed_data = ZstdTool.compress(original_data)
                 with db.connection() as conn:
-                    db.add_asset(
-                        target_rel_path,
-                        compressed_data,
-                        len(original_data),
-                        sort_order=sort_index,
-                        conn=conn,
-                    )
+                    for normalized_file in normalized_files:
+                        original_data = normalized_file["original_data"]
+                        compressed_data = ZstdTool.compress(original_data)
+                        db.add_asset(
+                            str(normalized_file["target_rel_path"]),
+                            compressed_data,
+                            len(original_data),
+                            sort_order=int(normalized_file["sort_index"]),
+                            conn=conn,
+                        )
                     db.set_items(next_items, conn=conn)
                     self.write_meta_in_connection(conn=conn, meta=meta)
                     db.delete_analysis_item_checkpoints(conn=conn)
@@ -1438,7 +1486,10 @@ class DataManager(Base):
 
                 self.replace_session_item_cache(next_items)
                 self.sync_session_meta_cache(meta)
-                self.session.asset_decompress_cache.pop(target_rel_path, None)
+                for normalized_file in normalized_files:
+                    self.session.asset_decompress_cache.pop(
+                        str(normalized_file["target_rel_path"]), None
+                    )
                 self.bump_project_runtime_section_revisions(
                     ("files", "items", "analysis")
                 )

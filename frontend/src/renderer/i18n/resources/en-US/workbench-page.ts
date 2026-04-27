@@ -39,6 +39,7 @@ export const en_us_workbench_page = {
   feedback: {
     refresh_failed: "Failed to refresh workbench.",
     add_file_loading_toast: "Adding file and refreshing cache …",
+    no_valid_file: "No valid files can be added.",
     file_action_failed: "File operation failed. Please try again later.",
     export_failed: "Failed to generate translations. Please try again later.",
     close_project_failed: "Failed to close the project. Please try again later.",

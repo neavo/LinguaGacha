@@ -801,7 +801,7 @@ describe("useWorkbenchLiveState", () => {
   it("选择器添加文件会委托到同一条按路径解析流程", async () => {
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
       canceled: false,
-      path: "E:/demo/new.txt",
+      paths: ["E:/demo/new.txt"],
     });
     vi.mocked(api_fetch).mockResolvedValueOnce({
       target_rel_path: "new.txt",
@@ -818,6 +818,64 @@ describe("useWorkbenchLiveState", () => {
     expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
       source_path: "E:/demo/new.txt",
     });
+  });
+
+  it("批量添加会静默跳过解析失败和重名文件，只保留有效文件", async () => {
+    vi.mocked(api_fetch).mockImplementation(async (_path, body) => {
+      const source_path = String((body as { source_path?: unknown }).source_path ?? "");
+      if (source_path.endsWith("bad.txt")) {
+        throw new Error("parse failed");
+      }
+      return {
+        target_rel_path: source_path.endsWith("old-copy.txt") ? "old.txt" : "new.txt",
+        file_type: "TXT",
+        parsed_items: [{ src: "hello", dst: "", row: 1 }],
+      };
+    });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => create_project_store_state({}),
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_files_from_paths([
+        "E:/demo/new.txt",
+        "E:/demo/bad.txt",
+        "E:/demo/old-copy.txt",
+      ]);
+    });
+
+    expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
+    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["new.txt"]);
+    expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
+  });
+
+  it("批量添加没有有效文件时只提示一次错误", async () => {
+    vi.mocked(api_fetch).mockResolvedValue({
+      target_rel_path: "old.txt",
+      file_type: "TXT",
+      parsed_items: [],
+    });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => create_project_store_state({}),
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_files_from_paths(["E:/demo/old-copy.txt"]);
+    });
+
+    expect(latest_state?.dialog_state.kind).toBeNull();
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "error",
+      "workbench_page.feedback.no_valid_file",
+    );
   });
 
   it("拖拽失败提示会复用全局 drop warning 文案", async () => {
@@ -840,10 +898,10 @@ describe("useWorkbenchLiveState", () => {
     );
   });
 
-  it("选择不继承会直接提交 add-file", async () => {
+  it("选择不继承会直接提交 add-file-batch", async () => {
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
       canceled: false,
-      path: "E:/demo/new.txt",
+      paths: ["E:/demo/new.txt"],
     });
     vi.mocked(api_fetch)
       .mockResolvedValueOnce({
@@ -876,10 +934,14 @@ describe("useWorkbenchLiveState", () => {
     });
 
     expect(api_fetch).toHaveBeenLastCalledWith(
-      "/api/project/workbench/add-file",
+      "/api/project/workbench/add-file-batch",
       expect.objectContaining({
-        target_rel_path: "new.txt",
-        parsed_items: [expect.objectContaining({ dst: "" })],
+        files: [
+          expect.objectContaining({
+            target_rel_path: "new.txt",
+            parsed_items: [expect.objectContaining({ dst: "" })],
+          }),
+        ],
       }),
     );
   });
@@ -887,7 +949,7 @@ describe("useWorkbenchLiveState", () => {
   it("选择继承且存在多候选时会直接提交最高频译文", async () => {
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
       canceled: false,
-      path: "E:/demo/new.txt",
+      paths: ["E:/demo/new.txt"],
     });
     vi.mocked(api_fetch)
       .mockResolvedValueOnce({
@@ -926,10 +988,14 @@ describe("useWorkbenchLiveState", () => {
 
     expect(latest_state?.dialog_state.kind).toBeNull();
     expect(api_fetch).toHaveBeenLastCalledWith(
-      "/api/project/workbench/add-file",
+      "/api/project/workbench/add-file-batch",
       expect.objectContaining({
-        target_rel_path: "new.txt",
-        parsed_items: [expect.objectContaining({ src: "hello", dst: "甲" })],
+        files: [
+          expect.objectContaining({
+            target_rel_path: "new.txt",
+            parsed_items: [expect.objectContaining({ src: "hello", dst: "甲" })],
+          }),
+        ],
       }),
     );
   });

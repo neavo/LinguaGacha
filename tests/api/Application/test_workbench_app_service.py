@@ -1,30 +1,34 @@
 import pytest
 
 
-def test_add_file_routes_through_workbench_manager(
+def test_add_file_batch_routes_through_workbench_manager(
     workbench_app_service,
     fake_workbench_manager,
 ) -> None:
-    result = workbench_app_service.add_file(
+    result = workbench_app_service.add_file_batch(
         {
-            "source_path": "C:/next/b.txt",
-            "target_rel_path": "script/b.txt",
-            "file_record": {
-                "rel_path": "script/b.txt",
-                "file_type": "TXT",
-                "sort_index": 2,
-            },
-            "parsed_items": [
+            "files": [
                 {
-                    "id": 101,
-                    "src": "line-1",
-                    "dst": "",
-                    "row": 1,
-                    "file_type": "TXT",
-                    "file_path": "script/b.txt",
-                    "text_type": "NONE",
-                    "status": "NONE",
-                    "retry_count": 0,
+                    "source_path": "C:/next/b.txt",
+                    "target_rel_path": "script/b.txt",
+                    "file_record": {
+                        "rel_path": "script/b.txt",
+                        "file_type": "TXT",
+                        "sort_index": 2,
+                    },
+                    "parsed_items": [
+                        {
+                            "id": 101,
+                            "src": "line-1",
+                            "dst": "",
+                            "row": 1,
+                            "file_type": "TXT",
+                            "file_path": "script/b.txt",
+                            "text_type": "NONE",
+                            "status": "NONE",
+                            "retry_count": 0,
+                        }
+                    ],
                 }
             ],
             "derived_meta": {
@@ -49,7 +53,7 @@ def test_add_file_routes_through_workbench_manager(
         "items": 2,
         "analysis": 3,
     }
-    assert fake_workbench_manager.add_calls == ["C:/next/b.txt"]
+    assert fake_workbench_manager.add_batch_calls == [["C:/next/b.txt"]]
     assert fake_workbench_manager.add_payloads[0]["target_rel_path"] == "script/b.txt"
 
 
@@ -110,34 +114,38 @@ def test_delete_file_batch_routes_through_workbench_manager(
     ]
 
 
-def test_add_file_propagates_manager_value_error(workbench_app_service) -> None:
+def test_add_file_batch_propagates_manager_value_error(workbench_app_service) -> None:
     class FailingWorkbenchManager:
-        def persist_add_file_payload(
+        def persist_add_files_payload(
             self,
-            source_path: str,
-            target_rel_path: str,
+            files: list[dict[str, object]],
             *,
-            file_record: dict[str, object],
-            parsed_items: list[dict[str, object]],
             translation_extras: dict[str, object],
             project_status: str,
             prefilter_config: dict[str, object],
             expected_section_revisions: dict[str, int] | None = None,
         ) -> None:
-            del target_rel_path, file_record, parsed_items
+            del files
             del translation_extras, project_status, prefilter_config
             del expected_section_revisions
-            raise ValueError(f"duplicate: {source_path}")
+            raise ValueError("duplicate: C:/next/b.txt")
 
     service = type(workbench_app_service)(FailingWorkbenchManager())
 
     with pytest.raises(ValueError, match="duplicate: C:/next/b.txt"):
-        service.add_file(
+        service.add_file_batch(
             {
-                "source_path": "C:/next/b.txt",
-                "target_rel_path": "script/b.txt",
-                "file_record": {"rel_path": "script/b.txt", "file_type": "TXT"},
-                "parsed_items": [],
+                "files": [
+                    {
+                        "source_path": "C:/next/b.txt",
+                        "target_rel_path": "script/b.txt",
+                        "file_record": {
+                            "rel_path": "script/b.txt",
+                            "file_type": "TXT",
+                        },
+                        "parsed_items": [],
+                    }
+                ],
                 "derived_meta": {
                     "translation_extras": {},
                     "project_status": "NONE",

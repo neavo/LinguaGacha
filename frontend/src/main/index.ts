@@ -545,10 +545,9 @@ function createWindow(): void {
 async function pick_open_path(options: Electron.OpenDialogOptions): Promise<DesktopPathPickResult> {
   const result =
     win === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(win, options);
-  const selected_path = result.filePaths[0] ?? null;
   return {
-    canceled: result.canceled || selected_path === null,
-    path: selected_path,
+    canceled: result.canceled || result.filePaths.length === 0,
+    paths: result.filePaths,
   };
 }
 
@@ -569,7 +568,7 @@ async function pick_save_path(
 
   return {
     canceled: result.canceled || result.filePath === undefined,
-    path: result.filePath ?? null,
+    paths: result.filePath === undefined ? [] : [result.filePath],
   };
 }
 
@@ -679,7 +678,7 @@ ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SAVE_PATH, async (_event, default_name: 
 
 ipcMain.handle(IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH, async () => {
   return pick_open_path({
-    properties: ["openFile"],
+    properties: ["openFile", "multiSelections"],
   });
 });
 

@@ -957,11 +957,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
     const pick_result = await window.desktopApp.pickGlossaryImportFilePath();
-    if (pick_result.canceled || pick_result.path === null) {
+    const selected_path = pick_result.paths[0] ?? null;
+    if (pick_result.canceled || selected_path === null) {
       return;
     }
 
-    await import_entries_from_path(pick_result.path);
+    await import_entries_from_path(selected_path);
   }, [import_entries_from_path]);
 
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
@@ -969,13 +970,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       const pick_result = await window.desktopApp.pickGlossaryExportPath(
         TEXT_PRESERVE_EXPORT_FILE_NAME,
       );
-      if (pick_result.canceled || pick_result.path === null) {
+      const selected_path = pick_result.paths[0] ?? null;
+      if (pick_result.canceled || selected_path === null) {
         return;
       }
 
       await api_fetch("/api/quality/rules/export", {
         rule_type: TEXT_PRESERVE_RULE_TYPE,
-        path: pick_result.path,
+        path: selected_path,
         entries: entries.map((entry) => {
           return normalize_entry(entry);
         }),

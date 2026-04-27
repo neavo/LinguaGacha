@@ -501,10 +501,10 @@ function convert_parsed_item_to_runtime_record(
 }
 
 function assign_item_ids_for_add(args: {
-  state: ProjectStoreState;
+  next_item_id_seed: number;
   parsed_items: WorkbenchParsedItemRecord[];
 }): WorkbenchParsedItemRecord[] {
-  let next_item_id = build_next_item_id_seed(args.state) + 1;
+  let next_item_id = args.next_item_id_seed;
   return args.parsed_items.map((item) => {
     return {
       ...clone_parsed_item_record(item),
@@ -669,34 +669,88 @@ export function create_workbench_add_file_plan(args: {
   settings: WorkbenchPlannerSettings;
   inheritance_mode?: WorkbenchTranslationInheritanceMode;
 }): WorkbenchProjectMutationPlan {
-  const file_map = build_file_map(args.state);
-  ensure_target_path_not_conflict({
-    file_map,
-    target_rel_path: args.parsed_file.target_rel_path,
-  });
-
-  const normalized_parsed_items = assign_item_ids_for_add({
+  return create_workbench_add_files_plan({
     state: args.state,
-    parsed_items: create_normalized_add_parsed_items(args.parsed_file),
+    parsed_files: [args.parsed_file],
+    settings: args.settings,
+    inheritance_mode: args.inheritance_mode,
   });
-  if (args.inheritance_mode === "inherit") {
-    inherit_completed_translations({
-      old_items: [...build_item_map(args.state).values()],
-      next_items: normalized_parsed_items,
-    });
-  }
-  const next_item_map = build_item_map(args.state);
-  for (const item of normalized_parsed_items) {
-    const runtime_item = convert_parsed_item_to_runtime_record(item);
-    next_item_map.set(runtime_item.item_id, runtime_item);
+}
+
+export function create_workbench_add_files_plan(args: {
+  state: ProjectStoreState;
+  parsed_files: WorkbenchFileParsePreview[];
+  settings: WorkbenchPlannerSettings;
+  inheritance_mode?: WorkbenchTranslationInheritanceMode;
+}): WorkbenchProjectMutationPlan {
+  if (args.parsed_files.length === 0) {
+    throw new Error("工作台文件路径无效。");
   }
 
+  const file_map = build_file_map(args.state);
   const next_file_map = new Map(file_map);
-  next_file_map.set(args.parsed_file.target_rel_path, {
-    rel_path: args.parsed_file.target_rel_path,
-    file_type: args.parsed_file.file_type,
-    sort_index: build_next_sort_index(file_map),
-  });
+  const next_item_map = build_item_map(args.state);
+  const old_items = [...next_item_map.values()];
+  const files_payload: Array<Record<string, unknown>> = [];
+  const batch_target_path_set = new Set<string>();
+  let next_item_id_seed = build_next_item_id_seed(args.state) + 1;
+  let next_sort_index = build_next_sort_index(file_map);
+
+  for (const parsed_file of args.parsed_files) {
+    const target_rel_path = parsed_file.target_rel_path.trim();
+    if (target_rel_path === "") {
+      throw new Error("工作台文件路径无效。");
+    }
+
+    ensure_target_path_not_conflict({
+      file_map,
+      target_rel_path,
+    });
+
+    const target_key = normalize_casefold_path(target_rel_path);
+    if (batch_target_path_set.has(target_key)) {
+      throw new Error("目标文件名已存在。");
+    }
+    batch_target_path_set.add(target_key);
+
+    const normalized_parsed_items = assign_item_ids_for_add({
+      next_item_id_seed,
+      parsed_items: create_normalized_add_parsed_items({
+        ...parsed_file,
+        target_rel_path,
+      }),
+    });
+    next_item_id_seed += normalized_parsed_items.length;
+    if (args.inheritance_mode === "inherit") {
+      inherit_completed_translations({
+        old_items,
+        next_items: normalized_parsed_items,
+      });
+    }
+
+    for (const item of normalized_parsed_items) {
+      const runtime_item = convert_parsed_item_to_runtime_record(item);
+      next_item_map.set(runtime_item.item_id, runtime_item);
+    }
+
+    next_file_map.set(target_rel_path, {
+      rel_path: target_rel_path,
+      file_type: parsed_file.file_type,
+      sort_index: next_sort_index,
+    });
+
+    files_payload.push({
+      source_path: parsed_file.source_path,
+      target_rel_path,
+      file_record: {
+        rel_path: target_rel_path,
+        file_type: parsed_file.file_type,
+        sort_index: next_sort_index,
+      },
+      parsed_items: serialize_full_parsed_item_payloads(normalized_parsed_items),
+    });
+    next_sort_index += 1;
+  }
 
   return create_file_mutation_runtime_plan({
     state: args.state,
@@ -705,14 +759,7 @@ export function create_workbench_add_file_plan(args: {
     next_item_map,
     settings: args.settings,
     request_body: {
-      source_path: args.parsed_file.source_path,
-      target_rel_path: args.parsed_file.target_rel_path,
-      file_record: {
-        rel_path: args.parsed_file.target_rel_path,
-        file_type: args.parsed_file.file_type,
-        sort_index: build_next_sort_index(file_map),
-      },
-      parsed_items: serialize_full_parsed_item_payloads(normalized_parsed_items),
+      files: files_payload,
     },
   });
 }
