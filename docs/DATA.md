@@ -136,6 +136,7 @@ flowchart TD
 | `.json` 解析 | 先尝试 `KVJSON`，返回空条目时再回退到 `MESSAGEJSON` |
 | `.trans` | 会按 `project.gameEngine` 二次分发到不同处理器 |
 | EPUB 写回 | 所有条目都带 `extra_field.epub.parts` 时走 AST writer，否则统一走 legacy writer |
+| EPUB ruby 清理 | 文件层只在叶子 block 的 `extra_field.epub.ruby_clean_candidate` 记录可清理结构候选；是否启用由 `TextProcessor` / `RubyCleaner` 按 `Config.clean_ruby` 决定，写回层在候选启用后可走块级写回并让双语原文保留原始 `<ruby>/<rt>` |
 
 ### 模型域
 - `module/Model/Manager.py` 是模型列表整理、分组排序、模板补齐和激活模型回退的唯一规则入口。

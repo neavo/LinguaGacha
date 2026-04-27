@@ -246,6 +246,40 @@ def build_item_for_text_node(
     return item, root
 
 
+def build_ruby_item_for_block(config: Config, dst: str) -> tuple[Item, etree._Element]:
+    ast = EPUBAst(config)
+    root = etree.fromstring(
+        (
+            "<html><body><p><ruby>宝條<rt>ほうじょう</rt>"
+            "直希<rt>なおき</rt></ruby></p></body></html>"
+        ).encode("utf-8")
+    )
+    block = root.xpath(".//*[local-name()='p']")[0]
+    block_path = ast.build_elem_path(root, block)
+    slots = ast.iter_translatable_text_slots(root, block)
+    part_texts = [ast.normalize_slot_text(text) for _ref, text in slots]
+    part_defs = [{"slot": ref.slot, "path": ref.path} for ref, _text in slots]
+    candidate = ast.build_ruby_clean_candidate(block, block_path)
+    assert candidate is not None
+
+    item = Item.from_dict(
+        {
+            "src": "\n".join(part_texts),
+            "dst": dst,
+            "file_type": Item.FileType.EPUB,
+            "extra_field": {
+                "epub": {
+                    "parts": part_defs,
+                    "block_path": block_path,
+                    "src_digest": ast.sha1_hex_with_null_separator(part_texts),
+                    "ruby_clean_candidate": candidate,
+                }
+            },
+        }
+    )
+    return item, root
+
+
 def build_zip_with_files(files: dict[str, bytes]) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -408,6 +442,30 @@ def test_apply_items_to_tree_falls_back_to_find_by_path_when_map_missing(
     assert applied == 1
     assert skipped == 0
     assert p.text == "dst"
+
+
+def test_apply_items_to_tree_writes_ruby_candidate_block_and_keeps_bilingual_source(
+    config: Config,
+) -> None:
+    writer = EPUBAstWriter(config)
+    item, root = build_ruby_item_for_block(config, "宝条直希")
+
+    applied, skipped = writer.apply_items_to_tree(
+        root=root,
+        doc_path="text/ch1.xhtml",
+        items=[item],
+        bilingual=True,
+    )
+
+    ps = root.xpath(".//*[local-name()='body']/*[local-name()='p']")
+    assert applied == 1
+    assert skipped == 0
+    assert len(ps) == 2
+
+    source_block, translated_block = ps
+    assert source_block.xpath(".//*[local-name()='rt']")
+    assert translated_block.text == "宝条直希"
+    assert translated_block.xpath(".//*[local-name()='rt']") == []
 
 
 def test_apply_items_to_tree_does_not_insert_bilingual_when_src_equals_dst(

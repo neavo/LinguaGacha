@@ -29,6 +29,8 @@ export const en_us_expert_settings_page = {
         "\n" +
         "Supported ruby formats include, but are not limited to:" +
         "\n" +
+        "• <ruby>漢字<rt>かんじ</rt></ruby>" +
+        "\n" +
         "• (漢字/かんじ) [漢字/かんじ] |漢字[かんじ]" +
         "\n" +
         "• \\r[漢字,かんじ] \\rb[漢字,かんじ] [r_かんじ][ch_漢字] [ch_漢字]" +

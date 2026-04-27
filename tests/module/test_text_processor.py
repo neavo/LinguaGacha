@@ -208,6 +208,83 @@ class TestTextProcessor:
         assert processor.vaild_index == {1}
         assert processor.samples == ["Markdown Code"]
 
+    def test_pre_process_uses_epub_ruby_candidate_when_enabled(self) -> None:
+        item = Item.from_dict(
+            {
+                "src": "宝條\n直希",
+                "file_type": Item.FileType.EPUB,
+                "extra_field": {
+                    "epub": {
+                        "ruby_clean_candidate": {
+                            "cleaned_src": "宝條直希",
+                            "block_path": "/html[1]/body[1]/p[1]",
+                            "cleaned_digest": "digest",
+                        }
+                    }
+                },
+            }
+        )
+        snapshot = create_snapshot(text_preserve_mode=DataManager.TextPreserveMode.OFF)
+        processor = TextProcessor(Config(clean_ruby=True), item, snapshot)
+
+        processor.pre_process()
+
+        assert processor.srcs == ["宝條直希"]
+        assert processor.vaild_index == {0}
+
+    def test_post_process_aligns_to_epub_ruby_candidate_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        item = Item.from_dict(
+            {
+                "src": "宝條\n直希",
+                "file_type": Item.FileType.EPUB,
+                "extra_field": {
+                    "epub": {
+                        "ruby_clean_candidate": {
+                            "cleaned_src": "宝條直希",
+                            "block_path": "/html[1]/body[1]/p[1]",
+                            "cleaned_digest": "digest",
+                        }
+                    }
+                },
+            }
+        )
+        snapshot = create_snapshot(text_preserve_mode=DataManager.TextPreserveMode.OFF)
+        processor = TextProcessor(Config(clean_ruby=True), item, snapshot)
+        monkeypatch.setattr(processor, "auto_fix", lambda src, dst: dst)
+        monkeypatch.setattr(processor, "replace_post_translation", lambda dst: dst)
+
+        processor.pre_process()
+        name, result = processor.post_process(["宝条直希"])
+
+        assert name is None
+        assert result == "宝条直希"
+
+    def test_pre_process_keeps_epub_ruby_source_when_disabled(self) -> None:
+        item = Item.from_dict(
+            {
+                "src": "宝條\n直希",
+                "file_type": Item.FileType.EPUB,
+                "extra_field": {
+                    "epub": {
+                        "ruby_clean_candidate": {
+                            "cleaned_src": "宝條直希",
+                            "block_path": "/html[1]/body[1]/p[1]",
+                            "cleaned_digest": "digest",
+                        }
+                    }
+                },
+            }
+        )
+        snapshot = create_snapshot(text_preserve_mode=DataManager.TextPreserveMode.OFF)
+        processor = TextProcessor(Config(clean_ruby=False), item, snapshot)
+
+        processor.pre_process()
+
+        assert processor.srcs == ["宝條", "直希"]
+        assert processor.vaild_index == {0, 1}
+
     def test_extract_name_removes_wrapped_prefix(self) -> None:
         item = Item(name_src="Alice")
         processor = TextProcessor(Config(), item, create_snapshot())

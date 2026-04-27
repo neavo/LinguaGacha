@@ -131,7 +131,11 @@ function render_rich_text_node(
     if (component_renderer !== undefined) {
       return createElement(Fragment, { key: key_prefix }, component_renderer(element_children));
     } else {
-      return createElement(Fragment, { key: key_prefix }, element_children);
+      return createElement(
+        Fragment,
+        { key: key_prefix },
+        render_rich_text_text(element_node.outerHTML, key_prefix),
+      );
     }
   } else {
     return createElement(Fragment, { key: key_prefix });

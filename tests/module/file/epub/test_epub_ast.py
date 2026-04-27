@@ -834,6 +834,35 @@ def test_extract_items_from_document_uses_leaf_blocks_and_skips_code_subtree(
     assert items[0].get_extra_field()["epub"]["is_nav"] is False
 
 
+def test_extract_items_from_document_adds_ruby_clean_candidate(
+    config: Config,
+) -> None:
+    ast = EPUBAst(config)
+    raw = (
+        "<html><body><p><ruby>宝條<rt>ほうじょう</rt>"
+        "直希<rt>なおき</rt></ruby></p></body></html>"
+    ).encode("utf-8")
+
+    items = ast.extract_items_from_document(
+        doc_path="text/ch1.xhtml",
+        raw=raw,
+        spine_index=0,
+        rel_path="book.epub",
+        is_nav=False,
+    )
+
+    assert len(items) == 1
+    assert items[0].get_src() == "宝條\n直希"
+
+    epub = items[0].get_extra_field()["epub"]
+    assert len(epub["parts"]) == 2
+
+    candidate = epub["ruby_clean_candidate"]
+    assert candidate["cleaned_src"] == "宝條直希"
+    assert candidate["block_path"] == epub["block_path"]
+    assert candidate["cleaned_digest"] == ast.sha1_hex("宝條直希")
+
+
 def test_extract_items_from_document_keeps_non_leaf_tail_text_order(
     config: Config,
 ) -> None:
