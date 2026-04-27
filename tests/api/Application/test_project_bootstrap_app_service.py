@@ -104,6 +104,51 @@ def test_iter_bootstrap_events_emits_all_stages_in_contract_order() -> None:
     }
 
 
+def test_iter_bootstrap_events_reuses_combined_files_items_payloads() -> None:
+    class CombinedRuntimeService(StubRuntimeService):
+        def __init__(self) -> None:
+            self.combined_calls = 0
+            self.files_calls = 0
+            self.items_calls = 0
+
+        def build_files_items_blocks(self) -> dict[str, dict[str, object]]:
+            self.combined_calls += 1
+            return {
+                "files": {
+                    "fields": ["rel_path", "file_type", "sort_index"],
+                    "rows": [["combined.txt", "TXT", 0]],
+                },
+                "items": {
+                    "fields": ["item_id"],
+                    "rows": [[7]],
+                },
+            }
+
+        def build_files_block(self) -> dict[str, object]:
+            self.files_calls += 1
+            return super().build_files_block()
+
+        def build_items_block(self) -> dict[str, object]:
+            self.items_calls += 1
+            return super().build_items_block()
+
+    runtime_service = CombinedRuntimeService()
+    app_service = ProjectBootstrapAppService(runtime_service)
+
+    events = list(app_service.iter_bootstrap_events({}))
+    payloads = {
+        str(event["stage"]): event["payload"]
+        for event in events
+        if event["type"] == "stage_payload"
+    }
+
+    assert runtime_service.combined_calls == 1
+    assert runtime_service.files_calls == 0
+    assert runtime_service.items_calls == 0
+    assert payloads["files"]["rows"] == [["combined.txt", "TXT", 0]]
+    assert payloads["items"]["rows"] == [[7]]
+
+
 def test_stream_to_handler_backslash_escapes_lone_surrogate_in_stage_payload() -> None:
     class RuntimeServiceWithSurrogate(StubRuntimeService):
         def build_project_block(self) -> dict[str, Any]:

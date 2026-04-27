@@ -39,6 +39,7 @@ class LGDatabase(Base):
         self.db_path = db_path
         self.lock = threading.RLock()
         self.keep_alive_conn: sqlite3.Connection | None = None
+        self.schema_ready: bool = False
 
     def open(self) -> None:
         """打开数据库连接（长连接，维持 WAL 模式）"""
@@ -50,13 +51,15 @@ class LGDatabase(Base):
             self.keep_alive_conn.execute("PRAGMA journal_mode=WAL")
             self.keep_alive_conn.execute("PRAGMA synchronous=NORMAL")
             self.keep_alive_conn.row_factory = sqlite3.Row
-            self.ensure_schema()
+            self.ensure_schema_once(self.keep_alive_conn)
 
     def close(self) -> None:
         """关闭数据库连接"""
         if self.keep_alive_conn is not None:
             self.keep_alive_conn.close()
             self.keep_alive_conn = None
+            if self.db_path == ":memory:":
+                self.schema_ready = False
 
     @contextlib.contextmanager
     def connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -78,10 +81,21 @@ class LGDatabase(Base):
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.row_factory = sqlite3.Row
-            self.ensure_schema(conn)
+            self.ensure_schema_once(conn)
             yield conn
         finally:
             conn.close()
+
+    def ensure_schema_once(self, conn: sqlite3.Connection) -> None:
+        """同一文件型工程实例只在首次连接时确认 schema 与迁移。"""
+
+        with self.lock:
+            if self.schema_ready:
+                return
+
+            self.ensure_schema(conn)
+            if self.db_path != ":memory:":
+                self.schema_ready = True
 
     def ensure_schema(self, conn: sqlite3.Connection | None = None) -> None:
         """确保数据库表结构存在"""

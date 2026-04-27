@@ -31,12 +31,18 @@ class ProjectBootstrapAppService:
 
         del request
         section_revisions = self.resolve_section_revisions()
+        combined_stage_payloads: dict[str, dict[str, Any]] = {}
 
         for stage, message, builder_name in self.STAGE_DEFINITIONS:
             yield BootstrapStageStarted(stage=stage, message=message).to_dict()
+            payload = self.resolve_stage_payload_for_bootstrap(
+                stage,
+                builder_name,
+                combined_stage_payloads,
+            )
             yield BootstrapStagePayload(
                 stage=stage,
-                payload=self.resolve_stage_payload(builder_name),
+                payload=payload,
             ).to_dict()
             yield BootstrapStageCompleted(stage=stage).to_dict()
 
@@ -54,6 +60,37 @@ class ProjectBootstrapAppService:
             if isinstance(payload, dict):
                 return payload
         return {}
+
+    def resolve_stage_payload_for_bootstrap(
+        self,
+        stage: str,
+        builder_name: str,
+        combined_stage_payloads: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        if stage in ("files", "items"):
+            if not combined_stage_payloads:
+                combined_stage_payloads.update(self.resolve_combined_stage_payloads())
+            if stage in combined_stage_payloads:
+                return combined_stage_payloads[stage]
+
+        return self.resolve_stage_payload(builder_name)
+
+    def resolve_combined_stage_payloads(self) -> dict[str, dict[str, Any]]:
+        """允许相邻 stage 复用同一份内部快照，不改变事件顺序。"""
+
+        builder = getattr(self.runtime_service, "build_files_items_blocks", None)
+        if not callable(builder):
+            return {}
+
+        payloads = builder()
+        if not isinstance(payloads, dict):
+            return {}
+
+        return {
+            str(stage): payload
+            for stage, payload in payloads.items()
+            if isinstance(payload, dict)
+        }
 
     def resolve_section_revisions(self) -> dict[str, int]:
         builder = getattr(self.runtime_service, "build_section_revisions", None)
