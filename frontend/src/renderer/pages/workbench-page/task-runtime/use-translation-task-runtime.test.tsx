@@ -139,22 +139,7 @@ function create_runtime_fixture(
         proofreading: {
           revision: 0,
         },
-        task: {
-          task_type: "translation",
-          status: "IDLE",
-          busy: false,
-          request_in_flight_count: 0,
-          line: 1,
-          total_line: 1,
-          processed_line: 0,
-          error_line: 1,
-          total_tokens: 0,
-          total_output_tokens: 0,
-          total_input_tokens: 0,
-          time: 0,
-          start_time: 0,
-          analysis_candidate_count: 2,
-        },
+        task: task_snapshot,
         revisions: {
           projectRevision: 9,
           sections: {
@@ -367,6 +352,20 @@ describe("useTranslationTaskRuntime", () => {
   });
 
   it("translation reset all 成功时走本地 patch + apply + ack", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        line: 9,
+        total_line: 12,
+        processed_line: 8,
+        error_line: 1,
+        total_tokens: 300,
+        total_output_tokens: 180,
+        total_input_tokens: 120,
+        time: 45,
+        start_time: 100,
+        analysis_candidate_count: 2,
+      }),
+    );
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
@@ -425,7 +424,44 @@ describe("useTranslationTaskRuntime", () => {
     expect(runtime_fixture.current.commit_local_project_patch.mock.calls[0]?.[0]).toMatchObject({
       source: "translation_reset_all",
       updatedSections: ["items", "analysis", "task"],
+      patch: expect.arrayContaining([
+        expect.objectContaining({
+          op: "replace_task",
+          task: expect.objectContaining({
+            task_type: "translation",
+            status: "IDLE",
+            busy: false,
+            request_in_flight_count: 0,
+            line: 0,
+            total_line: 1,
+            processed_line: 0,
+            error_line: 0,
+            total_tokens: 0,
+            total_output_tokens: 0,
+            total_input_tokens: 0,
+            time: 0,
+            start_time: 0,
+            analysis_candidate_count: 0,
+          }),
+        }),
+      ]),
     });
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/project/translation/reset",
+      expect.objectContaining({
+        translation_extras: expect.objectContaining({
+          line: 0,
+          total_line: 1,
+          processed_line: 0,
+          error_line: 0,
+          total_tokens: 0,
+          total_output_tokens: 0,
+          total_input_tokens: 0,
+          time: 0,
+          start_time: 0,
+        }),
+      }),
+    );
     expect(runtime_fixture.current.align_project_runtime_ack).toHaveBeenCalledWith({
       accepted: true,
       projectRevision: 12,
@@ -435,6 +471,92 @@ describe("useTranslationTaskRuntime", () => {
       },
     });
     expect(runtime_fixture.current.refresh_project_runtime).not.toHaveBeenCalled();
+  });
+
+  it("translation reset failed 保留历史累计统计并只重算失败项", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        line: 5,
+        total_line: 7,
+        processed_line: 4,
+        error_line: 1,
+        total_tokens: 90,
+        total_output_tokens: 50,
+        total_input_tokens: 40,
+        time: 12,
+        start_time: 20,
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/project/translation/reset") {
+        return {
+          accepted: true,
+          projectRevision: 13,
+          sectionRevisions: {
+            items: 5,
+          },
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    await act(async () => {
+      latest_state?.request_task_action_confirmation("reset-failed");
+    });
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.confirm_task_action();
+    });
+    await flush_microtasks();
+
+    expect(runtime_fixture.current.commit_local_project_patch).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.commit_local_project_patch.mock.calls[0]?.[0]).toMatchObject({
+      source: "translation_reset_failed",
+      updatedSections: ["items", "task"],
+      patch: expect.arrayContaining([
+        expect.objectContaining({
+          op: "replace_task",
+          task: expect.objectContaining({
+            line: 0,
+            total_line: 1,
+            processed_line: 0,
+            error_line: 0,
+            total_tokens: 90,
+            total_output_tokens: 50,
+            total_input_tokens: 40,
+            time: 12,
+            start_time: 20,
+          }),
+        }),
+      ]),
+    });
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/project/translation/reset",
+      expect.objectContaining({
+        mode: "failed",
+        translation_extras: expect.objectContaining({
+          line: 0,
+          total_line: 1,
+          processed_line: 0,
+          error_line: 0,
+          total_tokens: 90,
+          total_output_tokens: 50,
+          total_input_tokens: 40,
+          time: 12,
+          start_time: 20,
+        }),
+      }),
+    );
   });
 
   it("translation reset failed 失败时会回滚并刷新运行态", async () => {

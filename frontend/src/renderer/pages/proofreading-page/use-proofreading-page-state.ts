@@ -789,6 +789,19 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         signal_mode: proofreading_change_signal.mode,
       });
       let runtime_sync_state = runtime_sync_state_ref.current;
+      if (sync_mode === "noop") {
+        if (request_id !== refresh_request_id_ref.current || runtime_sync_state === null) {
+          return;
+        }
+
+        set_cache_status("ready");
+        set_cache_stale(false);
+        set_is_refreshing(false);
+        set_last_loaded_at(Date.now());
+        set_settled_project_path(project_snapshot.path);
+        return;
+      }
+
       if (sync_mode === "full") {
         runtime_sync_state = await proofreading_runtime_client_ref.current.hydrate_full(
           collect_full_sync_input({

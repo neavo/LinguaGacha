@@ -126,6 +126,7 @@ flowchart TD
 ### 引擎域
 - `Engine.status` 是全局忙碌态的唯一权威来源，翻译与分析不会并行运行。
 - `request_in_flight_count` 表示“真正发出去的请求数”，不是限流器上限，也不是队列长度。
+- `TRANSLATION_PROGRESS` 与 `ANALYSIS_PROGRESS` 在事件总线中按字段合并最新进度；实时请求数这类单字段补丁不能覆盖同批次里的行数、token、耗时等完整快照。
 - 对 API / 前端暴露的终态仍由桥接层解释为 `DONE / ERROR / IDLE`。
 
 ### 文件域

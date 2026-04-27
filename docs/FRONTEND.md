@@ -97,6 +97,7 @@ flowchart TD
 - 同步 mutation 的成功路径是“本地 patch -> HTTP 持久化 -> `align_project_runtime_ack(...)`”。
 - 失败路径是“回滚 -> `refresh_project_runtime()`”。
 - 服务器 `project.patch` 与本地 patch 共用 `ProjectStore.applyProjectPatch(...)` 后处理。
+- 服务端高频 `project.patch` 先进入 `LiveRefreshScheduler`，flush 时按原顺序批量应用到 `ProjectStore`，再合并发出工作台与校对页 change signal；本地 `commit_local_project_patch(...)` 仍即时应用、即时回滚。
 
 ### 页面变更信号
 
@@ -109,10 +110,12 @@ flowchart TD
 - `project.changed`、`task.*`、`settings.changed` 与 `project.patch` 都由 `DesktopRuntimeContext` 收口，再决定是否刷新页面派生状态。
 - 若 `project.patch` 载荷不合法，当前实现会回退为 `refresh_project_runtime()`，而不是让页面直接猜测修复策略。
 - 工作台与校对页在工程切换后都会先清空本地快照，再等待各自的 change signal 驱动首次有效刷新；不会在空 `ProjectStore` 上做 eager refresh。
+- 实时 UI 刷新统一由前端 `LiveRefreshScheduler` 在入站侧合帧，频率由 `APP_LIVE_REFRESH_INTERVAL_MS` 控制；服务端 `project.patch`、任务进度、日志流与工作台任务波形共享这条节奏，本地同步 mutation、项目切换、非法 patch fallback 与任务终态仍走即时路径。
 - `ProjectPagesProvider` 当前把 `project_warmup` 定义为“工作台首屏已基于本次 bootstrap 完成刷新”，`wait_for_barrier("project_warmup", { checkpoint })` 会要求工作台 `last_loaded_at` 晚于该 checkpoint；校对页缓存仍通过独立 barrier 维护。
 - `ProjectPagesProvider` 只消费页面运行态 adapter 暴露的缓存状态和 barrier 字段；工作台、校对页自己的 hook 仍归页面侧维护，`app/runtime` 不直接导入页面私有 hook。
 - 校对页只把 `project / items / quality` 视为后台派生真实输入；`prompts`、`analysis` 单独变化不会触发校对缓存失效，`proofreading / task` 仅在没有 item 载荷时发 `noop`。
 - 校对页把 `ProjectStore` 原始状态同步到独立 worker cache：`hydrate_full` 负责项目级全量同步，`apply_item_delta` 只重算变更条目，`build_list_view` 与 `build_filter_panel` 负责列表与筛选面板查询；warnings、默认 filters、筛选 facets 与排序结果都由 worker 持有，主线程只保留选区、游标、弹窗等轻状态。
+- 工作台页收到 `merge_items` 合并后的 delta 时优先更新本地增量缓存；首次 bootstrap、项目 / 文件替换、分析摘要缺失或结构异常时回退全量重建。校对页同窗口 `full` 覆盖 `delta`，纯 `noop` 不触发列表与筛选面板查询。
 - 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`；其中 `proofreading_cache_refresh` 的 ready 定义是“当前列表查询已结算，且 `current_filters` 对应的筛选面板已预热完成”，可操作条件独立于 `project_warmup`。
 - glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续比较统计依赖签名（项目相关文本、规则 key 与 descriptor 依赖字段）决定是否后台刷新；规则页通过 provider 消费统计，不创建独立 worker 或维护统计刷新 effect。
 

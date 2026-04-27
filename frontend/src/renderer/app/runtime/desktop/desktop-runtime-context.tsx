@@ -29,6 +29,7 @@ import {
   normalize_section_revisions,
   parse_event_payload,
 } from "@/app/runtime/desktop/desktop-runtime-event-payload";
+import { LiveRefreshScheduler } from "@/app/runtime/live-refresh-scheduler";
 
 type RecentProjectEntry = {
   path: string;
@@ -101,6 +102,9 @@ type WorkbenchChangeSignal = {
   seq: number;
   reason: string;
   scope: WorkbenchChangeScope;
+  mode: "full" | "items_delta";
+  updated_sections: ProjectStoreStage[];
+  item_ids: Array<number | string>;
 };
 
 const WORKBENCH_REFRESH_SECTIONS = ["project", "files", "items", "analysis"];
@@ -249,7 +253,20 @@ const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
   seq: 0,
   reason: "",
   scope: "global",
+  mode: "full",
+  updated_sections: [],
+  item_ids: [],
 };
+
+type RuntimeLiveRefreshPayload =
+  | {
+      kind: "project_patch";
+      event: ProjectStorePatchEvent;
+    }
+  | {
+      kind: "task_progress";
+      payload: Partial<TaskSnapshot>;
+    };
 
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null);
 
@@ -425,6 +442,21 @@ function merge_task_progress_update(
         ? previous_snapshot.analysis_candidate_count
         : Number(payload.analysis_candidate_count),
   };
+}
+
+function merge_task_progress_payloads(
+  payloads: readonly Partial<TaskSnapshot>[],
+): Partial<TaskSnapshot> | undefined {
+  if (payloads.length === 0) {
+    return undefined;
+  }
+
+  return payloads.reduce<Partial<TaskSnapshot>>((merged_payload, payload) => {
+    return {
+      ...merged_payload,
+      ...payload,
+    };
+  }, {});
 }
 
 export function normalize_project_mutation_ack(
@@ -655,6 +687,136 @@ function has_project_patch_rel_paths(event: ProjectStorePatchEvent): boolean {
   return false;
 }
 
+function collect_project_patch_updated_sections(
+  events: readonly ProjectStorePatchEvent[],
+): ProjectStoreStage[] {
+  const sections = new Set<ProjectStoreStage>();
+
+  for (const event of events) {
+    for (const section of event.updatedSections) {
+      sections.add(section);
+    }
+  }
+
+  return [...sections];
+}
+
+function collect_project_patch_sources(events: readonly ProjectStorePatchEvent[]): string {
+  const sources = [
+    ...new Set(events.map((event) => event.source).filter((source) => source !== "")),
+  ];
+  return sources.length === 0 ? "project_patch" : sources.join("+");
+}
+
+function is_project_patch_workbench_delta(event: ProjectStorePatchEvent): boolean {
+  if (!event.updatedSections.includes("items")) {
+    return false;
+  }
+
+  if (
+    !event.updatedSections.every((section) => ["items", "proofreading", "task"].includes(section))
+  ) {
+    return false;
+  }
+
+  return event.patch.every((operation) => {
+    return ["merge_items", "replace_proofreading", "replace_task"].includes(operation.op);
+  });
+}
+
+function resolve_workbench_change_signal(args: {
+  reason: string;
+  updated_sections: ProjectStoreStage[];
+  events: readonly ProjectStorePatchEvent[];
+}): {
+  reason: string;
+  scope: WorkbenchChangeScope;
+  mode: "full" | "items_delta";
+  updated_sections: ProjectStoreStage[];
+  item_ids: Array<number | string>;
+} | null {
+  if (!args.updated_sections.some((section) => WORKBENCH_REFRESH_SECTIONS.includes(section))) {
+    return null;
+  }
+
+  const item_ids = [
+    ...new Set(args.events.flatMap((event) => collect_project_patch_item_ids(event))),
+  ];
+  const can_apply_items_delta =
+    item_ids.length > 0 && args.events.every(is_project_patch_workbench_delta);
+
+  return {
+    reason: args.reason,
+    scope: args.events.some(has_project_patch_rel_paths) ? "file" : "global",
+    mode: can_apply_items_delta ? "items_delta" : "full",
+    updated_sections: args.updated_sections,
+    item_ids,
+  };
+}
+
+function resolve_batched_proofreading_change_signal(args: {
+  reason: string;
+  updated_sections: ProjectStoreStage[];
+  events: readonly ProjectStorePatchEvent[];
+}): {
+  reason: string;
+  mode: ProofreadingChangeMode;
+  updated_sections: ProjectStoreStage[];
+  item_ids: Array<number | string>;
+} | null {
+  let has_noop = false;
+  const delta_item_ids = new Set<number | string>();
+
+  for (const event of args.events) {
+    const signal = resolve_proofreading_change_signal({
+      reason: event.source,
+      updated_sections: event.updatedSections,
+      patch_event: event,
+    });
+    if (signal === null) {
+      continue;
+    }
+
+    if (signal.mode === "full") {
+      return {
+        reason: args.reason,
+        mode: "full",
+        updated_sections: args.updated_sections,
+        item_ids: [],
+      };
+    }
+
+    if (signal.mode === "noop") {
+      has_noop = true;
+      continue;
+    }
+
+    for (const item_id of signal.item_ids) {
+      delta_item_ids.add(item_id);
+    }
+  }
+
+  if (delta_item_ids.size > 0) {
+    return {
+      reason: args.reason,
+      mode: "delta",
+      updated_sections: args.updated_sections,
+      item_ids: [...delta_item_ids],
+    };
+  }
+
+  if (has_noop) {
+    return {
+      reason: args.reason,
+      mode: "noop",
+      updated_sections: args.updated_sections,
+      item_ids: [],
+    };
+  }
+
+  return null;
+}
+
 function resolve_project_patch_task_payload(
   event: ProjectStorePatchEvent,
 ): Partial<TaskSnapshot> | null {
@@ -671,6 +833,17 @@ function resolve_project_patch_task_payload(
   }
 
   return null;
+}
+
+function is_terminal_task_status(status: unknown): boolean {
+  return ["DONE", "FAILED", "ERROR", "CANCELLED", "CANCELED"].includes(
+    String(status ?? "").toUpperCase(),
+  );
+}
+
+function should_apply_project_patch_immediately(event: ProjectStorePatchEvent): boolean {
+  const task_payload = resolve_project_patch_task_payload(event);
+  return task_payload !== null && is_terminal_task_status(task_payload.status);
 }
 
 function build_local_project_patch_revisions(
@@ -789,11 +962,20 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   );
 
   const bump_workbench_runtime_signal = useCallback(
-    (args: { reason: string; scope: WorkbenchChangeScope }): void => {
+    (args: {
+      reason: string;
+      scope: WorkbenchChangeScope;
+      mode?: "full" | "items_delta";
+      updated_sections?: ProjectStoreStage[];
+      item_ids?: Array<number | string>;
+    }): void => {
       set_workbench_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: args.reason,
         scope: args.scope,
+        mode: args.mode ?? "full",
+        updated_sections: [...(args.updated_sections ?? [])],
+        item_ids: [...(args.item_ids ?? [])],
       }));
     },
     [],
@@ -817,45 +999,83 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [],
   );
 
+  const apply_runtime_project_patches = useCallback(
+    (
+      patch_events: readonly ProjectStorePatchEvent[],
+      revision_mode: ProjectStorePatchRevisionMode = "merge",
+    ): void => {
+      if (patch_events.length === 0) {
+        return;
+      }
+
+      if (patch_events.length === 1) {
+        const patch_event = patch_events[0];
+        if (patch_event === undefined) {
+          return;
+        }
+        project_store_ref.current.applyProjectPatch(patch_event, {
+          revisionMode: revision_mode,
+        });
+      } else {
+        project_store_ref.current.applyProjectPatchBatch(patch_events, {
+          revisionMode: revision_mode,
+        });
+      }
+
+      const task_payloads = patch_events.flatMap((patch_event) => {
+        const task_payload = resolve_project_patch_task_payload(patch_event);
+        return task_payload === null ? [] : [task_payload];
+      });
+      if (task_payloads.length > 0) {
+        set_task_snapshot((previous_snapshot) => {
+          return task_payloads.reduce<TaskSnapshot>((next_snapshot, task_payload) => {
+            return merge_task_progress_update(
+              merge_task_status_update(next_snapshot, task_payload),
+              task_payload,
+            );
+          }, previous_snapshot);
+        });
+      }
+
+      const updated_sections = collect_project_patch_updated_sections(patch_events);
+      const reason = collect_project_patch_sources(patch_events);
+      const workbench_change_signal = resolve_workbench_change_signal({
+        reason,
+        updated_sections,
+        events: patch_events,
+      });
+      if (workbench_change_signal !== null) {
+        bump_workbench_runtime_signal(workbench_change_signal);
+      }
+
+      const proofreading_change_signal = resolve_proofreading_change_signal({
+        reason,
+        updated_sections,
+        patch_event: patch_events.length === 1 ? (patch_events[0] ?? null) : null,
+      });
+      const batched_proofreading_change_signal =
+        patch_events.length === 1
+          ? proofreading_change_signal
+          : resolve_batched_proofreading_change_signal({
+              reason,
+              updated_sections,
+              events: patch_events,
+            });
+      if (batched_proofreading_change_signal !== null) {
+        bump_proofreading_runtime_signal(batched_proofreading_change_signal);
+      }
+    },
+    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
+  );
+
   const apply_runtime_project_patch = useCallback(
     (
       patch_event: ProjectStorePatchEvent,
       revision_mode: ProjectStorePatchRevisionMode = "merge",
     ): void => {
-      project_store_ref.current.applyProjectPatch(patch_event, {
-        revisionMode: revision_mode,
-      });
-
-      const task_payload = resolve_project_patch_task_payload(patch_event);
-      if (task_payload !== null) {
-        set_task_snapshot((previous_snapshot) => {
-          return merge_task_progress_update(
-            merge_task_status_update(previous_snapshot, task_payload),
-            task_payload,
-          );
-        });
-      }
-
-      const has_rel_paths = has_project_patch_rel_paths(patch_event);
-      if (
-        patch_event.updatedSections.some((section) => WORKBENCH_REFRESH_SECTIONS.includes(section))
-      ) {
-        bump_workbench_runtime_signal({
-          reason: patch_event.source,
-          scope: has_rel_paths ? "file" : "global",
-        });
-      }
-
-      const proofreading_change_signal = resolve_proofreading_change_signal({
-        reason: patch_event.source,
-        updated_sections: patch_event.updatedSections,
-        patch_event,
-      });
-      if (proofreading_change_signal !== null) {
-        bump_proofreading_runtime_signal(proofreading_change_signal);
-      }
+      apply_runtime_project_patches([patch_event], revision_mode);
     },
-    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
+    [apply_runtime_project_patches],
   );
 
   const refresh_project_runtime = useCallback(async (): Promise<void> => {
@@ -1038,11 +1258,33 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   }, [project_warmup_status]);
 
   useEffect(() => {
+    const live_refresh_scheduler = new LiveRefreshScheduler<string, RuntimeLiveRefreshPayload>({
+      onFlush: (batches) => {
+        const project_patch_events = (batches.get("project.patch") ?? []).flatMap((payload) => {
+          return payload.kind === "project_patch" ? [payload.event] : [];
+        });
+        if (project_patch_events.length > 0) {
+          apply_runtime_project_patches(project_patch_events);
+        }
+
+        const task_progress_payload = merge_task_progress_payloads(
+          (batches.get("task.progress") ?? []).flatMap((payload) => {
+            return payload.kind === "task_progress" ? [payload.payload] : [];
+          }),
+        );
+        if (task_progress_payload !== undefined) {
+          set_task_snapshot((previous_snapshot) =>
+            merge_task_progress_update(previous_snapshot, task_progress_payload),
+          );
+        }
+      },
+    });
     let event_source: EventSource | null = null;
     let cancelled = false;
 
     function handle_project_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
+      live_refresh_scheduler.flush();
       set_project_snapshot({
         path: String(payload.path ?? ""),
         loaded: Boolean(payload.loaded),
@@ -1052,6 +1294,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     function handle_task_status_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
+      live_refresh_scheduler.flush();
       set_task_snapshot((previous_snapshot) =>
         merge_task_status_update(previous_snapshot, payload),
       );
@@ -1059,9 +1302,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     function handle_task_progress_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
-      set_task_snapshot((previous_snapshot) =>
-        merge_task_progress_update(previous_snapshot, payload),
-      );
+      live_refresh_scheduler.enqueue("task.progress", {
+        kind: "task_progress",
+        payload,
+      });
     }
 
     function handle_settings_changed(event: MessageEvent<string>): void {
@@ -1089,6 +1333,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           return;
         }
 
+        live_refresh_scheduler.flush();
         try {
           await refresh_project_runtime();
         } catch {
@@ -1122,7 +1367,16 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return;
       }
 
-      apply_runtime_project_patch(patch_event);
+      if (should_apply_project_patch_immediately(patch_event)) {
+        live_refresh_scheduler.flush();
+        apply_runtime_project_patch(patch_event);
+        return;
+      }
+
+      live_refresh_scheduler.enqueue("project.patch", {
+        kind: "project_patch",
+        event: patch_event,
+      });
     }
 
     async function attach_event_stream(): Promise<void> {
@@ -1156,11 +1410,13 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     return () => {
       cancelled = true;
+      live_refresh_scheduler.dispose();
       event_source?.close();
     };
   }, [
     apply_settings_snapshot,
     apply_runtime_project_patch,
+    apply_runtime_project_patches,
     bump_proofreading_runtime_signal,
     bump_workbench_runtime_signal,
     project_snapshot.loaded,

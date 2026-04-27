@@ -36,6 +36,49 @@ def test_progress_snapshot_events_only_deliver_latest_payload(
     assert received == [2]
 
 
+@pytest.mark.parametrize(
+    "event",
+    [Base.Event.TRANSLATION_PROGRESS, Base.Event.ANALYSIS_PROGRESS],
+)
+def test_progress_snapshot_events_merge_partial_payloads(
+    event: Base.Event,
+) -> None:
+    manager = build_manager()
+    received: list[dict[str, Any]] = []
+    manager.subscribe(
+        event,
+        lambda event, data: received.append(dict(data)),
+    )
+
+    with manager.dispatch_condition:
+        manager.emit_event(
+            event,
+            {
+                "line": 3,
+                "total_line": 10,
+                "total_output_tokens": 20,
+                "request_in_flight_count": 4,
+            },
+        )
+        manager.emit_event(
+            event,
+            {
+                "request_in_flight_count": 2,
+            },
+        )
+
+    manager.wait_for_idle(timeout=1.0)
+
+    assert received == [
+        {
+            "line": 3,
+            "total_line": 10,
+            "total_output_tokens": 20,
+            "request_in_flight_count": 2,
+        }
+    ]
+
+
 def test_handler_error_does_not_stop_following_handlers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

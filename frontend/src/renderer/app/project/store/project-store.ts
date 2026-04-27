@@ -140,6 +140,10 @@ type ProjectStoreApi = {
   reset: () => void;
   applyBootstrapStage: (stage: ProjectStoreStage, payload: ProjectStoreBootstrapPayload) => void;
   applyProjectPatch: (event: ProjectStorePatchEvent, options?: ProjectStorePatchOptions) => void;
+  applyProjectPatchBatch: (
+    events: readonly ProjectStorePatchEvent[],
+    options?: ProjectStorePatchOptions,
+  ) => void;
   alignRevisions: (input: {
     projectRevision?: number;
     sectionRevisions?: ProjectStoreSectionRevisions;
@@ -554,6 +558,91 @@ function cloneState(state: ProjectStoreState): ProjectStoreState {
   };
 }
 
+function applyProjectPatchToState(args: {
+  state: ProjectStoreState;
+  event: ProjectStorePatchEvent;
+  revisionMode: ProjectStorePatchRevisionMode;
+}): ProjectStoreState {
+  const next_state: ProjectStoreState = {
+    ...args.state,
+    revisions:
+      args.revisionMode === "exact"
+        ? resolveExactPatchRevisions({
+            currentRevisions: args.state.revisions,
+            projectRevision: args.event.projectRevision,
+            updatedSections: args.event.updatedSections,
+            sectionRevisions: args.event.sectionRevisions,
+          })
+        : mergePatchRevisions({
+            currentRevisions: args.state.revisions,
+            projectRevision: args.event.projectRevision,
+            updatedSections: args.event.updatedSections,
+            sectionRevisions: args.event.sectionRevisions,
+          }),
+  };
+
+  for (const operation of args.event.patch) {
+    if (operation.op === "merge_files") {
+      next_state.files = mergeSectionRecords({
+        currentRecords: next_state.files,
+        values: operation.files ?? [],
+        preferredKeys: ["rel_path", "file_path"],
+      });
+      continue;
+    }
+
+    if (operation.op === "merge_items") {
+      next_state.items = mergeSectionRecords({
+        currentRecords: next_state.items,
+        values: operation.items ?? [],
+        preferredKeys: ["item_id"],
+      });
+      continue;
+    }
+
+    if (operation.op === "replace_files" && operation.files !== undefined) {
+      next_state.files = cloneProjectStoreSection("files", operation.files);
+      continue;
+    }
+
+    if (operation.op === "replace_items" && operation.items !== undefined) {
+      next_state.items = cloneProjectStoreSection("items", operation.items);
+      continue;
+    }
+
+    if (operation.op === "replace_project" && operation.project !== undefined) {
+      next_state.project = operation.project;
+      continue;
+    }
+
+    if (operation.op === "replace_quality" && operation.quality !== undefined) {
+      next_state.quality = normalizeQualityState(operation.quality);
+      continue;
+    }
+
+    if (operation.op === "replace_prompts" && operation.prompts !== undefined) {
+      next_state.prompts = normalizePromptsState(operation.prompts);
+      continue;
+    }
+
+    if (operation.op === "replace_analysis" && operation.analysis !== undefined) {
+      next_state.analysis = operation.analysis;
+      continue;
+    }
+
+    if (operation.op === "replace_proofreading" && operation.proofreading !== undefined) {
+      next_state.proofreading = normalizeProofreadingState(operation.proofreading);
+      continue;
+    }
+
+    if (operation.op === "replace_task" && operation.task !== undefined) {
+      next_state.task = operation.task;
+    }
+  }
+
+  return next_state;
+}
+
 export function createProjectStore(): ProjectStoreApi {
   let state = cloneState(INITIAL_STATE);
   const listeners = new Set<ProjectStoreListener>();
@@ -607,84 +696,29 @@ export function createProjectStore(): ProjectStoreApi {
     },
     applyProjectPatch(event: ProjectStorePatchEvent, options?: ProjectStorePatchOptions): void {
       const revision_mode = options?.revisionMode ?? "merge";
-      const next_state: ProjectStoreState = {
-        ...state,
-        revisions:
-          revision_mode === "exact"
-            ? resolveExactPatchRevisions({
-                currentRevisions: state.revisions,
-                projectRevision: event.projectRevision,
-                updatedSections: event.updatedSections,
-                sectionRevisions: event.sectionRevisions,
-              })
-            : mergePatchRevisions({
-                currentRevisions: state.revisions,
-                projectRevision: event.projectRevision,
-                updatedSections: event.updatedSections,
-                sectionRevisions: event.sectionRevisions,
-              }),
-      };
-
-      for (const operation of event.patch) {
-        if (operation.op === "merge_files") {
-          next_state.files = mergeSectionRecords({
-            currentRecords: next_state.files,
-            values: operation.files ?? [],
-            preferredKeys: ["rel_path", "file_path"],
-          });
-          continue;
-        }
-
-        if (operation.op === "merge_items") {
-          next_state.items = mergeSectionRecords({
-            currentRecords: next_state.items,
-            values: operation.items ?? [],
-            preferredKeys: ["item_id"],
-          });
-          continue;
-        }
-
-        if (operation.op === "replace_files" && operation.files !== undefined) {
-          next_state.files = cloneProjectStoreSection("files", operation.files);
-          continue;
-        }
-
-        if (operation.op === "replace_items" && operation.items !== undefined) {
-          next_state.items = cloneProjectStoreSection("items", operation.items);
-          continue;
-        }
-
-        if (operation.op === "replace_project" && operation.project !== undefined) {
-          next_state.project = operation.project;
-          continue;
-        }
-
-        if (operation.op === "replace_quality" && operation.quality !== undefined) {
-          next_state.quality = normalizeQualityState(operation.quality);
-          continue;
-        }
-
-        if (operation.op === "replace_prompts" && operation.prompts !== undefined) {
-          next_state.prompts = normalizePromptsState(operation.prompts);
-          continue;
-        }
-
-        if (operation.op === "replace_analysis" && operation.analysis !== undefined) {
-          next_state.analysis = operation.analysis;
-          continue;
-        }
-
-        if (operation.op === "replace_proofreading" && operation.proofreading !== undefined) {
-          next_state.proofreading = normalizeProofreadingState(operation.proofreading);
-          continue;
-        }
-
-        if (operation.op === "replace_task" && operation.task !== undefined) {
-          next_state.task = operation.task;
-        }
+      state = applyProjectPatchToState({
+        state,
+        event,
+        revisionMode: revision_mode,
+      });
+      notifyListeners();
+    },
+    applyProjectPatchBatch(
+      events: readonly ProjectStorePatchEvent[],
+      options?: ProjectStorePatchOptions,
+    ): void {
+      if (events.length === 0) {
+        return;
       }
 
-      state = next_state;
+      const revision_mode = options?.revisionMode ?? "merge";
+      for (const event of events) {
+        state = applyProjectPatchToState({
+          state,
+          event,
+          revisionMode: revision_mode,
+        });
+      }
       notifyListeners();
     },
     alignRevisions(input: {

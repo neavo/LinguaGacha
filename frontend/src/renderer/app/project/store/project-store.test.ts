@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createProjectStore, createProjectStoreReplaceSectionPatch } from "./project-store";
 
@@ -85,6 +85,59 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.projectRevision).toBe(3);
     expect(store.getState().revisions.sections.items).toBe(3);
     expect(store.getState().revisions.sections.task).toBe(1);
+  });
+
+  it("批量应用 project.patch 时保持顺序且只通知一次 listener", () => {
+    const store = createProjectStore();
+    const listener = vi.fn();
+
+    store.subscribe(listener);
+    store.applyProjectPatchBatch([
+      {
+        source: "translation_batch",
+        projectRevision: 2,
+        updatedSections: ["items"],
+        patch: [
+          {
+            op: "merge_items",
+            items: [
+              {
+                item_id: 1,
+                file_path: "chapter01.txt",
+                dst: "第一版",
+                status: "NONE",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        source: "translation_batch",
+        projectRevision: 3,
+        updatedSections: ["items"],
+        patch: [
+          {
+            op: "merge_items",
+            items: [
+              {
+                item_id: 1,
+                file_path: "chapter01.txt",
+                dst: "第二版",
+                status: "PROCESSED",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(store.getState().items["1"]).toMatchObject({
+      dst: "第二版",
+      status: "PROCESSED",
+    });
+    expect(store.getState().revisions.projectRevision).toBe(3);
+    expect(store.getState().revisions.sections.items).toBe(2);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it("对缺省 projectRevision 的 project.patch 保留已有 revision", () => {
