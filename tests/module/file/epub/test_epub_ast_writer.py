@@ -921,7 +921,7 @@ def build_original_epub() -> bytes:
     return buf.getvalue()
 
 
-def build_epub_item(config: Config) -> Item:
+def build_epub_item(config: Config, doc_path: str = "text/ch1.xhtml") -> Item:
     ast = EPUBAst(config)
     root = etree.fromstring(b"<html><body><p>old</p></body></html>")
     p = root.xpath(".//*[local-name()='p']")[0]
@@ -935,7 +935,7 @@ def build_epub_item(config: Config) -> Item:
             "file_type": Item.FileType.EPUB,
             "extra_field": {
                 "epub": {
-                    "doc_path": "text/ch1.xhtml",
+                    "doc_path": doc_path,
                     "parts": [{"slot": "text", "path": p_path}],
                     "block_path": p_path,
                     "src_digest": digest,
@@ -1080,6 +1080,31 @@ def test_build_epub_applies_translation_and_sanitizes_assets(
     assert binary == b"\x89PNG\r\n\x1a\n"
 
 
+def test_build_epub_applies_translation_to_xhtm_document(
+    config: Config,
+    fs,
+) -> None:
+    del fs
+    writer = EPUBAstWriter(config)
+    out_path = Path("/workspace/out/book-xhtm.epub")
+    epub_bytes = build_zip_with_files(
+        {"text/ch1.xhtm": b"<?xml version='1.0'?><html><body><p>old</p></body></html>"}
+    )
+
+    writer.build_epub(
+        original_epub_bytes=epub_bytes,
+        items=[build_epub_item(config, doc_path="text/ch1.xhtm")],
+        out_path=str(out_path),
+        bilingual=False,
+    )
+
+    with zipfile.ZipFile(out_path, "r") as zf:
+        chapter = zf.read("text/ch1.xhtm").decode("utf-8")
+
+    assert "new" in chapter
+    assert "old" not in chapter
+
+
 def test_build_epub_writes_opf_title_and_syncs_xhtml_title(
     config: Config,
     fs,
@@ -1116,6 +1141,60 @@ def test_build_epub_writes_opf_title_and_syncs_xhtml_title(
     assert opf_title == translated_title
     assert chapter_title == translated_title
     assert "page-progression-direction" not in opf_raw.decode("utf-8")
+
+
+def test_build_epub_syncs_opf_title_to_xhtm_title(
+    config: Config,
+    fs,
+) -> None:
+    del fs
+    writer = EPUBAstWriter(config)
+    out_path = Path("/workspace/out/book-title-xhtm.epub")
+    source_title = "Old Book Title"
+    translated_title = "新书名"
+    epub_bytes = build_zip_with_files(
+        {
+            "content.opf": (
+                "<?xml version='1.0'?>"
+                "<package version='3.0' xmlns='http://www.idpf.org/2007/opf' "
+                "xmlns:dc='http://purl.org/dc/elements/1.1/'>"
+                "<metadata>"
+                f"<dc:title>{source_title}</dc:title>"
+                "</metadata>"
+                "<manifest>"
+                "<item id='chap1' href='text/ch1.xhtm' media-type='application/xhtml+xml'/>"
+                "</manifest>"
+                "<spine page-progression-direction='rtl'>"
+                "<itemref idref='chap1'/>"
+                "</spine>"
+                "</package>"
+            ).encode("utf-8"),
+            "text/ch1.xhtm": (
+                "<?xml version='1.0'?>"
+                "<html xmlns='http://www.w3.org/1999/xhtml'>"
+                "<head>"
+                f"<title>{source_title}</title>"
+                "</head>"
+                "<body><p>old</p></body>"
+                "</html>"
+            ).encode("utf-8"),
+        }
+    )
+
+    writer.build_epub(
+        original_epub_bytes=epub_bytes,
+        items=[build_opf_title_item(config, source_title, translated_title)],
+        out_path=str(out_path),
+        bilingual=False,
+    )
+
+    with zipfile.ZipFile(out_path, "r") as zf:
+        chapter_root = etree.fromstring(zf.read("text/ch1.xhtm"))
+
+    chapter_title = chapter_root.xpath(
+        "string(.//*[local-name()='head']/*[local-name()='title'][1])"
+    )
+    assert chapter_title == translated_title
 
 
 def test_build_epub_does_not_overwrite_opf_title_when_src_digest_mismatches(

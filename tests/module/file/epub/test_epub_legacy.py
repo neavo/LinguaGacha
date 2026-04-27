@@ -329,6 +329,43 @@ def test_build_epub_dispatches_css_opf_ncx_html_and_binary(
     assert binary == b"RAW"
 
 
+def test_build_epub_dispatches_xhtm_as_html_document(
+    config: Config,
+    fs,
+) -> None:
+    del fs
+    legacy = EPUBLegacy(config)
+    src = io.BytesIO()
+    with zipfile.ZipFile(src, "w") as zf:
+        zf.writestr("text/ch1.xhtm", "<html><body><p>old</p></body></html>")
+
+    items = [
+        Item.from_dict(
+            {
+                "src": "old",
+                "dst": "new",
+                "row": 1,
+                "file_type": Item.FileType.EPUB,
+                "tag": "text/ch1.xhtm",
+            }
+        )
+    ]
+
+    out_path = Path("/workspace/out/legacy-xhtm.epub")
+    legacy.build_epub(
+        original_epub_bytes=src.getvalue(),
+        items=items,
+        out_path=str(out_path),
+        bilingual=False,
+    )
+
+    with zipfile.ZipFile(out_path, "r") as zf:
+        html = zf.read("text/ch1.xhtm").decode("utf-8")
+
+    assert "new" in html
+    assert "old" not in html
+
+
 def test_build_epub_writes_raw_css_and_opf_when_decode_fails(
     config: Config,
     fs,

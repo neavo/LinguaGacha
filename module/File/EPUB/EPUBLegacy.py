@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from base.Base import Base
 from module.Data.Core.Item import Item
 from module.Config import Config
+from module.File.EPUB.EPUBAst import EPUBAst
 
 
 class EPUBLegacy(Base):
@@ -238,7 +239,7 @@ class EPUBLegacy(Base):
                         self.process_ncx(zip_reader, zip_writer, path, tag_group)
                         continue
 
-                    if lower.endswith((".htm", ".html", ".xhtml")):
+                    if EPUBAst.is_html_document_path(path):
                         self.process_html(
                             zip_reader, zip_writer, path, tag_group, bilingual
                         )
