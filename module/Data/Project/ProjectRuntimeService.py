@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from api.Models.ProjectRuntime import ProjectMutationAck
 from api.Models.ProjectRuntime import RowBlock
+from base.Base import Base
 from module.Data.Core.Item import Item
 from module.Data.Quality.PromptService import PromptService
 from module.Data.Quality.QualityRuleSnapshotService import (
@@ -13,6 +16,12 @@ from module.Data.Project.ProjectRuntimeRevisionService import (
 from module.Data.Proofreading.ProofreadingRevisionService import (
     ProofreadingRevisionService,
 )
+
+
+@dataclass(frozen=True)
+class RuntimeItemsSnapshot:
+    item_records: list[dict[str, object]]
+    records_by_path: dict[str, dict[str, object]]
 
 
 class ProjectRuntimeService:
@@ -76,7 +85,19 @@ class ProjectRuntimeService:
             }
         }
 
-    def build_files_block(self) -> dict[str, object]:
+    def build_files_items_blocks(self) -> dict[str, dict[str, object]]:
+        """让 bootstrap files/items 在同一轮生命周期内共享条目快照。"""
+
+        snapshot = self.build_runtime_items_snapshot()
+        return {
+            "files": self.build_files_block(snapshot=snapshot),
+            "items": self.build_items_block(snapshot=snapshot),
+        }
+
+    def build_files_block(
+        self,
+        snapshot: RuntimeItemsSnapshot | None = None,
+    ) -> dict[str, object]:
         """把文件主表编码成稳定行块，供工作台和筛选器建立文件索引。"""
 
         rows = tuple(
@@ -85,7 +106,7 @@ class ProjectRuntimeService:
                 str(record["file_type"]),
                 int(record["sort_index"]),
             )
-            for record in self.build_file_records()
+            for record in self.build_file_records(snapshot=snapshot)
         )
 
         return RowBlock(
@@ -93,7 +114,10 @@ class ProjectRuntimeService:
             rows=rows,
         ).to_dict()
 
-    def build_items_block(self) -> dict[str, object]:
+    def build_items_block(
+        self,
+        snapshot: RuntimeItemsSnapshot | None = None,
+    ) -> dict[str, object]:
         """把条目主表编码成稳定行块，避免 TS 端绑定 Python 内部对象结构。"""
 
         rows = tuple(
@@ -109,7 +133,7 @@ class ProjectRuntimeService:
                 record["text_type"],
                 record["retry_count"],
             )
-            for record in self.build_item_records()
+            for record in self.build_item_records(snapshot=snapshot)
         )
 
         return RowBlock(
@@ -120,6 +144,7 @@ class ProjectRuntimeService:
     def build_file_records(
         self,
         rel_paths: list[str] | None = None,
+        snapshot: RuntimeItemsSnapshot | None = None,
     ) -> list[dict[str, object]]:
         """为 patch 与 bootstrap 统一构建稳定文件记录。"""
 
@@ -135,18 +160,8 @@ class ProjectRuntimeService:
         ordered_asset_records = self.normalize_asset_records(
             self.call_data_manager("get_all_asset_records", [])
         )
-        records_by_path: dict[str, dict[str, object]] = {}
-        for item in self.data_manager.get_items_all():
-            file_path = str(item.get_file_path() or "")
-            if file_path == "":
-                continue
-            if target_rel_paths is not None and file_path not in target_rel_paths:
-                continue
-
-            records_by_path[file_path] = {
-                "rel_path": file_path,
-                "file_type": self.resolve_file_type_value(item),
-            }
+        runtime_snapshot = snapshot or self.build_runtime_items_snapshot()
+        records_by_path = runtime_snapshot.records_by_path
 
         if ordered_asset_records:
             ordered_records: list[dict[str, object]] = []
@@ -178,30 +193,19 @@ class ProjectRuntimeService:
     def build_item_records(
         self,
         item_ids: list[int] | None = None,
+        snapshot: RuntimeItemsSnapshot | None = None,
     ) -> list[dict[str, object]]:
         """为 patch 与 bootstrap 统一构建稳定条目记录。"""
 
         target_item_ids = set(item_ids) if item_ids is not None else None
-        records: list[dict[str, object]] = []
-        for item in self.data_manager.get_items_all():
-            item_id = item.get_id()
+        records = []
+        runtime_snapshot = snapshot or self.build_runtime_items_snapshot()
+        for record in runtime_snapshot.item_records:
+            item_id = record["item_id"]
             if target_item_ids is not None and item_id not in target_item_ids:
                 continue
 
-            records.append(
-                {
-                    "item_id": item_id,
-                    "file_path": item.get_file_path(),
-                    "row_number": int(item.get_row() or 0),
-                    "src": item.get_src(),
-                    "dst": item.get_dst(),
-                    "name_src": item.get_name_src(),
-                    "name_dst": item.get_name_dst(),
-                    "status": self.resolve_status_value(item),
-                    "text_type": self.resolve_enum_value(item.get_text_type()),
-                    "retry_count": int(item.get_retry_count() or 0),
-                }
-            )
+            records.append(dict(record))
         return records
 
     def build_quality_block(self) -> dict[str, object]:
@@ -261,6 +265,16 @@ class ProjectRuntimeService:
         status = item.get_status()
         return getattr(status, "value", status)
 
+    def resolve_status_value_from_dict(self, item_dict: dict[str, object]) -> str:
+        """保持与 Item.from_dict() 一致的旧状态归一规则。"""
+
+        status_value = item_dict.get("status", Base.ProjectStatus.NONE)
+        if hasattr(status_value, "value"):
+            return str(getattr(status_value, "value"))
+
+        status = Item.normalize_status(status_value)
+        return str(getattr(status, "value", status))
+
     def resolve_file_type_value(self, item) -> str:
         """统一把文件类型规整成稳定字符串。"""
 
@@ -273,6 +287,95 @@ class ProjectRuntimeService:
         if value is None:
             return ""
         return str(getattr(value, "value", value))
+
+    def resolve_file_type_value_from_dict(self, item_dict: dict[str, object]) -> str:
+        value = item_dict.get("file_type", Item.FileType.NONE)
+        return str(getattr(value, "value", value))
+
+    def resolve_text_type_value_from_dict(self, item_dict: dict[str, object]) -> str:
+        if "text_type" in item_dict:
+            return self.resolve_enum_value(item_dict.get("text_type"))
+
+        file_type = item_dict.get("file_type", Item.FileType.NONE)
+        src = item_dict.get("src", "")
+        if not isinstance(src, str):
+            src = str(src)
+        if file_type in (
+            Item.FileType.XLSX,
+            Item.FileType.KVJSON,
+            Item.FileType.MESSAGEJSON,
+            Item.FileType.XLSX.value,
+            Item.FileType.KVJSON.value,
+            Item.FileType.MESSAGEJSON.value,
+        ):
+            if any(pattern.search(src) is not None for pattern in Item.REGEX_WOLF):
+                return Item.TextType.WOLF.value
+            if any(pattern.search(src) is not None for pattern in Item.REGEX_RPGMaker):
+                return Item.TextType.RPGMAKER.value
+            if any(pattern.search(src) is not None for pattern in Item.REGEX_RENPY):
+                return Item.TextType.RENPY.value
+
+        return Item.TextType.NONE.value
+
+    def build_runtime_items_snapshot(self) -> RuntimeItemsSnapshot:
+        """从 dict 热路径一次生成 item records 与文件索引。"""
+
+        item_records: list[dict[str, object]] = []
+        records_by_path: dict[str, dict[str, object]] = {}
+        for item_dict in self.get_runtime_item_dicts():
+            record = self.normalize_item_record(item_dict)
+            item_records.append(record)
+
+            file_path = str(item_dict.get("file_path", "") or "")
+            if file_path == "":
+                continue
+            records_by_path[file_path] = {
+                "rel_path": file_path,
+                "file_type": self.resolve_file_type_value_from_dict(item_dict),
+            }
+
+        return RuntimeItemsSnapshot(
+            item_records=item_records,
+            records_by_path=records_by_path,
+        )
+
+    def get_runtime_item_dicts(self) -> list[dict[str, object]]:
+        item_dicts_method = getattr(self.data_manager, "get_all_item_dicts", None)
+        if callable(item_dicts_method):
+            item_dicts = item_dicts_method()
+            if isinstance(item_dicts, list):
+                return [
+                    dict(item_dict)
+                    for item_dict in item_dicts
+                    if isinstance(item_dict, dict)
+                ]
+
+        items_method = getattr(self.data_manager, "get_items_all", None)
+        if not callable(items_method):
+            return []
+
+        item_dicts = []
+        for item in items_method():
+            to_dict = getattr(item, "to_dict", None)
+            if callable(to_dict):
+                value = to_dict()
+                if isinstance(value, dict):
+                    item_dicts.append(dict(value))
+        return item_dicts
+
+    def normalize_item_record(self, item_dict: dict[str, object]) -> dict[str, object]:
+        return {
+            "item_id": item_dict.get("id"),
+            "file_path": item_dict.get("file_path", ""),
+            "row_number": int(item_dict.get("row", 0) or 0),
+            "src": item_dict.get("src", ""),
+            "dst": item_dict.get("dst", ""),
+            "name_src": item_dict.get("name_src"),
+            "name_dst": item_dict.get("name_dst"),
+            "status": self.resolve_status_value_from_dict(item_dict),
+            "text_type": self.resolve_text_type_value_from_dict(item_dict),
+            "retry_count": int(item_dict.get("retry_count", 0) or 0),
+        }
 
     def build_quality_rule_slice(self, rule_type: str) -> dict[str, object]:
         snapshot = self.quality_snapshot_service.get_rule_snapshot(rule_type)

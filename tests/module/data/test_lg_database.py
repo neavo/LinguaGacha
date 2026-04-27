@@ -332,6 +332,56 @@ def test_short_connection_context_creates_schema_and_closes(fs) -> None:
             conn.execute("SELECT 1")
 
 
+def test_short_connections_confirm_schema_once_per_file_instance(
+    fs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with real_db_path(fs, "short_connection_schema_once") as db_path:
+        db = LGDatabase(str(db_path))
+        original_ensure_schema = db.ensure_schema
+        ensure_schema_calls = 0
+
+        def spy_ensure_schema(conn: sqlite3.Connection | None = None) -> None:
+            nonlocal ensure_schema_calls
+            ensure_schema_calls += 1
+            original_ensure_schema(conn)
+
+        monkeypatch.setattr(db, "ensure_schema", spy_ensure_schema)
+
+        with db.connection() as first_conn:
+            assert first_conn.execute("SELECT COUNT(*) FROM meta").fetchone()[0] == 0
+        with db.connection() as second_conn:
+            assert second_conn.execute("SELECT COUNT(*) FROM meta").fetchone()[0] == 0
+
+        assert ensure_schema_calls == 1
+
+
+def test_open_then_connection_reuses_schema_confirmation(
+    fs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with real_db_path(fs, "open_schema_once") as db_path:
+        db = LGDatabase(str(db_path))
+        original_ensure_schema = db.ensure_schema
+        ensure_schema_calls = 0
+
+        def spy_ensure_schema(conn: sqlite3.Connection | None = None) -> None:
+            nonlocal ensure_schema_calls
+            ensure_schema_calls += 1
+            original_ensure_schema(conn)
+
+        monkeypatch.setattr(db, "ensure_schema", spy_ensure_schema)
+
+        db.open()
+        try:
+            with db.connection() as conn:
+                assert conn.execute("SELECT COUNT(*) FROM meta").fetchone()[0] == 0
+        finally:
+            db.close()
+
+        assert ensure_schema_calls == 1
+
+
 def test_ensure_schema_backfills_asset_sort_order_for_legacy_db(fs) -> None:
     with real_db_path(fs, "legacy_sort_order") as db_path:
         if db_path.exists():
