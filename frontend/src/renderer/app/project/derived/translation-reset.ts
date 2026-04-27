@@ -2,6 +2,7 @@ import { compute_project_prefilter_mutation } from "@/app/project/derived/projec
 import {
   build_translation_task_and_project_state,
   clone_runtime_project_item_record,
+  create_empty_translation_task_snapshot,
   normalize_runtime_project_item_record,
   type RuntimeProjectItemRecord,
 } from "@/app/project/derived/reset-derived";
@@ -236,25 +237,34 @@ export async function create_translation_reset_all_plan(args: {
     preview_items,
     runtime_items: mutation_output.items,
   });
+  const reset_item_map = build_runtime_item_map({
+    ...args.state,
+    items: mutation_output.items,
+  });
+  const reset_task_state = build_translation_task_and_project_state({
+    task_snapshot: create_empty_translation_task_snapshot(),
+    items: reset_item_map,
+    analysis_candidate_count: 0,
+  });
 
   return {
     updatedSections: ["items", "analysis", "task"],
     patch: [
       createProjectStoreReplaceSectionPatch("items", mutation_output.items),
       createProjectStoreReplaceSectionPatch("analysis", mutation_output.analysis),
-      createProjectStoreReplaceSectionPatch("task", mutation_output.task_snapshot),
+      createProjectStoreReplaceSectionPatch("task", reset_task_state.task_snapshot),
     ],
     requestBody: {
       mode: "all",
       items: finalized_full_items,
-      translation_extras: mutation_output.translation_extras,
-      project_status: mutation_output.project_status,
+      translation_extras: reset_task_state.translation_extras,
+      project_status: reset_task_state.project_status,
       prefilter_config: mutation_output.prefilter_config,
       expected_section_revisions: {
         items: args.state.revisions.sections.items ?? 0,
         analysis: args.state.revisions.sections.analysis ?? 0,
       },
     },
-    next_task_snapshot: mutation_output.task_snapshot,
+    next_task_snapshot: reset_task_state.task_snapshot,
   };
 }

@@ -14,7 +14,11 @@ import {
   type WorkbenchFileParsePreview,
   type WorkbenchProjectMutationPlan,
 } from "@/pages/workbench-page/workbench-mutation-planner";
-import { buildWorkbenchView } from "@/pages/workbench-page/workbench-view";
+import {
+  applyWorkbenchItemsDeltaToCache,
+  createWorkbenchViewCache,
+  type WorkbenchViewCache,
+} from "@/pages/workbench-page/workbench-view";
 import {
   useAnalysisTaskRuntime,
   type AnalysisTaskRuntime,
@@ -819,6 +823,7 @@ export function useWorkbenchLiveState(
   const previous_project_path_ref = useRef("");
   const refresh_request_id_ref = useRef(0);
   const snapshot_ref = useRef(snapshot);
+  const workbench_view_cache_ref = useRef<WorkbenchViewCache | null>(null);
   const entries_ref = useRef<WorkbenchFileEntry[]>(entries);
   const selection_state_ref = useRef<WorkbenchSelectionState>(create_empty_selection_state());
 
@@ -870,6 +875,7 @@ export function useWorkbenchLiveState(
     refresh_request_id_ref.current = 0;
     set_refresh_request_id(0);
     snapshot_ref.current = EMPTY_SNAPSHOT;
+    workbench_view_cache_ref.current = null;
     set_snapshot(EMPTY_SNAPSHOT);
     set_file_op_running(false);
     set_entries([]);
@@ -916,17 +922,14 @@ export function useWorkbenchLiveState(
       set_cache_status("refreshing");
 
       try {
-        const view = buildWorkbenchView(project_store.getState());
-        const next_snapshot: WorkbenchSnapshot = {
-          ...EMPTY_SNAPSHOT,
-          ...view.summary,
-          entries: view.entries,
-        };
+        const next_cache = createWorkbenchViewCache(project_store.getState());
+        const next_snapshot = next_cache.snapshot;
 
         if (request_id !== refresh_request_id_ref.current) {
           return next_snapshot;
         }
 
+        workbench_view_cache_ref.current = next_cache;
         snapshot_ref.current = next_snapshot;
         set_snapshot(next_snapshot);
         apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
@@ -965,6 +968,36 @@ export function useWorkbenchLiveState(
     ],
   );
 
+  const apply_items_delta_snapshot = useCallback(
+    (item_ids: Array<number | string>): boolean => {
+      if (!project_snapshot.loaded || workbench_view_cache_ref.current === null) {
+        return false;
+      }
+
+      const next_cache = applyWorkbenchItemsDeltaToCache({
+        cache: workbench_view_cache_ref.current,
+        state: project_store.getState(),
+        item_ids,
+      });
+      if (next_cache === null) {
+        return false;
+      }
+
+      const next_snapshot = next_cache.snapshot;
+      workbench_view_cache_ref.current = next_cache;
+      snapshot_ref.current = next_snapshot;
+      set_snapshot(next_snapshot);
+      apply_refreshed_entries(next_snapshot, null);
+      set_file_op_running(false);
+      set_cache_status("ready");
+      set_cache_stale(false);
+      set_last_loaded_at(Date.now());
+      set_settled_project_path(project_snapshot.path);
+      return true;
+    },
+    [apply_refreshed_entries, project_snapshot.loaded, project_snapshot.path, project_store],
+  );
+
   useEffect(() => {
     const previous_project_loaded = previous_project_loaded_ref.current;
     const previous_project_path = previous_project_path_ref.current;
@@ -996,12 +1029,24 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    // 为什么：工作台现在完全依赖 ProjectStore 重建视图，收到任意结构化变更后直接全量重算。
     if (previous_seq !== workbench_change_signal.seq) {
       set_cache_stale(true);
+      if (
+        workbench_change_signal.mode === "items_delta" &&
+        apply_items_delta_snapshot(workbench_change_signal.item_ids)
+      ) {
+        return;
+      }
       void refresh_snapshot().catch(() => {});
     }
-  }, [project_snapshot.loaded, workbench_change_signal.seq, refresh_snapshot]);
+  }, [
+    apply_items_delta_snapshot,
+    project_snapshot.loaded,
+    refresh_snapshot,
+    workbench_change_signal.item_ids,
+    workbench_change_signal.mode,
+    workbench_change_signal.seq,
+  ]);
 
   const running_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
     if (!task_snapshot.busy) {
@@ -1550,6 +1595,7 @@ export function useWorkbenchLiveState(
             path: String(payload.project?.path ?? ""),
             loaded: Boolean(payload.project?.loaded),
           });
+          workbench_view_cache_ref.current = null;
           set_snapshot(EMPTY_SNAPSHOT);
           set_file_op_running(false);
           set_entries([]);

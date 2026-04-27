@@ -69,6 +69,25 @@ function build_translation_extras(task_snapshot: Record<string, unknown>): Recor
   return translation_extras;
 }
 
+export function create_empty_translation_task_snapshot(): Record<string, unknown> {
+  return {
+    task_type: "translation",
+    status: "IDLE",
+    busy: false,
+    request_in_flight_count: 0,
+    line: 0,
+    total_line: 0,
+    processed_line: 0,
+    error_line: 0,
+    total_tokens: 0,
+    total_output_tokens: 0,
+    total_input_tokens: 0,
+    time: 0,
+    start_time: 0,
+    analysis_candidate_count: 0,
+  };
+}
+
 export function build_translation_task_and_project_state(args: {
   task_snapshot: Record<string, unknown>;
   items: Map<number, RuntimeProjectItemRecord>;

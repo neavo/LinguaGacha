@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { LogEvent } from "@/app/desktop-api";
 import {
+  append_log_events,
   append_log_event,
   compress_log_message_text,
   filter_log_events,
@@ -45,6 +46,29 @@ describe("log-window logic", () => {
     expect(with_first_empty[0]?.message).toBe("");
     expect(with_latest_empty.map((event) => event.id)).toEqual(["log-2"]);
     expect(with_next_message.map((event) => event.message)).toEqual(["", "ready"]);
+  });
+
+  it("批量追加日志会保留去重折叠并限制窗口上限", () => {
+    const seed_events = Array.from({ length: 999 }, (_, index) => {
+      return build_event({
+        id: `seed-${index + 1}`,
+        sequence: index + 1,
+        message: `seed ${index + 1}`,
+      });
+    });
+
+    const next_events = append_log_events(seed_events, [
+      build_event({ id: "seed-999", sequence: 999, message: "重复日志" }),
+      build_event({ id: "log-1000", sequence: 1000, message: "  " }),
+      build_event({ id: "log-1001", sequence: 1001, message: "\n" }),
+      build_event({ id: "log-1002", sequence: 1002, message: "latest" }),
+    ]);
+
+    expect(next_events).toHaveLength(1000);
+    expect(next_events[0]?.id).toBe("seed-2");
+    expect(next_events.at(-2)?.id).toBe("log-1001");
+    expect(next_events.at(-2)?.message).toBe("");
+    expect(next_events.at(-1)?.message).toBe("latest");
   });
 
   it("按序号倒序展示日志", () => {

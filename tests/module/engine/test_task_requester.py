@@ -902,6 +902,56 @@ def test_request_emits_translation_request_count_progress_patch() -> None:
 
 
 @pytest.mark.parametrize(
+    "task_type,event",
+    [
+        ("translation", Base.Event.TRANSLATION_PROGRESS),
+        ("analysis", Base.Event.ANALYSIS_PROGRESS),
+    ],
+)
+def test_request_keeps_request_count_progress_patch_when_stopping(
+    task_type: str,
+    event: Base.Event,
+) -> None:
+    engine = FakeEngine(active_task_type=task_type)
+    requester = TaskRequester(
+        Config(),
+        {
+            "api_format": Base.APIFormat.OPENAI,
+            "api_key": "k",
+            "api_url": "https://example.invalid",
+            "model_id": "m",
+        },
+    )
+    emitted: list[tuple[Base.Event, dict[str, Any]]] = []
+
+    def fake_request_openai(
+        messages: list[dict], args: dict[str, Any], *, stop_checker: Any = None
+    ) -> Any:
+        del messages, args, stop_checker
+        engine.active_task_type = "idle"
+        return None, "T", "R", 1, 2
+
+    def fake_emit(next_event: Base.Event, payload: dict[str, Any]) -> None:
+        emitted.append((next_event, dict(payload)))
+
+    with patch("module.Engine.TaskRequester.Engine.get", return_value=engine):
+        with patch.object(requester, "request_openai", side_effect=fake_request_openai):
+            with patch.object(requester, "emit", side_effect=fake_emit):
+                requester.request([{"role": "user", "content": "U"}])
+
+    assert emitted == [
+        (
+            event,
+            {"request_in_flight_count": 1},
+        ),
+        (
+            event,
+            {"request_in_flight_count": 0},
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
     "api_format,method_name",
     [
         (Base.APIFormat.SAKURALLM, "request_sakura"),

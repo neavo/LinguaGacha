@@ -1,6 +1,7 @@
 import type { LogEvent, LogLevel } from "@/app/desktop-api";
 
 export type LogLevelFilter = "all" | LogLevel;
+export const LOG_WINDOW_EVENT_LIMIT = 1000;
 
 export function normalize_log_event_message(event: LogEvent): LogEvent {
   return {
@@ -22,6 +23,23 @@ export function append_log_event(events: LogEvent[], event: LogEvent): LogEvent[
   }
 
   return [...events, normalized_event];
+}
+
+export function append_log_events(
+  events: LogEvent[],
+  next_events: readonly LogEvent[],
+): LogEvent[] {
+  let appended_events = events;
+
+  for (const event of next_events) {
+    appended_events = append_log_event(appended_events, event);
+  }
+
+  if (appended_events.length <= LOG_WINDOW_EVENT_LIMIT) {
+    return appended_events;
+  }
+
+  return appended_events.slice(appended_events.length - LOG_WINDOW_EVENT_LIMIT);
 }
 
 export function sort_log_events_latest_first(events: LogEvent[]): LogEvent[] {

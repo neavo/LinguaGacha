@@ -1,6 +1,8 @@
 import type {
   WorkbenchSelectorFileRecord,
   WorkbenchSelectorItemRecord,
+  WorkbenchSnapshot,
+  WorkbenchSnapshotEntry,
   WorkbenchStats,
 } from "./types";
 
@@ -8,6 +10,19 @@ type BuildWorkbenchViewArgs = {
   files: Record<string, unknown>;
   items: Record<string, unknown>;
   analysis?: Record<string, unknown>;
+};
+
+export type WorkbenchViewCache = {
+  snapshot: WorkbenchSnapshot;
+  files: WorkbenchSelectorFileRecord[];
+  items_by_id: Map<string, WorkbenchSelectorItemRecord>;
+  item_count_by_file_path: Map<string, number>;
+  translation_counts: {
+    completed_count: number;
+    failed_count: number;
+    pending_count: number;
+    skipped_count: number;
+  };
 };
 
 const ANALYSIS_SKIPPED_STATUSES = new Set([
@@ -89,18 +104,17 @@ function buildAnalysisStatsFromItems(item_values: WorkbenchSelectorItemRecord[])
   });
 }
 
-function buildAnalysisStats(args: {
-  item_values: WorkbenchSelectorItemRecord[];
+function buildAnalysisStatsFromSummary(args: {
+  total_items: number;
   analysis: Record<string, unknown> | undefined;
-}): WorkbenchStats {
+}): WorkbenchStats | null {
   const status_summary = args.analysis?.status_summary;
   if (typeof status_summary !== "object" || status_summary === null) {
-    return buildAnalysisStatsFromItems(args.item_values);
+    return null;
   }
 
   const summary = status_summary as Record<string, unknown>;
-  const total_items = args.item_values.length;
-  const total_line = clamp_count(read_count(summary.total_line), 0, total_items);
+  const total_line = clamp_count(read_count(summary.total_line), 0, args.total_items);
   const completed_count = clamp_count(read_count(summary.processed_line), 0, total_line);
   const failed_count = clamp_count(
     read_count(summary.error_line),
@@ -110,15 +124,106 @@ function buildAnalysisStats(args: {
   const pending_count = Math.max(0, total_line - completed_count - failed_count);
 
   return complete_workbench_stats({
-    total_items,
+    total_items: args.total_items,
     completed_count,
     failed_count,
     pending_count,
-    skipped_count: Math.max(0, total_items - total_line),
+    skipped_count: Math.max(0, args.total_items - total_line),
   });
 }
 
-export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
+function buildAnalysisStats(args: {
+  item_values: WorkbenchSelectorItemRecord[];
+  analysis: Record<string, unknown> | undefined;
+}): WorkbenchStats {
+  const summary_stats = buildAnalysisStatsFromSummary({
+    total_items: args.item_values.length,
+    analysis: args.analysis,
+  });
+  if (summary_stats === null) {
+    return buildAnalysisStatsFromItems(args.item_values);
+  }
+
+  return summary_stats;
+}
+
+function apply_translation_count_delta(
+  counts: WorkbenchViewCache["translation_counts"],
+  item: WorkbenchSelectorItemRecord,
+  delta: 1 | -1,
+): void {
+  if (item.status === "ERROR") {
+    counts.failed_count += delta;
+    return;
+  }
+  if (item.status === "PROCESSED") {
+    counts.completed_count += delta;
+    return;
+  }
+  if (item.status === "NONE") {
+    counts.pending_count += delta;
+    return;
+  }
+  counts.skipped_count += delta;
+}
+
+function apply_file_item_count_delta(
+  item_count_by_file_path: Map<string, number>,
+  file_path: string,
+  delta: 1 | -1,
+): void {
+  const next_count = (item_count_by_file_path.get(file_path) ?? 0) + delta;
+  if (next_count <= 0) {
+    item_count_by_file_path.delete(file_path);
+    return;
+  }
+
+  item_count_by_file_path.set(file_path, next_count);
+}
+
+function build_entries_from_cache(cache: WorkbenchViewCache): WorkbenchSnapshotEntry[] {
+  return cache.files.map((file) => {
+    return {
+      rel_path: file.rel_path,
+      file_type: file.file_type,
+      item_count: cache.item_count_by_file_path.get(file.rel_path) ?? 0,
+    };
+  });
+}
+
+function build_translation_stats_from_cache(cache: WorkbenchViewCache): WorkbenchStats {
+  return complete_workbench_stats({
+    total_items: cache.items_by_id.size,
+    completed_count: cache.translation_counts.completed_count,
+    failed_count: cache.translation_counts.failed_count,
+    pending_count: cache.translation_counts.pending_count,
+    skipped_count: cache.translation_counts.skipped_count,
+  });
+}
+
+function build_snapshot_from_cache(
+  cache: WorkbenchViewCache,
+  analysis: Record<string, unknown> | undefined,
+): WorkbenchSnapshot | null {
+  const analysis_stats = buildAnalysisStatsFromSummary({
+    total_items: cache.items_by_id.size,
+    analysis,
+  });
+  if (analysis_stats === null) {
+    return null;
+  }
+
+  const entries = build_entries_from_cache(cache);
+  return {
+    entries,
+    file_count: entries.length,
+    total_items: cache.items_by_id.size,
+    translation_stats: build_translation_stats_from_cache(cache),
+    analysis_stats,
+  };
+}
+
+export function createWorkbenchViewCache(args: BuildWorkbenchViewArgs): WorkbenchViewCache {
   const item_values = Object.values(args.items)
     .map((item) => normalizeWorkbenchItemRecord(item))
     .filter((item): item is WorkbenchSelectorItemRecord => item !== null);
@@ -134,38 +239,29 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
       return left_file.rel_path.localeCompare(right_file.rel_path, "zh-Hans-CN");
     });
   const item_count_by_file_path = new Map<string, number>();
-  let translation_completed_count = 0;
-  let translation_failed_count = 0;
-  let translation_pending_count = 0;
-  let translation_skipped_count = 0;
+  const items_by_id = new Map<string, WorkbenchSelectorItemRecord>();
+  const translation_counts = {
+    completed_count: 0,
+    failed_count: 0,
+    pending_count: 0,
+    skipped_count: 0,
+  };
 
   for (const item of item_values) {
+    items_by_id.set(String(item.item_id), item);
     item_count_by_file_path.set(
       item.file_path,
       (item_count_by_file_path.get(item.file_path) ?? 0) + 1,
     );
-
-    if (item.status === "ERROR") {
-      translation_failed_count += 1;
-      continue;
-    }
-    if (item.status === "PROCESSED") {
-      translation_completed_count += 1;
-      continue;
-    }
-    if (item.status === "NONE") {
-      translation_pending_count += 1;
-      continue;
-    }
-    translation_skipped_count += 1;
+    apply_translation_count_delta(translation_counts, item, 1);
   }
 
   const translation_stats = complete_workbench_stats({
     total_items: item_values.length,
-    completed_count: translation_completed_count,
-    failed_count: translation_failed_count,
-    pending_count: translation_pending_count,
-    skipped_count: translation_skipped_count,
+    completed_count: translation_counts.completed_count,
+    failed_count: translation_counts.failed_count,
+    pending_count: translation_counts.pending_count,
+    skipped_count: translation_counts.skipped_count,
   });
   const analysis_stats = buildAnalysisStats({
     item_values,
@@ -180,13 +276,73 @@ export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
     };
   });
 
-  return {
+  const snapshot = {
     entries,
+    file_count: entries.length,
+    total_items: item_values.length,
+    translation_stats,
+    analysis_stats,
+  };
+
+  return {
+    snapshot,
+    files: file_values,
+    items_by_id,
+    item_count_by_file_path,
+    translation_counts,
+  };
+}
+
+export function applyWorkbenchItemsDeltaToCache(args: {
+  cache: WorkbenchViewCache;
+  state: BuildWorkbenchViewArgs;
+  item_ids: Array<number | string>;
+}): WorkbenchViewCache | null {
+  const cache: WorkbenchViewCache = {
+    snapshot: args.cache.snapshot,
+    files: args.cache.files,
+    items_by_id: new Map(args.cache.items_by_id),
+    item_count_by_file_path: new Map(args.cache.item_count_by_file_path),
+    translation_counts: { ...args.cache.translation_counts },
+  };
+
+  for (const item_id of new Set(args.item_ids.map((value) => String(value)))) {
+    const previous_item = cache.items_by_id.get(item_id) ?? null;
+    const next_item = normalizeWorkbenchItemRecord(args.state.items[item_id]);
+
+    if (previous_item !== null) {
+      cache.items_by_id.delete(item_id);
+      apply_file_item_count_delta(cache.item_count_by_file_path, previous_item.file_path, -1);
+      apply_translation_count_delta(cache.translation_counts, previous_item, -1);
+    }
+
+    if (next_item !== null) {
+      cache.items_by_id.set(item_id, next_item);
+      apply_file_item_count_delta(cache.item_count_by_file_path, next_item.file_path, 1);
+      apply_translation_count_delta(cache.translation_counts, next_item, 1);
+    }
+  }
+
+  const snapshot = build_snapshot_from_cache(cache, args.state.analysis);
+  if (snapshot === null) {
+    return null;
+  }
+
+  return {
+    ...cache,
+    snapshot,
+  };
+}
+
+export function buildWorkbenchView(args: BuildWorkbenchViewArgs) {
+  const cache = createWorkbenchViewCache(args);
+  return {
+    entries: cache.snapshot.entries,
     summary: {
-      file_count: entries.length,
-      total_items: item_values.length,
-      translation_stats,
-      analysis_stats,
+      file_count: cache.snapshot.file_count,
+      total_items: cache.snapshot.total_items,
+      translation_stats: cache.snapshot.translation_stats,
+      analysis_stats: cache.snapshot.analysis_stats,
     },
   };
 }

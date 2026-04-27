@@ -166,12 +166,30 @@ class EventManager:
             return True
         return False
 
+    def merge_coalesced_event_data(self, previous_data: object, data: object) -> object:
+        """进度事件按字段合并，避免请求数补丁覆盖完整快照。"""
+        if not isinstance(previous_data, dict) or not isinstance(data, dict):
+            return data
+
+        return {
+            **previous_data,
+            **data,
+        }
+
     def emit_event(self, event: StrEnum, data: object) -> None:
         """后台线程安全入队；高频快照只保留最后一帧。"""
         event_key = self.get_event_value(event)
         with self.dispatch_condition:
             if self.should_coalesce(event, data):
-                self.pending_latest[event_key] = (event, data)
+                previous_pending = self.pending_latest.get(event_key)
+                if previous_pending is None:
+                    self.pending_latest[event_key] = (event, data)
+                else:
+                    previous_event, previous_data = previous_pending
+                    self.pending_latest[event_key] = (
+                        previous_event,
+                        self.merge_coalesced_event_data(previous_data, data),
+                    )
             else:
                 self.dispatch_queue.append(self.PendingEvent(event=event, data=data))
 

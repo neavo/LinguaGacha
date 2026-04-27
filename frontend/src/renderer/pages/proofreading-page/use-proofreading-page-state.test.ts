@@ -388,6 +388,42 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.visible_items).toHaveLength(1);
   });
 
+  it("缓存 ready 后收到 noop 信号不会重新查询列表和筛选面板", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 2,
+        mode: "noop",
+        item_ids: [],
+        updated_sections: ["proofreading", "task"],
+      },
+    };
+    await render_hook();
+
+    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.apply_item_delta).not.toHaveBeenCalled();
+    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+    expect(latest_state?.cache_status).toBe("ready");
+  });
+
   it("打开筛选弹窗时不会再触发首次面板计算", async () => {
     await render_hook();
 

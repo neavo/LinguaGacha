@@ -162,16 +162,20 @@ class TaskRequester(Base):
         hard_timeout_s = max(1, int(self.config.request_timeout))
         return hard_timeout_s + self.SDK_TIMEOUT_BUFFER_S
 
-    def emit_request_in_flight_progress(self, engine: Engine) -> None:
+    def emit_request_in_flight_progress(
+        self,
+        engine: Engine,
+        task_type: str | None = None,
+    ) -> None:
         # 为什么：实时任务数的权威来源在 Engine，请求增减时立刻补丁广播才能让前端真正实时。
-        task_type = engine.get_active_task_type()
+        resolved_task_type = task_type or engine.get_active_task_type()
         payload = {
             "request_in_flight_count": engine.get_request_in_flight_count(),
         }
 
-        if task_type == "translation":
+        if resolved_task_type == "translation":
             self.emit(Base.Event.TRANSLATION_PROGRESS, payload)
-        elif task_type == "analysis":
+        elif resolved_task_type == "analysis":
             self.emit(Base.Event.ANALYSIS_PROGRESS, payload)
 
     def request(
@@ -195,7 +199,8 @@ class TaskRequester(Base):
 
         engine = Engine.get()
         engine.inc_request_in_flight()
-        self.emit_request_in_flight_progress(engine)
+        active_task_type = engine.get_active_task_type()
+        self.emit_request_in_flight_progress(engine, active_task_type)
         try:
             if self.api_format == Base.APIFormat.SAKURALLM:
                 return self.request_sakura(messages, args, stop_checker=stop_checker)
@@ -206,7 +211,7 @@ class TaskRequester(Base):
             return self.request_openai(messages, args, stop_checker=stop_checker)
         finally:
             engine.dec_request_in_flight()
-            self.emit_request_in_flight_progress(engine)
+            self.emit_request_in_flight_progress(engine, active_task_type)
 
     def build_extra_headers(self) -> dict:
         headers = TaskRequesterClientPool.get_default_headers()

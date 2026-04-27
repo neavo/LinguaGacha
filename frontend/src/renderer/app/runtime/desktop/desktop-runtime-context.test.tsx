@@ -1,4 +1,4 @@
-import { act, useEffect } from "react";
+import { StrictMode, act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -38,6 +38,10 @@ type RuntimeSnapshot = {
   fileKeys: string[];
   itemKeys: string[];
   taskStatus: string;
+  taskLine: number;
+  taskProcessedLine: number;
+  taskOutputTokens: number;
+  taskRequestInFlightCount: number;
   sourceLanguage: string;
 };
 
@@ -78,6 +82,10 @@ function RuntimeProbe(props: {
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: Object.keys(runtime.project_store.getState().items),
       taskStatus: runtime.task_snapshot.status,
+      taskLine: runtime.task_snapshot.line,
+      taskProcessedLine: runtime.task_snapshot.processed_line,
+      taskOutputTokens: runtime.task_snapshot.total_output_tokens,
+      taskRequestInFlightCount: runtime.task_snapshot.request_in_flight_count,
       sourceLanguage: runtime.settings_snapshot.source_language,
     });
   }, [
@@ -86,7 +94,11 @@ function RuntimeProbe(props: {
     runtime.proofreading_change_signal.mode,
     runtime.proofreading_change_signal.seq,
     runtime.settings_snapshot.source_language,
+    runtime.task_snapshot.line,
+    runtime.task_snapshot.processed_line,
+    runtime.task_snapshot.request_in_flight_count,
     runtime.task_snapshot.status,
+    runtime.task_snapshot.total_output_tokens,
     runtime.project_store,
     runtime.workbench_change_signal.reason,
     runtime.workbench_change_signal.seq,
@@ -132,7 +144,9 @@ function create_event_source_stub(): {
       addEventListener: vi.fn((event_name: string, listener: EventListener) => {
         listener_map.set(event_name, listener);
       }),
-      close: vi.fn(),
+      close: vi.fn(() => {
+        listener_map.clear();
+      }),
       onerror: null,
     } as unknown as EventSource,
     emit: (event_name: string, payload: Record<string, unknown>) => {
@@ -165,6 +179,7 @@ describe("DesktopRuntimeProvider", () => {
     api_fetch_mock.mockReset();
     open_event_stream_mock.mockReset();
     open_project_bootstrap_stream_mock.mockReset();
+    vi.useRealTimers();
   });
 
   it("完成 bootstrap 后补发工作台与校对页刷新信号", async () => {
@@ -361,6 +376,129 @@ describe("DesktopRuntimeProvider", () => {
       workbenchReason: "project_bootstrap",
       proofreadingSeq: 1,
       proofreadingReason: "project_bootstrap",
+    });
+  });
+
+  it("StrictMode 双 effect 后任务进度合帧仍会持续刷新", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return {
+          settings: {
+            app_language: "ZH",
+          },
+        };
+      }
+
+      if (path === "/api/project/snapshot") {
+        return {
+          project: {
+            path: "E:/demo/demo.lg",
+            loaded: true,
+          },
+        };
+      }
+
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: {
+            task_type: "translation",
+            status: "RUN",
+            busy: true,
+            line: 0,
+            total_line: 5,
+          },
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    open_project_bootstrap_stream_mock.mockImplementation(() => {
+      return (async function* () {
+        yield {
+          type: "completed",
+          projectRevision: 1,
+          sectionRevisions: {},
+        };
+      })();
+    });
+
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <StrictMode>
+          <DesktopRuntimeProvider>
+            <RuntimeProbe
+              onSnapshot={(snapshot) => {
+                snapshots.push(snapshot);
+              }}
+            />
+          </DesktopRuntimeProvider>
+        </StrictMode>,
+      );
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.taskStatus === "RUN";
+    });
+    await wait_for_condition(() => {
+      return (
+        event_stream.event_source.addEventListener as unknown as ReturnType<typeof vi.fn>
+      ).mock.calls.some((call) => call[0] === "task.progress_changed");
+    });
+
+    await act(async () => {
+      event_stream.emit("task.progress_changed", {
+        task_type: "translation",
+        line: 2,
+        total_line: 5,
+        processed_line: 2,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.taskLine === 2;
+    });
+
+    await act(async () => {
+      event_stream.emit("task.progress_changed", {
+        task_type: "translation",
+        line: 4,
+        total_line: 5,
+        processed_line: 4,
+        total_output_tokens: 12,
+      });
+      event_stream.emit("task.progress_changed", {
+        task_type: "translation",
+        request_in_flight_count: 3,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    await wait_for_condition(() => {
+      const latest_snapshot = snapshots.at(-1);
+      return latest_snapshot?.taskLine === 4 && latest_snapshot.taskRequestInFlightCount === 3;
+    });
+
+    expect(snapshots.at(-1)).toMatchObject({
+      taskStatus: "RUN",
+      taskLine: 4,
+      taskProcessedLine: 4,
+      taskOutputTokens: 12,
+      taskRequestInFlightCount: 3,
     });
   });
 
@@ -824,6 +962,7 @@ describe("DesktopRuntimeProvider", () => {
   });
 
   it("merge_items patch 会把校对页信号标成 delta 并携带 item_ids", async () => {
+    vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
@@ -924,7 +1063,42 @@ describe("DesktopRuntimeProvider", () => {
           },
         ],
       });
+      event_stream.emit("project.patch", {
+        source: "proofreading_save_item",
+        projectRevision: 3,
+        updatedSections: ["items", "proofreading", "task"],
+        patch: [
+          {
+            op: "merge_items",
+            items: [
+              {
+                item_id: 2,
+                file_path: "chapter01.txt",
+                row_number: 2,
+                src: "baz",
+                dst: "qux",
+                status: "NONE",
+              },
+            ],
+          },
+          {
+            op: "replace_proofreading",
+            proofreading: {
+              revision: 3,
+            },
+          },
+          {
+            op: "replace_task",
+            task: {
+              task_type: "translation",
+              status: "IDLE",
+              busy: false,
+            },
+          },
+        ],
+      });
       await Promise.resolve();
+      vi.advanceTimersByTime(250);
     });
 
     await wait_for_condition(() => {
@@ -936,12 +1110,13 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingReason: "proofreading_save_item",
       proofreadingMode: "delta",
       proofreadingUpdatedSections: ["items", "proofreading", "task"],
-      proofreadingItemIds: [1],
-      itemKeys: ["1"],
+      proofreadingItemIds: [1, 2],
+      itemKeys: ["1", "2"],
     });
   });
 
   it("只改 proofreading/task 且没有 item 载荷时会发 noop 信号", async () => {
+    vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
@@ -1030,6 +1205,7 @@ describe("DesktopRuntimeProvider", () => {
         ],
       });
       await Promise.resolve();
+      vi.advanceTimersByTime(250);
     });
 
     await wait_for_condition(() => {

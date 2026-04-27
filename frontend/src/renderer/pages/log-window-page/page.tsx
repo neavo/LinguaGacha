@@ -3,11 +3,12 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { open_log_stream, type LogEvent } from "@/app/desktop-api";
+import { LiveRefreshScheduler } from "@/app/runtime/live-refresh-scheduler";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import {
-  append_log_event,
+  append_log_events,
   compress_log_message_text,
   filter_log_events,
   format_log_timestamp,
@@ -74,6 +75,16 @@ export function LogWindowPage(): JSX.Element {
   }, [resolvedTheme]);
 
   useEffect(() => {
+    const scheduler = new LiveRefreshScheduler<"logs", LogEvent>({
+      onFlush: (batches) => {
+        const next_events = batches.get("logs") ?? [];
+        if (next_events.length === 0) {
+          return;
+        }
+
+        set_events((previous_events) => append_log_events(previous_events, next_events));
+      },
+    });
     let disposed = false;
     const iterator = open_log_stream()[Symbol.asyncIterator]();
 
@@ -87,10 +98,7 @@ export function LogWindowPage(): JSX.Element {
           if (disposed) {
             return;
           }
-          const event = next_event.value;
-          set_events((previous_events) => {
-            return append_log_event(previous_events, event);
-          });
+          scheduler.enqueue("logs", next_event.value);
         }
       } catch {
         if (!disposed) {
@@ -103,6 +111,7 @@ export function LogWindowPage(): JSX.Element {
 
     return () => {
       disposed = true;
+      scheduler.dispose();
       void iterator.return?.();
     };
   }, [push_toast, t]);
