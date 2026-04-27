@@ -129,6 +129,86 @@ class EPUBAstWriter(Base):
             return etree.tostring(root, encoding="utf-8", method="html")
         return etree.tostring(root, encoding="utf-8", xml_declaration=True)
 
+    def resolve_elem_by_path(
+        self,
+        root: etree._Element,
+        elem_by_path: dict[str, etree._Element],
+        path: str,
+    ) -> etree._Element | None:
+        elem = elem_by_path.get(path)
+        if elem is not None:
+            return elem
+        return self.ast.find_by_path(root, path)
+
+    def collect_bilingual_block_ref(
+        self,
+        root: etree._Element,
+        elem_by_path: dict[str, etree._Element],
+        block_path: str,
+        block_refs: list[tuple[etree._Element, etree._Element]],
+        inserted_block_paths: set[str],
+    ) -> None:
+        if block_path == "" or block_path in inserted_block_paths:
+            return
+
+        block_elem = self.resolve_elem_by_path(root, elem_by_path, block_path)
+        if block_elem is None:
+            return
+
+        block_refs.append((block_elem, copy.deepcopy(block_elem)))
+        inserted_block_paths.add(block_path)
+
+    def apply_ruby_clean_candidate_to_block(
+        self,
+        root: etree._Element,
+        elem_by_path: dict[str, etree._Element],
+        epub: dict,
+        item: Item,
+        effective_dst: str,
+        allow_bilingual_insert: bool,
+        block_refs: list[tuple[etree._Element, etree._Element]],
+        inserted_block_paths: set[str],
+    ) -> bool:
+        candidate = epub.get("ruby_clean_candidate")
+        if not isinstance(candidate, dict):
+            return False
+
+        block_path = candidate.get("block_path")
+        if not isinstance(block_path, str) or block_path == "":
+            block_path = epub.get("block_path")
+        if not isinstance(block_path, str) or block_path == "":
+            return False
+
+        cleaned_digest = candidate.get("cleaned_digest")
+        if not isinstance(cleaned_digest, str) or cleaned_digest == "":
+            return False
+
+        block_elem = self.resolve_elem_by_path(root, elem_by_path, block_path)
+        if block_elem is None:
+            return False
+
+        current_cleaned_src = self.ast.collect_visible_text_without_skipped_subtrees(
+            block_elem
+        )
+        if self.ast.sha1_hex(current_cleaned_src) != cleaned_digest:
+            return False
+
+        if allow_bilingual_insert and not (
+            self.config.deduplication_in_bilingual and item.get_src() == effective_dst
+        ):
+            self.collect_bilingual_block_ref(
+                root=root,
+                elem_by_path=elem_by_path,
+                block_path=block_path,
+                block_refs=block_refs,
+                inserted_block_paths=inserted_block_paths,
+            )
+
+        for child in list(block_elem):
+            block_elem.remove(child)
+        block_elem.text = effective_dst
+        return True
+
     def apply_items_to_tree(
         self,
         root: etree._Element,
@@ -193,7 +273,19 @@ class EPUBAstWriter(Base):
             effective_dst = item.get_effective_dst()
             dst_lines = effective_dst.split("\n")
             if len(dst_lines) != len(parts):
-                skipped += 1
+                if self.apply_ruby_clean_candidate_to_block(
+                    root=root,
+                    elem_by_path=elem_by_path,
+                    epub=epub,
+                    item=item,
+                    effective_dst=effective_dst,
+                    allow_bilingual_insert=allow_bilingual_insert,
+                    block_refs=block_refs,
+                    inserted_block_paths=inserted_block_paths,
+                ):
+                    applied += 1
+                else:
+                    skipped += 1
                 continue
 
             # 计算当前树中对应槽位的 digest，避免写错位置
@@ -238,13 +330,13 @@ class EPUBAstWriter(Base):
                 block_path = epub.get("block_path")
                 if isinstance(block_path, str) and block_path != "":
                     # 同一 block_path 只插一次原文块，避免重复插入与内容混合。
-                    if block_path not in inserted_block_paths:
-                        block_elem = elem_by_path.get(block_path)
-                        if block_elem is None:
-                            block_elem = self.ast.find_by_path(root, block_path)
-                        if block_elem is not None:
-                            block_refs.append((block_elem, copy.deepcopy(block_elem)))
-                            inserted_block_paths.add(block_path)
+                    self.collect_bilingual_block_ref(
+                        root=root,
+                        elem_by_path=elem_by_path,
+                        block_path=block_path,
+                        block_refs=block_refs,
+                        inserted_block_paths=inserted_block_paths,
+                    )
 
             # 翻译写回
             for (slot, elem), text in zip(resolved, dst_lines, strict=True):

@@ -72,6 +72,7 @@ class TextProcessor(Base):
         # 始终保留每行的头尾空白（与文本保护规则及其开关解耦）。
         self.leading_whitespace_by_line: dict[int, str] = {}
         self.trailing_whitespace_by_line: dict[int, str] = {}
+        self.process_source_text: str | None = None
 
     def extract_line_edge_whitespace(self, i: int, src: str) -> str:
         leading_len = len(src) - len(src.lstrip())
@@ -492,7 +493,9 @@ class TextProcessor(Base):
 
         # 依次处理每行，顺序为：
         text_type = item.get_text_type()
-        for i, src in enumerate(item.get_src().split("\n")):
+        source_text = RubyCleaner.clean_item_src(item, self.config)
+        self.process_source_text = source_text
+        for i, src in enumerate(source_text.split("\n")):
             # 正规化
             src = self.normalize(src)
 
@@ -555,7 +558,12 @@ class TextProcessor(Base):
         name, _, dsts = self.extract_name(self.srcs, dsts, item)
 
         # 依次处理每行
-        for i, src in enumerate(item.get_src().split("\n")):
+        source_text = (
+            self.process_source_text
+            if self.process_source_text is not None
+            else item.get_src()
+        )
+        for i, src in enumerate(source_text.split("\n")):
             if src == "":
                 dst = ""
             elif src.strip() == "":
