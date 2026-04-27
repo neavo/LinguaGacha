@@ -78,27 +78,45 @@ class WorkbenchAppService:
             current_rel_path=current_rel_path,
         )
 
-    def add_file(self, request: dict[str, Any]) -> dict[str, object]:
-        """执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
+    def parse_add_file_entries(self, request: dict[str, Any]) -> list[dict[str, Any]]:
+        raw_files = request.get("files", [])
+        if not isinstance(raw_files, list):
+            return []
 
-        source_path = str(request.get("source_path", ""))
-        target_rel_path = str(request.get("target_rel_path", ""))
-        raw_file_record = request.get("file_record", {})
-        file_record = dict(raw_file_record) if isinstance(raw_file_record, dict) else {}
-        parsed_items_raw = request.get("parsed_items", [])
-        parsed_items = (
-            [dict(item) for item in parsed_items_raw if isinstance(item, dict)]
-            if isinstance(parsed_items_raw, list)
-            else []
-        )
+        entries: list[dict[str, Any]] = []
+        for raw_file in raw_files:
+            if not isinstance(raw_file, dict):
+                continue
+
+            raw_file_record = raw_file.get("file_record", {})
+            file_record = (
+                dict(raw_file_record) if isinstance(raw_file_record, dict) else {}
+            )
+            parsed_items_raw = raw_file.get("parsed_items", [])
+            parsed_items = (
+                [dict(item) for item in parsed_items_raw if isinstance(item, dict)]
+                if isinstance(parsed_items_raw, list)
+                else []
+            )
+            entries.append(
+                {
+                    "source_path": str(raw_file.get("source_path", "")),
+                    "target_rel_path": str(raw_file.get("target_rel_path", "")),
+                    "file_record": file_record,
+                    "parsed_items": parsed_items,
+                }
+            )
+        return entries
+
+    def add_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
+        """批量执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
+
+        files = self.parse_add_file_entries(request)
         translation_extras, project_status, prefilter_config = self.parse_derived_meta(
             request
         )
-        self.data_manager.persist_add_file_payload(
-            source_path,
-            target_rel_path,
-            file_record=file_record,
-            parsed_items=parsed_items,
+        self.data_manager.persist_add_files_payload(
+            files,
             translation_extras=translation_extras,
             project_status=project_status,
             prefilter_config=prefilter_config,

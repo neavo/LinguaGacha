@@ -24,24 +24,18 @@ class WorkbenchApiClient:
             request,
         )
 
-    def add_file(
+    def add_file_batch(
         self,
-        source_path: str,
-        target_rel_path: str,
-        file_record: dict[str, Any],
-        parsed_items: list[dict[str, Any]],
+        files: list[dict[str, Any]],
         derived_meta: dict[str, Any],
         expected_section_revisions: dict[str, int],
     ) -> ProjectMutationAck:
-        """执行新增文件操作。"""
+        """执行批量新增文件操作。"""
 
         response = self.api_client.post(
-            ProjectRoutes.WORKBENCH_ADD_FILE_PATH,
+            ProjectRoutes.WORKBENCH_ADD_FILE_BATCH_PATH,
             {
-                "source_path": source_path,
-                "target_rel_path": target_rel_path,
-                "file_record": file_record,
-                "parsed_items": parsed_items,
+                "files": files,
                 "derived_meta": derived_meta,
                 "expected_section_revisions": expected_section_revisions,
             },

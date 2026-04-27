@@ -8,16 +8,20 @@ import pytest
     ("method_name", "kwargs", "expected_request", "expected_response"),
     [
         (
-            "add_file",
+            "add_file_batch",
             {
-                "source_path": "C:/next/c.txt",
-                "target_rel_path": "script/c.txt",
-                "file_record": {
-                    "rel_path": "script/c.txt",
-                    "file_type": "TXT",
-                    "sort_index": 2,
-                },
-                "parsed_items": [{"id": 101, "src": "line-1"}],
+                "files": [
+                    {
+                        "source_path": "C:/next/c.txt",
+                        "target_rel_path": "script/c.txt",
+                        "file_record": {
+                            "rel_path": "script/c.txt",
+                            "file_type": "TXT",
+                            "sort_index": 2,
+                        },
+                        "parsed_items": [{"id": 101, "src": "line-1"}],
+                    }
+                ],
                 "derived_meta": {
                     "translation_extras": {"line": 1},
                     "project_status": "PROCESSING",
@@ -29,16 +33,20 @@ import pytest
                 "expected_section_revisions": {"files": 1, "items": 2, "analysis": 3},
             },
             (
-                ProjectRoutes.WORKBENCH_ADD_FILE_PATH,
+                ProjectRoutes.WORKBENCH_ADD_FILE_BATCH_PATH,
                 {
-                    "source_path": "C:/next/c.txt",
-                    "target_rel_path": "script/c.txt",
-                    "file_record": {
-                        "rel_path": "script/c.txt",
-                        "file_type": "TXT",
-                        "sort_index": 2,
-                    },
-                    "parsed_items": [{"id": 101, "src": "line-1"}],
+                    "files": [
+                        {
+                            "source_path": "C:/next/c.txt",
+                            "target_rel_path": "script/c.txt",
+                            "file_record": {
+                                "rel_path": "script/c.txt",
+                                "file_type": "TXT",
+                                "sort_index": 2,
+                            },
+                            "parsed_items": [{"id": 101, "src": "line-1"}],
+                        }
+                    ],
                     "derived_meta": {
                         "translation_extras": {"line": 1},
                         "project_status": "PROCESSING",

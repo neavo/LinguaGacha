@@ -4,6 +4,7 @@ import contextlib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from unittest.mock import call
 
 import pytest
 
@@ -374,7 +375,7 @@ def test_create_project_logs_when_presets_loaded(
     logger.info.assert_called_once_with("已加载 术语表")
 
 
-def test_persist_add_file_payload_compresses_asset_before_store(
+def test_persist_add_files_payload_compresses_assets_before_store(
     monkeypatch: pytest.MonkeyPatch,
     fs,
 ) -> None:
@@ -407,23 +408,52 @@ def test_persist_add_file_payload_compresses_asset_before_store(
     compress = MagicMock(return_value=b"compressed")
     monkeypatch.setattr(data_manager_module.ZstdTool, "compress", compress)
 
-    dm.persist_add_file_payload(
-        str(source_path),
-        "sample_02.txt",
-        file_record={"rel_path": "sample_02.txt", "sort_index": 1},
-        parsed_items=[],
+    second_source_path = Path("/workspace/sample_03.txt")
+    second_source_path.write_bytes(b"second content")
+
+    dm.persist_add_files_payload(
+        [
+            {
+                "source_path": str(source_path),
+                "target_rel_path": "sample_02.txt",
+                "file_record": {"rel_path": "sample_02.txt", "sort_index": 1},
+                "parsed_items": [],
+            },
+            {
+                "source_path": str(second_source_path),
+                "target_rel_path": "sample_03.txt",
+                "file_record": {"rel_path": "sample_03.txt", "sort_index": 2},
+                "parsed_items": [],
+            },
+        ],
         translation_extras={},
         project_status="IDLE",
         prefilter_config={},
     )
 
-    compress.assert_called_once_with(b"new content")
-    db.add_asset.assert_called_once_with(
-        "sample_02.txt",
-        b"compressed",
-        len(b"new content"),
-        sort_order=1,
-        conn=connection,
+    assert compress.call_args_list == [
+        call(b"new content"),
+        call(b"second content"),
+    ]
+    assert db.add_asset.call_args_list == [
+        call(
+            "sample_02.txt",
+            b"compressed",
+            len(b"new content"),
+            sort_order=1,
+            conn=connection,
+        ),
+        call(
+            "sample_03.txt",
+            b"compressed",
+            len(b"second content"),
+            sort_order=2,
+            conn=connection,
+        ),
+    ]
+    db.set_items.assert_called_once()
+    dm.bump_project_runtime_section_revisions.assert_called_once_with(
+        ("files", "items", "analysis")
     )
 
 

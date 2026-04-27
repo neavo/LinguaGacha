@@ -430,13 +430,14 @@ export function useCustomPromptPageState(
   const import_prompt_from_picker = useCallback(async (): Promise<void> => {
     try {
       const pick_result = await window.desktopApp.pickPromptImportFilePath();
-      if (pick_result.canceled || pick_result.path === null) {
+      const selected_path = pick_result.paths[0] ?? null;
+      if (pick_result.canceled || selected_path === null) {
         return;
       }
 
       const payload = await api_fetch<PromptImportPayload>("/api/quality/prompts/import", {
         task_type: config.task_type,
-        path: pick_result.path,
+        path: selected_path,
       });
       const succeeded = await commit_prompt_text(
         String(payload.text ?? ""),
@@ -456,13 +457,14 @@ export function useCustomPromptPageState(
   const export_prompt_from_picker = useCallback(async (): Promise<void> => {
     try {
       const pick_result = await window.desktopApp.pickPromptExportFilePath();
-      if (pick_result.canceled || pick_result.path === null) {
+      const selected_path = pick_result.paths[0] ?? null;
+      if (pick_result.canceled || selected_path === null) {
         return;
       }
 
       await api_fetch("/api/quality/prompts/export", {
         task_type: config.task_type,
-        path: pick_result.path,
+        path: selected_path,
       });
       push_toast("success", t("custom_prompt_page.feedback.export_success"));
     } catch (error) {

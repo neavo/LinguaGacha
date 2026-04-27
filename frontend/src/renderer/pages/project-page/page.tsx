@@ -683,29 +683,32 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
   async function handle_select_source_file(): Promise<void> {
     const result = await window.desktopApp.pickProjectSourceFilePath();
-    if (result.canceled || result.path === null) {
+    const selected_path = result.paths[0] ?? null;
+    if (result.canceled || selected_path === null) {
       return;
     }
 
-    await handle_select_source_path(result.path);
+    await handle_select_source_path(selected_path);
   }
 
   async function handle_select_source_folder(): Promise<void> {
     const result = await window.desktopApp.pickProjectSourceDirectoryPath();
-    if (result.canceled || result.path === null) {
+    const selected_path = result.paths[0] ?? null;
+    if (result.canceled || selected_path === null) {
       return;
     }
 
-    await handle_select_source_path(result.path);
+    await handle_select_source_path(selected_path);
   }
 
   async function handle_select_project_file(): Promise<void> {
     const result = await window.desktopApp.pickProjectFilePath();
-    if (result.canceled || result.path === null) {
+    const selected_path = result.paths[0] ?? null;
+    if (result.canceled || selected_path === null) {
       return;
     }
 
-    await select_project_path(result.path);
+    await select_project_path(selected_path);
   }
 
   function handle_drop_over(
@@ -773,7 +776,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
     if (save_mode === "MANUAL") {
       const result = await window.desktopApp.pickProjectSavePath(default_file_name);
-      return result.canceled ? null : result.path;
+      return result.canceled ? null : (result.paths[0] ?? null);
     }
 
     if (save_mode === "SOURCE") {
@@ -784,11 +787,12 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     let fixed_directory = settings_snapshot.project_fixed_path;
     if (fixed_directory === "") {
       const result = await window.desktopApp.pickFixedProjectDirectory();
-      if (result.canceled || result.path === null) {
+      const selected_path = result.paths[0] ?? null;
+      if (result.canceled || selected_path === null) {
         return null;
       }
 
-      fixed_directory = result.path;
+      fixed_directory = selected_path;
       await api_fetch<SettingsPayload>("/api/settings/update", {
         project_fixed_path: fixed_directory,
       });

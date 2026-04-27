@@ -7,7 +7,7 @@ import type {
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import {
-  create_workbench_add_file_plan,
+  create_workbench_add_files_plan,
   create_workbench_delete_files_plan,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
@@ -136,12 +136,16 @@ function build_running_analysis_workbench_stats(args: {
   });
 }
 
-type PendingAddFileRequest = {
-  parsed_file: WorkbenchFileParsePreview;
+type PendingAddFilesRequest = {
+  parsed_files: WorkbenchFileParsePreview[];
   barrier_checkpoint: ProjectPagesBarrierCheckpoint | null;
 };
 
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
+
+function normalize_path_key(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US");
+}
 
 function resolve_error_message(error: unknown, fallback_message: string): string {
   if (error instanceof Error && error.message.trim() !== "") {
@@ -753,6 +757,7 @@ export type UseWorkbenchLiveStateResult = {
   prepare_entry_action: (entry_id: string) => void;
   request_add_file: () => Promise<void>;
   request_add_file_from_path: (source_path: string) => Promise<void>;
+  request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
   notify_add_file_drop_issue: (issue: WorkbenchAddFileDropIssue) => void;
   request_export_translation: () => void;
   request_close_project: () => void;
@@ -812,8 +817,8 @@ export function useWorkbenchLiveState(
   const [active_entry_id, set_active_entry_id] = useState<string | null>(null);
   const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null);
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
-  const [pending_add_file_request, set_pending_add_file_request] =
-    useState<PendingAddFileRequest | null>(null);
+  const [pending_add_files_request, set_pending_add_files_request] =
+    useState<PendingAddFilesRequest | null>(null);
   const [is_mutation_running, set_is_mutation_running] = useState(false);
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] =
     useState<WorkbenchTaskKind | null>(null);
@@ -881,7 +886,7 @@ export function useWorkbenchLiveState(
     set_entries([]);
     apply_selection_state(create_empty_selection_state());
     set_dialog_state(close_dialog_state());
-    set_pending_add_file_request(null);
+    set_pending_add_files_request(null);
     set_is_refreshing(false);
     set_cache_stale(false);
     set_last_loaded_at(null);
@@ -1273,12 +1278,12 @@ export function useWorkbenchLiveState(
 
   const execute_add_file_request = useCallback(
     async (
-      pending_request: PendingAddFileRequest,
+      pending_request: PendingAddFilesRequest,
       inheritance_mode: "none" | "inherit",
     ): Promise<void> => {
-      const add_plan = create_workbench_add_file_plan({
+      const add_plan = create_workbench_add_files_plan({
         state: project_store.getState(),
-        parsed_file: pending_request.parsed_file,
+        parsed_files: pending_request.parsed_files,
         settings: {
           source_language: settings_snapshot.source_language,
           mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
@@ -1289,13 +1294,13 @@ export function useWorkbenchLiveState(
         add_plan,
         async (body) => {
           return await api_fetch<ProjectMutationAckPayload>(
-            "/api/project/workbench/add-file",
+            "/api/project/workbench/add-file-batch",
             body,
           );
         },
         pending_request.barrier_checkpoint,
       );
-      set_pending_add_file_request(null);
+      set_pending_add_files_request(null);
       set_dialog_state(close_dialog_state());
     },
     [
@@ -1359,54 +1364,104 @@ export function useWorkbenchLiveState(
     [entries],
   );
 
-  const request_add_file_from_path = useCallback(
-    async (source_path: string): Promise<void> => {
+  const request_add_files_from_paths = useCallback(
+    async (source_paths: string[]): Promise<void> => {
       if (readonly) {
         return;
       }
 
-      const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
-
-      try {
-        await run_modal_progress_toast({
-          message: t("workbench_page.feedback.add_file_loading_toast"),
-          task: async () => {
-            const parsed_file = normalize_workbench_file_parse_preview(
-              source_path,
-              await api_fetch<{
-                target_rel_path?: unknown;
-                file_type?: unknown;
-                parsed_items?: unknown;
-              }>("/api/project/workbench/parse-file", {
-                source_path,
-              }),
-            );
-            set_pending_add_file_request({
-              parsed_file,
-              barrier_checkpoint,
-            });
-            set_dialog_state({
-              kind: "inherit-add-file",
-              target_rel_paths: [],
-              pending_path: source_path,
-              submitting: false,
-            });
-          },
-        });
-      } catch (error) {
-        push_toast(
-          "error",
-          resolve_error_message(error, t("workbench_page.feedback.file_action_failed")),
-        );
+      const normalized_source_paths = Array.from(
+        new Set(
+          source_paths
+            .map((source_path) => source_path.trim())
+            .filter((source_path) => source_path !== ""),
+        ),
+      );
+      if (normalized_source_paths.length === 0) {
+        push_toast("error", t("workbench_page.feedback.no_valid_file"));
+        return;
       }
+
+      const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
+      const parsed_files: WorkbenchFileParsePreview[] = [];
+      const state = project_store.getState();
+      const existing_target_path_set = new Set(
+        Object.values(state.files).flatMap((file) => {
+          if (typeof file !== "object" || file === null) {
+            return [];
+          }
+          const rel_path = String((file as { rel_path?: unknown }).rel_path ?? "").trim();
+          return rel_path === "" ? [] : [normalize_path_key(rel_path)];
+        }),
+      );
+      const batch_target_path_set = new Set<string>();
+
+      await run_modal_progress_toast({
+        message: t("workbench_page.feedback.add_file_loading_toast"),
+        task: async () => {
+          for (const source_path of normalized_source_paths) {
+            try {
+              const parsed_file = normalize_workbench_file_parse_preview(
+                source_path,
+                await api_fetch<{
+                  target_rel_path?: unknown;
+                  file_type?: unknown;
+                  parsed_items?: unknown;
+                }>("/api/project/workbench/parse-file", {
+                  source_path,
+                }),
+              );
+              const target_path_key = normalize_path_key(parsed_file.target_rel_path);
+              if (
+                target_path_key === "" ||
+                existing_target_path_set.has(target_path_key) ||
+                batch_target_path_set.has(target_path_key)
+              ) {
+                continue;
+              }
+              batch_target_path_set.add(target_path_key);
+              parsed_files.push({
+                ...parsed_file,
+                target_rel_path: parsed_file.target_rel_path.trim(),
+              });
+            } catch {
+              // 批量添加只在整批无有效项时提示，单项解析失败按计划静默跳过。
+            }
+          }
+        },
+      });
+
+      if (parsed_files.length === 0) {
+        push_toast("error", t("workbench_page.feedback.no_valid_file"));
+        return;
+      }
+
+      set_pending_add_files_request({
+        parsed_files,
+        barrier_checkpoint,
+      });
+      set_dialog_state({
+        kind: "inherit-add-file",
+        target_rel_paths: parsed_files.map((parsed_file) => parsed_file.target_rel_path),
+        pending_path: parsed_files[0]?.source_path ?? null,
+        submitting: false,
+      });
     },
     [
       options.createProjectPagesBarrierCheckpoint,
+      project_store,
       push_toast,
       readonly,
       run_modal_progress_toast,
       t,
     ],
+  );
+
+  const request_add_file_from_path = useCallback(
+    async (source_path: string): Promise<void> => {
+      await request_add_files_from_paths([source_path]);
+    },
+    [request_add_files_from_paths],
   );
 
   async function request_add_file(): Promise<void> {
@@ -1415,10 +1470,10 @@ export function useWorkbenchLiveState(
     }
 
     const result = await window.desktopApp.pickWorkbenchFilePath();
-    if (result.canceled || result.path === null) {
+    if (result.canceled || result.paths.length === 0) {
       return;
     }
-    await request_add_file_from_path(result.path);
+    await request_add_files_from_paths(result.paths);
   }
 
   function notify_add_file_drop_issue(issue: WorkbenchAddFileDropIssue): void {
@@ -1506,12 +1561,12 @@ export function useWorkbenchLiveState(
 
     try {
       if (current_dialog_state.kind === "inherit-add-file") {
-        if (pending_add_file_request === null) {
+        if (pending_add_files_request === null) {
           set_dialog_submitting(false);
           return;
         }
 
-        await execute_add_file_request(pending_add_file_request, "inherit");
+        await execute_add_file_request(pending_add_files_request, "inherit");
         return;
       }
 
@@ -1630,14 +1685,14 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    if (pending_add_file_request === null) {
+    if (pending_add_files_request === null) {
       set_dialog_state(close_dialog_state());
       return;
     }
 
     set_dialog_submitting(true);
     try {
-      await execute_add_file_request(pending_add_file_request, "none");
+      await execute_add_file_request(pending_add_files_request, "none");
     } catch (error) {
       push_toast(
         "error",
@@ -1653,7 +1708,7 @@ export function useWorkbenchLiveState(
     }
 
     if (dialog_state.kind === "inherit-add-file") {
-      set_pending_add_file_request(null);
+      set_pending_add_files_request(null);
     }
     set_dialog_state(close_dialog_state());
   }
@@ -1712,6 +1767,7 @@ export function useWorkbenchLiveState(
     prepare_entry_action,
     request_add_file,
     request_add_file_from_path,
+    request_add_files_from_paths,
     notify_add_file_drop_issue,
     request_export_translation,
     request_close_project,

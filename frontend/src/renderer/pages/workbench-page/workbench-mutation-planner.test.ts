@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectStoreState } from "@/app/project/store/project-store";
 import {
+  create_workbench_add_files_plan,
   create_workbench_add_file_plan,
   type WorkbenchFileParsePreview,
 } from "@/pages/workbench-page/workbench-mutation-planner";
@@ -79,7 +80,12 @@ function create_parsed_file(
 }
 
 function get_payload_items(plan: ReturnType<typeof create_workbench_add_file_plan>) {
-  return plan.requestBody.parsed_items as Array<Record<string, unknown>>;
+  const files = plan.requestBody.files as Array<Record<string, unknown>>;
+  return files[0]?.parsed_items as Array<Record<string, unknown>>;
+}
+
+function get_payload_files(plan: ReturnType<typeof create_workbench_add_files_plan>) {
+  return plan.requestBody.files as Array<Record<string, unknown>>;
 }
 
 const SETTINGS = {
@@ -163,5 +169,38 @@ describe("workbench add-file translation inheritance planner", () => {
       dst: "你好",
       status: "EXCLUDED",
     });
+  });
+
+  it("批量新增会连续分配文件顺序与条目 ID，并让继承模式作用于整批", () => {
+    const plan = create_workbench_add_files_plan({
+      state: create_state({
+        "7": create_item({ item_id: 7, src: "hello", dst: "你好" }),
+      }),
+      parsed_files: [
+        create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
+        {
+          source_path: "E:/demo/next.txt",
+          target_rel_path: "next.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "hello", dst: "", row: 1 }],
+        },
+      ],
+      settings: SETTINGS,
+      inheritance_mode: "inherit",
+    });
+
+    const files = get_payload_files(plan);
+    expect(files).toEqual([
+      expect.objectContaining({
+        target_rel_path: "new.txt",
+        file_record: expect.objectContaining({ sort_index: 1 }),
+        parsed_items: [expect.objectContaining({ id: 8, dst: "你好" })],
+      }),
+      expect.objectContaining({
+        target_rel_path: "next.txt",
+        file_record: expect.objectContaining({ sort_index: 2 }),
+        parsed_items: [expect.objectContaining({ id: 9, dst: "你好" })],
+      }),
+    ]);
   });
 });

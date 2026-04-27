@@ -366,7 +366,8 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
           const result = await window.desktopApp.pickFixedProjectDirectory(
             previous_snapshot.project_fixed_path,
           );
-          if (result.canceled || result.path === null || result.path === "") {
+          const selected_path = result.paths[0] ?? "";
+          if (result.canceled || selected_path === "") {
             return;
           }
 
@@ -374,12 +375,12 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
             "project_save_mode",
             {
               project_save_mode: next_mode,
-              project_fixed_path: result.path,
+              project_fixed_path: selected_path,
             },
             {
               ...previous_snapshot,
               project_save_mode: next_mode,
-              project_fixed_path: result.path,
+              project_fixed_path: selected_path,
             },
           );
         } catch (error) {
