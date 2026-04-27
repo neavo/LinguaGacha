@@ -80,6 +80,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 2026428 v0.99.1
+  - 优化与改进 #513 #522
+  - 尝试修正 macOS 版本启动报错的问题
+
 - 2026427 v0.99.0
   - 完全重做了用户界面，更快、更高、更强
   - 暂时移除了 `CLI` 模式
