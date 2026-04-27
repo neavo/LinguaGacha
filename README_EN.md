@@ -92,10 +92,11 @@
   - perf - Support thinking level settings for Gemini-3.1-Flash
 
 ### Development Guide 🛠️
-- This project is managed using [**uv**](https://github.com/astral-sh/uv)
-- Install dependencies `uv sync -U`
-- Run application `uv run app.py`
-- Please ensure you run `uv run ruff check --fix` and `uv run ruff format` to maintain code standards before submitting a PR
+- This project consists of `Python Core` and an `Electron` frontend. We recommend preparing [**uv**](https://github.com/astral-sh/uv) and [`Node.js 24`](https://nodejs.org/)
+- Install dependencies `uv sync -U --extra test` `npm --prefix frontend install`
+- Update dependencies `uv sync -U --extra test` `npm --prefix frontend update`
+- Run the application `npm --prefix frontend run dev`
+- Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
 - For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 
 ## Support 😥
