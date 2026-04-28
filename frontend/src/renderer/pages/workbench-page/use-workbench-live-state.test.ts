@@ -30,6 +30,7 @@ type RuntimeFixture = {
   task_snapshot: {
     busy: boolean;
     task_type: string;
+    status: string;
   };
 };
 
@@ -191,6 +192,7 @@ function create_runtime_fixture(): RuntimeFixture {
     task_snapshot: {
       busy: false,
       task_type: "",
+      status: "IDLE",
     },
   };
 }
@@ -560,6 +562,7 @@ describe("useWorkbenchLiveState", () => {
       task_snapshot: {
         busy: true,
         task_type: "analysis",
+        status: "RUNNING",
       },
       project_store: {
         getState: () => {
@@ -653,6 +656,7 @@ describe("useWorkbenchLiveState", () => {
       task_snapshot: {
         busy: true,
         task_type: "analysis",
+        status: "RUNNING",
       },
       project_store: {
         getState: () => {
@@ -998,5 +1002,69 @@ describe("useWorkbenchLiveState", () => {
         ],
       }),
     );
+  });
+
+  it("翻译任务运行中允许生成当前可用译文", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      task_snapshot: {
+        busy: true,
+        task_type: "translation",
+        status: "RUNNING",
+      },
+    };
+    await render_hook();
+
+    act(() => {
+      latest_state?.request_export_translation();
+    });
+
+    expect(latest_state?.readonly).toBe(true);
+    expect(latest_state?.can_edit_files).toBe(false);
+    expect(latest_state?.can_export_translation).toBe(true);
+    expect(latest_state?.dialog_state.kind).toBe("export-translation");
+  });
+
+  it("任务停止收尾中禁止生成译文", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      task_snapshot: {
+        busy: true,
+        task_type: "translation",
+        status: "STOPPING",
+      },
+    };
+    await render_hook();
+
+    act(() => {
+      latest_state?.request_export_translation();
+    });
+
+    expect(latest_state?.can_export_translation).toBe(false);
+    expect(latest_state?.dialog_state.kind).toBeNull();
+  });
+
+  it("导出提交中不会重复提交生成译文请求", async () => {
+    vi.mocked(api_fetch).mockReturnValueOnce(new Promise(() => {}));
+    await render_hook();
+
+    act(() => {
+      latest_state?.request_export_translation();
+    });
+    await act(async () => {
+      void latest_state?.confirm_dialog();
+      await Promise.resolve();
+    });
+
+    expect(latest_state?.dialog_state.submitting).toBe(true);
+    expect(latest_state?.can_export_translation).toBe(false);
+
+    await act(async () => {
+      await latest_state?.confirm_dialog();
+      await Promise.resolve();
+    });
+
+    expect(api_fetch).toHaveBeenCalledTimes(1);
+    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/export-translation", {});
   });
 });

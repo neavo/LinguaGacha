@@ -90,6 +90,7 @@ export function NameFieldExtractionPage(props: ScreenComponentProps): JSX.Elemen
         selected_count={page_state.selected_row_ids.length}
         run_state={page_state.run_state}
         is_running={page_state.is_running}
+        glossary_import_locked={page_state.glossary_import_locked}
         on_extract={page_state.extract_rows}
         on_translate={page_state.translate_rows}
         on_delete={page_state.request_delete_selected_rows}

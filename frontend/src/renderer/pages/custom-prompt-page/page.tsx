@@ -1,39 +1,25 @@
-import '@/pages/custom-prompt-page/custom-prompt-page.css'
-import type { ScreenComponentProps } from '@/app/navigation/types'
-import { useI18n } from '@/i18n'
-import {
-  CustomPromptCommandBar,
-} from '@/pages/custom-prompt-page/components/custom-prompt-command-bar'
-import {
-  CustomPromptConfirmDialog,
-} from '@/pages/custom-prompt-page/components/custom-prompt-confirm-dialog'
-import {
-  CustomPromptPresetInputDialog,
-} from '@/pages/custom-prompt-page/components/custom-prompt-preset-input-dialog'
-import type { CustomPromptVariant } from '@/pages/custom-prompt-page/config'
-import {
-  useCustomPromptPageState,
-} from '@/pages/custom-prompt-page/use-custom-prompt-page-state'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/shadcn/tooltip'
-import { AppEditor } from '@/widgets/app-editor/app-editor'
+import "@/pages/custom-prompt-page/custom-prompt-page.css";
+import type { ScreenComponentProps } from "@/app/navigation/types";
+import { useI18n } from "@/i18n";
+import { CustomPromptCommandBar } from "@/pages/custom-prompt-page/components/custom-prompt-command-bar";
+import { CustomPromptConfirmDialog } from "@/pages/custom-prompt-page/components/custom-prompt-confirm-dialog";
+import { CustomPromptPresetInputDialog } from "@/pages/custom-prompt-page/components/custom-prompt-preset-input-dialog";
+import type { CustomPromptVariant } from "@/pages/custom-prompt-page/config";
+import { useCustomPromptPageState } from "@/pages/custom-prompt-page/use-custom-prompt-page-state";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
+import { AppEditor } from "@/widgets/app-editor/app-editor";
 
 type CustomPromptPageProps = ScreenComponentProps & {
-  variant: CustomPromptVariant
-}
+  variant: CustomPromptVariant;
+};
 
 function compress_prompt_preview(text: string): string {
-  return text.replace(/\r\n|\r|\n/gu, ' ↵ ')
+  return text.replace(/\r\n|\r|\n/gu, " ↵ ");
 }
 
-export function CustomPromptPage(
-  props: CustomPromptPageProps,
-): JSX.Element {
-  const page_state = useCustomPromptPageState(props.variant)
-  const { t } = useI18n()
+export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
+  const page_state = useCustomPromptPageState(props.variant);
+  const { t } = useI18n();
 
   return (
     <div
@@ -45,13 +31,11 @@ export function CustomPromptPage(
           <TooltipTrigger asChild>
             <section
               className="custom-prompt-page__readonly-strip"
-              aria-label={t('custom_prompt_page.section.prefix_label')}
+              aria-label={t("custom_prompt_page.section.prefix_label")}
               tabIndex={0}
             >
-              <p
-                className="custom-prompt-page__readonly-strip-label font-medium"
-              >
-                {t('custom_prompt_page.section.prefix_label')}
+              <p className="custom-prompt-page__readonly-strip-label font-medium">
+                {t("custom_prompt_page.section.prefix_label")}
               </p>
               <pre className="custom-prompt-page__readonly-block">
                 {compress_prompt_preview(page_state.template.prefix_text)}
@@ -75,7 +59,7 @@ export function CustomPromptPage(
           mode="markdown"
           value={page_state.prompt_text}
           aria_label={t(page_state.header_title_key)}
-          read_only={false}
+          read_only={page_state.readonly}
           on_change={page_state.update_prompt_text}
         />
 
@@ -83,13 +67,11 @@ export function CustomPromptPage(
           <TooltipTrigger asChild>
             <section
               className="custom-prompt-page__readonly-strip"
-              aria-label={t('custom_prompt_page.section.suffix_label')}
+              aria-label={t("custom_prompt_page.section.suffix_label")}
               tabIndex={0}
             >
-              <p
-                className="custom-prompt-page__readonly-strip-label font-medium"
-              >
-                {t('custom_prompt_page.section.suffix_label')}
+              <p className="custom-prompt-page__readonly-strip-label font-medium">
+                {t("custom_prompt_page.section.suffix_label")}
               </p>
               <pre className="custom-prompt-page__readonly-block">
                 {compress_prompt_preview(page_state.template.suffix_text)}
@@ -116,12 +98,14 @@ export function CustomPromptPage(
           header_description_key={page_state.header_description_key}
           enabled={page_state.enabled}
           save_shortcut_enabled={
-            !page_state.confirm_state.open
-            && !page_state.preset_input_state.open
-            && !page_state.preset_menu_open
+            !page_state.readonly &&
+            !page_state.confirm_state.open &&
+            !page_state.preset_input_state.open &&
+            !page_state.preset_menu_open
           }
           preset_items={page_state.preset_items}
           preset_menu_open={page_state.preset_menu_open}
+          readonly={page_state.readonly}
           on_toggle_enabled={page_state.update_enabled}
           on_save={page_state.save_prompt_text}
           on_import={page_state.import_prompt_from_picker}
@@ -141,7 +125,7 @@ export function CustomPromptPage(
       <CustomPromptConfirmDialog
         state={page_state.confirm_state}
         on_confirm={() => {
-          void page_state.confirm_pending_action()
+          void page_state.confirm_pending_action();
         }}
         on_close={page_state.close_confirm_dialog}
       />
@@ -150,10 +134,10 @@ export function CustomPromptPage(
         state={page_state.preset_input_state}
         on_change={page_state.update_preset_input_value}
         on_submit={() => {
-          void page_state.submit_preset_input()
+          void page_state.submit_preset_input();
         }}
         on_close={page_state.close_preset_input_dialog}
       />
     </div>
-  )
+  );
 }

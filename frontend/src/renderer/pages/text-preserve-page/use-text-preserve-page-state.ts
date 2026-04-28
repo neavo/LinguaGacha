@@ -18,6 +18,7 @@ import {
 } from "@/app/runtime/desktop/desktop-runtime-context";
 import { useQualityStatistics } from "@/app/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { is_task_mutation_locked } from "@/app/runtime/tasks/task-lock";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/i18n";
 import {
@@ -261,6 +262,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     commit_local_project_patch,
     refresh_project_runtime,
     align_project_runtime_ack,
+    task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
     project_store.subscribe,
@@ -370,7 +372,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [visible_entry_ids]);
 
   const has_active_filters = has_active_text_preserve_filters(filter_state);
-  const drag_disabled = has_active_filters || sort_state !== null;
+  const readonly = is_task_mutation_locked(task_snapshot);
+  const drag_disabled = readonly || has_active_filters || sort_state !== null;
 
   const statistics_badge_by_entry_id = useMemo<
     Record<TextPreserveEntryId, TextPreserveStatisticsBadgeState>
@@ -454,6 +457,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const save_entries_snapshot = useCallback(
     async (next_entries: TextPreserveEntry[]): Promise<boolean> => {
+      if (readonly) {
+        return false;
+      }
+
       const current_preserve_slice = getQualityRuleSlice(
         project_store.getState().quality,
         TEXT_PRESERVE_RULE_TYPE,
@@ -499,6 +506,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       project_store,
       push_action_error_toast,
       refresh_project_runtime,
+      readonly,
     ],
   );
 
@@ -645,7 +653,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const update_mode = useCallback(
     async (next_mode: TextPreserveMode): Promise<void> => {
       const previous_mode = mode_ref.current;
-      if (mode_update_in_flight_ref.current || previous_mode === next_mode) {
+      if (readonly || mode_update_in_flight_ref.current || previous_mode === next_mode) {
         return;
       }
 
@@ -729,6 +737,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       push_toast,
       push_action_error_toast,
       refresh_project_runtime,
+      readonly,
       run_modal_progress_toast,
       t,
       wait_for_barrier,
@@ -736,6 +745,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   );
 
   const open_create_dialog = useCallback((): void => {
+    if (readonly) {
+      return;
+    }
+
     const insert_after_entry_id = resolve_create_insert_after_entry_id();
 
     clear_selection_state();
@@ -749,10 +762,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       saving: false,
       validation_message: null,
     });
-  }, [clear_selection_state, resolve_create_insert_after_entry_id]);
+  }, [clear_selection_state, readonly, resolve_create_insert_after_entry_id]);
 
   const open_edit_dialog = useCallback(
     (entry_id: TextPreserveEntryId): void => {
+      if (readonly) {
+        return;
+      }
+
       const target_index = entry_index_by_id.get(entry_id);
       const target_entry = target_index === undefined ? null : entries[target_index];
 
@@ -774,7 +791,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         validation_message: null,
       });
     },
-    [entries, entry_index_by_id],
+    [entries, entry_index_by_id, readonly],
   );
 
   const update_dialog_draft = useCallback((patch: Partial<TextPreserveEntry>): void => {
@@ -833,7 +850,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   );
 
   const delete_selected_entries = useCallback(async (): Promise<void> => {
-    if (selected_entry_ids.length === 0) {
+    if (readonly || selected_entry_ids.length === 0) {
       return;
     }
 
@@ -846,7 +863,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       submitting: false,
       target_virtual_id: null,
     });
-  }, [selected_entry_ids]);
+  }, [readonly, selected_entry_ids]);
 
   const reorder_selected_entries = useCallback(
     async (
@@ -925,7 +942,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const import_entries_from_path = useCallback(
     async (path: string): Promise<void> => {
       try {
-        if (path.trim() === "") {
+        if (readonly || path.trim() === "") {
           return;
         }
 
@@ -952,10 +969,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         push_action_error_toast(error);
       }
     },
-    [persist_merged_entries, push_action_error_toast, push_toast, t],
+    [persist_merged_entries, push_action_error_toast, push_toast, readonly, t],
   );
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
+    if (readonly) {
+      return;
+    }
+
     const pick_result = await window.desktopApp.pickGlossaryImportFilePath();
     const selected_path = pick_result.paths[0] ?? null;
     if (pick_result.canceled || selected_path === null) {
@@ -963,7 +984,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     await import_entries_from_path(selected_path);
-  }, [import_entries_from_path]);
+  }, [import_entries_from_path, readonly]);
 
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -1000,6 +1021,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const apply_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
+      if (readonly) {
+        return;
+      }
+
       try {
         const payload = await api_fetch<{ entries: Array<Record<string, unknown>> }>(
           "/api/quality/rules/presets/read",
@@ -1018,10 +1043,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         push_action_error_toast(error);
       }
     },
-    [persist_merged_entries, push_action_error_toast],
+    [persist_merged_entries, push_action_error_toast, readonly],
   );
 
   const request_reset_entries = useCallback((): void => {
+    if (readonly) {
+      return;
+    }
+
     set_confirm_state({
       open: true,
       kind: "reset",
@@ -1031,9 +1060,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       submitting: false,
       target_virtual_id: null,
     });
-  }, []);
+  }, [readonly]);
 
   const request_save_preset = useCallback((): void => {
+    if (readonly) {
+      return;
+    }
+
     set_preset_input_state({
       open: true,
       mode: "save",
@@ -1041,32 +1074,50 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       submitting: false,
       target_virtual_id: null,
     });
-  }, []);
+  }, [readonly]);
 
-  const request_rename_preset = useCallback((preset_item: TextPreservePresetItem): void => {
-    set_preset_input_state({
-      open: true,
-      mode: "rename",
-      value: preset_item.name,
-      submitting: false,
-      target_virtual_id: preset_item.virtual_id,
-    });
-  }, []);
+  const request_rename_preset = useCallback(
+    (preset_item: TextPreservePresetItem): void => {
+      if (readonly) {
+        return;
+      }
 
-  const request_delete_preset = useCallback((preset_item: TextPreservePresetItem): void => {
-    set_confirm_state({
-      open: true,
-      kind: "delete-preset",
-      selection_count: 0,
-      preset_name: preset_item.name,
-      preset_input_value: "",
-      submitting: false,
-      target_virtual_id: preset_item.virtual_id,
-    });
-  }, []);
+      set_preset_input_state({
+        open: true,
+        mode: "rename",
+        value: preset_item.name,
+        submitting: false,
+        target_virtual_id: preset_item.virtual_id,
+      });
+    },
+    [readonly],
+  );
+
+  const request_delete_preset = useCallback(
+    (preset_item: TextPreservePresetItem): void => {
+      if (readonly) {
+        return;
+      }
+
+      set_confirm_state({
+        open: true,
+        kind: "delete-preset",
+        selection_count: 0,
+        preset_name: preset_item.name,
+        preset_input_value: "",
+        submitting: false,
+        target_virtual_id: preset_item.virtual_id,
+      });
+    },
+    [readonly],
+  );
 
   const save_preset = useCallback(
     async (name: string): Promise<boolean> => {
+      if (readonly) {
+        return false;
+      }
+
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
         push_toast("warning", t("text_preserve_page.feedback.preset_name_required"));
@@ -1091,11 +1142,15 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
     },
-    [entries, push_action_error_toast, push_toast, refresh_preset_menu, t],
+    [entries, push_action_error_toast, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const rename_preset = useCallback(
     async (virtual_id: string, name: string): Promise<boolean> => {
+      if (readonly) {
+        return false;
+      }
+
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
         push_toast("warning", t("text_preserve_page.feedback.preset_name_required"));
@@ -1132,6 +1187,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       push_action_error_toast,
       push_toast,
       refresh_preset_menu,
+      readonly,
       set_settings_snapshot,
       t,
     ],
@@ -1139,6 +1195,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const set_default_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
+      if (readonly) {
+        return;
+      }
+
       try {
         const payload = await api_fetch<SettingsSnapshotPayload>(
           "/api/settings/update",
@@ -1151,10 +1211,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         push_action_error_toast(error);
       }
     },
-    [push_action_error_toast, push_toast, refresh_preset_menu, set_settings_snapshot, t],
+    [push_action_error_toast, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
   );
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
+    if (readonly) {
+      return;
+    }
+
     try {
       const payload = await api_fetch<SettingsSnapshotPayload>(
         "/api/settings/update",
@@ -1166,7 +1230,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     } catch (error) {
       push_action_error_toast(error);
     }
-  }, [push_action_error_toast, push_toast, refresh_preset_menu, set_settings_snapshot, t]);
+  }, [
+    push_action_error_toast,
+    push_toast,
+    readonly,
+    refresh_preset_menu,
+    set_settings_snapshot,
+    t,
+  ]);
 
   const validate_entry = useCallback(
     (entry: TextPreserveEntry): string | null => {
@@ -1186,6 +1257,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   );
 
   const persist_dialog_entry = useCallback(async (): Promise<boolean> => {
+    if (readonly) {
+      return false;
+    }
+
     const current_dialog_state = dialog_state;
     const normalized_entry = normalize_entry(dialog_state.draft_entry);
     const validation_message = validate_entry(normalized_entry);
@@ -1247,7 +1322,16 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       set_dialog_state(reopen_dialog_state);
     }
     return false;
-  }, [dialog_state, entries, entry_ids, push_toast, save_entries_snapshot, t, validate_entry]);
+  }, [
+    dialog_state,
+    entries,
+    entry_ids,
+    push_toast,
+    readonly,
+    save_entries_snapshot,
+    t,
+    validate_entry,
+  ]);
 
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry();
@@ -1275,7 +1359,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, []);
 
   const submit_preset_input = useCallback(async (): Promise<void> => {
-    if (!preset_input_state.open || preset_input_state.mode === null) {
+    if (readonly || !preset_input_state.open || preset_input_state.mode === null) {
       return;
     }
 
@@ -1338,9 +1422,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         };
       });
     }
-  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t]);
+  }, [preset_input_state, preset_items, push_toast, readonly, rename_preset, save_preset, t]);
 
   const reset_entries = useCallback(async (): Promise<boolean> => {
+    if (readonly) {
+      return false;
+    }
+
     const saved = await save_entries_snapshot([]);
     if (!saved) {
       return false;
@@ -1350,10 +1438,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     push_toast("success", t("text_preserve_page.feedback.reset_success"));
     set_preset_menu_open(false);
     return true;
-  }, [clear_selection_state, push_toast, save_entries_snapshot, t]);
+  }, [clear_selection_state, push_toast, readonly, save_entries_snapshot, t]);
 
   const confirm_pending_action = useCallback(async (): Promise<void> => {
-    if (!confirm_state.open || confirm_state.kind === null) {
+    if (readonly || !confirm_state.open || confirm_state.kind === null) {
       return;
     }
 
@@ -1420,6 +1508,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     push_action_error_toast,
     refresh_preset_menu,
     reset_entries,
+    readonly,
     save_preset,
     selected_entry_ids,
     set_settings_snapshot,
@@ -1434,6 +1523,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     filter_state,
     sort_state,
     invalid_filter_message: filter_result.invalid_regex_message,
+    readonly,
     drag_disabled,
     statistics_state,
     statistics_ready,

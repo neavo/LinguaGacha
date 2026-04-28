@@ -38,13 +38,13 @@ export const zh_cn_workbench_page = {
     add_file_loading_toast: "正在添加文件并刷新缓存 …",
     no_valid_file: "没有可添加的有效文件。",
     file_action_failed: "文件操作失败，请稍后重试。",
-    export_failed: "生成译文失败，请稍后重试。",
+    export_failed: "导出当前可用译文失败，请稍后重试。",
     close_project_failed: "关闭工程失败，请稍后重试。",
   },
   action: {
     add_file: "添加文件",
     delete_file: "删除文件",
-    export_translation: "生成译文",
+    export_translation: "导出译文",
     close_project: "关闭项目",
     reset: "重置翻译状态",
     delete: "删除",
@@ -129,7 +129,7 @@ export const zh_cn_workbench_page = {
     confirm: {
       reset_all_description: "是否确认重置整个项目的翻译进度 …?",
       reset_failed_description: "是否确认重置失败的翻译条目 …?",
-      export_description: "是否确认生成译文文件 …?",
+      export_description: "是否确认导出当前可用译文 …?",
       stop_description: "是否确认停止当前翻译任务 …?",
     },
     feedback: {
@@ -140,7 +140,7 @@ export const zh_cn_workbench_page = {
       stopped: "已停止 …",
       reset_all_failed: "重置全部翻译失败",
       reset_failed_failed: "重置失败条目失败",
-      export_failed: "生成译文失败",
+      export_failed: "导出当前可用译文失败",
     },
   },
   command: {
@@ -162,7 +162,7 @@ export const zh_cn_workbench_page = {
       description: "是否确认删除所选文件及其所有翻译条目 …?",
     },
     export: {
-      description: "是否确认生成译文文件 …?",
+      description: "是否确认导出当前可用译文 …?",
     },
     close_project: {
       description: "是否确认关闭当前工程 …?",

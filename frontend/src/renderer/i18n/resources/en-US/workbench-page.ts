@@ -41,13 +41,13 @@ export const en_us_workbench_page = {
     add_file_loading_toast: "Adding file and refreshing cache …",
     no_valid_file: "No valid files can be added.",
     file_action_failed: "File operation failed. Please try again later.",
-    export_failed: "Failed to generate translations. Please try again later.",
+    export_failed: "Failed to export available translations. Please try again later.",
     close_project_failed: "Failed to close the project. Please try again later.",
   },
   action: {
     add_file: "Add File",
     delete_file: "Delete File",
-    export_translation: "Generate",
+    export_translation: "Export",
     close_project: "Close Project",
     reset: "Reset Translation",
     delete: "Delete",
@@ -132,7 +132,7 @@ export const en_us_workbench_page = {
     confirm: {
       reset_all_description: "Confirm resetting the translation progress for the entire project …?",
       reset_failed_description: "Confirm resetting failed translation entries …?",
-      export_description: "Confirm generating the translated file …?",
+      export_description: "Confirm exporting currently available translations …?",
       stop_description: "Confirm stopping the current translation task …?",
     },
     feedback: {
@@ -143,7 +143,7 @@ export const en_us_workbench_page = {
       stopped: "Stopped …",
       reset_all_failed: "Failed to reset all translation progress.",
       reset_failed_failed: "Failed to reset failed translation entries.",
-      export_failed: "Failed to generate the translated file.",
+      export_failed: "Failed to export available translations.",
     },
   },
   command: {
@@ -165,7 +165,7 @@ export const en_us_workbench_page = {
       description: "Confirm deleting the selected file and all of its translation entries …?",
     },
     export: {
-      description: "Confirm generating the translated file …?",
+      description: "Confirm exporting currently available translations …?",
     },
     close_project: {
       description: "Confirm closing the current project …?",

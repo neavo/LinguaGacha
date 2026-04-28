@@ -23,6 +23,7 @@ describe("TextPreserveCommandBar", () => {
           preset_items={[]}
           preset_menu_open={false}
           selected_entry_count={0}
+          readonly={false}
           on_mode_change={async () => {}}
           on_create={() => {}}
           on_delete_selected={async () => {}}

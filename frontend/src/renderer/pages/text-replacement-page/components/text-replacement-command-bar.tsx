@@ -43,6 +43,7 @@ type TextReplacementCommandBarProps = {
   preset_items: TextReplacementPresetItem[];
   preset_menu_open: boolean;
   selected_entry_count: number;
+  readonly: boolean;
   on_toggle_enabled: (next_value: boolean) => Promise<void>;
   on_create: () => void;
   on_delete_selected: () => Promise<void>;
@@ -80,12 +81,12 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
 
   useActionShortcut({
     action: "create",
-    enabled: true,
+    enabled: !props.readonly,
     on_trigger: props.on_create,
   });
   useActionShortcut({
     action: "delete",
-    enabled: props.selected_entry_count > 0,
+    enabled: !props.readonly && props.selected_entry_count > 0,
     on_trigger: () => {
       void props.on_delete_selected();
     },
@@ -97,7 +98,12 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
       actions={
         <>
           <CommandBarGroup>
-            <Button variant="ghost" size="toolbar" onClick={props.on_create}>
+            <Button
+              variant="ghost"
+              size="toolbar"
+              disabled={props.readonly}
+              onClick={props.on_create}
+            >
               <Plus data-icon="inline-start" />
               {t("text_replacement_page.action.create")}
               <ShortcutKbd action="create" />
@@ -105,7 +111,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             <Button
               variant="ghost"
               size="toolbar"
-              disabled={props.selected_entry_count === 0}
+              disabled={props.readonly || props.selected_entry_count === 0}
               onClick={() => {
                 void props.on_delete_selected();
               }}
@@ -120,6 +126,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             <Button
               variant="ghost"
               size="toolbar"
+              disabled={props.readonly}
               onClick={() => {
                 void props.on_import();
               }}
@@ -156,11 +163,14 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             </AppDropdownMenuTrigger>
             <AppDropdownMenuContent align="center">
               <AppDropdownMenuGroup>
-                <AppDropdownMenuItem onSelect={props.on_request_reset}>
+                <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_reset}>
                   <Recycle />
                   {t("app.action.reset")}
                 </AppDropdownMenuItem>
-                <AppDropdownMenuItem onSelect={props.on_request_save_preset}>
+                <AppDropdownMenuItem
+                  disabled={props.readonly}
+                  onSelect={props.on_request_save_preset}
+                >
                   <Save />
                   {t("text_replacement_page.preset.save")}
                 </AppDropdownMenuItem>
@@ -178,6 +188,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                       </AppDropdownMenuSubTrigger>
                       <AppDropdownMenuSubContent>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
@@ -188,6 +199,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                         <AppDropdownMenuSeparator />
                         {item.is_default ? (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
@@ -197,6 +209,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                           </AppDropdownMenuItem>
                         ) : (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
@@ -223,6 +236,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                       </AppDropdownMenuSubTrigger>
                       <AppDropdownMenuSubContent>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
@@ -231,6 +245,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                           {t("text_replacement_page.preset.apply")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             props.on_request_rename_preset(item);
                           }}
@@ -239,6 +254,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                           {t("text_replacement_page.preset.rename")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             props.on_request_delete_preset(item);
                           }}
@@ -249,6 +265,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                         <AppDropdownMenuSeparator />
                         {item.is_default ? (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
@@ -258,6 +275,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                           </AppDropdownMenuItem>
                         ) : (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
@@ -284,6 +302,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
                 size="sm"
                 value={props.enabled ? "enabled" : "disabled"}
                 options={boolean_segmented_options}
+                disabled={props.readonly}
                 on_value_change={(next_value) => {
                   void props.on_toggle_enabled(next_value === "enabled");
                 }}

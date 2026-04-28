@@ -87,6 +87,7 @@ function create_expert_settings_state_fixture() {
       auto_process_prefix_suffix_preserved_text: false,
     },
     is_refreshing: false,
+    is_task_busy: false,
     refresh_snapshot: vi.fn(async () => {}),
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_clean_ruby: vi.fn(async (_next_checked: boolean) => {}),
@@ -209,5 +210,17 @@ describe("ExpertSettingsPage", () => {
       "error",
       "expert_settings_page.feedback.preceding_lines_threshold_invalid",
     );
+  });
+
+  it("任务运行中锁定专家设置输入", async () => {
+    expert_settings_state_fixture.current = {
+      ...create_expert_settings_state_fixture(),
+      is_task_busy: true,
+    };
+
+    await mount_page();
+    const input = get_preceding_lines_threshold_input();
+
+    expect(input.disabled).toBe(true);
   });
 });

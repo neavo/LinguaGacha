@@ -101,6 +101,7 @@ const project_store = {
 };
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
+let task_snapshot: { busy: boolean; status: string };
 
 function create_statistics_cache(
   args: Partial<QualityStatisticsCacheSnapshot>,
@@ -179,6 +180,7 @@ vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
       })),
       refresh_project_runtime: vi.fn(),
       align_project_runtime_ack: vi.fn(),
+      task_snapshot,
     }),
   };
 });
@@ -259,6 +261,10 @@ describe("useGlossaryPageState", () => {
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
     current_statistics_cache = create_statistics_cache({});
+    task_snapshot = {
+      busy: false,
+      status: "IDLE",
+    };
     render_version = 0;
   });
 
@@ -393,5 +399,30 @@ describe("useGlossaryPageState", () => {
     });
     expect(latest_state?.statistics_ready).toBe(true);
     expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
+  });
+
+  it("任务运行中锁定术语表 mutation，但保留筛选可用", async () => {
+    task_snapshot = {
+      busy: true,
+      status: "RUNNING",
+    };
+    await mount_probe();
+
+    expect(latest_state?.readonly).toBe(true);
+    expect(latest_state?.drag_disabled).toBe(true);
+
+    act(() => {
+      latest_state?.update_filter_keyword("苹果");
+      latest_state?.open_create_dialog();
+    });
+
+    expect(latest_state?.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.dialog_state.open).toBe(false);
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+    });
+
+    expect(api_fetch_mock).not.toHaveBeenCalled();
   });
 });

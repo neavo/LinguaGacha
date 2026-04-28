@@ -35,6 +35,7 @@ type TextReplacementTableProps = {
   drag_disabled: boolean;
   statistics_running: boolean;
   statistics_ready: boolean;
+  readonly: boolean;
   selected_entry_ids: TextReplacementEntryId[];
   active_entry_id: TextReplacementEntryId | null;
   anchor_entry_id: TextReplacementEntryId | null;
@@ -464,10 +465,18 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
           on_reorder={(payload) => {
             void props.on_reorder(payload.active_row_id, payload.over_row_id);
           }}
-          on_row_double_click={(payload) => {
-            props.on_open_edit(payload.row_id);
-          }}
+          on_row_double_click={
+            props.readonly
+              ? undefined
+              : (payload) => {
+                  props.on_open_edit(payload.row_id);
+                }
+          }
           render_row_context_menu={(payload) => {
+            if (props.readonly) {
+              return null;
+            }
+
             const target_entry_ids = resolve_text_replacement_context_target_entry_ids(
               payload.row_id,
               props.selected_entry_ids,
