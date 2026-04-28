@@ -77,7 +77,7 @@ flowchart TD
     B --> C["docs/API.md"]
     B --> D["docs/FRONTEND.md"]
     B --> E["docs/DATA.md"]
-    B --> F["docs/DESIGN.md"]
+    B --> F["DESIGN.md"]
     B --> G["docs/WORKFLOW.md"]
 ```
 
@@ -95,12 +95,12 @@ flowchart TD
 | 模块 | 核心职责 | 主要邻接层 | 详细规则所在 |
 | --- | --- | --- | --- |
 | `api/` | 本地 HTTP / SSE 契约、bootstrap、错误映射、事件桥 | `frontend/src/renderer`、`api/Client`、`module/*` | [`API.md`](./API.md) |
-| `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、`docs/DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
+| `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、根目录 `DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
 | `module/Data` | 工程事实、规则、分析、翻译结果、校对辅助 | `api/`、`module/File`、`Storage` | [`DATA.md`](./DATA.md) |
 | `module/Engine` | 后台任务生命周期、请求调度、停止与重试 | `api/`、`module/Data` | [`DATA.md`](./DATA.md) |
 | `module/File` | 文件格式解析、资产读取、导出写回 | `module/Data` | [`DATA.md`](./DATA.md) |
 | `module/Model` | 模型配置类型、模板补齐、排序与默认回退 | `api/`、`Config` | [`DATA.md`](./DATA.md) |
-| `docs/DESIGN.md` 对应权威源 | 视觉 token、壳层节奏、页面骨架、组件语义 | `frontend/src/renderer` | [`DESIGN.md`](./DESIGN.md) |
+| 根目录 `DESIGN.md` 对应权威源 | 视觉 token、壳层节奏、页面骨架、组件语义 | `frontend/src/renderer` | [`DESIGN.md`](../DESIGN.md) |
 
 ## 维护约束
 

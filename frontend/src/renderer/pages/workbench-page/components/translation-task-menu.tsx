@@ -8,7 +8,7 @@ import {
 } from "@/pages/workbench-page/task-runtime/translation-task-model";
 import type { WorkbenchStats } from "@/pages/workbench-page/types";
 import { WorkbenchSegmentedProgress } from "@/pages/workbench-page/components/workbench-segmented-progress";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -40,10 +40,10 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
   return (
     <AppDropdownMenu>
       <AppDropdownMenuTrigger asChild>
-        <Button type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
+        <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
           {trigger_icon}
           {t("workbench_page.action.translation_task")}
-        </Button>
+        </AppButton>
       </AppDropdownMenuTrigger>
 
       <AppDropdownMenuContent align="start" className="task-runtime__menu">

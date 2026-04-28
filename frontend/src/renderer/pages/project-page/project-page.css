@@ -7,8 +7,8 @@
   --project-home-subtitle: color-mix(in srgb, var(--foreground) 72%, transparent);
   --project-home-line: color-mix(in srgb, var(--border) 92%, transparent);
   --project-home-hover: color-mix(in srgb, var(--accent) 70%, transparent);
-  --project-home-blue: oklch(0.58 0.18 254);
-  --project-home-purple: oklch(0.58 0.2 302);
+  --project-home-source: #d97924;
+  --project-home-project: #d85f42;
   --project-home-interactive: var(--primary);
   --project-home-interactive-bg: color-mix(in srgb, var(--primary) 10%, transparent);
 }
@@ -17,8 +17,8 @@
   --project-home-subtitle: color-mix(in srgb, var(--foreground) 84%, transparent);
   --project-home-line: color-mix(in srgb, var(--border) 100%, transparent);
   --project-home-hover: color-mix(in srgb, var(--accent) 90%, transparent);
-  --project-home-blue: oklch(0.73 0.13 255);
-  --project-home-purple: oklch(0.76 0.17 305);
+  --project-home-source: #ffb454;
+  --project-home-project: #ee6f4d;
   --project-home-interactive-bg: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 
@@ -62,7 +62,7 @@
 
 .project-home__dropzone:hover,
 .project-home__dropzone:focus-visible,
-.project-home__dropzone[data-drag-active='true'] {
+.project-home__dropzone[data-drag-active="true"] {
   border-color: var(--project-home-interactive);
   background: var(--project-home-interactive-bg);
   box-shadow: none;
@@ -70,7 +70,7 @@
 
 .project-home__selected-card:hover,
 .project-home__selected-card:focus-within,
-.project-home__selected-card[data-drag-active='true'] {
+.project-home__selected-card[data-drag-active="true"] {
   border-color: var(--project-home-interactive);
   background: var(--project-home-interactive-bg);
   box-shadow: none;

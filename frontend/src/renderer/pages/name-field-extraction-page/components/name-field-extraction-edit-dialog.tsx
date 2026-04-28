@@ -1,7 +1,7 @@
 import { useI18n } from "@/i18n";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { NameFieldDialogState, NameFieldRow } from "@/pages/name-field-extraction-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
@@ -37,7 +37,7 @@ export function NameFieldExtractionEditDialog(
       bodyClassName="overflow-hidden p-0"
       footer={
         <>
-          <Button
+          <AppButton
             type="button"
             variant="outline"
             size="sm"
@@ -47,8 +47,8 @@ export function NameFieldExtractionEditDialog(
             }}
           >
             {t("app.action.cancel")}
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             type="button"
             size="sm"
             disabled={props.state.saving}
@@ -58,7 +58,7 @@ export function NameFieldExtractionEditDialog(
           >
             {save_label}
             <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
-          </Button>
+          </AppButton>
         </>
       }
     >

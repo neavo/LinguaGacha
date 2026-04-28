@@ -13,7 +13,7 @@ const px_first_scope_directories = [
   path.join(project_root, "src/renderer/widgets"),
 ];
 
-// 为什么：这组规则对应 docs/DESIGN.md 的“全局 token 与主题”，负责拦截可以稳定自动判定的硬违规。
+// 为什么：这组规则对应根目录 DESIGN.md 的“全局 token 与主题”，负责拦截可以稳定自动判定的硬违规。
 const FILE_RULE_GROUPS = [
   {
     name: "渲染层尺寸字面量",
@@ -22,7 +22,7 @@ const FILE_RULE_GROUPS = [
         should_skip: (file_path) => !is_px_first_literal_scope(file_path),
         find_matches: (content) => find_pattern_matches(content, /\d+(?:\.\d+)?rem\b/, "rem"),
         build_error: (relative_path) =>
-          `${relative_path} 违规则使用了 rem 尺寸字面量；请改用 px，或回到 docs/DESIGN.md 判断是否需要沉淀新的长期设计语义`,
+          `${relative_path} 违规则使用了 rem 尺寸字面量；请改用 px，或回到 DESIGN.md 判断是否需要沉淀新的长期设计语义`,
       },
     ],
   },
@@ -40,7 +40,7 @@ const FILE_RULE_GROUPS = [
   },
 ];
 
-// 为什么：这组规则对应 docs/DESIGN.md 的“页面层边界”，负责拦截已接入命名空间的基础视觉越权。
+// 为什么：这组规则对应根目录 DESIGN.md 的“页面层边界”，负责拦截已接入命名空间的基础视觉越权。
 const CSS_SELECTOR_RULE_GROUPS = [
   {
     name: "页面容器缩进契约",

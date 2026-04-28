@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Dialog, DialogContent, DialogTitle } from "@/shadcn/dialog";
 
 type AppPageDialogSize = "sm" | "md" | "lg" | "xl";
@@ -49,7 +49,7 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
   const is_blocked = dismiss_behavior === "blocked";
   const footer_content =
     props.footer === undefined ? (
-      <Button
+      <AppButton
         type="button"
         variant="outline"
         size="sm"
@@ -58,7 +58,7 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
         }}
       >
         {t("app.action.close")}
-      </Button>
+      </AppButton>
     ) : (
       props.footer
     );

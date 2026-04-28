@@ -16,7 +16,7 @@ import {
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n, type LocaleKey } from "@/i18n";
 import type { TextReplacementPresetItem } from "@/pages/text-replacement-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -98,7 +98,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
       actions={
         <>
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly}
@@ -107,8 +107,8 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               <Plus data-icon="inline-start" />
               {t("text_replacement_page.action.create")}
               <ShortcutKbd action="create" />
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly || props.selected_entry_count === 0}
@@ -119,11 +119,11 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
               <Trash2 data-icon="inline-start" />
               {t("text_replacement_page.action.delete")}
               <ShortcutKbd action="delete" />
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly}
@@ -133,8 +133,8 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             >
               <FileDown data-icon="inline-start" />
               {t("text_replacement_page.action.import")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               onClick={() => {
@@ -143,7 +143,7 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             >
               <FileUp data-icon="inline-start" />
               {t("text_replacement_page.action.export")}
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <AppDropdownMenu
@@ -156,10 +156,10 @@ export function TextReplacementCommandBar(props: TextReplacementCommandBarProps)
             }}
           >
             <AppDropdownMenuTrigger asChild>
-              <Button variant="ghost" size="toolbar">
+              <AppButton variant="ghost" size="toolbar">
                 <FolderOpen data-icon="inline-start" />
                 {t("text_replacement_page.action.preset")}
-              </Button>
+              </AppButton>
             </AppDropdownMenuTrigger>
             <AppDropdownMenuContent align="center">
               <AppDropdownMenuGroup>

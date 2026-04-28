@@ -3,7 +3,7 @@ import * as React from "react";
 
 import "@/widgets/search-bar/search-bar.css";
 import { cn } from "@/lib/utils";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Card, CardContent } from "@/shadcn/card";
 import {
   AppDropdownMenu,
@@ -240,7 +240,7 @@ function SearchBarScopeAction<scope_value extends string = string>(
       <Tooltip>
         <TooltipTrigger asChild>
           <AppDropdownMenuTrigger asChild>
-            <Button
+            <AppButton
               type="button"
               variant="ghost"
               size="toolbar"
@@ -251,7 +251,7 @@ function SearchBarScopeAction<scope_value extends string = string>(
             >
               <ListFilter data-icon="inline-start" />
               {props.scope.button_label}
-            </Button>
+            </AppButton>
           </AppDropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={8}>
@@ -285,7 +285,7 @@ function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button
+        <AppButton
           type="button"
           variant="ghost"
           size="toolbar"
@@ -298,7 +298,7 @@ function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
         >
           <Regex data-icon="inline-start" />
           {props.regex.label}
-        </Button>
+        </AppButton>
       </TooltipTrigger>
       <TooltipContent side="bottom" sideOffset={8}>
         <p>{props.regex.tooltip}</p>

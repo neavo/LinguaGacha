@@ -218,14 +218,3 @@
 .log-window-page__detail-editor .cm-content {
   letter-spacing: 0;
 }
-
-@media (max-width: 860px) {
-  .log-window-page__actions {
-    flex-wrap: wrap;
-  }
-
-  .log-window-page__content {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(280px, 1fr) 220px;
-  }
-}

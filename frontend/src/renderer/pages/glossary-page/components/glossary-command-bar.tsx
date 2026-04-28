@@ -16,7 +16,7 @@ import {
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n } from "@/i18n";
 import type { GlossaryPresetItem } from "@/pages/glossary-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -97,7 +97,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
       actions={
         <>
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly}
@@ -106,8 +106,8 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
               <Plus data-icon="inline-start" />
               {t("glossary_page.action.create")}
               <ShortcutKbd action="create" />
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly || props.selected_entry_count === 0}
@@ -118,11 +118,11 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
               <Trash2 data-icon="inline-start" />
               {t("glossary_page.action.delete")}
               <ShortcutKbd action="delete" />
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly}
@@ -132,8 +132,8 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
             >
               <FileDown data-icon="inline-start" />
               {t("glossary_page.action.import")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               onClick={() => {
@@ -142,7 +142,7 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
             >
               <FileUp data-icon="inline-start" />
               {t("glossary_page.action.export")}
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <AppDropdownMenu
@@ -155,10 +155,10 @@ export function GlossaryCommandBar(props: GlossaryCommandBarProps): JSX.Element 
             }}
           >
             <AppDropdownMenuTrigger asChild>
-              <Button variant="ghost" size="toolbar">
+              <AppButton variant="ghost" size="toolbar">
                 <FolderOpen data-icon="inline-start" />
                 {t("glossary_page.action.preset")}
-              </Button>
+              </AppButton>
             </AppDropdownMenuTrigger>
             <AppDropdownMenuContent align="center">
               <AppDropdownMenuGroup>

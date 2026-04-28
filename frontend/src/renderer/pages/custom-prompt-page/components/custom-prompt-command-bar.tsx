@@ -15,7 +15,7 @@ import {
 import { useI18n, type LocaleKey } from "@/i18n";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { CustomPromptPresetItem } from "@/pages/custom-prompt-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -94,7 +94,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
       actions={
         <>
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly}
@@ -104,8 +104,8 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
             >
               <FileDown data-icon="inline-start" />
               {t("custom_prompt_page.action.import")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               onClick={() => {
@@ -114,10 +114,10 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
             >
               <FileUp data-icon="inline-start" />
               {t("custom_prompt_page.action.export")}
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
-          <Button
+          <AppButton
             variant="ghost"
             size="toolbar"
             disabled={props.readonly}
@@ -128,7 +128,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
             <Save data-icon="inline-start" />
             {save_label}
             <ShortcutKbd action="save" />
-          </Button>
+          </AppButton>
           <CommandBarSeparator />
           <AppDropdownMenu
             open={props.preset_menu_open}
@@ -140,10 +140,10 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
             }}
           >
             <AppDropdownMenuTrigger asChild>
-              <Button variant="ghost" size="toolbar">
+              <AppButton variant="ghost" size="toolbar">
                 <FolderOpen data-icon="inline-start" />
                 {t("custom_prompt_page.action.preset")}
-              </Button>
+              </AppButton>
             </AppDropdownMenuTrigger>
             <AppDropdownMenuContent align="center">
               <AppDropdownMenuGroup>

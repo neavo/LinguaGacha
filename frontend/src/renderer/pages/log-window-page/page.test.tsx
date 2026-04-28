@@ -105,9 +105,9 @@ vi.mock("@/i18n", () => {
   };
 });
 
-vi.mock("@/shadcn/button", () => {
+vi.mock("@/widgets/app-button/app-button", () => {
   return {
-    Button: (props: {
+    AppButton: (props: {
       children: ReactNode;
       disabled?: boolean;
       onClick?: () => void;

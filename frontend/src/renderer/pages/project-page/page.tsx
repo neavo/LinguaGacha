@@ -17,7 +17,7 @@ import {
 import { useProjectPagesBarrier } from "@/app/runtime/project-pages/project-pages-context";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   Card,
   CardContent,
@@ -134,7 +134,7 @@ type DropZoneCardProps = Omit<
 > & {
   icon: "source" | "project";
   title: string;
-  tone: "blue" | "purple";
+  tone: "source" | "project";
   is_active?: boolean;
   disabled?: boolean;
   on_click?: MouseEventHandler<HTMLButtonElement>;
@@ -369,7 +369,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
         {...button_props}
         className={cn(
           "project-home__dropzone flex w-full flex-col items-center justify-center text-center",
-          tone === "blue" ? "project-home__dropzone--blue" : "project-home__dropzone--purple",
+          tone === "source" ? "project-home__dropzone--source" : "project-home__dropzone--project",
           "h-[145px] px-5 py-4",
           className,
         )}
@@ -441,7 +441,7 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
         </Tooltip>
       </button>
 
-      <Button
+      <AppButton
         variant="ghost"
         size="icon-sm"
         className="project-home__recent-remove h-7 w-7 p-0"
@@ -449,7 +449,7 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
         aria-label={props.remove_aria_label}
       >
         <X className="size-4" />
-      </Button>
+      </AppButton>
     </div>
   );
 }
@@ -534,7 +534,7 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
   const Icon = props.icon;
 
   return (
-    <Button
+    <AppButton
       type="button"
       size="default"
       className="min-w-[152px]"
@@ -543,7 +543,7 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
     >
       {props.is_loading ? <Spinner data-icon="inline-start" /> : <Icon data-icon="inline-start" />}
       {props.is_loading ? props.loading_label : props.label}
-    </Button>
+    </AppButton>
   );
 }
 
@@ -1000,7 +1000,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         <AppContextMenuTrigger asChild>
           <DropZoneCard
             icon="source"
-            tone="blue"
+            tone="source"
             title={t("project_page.create.drop_title")}
             is_active={active_dropzone === "source"}
             disabled={is_source_checking || is_creating_project}
@@ -1037,10 +1037,10 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       </AppContextMenu>
     ) : (
       <div
-        className="project-home__selected-card project-home__selected-card--blue relative"
+        className="project-home__selected-card project-home__selected-card--source relative"
         data-drag-active={active_dropzone === "source" ? "true" : undefined}
       >
-        <Button
+        <AppButton
           variant="ghost"
           size="icon-sm"
           className="project-home__selected-close h-[30px] w-[30px] p-0"
@@ -1048,7 +1048,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           aria-label={t("app.action.reset")}
         >
           <X className="size-4" />
-        </Button>
+        </AppButton>
 
         <AppContextMenu>
           <AppContextMenuTrigger asChild>
@@ -1108,7 +1108,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     selected_project === null ? (
       <DropZoneCard
         icon="project"
-        tone="purple"
+        tone="project"
         title={t("project_page.open.drop_title")}
         is_active={active_dropzone === "project"}
         disabled={is_preview_loading || is_opening_project}
@@ -1127,10 +1127,10 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
       />
     ) : (
       <div
-        className="project-home__selected-card project-home__selected-card--purple relative"
+        className="project-home__selected-card project-home__selected-card--project relative"
         data-drag-active={active_dropzone === "project" ? "true" : undefined}
       >
-        <Button
+        <AppButton
           variant="ghost"
           size="icon-sm"
           className="project-home__selected-close h-[30px] w-[30px] p-0"
@@ -1138,7 +1138,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           aria-label={t("app.action.reset")}
         >
           <X className="size-4" />
-        </Button>
+        </AppButton>
 
         <button
           className="project-home__selected-content w-full"
@@ -1230,7 +1230,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
         <div className="project-home__layout grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6">
           <Card variant="panel" className="project-home__panel">
             <PanelHeader
-              accent_class_name="bg-[color:var(--project-home-blue)]"
+              accent_class_name="bg-[color:var(--project-home-source)]"
               title={t("project_page.create.title")}
               subtitle={t("project_page.create.subtitle")}
             />
@@ -1270,7 +1270,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
 
           <Card variant="panel" className="project-home__panel">
             <PanelHeader
-              accent_class_name="bg-[color:var(--project-home-purple)]"
+              accent_class_name="bg-[color:var(--project-home-project)]"
               title={t("project_page.open.title")}
               subtitle={t("project_page.open.subtitle")}
             />

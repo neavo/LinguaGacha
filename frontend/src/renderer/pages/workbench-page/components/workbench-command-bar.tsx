@@ -14,7 +14,7 @@ import type {
 import { AnalysisTaskMenu } from "@/pages/workbench-page/components/analysis-task-menu";
 import { TaskRuntimeSummary } from "@/pages/workbench-page/components/task-runtime/task-runtime-summary";
 import { TranslationTaskMenu } from "@/pages/workbench-page/components/translation-task-menu";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   CommandBar,
   CommandBarGroup,
@@ -146,7 +146,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
             return (
               <div key={action.id} className="contents">
                 {should_render_separator ? <CommandBarSeparator /> : null}
-                <Button
+                <AppButton
                   variant="ghost"
                   size="toolbar"
                   disabled={action.disabled}
@@ -156,7 +156,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
                   {t(action.label_key)}
                   {action.id === "add-file" ? <ShortcutKbd action="create" /> : null}
                   {action.id === "delete-file" ? <ShortcutKbd action="delete" /> : null}
-                </Button>
+                </AppButton>
               </div>
             );
           })}

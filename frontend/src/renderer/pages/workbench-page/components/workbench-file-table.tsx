@@ -7,7 +7,7 @@ import {
   WorkbenchTableContextMenuContent,
 } from "@/pages/workbench-page/components/workbench-table-action-menu";
 import type { WorkbenchFileEntry } from "@/pages/workbench-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
 import { AppTable } from "@/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@/widgets/app-table/app-table-drag-indicator";
@@ -185,7 +185,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         render_cell: (payload) => {
           if (payload.presentation === "overlay") {
             return (
-              <Button
+              <AppButton
                 type="button"
                 variant="ghost"
                 size="icon-sm"
@@ -195,7 +195,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
                 className="workbench-page__row-action"
               >
                 <CircleEllipsis data-icon="inline-start" />
-              </Button>
+              </AppButton>
             );
           }
 

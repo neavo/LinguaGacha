@@ -1,7 +1,7 @@
 import { useI18n, type LocaleKey } from "@/i18n";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { GlossaryPresetInputState } from "@/pages/glossary-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Input } from "@/shadcn/input";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
@@ -55,7 +55,7 @@ export function GlossaryPresetInputDialog(props: GlossaryPresetInputDialogProps)
       onClose={props.on_close}
       footer={
         <>
-          <Button
+          <AppButton
             type="button"
             variant="outline"
             size="sm"
@@ -63,9 +63,9 @@ export function GlossaryPresetInputDialog(props: GlossaryPresetInputDialogProps)
             onClick={props.on_close}
           >
             {t("app.action.cancel")}
-          </Button>
+          </AppButton>
           {is_save_mode ? (
-            <Button
+            <AppButton
               type="button"
               size="sm"
               disabled={props.state.submitting}
@@ -75,9 +75,9 @@ export function GlossaryPresetInputDialog(props: GlossaryPresetInputDialogProps)
             >
               {confirm_label}
               <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
-            </Button>
+            </AppButton>
           ) : (
-            <Button
+            <AppButton
               type="button"
               size="sm"
               disabled={props.state.submitting}
@@ -86,7 +86,7 @@ export function GlossaryPresetInputDialog(props: GlossaryPresetInputDialogProps)
               }}
             >
               {confirm_label}
-            </Button>
+            </AppButton>
           )}
         </>
       }

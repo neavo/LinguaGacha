@@ -6,7 +6,7 @@ import "@/pages/ts-conversion-page/ts-conversion-page.css";
 import type { TsConversionDirection } from "@/pages/ts-conversion-page/types";
 import { useTsConversionPageState } from "@/pages/ts-conversion-page/use-ts-conversion-page-state";
 import { Badge } from "@/shadcn/badge";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   Select,
   SelectContent,
@@ -118,7 +118,7 @@ export function TsConversionPage(props: ScreenComponentProps): JSX.Element {
         description={t("ts_conversion_page.description")}
         actions={
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={page_state.is_running}
@@ -130,7 +130,7 @@ export function TsConversionPage(props: ScreenComponentProps): JSX.Element {
                 <Play data-icon="inline-start" />
               )}
               {t("ts_conversion_page.action.start")}
-            </Button>
+            </AppButton>
           </CommandBarGroup>
         }
         hint={

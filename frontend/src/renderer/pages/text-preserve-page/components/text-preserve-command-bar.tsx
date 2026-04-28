@@ -16,7 +16,7 @@ import {
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n, type LocaleKey } from "@/i18n";
 import type { TextPreserveMode, TextPreservePresetItem } from "@/pages/text-preserve-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -111,7 +111,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
       actions={
         <>
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly}
@@ -120,8 +120,8 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               <Plus data-icon="inline-start" />
               {t("text_preserve_page.action.create")}
               <ShortcutKbd action="create" />
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly || props.selected_entry_count === 0}
@@ -132,11 +132,11 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               <Trash2 data-icon="inline-start" />
               {t("text_preserve_page.action.delete")}
               <ShortcutKbd action="delete" />
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.readonly}
@@ -146,8 +146,8 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             >
               <FileDown data-icon="inline-start" />
               {t("text_preserve_page.action.import")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               onClick={() => {
@@ -156,7 +156,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             >
               <FileUp data-icon="inline-start" />
               {t("text_preserve_page.action.export")}
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <AppDropdownMenu
@@ -169,10 +169,10 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             }}
           >
             <AppDropdownMenuTrigger asChild>
-              <Button variant="ghost" size="toolbar">
+              <AppButton variant="ghost" size="toolbar">
                 <FolderOpen data-icon="inline-start" />
                 {t("text_preserve_page.action.preset")}
-              </Button>
+              </AppButton>
             </AppDropdownMenuTrigger>
             <AppDropdownMenuContent align="center">
               <AppDropdownMenuGroup>

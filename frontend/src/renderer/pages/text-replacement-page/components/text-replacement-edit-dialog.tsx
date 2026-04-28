@@ -6,7 +6,7 @@ import type {
   TextReplacementDialogMode,
   TextReplacementEntry,
 } from "@/pages/text-replacement-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
@@ -59,7 +59,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
       bodyClassName="overflow-hidden p-0"
       footer={
         <>
-          <Button
+          <AppButton
             type="button"
             variant="outline"
             size="sm"
@@ -69,8 +69,8 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
             }}
           >
             {t("text_replacement_page.action.cancel")}
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             type="button"
             size="sm"
             disabled={props.saving}
@@ -80,7 +80,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
           >
             {save_label}
             <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
-          </Button>
+          </AppButton>
         </>
       }
     >

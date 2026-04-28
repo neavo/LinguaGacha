@@ -12,7 +12,7 @@ import {
   type ProofreadingGlossaryTerm,
 } from "@/pages/proofreading-page/types";
 import { Badge } from "@/shadcn/badge";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Input } from "@/shadcn/input";
 import { ScrollArea } from "@/shadcn/scroll-area";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
@@ -56,7 +56,7 @@ function FilterToggleButton(props: {
   onClick: () => void;
 }): JSX.Element {
   return (
-    <Button
+    <AppButton
       type="button"
       size="xs"
       variant="outline"
@@ -72,7 +72,7 @@ function FilterToggleButton(props: {
       >
         {props.count.toString()}
       </Badge>
-    </Button>
+    </AppButton>
   );
 }
 
@@ -158,7 +158,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
       bodyClassName="overflow-hidden p-0"
       footer={
         <>
-          <Button
+          <AppButton
             type="button"
             variant="outline"
             size="sm"
@@ -166,8 +166,8 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
             onClick={props.on_close}
           >
             {t("proofreading_page.action.cancel")}
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             type="button"
             size="sm"
             disabled={submitting}
@@ -176,7 +176,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
             }}
           >
             {t("proofreading_page.action.confirm")}
-          </Button>
+          </AppButton>
         </>
       }
     >
@@ -256,7 +256,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                   {t("proofreading_page.filter.file_scope")}
                 </h3>
                 <div className="proofreading-page__filter-section-actions">
-                  <Button
+                  <AppButton
                     type="button"
                     size="xs"
                     variant="outline"
@@ -268,8 +268,8 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                     }}
                   >
                     {t("proofreading_page.filter.select_all")}
-                  </Button>
-                  <Button
+                  </AppButton>
+                  <AppButton
                     type="button"
                     size="xs"
                     variant="outline"
@@ -281,7 +281,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                     }}
                   >
                     {t("proofreading_page.filter.clear")}
-                  </Button>
+                  </AppButton>
                 </div>
               </div>
 
@@ -321,7 +321,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                 {t("proofreading_page.filter.glossary_detail")}
               </h3>
               <div className="proofreading-page__filter-section-actions">
-                <Button
+                <AppButton
                   type="button"
                   size="xs"
                   variant="outline"
@@ -334,8 +334,8 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                   }}
                 >
                   {t("proofreading_page.filter.select_all")}
-                </Button>
-                <Button
+                </AppButton>
+                <AppButton
                   type="button"
                   size="xs"
                   variant="outline"
@@ -348,7 +348,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                   }}
                 >
                   {t("proofreading_page.filter.clear")}
-                </Button>
+                </AppButton>
               </div>
             </div>
 

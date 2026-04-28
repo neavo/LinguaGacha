@@ -1,6 +1,6 @@
 # LinguaGacha Agent 协作指南
 
-本文件只保留 Agent 协作入口、仓库级硬约束、直接约束实现的编码硬约束、阅读起手式、验证下限与交付要求。专题规则统一收口到 `docs/` 根目录。
+本文件只保留 Agent 协作入口、仓库级硬约束、直接约束实现的编码硬约束、阅读起手式、验证下限与交付要求。专题规则统一收口到根目录 `DESIGN.md` 与 `docs/` 目录。
 
 ## 1. 任务起手式
 
@@ -10,7 +10,7 @@ flowchart TD
     B --> C{"改动主要落在哪一层"}
     C -->|API / 协议| D["继续读 docs/API.md"]
     C -->|Electron / Renderer| E["继续读 docs/FRONTEND.md"]
-    C -->|界面语义 / 样式| F["继续读 docs/DESIGN.md"]
+    C -->|界面语义 / 样式| F["继续读 DESIGN.md"]
     C -->|Python Core 数据域| G["继续读 docs/DATA.md"]
     C -->|验证 / 交付 / 文档同步| H["继续读 docs/WORKFLOW.md"]
     D --> I["确认状态拥有者 / 唯一写入口 / 跨层载荷"]
@@ -28,7 +28,7 @@ flowchart TD
 | 仓库整体结构、阅读路径、跨层关系 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | 本地 HTTP / SSE 契约、bootstrap、错误码 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) -> [`docs/API.md`](docs/API.md) |
 | Electron 壳层、preload、共享桥接、渲染层分层 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) -> [`docs/FRONTEND.md`](docs/FRONTEND.md) |
-| React 页面、组件、样式、交互语义 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) -> [`docs/DESIGN.md`](docs/DESIGN.md) -> [`docs/FRONTEND.md`](docs/FRONTEND.md) |
+| React 页面、组件、样式、交互语义 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) -> [`DESIGN.md`](DESIGN.md) -> [`docs/FRONTEND.md`](docs/FRONTEND.md) |
 | Python Core 数据域、状态落点、唯一写入口 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) -> [`docs/DATA.md`](docs/DATA.md) |
 | 验证矩阵、文档同步、交付自检 | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) |
 
@@ -61,9 +61,9 @@ flowchart TD
 
 ## 3. 前端设计协作规则
 
-- 涉及渲染层页面、组件、样式、布局或交互时，必须先读 [`docs/DESIGN.md`](docs/DESIGN.md)。
-- `AGENTS.md` 只保留设计协作入口；产品气质、页面骨架、组件语言与主题语义以 [`docs/DESIGN.md`](docs/DESIGN.md) 为唯一权威。
-- 设计层新增稳定规则时，先更新 [`docs/DESIGN.md`](docs/DESIGN.md)，再落代码；不要把长期设计决策散落在页面注释或临时说明里。
+- 涉及渲染层页面、组件、样式、布局或交互时，必须先读 [`DESIGN.md`](DESIGN.md)。
+- `AGENTS.md` 只保留设计协作入口；产品气质、页面骨架、组件语言与主题语义以 [`DESIGN.md`](DESIGN.md) 为唯一权威。
+- 设计层新增稳定规则时，先更新 [`DESIGN.md`](DESIGN.md)，再落代码；不要把长期设计决策散落在页面注释或临时说明里。
 
 ## 4. 实现约束
 
@@ -98,8 +98,8 @@ flowchart TD
 | --- | --- |
 | Python 业务逻辑、数据流、API 行为变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest` |
 | API 契约、错误码、SSE topic、bootstrap 变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并补齐或更新相关 API 测试 |
-| Electron 主进程、preload、共享桥接变化 | `cd frontend` 后执行 `npm run format`、`npm run format:check`、`npm run lint`、`npx tsc -p tsconfig.node.json --noEmit` |
-| 渲染层结构、组件契约、样式边界、导航变化 | `cd frontend` 后执行 `npm run format`、`npm run format:check`、`npm run lint`、`npm run renderer:audit`、`npx tsc -p tsconfig.json --noEmit`、`npx tsc -p tsconfig.node.json --noEmit` |
+| Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
+| 渲染层结构、组件契约、样式边界、导航变化 | `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend run renderer:audit`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
 | 仅文档改动 | 自检链接、命名、阅读路径、权威来源与文档边界是否仍然准确 |
 
 若一次改动同时跨越多层，执行对应验证的并集。
@@ -111,11 +111,11 @@ flowchart TD
 | 系统分层、阅读路径、跨层边界、模块关系 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | HTTP / SSE 契约、bootstrap、topic、错误码、同步 mutation 规则 | [`docs/API.md`](docs/API.md) |
 | Electron / preload / renderer / 项目运行态消费边界 | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
-| 设计语言、视觉权威来源、页面骨架、组件语义 | [`docs/DESIGN.md`](docs/DESIGN.md) |
+| 设计语言、视觉权威来源、页面骨架、组件语义 | [`DESIGN.md`](DESIGN.md) |
 | 任务起手式、验证矩阵、交付要求 | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) |
 | Python Core 数据域职责、状态落点、唯一写入口 | [`docs/DATA.md`](docs/DATA.md) |
 
 交付要求：
 - 完成后必须回看 Diff，确认命名、注释、实现边界与文档边界仍然一致。
 - 若验证未执行、执行失败，或只完成了部分验证，必须在交付时明确说明原因与影响范围。
-- 若任务涉及前端视觉改动，交付时应说明是否依照 [`docs/DESIGN.md`](docs/DESIGN.md) 的权威来源完成核对。
+- 若任务涉及前端视觉改动，交付时应说明是否依照 [`DESIGN.md`](DESIGN.md) 的权威来源完成核对。

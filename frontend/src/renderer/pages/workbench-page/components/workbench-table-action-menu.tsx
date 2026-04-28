@@ -1,6 +1,6 @@
 import { CircleEllipsis, Recycle } from "lucide-react";
 
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppContextMenuContent,
   AppContextMenuGroup,
@@ -52,7 +52,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
       }}
     >
       <AppDropdownMenuTrigger asChild>
-        <Button
+        <AppButton
           type="button"
           variant="ghost"
           size="icon-sm"
@@ -63,7 +63,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
           data-workbench-ignore-box-select="true"
         >
           <CircleEllipsis data-icon="inline-start" />
-        </Button>
+        </AppButton>
       </AppDropdownMenuTrigger>
       <AppDropdownMenuContent align="center">
         <WorkbenchTableActionMenuContent disabled={props.disabled} on_reset={props.on_reset} />

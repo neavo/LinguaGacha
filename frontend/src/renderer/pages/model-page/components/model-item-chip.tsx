@@ -5,7 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuTrigger,
@@ -38,7 +38,7 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
       data-dragging={isDragging ? "true" : undefined}
       style={item_style}
     >
-      <Button
+      <AppButton
         type="button"
         variant="ghost"
         size="icon-sm"
@@ -52,11 +52,11 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
         {...listeners}
       >
         <GripVertical />
-      </Button>
+      </AppButton>
 
       <AppDropdownMenu>
         <AppDropdownMenuTrigger asChild>
-          <Button
+          <AppButton
             type="button"
             variant={props.active ? "default" : "outline"}
             className={cn(
@@ -66,7 +66,7 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
           >
             <span className="model-page__name-text">{props.model.name}</span>
             <ChevronDown data-icon="inline-end" />
-          </Button>
+          </AppButton>
         </AppDropdownMenuTrigger>
         {props.menu}
       </AppDropdownMenu>

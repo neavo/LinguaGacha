@@ -156,9 +156,8 @@ fake timers 用完必须恢复。
 ## 常用验证
 
 ```powershell
-cd frontend
-npm run test
-npm run test -- src/path/to/session-store.test.ts
-npm run lint
-npx tsc -p tsconfig.json --noEmit
+npm --prefix frontend run test
+npm --prefix frontend run test -- src/path/to/session-store.test.ts
+npm --prefix frontend run lint
+npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit
 ```

@@ -14,7 +14,7 @@ import {
   type ProofreadingItem,
 } from "@/pages/proofreading-page/types";
 import { Badge } from "@/shadcn/badge";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
@@ -373,7 +373,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
       footer={
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
+            <AppButton
               type="button"
               variant="outline"
               size="sm"
@@ -384,8 +384,8 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             >
               <RefreshCcw data-icon="inline-start" />
               {t("proofreading_page.action.retranslate")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               type="button"
               variant="outline"
               size="sm"
@@ -396,10 +396,10 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             >
               <Recycle data-icon="inline-start" />
               {t("proofreading_page.action.reset_translation")}
-            </Button>
+            </AppButton>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
+            <AppButton
               type="button"
               variant="outline"
               size="sm"
@@ -407,8 +407,8 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
               onClick={props.on_close}
             >
               {t("proofreading_page.action.cancel")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               type="button"
               size="sm"
               disabled={save_disabled}
@@ -418,7 +418,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             >
               {save_label}
               <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
-            </Button>
+            </AppButton>
           </div>
         </>
       }

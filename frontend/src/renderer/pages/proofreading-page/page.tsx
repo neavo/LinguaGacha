@@ -9,7 +9,7 @@ import { ProofreadingEditDialog } from "@/pages/proofreading-page/components/pro
 import { ProofreadingFilterDialog } from "@/pages/proofreading-page/components/proofreading-filter-dialog";
 import { ProofreadingTable } from "@/pages/proofreading-page/components/proofreading-table";
 import type { ProofreadingSearchScope } from "@/pages/proofreading-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { useI18n, type LocaleKey } from "@/i18n";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
 
@@ -90,7 +90,7 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
           on_change: proofreading_page_state.update_regex,
         }}
         extra_actions={
-          <Button
+          <AppButton
             type="button"
             size="toolbar"
             variant="ghost"
@@ -100,7 +100,7 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
           >
             <Funnel data-icon="inline-start" />
             {t("proofreading_page.action.filter")}
-          </Button>
+          </AppButton>
         }
       />
 

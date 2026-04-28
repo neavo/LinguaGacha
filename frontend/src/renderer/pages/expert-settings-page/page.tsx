@@ -8,7 +8,7 @@ import {
   PRECEDING_LINES_THRESHOLD_MAX,
   PRECEDING_LINES_THRESHOLD_MIN,
 } from "@/pages/expert-settings-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuCheckboxItem,
@@ -173,7 +173,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
               }}
             >
               <AppDropdownMenuTrigger asChild>
-                <Button
+                <AppButton
                   variant="outline"
                   className="expert-settings-page__menu-button"
                   onClick={(event) => {
@@ -182,7 +182,7 @@ export function ExpertSettingsPage(props: ExpertSettingsPageProps): JSX.Element 
                   disabled={mutation_locked}
                 >
                   {t("expert_settings_page.fields.response_check_settings.button")}
-                </Button>
+                </AppButton>
               </AppDropdownMenuTrigger>
               <AppDropdownMenuContent align="center">
                 <AppDropdownMenuGroup>

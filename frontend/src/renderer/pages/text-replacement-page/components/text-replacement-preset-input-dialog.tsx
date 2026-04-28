@@ -1,7 +1,7 @@
 import { useI18n, type LocaleKey } from "@/i18n";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { TextReplacementPresetInputState } from "@/pages/text-replacement-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Input } from "@/shadcn/input";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
@@ -57,7 +57,7 @@ export function TextReplacementPresetInputDialog(
       onClose={props.on_close}
       footer={
         <>
-          <Button
+          <AppButton
             type="button"
             variant="outline"
             size="sm"
@@ -65,9 +65,9 @@ export function TextReplacementPresetInputDialog(
             onClick={props.on_close}
           >
             {t("app.action.cancel")}
-          </Button>
+          </AppButton>
           {is_save_mode ? (
-            <Button
+            <AppButton
               type="button"
               size="sm"
               disabled={props.state.submitting}
@@ -78,16 +78,16 @@ export function TextReplacementPresetInputDialog(
                 action="save"
                 className="border border-primary-foreground/16 bg-primary-foreground/18 text-primary-foreground"
               />
-            </Button>
+            </AppButton>
           ) : (
-            <Button
+            <AppButton
               type="button"
               size="sm"
               disabled={props.state.submitting}
               onClick={props.on_submit}
             >
               {confirm_label}
-            </Button>
+            </AppButton>
           )}
         </>
       }

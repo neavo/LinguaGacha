@@ -18,7 +18,7 @@ import { ModelBasicSettingsDialog } from "@/pages/model-page/dialogs/model-basic
 import { ModelSelectorDialog } from "@/pages/model-page/dialogs/model-selector-dialog";
 import { ModelTaskSettingsDialog } from "@/pages/model-page/dialogs/model-task-settings-dialog";
 import { useModelPageState } from "@/pages/model-page/use-model-page-state";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import {
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
@@ -123,7 +123,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
               drag_disabled={model_page_state.readonly}
               add_action={
                 category.can_add ? (
-                  <Button
+                  <AppButton
                     type="button"
                     variant="outline"
                     onClick={() => {
@@ -132,7 +132,7 @@ export function ModelPage(props: ModelPageProps): JSX.Element {
                   >
                     <Plus data-icon="inline-start" />
                     {t("model_page.action.add")}
-                  </Button>
+                  </AppButton>
                 ) : null
               }
               on_reorder={(ordered_model_ids) => {

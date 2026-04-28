@@ -2,11 +2,8 @@ import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "@/i18n";
-import type {
-  ModelEntrySnapshot,
-  ModelThinkingLevel,
-} from "@/pages/model-page/types";
-import { Button } from "@/shadcn/button";
+import type { ModelEntrySnapshot, ModelThinkingLevel } from "@/pages/model-page/types";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Input } from "@/shadcn/input";
 import {
   Select,
@@ -31,22 +28,12 @@ type ModelBasicSettingsDialogProps = {
   onClose: () => void;
 };
 
-const THINKING_LEVEL_VALUES: ModelThinkingLevel[] = [
-  "OFF",
-  "LOW",
-  "MEDIUM",
-  "HIGH",
-];
+const THINKING_LEVEL_VALUES: ModelThinkingLevel[] = ["OFF", "LOW", "MEDIUM", "HIGH"];
 const THINKING_SUPPORT_URL_BY_LOCALE = {
   "zh-CN": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
   "en-US": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
 } as const;
-const CONNECTION_FIELD_API_FORMATS = [
-  "OpenAI",
-  "Google",
-  "Anthropic",
-  "SakuraLLM",
-] as const;
+const CONNECTION_FIELD_API_FORMATS = ["OpenAI", "Google", "Anthropic", "SakuraLLM"] as const;
 const THINKING_FIELD_API_FORMATS = ["OpenAI", "Google", "Anthropic"] as const;
 
 function resolve_thinking_label(
@@ -76,12 +63,9 @@ function should_show_thinking_field(api_format: string): boolean {
   );
 }
 
-export function ModelBasicSettingsDialog(
-  props: ModelBasicSettingsDialogProps,
-): JSX.Element | null {
+export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { locale, t } = useI18n();
-  const [is_model_id_editor_open, set_is_model_id_editor_open] =
-    useState(false);
+  const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false);
   const [model_id_input_value, set_model_id_input_value] = useState("");
 
   useEffect(() => {
@@ -110,9 +94,7 @@ export function ModelBasicSettingsDialog(
   }
 
   const model = props.model;
-  const show_connection_fields = should_show_connection_fields(
-    model.api_format,
-  );
+  const show_connection_fields = should_show_connection_fields(model.api_format);
   const show_thinking_field = should_show_thinking_field(model.api_format);
 
   async function commit_model_id_input(): Promise<void> {
@@ -193,12 +175,13 @@ export function ModelBasicSettingsDialog(
                 <SettingCardRow
                   className="model-page__setting-card-row--auto-action"
                   title={t("model_page.fields.model_id.title")}
-                  description={t(
-                    "model_page.fields.model_id.description",
-                  ).replace("{MODEL}", model.model_id)}
+                  description={t("model_page.fields.model_id.description").replace(
+                    "{MODEL}",
+                    model.model_id,
+                  )}
                   action={
                     <div className="model-page__inline-button-group">
-                      <Button
+                      <AppButton
                         type="button"
                         variant="outline"
                         size="sm"
@@ -210,8 +193,8 @@ export function ModelBasicSettingsDialog(
                       >
                         <PencilLine data-icon="inline-start" />
                         {t("model_page.action.input")}
-                      </Button>
-                      <Button
+                      </AppButton>
+                      <AppButton
                         type="button"
                         variant="outline"
                         size="sm"
@@ -220,8 +203,8 @@ export function ModelBasicSettingsDialog(
                       >
                         <RefreshCw data-icon="inline-start" />
                         {t("model_page.action.fetch")}
-                      </Button>
-                      <Button
+                      </AppButton>
+                      <AppButton
                         type="button"
                         variant="outline"
                         size="sm"
@@ -232,7 +215,7 @@ export function ModelBasicSettingsDialog(
                       >
                         <Send data-icon="inline-start" />
                         {t("model_page.action.test")}
-                      </Button>
+                      </AppButton>
                     </div>
                   }
                 />
@@ -297,7 +280,7 @@ export function ModelBasicSettingsDialog(
         }}
         footer={
           <>
-            <Button
+            <AppButton
               type="button"
               variant="outline"
               size="sm"
@@ -306,8 +289,8 @@ export function ModelBasicSettingsDialog(
               }}
             >
               {t("app.action.cancel")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               type="button"
               size="sm"
               disabled={props.readonly}
@@ -316,7 +299,7 @@ export function ModelBasicSettingsDialog(
               }}
             >
               {t("model_page.dialog.model_id_input.confirm")}
-            </Button>
+            </AppButton>
           </>
         }
       >

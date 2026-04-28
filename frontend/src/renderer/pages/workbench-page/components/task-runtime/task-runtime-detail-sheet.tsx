@@ -5,7 +5,7 @@ import "./task-runtime.css";
 import { cn } from "@/lib/utils";
 import { WORKBENCH_WAVEFORM_VISIBLE_POINTS } from "@/pages/workbench-page/task-runtime/workbench-waveform";
 import type { WorkbenchTaskDetailViewModel, WorkbenchTaskTone } from "@/pages/workbench-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shadcn/sheet";
 
 type TaskRuntimeDetailSheetProps = {
@@ -182,7 +182,7 @@ export function TaskRuntimeDetailSheet(props: TaskRuntimeDetailSheetProps): JSX.
         </div>
 
         <div className="task-runtime__sheet-footer">
-          <Button
+          <AppButton
             type="button"
             variant="destructive"
             disabled={props.view_model.stop_disabled}
@@ -190,7 +190,7 @@ export function TaskRuntimeDetailSheet(props: TaskRuntimeDetailSheetProps): JSX.
           >
             <CircleStop data-icon="inline-start" />
             {props.view_model.stop_button_label}
-          </Button>
+          </AppButton>
         </div>
       </SheetContent>
     </Sheet>

@@ -3,7 +3,7 @@ import { CaseSensitive } from "lucide-react";
 import { useI18n } from "@/i18n";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { GlossaryDialogMode, GlossaryEntry } from "@/pages/glossary-page/types";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
@@ -55,7 +55,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
       bodyClassName="overflow-hidden p-0"
       footer={
         <>
-          <Button
+          <AppButton
             type="button"
             variant="outline"
             size="sm"
@@ -65,8 +65,8 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
             }}
           >
             {t("glossary_page.action.cancel")}
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             type="button"
             size="sm"
             disabled={props.saving}
@@ -76,7 +76,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
           >
             {save_label}
             <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
-          </Button>
+          </AppButton>
         </>
       }
     >

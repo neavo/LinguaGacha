@@ -15,7 +15,7 @@ import {
   sort_log_events_latest_first,
   type LogLevelFilter,
 } from "@/pages/log-window-page/logic";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
@@ -295,7 +295,7 @@ export function LogWindowPage(): JSX.Element {
             <div className="log-window-page__actions">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
+                  <AppButton
                     type="button"
                     variant="ghost"
                     size="toolbar"
@@ -307,7 +307,7 @@ export function LogWindowPage(): JSX.Element {
                   >
                     <ListEnd data-icon="inline-start" />
                     {t("log_window_page.action.autoscroll")}
-                  </Button>
+                  </AppButton>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" sideOffset={8}>
                   <p>{auto_scroll_tooltip}</p>
@@ -362,7 +362,7 @@ export function LogWindowPage(): JSX.Element {
               <div className="log-window-page__detail-head-actions">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
+                    <AppButton
                       type="button"
                       variant="ghost"
                       size="icon-sm"
@@ -377,7 +377,7 @@ export function LogWindowPage(): JSX.Element {
                       ) : (
                         <Maximize2 aria-hidden="true" />
                       )}
-                    </Button>
+                    </AppButton>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" sideOffset={8}>
                     <p>{detail_expand_label}</p>

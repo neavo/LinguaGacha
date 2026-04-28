@@ -4,7 +4,7 @@ import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n } from "@/i18n";
 import type { NameFieldRunState } from "@/pages/name-field-extraction-page/types";
 import { Badge } from "@/shadcn/badge";
-import { Button } from "@/shadcn/button";
+import { AppButton } from "@/widgets/app-button/app-button";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import {
@@ -47,7 +47,7 @@ export function NameFieldExtractionCommandBar(
       actions={
         <>
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.is_running}
@@ -63,8 +63,8 @@ export function NameFieldExtractionCommandBar(
               {props.run_state.extracting
                 ? t("name_field_extraction_page.action.extracting")
                 : t("name_field_extraction_page.action.extract")}
-            </Button>
-            <Button
+            </AppButton>
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.pending_count === 0 || props.is_running}
@@ -80,11 +80,11 @@ export function NameFieldExtractionCommandBar(
               {props.run_state.translating
                 ? t("name_field_extraction_page.action.translating")
                 : t("name_field_extraction_page.action.translate")}
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={delete_disabled}
@@ -93,11 +93,11 @@ export function NameFieldExtractionCommandBar(
               <Trash2 data-icon="inline-start" />
               {t("name_field_extraction_page.action.delete")}
               <ShortcutKbd action="delete" />
-            </Button>
+            </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
           <CommandBarGroup>
-            <Button
+            <AppButton
               variant="ghost"
               size="toolbar"
               disabled={props.row_count === 0 || props.is_running || props.glossary_import_locked}
@@ -107,7 +107,7 @@ export function NameFieldExtractionCommandBar(
             >
               <FileDown data-icon="inline-start" />
               {t("name_field_extraction_page.action.import_glossary")}
-            </Button>
+            </AppButton>
           </CommandBarGroup>
         </>
       }

@@ -140,7 +140,7 @@ flowchart TD
 - 页面私有样式放在页面目录并由页面入口导入。
 - widget 私有样式由 widget 自己维护，不把页面语义回写到全局。
 - 渲染层执行 `px-first`：字面量长度优先 `px`，`line-height` 用无单位数值，`letter-spacing` 仅允许 `em`。
-- `npm run renderer:audit` 通过 `frontend/scripts/check-renderer-design-system.mjs` 自动拦截可稳定判定的 token 越权、`rem` 尺寸字面量和已接入门闩的基础视觉越权；新增例外前先回到 [`DESIGN.md`](./DESIGN.md) 判断是否属于长期设计语义变化。
+- `npm --prefix frontend run renderer:audit` 通过 `frontend/scripts/check-renderer-design-system.mjs` 自动拦截可稳定判定的 token 越权、`rem` 尺寸字面量和已接入门闩的基础视觉越权；新增例外前先回到根目录 [`DESIGN.md`](../DESIGN.md) 判断是否属于长期设计语义变化。
 
 ## 导航与页面映射中不显然的规则
 
@@ -171,7 +171,7 @@ flowchart TD
 | 你在改什么 | 先联读哪份文档 |
 | --- | --- |
 | HTTP 路径、bootstrap、SSE topic、`ProjectMutationAck` | [`API.md`](./API.md) |
-| 视觉 token、页面骨架、组件语义 | [`DESIGN.md`](./DESIGN.md) |
+| 视觉 token、页面骨架、组件语义 | [`DESIGN.md`](../DESIGN.md) |
 | Python Core 状态拥有者、同步 mutation 的真实持久化落点 | [`DATA.md`](./DATA.md) |
 
 ## 什么时候必须更新本文
