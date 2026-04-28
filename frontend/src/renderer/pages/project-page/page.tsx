@@ -10,7 +10,10 @@ import {
   useState,
 } from "react";
 
-import { type ProjectSnapshot } from "@/app/runtime/desktop/desktop-runtime-context";
+import {
+  type ProjectSnapshot,
+  type SettingsSnapshot,
+} from "@/app/runtime/desktop/desktop-runtime-context";
 import { useProjectPagesBarrier } from "@/app/runtime/project-pages/project-pages-context";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
@@ -32,7 +35,7 @@ import {
 import { Progress } from "@/shadcn/progress";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
-import { useI18n } from "@/i18n";
+import { type LocaleKey, useI18n } from "@/i18n";
 import { has_path_drop_payload, resolve_dropped_path } from "@/lib/file-drop";
 import { cn } from "@/lib/utils";
 import "@/pages/project-page/project-page.css";
@@ -95,6 +98,19 @@ type ProjectSnapshotPayload = {
   };
 };
 
+type DefaultPresetSettingKey =
+  | "glossary_default_preset"
+  | "text_preserve_default_preset"
+  | "pre_translation_replacement_default_preset"
+  | "post_translation_replacement_default_preset"
+  | "translation_custom_prompt_default_preset"
+  | "analysis_custom_prompt_default_preset";
+
+type DefaultPresetSettingSpec = {
+  settings_key: DefaultPresetSettingKey;
+  name_key: LocaleKey;
+};
+
 type SettingsPayload = {
   settings?: {
     project_save_mode?: string;
@@ -154,6 +170,33 @@ type ProjectActionButtonProps = {
 };
 
 type ActiveDropzone = "source" | "project" | null;
+
+const DEFAULT_PRESET_SETTING_SPECS: DefaultPresetSettingSpec[] = [
+  {
+    settings_key: "glossary_default_preset",
+    name_key: "project_page.create.default_presets.glossary",
+  },
+  {
+    settings_key: "text_preserve_default_preset",
+    name_key: "project_page.create.default_presets.text_preserve",
+  },
+  {
+    settings_key: "pre_translation_replacement_default_preset",
+    name_key: "project_page.create.default_presets.pre_translation_replacement",
+  },
+  {
+    settings_key: "post_translation_replacement_default_preset",
+    name_key: "project_page.create.default_presets.post_translation_replacement",
+  },
+  {
+    settings_key: "translation_custom_prompt_default_preset",
+    name_key: "project_page.create.default_presets.translation_prompt",
+  },
+  {
+    settings_key: "analysis_custom_prompt_default_preset",
+    name_key: "project_page.create.default_presets.analysis_prompt",
+  },
+];
 
 function extract_file_name(file_path: string): string {
   const normalized_segments = file_path.split(/[\\/]+/u);
@@ -228,6 +271,20 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
     path: String(payload.project?.path ?? ""),
     loaded: Boolean(payload.project?.loaded),
   };
+}
+
+function collect_loaded_default_preset_names(
+  settings_snapshot: SettingsSnapshot,
+  t: ReturnType<typeof useI18n>["t"],
+): string[] {
+  return DEFAULT_PRESET_SETTING_SPECS.flatMap((spec) => {
+    const preset_value = String(settings_snapshot[spec.settings_key] ?? "").trim();
+    if (preset_value === "") {
+      return [];
+    }
+
+    return [t(spec.name_key)];
+  });
 }
 
 function normalize_project_preview(
@@ -810,6 +867,7 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
     set_is_creating_project(true);
 
     try {
+      const loaded_default_preset_names = collect_loaded_default_preset_names(settings_snapshot, t);
       const output_path = await resolve_project_output_path(selected_source.path);
       if (output_path === null || output_path === "") {
         return;
@@ -842,6 +900,15 @@ export function ProjectPage(props: ProjectPageProps): JSX.Element {
           ]);
         },
       });
+      if (loaded_default_preset_names.length > 0) {
+        push_toast(
+          "info",
+          t("project_page.create.default_preset_loaded").replace(
+            "{NAMES}",
+            loaded_default_preset_names.join(" | "),
+          ),
+        );
+      }
       clear_selected_source();
       clear_selected_project();
     } catch (error) {
