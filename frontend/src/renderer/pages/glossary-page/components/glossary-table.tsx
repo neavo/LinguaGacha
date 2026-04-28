@@ -33,7 +33,7 @@ type GlossaryTableProps = {
   sort_state: GlossarySortState;
   readonly: boolean;
   drag_disabled: boolean;
-  statistics_ready: boolean;
+  statistics_sort_available: boolean;
   selected_entry_ids: GlossaryEntryId[];
   active_entry_id: GlossaryEntryId | null;
   anchor_entry_id: GlossaryEntryId | null;
@@ -398,7 +398,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         width: 92,
         align: "center",
         sortable: {
-          disabled: !props.statistics_ready,
+          disabled: !props.statistics_sort_available,
           action_labels: {
             ascending: t("glossary_page.sort.ascending"),
             descending: t("glossary_page.sort.descending"),
@@ -427,7 +427,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
     props.on_query_entry_source,
     props.on_search_entry_relations,
     props.statistics_badge_by_entry_id,
-    props.statistics_ready,
+    props.statistics_sort_available,
     t,
   ]);
 

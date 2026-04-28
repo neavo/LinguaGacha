@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { QualityStatisticsCacheSnapshot } from "@/app/project/quality/quality-statistics-store";
 import { buildGlossaryStatisticsState, useGlossaryPageState } from "./use-glossary-page-state";
+import type { GlossaryEntry } from "./types";
 
 const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   return {
@@ -11,6 +12,17 @@ const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
     push_toast_mock: vi.fn(),
   };
 });
+
+function create_default_glossary_entries(): GlossaryEntry[] {
+  return [
+    {
+      src: "苹果",
+      dst: "Apple",
+      info: "水果",
+      case_sensitive: false,
+    },
+  ];
+}
 
 const runtime_state = {
   project: {
@@ -28,14 +40,7 @@ const runtime_state = {
   },
   quality: {
     glossary: {
-      entries: [
-        {
-          src: "苹果",
-          dst: "Apple",
-          info: "水果",
-          case_sensitive: false,
-        },
-      ],
+      entries: create_default_glossary_entries(),
       enabled: true,
       mode: "custom",
       revision: 1,
@@ -153,6 +158,25 @@ function create_statistics_cache(
   };
 }
 
+function create_statistics_snapshot(
+  entry_ids: string[],
+): QualityStatisticsCacheSnapshot["completed_snapshot"] {
+  return {
+    text_source: "src",
+    text_signature: "texts",
+    dependency_signature: "deps",
+    snapshot_signature: `snapshot:${entry_ids.join("|")}`,
+    rules: entry_ids.map((entry_id) => {
+      return {
+        key: entry_id,
+        dependency_signature: entry_id,
+        relation_label: entry_id,
+        token: entry_id,
+      };
+    }),
+  };
+}
+
 vi.mock("@/app/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
@@ -260,6 +284,8 @@ describe("useGlossaryPageState", () => {
   beforeEach(() => {
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
+    runtime_state.quality.glossary.entries = create_default_glossary_entries();
+    runtime_state.quality.glossary.revision = 1;
     current_statistics_cache = create_statistics_cache({});
     task_snapshot = {
       busy: false,
@@ -307,10 +333,43 @@ describe("useGlossaryPageState", () => {
     await mount_probe();
 
     expect(latest_state?.statistics_ready).toBe(true);
+    expect(latest_state?.statistics_sort_available).toBe(true);
     expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
   });
 
-  it("统计失效后会清空 statistics 排序", async () => {
+  it("统计刷新中会保留 statistics 排序并继续使用旧统计结果", async () => {
+    runtime_state.quality.glossary.entries = [
+      {
+        src: "苹果",
+        dst: "Apple",
+        info: "水果",
+        case_sensitive: false,
+      },
+      {
+        src: "香蕉",
+        dst: "Banana",
+        info: "水果",
+        case_sensitive: false,
+      },
+      {
+        src: "梨",
+        dst: "Pear",
+        info: "水果",
+        case_sensitive: false,
+      },
+    ];
+    const completed_entry_ids = ["苹果::0", "香蕉::1", "梨::2"];
+    const completed_snapshot = create_statistics_snapshot(completed_entry_ids);
+    current_statistics_cache = create_statistics_cache({
+      current_snapshot: completed_snapshot,
+      completed_snapshot,
+      completed_entry_ids,
+      matched_count_by_entry_id: {
+        "苹果::0": 3,
+        "香蕉::1": 1,
+        "梨::2": 5,
+      },
+    });
     await mount_probe();
 
     await act(async () => {
@@ -320,16 +379,92 @@ describe("useGlossaryPageState", () => {
       });
     });
     expect(latest_state?.sort_state.field).toBe("statistics");
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
+      "梨::2",
+      "苹果::0",
+      "香蕉::1",
+    ]);
+
+    api_fetch_mock.mockResolvedValueOnce({
+      accepted: true,
+      projectRevision: 2,
+      sectionRevisions: {
+        quality: 2,
+      },
+    });
+    await act(async () => {
+      latest_state?.select_entry("梨::2", { extend: false, range: false });
+    });
+    await act(async () => {
+      await latest_state?.delete_selected_entries();
+    });
+    await act(async () => {
+      await latest_state?.confirm_pending_action();
+    });
 
     current_statistics_cache = create_statistics_cache({
+      current_snapshot: completed_snapshot,
+      completed_snapshot,
+      completed_entry_ids,
+      matched_count_by_entry_id: {
+        "苹果::0": 3,
+        "香蕉::1": 1,
+        "梨::2": 5,
+      },
       ready: false,
       stale: true,
     });
     await rerender_probe();
 
     expect(latest_state?.statistics_ready).toBe(false);
-    expect(latest_state?.sort_state.field).toBeNull();
-    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
+    expect(latest_state?.statistics_sort_available).toBe(true);
+    expect(latest_state?.sort_state.field).toBe("statistics");
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
+      "苹果::0",
+      "香蕉::1",
+    ]);
+    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(3);
+  });
+
+  it("首次没有统计快照时不会用空统计结果排序", async () => {
+    runtime_state.quality.glossary.entries = [
+      {
+        src: "苹果",
+        dst: "Apple",
+        info: "水果",
+        case_sensitive: false,
+      },
+      {
+        src: "香蕉",
+        dst: "Banana",
+        info: "水果",
+        case_sensitive: false,
+      },
+    ];
+    current_statistics_cache = create_statistics_cache({
+      ready: false,
+      stale: false,
+      current_snapshot: null,
+      completed_snapshot: null,
+      completed_entry_ids: [],
+      matched_count_by_entry_id: {},
+      subset_parent_labels_by_entry_id: {},
+    });
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.apply_table_sort_state({
+        column_id: "statistics",
+        direction: "descending",
+      });
+    });
+
+    expect(latest_state?.statistics_ready).toBe(false);
+    expect(latest_state?.statistics_sort_available).toBe(false);
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
+      "苹果::0",
+      "香蕉::1",
+    ]);
   });
 
   it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {
