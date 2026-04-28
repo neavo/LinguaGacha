@@ -27,6 +27,7 @@ import {
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
 import { createProofreadingRuntimeClient } from "@/pages/proofreading-page/proofreading-runtime-client";
 import type {
+  ProofreadingListWindow,
   ProofreadingRuntimeDeltaInput,
   ProofreadingRuntimeHydrationInput,
   ProofreadingRuntimeItemRecord,
@@ -53,6 +54,8 @@ import {
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
 
+const PROOFREADING_WINDOW_FETCH_COUNT = 160;
+
 export type UseProofreadingPageStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   cache_stale: boolean;
@@ -72,6 +75,7 @@ export type UseProofreadingPageStateResult = {
   filter_panel: ReturnType<typeof create_empty_proofreading_filter_panel_state>;
   filter_panel_loading: boolean;
   visible_items: ProofreadingVisibleItem[];
+  visible_row_count: number;
   sort_state: AppTableSortState | null;
   selected_row_ids: string[];
   active_row_id: string | null;
@@ -87,6 +91,10 @@ export type UseProofreadingPageStateResult = {
   update_regex: (next_is_regex: boolean) => void;
   apply_table_selection: (payload: AppTableSelectionChange) => void;
   apply_table_sort_state: (next_sort_state: AppTableSortState | null) => void;
+  get_visible_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
+  get_visible_row_id_at_index: (index: number) => string | undefined;
+  resolve_visible_row_index: (row_id: string) => number | undefined;
+  read_visible_range: (range: { start: number; count: number }) => void;
   open_filter_dialog: () => void;
   close_filter_dialog: () => void;
   update_filter_dialog_filters: (next_filters: ProofreadingFilterOptions) => void;
@@ -487,6 +495,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const deferred_sort_state = useDeferredValue(sort_state);
   const refresh_request_id_ref = useRef(0);
   const list_view_request_id_ref = useRef(0);
+  const list_window_request_id_ref = useRef(0);
   const filter_panel_request_id_ref = useRef(0);
   const current_filters_ref = useRef(current_filters);
   const filter_dialog_filters_ref = useRef(filter_dialog_filters);
@@ -510,6 +519,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const sort_state_ref = useRef(sort_state);
   const last_list_query_signature_ref = useRef("");
   const last_filter_panel_signature_ref = useRef("");
+  const last_visible_range_signature_ref = useRef("");
+  const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null);
 
   useEffect(() => {
     const proofreading_runtime_client = proofreading_runtime_client_ref.current;
@@ -554,10 +565,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     sort_state_ref.current = sort_state;
   }, [sort_state]);
 
-  const visible_items = list_view.items;
+  const visible_items = list_view.window_rows;
   const visible_row_ids = useMemo(() => {
     return visible_items.map((item) => item.row_id);
   }, [visible_items]);
+  const visible_row_index_by_id = useMemo(() => {
+    return new Map(
+      visible_items.map((item, index) => {
+        return [item.row_id, list_view.window_start + index] as const;
+      }),
+    );
+  }, [list_view.window_start, visible_items]);
   const visible_item_by_id = useMemo(() => {
     return new Map(
       visible_items.map((item) => {
@@ -568,7 +586,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const dialog_item =
     dialog_state.target_row_id === null
       ? null
-      : (visible_item_by_id.get(dialog_state.target_row_id) ?? null);
+      : (visible_item_by_id.get(dialog_state.target_row_id) ?? dialog_item_snapshot);
   const readonly = task_snapshot.busy;
   const invalid_regex_message =
     list_view.invalid_regex_message === null
@@ -608,6 +626,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_anchor_row_id(null);
     set_filter_dialog_open(false);
     set_dialog_state(create_empty_dialog_state());
+    set_dialog_item_snapshot(null);
     set_pending_mutation(null);
     replace_cursor_ref.current = 0;
     pending_replace_cursor_ref.current = null;
@@ -616,6 +635,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     pending_reset_filters_ref.current = false;
     last_list_query_signature_ref.current = "";
     last_filter_panel_signature_ref.current = "";
+    last_visible_range_signature_ref.current = "";
   }, []);
 
   const clear_cache_state = useCallback((): void => {
@@ -628,6 +648,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_is_refreshing(false);
     set_cache_status("idle");
     set_is_mutating(false);
+    last_visible_range_signature_ref.current = "";
     if (current_project_id !== undefined) {
       void proofreading_runtime_client_ref.current.dispose_project(current_project_id);
     }
@@ -671,6 +692,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         scope: args.scope,
         is_regex: args.is_regex,
         sort_state: args.sort_state,
+        window_start: 0,
+        window_count: PROOFREADING_WINDOW_FETCH_COUNT,
       });
       if (request_id !== list_view_request_id_ref.current) {
         return null;
@@ -734,6 +757,56 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     [filter_panel],
   );
 
+  const read_list_window = useCallback(
+    async (range: { start: number; count: number }): Promise<ProofreadingListWindow | null> => {
+      if (list_view.view_id === "" || range.count <= 0) {
+        return null;
+      }
+
+      const request_start = Math.max(0, range.start - PROOFREADING_WINDOW_FETCH_COUNT);
+      const request_count = Math.min(
+        list_view.row_count - request_start,
+        range.count + PROOFREADING_WINDOW_FETCH_COUNT * 2,
+      );
+      const range_signature = `${list_view.view_id}:${request_start}:${request_count}`;
+      if (range_signature === last_visible_range_signature_ref.current) {
+        return null;
+      }
+
+      last_visible_range_signature_ref.current = range_signature;
+      list_window_request_id_ref.current += 1;
+      const request_id = list_window_request_id_ref.current;
+      const next_window = await proofreading_runtime_client_ref.current.read_list_window({
+        view_id: list_view.view_id,
+        start: request_start,
+        count: request_count,
+      });
+      if (request_id !== list_window_request_id_ref.current) {
+        return null;
+      }
+
+      if (next_window.view_id !== list_view.view_id) {
+        return null;
+      }
+
+      startTransition(() => {
+        set_list_view((previous_view) => {
+          if (previous_view.view_id !== next_window.view_id) {
+            return previous_view;
+          }
+
+          return {
+            ...previous_view,
+            window_start: next_window.start,
+            window_rows: next_window.rows,
+          };
+        });
+      });
+      return next_window;
+    },
+    [list_view.row_count, list_view.view_id],
+  );
+
   const settle_list_view_and_filter_panel = useCallback(
     async (args: {
       filters: ProofreadingFilterOptions;
@@ -765,6 +838,52 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return next_list_view !== null && next_filter_panel !== null;
     },
     [run_filter_panel_query, run_list_view_query],
+  );
+
+  const read_items_by_row_ids = useCallback(
+    async (row_ids: string[]): Promise<ProofreadingClientItem[]> => {
+      if (row_ids.length === 0) {
+        return [];
+      }
+
+      const items_by_row_id = new Map(
+        visible_items.map((visible_item) => {
+          return [visible_item.row_id, visible_item.item] as const;
+        }),
+      );
+      const missing_row_ids = row_ids.filter((row_id) => {
+        return !items_by_row_id.has(row_id);
+      });
+      if (missing_row_ids.length > 0) {
+        const fetched_items = await proofreading_runtime_client_ref.current.read_items_by_row_ids({
+          row_ids: missing_row_ids,
+        });
+        fetched_items.forEach((item) => {
+          items_by_row_id.set(item.row_id, item);
+        });
+      }
+
+      return row_ids.flatMap((row_id) => {
+        const item = items_by_row_id.get(row_id);
+        return item === undefined ? [] : [item];
+      });
+    },
+    [visible_items],
+  );
+
+  const read_current_view_row_ids = useCallback(
+    async (start: number, count: number): Promise<string[]> => {
+      if (list_view.view_id === "" || count <= 0) {
+        return [];
+      }
+
+      return await proofreading_runtime_client_ref.current.read_row_ids_range({
+        view_id: list_view.view_id,
+        start,
+        count,
+      });
+    },
+    [list_view.view_id],
   );
 
   const refresh_snapshot = useCallback(async (): Promise<void> => {
@@ -935,6 +1054,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
         if (args.close_dialog) {
           set_dialog_state(create_empty_dialog_state());
+          set_dialog_item_snapshot(null);
         }
       } catch (error) {
         local_commit.rollback();
@@ -991,6 +1111,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
         if (args.close_dialog) {
           set_dialog_state(create_empty_dialog_state());
+          set_dialog_item_snapshot(null);
         }
 
         preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
@@ -1032,6 +1153,45 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const apply_table_sort_state = useCallback((next_sort_state: AppTableSortState | null): void => {
     set_sort_state(next_sort_state);
   }, []);
+
+  const get_visible_row_at_index = useCallback(
+    (index: number): ProofreadingVisibleItem | undefined => {
+      const window_index = index - list_view.window_start;
+      if (window_index < 0 || window_index >= visible_items.length) {
+        return undefined;
+      }
+
+      return visible_items[window_index];
+    },
+    [list_view.window_start, visible_items],
+  );
+
+  const get_visible_row_id_at_index = useCallback(
+    (index: number): string | undefined => {
+      return get_visible_row_at_index(index)?.row_id;
+    },
+    [get_visible_row_at_index],
+  );
+
+  const resolve_visible_row_index = useCallback(
+    (row_id: string): number | undefined => {
+      return visible_row_index_by_id.get(row_id);
+    },
+    [visible_row_index_by_id],
+  );
+
+  const read_visible_range = useCallback(
+    (range: { start: number; count: number }): void => {
+      void read_list_window(range).catch((error) => {
+        const fallback_message = t("proofreading_page.feedback.refresh_failed");
+        const message = is_worker_client_error(error)
+          ? fallback_message
+          : resolve_error_message(error, fallback_message);
+        push_toast("error", message);
+      });
+    },
+    [push_toast, read_list_window, t],
+  );
 
   const open_filter_dialog = useCallback((): void => {
     set_filter_dialog_filters(clone_proofreading_filter_options(current_filters_ref.current));
@@ -1093,12 +1253,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   ]);
 
   const open_edit_dialog = useCallback(
-    (row_id: string): void => {
-      const target_item = visible_item_by_id.get(row_id);
+    async (row_id: string): Promise<void> => {
+      const target_item = (await read_items_by_row_ids([row_id]))[0];
       if (target_item === undefined) {
         return;
       }
 
+      set_dialog_item_snapshot(target_item);
       set_dialog_state({
         open: true,
         target_row_id: row_id,
@@ -1106,11 +1267,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         saving: false,
       });
     },
-    [visible_item_by_id],
+    [read_items_by_row_ids],
   );
 
   const request_close_dialog = useCallback((): void => {
     set_dialog_state(create_empty_dialog_state());
+    set_dialog_item_snapshot(null);
   }, []);
 
   const update_dialog_draft = useCallback((next_draft_dst: string): void => {
@@ -1127,14 +1289,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    const target_item = visible_item_by_id.get(dialog_state.target_row_id);
+    const target_item = (await read_items_by_row_ids([dialog_state.target_row_id]))[0];
     if (target_item === undefined) {
       set_dialog_state(create_empty_dialog_state());
+      set_dialog_item_snapshot(null);
       return;
     }
 
     if (dialog_state.draft_dst === target_item.dst) {
       set_dialog_state(create_empty_dialog_state());
+      set_dialog_item_snapshot(null);
       push_toast("success", t("app.feedback.save_success"));
       return;
     }
@@ -1172,7 +1336,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         };
       });
     }
-  }, [dialog_state, project_store, push_toast, run_ack_only_mutation, t, visible_item_by_id]);
+  }, [dialog_state, project_store, push_toast, read_items_by_row_ids, run_ack_only_mutation, t]);
 
   const replace_next_visible_match = useCallback(async (): Promise<void> => {
     if (readonly || is_refreshing || is_mutating) {
@@ -1196,21 +1360,31 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
+    if (list_view.view_id === "") {
+      push_toast("warning", t("proofreading_page.feedback.replace_no_change"));
+      return;
+    }
+
     let target_index = -1;
     let target_item: ProofreadingItem | null = null;
-    for (let index = replace_cursor_ref.current; index < visible_items.length; index += 1) {
-      const candidate_item = visible_items[index]?.item;
-      if (candidate_item === undefined) {
-        continue;
+    for (
+      let scan_start = replace_cursor_ref.current;
+      scan_start < list_view.row_count;
+      scan_start += PROOFREADING_WINDOW_FETCH_COUNT
+    ) {
+      const target_window = await proofreading_runtime_client_ref.current.read_list_window({
+        view_id: list_view.view_id,
+        start: scan_start,
+        count: PROOFREADING_WINDOW_FETCH_COUNT,
+      });
+      const matched_index = target_window.rows.findIndex((row) => {
+        return matches_search_pattern(row.item.dst, search_pattern, trimmed_keyword, is_regex);
+      });
+      if (matched_index >= 0) {
+        target_index = target_window.start + matched_index;
+        target_item = target_window.rows[matched_index]?.item ?? null;
+        break;
       }
-
-      if (!matches_search_pattern(candidate_item.dst, search_pattern, trimmed_keyword, is_regex)) {
-        continue;
-      }
-
-      target_index = index;
-      target_item = candidate_item;
-      break;
     }
 
     if (target_item === null || target_index < 0) {
@@ -1251,7 +1425,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     run_ack_only_mutation,
     search_keyword,
     t,
-    visible_items,
+    list_view.view_id,
   ]);
 
   const replace_all_visible_matches = useCallback(async (): Promise<void> => {
@@ -1276,11 +1450,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    const target_items = visible_items
-      .map((item) => item.item)
-      .filter((item) => {
-        return matches_search_pattern(item.dst, search_pattern, trimmed_keyword, is_regex);
-      });
+    const target_row_ids = await read_current_view_row_ids(0, list_view.row_count);
+    const target_items = (await read_items_by_row_ids(target_row_ids)).filter((item) => {
+      return matches_search_pattern(item.dst, search_pattern, trimmed_keyword, is_regex);
+    });
 
     if (target_items.length === 0) {
       push_toast("warning", t("proofreading_page.feedback.replace_no_change"));
@@ -1322,7 +1495,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     run_ack_only_mutation,
     search_keyword,
     t,
-    visible_items,
+    list_view.row_count,
+    read_current_view_row_ids,
+    read_items_by_row_ids,
   ]);
 
   const request_retranslate_row_ids = useCallback((row_ids: string[]): void => {
@@ -1356,9 +1531,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    const target_items = pending_mutation.target_row_ids
-      .map((row_id) => visible_item_by_id.get(row_id) ?? null)
-      .filter((item): item is ProofreadingClientItem => item !== null);
+    const target_items = await read_items_by_row_ids(pending_mutation.target_row_ids);
     if (target_items.length === 0) {
       set_pending_mutation(null);
       return;
@@ -1407,10 +1580,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     list_view.revision,
     pending_mutation,
     project_store,
+    read_items_by_row_ids,
     run_ack_only_mutation,
     run_mutation,
     t,
-    visible_item_by_id,
   ]);
 
   useEffect(() => {
@@ -1494,15 +1667,21 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    void run_filter_panel_query(filter_dialog_filters, {
-      mark_loading: true,
-    }).catch((error) => {
-      const fallback_message = t("proofreading_page.feedback.refresh_failed");
-      const message = is_worker_client_error(error)
-        ? fallback_message
-        : resolve_error_message(error, fallback_message);
-      push_toast("error", message);
-    });
+    const debounce_id = window.setTimeout(() => {
+      void run_filter_panel_query(filter_dialog_filters, {
+        mark_loading: true,
+      }).catch((error) => {
+        const fallback_message = t("proofreading_page.feedback.refresh_failed");
+        const message = is_worker_client_error(error)
+          ? fallback_message
+          : resolve_error_message(error, fallback_message);
+        push_toast("error", message);
+      });
+    }, 160);
+
+    return () => {
+      window.clearTimeout(debounce_id);
+    };
   }, [
     cache_status,
     filter_dialog_filters,
@@ -1604,6 +1783,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       filter_panel,
       filter_panel_loading,
       visible_items,
+      visible_row_count: list_view.row_count,
       sort_state,
       selected_row_ids,
       active_row_id,
@@ -1619,6 +1799,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       update_regex,
       apply_table_selection,
       apply_table_sort_state,
+      get_visible_row_at_index,
+      get_visible_row_id_at_index,
+      resolve_visible_row_index,
+      read_visible_range,
       open_filter_dialog,
       close_filter_dialog,
       update_filter_dialog_filters,
@@ -1652,6 +1836,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     filter_dialog_open,
     filter_panel,
     filter_panel_loading,
+    get_visible_row_at_index,
+    get_visible_row_id_at_index,
     invalid_regex_message,
     is_mutating,
     is_refreshing,
@@ -1663,12 +1849,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     readonly,
     refresh_request_id,
     refresh_snapshot,
+    read_visible_range,
     replace_all_visible_matches,
     replace_next_visible_match,
     replace_text,
     request_close_dialog,
     request_reset_row_ids,
     request_retranslate_row_ids,
+    resolve_visible_row_index,
     save_dialog_entry,
     search_keyword,
     search_scope,
@@ -1682,5 +1870,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     update_search_keyword,
     update_search_scope,
     visible_items,
+    list_view.row_count,
   ]);
 }

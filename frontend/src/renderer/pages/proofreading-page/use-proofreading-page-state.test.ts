@@ -43,6 +43,9 @@ type ProofreadingRuntimeClientFixture = {
   hydrate_full: ReturnType<typeof vi.fn>;
   apply_item_delta: ReturnType<typeof vi.fn>;
   build_list_view: ReturnType<typeof vi.fn>;
+  read_list_window: ReturnType<typeof vi.fn>;
+  read_row_ids_range: ReturnType<typeof vi.fn>;
+  read_items_by_row_ids: ReturnType<typeof vi.fn>;
   build_filter_panel: ReturnType<typeof vi.fn>;
   dispose_project: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
@@ -223,6 +226,9 @@ function create_list_view() {
     ...create_empty_proofreading_list_view(),
     revision: 1,
     project_id: "E:/demo/sample.lg",
+    view_id: "view-1",
+    row_count: 1,
+    window_start: 0,
     default_filters: create_sync_state().default_filters,
     filters: create_sync_state().default_filters,
     summary: {
@@ -230,7 +236,7 @@ function create_list_view() {
       filtered_items: 1,
       warning_items: 0,
     },
-    items: [
+    window_rows: [
       {
         row_id: "1",
         item: {
@@ -281,6 +287,17 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
     hydrate_full: vi.fn(async () => create_sync_state()),
     apply_item_delta: vi.fn(async () => create_sync_state()),
     build_list_view: vi.fn(async () => create_list_view()),
+    read_list_window: vi.fn(async () => {
+      return {
+        view_id: "view-1",
+        start: 0,
+        rows: create_list_view().window_rows,
+      };
+    }),
+    read_row_ids_range: vi.fn(async () => ["1"]),
+    read_items_by_row_ids: vi.fn(async () => {
+      return create_list_view().window_rows.map((row) => row.item);
+    }),
     build_filter_panel: vi.fn(async () => create_filter_panel()),
     dispose_project: vi.fn(async () => {}),
     dispose: vi.fn(),

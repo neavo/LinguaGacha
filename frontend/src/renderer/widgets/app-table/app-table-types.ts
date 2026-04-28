@@ -39,6 +39,15 @@ export type AppTableRowEvent<Row> = {
   row_index: number;
 };
 
+export type AppTableRowModel<Row> = {
+  row_count: number;
+  loaded_row_ids: string[];
+  get_row_at_index: (index: number) => Row | undefined;
+  get_row_id_at_index: (index: number) => string | undefined;
+  resolve_row_index: (row_id: string) => number | undefined;
+  on_visible_range_change?: (range: { start: number; count: number }) => void;
+};
+
 type AppTableCellPresentation = "body" | "overlay";
 
 export type AppTableCellPayload<Row> = AppTableRowEvent<Row> & {
@@ -101,6 +110,7 @@ export type AppTableProps<Row> = {
   sort_state: AppTableSortState | null;
   drag_enabled: boolean;
   get_row_id: (row: Row, index: number) => string;
+  row_model?: AppTableRowModel<Row>;
   get_row_can_drag?: (row: Row, index: number) => boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_sort_change: (payload: AppTableSortState | null) => void;

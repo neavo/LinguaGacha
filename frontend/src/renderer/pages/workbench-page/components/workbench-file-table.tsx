@@ -211,7 +211,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         },
       },
     ];
-  }, [props, sort_action_labels, t]);
+  }, [props.on_prepare_entry_action, props.on_reset, props.readonly, sort_action_labels, t]);
 
   return (
     <Card variant="table" className="workbench-page__table-card">

@@ -20,6 +20,21 @@ type WorkerRequestMessage =
     }
   | {
       id: number;
+      type: "read_list_window";
+      input: Record<string, unknown>;
+    }
+  | {
+      id: number;
+      type: "read_row_ids_range";
+      input: Record<string, unknown>;
+    }
+  | {
+      id: number;
+      type: "read_items_by_row_ids";
+      input: Record<string, unknown>;
+    }
+  | {
+      id: number;
       type: "build_filter_panel";
       input: Record<string, unknown>;
     }
@@ -216,6 +231,9 @@ describe("createProofreadingRuntimeClient", () => {
     worker?.dispatch_message(list_view_request?.id ?? 0, {
       revision: 1,
       project_id: "demo",
+      view_id: "demo-view",
+      row_count: 0,
+      window_start: 0,
       summary: {
         total_items: 0,
         filtered_items: 0,
@@ -223,18 +241,40 @@ describe("createProofreadingRuntimeClient", () => {
       },
       default_filters: create_list_query().filters,
       filters: create_list_query().filters,
-      items: [],
+      window_rows: [],
       invalid_regex_message: null,
     });
 
     await expect(list_view_promise).resolves.toMatchObject({
       revision: 1,
       project_id: "demo",
-      items: [],
+      window_rows: [],
+    });
+
+    const window_promise = client.read_list_window({
+      view_id: "demo-view",
+      start: 0,
+      count: 20,
+    });
+    const window_request = worker?.posted_messages[2];
+    expect(window_request).toMatchObject({
+      type: "read_list_window",
+      input: {
+        view_id: "demo-view",
+      },
+    });
+    worker?.dispatch_message(window_request?.id ?? 0, {
+      view_id: "demo-view",
+      start: 0,
+      rows: [],
+    });
+    await expect(window_promise).resolves.toMatchObject({
+      view_id: "demo-view",
+      rows: [],
     });
 
     const dispose_promise = client.dispose_project("demo");
-    const dispose_request = worker?.posted_messages[2];
+    const dispose_request = worker?.posted_messages[3];
     expect(dispose_request).toMatchObject({
       type: "dispose_project",
       input: {

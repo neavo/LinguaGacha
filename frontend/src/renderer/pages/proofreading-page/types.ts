@@ -116,10 +116,13 @@ export type ProofreadingVisibleItem = {
 export type ProofreadingListView = {
   revision: number;
   project_id: string;
+  view_id: string;
+  row_count: number;
+  window_start: number;
   summary: ProofreadingSummary;
   default_filters: ProofreadingFilterOptions;
   filters: ProofreadingFilterOptions;
-  items: ProofreadingVisibleItem[];
+  window_rows: ProofreadingVisibleItem[];
   invalid_regex_message: string | null;
 };
 
@@ -433,6 +436,9 @@ export function create_empty_proofreading_list_view(): ProofreadingListView {
   return {
     revision: 0,
     project_id: "",
+    view_id: "",
+    row_count: 0,
+    window_start: 0,
     summary: create_empty_proofreading_summary(),
     default_filters: {
       warning_types: [],
@@ -448,7 +454,7 @@ export function create_empty_proofreading_list_view(): ProofreadingListView {
       glossary_terms: [],
       include_without_glossary_miss: true,
     },
-    items: [],
+    window_rows: [],
     invalid_regex_message: null,
   };
 }

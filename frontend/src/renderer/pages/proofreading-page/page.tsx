@@ -107,11 +107,16 @@ export function ProofreadingPage(props: ScreenComponentProps): JSX.Element {
       <div className="proofreading-page__table-host">
         <ProofreadingTable
           items={proofreading_page_state.visible_items}
+          visible_row_count={proofreading_page_state.visible_row_count}
           sort_state={proofreading_page_state.sort_state}
           selected_row_ids={proofreading_page_state.selected_row_ids}
           active_row_id={proofreading_page_state.active_row_id}
           anchor_row_id={proofreading_page_state.anchor_row_id}
           readonly={toolbar_disabled}
+          get_row_at_index={proofreading_page_state.get_visible_row_at_index}
+          get_row_id_at_index={proofreading_page_state.get_visible_row_id_at_index}
+          resolve_row_index={proofreading_page_state.resolve_visible_row_index}
+          on_visible_range_change={proofreading_page_state.read_visible_range}
           on_sort_change={proofreading_page_state.apply_table_sort_state}
           on_selection_change={proofreading_page_state.apply_table_selection}
           on_open_edit={proofreading_page_state.open_edit_dialog}

@@ -183,8 +183,8 @@ describe("createProofreadingRuntimeEngine", () => {
         warning_items: 1,
       },
     });
-    expect(list_view.items.map((item) => item.row_id)).toEqual(["1", "2"]);
-    expect(list_view.items[0]?.item.failed_glossary_terms).toEqual([["foo", "baz"]]);
+    expect(list_view.window_rows.map((item) => item.row_id)).toEqual(["1", "2"]);
+    expect(list_view.window_rows[0]?.item.failed_glossary_terms).toEqual([["foo", "baz"]]);
 
     const filter_panel = engine.build_filter_panel({
       filters: sync_state.default_filters,
@@ -259,9 +259,9 @@ describe("createProofreadingRuntimeEngine", () => {
       filtered_items: 2,
       warning_items: 0,
     });
-    expect(list_view.items[0]?.item.dst).toBe("baz");
-    expect(list_view.items[0]?.item.failed_glossary_terms).toEqual([]);
-    expect(list_view.items[1]?.item.dst).toBe("beta");
+    expect(list_view.window_rows[0]?.item.dst).toBe("baz");
+    expect(list_view.window_rows[0]?.item.failed_glossary_terms).toEqual([]);
+    expect(list_view.window_rows[1]?.item.dst).toBe("beta");
 
     const filter_panel = engine.build_filter_panel({
       filters: delta_state.default_filters,
@@ -322,7 +322,7 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(list_view.items.map((item) => item.row_id)).toEqual(["7", "8"]);
+    expect(list_view.window_rows.map((item) => item.row_id)).toEqual(["7", "8"]);
 
     const all_status_list_view = engine.build_list_view({
       filters: {
@@ -334,7 +334,7 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(all_status_list_view.items.map((item) => item.row_id)).toEqual([
+    expect(all_status_list_view.window_rows.map((item) => item.row_id)).toEqual([
       "3",
       "4",
       "5",
@@ -376,12 +376,12 @@ describe("createProofreadingRuntimeEngine", () => {
       sort_state: null,
     });
     const warning_by_row_id = new Map(
-      list_view.items.map((item) => {
+      list_view.window_rows.map((item) => {
         return [item.row_id, item.item.warnings];
       }),
     );
     const item_by_row_id = new Map(
-      list_view.items.map((item) => {
+      list_view.window_rows.map((item) => {
         return [item.row_id, item.item];
       }),
     );
@@ -411,8 +411,8 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(english_list_view.items[0]?.item.warnings).toEqual([]);
-    expect(english_list_view.items[0]?.item.warning_fragments_by_code).toEqual({});
+    expect(english_list_view.window_rows[0]?.item.warnings).toEqual([]);
+    expect(english_list_view.window_rows[0]?.item.warning_fragments_by_code).toEqual({});
   });
 
   it("谚文残留只在韩文源语言检查", () => {
@@ -438,8 +438,8 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(list_view.items[0]?.item.warnings).toEqual(["HANGEUL"]);
-    expect(list_view.items[0]?.item.warning_fragments_by_code.HANGEUL).toEqual(["번역"]);
+    expect(list_view.window_rows[0]?.item.warnings).toEqual(["HANGEUL"]);
+    expect(list_view.window_rows[0]?.item.warning_fragments_by_code.HANGEUL).toEqual(["번역"]);
   });
 
   it("空译文会跳过检查，文本保护按非空保护段的顺序和值比较", () => {
@@ -490,13 +490,13 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(list_view.items[0]?.item.warnings).toEqual([]);
-    expect(list_view.items[1]?.item.warnings).toEqual(["TEXT_PRESERVE"]);
-    expect(list_view.items[1]?.item.warning_fragments_by_code.TEXT_PRESERVE).toEqual([
+    expect(list_view.window_rows[0]?.item.warnings).toEqual([]);
+    expect(list_view.window_rows[1]?.item.warnings).toEqual(["TEXT_PRESERVE"]);
+    expect(list_view.window_rows[1]?.item.warning_fragments_by_code.TEXT_PRESERVE).toEqual([
       "{a}",
       "{b}",
     ]);
-    expect(list_view.items[2]?.item.warnings).toEqual([]);
+    expect(list_view.window_rows[2]?.item.warnings).toEqual([]);
   });
 
   it("相似度会先剥离保护段并在任一侧为空时跳过", () => {
@@ -547,9 +547,9 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(list_view.items[0]?.item.warnings).toEqual([]);
-    expect(list_view.items[1]?.item.warnings).toEqual(["SIMILARITY"]);
-    expect(list_view.items[2]?.item.warnings).toEqual([]);
+    expect(list_view.window_rows[0]?.item.warnings).toEqual([]);
+    expect(list_view.window_rows[1]?.item.warnings).toEqual(["SIMILARITY"]);
+    expect(list_view.window_rows[2]?.item.warnings).toEqual([]);
   });
 
   it("重试次数达到 2 次时才产生阈值警告", () => {
@@ -579,8 +579,8 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(list_view.items[0]?.item.warnings).toEqual([]);
-    expect(list_view.items[1]?.item.warnings).toEqual(["RETRY_THRESHOLD"]);
+    expect(list_view.window_rows[0]?.item.warnings).toEqual([]);
+    expect(list_view.window_rows[1]?.item.warnings).toEqual(["RETRY_THRESHOLD"]);
   });
 
   it("术语 miss 使用替换后的文本、保留 src 空白，并把空译文视为已包含", () => {
@@ -662,10 +662,10 @@ describe("createProofreadingRuntimeEngine", () => {
       is_regex: false,
       sort_state: null,
     });
-    expect(list_view.items[0]?.item.failed_glossary_terms).toEqual([[" foo ", "bar"]]);
-    expect(list_view.items[0]?.item.warnings).toEqual(["GLOSSARY"]);
-    expect(list_view.items[1]?.item.failed_glossary_terms).toEqual([]);
-    expect(list_view.items[2]?.item.failed_glossary_terms).toEqual([]);
-    expect(list_view.items[3]?.item.failed_glossary_terms).toEqual([]);
+    expect(list_view.window_rows[0]?.item.failed_glossary_terms).toEqual([[" foo ", "bar"]]);
+    expect(list_view.window_rows[0]?.item.warnings).toEqual(["GLOSSARY"]);
+    expect(list_view.window_rows[1]?.item.failed_glossary_terms).toEqual([]);
+    expect(list_view.window_rows[2]?.item.failed_glossary_terms).toEqual([]);
+    expect(list_view.window_rows[3]?.item.failed_glossary_terms).toEqual([]);
   });
 });
