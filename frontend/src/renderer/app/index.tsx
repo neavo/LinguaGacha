@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { ThemeProvider, useTheme } from "next-themes";
 
 import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from "@/app/navigation/schema";
@@ -121,6 +129,14 @@ function read_lg_base_font_enabled(): boolean {
   }
 }
 
+function serialize_lg_base_font_mode(is_enabled: boolean): "enabled" | "disabled" {
+  return is_enabled ? "enabled" : "disabled";
+}
+
+function parse_lg_base_font_mode(stored_font_mode: string | null): boolean {
+  return stored_font_mode !== "disabled";
+}
+
 function is_log_window_mode(): boolean {
   return new URLSearchParams(window.location.search).get("window") === "logs";
 }
@@ -136,7 +152,45 @@ function format_app_titlebar_title(app_name: string, version: string | null): st
   return `${app_name} ${version_label}`;
 }
 
-function AppContent(): JSX.Element {
+function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
+  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useState<boolean>(() =>
+    read_lg_base_font_enabled(),
+  );
+
+  useEffect(() => {
+    const font_mode = serialize_lg_base_font_mode(is_lg_base_font_enabled);
+
+    document.documentElement.dataset.lgBaseFont = font_mode;
+    if (window.localStorage.getItem(FONT_FAMILY_STORAGE_KEY) !== font_mode) {
+      window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, font_mode);
+    }
+  }, [is_lg_base_font_enabled]);
+
+  useEffect(() => {
+    function handle_storage(event: StorageEvent): void {
+      if (event.key !== FONT_FAMILY_STORAGE_KEY) {
+        return;
+      }
+
+      set_is_lg_base_font_enabled(parse_lg_base_font_mode(event.newValue));
+    }
+
+    window.addEventListener("storage", handle_storage);
+
+    return () => {
+      window.removeEventListener("storage", handle_storage);
+    };
+  }, []);
+
+  return [is_lg_base_font_enabled, set_is_lg_base_font_enabled];
+}
+
+type AppContentProps = {
+  is_lg_base_font_enabled: boolean;
+  set_is_lg_base_font_enabled: Dispatch<SetStateAction<boolean>>;
+};
+
+function AppContent(props: AppContentProps): JSX.Element {
   const {
     hydration_ready,
     pending_target_route,
@@ -155,9 +209,6 @@ function AppContent(): JSX.Element {
   const [expanded_items, set_expanded_items] = useState<Set<RouteId>>(() => new Set());
   const [is_sidebar_collapsed, set_is_sidebar_collapsed] = useState<boolean>(() =>
     read_sidebar_state(),
-  );
-  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useState<boolean>(() =>
-    read_lg_base_font_enabled(),
   );
   const [app_version, set_app_version] = useState<string | null>(null);
   const [update_release_url, set_update_release_url] = useState<string | null>(null);
@@ -183,13 +234,6 @@ function AppContent(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(is_sidebar_collapsed));
   }, [is_sidebar_collapsed]);
-
-  useEffect(() => {
-    const font_mode = is_lg_base_font_enabled ? "enabled" : "disabled";
-
-    document.documentElement.dataset.lgBaseFont = font_mode;
-    window.localStorage.setItem(FONT_FAMILY_STORAGE_KEY, font_mode);
-  }, [is_lg_base_font_enabled]);
 
   useEffect(() => {
     let is_disposed = false;
@@ -453,9 +497,7 @@ function AppContent(): JSX.Element {
         setTheme("light");
       }
     } else {
-      set_is_lg_base_font_enabled((previous_value) => {
-        return !previous_value;
-      });
+      props.set_is_lg_base_font_enabled(!props.is_lg_base_font_enabled);
     }
   }
 
@@ -569,6 +611,7 @@ function AppContent(): JSX.Element {
 
 function App(): JSX.Element {
   const log_window_mode = is_log_window_mode();
+  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useLgBaseFontMode();
 
   return (
     <DesktopRuntimeProvider>
@@ -581,7 +624,14 @@ function App(): JSX.Element {
           themes={["light", "dark"]}
         >
           <TooltipProvider delayDuration={120}>
-            {log_window_mode ? <LogWindowPage /> : <AppContent />}
+            {log_window_mode ? (
+              <LogWindowPage />
+            ) : (
+              <AppContent
+                is_lg_base_font_enabled={is_lg_base_font_enabled}
+                set_is_lg_base_font_enabled={set_is_lg_base_font_enabled}
+              />
+            )}
             {!log_window_mode ? <DesktopProgressToastModalLayer /> : null}
             <Toaster />
           </TooltipProvider>
