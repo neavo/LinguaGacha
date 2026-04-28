@@ -21,6 +21,10 @@ import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import {
+  is_task_snapshot_for_runtime,
+  should_defer_runtime_snapshot_refresh,
+} from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
+import {
   append_workbench_waveform_sample,
   decay_workbench_waveform_sample,
   has_unsettled_workbench_waveform_tail,
@@ -377,6 +381,10 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
+    if (should_defer_runtime_snapshot_refresh(task_snapshot, "analysis")) {
+      return;
+    }
+
     try {
       const task_payload = await api_fetch<AnalysisTaskPayload>("/api/tasks/snapshot", {
         task_type: "analysis",
@@ -394,6 +402,7 @@ export function useAnalysisTaskRuntime(
     project_snapshot.loaded,
     push_toast,
     t,
+    task_snapshot,
   ]);
 
   const open_analysis_detail_sheet = useCallback((): void => {
@@ -723,10 +732,14 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
-    if (previous_task_busy && !task_snapshot.busy) {
+    if (
+      previous_task_busy &&
+      !task_snapshot.busy &&
+      is_task_snapshot_for_runtime(task_snapshot, "analysis")
+    ) {
       void refresh_analysis_task_snapshot();
     }
-  }, [project_snapshot.loaded, refresh_analysis_task_snapshot, task_snapshot.busy]);
+  }, [project_snapshot.loaded, refresh_analysis_task_snapshot, task_snapshot]);
 
   useEffect(() => {
     const previous_seq = previous_workbench_change_seq_ref.current;
@@ -736,10 +749,18 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
-    if (previous_seq !== workbench_change_signal.seq) {
+    if (
+      previous_seq !== workbench_change_signal.seq &&
+      !should_defer_runtime_snapshot_refresh(task_snapshot, "analysis")
+    ) {
       void refresh_analysis_task_snapshot();
     }
-  }, [project_snapshot.loaded, workbench_change_signal.seq, refresh_analysis_task_snapshot]);
+  }, [
+    project_snapshot.loaded,
+    refresh_analysis_task_snapshot,
+    task_snapshot,
+    workbench_change_signal.seq,
+  ]);
 
   useEffect(() => {
     if (task_snapshot.task_type !== "analysis") {

@@ -323,6 +323,92 @@ describe("useAnalysisTaskRuntime", () => {
     );
   });
 
+  it("分析停止完成时只弹一次停止提示", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "STOPPING",
+        busy: true,
+        line: 1,
+        total_line: 2,
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "IDLE",
+        busy: false,
+        line: 1,
+        total_line: 2,
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(push_toast_mock).toHaveBeenCalledTimes(1);
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "success",
+      "workbench_page.analysis_task.feedback.stopped",
+    );
+  });
+
+  it("翻译任务停止完成时不会刷新分析快照或弹分析停止提示", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        task_type: "translation",
+        status: "STOPPING",
+        busy: true,
+        line: 1,
+        total_line: 2,
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        task_type: "translation",
+        status: "IDLE",
+        busy: false,
+        line: 1,
+        total_line: 2,
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/tasks/snapshot", {
+      task_type: "analysis",
+    });
+    expect(push_toast_mock).not.toHaveBeenCalledWith(
+      "success",
+      "workbench_page.analysis_task.feedback.stopped",
+    );
+  });
+
   it("analysis reset all 成功时走本地 patch + apply + ack", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
