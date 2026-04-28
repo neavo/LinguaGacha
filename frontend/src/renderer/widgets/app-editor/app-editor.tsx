@@ -7,15 +7,13 @@ import {
   EditorView,
   drawSelection,
   highlightActiveLineGutter,
-  highlightSpecialChars,
-  highlightWhitespace,
   keymap,
   lineNumbers,
 } from "@codemirror/view";
 
 import { cn } from "@/lib/utils";
 import {
-  app_editor_full_height_selection_extension,
+  app_editor_whitespace_extension,
   type AppEditorMode,
   resolve_app_editor_mode_extensions,
   resolve_app_editor_theme_extensions,
@@ -76,9 +74,7 @@ function create_editor_extensions(args: {
     lineNumbers(),
     highlightActiveLineGutter(),
     drawSelection(),
-    app_editor_full_height_selection_extension,
-    highlightSpecialChars(),
-    highlightWhitespace(),
+    app_editor_whitespace_extension,
     history(),
     keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
     EditorView.lineWrapping,

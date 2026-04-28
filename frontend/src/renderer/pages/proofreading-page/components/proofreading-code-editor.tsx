@@ -17,8 +17,6 @@ import {
   drawSelection,
   highlightActiveLineGutter,
   hoverTooltip,
-  highlightSpecialChars,
-  highlightWhitespace,
   keymap,
   lineNumbers,
   type Tooltip,
@@ -28,7 +26,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import {
-  app_editor_full_height_selection_extension,
+  app_editor_whitespace_extension,
   resolve_app_editor_theme_extensions,
 } from "@/widgets/app-editor/app-editor-code-mirror";
 import "@/widgets/app-editor/app-editor.css";
@@ -192,9 +190,7 @@ function create_editor_extensions(
     lineNumbers(),
     highlightActiveLineGutter(),
     drawSelection(),
-    app_editor_full_height_selection_extension,
-    highlightSpecialChars(),
-    highlightWhitespace(),
+    app_editor_whitespace_extension,
     history(),
     keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
     EditorView.lineWrapping,
