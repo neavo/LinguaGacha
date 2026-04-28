@@ -423,7 +423,13 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         },
       },
     ];
-  }, [props, t]);
+  }, [
+    props.on_query_entry_source,
+    props.on_search_entry_relations,
+    props.statistics_badge_by_entry_id,
+    props.statistics_ready,
+    t,
+  ]);
 
   return (
     <Card variant="table" className="glossary-page__table-card">

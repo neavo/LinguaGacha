@@ -6,6 +6,7 @@ import {
   closestCenter,
   type DragEndEvent,
   type DragStartEvent,
+  type UniqueIdentifier,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -16,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import {
   Fragment,
   useCallback,
@@ -59,6 +60,7 @@ import type {
   AppTableColumn,
   AppTableDragCellPayload,
   AppTableProps,
+  AppTableRowModel,
   AppTableRowEvent,
   AppTableSelectionState,
 } from "@/widgets/app-table/app-table-types";
@@ -97,6 +99,69 @@ type AppTableSortableRowProps<Row> = {
   on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
   register_row_element: (row_id: string, row_element: HTMLTableRowElement | null) => void;
 };
+
+type AppTableVisibleRange = {
+  start: number;
+  count: number;
+};
+
+function create_array_row_model<Row>(
+  rows: Row[],
+  get_row_id: (row: Row, index: number) => string,
+): AppTableRowModel<Row> {
+  const loaded_row_ids = rows.map((row, index) => get_row_id(row, index));
+  const row_index_by_id = new Map(
+    loaded_row_ids.map((row_id, index) => {
+      return [row_id, index] as const;
+    }),
+  );
+
+  return {
+    row_count: rows.length,
+    loaded_row_ids,
+    get_row_at_index: (index) => rows[index],
+    get_row_id_at_index: (index) => loaded_row_ids[index],
+    resolve_row_index: (row_id) => row_index_by_id.get(row_id),
+  };
+}
+
+function use_array_row_model<Row>(
+  rows: Row[],
+  get_row_id: (row: Row, index: number) => string,
+): AppTableRowModel<Row> {
+  const get_row_id_ref = useRef(get_row_id);
+
+  useEffect(() => {
+    get_row_id_ref.current = get_row_id;
+  }, [get_row_id]);
+
+  return useMemo(() => {
+    return create_array_row_model(rows, (row, index) => get_row_id_ref.current(row, index));
+  }, [rows]);
+}
+
+function resolve_visible_sortable_row_ids(args: {
+  virtual_rows: Array<VirtualItem>;
+  resolve_row_id_at_index: (index: number) => string | undefined;
+}): UniqueIdentifier[] {
+  return args.virtual_rows.flatMap((virtual_row) => {
+    const row_id = args.resolve_row_id_at_index(virtual_row.index);
+    return row_id === undefined ? [] : [row_id];
+  });
+}
+
+function normalize_visible_range(virtual_rows: Array<VirtualItem>): AppTableVisibleRange | null {
+  if (virtual_rows.length === 0) {
+    return null;
+  }
+
+  const first_index = virtual_rows[0]?.index ?? 0;
+  const last_index = virtual_rows.at(-1)?.index ?? first_index;
+  return {
+    start: first_index,
+    count: last_index - first_index + 1,
+  };
+}
 
 function build_selection_box_rect(selection_box: SelectionBoxState): DOMRect {
   return new DOMRect(
@@ -314,6 +379,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     sort_state,
     drag_enabled: drag_enabled_prop,
     get_row_id,
+    row_model: row_model_prop,
     get_row_can_drag,
     on_selection_change,
     on_sort_change,
@@ -339,26 +405,49 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const selection_origin_state_ref = useRef<AppTableSelectionState | null>(null);
   const selection_preview_state_ref = useRef<AppTableSelectionState | null>(null);
   const selection_frame_id_ref = useRef<number | null>(null);
+  const visible_range_signature_ref = useRef("");
   const suppress_click_ref = useRef(false);
+  const row_height = estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT;
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null);
-  const [viewport_height, set_viewport_height] = useState(
-    estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT,
-  );
-  const [measured_row_height, set_measured_row_height] = useState(
-    estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT,
-  );
+  const [viewport_height, set_viewport_height] = useState(row_height);
+  const [measured_row_height, set_measured_row_height] = useState(row_height);
   const [active_drag_row_id, set_active_drag_row_id] = useState<string | null>(null);
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null);
   const [selection_box_active, set_selection_box_active] = useState(false);
   const [selection_preview_state, set_selection_preview_state] =
     useState<AppTableSelectionState | null>(null);
 
-  const row_ids = useMemo(() => {
-    return rows.map((row, index) => get_row_id(row, index));
-  }, [get_row_id, rows]);
+  const array_row_model = use_array_row_model(rows, get_row_id);
+  const row_model = row_model_prop ?? array_row_model;
+  const row_count = row_model.row_count;
+  const row_ids = row_model.loaded_row_ids;
+  const drag_model_enabled = row_model_prop === undefined;
+  const resolve_row_at_index = useCallback(
+    (index: number): Row | undefined => {
+      return row_model.get_row_at_index(index);
+    },
+    [row_model],
+  );
+  const resolve_row_id_at_index = useCallback(
+    (index: number): string | undefined => {
+      return row_model.get_row_id_at_index(index);
+    },
+    [row_model],
+  );
   const row_index_by_id = useMemo(() => {
-    return new Map(row_ids.map((row_id, index) => [row_id, index]));
-  }, [row_ids]);
+    const next_index_by_id = new Map<string, number>();
+    [...row_ids, ...selected_row_ids, active_row_id, anchor_row_id].forEach((row_id) => {
+      if (row_id === null || row_id === undefined) {
+        return;
+      }
+
+      const row_index = row_model.resolve_row_index(row_id);
+      if (row_index !== undefined) {
+        next_index_by_id.set(row_id, row_index);
+      }
+    });
+    return next_index_by_id;
+  }, [active_row_id, anchor_row_id, row_ids, row_model, selected_row_ids]);
   const selection_state = useMemo(() => {
     return normalize_app_table_selection_state(
       {
@@ -374,7 +463,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     return new Set(rendered_selection_state.selected_row_ids);
   }, [rendered_selection_state.selected_row_ids]);
   const drag_column_present = columns.some((column) => column.kind === "drag");
-  const drag_enabled = drag_enabled_prop && drag_column_present;
+  const drag_enabled = drag_enabled_prop && drag_column_present && drag_model_enabled;
   const box_selection_enabled =
     selection_mode === "multiple" && box_selection_enabled_prop === true;
   const active_drag_row = useMemo(() => {
@@ -387,7 +476,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       return null;
     }
 
-    const active_row = rows[active_row_index];
+    const active_row = resolve_row_at_index(active_row_index);
     if (active_row === undefined) {
       return null;
     }
@@ -397,7 +486,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       row_id: active_drag_row_id,
       row_index: active_row_index,
     };
-  }, [active_drag_row_id, row_index_by_id, rows]);
+  }, [active_drag_row_id, resolve_row_at_index, row_index_by_id]);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -432,22 +521,17 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       '[data-slot="scroll-area-viewport"]',
     );
     set_viewport_element(next_viewport_element);
-  }, [rows.length]);
+  }, [row_count]);
 
   useEffect(() => {
     const table_scroll_host_element = table_scroll_host_ref.current;
     if (table_scroll_host_element === null) {
-      set_viewport_height(estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT);
+      set_viewport_height(row_height);
       return;
     }
 
     const update_viewport_height = (): void => {
-      set_viewport_height(
-        Math.max(
-          table_scroll_host_element.clientHeight,
-          estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT,
-        ),
-      );
+      set_viewport_height(Math.max(table_scroll_host_element.clientHeight, row_height));
     };
 
     update_viewport_height();
@@ -461,28 +545,47 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     return () => {
       resize_observer.disconnect();
     };
-  }, [estimated_row_height, rows.length]);
+  }, [row_count, row_height]);
 
   const virtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
-    count: rows.length,
+    count: row_count,
     getScrollElement: () => viewport_element,
-    estimateSize: () => estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT,
+    estimateSize: () => row_height,
     overscan: virtual_overscan ?? APP_TABLE_DEFAULT_VIRTUAL_OVERSCAN,
-    getItemKey: (index) => row_ids[index] ?? index,
+    getItemKey: (index) => resolve_row_id_at_index(index) ?? index,
     initialRect: {
       width: 0,
-      height: Math.max(
-        viewport_height,
-        estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT,
-      ),
+      height: Math.max(viewport_height, row_height),
     },
   });
 
   useEffect(() => {
     virtualizer.measure();
-  }, [rows.length, viewport_height, virtualizer]);
+  }, [row_count, row_height, viewport_height]);
 
   const virtual_rows = virtualizer.getVirtualItems();
+  useEffect(() => {
+    visible_range_signature_ref.current = "";
+  }, [row_count, row_model.on_visible_range_change]);
+
+  useEffect(() => {
+    if (row_model.on_visible_range_change === undefined) {
+      return;
+    }
+
+    const visible_range = normalize_visible_range(virtual_rows);
+    if (visible_range === null) {
+      return;
+    }
+
+    const range_signature = `${visible_range.start}:${visible_range.count}`;
+    if (range_signature === visible_range_signature_ref.current) {
+      return;
+    }
+
+    visible_range_signature_ref.current = range_signature;
+    row_model.on_visible_range_change(visible_range);
+  }, [row_model, virtual_rows]);
   const first_virtual_row = virtual_rows[0] ?? null;
   const last_virtual_row = virtual_rows.at(-1) ?? null;
   const spacer_heights = build_app_table_spacer_heights({
@@ -955,7 +1058,8 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
 
     const next_active_row_id = String(event.active.id);
     const active_row_index = row_index_by_id.get(next_active_row_id);
-    const active_row = active_row_index === undefined ? null : (rows[active_row_index] ?? null);
+    const active_row =
+      active_row_index === undefined ? null : (resolve_row_at_index(active_row_index) ?? null);
 
     if (
       active_row_index === undefined ||
@@ -1124,6 +1228,12 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
         </Table>
       </div>
     );
+  const sortable_items = useMemo<UniqueIdentifier[]>(() => {
+    return resolve_visible_sortable_row_ids({
+      virtual_rows,
+      resolve_row_id_at_index,
+    });
+  }, [resolve_row_id_at_index, virtual_rows]);
 
   return (
     <div className={cn("app-table", className)}>
@@ -1146,7 +1256,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
             <Table className={cn("app-table__table app-table__table--body", table_class_name)}>
               {render_colgroup()}
               <TableBody ref={table_body_ref}>
-                <SortableContext items={row_ids} strategy={verticalListSortingStrategy}>
+                <SortableContext items={sortable_items} strategy={verticalListSortingStrategy}>
                   {show_top_spacer ? (
                     <AppTableSpacerRow
                       column_count={columns.length}
@@ -1154,8 +1264,8 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                     />
                   ) : null}
                   {virtual_rows.map((virtual_row) => {
-                    const row = rows[virtual_row.index];
-                    const row_id = row_ids[virtual_row.index];
+                    const row = resolve_row_at_index(virtual_row.index);
+                    const row_id = resolve_row_id_at_index(virtual_row.index);
                     if (row === undefined || row_id === undefined) {
                       return null;
                     }
@@ -1194,7 +1304,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                       <AppTablePlaceholderRow
                         key={`app-table-placeholder-${placeholder_index.toString()}`}
                         columns={columns}
-                        row_index={rows.length + placeholder_index}
+                        row_index={row_count + placeholder_index}
                         height={placeholder_height}
                       />
                     ),

@@ -4,11 +4,16 @@ import type {
 } from "@/pages/proofreading-page/types";
 import type {
   ProofreadingFilterPanelQuery,
+  ProofreadingItemsByRowIdsQuery,
   ProofreadingListViewQuery,
+  ProofreadingListWindow,
+  ProofreadingListWindowQuery,
+  ProofreadingRowIdsRangeQuery,
   ProofreadingRuntimeDeltaInput,
   ProofreadingRuntimeHydrationInput,
   ProofreadingRuntimeSyncState,
 } from "@/pages/proofreading-page/proofreading-runtime-engine";
+import type { ProofreadingClientItem } from "@/pages/proofreading-page/types";
 import { WorkerClientError } from "@/lib/worker-client-error";
 
 type PendingResolver = {
@@ -31,6 +36,21 @@ type ProofreadingRuntimeWorkerRequest =
       id: number;
       type: "build_list_view";
       input: ProofreadingListViewQuery;
+    }
+  | {
+      id: number;
+      type: "read_list_window";
+      input: ProofreadingListWindowQuery;
+    }
+  | {
+      id: number;
+      type: "read_row_ids_range";
+      input: ProofreadingRowIdsRangeQuery;
+    }
+  | {
+      id: number;
+      type: "read_items_by_row_ids";
+      input: ProofreadingItemsByRowIdsQuery;
     }
   | {
       id: number;
@@ -135,6 +155,26 @@ export function createProofreadingRuntimeClient() {
     build_list_view(input: ProofreadingListViewQuery): Promise<ProofreadingListView> {
       return post_request({
         type: "build_list_view",
+        input,
+      });
+    },
+    read_list_window(input: ProofreadingListWindowQuery): Promise<ProofreadingListWindow> {
+      return post_request({
+        type: "read_list_window",
+        input,
+      });
+    },
+    read_row_ids_range(input: ProofreadingRowIdsRangeQuery): Promise<string[]> {
+      return post_request({
+        type: "read_row_ids_range",
+        input,
+      });
+    },
+    read_items_by_row_ids(
+      input: ProofreadingItemsByRowIdsQuery,
+    ): Promise<ProofreadingClientItem[]> {
+      return post_request({
+        type: "read_items_by_row_ids",
         input,
       });
     },

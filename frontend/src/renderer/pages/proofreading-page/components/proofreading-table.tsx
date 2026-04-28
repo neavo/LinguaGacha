@@ -28,17 +28,23 @@ import { AppTable } from "@/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@/widgets/app-table/app-table-drag-indicator";
 import type {
   AppTableColumn,
+  AppTableRowModel,
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
 
 type ProofreadingTableProps = {
   items: ProofreadingVisibleItem[];
+  visible_row_count: number;
   sort_state: AppTableSortState | null;
   selected_row_ids: string[];
   active_row_id: string | null;
   anchor_row_id: string | null;
   readonly: boolean;
+  get_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
+  get_row_id_at_index: (index: number) => string | undefined;
+  resolve_row_index: (row_id: string) => number | undefined;
+  on_visible_range_change: (range: { start: number; count: number }) => void;
   on_sort_change: (next_sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_open_edit: (row_id: string) => void;
@@ -197,6 +203,23 @@ function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element 
 
 export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
   const { t } = useI18n();
+  const row_model = useMemo<AppTableRowModel<ProofreadingVisibleItem>>(() => {
+    return {
+      row_count: props.visible_row_count,
+      loaded_row_ids: props.items.map((item) => item.row_id),
+      get_row_at_index: props.get_row_at_index,
+      get_row_id_at_index: props.get_row_id_at_index,
+      resolve_row_index: props.resolve_row_index,
+      on_visible_range_change: props.on_visible_range_change,
+    };
+  }, [
+    props.get_row_at_index,
+    props.get_row_id_at_index,
+    props.items,
+    props.on_visible_range_change,
+    props.resolve_row_index,
+    props.visible_row_count,
+  ]);
   const columns = useMemo<AppTableColumn<ProofreadingVisibleItem>[]>(() => {
     return [
       {
@@ -299,6 +322,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           sort_state={props.sort_state}
           drag_enabled={false}
           get_row_id={(item) => item.row_id}
+          row_model={row_model}
           on_selection_change={props.on_selection_change}
           on_sort_change={props.on_sort_change}
           on_reorder={() => {}}

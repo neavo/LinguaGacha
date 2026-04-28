@@ -76,10 +76,34 @@ export type ProofreadingListViewQuery = {
   scope: ProofreadingSearchScope;
   is_regex: boolean;
   sort_state: AppTableSortState | null;
+  window_start?: number;
+  window_count?: number;
 };
 
 export type ProofreadingFilterPanelQuery = {
   filters: ProofreadingFilterOptions;
+};
+
+export type ProofreadingListWindowQuery = {
+  view_id: string;
+  start: number;
+  count: number;
+};
+
+export type ProofreadingRowIdsRangeQuery = {
+  view_id: string;
+  start: number;
+  count: number;
+};
+
+export type ProofreadingItemsByRowIdsQuery = {
+  row_ids: string[];
+};
+
+export type ProofreadingListWindow = {
+  view_id: string;
+  start: number;
+  rows: ProofreadingVisibleItem[];
 };
 
 export type ProofreadingRuntimeSyncState = {
@@ -97,6 +121,8 @@ type ProofreadingRuntimeState = {
   total_item_count: number;
   quality: ProjectStoreQualityState;
   source_language: string;
+  quality_context: ProofreadingQualityContext;
+  sample_regex_cache: Map<string, RegExp | null>;
   raw_item_by_id: Map<string, ProofreadingRuntimeItemRecord>;
   natural_item_ids: string[];
   evaluated_item_by_id: Map<string, ProofreadingClientItem>;
@@ -109,7 +135,32 @@ type ProofreadingRuntimeState = {
   default_filters: ProofreadingFilterOptions;
 };
 
+type ProofreadingRuntimeListViewCache = {
+  view_id: string;
+  project_id: string;
+  revision: number;
+  ordered_item_ids: string[];
+};
+
 type ProofreadingFilterDimension = "warning_types" | "statuses" | "file_paths" | "glossary_terms";
+
+type ProofreadingReplacementRule = {
+  search_text: string;
+  replace_text: string;
+};
+
+type ProofreadingGlossaryIndex = {
+  entries: ProofreadingRuntimeGlossaryEntry[];
+  entry_by_first_character: Map<string, ProofreadingRuntimeGlossaryEntry[]>;
+};
+
+type ProofreadingQualityContext = {
+  glossary: ProofreadingGlossaryIndex;
+  pre_replacements: ProofreadingReplacementRule[];
+  post_replacements: ProofreadingReplacementRule[];
+};
+
+const PROOFREADING_DEFAULT_WINDOW_COUNT = 160;
 
 const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
   column_id: "file",
@@ -455,25 +506,17 @@ function replace_all_literal(text: string, search_text: string, replace_text: st
 
 function apply_quality_replacements(
   item: ProofreadingRuntimeItemRecord,
-  quality: ProjectStoreQualityState,
+  quality_context: ProofreadingQualityContext,
 ): { src_replaced: string; dst_replaced: string } {
   let src_replaced = item.src;
   let dst_replaced = item.dst;
 
-  if (quality.pre_replacement.enabled) {
-    for (const entry of quality.pre_replacement.entries) {
-      const search_text = String(entry.src ?? "");
-      const replace_text = String(entry.dst ?? "");
-      src_replaced = replace_all_literal(src_replaced, search_text, replace_text);
-    }
+  for (const entry of quality_context.pre_replacements) {
+    src_replaced = replace_all_literal(src_replaced, entry.search_text, entry.replace_text);
   }
 
-  if (quality.post_replacement.enabled) {
-    for (const entry of quality.post_replacement.entries) {
-      const search_text = String(entry.dst ?? "");
-      const replace_text = String(entry.src ?? "");
-      dst_replaced = replace_all_literal(dst_replaced, search_text, replace_text);
-    }
+  for (const entry of quality_context.post_replacements) {
+    dst_replaced = replace_all_literal(dst_replaced, entry.search_text, entry.replace_text);
   }
 
   return {
@@ -482,22 +525,101 @@ function apply_quality_replacements(
   };
 }
 
-function build_glossary_entries(
-  quality: ProjectStoreQualityState,
-): ProofreadingRuntimeGlossaryEntry[] {
-  if (!quality.glossary.enabled) {
+function build_replacement_rules(args: {
+  enabled: boolean;
+  entries: Array<{ src?: unknown; dst?: unknown }>;
+  source_key: "src" | "dst";
+  target_key: "src" | "dst";
+}): ProofreadingReplacementRule[] {
+  if (!args.enabled) {
     return [];
   }
 
-  return quality.glossary.entries.flatMap((entry) => {
+  return args.entries.flatMap((entry) => {
+    const search_text = String(entry[args.source_key] ?? "");
+    if (search_text === "") {
+      return [];
+    }
+
+    return [
+      {
+        search_text,
+        replace_text: String(entry[args.target_key] ?? ""),
+      },
+    ];
+  });
+}
+
+function build_glossary_index(quality: ProjectStoreQualityState): ProofreadingGlossaryIndex {
+  if (!quality.glossary.enabled) {
+    return {
+      entries: [],
+      entry_by_first_character: new Map(),
+    };
+  }
+
+  const entries = quality.glossary.entries.flatMap((entry) => {
     const src = String(entry.src ?? "");
     const dst = String(entry.dst ?? "");
     return src === "" ? [] : [{ src, dst }];
   });
+  const entry_by_first_character = new Map<string, ProofreadingRuntimeGlossaryEntry[]>();
+  entries.forEach((entry) => {
+    const first_character = Array.from(entry.src)[0] ?? "";
+    const bucket = entry_by_first_character.get(first_character) ?? [];
+    bucket.push(entry);
+    entry_by_first_character.set(first_character, bucket);
+  });
+
+  return {
+    entries,
+    entry_by_first_character,
+  };
+}
+
+function build_quality_context(quality: ProjectStoreQualityState): ProofreadingQualityContext {
+  return {
+    glossary: build_glossary_index(quality),
+    pre_replacements: build_replacement_rules({
+      enabled: quality.pre_replacement.enabled,
+      entries: quality.pre_replacement.entries,
+      source_key: "src",
+      target_key: "dst",
+    }),
+    post_replacements: build_replacement_rules({
+      enabled: quality.post_replacement.enabled,
+      entries: quality.post_replacement.entries,
+      source_key: "dst",
+      target_key: "src",
+    }),
+  };
+}
+
+function collect_candidate_glossary_entries(args: {
+  glossary: ProofreadingGlossaryIndex;
+  src_replaced: string;
+}): ProofreadingRuntimeGlossaryEntry[] {
+  if (args.glossary.entries.length === 0) {
+    return [];
+  }
+
+  const candidate_entries = new Map<string, ProofreadingRuntimeGlossaryEntry>();
+  Array.from(args.src_replaced).forEach((character) => {
+    const bucket = args.glossary.entry_by_first_character.get(character);
+    if (bucket === undefined) {
+      return;
+    }
+
+    bucket.forEach((entry) => {
+      candidate_entries.set(`${entry.src}\u0000${entry.dst}`, entry);
+    });
+  });
+
+  return [...candidate_entries.values()];
 }
 
 function partition_glossary_terms(args: {
-  glossary_entries: ProofreadingRuntimeGlossaryEntry[];
+  glossary: ProofreadingGlossaryIndex;
   src_replaced: string;
   dst_replaced: string;
 }): {
@@ -507,7 +629,10 @@ function partition_glossary_terms(args: {
   const failed_terms: ProofreadingGlossaryTerm[] = [];
   const applied_terms: ProofreadingGlossaryTerm[] = [];
 
-  for (const entry of args.glossary_entries) {
+  for (const entry of collect_candidate_glossary_entries({
+    glossary: args.glossary,
+    src_replaced: args.src_replaced,
+  })) {
     if (!args.src_replaced.includes(entry.src)) {
       continue;
     }
@@ -588,7 +713,7 @@ function create_proofreading_client_item(args: {
 
 function evaluate_proofreading_item(args: {
   item: ProofreadingRuntimeItemRecord;
-  glossary_entries: ProofreadingRuntimeGlossaryEntry[];
+  quality_context: ProofreadingQualityContext;
   quality: ProjectStoreQualityState;
   source_language: string;
   sample_regex_cache: Map<string, RegExp | null>;
@@ -618,7 +743,10 @@ function evaluate_proofreading_item(args: {
     });
   }
 
-  const { src_replaced, dst_replaced } = apply_quality_replacements(args.item, args.quality);
+  const { src_replaced, dst_replaced } = apply_quality_replacements(
+    args.item,
+    args.quality_context,
+  );
   const normalized_dst = strip_preserved_segments(args.item.dst, sample_regex);
   const kana_fragments =
     args.source_language === "JA" ? collect_kana_residue_fragments(normalized_dst) : [];
@@ -660,9 +788,9 @@ function evaluate_proofreading_item(args: {
     warnings.push("SIMILARITY");
   }
 
-  if (args.glossary_entries.length > 0) {
+  if (args.quality_context.glossary.entries.length > 0) {
     const glossary_result = partition_glossary_terms({
-      glossary_entries: args.glossary_entries,
+      glossary: args.quality_context.glossary,
       src_replaced,
       dst_replaced,
     });
@@ -1071,6 +1199,38 @@ function build_visible_items(items: ProofreadingClientItem[]): ProofreadingVisib
   });
 }
 
+function normalize_window_bounds(args: {
+  start: number | undefined;
+  count: number | undefined;
+  row_count: number;
+}): { start: number; count: number } {
+  const normalized_start = Math.min(
+    Math.max(0, Math.trunc(args.start ?? 0)),
+    Math.max(0, args.row_count),
+  );
+  const normalized_count = Math.max(0, Math.trunc(args.count ?? PROOFREADING_DEFAULT_WINDOW_COUNT));
+
+  return {
+    start: normalized_start,
+    count: normalized_count,
+  };
+}
+
+function build_window_rows(args: {
+  state: ProofreadingRuntimeState;
+  ordered_item_ids: string[];
+  start: number;
+  count: number;
+}): ProofreadingVisibleItem[] {
+  const window_item_ids = args.ordered_item_ids.slice(args.start, args.start + args.count);
+  return build_visible_items(
+    window_item_ids.flatMap((item_id) => {
+      const item = args.state.evaluated_item_by_id.get(item_id);
+      return item === undefined ? [] : [item];
+    }),
+  );
+}
+
 function create_runtime_state(input: ProofreadingRuntimeHydrationInput): ProofreadingRuntimeState {
   const raw_item_by_id = new Map<string, ProofreadingRuntimeItemRecord>();
   const evaluated_item_by_id = new Map<string, ProofreadingClientItem>();
@@ -1078,7 +1238,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
   const warning_count_by_code = new Map<string, number>();
   const file_count_by_path = new Map<string, number>();
   const glossary_term_count_map = new Map<string, ProofreadingFilterPanelTermEntry>();
-  const glossary_entries = build_glossary_entries(input.quality);
+  const quality_context = build_quality_context(input.quality);
   const sample_regex_cache = new Map<string, RegExp | null>();
 
   const state: ProofreadingRuntimeState = {
@@ -1087,6 +1247,8 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
     total_item_count: input.total_item_count,
     quality: input.quality,
     source_language: input.source_language,
+    quality_context,
+    sample_regex_cache,
     raw_item_by_id,
     natural_item_ids: [],
     evaluated_item_by_id,
@@ -1109,7 +1271,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
     raw_item_by_id.set(item_key, normalized_item);
     const evaluated_item = evaluate_proofreading_item({
       item: normalized_item,
-      glossary_entries,
+      quality_context,
       quality: input.quality,
       source_language: input.source_language,
       sample_regex_cache,
@@ -1140,6 +1302,8 @@ function resolve_items_in_natural_order(state: ProofreadingRuntimeState): Proofr
 
 export function createProofreadingRuntimeEngine() {
   let state: ProofreadingRuntimeState | null = null;
+  let list_view_cache: ProofreadingRuntimeListViewCache | null = null;
+  let next_list_view_id = 0;
 
   return {
     hydrate_full(input: ProofreadingRuntimeHydrationInput): ProofreadingRuntimeSyncState {
@@ -1149,6 +1313,7 @@ export function createProofreadingRuntimeEngine() {
           return normalize_runtime_item(item) ?? item;
         }),
       });
+      list_view_cache = null;
       return build_runtime_sync_state(state);
     },
     apply_item_delta(input: ProofreadingRuntimeDeltaInput): ProofreadingRuntimeSyncState {
@@ -1157,8 +1322,6 @@ export function createProofreadingRuntimeEngine() {
       }
 
       const current_state = state;
-      const glossary_entries = build_glossary_entries(state.quality);
-      const sample_regex_cache = new Map<string, RegExp | null>();
       let should_rebuild_natural_order = input.total_item_count !== current_state.total_item_count;
 
       current_state.revision = input.revision;
@@ -1189,10 +1352,10 @@ export function createProofreadingRuntimeEngine() {
         current_state.raw_item_by_id.set(item_key, normalized_item);
         const next_evaluated_item = evaluate_proofreading_item({
           item: normalized_item,
-          glossary_entries,
+          quality_context: current_state.quality_context,
           quality: current_state.quality,
           source_language: current_state.source_language,
-          sample_regex_cache,
+          sample_regex_cache: current_state.sample_regex_cache,
         });
         if (next_evaluated_item === null) {
           return;
@@ -1211,6 +1374,7 @@ export function createProofreadingRuntimeEngine() {
       }
 
       current_state.default_filters = build_default_filters_from_state(current_state);
+      list_view_cache = null;
       return build_runtime_sync_state(current_state);
     },
     build_list_view(query: ProofreadingListViewQuery): ProofreadingListView {
@@ -1222,9 +1386,7 @@ export function createProofreadingRuntimeEngine() {
         filters: query.filters,
         default_filters: state.default_filters,
       });
-      const items_in_natural_order = resolve_items_in_natural_order(state).filter((item) => {
-        return item_matches_filters(item, filters);
-      });
+      const items_in_natural_order = resolve_items_in_natural_order(state);
 
       let invalid_regex_message: string | null = null;
       let search_pattern: RegExp | null = null;
@@ -1237,6 +1399,10 @@ export function createProofreadingRuntimeEngine() {
       const searched_items =
         invalid_regex_message === null
           ? items_in_natural_order.filter((item) => {
+              if (!item_matches_filters(item, filters)) {
+                return false;
+              }
+
               return matches_proofreading_search_scope({
                 item,
                 search_pattern,
@@ -1245,12 +1411,31 @@ export function createProofreadingRuntimeEngine() {
                 scope: query.scope,
               });
             })
-          : items_in_natural_order;
+          : items_in_natural_order.filter((item) => {
+              return item_matches_filters(item, filters);
+            });
       const sorted_items = sort_visible_items(searched_items, query.sort_state);
+      next_list_view_id += 1;
+      const view_id = `${state.project_id}:${state.revision}:${next_list_view_id.toString()}`;
+      const ordered_item_ids = sorted_items.map((item) => String(item.item_id));
+      list_view_cache = {
+        view_id,
+        project_id: state.project_id,
+        revision: state.revision,
+        ordered_item_ids,
+      };
+      const window_bounds = normalize_window_bounds({
+        start: query.window_start,
+        count: query.window_count,
+        row_count: ordered_item_ids.length,
+      });
 
       return {
         revision: state.revision,
         project_id: state.project_id,
+        view_id,
+        row_count: ordered_item_ids.length,
+        window_start: window_bounds.start,
         summary: {
           total_items: state.total_item_count,
           filtered_items: sorted_items.length,
@@ -1260,9 +1445,77 @@ export function createProofreadingRuntimeEngine() {
         },
         default_filters: clone_proofreading_filter_options(state.default_filters),
         filters: clone_proofreading_filter_options(filters),
-        items: build_visible_items(sorted_items),
+        window_rows: build_window_rows({
+          state,
+          ordered_item_ids,
+          start: window_bounds.start,
+          count: window_bounds.count,
+        }),
         invalid_regex_message,
       };
+    },
+    read_list_window(query: ProofreadingListWindowQuery): ProofreadingListWindow {
+      if (
+        state === null ||
+        list_view_cache === null ||
+        list_view_cache.view_id !== query.view_id ||
+        list_view_cache.project_id !== state.project_id ||
+        list_view_cache.revision !== state.revision
+      ) {
+        return {
+          view_id: query.view_id,
+          start: 0,
+          rows: [],
+        };
+      }
+
+      const window_bounds = normalize_window_bounds({
+        start: query.start,
+        count: query.count,
+        row_count: list_view_cache.ordered_item_ids.length,
+      });
+      return {
+        view_id: list_view_cache.view_id,
+        start: window_bounds.start,
+        rows: build_window_rows({
+          state,
+          ordered_item_ids: list_view_cache.ordered_item_ids,
+          start: window_bounds.start,
+          count: window_bounds.count,
+        }),
+      };
+    },
+    read_row_ids_range(query: ProofreadingRowIdsRangeQuery): string[] {
+      if (
+        state === null ||
+        list_view_cache === null ||
+        list_view_cache.view_id !== query.view_id ||
+        list_view_cache.project_id !== state.project_id ||
+        list_view_cache.revision !== state.revision
+      ) {
+        return [];
+      }
+
+      const window_bounds = normalize_window_bounds({
+        start: query.start,
+        count: query.count,
+        row_count: list_view_cache.ordered_item_ids.length,
+      });
+      return list_view_cache.ordered_item_ids.slice(
+        window_bounds.start,
+        window_bounds.start + window_bounds.count,
+      );
+    },
+    read_items_by_row_ids(query: ProofreadingItemsByRowIdsQuery): ProofreadingClientItem[] {
+      if (state === null) {
+        return [];
+      }
+
+      const current_state = state;
+      return query.row_ids.flatMap((row_id) => {
+        const item = current_state.evaluated_item_by_id.get(row_id);
+        return item === undefined ? [] : [item];
+      });
     },
     build_filter_panel(query: ProofreadingFilterPanelQuery): ProofreadingFilterPanelState {
       if (state === null) {
@@ -1334,6 +1587,7 @@ export function createProofreadingRuntimeEngine() {
       }
 
       state = null;
+      list_view_cache = null;
     },
   };
 }

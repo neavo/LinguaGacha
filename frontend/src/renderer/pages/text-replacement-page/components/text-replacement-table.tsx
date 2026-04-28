@@ -442,7 +442,14 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         },
       },
     ];
-  }, [props, t]);
+  }, [
+    props.on_query_entry_source,
+    props.on_search_entry_relations,
+    props.statistics_badge_by_entry_id,
+    props.statistics_ready,
+    props.statistics_running,
+    t,
+  ]);
 
   return (
     <Card variant="table" className="text-replacement-page__table-card">

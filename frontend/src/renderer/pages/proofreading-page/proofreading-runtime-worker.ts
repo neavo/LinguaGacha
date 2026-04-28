@@ -1,12 +1,17 @@
 import {
   createProofreadingRuntimeEngine,
   type ProofreadingFilterPanelQuery,
+  type ProofreadingItemsByRowIdsQuery,
   type ProofreadingListViewQuery,
+  type ProofreadingListWindow,
+  type ProofreadingListWindowQuery,
+  type ProofreadingRowIdsRangeQuery,
   type ProofreadingRuntimeDeltaInput,
   type ProofreadingRuntimeHydrationInput,
   type ProofreadingRuntimeSyncState,
 } from "@/pages/proofreading-page/proofreading-runtime-engine";
 import type {
+  ProofreadingClientItem,
   ProofreadingFilterPanelState,
   ProofreadingListView,
 } from "@/pages/proofreading-page/types";
@@ -29,6 +34,21 @@ type ProofreadingRuntimeWorkerRequest =
     }
   | {
       id: number;
+      type: "read_list_window";
+      input: ProofreadingListWindowQuery;
+    }
+  | {
+      id: number;
+      type: "read_row_ids_range";
+      input: ProofreadingRowIdsRangeQuery;
+    }
+  | {
+      id: number;
+      type: "read_items_by_row_ids";
+      input: ProofreadingItemsByRowIdsQuery;
+    }
+  | {
+      id: number;
       type: "build_filter_panel";
       input: ProofreadingFilterPanelQuery;
     }
@@ -42,7 +62,14 @@ type ProofreadingRuntimeWorkerRequest =
 
 type ProofreadingRuntimeWorkerResponse = {
   id: number;
-  result: ProofreadingRuntimeSyncState | ProofreadingListView | ProofreadingFilterPanelState | null;
+  result:
+    | ProofreadingRuntimeSyncState
+    | ProofreadingListView
+    | ProofreadingListWindow
+    | ProofreadingFilterPanelState
+    | ProofreadingClientItem[]
+    | string[]
+    | null;
 };
 
 const runtime_scope = self;
@@ -60,6 +87,12 @@ runtime_scope.addEventListener(
       result = runtime_engine.apply_item_delta(request.input);
     } else if (request.type === "build_list_view") {
       result = runtime_engine.build_list_view(request.input);
+    } else if (request.type === "read_list_window") {
+      result = runtime_engine.read_list_window(request.input);
+    } else if (request.type === "read_row_ids_range") {
+      result = runtime_engine.read_row_ids_range(request.input);
+    } else if (request.type === "read_items_by_row_ids") {
+      result = runtime_engine.read_items_by_row_ids(request.input);
     } else if (request.type === "build_filter_panel") {
       result = runtime_engine.build_filter_panel(request.input);
     } else {
