@@ -4,10 +4,13 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import {
+  Decoration,
   EditorView,
-  RectangleMarker,
-  layer,
-  type LayerMarker,
+  MatchDecorator,
+  ViewPlugin,
+  highlightSpecialChars,
+  highlightWhitespace,
+  type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
 
@@ -30,7 +33,6 @@ type EditorPalette = {
   gutter_background: string;
   gutter_foreground: string;
   gutter_active_foreground: string;
-  selection_background: string;
   active_line_background: string;
   markdown: MarkdownPalette;
 };
@@ -41,7 +43,6 @@ const light_editor_palette: EditorPalette = {
   gutter_background: "#ffffff",
   gutter_foreground: "#6e7781",
   gutter_active_foreground: "#4c5663",
-  selection_background: "#e9eef9",
   active_line_background: "rgba(31, 35, 40, 0.045)",
   markdown: {
     marker: "#0451a5",
@@ -61,7 +62,6 @@ const dark_editor_palette: EditorPalette = {
   gutter_background: "#1e1e1e",
   gutter_foreground: "#858585",
   gutter_active_foreground: "#c6c6c6",
-  selection_background: "#3b4556",
   active_line_background: "rgba(255, 255, 255, 0.045)",
   markdown: {
     marker: "#569cd6",
@@ -75,6 +75,34 @@ const dark_editor_palette: EditorPalette = {
   },
 };
 
+const fullwidth_space_decoration = Decoration.mark({
+  class: "cm-highlightFullwidthSpace",
+});
+
+const fullwidth_space_matcher = new MatchDecorator({
+  regexp: /\u3000/g,
+  decoration: fullwidth_space_decoration,
+});
+
+const fullwidth_space_highlight_extension = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = fullwidth_space_matcher.createDeco(view);
+    }
+
+    update(update: ViewUpdate): void {
+      this.decorations = fullwidth_space_matcher.updateDeco(update, this.decorations);
+    }
+  },
+  {
+    decorations(plugin) {
+      return plugin.decorations;
+    },
+  },
+);
+
 function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
   return EditorView.theme(
     {
@@ -87,12 +115,6 @@ function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
       },
       ".cm-cursor, .cm-dropCursor": {
         borderLeftColor: "var(--primary)",
-      },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-        backgroundColor: "transparent",
-      },
-      ".app-editor-selectionBackground": {
-        backgroundColor: palette.selection_background,
       },
       ".cm-gutters": {
         backgroundColor: palette.gutter_background,
@@ -108,52 +130,6 @@ function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
     },
   );
 }
-
-function create_full_height_selection_marker(
-  view: EditorView,
-  marker: RectangleMarker,
-): RectangleMarker {
-  const marker_center = marker.top + marker.height / 2;
-  const line_block = view.lineBlockAtHeight(marker_center);
-  const line_height = line_block.bottom - line_block.top;
-  const target_height = Math.max(line_height, view.defaultLineHeight, marker.height);
-  const extra_height = target_height - marker.height;
-
-  if (extra_height === 0) {
-    return marker;
-  }
-
-  return new RectangleMarker(
-    "app-editor-selectionBackground",
-    marker.left,
-    marker.top - extra_height / 2,
-    marker.width,
-    marker.height + extra_height,
-  );
-}
-
-export const app_editor_full_height_selection_extension = layer({
-  above: false,
-  class: "app-editor-selectionLayer",
-  markers(view: EditorView): readonly LayerMarker[] {
-    const markers: LayerMarker[] = [];
-
-    view.state.selection.ranges.forEach((range) => {
-      if (range.empty) {
-        return;
-      }
-
-      RectangleMarker.forRange(view, "app-editor-selectionBackground", range).forEach((marker) => {
-        markers.push(create_full_height_selection_marker(view, marker));
-      });
-    });
-
-    return markers;
-  },
-  update(update: ViewUpdate): boolean {
-    return update.docChanged || update.selectionSet || update.viewportChanged;
-  },
-});
 
 function create_markdown_highlight_extension(palette: EditorPalette): Extension {
   return syntaxHighlighting(
@@ -224,6 +200,12 @@ export function resolve_app_editor_theme_extensions(
 
   return base_theme;
 }
+
+export const app_editor_whitespace_extension: Extension = [
+  highlightSpecialChars(),
+  highlightWhitespace(),
+  fullwidth_space_highlight_extension,
+];
 
 export function resolve_app_editor_mode_extensions(mode: AppEditorMode): Extension {
   if (mode === "markdown") {

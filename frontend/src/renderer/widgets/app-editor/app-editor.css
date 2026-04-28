@@ -71,18 +71,35 @@
   padding: 0;
 }
 
-.app-editor .cm-selectionBackground,
-.app-editor .cm-content::selection,
-.app-editor .cm-content *::selection,
-.app-editor .cm-line::selection,
-.app-editor .cm-line *::selection {
-  background-color: transparent !important;
+.app-editor .cm-specialChar {
+  color: color-mix(in srgb, var(--muted-foreground) 56%, transparent);
 }
 
-.app-editor .cm-highlightSpace,
-.app-editor .cm-highlightTab,
-.app-editor .cm-specialChar {
-  color: color-mix(in srgb, var(--muted-foreground) 68%, transparent);
+.app-editor .cm-highlightSpace {
+  color: transparent;
+  background-image: radial-gradient(
+    circle at 50% 58%,
+    color-mix(in srgb, var(--muted-foreground) 34%, transparent) 0px,
+    color-mix(in srgb, var(--muted-foreground) 34%, transparent) 1.4px,
+    transparent 1.6px
+  );
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 1em 1em;
+}
+
+.app-editor .cm-highlightTab {
+  color: color-mix(in srgb, var(--muted-foreground) 44%, transparent);
+  background-size: auto 82%;
+  background-position: right 58%;
+  opacity: 0.58;
+}
+
+.app-editor .cm-highlightFullwidthSpace {
+  color: transparent;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--muted-foreground) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted-foreground) 52%, transparent);
 }
 
 .app-editor--readonly {
