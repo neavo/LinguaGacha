@@ -120,6 +120,7 @@ const project_store = {
 };
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
+let task_snapshot: { busy: boolean; status: string };
 
 function create_statistics_cache(
   args: Partial<QualityStatisticsCacheSnapshot>,
@@ -207,6 +208,7 @@ vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
       set_settings_snapshot: vi.fn(),
       refresh_project_runtime: vi.fn(async () => {}),
       align_project_runtime_ack: vi.fn(),
+      task_snapshot,
       commit_local_project_patch: (input: {
         patch: Array<{ op: string; quality?: typeof runtime_state.quality }>;
       }) => {
@@ -286,6 +288,10 @@ describe("useTextPreservePageState", () => {
   beforeEach(() => {
     project_store_listeners.clear();
     current_statistics_cache = create_statistics_cache({});
+    task_snapshot = {
+      busy: false,
+      status: "IDLE",
+    };
     create_barrier_checkpoint_mock.mockReturnValue({
       projectPath: "E:/demo/sample.lg",
       proofreadingLastLoadedAt: 1,

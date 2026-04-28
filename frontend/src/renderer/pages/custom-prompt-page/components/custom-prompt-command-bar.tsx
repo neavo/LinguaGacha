@@ -44,6 +44,7 @@ type CustomPromptCommandBarProps = {
   save_shortcut_enabled: boolean;
   preset_items: CustomPromptPresetItem[];
   preset_menu_open: boolean;
+  readonly: boolean;
   on_toggle_enabled: (next_value: boolean) => Promise<void>;
   on_save: () => Promise<void>;
   on_import: () => Promise<void>;
@@ -96,6 +97,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
             <Button
               variant="ghost"
               size="toolbar"
+              disabled={props.readonly}
               onClick={() => {
                 void props.on_import();
               }}
@@ -118,6 +120,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
           <Button
             variant="ghost"
             size="toolbar"
+            disabled={props.readonly}
             onClick={() => {
               void props.on_save();
             }}
@@ -144,11 +147,14 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
             </AppDropdownMenuTrigger>
             <AppDropdownMenuContent align="center">
               <AppDropdownMenuGroup>
-                <AppDropdownMenuItem onSelect={props.on_request_reset}>
+                <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_reset}>
                   <Recycle />
                   {t("app.action.reset")}
                 </AppDropdownMenuItem>
-                <AppDropdownMenuItem onSelect={props.on_request_save_preset}>
+                <AppDropdownMenuItem
+                  disabled={props.readonly}
+                  onSelect={props.on_request_save_preset}
+                >
                   <Save />
                   {t("custom_prompt_page.preset.save")}
                 </AppDropdownMenuItem>
@@ -166,6 +172,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                       </AppDropdownMenuSubTrigger>
                       <AppDropdownMenuSubContent>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
@@ -176,6 +183,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                         <AppDropdownMenuSeparator />
                         {item.is_default ? (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
@@ -185,6 +193,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                           </AppDropdownMenuItem>
                         ) : (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
@@ -211,6 +220,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                       </AppDropdownMenuSubTrigger>
                       <AppDropdownMenuSubContent>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
@@ -219,6 +229,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                           {t("custom_prompt_page.preset.apply")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             props.on_request_rename_preset(item);
                           }}
@@ -227,6 +238,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                           {t("custom_prompt_page.preset.rename")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             props.on_request_delete_preset(item);
                           }}
@@ -237,6 +249,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                         <AppDropdownMenuSeparator />
                         {item.is_default ? (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
@@ -246,6 +259,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                           </AppDropdownMenuItem>
                         ) : (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
@@ -272,6 +286,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
                 size="sm"
                 value={props.enabled ? "enabled" : "disabled"}
                 options={boolean_segmented_options}
+                disabled={props.readonly}
                 on_value_change={(next_value) => {
                   void props.on_toggle_enabled(next_value === "enabled");
                 }}

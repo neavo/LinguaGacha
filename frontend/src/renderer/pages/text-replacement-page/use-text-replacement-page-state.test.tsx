@@ -179,6 +179,7 @@ vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
       })),
       refresh_project_runtime: vi.fn(),
       align_project_runtime_ack: vi.fn(),
+      task_snapshot: runtime_state.task,
     }),
   };
 });
@@ -225,6 +226,8 @@ describe("useTextReplacementPageState", () => {
   beforeEach(() => {
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
+    runtime_state.task.busy = false;
+    runtime_state.task.status = "IDLE";
     current_statistics_cache = create_statistics_cache({});
   });
 
@@ -316,5 +319,24 @@ describe("useTextReplacementPageState", () => {
     });
 
     expect(latest_state?.dialog_state.open).toBe(false);
+  });
+
+  it("任务运行中锁定替换规则 mutation，但保留筛选可用", async () => {
+    runtime_state.task.busy = true;
+    runtime_state.task.status = "RUNNING";
+    await mount_probe();
+
+    expect(latest_state?.readonly).toBe(true);
+    expect(latest_state?.drag_disabled).toBe(true);
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+      await latest_state?.update_enabled(false);
+      latest_state?.update_filter_keyword("hero");
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(latest_state?.filter_state.keyword).toBe("hero");
+    expect(api_fetch_mock).not.toHaveBeenCalled();
   });
 });

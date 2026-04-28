@@ -31,6 +31,7 @@ import { AppTableDragIndicator } from "@/widgets/app-table/app-table-drag-indica
 type GlossaryTableProps = {
   entries: GlossaryVisibleEntry[];
   sort_state: GlossarySortState;
+  readonly: boolean;
   drag_disabled: boolean;
   statistics_ready: boolean;
   selected_entry_ids: GlossaryEntryId[];
@@ -446,9 +447,17 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
             void props.on_reorder(payload.active_row_id, payload.over_row_id);
           }}
           on_row_double_click={(payload) => {
+            if (props.readonly) {
+              return;
+            }
+
             props.on_open_edit(payload.row_id);
           }}
           render_row_context_menu={(payload) => {
+            if (props.readonly) {
+              return null;
+            }
+
             const target_entry_ids = resolve_glossary_context_target_entry_ids(
               payload.row_id,
               props.selected_entry_ids,

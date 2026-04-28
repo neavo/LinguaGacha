@@ -5,6 +5,7 @@ import type {
   ProjectPagesBarrierKind,
 } from "@/app/runtime/project-pages/project-pages-barrier";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { is_task_stopping } from "@/app/runtime/tasks/task-lock";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import {
   create_workbench_add_files_plan,
@@ -1225,8 +1226,14 @@ export function useWorkbenchLiveState(
   const readonly =
     !project_snapshot.loaded || task_snapshot.busy || file_op_running || is_mutation_running;
   const can_edit_files = !readonly;
+  const export_translation_submitting =
+    dialog_state.kind === "export-translation" && dialog_state.submitting;
   const can_export_translation =
-    project_snapshot.loaded && !file_op_running && !is_mutation_running;
+    project_snapshot.loaded &&
+    !file_op_running &&
+    !is_mutation_running &&
+    !export_translation_submitting &&
+    !is_task_stopping(task_snapshot);
   const can_close_project = project_snapshot.loaded && !task_snapshot.busy && !is_mutation_running;
 
   const set_dialog_submitting = useCallback((next_submitting: boolean): void => {
@@ -1484,6 +1491,10 @@ export function useWorkbenchLiveState(
   }
 
   function request_export_translation(): void {
+    if (!can_export_translation) {
+      return;
+    }
+
     set_dialog_state({
       kind: "export-translation",
       target_rel_paths: [],
@@ -1635,6 +1646,11 @@ export function useWorkbenchLiveState(
       }
 
       if (current_dialog_state.kind === "export-translation") {
+        if (!can_export_translation) {
+          set_dialog_submitting(false);
+          return;
+        }
+
         await api_fetch("/api/tasks/export-translation", {});
         set_dialog_state(close_dialog_state());
         return;

@@ -112,6 +112,7 @@ export type UseTextReplacementPageStateResult = {
   sort_state: TextReplacementSortState;
   has_active_filters: boolean;
   invalid_filter_message: string | null;
+  readonly: boolean;
   drag_disabled: boolean;
   statistics_state: TextReplacementStatisticsState;
   statistics_ready: boolean;

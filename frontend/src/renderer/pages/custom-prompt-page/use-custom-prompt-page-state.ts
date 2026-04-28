@@ -10,6 +10,7 @@ import {
   type SettingsSnapshotPayload,
 } from "@/app/runtime/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { is_task_mutation_locked } from "@/app/runtime/tasks/task-lock";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import {
@@ -185,6 +186,7 @@ export function useCustomPromptPageState(
     commit_local_project_patch,
     refresh_project_runtime,
     align_project_runtime_ack,
+    task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
     project_store.subscribe,
@@ -210,6 +212,7 @@ export function useCustomPromptPageState(
   );
   const template_ref = useRef(template);
   const previous_app_language_ref = useRef(settings_snapshot.app_language);
+  const readonly = is_task_mutation_locked(task_snapshot);
 
   useEffect(() => {
     template_ref.current = template;
@@ -248,6 +251,10 @@ export function useCustomPromptPageState(
       nextEnabled: boolean;
       failureMessage: string;
     }): Promise<boolean> => {
+      if (readonly) {
+        return false;
+      }
+
       const current_prompt_slice = getPromptSlice(
         project_store.getState().prompts,
         config.task_type,
@@ -292,6 +299,7 @@ export function useCustomPromptPageState(
       config.task_type,
       project_store,
       push_toast,
+      readonly,
       refresh_project_runtime,
     ],
   );
@@ -380,11 +388,22 @@ export function useCustomPromptPageState(
     );
   }, [config.default_preset_settings_key, config.task_type, settings_snapshot]);
 
-  const update_prompt_text = useCallback((next_text: string): void => {
-    set_prompt_text(next_text);
-  }, []);
+  const update_prompt_text = useCallback(
+    (next_text: string): void => {
+      if (readonly) {
+        return;
+      }
+
+      set_prompt_text(next_text);
+    },
+    [readonly],
+  );
 
   const save_prompt_text = useCallback(async (): Promise<void> => {
+    if (readonly) {
+      return;
+    }
+
     const succeeded = await persist_prompt_change({
       nextText: prompt_text,
       nextEnabled: enabled,
@@ -393,7 +412,7 @@ export function useCustomPromptPageState(
     if (succeeded) {
       push_toast("success", t("app.feedback.save_success"));
     }
-  }, [enabled, persist_prompt_change, prompt_text, push_toast, t]);
+  }, [enabled, persist_prompt_change, prompt_text, push_toast, readonly, t]);
 
   const commit_prompt_text = useCallback(
     async (
@@ -402,6 +421,10 @@ export function useCustomPromptPageState(
         | "custom_prompt_page.feedback.import_success"
         | "custom_prompt_page.feedback.reset_success",
     ): Promise<boolean> => {
+      if (readonly) {
+        return false;
+      }
+
       const succeeded = await persist_prompt_change({
         nextText: next_text,
         nextEnabled: enabled,
@@ -413,21 +436,29 @@ export function useCustomPromptPageState(
       }
       return false;
     },
-    [enabled, persist_prompt_change, push_toast, t],
+    [enabled, persist_prompt_change, push_toast, readonly, t],
   );
 
   const update_enabled = useCallback(
     async (next_enabled: boolean): Promise<void> => {
+      if (readonly) {
+        return;
+      }
+
       await persist_prompt_change({
         nextText: prompt_text,
         nextEnabled: next_enabled,
         failureMessage: t("custom_prompt_page.feedback.save_failed"),
       });
     },
-    [persist_prompt_change, prompt_text, t],
+    [persist_prompt_change, prompt_text, readonly, t],
   );
 
   const import_prompt_from_picker = useCallback(async (): Promise<void> => {
+    if (readonly) {
+      return;
+    }
+
     try {
       const pick_result = await window.desktopApp.pickPromptImportFilePath();
       const selected_path = pick_result.paths[0] ?? null;
@@ -452,7 +483,7 @@ export function useCustomPromptPageState(
         resolve_error_message(error, t("custom_prompt_page.feedback.import_failed")),
       );
     }
-  }, [commit_prompt_text, config.task_type, push_toast, t]);
+  }, [commit_prompt_text, config.task_type, push_toast, readonly, t]);
 
   const export_prompt_from_picker = useCallback(async (): Promise<void> => {
     try {
@@ -488,6 +519,10 @@ export function useCustomPromptPageState(
 
   const apply_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
+      if (readonly) {
+        return;
+      }
+
       try {
         const payload = await api_fetch<{ text?: string }>("/api/quality/prompts/presets/read", {
           task_type: config.task_type,
@@ -507,10 +542,14 @@ export function useCustomPromptPageState(
         );
       }
     },
-    [commit_prompt_text, config.task_type, push_toast, t],
+    [commit_prompt_text, config.task_type, push_toast, readonly, t],
   );
 
   const request_reset_prompt = useCallback((): void => {
+    if (readonly) {
+      return;
+    }
+
     set_confirm_state({
       open: true,
       kind: "reset",
@@ -519,9 +558,13 @@ export function useCustomPromptPageState(
       submitting: false,
       target_virtual_id: null,
     });
-  }, []);
+  }, [readonly]);
 
   const request_save_preset = useCallback((): void => {
+    if (readonly) {
+      return;
+    }
+
     set_preset_input_state({
       open: true,
       mode: "save",
@@ -529,31 +572,49 @@ export function useCustomPromptPageState(
       submitting: false,
       target_virtual_id: null,
     });
-  }, []);
+  }, [readonly]);
 
-  const request_rename_preset = useCallback((preset_item: CustomPromptPresetItem): void => {
-    set_preset_input_state({
-      open: true,
-      mode: "rename",
-      value: preset_item.name,
-      submitting: false,
-      target_virtual_id: preset_item.virtual_id,
-    });
-  }, []);
+  const request_rename_preset = useCallback(
+    (preset_item: CustomPromptPresetItem): void => {
+      if (readonly) {
+        return;
+      }
 
-  const request_delete_preset = useCallback((preset_item: CustomPromptPresetItem): void => {
-    set_confirm_state({
-      open: true,
-      kind: "delete-preset",
-      preset_name: preset_item.name,
-      preset_input_value: "",
-      submitting: false,
-      target_virtual_id: preset_item.virtual_id,
-    });
-  }, []);
+      set_preset_input_state({
+        open: true,
+        mode: "rename",
+        value: preset_item.name,
+        submitting: false,
+        target_virtual_id: preset_item.virtual_id,
+      });
+    },
+    [readonly],
+  );
+
+  const request_delete_preset = useCallback(
+    (preset_item: CustomPromptPresetItem): void => {
+      if (readonly) {
+        return;
+      }
+
+      set_confirm_state({
+        open: true,
+        kind: "delete-preset",
+        preset_name: preset_item.name,
+        preset_input_value: "",
+        submitting: false,
+        target_virtual_id: preset_item.virtual_id,
+      });
+    },
+    [readonly],
+  );
 
   const save_preset = useCallback(
     async (name: string): Promise<boolean> => {
+      if (readonly) {
+        return false;
+      }
+
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
         push_toast("warning", t("custom_prompt_page.feedback.preset_name_required"));
@@ -577,11 +638,15 @@ export function useCustomPromptPageState(
         return false;
       }
     },
-    [config.task_type, prompt_text, push_toast, refresh_preset_menu, t],
+    [config.task_type, prompt_text, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const rename_preset = useCallback(
     async (virtual_id: string, name: string): Promise<boolean> => {
+      if (readonly) {
+        return false;
+      }
+
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
         push_toast("warning", t("custom_prompt_page.feedback.preset_name_required"));
@@ -616,11 +681,15 @@ export function useCustomPromptPageState(
         return false;
       }
     },
-    [config, preset_items, push_toast, refresh_preset_menu, set_settings_snapshot, t],
+    [config, preset_items, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
   );
 
   const set_default_preset = useCallback(
     async (virtual_id: string): Promise<void> => {
+      if (readonly) {
+        return;
+      }
+
       try {
         const payload = await api_fetch<SettingsSnapshotPayload>(
           "/api/settings/update",
@@ -636,10 +705,14 @@ export function useCustomPromptPageState(
         );
       }
     },
-    [config, push_toast, refresh_preset_menu, set_settings_snapshot, t],
+    [config, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
   );
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
+    if (readonly) {
+      return;
+    }
+
     try {
       const payload = await api_fetch<SettingsSnapshotPayload>(
         "/api/settings/update",
@@ -654,7 +727,7 @@ export function useCustomPromptPageState(
         resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
       );
     }
-  }, [config, push_toast, refresh_preset_menu, set_settings_snapshot, t]);
+  }, [config, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t]);
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state());
@@ -674,7 +747,7 @@ export function useCustomPromptPageState(
   }, []);
 
   const submit_preset_input = useCallback(async (): Promise<void> => {
-    if (!preset_input_state.open || preset_input_state.mode === null) {
+    if (readonly || !preset_input_state.open || preset_input_state.mode === null) {
       return;
     }
 
@@ -736,10 +809,10 @@ export function useCustomPromptPageState(
         };
       });
     }
-  }, [preset_input_state, preset_items, push_toast, rename_preset, save_preset, t]);
+  }, [preset_input_state, preset_items, push_toast, readonly, rename_preset, save_preset, t]);
 
   const confirm_pending_action = useCallback(async (): Promise<void> => {
-    if (!confirm_state.open || confirm_state.kind === null) {
+    if (readonly || !confirm_state.open || confirm_state.kind === null) {
       return;
     }
 
@@ -810,6 +883,7 @@ export function useCustomPromptPageState(
     confirm_state,
     preset_items,
     push_toast,
+    readonly,
     refresh_preset_menu,
     save_preset,
     set_settings_snapshot,
@@ -825,6 +899,7 @@ export function useCustomPromptPageState(
       template,
       prompt_text,
       enabled,
+      readonly,
       preset_items,
       preset_menu_open,
       confirm_state,
@@ -867,6 +942,7 @@ export function useCustomPromptPageState(
     preset_items,
     preset_menu_open,
     prompt_text,
+    readonly,
     request_delete_preset,
     request_rename_preset,
     request_reset_prompt,

@@ -20,6 +20,7 @@ type NameFieldExtractionCommandBarProps = {
   selected_count: number;
   run_state: NameFieldRunState;
   is_running: boolean;
+  glossary_import_locked: boolean;
   on_extract: () => Promise<void>;
   on_translate: () => Promise<void>;
   on_delete: () => void;
@@ -99,7 +100,7 @@ export function NameFieldExtractionCommandBar(
             <Button
               variant="ghost"
               size="toolbar"
-              disabled={props.row_count === 0 || props.is_running}
+              disabled={props.row_count === 0 || props.is_running || props.glossary_import_locked}
               onClick={() => {
                 void props.on_import();
               }}

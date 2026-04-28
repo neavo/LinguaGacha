@@ -47,6 +47,7 @@ type TextPreserveCommandBarProps = {
   preset_items: TextPreservePresetItem[];
   preset_menu_open: boolean;
   selected_entry_count: number;
+  readonly: boolean;
   on_mode_change: (next_mode: TextPreserveMode) => Promise<void>;
   on_create: () => void;
   on_delete_selected: () => Promise<void>;
@@ -93,12 +94,12 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
 
   useActionShortcut({
     action: "create",
-    enabled: true,
+    enabled: !props.readonly,
     on_trigger: props.on_create,
   });
   useActionShortcut({
     action: "delete",
-    enabled: props.selected_entry_count > 0,
+    enabled: !props.readonly && props.selected_entry_count > 0,
     on_trigger: () => {
       void props.on_delete_selected();
     },
@@ -110,7 +111,12 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
       actions={
         <>
           <CommandBarGroup>
-            <Button variant="ghost" size="toolbar" onClick={props.on_create}>
+            <Button
+              variant="ghost"
+              size="toolbar"
+              disabled={props.readonly}
+              onClick={props.on_create}
+            >
               <Plus data-icon="inline-start" />
               {t("text_preserve_page.action.create")}
               <ShortcutKbd action="create" />
@@ -118,7 +124,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             <Button
               variant="ghost"
               size="toolbar"
-              disabled={props.selected_entry_count === 0}
+              disabled={props.readonly || props.selected_entry_count === 0}
               onClick={() => {
                 void props.on_delete_selected();
               }}
@@ -133,6 +139,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             <Button
               variant="ghost"
               size="toolbar"
+              disabled={props.readonly}
               onClick={() => {
                 void props.on_import();
               }}
@@ -169,11 +176,14 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
             </AppDropdownMenuTrigger>
             <AppDropdownMenuContent align="center">
               <AppDropdownMenuGroup>
-                <AppDropdownMenuItem onSelect={props.on_request_reset}>
+                <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_reset}>
                   <Recycle />
                   {t("app.action.reset")}
                 </AppDropdownMenuItem>
-                <AppDropdownMenuItem onSelect={props.on_request_save_preset}>
+                <AppDropdownMenuItem
+                  disabled={props.readonly}
+                  onSelect={props.on_request_save_preset}
+                >
                   <Save />
                   {t("text_preserve_page.preset.save")}
                 </AppDropdownMenuItem>
@@ -191,6 +201,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                       </AppDropdownMenuSubTrigger>
                       <AppDropdownMenuSubContent>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
@@ -201,6 +212,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                         <AppDropdownMenuSeparator />
                         {item.is_default ? (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
@@ -210,6 +222,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                           </AppDropdownMenuItem>
                         ) : (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
@@ -236,6 +249,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                       </AppDropdownMenuSubTrigger>
                       <AppDropdownMenuSubContent>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             void props.on_apply_preset(item.virtual_id);
                           }}
@@ -244,6 +258,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                           {t("text_preserve_page.preset.apply")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             props.on_request_rename_preset(item);
                           }}
@@ -252,6 +267,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                           {t("text_preserve_page.preset.rename")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuItem
+                          disabled={props.readonly}
                           onSelect={() => {
                             props.on_request_delete_preset(item);
                           }}
@@ -262,6 +278,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                         <AppDropdownMenuSeparator />
                         {item.is_default ? (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_cancel_default_preset();
                             }}
@@ -271,6 +288,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                           </AppDropdownMenuItem>
                         ) : (
                           <AppDropdownMenuItem
+                            disabled={props.readonly}
                             onSelect={() => {
                               void props.on_set_default_preset(item.virtual_id);
                             }}
@@ -297,7 +315,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
                 className="text-preserve-page__mode-toggle"
                 item_class_name="text-preserve-page__mode-toggle-item"
                 size="sm"
-                disabled={props.mode_updating}
+                disabled={props.readonly || props.mode_updating}
                 value={props.mode}
                 options={mode_options}
                 on_value_change={(next_value) => {

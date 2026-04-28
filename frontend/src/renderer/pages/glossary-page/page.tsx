@@ -80,6 +80,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
       <div className="glossary-page__table-host">
         <FileDropZone
           label={t("app.drop.import_here")}
+          disabled={glossary_page_state.readonly}
           on_path_drop={(path) => {
             void glossary_page_state.import_entries_from_path(path);
           }}
@@ -93,6 +94,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
           <GlossaryTable
             entries={glossary_page_state.filtered_entries}
             sort_state={glossary_page_state.sort_state}
+            readonly={glossary_page_state.readonly}
             drag_disabled={glossary_page_state.drag_disabled}
             statistics_ready={glossary_page_state.statistics_ready}
             selected_entry_ids={glossary_page_state.selected_entry_ids}
@@ -114,6 +116,7 @@ export function GlossaryPage(props: ScreenComponentProps): JSX.Element {
         preset_items={glossary_page_state.preset_items}
         preset_menu_open={glossary_page_state.preset_menu_open}
         selected_entry_count={glossary_page_state.selected_entry_ids.length}
+        readonly={glossary_page_state.readonly}
         on_toggle_enabled={glossary_page_state.update_enabled}
         on_create={glossary_page_state.open_create_dialog}
         on_delete_selected={glossary_page_state.delete_selected_entries}

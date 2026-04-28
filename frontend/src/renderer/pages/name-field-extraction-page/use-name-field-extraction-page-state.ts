@@ -11,6 +11,7 @@ import {
   type ProjectMutationAckPayload,
 } from "@/app/runtime/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { is_task_mutation_locked } from "@/app/runtime/tasks/task-lock";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { merge_glossary_entries } from "@/pages/glossary-page/merge";
@@ -128,6 +129,7 @@ export function useNameFieldExtractionPageState() {
     commit_local_project_patch,
     refresh_project_runtime,
     align_project_runtime_ack,
+    task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
     project_store.subscribe,
@@ -156,6 +158,7 @@ export function useNameFieldExtractionPageState() {
     return create_empty_run_state();
   });
   const run_active_ref = useRef(false);
+  const glossary_import_locked = is_task_mutation_locked(task_snapshot);
 
   const clear_selection_state = useCallback((): void => {
     set_selected_row_ids([]);
@@ -496,7 +499,7 @@ export function useNameFieldExtractionPageState() {
   }, [confirm_state.submitting]);
 
   const import_to_glossary = useCallback(async (): Promise<void> => {
-    if (is_running) {
+    if (is_running || glossary_import_locked) {
       return;
     }
 
@@ -552,6 +555,7 @@ export function useNameFieldExtractionPageState() {
   }, [
     align_project_runtime_ack,
     commit_local_project_patch,
+    glossary_import_locked,
     is_running,
     project_store,
     push_toast,
@@ -621,6 +625,7 @@ export function useNameFieldExtractionPageState() {
     import_to_glossary,
     run_state,
     is_running,
+    glossary_import_locked,
     confirm_pending_action,
     close_confirm_dialog,
   };

@@ -6,6 +6,7 @@ import {
   type SettingsSnapshotPayload,
 } from "@/app/runtime/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { is_task_mutation_locked } from "@/app/runtime/tasks/task-lock";
 import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import {
@@ -23,6 +24,7 @@ type UseExpertSettingsStateResult = {
   snapshot: ExpertSettingsSnapshot;
   pending_state: ExpertSettingsPendingState;
   is_refreshing: boolean;
+  is_task_busy: boolean;
   refresh_snapshot: () => Promise<void>;
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
   update_clean_ruby: (next_checked: boolean) => Promise<void>;
@@ -57,9 +59,11 @@ function clamp_preceding_lines_threshold(next_value: number): number {
 }
 
 export function useExpertSettingsState(): UseExpertSettingsStateResult {
-  const { settings_snapshot, set_settings_snapshot, refresh_settings } = useDesktopRuntime();
+  const { settings_snapshot, set_settings_snapshot, refresh_settings, task_snapshot } =
+    useDesktopRuntime();
   const { push_toast } = useDesktopToast();
   const { t } = useI18n();
+  const is_task_busy = is_task_mutation_locked(task_snapshot);
   const [snapshot, set_snapshot] = useState<ExpertSettingsSnapshot>(() => {
     return build_expert_settings_snapshot(settings_snapshot);
   });
@@ -118,6 +122,10 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
       request: SettingsUpdateRequest,
       next_snapshot: ExpertSettingsSnapshot,
     ): Promise<void> => {
+      if (is_task_busy) {
+        return;
+      }
+
       const previous_snapshot = snapshot_ref.current;
       set_snapshot(next_snapshot);
       set_pending(field, true);
@@ -177,7 +185,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
         set_pending(field, false);
       }
     },
-    [push_toast, set_pending, set_settings_snapshot, t],
+    [is_task_busy, push_toast, set_pending, set_settings_snapshot, t],
   );
 
   const update_preceding_lines_threshold = useCallback(
@@ -387,6 +395,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
       snapshot,
       pending_state,
       is_refreshing,
+      is_task_busy,
       refresh_snapshot,
       update_preceding_lines_threshold,
       update_clean_ruby,
@@ -400,6 +409,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     };
   }, [
     is_refreshing,
+    is_task_busy,
     pending_state,
     refresh_snapshot,
     snapshot,

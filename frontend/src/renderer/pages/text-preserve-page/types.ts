@@ -111,6 +111,7 @@ export type UseTextPreservePageStateResult = {
   filter_state: TextPreserveFilterState;
   sort_state: TextPreserveSortState;
   invalid_filter_message: string | null;
+  readonly: boolean;
   drag_disabled: boolean;
   statistics_state: TextPreserveStatisticsState;
   statistics_ready: boolean;
