@@ -250,6 +250,7 @@ type UseGlossaryPageStateResult = {
   drag_disabled: boolean;
   statistics_state: GlossaryStatisticsState;
   statistics_ready: boolean;
+  statistics_sort_available: boolean;
   statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>;
   preset_items: GlossaryPresetItem[];
   selected_entry_ids: GlossaryEntryId[];
@@ -349,6 +350,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return build_glossary_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const statistics_ready = statistics_cache.ready;
+  const statistics_sort_available =
+    statistics_ready || statistics_state.completed_snapshot !== null;
 
   useEffect(() => {
     revision_ref.current = revision;
@@ -391,7 +394,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       entry_ids,
       filter_state,
       sort_state,
-      statistics_ready,
+      statistics_sort_available,
       statistics_state,
       completed_statistics_entry_id_set,
     });
@@ -401,7 +404,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     entry_ids,
     filter_state,
     sort_state,
-    statistics_ready,
+    statistics_sort_available,
     statistics_state,
   ]);
   const visible_entry_ids = useMemo<GlossaryEntryId[]>(() => {
@@ -601,15 +604,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     apply_store_snapshot();
   }, [apply_snapshot, apply_store_snapshot, project_snapshot.loaded, project_snapshot.path]);
-
-  useEffect(() => {
-    if (statistics_ready || sort_state.field !== "statistics") {
-      return;
-    }
-
-    // 统计结果一旦失效，就不能继续挂着旧统计排序，否则会出现“按钮禁用但顺序还在偷偷生效”的假象。
-    set_sort_state(create_empty_sort_state());
-  }, [sort_state.field, statistics_ready]);
 
   useEffect(() => {
     // 筛选视图是当前页面的真实操作上下文，选中集必须与可见结果保持一致。
@@ -1558,6 +1552,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       drag_disabled,
       statistics_state,
       statistics_ready,
+      statistics_sort_available,
       statistics_badge_by_entry_id,
       preset_items,
       selected_entry_ids,
@@ -1647,6 +1642,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     set_default_preset,
     sort_state,
     statistics_badge_by_entry_id,
+    statistics_sort_available,
     statistics_ready,
     statistics_state,
     submit_preset_input,
