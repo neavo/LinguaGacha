@@ -9,6 +9,15 @@ export const zh_cn_project_page = {
     unavailable: "该目录下没有支持的源文件",
     failed: "创建工程失败：{ERROR}",
     failed_generic: "创建工程失败",
+    default_preset_loaded: "已自动加载默认预设：{NAMES} …",
+    default_presets: {
+      glossary: "术语表",
+      text_preserve: "文本保护",
+      pre_translation_replacement: "译前替换",
+      post_translation_replacement: "译后替换",
+      translation_prompt: "翻译提示词",
+      analysis_prompt: "分析提示词",
+    },
     action: "创建工程",
   },
   open: {

@@ -12,6 +12,15 @@ export const en_us_project_page = {
     unavailable: "No supported source files found in this directory",
     failed: "Failed to create project: {ERROR}",
     failed_generic: "Failed to create project",
+    default_preset_loaded: "Default presets loaded: {NAMES} …",
+    default_presets: {
+      glossary: "Glossary",
+      text_preserve: "Text Preserve",
+      pre_translation_replacement: "Pre-translation Replacement",
+      post_translation_replacement: "Post-translation Replacement",
+      translation_prompt: "Translation Prompt",
+      analysis_prompt: "Analysis Prompt",
+    },
     action: "Create Project",
   },
   open: {
