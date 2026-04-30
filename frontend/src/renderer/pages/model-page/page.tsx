@@ -123,6 +123,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                   <AppButton
                     type="button"
                     variant="outline"
+                    size="sm"
                     onClick={() => {
                       void model_page_state.request_add_model(category.type);
                     }}

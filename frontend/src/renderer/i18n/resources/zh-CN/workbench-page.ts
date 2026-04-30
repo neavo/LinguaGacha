@@ -14,7 +14,7 @@ export const zh_cn_workbench_page = {
     translation_failed: "翻译失败",
     translation_pending: "等待翻译",
     translation_skipped: "无需翻译",
-    analysis_completed: "分析完成",
+    analysis_completed: "分析成功",
     analysis_failed: "分析失败",
     analysis_pending: "等待分析",
     analysis_skipped: "无需分析",
