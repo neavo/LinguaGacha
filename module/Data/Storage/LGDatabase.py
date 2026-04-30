@@ -810,6 +810,40 @@ class LGDatabase(Base):
                 result.append(data)
             return result
 
+    def get_items_by_ids(self, item_ids: list[int]) -> list[dict[str, Any]]:
+        """按主键批量读取翻译条目，并按调用方给定顺序返回。"""
+
+        normalized_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for item_id in item_ids:
+            if item_id in seen_ids:
+                continue
+            normalized_ids.append(item_id)
+            seen_ids.add(item_id)
+
+        if not normalized_ids:
+            return []
+
+        rows_by_id: dict[int, dict[str, Any]] = {}
+        with self.connection() as conn:
+            chunk_size = 500
+            for start in range(0, len(normalized_ids), chunk_size):
+                chunk = normalized_ids[start : start + chunk_size]
+                placeholders = ",".join("?" for _ in chunk)
+                cursor = conn.execute(
+                    f"SELECT id, data FROM items WHERE id IN ({placeholders})",
+                    tuple(chunk),
+                )
+                for row in cursor:
+                    data = JSONTool.loads(row["data"])
+                    item_id = int(row["id"])
+                    data["id"] = item_id
+                    rows_by_id[item_id] = data
+
+        return [
+            rows_by_id[item_id] for item_id in normalized_ids if item_id in rows_by_id
+        ]
+
     def delete_items_by_file_path(
         self, file_path: str, conn: sqlite3.Connection | None = None
     ) -> int:

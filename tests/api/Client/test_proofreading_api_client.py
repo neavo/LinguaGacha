@@ -47,6 +47,25 @@ def build_proofreading_app_service() -> ProofreadingAppService:
             }
         ),
         build_project_mutation_ack=MagicMock(return_value=mutation_ack),
+        get_section_revision=MagicMock(
+            side_effect=lambda section: {
+                "items": 8,
+                "proofreading": 9,
+                "task": 0,
+            }.get(section, 0)
+        ),
+        build_section_revisions=MagicMock(
+            return_value={
+                "project": 1,
+                "files": 1,
+                "items": 8,
+                "quality": 1,
+                "prompts": 1,
+                "analysis": 1,
+                "proofreading": 9,
+                "task": 0,
+            }
+        ),
     )
 
     return ProofreadingAppService(

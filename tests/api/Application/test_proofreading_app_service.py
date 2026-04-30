@@ -83,6 +83,17 @@ class RecordingProofreadingRetranslateService:
 
 
 class RecordingProjectRuntimeService:
+    SECTION_REVISIONS: dict[str, int] = {
+        "project": 1,
+        "files": 1,
+        "items": 2,
+        "quality": 1,
+        "prompts": 1,
+        "analysis": 1,
+        "proofreading": 9,
+        "task": 0,
+    }
+
     def build_item_records(self, item_ids: list[int]) -> list[dict[str, object]]:
         return [
             {
@@ -107,6 +118,12 @@ class RecordingProjectRuntimeService:
             "status": "IDLE",
             "busy": False,
         }
+
+    def get_section_revision(self, section: str) -> int:
+        return self.SECTION_REVISIONS.get(section, 0)
+
+    def build_section_revisions(self) -> dict[str, int]:
+        return dict(self.SECTION_REVISIONS)
 
     def build_project_mutation_ack(
         self,
@@ -314,3 +331,14 @@ def test_proofreading_retranslate_items_returns_minimal_mutation_ack() -> None:
     assert result["result"]["revision"] == 9
     assert result["result"]["changed_item_ids"] == [1, 2]
     assert data_manager.emitted_patches[0]["reason"] == "proofreading_retranslate_items"
+    assert data_manager.emitted_patches[0]["updated_sections"] == (
+        "items",
+        "proofreading",
+        "task",
+    )
+    assert data_manager.emitted_patches[0]["section_revisions"] == {
+        "items": 2,
+        "proofreading": 9,
+        "task": 0,
+    }
+    assert data_manager.emitted_patches[0]["project_revision"] == 9

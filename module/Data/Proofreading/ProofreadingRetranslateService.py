@@ -73,8 +73,11 @@ class ProofreadingRetranslateService:
             )
 
         config = self.config_loader()
+        item_ids = self.resolve_retranslate_item_ids(items)
+        persisted_items = self.data_manager.get_item_dicts_by_ids(item_ids)
         changed_items: list[Item] = []
-        for item in items:
+        for item_dict in persisted_items:
+            item = Item.from_dict(item_dict)
             item.set_status(Base.ProjectStatus.NONE)
             item.set_retry_count(0)
             success = self.translate_item(item, config)
@@ -85,6 +88,15 @@ class ProofreadingRetranslateService:
             if isinstance(item_id, int):
                 item.set_id(item_id)
                 changed_items.append(Item.from_dict(item.to_dict()))
+
+        if not changed_items:
+            return ProjectItemChange(
+                item_ids=(),
+                rel_paths=(),
+                reason=self.RETRANSLATE_REASON,
+            )
+
+        self.data_manager.bump_project_runtime_section_revisions(("items",))
 
         if current_revision is None:
             revision = self.revision_service.get_revision(self.REVISION_SCOPE)
@@ -111,6 +123,19 @@ class ProofreadingRetranslateService:
             reason=self.RETRANSLATE_REASON,
         )
         return change
+
+    def resolve_retranslate_item_ids(self, items: list[Item]) -> list[int]:
+        """从前端精简载荷只提取 id，完整条目必须回到数据层读取。"""
+
+        item_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for item in items:
+            item_id = item.get_id()
+            if not isinstance(item_id, int) or item_id in seen_ids:
+                continue
+            item_ids.append(item_id)
+            seen_ids.add(item_id)
+        return item_ids
 
     def translate_item(self, item: Item, config: Config) -> bool:
         """同步等待单条重译结果，保持 API 命令语义简单稳定。"""

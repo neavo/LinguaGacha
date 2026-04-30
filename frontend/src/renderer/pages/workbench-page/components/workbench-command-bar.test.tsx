@@ -1,9 +1,11 @@
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
+
+const task_runtime_summary_mock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/i18n", () => {
   return {
@@ -27,7 +29,10 @@ vi.mock("@/pages/workbench-page/components/analysis-task-menu", () => {
 
 vi.mock("@/pages/workbench-page/components/task-runtime/task-runtime-summary", () => {
   return {
-    TaskRuntimeSummary: () => <span>task-summary</span>,
+    TaskRuntimeSummary: (props: unknown) => {
+      task_runtime_summary_mock(props);
+      return <span>task-summary</span>;
+    },
   };
 });
 
@@ -117,6 +122,10 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
 }
 
 describe("WorkbenchCommandBar", () => {
+  afterEach(() => {
+    task_runtime_summary_mock.mockClear();
+  });
+
   it("添加与删除文件按钮展示平台化快捷键提示", () => {
     const html = renderToStaticMarkup(
       <TooltipProvider>
@@ -128,5 +137,45 @@ describe("WorkbenchCommandBar", () => {
     expect(html).toContain("Ctrl+N");
     expect(html).toContain("workbench_page.action.delete_file");
     expect(html).toContain("Del");
+  });
+
+  it("翻译任务运行时向任务胶囊传递自动打开键", () => {
+    const props = create_workbench_command_bar_props();
+
+    renderToStaticMarkup(
+      <TooltipProvider>
+        <WorkbenchCommandBar
+          {...props}
+          active_workbench_task_view={{
+            task_kind: "translation",
+            can_open_detail: true,
+          }}
+          active_workbench_task_summary={{
+            ...props.active_workbench_task_summary,
+            show_spinner: true,
+          }}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(task_runtime_summary_mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auto_open_key: "translation",
+      }),
+    );
+  });
+
+  it("空闲态不向任务胶囊传递自动打开键", () => {
+    renderToStaticMarkup(
+      <TooltipProvider>
+        <WorkbenchCommandBar {...create_workbench_command_bar_props()} />
+      </TooltipProvider>,
+    );
+
+    expect(task_runtime_summary_mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auto_open_key: null,
+      }),
+    );
   });
 });

@@ -18,6 +18,7 @@ import {
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
+import { Spinner } from "@/shadcn/spinner";
 import {
   AppContextMenuContent,
   AppContextMenuGroup,
@@ -40,6 +41,7 @@ type ProofreadingTableProps = {
   selected_row_ids: string[];
   active_row_id: string | null;
   anchor_row_id: string | null;
+  retranslating_row_ids: string[];
   readonly: boolean;
   get_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
   get_row_id_at_index: (index: number) => string | undefined;
@@ -123,7 +125,10 @@ function build_compact_tooltip(template: string, title: string, content: string)
   return template.replace("{TITLE}", title).replace("{STATE}", content);
 }
 
-function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element | null {
+export function ProofreadingStatusCell(props: {
+  item: ProofreadingItem;
+  retranslating: boolean;
+}): JSX.Element | null {
   const { t } = useI18n();
   const StatusIcon = resolve_status_icon(props.item.status);
   const status_icon_tone = resolve_status_icon_tone(props.item.status);
@@ -142,6 +147,33 @@ function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element 
     ];
   const status_label = status_label_key === undefined ? props.item.status : t(status_label_key);
   const compact_tooltip_template = t("proofreading_page.toggle.status");
+
+  if (props.retranslating) {
+    return (
+      <div className="proofreading-page__status-icons">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="proofreading-page__status-icon proofreading-page__status-icon--processing"
+              data-proofreading-ignore-box-select="true"
+              data-proofreading-ignore-row-click="true"
+            >
+              <Spinner className="proofreading-page__status-spinner" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={8}>
+            <p>
+              {build_compact_tooltip(
+                compact_tooltip_template,
+                t("proofreading_page.fields.status"),
+                t("proofreading_page.status.processing"),
+              )}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    );
+  }
 
   if (StatusIcon === null && props.item.warnings.length === 0) {
     return null;
@@ -203,6 +235,9 @@ function ProofreadingStatusCell(props: { item: ProofreadingItem }): JSX.Element 
 
 export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
   const { t } = useI18n();
+  const retranslating_row_id_set = useMemo(() => {
+    return new Set(props.retranslating_row_ids);
+  }, [props.retranslating_row_ids]);
   const row_model = useMemo<AppTableRowModel<ProofreadingVisibleItem>>(() => {
     return {
       row_count: props.visible_row_count,
@@ -300,11 +335,16 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
             return null;
           }
 
-          return <ProofreadingStatusCell item={payload.row.item} />;
+          return (
+            <ProofreadingStatusCell
+              item={payload.row.item}
+              retranslating={retranslating_row_id_set.has(payload.row.row_id)}
+            />
+          );
         },
       },
     ];
-  }, [t]);
+  }, [retranslating_row_id_set, t]);
 
   return (
     <Card variant="table" className="proofreading-page__table-card">

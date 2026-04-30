@@ -48,7 +48,7 @@ export const en_us_workbench_page = {
     add_file: "Add",
     delete_file: "Delete",
     export_translation: "Generate Translation",
-    close_project: "Close Project",
+    close_project: "Close",
     reset: "Reset Translation",
     delete: "Delete",
     translation_task: "Translation",

@@ -60,6 +60,39 @@ class ItemService:
         with self.session.state_lock:
             return list(self.session.item_cache or [])
 
+    def get_item_dicts_by_ids(self, item_ids: list[int]) -> list[dict[str, Any]]:
+        """按 id 读取完整 item dict，避免少量条目场景冷缓存全表扫描。"""
+
+        normalized_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for item_id in item_ids:
+            if item_id in seen_ids:
+                continue
+            normalized_ids.append(item_id)
+            seen_ids.add(item_id)
+
+        if not normalized_ids:
+            return []
+
+        with self.session.state_lock:
+            cache = self.session.item_cache
+            index = dict(self.session.item_cache_index)
+            db = self.session.db
+
+        if cache is not None:
+            result: list[dict[str, Any]] = []
+            for item_id in normalized_ids:
+                cache_index = index.get(item_id)
+                if cache_index is None or cache_index >= len(cache):
+                    continue
+                result.append(dict(cache[cache_index]))
+            return result
+
+        if db is None:
+            return []
+
+        return db.get_items_by_ids(normalized_ids)
+
     def save_item(self, item: Item) -> int:
         item_dict = item.to_dict()
 

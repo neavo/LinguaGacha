@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { api_fetch } from "@/app/desktop-api";
 import { WorkerClientError } from "@/lib/worker-client-error";
 import {
   create_empty_proofreading_filter_panel_state,
@@ -53,6 +54,12 @@ type ProofreadingRuntimeClientFixture = {
 
 type ToastFixture = {
   push_toast: ReturnType<typeof vi.fn>;
+};
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
 };
 
 const runtime_fixture: { current: RuntimeFixture } = {
@@ -218,6 +225,38 @@ function create_sync_state() {
   };
 }
 
+function create_deferred<T>(): Deferred<T> {
+  let resolve_deferred: (value: T) => void = () => {};
+  let reject_deferred: (reason?: unknown) => void = () => {};
+  const promise = new Promise<T>((resolve, reject) => {
+    resolve_deferred = resolve;
+    reject_deferred = reject;
+  });
+  return {
+    promise,
+    resolve: resolve_deferred,
+    reject: reject_deferred,
+  };
+}
+
+function create_client_item(item_id: number | string) {
+  return {
+    item_id,
+    row_id: String(item_id),
+    file_path: `chapter${item_id}.txt`,
+    row_number: Number(item_id),
+    src: `foo-${item_id}`,
+    dst: `bar-${item_id}`,
+    status: "NONE",
+    warnings: [],
+    warning_fragments_by_code: {},
+    applied_glossary_terms: [],
+    failed_glossary_terms: [],
+    compressed_src: `foo-${item_id}`,
+    compressed_dst: `bar-${item_id}`,
+  };
+}
+
 function create_list_view() {
   return {
     ...create_empty_proofreading_list_view(),
@@ -229,20 +268,7 @@ function create_list_view() {
     window_rows: [
       {
         row_id: "1",
-        item: {
-          item_id: 1,
-          row_id: "1",
-          file_path: "chapter01.txt",
-          row_number: 1,
-          src: "foo",
-          dst: "bar",
-          status: "NONE",
-          warnings: [],
-          applied_glossary_terms: [],
-          failed_glossary_terms: [],
-          compressed_src: "foo",
-          compressed_dst: "bar",
-        },
+        item: create_client_item(1),
         compressed_src: "foo",
         compressed_dst: "bar",
       },
@@ -319,6 +345,7 @@ describe("useProofreadingPageState", () => {
     navigation_fixture.current = create_navigation_fixture();
     proofreading_runtime_client_fixture.current = create_proofreading_runtime_client_fixture();
     toast_fixture.current = create_toast_fixture();
+    vi.mocked(api_fetch).mockReset();
   });
 
   function ProofreadingProbe(): JSX.Element | null {
@@ -500,5 +527,134 @@ describe("useProofreadingPageState", () => {
       "error",
       "proofreading_page.feedback.refresh_failed",
     );
+  });
+
+  it("校对重翻请求进行中会暴露正在重翻的行 id，并在成功后清空", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    const retranslate_deferred = create_deferred<{
+      result: { changed_item_ids: Array<number | string> };
+    }>();
+    vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
+
+    await act(async () => {
+      latest_state?.request_retranslate_row_ids(["1"]);
+    });
+
+    let confirm_promise: Promise<void> | undefined;
+    await act(async () => {
+      confirm_promise = latest_state?.confirm_pending_mutation();
+      await Promise.resolve();
+    });
+
+    expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
+
+    await act(async () => {
+      retranslate_deferred.resolve({
+        result: {
+          changed_item_ids: [1],
+        },
+      });
+      await confirm_promise;
+    });
+
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
+  });
+
+  it("批量校对重翻会按请求顺序去重正在重翻的行 id", async () => {
+    proofreading_runtime_client_fixture.current.read_items_by_row_ids = vi.fn(
+      async ({ row_ids }: { row_ids: string[] }) => {
+        return row_ids.map((row_id) => create_client_item(row_id));
+      },
+    );
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    const retranslate_deferred = create_deferred<{
+      result: { changed_item_ids: Array<number | string> };
+    }>();
+    vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
+
+    await act(async () => {
+      latest_state?.request_retranslate_row_ids(["2", "1", "2"]);
+    });
+
+    let confirm_promise: Promise<void> | undefined;
+    await act(async () => {
+      confirm_promise = latest_state?.confirm_pending_mutation();
+      await Promise.resolve();
+    });
+
+    expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
+
+    await act(async () => {
+      retranslate_deferred.resolve({
+        result: {
+          changed_item_ids: [2, 1],
+        },
+      });
+      await confirm_promise;
+    });
+  });
+
+  it("校对重翻失败后会清空正在重翻的行 id 并保留错误提示", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    const retranslate_deferred = create_deferred<{
+      result: { changed_item_ids: Array<number | string> };
+    }>();
+    vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
+
+    await act(async () => {
+      latest_state?.request_retranslate_row_ids(["1"]);
+    });
+
+    let confirm_promise: Promise<void> | undefined;
+    await act(async () => {
+      confirm_promise = latest_state?.confirm_pending_mutation();
+      await Promise.resolve();
+    });
+
+    expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
+
+    await act(async () => {
+      retranslate_deferred.reject(new Error("重翻失败"));
+      await confirm_promise;
+    });
+
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", "重翻失败");
   });
 });

@@ -59,6 +59,12 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       : props.active_workbench_task_view.task_kind === "translation"
         ? props.translation_task_runtime.open_translation_detail_sheet
         : () => {};
+  const task_summary_auto_open_key =
+    props.active_workbench_task_view.can_open_detail &&
+    props.active_workbench_task_view.task_kind !== null &&
+    props.active_workbench_task_summary.show_spinner
+      ? props.active_workbench_task_view.task_kind
+      : null;
   const add_file_disabled = !props.can_edit_files;
   const delete_file_disabled = !props.can_edit_files || props.selected_entry_count === 0;
   const actions: CommandAction[] = [
@@ -167,6 +173,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
           class_name="workbench-page__task-summary"
           view_model={props.active_workbench_task_summary}
           can_open={props.active_workbench_task_view.can_open_detail}
+          auto_open_key={task_summary_auto_open_key}
           on_open={handle_open_task_detail}
         />
       }

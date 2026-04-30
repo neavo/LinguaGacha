@@ -126,6 +126,40 @@ def test_get_all_item_dicts_returns_copy_of_cached_list() -> None:
     assert session.item_cache == [{"id": 1, "src": "A"}]
 
 
+def test_get_item_dicts_by_ids_reads_loaded_cache_by_index() -> None:
+    db = SimpleNamespace(
+        get_all_items=MagicMock(return_value=[]),
+        get_items_by_ids=MagicMock(return_value=[]),
+    )
+    service, session = build_service(db)
+    session.item_cache = [
+        {"id": 1, "src": "A"},
+        {"id": 2, "src": "B"},
+        {"id": 3, "src": "C"},
+    ]
+    session.item_cache_index = {1: 0, 2: 1, 3: 2}
+
+    result = service.get_item_dicts_by_ids([3, 1, 404])
+
+    assert result == [{"id": 3, "src": "C"}, {"id": 1, "src": "A"}]
+    db.get_all_items.assert_not_called()
+    db.get_items_by_ids.assert_not_called()
+
+
+def test_get_item_dicts_by_ids_uses_targeted_db_read_when_cache_is_cold() -> None:
+    db = SimpleNamespace(
+        get_all_items=MagicMock(return_value=[]),
+        get_items_by_ids=MagicMock(return_value=[{"id": 2, "src": "B"}]),
+    )
+    service, _session = build_service(db)
+
+    result = service.get_item_dicts_by_ids([2, 2, 404])
+
+    assert result == [{"id": 2, "src": "B"}]
+    db.get_all_items.assert_not_called()
+    db.get_items_by_ids.assert_called_once_with([2, 404])
+
+
 def test_save_item_updates_cache_for_insert_and_update() -> None:
     db = SimpleNamespace(set_item=MagicMock(side_effect=[3, 1]))
     service, session = build_service(db)

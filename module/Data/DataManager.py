@@ -743,6 +743,11 @@ class DataManager(Base):
     def get_all_item_dicts(self) -> list[dict[str, Any]]:
         return [dict(item) for item in self.item_service.get_all_item_dicts()]
 
+    def get_item_dicts_by_ids(self, item_ids: list[int]) -> list[dict[str, Any]]:
+        return [
+            dict(item) for item in self.item_service.get_item_dicts_by_ids(item_ids)
+        ]
+
     def get_items_all(self) -> list[Item]:
         """提供项目运行态使用的全量条目对象视图。"""
 

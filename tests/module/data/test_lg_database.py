@@ -102,6 +102,22 @@ def test_set_item_insert_update_and_get_all_items(database: LGDatabase) -> None:
     assert items == [{"id": item_id, "src": "hello", "dst": "您好"}]
 
 
+def test_get_items_by_ids_returns_existing_items_in_requested_order(
+    database: LGDatabase,
+) -> None:
+    first_id = database.set_item({"src": "first", "dst": "一"})
+    second_id = database.set_item({"src": "second", "dst": "二"})
+    third_id = database.set_item({"src": "third", "dst": "三"})
+
+    items = database.get_items_by_ids([third_id, 404, first_id, third_id])
+
+    assert items == [
+        {"id": third_id, "src": "third", "dst": "三"},
+        {"id": first_id, "src": "first", "dst": "一"},
+    ]
+    assert second_id not in [item["id"] for item in items]
+
+
 def test_set_items_replaces_all_and_preserves_given_ids(database: LGDatabase) -> None:
     database.set_item({"src": "old"})
 

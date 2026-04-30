@@ -78,6 +78,7 @@ export type UseProofreadingPageStateResult = {
   selected_row_ids: string[];
   active_row_id: string | null;
   anchor_row_id: string | null;
+  retranslating_row_ids: string[];
   filter_dialog_open: boolean;
   dialog_state: ProofreadingDialogState;
   dialog_item: ProofreadingItem | null;
@@ -156,6 +157,21 @@ function serialize_item(item: ProofreadingItem): Record<string, unknown> {
     warnings: [...item.warnings],
     failed_glossary_terms: serialize_glossary_terms(item.failed_glossary_terms),
   };
+}
+
+function build_retranslating_row_ids(items: ProofreadingClientItem[]): string[] {
+  const row_ids: string[] = [];
+  const seen_row_ids = new Set<string>();
+  items.forEach((item) => {
+    const row_id = build_proofreading_row_id(item.item_id);
+    if (seen_row_ids.has(row_id)) {
+      return;
+    }
+
+    seen_row_ids.add(row_id);
+    row_ids.push(row_id);
+  });
+  return row_ids;
 }
 
 function create_search_pattern(keyword: string, is_regex: boolean): RegExp | null {
@@ -493,6 +509,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [pending_mutation, set_pending_mutation] = useState<ProofreadingPendingMutation | null>(
     null,
   );
+  const [retranslating_row_ids, set_retranslating_row_ids] = useState<string[]>([]);
   const deferred_search_keyword = useDeferredValue(search_keyword);
   const deferred_search_scope = useDeferredValue(search_scope);
   const deferred_is_regex = useDeferredValue(is_regex);
@@ -632,6 +649,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_dialog_state(create_empty_dialog_state());
     set_dialog_item_snapshot(null);
     set_pending_mutation(null);
+    set_retranslating_row_ids([]);
     replace_cursor_ref.current = 0;
     pending_replace_cursor_ref.current = null;
     preferred_row_id_ref.current = null;
@@ -652,6 +670,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_is_refreshing(false);
     set_cache_status("idle");
     set_is_mutating(false);
+    set_retranslating_row_ids([]);
     last_visible_range_signature_ref.current = "";
     if (current_project_id !== undefined) {
       void proofreading_runtime_client_ref.current.dispose_project(current_project_id);
@@ -1550,19 +1569,24 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     set_pending_mutation(null);
     if (is_retranslate) {
-      await run_mutation({
-        path: "/api/project/proofreading/retranslate-items",
-        body: {
-          items: target_items.map((item) => serialize_item(item)),
-          expected_revision: list_view.revision,
-        },
-        fallback_error_key: "proofreading_page.feedback.retranslate_failed",
-        preferred_row_id: active_row_id_ref.current,
-        success_message_builder: (changed_count) => {
-          return success_message.replace("{COUNT}", changed_count.toString());
-        },
-        close_dialog: dialog_state.open,
-      });
+      set_retranslating_row_ids(build_retranslating_row_ids(target_items));
+      try {
+        await run_mutation({
+          path: "/api/project/proofreading/retranslate-items",
+          body: {
+            items: target_items.map((item) => serialize_item(item)),
+            expected_revision: list_view.revision,
+          },
+          fallback_error_key: "proofreading_page.feedback.retranslate_failed",
+          preferred_row_id: active_row_id_ref.current,
+          success_message_builder: (changed_count) => {
+            return success_message.replace("{COUNT}", changed_count.toString());
+          },
+          close_dialog: dialog_state.open,
+        });
+      } finally {
+        set_retranslating_row_ids([]);
+      }
       return;
     }
 
@@ -1794,6 +1818,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       selected_row_ids,
       active_row_id,
       anchor_row_id,
+      retranslating_row_ids,
       filter_dialog_open,
       dialog_state,
       dialog_item,
@@ -1853,6 +1878,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     open_filter_dialog,
     pending_mutation,
     readonly,
+    retranslating_row_ids,
     refresh_request_id,
     refresh_snapshot,
     read_visible_range,

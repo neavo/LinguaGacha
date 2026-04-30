@@ -168,9 +168,10 @@ class ProofreadingAppService:
 
         proofreading_block = self.runtime_service.build_proofreading_block()
         proofreading_revision = int(proofreading_block.get("revision", 0) or 0)
+        updated_sections = ("items", "proofreading", "task")
         self.data_manager.emit_project_runtime_patch(
             reason=change.reason,
-            updated_sections=("items", "proofreading", "task"),
+            updated_sections=updated_sections,
             patch=[
                 {
                     "op": "merge_items",
@@ -186,7 +187,11 @@ class ProofreadingAppService:
                 },
             ],
             section_revisions={
-                "proofreading": proofreading_revision,
+                section: self.runtime_service.get_section_revision(section)
+                for section in updated_sections
             },
-            project_revision=proofreading_revision,
+            project_revision=max(
+                self.runtime_service.build_section_revisions().values(),
+                default=proofreading_revision,
+            ),
         )

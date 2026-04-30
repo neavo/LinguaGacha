@@ -109,6 +109,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           selected_row_ids={proofreading_page_state.selected_row_ids}
           active_row_id={proofreading_page_state.active_row_id}
           anchor_row_id={proofreading_page_state.anchor_row_id}
+          retranslating_row_ids={proofreading_page_state.retranslating_row_ids}
           readonly={toolbar_disabled}
           get_row_at_index={proofreading_page_state.get_visible_row_at_index}
           get_row_id_at_index={proofreading_page_state.get_visible_row_id_at_index}
