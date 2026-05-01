@@ -1,7 +1,7 @@
 import {
-  Check,
   GraduationCap,
   ListTodo,
+  MousePointerClick,
   Plus,
   Recycle,
   SlidersHorizontal,
@@ -152,7 +152,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                             void model_page_state.request_activate_model(model.id);
                           }}
                         >
-                          <Check />
+                          <MousePointerClick />
                           {t("model_page.action.activate")}
                         </AppDropdownMenuItem>
                         <AppDropdownMenuSeparator />
