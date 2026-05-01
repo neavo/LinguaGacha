@@ -104,12 +104,12 @@ class RenPyExtractor(Base):
             }
         )
 
-    def get_status(self, src: str, dst: str) -> Base.ProjectStatus:
+    def get_status(self, src: str, dst: str) -> Base.ItemStatus:
         if src == "":
-            return Base.ProjectStatus.EXCLUDED
+            return Base.ItemStatus.EXCLUDED
         if dst != "" and src != dst:
-            return Base.ProjectStatus.PROCESSED
-        return Base.ProjectStatus.NONE
+            return Base.ItemStatus.PROCESSED
+        return Base.ItemStatus.NONE
 
     def build_extra_field(
         self,

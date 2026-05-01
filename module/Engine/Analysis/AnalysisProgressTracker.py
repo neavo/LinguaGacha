@@ -103,7 +103,7 @@ class AnalysisProgressTracker:
         recovered_error_count = sum(
             1
             for item in result.context.items
-            if item.previous_status == Base.ProjectStatus.ERROR
+            if item.previous_status == Base.ItemStatus.ERROR
         )
         if recovered_error_count > 0:
             self.set_extra_int(
@@ -125,7 +125,7 @@ class AnalysisProgressTracker:
         new_error_count = sum(
             1
             for item in task_context.items
-            if item.previous_status != Base.ProjectStatus.ERROR
+            if item.previous_status != Base.ItemStatus.ERROR
         )
         if new_error_count > 0:
             self.set_extra_int(

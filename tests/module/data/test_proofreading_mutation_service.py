@@ -16,7 +16,7 @@ def build_item(
     src: str,
     dst: str,
     file_path: str,
-    status: Base.ProjectStatus = Base.ProjectStatus.NONE,
+    status: Base.ItemStatus = Base.ItemStatus.NONE,
 ) -> Item:
     return Item(
         id=item_id,
@@ -109,7 +109,6 @@ def test_persist_finalized_items_normalizes_payload_and_bumps_revision() -> None
             {"id": 404, "dst": "missing"},
         ],
         translation_extras={"line": 1},
-        project_status="PROCESSING",
         expected_section_revisions={"proofreading": 3, "items": 7},
         reason="proofreading_save_item",
     )
@@ -129,7 +128,6 @@ def test_persist_finalized_items_normalizes_payload_and_bumps_revision() -> None
         ],
         meta={
             "translation_extras": {"line": 1},
-            "project_status": "PROCESSING",
         },
     )
     data_manager.bump_project_runtime_section_revisions.assert_called_once_with(
@@ -167,7 +165,6 @@ def test_persist_finalized_items_rejects_stale_proofreading_revision() -> None:
         service.persist_finalized_items(
             [{"id": 1, "dst": "Hero arrived"}],
             translation_extras={},
-            project_status="PROCESSING",
             expected_section_revisions={"proofreading": 3},
             reason="proofreading_save_item",
         )
@@ -198,7 +195,6 @@ def test_persist_finalized_items_keeps_meta_write_when_no_item_matches() -> None
     result = service.persist_finalized_items(
         [{"id": 404, "dst": "missing"}],
         translation_extras={"line": 0},
-        project_status="PROCESSING",
         expected_section_revisions=None,
         reason="proofreading_save_all",
     )
@@ -207,7 +203,6 @@ def test_persist_finalized_items_keeps_meta_write_when_no_item_matches() -> None
         items=None,
         meta={
             "translation_extras": {"line": 0},
-            "project_status": "PROCESSING",
         },
     )
     assert meta_store["proofreading_revision.proofreading"] == 2

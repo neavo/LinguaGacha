@@ -31,7 +31,7 @@ def test_analysis_scheduler_build_initial_contexts_uses_shared_file_boundaries()
             item_id=3,
             file_path="b.txt",
             src_text="b1",
-            previous_status=Base.ProjectStatus.ERROR,
+            previous_status=Base.ItemStatus.ERROR,
         ),
     ]
     scheduler = build_scheduler()
@@ -46,7 +46,7 @@ def test_analysis_scheduler_build_initial_contexts_uses_shared_file_boundaries()
         [1, 2],
         [3],
     ]
-    assert contexts[1].items[0].previous_status == Base.ProjectStatus.ERROR
+    assert contexts[1].items[0].previous_status == Base.ItemStatus.ERROR
 
 
 def test_analysis_scheduler_build_initial_contexts_returns_empty_for_empty_input() -> (
@@ -107,8 +107,8 @@ def test_analysis_scheduler_build_progress_snapshot_counts_current_status_and_re
         build_item(3, "C"),
     ]
     fake_data_manager.analysis_item_checkpoints = {
-        1: {"status": Base.ProjectStatus.PROCESSED},
-        2: {"status": Base.ProjectStatus.ERROR},
+        1: {"status": Base.ItemStatus.PROCESSED},
+        2: {"status": Base.ItemStatus.ERROR},
     }
 
     monkeypatch.setattr(
@@ -148,8 +148,8 @@ def test_analysis_scheduler_build_task_contexts_continue_only_schedules_none_ite
     pending_item = build_item(4, "pending", file_path="scene.txt")
     fake_data_manager.items = [done_item, error_item, pending_item]
     fake_data_manager.analysis_item_checkpoints = {
-        1: {"status": Base.ProjectStatus.PROCESSED},
-        3: {"status": Base.ProjectStatus.ERROR},
+        1: {"status": Base.ItemStatus.PROCESSED},
+        3: {"status": Base.ItemStatus.ERROR},
     }
 
     monkeypatch.setattr(

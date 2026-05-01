@@ -186,11 +186,10 @@ class FakeWorkbenchManager:
         files: list[dict[str, object]],
         *,
         translation_extras: dict[str, object],
-        project_status: str,
         prefilter_config: dict[str, object],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        del translation_extras, project_status, prefilter_config
+        del translation_extras, prefilter_config
         del expected_section_revisions
         self.add_batch_calls.append(
             [str(file.get("source_path", "")) for file in files]
@@ -203,11 +202,10 @@ class FakeWorkbenchManager:
         *,
         item_payloads: list[dict[str, object]],
         translation_extras: dict[str, object],
-        project_status: str,
         prefilter_config: dict[str, object],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        del item_payloads, translation_extras, project_status, prefilter_config
+        del item_payloads, translation_extras, prefilter_config
         del expected_section_revisions
         self.reset_calls.append(rel_path)
 
@@ -216,11 +214,10 @@ class FakeWorkbenchManager:
         rel_paths: list[str],
         *,
         translation_extras: dict[str, object],
-        project_status: str,
         prefilter_config: dict[str, object],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        del translation_extras, project_status, prefilter_config
+        del translation_extras, prefilter_config
         del expected_section_revisions
         if len(rel_paths) == 1:
             self.delete_calls.append(rel_paths[0])

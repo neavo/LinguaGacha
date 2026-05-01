@@ -68,7 +68,6 @@ export async function apply_project_prefilter_mutation(
       await api_fetch<ProjectMutationAckPayload>("/api/project/apply-prefilter", {
         items: serialize_prefilter_items(mutation_output.items),
         translation_extras: mutation_output.translation_extras,
-        project_status: mutation_output.project_status,
         prefilter_config: mutation_output.prefilter_config,
         expected_section_revisions: {
           items: args.state.revisions.sections.items ?? 0,

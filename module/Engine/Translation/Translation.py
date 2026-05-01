@@ -119,14 +119,12 @@ class Translation(Base):
         """统一收敛工程检查返回值，避免线程任务里重复拼装字典。"""
         if not dm.is_loaded():
             return {
-                "status": Base.ProjectStatus.NONE,
                 "extras": {},
                 "analysis_extras": {},
                 "analysis_candidate_count": 0,
             }
 
         return {
-            "status": dm.get_project_status(),
             "extras": dm.get_translation_extras(),
             "analysis_extras": dm.get_analysis_extras(),
             "analysis_candidate_count": int(dm.get_analysis_candidate_count()),
@@ -360,7 +358,7 @@ class Translation(Base):
                 quality_snapshot=self.quality_snapshot,
             )
 
-            remaining_count = self.get_item_count_by_status(Base.ProjectStatus.NONE)
+            remaining_count = self.get_item_count_by_status(Base.ItemStatus.NONE)
             snapshot = self.get_progress_snapshot().with_counts(
                 total_line=self.get_progress_snapshot().line + remaining_count
             )
@@ -396,7 +394,7 @@ class Translation(Base):
 
             self.sync_extras_line_stats()
             self.emit(Base.Event.TRANSLATION_PROGRESS, dict(self.extras))
-            if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
+            if self.get_item_count_by_status(Base.ItemStatus.NONE) == 0:
                 return "SUCCESS"
             if Engine.get().get_status() == Base.TaskStatus.STOPPING:
                 return "STOPPED"
@@ -472,12 +470,7 @@ class Translation(Base):
         if self.items_cache:
             self.mtool_optimizer_postprocess(self.items_cache)
 
-        final_project_status = (
-            Base.ProjectStatus.PROCESSED
-            if self.get_item_count_by_status(Base.ProjectStatus.NONE) == 0
-            else Base.ProjectStatus.PROCESSING
-        )
-        self.save_translation_state(final_project_status)
+        self.save_translation_state()
 
     def cleanup_translation_run(self) -> None:
         """无论任务是否真正落地，都要把翻译期资源安全回收。"""
@@ -485,7 +478,7 @@ class Translation(Base):
         self.close_db_connection()
         self.items_cache = None
 
-    def get_item_count_by_status(self, status: Base.ProjectStatus) -> int:
+    def get_item_count_by_status(self, status: Base.ItemStatus) -> int:
         """按状态统计任务内存快照中的条目数量。"""
         if self.items_cache is None:
             return 0
@@ -501,9 +494,7 @@ class Translation(Base):
         """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
         DataManager.get().close_db()
 
-    def save_translation_state(
-        self, status: Base.ProjectStatus = Base.ProjectStatus.PROCESSING
-    ) -> None:
+    def save_translation_state(self) -> None:
         """保存翻译状态到 .lg 文件"""
         dm = DataManager.get()
         if not dm.is_loaded() or self.items_cache is None:
@@ -512,9 +503,6 @@ class Translation(Base):
         # 保存翻译进度额外数据（仅当存在时）
         if self.extras:
             dm.set_translation_extras(self.extras)
-
-        # 设置项目状态
-        dm.set_project_status(status)
 
     def get_task_buffer_size(self, max_workers: int) -> int:
         # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。

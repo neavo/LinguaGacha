@@ -154,7 +154,7 @@ export function ProofreadingStatusCell(props: {
         <Tooltip>
           <TooltipTrigger asChild>
             <span
-              className="proofreading-page__status-icon proofreading-page__status-icon--processing"
+              className="proofreading-page__status-icon"
               data-proofreading-ignore-box-select="true"
               data-proofreading-ignore-row-click="true"
             >
@@ -166,7 +166,7 @@ export function ProofreadingStatusCell(props: {
               {build_compact_tooltip(
                 compact_tooltip_template,
                 t("proofreading_page.fields.status"),
-                t("proofreading_page.status.processing"),
+                t("proofreading_page.action.retranslate"),
               )}
             </p>
           </TooltipContent>

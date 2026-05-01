@@ -253,7 +253,7 @@ def test_preview_replace_all_item_ids_delegates_to_db() -> None:
                 "file_type": Item.FileType.NONE,
                 "file_path": "",
                 "text_type": Item.TextType.NONE,
-                "status": Base.ProjectStatus.NONE,
+                "status": Base.ItemStatus.NONE,
                 "retry_count": 0,
             },
             {
@@ -268,7 +268,7 @@ def test_preview_replace_all_item_ids_delegates_to_db() -> None:
                 "file_type": Item.FileType.NONE,
                 "file_path": "",
                 "text_type": Item.TextType.NONE,
-                "status": Base.ProjectStatus.NONE,
+                "status": Base.ItemStatus.NONE,
                 "retry_count": 0,
             },
         ]

@@ -19,7 +19,7 @@ def build_data_manager() -> SimpleNamespace:
             dst="Hero",
             file_type=Item.FileType.TXT,
             file_path="script/a.txt",
-            status=Base.ProjectStatus.PROCESSED,
+            status=Base.ItemStatus.PROCESSED,
         ),
         Item(
             id=2,
@@ -27,7 +27,7 @@ def build_data_manager() -> SimpleNamespace:
             dst="Narration",
             file_type=Item.FileType.TXT,
             file_path="script/b.txt",
-            status=Base.ProjectStatus.PROCESSED,
+            status=Base.ItemStatus.PROCESSED,
         ),
     ]
     current_item_dicts = [item.to_dict() for item in current_items]
@@ -43,7 +43,6 @@ def build_data_manager() -> SimpleNamespace:
                 if item_dict.get("id") == item_id
             ]
         ),
-        set_project_status=MagicMock(),
         get_translation_extras=MagicMock(return_value={"line": 0}),
         set_translation_extras=MagicMock(),
         bump_project_runtime_section_revisions=MagicMock(return_value={"items": 2}),
@@ -62,7 +61,7 @@ def test_retranslate_items_returns_project_item_change_and_emits_refresh() -> No
         src="勇者が来た",
         dst="旧译文",
         file_path="script/a.txt",
-        status=Base.ProjectStatus.ERROR,
+        status=Base.ItemStatus.ERROR,
     )
     service = ProofreadingRetranslateService(
         data_manager=data_manager,
@@ -97,7 +96,7 @@ def test_retranslate_items_marks_failed_items_as_error() -> None:
         src="旁白",
         dst="旧译文",
         file_path="script/b.txt",
-        status=Base.ProjectStatus.PROCESSED,
+        status=Base.ItemStatus.PROCESSED,
     )
     service = ProofreadingRetranslateService(
         data_manager=data_manager,
@@ -112,7 +111,7 @@ def test_retranslate_items_marks_failed_items_as_error() -> None:
 
     assert change.item_ids == (2,)
     saved_item = data_manager.save_item.call_args.args[0]
-    assert saved_item.get_status() == Base.ProjectStatus.ERROR
+    assert saved_item.get_status() == Base.ItemStatus.ERROR
 
 
 def test_retranslate_items_preserves_persisted_format_fields_for_frontend_payload() -> (
@@ -129,7 +128,7 @@ def test_retranslate_items_preserves_persisted_format_fields_for_frontend_payloa
         src="勇者",
         dst="旧译文",
         file_path="script/a.txt",
-        status=Base.ProjectStatus.PROCESSED,
+        status=Base.ItemStatus.PROCESSED,
     )
     service = ProofreadingRetranslateService(
         data_manager=data_manager,

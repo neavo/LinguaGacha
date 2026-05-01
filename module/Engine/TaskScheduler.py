@@ -39,7 +39,7 @@ class TaskScheduler:
         chunk: list[Item] = []
 
         for i, item in enumerate(items):
-            if item.get_status() != Base.ProjectStatus.NONE:
+            if item.get_status() != Base.ItemStatus.NONE:
                 skip += 1
                 continue
 
@@ -115,9 +115,9 @@ class TaskScheduler:
             item = items[i]
 
             if item.get_status() in (
-                Base.ProjectStatus.EXCLUDED,
-                Base.ProjectStatus.RULE_SKIPPED,
-                Base.ProjectStatus.LANGUAGE_SKIPPED,
+                Base.ItemStatus.EXCLUDED,
+                Base.ItemStatus.RULE_SKIPPED,
+                Base.ItemStatus.LANGUAGE_SKIPPED,
             ):
                 continue
 

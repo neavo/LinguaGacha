@@ -168,6 +168,7 @@ flowchart TD
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
 - `reorder-files` 的 `ordered_rel_paths` 必须完整覆盖当前文件集合。
 - `apply-prefilter`、`translation/reset`、`analysis/reset` 会持久化 TS 侧 planner 生成的最终条目或分析载荷；它们属于同步 mutation，不走后台任务生命周期。
+- 同步 mutation 的状态载荷边界固定为：条目翻译事实随 `items.status` 更新，任务进度镜像随 `translation_extras` / `analysis_extras` 与 `task` 运行态更新，工程忙碌与终态由任务事件表达。
 - `quality/rules/save-entries`、`quality/rules/update-meta` 与 `quality/prompts/save` 会回 `ProjectMutationAck`，页面需要用它们对齐 `quality` 或 `prompts` section revision。
 - `analysis/import-glossary` 会分别校验运行态 section revision 与 glossary 自身 revision。
 - `tasks/snapshot` 是按需快照，不是订阅入口。

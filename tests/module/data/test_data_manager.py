@@ -427,7 +427,6 @@ def test_persist_add_files_payload_compresses_assets_before_store(
             },
         ],
         translation_extras={},
-        project_status="IDLE",
         prefilter_config={},
     )
 
@@ -512,7 +511,6 @@ def test_apply_translation_reset_all_payload_replaces_items_and_clears_analysis_
             }
         ],
         translation_extras={"line": 0},
-        project_status="NONE",
         prefilter_config={"source_language": "JA"},
         expected_section_revisions={"items": 1, "analysis": 2},
     )
@@ -566,7 +564,6 @@ def test_apply_translation_reset_failed_payload_updates_items_and_meta_only(
     items = dm.apply_translation_reset_failed_payload(
         item_payloads=[{"id": 11, "dst": "", "status": "NONE", "retry_count": 0}],
         translation_extras={"line": 3, "error_line": 0},
-        project_status="PROCESSING",
         expected_section_revisions={"items": 2},
     )
 
@@ -583,7 +580,6 @@ def test_apply_translation_reset_failed_payload_updates_items_and_meta_only(
         items=items,
         meta={
             "translation_extras": {"line": 3, "error_line": 0},
-            "project_status": "PROCESSING",
         },
     )
     dm.bump_project_runtime_section_revision.assert_called_once_with("items")

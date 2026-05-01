@@ -71,7 +71,7 @@ class XLSX(Base):
                             "row": row,
                             "file_type": Item.FileType.XLSX,
                             "file_path": rel_path,
-                            "status": Base.ProjectStatus.EXCLUDED,
+                            "status": Base.ItemStatus.EXCLUDED,
                         }
                     )
                 )
@@ -84,7 +84,7 @@ class XLSX(Base):
                             "row": row,
                             "file_type": Item.FileType.XLSX,
                             "file_path": rel_path,
-                            "status": Base.ProjectStatus.PROCESSED,
+                            "status": Base.ItemStatus.PROCESSED,
                         }
                     )
                 )
@@ -97,7 +97,7 @@ class XLSX(Base):
                             "row": row,
                             "file_type": Item.FileType.XLSX,
                             "file_path": rel_path,
-                            "status": Base.ProjectStatus.NONE,
+                            "status": Base.ItemStatus.NONE,
                         }
                     )
                 )

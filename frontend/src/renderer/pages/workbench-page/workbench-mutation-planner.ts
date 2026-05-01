@@ -32,7 +32,6 @@ type WorkbenchTranslationInheritanceMode = "none" | "inherit";
 
 type WorkbenchDerivedMeta = {
   translation_extras: Record<string, unknown>;
-  project_status: string;
   prefilter_config: {
     source_language: string;
     mtool_optimizer_enable: boolean;
@@ -198,7 +197,6 @@ function build_derived_meta(args: {
     task_snapshot: mutation_output.task_snapshot,
     derived_meta: {
       translation_extras: mutation_output.translation_extras,
-      project_status: mutation_output.project_status,
       prefilter_config: mutation_output.prefilter_config,
     },
   };

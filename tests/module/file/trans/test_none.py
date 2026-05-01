@@ -20,7 +20,7 @@ def test_check_handles_empty_aqua_and_processed_rows() -> None:
         "",
         "",
         [],
-        Base.ProjectStatus.EXCLUDED,
+        Base.ItemStatus.EXCLUDED,
         False,
     )
 
@@ -30,12 +30,12 @@ def test_check_handles_empty_aqua_and_processed_rows() -> None:
         ["aqua"],
         ["ctx"],
     )
-    assert status == Base.ProjectStatus.NONE
+    assert status == Base.ItemStatus.NONE
     assert skip_internal_filter is True
     assert tag == ["aqua"]
 
     _, _, _, status, _ = processor.check("a", ["src", "dst"], [], ["ctx"])
-    assert status == Base.ProjectStatus.PROCESSED
+    assert status == Base.ItemStatus.PROCESSED
 
 
 def test_check_sets_empty_dst_when_translation_column_missing() -> None:
@@ -51,7 +51,7 @@ def test_check_sets_empty_dst_when_translation_column_missing() -> None:
     assert src == "src-only"
     assert dst == ""
     assert tag == []
-    assert status == Base.ProjectStatus.NONE
+    assert status == Base.ItemStatus.NONE
     assert skip_internal_filter is False
 
 
@@ -100,7 +100,7 @@ def test_check_removes_gold_tag_when_not_filtered() -> None:
     assert src == "hello"
     assert dst == ""
     assert tag == ["keep"]
-    assert status == Base.ProjectStatus.NONE
+    assert status == Base.ItemStatus.NONE
     assert skip_internal_filter is False
 
 
@@ -117,7 +117,7 @@ def test_check_does_not_add_gold_tag_when_all_blocked_and_no_color_tags() -> Non
     assert src == "a.mp3"
     assert dst == ""
     assert "gold" not in tag
-    assert status == Base.ProjectStatus.EXCLUDED
+    assert status == Base.ItemStatus.EXCLUDED
     assert skip_internal_filter is False
 
 
@@ -166,7 +166,7 @@ def test_check_uses_default_block_and_adds_gold_for_mixed_filter() -> None:
     assert src == "hello"
     assert dst == ""
     assert tag == []
-    assert status == Base.ProjectStatus.NONE
+    assert status == Base.ItemStatus.NONE
     assert skip_internal_filter is False
 
     processor.filter = lambda src, path, tag, context: [True, False]
@@ -178,4 +178,4 @@ def test_check_uses_default_block_and_adds_gold_for_mixed_filter() -> None:
     )
 
     assert tag == ["keep", "gold"]
-    assert status == Base.ProjectStatus.NONE
+    assert status == Base.ItemStatus.NONE

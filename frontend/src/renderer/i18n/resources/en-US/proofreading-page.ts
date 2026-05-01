@@ -45,7 +45,6 @@ export const en_us_proofreading_page = {
   },
   status: {
     none: "Untranslated",
-    processing: "Processing",
     processed: "Translation Completed",
     excluded: "Excluded",
     rule_skipped: "Rule Skipped",

@@ -12,10 +12,10 @@ class ProjectSchemaMigrationService:
         cls,
         conn: sqlite3.Connection,
         migrate_asset_sort_order_schema: Callable[[sqlite3.Connection], bool],
-        migrate_project_status_schema: Callable[[sqlite3.Connection], bool],
+        migrate_item_status_schema: Callable[[sqlite3.Connection], bool],
     ) -> bool:
         """执行 schema 迁移入口；具体 SQL 仍由 storage 层提供。"""
 
         asset_schema_changed = migrate_asset_sort_order_schema(conn)
-        status_changed = migrate_project_status_schema(conn)
+        status_changed = migrate_item_status_schema(conn)
         return asset_schema_changed or status_changed

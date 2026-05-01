@@ -9,7 +9,7 @@ from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.RuleService import RuleService
-from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
+from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
@@ -18,10 +18,9 @@ class QualityRuleService:
 
     RULE_STATISTICS_COUNTED_STATUSES = frozenset(
         {
-            Base.ProjectStatus.NONE,
-            Base.ProjectStatus.PROCESSING,
-            Base.ProjectStatus.PROCESSED,
-            Base.ProjectStatus.ERROR,
+            Base.ItemStatus.NONE,
+            Base.ItemStatus.PROCESSED,
+            Base.ItemStatus.ERROR,
         }
     )
 
@@ -218,18 +217,18 @@ class QualityRuleService:
         return str(value)
 
     @staticmethod
-    def normalize_rule_statistics_status(value: Any) -> Base.ProjectStatus:
+    def normalize_rule_statistics_status(value: Any) -> Base.ItemStatus:
         """把条目状态统一成枚举。"""
 
-        if isinstance(value, Base.ProjectStatus):
+        if isinstance(value, Base.ItemStatus):
             return value
-        normalized_value = ProjectStatusMigrationService.normalize_status_value(value)
+        normalized_value = ItemStatusMigrationService.normalize_status_value(value)
         if isinstance(normalized_value, str):
             try:
-                return Base.ProjectStatus(normalized_value)
+                return Base.ItemStatus(normalized_value)
             except ValueError:
-                return Base.ProjectStatus.NONE
-        return Base.ProjectStatus.NONE
+                return Base.ItemStatus.NONE
+        return Base.ItemStatus.NONE
 
     def collect_rule_statistics_texts(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
         """提取规则统计需要的 src/dst 文本快照。"""

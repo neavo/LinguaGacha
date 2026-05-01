@@ -68,16 +68,16 @@ class WOLFXLSX(Base):
             dst_val = sheet.cell(row=row, column=self.COL_DST_TEXT).value
             dst: str = str(dst_val) if dst_val is not None else ""
 
-            status = Base.ProjectStatus.NONE
+            status = Base.ItemStatus.NONE
 
             if (
                 src == ""
                 or self.get_fg_color_index(sheet, row, self.COL_SRC_TEXT)
                 not in self.FILL_COLOR_WHITELIST
             ):
-                status = Base.ProjectStatus.EXCLUDED
+                status = Base.ItemStatus.EXCLUDED
             elif dst != "" and src != dst:
-                status = Base.ProjectStatus.PROCESSED
+                status = Base.ItemStatus.PROCESSED
 
             items.append(
                 Item.from_dict(

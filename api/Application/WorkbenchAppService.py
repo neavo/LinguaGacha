@@ -29,7 +29,7 @@ class WorkbenchAppService:
     def parse_derived_meta(
         self,
         request: dict[str, Any],
-    ) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         raw_derived_meta = request.get("derived_meta", {})
         derived_meta = (
             dict(raw_derived_meta) if isinstance(raw_derived_meta, dict) else {}
@@ -38,7 +38,6 @@ class WorkbenchAppService:
         prefilter_config = derived_meta.get("prefilter_config", {})
         return (
             dict(translation_extras) if isinstance(translation_extras, dict) else {},
-            str(derived_meta.get("project_status", "NONE") or "NONE"),
             dict(prefilter_config) if isinstance(prefilter_config, dict) else {},
         )
 
@@ -112,13 +111,10 @@ class WorkbenchAppService:
         """批量执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         files = self.parse_add_file_entries(request)
-        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
-            request
-        )
+        translation_extras, prefilter_config = self.parse_derived_meta(request)
         self.data_manager.persist_add_files_payload(
             files,
             translation_extras=translation_extras,
-            project_status=project_status,
             prefilter_config=prefilter_config,
             expected_section_revisions=self.parse_expected_section_revisions(request),
         )
@@ -134,14 +130,11 @@ class WorkbenchAppService:
             if isinstance(items_raw, list)
             else []
         )
-        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
-            request
-        )
+        translation_extras, prefilter_config = self.parse_derived_meta(request)
         self.data_manager.persist_reset_file(
             rel_path,
             item_payloads=item_payloads,
             translation_extras=translation_extras,
-            project_status=project_status,
             prefilter_config=prefilter_config,
             expected_section_revisions=self.parse_expected_section_revisions(request),
         )
@@ -151,13 +144,10 @@ class WorkbenchAppService:
         """执行删除文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         rel_path = str(request.get("rel_path", ""))
-        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
-            request
-        )
+        translation_extras, prefilter_config = self.parse_derived_meta(request)
         self.data_manager.persist_delete_files(
             [rel_path],
             translation_extras=translation_extras,
-            project_status=project_status,
             prefilter_config=prefilter_config,
             expected_section_revisions=self.parse_expected_section_revisions(request),
         )
@@ -172,13 +162,10 @@ class WorkbenchAppService:
             if isinstance(rel_paths_raw, list)
             else []
         )
-        translation_extras, project_status, prefilter_config = self.parse_derived_meta(
-            request
-        )
+        translation_extras, prefilter_config = self.parse_derived_meta(request)
         self.data_manager.persist_delete_files(
             rel_paths,
             translation_extras=translation_extras,
-            project_status=project_status,
             prefilter_config=prefilter_config,
             expected_section_revisions=self.parse_expected_section_revisions(request),
         )

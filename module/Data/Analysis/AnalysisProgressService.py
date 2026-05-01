@@ -13,15 +13,15 @@ class AnalysisProgressService:
 
     def normalize_state_value(
         self,
-        raw_status: Base.ProjectStatus | str | object,
-    ) -> Base.ProjectStatus | None:
-        """把状态值规整成合法的项目状态枚举。"""
+        raw_status: Base.ItemStatus | str | object,
+    ) -> Base.ItemStatus | None:
+        """把状态值规整成合法的条目状态枚举。"""
 
-        if isinstance(raw_status, Base.ProjectStatus):
+        if isinstance(raw_status, Base.ItemStatus):
             return raw_status
         if isinstance(raw_status, str):
             try:
-                return Base.ProjectStatus(raw_status)
+                return Base.ItemStatus(raw_status)
             except ValueError:
                 return None
         return None
@@ -41,9 +41,9 @@ class AnalysisProgressService:
 
         status = self.normalize_state_value(raw_checkpoint.get("status"))
         if status not in (
-            Base.ProjectStatus.NONE,
-            Base.ProjectStatus.PROCESSED,
-            Base.ProjectStatus.ERROR,
+            Base.ItemStatus.NONE,
+            Base.ItemStatus.PROCESSED,
+            Base.ItemStatus.ERROR,
         ):
             return None
 
@@ -134,7 +134,7 @@ class AnalysisProgressService:
             checkpoint = self.normalize_item_checkpoint(
                 {
                     "item_id": raw_checkpoint.get("item_id"),
-                    "status": Base.ProjectStatus.ERROR.value,
+                    "status": Base.ItemStatus.ERROR.value,
                     "updated_at": updated_at,
                     "error_count": raw_checkpoint.get("error_count", 0),
                 }
@@ -144,19 +144,19 @@ class AnalysisProgressService:
 
             previous = existing.get(checkpoint["item_id"])
             error_count = 1
-            if previous is not None and previous["status"] == Base.ProjectStatus.ERROR:
+            if previous is not None and previous["status"] == Base.ItemStatus.ERROR:
                 error_count = int(previous.get("error_count", 0)) + 1
 
             row = {
                 "item_id": checkpoint["item_id"],
-                "status": Base.ProjectStatus.ERROR.value,
+                "status": Base.ItemStatus.ERROR.value,
                 "updated_at": checkpoint["updated_at"],
                 "error_count": error_count,
             }
             error_rows.append(row)
             updated_checkpoints[checkpoint["item_id"]] = {
                 "item_id": checkpoint["item_id"],
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "updated_at": checkpoint["updated_at"],
                 "error_count": error_count,
             }
@@ -168,7 +168,7 @@ class AnalysisProgressService:
         items: list[Item],
         checkpoints: dict[int, dict[str, Any]],
         *,
-        skipped_statuses: tuple[Base.ProjectStatus, ...],
+        skipped_statuses: tuple[Base.ItemStatus, ...],
     ) -> dict[str, Any]:
         """按当前条目文本重新计算分析覆盖率。"""
 
@@ -190,13 +190,11 @@ class AnalysisProgressService:
             total_line += 1
             checkpoint = checkpoints.get(item_id)
             status = (
-                checkpoint["status"]
-                if checkpoint is not None
-                else Base.ProjectStatus.NONE
+                checkpoint["status"] if checkpoint is not None else Base.ItemStatus.NONE
             )
-            if status == Base.ProjectStatus.PROCESSED:
+            if status == Base.ItemStatus.PROCESSED:
                 processed_line += 1
-            elif status == Base.ProjectStatus.ERROR:
+            elif status == Base.ItemStatus.ERROR:
                 error_line += 1
 
         return {
@@ -240,7 +238,7 @@ class AnalysisProgressService:
         items: list[Item],
         checkpoints: dict[int, dict[str, Any]],
         *,
-        skipped_statuses: tuple[Base.ProjectStatus, ...] = (),
+        skipped_statuses: tuple[Base.ItemStatus, ...] = (),
     ) -> list[Item]:
         """找出当前仍需进入分析任务的条目。"""
 

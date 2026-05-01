@@ -13,7 +13,7 @@ class AnalysisItemContext:
     file_path: str
     src_text: str
     first_name_src: str | None = None
-    previous_status: Base.ProjectStatus | None = None
+    previous_status: Base.ItemStatus | None = None
 
 
 # 这里把一次分析任务需要提交的数据收成一个上下文，保证切块边界和重试输入稳定。

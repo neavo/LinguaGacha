@@ -17,17 +17,19 @@ def create_translation_stub() -> SimpleNamespace:
     translation.extras = {}
     translation.items_cache = None
     translation.dm = SimpleNamespace(get_translation_extras=lambda: {})
-    translation.saved_statuses: list[Base.ProjectStatus] = []
+    translation.save_count = 0
     translation.emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
-    translation.save_translation_state = lambda status: (
-        translation.saved_statuses.append(status)
+    translation.save_translation_state = lambda: setattr(
+        translation,
+        "save_count",
+        translation.save_count + 1,
     )
     translation.emit = lambda event, data: translation.emitted_events.append(
         (event, data)
     )
     translation.get_item_count_by_status = lambda status: {
-        Base.ProjectStatus.PROCESSED: 0,
-        Base.ProjectStatus.ERROR: 0,
+        Base.ItemStatus.PROCESSED: 0,
+        Base.ItemStatus.ERROR: 0,
     }.get(status, 0)
     return translation
 
@@ -68,11 +70,11 @@ def test_sync_extras_line_stats_uses_items_cache_as_source_of_truth(
 ) -> None:
     translation = create_translation_stub()
     processed = Item(src="a")
-    processed.set_status(Base.ProjectStatus.PROCESSED)
+    processed.set_status(Base.ItemStatus.PROCESSED)
     failed = Item(src="b")
-    failed.set_status(Base.ProjectStatus.ERROR)
+    failed.set_status(Base.ItemStatus.ERROR)
     pending = Item(src="c")
-    pending.set_status(Base.ProjectStatus.NONE)
+    pending.set_status(Base.ItemStatus.NONE)
     translation.items_cache = [processed, failed, pending]
     translation.extras = {"start_time": 10.0}
     tracker = TranslationProgressTracker(translation)
@@ -103,7 +105,7 @@ def test_sync_extras_line_stats_ignores_untracked_item_status(
 ) -> None:
     translation = create_translation_stub()
     item = Item(src="x")
-    item.set_status(Base.ProjectStatus.EXCLUDED)
+    item.set_status(Base.ItemStatus.EXCLUDED)
     translation.items_cache = [item]
     translation.extras = {"start_time": 0.0}
     tracker = TranslationProgressTracker(translation)
@@ -131,8 +133,8 @@ def test_build_plan_snapshot_continue_mode_reuses_saved_tokens_and_live_counts(
         }
     )
     translation.get_item_count_by_status = lambda status: {
-        Base.ProjectStatus.PROCESSED: 4,
-        Base.ProjectStatus.ERROR: 2,
+        Base.ItemStatus.PROCESSED: 4,
+        Base.ItemStatus.ERROR: 2,
     }.get(status, 0)
     tracker = TranslationProgressTracker(translation)
     monkeypatch.setattr(translation_progress_module.time, "time", lambda: 200.0)
@@ -168,5 +170,5 @@ def test_persist_progress_snapshot_saves_state_only_when_requested() -> None:
 
     snapshot = tracker.persist_progress_snapshot(save_state=True)
 
-    assert translation.saved_statuses == [Base.ProjectStatus.PROCESSING]
+    assert translation.save_count == 1
     assert snapshot == {"line": 1}

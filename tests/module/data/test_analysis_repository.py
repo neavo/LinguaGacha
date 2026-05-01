@@ -58,19 +58,19 @@ def test_upsert_item_checkpoints_roundtrip_filters_invalid_rows(
         [
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED.value,
+                "status": Base.ItemStatus.PROCESSED.value,
                 "updated_at": "2026-03-10T10:00:00",
                 "error_count": 0,
             },
             {
                 "item_id": 2,
-                "status": Base.ProjectStatus.ERROR.value,
+                "status": Base.ItemStatus.ERROR.value,
                 "updated_at": "2026-03-10T10:01:00",
                 "error_count": 2,
             },
             {
                 "item_id": 3,
-                "status": Base.ProjectStatus.PROCESSING.value,
+                "status": "PROCESSING",
                 "updated_at": "2026-03-10T10:02:00",
                 "error_count": 9,
             },
@@ -80,13 +80,13 @@ def test_upsert_item_checkpoints_roundtrip_filters_invalid_rows(
     assert latest == {
         1: {
             "item_id": 1,
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "updated_at": "2026-03-10T10:00:00",
             "error_count": 0,
         },
         2: {
             "item_id": 2,
-            "status": Base.ProjectStatus.ERROR,
+            "status": Base.ItemStatus.ERROR,
             "updated_at": "2026-03-10T10:01:00",
             "error_count": 2,
         },
@@ -136,7 +136,7 @@ def test_commit_task_batch_persists_candidates_checkpoints_and_snapshot(
         success_checkpoints=[
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED.value,
+                "status": Base.ItemStatus.PROCESSED.value,
                 "updated_at": "2026-03-10T10:00:00",
                 "error_count": 0,
             }
@@ -165,9 +165,7 @@ def test_commit_task_batch_persists_candidates_checkpoints_and_snapshot(
     aggregate = repository.get_candidate_aggregate()
 
     assert inserted == 1
-    assert (
-        repository.get_item_checkpoints()[1]["status"] == Base.ProjectStatus.PROCESSED
-    )
+    assert repository.get_item_checkpoints()[1]["status"] == Base.ItemStatus.PROCESSED
     assert aggregate == {
         "Alice": {
             "src": "Alice",
@@ -192,7 +190,7 @@ def test_update_task_error_increments_existing_error_checkpoint_and_snapshot(
         [
             {
                 "item_id": 3,
-                "status": Base.ProjectStatus.ERROR.value,
+                "status": Base.ItemStatus.ERROR.value,
                 "updated_at": "2026-03-09T10:00:00",
                 "error_count": 1,
             }
@@ -204,7 +202,7 @@ def test_update_task_error_increments_existing_error_checkpoint_and_snapshot(
         progress_snapshot={"line": 1, "error_line": 1},
     )
 
-    assert latest[3]["status"] == Base.ProjectStatus.ERROR
+    assert latest[3]["status"] == Base.ItemStatus.ERROR
     assert latest[3]["error_count"] == 2
     assert db.get_meta("analysis_extras") == {"line": 1, "error_line": 1}
 
@@ -217,7 +215,7 @@ def test_clear_progress_clears_snapshot_checkpoints_and_candidate_pool(
         success_checkpoints=[
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED.value,
+                "status": Base.ItemStatus.PROCESSED.value,
                 "updated_at": "2026-03-10T10:00:00",
                 "error_count": 0,
             }
@@ -250,7 +248,7 @@ def test_clear_progress_with_snapshot_persists_given_snapshot_and_resets_candida
         success_checkpoints=[
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED.value,
+                "status": Base.ItemStatus.PROCESSED.value,
                 "updated_at": "2026-03-10T10:00:00",
                 "error_count": 0,
             }
@@ -300,13 +298,13 @@ def test_reset_failed_checkpoints_only_deletes_error_rows(
         [
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED.value,
+                "status": Base.ItemStatus.PROCESSED.value,
                 "updated_at": "2026-03-10T10:00:00",
                 "error_count": 0,
             },
             {
                 "item_id": 2,
-                "status": Base.ProjectStatus.ERROR.value,
+                "status": Base.ItemStatus.ERROR.value,
                 "updated_at": "2026-03-10T10:01:00",
                 "error_count": 1,
             },
@@ -319,7 +317,7 @@ def test_reset_failed_checkpoints_only_deletes_error_rows(
     assert repository.get_item_checkpoints() == {
         1: {
             "item_id": 1,
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "updated_at": "2026-03-10T10:00:00",
             "error_count": 0,
         }
@@ -334,13 +332,13 @@ def test_reset_failed_checkpoints_with_snapshot_keeps_success_rows_and_updates_s
         [
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED.value,
+                "status": Base.ItemStatus.PROCESSED.value,
                 "updated_at": "2026-03-10T10:00:00",
                 "error_count": 0,
             },
             {
                 "item_id": 2,
-                "status": Base.ProjectStatus.ERROR.value,
+                "status": Base.ItemStatus.ERROR.value,
                 "updated_at": "2026-03-10T10:01:00",
                 "error_count": 1,
             },
@@ -362,7 +360,7 @@ def test_reset_failed_checkpoints_with_snapshot_keeps_success_rows_and_updates_s
     assert repository.get_item_checkpoints() == {
         1: {
             "item_id": 1,
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "updated_at": "2026-03-10T10:00:00",
             "error_count": 0,
         }
@@ -394,7 +392,7 @@ def test_getters_return_empty_when_project_not_loaded() -> None:
             [
                 {
                     "item_id": 1,
-                    "status": Base.ProjectStatus.ERROR.value,
+                    "status": Base.ItemStatus.ERROR.value,
                     "updated_at": "2026-03-10T10:00:00",
                     "error_count": 1,
                 }

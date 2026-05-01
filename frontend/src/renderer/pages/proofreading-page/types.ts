@@ -10,16 +10,10 @@ export const PROOFREADING_WARNING_CODES = [
   "RETRY_THRESHOLD",
 ] as const;
 
-const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = [
-  "NONE",
-  "PROCESSING",
-  "PROCESSED",
-  "ERROR",
-] as const;
+const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
 
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
-  "PROCESSING",
   "PROCESSED",
   "ERROR",
   "LANGUAGE_SKIPPED",
@@ -30,7 +24,6 @@ export const PROOFREADING_STATUS_ORDER = [
 
 export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   NONE: "proofreading_page.status.none",
-  PROCESSING: "proofreading_page.status.processing",
   PROCESSED: "proofreading_page.status.processed",
   EXCLUDED: "proofreading_page.status.excluded",
   RULE_SKIPPED: "proofreading_page.status.rule_skipped",

@@ -8,12 +8,12 @@ from module.Engine.TaskModeStrategy import TaskModeStrategy
     ("status", "expected"),
     [
         (None, True),
-        (Base.ProjectStatus.NONE, True),
-        (Base.ProjectStatus.PROCESSED, False),
-        (Base.ProjectStatus.ERROR, False),
+        (Base.ItemStatus.NONE, True),
+        (Base.ItemStatus.PROCESSED, False),
+        (Base.ItemStatus.ERROR, False),
     ],
 )
 def test_should_schedule_continue_only_accepts_pending_status(
-    status: Base.ProjectStatus | None, expected: bool
+    status: Base.ItemStatus | None, expected: bool
 ) -> None:
     assert TaskModeStrategy.should_schedule_continue(status) is expected

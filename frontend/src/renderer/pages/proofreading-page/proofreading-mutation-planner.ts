@@ -30,7 +30,6 @@ type ProofreadingFinalizedItemPayload = {
 
 type ProofreadingDerivedState = {
   translation_extras: Record<string, unknown>;
-  project_status: string;
   task_snapshot: Record<string, unknown>;
 };
 
@@ -40,7 +39,6 @@ export type ProofreadingMutationPlan = {
   request_body: {
     items: ProofreadingFinalizedItemPayload[];
     translation_extras: Record<string, unknown>;
-    project_status: string;
     expected_section_revisions: ProjectStoreSectionRevisions;
   };
 };
@@ -161,7 +159,6 @@ function build_derived_state(args: {
   let processed_line = 0;
   let error_line = 0;
   let total_line = 0;
-  let has_pending_item = false;
 
   for (const item of args.next_item_index.values()) {
     if (item.status === "PROCESSED") {
@@ -169,9 +166,6 @@ function build_derived_state(args: {
     }
     if (item.status === "ERROR") {
       error_line += 1;
-    }
-    if (item.status === "NONE") {
-      has_pending_item = true;
     }
     if (TRACKED_PROGRESS_STATUSES.has(item.status)) {
       total_line += 1;
@@ -184,11 +178,8 @@ function build_derived_state(args: {
   translation_extras.total_line = total_line;
   translation_extras.line = processed_line + error_line;
 
-  const project_status = total_line <= 0 ? "NONE" : has_pending_item ? "PROCESSING" : "PROCESSED";
-
   return {
     translation_extras,
-    project_status,
     task_snapshot: {
       ...args.state.task,
       ...translation_extras,
@@ -254,7 +245,6 @@ function build_mutation_plan(args: {
     request_body: {
       items: args.changed_items.map((item) => build_finalized_item_payload(item)),
       translation_extras: derived_state.translation_extras,
-      project_status: derived_state.project_status,
       expected_section_revisions: {
         items: args.state.revisions.sections.items ?? 0,
         proofreading: args.state.revisions.sections.proofreading ?? 0,

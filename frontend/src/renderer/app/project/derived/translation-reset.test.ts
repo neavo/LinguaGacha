@@ -121,7 +121,6 @@ describe("translation reset planners", () => {
         total_line: 2,
         line: 1,
       },
-      project_status: "PROCESSING",
       expected_section_revisions: {
         items: 4,
       },
@@ -175,7 +174,6 @@ describe("translation reset planners", () => {
     expect(plan.updatedSections).toEqual(["items", "analysis", "task"]);
     expect(plan.requestBody).toMatchObject({
       mode: "all",
-      project_status: "PROCESSING",
       expected_section_revisions: {
         items: 4,
         analysis: 6,

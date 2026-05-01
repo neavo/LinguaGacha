@@ -339,7 +339,7 @@ class AnalysisRepository:
             if db is None:
                 return 0
             return db.delete_analysis_item_checkpoints(
-                status=Base.ProjectStatus.ERROR.value
+                status=Base.ItemStatus.ERROR.value
             )
 
     def reset_failed_checkpoints_with_snapshot(
@@ -355,7 +355,7 @@ class AnalysisRepository:
                 return 0, {}
             with db.connection() as conn:
                 deleted = db.delete_analysis_item_checkpoints(
-                    status=Base.ProjectStatus.ERROR.value,
+                    status=Base.ItemStatus.ERROR.value,
                     conn=conn,
                 )
                 persisted_snapshot = self.persist_progress_snapshot_with_db(

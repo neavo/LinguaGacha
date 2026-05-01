@@ -89,7 +89,7 @@ def test_proofreading_api_client_save_item_returns_project_mutation_ack(
                 {
                     "id": 1,
                     "dst": "Hero arrived again",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 }
             ],
             "expected_section_revisions": {"items": 7, "proofreading": 6},
@@ -120,7 +120,7 @@ def test_proofreading_api_client_replace_all_returns_project_mutation_ack(
                 {
                     "id": 1,
                     "dst": "Hero arrived",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 }
             ],
             "search_text": "Hero",
@@ -150,12 +150,12 @@ def test_proofreading_api_client_save_all_returns_project_mutation_ack(
                 {
                     "id": 1,
                     "dst": "",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
                 {
                     "id": 2,
                     "dst": "",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
             ],
             "expected_section_revisions": {"items": 7, "proofreading": 6},
@@ -185,14 +185,14 @@ def test_proofreading_api_client_retranslate_items_returns_mutation_result(
                     "src": "勇者が来た",
                     "dst": "Hero arrived",
                     "file_path": "script/a.txt",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 },
                 {
                     "id": 2,
                     "src": "旁白",
                     "dst": "Narration",
                     "file_path": "script/b.txt",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
             ],
             "expected_revision": 7,

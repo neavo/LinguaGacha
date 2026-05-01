@@ -52,7 +52,6 @@ class ProofreadingAppService:
         self.mutation_service.persist_finalized_items(
             self.resolve_finalized_items(request),
             translation_extras=self.resolve_translation_extras(request),
-            project_status=self.resolve_project_status(request),
             expected_section_revisions=self.resolve_expected_section_revisions(request),
             reason="proofreading_save_item",
         )
@@ -66,7 +65,6 @@ class ProofreadingAppService:
         self.mutation_service.persist_finalized_items(
             self.resolve_finalized_items(request),
             translation_extras=self.resolve_translation_extras(request),
-            project_status=self.resolve_project_status(request),
             expected_section_revisions=self.resolve_expected_section_revisions(request),
             reason="proofreading_save_all",
         )
@@ -80,7 +78,6 @@ class ProofreadingAppService:
         self.mutation_service.persist_finalized_items(
             self.resolve_finalized_items(request),
             translation_extras=self.resolve_translation_extras(request),
-            project_status=self.resolve_project_status(request),
             expected_section_revisions=self.resolve_expected_section_revisions(request),
             reason="proofreading_replace_all",
         )
@@ -131,9 +128,6 @@ class ProofreadingAppService:
         if not isinstance(extras_raw, dict):
             return {}
         return dict(extras_raw)
-
-    def resolve_project_status(self, request: dict[str, Any]) -> str:
-        return str(request.get("project_status", "NONE") or "NONE")
 
     def resolve_finalized_items(
         self,

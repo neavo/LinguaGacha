@@ -41,8 +41,8 @@ def test_read_from_stream_reads_status_for_common_rows(config: Config) -> None:
     items = XLSX(config).read_from_stream(content, "sheet.xlsx")
 
     assert len(items) == 3
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
-    assert items[1].get_status() == Base.ProjectStatus.NONE
+    assert items[0].get_status() == Base.ItemStatus.PROCESSED
+    assert items[1].get_status() == Base.ItemStatus.NONE
     assert items[2].get_src() == "123"
     assert items[2].get_dst() == ""
 
@@ -77,7 +77,7 @@ def test_read_from_stream_marks_empty_source_as_excluded(
     items = XLSX(config).read_from_stream(b"bytes", "sheet.xlsx")
 
     assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.EXCLUDED
+    assert items[0].get_status() == Base.ItemStatus.EXCLUDED
 
 
 def test_read_from_stream_skips_wolf_sheet(config: Config) -> None:

@@ -49,7 +49,7 @@ class FakeDataManager:
     def reset_failed_analysis_checkpoints(self) -> None:
         kept: dict[int, dict[str, object]] = {}
         for item_id, checkpoint in self.analysis_item_checkpoints.items():
-            if checkpoint.get("status") == Base.ProjectStatus.ERROR:
+            if checkpoint.get("status") == Base.ItemStatus.ERROR:
                 continue
             kept[item_id] = dict(checkpoint)
         self.analysis_item_checkpoints = kept
@@ -108,9 +108,9 @@ class FakeDataManager:
         error_line = 0
 
         for checkpoint in self.analysis_item_checkpoints.values():
-            if checkpoint.get("status") == Base.ProjectStatus.PROCESSED:
+            if checkpoint.get("status") == Base.ItemStatus.PROCESSED:
                 processed_line += 1
-            elif checkpoint.get("status") == Base.ProjectStatus.ERROR:
+            elif checkpoint.get("status") == Base.ItemStatus.ERROR:
                 error_line += 1
 
         line = processed_line + error_line
@@ -163,7 +163,7 @@ class FakeDataManager:
             if item_id <= 0:
                 continue
             self.analysis_item_checkpoints[item_id] = {
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "error_count": 0,
             }
         return changed_count
@@ -194,7 +194,7 @@ class FakeDataManager:
             if item_id <= 0:
                 continue
             self.analysis_item_checkpoints[item_id] = {
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "error_count": 0,
             }
 
@@ -207,7 +207,7 @@ class FakeDataManager:
                 or 0
             )
             self.analysis_item_checkpoints[item_id] = {
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "error_count": old_error_count + 1,
             }
 
@@ -233,7 +233,7 @@ class FakeDataManager:
                 old_error_count = int(checkpoint.get("error_count", 0) or 0)
 
             self.analysis_item_checkpoints[item_id] = {
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "error_count": old_error_count + 1,
             }
         return self.get_analysis_item_checkpoints()

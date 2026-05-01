@@ -146,7 +146,7 @@ class TranslationTask(Base):
         if len(srcs) == 0:
             for item, processor in zip(items, processors):
                 item.set_dst(item.get_src())
-                item.set_status(Base.ProjectStatus.PROCESSED)
+                item.set_status(Base.ItemStatus.PROCESSED)
 
             return {
                 "done": True,
@@ -251,7 +251,7 @@ class TranslationTask(Base):
                     name, dst = processor.post_process(dsts_ex)
                     item.set_dst(dst)
                     item.set_first_name_dst(name) if name is not None else None
-                    item.set_status(Base.ProjectStatus.PROCESSED)
+                    item.set_status(Base.ItemStatus.PROCESSED)
                     updated_count = updated_count + 1
 
         self.print_log_table(

@@ -72,11 +72,11 @@ class TranslationProgressTracker:
         remaining_line = 0
         for item in self.translation.items_cache:
             status = item.get_status()
-            if status == Base.ProjectStatus.PROCESSED:
+            if status == Base.ItemStatus.PROCESSED:
                 processed_line += 1
-            elif status == Base.ProjectStatus.ERROR:
+            elif status == Base.ItemStatus.ERROR:
                 error_line += 1
-            elif status == Base.ProjectStatus.NONE:
+            elif status == Base.ItemStatus.NONE:
                 remaining_line += 1
 
         snapshot = self.build_counted_snapshot(
@@ -89,7 +89,7 @@ class TranslationProgressTracker:
     def persist_progress_snapshot(self, save_state: bool) -> dict[str, Any]:
         """共享生命周期骨架通过这里统一触发翻译快照持久化。"""
         if save_state and self.translation.items_cache is not None:
-            self.translation.save_translation_state(Base.ProjectStatus.PROCESSING)
+            self.translation.save_translation_state()
         return dict(self.translation.extras)
 
     def update_pipeline_progress(self, extras_snapshot: dict[str, Any]) -> None:
@@ -107,10 +107,10 @@ class TranslationProgressTracker:
                 total_line=snapshot.total_line,
                 line=snapshot.line,
                 processed_line=self.translation.get_item_count_by_status(
-                    Base.ProjectStatus.PROCESSED
+                    Base.ItemStatus.PROCESSED
                 ),
                 error_line=self.translation.get_item_count_by_status(
-                    Base.ProjectStatus.ERROR
+                    Base.ItemStatus.ERROR
                 ),
                 total_tokens=snapshot.total_tokens,
                 total_input_tokens=snapshot.total_input_tokens,

@@ -190,7 +190,6 @@ class ProjectAppService:
         self.project_manager.apply_prefilter_payload(
             item_payloads=item_payloads,
             translation_extras=translation_extras,
-            project_status=str(request.get("project_status", "NONE") or "NONE"),
             prefilter_config=prefilter_config,
             expected_section_revisions=expected_section_revisions,
         )
@@ -231,7 +230,6 @@ class ProjectAppService:
             self.project_manager.apply_translation_reset_all_payload(
                 item_payloads=item_payloads,
                 translation_extras=translation_extras,
-                project_status=str(request.get("project_status", "NONE") or "NONE"),
                 prefilter_config=prefilter_config,
                 expected_section_revisions=expected_section_revisions,
             )
@@ -252,7 +250,6 @@ class ProjectAppService:
             self.project_manager.apply_translation_reset_failed_payload(
                 item_payloads=item_payloads,
                 translation_extras=translation_extras,
-                project_status=str(request.get("project_status", "NONE") or "NONE"),
                 expected_section_revisions=expected_section_revisions,
             )
             return self.runtime_service.build_project_mutation_ack(["items"])

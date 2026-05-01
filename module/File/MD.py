@@ -75,7 +75,7 @@ class MD(Base):
                             "file_type": Item.FileType.MD,
                             "file_path": rel_path,
                             "text_type": Item.TextType.MD,
-                            "status": Base.ProjectStatus.EXCLUDED,
+                            "status": Base.ItemStatus.EXCLUDED,
                         }
                     )
                 )

@@ -185,7 +185,6 @@ export function create_translation_reset_failed_plan(args: {
       mode: "failed",
       items: serialize_partial_items(changed_items),
       translation_extras: derived_task_state.translation_extras,
-      project_status: derived_task_state.project_status,
       expected_section_revisions: {
         items: args.state.revisions.sections.items ?? 0,
       },
@@ -258,7 +257,6 @@ export async function create_translation_reset_all_plan(args: {
       mode: "all",
       items: finalized_full_items,
       translation_extras: reset_task_state.translation_extras,
-      project_status: reset_task_state.project_status,
       prefilter_config: mutation_output.prefilter_config,
       expected_section_revisions: {
         items: args.state.revisions.sections.items ?? 0,

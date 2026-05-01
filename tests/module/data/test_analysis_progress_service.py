@@ -18,8 +18,8 @@ def test_collect_pending_items_skips_done_failed_and_empty_source() -> None:
     pending_items = service.collect_pending_items(
         [done_item, failed_item, pending_item, name_only_item],
         {
-            1: {"status": Base.ProjectStatus.PROCESSED},
-            2: {"status": Base.ProjectStatus.ERROR},
+            1: {"status": Base.ItemStatus.PROCESSED},
+            2: {"status": Base.ItemStatus.ERROR},
         },
     )
 
@@ -32,7 +32,7 @@ def test_normalize_item_checkpoint_accepts_minimal_valid_payload() -> None:
     checkpoint = service.normalize_item_checkpoint(
         {
             "item_id": 9,
-            "status": Base.ProjectStatus.PROCESSED.value,
+            "status": Base.ItemStatus.PROCESSED.value,
             "updated_at": ANALYSIS_TIME,
             "error_count": 1,
         }
@@ -40,7 +40,7 @@ def test_normalize_item_checkpoint_accepts_minimal_valid_payload() -> None:
 
     assert checkpoint == {
         "item_id": 9,
-        "status": Base.ProjectStatus.PROCESSED,
+        "status": Base.ItemStatus.PROCESSED,
         "updated_at": ANALYSIS_TIME,
         "error_count": 1,
     }
@@ -54,7 +54,7 @@ def test_build_error_checkpoint_rows_increments_existing_error_count() -> None:
         {
             7: {
                 "item_id": 7,
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "updated_at": "2026-03-09T10:00:00",
                 "error_count": 2,
             }
@@ -65,19 +65,19 @@ def test_build_error_checkpoint_rows_increments_existing_error_count() -> None:
     assert error_rows == [
         {
             "item_id": 7,
-            "status": Base.ProjectStatus.ERROR.value,
+            "status": Base.ItemStatus.ERROR.value,
             "updated_at": ANALYSIS_TIME,
             "error_count": 3,
         }
     ]
-    assert latest[7]["status"] == Base.ProjectStatus.ERROR
+    assert latest[7]["status"] == Base.ItemStatus.ERROR
     assert latest[7]["error_count"] == 3
 
 
 def test_build_status_summary_counts_only_valid_items() -> None:
     service = AnalysisProgressService()
     processed_item = Item(id=1, src="alpha")
-    skipped_item = Item(id=2, src="beta", status=Base.ProjectStatus.EXCLUDED)
+    skipped_item = Item(id=2, src="beta", status=Base.ItemStatus.EXCLUDED)
     empty_src_item = Item(id=3, src="   ")
     no_id_item = Item(src="gamma")
     pending_item = Item(id=4, src="delta")
@@ -87,14 +87,14 @@ def test_build_status_summary_counts_only_valid_items() -> None:
         {
             1: {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
             },
             4: {
                 "item_id": 4,
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
             },
         },
-        skipped_statuses=(Base.ProjectStatus.EXCLUDED,),
+        skipped_statuses=(Base.ItemStatus.EXCLUDED,),
     )
 
     assert summary == {
@@ -149,7 +149,7 @@ def test_normalize_item_checkpoint_rejects_invalid_status_and_clamps_error_count
     invalid_status = service.normalize_item_checkpoint(
         {
             "item_id": 1,
-            "status": Base.ProjectStatus.PROCESSING.value,
+            "status": "PROCESSING",
             "updated_at": ANALYSIS_TIME,
             "error_count": 2,
         }
@@ -157,7 +157,7 @@ def test_normalize_item_checkpoint_rejects_invalid_status_and_clamps_error_count
     normalized = service.normalize_item_checkpoint(
         {
             "item_id": 2,
-            "status": Base.ProjectStatus.ERROR,
+            "status": Base.ItemStatus.ERROR,
             "updated_at": " ",
             "error_count": -5,
         }
@@ -166,7 +166,7 @@ def test_normalize_item_checkpoint_rejects_invalid_status_and_clamps_error_count
     assert invalid_status is None
     assert normalized is not None
     assert normalized["item_id"] == 2
-    assert normalized["status"] == Base.ProjectStatus.ERROR
+    assert normalized["status"] == Base.ItemStatus.ERROR
     assert normalized["error_count"] == 0
     assert isinstance(normalized["updated_at"], str)
     assert normalized["updated_at"] != ""
@@ -181,25 +181,25 @@ def test_normalize_item_checkpoint_upsert_rows_keeps_only_valid_trackable_rows()
         [
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.NONE.value,
+                "status": Base.ItemStatus.NONE.value,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 0,
             },
             {
                 "item_id": 2,
-                "status": Base.ProjectStatus.PROCESSED.value,
+                "status": Base.ItemStatus.PROCESSED.value,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 1,
             },
             {
                 "item_id": 3,
-                "status": Base.ProjectStatus.PROCESSING.value,
+                "status": "PROCESSING",
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 9,
             },
             {
                 "item_id": 0,
-                "status": Base.ProjectStatus.ERROR.value,
+                "status": Base.ItemStatus.ERROR.value,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 1,
             },
@@ -209,13 +209,13 @@ def test_normalize_item_checkpoint_upsert_rows_keeps_only_valid_trackable_rows()
     assert rows == [
         {
             "item_id": 1,
-            "status": Base.ProjectStatus.NONE.value,
+            "status": Base.ItemStatus.NONE.value,
             "updated_at": ANALYSIS_TIME,
             "error_count": 0,
         },
         {
             "item_id": 2,
-            "status": Base.ProjectStatus.PROCESSED.value,
+            "status": Base.ItemStatus.PROCESSED.value,
             "updated_at": ANALYSIS_TIME,
             "error_count": 1,
         },
@@ -236,7 +236,7 @@ def test_build_error_checkpoint_rows_starts_new_error_and_ignores_invalid_rows()
     assert error_rows == [
         {
             "item_id": 8,
-            "status": Base.ProjectStatus.ERROR.value,
+            "status": Base.ItemStatus.ERROR.value,
             "updated_at": ANALYSIS_TIME,
             "error_count": 1,
         }
@@ -244,7 +244,7 @@ def test_build_error_checkpoint_rows_starts_new_error_and_ignores_invalid_rows()
     assert latest == {
         8: {
             "item_id": 8,
-            "status": Base.ProjectStatus.ERROR,
+            "status": Base.ItemStatus.ERROR,
             "updated_at": ANALYSIS_TIME,
             "error_count": 1,
         }

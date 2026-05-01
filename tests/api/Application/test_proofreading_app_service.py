@@ -40,7 +40,6 @@ class RecordingProofreadingMutationService:
         items: list[dict[str, object]],
         *,
         translation_extras: dict[str, object],
-        project_status: str,
         expected_section_revisions: dict[str, int] | None,
         reason: str,
     ) -> None:
@@ -48,7 +47,6 @@ class RecordingProofreadingMutationService:
             {
                 "items": [dict(item) for item in items],
                 "translation_extras": dict(translation_extras),
-                "project_status": project_status,
                 "expected_section_revisions": (
                     dict(expected_section_revisions)
                     if expected_section_revisions is not None
@@ -170,11 +168,10 @@ def test_proofreading_save_item_returns_minimal_mutation_ack() -> None:
                     "src": "勇者が来た",
                     "dst": "Hero arrived again",
                     "file_path": "script/a.txt",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 }
             ],
             "translation_extras": {"line": 1},
-            "project_status": "PROCESSING",
             "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
@@ -187,11 +184,10 @@ def test_proofreading_save_item_returns_minimal_mutation_ack() -> None:
                     "src": "勇者が来た",
                     "dst": "Hero arrived again",
                     "file_path": "script/a.txt",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 }
             ],
             "translation_extras": {"line": 1},
-            "project_status": "PROCESSING",
             "expected_section_revisions": {"items": 7, "proofreading": 6},
             "reason": "proofreading_save_item",
         }
@@ -216,16 +212,15 @@ def test_proofreading_save_all_returns_minimal_mutation_ack() -> None:
                 {
                     "id": 1,
                     "dst": "",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
                 {
                     "id": 2,
                     "dst": "",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
             ],
             "translation_extras": {"line": 2},
-            "project_status": "NONE",
             "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
@@ -236,16 +231,15 @@ def test_proofreading_save_all_returns_minimal_mutation_ack() -> None:
                 {
                     "id": 1,
                     "dst": "",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
                 {
                     "id": 2,
                     "dst": "",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
             ],
             "translation_extras": {"line": 2},
-            "project_status": "NONE",
             "expected_section_revisions": {"items": 7, "proofreading": 6},
             "reason": "proofreading_save_all",
         }
@@ -267,13 +261,12 @@ def test_proofreading_replace_all_returns_minimal_mutation_ack() -> None:
                 {
                     "id": 1,
                     "dst": "Hero arrived",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 }
             ],
             "search_text": "Hero",
             "replace_text": "Heroine",
             "translation_extras": {"line": 1},
-            "project_status": "PROCESSING",
             "expected_section_revisions": {"items": 7, "proofreading": 6},
         }
     )
@@ -284,11 +277,10 @@ def test_proofreading_replace_all_returns_minimal_mutation_ack() -> None:
                 {
                     "id": 1,
                     "dst": "Hero arrived",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 }
             ],
             "translation_extras": {"line": 1},
-            "project_status": "PROCESSING",
             "expected_section_revisions": {"items": 7, "proofreading": 6},
             "reason": "proofreading_replace_all",
         }
@@ -308,14 +300,14 @@ def test_proofreading_retranslate_items_returns_minimal_mutation_ack() -> None:
                     "src": "勇者が来た",
                     "dst": "Hero arrived",
                     "file_path": "script/a.txt",
-                    "status": Base.ProjectStatus.PROCESSED,
+                    "status": Base.ItemStatus.PROCESSED,
                 },
                 {
                     "id": 2,
                     "src": "旁白",
                     "dst": "Narration",
                     "file_path": "script/b.txt",
-                    "status": Base.ProjectStatus.NONE,
+                    "status": Base.ItemStatus.NONE,
                 },
             ],
             "expected_revision": 7,

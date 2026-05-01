@@ -27,7 +27,7 @@ class AnalysisScheduler:
     def __init__(self, analysis: Analysis) -> None:
         self.analysis = analysis
 
-    def is_skipped_analysis_status(self, status: Base.ProjectStatus) -> bool:
+    def is_skipped_analysis_status(self, status: Base.ItemStatus) -> bool:
         """分析跳过规则统一收口，避免入口和重试分支各写一套。"""
         return DataManager.is_skipped_analysis_status(status)
 
@@ -49,13 +49,13 @@ class AnalysisScheduler:
     def normalize_checkpoint_status(
         self,
         raw_status: object,
-    ) -> Base.ProjectStatus | None:
+    ) -> Base.ItemStatus | None:
         """脏 checkpoint 状态在进入调度前统一转成稳定枚举。"""
-        if isinstance(raw_status, Base.ProjectStatus):
+        if isinstance(raw_status, Base.ItemStatus):
             return raw_status
         if isinstance(raw_status, str):
             try:
-                return Base.ProjectStatus(raw_status)
+                return Base.ItemStatus(raw_status)
             except ValueError:
                 return None
         return None
@@ -96,11 +96,11 @@ class AnalysisScheduler:
         if src_text == "":
             return None
 
-        previous_status: Base.ProjectStatus | None = None
+        previous_status: Base.ItemStatus | None = None
         if checkpoint_map is not None:
             checkpoint = checkpoint_map.get(item_id)
             status = checkpoint.get("status") if checkpoint is not None else None
-            if isinstance(status, Base.ProjectStatus):
+            if isinstance(status, Base.ItemStatus):
                 previous_status = status
 
         return AnalysisItemContext(
@@ -136,10 +136,10 @@ class AnalysisScheduler:
                 continue
 
             status = checkpoint["status"]
-            if status == Base.ProjectStatus.PROCESSED:
+            if status == Base.ItemStatus.PROCESSED:
                 processed_line += 1
                 continue
-            if status == Base.ProjectStatus.ERROR:
+            if status == Base.ItemStatus.ERROR:
                 error_line += 1
                 continue
 
@@ -177,7 +177,7 @@ class AnalysisScheduler:
                 id=item.item_id,
                 src=item.src_text,
                 file_path=item.file_path,
-                status=Base.ProjectStatus.NONE,
+                status=Base.ItemStatus.NONE,
             )
             for item in items
         ]
@@ -267,7 +267,7 @@ class AnalysisScheduler:
         return [
             {
                 "item_id": item.item_id,
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "updated_at": updated_at,
                 "error_count": 0,
             }
@@ -282,7 +282,7 @@ class AnalysisScheduler:
         return [
             {
                 "item_id": item.item_id,
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "error_count": 0,
             }
             for item in context.items

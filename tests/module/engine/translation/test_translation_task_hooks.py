@@ -98,7 +98,7 @@ def test_translation_task_hooks_handle_commit_payloads_updates_batch_and_progres
 ):
     hooks, translation = build_translation_hooks()
     item = Item(src="a")
-    item.set_status(Base.ProjectStatus.PROCESSED)
+    item.set_status(Base.ItemStatus.PROCESSED)
     context = SimpleNamespace(items=[item], precedings=[], token_threshold=8)
     task = SimpleNamespace(items=[item])
     payload = (
@@ -130,7 +130,7 @@ def test_translation_task_hooks_handle_commit_payloads_updates_batch_and_progres
 def test_translation_task_hooks_handle_commit_payloads_returns_retry_contexts() -> None:
     hooks, translation = build_translation_hooks()
     item = Item(src="a")
-    item.set_status(Base.ProjectStatus.NONE)
+    item.set_status(Base.ItemStatus.NONE)
     retry_context = SimpleNamespace(items=[], precedings=[], token_threshold=4)
     translation.scheduler.handle_failed_context = lambda context, result: [
         retry_context
@@ -153,9 +153,9 @@ def test_translation_task_hooks_handle_commit_payloads_merges_batch_statistics()
 ):
     hooks, translation = build_translation_hooks()
     processed_item = Item(src="a")
-    processed_item.set_status(Base.ProjectStatus.PROCESSED)
+    processed_item.set_status(Base.ItemStatus.PROCESSED)
     failed_item = Item(src="b")
-    failed_item.set_status(Base.ProjectStatus.ERROR)
+    failed_item.set_status(Base.ItemStatus.ERROR)
 
     result = hooks.handle_commit_payloads(
         (
@@ -268,10 +268,10 @@ def test_translation_task_hooks_build_retry_contexts_applies_guard_conditions() 
     assert hooks.build_retry_contexts(context, task, {}) == ()
 
     translation.should_stop = lambda: False
-    item.set_status(Base.ProjectStatus.PROCESSED)
+    item.set_status(Base.ItemStatus.PROCESSED)
     assert hooks.build_retry_contexts(context, task, {}) == ()
 
-    item.set_status(Base.ProjectStatus.NONE)
+    item.set_status(Base.ItemStatus.NONE)
     translation.scheduler = None
     assert hooks.build_retry_contexts(context, task, {}) == ()
 

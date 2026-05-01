@@ -111,7 +111,7 @@ class TranslationTaskHooks:
         if self.should_stop():
             return tuple()
 
-        if not any(i.get_status() == Base.ProjectStatus.NONE for i in task.items):
+        if not any(i.get_status() == Base.ItemStatus.NONE for i in task.items):
             return tuple()
 
         scheduler = self.translation.scheduler
@@ -125,22 +125,19 @@ class TranslationTaskHooks:
         return [
             item.to_dict()
             for item in task.items
-            if item.get_status()
-            in (Base.ProjectStatus.PROCESSED, Base.ProjectStatus.ERROR)
+            if item.get_status() in (Base.ItemStatus.PROCESSED, Base.ItemStatus.ERROR)
         ]
 
     def build_processed_count(self, task: TranslationTask) -> int:
         """统一统计成功数，避免提交阶段分支各算一遍。"""
         return sum(
-            1
-            for item in task.items
-            if item.get_status() == Base.ProjectStatus.PROCESSED
+            1 for item in task.items if item.get_status() == Base.ItemStatus.PROCESSED
         )
 
     def build_error_count(self, task: TranslationTask) -> int:
         """统一统计失败数，保证进度累计和最终回写口径一致。"""
         return sum(
-            1 for item in task.items if item.get_status() == Base.ProjectStatus.ERROR
+            1 for item in task.items if item.get_status() == Base.ItemStatus.ERROR
         )
 
     def handle_commit_payloads(

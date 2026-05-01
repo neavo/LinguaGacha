@@ -116,7 +116,7 @@ class ProofreadingMutationService:
         if "dst" in payload:
             normalized_item["dst"] = str(payload.get("dst", "") or "")
         if "status" in payload:
-            normalized_item["status"] = DataManager.normalize_project_status_value(
+            normalized_item["status"] = DataManager.normalize_item_status_value(
                 payload.get("status", "")
             )
         if "text_type" in payload:
@@ -131,7 +131,6 @@ class ProofreadingMutationService:
         items: list[dict[str, Any]],
         *,
         translation_extras: dict[str, Any],
-        project_status: str,
         expected_section_revisions: dict[str, int] | None,
         reason: str,
     ) -> ProjectItemChange:
@@ -170,9 +169,6 @@ class ProofreadingMutationService:
                 items=finalized_items or None,
                 meta={
                     "translation_extras": dict(translation_extras),
-                    "project_status": DataManager.normalize_project_status_value(
-                        project_status
-                    ),
                 },
             )
             self.data_manager.bump_project_runtime_section_revisions(("items",))

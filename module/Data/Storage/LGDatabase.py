@@ -11,7 +11,7 @@ from typing import Generator
 from base.Base import Base
 from base.LogManager import LogManager
 from module.Migration.ProjectSchemaMigrationService import ProjectSchemaMigrationService
-from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
+from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
 from module.Utils.JSONTool import JSONTool
 
 
@@ -182,7 +182,7 @@ class LGDatabase(Base):
         ProjectSchemaMigrationService.migrate(
             target_conn,
             self.ensure_asset_sort_order_schema,
-            self.migrate_project_status_schema,
+            self.migrate_item_status_schema,
         )
         target_conn.execute("CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type)")
         target_conn.execute(
@@ -210,14 +210,12 @@ class LGDatabase(Base):
             )
         return True
 
-    def migrate_project_status_schema(self, conn: sqlite3.Connection) -> bool:
-        """迁移旧工程中已持久化的历史完成状态，SQL 只留在 storage 层。"""
+    def migrate_item_status_schema(self, conn: sqlite3.Connection) -> bool:
+        """迁移旧工程中已持久化的历史 item 状态，SQL 只留在 storage 层。"""
 
-        items_changed = self.migrate_project_status_items(conn)
-        meta_changed = self.migrate_project_status_meta(conn)
-        return items_changed or meta_changed
+        return self.migrate_item_status_items(conn)
 
-    def migrate_project_status_items(self, conn: sqlite3.Connection) -> bool:
+    def migrate_item_status_items(self, conn: sqlite3.Connection) -> bool:
         """扫描 items.data JSON，只改写 status 旧值并保留其他字段。"""
 
         changed = False
@@ -229,7 +227,7 @@ class LGDatabase(Base):
                 item_data = JSONTool.loads(raw_data)
             except Exception as e:
                 LogManager.get().warning(
-                    f"Failed to migrate legacy project status item: id={item_id}",
+                    f"Failed to migrate legacy item status: id={item_id}",
                     e,
                 )
                 continue
@@ -238,7 +236,7 @@ class LGDatabase(Base):
                 continue
 
             normalized_data, item_changed = (
-                ProjectStatusMigrationService.normalize_item_payload(item_data)
+                ItemStatusMigrationService.normalize_item_payload(item_data)
             )
             if not item_changed:
                 continue
@@ -250,40 +248,6 @@ class LGDatabase(Base):
             changed = True
 
         return changed
-
-    def migrate_project_status_meta(self, conn: sqlite3.Connection) -> bool:
-        """同步迁移极端旧工程里 meta.project_status 的旧状态。"""
-
-        row = conn.execute(
-            "SELECT value FROM meta WHERE key = ?",
-            (ProjectStatusMigrationService.PROJECT_STATUS_META_KEY,),
-        ).fetchone()
-        if row is None:
-            return False
-
-        try:
-            raw_status = JSONTool.loads(row["value"])
-        except Exception as e:
-            LogManager.get().warning(
-                "Failed to migrate legacy project status meta",
-                e,
-            )
-            return False
-
-        normalized_status, status_changed = (
-            ProjectStatusMigrationService.normalize_project_status_meta(raw_status)
-        )
-        if not status_changed:
-            return False
-
-        conn.execute(
-            "UPDATE meta SET value = ? WHERE key = ?",
-            (
-                JSONTool.dumps(normalized_status),
-                ProjectStatusMigrationService.PROJECT_STATUS_META_KEY,
-            ),
-        )
-        return True
 
     def get_next_asset_sort_order(
         self,
@@ -1254,15 +1218,15 @@ class LGDatabase(Base):
                 except Exception:
                     item_data = {}
                 status = (
-                    item_data.get("status", Base.ProjectStatus.NONE.value)
+                    item_data.get("status", Base.ItemStatus.NONE.value)
                     if isinstance(item_data, dict)
-                    else Base.ProjectStatus.NONE.value
+                    else Base.ItemStatus.NONE.value
                 )
-                if status == Base.ProjectStatus.PROCESSED.value:
+                if status == Base.ItemStatus.PROCESSED.value:
                     completed_count += 1
-                elif status == Base.ProjectStatus.ERROR.value:
+                elif status == Base.ItemStatus.ERROR.value:
                     failed_count += 1
-                elif status == Base.ProjectStatus.NONE.value:
+                elif status == Base.ItemStatus.NONE.value:
                     pending_count += 1
                 else:
                     skipped_count += 1

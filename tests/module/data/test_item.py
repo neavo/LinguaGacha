@@ -30,7 +30,7 @@ def test_name_helpers_read_first_source_name_and_update_first_target_name() -> N
     item = Item(
         name_src=["爱丽丝", "鲍勃"],
         name_dst=["Alice", "Bob"],
-        status=Base.ProjectStatus.PROCESSED,
+        status=Base.ItemStatus.PROCESSED,
     )
 
     item.set_first_name_dst("Alice")

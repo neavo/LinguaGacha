@@ -62,8 +62,8 @@ def test_read_from_stream_marks_duplicates_when_enabled(
     )
 
     assert len(items) == 2
-    assert items[0].get_status() == Base.ProjectStatus.NONE
-    assert items[1].get_status() == Base.ProjectStatus.DUPLICATED
+    assert items[0].get_status() == Base.ItemStatus.NONE
+    assert items[1].get_status() == Base.ItemStatus.DUPLICATED
     assert items[0].get_text_type() == Item.TextType.NONE
 
 
@@ -93,8 +93,8 @@ def test_read_from_stream_does_not_mark_duplicates_when_disabled(
     )
 
     assert len(items) == 2
-    assert items[0].get_status() == Base.ProjectStatus.NONE
-    assert items[1].get_status() == Base.ProjectStatus.NONE
+    assert items[0].get_status() == Base.ItemStatus.NONE
+    assert items[1].get_status() == Base.ItemStatus.NONE
 
 
 def test_read_from_stream_returns_empty_for_invalid_shapes(
@@ -385,7 +385,7 @@ def test_write_to_path_updates_data_and_parameters(
         {
             "src": "src1",
             "dst": "dst1",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "tag": tag_path,
             "row": 0,
             "file_type": Item.FileType.TRANS,
@@ -401,7 +401,7 @@ def test_write_to_path_updates_data_and_parameters(
         {
             "src": "src1",
             "dst": "",
-            "status": Base.ProjectStatus.DUPLICATED,
+            "status": Base.ItemStatus.DUPLICATED,
             "tag": tag_path,
             "row": 1,
             "file_type": Item.FileType.TRANS,
@@ -417,7 +417,7 @@ def test_write_to_path_updates_data_and_parameters(
         {
             "src": "src2",
             "dst": "src2",
-            "status": Base.ProjectStatus.EXCLUDED,
+            "status": Base.ItemStatus.EXCLUDED,
             "tag": tag_path,
             "row": 2,
             "file_type": Item.FileType.TRANS,
@@ -480,7 +480,7 @@ def test_write_to_path_cleans_empty_tags_and_parameters(
         {
             "src": "src",
             "dst": "dst",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "tag": tag_path,
             "row": 0,
             "file_type": Item.FileType.TRANS,
@@ -553,7 +553,7 @@ def test_patch_writer_respects_index_translation_and_preserves_extra_columns(
     assert items[0].get_dst() == "old_dst"
 
     items[0].set_dst("new_dst")
-    items[0].set_status(Base.ProjectStatus.PROCESSED)
+    items[0].set_status(Base.ItemStatus.PROCESSED)
     handler.write_to_path(items)
 
     output = json.loads(
@@ -595,7 +595,7 @@ def test_patch_writer_preserves_sparse_null_parameters_for_untouched_rows(
 
     # 仅触达第一行，第二行保持原始 null。
     items[0].set_dst("t")
-    items[0].set_status(Base.ProjectStatus.PROCESSED)
+    items[0].set_status(Base.ItemStatus.PROCESSED)
     handler.write_to_path(items)
 
     output = json.loads(
@@ -631,7 +631,7 @@ def test_legacy_fallback_writes_when_trans_ref_missing(
         {
             "src": "src",
             "dst": "dst",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "tag": file_key,
             "row": 0,
             "file_type": Item.FileType.TRANS,
@@ -682,7 +682,7 @@ def test_processed_row_writes_dst_and_regenerates_partition_parameters(
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
+    assert items[0].get_status() == Base.ItemStatus.PROCESSED
 
     items[0].set_dst("SHOULD_WRITE")
     handler.write_to_path(items)
@@ -735,7 +735,7 @@ def test_patch_writer_does_not_inject_partition_fields_into_span_parameters(
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
+    assert items[0].get_status() == Base.ItemStatus.PROCESSED
 
     handler.write_to_path(items)
 
@@ -781,10 +781,10 @@ def test_patch_writer_writes_duplicated_rows_using_processed_translation_mapping
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 2
-    assert items[1].get_status() == Base.ProjectStatus.DUPLICATED
+    assert items[1].get_status() == Base.ItemStatus.DUPLICATED
 
     items[0].set_dst("translated")
-    items[0].set_status(Base.ProjectStatus.PROCESSED)
+    items[0].set_status(Base.ItemStatus.PROCESSED)
 
     handler.write_to_path(items)
 
@@ -831,7 +831,7 @@ def test_patch_writer_extends_row_when_translation_index_out_of_range(
     assert len(items) == 1
 
     items[0].set_dst("dst")
-    items[0].set_status(Base.ProjectStatus.PROCESSED)
+    items[0].set_status(Base.ItemStatus.PROCESSED)
 
     handler.write_to_path(items)
 
@@ -876,7 +876,7 @@ def test_patch_writer_creates_tags_and_parameters_when_fields_have_wrong_types(
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 1
-    assert items[0].get_status() == Base.ProjectStatus.PROCESSED
+    assert items[0].get_status() == Base.ItemStatus.PROCESSED
 
     handler.write_to_path(items)
 
@@ -926,7 +926,7 @@ def test_patch_writer_skips_duplicated_row_when_translation_mapping_missing(
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 2
-    assert items[1].get_status() == Base.ProjectStatus.DUPLICATED
+    assert items[1].get_status() == Base.ItemStatus.DUPLICATED
 
     # 只给 DUPLICATED 行，不提供 PROCESSED 的翻译映射。
     handler.write_to_path([items[1]])
@@ -979,7 +979,7 @@ def test_legacy_fallback_does_not_clear_other_file_entries(
         {
             "src": "src",
             "dst": "dst",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "tag": file_a,
             "row": 0,
             "file_type": Item.FileType.TRANS,
@@ -1048,7 +1048,7 @@ def test_patch_writer_falls_back_when_trans_ref_points_to_missing_entry(
     item.set_extra_field(updated_extra)
 
     item.set_dst("dst")
-    item.set_status(Base.ProjectStatus.PROCESSED)
+    item.set_status(Base.ItemStatus.PROCESSED)
     handler.write_to_path([item])
 
     output = json.loads(
@@ -1086,7 +1086,7 @@ def test_write_to_path_clamps_negative_column_indices_in_project_metadata(
         {
             "src": "src",
             "dst": "dst",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "tag": file_key,
             "row": 0,
             "file_type": Item.FileType.TRANS,
@@ -1136,7 +1136,7 @@ def test_patch_writer_updates_translation_when_deduplication_disabled(
     assert len(items) == 1
 
     items[0].set_dst("dst")
-    items[0].set_status(Base.ProjectStatus.PROCESSED)
+    items[0].set_status(Base.ItemStatus.PROCESSED)
     handler.write_to_path(items)
 
     output = json.loads(
@@ -1195,7 +1195,7 @@ def test_patch_writer_falls_back_when_trans_ref_is_invalid(
     item.set_extra_field(updated_extra)
 
     item.set_dst("dst")
-    item.set_status(Base.ProjectStatus.PROCESSED)
+    item.set_status(Base.ItemStatus.PROCESSED)
     handler.write_to_path([item])
 
     output = json.loads(
@@ -1237,7 +1237,7 @@ def test_patch_writer_replaces_non_list_row_and_writes_translation(
         {
             "src": "src",
             "dst": "dst",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "tag": file_key,
             "row": 0,
             "file_type": Item.FileType.TRANS,
@@ -1285,7 +1285,7 @@ def test_legacy_fallback_skips_unknown_file_key_in_items(
         {
             "src": "x",
             "dst": "y",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
             "tag": "script/missing.json",
             "row": 0,
             "file_type": Item.FileType.TRANS,

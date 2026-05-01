@@ -33,7 +33,6 @@ def test_add_file_batch_routes_through_workbench_manager(
             ],
             "derived_meta": {
                 "translation_extras": {"line": 1},
-                "project_status": "PROCESSING",
                 "prefilter_config": {
                     "source_language": "JA",
                     "mtool_optimizer_enable": True,
@@ -121,12 +120,11 @@ def test_add_file_batch_propagates_manager_value_error(workbench_app_service) ->
             files: list[dict[str, object]],
             *,
             translation_extras: dict[str, object],
-            project_status: str,
             prefilter_config: dict[str, object],
             expected_section_revisions: dict[str, int] | None = None,
         ) -> None:
             del files
-            del translation_extras, project_status, prefilter_config
+            del translation_extras, prefilter_config
             del expected_section_revisions
             raise ValueError("duplicate: C:/next/b.txt")
 
@@ -148,7 +146,6 @@ def test_add_file_batch_propagates_manager_value_error(workbench_app_service) ->
                 ],
                 "derived_meta": {
                     "translation_extras": {},
-                    "project_status": "NONE",
                     "prefilter_config": {},
                 },
             }

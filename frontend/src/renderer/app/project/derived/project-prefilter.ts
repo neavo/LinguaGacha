@@ -22,7 +22,6 @@ export type ProjectPrefilterMutationOutput = {
   items: Record<string, Record<string, unknown>>;
   analysis: Record<string, unknown>;
   translation_extras: Record<string, unknown>;
-  project_status: string;
   task_snapshot: Record<string, unknown>;
   prefilter_config: {
     source_language: string;
@@ -268,7 +267,6 @@ export function compute_project_prefilter_mutation(
       status_summary: build_analysis_status_summary(item_index.values()),
     },
     translation_extras: derived_task_state.translation_extras,
-    project_status: derived_task_state.project_status,
     task_snapshot: derived_task_state.task_snapshot,
     prefilter_config: {
       source_language: input.source_language,

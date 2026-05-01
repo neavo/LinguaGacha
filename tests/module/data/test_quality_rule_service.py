@@ -195,17 +195,17 @@ def test_collect_rule_statistics_texts_filters_untracked_status_and_normalizes_t
         {
             "src": "Alpha",
             "dst": "阿尔法",
-            "status": Base.ProjectStatus.PROCESSED,
+            "status": Base.ItemStatus.PROCESSED,
         },
         {
             "src": 123,
             "dst": None,
-            "status": Base.ProjectStatus.ERROR.value,
+            "status": Base.ItemStatus.ERROR.value,
         },
         {
             "src": "Skip",
             "dst": "跳过",
-            "status": Base.ProjectStatus.EXCLUDED,
+            "status": Base.ItemStatus.EXCLUDED,
         },
         "not-a-dict",
     ]

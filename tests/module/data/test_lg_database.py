@@ -463,8 +463,8 @@ def test_ensure_schema_backfills_asset_sort_order_for_legacy_db(fs) -> None:
             db.close()
 
 
-def test_ensure_schema_migrates_legacy_project_status_for_legacy_db(fs) -> None:
-    with real_db_path(fs, "legacy_project_status") as db_path:
+def test_ensure_schema_migrates_legacy_item_status_for_legacy_db(fs) -> None:
+    with real_db_path(fs, "legacy_item_status") as db_path:
         if db_path.exists():
             db_path.unlink()
         with contextlib.closing(sqlite3.connect(db_path)) as conn:
@@ -490,6 +490,10 @@ def test_ensure_schema_migrates_legacy_project_status_for_legacy_db(fs) -> None:
                 (JSONTool.dumps({"src": "old", "status": "PROCESSED_IN_PAST"}),),
             )
             conn.execute(
+                "INSERT INTO items (data) VALUES (?)",
+                (JSONTool.dumps({"src": "running", "status": "PROCESSING"}),),
+            )
+            conn.execute(
                 "INSERT INTO meta (key, value) VALUES (?, ?)",
                 ("project_status", JSONTool.dumps("PROCESSED_IN_PAST")),
             )
@@ -499,9 +503,10 @@ def test_ensure_schema_migrates_legacy_project_status_for_legacy_db(fs) -> None:
         db.open()
         try:
             assert db.get_all_items() == [
-                {"id": 1, "src": "old", "status": "PROCESSED"}
+                {"id": 1, "src": "old", "status": "PROCESSED"},
+                {"id": 2, "src": "running", "status": "NONE"},
             ]
-            assert db.get_meta("project_status") == "PROCESSED"
+            assert db.get_meta("project_status") == "PROCESSED_IN_PAST"
         finally:
             db.close()
 

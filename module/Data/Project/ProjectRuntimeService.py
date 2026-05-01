@@ -268,7 +268,7 @@ class ProjectRuntimeService:
     def resolve_status_value_from_dict(self, item_dict: dict[str, object]) -> str:
         """保持与 Item.from_dict() 一致的旧状态归一规则。"""
 
-        status_value = item_dict.get("status", Base.ProjectStatus.NONE)
+        status_value = item_dict.get("status", Base.ItemStatus.NONE)
         if hasattr(status_value, "value"):
             return str(getattr(status_value, "value"))
 

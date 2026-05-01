@@ -42,7 +42,6 @@ export const zh_cn_proofreading_page = {
   },
   status: {
     none: "未翻译",
-    processing: "处理中",
     processed: "翻译完成",
     excluded: "已排除",
     rule_skipped: "规则跳过",

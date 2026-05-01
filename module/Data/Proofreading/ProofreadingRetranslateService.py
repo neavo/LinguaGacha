@@ -78,11 +78,11 @@ class ProofreadingRetranslateService:
         changed_items: list[Item] = []
         for item_dict in persisted_items:
             item = Item.from_dict(item_dict)
-            item.set_status(Base.ProjectStatus.NONE)
+            item.set_status(Base.ItemStatus.NONE)
             item.set_retry_count(0)
             success = self.translate_item(item, config)
             if not success:
-                item.set_status(Base.ProjectStatus.ERROR)
+                item.set_status(Base.ItemStatus.ERROR)
 
             item_id = self.data_manager.save_item(item)
             if isinstance(item_id, int):
@@ -105,7 +105,7 @@ class ProofreadingRetranslateService:
                 self.REVISION_SCOPE,
                 current_revision,
             )
-        self.sync_project_translation_state()
+        self.sync_translation_progress_snapshot()
         del revision
         change = ProjectItemChange(
             item_ids=tuple(
@@ -152,8 +152,8 @@ class ProofreadingRetranslateService:
         completed.wait()
         return result["success"]
 
-    def sync_project_translation_state(self) -> None:
-        """重译后同步工程翻译状态与行数统计。"""
+    def sync_translation_progress_snapshot(self) -> None:
+        """重译后同步翻译行数统计。"""
 
         if not self.data_manager.is_loaded():
             return
@@ -164,25 +164,13 @@ class ProofreadingRetranslateService:
             if item.get_src().strip()
             and item.get_status()
             not in (
-                Base.ProjectStatus.DUPLICATED,
-                Base.ProjectStatus.RULE_SKIPPED,
+                Base.ItemStatus.DUPLICATED,
+                Base.ItemStatus.RULE_SKIPPED,
             )
         ]
-        untranslated_count = sum(
-            1 for item in review_items if item.get_status() == Base.ProjectStatus.NONE
-        )
-        project_status = (
-            Base.ProjectStatus.PROCESSING
-            if untranslated_count > 0
-            else Base.ProjectStatus.PROCESSED
-        )
-        self.data_manager.set_project_status(project_status)
-
         extras = self.data_manager.get_translation_extras()
         translated_count = sum(
-            1
-            for item in review_items
-            if item.get_status() == Base.ProjectStatus.PROCESSED
+            1 for item in review_items if item.get_status() == Base.ItemStatus.PROCESSED
         )
         extras["line"] = translated_count
         self.data_manager.set_translation_extras(extras)

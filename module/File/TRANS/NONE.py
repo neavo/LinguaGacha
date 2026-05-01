@@ -60,15 +60,15 @@ class NONE:
 
         # 如果数据为空，则跳过
         if src == "":
-            status: str = Base.ProjectStatus.EXCLUDED
+            status: str = Base.ItemStatus.EXCLUDED
             skip_internal_filter: bool = False
         # 如果包含 水蓝色 标签，则翻译
         elif any(v == "aqua" for v in updated_tag):
-            status: str = Base.ProjectStatus.NONE
+            status: str = Base.ItemStatus.NONE
             skip_internal_filter: bool = True
         # 如果 第一列、第二列 都有文本，则跳过
         elif dst != "" and src != dst:
-            status: str = Base.ProjectStatus.PROCESSED
+            status: str = Base.ItemStatus.PROCESSED
             skip_internal_filter: bool = False
         else:
             block: list[bool] = self.filter(src, path, updated_tag, context)
@@ -95,9 +95,9 @@ class NONE:
 
             # 如果不需要过滤的数据，则翻译，否则排除
             if any(not v for v in block):
-                status: str = Base.ProjectStatus.NONE
+                status: str = Base.ItemStatus.NONE
             else:
-                status: str = Base.ProjectStatus.EXCLUDED
+                status: str = Base.ItemStatus.EXCLUDED
 
         return src, dst, updated_tag, status, skip_internal_filter
 

@@ -109,6 +109,8 @@ flowchart TD
 
 ### 数据域
 - `Config` 是运行时语言设置的权威来源；工程 `.lg` 中的 `source_language` / `target_language` 只是镜像摘要。
+- `items.status` 只表达条目翻译事实，代码侧枚举为 `Base.ItemStatus`，当前有效集合为 `NONE / PROCESSED / ERROR / EXCLUDED / RULE_SKIPPED / LANGUAGE_SKIPPED / DUPLICATED`；打开旧 `.lg` 时会把 item `PROCESSED_IN_PAST` 持久化为 `PROCESSED`，把 item `PROCESSING` 持久化为 `NONE`。
+- 工程忙碌态、任务按钮和任务进度由 `Engine.status`、任务事件与 `translation_extras` / `task` 运行态驱动；旧 `.lg` 中的 `meta.project_status` 只是历史字段，打开工程时保持原样。
 - Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。
 - 分析候选导入术语的预演和筛选属于前端 planner；Python 数据层保留候选聚合、候选数缓存和分析结果持久化。
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
@@ -119,7 +121,7 @@ flowchart TD
 | 场景 | 迁移入口 | 保持在原领域的内容 |
 | --- | --- | --- |
 | 启动期 userdata/config/preset 布局升级 | `module/Migration/UserDataMigrationService.py` | 配置读写仍由 `Config` 与路径 resolver 提供权威路径 |
-| `.lg` 打开期 schema 与项目状态升级 | `module/Migration/ProjectSchemaMigrationService.py` | 建表、索引和 SQL 细节仍只落在 `module/Data/Storage/LGDatabase.py` |
+| `.lg` 打开期 schema 与 item 状态升级 | `module/Migration/ProjectSchemaMigrationService.py` | 建表、索引和 SQL 细节仍只落在 `module/Data/Storage/LGDatabase.py` |
 | 工程加载期 meta/rule 旧字段升级 | `module/Migration/ProjectMetaMigrationService.py`、`module/Migration/ProjectRuleMigrationService.py` | `ProjectLifecycleService` 只维持加载时机、cache 刷新和清理 |
 迁移目录只承接会写回旧数据、旧磁盘布局或旧配置事实的行为；读取兼容、payload 归一和文件格式 fallback 保留在原领域。例如 `LGDatabase.get_rules()` 的旧规则读取兼容、`Item/DataManager` 的状态边界归一，以及 EPUB/RenPy/TRANS writer fallback 都不是迁移入口。
 

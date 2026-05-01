@@ -94,13 +94,11 @@ export function build_translation_task_and_project_state(args: {
   analysis_candidate_count?: number;
 }): {
   translation_extras: Record<string, unknown>;
-  project_status: string;
   task_snapshot: Record<string, unknown>;
 } {
   let processed_line = 0;
   let error_line = 0;
   let total_line = 0;
-  let has_pending = false;
 
   for (const item of args.items.values()) {
     if (item.status === "PROCESSED") {
@@ -108,9 +106,6 @@ export function build_translation_task_and_project_state(args: {
     }
     if (item.status === "ERROR") {
       error_line += 1;
-    }
-    if (item.status === "NONE") {
-      has_pending = true;
     }
     if (TRACKED_TRANSLATION_STATUSES.has(item.status)) {
       total_line += 1;
@@ -123,11 +118,8 @@ export function build_translation_task_and_project_state(args: {
   translation_extras.total_line = total_line;
   translation_extras.line = processed_line + error_line;
 
-  const project_status = total_line <= 0 ? "NONE" : has_pending ? "PROCESSING" : "PROCESSED";
-
   return {
     translation_extras,
-    project_status,
     task_snapshot: {
       ...args.task_snapshot,
       ...translation_extras,

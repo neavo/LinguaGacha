@@ -84,10 +84,10 @@ class ProjectPrefilter:
         items_kvjson: list[Item] = []
         for idx, item in enumerate(items, start=1):
             if item.get_status() in (
-                Base.ProjectStatus.RULE_SKIPPED,
-                Base.ProjectStatus.LANGUAGE_SKIPPED,
+                Base.ItemStatus.RULE_SKIPPED,
+                Base.ItemStatus.LANGUAGE_SKIPPED,
             ):
-                item.set_status(Base.ProjectStatus.NONE)
+                item.set_status(Base.ItemStatus.NONE)
             if mtool_optimizer_enable and item.get_file_type() == Item.FileType.KVJSON:
                 items_kvjson.append(item)
             tick(idx)
@@ -95,18 +95,18 @@ class ProjectPrefilter:
         # 2) RuleFilter / LanguageFilter：仅对 NONE 条目生效。
         offset = total_items
         for idx, item in enumerate(items, start=1):
-            if item.get_status() != Base.ProjectStatus.NONE:
+            if item.get_status() != Base.ItemStatus.NONE:
                 tick(offset + idx)
                 continue
 
             if RuleFilter.filter(item.get_src()):
-                item.set_status(Base.ProjectStatus.RULE_SKIPPED)
+                item.set_status(Base.ItemStatus.RULE_SKIPPED)
                 rule_skipped += 1
                 tick(offset + idx)
                 continue
 
             if LanguageFilter.filter(item.get_src(), source_language):
-                item.set_status(Base.ProjectStatus.LANGUAGE_SKIPPED)
+                item.set_status(Base.ItemStatus.LANGUAGE_SKIPPED)
                 language_skipped += 1
 
             tick(offset + idx)
@@ -197,10 +197,10 @@ class ProjectPrefilter:
             for item in items_by_file_path:
                 work_done += 1
                 report(work_done)
-                if item.get_status() != Base.ProjectStatus.NONE:
+                if item.get_status() != Base.ItemStatus.NONE:
                     continue
                 if item.get_src() in target:
-                    item.set_status(Base.ProjectStatus.RULE_SKIPPED)
+                    item.set_status(Base.ItemStatus.RULE_SKIPPED)
                     skipped += 1
 
         report(work_total)

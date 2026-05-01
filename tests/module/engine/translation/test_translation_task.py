@@ -208,7 +208,7 @@ class TestTranslationTaskPrepareRequestData:
         assert prepared["done"] is True
         assert prepared["result"]["row_count"] == 1
         assert item.get_dst() == item.get_src()
-        assert item.get_status() == Base.ProjectStatus.PROCESSED
+        assert item.get_status() == Base.ItemStatus.PROCESSED
 
     def test_prepare_request_data_not_done_when_some_lines_still_need_translation(
         self, monkeypatch: pytest.MonkeyPatch
@@ -244,7 +244,7 @@ class TestTranslationTaskPrepareRequestData:
         assert prepared["srcs"] == ["hello"]
         assert prepared["console_log"] == ["LOG"]
         assert item.get_dst() == ""
-        assert item.get_status() == Base.ProjectStatus.NONE
+        assert item.get_status() == Base.ItemStatus.NONE
 
     def test_prepare_request_data_uses_sakura_prompt_when_api_format_is_sakura(
         self, monkeypatch: pytest.MonkeyPatch
@@ -360,7 +360,7 @@ class TestTranslationTaskApplyResponseData:
         }
         assert task.items[0].get_dst() == "你好"
         assert task.items[0].get_name_dst() == "艾莉丝"
-        assert task.items[0].get_status() == Base.ProjectStatus.PROCESSED
+        assert task.items[0].get_status() == Base.ItemStatus.PROCESSED
         assert checker.calls[0]["stream_degraded"] is False
         assert processor.post_args == ["decoded"]
         assert len(logged["args"]) == 8
@@ -387,7 +387,7 @@ class TestTranslationTaskApplyResponseData:
         assert result["row_count"] == 1
         assert processor.post_args == ["only-one", ""]
         assert task.items[0].get_dst() == "joined"
-        assert task.items[0].get_status() == Base.ProjectStatus.PROCESSED
+        assert task.items[0].get_status() == Base.ItemStatus.PROCESSED
 
     def test_apply_response_data_request_timeout_skips_decoder_and_marks_timeout(
         self, monkeypatch: pytest.MonkeyPatch
@@ -594,9 +594,9 @@ class TestTranslationTaskApplyResponseData:
         )
 
         assert result["row_count"] == 1
-        assert task.items[0].get_status() == Base.ProjectStatus.PROCESSED
+        assert task.items[0].get_status() == Base.ItemStatus.PROCESSED
         assert task.items[0].get_dst() == "A_DST"
-        assert task.items[1].get_status() == Base.ProjectStatus.NONE
+        assert task.items[1].get_status() == Base.ItemStatus.NONE
         assert task.items[1].get_dst() == ""
 
 

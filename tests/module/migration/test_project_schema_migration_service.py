@@ -27,7 +27,7 @@ def create_connection() -> sqlite3.Connection:
     return conn
 
 
-def test_migrate_runs_storage_schema_hook_and_project_status_migration() -> None:
+def test_migrate_runs_storage_schema_hook_and_item_status_migration() -> None:
     with contextlib.closing(create_connection()) as conn:
         conn.execute(
             "INSERT INTO items (data) VALUES (?)",
@@ -40,7 +40,7 @@ def test_migrate_runs_storage_schema_hook_and_project_status_migration() -> None
             called = target_conn is conn
             return True
 
-        def migrate_project_status_schema(target_conn: sqlite3.Connection) -> bool:
+        def migrate_item_status_schema(target_conn: sqlite3.Connection) -> bool:
             row = target_conn.execute("SELECT data FROM items WHERE id = 1").fetchone()
             item_data = JSONTool.loads(row["data"])
             item_data["status"] = "PROCESSED"
@@ -53,7 +53,7 @@ def test_migrate_runs_storage_schema_hook_and_project_status_migration() -> None
         changed = ProjectSchemaMigrationService.migrate(
             conn,
             migrate_asset_sort_order_schema,
-            migrate_project_status_schema,
+            migrate_item_status_schema,
         )
 
         row = conn.execute("SELECT data FROM items WHERE id = 1").fetchone()

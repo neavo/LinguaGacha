@@ -60,9 +60,9 @@ def test_read_from_stream_sets_status_from_color_and_dst(config: Config) -> None
     items = WOLFXLSX(config).read_from_stream(content, "wolf.xlsx")
 
     assert len(items) == 3
-    assert items[0].get_status() == Base.ProjectStatus.NONE
-    assert items[1].get_status() == Base.ProjectStatus.PROCESSED
-    assert items[2].get_status() == Base.ProjectStatus.EXCLUDED
+    assert items[0].get_status() == Base.ItemStatus.NONE
+    assert items[1].get_status() == Base.ItemStatus.PROCESSED
+    assert items[2].get_status() == Base.ItemStatus.EXCLUDED
 
 
 def test_get_fg_color_index_returns_minus_one_without_fill(config: Config) -> None:

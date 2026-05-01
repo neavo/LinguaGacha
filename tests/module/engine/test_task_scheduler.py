@@ -7,7 +7,7 @@ from module.Engine.TaskScheduler import TaskScheduler
 
 def create_item(
     src: str,
-    status: Base.ProjectStatus = Base.ProjectStatus.NONE,
+    status: Base.ItemStatus = Base.ItemStatus.NONE,
     *,
     file_path: str = "story.txt",
 ) -> Item:
@@ -51,7 +51,7 @@ def test_generate_item_chunks_splits_when_line_limit_exceeded() -> None:
 def test_generate_item_chunks_skips_non_none_status_items() -> None:
     items = [
         create_item("line-1"),
-        create_item("line-2", Base.ProjectStatus.PROCESSED),
+        create_item("line-2", Base.ItemStatus.PROCESSED),
         create_item("line-3"),
     ]
 
@@ -67,8 +67,8 @@ def test_generate_item_chunks_skips_non_none_status_items() -> None:
 
 def test_generate_item_chunks_returns_empty_when_all_items_are_skipped() -> None:
     items = [
-        create_item("line-1", Base.ProjectStatus.PROCESSED),
-        create_item("line-2", Base.ProjectStatus.PROCESSED),
+        create_item("line-1", Base.ItemStatus.PROCESSED),
+        create_item("line-2", Base.ItemStatus.PROCESSED),
     ]
 
     chunks, preceding_chunks = TaskScheduler.generate_item_chunks(
@@ -117,7 +117,7 @@ def test_generate_preceding_chunk_obeys_punctuation_and_threshold() -> None:
 
 def test_generate_preceding_chunk_skips_excluded_and_empty_items() -> None:
     items = [
-        create_item("skip.", Base.ProjectStatus.EXCLUDED, file_path="a.txt"),
+        create_item("skip.", Base.ItemStatus.EXCLUDED, file_path="a.txt"),
         create_item("   ", file_path="a.txt"),
         create_item("kept.", file_path="a.txt"),
         create_item("target", file_path="a.txt"),
@@ -136,8 +136,8 @@ def test_generate_preceding_chunk_skips_excluded_and_empty_items() -> None:
 
 def test_generate_preceding_chunk_skips_rule_and_language_skipped() -> None:
     items = [
-        create_item("skip.", Base.ProjectStatus.RULE_SKIPPED),
-        create_item("skip.", Base.ProjectStatus.LANGUAGE_SKIPPED),
+        create_item("skip.", Base.ItemStatus.RULE_SKIPPED),
+        create_item("skip.", Base.ItemStatus.LANGUAGE_SKIPPED),
         create_item("kept."),
         create_item("target"),
     ]

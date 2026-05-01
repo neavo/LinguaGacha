@@ -24,7 +24,6 @@ import pytest
                 ],
                 "derived_meta": {
                     "translation_extras": {"line": 1},
-                    "project_status": "PROCESSING",
                     "prefilter_config": {
                         "source_language": "JA",
                         "mtool_optimizer_enable": True,
@@ -49,7 +48,6 @@ import pytest
                     ],
                     "derived_meta": {
                         "translation_extras": {"line": 1},
-                        "project_status": "PROCESSING",
                         "prefilter_config": {
                             "source_language": "JA",
                             "mtool_optimizer_enable": True,
@@ -71,7 +69,6 @@ import pytest
                 "items": [{"id": 1, "src": "line-1"}],
                 "derived_meta": {
                     "translation_extras": {"line": 1},
-                    "project_status": "PROCESSING",
                     "prefilter_config": {
                         "source_language": "JA",
                         "mtool_optimizer_enable": True,
@@ -86,7 +83,6 @@ import pytest
                     "items": [{"id": 1, "src": "line-1"}],
                     "derived_meta": {
                         "translation_extras": {"line": 1},
-                        "project_status": "PROCESSING",
                         "prefilter_config": {
                             "source_language": "JA",
                             "mtool_optimizer_enable": True,
@@ -103,7 +99,6 @@ import pytest
                 "rel_path": "script/a.txt",
                 "derived_meta": {
                     "translation_extras": {"line": 1},
-                    "project_status": "PROCESSING",
                     "prefilter_config": {
                         "source_language": "JA",
                         "mtool_optimizer_enable": True,
@@ -117,7 +112,6 @@ import pytest
                     "rel_path": "script/a.txt",
                     "derived_meta": {
                         "translation_extras": {"line": 1},
-                        "project_status": "PROCESSING",
                         "prefilter_config": {
                             "source_language": "JA",
                             "mtool_optimizer_enable": True,
@@ -138,7 +132,6 @@ import pytest
                 "rel_paths": ["script/a.txt"],
                 "derived_meta": {
                     "translation_extras": {"line": 1},
-                    "project_status": "PROCESSING",
                     "prefilter_config": {
                         "source_language": "JA",
                         "mtool_optimizer_enable": True,
@@ -152,7 +145,6 @@ import pytest
                     "rel_paths": ["script/a.txt"],
                     "derived_meta": {
                         "translation_extras": {"line": 1},
-                        "project_status": "PROCESSING",
                         "prefilter_config": {
                             "source_language": "JA",
                             "mtool_optimizer_enable": True,

@@ -29,7 +29,7 @@ from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
-from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
+from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
 from module.Utils.ZstdTool import ZstdTool
 
 if TYPE_CHECKING:
@@ -338,32 +338,9 @@ class DataManager(Base):
     ) -> dict[str, int]:
         return self.runtime_revision_service.bump_revisions(sections)
 
-    def get_project_status(self) -> Base.ProjectStatus:
-        raw = self.get_meta("project_status", Base.ProjectStatus.NONE.value)
-        if isinstance(raw, Base.ProjectStatus):
-            return raw
-        normalized_raw = ProjectStatusMigrationService.normalize_status_value(raw)
-        if isinstance(normalized_raw, str):
-            try:
-                return Base.ProjectStatus(normalized_raw)
-            except ValueError:
-                return Base.ProjectStatus.NONE
-        return Base.ProjectStatus.NONE
-
-    def set_project_status(self, status: Base.ProjectStatus) -> None:
-        self.set_meta("project_status", self.normalize_project_status_value(status))
-
     @staticmethod
-    def normalize_project_status_value(status: Any) -> str:
-        normalized_status = ProjectStatusMigrationService.normalize_status_value(status)
-        if isinstance(normalized_status, str):
-            try:
-                return Base.ProjectStatus(normalized_status).value
-            except ValueError:
-                return Base.ProjectStatus.NONE.value
-        if isinstance(normalized_status, Base.ProjectStatus):
-            return normalized_status.value
-        return Base.ProjectStatus.NONE.value
+    def normalize_item_status_value(status: Any) -> str:
+        return ItemStatusMigrationService.normalize_item_status_value(status)
 
     def get_translation_extras(self) -> dict[str, Any]:
         extras = self.get_meta("translation_extras", {})
@@ -373,7 +350,7 @@ class DataManager(Base):
         self.set_meta("translation_extras", extras)
 
     @staticmethod
-    def is_skipped_analysis_status(status: Base.ProjectStatus) -> bool:
+    def is_skipped_analysis_status(status: Base.ItemStatus) -> bool:
         return AnalysisService.is_skipped_analysis_status(status)
 
     def get_analysis_extras(self) -> dict[str, Any]:
@@ -557,7 +534,6 @@ class DataManager(Base):
         *,
         item_payloads: list[dict[str, Any]],
         translation_extras: dict[str, Any],
-        project_status: str,
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None,
     ) -> list[dict[str, Any]]:
@@ -574,7 +550,6 @@ class DataManager(Base):
                 items=normalized_items,
                 meta=self.build_analysis_reset_meta(
                     translation_extras=translation_extras,
-                    project_status=project_status,
                     prefilter_config=prefilter_config,
                 ),
             )
@@ -586,7 +561,6 @@ class DataManager(Base):
         *,
         item_payloads: list[dict[str, Any]],
         translation_extras: dict[str, Any],
-        project_status: str,
         expected_section_revisions: dict[str, int] | None,
     ) -> list[dict[str, Any]]:
         with self.state_lock:
@@ -602,9 +576,6 @@ class DataManager(Base):
                 items=merged_items or None,
                 meta={
                     "translation_extras": dict(translation_extras),
-                    "project_status": self.normalize_project_status_value(
-                        project_status
-                    ),
                 },
             )
             self.bump_project_runtime_section_revision("items")
@@ -728,7 +699,7 @@ class DataManager(Base):
         return QualityRuleService.normalize_rule_statistics_text(value)
 
     @staticmethod
-    def normalize_rule_statistics_status(value: Any) -> Base.ProjectStatus:
+    def normalize_rule_statistics_status(value: Any) -> Base.ItemStatus:
         return QualityRuleService.normalize_rule_statistics_status(value)
 
     def collect_rule_statistics_texts(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -845,8 +816,8 @@ class DataManager(Base):
             if "name_dst" in payload:
                 merged_item["name_dst"] = payload.get("name_dst")
             if "status" in payload:
-                merged_item["status"] = self.normalize_project_status_value(
-                    payload.get("status", Base.ProjectStatus.NONE.value)
+                merged_item["status"] = self.normalize_item_status_value(
+                    payload.get("status", Base.ItemStatus.NONE.value)
                 )
             if "text_type" in payload:
                 merged_item["text_type"] = str(payload.get("text_type", "") or "")
@@ -888,8 +859,8 @@ class DataManager(Base):
                     "file_type": str(payload.get("file_type", "NONE") or "NONE"),
                     "file_path": str(payload.get("file_path", "") or ""),
                     "text_type": str(payload.get("text_type", "NONE") or "NONE"),
-                    "status": self.normalize_project_status_value(
-                        payload.get("status", Base.ProjectStatus.NONE.value)
+                    "status": self.normalize_item_status_value(
+                        payload.get("status", Base.ItemStatus.NONE.value)
                     ),
                     "retry_count": int(payload.get("retry_count", 0) or 0),
                 }
@@ -901,14 +872,12 @@ class DataManager(Base):
         self,
         *,
         translation_extras: dict[str, Any],
-        project_status: str,
         prefilter_config: dict[str, Any],
     ) -> dict[str, Any]:
         """统一收口会重建分析事实的同步 mutation meta 镜像。"""
 
         return {
             "translation_extras": dict(translation_extras),
-            "project_status": self.normalize_project_status_value(project_status),
             "prefilter_config": dict(prefilter_config),
             "analysis_extras": {},
             "analysis_candidate_count": 0,
@@ -986,7 +955,6 @@ class DataManager(Base):
         *,
         item_payloads: list[dict[str, Any]],
         translation_extras: dict[str, Any],
-        project_status: str,
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None,
     ) -> None:
@@ -1011,7 +979,6 @@ class DataManager(Base):
                 items=merged_items or None,
                 meta=self.build_analysis_reset_meta(
                     translation_extras=translation_extras,
-                    project_status=project_status,
                     prefilter_config=prefilter_config,
                 ),
             )
@@ -1044,7 +1011,6 @@ class DataManager(Base):
             items=finalized_items,
             meta={
                 "translation_extras": extras_snapshot,
-                "project_status": Base.ProjectStatus.PROCESSING,
             },
         )
         change = self.build_project_item_change(
@@ -1231,7 +1197,6 @@ class DataManager(Base):
         *,
         item_payloads: list[dict[str, Any]],
         translation_extras: dict[str, Any],
-        project_status: str,
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
@@ -1257,7 +1222,6 @@ class DataManager(Base):
                     items=merged_items or None,
                     meta=self.build_analysis_reset_meta(
                         translation_extras=translation_extras,
-                        project_status=project_status,
                         prefilter_config=prefilter_config,
                     ),
                 )
@@ -1272,7 +1236,6 @@ class DataManager(Base):
         rel_paths: list[str],
         *,
         translation_extras: dict[str, Any],
-        project_status: str,
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
@@ -1295,7 +1258,6 @@ class DataManager(Base):
                     items=None,
                     meta=self.build_analysis_reset_meta(
                         translation_extras=translation_extras,
-                        project_status=project_status,
                         prefilter_config=prefilter_config,
                     ),
                     deleted_rel_paths=normalized_rel_paths,
@@ -1343,8 +1305,8 @@ class DataManager(Base):
                 "file_type": str(payload.get("file_type", "NONE") or "NONE"),
                 "file_path": target_rel_path,
                 "text_type": str(payload.get("text_type", "NONE") or "NONE"),
-                "status": self.normalize_project_status_value(
-                    payload.get("status", Base.ProjectStatus.NONE.value)
+                "status": self.normalize_item_status_value(
+                    payload.get("status", Base.ItemStatus.NONE.value)
                 ),
                 "retry_count": int(payload.get("retry_count", 0) or 0),
             }
@@ -1374,7 +1336,6 @@ class DataManager(Base):
         files: list[dict[str, Any]],
         *,
         translation_extras: dict[str, Any],
-        project_status: str,
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
@@ -1468,7 +1429,6 @@ class DataManager(Base):
                     )
                 meta = self.build_analysis_reset_meta(
                     translation_extras=translation_extras,
-                    project_status=project_status,
                     prefilter_config=prefilter_config,
                 )
 

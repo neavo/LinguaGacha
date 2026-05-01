@@ -410,7 +410,6 @@ def test_apply_translation_reset_all_forwards_payload_and_returns_items_analysis
             "mode": "all",
             "items": fake_project_manager.preview_translation_items,
             "translation_extras": {"line": 0},
-            "project_status": "NONE",
             "prefilter_config": {"source_language": "JA"},
             "expected_section_revisions": {
                 "items": 5,
@@ -423,7 +422,6 @@ def test_apply_translation_reset_all_forwards_payload_and_returns_items_analysis
         {
             "item_payloads": fake_project_manager.preview_translation_items,
             "translation_extras": {"line": 0},
-            "project_status": "NONE",
             "prefilter_config": {"source_language": "JA"},
             "expected_section_revisions": {"items": 5, "analysis": 7},
         }
@@ -460,7 +458,6 @@ def test_apply_translation_reset_failed_forwards_payload_and_returns_items_ack()
                 }
             ],
             "translation_extras": {"line": 3, "error_line": 0},
-            "project_status": "PROCESSING",
             "expected_section_revisions": {
                 "items": 5,
             },
@@ -478,7 +475,6 @@ def test_apply_translation_reset_failed_forwards_payload_and_returns_items_ack()
                 }
             ],
             "translation_extras": {"line": 3, "error_line": 0},
-            "project_status": "PROCESSING",
             "expected_section_revisions": {"items": 5},
         }
     ]

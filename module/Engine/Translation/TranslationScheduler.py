@@ -166,11 +166,11 @@ class TranslationScheduler:
     def force_accept(self, item: Item) -> None:
         """重试超限后统一标成错误，避免不同路径收口不一致。"""
         if item.get_status() in (
-            Base.ProjectStatus.PROCESSED,
-            Base.ProjectStatus.ERROR,
+            Base.ItemStatus.PROCESSED,
+            Base.ItemStatus.ERROR,
         ):
             return
 
         if not item.get_dst():
             item.set_dst(item.get_src())
-        item.set_status(Base.ProjectStatus.ERROR)
+        item.set_status(Base.ItemStatus.ERROR)

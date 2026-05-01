@@ -202,7 +202,6 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         is_loaded=lambda: loaded,
         open_db=MagicMock(),
         close_db=MagicMock(),
-        get_project_status=MagicMock(return_value=Base.ProjectStatus.PROCESSING),
         get_translation_extras=MagicMock(return_value={"line": 9, "time": 3}),
         get_analysis_extras=MagicMock(return_value={"line": 5, "time": 2}),
         get_analysis_progress_snapshot=MagicMock(return_value={"line": 5, "time": 2}),
@@ -210,7 +209,6 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         get_items_for_translation=MagicMock(return_value=item_list),
         replace_all_items=MagicMock(),
         set_translation_extras=MagicMock(),
-        set_project_status=MagicMock(),
         run_project_prefilter=MagicMock(),
         get_all_items=MagicMock(return_value=item_list),
         state_lock=threading.Lock(),
@@ -361,12 +359,10 @@ def test_get_item_count_by_status_and_copy_items() -> None:
     translation = create_translation_stub()
     first = Item(src="a")
     second = Item(src="b")
-    second.set_status(Base.ProjectStatus.PROCESSED)
+    second.set_status(Base.ItemStatus.PROCESSED)
     translation.items_cache = [first, second]
 
-    none_count = Translation.get_item_count_by_status(
-        translation, Base.ProjectStatus.NONE
-    )
+    none_count = Translation.get_item_count_by_status(translation, Base.ItemStatus.NONE)
     copied = Translation.copy_items(translation)
     copied[0].set_src("changed")
 
@@ -382,7 +378,6 @@ def test_save_translation_state_skips_when_project_not_ready(
     fake_dm = SimpleNamespace(
         is_loaded=lambda: False,
         set_translation_extras=MagicMock(),
-        set_project_status=MagicMock(),
     )
     monkeypatch.setattr(
         translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
@@ -391,10 +386,9 @@ def test_save_translation_state_skips_when_project_not_ready(
     Translation.save_translation_state(translation)
 
     fake_dm.set_translation_extras.assert_not_called()
-    fake_dm.set_project_status.assert_not_called()
 
 
-def test_save_translation_state_persists_extras_and_status(
+def test_save_translation_state_persists_extras(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -403,16 +397,14 @@ def test_save_translation_state_persists_extras_and_status(
     fake_dm = SimpleNamespace(
         is_loaded=lambda: True,
         set_translation_extras=MagicMock(),
-        set_project_status=MagicMock(),
     )
     monkeypatch.setattr(
         translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    Translation.save_translation_state(translation, Base.ProjectStatus.PROCESSING)
+    Translation.save_translation_state(translation)
 
     fake_dm.set_translation_extras.assert_called_once_with({"line": 1})
-    fake_dm.set_project_status.assert_called_once_with(Base.ProjectStatus.PROCESSING)
 
 
 def test_get_task_buffer_size_has_lower_and_upper_bounds() -> None:
@@ -600,7 +592,6 @@ def test_project_check_run_emits_done_with_loaded_project(
             Base.Event.PROJECT_CHECK,
             {
                 "sub_event": Base.SubEvent.DONE,
-                "status": Base.ProjectStatus.PROCESSING,
                 "extras": {"line": 9, "time": 3},
                 "analysis_extras": {"line": 5, "time": 2},
                 "analysis_candidate_count": 1,
@@ -632,7 +623,6 @@ def test_project_check_run_emits_none_payload_when_project_unloaded(
             Base.Event.PROJECT_CHECK,
             {
                 "sub_event": Base.SubEvent.DONE,
-                "status": Base.ProjectStatus.NONE,
                 "extras": {},
                 "analysis_extras": {},
                 "analysis_candidate_count": 0,
@@ -884,7 +874,6 @@ def test_start_emits_error_when_items_are_empty(
     )
     translation.finalize_translation_run.assert_not_called()
     translation.cleanup_translation_run.assert_called_once_with()
-    dm.set_project_status.assert_not_called()
 
 
 def test_start_success_flow_saves_project_fact_without_writing_translation_file(
@@ -918,7 +907,7 @@ def test_start_success_flow_saves_project_fact_without_writing_translation_file(
 
     def fake_pipeline(**kwargs: Any) -> None:
         del kwargs
-        item.set_status(Base.ProjectStatus.PROCESSED)
+        item.set_status(Base.ItemStatus.PROCESSED)
 
     translation.start_translation_pipeline = fake_pipeline
     translation.run_translation_export = MagicMock()
@@ -1027,16 +1016,14 @@ def test_get_item_count_copy_and_close_db_helpers(
     dm = create_data_manager(loaded=True)
     monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
 
-    assert (
-        Translation.get_item_count_by_status(translation, Base.ProjectStatus.NONE) == 0
-    )
+    assert Translation.get_item_count_by_status(translation, Base.ItemStatus.NONE) == 0
     assert Translation.copy_items(translation) == []
 
     Translation.close_db_connection(translation)
     dm.close_db.assert_called_once()
 
 
-def test_save_translation_state_without_extras_still_sets_status(
+def test_save_translation_state_without_extras_skips_meta_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
@@ -1045,10 +1032,9 @@ def test_save_translation_state_without_extras_still_sets_status(
     dm = create_data_manager(loaded=True)
     monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
 
-    Translation.save_translation_state(translation, Base.ProjectStatus.PROCESSED)
+    Translation.save_translation_state(translation)
 
     dm.set_translation_extras.assert_not_called()
-    dm.set_project_status.assert_called_once_with(Base.ProjectStatus.PROCESSED)
 
 
 def test_start_translation_pipeline_builds_pipeline_and_runs(

@@ -13,7 +13,7 @@ import tiktoken_ext
 from tiktoken_ext import openai_public
 
 from base.Base import Base
-from module.Migration.ProjectStatusMigrationService import ProjectStatusMigrationService
+from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
 from module.Text.TextBase import TextBase
 
 TOKEN_ENCODING_NAME = "o200k_base"
@@ -68,7 +68,7 @@ class Item:
     file_type: FileType = FileType.NONE  # 文件的类型
     file_path: str = ""  # 文件的相对路径
     text_type: TextType = TextType.NONE  # 文本的实际类型
-    status: Base.ProjectStatus = Base.ProjectStatus.NONE  # 翻译状态
+    status: Base.ItemStatus = Base.ItemStatus.NONE  # 翻译状态
     retry_count: int = 0  # 重试次数，当前只有单独重试的时候才增加此计数
 
     # 线程锁
@@ -126,19 +126,19 @@ class Item:
         return cls(**filtered_data)
 
     @classmethod
-    def normalize_status(cls, status: Any) -> Base.ProjectStatus:
-        """旧项目载荷仍可能带旧状态，进入内存前统一并入已处理。"""
+    def normalize_status(cls, status: Any) -> Base.ItemStatus:
+        """旧项目载荷仍可能带历史状态，进入内存前统一归一为当前条目状态。"""
 
-        if isinstance(status, Base.ProjectStatus):
+        if isinstance(status, Base.ItemStatus):
             return status
 
-        normalized_status = ProjectStatusMigrationService.normalize_status_value(status)
+        normalized_status = ItemStatusMigrationService.normalize_status_value(status)
         if isinstance(normalized_status, str):
             try:
-                return Base.ProjectStatus(normalized_status)
+                return Base.ItemStatus(normalized_status)
             except ValueError:
-                return Base.ProjectStatus.NONE
-        return Base.ProjectStatus.NONE
+                return Base.ItemStatus.NONE
+        return Base.ItemStatus.NONE
 
     def to_dict(self) -> dict[str, Any]:
         with self.lock:
@@ -293,12 +293,12 @@ class Item:
             self.text_type = type
 
     # 获取翻译状态
-    def get_status(self) -> Base.ProjectStatus:
+    def get_status(self) -> Base.ItemStatus:
         with self.lock:
             return self.status
 
     # 设置翻译状态
-    def set_status(self, status: Base.ProjectStatus | str) -> None:
+    def set_status(self, status: Base.ItemStatus | str) -> None:
         with self.lock:
             self.status = self.normalize_status(status)
 

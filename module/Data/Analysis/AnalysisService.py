@@ -41,14 +41,14 @@ class AnalysisService:
         )
 
     @staticmethod
-    def is_skipped_analysis_status(status: Base.ProjectStatus) -> bool:
+    def is_skipped_analysis_status(status: Base.ItemStatus) -> bool:
         """统一维护分析链路的跳过状态。"""
 
         return status in (
-            Base.ProjectStatus.EXCLUDED,
-            Base.ProjectStatus.RULE_SKIPPED,
-            Base.ProjectStatus.LANGUAGE_SKIPPED,
-            Base.ProjectStatus.DUPLICATED,
+            Base.ItemStatus.EXCLUDED,
+            Base.ItemStatus.RULE_SKIPPED,
+            Base.ItemStatus.LANGUAGE_SKIPPED,
+            Base.ItemStatus.DUPLICATED,
         )
 
     def get_analysis_extras(self) -> dict[str, Any]:
@@ -192,16 +192,16 @@ class AnalysisService:
         checkpoints = {
             item_id: dict(checkpoint)
             for item_id, checkpoint in self.get_analysis_item_checkpoints().items()
-            if checkpoint.get("status") != Base.ProjectStatus.ERROR
+            if checkpoint.get("status") != Base.ItemStatus.ERROR
         }
         return self.progress_service.build_status_summary(
             self.item_service.get_all_items(),
             checkpoints,
             skipped_statuses=(
-                Base.ProjectStatus.EXCLUDED,
-                Base.ProjectStatus.RULE_SKIPPED,
-                Base.ProjectStatus.LANGUAGE_SKIPPED,
-                Base.ProjectStatus.DUPLICATED,
+                Base.ItemStatus.EXCLUDED,
+                Base.ItemStatus.RULE_SKIPPED,
+                Base.ItemStatus.LANGUAGE_SKIPPED,
+                Base.ItemStatus.DUPLICATED,
             ),
         )
 
@@ -231,10 +231,10 @@ class AnalysisService:
             self.item_service.get_all_items(),
             self.get_analysis_item_checkpoints(),
             skipped_statuses=(
-                Base.ProjectStatus.EXCLUDED,
-                Base.ProjectStatus.RULE_SKIPPED,
-                Base.ProjectStatus.LANGUAGE_SKIPPED,
-                Base.ProjectStatus.DUPLICATED,
+                Base.ItemStatus.EXCLUDED,
+                Base.ItemStatus.RULE_SKIPPED,
+                Base.ItemStatus.LANGUAGE_SKIPPED,
+                Base.ItemStatus.DUPLICATED,
             ),
         )
 
@@ -264,10 +264,10 @@ class AnalysisService:
             self.item_service.get_all_items(),
             self.get_analysis_item_checkpoints(),
             skipped_statuses=(
-                Base.ProjectStatus.EXCLUDED,
-                Base.ProjectStatus.RULE_SKIPPED,
-                Base.ProjectStatus.LANGUAGE_SKIPPED,
-                Base.ProjectStatus.DUPLICATED,
+                Base.ItemStatus.EXCLUDED,
+                Base.ItemStatus.RULE_SKIPPED,
+                Base.ItemStatus.LANGUAGE_SKIPPED,
+                Base.ItemStatus.DUPLICATED,
             ),
         )
 

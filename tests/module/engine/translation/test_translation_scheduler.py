@@ -15,7 +15,7 @@ from module.Engine.Translation.TranslationScheduler import TranslationScheduler
 
 def create_item(
     src: str,
-    status: Base.ProjectStatus = Base.ProjectStatus.NONE,
+    status: Base.ItemStatus = Base.ItemStatus.NONE,
     *,
     file_path: str = "story.txt",
 ) -> Item:
@@ -58,7 +58,7 @@ def test_translation_scheduler_generate_initial_contexts_iter_builds_task_contex
 def test_translation_scheduler_handle_failed_context_returns_empty_when_no_pending_items() -> (
     None
 ):
-    processed = create_item("done", Base.ProjectStatus.PROCESSED)
+    processed = create_item("done", Base.ItemStatus.PROCESSED)
     context = TaskContext(
         items=[processed],
         precedings=[],
@@ -74,7 +74,7 @@ def test_translation_scheduler_handle_failed_context_returns_empty_when_no_pendi
 def test_translation_scheduler_handle_failed_context_skips_error_items_during_continue_semantics() -> (
     None
 ):
-    failed = create_item("failed", Base.ProjectStatus.ERROR)
+    failed = create_item("failed", Base.ItemStatus.ERROR)
     context = TaskContext(
         items=[failed],
         precedings=[],
@@ -225,28 +225,28 @@ def test_translation_scheduler_force_accept_sets_src_to_dst_and_error_status() -
     scheduler.force_accept(item)
 
     assert item.get_dst() == "origin"
-    assert item.get_status() == Base.ProjectStatus.ERROR
+    assert item.get_status() == Base.ItemStatus.ERROR
 
 
 def test_translation_scheduler_force_accept_keeps_existing_dst_when_status_is_none() -> (
     None
 ):
-    item = create_item("origin", Base.ProjectStatus.NONE)
+    item = create_item("origin", Base.ItemStatus.NONE)
     item.set_dst("translated")
     scheduler = create_translation_scheduler([item])
 
     scheduler.force_accept(item)
 
     assert item.get_dst() == "translated"
-    assert item.get_status() == Base.ProjectStatus.ERROR
+    assert item.get_status() == Base.ItemStatus.ERROR
 
 
 def test_translation_scheduler_force_accept_does_not_override_processed_item() -> None:
-    item = create_item("origin", Base.ProjectStatus.PROCESSED)
+    item = create_item("origin", Base.ItemStatus.PROCESSED)
     item.set_dst("translated")
     scheduler = create_translation_scheduler([item])
 
     scheduler.force_accept(item)
 
     assert item.get_dst() == "translated"
-    assert item.get_status() == Base.ProjectStatus.PROCESSED
+    assert item.get_status() == Base.ItemStatus.PROCESSED

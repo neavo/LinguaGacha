@@ -147,10 +147,10 @@ class TRANS(Base):
                 # 去重：读入阶段流式标记 DUPLICATED，保持现有开关与语义。
                 if (
                     self.config.deduplication_in_trans
-                    and status == Base.ProjectStatus.NONE
+                    and status == Base.ItemStatus.NONE
                 ):
                     if src in dedup_seen:
-                        status = Base.ProjectStatus.DUPLICATED
+                        status = Base.ItemStatus.DUPLICATED
                     else:
                         dedup_seen.add(src)
 
@@ -259,7 +259,7 @@ class TRANS(Base):
             translation: dict[str, str] = {}
             if self.config.deduplication_in_trans:
                 for snap in item_snapshots:
-                    if snap["status"] == Base.ProjectStatus.PROCESSED:
+                    if snap["status"] == Base.ItemStatus.PROCESSED:
                         translation.setdefault(snap["src"], snap["dst"])
 
             # Patch Writer：优先使用 trans_ref 定位，仅做最小补丁更新。
@@ -419,10 +419,10 @@ class TRANS(Base):
                         parameters_field[row_index] = new_parameter
 
                     # 仅补丁更新译文列，保留 data[row] 其他列。
-                    if status == Base.ProjectStatus.PROCESSED:
+                    if status == Base.ItemStatus.PROCESSED:
                         dst_to_write = snap["dst"]
                     elif (
-                        status == Base.ProjectStatus.DUPLICATED
+                        status == Base.ItemStatus.DUPLICATED
                         and self.config.deduplication_in_trans
                     ):
                         if src not in translation:
@@ -471,7 +471,7 @@ class TRANS(Base):
                     src = snap["src"]
                     dst = snap["dst"]
                     if (
-                        status == Base.ProjectStatus.DUPLICATED
+                        status == Base.ItemStatus.DUPLICATED
                         and self.config.deduplication_in_trans
                         and src in translation
                     ):
@@ -489,7 +489,7 @@ class TRANS(Base):
                     context_out.append(extra_field.get("context", []))
 
                     # 已排除项不参与分区翻译参数重建，避免改写原始过滤语义。
-                    if status == Base.ProjectStatus.EXCLUDED:
+                    if status == Base.ItemStatus.EXCLUDED:
                         parameter_raw = extra_field.get("parameter", [])
                         parameters_out.append(
                             [v for v in parameter_raw if isinstance(v, dict)]

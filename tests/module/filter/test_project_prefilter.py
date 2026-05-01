@@ -10,7 +10,7 @@ from module.Filter.ProjectPrefilter import (
 
 def make_item(
     src: str = "",
-    status: Base.ProjectStatus = Base.ProjectStatus.NONE,
+    status: Base.ItemStatus = Base.ItemStatus.NONE,
     file_type: Item.FileType = Item.FileType.NONE,
     file_path: str = "",
 ) -> Item:
@@ -22,33 +22,33 @@ class TestProjectPrefilterResetPhase:
     """阶段 1：复位可重算的跳过状态。"""
 
     def test_resets_rule_skipped_to_none(self) -> None:
-        item = make_item(src="Hello World", status=Base.ProjectStatus.RULE_SKIPPED)
+        item = make_item(src="Hello World", status=Base.ItemStatus.RULE_SKIPPED)
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
         # 复位后重新评估，"Hello World" 包含拉丁字符且不命中规则 → NONE
-        assert item.get_status() == Base.ProjectStatus.NONE
+        assert item.get_status() == Base.ItemStatus.NONE
 
     def test_resets_language_skipped_to_none(self) -> None:
-        item = make_item(src="Hello World", status=Base.ProjectStatus.LANGUAGE_SKIPPED)
+        item = make_item(src="Hello World", status=Base.ItemStatus.LANGUAGE_SKIPPED)
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
-        assert item.get_status() == Base.ProjectStatus.NONE
+        assert item.get_status() == Base.ItemStatus.NONE
 
     def test_preserves_non_resettable_status(self) -> None:
         # PROCESSED 状态不应被复位
-        item = make_item(src="Hello World", status=Base.ProjectStatus.PROCESSED)
+        item = make_item(src="Hello World", status=Base.ItemStatus.PROCESSED)
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
-        assert item.get_status() == Base.ProjectStatus.PROCESSED
+        assert item.get_status() == Base.ItemStatus.PROCESSED
 
 
 class TestProjectPrefilterFilterPhase:
@@ -61,7 +61,7 @@ class TestProjectPrefilterFilterPhase:
             source_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
-        assert item.get_status() == Base.ProjectStatus.RULE_SKIPPED
+        assert item.get_status() == Base.ItemStatus.RULE_SKIPPED
 
     def test_marks_language_skipped_for_wrong_language(self) -> None:
         # 源语言为中文，但文本只有拉丁字符
@@ -71,7 +71,7 @@ class TestProjectPrefilterFilterPhase:
             source_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
-        assert item.get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
+        assert item.get_status() == Base.ItemStatus.LANGUAGE_SKIPPED
 
     def test_source_language_all_disables_language_skipped(self) -> None:
         items = [make_item(src="Hello World"), make_item(src="你好世界")]
@@ -83,7 +83,7 @@ class TestProjectPrefilterFilterPhase:
 
         assert result.stats.language_skipped == 0
         assert all(
-            item.get_status() != Base.ProjectStatus.LANGUAGE_SKIPPED for item in items
+            item.get_status() != Base.ItemStatus.LANGUAGE_SKIPPED for item in items
         )
 
     def test_rule_filter_takes_priority_over_language_filter(self) -> None:
@@ -94,7 +94,7 @@ class TestProjectPrefilterFilterPhase:
             source_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
-        assert item.get_status() == Base.ProjectStatus.RULE_SKIPPED
+        assert item.get_status() == Base.ItemStatus.RULE_SKIPPED
 
     def test_normal_text_remains_none(self) -> None:
         item = make_item(src="你好世界")
@@ -103,17 +103,17 @@ class TestProjectPrefilterFilterPhase:
             source_language=BaseLanguage.Enum.ZH,
             mtool_optimizer_enable=False,
         )
-        assert item.get_status() == Base.ProjectStatus.NONE
+        assert item.get_status() == Base.ItemStatus.NONE
 
     def test_skips_non_none_status(self) -> None:
         # PROCESSED 状态的条目不应被过滤逻辑修改
-        item = make_item(src="12345", status=Base.ProjectStatus.PROCESSED)
+        item = make_item(src="12345", status=Base.ItemStatus.PROCESSED)
         ProjectPrefilter.apply(
             [item],
             source_language=BaseLanguage.Enum.EN,
             mtool_optimizer_enable=False,
         )
-        assert item.get_status() == Base.ProjectStatus.PROCESSED
+        assert item.get_status() == Base.ItemStatus.PROCESSED
 
 
 class TestProjectPrefilterStats:
@@ -191,8 +191,8 @@ class TestProjectPrefilterInputContract:
             mtool_optimizer_enable=False,
         )
 
-        assert items[0].get_status() == Base.ProjectStatus.NONE
-        assert items[1].get_status() == Base.ProjectStatus.LANGUAGE_SKIPPED
+        assert items[0].get_status() == Base.ItemStatus.NONE
+        assert items[1].get_status() == Base.ItemStatus.LANGUAGE_SKIPPED
         assert result.prefilter_config == {
             "source_language": "ZH",
             "mtool_optimizer_enable": False,
@@ -241,9 +241,9 @@ class TestProjectPrefilterMToolIntegration:
         )
 
         assert result.stats.mtool_skipped == 1
-        assert clause.get_status() == Base.ProjectStatus.RULE_SKIPPED
-        assert normal.get_status() == Base.ProjectStatus.NONE
-        assert other_file_clause.get_status() == Base.ProjectStatus.NONE
+        assert clause.get_status() == Base.ItemStatus.RULE_SKIPPED
+        assert normal.get_status() == Base.ItemStatus.NONE
+        assert other_file_clause.get_status() == Base.ItemStatus.NONE
 
     def test_apply_keeps_subclauses_when_mtool_disabled(self) -> None:
         multi_line = make_item(
@@ -263,7 +263,7 @@ class TestProjectPrefilterMToolIntegration:
             mtool_optimizer_enable=False,
         )
         assert result.stats.mtool_skipped == 0
-        assert clause.get_status() == Base.ProjectStatus.NONE
+        assert clause.get_status() == Base.ItemStatus.NONE
 
     def test_apply_does_not_replace_existing_item_status_with_mtool_skip(
         self,
@@ -275,7 +275,7 @@ class TestProjectPrefilterMToolIntegration:
         )
         processed_clause = make_item(
             src="Line A",
-            status=Base.ProjectStatus.PROCESSED,
+            status=Base.ItemStatus.PROCESSED,
             file_type=Item.FileType.KVJSON,
             file_path="game.json",
         )
@@ -287,7 +287,7 @@ class TestProjectPrefilterMToolIntegration:
         )
 
         assert result.stats.mtool_skipped == 0
-        assert processed_clause.get_status() == Base.ProjectStatus.PROCESSED
+        assert processed_clause.get_status() == Base.ItemStatus.PROCESSED
 
     def test_apply_ignores_blank_subclauses_when_mtool_enabled(self) -> None:
         multi_line = make_item(
@@ -308,7 +308,7 @@ class TestProjectPrefilterMToolIntegration:
         )
 
         assert result.stats.mtool_skipped == 0
-        assert blank_item.get_status() == Base.ProjectStatus.NONE
+        assert blank_item.get_status() == Base.ItemStatus.NONE
 
 
 class TestProjectPrefilterEmptyInputAndPhaseProgress:

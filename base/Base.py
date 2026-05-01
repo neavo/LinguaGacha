@@ -74,10 +74,9 @@ class Base:
         TRANSLATING = "TRANSLATING"  # 翻译中
         STOPPING = "STOPPING"  # 停止中
 
-    # 项目状态
-    class ProjectStatus(StrEnum):
+    # 条目状态；旧 PROCESSING 只在迁移服务中按字符串兼容，当前枚举不再暴露。
+    class ItemStatus(StrEnum):
         NONE = "NONE"  # 无
-        PROCESSING = "PROCESSING"  # 处理中
         PROCESSED = "PROCESSED"  # 已处理
         EXCLUDED = "EXCLUDED"  # 已排除
         RULE_SKIPPED = "RULE_SKIPPED"  # 规则跳过

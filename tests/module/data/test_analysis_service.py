@@ -98,7 +98,7 @@ def test_commit_analysis_task_result_writes_checkpoints_and_aggregate() -> None:
         checkpoints=[
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 0,
             }
@@ -137,7 +137,7 @@ def test_commit_analysis_task_batch_writes_success_error_and_candidate_count() -
         success_checkpoints=[
             {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 0,
             }
@@ -145,7 +145,7 @@ def test_commit_analysis_task_batch_writes_success_error_and_candidate_count() -
         error_checkpoints=[
             {
                 "item_id": 2,
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "error_count": 0,
             }
         ],
@@ -331,7 +331,7 @@ def test_refresh_analysis_progress_snapshot_cache_rebuilds_and_persists_summary(
                 "id": 1,
                 "src": "Alice",
                 "file_path": "story.txt",
-                "status": Base.ProjectStatus.NONE,
+                "status": Base.ItemStatus.NONE,
             }
         ),
         Item.from_dict(
@@ -339,7 +339,7 @@ def test_refresh_analysis_progress_snapshot_cache_rebuilds_and_persists_summary(
                 "id": 2,
                 "src": "Bob",
                 "file_path": "story.txt",
-                "status": Base.ProjectStatus.NONE,
+                "status": Base.ItemStatus.NONE,
             }
         ),
         Item.from_dict(
@@ -347,7 +347,7 @@ def test_refresh_analysis_progress_snapshot_cache_rebuilds_and_persists_summary(
                 "id": 3,
                 "src": "",
                 "file_path": "story.txt",
-                "status": Base.ProjectStatus.NONE,
+                "status": Base.ItemStatus.NONE,
             }
         ),
         Item.from_dict(
@@ -355,7 +355,7 @@ def test_refresh_analysis_progress_snapshot_cache_rebuilds_and_persists_summary(
                 "id": 4,
                 "src": "skip",
                 "file_path": "story.txt",
-                "status": Base.ProjectStatus.EXCLUDED,
+                "status": Base.ItemStatus.EXCLUDED,
             }
         ),
     ]
@@ -363,13 +363,13 @@ def test_refresh_analysis_progress_snapshot_cache_rebuilds_and_persists_summary(
         return_value={
             1: {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "error_count": 0,
                 "updated_at": ANALYSIS_TIME,
             },
             2: {
                 "item_id": 2,
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "error_count": 1,
                 "updated_at": ANALYSIS_TIME,
             },
@@ -417,7 +417,7 @@ def test_preview_failed_reset_status_summary_excludes_error_checkpoints() -> Non
                 "id": 1,
                 "src": "Alice",
                 "file_path": "story.txt",
-                "status": Base.ProjectStatus.NONE,
+                "status": Base.ItemStatus.NONE,
             }
         ),
         Item.from_dict(
@@ -425,7 +425,7 @@ def test_preview_failed_reset_status_summary_excludes_error_checkpoints() -> Non
                 "id": 2,
                 "src": "Bob",
                 "file_path": "story.txt",
-                "status": Base.ProjectStatus.NONE,
+                "status": Base.ItemStatus.NONE,
             }
         ),
     ]
@@ -433,13 +433,13 @@ def test_preview_failed_reset_status_summary_excludes_error_checkpoints() -> Non
         return_value={
             1: {
                 "item_id": 1,
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 0,
             },
             2: {
                 "item_id": 2,
-                "status": Base.ProjectStatus.ERROR,
+                "status": Base.ItemStatus.ERROR,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 1,
             },
@@ -529,8 +529,8 @@ def test_reset_failed_analysis_with_snapshot_normalizes_and_returns_deleted_coun
 def test_analysis_helpers_match_skipped_status_contract() -> None:
     service, _session = build_analysis_service()
 
-    assert service.is_skipped_analysis_status(Base.ProjectStatus.EXCLUDED) is True
-    assert service.is_skipped_analysis_status(Base.ProjectStatus.PROCESSED) is False
+    assert service.is_skipped_analysis_status(Base.ItemStatus.EXCLUDED) is True
+    assert service.is_skipped_analysis_status(Base.ItemStatus.PROCESSED) is False
 
 
 def test_get_analysis_candidate_count_cache_normalizes_invalid_values() -> None:
@@ -576,7 +576,7 @@ def test_get_pending_analysis_items_returns_only_schedulable_items() -> None:
             "id": 1,
             "src": "Alice",
             "file_path": "story.txt",
-            "status": Base.ProjectStatus.NONE,
+            "status": Base.ItemStatus.NONE,
         }
     )
     processed_item = Item.from_dict(
@@ -584,7 +584,7 @@ def test_get_pending_analysis_items_returns_only_schedulable_items() -> None:
             "id": 2,
             "src": "Bob",
             "file_path": "story.txt",
-            "status": Base.ProjectStatus.NONE,
+            "status": Base.ItemStatus.NONE,
         }
     )
     excluded_item = Item.from_dict(
@@ -592,7 +592,7 @@ def test_get_pending_analysis_items_returns_only_schedulable_items() -> None:
             "id": 3,
             "src": "skip",
             "file_path": "story.txt",
-            "status": Base.ProjectStatus.EXCLUDED,
+            "status": Base.ItemStatus.EXCLUDED,
         }
     )
     empty_item = Item.from_dict(
@@ -600,7 +600,7 @@ def test_get_pending_analysis_items_returns_only_schedulable_items() -> None:
             "id": 4,
             "src": "",
             "file_path": "story.txt",
-            "status": Base.ProjectStatus.NONE,
+            "status": Base.ItemStatus.NONE,
         }
     )
     service.item_service.get_all_items.return_value = [
@@ -613,7 +613,7 @@ def test_get_pending_analysis_items_returns_only_schedulable_items() -> None:
         return_value={
             2: {
                 "item_id": 2,
-                "status": Base.ProjectStatus.PROCESSED,
+                "status": Base.ItemStatus.PROCESSED,
                 "updated_at": ANALYSIS_TIME,
                 "error_count": 0,
             }

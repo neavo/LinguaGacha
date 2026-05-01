@@ -28,12 +28,12 @@ def test_read_from_stream_marks_code_block_and_image_as_excluded(
         "![img](a.png)",
         "正文",
     ]
-    assert items[0].get_status() == Base.ProjectStatus.NONE
-    assert items[1].get_status() == Base.ProjectStatus.EXCLUDED
-    assert items[2].get_status() == Base.ProjectStatus.EXCLUDED
-    assert items[3].get_status() == Base.ProjectStatus.NONE
-    assert items[4].get_status() == Base.ProjectStatus.EXCLUDED
-    assert items[5].get_status() == Base.ProjectStatus.NONE
+    assert items[0].get_status() == Base.ItemStatus.NONE
+    assert items[1].get_status() == Base.ItemStatus.EXCLUDED
+    assert items[2].get_status() == Base.ItemStatus.EXCLUDED
+    assert items[3].get_status() == Base.ItemStatus.NONE
+    assert items[4].get_status() == Base.ItemStatus.EXCLUDED
+    assert items[5].get_status() == Base.ItemStatus.NONE
 
 
 def test_insert_source_target(config: Config) -> None:
