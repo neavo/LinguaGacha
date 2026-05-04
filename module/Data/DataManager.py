@@ -4,7 +4,6 @@ import threading
 from contextlib import AbstractContextManager
 from typing import Any
 from typing import ClassVar
-from typing import TYPE_CHECKING
 
 from base.Base import Base
 from base.LogManager import LogManager
@@ -13,6 +12,7 @@ from module.Config import Config
 from module.Data.Analysis.AnalysisService import AnalysisService
 from module.Data.Core.AssetService import AssetService
 from module.Data.Core.BatchService import BatchService
+from module.Data.Core.DataTypes import ProjectItemChange
 from module.Data.Core.DataEnums import TextPreserveMode as DataTextPreserveMode
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
@@ -21,20 +21,14 @@ from module.Data.Core.RuleService import RuleService
 from module.Data.Project.ExportPathService import ExportPathService
 from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
-from module.Data.Project.ProjectPrefilterService import ProjectPrefilterService
 from module.Data.Project.ProjectRuntimeRevisionService import (
     ProjectRuntimeRevisionService,
 )
 from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Quality.QualityRuleService import QualityRuleService
-from module.Filter.ProjectPrefilter import ProjectPrefilterResult
 from module.Localizer.Localizer import Localizer
 from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
 from module.Utils.ZstdTool import ZstdTool
-
-if TYPE_CHECKING:
-    from module.Data.Core.DataTypes import ProjectItemChange
-    from module.Data.Core.DataTypes import ProjectPrefilterRequest
 
 
 class DataManager(Base):
@@ -84,11 +78,6 @@ class DataManager(Base):
             __class__.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
             __class__.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
             __class__.LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
-        )
-        self.prefilter_service = ProjectPrefilterService(
-            self.session,
-            self.item_service,
-            self.batch_service,
         )
         self.quality_rule_service = QualityRuleService(
             self.session,
@@ -166,152 +155,9 @@ class DataManager(Base):
         self.item_service.clear_item_cache()
 
     def handle_project_loaded_post_actions(self) -> None:
-        """在工程真正对外可见前完成加载后补处理与语言镜像同步。"""
+        """在工程真正对外可见前刷新加载后派生缓存。"""
 
-        self.sync_project_language_meta()
-        if self.schedule_prefilter_if_needed(reason="project_loaded"):
-            return
         self.refresh_analysis_progress_snapshot_cache()
-
-    def sync_project_language_meta(self) -> None:
-        """把当前运行时语言镜像回已加载工程，避免项目摘要长期滞后。"""
-
-        if not self.is_loaded():
-            return
-
-        config = Config().load()
-        self.set_meta("source_language", str(config.source_language))
-        self.set_meta("target_language", str(config.target_language))
-
-    def schedule_prefilter_if_needed(self, *, reason: str) -> bool:
-        """按当前配置判断是否需要补跑预过滤。"""
-
-        config = Config().load()
-        if not self.is_prefilter_needed(config):
-            return False
-
-        self.schedule_project_prefilter(config, reason=reason)
-        return True
-
-    def is_prefilter_needed(self, config: Config) -> bool:
-        """判断当前工程是否需要重跑预过滤。"""
-
-        return self.prefilter_service.is_prefilter_needed(
-            self.get_meta("prefilter_config", {}),
-            config,
-        )
-
-    def schedule_project_prefilter(
-        self,
-        config: Config,
-        *,
-        reason: str,
-    ) -> bool:
-        """后台触发预过滤。"""
-
-        from module.Engine.Engine import Engine
-
-        lg_path = self.get_lg_path()
-        if not lg_path or not self.is_loaded():
-            return False
-        if Engine.get().get_status() != Base.TaskStatus.IDLE:
-            return False
-
-        _request, start_worker = self.prefilter_service.enqueue_request(
-            config,
-            reason=reason,
-            lg_path=lg_path,
-        )
-        if not start_worker:
-            return True
-
-        threading.Thread(
-            target=self.project_prefilter_worker,
-            daemon=True,
-        ).start()
-        return True
-
-    def project_prefilter_worker(self) -> None:
-        """预过滤工作线程入口。"""
-
-        last_request: ProjectPrefilterRequest | None = None
-        last_result: ProjectPrefilterResult | None = None
-        updated = False
-
-        try:
-            while True:
-                request = self.prefilter_service.pop_pending_request()
-                if request is None:
-                    if updated and last_request is not None and last_result is not None:
-                        self.refresh_analysis_progress_snapshot_cache()
-                        self.log_prefilter_result(last_request, last_result)
-
-                    self.prefilter_service.finish_worker()
-                    return
-
-                last_request = request
-                result = self.apply_project_prefilter_once(request)
-                if result is not None:
-                    updated = True
-                    last_result = result
-        except Exception as e:
-            reason = last_request.reason if last_request else "unknown"
-            lg_path = last_request.lg_path if last_request else ""
-            LogManager.get().error(
-                f"Project prefilter failed: reason={reason} lg_path={lg_path}",
-                e,
-            )
-            self.prefilter_service.finish_worker()
-
-    def log_prefilter_result(
-        self,
-        request: ProjectPrefilterRequest,
-        result: ProjectPrefilterResult,
-    ) -> None:
-        """输出预过滤统计日志。"""
-
-        logger = LogManager.get()
-        logger.info(
-            Localizer.get().engine_task_rule_filter.replace(
-                "{COUNT}",
-                str(result.stats.rule_skipped),
-            )
-        )
-        logger.info(
-            Localizer.get().engine_task_language_filter.replace(
-                "{COUNT}",
-                str(result.stats.language_skipped),
-            )
-        )
-        if request.mtool_optimizer_enable:
-            logger.info(
-                Localizer.get().translation_mtool_optimizer_pre_log.replace(
-                    "{COUNT}",
-                    str(result.stats.mtool_skipped),
-                )
-            )
-        logger.print("")
-
-    def apply_project_prefilter_once(
-        self,
-        request: ProjectPrefilterRequest,
-    ) -> ProjectPrefilterResult | None:
-        """执行一次预过滤并写回数据库。"""
-
-        if not self.is_loaded():
-            return None
-        lg_path = self.get_lg_path()
-        if not lg_path or lg_path != request.lg_path:
-            return None
-
-        items = self.get_all_items()
-        result = self.prefilter_service.apply_once(
-            request,
-            items=items,
-        )
-        if result is not None:
-            self.bump_project_runtime_section_revisions(("items", "analysis"))
-        return result
 
     def get_meta(self, key: str, default: Any = None) -> Any:
         return self.meta_service.get_meta(key, default)
@@ -950,55 +796,77 @@ class DataManager(Base):
                 meta=meta,
             )
 
-    def apply_prefilter_payload(
+    def apply_project_settings_alignment_payload(
         self,
         *,
+        mode: str,
         item_payloads: list[dict[str, Any]],
         translation_extras: dict[str, Any],
         prefilter_config: dict[str, Any],
+        project_settings: dict[str, Any],
         expected_section_revisions: dict[str, int] | None,
     ) -> None:
         with self.state_lock:
             if not self.is_loaded():
                 raise RuntimeError("工程未加载")
 
-            if expected_section_revisions is not None:
-                if "items" in expected_section_revisions:
-                    self.assert_project_runtime_section_revision(
-                        "items",
-                        int(expected_section_revisions["items"]),
-                    )
-                if "analysis" in expected_section_revisions:
-                    self.assert_project_runtime_section_revision(
-                        "analysis",
-                        int(expected_section_revisions["analysis"]),
-                    )
+            normalized_meta = self.build_project_settings_alignment_meta(
+                project_settings=project_settings,
+                translation_extras=translation_extras,
+                prefilter_config=prefilter_config,
+            )
 
+            if mode == "settings_only":
+                self.update_batch(
+                    meta=self.build_project_settings_only_meta(
+                        project_settings=project_settings
+                    )
+                )
+                return
+
+            if mode != "prefiltered_items":
+                raise ValueError("项目设置对齐模式无效")
+
+            self.assert_expected_runtime_revisions(
+                expected_section_revisions,
+                ("items", "analysis"),
+            )
             merged_items = self.merge_partial_item_payloads(item_payloads)
             self.persist_items_meta_and_clear_analysis_state(
                 items=merged_items or None,
-                meta=self.build_analysis_reset_meta(
-                    translation_extras=translation_extras,
-                    prefilter_config=prefilter_config,
-                ),
+                meta=normalized_meta,
             )
             self.bump_project_runtime_section_revisions(("items", "analysis"))
 
-    def sync_project_settings_meta(
+    def build_project_settings_only_meta(
         self,
         *,
-        source_language: str,
-        target_language: str,
-    ) -> None:
-        if not self.is_loaded():
-            return
+        project_settings: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "source_language": str(project_settings.get("source_language", "") or ""),
+            "target_language": str(project_settings.get("target_language", "") or ""),
+            "mtool_optimizer_enable": bool(
+                project_settings.get("mtool_optimizer_enable", False)
+            ),
+        }
 
-        self.update_batch(
-            meta={
-                "source_language": str(source_language),
-                "target_language": str(target_language),
-            }
-        )
+    def build_project_settings_alignment_meta(
+        self,
+        *,
+        project_settings: dict[str, Any],
+        translation_extras: dict[str, Any],
+        prefilter_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            **self.build_analysis_reset_meta(
+                translation_extras=translation_extras,
+                prefilter_config=prefilter_config,
+            ),
+            **self.build_project_settings_only_meta(
+                project_settings=project_settings,
+            ),
+        }
 
     def apply_translation_batch_update(
         self,
@@ -1508,3 +1376,61 @@ class DataManager(Base):
 
     def get_project_preview(self, lg_path: str) -> dict[str, Any]:
         return self.project_service.get_project_preview(lg_path)
+
+    def build_create_project_preview(self, source_path: str) -> dict[str, object]:
+        return self.project_service.build_create_preview(source_path)
+
+    def commit_create_project_preview(
+        self,
+        *,
+        source_path: str,
+        output_path: str,
+        files: list[dict[str, object]],
+        items: list[dict[str, object]],
+        project_settings: dict[str, object],
+        translation_extras: dict[str, object],
+        prefilter_config: dict[str, object],
+    ) -> None:
+        loaded_presets = self.project_service.commit_create_preview(
+            source_path=source_path,
+            output_path=output_path,
+            files=files,
+            items=items,
+            project_settings=project_settings,
+            translation_extras=translation_extras,
+            prefilter_config=prefilter_config,
+            init_rules=self.rule_service.initialize_project_rules,
+        )
+        if loaded_presets:
+            LogManager.get().info(
+                Localizer.get().quality_default_preset_loaded_message.format(
+                    NAME=" | ".join(loaded_presets)
+                )
+            )
+
+    def build_open_project_alignment_preview(self, lg_path: str) -> dict[str, object]:
+        return self.project_service.build_open_alignment_preview(
+            lg_path,
+            Config().load(),
+        )
+
+    def apply_project_settings_alignment_file_payload(
+        self,
+        *,
+        lg_path: str,
+        mode: str,
+        item_payloads: list[dict[str, Any]],
+        translation_extras: dict[str, Any],
+        prefilter_config: dict[str, Any],
+        project_settings: dict[str, Any],
+        expected_section_revisions: dict[str, int] | None,
+    ) -> dict[str, object]:
+        return self.project_service.apply_alignment_to_project_file(
+            lg_path=lg_path,
+            mode=mode,
+            items=item_payloads,
+            project_settings=project_settings,
+            translation_extras=translation_extras,
+            prefilter_config=prefilter_config,
+            expected_section_revisions=expected_section_revisions,
+        )

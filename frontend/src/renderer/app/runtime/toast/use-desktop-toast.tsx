@@ -64,11 +64,6 @@ function resolve_toast_sender(
   return toast.info;
 }
 
-function normalize_toast_message(message: string): string {
-  // 所有通知统一只保留单行标题，避免普通 toast 和进度 toast 再次分叉成双行模型。
-  return message.replaceAll(/\s*[\r\n]+\s*/g, " ").trim();
-}
-
 function emit_progress_toast_modal_change(): void {
   for (const listener of progress_toast_modal_listener_set) {
     listener();
@@ -131,17 +126,16 @@ function sync_progress_toast_state(
     clearTimeout(previous_state.dismiss_timer);
   }
 
-  const normalized_message = normalize_toast_message(options.message);
   const presentation = options.presentation ?? "inline";
   progress_toast_state = {
     owner_token,
-    message: normalized_message,
+    message: options.message,
     progress_percent: options.progress_percent,
     presentation,
     dismiss_timer: null,
   };
   render_progress_toast({
-    message: normalized_message,
+    message: options.message,
     progress_percent: options.progress_percent,
     presentation,
   });
@@ -203,7 +197,7 @@ export function DesktopProgressToastModalLayer(): JSX.Element | null {
 export function useDesktopToast(): DesktopToastApi {
   const push_toast = useCallback((kind: DesktopToastKind, message: string): DesktopToastId => {
     const send_toast = resolve_toast_sender(kind);
-    const toast_id = send_toast(normalize_toast_message(message));
+    const toast_id = send_toast(message);
     regular_toast_id_set.add(toast_id);
     return toast_id;
   }, []);
@@ -211,7 +205,7 @@ export function useDesktopToast(): DesktopToastApi {
   const push_persistent_toast = useCallback(
     (kind: DesktopToastKind, message: string): DesktopToastId => {
       const send_toast = resolve_toast_sender(kind);
-      const toast_id = send_toast(normalize_toast_message(message), {
+      const toast_id = send_toast(message, {
         duration: Number.POSITIVE_INFINITY,
         closeButton: true,
       });
@@ -224,7 +218,7 @@ export function useDesktopToast(): DesktopToastApi {
   const push_progress_toast = useCallback((options: ProgressToastOptions): DesktopToastId => {
     const owner_token = create_progress_toast_owner_token();
     const normalized_options: ProgressToastOptions = {
-      message: normalize_toast_message(options.message),
+      message: options.message,
       progress_percent: options.progress_percent,
       presentation: options.presentation,
     };
@@ -239,7 +233,7 @@ export function useDesktopToast(): DesktopToastApi {
       }
 
       const normalized_options: ProgressToastOptions = {
-        message: normalize_toast_message(options.message),
+        message: options.message,
         progress_percent: options.progress_percent,
         presentation: options.presentation,
       };

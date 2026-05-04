@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DesktopApiError, api_fetch } from "@/app/desktop-api";
 import { createProjectPrefilterClient } from "@/app/project/derived/project-prefilter-client";
 import { apply_project_prefilter_mutation } from "@/app/project/derived/project-prefilter-mutation";
+import { format_project_settings_aligned_toast } from "@/app/project/settings-alignment-toast";
 import {
   normalize_settings_snapshot,
   type SettingsSnapshot,
@@ -186,15 +187,19 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     [push_toast, set_pending, set_settings_snapshot, t],
   );
 
-  const sync_project_settings_meta = useCallback(
+  const apply_project_settings_only_alignment = useCallback(
     async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
       if (!project_snapshot.loaded) {
         return;
       }
 
-      await api_fetch("/api/project/settings/sync-meta", {
-        source_language: next_settings_snapshot.source_language,
-        target_language: next_settings_snapshot.target_language,
+      await api_fetch("/api/project/settings-alignment/apply", {
+        mode: "settings_only",
+        project_settings: {
+          source_language: next_settings_snapshot.source_language,
+          target_language: next_settings_snapshot.target_language,
+          mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+        },
       });
     },
     [project_snapshot.loaded],
@@ -209,6 +214,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       await apply_project_prefilter_mutation({
         state: project_store.getState(),
         source_language: next_settings_snapshot.source_language,
+        target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
         compute_prefilter: (input) => {
           return project_prefilter_client_ref.current.compute(input);
@@ -244,7 +250,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       }
 
       try {
-        await sync_project_settings_meta(previous_settings_snapshot);
+        await apply_project_settings_only_alignment(previous_settings_snapshot);
       } catch (error) {
         if (error instanceof Error) {
           push_toast("error", error.message);
@@ -256,7 +262,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
 
       push_toast("error", t("basic_settings_page.feedback.update_failed"));
     },
-    [commit_update, push_toast, sync_project_settings_meta, t],
+    [apply_project_settings_only_alignment, commit_update, push_toast, t],
   );
 
   const update_source_language = useCallback(
@@ -289,11 +295,26 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
               return;
             }
 
-            await sync_project_settings_meta(next_settings_snapshot);
             await apply_prefilter_from_settings(next_settings_snapshot);
             await wait_for_barrier("project_cache_refresh", {
               checkpoint: barrier_checkpoint,
             });
+            if (project_snapshot.loaded) {
+              push_toast(
+                "info",
+                format_project_settings_aligned_toast({
+                  settings: {
+                    source_language: next_settings_snapshot.source_language,
+                    target_language: next_settings_snapshot.target_language,
+                    mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+                  },
+                  changed_fields: {
+                    source_language: true,
+                  },
+                  t,
+                }),
+              );
+            }
           },
         });
       } catch (error) {
@@ -312,9 +333,9 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       commit_update,
       create_barrier_checkpoint,
       is_task_busy,
+      project_snapshot.loaded,
       rollback_source_language_after_prefilter_error,
       run_modal_progress_toast,
-      sync_project_settings_meta,
       t,
       wait_for_barrier,
     ],
@@ -341,9 +362,32 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       if (next_settings_snapshot === null) {
         return;
       }
-      await sync_project_settings_meta(next_settings_snapshot);
+      await apply_project_settings_only_alignment(next_settings_snapshot);
+      if (project_snapshot.loaded) {
+        push_toast(
+          "info",
+          format_project_settings_aligned_toast({
+            settings: {
+              source_language: next_settings_snapshot.source_language,
+              target_language: next_settings_snapshot.target_language,
+              mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+            },
+            changed_fields: {
+              target_language: true,
+            },
+            t,
+          }),
+        );
+      }
     },
-    [commit_update, is_task_busy, sync_project_settings_meta],
+    [
+      apply_project_settings_only_alignment,
+      commit_update,
+      is_task_busy,
+      project_snapshot.loaded,
+      push_toast,
+      t,
+    ],
   );
 
   const update_project_save_mode = useCallback(

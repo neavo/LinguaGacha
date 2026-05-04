@@ -23,6 +23,11 @@ export type ProjectPrefilterMutationOutput = {
   analysis: Record<string, unknown>;
   translation_extras: Record<string, unknown>;
   task_snapshot: Record<string, unknown>;
+  project_settings: {
+    source_language: string;
+    target_language: string;
+    mtool_optimizer_enable: boolean;
+  };
   prefilter_config: {
     source_language: string;
     mtool_optimizer_enable: boolean;
@@ -33,6 +38,7 @@ export type ProjectPrefilterMutationOutput = {
 export type ProjectPrefilterMutationInput = {
   state: ProjectStoreState;
   source_language: string;
+  target_language?: string;
   mtool_optimizer_enable: boolean;
 };
 
@@ -268,6 +274,11 @@ export function compute_project_prefilter_mutation(
     },
     translation_extras: derived_task_state.translation_extras,
     task_snapshot: derived_task_state.task_snapshot,
+    project_settings: {
+      source_language: input.source_language,
+      target_language: input.target_language ?? "",
+      mtool_optimizer_enable: input.mtool_optimizer_enable,
+    },
     prefilter_config: {
       source_language: input.source_language,
       mtool_optimizer_enable: input.mtool_optimizer_enable,

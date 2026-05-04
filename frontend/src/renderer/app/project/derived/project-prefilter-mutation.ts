@@ -14,10 +14,15 @@ import type {
   ProjectPrefilterMutationInput,
   ProjectPrefilterMutationOutput,
 } from "@/app/project/derived/project-prefilter";
+import {
+  run_project_prefilter,
+  serialize_prefilter_runtime_items,
+} from "@/app/project/derived/project-prefilter-runner";
 
 type ApplyProjectPrefilterMutationArgs = {
   state: ProjectStoreState;
   source_language: string;
+  target_language: string;
   mtool_optimizer_enable: boolean;
   compute_prefilter: (
     input: ProjectPrefilterMutationInput,
@@ -27,31 +32,17 @@ type ApplyProjectPrefilterMutationArgs = {
   refresh_project_runtime: () => Promise<void>;
 };
 
-function serialize_prefilter_items(
-  items: Record<string, Record<string, unknown>>,
-): Array<Record<string, unknown>> {
-  return Object.values(items).map((item) => {
-    return {
-      id: Number(item.item_id ?? item.id ?? 0),
-      file_path: String(item.file_path ?? ""),
-      row: Number(item.row_number ?? item.row ?? 0),
-      src: String(item.src ?? ""),
-      dst: String(item.dst ?? ""),
-      name_dst: item.name_dst ?? null,
-      status: String(item.status ?? ""),
-      text_type: String(item.text_type ?? "NONE"),
-      retry_count: Number(item.retry_count ?? 0),
-    };
-  });
-}
-
 export async function apply_project_prefilter_mutation(
   args: ApplyProjectPrefilterMutationArgs,
 ): Promise<ProjectPrefilterMutationOutput> {
-  const mutation_output = await args.compute_prefilter({
+  const mutation_output = await run_project_prefilter({
     state: args.state,
-    source_language: args.source_language,
-    mtool_optimizer_enable: args.mtool_optimizer_enable,
+    settings: {
+      source_language: args.source_language,
+      target_language: args.target_language,
+      mtool_optimizer_enable: args.mtool_optimizer_enable,
+    },
+    executor: args.compute_prefilter,
   });
   const local_commit = args.commit_local_project_patch({
     source: "project_apply_prefilter",
@@ -65,10 +56,12 @@ export async function apply_project_prefilter_mutation(
 
   try {
     const mutation_ack = normalize_project_mutation_ack(
-      await api_fetch<ProjectMutationAckPayload>("/api/project/apply-prefilter", {
-        items: serialize_prefilter_items(mutation_output.items),
+      await api_fetch<ProjectMutationAckPayload>("/api/project/settings-alignment/apply", {
+        mode: "prefiltered_items",
+        items: serialize_prefilter_runtime_items(mutation_output.items),
         translation_extras: mutation_output.translation_extras,
         prefilter_config: mutation_output.prefilter_config,
+        project_settings: mutation_output.project_settings,
         expected_section_revisions: {
           items: args.state.revisions.sections.items ?? 0,
           analysis: args.state.revisions.sections.analysis ?? 0,

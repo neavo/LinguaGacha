@@ -91,7 +91,7 @@ def test_data_manager_init_sets_up_services(
     dm = DataManager()
 
     assert dm.session is not None
-    assert dm.prefilter_service is not None
+    assert dm.project_service is not None
     assert dm.project_file_service is not None
     assert dm.analysis_service is not None
     assert dm.quality_rule_service is not None
@@ -133,26 +133,33 @@ def test_set_meta_updates_rule_meta_without_emitting_legacy_events(
     assert emitted_events == []
 
 
-def test_sync_project_language_meta_updates_current_project_meta(
+def test_apply_project_settings_alignment_settings_only_updates_current_project_meta(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dm, emitted_events = build_data_manager(monkeypatch)
 
-    class FakeConfig:
-        source_language = "JA"
-        target_language = "EN"
-
-    monkeypatch.setattr(
-        "module.Data.DataManager.Config.load",
-        lambda self: FakeConfig(),
+    dm.apply_project_settings_alignment_payload(
+        mode="settings_only",
+        item_payloads=[],
+        translation_extras={},
+        prefilter_config={},
+        project_settings={
+            "source_language": "JA",
+            "target_language": "EN",
+            "mtool_optimizer_enable": True,
+        },
+        expected_section_revisions=None,
     )
 
-    dm.sync_project_language_meta()
-
-    assert dm.test_meta_store == {
-        "source_language": "JA",
-        "target_language": "EN",
-    }
+    dm.batch_service.update_batch.assert_called_once_with(
+        items=None,
+        rules=None,
+        meta={
+            "source_language": "JA",
+            "target_language": "EN",
+            "mtool_optimizer_enable": True,
+        },
+    )
     assert emitted_events == []
 
 
@@ -169,9 +176,6 @@ def test_load_project_runs_post_actions_before_emitting_loaded_event(
         ),
         unload_project=MagicMock(return_value=None),
     )
-    dm.schedule_prefilter_if_needed = MagicMock(
-        side_effect=lambda reason: call_order.append(("prefilter", reason)) or False
-    )
     dm.analysis_service.refresh_analysis_progress_snapshot_cache = MagicMock(
         side_effect=lambda: call_order.append("refresh") or {"line": 1}
     )
@@ -183,76 +187,13 @@ def test_load_project_runs_post_actions_before_emitting_loaded_event(
     dm.emit = capture_emit
     dm.load_project("demo/project.lg")
 
-    dm.schedule_prefilter_if_needed.assert_called_once_with(reason="project_loaded")
     dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_called_once()
     assert call_order == [
         ("load", "demo/project.lg"),
-        ("prefilter", "project_loaded"),
         "refresh",
         "emit",
     ]
     assert emitted_events == [(Base.Event.PROJECT_LOADED, {"path": "demo/project.lg"})]
-
-
-def test_load_project_skips_analysis_refresh_when_prefilter_is_needed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    dm.session.db = None
-    dm.session.lg_path = None
-    dm.lifecycle_service = SimpleNamespace(
-        load_project=MagicMock(),
-        unload_project=MagicMock(return_value=None),
-    )
-    dm.schedule_prefilter_if_needed = MagicMock(return_value=True)
-
-    dm.load_project("demo/project.lg")
-
-    dm.schedule_prefilter_if_needed.assert_called_once_with(reason="project_loaded")
-    dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_not_called()
-    assert emitted_events == [(Base.Event.PROJECT_LOADED, {"path": "demo/project.lg"})]
-
-
-def test_project_prefilter_worker_refreshes_analysis_snapshot_after_update(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    request = SimpleNamespace(
-        reason="file_op",
-        lg_path="demo/project.lg",
-    )
-    dm.prefilter_service = SimpleNamespace(
-        pop_pending_request=MagicMock(side_effect=[request, None]),
-        finish_worker=MagicMock(),
-    )
-    dm.apply_project_prefilter_once = MagicMock(return_value=SimpleNamespace())
-    dm.log_prefilter_result = MagicMock()
-
-    dm.project_prefilter_worker()
-
-    dm.analysis_service.refresh_analysis_progress_snapshot_cache.assert_called_once()
-    dm.prefilter_service.finish_worker.assert_called_once()
-    assert emitted_events == []
-
-
-def test_project_prefilter_worker_can_skip_page_refresh_events(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, emitted_events = build_data_manager(monkeypatch)
-    request = SimpleNamespace(
-        reason="file_op",
-        lg_path="demo/project.lg",
-    )
-    dm.prefilter_service = SimpleNamespace(
-        pop_pending_request=MagicMock(side_effect=[request, None]),
-        finish_worker=MagicMock(),
-    )
-    dm.apply_project_prefilter_once = MagicMock(return_value=SimpleNamespace())
-    dm.log_prefilter_result = MagicMock()
-
-    dm.project_prefilter_worker()
-
-    assert emitted_events == []
 
 
 def test_update_batch_no_longer_emits_legacy_quality_events(

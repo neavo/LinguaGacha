@@ -67,7 +67,9 @@ flowchart TD
 稳定事实：
 - `DataManager` 是工程级数据门面，负责会话、规则、分析、翻译、工作台事件与跨 service 编排。
 - `ProjectRuntimeService` 负责把工程事实编码成 bootstrap block 与运行态 patch 可复用记录。
-- 设置里的 `source_language` 与 `mtool_optimizer_enable` 会影响预过滤与校对运行态；`target_language` 只同步工程摘要镜像。
+- `Config` 是应用设置权威；工程 meta 中的 `source_language`、`target_language` 与 `mtool_optimizer_enable` 只是打开 / 新建时同步的项目镜像。
+- 项目预过滤计算只在渲染层 runner / worker 中执行；Python 数据层只负责提供 create/open 草稿和事务化持久化前端提交的结果。
+- `source_language` 或 `mtool_optimizer_enable` 不一致会要求前端重跑预过滤；仅 `target_language` 不一致时只同步项目镜像，不重写 items。
 
 ### 后台任务与数据提交
 
@@ -108,7 +110,6 @@ flowchart TD
 ## 非显然规则速查
 
 ### 数据域
-- `Config` 是运行时语言设置的权威来源；工程 `.lg` 中的 `source_language` / `target_language` 只是镜像摘要。
 - `items.status` 只表达条目翻译事实，代码侧枚举为 `Base.ItemStatus`，当前有效集合为 `NONE / PROCESSED / ERROR / EXCLUDED / RULE_SKIPPED / LANGUAGE_SKIPPED / DUPLICATED`；打开旧 `.lg` 时会把 item `PROCESSED_IN_PAST` 持久化为 `PROCESSED`，把 item `PROCESSING` 持久化为 `NONE`。
 - 工程忙碌态、任务按钮和任务进度由 `Engine.status`、任务事件与 `translation_extras` / `task` 运行态驱动；旧 `.lg` 中的 `meta.project_status` 只是历史字段，打开工程时保持原样。
 - Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。

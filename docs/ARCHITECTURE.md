@@ -69,7 +69,7 @@ flowchart TD
 - `ProjectStore` 是渲染层项目运行态最小事实仓库；页面本地筛选、弹窗、交互态不应上提到这里。
 - 校对页不会把 warnings、筛选面板 facets、搜索排序结果等派生事实塞回 `ProjectStore`；这些派生缓存由独立 worker 持有，主线程只同步原始 `project / items / quality` 输入并消费查询结果。
 
-## 文档地图与推荐阅读顺序
+## 文档地图
 
 ```mermaid
 flowchart TD
@@ -77,18 +77,20 @@ flowchart TD
     B --> C["docs/API.md"]
     B --> D["docs/FRONTEND.md"]
     B --> E["docs/DATA.md"]
-    B --> F["DESIGN.md"]
-    B --> G["docs/WORKFLOW.md"]
+    B --> F["PRODUCT.md"]
+    F --> G["DESIGN.md"]
+    B --> H["docs/WORKFLOW.md"]
 ```
 
-| 场景 | 推荐阅读顺序 |
+| 文档 | 唯一回答的问题 |
 | --- | --- |
-| 仓库整体结构与跨层关系 | `ARCHITECTURE（架构文档）` |
-| HTTP / SSE 契约、bootstrap、topic、错误码 | `ARCHITECTURE` -> `API` |
-| Electron 壳层、preload、renderer、`ProjectStore` | `ARCHITECTURE` -> `FRONTEND` |
-| 页面设计语言、视觉权威来源、组件语义 | `ARCHITECTURE` -> `DESIGN` -> `FRONTEND` |
-| Python Core 数据域、状态落点、唯一写入口 | `ARCHITECTURE` -> `DATA` |
-| 验证矩阵、文档同步与交付要求 | `WORKFLOW` |
+| `AGENTS.md` | Agent 协作入口、编码硬约束与交付硬约束 |
+| `docs/ARCHITECTURE.md` | 系统分层、跨层边界、运行时主链路和模块关系 |
+| `docs/API.md` | HTTP / SSE / bootstrap / topic / 错误码 / mutation 契约 |
+| `docs/FRONTEND.md` | Electron / preload / renderer / `ProjectStore` / 导航与样式边界 |
+| `docs/DATA.md` | Python Core 数据域、状态拥有者、唯一写入口和 SQL 落点 |
+| `docs/WORKFLOW.md` | 任务起手式、验证矩阵、文档同步与交付自检 |
+| `PRODUCT.md` -> `DESIGN.md` | 产品语境与设计权威 |
 
 ## 模块关系矩阵
 

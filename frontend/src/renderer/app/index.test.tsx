@@ -1,6 +1,6 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "@/app/index";
 
@@ -134,9 +134,36 @@ vi.mock("@/pages/log-window-page/page", () => {
   };
 });
 
+function install_local_storage_fallback(): void {
+  if (typeof window.localStorage.setItem === "function") {
+    return;
+  }
+
+  const values = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      clear: () => {
+        values.clear();
+      },
+      getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    },
+  });
+}
+
 describe("App 字体模式同步", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
+
+  beforeEach(() => {
+    install_local_storage_fallback();
+  });
 
   afterEach(async () => {
     if (root !== null) {

@@ -8,11 +8,12 @@ flowchart TD
     B --> C{"改动主要落在哪一层"}
     C -->|协议 / 路由 / SSE| D["读 API"]
     C -->|Electron / Renderer| E["读 FRONTEND"]
-    C -->|页面语义 / 样式| F["读 DESIGN"]
+    C -->|页面语义 / 样式| F["读 PRODUCT"]
+    F --> F0["读 DESIGN"]
     C -->|Python Core 数据域| G["读 DATA"]
     D --> H["确认状态拥有者 / 唯一写入口 / 跨层载荷"]
     E --> H
-    F --> H
+    F0 --> H
     G --> H
     H --> I["实现改动"]
     I --> J["执行对应验证"]
@@ -33,7 +34,7 @@ flowchart TD
 | 仓库结构、阅读入口、跨层关系 | `ARCHITECTURE` |
 | 本地 HTTP / SSE 契约、bootstrap、topic、错误码 | `ARCHITECTURE` -> `API` |
 | Electron 壳层、preload、共享桥接、渲染层分层 | `ARCHITECTURE` -> `FRONTEND` |
-| React 页面、组件、样式、交互语义 | `ARCHITECTURE` -> `DESIGN` -> `FRONTEND` |
+| React 页面、组件、样式、交互语义 | `ARCHITECTURE` -> `PRODUCT` -> `DESIGN` -> `FRONTEND` |
 | Python Core 数据域、状态落点、唯一写入口 | `ARCHITECTURE` -> `DATA` |
 | 任务执行、验证矩阵、交付要求 | `WORKFLOW` |
 
@@ -53,16 +54,21 @@ flowchart TD
 
 ## 文档同步规则
 
-长期权威文档固定收口为：
+Agent 维护与实现约束的长期权威文档固定收口为：
 - `AGENTS.md`
 - `docs/ARCHITECTURE.md`
 - `docs/API.md`
 - `docs/FRONTEND.md`
-- `DESIGN.md`
 - `docs/WORKFLOW.md`
 - `docs/DATA.md`
 
+产品与设计权威固定收口为：
+- `PRODUCT.md`
+- `DESIGN.md`
+
 不参与长期权威竞争的 Markdown：
+- `PRODUCT.md` 是 `$impeccable` 的产品上下文，提供用户、产品目的、品牌气质和反参考；它与 `DESIGN.md` 并存，但不承载 Agent 维护规则或实现协作规则。
+- `PLAN.md` 或其它任务计划文件是阶段性任务材料；除非用户明确要求迁移或清理，否则不自动吸收进长期文档，也不自治删除。
 - `README*.md` 面向用户、发布页和公开项目介绍，不承载 Agent 维护规则。
 - `.codex/skills/**` 是技能说明，按技能生命周期维护。
 - `output/**`、`input_bak/**`、`.pytest_cache/**` 是生成物、样例、缓存或临时材料，有明确子目录与生命周期。

@@ -242,27 +242,143 @@ def test_load_project_returns_loaded_snapshot(
     assert result["project"]["loaded"] is True
 
 
-def test_create_project_loads_output_path_and_returns_loaded_snapshot(
+def test_create_project_preview_returns_unpersisted_draft(
     project_app_service,
     fake_project_manager,
 ) -> None:
-    result = project_app_service.create_project(
+    result = project_app_service.create_project_preview(
+        {"source_path": "E:/Project/LinguaGacha/source"}
+    )
+
+    assert fake_project_manager.create_preview_calls == [
+        "E:/Project/LinguaGacha/source"
+    ]
+    assert result["draft"]["source_path"] == "E:/Project/LinguaGacha/source"
+    assert fake_project_manager.load_calls == []
+
+
+def test_create_project_commit_persists_frontend_prefiltered_draft_and_loads(
+    project_app_service,
+    fake_project_manager,
+) -> None:
+    result = project_app_service.create_project_commit(
         {
             "source_path": "E:/Project/LinguaGacha/source",
             "path": "E:/Project/LinguaGacha/output/demo.lg",
+            "draft": {
+                "files": [{"rel_path": "script.txt"}],
+                "items": [{"id": 1, "status": "RULE_SKIPPED"}],
+            },
+            "project_settings": {
+                "source_language": "JA",
+                "target_language": "ZH",
+                "mtool_optimizer_enable": True,
+            },
+            "translation_extras": {"line": 0},
+            "prefilter_config": {
+                "source_language": "JA",
+                "mtool_optimizer_enable": True,
+            },
         }
     )
 
-    assert fake_project_manager.create_calls == [
-        (
-            "E:/Project/LinguaGacha/source",
-            "E:/Project/LinguaGacha/output/demo.lg",
-        )
+    assert fake_project_manager.create_commit_calls == [
+        {
+            "source_path": "E:/Project/LinguaGacha/source",
+            "output_path": "E:/Project/LinguaGacha/output/demo.lg",
+            "files": [{"rel_path": "script.txt"}],
+            "items": [{"id": 1, "status": "RULE_SKIPPED"}],
+            "project_settings": {
+                "source_language": "JA",
+                "target_language": "ZH",
+                "mtool_optimizer_enable": True,
+            },
+            "translation_extras": {"line": 0},
+            "prefilter_config": {
+                "source_language": "JA",
+                "mtool_optimizer_enable": True,
+            },
+        }
     ]
     assert fake_project_manager.load_calls == ["E:/Project/LinguaGacha/output/demo.lg"]
     assert result["project"] == {
         "path": "E:/Project/LinguaGacha/output/demo.lg",
         "loaded": True,
+    }
+
+
+def test_open_project_alignment_preview_does_not_load_project(
+    project_app_service,
+    fake_project_manager,
+) -> None:
+    result = project_app_service.get_open_project_alignment_preview(
+        {"path": "E:/Project/LinguaGacha/output/demo.lg"}
+    )
+
+    assert fake_project_manager.open_alignment_preview_calls == [
+        "E:/Project/LinguaGacha/output/demo.lg"
+    ]
+    assert result["preview"]["action"] == "settings_only"
+    assert fake_project_manager.load_calls == []
+
+
+def test_apply_project_settings_alignment_uses_loaded_runtime_ack(
+    project_app_service,
+    fake_project_manager,
+) -> None:
+    project_app_service.runtime_service = fake_project_manager
+
+    result = project_app_service.apply_project_settings_alignment(
+        {
+            "mode": "prefiltered_items",
+            "items": [{"id": 1, "status": "RULE_SKIPPED"}],
+            "project_settings": {"source_language": "JA"},
+            "translation_extras": {"line": 0},
+            "prefilter_config": {"source_language": "JA"},
+            "expected_section_revisions": {"items": 1, "analysis": 1},
+        }
+    )
+
+    assert fake_project_manager.settings_alignment_calls == [
+        {
+            "mode": "prefiltered_items",
+            "item_payloads": [{"id": 1, "status": "RULE_SKIPPED"}],
+            "translation_extras": {"line": 0},
+            "prefilter_config": {"source_language": "JA"},
+            "project_settings": {"source_language": "JA"},
+            "expected_section_revisions": {"items": 1, "analysis": 1},
+        }
+    ]
+    assert result["accepted"] is True
+
+
+def test_apply_project_settings_alignment_can_write_unloaded_project_file(
+    project_app_service,
+    fake_project_manager,
+) -> None:
+    result = project_app_service.apply_project_settings_alignment(
+        {
+            "path": "E:/Project/LinguaGacha/output/demo.lg",
+            "mode": "settings_only",
+            "project_settings": {"source_language": "JA"},
+        }
+    )
+
+    assert fake_project_manager.settings_alignment_file_calls == [
+        {
+            "lg_path": "E:/Project/LinguaGacha/output/demo.lg",
+            "mode": "settings_only",
+            "item_payloads": [],
+            "translation_extras": {},
+            "prefilter_config": {},
+            "project_settings": {"source_language": "JA"},
+            "expected_section_revisions": None,
+        }
+    ]
+    assert result == {
+        "accepted": True,
+        "projectRevision": 2,
+        "sectionRevisions": {"items": 2, "analysis": 2},
     }
 
 

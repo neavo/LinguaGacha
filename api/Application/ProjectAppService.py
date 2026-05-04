@@ -59,12 +59,34 @@ class ProjectAppService:
         self.project_manager.load_project(path)
         return {"project": self.build_project_snapshot(path)}
 
-    def create_project(self, request: dict[str, str]) -> dict[str, object]:
-        """创建工程后立即加载，保证 UI 首次拿到的是统一快照。"""
+    def create_project_preview(self, request: dict[str, Any]) -> dict[str, object]:
+        """解析新建工程草稿，不落盘、不预过滤。"""
 
-        source_path = str(request.get("source_path", ""))
-        output_path = str(request.get("path", ""))
-        self.project_manager.create_project(source_path, output_path)
+        source_path = str(request.get("source_path", "") or "")
+        return {"draft": self.project_manager.build_create_project_preview(source_path)}
+
+    def create_project_commit(self, request: dict[str, Any]) -> dict[str, object]:
+        """持久化前端预过滤后的新建工程草稿并加载工程。"""
+
+        source_path = str(request.get("source_path", "") or "")
+        output_path = str(request.get("path", "") or "")
+        draft = self.normalize_dict_payload(request.get("draft"))
+        files = self.normalize_list_of_dicts(draft.get("files", []))
+        items = self.normalize_list_of_dicts(draft.get("items", []))
+        project_settings = self.normalize_dict_payload(request.get("project_settings"))
+        translation_extras = self.normalize_dict_payload(
+            request.get("translation_extras")
+        )
+        prefilter_config = self.normalize_dict_payload(request.get("prefilter_config"))
+        self.project_manager.commit_create_project_preview(
+            source_path=source_path,
+            output_path=output_path,
+            files=files,
+            items=items,
+            project_settings=project_settings,
+            translation_extras=translation_extras,
+            prefilter_config=prefilter_config,
+        )
         self.project_manager.load_project(output_path)
         return {"project": self.build_project_snapshot(output_path)}
 
@@ -94,6 +116,17 @@ class ProjectAppService:
         path = str(request.get("path", ""))
         preview = self.project_manager.get_project_preview(path)
         return {"preview": ProjectPreviewPayload.from_dict(preview).to_dict()}
+
+    def get_open_project_alignment_preview(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, object]:
+        """读取打开工程前的设置对齐预览，不进入 loaded 状态。"""
+
+        path = str(request.get("path", "") or "")
+        return {
+            "preview": self.project_manager.build_open_project_alignment_preview(path)
+        }
 
     def get_text_preserve_preset_rules(
         self,
@@ -155,44 +188,50 @@ class ProjectAppService:
             raise RuntimeError(Localizer.get().export_translation_failed)
         return {"accepted": True, "output_path": str(output_path)}
 
-    def apply_prefilter(self, request: dict[str, Any]) -> dict[str, object]:
-        """持久化 TS 端预过滤后的最终条目与镜像 meta。"""
+    def apply_project_settings_alignment(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, object]:
+        """事务化写入项目设置镜像，必要时同时写入前端预过滤结果。"""
 
-        items_raw = request.get("items", [])
-        item_payloads = (
-            [dict(item) for item in items_raw if isinstance(item, dict)]
-            if isinstance(items_raw, list)
-            else []
+        mode = str(request.get("mode", "") or "").lower()
+        item_payloads = self.normalize_list_of_dicts(request.get("items", []))
+        translation_extras = self.normalize_dict_payload(
+            request.get("translation_extras")
         )
-        translation_extras_raw = request.get("translation_extras", {})
-        translation_extras = (
-            dict(translation_extras_raw)
-            if isinstance(translation_extras_raw, dict)
-            else {}
+        prefilter_config = self.normalize_dict_payload(request.get("prefilter_config"))
+        project_settings = self.normalize_dict_payload(request.get("project_settings"))
+        expected_section_revisions = self.normalize_expected_section_revisions(
+            request.get("expected_section_revisions")
         )
-        prefilter_config_raw = request.get("prefilter_config", {})
-        prefilter_config = (
-            dict(prefilter_config_raw) if isinstance(prefilter_config_raw, dict) else {}
-        )
-        expected_section_revisions_raw = request.get(
-            "expected_section_revisions",
-            {},
-        )
-        expected_section_revisions = (
-            {
-                str(section): int(revision)
-                for section, revision in expected_section_revisions_raw.items()
-                if isinstance(section, str)
-            }
-            if isinstance(expected_section_revisions_raw, dict)
-            else None
-        )
-        self.project_manager.apply_prefilter_payload(
+        project_path = str(request.get("path", "") or "").strip()
+        if project_path != "":
+            apply_to_file = getattr(
+                self.project_manager,
+                "apply_project_settings_alignment_file_payload",
+                None,
+            )
+            if callable(apply_to_file):
+                return apply_to_file(
+                    lg_path=project_path,
+                    mode=mode,
+                    item_payloads=item_payloads,
+                    translation_extras=translation_extras,
+                    prefilter_config=prefilter_config,
+                    project_settings=project_settings,
+                    expected_section_revisions=expected_section_revisions,
+                )
+
+        self.project_manager.apply_project_settings_alignment_payload(
+            mode=mode,
             item_payloads=item_payloads,
             translation_extras=translation_extras,
             prefilter_config=prefilter_config,
+            project_settings=project_settings,
             expected_section_revisions=expected_section_revisions,
         )
+        if mode == "settings_only":
+            return self.runtime_service.build_project_mutation_ack([])
         return self.runtime_service.build_project_mutation_ack(["items", "analysis"])
 
     def preview_translation_reset(
@@ -287,15 +326,6 @@ class ProjectAppService:
             return self.runtime_service.build_project_mutation_ack(["analysis"])
 
         raise ValueError("analysis reset 仅支持 mode=all 或 mode=failed")
-
-    def sync_project_settings_meta(self, request: dict[str, Any]) -> dict[str, object]:
-        """把当前设置里的项目镜像字段写回 .lg。"""
-
-        self.project_manager.sync_project_settings_meta(
-            source_language=str(request.get("source_language", "") or ""),
-            target_language=str(request.get("target_language", "") or ""),
-        )
-        return {"accepted": True}
 
     def import_analysis_glossary(self, request: dict[str, Any]) -> dict[str, object]:
         """持久化 TS 端已经筛好的分析候选导入结果。"""
@@ -453,6 +483,11 @@ class ProjectAppService:
 
     def normalize_dict_payload(self, value: Any) -> dict[str, Any]:
         return dict(value) if isinstance(value, dict) else {}
+
+    def normalize_list_of_dicts(self, value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        return [dict(item) for item in value if isinstance(item, dict)]
 
     def normalize_expected_section_revisions(
         self,

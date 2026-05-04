@@ -565,6 +565,7 @@ a,
     font-size: 13px;
     font-weight: 500;
     line-height: 1.5;
+    white-space: pre-line;
   }
 
   .cn-toast__description {
@@ -572,6 +573,7 @@ a,
     font-size: 13px;
     font-weight: 400;
     line-height: 1.4;
+    white-space: pre-line;
   }
 
   .cn-toast__close {

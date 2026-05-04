@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api_fetch } from "@/app/desktop-api";
 import { createProjectPrefilterClient } from "@/app/project/derived/project-prefilter-client";
 import { apply_project_prefilter_mutation } from "@/app/project/derived/project-prefilter-mutation";
+import { format_project_settings_aligned_toast } from "@/app/project/settings-alignment-toast";
 import {
   normalize_settings_snapshot,
   type SettingsSnapshot,
@@ -155,6 +156,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       await apply_project_prefilter_mutation({
         state: project_store.getState(),
         source_language: next_settings_snapshot.source_language,
+        target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
         compute_prefilter: (input) => {
           return project_prefilter_client_ref.current.compute(input);
@@ -224,6 +226,22 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
             await wait_for_barrier("project_cache_refresh", {
               checkpoint: barrier_checkpoint,
             });
+            if (project_snapshot.loaded) {
+              push_toast(
+                "info",
+                format_project_settings_aligned_toast({
+                  settings: {
+                    source_language: next_settings_snapshot.source_language,
+                    target_language: next_settings_snapshot.target_language,
+                    mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+                  },
+                  changed_fields: {
+                    mtool_optimizer_enable: true,
+                  },
+                  t,
+                }),
+              );
+            }
           },
         });
       } catch (error) {
@@ -239,6 +257,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       commit_update,
       create_barrier_checkpoint,
       is_task_busy,
+      project_snapshot.loaded,
       rollback_mtool_optimizer_after_prefilter_error,
       run_modal_progress_toast,
       t,

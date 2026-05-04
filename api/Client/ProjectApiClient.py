@@ -18,12 +18,6 @@ class ProjectApiClient:
         response = self.api_client.post(ProjectRoutes.LOAD_PATH, request)
         return ProjectSnapshot.from_dict(response.get("project", {}))
 
-    def create_project(self, request: dict[str, Any]) -> ProjectSnapshot:
-        """创建工程并返回项目快照。"""
-
-        response = self.api_client.post(ProjectRoutes.CREATE_PATH, request)
-        return ProjectSnapshot.from_dict(response.get("project", {}))
-
     def get_project_snapshot(self) -> ProjectSnapshot:
         """查询工程快照，供 UI 首屏 hydration 使用。"""
 

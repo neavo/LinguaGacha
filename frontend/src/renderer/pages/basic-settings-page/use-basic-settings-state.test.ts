@@ -265,7 +265,7 @@ describe("useBasicSettingsState", () => {
         ) as never;
       }
 
-      if (path === "/api/project/settings/sync-meta") {
+      if (path === "/api/project/settings-alignment/apply") {
         return {} as never;
       }
 
@@ -291,19 +291,16 @@ describe("useBasicSettingsState", () => {
     expect(barrier_fixture.current.wait_for_barrier).not.toHaveBeenCalled();
     expect(vi.mocked(api_fetch).mock.calls).toEqual([
       ["/api/settings/update", { source_language: "EN" }],
-      [
-        "/api/project/settings/sync-meta",
-        {
-          source_language: "EN",
-          target_language: "ZH",
-        },
-      ],
       ["/api/settings/update", { source_language: "JA" }],
       [
-        "/api/project/settings/sync-meta",
+        "/api/project/settings-alignment/apply",
         {
-          source_language: "JA",
-          target_language: "ZH",
+          mode: "settings_only",
+          project_settings: {
+            source_language: "JA",
+            target_language: "ZH",
+            mtool_optimizer_enable: false,
+          },
         },
       ],
     ]);

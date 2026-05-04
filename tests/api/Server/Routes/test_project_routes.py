@@ -9,11 +9,15 @@ from tests.api.Server.Routes.route_contracts import (
 
 PROJECT_COMMAND_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/load", "load_project"),
-    JsonRouteCase("/api/project/create", "create_project"),
+    JsonRouteCase("/api/project/create-preview", "create_project_preview"),
+    JsonRouteCase("/api/project/create-commit", "create_project_commit"),
     JsonRouteCase("/api/project/snapshot", "get_project_snapshot"),
     JsonRouteCase("/api/project/unload", "unload_project"),
-    JsonRouteCase("/api/project/apply-prefilter", "apply_prefilter"),
-    JsonRouteCase("/api/project/settings/sync-meta", "sync_project_settings_meta"),
+    JsonRouteCase("/api/project/open-preview", "get_open_project_alignment_preview"),
+    JsonRouteCase(
+        "/api/project/settings-alignment/apply",
+        "apply_project_settings_alignment",
+    ),
     JsonRouteCase("/api/project/analysis/import-glossary", "import_analysis_glossary"),
     JsonRouteCase(
         "/api/project/translation/reset-preview", "preview_translation_reset"

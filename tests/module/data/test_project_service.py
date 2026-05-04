@@ -207,22 +207,6 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
         "module.Data.Project.ProjectService.FileManager", FakeFileManager
     )
 
-    prefilter_calls: list[dict[str, object]] = []
-
-    def fake_apply(**kwargs):
-        prefilter_calls.append(kwargs)
-        progress_cb = kwargs.get("progress_cb")
-        assert callable(progress_cb)
-        progress_cb(1, 1)
-        return SimpleNamespace(
-            stats=SimpleNamespace(rule_skipped=0, language_skipped=0, mtool_skipped=0),
-            prefilter_config={"demo": True},
-        )
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.ProjectPrefilter.apply", fake_apply
-    )
-
     def init_rules(db) -> list[str]:
         assert db is fake_db
         return ["default"]
@@ -239,13 +223,11 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     assert compressed_inputs == [b"hello"]
     assert fake_db.assets == [("a.txt", b"zhello", 5)]
     assert fake_db.items is not None
-    assert fake_db.meta["prefilter_config"] == {"demo": True}
     assert fake_db.meta["source_language"] != ""
     assert fake_db.meta["target_language"] != ""
     extras = fake_db.meta["translation_extras"]
     assert isinstance(extras, dict)
     assert extras["total_line"] == 0
-    assert prefilter_calls != []
     assert progress != []
 
 
@@ -279,10 +261,6 @@ def test_create_skips_read_failures_and_continues(
     )
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.Localizer.get", lambda: DummyLocalizer()
-    )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.ProjectPrefilter.apply",
-        lambda **kwargs: None,
     )
 
     class FakeFileManager:
@@ -369,7 +347,7 @@ def test_create_logs_parse_errors_but_keeps_asset(
     assert any("Failed to parse asset" in msg for msg in logger.errors)
 
 
-def test_create_logs_mtool_prefilter_count_when_optimizer_enabled(
+def test_create_records_mtool_setting_without_marking_prefilter_done(
     fs, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     del fs
@@ -424,14 +402,8 @@ def test_create_logs_mtool_prefilter_count_when_optimizer_enabled(
         "module.Data.Project.ProjectService.ZstdTool.compress", lambda b: b
     )
 
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.ProjectPrefilter.apply",
-        lambda **kwargs: SimpleNamespace(
-            stats=SimpleNamespace(rule_skipped=0, language_skipped=0, mtool_skipped=3),
-            prefilter_config={"demo": True},
-        ),
-    )
-
     service.create(source_path=str(src_dir), output_path=str(out_path))
 
-    assert any("mtool 3" in msg for msg in logger.infos)
+    assert fake_db.meta["mtool_optimizer_enable"] is True
+    assert "prefilter_config" not in fake_db.meta
+    assert logger.infos == []

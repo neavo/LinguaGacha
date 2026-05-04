@@ -23,16 +23,82 @@ class FakeProjectManager:
         self.loaded: bool = False
         self.project_path: str = ""
         self.load_calls: list[str] = []
-        self.create_calls: list[tuple[str, str]] = []
+        self.create_preview_calls: list[str] = []
+        self.create_commit_calls: list[dict[str, object]] = []
+        self.open_alignment_preview_calls: list[str] = []
+        self.settings_alignment_calls: list[dict[str, object]] = []
+        self.settings_alignment_file_calls: list[dict[str, object]] = []
 
     def load_project(self, path: str) -> None:
         self.loaded = True
         self.project_path = path
         self.load_calls.append(path)
 
-    def create_project(self, source_path: str, output_path: str) -> None:
-        self.create_calls.append((source_path, output_path))
-        self.project_path = output_path
+    def build_create_project_preview(self, source_path: str) -> dict[str, object]:
+        self.create_preview_calls.append(source_path)
+        return {
+            "source_path": source_path,
+            "files": [{"rel_path": "script.txt", "file_type": "TXT", "sort_index": 0}],
+            "items": [{"id": 1, "src": "原文", "file_path": "script.txt", "row": 1}],
+            "section_revisions": {"files": 0, "items": 0, "analysis": 0},
+        }
+
+    def commit_create_project_preview(self, **kwargs: object) -> None:
+        self.create_commit_calls.append(dict(kwargs))
+        self.project_path = str(kwargs.get("output_path", ""))
+
+    def build_open_project_alignment_preview(self, path: str) -> dict[str, object]:
+        self.open_alignment_preview_calls.append(path)
+        return {
+            "action": "settings_only",
+            "project_path": path,
+            "current_settings": {
+                "source_language": "JA",
+                "target_language": "ZH",
+                "mtool_optimizer_enable": True,
+            },
+            "project_settings": {
+                "source_language": "EN",
+                "target_language": "ZH",
+                "mtool_optimizer_enable": True,
+            },
+            "changed": {
+                "source_language": True,
+                "target_language": False,
+                "mtool_optimizer_enable": False,
+            },
+            "draft": None,
+        }
+
+    def apply_project_settings_alignment_payload(self, **kwargs: object) -> None:
+        self.settings_alignment_calls.append(dict(kwargs))
+
+    def apply_project_settings_alignment_file_payload(
+        self, **kwargs: object
+    ) -> dict[str, object]:
+        self.settings_alignment_file_calls.append(dict(kwargs))
+        return {
+            "accepted": True,
+            "projectRevision": 2,
+            "sectionRevisions": {"items": 2, "analysis": 2},
+        }
+
+    def get_section_revision(self, stage: str) -> int:
+        return {"items": 4, "analysis": 5}.get(stage, 0)
+
+    def build_project_mutation_ack(
+        self,
+        updated_sections: tuple[str, ...] | list[str],
+    ) -> dict[str, object]:
+        section_revisions = {
+            str(section): self.get_section_revision(str(section))
+            for section in updated_sections
+        }
+        return {
+            "accepted": True,
+            "projectRevision": max(section_revisions.values(), default=0),
+            "sectionRevisions": section_revisions,
+        }
 
     def unload_project(self) -> None:
         self.loaded = False

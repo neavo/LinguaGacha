@@ -2,18 +2,17 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from module.Data.Core.DataTypes import ProjectPrefilterRequest
+from module.Data.Core.DataTypes import ProjectItemChange
 
 
-def test_project_prefilter_request_is_frozen() -> None:
-    request = ProjectPrefilterRequest(
-        lg_path="demo/project.lg",
-        reason="project_loaded",
-        source_language="JA",
-        mtool_optimizer_enable=True,
+def test_project_item_change_is_frozen() -> None:
+    change = ProjectItemChange(
+        item_ids=(1, 2),
+        rel_paths=("script.txt",),
+        reason="translation_batch_update",
     )
 
-    assert request.reason == "project_loaded"
+    assert change.reason == "translation_batch_update"
 
     with pytest.raises(FrozenInstanceError):
-        request.reason = "config_updated"
+        change.reason = "config_updated"

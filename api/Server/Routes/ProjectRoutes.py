@@ -6,11 +6,12 @@ class ProjectRoutes:
     """集中注册项目运行态相关路由。"""
 
     LOAD_PATH: str = "/api/project/load"
-    CREATE_PATH: str = "/api/project/create"
+    CREATE_PREVIEW_PATH: str = "/api/project/create-preview"
+    CREATE_COMMIT_PATH: str = "/api/project/create-commit"
     SNAPSHOT_PATH: str = "/api/project/snapshot"
     UNLOAD_PATH: str = "/api/project/unload"
-    APPLY_PREFILTER_PATH: str = "/api/project/apply-prefilter"
-    SETTINGS_SYNC_META_PATH: str = "/api/project/settings/sync-meta"
+    OPEN_PREVIEW_PATH: str = "/api/project/open-preview"
+    SETTINGS_ALIGNMENT_APPLY_PATH: str = "/api/project/settings-alignment/apply"
     ANALYSIS_IMPORT_GLOSSARY_PATH: str = "/api/project/analysis/import-glossary"
     TRANSLATION_RESET_PREVIEW_PATH: str = "/api/project/translation/reset-preview"
     TRANSLATION_RESET_PATH: str = "/api/project/translation/reset"
@@ -55,9 +56,16 @@ class ProjectRoutes:
             )
             core_api_server.add_json_route(
                 "POST",
-                cls.CREATE_PATH,
+                cls.CREATE_PREVIEW_PATH,
                 lambda request: ApiResponse(
-                    ok=True, data=project_app_service.create_project(request)
+                    ok=True, data=project_app_service.create_project_preview(request)
+                ),
+            )
+            core_api_server.add_json_route(
+                "POST",
+                cls.CREATE_COMMIT_PATH,
+                lambda request: ApiResponse(
+                    ok=True, data=project_app_service.create_project_commit(request)
                 ),
             )
             core_api_server.add_json_route(
@@ -76,17 +84,20 @@ class ProjectRoutes:
             )
             core_api_server.add_json_route(
                 "POST",
-                cls.APPLY_PREFILTER_PATH,
+                cls.OPEN_PREVIEW_PATH,
                 lambda request: ApiResponse(
-                    ok=True, data=project_app_service.apply_prefilter(request)
+                    ok=True,
+                    data=project_app_service.get_open_project_alignment_preview(
+                        request
+                    ),
                 ),
             )
             core_api_server.add_json_route(
                 "POST",
-                cls.SETTINGS_SYNC_META_PATH,
+                cls.SETTINGS_ALIGNMENT_APPLY_PATH,
                 lambda request: ApiResponse(
                     ok=True,
-                    data=project_app_service.sync_project_settings_meta(request),
+                    data=project_app_service.apply_project_settings_alignment(request),
                 ),
             )
             core_api_server.add_json_route(

@@ -99,7 +99,7 @@ flowchart TD
 - 连接建立后先回放当前进程内 `LogManager` ring buffer，再持续推送新增日志；持久排障历史仍以 `DATA_ROOT/log/app.log` 为准。
 - SSE 事件名固定为 `log.appended`，`data` 是扁平 `LogEvent`：`id`、`sequence`、`created_at`、`level`、`message`。
 - `level` 只使用 `debug / info / warning / error / fatal`；`message` 永远是纯文本，多行详情靠换行、缩进和 ASCII 标签表达。
-- 旧 `console=False` 日志调用只写文件，不进入 `/api/logs/stream`。
+- 带 `console=False` 的日志调用只写文件，不进入 `/api/logs/stream`。
 
 ### bootstrap 首包
 
@@ -152,8 +152,8 @@ flowchart TD
 
 | 类型 | 代表接口 | 运行态推进方式 |
 | --- | --- | --- |
-| 同步 mutation | 工作台 `add-file-batch / reset-file / delete-file / delete-file-batch / reorder-files`，项目 `apply-prefilter`、`translation/reset`、`analysis/reset`、`analysis/import-glossary`，质量规则 `rules/save-entries / rules/update-meta`，提示词 `prompts/save`，校对 `save-item / save-all / replace-all` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
-| 只读预演 | `translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
+| 同步 mutation | 工作台 `add-file-batch / reset-file / delete-file / delete-file-batch / reorder-files`，项目 `settings-alignment/apply`、`translation/reset`、`analysis/reset`、`analysis/import-glossary`，质量规则 `rules/save-entries / rules/update-meta`，提示词 `prompts/save`，校对 `save-item / save-all / replace-all` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
+| 只读预演 | `create-preview`、`open-preview`、`translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
 | 异步任务 | `tasks/*`、`retranslate-items` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
 
 翻译任务补充：
@@ -167,7 +167,11 @@ flowchart TD
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
 - `reorder-files` 的 `ordered_rel_paths` 必须完整覆盖当前文件集合。
-- `apply-prefilter`、`translation/reset`、`analysis/reset` 会持久化 TS 侧 planner 生成的最终条目或分析载荷；它们属于同步 mutation，不走后台任务生命周期。
+- `create-preview` 只解析源路径草稿；`create-commit` 接收前端预过滤后的 items、`translation_extras`、`prefilter_config` 与项目设置镜像，一次性落盘并加载。
+- `open-preview` 在工程未进入 loaded 前读取项目设置镜像；仅 `target_language` 不一致时返回 `settings_only`，`source_language` 或 `mtool_optimizer_enable` 不一致时返回完整草稿。
+- `settings-alignment/apply` 是项目设置镜像与前端预过滤结果的唯一写入口：`settings_only` 只写 `source_language / target_language / mtool_optimizer_enable`，`prefiltered_items` 同事务写 items、`translation_extras`、`prefilter_config` 并清空分析事实。
+- `settings-alignment/apply` 可带 `path` 在未 loaded 的 `.lg` 上直接写入。
+- `translation/reset`、`analysis/reset` 会持久化 TS 侧 planner 生成的最终条目或分析载荷；它们属于同步 mutation，不走后台任务生命周期。
 - 同步 mutation 的状态载荷边界固定为：条目翻译事实随 `items.status` 更新，任务进度镜像随 `translation_extras` / `analysis_extras` 与 `task` 运行态更新，工程忙碌与终态由任务事件表达。
 - `quality/rules/save-entries`、`quality/rules/update-meta` 与 `quality/prompts/save` 会回 `ProjectMutationAck`，页面需要用它们对齐 `quality` 或 `prompts` section revision。
 - `analysis/import-glossary` 会分别校验运行态 section revision 与 glossary 自身 revision。
@@ -180,7 +184,7 @@ flowchart TD
 | 关注点 | 当前规则 |
 | --- | --- |
 | `ApiClient` | 默认只取响应体中的 `data`，不会校验 `ok`、保留 `error` 或主动抛出结构化业务异常 |
-| 对象化覆盖 | `SettingsApiClient`、`ProjectApiClient`、`ProofreadingApiClient` 主路径以对象化结果为主 |
+| 对象化覆盖 | `SettingsApiClient`、`ProjectApiClient`、`ProofreadingApiClient` 主路径以对象化结果为主；新建工程链路由渲染层通过 `desktop-api.ts` 编排 |
 | 混合返回 | `TaskApiClient.export_translation()`、`ModelApiClient.test_model()`、`WorkbenchApiClient.parse_file()` 仍可能返回原始结构 |
 
 这意味着：
