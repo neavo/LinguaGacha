@@ -22,6 +22,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -51,7 +52,6 @@ import {
   build_app_table_box_selection_change,
   build_app_table_click_selection_change,
   build_app_table_context_selection_change,
-  build_app_table_keyboard_selection_change,
   build_app_table_select_all_selection_change,
   normalize_app_table_selection_state,
 } from "@/widgets/app-table/app-table-selection";
@@ -94,7 +94,7 @@ type AppTableSortableRowProps<Row> = {
   ignore_row_click_target?: (target_element: HTMLElement) => boolean;
   should_ignore_click: () => boolean;
   on_measure_row: (row_element: HTMLTableRowElement) => void;
-  on_row_click: (row_id: string, event: MouseEvent<HTMLTableRowElement>) => void;
+  on_row_click: (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>) => void;
   on_row_context: (row_id: string) => void;
   on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
   register_row_element: (row_id: string, row_element: HTMLTableRowElement | null) => void;
@@ -243,6 +243,45 @@ function should_handle_table_keydown(event: ReactKeyboardEvent<HTMLDivElement>):
   }
 }
 
+type AppTableKeyboardNavigationAction = "previous" | "next" | "first" | "last";
+
+function resolve_keyboard_target_index(args: {
+  row_count: number;
+  current_index: number | null;
+  action: AppTableKeyboardNavigationAction;
+}): number {
+  if (args.row_count <= 0) {
+    return -1;
+  }
+
+  if (args.action === "first") {
+    return 0;
+  } else if (args.action === "last") {
+    return args.row_count - 1;
+  } else if (args.action === "previous") {
+    return args.current_index === null ? args.row_count - 1 : Math.max(args.current_index - 1, 0);
+  } else {
+    return args.current_index === null ? 0 : Math.min(args.current_index + 1, args.row_count - 1);
+  }
+}
+
+function normalize_row_range(
+  row_count: number,
+  start: number,
+  count: number,
+): AppTableVisibleRange {
+  const normalized_start = Math.max(0, Math.min(start, row_count));
+  const normalized_end = Math.max(
+    normalized_start,
+    Math.min(normalized_start + Math.max(count, 0), row_count),
+  );
+
+  return {
+    start: normalized_start,
+    count: normalized_end - normalized_start,
+  };
+}
+
 function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Element {
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     id: props.row_id,
@@ -288,7 +327,7 @@ function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Ele
           return;
         }
 
-        props.on_row_click(props.row_id, event);
+        props.on_row_click(props.row_id, props.row_index, event);
       }}
       onContextMenu={(event) => {
         if (event.target instanceof HTMLElement && props.ignore_row_click_target?.(event.target)) {
@@ -382,6 +421,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     row_model: row_model_prop,
     get_row_can_drag,
     on_selection_change,
+    on_selection_error,
     on_sort_change,
     on_reorder,
     on_row_double_click,
@@ -407,6 +447,9 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const selection_frame_id_ref = useRef<number | null>(null);
   const visible_range_signature_ref = useRef("");
   const suppress_click_ref = useRef(false);
+  const active_row_index_ref = useRef<number | null>(null);
+  const anchor_row_index_ref = useRef<number | null>(null);
+  const selection_request_epoch_ref = useRef(0);
   const row_height = estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT;
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null);
   const [viewport_height, set_viewport_height] = useState(row_height);
@@ -449,15 +492,16 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     return next_index_by_id;
   }, [active_row_id, anchor_row_id, row_ids, row_model, selected_row_ids]);
   const selection_state = useMemo(() => {
+    const selection_scope_row_ids = row_model_prop === undefined ? row_ids : null;
     return normalize_app_table_selection_state(
       {
         selected_row_ids,
         active_row_id,
         anchor_row_id,
       },
-      row_ids,
+      selection_scope_row_ids,
     );
-  }, [active_row_id, anchor_row_id, row_ids, selected_row_ids]);
+  }, [active_row_id, anchor_row_id, row_ids, row_model_prop, selected_row_ids]);
   const rendered_selection_state = selection_preview_state ?? selection_state;
   const selected_row_id_set = useMemo(() => {
     return new Set(rendered_selection_state.selected_row_ids);
@@ -498,16 +542,77 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     }),
   );
 
+  const resolve_known_row_index = useCallback(
+    (row_id: string | null): number | null => {
+      if (row_id === null) {
+        return null;
+      }
+
+      const row_index = row_model.resolve_row_index(row_id);
+      return row_index === undefined ? null : row_index;
+    },
+    [row_model],
+  );
+
+  useEffect(() => {
+    const next_active_row_index = resolve_known_row_index(active_row_id);
+    if (next_active_row_index !== null || active_row_id === null) {
+      active_row_index_ref.current = next_active_row_index;
+    }
+
+    const next_anchor_row_index = resolve_known_row_index(anchor_row_id);
+    if (next_anchor_row_index !== null || anchor_row_id === null) {
+      anchor_row_index_ref.current = next_anchor_row_index;
+    }
+  }, [active_row_id, anchor_row_id, resolve_known_row_index]);
+
+  useLayoutEffect(() => {
+    selection_request_epoch_ref.current += 1;
+  }, [row_model, row_count, selection_state]);
+
+  const begin_selection_request = useCallback((): number => {
+    selection_request_epoch_ref.current += 1;
+    return selection_request_epoch_ref.current;
+  }, []);
+
+  const is_selection_request_current = useCallback((request_epoch: number): boolean => {
+    return selection_request_epoch_ref.current === request_epoch;
+  }, []);
+
   const emit_selection_change = useCallback(
-    (next_state: AppTableSelectionState): void => {
-      const normalized_next_state = normalize_app_table_selection_state(next_state, row_ids);
+    (
+      next_state: AppTableSelectionState,
+      next_indices?: {
+        active_row_index?: number | null;
+        anchor_row_index?: number | null;
+      },
+    ): void => {
+      const selection_scope_row_ids = row_model_prop === undefined ? row_ids : null;
+      const normalized_next_state = normalize_app_table_selection_state(
+        next_state,
+        selection_scope_row_ids,
+      );
       if (are_app_table_selection_states_equal(selection_state, normalized_next_state)) {
         return;
       }
 
+      selection_request_epoch_ref.current += 1;
+
+      if (next_indices?.active_row_index !== undefined) {
+        active_row_index_ref.current = next_indices.active_row_index;
+      } else {
+        active_row_index_ref.current = resolve_known_row_index(normalized_next_state.active_row_id);
+      }
+
+      if (next_indices?.anchor_row_index !== undefined) {
+        anchor_row_index_ref.current = next_indices.anchor_row_index;
+      } else {
+        anchor_row_index_ref.current = resolve_known_row_index(normalized_next_state.anchor_row_id);
+      }
+
       on_selection_change(normalized_next_state);
     },
-    [on_selection_change, row_ids, selection_state],
+    [on_selection_change, resolve_known_row_index, row_ids, row_model_prop, selection_state],
   );
 
   useEffect(() => {
@@ -641,19 +746,15 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     }
   }, []);
 
-  const scroll_row_into_view = useCallback(
-    (row_id: string | null): void => {
-      if (row_id === null) {
+  const scroll_row_index_into_view = useCallback(
+    (row_index: number | null, row_id?: string | null): void => {
+      if (row_index === null || row_index < 0) {
         return;
       }
 
-      const row_index = row_index_by_id.get(row_id);
-      if (row_index === undefined) {
-        return;
-      }
-
-      const row_element = row_elements_ref.current.get(row_id);
-      if (row_element instanceof HTMLTableRowElement) {
+      const row_element =
+        row_id === undefined || row_id === null ? undefined : row_elements_ref.current.get(row_id);
+      if (row_element !== undefined) {
         row_element.scrollIntoView({
           block: "nearest",
           inline: "nearest",
@@ -665,7 +766,50 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
         });
       }
     },
-    [row_index_by_id, virtualizer],
+    [virtualizer],
+  );
+
+  const resolve_row_ids_range = useCallback(
+    async (range: { start: number; count: number }): Promise<string[]> => {
+      const normalized_range = normalize_row_range(row_count, range.start, range.count);
+      if (normalized_range.count <= 0) {
+        return [];
+      }
+
+      if (row_model.resolve_row_ids_range !== undefined) {
+        return await row_model.resolve_row_ids_range(normalized_range);
+      }
+
+      return Array.from({ length: normalized_range.count }, (_, offset) => {
+        return row_model.get_row_id_at_index(normalized_range.start + offset);
+      }).flatMap((row_id) => {
+        return row_id === undefined ? [] : [row_id];
+      });
+    },
+    [row_count, row_model],
+  );
+
+  const resolve_single_row_id = useCallback(
+    async (row_index: number): Promise<string | null> => {
+      const loaded_row_id = row_model.get_row_id_at_index(row_index);
+      if (loaded_row_id !== undefined) {
+        return loaded_row_id;
+      }
+
+      const resolved_row_ids = await resolve_row_ids_range({
+        start: row_index,
+        count: 1,
+      });
+      return resolved_row_ids[0] ?? null;
+    },
+    [resolve_row_ids_range, row_model],
+  );
+
+  const report_selection_error = useCallback(
+    (error: unknown): void => {
+      on_selection_error?.(error);
+    },
+    [on_selection_error],
   );
 
   const apply_selection_preview_state = useCallback(
@@ -910,8 +1054,49 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   );
 
   const handle_row_click = useCallback(
-    (row_id: string, event: MouseEvent<HTMLTableRowElement>): void => {
+    (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>): void => {
       focus_table_scroll_host();
+
+      if (selection_mode === "multiple" && event.shiftKey) {
+        const anchor_row_id =
+          selection_state.anchor_row_id ?? selection_state.active_row_id ?? row_id;
+        const anchor_row_index =
+          anchor_row_index_ref.current ?? active_row_index_ref.current ?? row_index;
+        const range_start = Math.min(anchor_row_index, row_index);
+        const range_count = Math.abs(row_index - anchor_row_index) + 1;
+        const request_epoch = begin_selection_request();
+
+        void resolve_row_ids_range({
+          start: range_start,
+          count: range_count,
+        })
+          .then((range_row_ids) => {
+            if (!is_selection_request_current(request_epoch)) {
+              return;
+            }
+
+            emit_selection_change(
+              {
+                selected_row_ids: range_row_ids,
+                active_row_id: row_id,
+                anchor_row_id,
+              },
+              {
+                active_row_index: row_index,
+                anchor_row_index,
+              },
+            );
+          })
+          .catch((error: unknown) => {
+            if (!is_selection_request_current(request_epoch)) {
+              return;
+            }
+
+            report_selection_error(error);
+          });
+        return;
+      }
+
       emit_selection_change(
         build_app_table_click_selection_change({
           selection_mode,
@@ -921,9 +1106,23 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
           extend: event.ctrlKey || event.metaKey,
           range: event.shiftKey,
         }),
+        {
+          active_row_index: row_index,
+          anchor_row_index: selection_mode === "none" ? anchor_row_index_ref.current : row_index,
+        },
       );
     },
-    [emit_selection_change, focus_table_scroll_host, row_ids, selection_mode, selection_state],
+    [
+      begin_selection_request,
+      emit_selection_change,
+      focus_table_scroll_host,
+      is_selection_request_current,
+      report_selection_error,
+      resolve_row_ids_range,
+      row_ids,
+      selection_mode,
+      selection_state,
+    ],
   );
 
   const handle_row_context = useCallback(
@@ -957,12 +1156,42 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
         pressed_key === "a"
       ) {
         event.preventDefault();
-        emit_selection_change(
-          build_app_table_select_all_selection_change({
-            ordered_row_ids: row_ids,
-            current_state: selection_state,
-          }),
-        );
+        const request_epoch = begin_selection_request();
+        void resolve_row_ids_range({
+          start: 0,
+          count: row_count,
+        })
+          .then((next_row_ids) => {
+            if (!is_selection_request_current(request_epoch)) {
+              return;
+            }
+
+            const fallback_anchor_row_id = next_row_ids[0] ?? null;
+            const fallback_active_row_id = selection_state.active_row_id ?? fallback_anchor_row_id;
+            const fallback_anchor_index = next_row_ids.length > 0 ? 0 : null;
+
+            emit_selection_change(
+              build_app_table_select_all_selection_change({
+                ordered_row_ids: next_row_ids,
+                current_state: selection_state,
+              }),
+              {
+                active_row_index: active_row_index_ref.current ?? fallback_anchor_index,
+                anchor_row_index: anchor_row_index_ref.current ?? fallback_anchor_index,
+              },
+            );
+
+            if (fallback_active_row_id === null) {
+              active_row_index_ref.current = null;
+            }
+          })
+          .catch((error: unknown) => {
+            if (!is_selection_request_current(request_epoch)) {
+              return;
+            }
+
+            report_selection_error(error);
+          });
         return;
       }
 
@@ -970,54 +1199,130 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
         return;
       }
 
-      let next_selection_state: AppTableSelectionState | null = null;
+      let next_action: AppTableKeyboardNavigationAction | null = null;
 
       if (event.key === "ArrowUp") {
-        next_selection_state = build_app_table_keyboard_selection_change({
-          selection_mode,
-          ordered_row_ids: row_ids,
-          current_state: selection_state,
-          action: "previous",
-          extend: event.shiftKey,
-        });
+        next_action = "previous";
       } else if (event.key === "ArrowDown") {
-        next_selection_state = build_app_table_keyboard_selection_change({
-          selection_mode,
-          ordered_row_ids: row_ids,
-          current_state: selection_state,
-          action: "next",
-          extend: event.shiftKey,
-        });
+        next_action = "next";
       } else if (event.key === "Home") {
-        next_selection_state = build_app_table_keyboard_selection_change({
-          selection_mode,
-          ordered_row_ids: row_ids,
-          current_state: selection_state,
-          action: "first",
-          extend: event.shiftKey,
-        });
+        next_action = "first";
       } else if (event.key === "End") {
-        next_selection_state = build_app_table_keyboard_selection_change({
-          selection_mode,
-          ordered_row_ids: row_ids,
-          current_state: selection_state,
-          action: "last",
-          extend: event.shiftKey,
-        });
+        next_action = "last";
       }
 
-      if (next_selection_state !== null) {
+      if (next_action !== null) {
         event.preventDefault();
-        // 为什么：键盘切换项目时要让虚拟表格主动把目标行滚进视口，否则选择状态会“跳”到屏幕外。
-        scroll_row_into_view(next_selection_state.active_row_id);
-        emit_selection_change(next_selection_state);
+        const target_row_index = resolve_keyboard_target_index({
+          row_count,
+          current_index: active_row_index_ref.current,
+          action: next_action,
+        });
+        if (target_row_index < 0) {
+          return;
+        }
+
+        if (event.shiftKey && selection_mode === "multiple") {
+          const anchor_row_index =
+            anchor_row_index_ref.current ?? active_row_index_ref.current ?? target_row_index;
+          const anchor_row_id =
+            selection_state.anchor_row_id ?? selection_state.active_row_id ?? null;
+          const range_start = Math.min(anchor_row_index, target_row_index);
+          const range_count = Math.abs(target_row_index - anchor_row_index) + 1;
+          const request_epoch = begin_selection_request();
+
+          void resolve_row_ids_range({
+            start: range_start,
+            count: range_count,
+          })
+            .then((range_row_ids) => {
+              if (!is_selection_request_current(request_epoch)) {
+                return;
+              }
+
+              const target_row_id =
+                target_row_index <= anchor_row_index
+                  ? (range_row_ids[0] ?? null)
+                  : (range_row_ids.at(-1) ?? null);
+              if (target_row_id === null) {
+                return;
+              }
+
+              scroll_row_index_into_view(target_row_index, target_row_id);
+              emit_selection_change(
+                {
+                  selected_row_ids: range_row_ids,
+                  active_row_id: target_row_id,
+                  anchor_row_id: anchor_row_id ?? target_row_id,
+                },
+                {
+                  active_row_index: target_row_index,
+                  anchor_row_index,
+                },
+              );
+            })
+            .catch((error: unknown) => {
+              if (!is_selection_request_current(request_epoch)) {
+                return;
+              }
+
+              report_selection_error(error);
+            });
+          return;
+        }
+
+        const request_epoch = begin_selection_request();
+        void resolve_single_row_id(target_row_index)
+          .then((target_row_id) => {
+            if (!is_selection_request_current(request_epoch)) {
+              return;
+            }
+
+            if (target_row_id === null) {
+              return;
+            }
+
+            let next_selection_state: AppTableSelectionState;
+            if (selection_mode === "none") {
+              next_selection_state = {
+                selected_row_ids: [],
+                active_row_id: target_row_id,
+                anchor_row_id: null,
+              };
+            } else {
+              next_selection_state = {
+                selected_row_ids: [target_row_id],
+                active_row_id: target_row_id,
+                anchor_row_id: target_row_id,
+              };
+            }
+
+            // 为什么：键盘切换项目时要让虚拟表格主动把目标行滚进视口，否则选择状态会“跳”到屏幕外。
+            scroll_row_index_into_view(target_row_index, target_row_id);
+            emit_selection_change(next_selection_state, {
+              active_row_index: target_row_index,
+              anchor_row_index: selection_mode === "none" ? null : target_row_index,
+            });
+          })
+          .catch((error: unknown) => {
+            if (!is_selection_request_current(request_epoch)) {
+              return;
+            }
+
+            report_selection_error(error);
+          });
       }
     },
     [
       active_drag_row_id,
+      begin_selection_request,
       emit_selection_change,
-      row_ids,
-      scroll_row_into_view,
+      is_selection_request_current,
+      report_selection_error,
+      resolve_row_ids_range,
+      resolve_single_row_id,
+      row_count,
+      scroll_row_index_into_view,
       selection_mode,
       selection_state,
     ],

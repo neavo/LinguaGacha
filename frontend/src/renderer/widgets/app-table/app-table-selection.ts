@@ -31,18 +31,26 @@ export function are_app_table_selection_states_equal(
 
 export function normalize_app_table_selection_state(
   state: AppTableSelectionState,
-  ordered_row_ids: string[],
+  ordered_row_ids: string[] | null,
 ): AppTableSelectionState {
-  const visible_row_id_set = new Set(ordered_row_ids);
+  if (ordered_row_ids === null) {
+    return {
+      selected_row_ids: dedupe_row_ids(state.selected_row_ids),
+      active_row_id: state.active_row_id,
+      anchor_row_id: state.anchor_row_id,
+    };
+  }
+
+  const row_id_set = new Set(ordered_row_ids);
   const selected_row_ids = dedupe_row_ids(state.selected_row_ids).filter((row_id) => {
-    return visible_row_id_set.has(row_id);
+    return row_id_set.has(row_id);
   });
   const active_row_id =
-    state.active_row_id !== null && visible_row_id_set.has(state.active_row_id)
+    state.active_row_id !== null && row_id_set.has(state.active_row_id)
       ? state.active_row_id
       : null;
   const anchor_row_id =
-    state.anchor_row_id !== null && visible_row_id_set.has(state.anchor_row_id)
+    state.anchor_row_id !== null && row_id_set.has(state.anchor_row_id)
       ? state.anchor_row_id
       : null;
 

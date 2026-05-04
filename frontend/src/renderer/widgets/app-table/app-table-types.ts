@@ -45,6 +45,7 @@ export type AppTableRowModel<Row> = {
   get_row_at_index: (index: number) => Row | undefined;
   get_row_id_at_index: (index: number) => string | undefined;
   resolve_row_index: (row_id: string) => number | undefined;
+  resolve_row_ids_range?: (range: { start: number; count: number }) => string[] | Promise<string[]>;
   on_visible_range_change?: (range: { start: number; count: number }) => void;
 };
 
@@ -113,6 +114,7 @@ export type AppTableProps<Row> = {
   row_model?: AppTableRowModel<Row>;
   get_row_can_drag?: (row: Row, index: number) => boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
+  on_selection_error?: (error: unknown) => void;
   on_sort_change: (payload: AppTableSortState | null) => void;
   on_reorder: (payload: AppTableReorderChange<Row>) => void | Promise<void>;
   on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;

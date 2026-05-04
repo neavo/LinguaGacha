@@ -93,7 +93,9 @@ export type UseProofreadingPageStateResult = {
   get_visible_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
   get_visible_row_id_at_index: (index: number) => string | undefined;
   resolve_visible_row_index: (row_id: string) => number | undefined;
+  resolve_visible_row_ids_range: (range: { start: number; count: number }) => Promise<string[]>;
   read_visible_range: (range: { start: number; count: number }) => void;
+  handle_table_selection_error: (error: unknown) => void;
   open_filter_dialog: () => void;
   close_filter_dialog: () => void;
   update_filter_dialog_filters: (next_filters: ProofreadingFilterOptions) => void;
@@ -527,9 +529,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const should_select_first_visible_ref = useRef(false);
   const replace_cursor_ref = useRef(0);
   const pending_replace_cursor_ref = useRef<number | null>(null);
-  const selected_row_ids_ref = useRef<string[]>(selected_row_ids);
   const active_row_id_ref = useRef<string | null>(active_row_id);
-  const anchor_row_id_ref = useRef<string | null>(anchor_row_id);
   const pending_reset_filters_ref = useRef(false);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
@@ -559,16 +559,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [filter_dialog_filters]);
 
   useEffect(() => {
-    selected_row_ids_ref.current = selected_row_ids;
-  }, [selected_row_ids]);
-
-  useEffect(() => {
     active_row_id_ref.current = active_row_id;
   }, [active_row_id]);
-
-  useEffect(() => {
-    anchor_row_id_ref.current = anchor_row_id;
-  }, [anchor_row_id]);
 
   useEffect(() => {
     search_keyword_ref.current = search_keyword;
@@ -627,6 +619,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     },
     [push_toast],
   );
+
+  const clear_table_selection = useCallback((): void => {
+    set_selected_row_ids([]);
+    set_active_row_id(null);
+    set_anchor_row_id(null);
+  }, []);
 
   const clear_transient_state_for_new_project = useCallback((): void => {
     set_current_filters(create_empty_filter_options());
@@ -1150,24 +1148,36 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     [handle_api_error, push_toast, t],
   );
 
-  const update_search_keyword = useCallback((next_keyword: string): void => {
-    set_search_keyword(next_keyword);
-    should_select_first_visible_ref.current = false;
-  }, []);
+  const update_search_keyword = useCallback(
+    (next_keyword: string): void => {
+      set_search_keyword(next_keyword);
+      should_select_first_visible_ref.current = false;
+      clear_table_selection();
+    },
+    [clear_table_selection],
+  );
 
   const update_replace_text = useCallback((next_replace_text: string): void => {
     set_replace_text(next_replace_text);
   }, []);
 
-  const update_search_scope = useCallback((next_scope: ProofreadingSearchScope): void => {
-    set_search_scope(next_scope);
-    should_select_first_visible_ref.current = false;
-  }, []);
+  const update_search_scope = useCallback(
+    (next_scope: ProofreadingSearchScope): void => {
+      set_search_scope(next_scope);
+      should_select_first_visible_ref.current = false;
+      clear_table_selection();
+    },
+    [clear_table_selection],
+  );
 
-  const update_regex = useCallback((next_is_regex: boolean): void => {
-    set_is_regex(next_is_regex);
-    should_select_first_visible_ref.current = false;
-  }, []);
+  const update_regex = useCallback(
+    (next_is_regex: boolean): void => {
+      set_is_regex(next_is_regex);
+      should_select_first_visible_ref.current = false;
+      clear_table_selection();
+    },
+    [clear_table_selection],
+  );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
     set_selected_row_ids(payload.selected_row_ids);
@@ -1175,9 +1185,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_anchor_row_id(payload.anchor_row_id);
   }, []);
 
-  const apply_table_sort_state = useCallback((next_sort_state: AppTableSortState | null): void => {
-    set_sort_state(next_sort_state);
-  }, []);
+  const apply_table_sort_state = useCallback(
+    (next_sort_state: AppTableSortState | null): void => {
+      set_sort_state(next_sort_state);
+      clear_table_selection();
+    },
+    [clear_table_selection],
+  );
 
   const get_visible_row_at_index = useCallback(
     (index: number): ProofreadingVisibleItem | undefined => {
@@ -1218,6 +1232,24 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     [push_toast, read_list_window, t],
   );
 
+  const resolve_visible_row_ids_range = useCallback(
+    async (range: { start: number; count: number }): Promise<string[]> => {
+      return await read_current_view_row_ids(range.start, range.count);
+    },
+    [read_current_view_row_ids],
+  );
+
+  const handle_table_selection_error = useCallback(
+    (error: unknown): void => {
+      const fallback_message = t("proofreading_page.feedback.selection_failed");
+      const message = is_worker_client_error(error)
+        ? fallback_message
+        : resolve_error_message(error, fallback_message);
+      push_toast("error", message);
+    },
+    [push_toast, t],
+  );
+
   const open_filter_dialog = useCallback((): void => {
     set_filter_dialog_filters(clone_proofreading_filter_options(current_filters_ref.current));
     set_filter_dialog_open(true);
@@ -1247,7 +1279,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     const normalized_filters = clone_proofreading_filter_options(filter_dialog_filters_ref.current);
     preferred_row_id_ref.current = null;
-    should_select_first_visible_ref.current = true;
+    should_select_first_visible_ref.current = false;
+    clear_table_selection();
     set_current_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_open(false);
@@ -1270,6 +1303,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
   }, [
     cache_status,
+    clear_table_selection,
     is_refreshing,
     project_snapshot.loaded,
     push_toast,
@@ -1729,9 +1763,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_search_keyword(proofreading_lookup_intent.keyword);
     set_search_scope("all");
     set_is_regex(proofreading_lookup_intent.is_regex);
-    should_select_first_visible_ref.current = true;
+    should_select_first_visible_ref.current = false;
+    clear_table_selection();
     clear_proofreading_lookup_intent();
-  }, [clear_proofreading_lookup_intent, proofreading_lookup_intent]);
+  }, [clear_proofreading_lookup_intent, clear_table_selection, proofreading_lookup_intent]);
 
   useEffect(() => {
     if (pending_replace_cursor_ref.current !== null) {
@@ -1752,17 +1787,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   ]);
 
   useEffect(() => {
-    const visible_row_id_set = new Set(visible_row_ids);
     const preferred_row_id = preferred_row_id_ref.current;
 
     if (preferred_row_id !== null) {
       preferred_row_id_ref.current = null;
-      if (visible_row_id_set.has(preferred_row_id)) {
-        set_selected_row_ids([preferred_row_id]);
-        set_active_row_id(preferred_row_id);
-        set_anchor_row_id(preferred_row_id);
-        return;
-      }
+      set_selected_row_ids([preferred_row_id]);
+      set_active_row_id(preferred_row_id);
+      set_anchor_row_id(preferred_row_id);
+      return;
     }
 
     if (should_select_first_visible_ref.current && visible_row_ids.length > 0) {
@@ -1775,22 +1807,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         return;
       }
     }
-
-    const next_selected_row_ids = selected_row_ids_ref.current.filter((row_id) => {
-      return visible_row_id_set.has(row_id);
-    });
-    const next_active_row_id =
-      active_row_id_ref.current !== null && visible_row_id_set.has(active_row_id_ref.current)
-        ? active_row_id_ref.current
-        : (next_selected_row_ids[0] ?? null);
-    const next_anchor_row_id =
-      anchor_row_id_ref.current !== null && visible_row_id_set.has(anchor_row_id_ref.current)
-        ? anchor_row_id_ref.current
-        : next_active_row_id;
-
-    set_selected_row_ids(next_selected_row_ids);
-    set_active_row_id(next_active_row_id);
-    set_anchor_row_id(next_anchor_row_id);
   }, [visible_row_ids]);
 
   return useMemo<UseProofreadingPageStateResult>(() => {
@@ -1833,7 +1849,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       get_visible_row_at_index,
       get_visible_row_id_at_index,
       resolve_visible_row_index,
+      resolve_visible_row_ids_range,
       read_visible_range,
+      handle_table_selection_error,
       open_filter_dialog,
       close_filter_dialog,
       update_filter_dialog_filters,
@@ -1869,6 +1887,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     filter_panel_loading,
     get_visible_row_at_index,
     get_visible_row_id_at_index,
+    handle_table_selection_error,
     invalid_regex_message,
     is_mutating,
     is_refreshing,
@@ -1882,6 +1901,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     refresh_request_id,
     refresh_snapshot,
     read_visible_range,
+    resolve_visible_row_ids_range,
     replace_all_visible_matches,
     replace_next_visible_match,
     replace_text,

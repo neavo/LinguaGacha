@@ -46,9 +46,11 @@ type ProofreadingTableProps = {
   get_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
   get_row_id_at_index: (index: number) => string | undefined;
   resolve_row_index: (row_id: string) => number | undefined;
+  resolve_row_ids_range: (range: { start: number; count: number }) => Promise<string[]>;
   on_visible_range_change: (range: { start: number; count: number }) => void;
   on_sort_change: (next_sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
+  on_selection_error: (error: unknown) => void;
   on_open_edit: (row_id: string) => void;
   on_request_retranslate_row_ids: (row_ids: string[]) => void;
   on_request_reset_row_ids: (row_ids: string[]) => void;
@@ -245,6 +247,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
       get_row_at_index: props.get_row_at_index,
       get_row_id_at_index: props.get_row_id_at_index,
       resolve_row_index: props.resolve_row_index,
+      resolve_row_ids_range: props.resolve_row_ids_range,
       on_visible_range_change: props.on_visible_range_change,
     };
   }, [
@@ -252,6 +255,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     props.get_row_id_at_index,
     props.items,
     props.on_visible_range_change,
+    props.resolve_row_ids_range,
     props.resolve_row_index,
     props.visible_row_count,
   ]);
@@ -364,6 +368,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           get_row_id={(item) => item.row_id}
           row_model={row_model}
           on_selection_change={props.on_selection_change}
+          on_selection_error={props.on_selection_error}
           on_sort_change={props.on_sort_change}
           on_reorder={() => {}}
           on_row_double_click={(payload) => {

@@ -165,6 +165,66 @@ function create_default_props(
   );
 }
 
+function create_remote_row_model(args: {
+  rows: TestRow[];
+  loaded_indices: number[];
+  resolve_row_ids_range?: (range: { start: number; count: number }) => string[] | Promise<string[]>;
+}): AppTableRowModel<TestRow> {
+  const loaded_index_set = new Set(args.loaded_indices);
+  return {
+    row_count: args.rows.length,
+    loaded_row_ids: args.loaded_indices.flatMap((index) => {
+      return args.rows[index]?.id ?? [];
+    }),
+    get_row_at_index: (index) => {
+      return loaded_index_set.has(index) ? args.rows[index] : undefined;
+    },
+    get_row_id_at_index: (index) => {
+      return loaded_index_set.has(index) ? args.rows[index]?.id : undefined;
+    },
+    resolve_row_index: (row_id) => {
+      const index = args.rows.findIndex((row) => row.id === row_id);
+      return index >= 0 && loaded_index_set.has(index) ? index : undefined;
+    },
+    resolve_row_ids_range: args.resolve_row_ids_range,
+  };
+}
+
+function get_table_host(container: HTMLDivElement): HTMLDivElement {
+  const table_host = container.querySelector<HTMLDivElement>(".app-table__scroll-host");
+  if (table_host === null) {
+    throw new Error("缺少表格滚动宿主。");
+  }
+
+  return table_host;
+}
+
+function create_controlled_promise<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve_promise: (value: T) => void = () => {};
+  let reject_promise: (error: unknown) => void = () => {};
+  const promise = new Promise<T>((resolve, reject) => {
+    resolve_promise = resolve;
+    reject_promise = reject;
+  });
+
+  return {
+    promise,
+    resolve: resolve_promise,
+    reject: reject_promise,
+  };
+}
+
+async function flush_promises(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe("AppTable row model", () => {
   let mounted_roots: Root[] = [];
   let mounted_containers: HTMLDivElement[] = [];
@@ -258,6 +318,309 @@ describe("AppTable row model", () => {
       "selected",
     );
     expect(on_visible_range_change).toHaveBeenCalled();
+  });
+
+  it("远程 row_model 只加载单行时 Ctrl/Cmd+A 会选中完整视图行集", async () => {
+    app_table_test_state.virtual_item_indices = [2];
+    const rows = [
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+      { id: "c", label: "Gamma" },
+    ];
+    const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
+    const resolve_row_ids_range = vi.fn((range: { start: number; count: number }) => {
+      return rows.slice(range.start, range.start + range.count).map((row) => row.id);
+    });
+    const container = await mount(
+      create_default_props({
+        rows: [],
+        row_model: create_remote_row_model({
+          rows,
+          loaded_indices: [2],
+          resolve_row_ids_range,
+        }),
+        on_selection_change,
+      }),
+    );
+
+    get_table_host(container).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        key: "a",
+        ctrlKey: true,
+      }),
+    );
+    await flush_promises();
+
+    expect(resolve_row_ids_range).toHaveBeenCalledWith({
+      start: 0,
+      count: 3,
+    });
+    expect(on_selection_change).toHaveBeenCalledWith({
+      selected_row_ids: ["a", "b", "c"],
+      active_row_id: "a",
+      anchor_row_id: "a",
+    });
+  });
+
+  it("远程全选请求过期后不会写回当前选区", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const rows = [
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ];
+    const next_rows = [{ id: "x", label: "Next" }];
+    const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
+    const selection_request = create_controlled_promise<string[]>();
+    const resolve_row_ids_range = vi.fn(() => {
+      return selection_request.promise;
+    });
+    const rendered = await render_app_table(
+      create_default_props({
+        rows: [],
+        row_model: create_remote_row_model({
+          rows,
+          loaded_indices: [0],
+          resolve_row_ids_range,
+        }),
+        on_selection_change,
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+
+    get_table_host(rendered.container).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        key: "a",
+        ctrlKey: true,
+      }),
+    );
+    expect(resolve_row_ids_range).toHaveBeenCalledWith({
+      start: 0,
+      count: 2,
+    });
+
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [],
+          row_model: create_remote_row_model({
+            rows: next_rows,
+            loaded_indices: [0],
+          }),
+          on_selection_change,
+        }),
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      selection_request.resolve(["a", "b"]);
+      await selection_request.promise;
+    });
+    await flush_promises();
+
+    expect(on_selection_change).not.toHaveBeenCalled();
+  });
+
+  it("远程选择请求过期失败时不会触发错误回调", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const rows = [
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ];
+    const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
+    const on_selection_error = vi.fn<(error: unknown) => void>();
+    const selection_error = new Error("旧视图读取失败");
+    const selection_request = create_controlled_promise<string[]>();
+    const rendered = await render_app_table(
+      create_default_props({
+        rows: [],
+        row_model: create_remote_row_model({
+          rows,
+          loaded_indices: [0],
+          resolve_row_ids_range: () => selection_request.promise,
+        }),
+        on_selection_change,
+        on_selection_error,
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+
+    get_table_host(rendered.container).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        key: "a",
+        ctrlKey: true,
+      }),
+    );
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [],
+          row_model: create_remote_row_model({
+            rows: [{ id: "x", label: "Next" }],
+            loaded_indices: [0],
+          }),
+          on_selection_change,
+          on_selection_error,
+        }),
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      selection_request.reject(selection_error);
+      await selection_request.promise.catch(() => undefined);
+    });
+    await flush_promises();
+
+    expect(on_selection_change).not.toHaveBeenCalled();
+    expect(on_selection_error).not.toHaveBeenCalled();
+  });
+
+  it("点击锚点后滚动到另一窗口，Shift 点击会选中完整跨窗口范围", async () => {
+    const rows = [
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+      { id: "c", label: "Gamma" },
+      { id: "d", label: "Delta" },
+      { id: "e", label: "Epsilon" },
+    ];
+    const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
+    const resolve_row_ids_range = vi.fn((range: { start: number; count: number }) => {
+      return rows.slice(range.start, range.start + range.count).map((row) => row.id);
+    });
+    app_table_test_state.virtual_item_indices = [0];
+    const rendered = await render_app_table(
+      create_default_props({
+        rows: [],
+        row_model: create_remote_row_model({
+          rows,
+          loaded_indices: [0],
+          resolve_row_ids_range,
+        }),
+        on_selection_change,
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+
+    const first_row = rendered.container.querySelector<HTMLTableRowElement>('[data-row-index="0"]');
+    expect(first_row).not.toBeNull();
+    act(() => {
+      first_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    app_table_test_state.virtual_item_indices = [4];
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [],
+          row_model: create_remote_row_model({
+            rows,
+            loaded_indices: [4],
+            resolve_row_ids_range,
+          }),
+          selected_row_ids: ["a"],
+          active_row_id: "a",
+          anchor_row_id: "a",
+          on_selection_change,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    const target_row =
+      rendered.container.querySelector<HTMLTableRowElement>('[data-row-index="4"]');
+    expect(target_row).not.toBeNull();
+    act(() => {
+      target_row?.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          shiftKey: true,
+        }),
+      );
+    });
+    await flush_promises();
+
+    expect(resolve_row_ids_range).toHaveBeenLastCalledWith({
+      start: 0,
+      count: 5,
+    });
+    expect(on_selection_change).toHaveBeenLastCalledWith({
+      selected_row_ids: ["a", "b", "c", "d", "e"],
+      active_row_id: "e",
+      anchor_row_id: "a",
+    });
+  });
+
+  it("远程选择读取失败时保留当前选区并触发错误回调", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
+    const on_selection_error = vi.fn<(error: unknown) => void>();
+    const selection_error = new Error("读取失败");
+    const rows = [
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ];
+    const container = await mount(
+      create_default_props({
+        rows: [],
+        row_model: create_remote_row_model({
+          rows,
+          loaded_indices: [0],
+          resolve_row_ids_range: async () => {
+            throw selection_error;
+          },
+        }),
+        selected_row_ids: ["a"],
+        active_row_id: "a",
+        anchor_row_id: "a",
+        on_selection_change,
+        on_selection_error,
+      }),
+    );
+
+    get_table_host(container).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        key: "a",
+        ctrlKey: true,
+      }),
+    );
+    await flush_promises();
+
+    expect(on_selection_change).not.toHaveBeenCalled();
+    expect(on_selection_error).toHaveBeenCalledWith(selection_error);
+  });
+
+  it("无 resolve_row_ids_range 的普通数组表格仍按 rows 执行全选", async () => {
+    const on_selection_change = vi.fn<(payload: AppTableSelectionChange) => void>();
+    const container = await mount(
+      create_default_props({
+        rows: [
+          { id: "a", label: "Alpha" },
+          { id: "b", label: "Beta" },
+        ],
+        on_selection_change,
+      }),
+    );
+
+    get_table_host(container).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        key: "a",
+        metaKey: true,
+      }),
+    );
+    await flush_promises();
+
+    expect(on_selection_change).toHaveBeenCalledWith({
+      selected_row_ids: ["a", "b"],
+      active_row_id: "a",
+      anchor_row_id: "a",
+    });
   });
 
   it("显式 row_model 下即使传入 drag_enabled 也会降级为不可拖拽", async () => {

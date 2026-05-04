@@ -96,6 +96,7 @@ export const en_us_proofreading_page = {
   },
   feedback: {
     refresh_failed: "Failed to refresh proofreading.",
+    selection_failed: "Failed to read selection.",
     save_failed: "Save failed",
     replace_failed: "Replace failed",
     retranslate_failed: "Retranslate failed",

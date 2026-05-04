@@ -93,6 +93,7 @@ export const zh_cn_proofreading_page = {
   },
   feedback: {
     refresh_failed: "校对页刷新失败",
+    selection_failed: "读取选区失败",
     save_failed: "保存失败",
     replace_failed: "替换失败",
     retranslate_failed: "重新翻译失败",

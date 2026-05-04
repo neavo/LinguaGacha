@@ -114,9 +114,11 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           get_row_at_index={proofreading_page_state.get_visible_row_at_index}
           get_row_id_at_index={proofreading_page_state.get_visible_row_id_at_index}
           resolve_row_index={proofreading_page_state.resolve_visible_row_index}
+          resolve_row_ids_range={proofreading_page_state.resolve_visible_row_ids_range}
           on_visible_range_change={proofreading_page_state.read_visible_range}
           on_sort_change={proofreading_page_state.apply_table_sort_state}
           on_selection_change={proofreading_page_state.apply_table_selection}
+          on_selection_error={proofreading_page_state.handle_table_selection_error}
           on_open_edit={proofreading_page_state.open_edit_dialog}
           on_request_retranslate_row_ids={proofreading_page_state.request_retranslate_row_ids}
           on_request_reset_row_ids={proofreading_page_state.request_reset_row_ids}

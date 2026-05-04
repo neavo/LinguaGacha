@@ -503,6 +503,106 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.search_keyword).toBe("needle");
   });
 
+  it("切换可见窗口不会裁剪窗口外选区", async () => {
+    proofreading_runtime_client_fixture.current.build_list_view = vi.fn(async () => {
+      return {
+        ...create_list_view(),
+        row_count: 3,
+        window_start: 0,
+        window_rows: [
+          {
+            row_id: "1",
+            item: create_client_item(1),
+            compressed_src: "foo-1",
+            compressed_dst: "bar-1",
+          },
+        ],
+      };
+    });
+    proofreading_runtime_client_fixture.current.read_list_window = vi.fn(async () => {
+      return {
+        view_id: "view-1",
+        start: 1,
+        rows: [
+          {
+            row_id: "2",
+            item: create_client_item(2),
+            compressed_src: "foo-2",
+            compressed_dst: "bar-2",
+          },
+        ],
+      };
+    });
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
+        anchor_row_id: "1",
+      });
+    });
+
+    await act(async () => {
+      latest_state?.read_visible_range({
+        start: 1,
+        count: 1,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(latest_state?.visible_items.map((item) => item.row_id)).toEqual(["2"]);
+    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
+    expect(latest_state?.active_row_id).toBe("3");
+    expect(latest_state?.anchor_row_id).toBe("1");
+  });
+
+  it("排序语义变化会清空表格选区", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1"],
+        active_row_id: "1",
+        anchor_row_id: "1",
+      });
+    });
+
+    await act(async () => {
+      latest_state?.apply_table_sort_state({
+        column_id: "src",
+        direction: "ascending",
+      });
+    });
+
+    expect(latest_state?.selected_row_ids).toEqual([]);
+    expect(latest_state?.active_row_id).toBeNull();
+    expect(latest_state?.anchor_row_id).toBeNull();
+  });
+
   it("worker 类错误会统一收口成刷新失败 toast", async () => {
     proofreading_runtime_client_fixture.current.hydrate_full = vi.fn(async () => {
       throw new WorkerClientError("底层 worker 初始化失败。", "init_failed");
