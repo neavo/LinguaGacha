@@ -83,10 +83,24 @@ jobs:
         run: |
           npm --prefix frontend install
 
-      - name: Build Electron Zip Package
+      - name: Build Electron Unpacked Package
         shell: bash
         run: |
-          npm --prefix frontend run build -- --publish never
+          npm --prefix frontend run build -- --win --x64 --dir --publish never
+
+      - name: Create Windows Zip Package
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $releaseDir = Join-Path "frontend/release" $version
+          $unpackedDir = Join-Path $releaseDir "win-unpacked"
+          $zipPath = Join-Path $releaseDir "LinguaGacha_v${version}_Windows_x64.zip"
+
+          Compress-Archive `
+            -Path (Join-Path $unpackedDir "*") `
+            -DestinationPath $zipPath `
+            -CompressionLevel Optimal `
+            -Force
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
