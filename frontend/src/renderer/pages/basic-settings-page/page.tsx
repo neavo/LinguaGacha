@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import "@/pages/basic-settings-page/basic-settings-page.css";
 import {

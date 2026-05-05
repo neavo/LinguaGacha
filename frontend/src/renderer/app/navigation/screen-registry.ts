@@ -18,7 +18,7 @@ import type { ScreenComponentProps, ScreenRegistry } from "@/app/navigation/type
 import type {
   ProjectPagesRuntimeAdapterOptions,
   ProjectPagesRuntimeAdapters,
-} from "@/app/runtime/project-pages/project-pages-runtime-adapter";
+} from "@/app/page-runtime/project-pages-runtime-adapter";
 import { useProofreadingPageState } from "@/pages/proofreading-page/use-proofreading-page-state";
 import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
 

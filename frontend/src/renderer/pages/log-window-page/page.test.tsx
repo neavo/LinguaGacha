@@ -3,7 +3,7 @@ import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { LogEvent } from "@/app/desktop-api";
+import type { LogEvent } from "@/app/desktop/desktop-api";
 import { LogWindowPage } from "@/pages/log-window-page/page";
 
 type StreamController = {
@@ -73,15 +73,17 @@ const { open_log_stream_mock, push_toast_mock, stream_controllers } = vi.hoisted
   };
 });
 
-vi.mock("@/app/desktop-api", async () => {
-  const actual = await vi.importActual<typeof import("@/app/desktop-api")>("@/app/desktop-api");
+vi.mock("@/app/desktop/desktop-api", async () => {
+  const actual = await vi.importActual<typeof import("@/app/desktop/desktop-api")>(
+    "@/app/desktop/desktop-api",
+  );
   return {
     ...actual,
     open_log_stream: open_log_stream_mock,
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,

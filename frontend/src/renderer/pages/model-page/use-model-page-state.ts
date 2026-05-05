@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api_fetch } from "@/app/desktop-api";
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+import { api_fetch } from "@/app/desktop/desktop-api";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import type {
   ModelCategorySnapshot,

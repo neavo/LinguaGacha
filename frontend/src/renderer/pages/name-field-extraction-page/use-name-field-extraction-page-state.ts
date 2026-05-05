@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { api_fetch } from "@/app/desktop-api";
-import { createProjectStoreReplaceSectionPatch } from "@/app/project/store/project-store";
-import {
-  getQualityRuleSlice,
-  replaceQualityRuleSlice,
-} from "@/app/project/quality/quality-runtime";
+import { api_fetch } from "@/app/desktop/desktop-api";
+import { createProjectStoreReplaceSectionPatch } from "@/project/store/project-store";
+import { getQualityRuleSlice, replaceQualityRuleSlice } from "@/project/quality/quality-runtime";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
-} from "@/app/runtime/desktop/desktop-runtime-context";
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
-import { is_task_mutation_locked } from "@/app/runtime/tasks/task-lock";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+} from "@/app/desktop/desktop-runtime-context";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
+import { is_task_mutation_locked } from "@/project/tasks/task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { merge_glossary_entries } from "@/pages/glossary-page/merge";
 import type { GlossaryEntry } from "@/pages/glossary-page/types";

@@ -35,19 +35,19 @@ const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
-vi.mock("@/app/desktop-api", () => {
+vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
   };
 });
 
-vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
+vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,

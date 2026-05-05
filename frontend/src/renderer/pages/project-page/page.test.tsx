@@ -91,27 +91,29 @@ vi.mock("@/i18n", () => {
   };
 });
 
-vi.mock("@/app/desktop-api", async () => {
-  const actual = await vi.importActual<typeof import("@/app/desktop-api")>("@/app/desktop-api");
+vi.mock("@/app/desktop/desktop-api", async () => {
+  const actual = await vi.importActual<typeof import("@/app/desktop/desktop-api")>(
+    "@/app/desktop/desktop-api",
+  );
   return {
     ...actual,
     api_fetch: api_fetch_mock,
   };
 });
 
-vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
+vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => desktop_runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/runtime/project-pages/project-pages-context", () => {
+vi.mock("@/app/page-runtime/project-pages-context", () => {
   return {
     useProjectPagesBarrier: () => barrier_fixture.current,
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       dismiss_toast: dismiss_toast_mock,
@@ -122,7 +124,7 @@ vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/app/project/derived/project-prefilter-client", () => {
+vi.mock("@/project/prefilter/prefilter-worker-client", () => {
   return {
     createProjectPrefilterClient: () => ({
       compute: project_prefilter_compute_mock,

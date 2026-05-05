@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectStoreState } from "@/app/project/store/project-store";
+import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   create_workbench_add_files_plan,
   type WorkbenchFileParsePreview,

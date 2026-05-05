@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
-import { api_fetch } from "@/app/desktop-api";
-import { serializeQualityRuntimeSnapshot } from "@/app/project/quality/quality-runtime";
+import { api_fetch } from "@/app/desktop/desktop-api";
+import { serializeQualityRuntimeSnapshot } from "@/project/quality/quality-runtime";
 import {
   create_translation_reset_all_plan,
   create_translation_reset_failed_plan,
-} from "@/app/project/derived/translation-reset";
+} from "@/project/reset/translation-reset-plan";
 import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
-} from "@/app/runtime/project-pages/project-pages-barrier";
+} from "@/app/page-runtime/project-pages-barrier";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
-} from "@/app/runtime/desktop/desktop-runtime-context";
+} from "@/app/desktop/desktop-runtime-context";
 import { WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS } from "@/pages/workbench-page/task-runtime/workbench-progress-constants";
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import {
   is_task_snapshot_for_runtime,

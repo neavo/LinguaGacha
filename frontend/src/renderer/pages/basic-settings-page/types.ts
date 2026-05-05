@@ -1,7 +1,12 @@
-import type { SettingsSnapshot } from "@/app/runtime/desktop/desktop-runtime-context";
+import type { SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
 import type { LocaleKey } from "@/i18n";
+import {
+  ALL_LANGUAGE_CODE,
+  SOURCE_TARGET_LANGUAGE_CODES,
+  type SourceTargetLanguageCode,
+} from "@/project/rules/languages";
 
-export const ALL_LANGUAGE_VALUE = "ALL";
+export const ALL_LANGUAGE_VALUE = ALL_LANGUAGE_CODE;
 
 export const PROJECT_SAVE_MODE = {
   MANUAL: "MANUAL",
@@ -9,32 +14,14 @@ export const PROJECT_SAVE_MODE = {
   SOURCE: "SOURCE",
 } as const;
 
-export const LANGUAGE_CODES = [
-  "ZH",
-  "EN",
-  "JA",
-  "KO",
-  "RU",
-  "AR",
-  "DE",
-  "FR",
-  "PL",
-  "ES",
-  "IT",
-  "PT",
-  "HU",
-  "TR",
-  "TH",
-  "ID",
-  "VI",
-] as const;
+export const LANGUAGE_CODES = SOURCE_TARGET_LANGUAGE_CODES;
 
 export const REQUEST_TIMEOUT_MIN = 0;
 export const REQUEST_TIMEOUT_MAX = 9_999_999;
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODE)[keyof typeof PROJECT_SAVE_MODE];
 
-type LanguageCode = (typeof LANGUAGE_CODES)[number];
+type LanguageCode = SourceTargetLanguageCode;
 
 export type BasicSettingsPendingField =
   | "source_language"

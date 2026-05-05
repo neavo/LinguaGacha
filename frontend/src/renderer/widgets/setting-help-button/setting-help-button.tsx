@@ -1,6 +1,6 @@
 import { BadgeHelp } from "lucide-react";
 
-import { open_external_url } from "@/app/desktop-api";
+import { open_external_url } from "@/app/desktop/desktop-api";
 import { cn } from "@/lib/utils";
 import { AppButton } from "@/widgets/app-button/app-button";
 

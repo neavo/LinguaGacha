@@ -1,7 +1,7 @@
 import { Funnel } from "lucide-react";
 
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useCachedProofreadingPageState } from "@/app/runtime/project-pages/project-pages-context";
+import { useCachedProofreadingPageState } from "@/app/page-runtime/project-pages-context";
 import "@/pages/proofreading-page/proofreading-page.css";
 import type { UseProofreadingPageStateResult } from "@/pages/proofreading-page/use-proofreading-page-state";
 import { ProofreadingConfirmDialog } from "@/pages/proofreading-page/components/proofreading-confirm-dialog";

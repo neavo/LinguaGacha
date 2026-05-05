@@ -2,9 +2,9 @@ import { ListEnd, Maximize2, Minimize2, ScrollText } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
-import { open_log_stream, type LogEvent } from "@/app/desktop-api";
-import { LiveRefreshScheduler } from "@/app/runtime/live-refresh-scheduler";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+import { open_log_stream, type LogEvent } from "@/app/desktop/desktop-api";
+import { LiveRefreshScheduler } from "@/app/ui-runtime/live-refresh-scheduler";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import {

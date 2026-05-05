@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import "@/pages/expert-settings-page/expert-settings-page.css";
 import { useExpertSettingsState } from "@/pages/expert-settings-page/use-expert-settings-state";

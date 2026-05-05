@@ -1,4 +1,4 @@
-import type { SettingsSnapshot } from "@/app/runtime/desktop/desktop-runtime-context";
+import type { SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
 
 export type LaboratoryPendingField = "mtool_optimizer_enable" | "skip_duplicate_source_text_enable";
 

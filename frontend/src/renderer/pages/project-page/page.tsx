@@ -19,13 +19,10 @@ import {
   useState,
 } from "react";
 
-import {
-  type ProjectSnapshot,
-  type SettingsSnapshot,
-} from "@/app/runtime/desktop/desktop-runtime-context";
-import { useProjectPagesBarrier } from "@/app/runtime/project-pages/project-pages-context";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { type ProjectSnapshot, type SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
+import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { AppButton } from "@/widgets/app-button/app-button";
 import {
   Card,
@@ -52,20 +49,20 @@ import {
 } from "@/widgets/segmented-progress/segmented-progress";
 import "@/pages/project-page/project-page.css";
 import { PROJECT_FORMAT_SUPPORT_ITEMS } from "@/pages/project-page/support-formats";
-import { DesktopApiError, api_fetch } from "@/app/desktop-api";
-import { type ProjectStoreStage } from "@/app/project/store/project-store";
-import { createProjectPrefilterClient } from "@/app/project/derived/project-prefilter-client";
+import { DesktopApiError, api_fetch } from "@/app/desktop/desktop-api";
+import { type ProjectStoreStage } from "@/project/store/project-store";
+import { createProjectPrefilterClient } from "@/project/prefilter/prefilter-worker-client";
 import {
   build_project_state_from_draft,
   merge_prefilter_output_with_draft_items,
   run_project_prefilter,
   type ProjectDraftPayload,
   type ProjectPrefilterRunnerSettings,
-} from "@/app/project/derived/project-prefilter-runner";
+} from "@/project/prefilter/prefilter-runner";
 import {
   format_project_settings_aligned_toast,
   type ProjectSettingsAlignmentChangedFields,
-} from "@/app/project/settings-alignment-toast";
+} from "@/project/settings/alignment-toast";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
 type ProjectPageProps = {

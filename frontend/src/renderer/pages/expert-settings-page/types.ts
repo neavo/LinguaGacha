@@ -1,4 +1,4 @@
-import type { SettingsSnapshot } from "@/app/runtime/desktop/desktop-runtime-context";
+import type { SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
 
 export const PRECEDING_LINES_THRESHOLD_MIN = 0;
 export const PRECEDING_LINES_THRESHOLD_MAX = 9_999_999;

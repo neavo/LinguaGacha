@@ -10,7 +10,7 @@ import {
 
 import { useI18n } from "@/i18n";
 import "@/pages/model-page/model-page.css";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { ModelCategoryCard } from "@/pages/model-page/components/model-category-card";
 import { ModelItemChip } from "@/pages/model-page/components/model-item-chip";
 import { ModelAdvancedSettingsDialog } from "@/pages/model-page/dialogs/model-advanced-settings-dialog";

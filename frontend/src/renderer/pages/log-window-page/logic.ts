@@ -1,4 +1,4 @@
-import type { LogEvent, LogLevel } from "@/app/desktop-api";
+import type { LogEvent, LogLevel } from "@/app/desktop/desktop-api";
 
 export type LogLevelFilter = "all" | LogLevel;
 const LOG_WINDOW_EVENT_LIMIT = 1000;

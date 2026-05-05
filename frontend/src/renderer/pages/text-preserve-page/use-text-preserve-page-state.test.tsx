@@ -2,7 +2,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { QualityStatisticsCacheSnapshot } from "@/app/project/quality/quality-statistics-store";
+import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
 
 const { api_fetch_mock, push_toast_mock, wait_for_barrier_mock, create_barrier_checkpoint_mock } =
@@ -172,13 +172,13 @@ function create_statistics_cache(
   };
 }
 
-vi.mock("@/app/desktop-api", () => {
+vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
   };
 });
 
-vi.mock("@/app/runtime/project-pages/project-pages-context", () => {
+vi.mock("@/app/page-runtime/project-pages-context", () => {
   return {
     useProjectPagesBarrier: () => ({
       create_barrier_checkpoint: create_barrier_checkpoint_mock,
@@ -196,7 +196,7 @@ vi.mock("@/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
+vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       project_snapshot: {
@@ -245,7 +245,7 @@ vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -254,7 +254,7 @@ vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/app/project/quality/quality-statistics-context", () => {
+vi.mock("@/project/quality/quality-statistics-context", () => {
   return {
     useQualityStatistics: () => current_statistics_cache,
   };

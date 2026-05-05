@@ -2,8 +2,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api_fetch } from "@/app/desktop-api";
-import type { SettingsSnapshot } from "@/app/runtime/desktop/desktop-runtime-context";
+import { api_fetch } from "@/app/desktop/desktop-api";
+import type { SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
 import { WorkerClientError } from "@/lib/worker-client-error";
 import { useLaboratoryPageState } from "@/pages/laboratory-page/use-laboratory-page-state";
 
@@ -64,25 +64,25 @@ const translate = (key: string): string => key;
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
+vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/runtime/project-pages/project-pages-context", () => {
+vi.mock("@/app/page-runtime/project-pages-context", () => {
   return {
     useProjectPagesBarrier: () => barrier_fixture.current,
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => toast_fixture.current,
   };
 });
 
-vi.mock("@/app/project/derived/project-prefilter-client", () => {
+vi.mock("@/project/prefilter/prefilter-worker-client", () => {
   return {
     createProjectPrefilterClient: () => project_prefilter_client_fixture.current,
   };
@@ -98,7 +98,7 @@ vi.mock("@/i18n", () => {
   };
 });
 
-vi.mock("@/app/desktop-api", () => {
+vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: vi.fn(),
   };
