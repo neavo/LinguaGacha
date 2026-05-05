@@ -30,9 +30,6 @@ class ProjectRoutes:
     PROOFREADING_SAVE_ITEM_PATH: str = "/api/project/proofreading/save-item"
     PROOFREADING_SAVE_ALL_PATH: str = "/api/project/proofreading/save-all"
     PROOFREADING_REPLACE_ALL_PATH: str = "/api/project/proofreading/replace-all"
-    PROOFREADING_RETRANSLATE_ITEMS_PATH: str = (
-        "/api/project/proofreading/retranslate-items"
-    )
     BOOTSTRAP_STREAM_PATH: str = "/api/project/bootstrap/stream"
 
     @classmethod
@@ -233,13 +230,6 @@ class ProjectRoutes:
                 cls.PROOFREADING_REPLACE_ALL_PATH,
                 lambda request: ApiResponse(
                     ok=True, data=proofreading_app_service.replace_all(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_RETRANSLATE_ITEMS_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.retranslate_items(request)
                 ),
             )
         if project_bootstrap_app_service is not None:

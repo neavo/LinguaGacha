@@ -23,7 +23,10 @@ type RuntimeFixture = {
   };
   task_snapshot: {
     busy: boolean;
+    task_type?: string;
+    retranslating_item_ids?: number[];
   };
+  set_task_snapshot: ReturnType<typeof vi.fn>;
   proofreading_change_signal: {
     seq: number;
     mode: "full" | "delta" | "noop";
@@ -170,6 +173,11 @@ function create_runtime_fixture(): RuntimeFixture {
               entries: [],
             },
           },
+          revisions: {
+            sections: {
+              items: 7,
+            },
+          },
           items: {
             "1": {
               item_id: 1,
@@ -187,7 +195,15 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     task_snapshot: {
       busy: false,
+      task_type: "idle",
+      retranslating_item_ids: [],
     },
+    set_task_snapshot: vi.fn((snapshot) => {
+      runtime_fixture.current = {
+        ...runtime_fixture.current,
+        task_snapshot: snapshot,
+      };
+    }),
     proofreading_change_signal: {
       seq: 0,
       mode: "full",
@@ -629,7 +645,7 @@ describe("useProofreadingPageState", () => {
     );
   });
 
-  it("校对重翻请求进行中会暴露正在重翻的行 id，并在成功后清空", async () => {
+  it("校对重翻请求收到任务回执后会通过 task snapshot 暴露正在重翻的行 id", async () => {
     await render_hook();
 
     runtime_fixture.current = {
@@ -644,7 +660,13 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     const retranslate_deferred = create_deferred<{
-      result: { changed_item_ids: Array<number | string> };
+      accepted: boolean;
+      task: {
+        task_type: string;
+        status: string;
+        busy: boolean;
+        retranslating_item_ids: Array<number | string>;
+      };
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
@@ -658,21 +680,44 @@ describe("useProofreadingPageState", () => {
       await Promise.resolve();
     });
 
-    expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
 
     await act(async () => {
       retranslate_deferred.resolve({
-        result: {
-          changed_item_ids: [1],
+        accepted: true,
+        task: {
+          task_type: "retranslate",
+          status: "REQUEST",
+          busy: true,
+          retranslating_item_ids: [1],
         },
       });
       await confirm_promise;
     });
 
-    expect(latest_state?.retranslating_row_ids).toEqual([]);
+    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start-retranslate", {
+      item_ids: [1],
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+      },
+    });
+    expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_type: "retranslate",
+        status: "REQUEST",
+        busy: true,
+        retranslating_item_ids: [1],
+      }),
+    );
+    expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
+    expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
+      "success",
+      expect.any(String),
+    );
   });
 
-  it("批量校对重翻会按请求顺序去重正在重翻的行 id", async () => {
+  it("批量校对重翻会按请求顺序去重任务中的行 id", async () => {
     proofreading_runtime_client_fixture.current.read_items_by_row_ids = vi.fn(
       async ({ row_ids }: { row_ids: string[] }) => {
         return row_ids.map((row_id) => create_client_item(row_id));
@@ -692,7 +737,12 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     const retranslate_deferred = create_deferred<{
-      result: { changed_item_ids: Array<number | string> };
+      accepted: boolean;
+      task: {
+        task_type: string;
+        status: string;
+        busy: boolean;
+      };
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
@@ -706,19 +756,31 @@ describe("useProofreadingPageState", () => {
       await Promise.resolve();
     });
 
-    expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
 
     await act(async () => {
       retranslate_deferred.resolve({
-        result: {
-          changed_item_ids: [2, 1],
+        accepted: true,
+        task: {
+          task_type: "retranslate",
+          status: "REQUEST",
+          busy: true,
         },
       });
       await confirm_promise;
     });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start-retranslate", {
+      item_ids: [2, 1],
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+      },
+    });
+    expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
   });
 
-  it("校对重翻失败后会清空正在重翻的行 id 并保留错误提示", async () => {
+  it("校对重翻失败后不写入任务快照并保留错误提示", async () => {
     await render_hook();
 
     runtime_fixture.current = {
@@ -733,7 +795,10 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     const retranslate_deferred = create_deferred<{
-      result: { changed_item_ids: Array<number | string> };
+      accepted: boolean;
+      task: {
+        task_type: string;
+      };
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
@@ -747,13 +812,14 @@ describe("useProofreadingPageState", () => {
       await Promise.resolve();
     });
 
-    expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
+    expect(latest_state?.retranslating_row_ids).toEqual([]);
 
     await act(async () => {
       retranslate_deferred.reject(new Error("重翻失败"));
       await confirm_promise;
     });
 
+    expect(runtime_fixture.current.set_task_snapshot).not.toHaveBeenCalled();
     expect(latest_state?.retranslating_row_ids).toEqual([]);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", "重翻失败");
   });

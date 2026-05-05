@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from base.Base import Base
-from module.Data.Core.DataTypes import ProjectItemChange
-from module.Data.Core.Item import Item
 
 from api.Application.ProofreadingAppService import ProofreadingAppService
 
@@ -54,29 +52,6 @@ class RecordingProofreadingMutationService:
                 ),
                 "reason": reason,
             }
-        )
-
-
-class RecordingProofreadingRetranslateService:
-    def __init__(self) -> None:
-        self.retranslate_items_calls: list[dict[str, object]] = []
-
-    def retranslate_items(
-        self,
-        items: list[Item],
-        *,
-        expected_revision: int,
-    ) -> ProjectItemChange:
-        self.retranslate_items_calls.append(
-            {
-                "item_ids": [item.get_id() for item in items],
-                "expected_revision": expected_revision,
-            }
-        )
-        return ProjectItemChange(
-            item_ids=(1, 2),
-            rel_paths=("script/a.txt", "script/b.txt"),
-            reason="proofreading_retranslate_items",
         )
 
 
@@ -141,24 +116,21 @@ def build_app_service() -> tuple[
     ProofreadingAppService,
     FakeProofreadingDataManager,
     RecordingProofreadingMutationService,
-    RecordingProofreadingRetranslateService,
 ]:
     data_manager = FakeProofreadingDataManager()
     mutation_service = RecordingProofreadingMutationService()
-    retranslate_service = RecordingProofreadingRetranslateService()
     runtime_service = RecordingProjectRuntimeService()
 
     app_service = ProofreadingAppService(
         data_manager=data_manager,
         mutation_service=mutation_service,
-        retranslate_service=retranslate_service,
         runtime_service=runtime_service,
     )
-    return app_service, data_manager, mutation_service, retranslate_service
+    return app_service, data_manager, mutation_service
 
 
 def test_proofreading_save_item_returns_minimal_mutation_ack() -> None:
-    app_service, data_manager, mutation_service, _ = build_app_service()
+    app_service, data_manager, mutation_service = build_app_service()
 
     result = app_service.save_item(
         {
@@ -204,7 +176,7 @@ def test_proofreading_save_item_returns_minimal_mutation_ack() -> None:
 
 
 def test_proofreading_save_all_returns_minimal_mutation_ack() -> None:
-    app_service, data_manager, mutation_service, _ = build_app_service()
+    app_service, data_manager, mutation_service = build_app_service()
 
     result = app_service.save_all(
         {
@@ -253,7 +225,7 @@ def test_proofreading_save_all_returns_minimal_mutation_ack() -> None:
 
 
 def test_proofreading_replace_all_returns_minimal_mutation_ack() -> None:
-    app_service, data_manager, mutation_service, _ = build_app_service()
+    app_service, data_manager, mutation_service = build_app_service()
 
     result = app_service.replace_all(
         {
@@ -287,50 +259,3 @@ def test_proofreading_replace_all_returns_minimal_mutation_ack() -> None:
     ]
     assert result["projectRevision"] == 11
     assert data_manager.emitted_patches == []
-
-
-def test_proofreading_retranslate_items_returns_minimal_mutation_ack() -> None:
-    app_service, data_manager, _, retranslate_service = build_app_service()
-
-    result = app_service.retranslate_items(
-        {
-            "items": [
-                {
-                    "id": 1,
-                    "src": "勇者が来た",
-                    "dst": "Hero arrived",
-                    "file_path": "script/a.txt",
-                    "status": Base.ItemStatus.PROCESSED,
-                },
-                {
-                    "id": 2,
-                    "src": "旁白",
-                    "dst": "Narration",
-                    "file_path": "script/b.txt",
-                    "status": Base.ItemStatus.NONE,
-                },
-            ],
-            "expected_revision": 7,
-        }
-    )
-
-    assert retranslate_service.retranslate_items_calls == [
-        {
-            "item_ids": [1, 2],
-            "expected_revision": 7,
-        }
-    ]
-    assert result["result"]["revision"] == 9
-    assert result["result"]["changed_item_ids"] == [1, 2]
-    assert data_manager.emitted_patches[0]["reason"] == "proofreading_retranslate_items"
-    assert data_manager.emitted_patches[0]["updated_sections"] == (
-        "items",
-        "proofreading",
-        "task",
-    )
-    assert data_manager.emitted_patches[0]["section_revisions"] == {
-        "items": 2,
-        "proofreading": 9,
-        "task": 0,
-    }
-    assert data_manager.emitted_patches[0]["project_revision"] == 9

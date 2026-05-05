@@ -102,7 +102,6 @@ export const zh_cn_proofreading_page = {
     replace_no_change: "没有需要替换的内容",
     no_match: "未找到匹配项",
     regex_invalid: "正则表达式无效",
-    retranslate_success: "已重新翻译 {COUNT} 个条目",
     reset_success: "已重置 {COUNT} 个条目",
   },
 } as const;

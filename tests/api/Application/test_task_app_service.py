@@ -91,6 +91,39 @@ def test_stop_analysis_returns_stopping_ack_and_emits_event(
     ]
 
 
+def test_start_retranslate_returns_task_ack_and_emits_event(
+    task_app_service,
+    fake_engine,
+    fake_task_data_manager,
+) -> None:
+    result = task_app_service.start_retranslate(
+        {
+            "item_ids": [2, "1", 2],
+            "expected_section_revisions": {
+                "items": 7,
+                "proofreading": 0,
+            },
+        }
+    )
+
+    assert result["accepted"] is True
+    assert result["task"]["task_type"] == "retranslate"
+    assert result["task"]["status"] == "REQUEST"
+    assert result["task"]["busy"] is True
+    assert result["task"]["retranslating_item_ids"] == [2, 1]
+    assert fake_engine.active_retranslate_item_ids == [2, 1]
+    assert fake_task_data_manager.asserted_section_revisions == [("items", 7)]
+    assert task_app_service.emitted_events == [
+        (
+            Base.Event.RETRANSLATE_TASK,
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "item_ids": [2, 1],
+            },
+        )
+    ]
+
+
 def test_get_task_snapshot_returns_translation_snapshot_fields(
     task_app_service,
     fake_engine,
@@ -142,6 +175,21 @@ def test_get_task_snapshot_supports_requested_task_type(
 
     assert result["task"]["task_type"] == "analysis"
     assert result["task"]["analysis_candidate_count"] == 2
+
+
+def test_get_task_snapshot_supports_retranslate_ids(
+    task_app_service,
+    fake_engine,
+) -> None:
+    fake_engine.active_task_type = "retranslate"
+    fake_engine.status = Base.TaskStatus.RETRANSLATING
+    fake_engine.active_retranslate_item_ids = [1, 3]
+
+    result = task_app_service.get_task_snapshot({})
+
+    assert result["task"]["task_type"] == "retranslate"
+    assert result["task"]["busy"] is True
+    assert result["task"]["retranslating_item_ids"] == [1, 3]
 
 
 def test_export_translation_emits_export_event_and_returns_accept_ack(

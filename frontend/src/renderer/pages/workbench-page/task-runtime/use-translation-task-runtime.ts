@@ -210,6 +210,7 @@ export function useTranslationTaskRuntime(
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
   const previous_task_busy_ref = useRef(task_snapshot.busy);
+  const previous_task_type_ref = useRef(String(task_snapshot.task_type ?? ""));
   const previous_translation_status_ref = useRef(create_empty_translation_task_snapshot().status);
   const observed_translation_waveform_snapshot_ref = useRef<TranslationTaskSnapshot | null>(null);
   const observed_translation_waveform_time_ref = useRef<number | null>(null);
@@ -361,6 +362,7 @@ export function useTranslationTaskRuntime(
         time: next_snapshot.time,
         start_time: next_snapshot.start_time,
         analysis_candidate_count: 0,
+        retranslating_item_ids: [],
       });
     },
     [set_task_snapshot],
@@ -614,7 +616,10 @@ export function useTranslationTaskRuntime(
 
   useEffect(() => {
     const previous_task_busy = previous_task_busy_ref.current;
+    const previous_task_type = previous_task_type_ref.current;
+    const current_task_type = String(task_snapshot.task_type ?? "");
     previous_task_busy_ref.current = task_snapshot.busy;
+    previous_task_type_ref.current = current_task_type;
 
     if (!project_snapshot.loaded) {
       return;
@@ -624,6 +629,12 @@ export function useTranslationTaskRuntime(
       previous_task_busy &&
       !task_snapshot.busy &&
       is_task_snapshot_for_runtime(task_snapshot, "translation")
+    ) {
+      void refresh_translation_task_snapshot();
+    } else if (
+      previous_task_busy &&
+      !task_snapshot.busy &&
+      (previous_task_type === "retranslate" || current_task_type === "retranslate")
     ) {
       void refresh_translation_task_snapshot();
     }

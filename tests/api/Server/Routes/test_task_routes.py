@@ -12,6 +12,10 @@ TASK_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/tasks/stop-translation", "stop_translation"),
     JsonRouteCase("/api/tasks/start-analysis", "start_analysis"),
     JsonRouteCase("/api/tasks/stop-analysis", "stop_analysis"),
+    JsonRouteCase(
+        "/api/tasks/start-retranslate",
+        "start_retranslate",
+    ),
     JsonRouteCase("/api/tasks/snapshot", "get_task_snapshot"),
     JsonRouteCase("/api/tasks/export-translation", "export_translation"),
     JsonRouteCase("/api/tasks/translate-single", "translate_single"),

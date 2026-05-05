@@ -30,6 +30,15 @@ class TaskApiClient:
     def start_analysis(self, request: dict[str, Any]) -> TaskSnapshot:
         return self.post_task_snapshot(TaskRoutes.START_ANALYSIS_PATH, request)
 
+    def start_retranslate(
+        self,
+        request: dict[str, Any],
+    ) -> TaskSnapshot:
+        return self.post_task_snapshot(
+            TaskRoutes.START_RETRANSLATE_PATH,
+            request,
+        )
+
     def stop_analysis(self) -> TaskSnapshot:
         return self.post_task_snapshot(TaskRoutes.STOP_ANALYSIS_PATH)
 

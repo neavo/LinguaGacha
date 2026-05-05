@@ -8,7 +8,6 @@ from api.Models.Project import ProjectPreview
 from api.Models.Project import ProjectSnapshot
 from api.Models.Project import ProjectTranslationStats
 from api.Models.ProjectRuntime import ProjectMutationAck
-from api.Models.Proofreading import ProofreadingMutationResult
 from api.Models.QualityRule import QualityRuleEntry
 from api.Models.QualityRule import QualityRuleSnapshot
 from api.Models.Settings import AppSettingsSnapshot
@@ -27,7 +26,6 @@ __all__ = [
     "ProjectPreview",
     "ProjectSnapshot",
     "ProjectTranslationStats",
-    "ProofreadingMutationResult",
     "QualityRuleEntry",
     "QualityRuleSnapshot",
     "RecentProjectEntry",

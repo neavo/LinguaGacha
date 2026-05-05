@@ -20,6 +20,7 @@ class Base:
     # | ANALYSIS_TASK                 | REQUEST / RUN / DONE / ERROR | 发起或继续术语分析任务，并回传任务终态         | mode, final_status(SUCCESS/STOPPED/FAILED), message      |
     # | ANALYSIS_REQUEST_STOP         | REQUEST / RUN                | 请求停止当前正在执行的分析任务（不单独发 DONE）| 无                                                        |
     # | ANALYSIS_PROGRESS             | （按快照事件处理）           | 上报分析进度快照                               | line, total_line, processed_line, error_line, total_tokens, time |
+    # | RETRANSLATE_TASK              | REQUEST / RUN / DONE / ERROR | 发起或完成批量重翻任务                       | item_ids, final_status(SUCCESS/FAILED), message          |
     # | PROJECT_RUNTIME_PATCH         | UPDATE                       | 直接推送 V2 运行态补丁                        | updatedSections, patch, sectionRevisions, projectRevision |
     # +-------------------------------+-------------------------------+------------------------------------------------+-----------------------------------------------------------+
 
@@ -38,6 +39,7 @@ class Base:
             "ANALYSIS_REQUEST_STOP"  # 分析 - 停止当前任务请求链路（REQUEST/RUN）
         )
         ANALYSIS_PROGRESS = "ANALYSIS_PROGRESS"  # 分析 - 进度快照更新
+        RETRANSLATE_TASK = "RETRANSLATE_TASK"  # 重翻 - 任务生命周期事件
         PROJECT_LOADED = "PROJECT_LOADED"  # 工程 - 已加载
         PROJECT_UNLOADED = "PROJECT_UNLOADED"  # 工程 - 已卸载
         PROJECT_RUNTIME_PATCH = "PROJECT_RUNTIME_PATCH"  # 工程 - V2 运行态直接补丁
@@ -72,6 +74,7 @@ class Base:
         IDLE = "IDLE"  # 无任务
         ANALYZING = "ANALYZING"  # 分析中
         TRANSLATING = "TRANSLATING"  # 翻译中
+        RETRANSLATING = "RETRANSLATING"  # 重翻中
         STOPPING = "STOPPING"  # 停止中
 
     # 条目状态；旧 PROCESSING 只在迁移服务中按字符串兼容，当前枚举不再暴露。
@@ -106,11 +109,13 @@ class Base:
         Event.ANALYSIS_TASK,
         Event.ANALYSIS_REQUEST_STOP,
         Event.ANALYSIS_PROGRESS,
+        Event.RETRANSLATE_TASK,
         Event.CONFIG_UPDATED,
     )
     ENGINE_BUSY_STATUSES: tuple[TaskStatus, ...] = (
         TaskStatus.TRANSLATING,
         TaskStatus.ANALYZING,
+        TaskStatus.RETRANSLATING,
         TaskStatus.STOPPING,
     )
 

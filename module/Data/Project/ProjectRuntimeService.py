@@ -250,6 +250,29 @@ class ProjectRuntimeService:
     def build_task_block(self) -> dict[str, object]:
         """提供当前任务快照，供桌面壳层建立最小任务态。"""
 
+        from module.Engine.Engine import Engine
+
+        engine = Engine.get()
+        if engine.get_active_task_type() == "retranslate":
+            status = engine.get_status()
+            status_value = str(getattr(status, "value", status))
+            return {
+                "task_type": "retranslate",
+                "status": status_value,
+                "busy": Base.is_engine_busy(status),
+                "request_in_flight_count": engine.get_request_in_flight_count(),
+                "line": 0,
+                "total_line": 0,
+                "processed_line": 0,
+                "error_line": 0,
+                "total_tokens": 0,
+                "total_output_tokens": 0,
+                "total_input_tokens": 0,
+                "time": 0.0,
+                "start_time": 0.0,
+                "retranslating_item_ids": engine.get_active_retranslate_item_ids(),
+            }
+
         snapshot = self.call_data_manager(
             "get_task_progress_snapshot",
             {},

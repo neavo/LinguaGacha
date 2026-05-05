@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 
 
@@ -19,11 +20,12 @@ class TaskSnapshotPayload:
     total_input_tokens: int = 0
     time: float = 0.0
     start_time: float = 0.0
+    retranslating_item_ids: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """转换为 JSON 结构，供 HTTP 响应载荷使用。"""
 
-        return {
+        payload = {
             "task_type": self.task_type,
             "status": self.status,
             "busy": self.busy,
@@ -38,3 +40,6 @@ class TaskSnapshotPayload:
             "time": self.time,
             "start_time": self.start_time,
         }
+        if self.retranslating_item_ids:
+            payload["retranslating_item_ids"] = list(self.retranslating_item_ids)
+        return payload

@@ -44,6 +44,11 @@ class PublicEventBridge:
                 PublicEventTopic.TASK_STATUS_CHANGED.value,
                 self.build_task_status_payload("analysis", data, stopping=True),
             )
+        elif event == Base.Event.RETRANSLATE_TASK:
+            return (
+                PublicEventTopic.TASK_STATUS_CHANGED.value,
+                self.build_task_status_payload("retranslate", data),
+            )
         elif event == Base.Event.PROJECT_LOADED:
             return (
                 PublicEventTopic.PROJECT_CHANGED.value,

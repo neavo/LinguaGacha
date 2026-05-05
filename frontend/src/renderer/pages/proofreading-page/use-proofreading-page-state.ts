@@ -147,35 +147,6 @@ function serialize_glossary_terms(glossary_terms: ProofreadingGlossaryTerm[]): s
   return glossary_terms.map((term) => [term[0], term[1]]);
 }
 
-function serialize_item(item: ProofreadingItem): Record<string, unknown> {
-  return {
-    // 为什么：校对接口落到 core 时会反序列化成 `Item`，这里必须传标准字段名，避免被误判成新条目。
-    id: item.item_id,
-    file_path: item.file_path,
-    row: item.row_number,
-    src: item.src,
-    dst: item.dst,
-    status: item.status,
-    warnings: [...item.warnings],
-    failed_glossary_terms: serialize_glossary_terms(item.failed_glossary_terms),
-  };
-}
-
-function build_retranslating_row_ids(items: ProofreadingClientItem[]): string[] {
-  const row_ids: string[] = [];
-  const seen_row_ids = new Set<string>();
-  items.forEach((item) => {
-    const row_id = build_proofreading_row_id(item.item_id);
-    if (seen_row_ids.has(row_id)) {
-      return;
-    }
-
-    seen_row_ids.add(row_id);
-    row_ids.push(row_id);
-  });
-  return row_ids;
-}
-
 function create_search_pattern(keyword: string, is_regex: boolean): RegExp | null {
   const normalized_keyword = keyword.trim();
   if (normalized_keyword === "") {
@@ -243,11 +214,45 @@ function build_sort_signature(sort_state: AppTableSortState | null): string {
 
 type ProofreadingFilterValueKeyResolver<T> = (value: T) => string;
 
-type ProofreadingRetranslatePayload = {
-  result?: {
-    changed_item_ids?: Array<number | string>;
+type RetranslateTaskAck = {
+  accepted?: boolean;
+  task?: {
+    task_type?: unknown;
+    status?: unknown;
+    busy?: unknown;
+    request_in_flight_count?: unknown;
+    line?: unknown;
+    total_line?: unknown;
+    processed_line?: unknown;
+    error_line?: unknown;
+    total_tokens?: unknown;
+    total_output_tokens?: unknown;
+    total_input_tokens?: unknown;
+    time?: unknown;
+    start_time?: unknown;
+    analysis_candidate_count?: unknown;
+    retranslating_item_ids?: unknown;
   };
 };
+
+function normalize_numeric_item_ids(raw_item_ids: unknown): number[] {
+  if (!Array.isArray(raw_item_ids)) {
+    return [];
+  }
+
+  const item_ids: number[] = [];
+  const seen_ids = new Set<number>();
+  raw_item_ids.forEach((raw_item_id) => {
+    const item_id = Number(raw_item_id);
+    if (!Number.isInteger(item_id) || seen_ids.has(item_id)) {
+      return;
+    }
+
+    seen_ids.add(item_id);
+    item_ids.push(item_id);
+  });
+  return item_ids;
+}
 
 function create_filter_value_key_set<T>(
   values: T[],
@@ -469,6 +474,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_snapshot,
     project_store,
     task_snapshot,
+    set_task_snapshot,
     proofreading_change_signal,
     commit_local_project_patch,
     refresh_project_runtime,
@@ -511,7 +517,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [pending_mutation, set_pending_mutation] = useState<ProofreadingPendingMutation | null>(
     null,
   );
-  const [retranslating_row_ids, set_retranslating_row_ids] = useState<string[]>([]);
   const deferred_search_keyword = useDeferredValue(search_keyword);
   const deferred_search_scope = useDeferredValue(search_scope);
   const deferred_is_regex = useDeferredValue(is_regex);
@@ -601,6 +606,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       ? null
       : (visible_item_by_id.get(dialog_state.target_row_id) ?? dialog_item_snapshot);
   const readonly = task_snapshot.busy;
+  const retranslating_row_ids = useMemo(() => {
+    if (task_snapshot.task_type !== "retranslate") {
+      return [];
+    }
+
+    return task_snapshot.retranslating_item_ids.map((item_id) => {
+      return build_proofreading_row_id(item_id);
+    });
+  }, [task_snapshot.retranslating_item_ids, task_snapshot.task_type]);
   const invalid_regex_message =
     list_view.invalid_regex_message === null
       ? null
@@ -647,7 +661,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_dialog_state(create_empty_dialog_state());
     set_dialog_item_snapshot(null);
     set_pending_mutation(null);
-    set_retranslating_row_ids([]);
     replace_cursor_ref.current = 0;
     pending_replace_cursor_ref.current = null;
     preferred_row_id_ref.current = null;
@@ -668,7 +681,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_is_refreshing(false);
     set_cache_status("idle");
     set_is_mutating(false);
-    set_retranslating_row_ids([]);
     last_visible_range_signature_ref.current = "";
     if (current_project_id !== undefined) {
       void proofreading_runtime_client_ref.current.dispose_project(current_project_id);
@@ -1095,59 +1107,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     ],
   );
 
-  const run_mutation = useCallback(
-    async (args: {
-      path: string;
-      body: Record<string, unknown>;
-      fallback_error_key: "proofreading_page.feedback.retranslate_failed";
-      preferred_row_id?: string | null;
-      pending_replace_cursor?: number | null;
-      success_message_builder?: ((changed_count: number) => string) | null;
-      empty_warning_message?: string | null;
-      close_dialog?: boolean;
-    }): Promise<void> => {
-      set_is_mutating(true);
-
-      try {
-        const mutation_payload = await api_fetch<ProofreadingRetranslatePayload>(
-          args.path,
-          args.body,
-        );
-        const changed_item_ids = Array.isArray(mutation_payload.result?.changed_item_ids)
-          ? mutation_payload.result.changed_item_ids
-          : [];
-
-        if (changed_item_ids.length === 0) {
-          if (args.empty_warning_message !== null && args.empty_warning_message !== undefined) {
-            push_toast("warning", args.empty_warning_message);
-          }
-          return;
-        }
-
-        if (args.pending_replace_cursor !== undefined) {
-          pending_replace_cursor_ref.current = args.pending_replace_cursor;
-        }
-
-        if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
-          push_toast("success", args.success_message_builder(changed_item_ids.length));
-        }
-
-        if (args.close_dialog) {
-          set_dialog_state(create_empty_dialog_state());
-          set_dialog_item_snapshot(null);
-        }
-
-        preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
-        set_cache_stale(true);
-      } catch (error) {
-        handle_api_error(error, t(args.fallback_error_key));
-      } finally {
-        set_is_mutating(false);
-      }
-    },
-    [handle_api_error, push_toast, t],
-  );
-
   const update_search_keyword = useCallback(
     (next_keyword: string): void => {
       set_search_keyword(next_keyword);
@@ -1565,7 +1524,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     set_pending_mutation({
-      kind: "retranslate-items",
+      kind: "retranslate",
       target_row_ids: row_ids,
     });
   }, []);
@@ -1596,30 +1555,58 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    const is_retranslate = pending_mutation.kind === "retranslate-items";
-    const success_message = is_retranslate
-      ? t("proofreading_page.feedback.retranslate_success").replace("{COUNT}", "{COUNT}")
-      : t("proofreading_page.feedback.reset_success").replace("{COUNT}", "{COUNT}");
+    const is_retranslate = pending_mutation.kind === "retranslate";
+    const reset_success_message = t("proofreading_page.feedback.reset_success").replace(
+      "{COUNT}",
+      "{COUNT}",
+    );
 
     set_pending_mutation(null);
     if (is_retranslate) {
-      set_retranslating_row_ids(build_retranslating_row_ids(target_items));
+      const item_ids = normalize_numeric_item_ids(target_items.map((item) => item.item_id));
+      if (item_ids.length === 0) {
+        return;
+      }
+
+      preferred_row_id_ref.current = active_row_id_ref.current;
+      set_is_mutating(true);
       try {
-        await run_mutation({
-          path: "/api/project/proofreading/retranslate-items",
-          body: {
-            items: target_items.map((item) => serialize_item(item)),
-            expected_revision: list_view.revision,
+        const ack = await api_fetch<RetranslateTaskAck>("/api/tasks/start-retranslate", {
+          item_ids,
+          expected_section_revisions: {
+            items: project_store.getState().revisions.sections.items ?? 0,
+            proofreading: list_view.revision,
           },
-          fallback_error_key: "proofreading_page.feedback.retranslate_failed",
-          preferred_row_id: active_row_id_ref.current,
-          success_message_builder: (changed_count) => {
-            return success_message.replace("{COUNT}", changed_count.toString());
-          },
-          close_dialog: dialog_state.open,
         });
+        const task = ack.task ?? {};
+        const retranslating_item_ids = normalize_numeric_item_ids(task.retranslating_item_ids);
+        set_task_snapshot({
+          ...task_snapshot,
+          task_type: String(task.task_type ?? "retranslate"),
+          status: String(task.status ?? "REQUEST"),
+          busy: task.busy === undefined ? true : Boolean(task.busy),
+          request_in_flight_count: Number(task.request_in_flight_count ?? 0),
+          line: Number(task.line ?? 0),
+          total_line: Number(task.total_line ?? 0),
+          processed_line: Number(task.processed_line ?? 0),
+          error_line: Number(task.error_line ?? 0),
+          total_tokens: Number(task.total_tokens ?? 0),
+          total_output_tokens: Number(task.total_output_tokens ?? 0),
+          total_input_tokens: Number(task.total_input_tokens ?? 0),
+          time: Number(task.time ?? 0),
+          start_time: Number(task.start_time ?? 0),
+          analysis_candidate_count: Number(task.analysis_candidate_count ?? 0),
+          retranslating_item_ids:
+            retranslating_item_ids.length > 0 ? retranslating_item_ids : item_ids,
+        });
+        if (dialog_state.open) {
+          set_dialog_state(create_empty_dialog_state());
+          set_dialog_item_snapshot(null);
+        }
+      } catch (error) {
+        handle_api_error(error, t("proofreading_page.feedback.retranslate_failed"));
       } finally {
-        set_retranslating_row_ids([]);
+        set_is_mutating(false);
       }
       return;
     }
@@ -1634,20 +1621,22 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       fallback_error_key: "proofreading_page.feedback.reset_failed",
       preferred_row_id: active_row_id_ref.current,
       success_message_builder: (changed_count) => {
-        return success_message.replace("{COUNT}", changed_count.toString());
+        return reset_success_message.replace("{COUNT}", changed_count.toString());
       },
       close_dialog: dialog_state.open,
       empty_warning_message: null,
     });
   }, [
     dialog_state.open,
+    handle_api_error,
     list_view.revision,
     pending_mutation,
     project_store,
     read_items_by_row_ids,
     run_ack_only_mutation,
-    run_mutation,
+    set_task_snapshot,
     t,
+    task_snapshot,
   ]);
 
   useEffect(() => {

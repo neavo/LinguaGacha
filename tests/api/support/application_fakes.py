@@ -143,6 +143,7 @@ class FakeEngine:
         self.translate_single_success: bool = True
         self.translate_single_dst: str = "【Alice】"
         self.translate_single_calls: list[object] = []
+        self.active_retranslate_item_ids: list[int] = []
 
     def get_status(self) -> Base.TaskStatus:
         return self.status
@@ -151,6 +152,7 @@ class FakeEngine:
         return self.status in (
             Base.TaskStatus.TRANSLATING,
             Base.TaskStatus.ANALYZING,
+            Base.TaskStatus.RETRANSLATING,
             Base.TaskStatus.STOPPING,
         )
 
@@ -165,6 +167,12 @@ class FakeEngine:
         self.translate_single_calls.append(item)
         item.set_dst(self.translate_single_dst)
         callback(item, self.translate_single_success)
+
+    def set_active_retranslate_item_ids(self, item_ids: list[int]) -> None:
+        self.active_retranslate_item_ids = list(item_ids)
+
+    def get_active_retranslate_item_ids(self) -> list[int]:
+        return list(self.active_retranslate_item_ids)
 
 
 class FakeTaskDataManager:
@@ -194,6 +202,10 @@ class FakeTaskDataManager:
             "start_time": 0.0,
         }
         self.analysis_candidate_count: int = 0
+        self.asserted_section_revisions: list[tuple[str, int]] = []
+        self.meta: dict[str, int] = {
+            "proofreading_revision.proofreading": 0,
+        }
 
     def get_translation_extras(self) -> dict[str, int | float]:
         return dict(self.translation_extras)
@@ -208,6 +220,20 @@ class FakeTaskDataManager:
 
     def get_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
+
+    def assert_project_runtime_section_revision(
+        self,
+        section: str,
+        expected_revision: int,
+    ) -> int:
+        self.asserted_section_revisions.append((section, expected_revision))
+        return expected_revision
+
+    def get_meta(self, key: str, default: object = None) -> object:
+        return self.meta.get(key, default)
+
+    def set_meta(self, key: str, value: object) -> None:
+        self.meta[key] = int(value)
 
 
 class FakeWorkbenchManager:

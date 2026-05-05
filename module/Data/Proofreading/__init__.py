@@ -1,9 +1,6 @@
 from module.Data.Proofreading.ProofreadingMutationService import (
     ProofreadingMutationService as ProofreadingMutationService,
 )
-from module.Data.Proofreading.ProofreadingRetranslateService import (
-    ProofreadingRetranslateService as ProofreadingRetranslateService,
-)
 from module.Data.Proofreading.ProofreadingRevisionService import (
     ProofreadingRevisionConflictError as ProofreadingRevisionConflictError,
 )

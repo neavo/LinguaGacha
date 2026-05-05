@@ -11,7 +11,7 @@ type ProofreadingConfirmDialogProps = {
 export function ProofreadingConfirmDialog(props: ProofreadingConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   const selection_count = props.state?.target_row_ids.length ?? 0;
-  const is_retranslate = props.state?.kind === "retranslate-items";
+  const is_retranslate = props.state?.kind === "retranslate";
   const description = is_retranslate
     ? t("proofreading_page.confirm.retranslate_description").replace(
         "{COUNT}",

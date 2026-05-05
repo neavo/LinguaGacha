@@ -4,7 +4,6 @@ from typing import Any
 
 from api.Client.ApiClient import ApiClient
 from api.Models.ProjectRuntime import ProjectMutationAck
-from api.Models.Proofreading import ProofreadingMutationResult
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
 
 
@@ -37,12 +36,3 @@ class ProofreadingApiClient:
             ProjectRoutes.PROOFREADING_REPLACE_ALL_PATH, request
         )
         return ProjectMutationAck.from_dict(response)
-
-    def retranslate_items(self, request: dict[str, Any]) -> ProofreadingMutationResult:
-        """单条/批量重译条目，并返回刷新后的写入结果。"""
-
-        response = self.api_client.post(
-            ProjectRoutes.PROOFREADING_RETRANSLATE_ITEMS_PATH,
-            request,
-        )
-        return ProofreadingMutationResult.from_dict(response.get("result", {}))

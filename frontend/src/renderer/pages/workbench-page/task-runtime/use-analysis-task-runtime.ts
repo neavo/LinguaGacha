@@ -370,6 +370,7 @@ export function useAnalysisTaskRuntime(
         time: next_snapshot.time,
         start_time: next_snapshot.start_time,
         analysis_candidate_count: next_snapshot.analysis_candidate_count,
+        retranslating_item_ids: [],
       });
     },
     [set_task_snapshot],

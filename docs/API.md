@@ -30,7 +30,7 @@
 | bootstrap 首包 | `/api/project/bootstrap/stream` | 一次性阶段化项目首包 |
 | 项目与同步 mutation | `/api/project/*` | 工程、工作台、校对、reset、导入术语等 |
 | 项目派生工具 | `/api/project/text-preserve/preset-rules`、`/api/project/export-converted-translation` | 为 TS 侧工具页提供预置规则读取与转换结果文件写出 |
-| 后台任务 | `/api/tasks/*` | 翻译与分析任务启动、停止、快照 |
+| 后台任务 | `/api/tasks/*` | 翻译、分析与重翻任务启动、停止、快照 |
 | 模型页 | `/api/models/*` | 快照、更新、激活、增删、重排、测试与可选模型查询 |
 | 质量规则与提示词 | `/api/quality/rules/*`、`/api/quality/prompts/*` | 规则、预设与提示词读写 |
 | 应用设置 | `/api/settings/*` | 应用设置快照、更新、最近项目维护 |
@@ -146,7 +146,7 @@ flowchart TD
 `project.patch` 的稳定语义：
 - 至少包含 `source`、`updatedSections` 与 `patch`，在可用时带 `projectRevision`、`sectionRevisions`。
 - 调用方应把它当成可直接合并进 `ProjectStore` 的运行态补丁，而不是“请刷新页面”的提示。
-- 异步任务终态、校对重译，以及后端显式发出的 `PROJECT_RUNTIME_PATCH` 都可能产生它。
+- 异步任务终态、重翻提交，以及后端显式发出的 `PROJECT_RUNTIME_PATCH` 都可能产生它。
 
 ## 同步 mutation 与异步任务的区别
 
@@ -154,11 +154,17 @@ flowchart TD
 | --- | --- | --- |
 | 同步 mutation | 工作台 `add-file-batch / reset-file / delete-file / delete-file-batch / reorder-files`，项目 `settings-alignment/apply`、`translation/reset`、`analysis/reset`、`analysis/import-glossary`，质量规则 `rules/save-entries / rules/update-meta`，提示词 `prompts/save`，校对 `save-item / save-all / replace-all` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
 | 只读预演 | `create-preview`、`open-preview`、`translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
-| 异步任务 | `tasks/*`、`retranslate-items` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
+| 异步任务 | `tasks/*`，含 `/api/tasks/start-retranslate` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
 
 翻译任务补充：
 - 翻译任务完成只保存项目事实，不自动写出译文文件。
 - 生成译文文件由前端确认后显式调用 `/api/tasks/export-translation`，该接口仍复用现有 `POST + JSON body` 形状。
+
+重翻任务补充：
+- 重翻只通过 `/api/tasks/start-retranslate` 启动，不再挂在 `/api/project/proofreading/*` 同步 mutation 族下。
+- 请求体稳定包含 `item_ids` 与 `expected_section_revisions`；其中 `expected_section_revisions.items` 校验 items section，`expected_section_revisions.proofreading` 校验校对视图 revision。
+- 响应体是任务回执：`{ accepted: true, task }`。`task.task_type` 为 `retranslate`，进行中条目由 `task.retranslating_item_ids` 表达。
+- 每批提交会发 `project.patch` 推进运行态，补丁至少携带 `merge_items` 与 `replace_task`，并在可用时同步 `replace_proofreading` 与 section revision。
 
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。

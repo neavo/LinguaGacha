@@ -32,7 +32,7 @@ flowchart TD
 | 工作台文件集合与运行态编码 | `Project/ProjectFileService.py`、`ProjectRuntimeService.py` | `DataManager` |
 | 规则、提示词、预设 | `Quality/*` | `DataManager` |
 | 分析候选、checkpoint、分析结果 | `Analysis/*` | `DataManager` |
-| 校对保存、重翻、校对 revision | `Proofreading/*` | `ProofreadingAppService` 组合这些服务 |
+| 校对保存、校对 revision、重翻提交 | `Proofreading/*` 与 `Engine/Retranslate/*` | `ProofreadingAppService` 处理同步保存；重翻由 `TaskAppService` 启动 Engine 任务并回写数据层 |
 | 全局忙碌态与实时请求数 | `Engine.status`、`request_in_flight_count` | `Engine` |
 | 文件格式解析与写回 | `FileManager.py` | `module/File` |
 | 模型列表整理、模板补齐、排序与默认回退 | `module/Model/Manager.py` | `module/Model` |
@@ -115,7 +115,7 @@ flowchart TD
 - Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。
 - 分析候选导入术语的预演和筛选属于前端 planner；Python 数据层保留候选聚合、候选数缓存和分析结果持久化。
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
-- 校对 `save-item`、`save-all`、`replace-all` 属于同步 mutation；`retranslate-items` 仍是任务型链路。
+- 校对 `save-item`、`save-all`、`replace-all` 属于同步 mutation；重翻通过 `/api/tasks/start-retranslate` 进入任务型链路，Engine 持有任务生命周期与 `retranslating_item_ids`，批次提交再回写数据层与 `project.patch`。
 
 ### 迁移入口
 

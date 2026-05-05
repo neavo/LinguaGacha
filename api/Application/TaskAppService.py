@@ -6,6 +6,10 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.Core.Item import Item
 from module.Engine.Engine import Engine
+from module.Data.Proofreading.ProofreadingRevisionService import (
+    ProofreadingRevisionService,
+)
+from module.Localizer.Localizer import Localizer
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 from api.Contract.TaskPayloads import TaskSnapshotPayload
 
@@ -80,6 +84,47 @@ class TaskAppService:
             "task": self.build_command_ack("analysis", "REQUEST", True),
         }
 
+    def start_retranslate(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, object]:
+        """请求启动批量重翻任务，并返回受理回执。"""
+
+        item_ids = self.resolve_item_ids(request.get("item_ids", []))
+        if not item_ids:
+            raise ValueError("请选择要重新翻译的条目。")
+
+        if bool(getattr(self.engine, "is_busy", lambda: False)()):
+            raise ValueError(Localizer.get().task_running)
+
+        self.assert_retranslate_revisions(
+            self.resolve_expected_section_revisions(request)
+        )
+
+        set_retranslating_item_ids = getattr(
+            self.engine,
+            "set_active_retranslate_item_ids",
+            None,
+        )
+        if callable(set_retranslating_item_ids):
+            set_retranslating_item_ids(item_ids)
+
+        self.event_emitter(
+            Base.Event.RETRANSLATE_TASK,
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "item_ids": item_ids,
+            },
+        )
+        return {
+            "accepted": True,
+            "task": self.build_command_ack(
+                "retranslate",
+                "REQUEST",
+                True,
+            ),
+        }
+
     def stop_analysis(self, request: dict[str, Any]) -> dict[str, object]:
         """请求停止分析任务。"""
 
@@ -141,7 +186,11 @@ class TaskAppService:
         """显式查询当前任务快照。"""
 
         requested_task_type = str(request.get("task_type", ""))
-        if requested_task_type in ("translation", "analysis"):
+        if requested_task_type in (
+            "translation",
+            "analysis",
+            "retranslate",
+        ):
             task_type = requested_task_type
         else:
             task_type = self.resolve_task_type()
@@ -153,7 +202,7 @@ class TaskAppService:
         active_task_type = getattr(self.engine, "get_active_task_type", None)
         if callable(active_task_type):
             task_type = str(active_task_type())
-            if task_type in ("translation", "analysis"):
+            if task_type in ("translation", "analysis", "retranslate"):
                 return task_type
 
         translation_snapshot = self.data_manager.get_translation_extras()
@@ -201,6 +250,22 @@ class TaskAppService:
                 task_snapshot["analysis_candidate_count"] = int(
                     get_analysis_candidate_count() or 0
                 )
+        if task_type == "retranslate":
+            get_retranslating_item_ids = getattr(
+                self.engine,
+                "get_active_retranslate_item_ids",
+                None,
+            )
+            retranslating_item_ids = (
+                get_retranslating_item_ids()
+                if callable(get_retranslating_item_ids)
+                else []
+            )
+            task_snapshot["retranslating_item_ids"] = [
+                int(item_id)
+                for item_id in retranslating_item_ids
+                if isinstance(item_id, int)
+            ]
         return task_snapshot
 
     def build_command_ack(
@@ -247,3 +312,57 @@ class TaskAppService:
         if isinstance(payload, dict):
             return QualityRuleSnapshot.from_dict(payload)
         return None
+
+    def resolve_item_ids(self, raw_item_ids: object) -> list[int]:
+        if not isinstance(raw_item_ids, list):
+            return []
+
+        item_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for raw_item_id in raw_item_ids:
+            try:
+                item_id = int(raw_item_id)
+            except TypeError:
+                continue
+            except ValueError:
+                continue
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            item_ids.append(item_id)
+        return item_ids
+
+    def resolve_expected_section_revisions(
+        self,
+        request: dict[str, Any],
+    ) -> dict[str, int] | None:
+        revisions_raw = request.get("expected_section_revisions", {})
+        if not isinstance(revisions_raw, dict):
+            return None
+        return {
+            str(section): int(revision)
+            for section, revision in revisions_raw.items()
+            if isinstance(section, str)
+        }
+
+    def assert_retranslate_revisions(
+        self,
+        expected_section_revisions: dict[str, int] | None,
+    ) -> None:
+        if expected_section_revisions is None:
+            return
+
+        if "items" in expected_section_revisions:
+            assert_items_revision = getattr(
+                self.data_manager,
+                "assert_project_runtime_section_revision",
+                None,
+            )
+            if callable(assert_items_revision):
+                assert_items_revision("items", int(expected_section_revisions["items"]))
+
+        if "proofreading" in expected_section_revisions:
+            ProofreadingRevisionService(self.data_manager).assert_revision(
+                "proofreading",
+                int(expected_section_revisions["proofreading"]),
+            )

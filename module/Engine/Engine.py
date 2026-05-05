@@ -20,6 +20,8 @@ class Engine:
         self.request_in_flight_count: int = 0
         self.request_in_flight_lock = threading.Lock()
 
+        self.active_retranslate_item_ids: list[int] = []
+
         # 线程锁
         self.lock = threading.Lock()
 
@@ -38,6 +40,12 @@ class Engine:
         from module.Engine.Translation.Translation import Translation
 
         self.translation = Translation()
+
+        from module.Engine.Retranslate.RetranslateTask import (
+            RetranslateTask,
+        )
+
+        self.retranslate = RetranslateTask()
 
     def get_status(self) -> Base.TaskStatus:
         with self.lock:
@@ -73,6 +81,8 @@ class Engine:
             return "translation"
         if status == Base.TaskStatus.ANALYZING:
             return "analysis"
+        if status == Base.TaskStatus.RETRANSLATING:
+            return "retranslate"
         return "idle"
 
     def get_running_task_count(self) -> int:
@@ -88,6 +98,27 @@ class Engine:
         single_task_name = f"{self.TASK_PREFIX}SINGLE"
         count += sum(1 for t in threading.enumerate() if t.name == single_task_name)
         return count
+
+    def set_active_retranslate_item_ids(self, item_ids: list[int]) -> None:
+        with self.lock:
+            self.active_retranslate_item_ids = list(dict.fromkeys(item_ids))
+
+    def remove_active_retranslate_item_ids(self, item_ids: list[int]) -> None:
+        finished_item_ids = set(item_ids)
+        with self.lock:
+            self.active_retranslate_item_ids = [
+                item_id
+                for item_id in self.active_retranslate_item_ids
+                if item_id not in finished_item_ids
+            ]
+
+    def clear_active_retranslate_item_ids(self) -> None:
+        with self.lock:
+            self.active_retranslate_item_ids = []
+
+    def get_active_retranslate_item_ids(self) -> list[int]:
+        with self.lock:
+            return list(self.active_retranslate_item_ids)
 
     def translate_single_item(
         self, item: Item, config: Config, callback: Callable[[Item, bool], None]

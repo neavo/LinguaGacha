@@ -118,7 +118,7 @@ export type ProofreadingDialogState = {
   saving: boolean;
 };
 
-type ProofreadingPendingMutationKind = "retranslate-items" | "reset-items";
+type ProofreadingPendingMutationKind = "retranslate" | "reset-items";
 
 export type ProofreadingSearchScope = "all" | "src" | "dst";
 

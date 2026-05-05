@@ -20,6 +20,7 @@ class TaskSnapshot:
     time: float = 0.0
     start_time: float = 0.0
     analysis_candidate_count: int = 0
+    retranslating_item_ids: tuple[int, ...] = ()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "TaskSnapshot":
@@ -50,7 +51,30 @@ class TaskSnapshot:
             analysis_candidate_count=int(
                 normalized.get("analysis_candidate_count", 0) or 0
             ),
+            retranslating_item_ids=cls.normalize_retranslating_item_ids(
+                normalized.get("retranslating_item_ids", [])
+            ),
         )
+
+    @staticmethod
+    def normalize_retranslating_item_ids(value: object) -> tuple[int, ...]:
+        if not isinstance(value, (list, tuple, set)):
+            return ()
+
+        item_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for raw_item_id in value:
+            try:
+                item_id = int(raw_item_id)
+            except TypeError:
+                continue
+            except ValueError:
+                continue
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            item_ids.append(item_id)
+        return tuple(item_ids)
 
     def to_dict(self) -> dict[str, Any]:
         """把任务快照恢复为 JSON 字典，便于边界层和测试复用。"""
@@ -70,4 +94,5 @@ class TaskSnapshot:
             "time": self.time,
             "start_time": self.start_time,
             "analysis_candidate_count": self.analysis_candidate_count,
+            "retranslating_item_ids": list(self.retranslating_item_ids),
         }

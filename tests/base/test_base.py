@@ -98,6 +98,7 @@ def test_subscribe_and_unsubscribe_delegate_to_event_manager(
     [
         (Base.TaskStatus.TRANSLATING, True),
         (Base.TaskStatus.ANALYZING, True),
+        (Base.TaskStatus.RETRANSLATING, True),
         (Base.TaskStatus.STOPPING, True),
         (Base.TaskStatus.IDLE, False),
     ],
@@ -120,5 +121,6 @@ def test_api_stream_source_events_cover_runtime_patch_and_task_events() -> None:
         Base.Event.ANALYSIS_TASK,
         Base.Event.ANALYSIS_REQUEST_STOP,
         Base.Event.ANALYSIS_PROGRESS,
+        Base.Event.RETRANSLATE_TASK,
         Base.Event.CONFIG_UPDATED,
     )

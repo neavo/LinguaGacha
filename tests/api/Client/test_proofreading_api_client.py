@@ -3,13 +3,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from base.Base import Base
-from module.Data.Core.DataTypes import ProjectItemChange
 
 from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Client.ApiClient import ApiClient
 from api.Client.ProofreadingApiClient import ProofreadingApiClient
 from api.Models.ProjectRuntime import ProjectMutationAck
-from api.Models.Proofreading import ProofreadingMutationResult
 
 
 def build_proofreading_app_service() -> ProofreadingAppService:
@@ -26,15 +24,6 @@ def build_proofreading_app_service() -> ProofreadingAppService:
     }
     mutation_service = SimpleNamespace(
         persist_finalized_items=MagicMock(),
-    )
-    retranslate_service = SimpleNamespace(
-        retranslate_items=MagicMock(
-            return_value=ProjectItemChange(
-                item_ids=(1, 2),
-                rel_paths=("script/a.txt", "script/b.txt"),
-                reason="proofreading_retranslate_items",
-            )
-        )
     )
     runtime_service = SimpleNamespace(
         build_item_records=MagicMock(return_value=[]),
@@ -71,7 +60,6 @@ def build_proofreading_app_service() -> ProofreadingAppService:
     return ProofreadingAppService(
         data_manager=data_manager,
         mutation_service=mutation_service,
-        retranslate_service=retranslate_service,
         runtime_service=runtime_service,
     )
 
@@ -168,37 +156,3 @@ def test_proofreading_api_client_save_all_returns_project_mutation_ack(
         "items": 8,
         "proofreading": 9,
     }
-
-
-def test_proofreading_api_client_retranslate_items_returns_mutation_result(
-    start_api_server: Callable[..., str],
-) -> None:
-    app_service = build_proofreading_app_service()
-    base_url = start_api_server(proofreading_app_service=app_service)
-    proofreading_client = ProofreadingApiClient(ApiClient(base_url))
-
-    result = proofreading_client.retranslate_items(
-        {
-            "items": [
-                {
-                    "id": 1,
-                    "src": "勇者が来た",
-                    "dst": "Hero arrived",
-                    "file_path": "script/a.txt",
-                    "status": Base.ItemStatus.PROCESSED,
-                },
-                {
-                    "id": 2,
-                    "src": "旁白",
-                    "dst": "Narration",
-                    "file_path": "script/b.txt",
-                    "status": Base.ItemStatus.NONE,
-                },
-            ],
-            "expected_revision": 7,
-        }
-    )
-
-    assert isinstance(result, ProofreadingMutationResult)
-    assert result.revision == 9
-    assert result.changed_item_ids == (1, 2)

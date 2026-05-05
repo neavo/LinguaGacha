@@ -48,6 +48,17 @@ def test_task_api_client_start_and_stop_commands_use_snapshot_contract(
         {"task": {"task_type": "analysis", "status": "ANALYZING", "busy": True}},
     )
     recording_api_client.queue_post_response(
+        TaskRoutes.START_RETRANSLATE_PATH,
+        {
+            "task": {
+                "task_type": "retranslate",
+                "status": "REQUEST",
+                "busy": True,
+                "retranslating_item_ids": [1, 2],
+            }
+        },
+    )
+    recording_api_client.queue_post_response(
         TaskRoutes.STOP_ANALYSIS_PATH,
         {"task": {"task_type": "analysis", "status": "STOPPING", "busy": True}},
     )
@@ -55,17 +66,20 @@ def test_task_api_client_start_and_stop_commands_use_snapshot_contract(
     start_translation = task_client.start_translation({"mode": "NEW"})
     stop_translation = task_client.stop_translation()
     start_analysis = task_client.start_analysis({"mode": "RESET"})
+    start_retranslate = task_client.start_retranslate({"item_ids": [1, 2]})
     stop_analysis = task_client.stop_analysis()
 
     assert isinstance(start_translation, TaskSnapshot)
     assert start_translation.task_type == "translation"
     assert stop_translation.status == "STOPPING"
     assert start_analysis.task_type == "analysis"
+    assert start_retranslate.retranslating_item_ids == (1, 2)
     assert stop_analysis.status == "STOPPING"
     assert recording_api_client.post_requests == [
         (TaskRoutes.START_TRANSLATION_PATH, {"mode": "NEW"}),
         (TaskRoutes.STOP_TRANSLATION_PATH, {}),
         (TaskRoutes.START_ANALYSIS_PATH, {"mode": "RESET"}),
+        (TaskRoutes.START_RETRANSLATE_PATH, {"item_ids": [1, 2]}),
         (TaskRoutes.STOP_ANALYSIS_PATH, {}),
     ]
 

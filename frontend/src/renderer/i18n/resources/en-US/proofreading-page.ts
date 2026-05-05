@@ -105,7 +105,6 @@ export const en_us_proofreading_page = {
     replace_no_change: "No content to replace",
     no_match: "No matches found",
     regex_invalid: "Invalid regular expression",
-    retranslate_success: "Retranslated {COUNT} entries",
     reset_success: "Reset {COUNT} entries",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_proofreading_page>;

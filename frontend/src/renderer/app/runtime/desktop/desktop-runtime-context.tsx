@@ -85,6 +85,7 @@ type TaskSnapshot = {
   time: number;
   start_time: number;
   analysis_candidate_count: number;
+  retranslating_item_ids: number[];
 };
 
 type ProofreadingChangeMode = "full" | "delta" | "noop";
@@ -239,6 +240,7 @@ const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
   time: 0,
   start_time: 0,
   analysis_candidate_count: 0,
+  retranslating_item_ids: [],
 };
 
 const DEFAULT_PROOFREADING_CHANGE_SIGNAL: ProofreadingChangeSignal = {
@@ -385,7 +387,27 @@ function normalize_task_snapshot(payload: TaskSnapshotPayload): TaskSnapshot {
     time: Number(snapshot.time ?? 0),
     start_time: Number(snapshot.start_time ?? 0),
     analysis_candidate_count: Number(snapshot.analysis_candidate_count ?? 0),
+    retranslating_item_ids: normalize_task_item_ids(snapshot.retranslating_item_ids),
   };
+}
+
+function normalize_task_item_ids(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const item_ids: number[] = [];
+  const seen_ids = new Set<number>();
+  value.forEach((raw_item_id) => {
+    const item_id = Number(raw_item_id);
+    if (!Number.isInteger(item_id) || seen_ids.has(item_id)) {
+      return;
+    }
+
+    seen_ids.add(item_id);
+    item_ids.push(item_id);
+  });
+  return item_ids;
 }
 
 function merge_task_status_update(
@@ -398,6 +420,10 @@ function merge_task_status_update(
       payload.task_type === undefined ? previous_snapshot.task_type : String(payload.task_type),
     status: payload.status === undefined ? previous_snapshot.status : String(payload.status),
     busy: payload.busy === undefined ? previous_snapshot.busy : Boolean(payload.busy),
+    retranslating_item_ids:
+      payload.retranslating_item_ids === undefined
+        ? previous_snapshot.retranslating_item_ids
+        : normalize_task_item_ids(payload.retranslating_item_ids),
   };
 }
 
@@ -441,6 +467,10 @@ function merge_task_progress_update(
       payload.analysis_candidate_count === undefined
         ? previous_snapshot.analysis_candidate_count
         : Number(payload.analysis_candidate_count),
+    retranslating_item_ids:
+      payload.retranslating_item_ids === undefined
+        ? previous_snapshot.retranslating_item_ids
+        : normalize_task_item_ids(payload.retranslating_item_ids),
   };
 }
 

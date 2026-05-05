@@ -50,7 +50,6 @@ PROOFREADING_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/proofreading/save-item", "save_item"),
     JsonRouteCase("/api/project/proofreading/save-all", "save_all"),
     JsonRouteCase("/api/project/proofreading/replace-all", "replace_all"),
-    JsonRouteCase("/api/project/proofreading/retranslate-items", "retranslate_items"),
 )
 
 
