@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { LogEvent } from "@/app/desktop-api";
+import type { LogEvent } from "@/app/desktop/desktop-api";
 import {
   append_log_events,
   append_log_event,

@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { en_us_messages, zh_cn_messages } from "@/i18n/messages";
 import type { Locale, LocaleMessageSchema } from "@/i18n/types";
 

@@ -1,7 +1,7 @@
 # LinguaGacha 前端文档
 
 ## 一句话总览
-`frontend/` 是 LinguaGacha 的 Electron + React 子工程。本文回答四个问题：`main / preload / shared / renderer` 的边界是什么，`window.desktopApp` 与 `desktop-api.ts` 为什么是唯一入口，`ProjectStore` 如何消费 bootstrap 与 `project.patch`，以及页面、widget、shadcn、样式与导航各该落在哪一层。
+`frontend/` 是 LinguaGacha 的 Electron + React 子工程。本文回答四个问题：`main / preload / shared / renderer` 的边界是什么，`window.desktopApp` 与 `app/desktop/desktop-api.ts` 为什么是唯一入口，`ProjectStore` 如何消费 bootstrap 与 `project.patch`，以及页面、widget、shadcn、样式与导航各该落在哪一层。
 
 ## `main / preload / shared / renderer` 边界
 
@@ -30,7 +30,7 @@ flowchart LR
 - `src/main/index.ts` 中用于查找 `dist/`、`public/` 的是前端 bundle 根，不是应用根；应用根语义只用于 `CoreLifecycleManager.appRoot` 和 Python Core 的 `APP_ROOT`。
 - 打包产物把 PyInstaller 生成的 Core helper、`_internal/`、`resource/` 与 `version.txt` 放在应用根目录；Windows / Linux 应用根是 Electron 可执行文件所在目录，macOS 应用根是 `.app/Contents/MacOS`。
 
-## `window.desktopApp` 与 `desktop-api.ts` 的唯一入口约束
+## `window.desktopApp` 与 `app/desktop/desktop-api.ts` 的唯一入口约束
 
 ### `window.desktopApp`
 - `src/preload/index.ts` 通过 `contextBridge.exposeInMainWorld("desktopApp", ...)` 暴露宿主能力。
@@ -53,7 +53,7 @@ flowchart LR
 - 渲染层不会盲信这个地址；`desktop-api.ts` 仍会先请求 `/api/health` 做探活确认。
 - 开发态应用根优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态应用根固定为 Electron 可执行文件所在目录。`LINGUAGACHA_UV_BIN` 只在应用根没有平台 Core helper、回退到 `uv run app.py` 时覆盖 uv 路径，不暴露给 renderer 作为运行态状态。
 
-### `desktop-api.ts`
+### `app/desktop/desktop-api.ts`
 - 它是渲染层访问 Core API 的唯一 HTTP / SSE 入口。
 - 页面不要重新发明第二套 `fetch` 包装、`EventSource` 接入或健康检查逻辑。
 - 如果你要改 HTTP 路径、bootstrap 事件、SSE topic 或 `ProjectMutationAck` 对齐逻辑，必须联读 [`API.md`](./API.md)。
@@ -72,7 +72,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A["desktop-api.ts"] --> B["/api/project/bootstrap/stream"]
+    A["app/desktop/desktop-api.ts"] --> B["/api/project/bootstrap/stream"]
     B --> C["createProjectBootstrapLoader.bootstrap()"]
     C --> D["ProjectStore.applyBootstrapStage()"]
     E["/api/events/stream"] --> F["DesktopRuntimeContext"]
@@ -81,10 +81,11 @@ flowchart TD
 ```
 
 ### `ProjectStore` 的职责
-- `frontend/src/renderer/app/project/store/` 负责把 bootstrap 流与 `project.patch` 收口成渲染层可消费的最小项目运行态。
+- `frontend/src/renderer/project/store/` 负责把 bootstrap 流与 `project.patch` 收口成渲染层可消费的最小项目运行态。
+- `frontend/src/renderer/project/lifecycle/` 承载 bootstrap stream 解析与 loader 编排，`DesktopRuntimeContext` 只调用该入口，不在应用运行态里展开 stage 细节。
 - 稳定 section 固定为：`project`、`files`、`items`、`quality`、`prompts`、`analysis`、`proofreading`、`task`。
 - `revisions` 额外维护 `projectRevision` 与 `sections[stage]`。
-- 质量规则统计常驻缓存不进入 `ProjectStore`；应用层的 `QualityStatisticsProvider` 会在 warmup ready 后预热四类统计，并由规则页通过 `useQualityStatistics(ruleType)` 消费。
+- 质量规则统计常驻缓存不进入 `ProjectStore`；`project/quality/QualityStatisticsProvider` 会在 warmup ready 后预热四类统计，并由规则页通过 `useQualityStatistics(ruleType)` 消费。
 
 ### bootstrap 落地规则
 - `files` 使用 `rel_path` 作为 key。
@@ -110,14 +111,14 @@ flowchart TD
 - `project.changed`、`task.*`、`settings.changed` 与 `project.patch` 都由 `DesktopRuntimeContext` 收口，再决定是否刷新页面派生状态。
 - 若 `project.patch` 载荷不合法，当前实现会回退为 `refresh_project_runtime()`，而不是让页面直接猜测修复策略。
 - 工作台与校对页在工程切换后都会先清空本地快照，再等待各自的 change signal 驱动首次有效刷新；不会在空 `ProjectStore` 上做 eager refresh。
-- 实时 UI 刷新统一由前端 `LiveRefreshScheduler` 在入站侧合帧，频率由 `APP_LIVE_REFRESH_INTERVAL_MS` 控制；服务端 `project.patch`、任务进度、日志流与工作台任务波形共享这条节奏，本地同步 mutation、项目切换、非法 patch fallback 与任务终态仍走即时路径。
+- 实时 UI 刷新统一由 `app/ui-runtime/LiveRefreshScheduler` 在入站侧合帧，频率由 `APP_LIVE_REFRESH_INTERVAL_MS` 控制；服务端 `project.patch`、任务进度、日志流与工作台任务波形共享这条节奏，本地同步 mutation、项目切换、非法 patch fallback 与任务终态仍走即时路径。
 - `ProjectPagesProvider` 当前把 `project_warmup` 定义为“工作台首屏已基于本次 bootstrap 完成刷新”，`wait_for_barrier("project_warmup", { checkpoint })` 会要求工作台 `last_loaded_at` 晚于该 checkpoint；校对页缓存仍通过独立 barrier 维护。
-- `ProjectPagesProvider` 只消费页面运行态 adapter 暴露的缓存状态和 barrier 字段；工作台、校对页自己的 hook 仍归页面侧维护，`app/runtime` 不直接导入页面私有 hook。
+- `ProjectPagesProvider` 位于 `app/page-runtime/`，只消费页面运行态 adapter 暴露的缓存状态和 barrier 字段；工作台、校对页自己的 hook 仍归页面侧维护，应用运行态不直接导入页面私有 hook。
 - 校对页只把 `project / items / quality` 视为后台派生真实输入；`prompts`、`analysis` 单独变化不会触发校对缓存失效，`proofreading / task` 仅在没有 item 载荷时发 `noop`。
 - 校对页把 `ProjectStore` 原始状态同步到独立 worker cache：`hydrate_full` 负责项目级全量同步，`apply_item_delta` 只重算变更条目，`build_list_view` 生成 `view_id` 与 worker 内的有序 row id 索引，`read_list_window` 只回传当前表格窗口 rows，`read_row_ids_range` / `read_items_by_row_ids` 供跨窗口选择、批量操作和编辑弹窗按需取数；warnings、默认 filters、筛选 facets、排序结果与当前视图索引都由 worker 持有，主线程只保留窗口 rows、选区、游标、弹窗等轻状态。
 - 工作台页收到 `merge_items` 合并后的 delta 时优先更新本地增量缓存；首次 bootstrap、项目 / 文件替换、分析摘要缺失或结构异常时回退全量重建。校对页同窗口 `full` 覆盖 `delta`，纯 `noop` 不触发列表与筛选面板查询。
 - 工作台、预过滤、翻译重置和校对 mutation planner 的输出边界是条目事实、`translation_extras`、分析 / 预过滤载荷、项目设置镜像和期望 revision；工程任务态由 `task` 运行态和事件流承接。
-- 新建工程先调用 `create-preview` 获取未落盘草稿，由 `app/project/derived/project-prefilter-runner.ts` 调 worker 完成预过滤，再用 `create-commit` 写入 `.lg` 并加载；打开工程先调用 `open-preview`，在未 loaded 前完成 `settings-alignment/apply`，最后再进入 `/api/project/load`。
+- 新建工程先调用 `create-preview` 获取未落盘草稿，由 `project/prefilter/prefilter-runner.ts` 调 worker 完成预过滤，再用 `create-commit` 写入 `.lg` 并加载；打开工程先调用 `open-preview`，在未 loaded 前完成 `settings-alignment/apply`，最后再进入 `/api/project/load`。
 - 实验室页的 `mtool_optimizer_enable` 与 `skip_duplicate_source_text_enable` 属于会改变预过滤结果的应用设置；保存后必须走同一条 project prefilter mutation 链路，把项目设置镜像与预过滤结果一起对齐到 `.lg`。
 - 校对页状态筛选只展示有效 item 状态；重译中的行级 spinner 由 `task_snapshot.task_type === "retranslate"` 与 `task_snapshot.retranslating_item_ids` 派生，页面本地只保留选区、弹窗和筛选等交互态。
 - 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`；其中 `proofreading_cache_refresh` 的 ready 定义是“当前列表查询已结算，且 `current_filters` 对应的筛选面板已预热完成”，可操作条件独立于 `project_warmup`。
@@ -127,17 +128,26 @@ flowchart TD
 
 | 路径 | 稳定职责 | 归属规则 |
 | --- | --- | --- |
-| `app/` | 应用层入口、导航、壳层组件、应用运行态、项目事实仓库、项目派生与质量统计 | 需要全局上下文、bridge 接缝、统一运行态或项目领域规则时留在这里；除导航注册表外，不直接依赖页面私有实现 |
-| `app/runtime/` | 桌面运行态、项目页面 barrier、toast 运行态 | 只放应用生命周期、上下文和页面注册边界需要的窄接口，不承载项目事实派生规则 |
-| `app/project/store/` | `ProjectStore`、bootstrap loader、项目条目文本采集 | 渲染层项目事实的权威仓库与 bootstrap 消费入口 |
-| `app/project/derived/` | 项目 prefilter runner、翻译 / 分析重置、分析术语导入规划 | 只放基于项目事实生成 mutation 或派生计划的规则；项目预过滤计算只在前端 runner / worker 内执行 |
-| `app/project/quality/` | 质量规则运行态、统计 worker、统计缓存与 provider | 质量规则切片与统计缓存归这里，页面只消费 provider 或纯函数 |
+| `app/` | 应用层入口、导航、壳层组件、桌面接缝、页面运行态协调、全局 UI 运行态 | 除导航注册表外，不直接依赖页面私有实现；不承载项目事实仓库、项目派生规则或质量统计缓存 |
+| `app/desktop/` | `desktop-api.ts`、`DesktopRuntimeContext`、Core API / SSE 接入、桌面事件载荷解析 | 渲染层访问 Core API 与桌面事件的唯一应用侧入口；不把项目规则拆在这里 |
+| `app/page-runtime/` | 页面缓存 barrier、页面运行态 adapter、`ProjectPagesProvider` | 只消费页面公开的窄 adapter，不导入页面私有 hook、worker 或弹窗状态 |
+| `app/ui-runtime/` | toast、live refresh 等全局 UI 运行态 | 只放跨页面 UI 运行节奏和通知能力，不承载项目事实或页面筛选态 |
+| `project/lifecycle/` | bootstrap stream consumer 与 bootstrap loader | 工程加载生命周期归这里，`ProjectStore` 只接收已解析的 stage 载荷 |
+| `project/store/` | `ProjectStore`、项目条目文本采集 | 渲染层项目事实的权威仓库；页面只读快照或通过 `commit_local_project_patch(...)` 的唯一写入口提交本地 patch |
+| `project/prefilter/` | 预过滤 mutation builder / committer、runner、worker client / worker | 只表达规则如何应用到项目条目和 mutation 输出；可审查规则清单不放在这里 |
+| `project/rules/` | 预过滤依赖的规则前缀、后缀、正则、标点、语言字符判断；规则口径跟随 Python `BaseLanguage` / `TextHelper` / `RuleFilter` / `LanguageFilter` | 只放可审查的纯规则与语言定义，不做项目条目遍历、worker 编排、HTTP mutation 或 Ruby 清理；Ruby 清理由 Python `TextProcessor` / `RubyCleaner` 持有 |
+| `project/reset/` | 翻译 / 分析 reset plan 与共享 reset state builders | 只放基于项目事实生成重置 mutation 的规则 |
+| `project/glossary-import/` | 分析术语导入 plan | 只放分析候选到术语表 mutation 的项目领域计划 |
+| `project/settings/` | 项目设置 alignment toast 与设置镜像辅助 | 只放项目设置同步相关的展示文案格式化和轻量领域辅助 |
+| `project/quality/` | 质量规则运行态、统计 worker、统计缓存与 provider | 质量规则切片与统计缓存归这里，页面只消费 provider 或纯函数 |
+| `project/tasks/` | 项目任务锁定与停止状态判断 | 只放跨页面稳定复用的项目任务语义，不放工作台任务 UI 模型 |
 | `pages/` | 页面入口、页面私有组件、页面 CSS、页面私有 hook 与辅助模块 | 每个页面目录以 `page.tsx` 为入口，不被其他页面反向依赖；页面派生视图与页面 mutation planner 留在对应页面目录 |
 | `widgets/` | 跨页面复用的组合组件 | `app-table`、`command-bar`、`setting-card-row`、`app-dropdown-menu`、`app-context-menu` 等稳定组合层放这里；`app-table` 对外保留 `rows` 兼容入口，内部统一归一为 row model 消费数组与校对页远程窗口行来源 |
 | `shadcn/` | shadcn CLI 管理的基础组件源码 | 业务组合组件与应用默认视觉不得混入；菜单类项目默认样式走 `widgets/app-*-menu` |
 | `hooks/` | 跨页面复用的交互 hook | 不承载页面语义 |
 | `i18n/` | 文案资源与翻译入口 | 长期文案不写进组件体内 |
-| `lib/` | 无页面语义的纯逻辑工具 | 不承载 UI 或页面状态 |
+| `shared/` | LinguaGacha 内部跨页面 / 跨领域纯能力 | 可放 text、filtering、sorting、validation 等无项目事实编排的能力，不放 UI 状态或项目运行态 |
+| `lib/` | 框架与第三方胶水 | 可放 `cn()`、文件拖拽、worker error、快捷键等底层工具，不承载领域规则、UI 状态或页面状态 |
 
 样式边界：
 - `index.css` 只承载全局 token、主题变量、浏览器重置和第三方运行时皮肤。
@@ -155,7 +165,7 @@ flowchart TD
 
 补充规则：
 - `screen-registry.ts` 是 `app/` 中唯一允许直接导入页面入口和页面运行态 adapter 的文件；其它 `app/` 模块如果需要页面缓存状态，只消费 `ProjectPagesProvider` 提供的窄接口。
-- 工作台任务 UI 运行态只归 `pages/workbench-page/task-runtime/`，翻译 / 分析任务模型与波形工具不从 `app/` 或 `lib/` 暴露。
+- 工作台任务 UI 运行态只归 `pages/workbench-page/task-runtime/`，翻译 / 分析任务模型与波形工具不从 `app/`、`project/tasks/` 或 `lib/` 暴露。
 
 稳定但不显然的映射如下：
 

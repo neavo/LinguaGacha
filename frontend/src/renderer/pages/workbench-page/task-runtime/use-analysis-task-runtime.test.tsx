@@ -45,25 +45,25 @@ const runtime_fixture: { current: RuntimeFixture } = {
   ),
 };
 
-vi.mock("@/app/desktop-api", () => {
+vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
   };
 });
 
-vi.mock("@/app/project/derived/analysis-glossary-import", () => {
+vi.mock("@/project/glossary-import/analysis-glossary-import-plan", () => {
   return {
     create_analysis_glossary_import_plan: vi.fn(async () => null),
   };
 });
 
-vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
+vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,

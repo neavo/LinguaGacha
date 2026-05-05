@@ -39,25 +39,25 @@ vi.mock("@/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@/app/runtime/desktop/desktop-runtime-context", () => {
+vi.mock("@/app/desktop/desktop-runtime-context", () => {
   return {
     DesktopRuntimeProvider: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
 
-vi.mock("@/app/runtime/project-pages/project-pages-context", () => {
+vi.mock("@/app/page-runtime/project-pages-context", () => {
   return {
     ProjectPagesProvider: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
 
-vi.mock("@/app/project/quality/quality-statistics-context", () => {
+vi.mock("@/project/quality/quality-statistics-context", () => {
   return {
     QualityStatisticsProvider: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
 
-vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
+vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       hydration_ready: true,
@@ -72,7 +72,7 @@ vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     DesktopProgressToastModalLayer: () => null,
     useDesktopToast: () => ({

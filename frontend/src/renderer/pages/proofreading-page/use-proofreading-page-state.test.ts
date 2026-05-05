@@ -2,7 +2,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api_fetch } from "@/app/desktop-api";
+import { api_fetch } from "@/app/desktop/desktop-api";
 import { WorkerClientError } from "@/lib/worker-client-error";
 import {
   create_empty_proofreading_filter_panel_state,
@@ -87,13 +87,13 @@ const toast_fixture: { current: ToastFixture } = {
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/app/runtime/desktop/use-desktop-runtime", () => {
+vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,
   };
 });
 
-vi.mock("@/app/runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => {
       return toast_fixture.current;
@@ -123,7 +123,7 @@ vi.mock("@/pages/proofreading-page/proofreading-runtime-client", () => {
   };
 });
 
-vi.mock("@/app/desktop-api", () => {
+vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: vi.fn(),
   };

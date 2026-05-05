@@ -8,15 +8,15 @@ import {
   useState,
 } from "react";
 
-import { api_fetch } from "@/app/desktop-api";
+import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import type { ProjectStoreState } from "@/app/project/store/project-store";
+import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
-} from "@/app/runtime/desktop/desktop-runtime-context";
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+} from "@/app/desktop/desktop-runtime-context";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {

@@ -12,19 +12,19 @@ import { ThemeProvider, useTheme } from "next-themes";
 import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from "@/app/navigation/schema";
 import { SCREEN_REGISTRY } from "@/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@/app/navigation/navigation-context";
-import { DesktopRuntimeProvider } from "@/app/runtime/desktop/desktop-runtime-context";
-import { ProjectPagesProvider } from "@/app/runtime/project-pages/project-pages-context";
-import { QualityStatisticsProvider } from "@/app/project/quality/quality-statistics-context";
+import { DesktopRuntimeProvider } from "@/app/desktop/desktop-runtime-context";
+import { ProjectPagesProvider } from "@/app/page-runtime/project-pages-context";
+import { QualityStatisticsProvider } from "@/project/quality/quality-statistics-context";
 import {
   check_github_release_update,
   get_core_metadata,
   open_external_url,
-} from "@/app/desktop-api";
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
+} from "@/app/desktop/desktop-api";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import {
   DesktopProgressToastModalLayer,
   useDesktopToast,
-} from "@/app/runtime/toast/use-desktop-toast";
+} from "@/app/ui-runtime/toast/use-desktop-toast";
 import "@/app/shell/app-shell.css";
 import type { AppearanceMenuActionId, BottomActionId, RouteId } from "@/app/navigation/types";
 import { LocaleProvider, useI18n } from "@/i18n";

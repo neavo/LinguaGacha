@@ -3,10 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
-} from "@/app/runtime/project-pages/project-pages-barrier";
-import { useDesktopRuntime } from "@/app/runtime/desktop/use-desktop-runtime";
-import { is_task_stopping } from "@/app/runtime/tasks/task-lock";
-import { useDesktopToast } from "@/app/runtime/toast/use-desktop-toast";
+} from "@/app/page-runtime/project-pages-barrier";
+import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
+import { is_task_stopping } from "@/project/tasks/task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import {
   create_workbench_add_files_plan,
   create_workbench_delete_files_plan,
@@ -31,9 +31,9 @@ import {
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
-} from "@/app/runtime/desktop/desktop-runtime-context";
+} from "@/app/desktop/desktop-runtime-context";
 import { useI18n } from "@/i18n";
-import { api_fetch } from "@/app/desktop-api";
+import { api_fetch } from "@/app/desktop/desktop-api";
 import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,

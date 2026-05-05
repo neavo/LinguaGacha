@@ -1,9 +1,9 @@
-import { compute_project_prefilter_mutation } from "@/app/project/derived/project-prefilter";
+import { compute_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-builder";
 import {
   createProjectStoreReplaceSectionPatch,
   type ProjectStorePatchOperation,
   type ProjectStoreState,
-} from "@/app/project/store/project-store";
+} from "@/project/store/project-store";
 
 type WorkbenchPlannerSettings = {
   source_language: string;
