@@ -9,6 +9,9 @@ from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
+from module.Data.Translation.TranslationExportItemService import (
+    TranslationExportItemService,
+)
 from module.Utils.JSONTool import JSONTool
 from api.Contract.ProjectPayloads import ProjectPreviewPayload
 from api.Contract.ProjectPayloads import ProjectSnapshotPayload
@@ -178,6 +181,7 @@ class ProjectAppService:
             self.apply_converted_item_payload(item, converted_item_by_id)
             for item in current_items
         ]
+        TranslationExportItemService.fill_duplicated_translations(export_items)
 
         with self.project_manager.export_custom_suffix_context(suffix):
             output_path = self.file_manager_factory(self.config_loader()).write_to_path(

@@ -147,6 +147,7 @@ def test_apply_project_settings_alignment_settings_only_updates_current_project_
             "source_language": "JA",
             "target_language": "EN",
             "mtool_optimizer_enable": True,
+            "skip_duplicate_source_text_enable": True,
         },
         expected_section_revisions=None,
     )
@@ -158,6 +159,7 @@ def test_apply_project_settings_alignment_settings_only_updates_current_project_
             "source_language": "JA",
             "target_language": "EN",
             "mtool_optimizer_enable": True,
+            "skip_duplicate_source_text_enable": True,
         },
     )
     assert emitted_events == []

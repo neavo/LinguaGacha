@@ -849,6 +849,9 @@ class DataManager(Base):
             "mtool_optimizer_enable": bool(
                 project_settings.get("mtool_optimizer_enable", False)
             ),
+            "skip_duplicate_source_text_enable": bool(
+                project_settings.get("skip_duplicate_source_text_enable", True)
+            ),
         }
 
     def build_project_settings_alignment_meta(
@@ -858,10 +861,21 @@ class DataManager(Base):
         translation_extras: dict[str, Any],
         prefilter_config: dict[str, Any],
     ) -> dict[str, Any]:
+        normalized_prefilter_config = dict(prefilter_config)
+        normalized_prefilter_config["source_language"] = str(
+            project_settings.get("source_language", "") or ""
+        )
+        normalized_prefilter_config["mtool_optimizer_enable"] = bool(
+            project_settings.get("mtool_optimizer_enable", False)
+        )
+        normalized_prefilter_config["skip_duplicate_source_text_enable"] = bool(
+            project_settings.get("skip_duplicate_source_text_enable", True)
+        )
+
         return {
             **self.build_analysis_reset_meta(
                 translation_extras=translation_extras,
-                prefilter_config=prefilter_config,
+                prefilter_config=normalized_prefilter_config,
             ),
             **self.build_project_settings_only_meta(
                 project_settings=project_settings,

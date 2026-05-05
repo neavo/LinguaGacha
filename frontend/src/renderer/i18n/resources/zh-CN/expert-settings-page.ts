@@ -30,11 +30,6 @@ export const zh_cn_expert_settings_page = {
         "\n" +
         '• [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]',
     },
-    deduplication_in_trans: {
-      title: "T++ 项目文件中对重复文本去重",
-      description:
-        "在 T++ 项目文件（即 <emphasis>.trans</emphasis> 文件）中，如有重复文本是否去重，默认启用",
-    },
     deduplication_in_bilingual: {
       title: "双语输出文件中原文与译文一致的文本只输出一次",
       description: "在字幕与电子书中，如目标文本的原文与译文一致是否只输出一次，默认启用",

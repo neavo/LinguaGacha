@@ -29,6 +29,7 @@ export const en_us_app = {
       source_language: "Source language",
       target_language: "Target language",
       mtool_optimizer_enable: "MTool optimizer",
+      skip_duplicate_source_text_enable: "Skip duplicate source text",
     },
     language: {
       ALL: "All",

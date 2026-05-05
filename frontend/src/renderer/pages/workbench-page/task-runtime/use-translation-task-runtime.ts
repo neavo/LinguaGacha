@@ -507,6 +507,9 @@ export function useTranslationTaskRuntime(
                 state: project_store.getState(),
                 source_language: String(settings_snapshot.source_language ?? "ALL"),
                 mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
+                skip_duplicate_source_text_enable: Boolean(
+                  settings_snapshot.skip_duplicate_source_text_enable,
+                ),
                 request_preview: async () => {
                   return await api_fetch<{
                     items?: Array<Record<string, unknown>>;

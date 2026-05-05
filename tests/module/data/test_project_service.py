@@ -225,6 +225,7 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     assert fake_db.items is not None
     assert fake_db.meta["source_language"] != ""
     assert fake_db.meta["target_language"] != ""
+    assert fake_db.meta["skip_duplicate_source_text_enable"] is True
     extras = fake_db.meta["translation_extras"]
     assert isinstance(extras, dict)
     assert extras["total_line"] == 0
@@ -380,6 +381,7 @@ def test_create_records_mtool_setting_without_marking_prefilter_done(
         source_language = "JA"
         target_language = "ZH"
         mtool_optimizer_enable = True
+        skip_duplicate_source_text_enable = True
 
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.Config.load",
@@ -405,5 +407,47 @@ def test_create_records_mtool_setting_without_marking_prefilter_done(
     service.create(source_path=str(src_dir), output_path=str(out_path))
 
     assert fake_db.meta["mtool_optimizer_enable"] is True
+    assert fake_db.meta["skip_duplicate_source_text_enable"] is True
     assert "prefilter_config" not in fake_db.meta
     assert logger.infos == []
+
+
+def test_open_alignment_preview_requires_prefilter_when_src_dedup_missing(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    service = ProjectService()
+    lg_path = Path("/workspace/project_service/demo.lg")
+    lg_path.parent.mkdir(parents=True, exist_ok=True)
+    lg_path.write_bytes(b"db")
+    fake_db = SimpleNamespace(
+        get_all_meta=lambda: {
+            "source_language": "JA",
+            "target_language": "ZH",
+            "mtool_optimizer_enable": True,
+        }
+    )
+    config = SimpleNamespace(
+        source_language="JA",
+        target_language="ZH",
+        mtool_optimizer_enable=True,
+        skip_duplicate_source_text_enable=True,
+    )
+    monkeypatch.setattr(
+        "module.Data.Project.ProjectService.LGDatabase", lambda path: fake_db
+    )
+    monkeypatch.setattr(
+        service,
+        "build_project_draft_from_db",
+        lambda db: {"items": [], "translation_extras": {}},
+    )
+
+    preview = service.build_open_alignment_preview(str(lg_path), config)
+
+    assert preview["action"] == "prefiltered_items"
+    assert preview["changed"] == {
+        "source_language": False,
+        "target_language": False,
+        "mtool_optimizer_enable": False,
+        "skip_duplicate_source_text_enable": True,
+    }

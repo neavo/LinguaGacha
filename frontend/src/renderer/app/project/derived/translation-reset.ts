@@ -197,6 +197,7 @@ export async function create_translation_reset_all_plan(args: {
   state: ProjectStoreState;
   source_language: string;
   mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
   request_preview: () => Promise<TranslationResetPreviewPayload>;
 }): Promise<TranslationResetPlan> {
   const preview_payload = await args.request_preview();
@@ -231,6 +232,7 @@ export async function create_translation_reset_all_plan(args: {
     },
     source_language: args.source_language,
     mtool_optimizer_enable: args.mtool_optimizer_enable,
+    skip_duplicate_source_text_enable: args.skip_duplicate_source_text_enable,
   });
   const finalized_full_items = merge_full_items_with_runtime_state({
     preview_items,

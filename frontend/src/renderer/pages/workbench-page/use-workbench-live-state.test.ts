@@ -926,6 +926,7 @@ describe("useWorkbenchLiveState", () => {
       settings_snapshot: {
         source_language: "JA",
         mtool_optimizer_enable: false,
+        skip_duplicate_source_text_enable: true,
       },
     };
     await render_hook();
@@ -979,6 +980,7 @@ describe("useWorkbenchLiveState", () => {
       settings_snapshot: {
         source_language: "JA",
         mtool_optimizer_enable: false,
+        skip_duplicate_source_text_enable: true,
       },
     };
     await render_hook();

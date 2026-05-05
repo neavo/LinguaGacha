@@ -26,6 +26,7 @@ export const zh_cn_app = {
       source_language: "输入语言",
       target_language: "输出语言",
       mtool_optimizer_enable: "MTool 优化器",
+      skip_duplicate_source_text_enable: "跳过重复原文",
     },
     language: {
       ALL: "全部",

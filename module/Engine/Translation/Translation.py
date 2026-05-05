@@ -11,6 +11,9 @@ from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
+from module.Data.Translation.TranslationExportItemService import (
+    TranslationExportItemService,
+)
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskPipeline import TaskPipeline
@@ -217,13 +220,13 @@ class Translation(Base):
     ) -> list[Item]:
         """统一导出数据来源，默认按手动导出口径兼容历史无参调用。"""
         if self.should_use_runtime_export_items(source):
-            return self.copy_items()
+            return TranslationExportItemService.clone_items(self.copy_items())
         else:
             dm = DataManager.get()
             if not dm.is_loaded():
                 return []
             else:
-                return dm.get_all_items()
+                return TranslationExportItemService.clone_items(dm.get_all_items())
 
     def run_translation_export(
         self,
@@ -258,6 +261,7 @@ class Translation(Base):
 
             if apply_mtool_postprocess:
                 self.mtool_optimizer_postprocess(items)
+            TranslationExportItemService.fill_duplicated_translations(items)
             output_path = self.check_and_wirte_result(items)
             self.emit(
                 Base.Event.TRANSLATION_EXPORT,

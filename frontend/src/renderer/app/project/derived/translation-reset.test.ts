@@ -133,6 +133,7 @@ describe("translation reset planners", () => {
       state: create_test_state(),
       source_language: "EN",
       mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
       request_preview: async () => {
         return {
           items: [

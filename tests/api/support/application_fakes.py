@@ -56,16 +56,19 @@ class FakeProjectManager:
                 "source_language": "JA",
                 "target_language": "ZH",
                 "mtool_optimizer_enable": True,
+                "skip_duplicate_source_text_enable": True,
             },
             "project_settings": {
                 "source_language": "EN",
                 "target_language": "ZH",
                 "mtool_optimizer_enable": True,
+                "skip_duplicate_source_text_enable": True,
             },
             "changed": {
                 "source_language": True,
                 "target_language": False,
                 "mtool_optimizer_enable": False,
+                "skip_duplicate_source_text_enable": False,
             },
             "draft": None,
         }
@@ -353,7 +356,6 @@ class FakeSettingsConfig:
         self.request_timeout: int = 120
         self.preceding_lines_threshold: int = 0
         self.clean_ruby: bool = False
-        self.deduplication_in_trans: bool = True
         self.deduplication_in_bilingual: bool = True
         self.check_kana_residue: bool = True
         self.check_hangeul_residue: bool = True
@@ -361,6 +363,7 @@ class FakeSettingsConfig:
         self.write_translated_name_fields_to_file: bool = True
         self.auto_process_prefix_suffix_preserved_text: bool = True
         self.mtool_optimizer_enable: bool = True
+        self.skip_duplicate_source_text_enable: bool = True
         self.glossary_default_preset: str = ""
         self.text_preserve_default_preset: str = ""
         self.pre_translation_replacement_default_preset: str = ""

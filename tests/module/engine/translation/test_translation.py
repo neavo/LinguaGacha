@@ -294,6 +294,7 @@ def test_resolve_export_items_uses_runtime_cache_for_manual_export_when_translat
     )
 
     assert resolved == [copied_item]
+    assert resolved[0] is not copied_item
 
 
 def test_resolve_export_items_reads_data_manager_for_manual_export_when_engine_idle(
@@ -311,10 +312,13 @@ def test_resolve_export_items_reads_data_manager_for_manual_export_when_engine_i
         translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    assert Translation.resolve_export_items(
+    resolved = Translation.resolve_export_items(
         translation,
         Translation.ExportSource.MANUAL,
-    ) == [loaded_item]
+    )
+
+    assert resolved == [loaded_item]
+    assert resolved[0] is not loaded_item
 
 
 def test_resolve_export_items_reads_data_manager_when_cache_empty(
@@ -330,10 +334,13 @@ def test_resolve_export_items_reads_data_manager_when_cache_empty(
         translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
     )
 
-    assert Translation.resolve_export_items(
+    resolved = Translation.resolve_export_items(
         translation,
         Translation.ExportSource.MANUAL,
-    ) == [loaded_item]
+    )
+
+    assert resolved == [loaded_item]
+    assert resolved[0] is not loaded_item
 
 
 def test_resolve_export_items_returns_empty_when_project_not_loaded(
@@ -473,7 +480,18 @@ def test_run_translation_export_manual_success_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
+    processed_item = Item(
+        file_path="a.txt",
+        src="a",
+        dst="b",
+        status=Base.ItemStatus.PROCESSED,
+    )
+    duplicated_item = Item(
+        file_path="a.txt",
+        src="a",
+        status=Base.ItemStatus.DUPLICATED,
+    )
+    translation.resolve_export_items = lambda source: [processed_item, duplicated_item]
     translation.mtool_optimizer_postprocess = MagicMock()
     translation.check_and_wirte_result = MagicMock(return_value="E:/tmp/output.txt")
     logger = FakeLogger()
@@ -500,6 +518,9 @@ def test_run_translation_export_manual_success_flow(
 
     translation.mtool_optimizer_postprocess.assert_called_once()
     translation.check_and_wirte_result.assert_called_once()
+    exported_items = translation.check_and_wirte_result.call_args.args[0]
+    assert exported_items[1].get_dst() == "b"
+    assert exported_items[1].get_status() == Base.ItemStatus.PROCESSED
     assert emitted_events(translation)[0] == (
         Base.Event.TRANSLATION_EXPORT,
         {

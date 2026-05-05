@@ -36,11 +36,10 @@ def test_get_processor_routes_by_game_engine(config: Config) -> None:
     )
 
 
-def test_read_from_stream_marks_duplicates_when_enabled(
+def test_read_from_stream_keeps_repeated_text_unmarked(
     config: Config,
 ) -> None:
     handler = TRANS(config)
-    config.deduplication_in_trans = True
 
     payload = {
         "project": {
@@ -63,15 +62,14 @@ def test_read_from_stream_marks_duplicates_when_enabled(
 
     assert len(items) == 2
     assert items[0].get_status() == Base.ItemStatus.NONE
-    assert items[1].get_status() == Base.ItemStatus.DUPLICATED
+    assert items[1].get_status() == Base.ItemStatus.NONE
     assert items[0].get_text_type() == Item.TextType.NONE
 
 
-def test_read_from_stream_does_not_mark_duplicates_when_disabled(
+def test_read_from_stream_keeps_repeated_text_unmarked_without_format_setting(
     config: Config,
 ) -> None:
     handler = TRANS(config)
-    config.deduplication_in_trans = False
 
     payload = {
         "project": {
@@ -354,7 +352,6 @@ def test_write_to_path_updates_data_and_parameters(
     dummy_data_manager: DummyDataManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config.deduplication_in_trans = True
     handler = TRANS(config)
     monkeypatch.setattr(
         "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
@@ -436,7 +433,7 @@ def test_write_to_path_updates_data_and_parameters(
     output = json.loads(output_file.read_text(encoding="utf-8"))
     file_obj = output["project"]["files"][tag_path]
 
-    assert file_obj["data"] == [["src1", "dst1"], ["src1", "dst1"], ["src2", "src2"]]
+    assert file_obj["data"] == [["src1", "dst1"], ["src1", ""], ["src2", "src2"]]
     assert file_obj["context"] == [["c1", "c2"], ["c3", "c4"], ["c5"]]
     assert file_obj["parameters"][0] == [
         {"contextStr": "c1", "translation": "src1"},
@@ -750,12 +747,11 @@ def test_patch_writer_does_not_inject_partition_fields_into_span_parameters(
     assert file_obj["data"] == [["src", "old_dst"]]
 
 
-def test_patch_writer_writes_duplicated_rows_using_processed_translation_mapping(
+def test_patch_writer_leaves_duplicated_rows_to_export_prefill(
     config: Config,
     dummy_data_manager: DummyDataManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config.deduplication_in_trans = True
     handler = TRANS(config)
     monkeypatch.setattr(
         "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
@@ -781,10 +777,10 @@ def test_patch_writer_writes_duplicated_rows_using_processed_translation_mapping
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 2
-    assert items[1].get_status() == Base.ItemStatus.DUPLICATED
 
     items[0].set_dst("translated")
     items[0].set_status(Base.ItemStatus.PROCESSED)
+    items[1].set_status(Base.ItemStatus.DUPLICATED)
 
     handler.write_to_path(items)
 
@@ -793,7 +789,7 @@ def test_patch_writer_writes_duplicated_rows_using_processed_translation_mapping
     )
     assert output["project"]["files"][file_key]["data"] == [
         ["same", "translated"],
-        ["same", "translated"],
+        ["same", ""],
     ]
 
 
@@ -895,12 +891,11 @@ def test_patch_writer_creates_tags_and_parameters_when_fields_have_wrong_types(
     ]
 
 
-def test_patch_writer_skips_duplicated_row_when_translation_mapping_missing(
+def test_patch_writer_skips_duplicated_row_without_export_prefill(
     config: Config,
     dummy_data_manager: DummyDataManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config.deduplication_in_trans = True
     handler = TRANS(config)
     monkeypatch.setattr(
         "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager
@@ -926,9 +921,8 @@ def test_patch_writer_skips_duplicated_row_when_translation_mapping_missing(
 
     items = handler.read_from_stream(content, rel_path)
     assert len(items) == 2
-    assert items[1].get_status() == Base.ItemStatus.DUPLICATED
+    items[1].set_status(Base.ItemStatus.DUPLICATED)
 
-    # 只给 DUPLICATED 行，不提供 PROCESSED 的翻译映射。
     handler.write_to_path([items[1]])
 
     output = json.loads(
@@ -1103,12 +1097,11 @@ def test_write_to_path_clamps_negative_column_indices_in_project_metadata(
     assert row == ["src", "dst"]
 
 
-def test_patch_writer_updates_translation_when_deduplication_disabled(
+def test_patch_writer_updates_processed_translation_without_dedup_setting(
     config: Config,
     dummy_data_manager: DummyDataManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config.deduplication_in_trans = False
     handler = TRANS(config)
     monkeypatch.setattr(
         "module.File.TRANS.TRANS.DataManager.get", lambda: dummy_data_manager

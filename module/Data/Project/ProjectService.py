@@ -110,6 +110,10 @@ class ProjectService(Base):
         db.set_meta("source_language", str(config.source_language))
         db.set_meta("target_language", str(config.target_language))
         db.set_meta("mtool_optimizer_enable", bool(config.mtool_optimizer_enable))
+        db.set_meta(
+            "skip_duplicate_source_text_enable",
+            bool(config.skip_duplicate_source_text_enable),
+        )
         db.set_meta("translation_extras", self.build_empty_translation_extras())
 
         self.report_progress(
@@ -251,10 +255,26 @@ class ProjectService(Base):
 
         db = LGDatabase(lg_path)
         meta = db.get_all_meta()
+        prefilter_config = (
+            meta.get("prefilter_config", {})
+            if isinstance(meta.get("prefilter_config", {}), dict)
+            else {}
+        )
+        mtool_missing = (
+            "mtool_optimizer_enable" not in meta
+            and "mtool_optimizer_enable" not in prefilter_config
+        )
+        skip_duplicate_source_text_missing = (
+            "skip_duplicate_source_text_enable" not in meta
+            and "skip_duplicate_source_text_enable" not in prefilter_config
+        )
         current_settings = {
             "source_language": str(config.source_language),
             "target_language": str(config.target_language),
             "mtool_optimizer_enable": bool(config.mtool_optimizer_enable),
+            "skip_duplicate_source_text_enable": bool(
+                config.skip_duplicate_source_text_enable
+            ),
         }
         project_settings = {
             "source_language": str(meta.get("source_language", "")),
@@ -262,11 +282,13 @@ class ProjectService(Base):
             "mtool_optimizer_enable": bool(
                 meta.get(
                     "mtool_optimizer_enable",
-                    (
-                        meta.get("prefilter_config", {})
-                        if isinstance(meta.get("prefilter_config", {}), dict)
-                        else {}
-                    ).get("mtool_optimizer_enable", False),
+                    prefilter_config.get("mtool_optimizer_enable", False),
+                )
+            ),
+            "skip_duplicate_source_text_enable": bool(
+                meta.get(
+                    "skip_duplicate_source_text_enable",
+                    prefilter_config.get("skip_duplicate_source_text_enable", True),
                 )
             ),
         }
@@ -276,13 +298,18 @@ class ProjectService(Base):
         target_changed = (
             project_settings["target_language"] != current_settings["target_language"]
         )
-        mtool_changed = (
+        mtool_changed = mtool_missing or (
             project_settings["mtool_optimizer_enable"]
             != current_settings["mtool_optimizer_enable"]
         )
+        skip_duplicate_source_text_changed = (
+            skip_duplicate_source_text_missing
+            or project_settings["skip_duplicate_source_text_enable"]
+            != current_settings["skip_duplicate_source_text_enable"]
+        )
         action = "load"
         draft: dict[str, object] | None = None
-        if source_changed or mtool_changed:
+        if source_changed or mtool_changed or skip_duplicate_source_text_changed:
             action = "prefiltered_items"
             draft = self.build_project_draft_from_db(db)
         elif target_changed:
@@ -297,6 +324,7 @@ class ProjectService(Base):
                 "source_language": source_changed,
                 "target_language": target_changed,
                 "mtool_optimizer_enable": mtool_changed,
+                "skip_duplicate_source_text_enable": skip_duplicate_source_text_changed,
             },
             "draft": draft,
         }
@@ -418,13 +446,27 @@ class ProjectService(Base):
         translation_extras: dict[str, object],
         prefilter_config: dict[str, object],
     ) -> dict[str, object]:
+        normalized_prefilter_config = dict(prefilter_config)
+        normalized_prefilter_config["source_language"] = str(
+            project_settings.get("source_language", "") or ""
+        )
+        normalized_prefilter_config["mtool_optimizer_enable"] = bool(
+            project_settings.get("mtool_optimizer_enable", False)
+        )
+        normalized_prefilter_config["skip_duplicate_source_text_enable"] = bool(
+            project_settings.get("skip_duplicate_source_text_enable", True)
+        )
+
         return {
             "source_language": str(project_settings.get("source_language", "") or ""),
             "target_language": str(project_settings.get("target_language", "") or ""),
             "mtool_optimizer_enable": bool(
                 project_settings.get("mtool_optimizer_enable", False)
             ),
-            "prefilter_config": dict(prefilter_config),
+            "skip_duplicate_source_text_enable": bool(
+                project_settings.get("skip_duplicate_source_text_enable", True)
+            ),
+            "prefilter_config": normalized_prefilter_config,
             "translation_extras": dict(translation_extras),
             "analysis_extras": {},
             "analysis_candidate_count": 0,
@@ -440,6 +482,9 @@ class ProjectService(Base):
             "target_language": str(project_settings.get("target_language", "") or ""),
             "mtool_optimizer_enable": bool(
                 project_settings.get("mtool_optimizer_enable", False)
+            ),
+            "skip_duplicate_source_text_enable": bool(
+                project_settings.get("skip_duplicate_source_text_enable", True)
             ),
         }
 

@@ -331,6 +331,7 @@ function build_project_prefilter_settings(
     source_language: settings_snapshot.source_language,
     target_language: settings_snapshot.target_language,
     mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+    skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
   };
 }
 

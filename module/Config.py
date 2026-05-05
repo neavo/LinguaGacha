@@ -50,7 +50,6 @@ class Config:
     # ExpertSettingsPage
     preceding_lines_threshold: int = 0
     clean_ruby: bool = False
-    deduplication_in_trans: bool = True
     deduplication_in_bilingual: bool = True
     check_kana_residue: bool = True
     check_hangeul_residue: bool = True
@@ -60,6 +59,7 @@ class Config:
 
     # LaboratoryPage
     mtool_optimizer_enable: bool = True
+    skip_duplicate_source_text_enable: bool = True
 
     # GlossaryPage
     glossary_default_preset: str = ""

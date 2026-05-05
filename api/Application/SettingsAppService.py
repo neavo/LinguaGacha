@@ -25,7 +25,6 @@ class SettingsAppService:
         "request_timeout",
         "preceding_lines_threshold",
         "clean_ruby",
-        "deduplication_in_trans",
         "deduplication_in_bilingual",
         "check_kana_residue",
         "check_hangeul_residue",
@@ -33,6 +32,7 @@ class SettingsAppService:
         "write_translated_name_fields_to_file",
         "auto_process_prefix_suffix_preserved_text",
         "mtool_optimizer_enable",
+        "skip_duplicate_source_text_enable",
         "glossary_default_preset",
         "text_preserve_default_preset",
         "pre_translation_replacement_default_preset",
@@ -80,6 +80,7 @@ class SettingsAppService:
             if key in (
                 "output_folder_open_on_finish",
                 "mtool_optimizer_enable",
+                "skip_duplicate_source_text_enable",
             ):
                 setattr(config, key, bool(value))
             elif key == "app_language":

@@ -212,7 +212,6 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
     request_timeout: 60,
     preceding_lines_threshold: 0,
     clean_ruby: false,
-    deduplication_in_trans: true,
     deduplication_in_bilingual: true,
     check_kana_residue: true,
     check_hangeul_residue: true,
@@ -220,6 +219,7 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
     write_translated_name_fields_to_file: true,
     auto_process_prefix_suffix_preserved_text: true,
     mtool_optimizer_enable: true,
+    skip_duplicate_source_text_enable: true,
     glossary_default_preset: "",
     pre_translation_replacement_default_preset: "",
     post_translation_replacement_default_preset: "",
@@ -298,15 +298,18 @@ describe("ProjectPage", () => {
         source_language: "JA",
         target_language: "ZH",
         mtool_optimizer_enable: true,
+        skip_duplicate_source_text_enable: true,
       },
       prefilter_config: {
         source_language: "JA",
         mtool_optimizer_enable: true,
+        skip_duplicate_source_text_enable: true,
       },
       stats: {
         rule_skipped: 0,
         language_skipped: 0,
         mtool_skipped: 0,
+        duplicated: 0,
       },
     });
     api_fetch_mock.mockImplementation(async (path: string) => {

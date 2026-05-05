@@ -48,7 +48,6 @@ export type SettingsSnapshot = {
   request_timeout: number;
   preceding_lines_threshold: number;
   clean_ruby: boolean;
-  deduplication_in_trans: boolean;
   deduplication_in_bilingual: boolean;
   check_kana_residue: boolean;
   check_hangeul_residue: boolean;
@@ -56,6 +55,7 @@ export type SettingsSnapshot = {
   write_translated_name_fields_to_file: boolean;
   auto_process_prefix_suffix_preserved_text: boolean;
   mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
   glossary_default_preset: string;
   pre_translation_replacement_default_preset: string;
   post_translation_replacement_default_preset: string;
@@ -203,7 +203,6 @@ const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   request_timeout: 60,
   preceding_lines_threshold: 0,
   clean_ruby: false,
-  deduplication_in_trans: true,
   deduplication_in_bilingual: true,
   check_kana_residue: true,
   check_hangeul_residue: true,
@@ -211,6 +210,7 @@ const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
   write_translated_name_fields_to_file: true,
   auto_process_prefix_suffix_preserved_text: true,
   mtool_optimizer_enable: true,
+  skip_duplicate_source_text_enable: true,
   glossary_default_preset: "",
   pre_translation_replacement_default_preset: "",
   post_translation_replacement_default_preset: "",
@@ -318,9 +318,6 @@ export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): S
       snapshot.preceding_lines_threshold ?? DEFAULT_SETTINGS_SNAPSHOT.preceding_lines_threshold,
     ),
     clean_ruby: Boolean(snapshot.clean_ruby ?? DEFAULT_SETTINGS_SNAPSHOT.clean_ruby),
-    deduplication_in_trans: Boolean(
-      snapshot.deduplication_in_trans ?? DEFAULT_SETTINGS_SNAPSHOT.deduplication_in_trans,
-    ),
     deduplication_in_bilingual: Boolean(
       snapshot.deduplication_in_bilingual ?? DEFAULT_SETTINGS_SNAPSHOT.deduplication_in_bilingual,
     ),
@@ -343,6 +340,10 @@ export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): S
     ),
     mtool_optimizer_enable: Boolean(
       snapshot.mtool_optimizer_enable ?? DEFAULT_SETTINGS_SNAPSHOT.mtool_optimizer_enable,
+    ),
+    skip_duplicate_source_text_enable: Boolean(
+      snapshot.skip_duplicate_source_text_enable ??
+      DEFAULT_SETTINGS_SNAPSHOT.skip_duplicate_source_text_enable,
     ),
     glossary_default_preset: String(snapshot.glossary_default_preset ?? ""),
     pre_translation_replacement_default_preset: String(

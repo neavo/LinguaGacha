@@ -77,7 +77,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
   function render_boolean_toggle(options: {
     title_key:
       | "expert_settings_page.fields.clean_ruby.title"
-      | "expert_settings_page.fields.deduplication_in_trans.title"
       | "expert_settings_page.fields.deduplication_in_bilingual.title"
       | "expert_settings_page.fields.write_translated_name_fields_to_file.title"
       | "expert_settings_page.fields.auto_process_prefix_suffix_preserved_text.title";
@@ -268,19 +267,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
             disabled: mutation_locked || expert_settings_state.pending_state.clean_ruby,
             on_value_change: (next_value) => {
               void expert_settings_state.update_clean_ruby(next_value);
-            },
-          })}
-        />
-
-        <SettingCardRow
-          title={t("expert_settings_page.fields.deduplication_in_trans.title")}
-          description={t("expert_settings_page.fields.deduplication_in_trans.description")}
-          action={render_boolean_toggle({
-            title_key: "expert_settings_page.fields.deduplication_in_trans.title",
-            value: expert_settings_state.snapshot.deduplication_in_trans,
-            disabled: mutation_locked || expert_settings_state.pending_state.deduplication_in_trans,
-            on_value_change: (next_value) => {
-              void expert_settings_state.update_deduplication_in_trans(next_value);
             },
           })}
         />

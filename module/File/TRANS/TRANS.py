@@ -71,7 +71,6 @@ class TRANS(Base):
         if not isinstance(files_raw, dict):
             return items
 
-        dedup_seen: set[str] = set()
         files: dict[str, dict] = files_raw
         for file_key, entry_raw in files.items():
             if not isinstance(entry_raw, dict):
@@ -143,16 +142,6 @@ class TRANS(Base):
                 src, dst, tag_final, status, skip_internal_filter = processor.check(
                     file_key, data_item, tag_item, context_item
                 )
-
-                # 去重：读入阶段流式标记 DUPLICATED，保持现有开关与语义。
-                if (
-                    self.config.deduplication_in_trans
-                    and status == Base.ItemStatus.NONE
-                ):
-                    if src in dedup_seen:
-                        status = Base.ItemStatus.DUPLICATED
-                    else:
-                        dedup_seen.add(src)
 
                 items.append(
                     Item.from_dict(
@@ -254,13 +243,6 @@ class TRANS(Base):
                         "extra_field": extra_field,
                     }
                 )
-
-            # 去重回填映射：从 PROCESSED 收集 (src -> dst)
-            translation: dict[str, str] = {}
-            if self.config.deduplication_in_trans:
-                for snap in item_snapshots:
-                    if snap["status"] == Base.ItemStatus.PROCESSED:
-                        translation.setdefault(snap["src"], snap["dst"])
 
             # Patch Writer：优先使用 trans_ref 定位，仅做最小补丁更新。
             patch_targets: list[tuple[dict, str, int]] = []
@@ -421,13 +403,6 @@ class TRANS(Base):
                     # 仅补丁更新译文列，保留 data[row] 其他列。
                     if status == Base.ItemStatus.PROCESSED:
                         dst_to_write = snap["dst"]
-                    elif (
-                        status == Base.ItemStatus.DUPLICATED
-                        and self.config.deduplication_in_trans
-                    ):
-                        if src not in translation:
-                            continue
-                        dst_to_write = translation[src]
                     else:
                         continue
 
@@ -470,12 +445,6 @@ class TRANS(Base):
                     status = snap["status"]
                     src = snap["src"]
                     dst = snap["dst"]
-                    if (
-                        status == Base.ItemStatus.DUPLICATED
-                        and self.config.deduplication_in_trans
-                        and src in translation
-                    ):
-                        dst = translation[src]
 
                     row = [
                         "" for _ in range(max(index_original, index_translation) + 1)

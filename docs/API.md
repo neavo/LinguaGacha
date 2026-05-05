@@ -174,8 +174,8 @@ flowchart TD
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
 - `reorder-files` 的 `ordered_rel_paths` 必须完整覆盖当前文件集合。
 - `create-preview` 只解析源路径草稿；`create-commit` 接收前端预过滤后的 items、`translation_extras`、`prefilter_config` 与项目设置镜像，一次性落盘并加载。
-- `open-preview` 在工程未进入 loaded 前读取项目设置镜像；仅 `target_language` 不一致时返回 `settings_only`，`source_language` 或 `mtool_optimizer_enable` 不一致时返回完整草稿。
-- `settings-alignment/apply` 是项目设置镜像与前端预过滤结果的唯一写入口：`settings_only` 只写 `source_language / target_language / mtool_optimizer_enable`，`prefiltered_items` 同事务写 items、`translation_extras`、`prefilter_config` 并清空分析事实。
+- `open-preview` 在工程未进入 loaded 前读取项目设置镜像；仅 `target_language` 不一致时返回 `settings_only`，`source_language`、`mtool_optimizer_enable` 或 `skip_duplicate_source_text_enable` 不一致 / 缺失时返回完整草稿。
+- `settings-alignment/apply` 是项目设置镜像与前端预过滤结果的唯一写入口：`settings_only` 只写 `source_language / target_language / mtool_optimizer_enable / skip_duplicate_source_text_enable`，`prefiltered_items` 同事务写 items、`translation_extras`、`prefilter_config` 并清空分析事实。
 - `settings-alignment/apply` 可带 `path` 在未 loaded 的 `.lg` 上直接写入。
 - `translation/reset`、`analysis/reset` 会持久化 TS 侧 planner 生成的最终条目或分析载荷；它们属于同步 mutation，不走后台任务生命周期。
 - 同步 mutation 的状态载荷边界固定为：条目翻译事实随 `items.status` 更新，任务进度镜像随 `translation_extras` / `analysis_extras` 与 `task` 运行态更新，工程忙碌与终态由任务事件表达。

@@ -67,7 +67,6 @@ function create_expert_settings_state_fixture() {
     snapshot: {
       preceding_lines_threshold: 0,
       clean_ruby: false,
-      deduplication_in_trans: false,
       deduplication_in_bilingual: false,
       check_kana_residue: false,
       check_hangeul_residue: false,
@@ -78,7 +77,6 @@ function create_expert_settings_state_fixture() {
     pending_state: {
       preceding_lines_threshold: false,
       clean_ruby: false,
-      deduplication_in_trans: false,
       deduplication_in_bilingual: false,
       check_kana_residue: false,
       check_hangeul_residue: false,
@@ -90,7 +88,6 @@ function create_expert_settings_state_fixture() {
     refresh_snapshot: vi.fn(async () => {}),
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_clean_ruby: vi.fn(async (_next_checked: boolean) => {}),
-    update_deduplication_in_trans: vi.fn(async (_next_checked: boolean) => {}),
     update_deduplication_in_bilingual: vi.fn(async (_next_checked: boolean) => {}),
     update_check_kana_residue: vi.fn(async (_next_checked: boolean) => {}),
     update_check_hangeul_residue: vi.fn(async (_next_checked: boolean) => {}),

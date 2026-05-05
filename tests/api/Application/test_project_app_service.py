@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from api.Application.ProjectAppService import ProjectAppService
+from base.Base import Base
 from module.Data.Core.Item import Item
 
 
@@ -195,6 +196,7 @@ class _FakeProjectManagerForConvertedExport:
                 file_type=Item.FileType.TXT,
                 file_path="script.txt",
                 text_type=Item.TextType.NONE,
+                status=Base.ItemStatus.PROCESSED,
             ),
             Item(
                 id=2,
@@ -205,6 +207,16 @@ class _FakeProjectManagerForConvertedExport:
                 file_type=Item.FileType.TXT,
                 file_path="script.txt",
                 text_type=Item.TextType.NONE,
+                status=Base.ItemStatus.PROCESSED,
+            ),
+            Item(
+                id=3,
+                src="源文",
+                row=9,
+                file_type=Item.FileType.TXT,
+                file_path="script.txt",
+                text_type=Item.TextType.NONE,
+                status=Base.ItemStatus.DUPLICATED,
             ),
         ]
 
@@ -273,11 +285,13 @@ def test_create_project_commit_persists_frontend_prefiltered_draft_and_loads(
                 "source_language": "JA",
                 "target_language": "ZH",
                 "mtool_optimizer_enable": True,
+                "skip_duplicate_source_text_enable": True,
             },
             "translation_extras": {"line": 0},
             "prefilter_config": {
                 "source_language": "JA",
                 "mtool_optimizer_enable": True,
+                "skip_duplicate_source_text_enable": True,
             },
         }
     )
@@ -292,11 +306,13 @@ def test_create_project_commit_persists_frontend_prefiltered_draft_and_loads(
                 "source_language": "JA",
                 "target_language": "ZH",
                 "mtool_optimizer_enable": True,
+                "skip_duplicate_source_text_enable": True,
             },
             "translation_extras": {"line": 0},
             "prefilter_config": {
                 "source_language": "JA",
                 "mtool_optimizer_enable": True,
+                "skip_duplicate_source_text_enable": True,
             },
         }
     ]
@@ -755,11 +771,15 @@ def test_export_converted_translation_uses_converted_snapshot_without_mutating_p
     assert [item.get_dst() for item in fake_file_manager.items] == [
         "新譯文",
         "保持原樣",
+        "新譯文",
     ]
     assert fake_file_manager.items[0].get_name_dst() == "新姓名"
     assert fake_file_manager.items[1].get_name_dst() == ["甲", "乙"]
+    assert fake_file_manager.items[2].get_status() == Base.ItemStatus.PROCESSED
     assert fake_project_manager.items[0].get_dst() == "旧译文"
     assert fake_project_manager.items[0].get_name_dst() == "旧姓名"
+    assert fake_project_manager.items[2].get_dst() == ""
+    assert fake_project_manager.items[2].get_status() == Base.ItemStatus.DUPLICATED
 
 
 def test_export_converted_translation_rejects_invalid_suffix() -> None:

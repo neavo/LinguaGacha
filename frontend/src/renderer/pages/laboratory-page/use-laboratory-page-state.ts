@@ -28,11 +28,13 @@ type UseLaboratoryPageStateResult = {
   pending_state: LaboratoryPendingState;
   is_task_busy: boolean;
   update_mtool_optimizer_enable: (next_checked: boolean) => Promise<void>;
+  update_skip_duplicate_source_text_enable: (next_checked: boolean) => Promise<void>;
 };
 
 function create_pending_state(): LaboratoryPendingState {
   return {
     mtool_optimizer_enable: false,
+    skip_duplicate_source_text_enable: false,
   };
 }
 
@@ -130,6 +132,10 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
           if ("mtool_optimizer_enable" in request) {
             reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable;
           }
+          if ("skip_duplicate_source_text_enable" in request) {
+            reverted_snapshot.skip_duplicate_source_text_enable =
+              previous_snapshot.skip_duplicate_source_text_enable;
+          }
 
           return reverted_snapshot;
         });
@@ -158,6 +164,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         source_language: next_settings_snapshot.source_language,
         target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+        skip_duplicate_source_text_enable: next_settings_snapshot.skip_duplicate_source_text_enable,
         compute_prefilter: (input) => {
           return project_prefilter_client_ref.current.compute(input);
         },
@@ -175,15 +182,13 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     ],
   );
 
-  const rollback_mtool_optimizer_after_prefilter_error = useCallback(
-    async (previous_snapshot: LaboratorySnapshot): Promise<void> => {
-      const rollback_settings_snapshot = await commit_update(
-        "mtool_optimizer_enable",
-        {
-          mtool_optimizer_enable: previous_snapshot.mtool_optimizer_enable,
-        },
-        previous_snapshot,
-      );
+  const rollback_prefilter_setting_after_prefilter_error = useCallback(
+    async (
+      field: LaboratoryPendingField,
+      request: SettingsUpdateRequest,
+      previous_snapshot: LaboratorySnapshot,
+    ): Promise<void> => {
+      const rollback_settings_snapshot = await commit_update(field, request, previous_snapshot);
       if (rollback_settings_snapshot === null) {
         return;
       }
@@ -234,6 +239,8 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
                     source_language: next_settings_snapshot.source_language,
                     target_language: next_settings_snapshot.target_language,
                     mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+                    skip_duplicate_source_text_enable:
+                      next_settings_snapshot.skip_duplicate_source_text_enable,
                   },
                   changed_fields: {
                     mtool_optimizer_enable: true,
@@ -249,7 +256,13 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
           throw error;
         }
 
-        await rollback_mtool_optimizer_after_prefilter_error(previous_snapshot);
+        await rollback_prefilter_setting_after_prefilter_error(
+          "mtool_optimizer_enable",
+          {
+            mtool_optimizer_enable: previous_snapshot.mtool_optimizer_enable,
+          },
+          previous_snapshot,
+        );
       }
     },
     [
@@ -258,7 +271,88 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       create_barrier_checkpoint,
       is_task_busy,
       project_snapshot.loaded,
-      rollback_mtool_optimizer_after_prefilter_error,
+      rollback_prefilter_setting_after_prefilter_error,
+      run_modal_progress_toast,
+      t,
+      wait_for_barrier,
+    ],
+  );
+
+  const update_skip_duplicate_source_text_enable = useCallback(
+    async (next_checked: boolean): Promise<void> => {
+      const previous_snapshot = snapshot_ref.current;
+
+      if (is_task_busy || previous_snapshot.skip_duplicate_source_text_enable === next_checked) {
+        return;
+      }
+
+      const barrier_checkpoint = create_barrier_checkpoint();
+
+      try {
+        await run_modal_progress_toast({
+          message: t("laboratory_page.feedback.skip_duplicate_source_text_loading_toast"),
+          task: async () => {
+            const next_settings_snapshot = await commit_update(
+              "skip_duplicate_source_text_enable",
+              {
+                skip_duplicate_source_text_enable: next_checked,
+              },
+              {
+                ...previous_snapshot,
+                skip_duplicate_source_text_enable: next_checked,
+              },
+            );
+
+            if (next_settings_snapshot === null) {
+              return;
+            }
+
+            await apply_prefilter_from_settings(next_settings_snapshot);
+            await wait_for_barrier("project_cache_refresh", {
+              checkpoint: barrier_checkpoint,
+            });
+            if (project_snapshot.loaded) {
+              push_toast(
+                "info",
+                format_project_settings_aligned_toast({
+                  settings: {
+                    source_language: next_settings_snapshot.source_language,
+                    target_language: next_settings_snapshot.target_language,
+                    mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+                    skip_duplicate_source_text_enable:
+                      next_settings_snapshot.skip_duplicate_source_text_enable,
+                  },
+                  changed_fields: {
+                    skip_duplicate_source_text_enable: true,
+                  },
+                  t,
+                }),
+              );
+            }
+          },
+        });
+      } catch (error) {
+        if (!is_worker_client_error(error)) {
+          throw error;
+        }
+
+        await rollback_prefilter_setting_after_prefilter_error(
+          "skip_duplicate_source_text_enable",
+          {
+            skip_duplicate_source_text_enable: previous_snapshot.skip_duplicate_source_text_enable,
+          },
+          previous_snapshot,
+        );
+      }
+    },
+    [
+      apply_prefilter_from_settings,
+      commit_update,
+      create_barrier_checkpoint,
+      is_task_busy,
+      project_snapshot.loaded,
+      push_toast,
+      rollback_prefilter_setting_after_prefilter_error,
       run_modal_progress_toast,
       t,
       wait_for_barrier,
@@ -271,8 +365,15 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       pending_state,
       is_task_busy,
       update_mtool_optimizer_enable,
+      update_skip_duplicate_source_text_enable,
     };
-  }, [is_task_busy, pending_state, snapshot, update_mtool_optimizer_enable]);
+  }, [
+    is_task_busy,
+    pending_state,
+    snapshot,
+    update_mtool_optimizer_enable,
+    update_skip_duplicate_source_text_enable,
+  ]);
 
   return value;
 }

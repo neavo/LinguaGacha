@@ -7,6 +7,7 @@ export type ProjectSettingsAlignmentChangedFields = Partial<{
   source_language: boolean;
   target_language: boolean;
   mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
 }>;
 
 const LANGUAGE_LABEL_KEY_BY_LANGUAGE: Record<string, LocaleKey> = {
@@ -67,6 +68,15 @@ export function format_project_settings_aligned_toast(args: {
       : args.t("app.toggle.disabled");
     rows.push(
       `${args.t("app.project_settings_alignment.field.mtool_optimizer_enable")} - ${mtool_label}`,
+    );
+  }
+
+  if (args.changed_fields.skip_duplicate_source_text_enable === true) {
+    const skip_duplicate_source_text_label = args.settings.skip_duplicate_source_text_enable
+      ? args.t("app.toggle.enabled")
+      : args.t("app.toggle.disabled");
+    rows.push(
+      `${args.t("app.project_settings_alignment.field.skip_duplicate_source_text_enable")} - ${skip_duplicate_source_text_label}`,
     );
   }
 

@@ -49,7 +49,9 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
   }
 
   function render_boolean_toggle(options: {
-    title_key: "laboratory_page.fields.mtool_optimizer_enable.title";
+    title_key:
+      | "laboratory_page.fields.mtool_optimizer_enable.title"
+      | "laboratory_page.fields.skip_duplicate_source_text_enable.title";
     value: boolean;
     disabled: boolean;
     on_value_change: (next_value: boolean) => void;
@@ -84,6 +86,21 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
               laboratory_page_state.pending_state.mtool_optimizer_enable,
             on_value_change: (next_value) => {
               void laboratory_page_state.update_mtool_optimizer_enable(next_value);
+            },
+          })}
+        />
+
+        <SettingCardRow
+          title={t("laboratory_page.fields.skip_duplicate_source_text_enable.title")}
+          description={t("laboratory_page.fields.skip_duplicate_source_text_enable.description")}
+          action={render_boolean_toggle({
+            title_key: "laboratory_page.fields.skip_duplicate_source_text_enable.title",
+            value: laboratory_page_state.snapshot.skip_duplicate_source_text_enable,
+            disabled:
+              laboratory_page_state.is_task_busy ||
+              laboratory_page_state.pending_state.skip_duplicate_source_text_enable,
+            on_value_change: (next_value) => {
+              void laboratory_page_state.update_skip_duplicate_source_text_enable(next_value);
             },
           })}
         />

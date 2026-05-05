@@ -14,6 +14,7 @@ class TestConfigBehavior:
         config = Config().load("/workspace/config/missing.json")
 
         assert config.mtool_optimizer_enable is True
+        assert config.skip_duplicate_source_text_enable is True
         assert not hasattr(config, "force_thinking_enable")
         assert config.recent_projects == []
 
@@ -88,6 +89,7 @@ class TestConfigBehavior:
         config = Config().load(str(path))
 
         assert config.mtool_optimizer_enable is True
+        assert config.skip_duplicate_source_text_enable is True
 
     def test_load_reads_normalized_quality_preset_virtual_ids(self, fs) -> None:
         del fs

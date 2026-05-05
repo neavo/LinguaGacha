@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Plans"
   short_description: "创建现实可靠可执行的项目实施计划"
-  default_prompt: "使用 $project-plans 根据当前上下文创建一份现实可执行的实施计划"
+  default_prompt: "使用 $project-plans 根据当前上下文创建一份现实可执行的实施计划，不要遗漏任何已对齐的需求细节"

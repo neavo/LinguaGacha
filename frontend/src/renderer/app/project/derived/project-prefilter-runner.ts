@@ -9,6 +9,7 @@ export type ProjectPrefilterRunnerSettings = {
   source_language: string;
   target_language: string;
   mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
 };
 
 export type ProjectPrefilterRunnerExecutor = (
@@ -89,6 +90,7 @@ export async function run_project_prefilter(args: {
     source_language: args.settings.source_language,
     target_language: args.settings.target_language,
     mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
+    skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
   });
 }
 

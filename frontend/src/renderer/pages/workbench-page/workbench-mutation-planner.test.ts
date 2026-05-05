@@ -103,6 +103,7 @@ function get_payload_files(plan: ReturnType<typeof create_workbench_add_files_pl
 const SETTINGS = {
   source_language: "JA",
   mtool_optimizer_enable: false,
+  skip_duplicate_source_text_enable: true,
 };
 
 describe("workbench add-file translation inheritance planner", () => {

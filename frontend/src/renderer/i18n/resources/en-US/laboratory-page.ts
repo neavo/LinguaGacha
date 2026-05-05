@@ -7,15 +7,19 @@ export const en_us_laboratory_page = {
     mtool_optimizer_enable: {
       title: "MTool Optimizer",
       description:
-        "When translating <emphasis>MTool</emphasis> text, reduce translation time and token usage by up to 40%, enabled by default" +
-        "\n" +
-        "◈ It may cause issues such as <emphasis>leftover source text</emphasis> or <emphasis>awkward sentence flow</emphasis>",
+        "For MTool text, <emphasis> cuts translation time and tokens by up to 40%</emphasis>, enabled by default",
       help_label: "View the MTool Optimizer guide",
+    },
+    skip_duplicate_source_text_enable: {
+      title: "Skip duplicate source text",
+      description:
+        "In one file, translate identical source text once, <emphasis>duplicates reuse the translated text</emphasis>, enabled by default",
     },
   },
   feedback: {
-    refresh_failed: "Unable to refresh laboratory settings right now. Please try again later.",
-    update_failed: "Failed to save laboratory settings. Please try again later.",
+    refresh_failed: "Unable to refresh laboratory settings. Please try again …",
+    update_failed: "Failed to save laboratory settings. Please try again …",
     mtool_optimizer_loading_toast: "Refreshing project cache …",
+    skip_duplicate_source_text_loading_toast: "Refreshing project cache …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_laboratory_page>;

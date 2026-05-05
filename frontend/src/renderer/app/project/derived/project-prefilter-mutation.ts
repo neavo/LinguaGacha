@@ -24,6 +24,7 @@ type ApplyProjectPrefilterMutationArgs = {
   source_language: string;
   target_language: string;
   mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
   compute_prefilter: (
     input: ProjectPrefilterMutationInput,
   ) => Promise<ProjectPrefilterMutationOutput>;
@@ -41,6 +42,7 @@ export async function apply_project_prefilter_mutation(
       source_language: args.source_language,
       target_language: args.target_language,
       mtool_optimizer_enable: args.mtool_optimizer_enable,
+      skip_duplicate_source_text_enable: args.skip_duplicate_source_text_enable,
     },
     executor: args.compute_prefilter,
   });

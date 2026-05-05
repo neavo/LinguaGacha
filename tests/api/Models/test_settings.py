@@ -43,11 +43,14 @@ def test_app_settings_snapshot_handles_mtool_optimizer_field() -> None:
     snapshot = AppSettingsSnapshot.from_dict(
         {
             "mtool_optimizer_enable": True,
+            "skip_duplicate_source_text_enable": False,
         }
     )
 
     assert snapshot.mtool_optimizer_enable is True
     assert snapshot.to_dict()["mtool_optimizer_enable"] is True
+    assert snapshot.skip_duplicate_source_text_enable is False
+    assert snapshot.to_dict()["skip_duplicate_source_text_enable"] is False
 
 
 def test_app_settings_snapshot_ignores_invalid_recent_projects_payload() -> None:

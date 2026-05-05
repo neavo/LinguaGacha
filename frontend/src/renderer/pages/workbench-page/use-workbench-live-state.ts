@@ -1294,6 +1294,7 @@ export function useWorkbenchLiveState(
         settings: {
           source_language: settings_snapshot.source_language,
           mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+          skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
         },
         inheritance_mode,
       });
@@ -1593,6 +1594,7 @@ export function useWorkbenchLiveState(
           settings: {
             source_language: settings_snapshot.source_language,
             mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+            skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
           },
         });
         await run_ack_only_file_mutation(
@@ -1621,6 +1623,7 @@ export function useWorkbenchLiveState(
           settings: {
             source_language: settings_snapshot.source_language,
             mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
+            skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
           },
         });
         await run_ack_only_file_mutation(

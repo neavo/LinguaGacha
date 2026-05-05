@@ -67,9 +67,9 @@ flowchart TD
 稳定事实：
 - `DataManager` 是工程级数据门面，负责会话、规则、分析、翻译、工作台事件与跨 service 编排。
 - `ProjectRuntimeService` 负责把工程事实编码成 bootstrap block 与运行态 patch 可复用记录。
-- `Config` 是应用设置权威；工程 meta 中的 `source_language`、`target_language` 与 `mtool_optimizer_enable` 只是打开 / 新建时同步的项目镜像。
+- `Config` 是应用设置权威；工程 meta 中的 `source_language`、`target_language`、`mtool_optimizer_enable` 与 `skip_duplicate_source_text_enable` 只是打开 / 新建时同步的项目镜像。
 - 项目预过滤计算只在渲染层 runner / worker 中执行；Python 数据层只负责提供 create/open 草稿和事务化持久化前端提交的结果。
-- `source_language` 或 `mtool_optimizer_enable` 不一致会要求前端重跑预过滤；仅 `target_language` 不一致时只同步项目镜像，不重写 items。
+- `source_language`、`mtool_optimizer_enable` 或 `skip_duplicate_source_text_enable` 不一致 / 缺失会要求前端重跑预过滤；仅 `target_language` 不一致时只同步项目镜像，不重写 items。
 
 ### 后台任务与数据提交
 

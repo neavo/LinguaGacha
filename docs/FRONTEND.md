@@ -118,6 +118,7 @@ flowchart TD
 - 工作台页收到 `merge_items` 合并后的 delta 时优先更新本地增量缓存；首次 bootstrap、项目 / 文件替换、分析摘要缺失或结构异常时回退全量重建。校对页同窗口 `full` 覆盖 `delta`，纯 `noop` 不触发列表与筛选面板查询。
 - 工作台、预过滤、翻译重置和校对 mutation planner 的输出边界是条目事实、`translation_extras`、分析 / 预过滤载荷、项目设置镜像和期望 revision；工程任务态由 `task` 运行态和事件流承接。
 - 新建工程先调用 `create-preview` 获取未落盘草稿，由 `app/project/derived/project-prefilter-runner.ts` 调 worker 完成预过滤，再用 `create-commit` 写入 `.lg` 并加载；打开工程先调用 `open-preview`，在未 loaded 前完成 `settings-alignment/apply`，最后再进入 `/api/project/load`。
+- 实验室页的 `mtool_optimizer_enable` 与 `skip_duplicate_source_text_enable` 属于会改变预过滤结果的应用设置；保存后必须走同一条 project prefilter mutation 链路，把项目设置镜像与预过滤结果一起对齐到 `.lg`。
 - 校对页状态筛选只展示有效 item 状态；重译中的行级 spinner 由 `task_snapshot.task_type === "retranslate"` 与 `task_snapshot.retranslating_item_ids` 派生，页面本地只保留选区、弹窗和筛选等交互态。
 - 校对页是否可交互只看自己的缓存状态，稳定语义是 `cache_status === "ready"` 且 `!is_refreshing`；其中 `proofreading_cache_refresh` 的 ready 定义是“当前列表查询已结算，且 `current_filters` 对应的筛选面板已预热完成”，可操作条件独立于 `project_warmup`。
 - glossary / pre-replacement / post-replacement / text-preserve 四类质量统计由常驻 `QualityStatisticsProvider` 统一调度：项目 warmup ready 后先全预热，后续比较统计依赖签名（项目相关文本、规则 key 与 descriptor 依赖字段）决定是否后台刷新；规则页通过 provider 消费统计，不创建独立 worker 或维护统计刷新 effect。

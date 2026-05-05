@@ -59,19 +59,22 @@ def test_update_app_settings_persists_laboratory_toggle_keys(
     result = settings_app_service.update_app_settings(
         {
             "mtool_optimizer_enable": True,
+            "skip_duplicate_source_text_enable": False,
         }
     )
 
     settings = result["settings"]
 
     assert settings["mtool_optimizer_enable"] is True
+    assert settings["skip_duplicate_source_text_enable"] is False
     assert fake_settings_config.mtool_optimizer_enable is True
+    assert fake_settings_config.skip_duplicate_source_text_enable is False
     assert settings_app_service.applied_localizer_languages == []
     assert settings_app_service.emitted_events == [
         (
             Base.Event.CONFIG_UPDATED,
             {
-                "keys": ["mtool_optimizer_enable"],
+                "keys": ["mtool_optimizer_enable", "skip_duplicate_source_text_enable"],
                 "settings": settings,
             },
         )

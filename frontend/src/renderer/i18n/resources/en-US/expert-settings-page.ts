@@ -37,11 +37,6 @@ export const en_us_expert_settings_page = {
         "\n" +
         '• [ruby text=かんじ] [ruby text = かんじ] [ruby text="かんじ"] [ruby text = "かんじ"]',
     },
-    deduplication_in_trans: {
-      title: "Deduplicate Repeated Text in T++ Project File",
-      description:
-        "In T++ project file (i.e., <emphasis>.trans</emphasis> file), whether to deduplicate repeated text, enabled by default",
-    },
     deduplication_in_bilingual: {
       title: "Output Only Once if Source and Target are Identical in Bilingual Output Files",
       description:

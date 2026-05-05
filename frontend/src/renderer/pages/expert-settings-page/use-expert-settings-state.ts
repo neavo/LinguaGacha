@@ -27,7 +27,6 @@ type UseExpertSettingsStateResult = {
   refresh_snapshot: () => Promise<void>;
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
   update_clean_ruby: (next_checked: boolean) => Promise<void>;
-  update_deduplication_in_trans: (next_checked: boolean) => Promise<void>;
   update_deduplication_in_bilingual: (next_checked: boolean) => Promise<void>;
   update_check_kana_residue: (next_checked: boolean) => Promise<void>;
   update_check_hangeul_residue: (next_checked: boolean) => Promise<void>;
@@ -40,7 +39,6 @@ function create_pending_state(): ExpertSettingsPendingState {
   return {
     preceding_lines_threshold: false,
     clean_ruby: false,
-    deduplication_in_trans: false,
     deduplication_in_bilingual: false,
     check_kana_residue: false,
     check_hangeul_residue: false,
@@ -142,9 +140,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
           if ("clean_ruby" in request) {
             reverted_snapshot.clean_ruby = previous_snapshot.clean_ruby;
           }
-          if ("deduplication_in_trans" in request) {
-            reverted_snapshot.deduplication_in_trans = previous_snapshot.deduplication_in_trans;
-          }
           if ("deduplication_in_bilingual" in request) {
             reverted_snapshot.deduplication_in_bilingual =
               previous_snapshot.deduplication_in_bilingual;
@@ -224,28 +219,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
         {
           ...previous_snapshot,
           clean_ruby: next_checked,
-        },
-      );
-    },
-    [commit_update],
-  );
-
-  const update_deduplication_in_trans = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (previous_snapshot.deduplication_in_trans === next_checked) {
-        return;
-      }
-
-      await commit_update(
-        "deduplication_in_trans",
-        {
-          deduplication_in_trans: next_checked,
-        },
-        {
-          ...previous_snapshot,
-          deduplication_in_trans: next_checked,
         },
       );
     },
@@ -392,7 +365,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
       refresh_snapshot,
       update_preceding_lines_threshold,
       update_clean_ruby,
-      update_deduplication_in_trans,
       update_deduplication_in_bilingual,
       update_check_kana_residue,
       update_check_hangeul_residue,
@@ -411,7 +383,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     update_check_similarity,
     update_clean_ruby,
     update_deduplication_in_bilingual,
-    update_deduplication_in_trans,
     update_preceding_lines_threshold,
     update_write_translated_name_fields_to_file,
   ]);

@@ -8,6 +8,7 @@ import {
 type WorkbenchPlannerSettings = {
   source_language: string;
   mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
 };
 
 type WorkbenchPlannerFileRecord = {
@@ -35,6 +36,7 @@ type WorkbenchDerivedMeta = {
   prefilter_config: {
     source_language: string;
     mtool_optimizer_enable: boolean;
+    skip_duplicate_source_text_enable: boolean;
   };
 };
 
@@ -189,6 +191,7 @@ function build_derived_meta(args: {
     },
     source_language: args.settings.source_language,
     mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
+    skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
   });
 
   return {

@@ -22,6 +22,7 @@ type RuntimeFixture = {
   settings_snapshot: {
     source_language: string;
     mtool_optimizer_enable: boolean;
+    skip_duplicate_source_text_enable: boolean;
   };
   set_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
@@ -156,6 +157,7 @@ function create_runtime_fixture(
     settings_snapshot: {
       source_language: "EN",
       mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
     },
     set_task_snapshot: vi.fn(),
     task_snapshot,

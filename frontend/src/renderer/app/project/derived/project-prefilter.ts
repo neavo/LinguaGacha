@@ -16,6 +16,7 @@ type ProjectPrefilterStats = {
   rule_skipped: number;
   language_skipped: number;
   mtool_skipped: number;
+  duplicated: number;
 };
 
 export type ProjectPrefilterMutationOutput = {
@@ -27,10 +28,12 @@ export type ProjectPrefilterMutationOutput = {
     source_language: string;
     target_language: string;
     mtool_optimizer_enable: boolean;
+    skip_duplicate_source_text_enable: boolean;
   };
   prefilter_config: {
     source_language: string;
     mtool_optimizer_enable: boolean;
+    skip_duplicate_source_text_enable: boolean;
   };
   stats: ProjectPrefilterStats;
 };
@@ -40,6 +43,7 @@ export type ProjectPrefilterMutationInput = {
   source_language: string;
   target_language?: string;
   mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
 };
 
 const RULE_FILTER_PREFIXES = ["mapdata/", "se/", "bgs", "0=", "bgm/", "ficon/"];
@@ -185,10 +189,15 @@ export function compute_project_prefilter_mutation(
   let rule_skipped = 0;
   let language_skipped = 0;
   let mtool_skipped = 0;
+  let duplicated = 0;
   const kvjson_items_by_path = new Map<string, RuntimeProjectItemRecord[]>();
 
   for (const item of item_index.values()) {
-    if (item.status === "RULE_SKIPPED" || item.status === "LANGUAGE_SKIPPED") {
+    if (
+      item.status === "RULE_SKIPPED" ||
+      item.status === "LANGUAGE_SKIPPED" ||
+      item.status === "DUPLICATED"
+    ) {
       item.status = "NONE";
     }
     if (input.mtool_optimizer_enable && file_type_by_path.get(item.file_path) === "KVJSON") {
@@ -243,6 +252,20 @@ export function compute_project_prefilter_mutation(
     }
   }
 
+  if (input.skip_duplicate_source_text_enable) {
+    const seen_src_by_file_path = new Map<string, Set<string>>();
+    for (const item of item_index.values()) {
+      const seen_src = seen_src_by_file_path.get(item.file_path) ?? new Set<string>();
+      if (item.status === "NONE" && seen_src.has(item.src)) {
+        item.status = "DUPLICATED";
+        duplicated += 1;
+      } else if (item.status === "NONE" || item.status === "PROCESSED") {
+        seen_src.add(item.src);
+      }
+      seen_src_by_file_path.set(item.file_path, seen_src);
+    }
+  }
+
   const next_items: Record<string, Record<string, unknown>> = {};
   for (const item of item_index.values()) {
     next_items[String(item.item_id)] = {
@@ -278,15 +301,18 @@ export function compute_project_prefilter_mutation(
       source_language: input.source_language,
       target_language: input.target_language ?? "",
       mtool_optimizer_enable: input.mtool_optimizer_enable,
+      skip_duplicate_source_text_enable: input.skip_duplicate_source_text_enable,
     },
     prefilter_config: {
       source_language: input.source_language,
       mtool_optimizer_enable: input.mtool_optimizer_enable,
+      skip_duplicate_source_text_enable: input.skip_duplicate_source_text_enable,
     },
     stats: {
       rule_skipped,
       language_skipped,
       mtool_skipped,
+      duplicated,
     },
   };
 }

@@ -71,6 +71,7 @@ describe("compute_project_prefilter_mutation", () => {
       source_language: "JA",
       target_language: "ZH",
       mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
     });
 
     expect(output.items["1"].status).toBe("RULE_SKIPPED");
@@ -80,6 +81,12 @@ describe("compute_project_prefilter_mutation", () => {
       source_language: "JA",
       target_language: "ZH",
       mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+    expect(output.prefilter_config).toEqual({
+      source_language: "JA",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
     });
   });
 
@@ -104,6 +111,7 @@ describe("compute_project_prefilter_mutation", () => {
       source_language: "ALL",
       target_language: "ZH",
       mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: true,
     });
 
     expect(output.items["1"].status).toBe("NONE");
@@ -112,6 +120,111 @@ describe("compute_project_prefilter_mutation", () => {
     expect(output.prefilter_config).toEqual({
       source_language: "ALL",
       mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: true,
     });
+  });
+
+  it("按同一文件内完全一致的原文标记重复项", () => {
+    const output = compute_project_prefilter_mutation({
+      state: create_state({
+        "1": {
+          item_id: 1,
+          file_path: "script.txt",
+          row_number: 1,
+          src: "同一句",
+          status: "NONE",
+        },
+        "2": {
+          item_id: 2,
+          file_path: "script.txt",
+          row_number: 2,
+          src: "同一句",
+          status: "NONE",
+        },
+        "3": {
+          item_id: 3,
+          file_path: "data.json",
+          row_number: 1,
+          src: "同一句",
+          status: "NONE",
+        },
+        "4": {
+          item_id: 4,
+          file_path: "script.txt",
+          row_number: 4,
+          src: "plain english line",
+          status: "DUPLICATED",
+        },
+      }),
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+
+    expect(output.items["1"].status).toBe("NONE");
+    expect(output.items["2"].status).toBe("DUPLICATED");
+    expect(output.items["3"].status).toBe("NONE");
+    expect(output.items["4"].status).toBe("LANGUAGE_SKIPPED");
+    expect(output.stats.duplicated).toBe(1);
+  });
+
+  it("重跑预过滤时已完成译文会继续作为重复项首条", () => {
+    const output = compute_project_prefilter_mutation({
+      state: create_state({
+        "1": {
+          item_id: 1,
+          file_path: "script.txt",
+          row_number: 1,
+          src: "こんにちは",
+          dst: "你好",
+          status: "PROCESSED",
+        },
+        "2": {
+          item_id: 2,
+          file_path: "script.txt",
+          row_number: 2,
+          src: "こんにちは",
+          status: "DUPLICATED",
+        },
+        "3": {
+          item_id: 3,
+          file_path: "other.txt",
+          row_number: 1,
+          src: "こんにちは",
+          status: "NONE",
+        },
+      }),
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+
+    expect(output.items["1"].status).toBe("PROCESSED");
+    expect(output.items["2"].status).toBe("DUPLICATED");
+    expect(output.items["3"].status).toBe("NONE");
+    expect(output.stats.duplicated).toBe(1);
+  });
+
+  it("关闭跳过重复原文时旧 DUPLICATED 会回到 NONE 并重新参与过滤", () => {
+    const output = compute_project_prefilter_mutation({
+      state: create_state({
+        "1": {
+          item_id: 1,
+          file_path: "script.txt",
+          row_number: 1,
+          src: "こんにちは",
+          status: "DUPLICATED",
+        },
+      }),
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: false,
+    });
+
+    expect(output.items["1"].status).toBe("NONE");
+    expect(output.prefilter_config.skip_duplicate_source_text_enable).toBe(false);
   });
 });

@@ -199,6 +199,8 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
           source_language: next_settings_snapshot.source_language,
           target_language: next_settings_snapshot.target_language,
           mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+          skip_duplicate_source_text_enable:
+            next_settings_snapshot.skip_duplicate_source_text_enable,
         },
       });
     },
@@ -216,6 +218,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         source_language: next_settings_snapshot.source_language,
         target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+        skip_duplicate_source_text_enable: next_settings_snapshot.skip_duplicate_source_text_enable,
         compute_prefilter: (input) => {
           return project_prefilter_client_ref.current.compute(input);
         },
@@ -307,6 +310,8 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
                     source_language: next_settings_snapshot.source_language,
                     target_language: next_settings_snapshot.target_language,
                     mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+                    skip_duplicate_source_text_enable:
+                      next_settings_snapshot.skip_duplicate_source_text_enable,
                   },
                   changed_fields: {
                     source_language: true,
@@ -371,6 +376,8 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
               source_language: next_settings_snapshot.source_language,
               target_language: next_settings_snapshot.target_language,
               mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
+              skip_duplicate_source_text_enable:
+                next_settings_snapshot.skip_duplicate_source_text_enable,
             },
             changed_fields: {
               target_language: true,

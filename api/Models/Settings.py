@@ -46,7 +46,6 @@ class AppSettingsSnapshot:
     request_timeout: int = 120
     preceding_lines_threshold: int = 0
     clean_ruby: bool = False
-    deduplication_in_trans: bool = True
     deduplication_in_bilingual: bool = True
     check_kana_residue: bool = True
     check_hangeul_residue: bool = True
@@ -54,6 +53,7 @@ class AppSettingsSnapshot:
     write_translated_name_fields_to_file: bool = True
     auto_process_prefix_suffix_preserved_text: bool = True
     mtool_optimizer_enable: bool = True
+    skip_duplicate_source_text_enable: bool = True
     glossary_default_preset: str = ""
     text_preserve_default_preset: str = ""
     pre_translation_replacement_default_preset: str = ""
@@ -95,7 +95,6 @@ class AppSettingsSnapshot:
                 normalized.get("preceding_lines_threshold", 0) or 0
             ),
             clean_ruby=bool(normalized.get("clean_ruby", False)),
-            deduplication_in_trans=bool(normalized.get("deduplication_in_trans", True)),
             deduplication_in_bilingual=bool(
                 normalized.get("deduplication_in_bilingual", True)
             ),
@@ -109,6 +108,9 @@ class AppSettingsSnapshot:
                 normalized.get("auto_process_prefix_suffix_preserved_text", True)
             ),
             mtool_optimizer_enable=bool(normalized.get("mtool_optimizer_enable", True)),
+            skip_duplicate_source_text_enable=bool(
+                normalized.get("skip_duplicate_source_text_enable", True)
+            ),
             glossary_default_preset=str(normalized.get("glossary_default_preset", "")),
             text_preserve_default_preset=str(
                 normalized.get("text_preserve_default_preset", "")
@@ -141,7 +143,6 @@ class AppSettingsSnapshot:
             "request_timeout": self.request_timeout,
             "preceding_lines_threshold": self.preceding_lines_threshold,
             "clean_ruby": self.clean_ruby,
-            "deduplication_in_trans": self.deduplication_in_trans,
             "deduplication_in_bilingual": self.deduplication_in_bilingual,
             "check_kana_residue": self.check_kana_residue,
             "check_hangeul_residue": self.check_hangeul_residue,
@@ -153,6 +154,7 @@ class AppSettingsSnapshot:
                 self.auto_process_prefix_suffix_preserved_text
             ),
             "mtool_optimizer_enable": self.mtool_optimizer_enable,
+            "skip_duplicate_source_text_enable": self.skip_duplicate_source_text_enable,
             "glossary_default_preset": self.glossary_default_preset,
             "text_preserve_default_preset": self.text_preserve_default_preset,
             "pre_translation_replacement_default_preset": (
