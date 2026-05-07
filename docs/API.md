@@ -7,7 +7,7 @@
 
 | 消费者 | 接入方式 | 边界约束 |
 | --- | --- | --- |
-| Electron 渲染层 | `frontend/src/renderer/app/desktop-api.ts` | 页面不得绕过它直连 `fetch` / `EventSource` 到随意路径 |
+| Electron 渲染层 | `frontend/src/renderer/app/desktop/desktop-api.ts` | 页面不得绕过它直连 `fetch` / `EventSource` 到随意路径 |
 | 渲染层项目运行态 | `/api/project/bootstrap/stream` + `/api/events/stream` | `ProjectStore` 依赖 bootstrap + `project.patch` 建立最小事实源 |
 | Electron 独立日志窗口 | `/api/logs/stream` | 只消费 `LogManager` 诊断日志事件，不进入项目运行态 |
 | Python 侧对象化客户端 | `api/Client/*.py` + `api/Models/*.py` | 客户端负责请求包装与对象化，不负责运行态缓存 |
