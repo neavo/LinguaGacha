@@ -137,7 +137,7 @@ def test_run_headless_mode_registers_lifecycle_shutdown_service(
     runtime = RecordingServerRuntime()
     captured_services: list[app_module.CoreLifecycleAppService] = []
 
-    monkeypatch.setenv(app_module.CORE_INSTANCE_TOKEN_ENV_NAME, "core-token")
+    monkeypatch.setenv(app_module.CORE_API_TOKEN_ENV_NAME, "core-token")
     monkeypatch.setattr(
         app_module.ServerBootstrap,
         "start",
@@ -208,6 +208,8 @@ def test_main_ignores_legacy_cli_args_and_runs_headless_mode(
     headless_loggers: list[RecordingLogger] = []
 
     monkeypatch.setattr(app_module, "bootstrap_runtime", lambda: logger)
+    monkeypatch.setenv(app_module.DATABASE_API_BASE_URL_ENV_NAME, "http://127.0.0.1:1")
+    monkeypatch.setenv(app_module.DATABASE_API_TOKEN_ENV_NAME, "database-token")
     monkeypatch.setattr(
         app_module,
         "run_headless_mode",
@@ -227,6 +229,8 @@ def test_main_runs_headless_mode_without_legacy_cli_args(
     headless_loggers: list[RecordingLogger] = []
 
     monkeypatch.setattr(app_module, "bootstrap_runtime", lambda: logger)
+    monkeypatch.setenv(app_module.DATABASE_API_BASE_URL_ENV_NAME, "http://127.0.0.1:1")
+    monkeypatch.setenv(app_module.DATABASE_API_TOKEN_ENV_NAME, "database-token")
     monkeypatch.setattr(
         app_module,
         "run_headless_mode",

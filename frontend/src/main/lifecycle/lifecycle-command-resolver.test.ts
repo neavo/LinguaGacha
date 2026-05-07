@@ -7,8 +7,8 @@ import {
   NPM_INITIAL_CWD_ENV_NAME,
   UV_BIN_ENV_NAME,
   resolve_core_launch_command,
-} from "./core-command-resolver";
-import type { CoreLaunchEnvironment } from "./core-lifecycle-types";
+} from "./lifecycle-command-resolver";
+import type { CoreLaunchEnvironment } from "./lifecycle-types";
 
 function create_environment(
   env: NodeJS.ProcessEnv,

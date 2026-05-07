@@ -19,7 +19,7 @@ class CoreApiServer:
 
     HEALTH_PATH: str = "/api/health"
     HEALTH_SERVICE_NAME: str = "linguagacha-core"
-    CORE_INSTANCE_TOKEN_ENV_NAME: str = "LINGUAGACHA_CORE_INSTANCE_TOKEN"
+    CORE_API_TOKEN_ENV_NAME: str = "LINGUAGACHA_CORE_API_TOKEN"
     CONTENT_TYPE_JSON: str = "application/json; charset=utf-8"
     ACCESS_CONTROL_ALLOW_ORIGIN: str = "*"
     ACCESS_CONTROL_ALLOW_METHODS: str = "GET,POST,OPTIONS"
@@ -47,7 +47,7 @@ class CoreApiServer:
         self.host = host
         self.port = port
         self.instance_token = (
-            os.environ.get(self.CORE_INSTANCE_TOKEN_ENV_NAME, "").strip()
+            os.environ.get(self.CORE_API_TOKEN_ENV_NAME, "").strip()
             if instance_token is None
             else instance_token.strip()
         )

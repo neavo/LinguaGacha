@@ -8,7 +8,7 @@ import {
   CORE_API_PORT_MIN,
   allocate_core_api_port,
   build_core_api_base_url,
-} from "./core-port-allocator";
+} from "./lifecycle-port-allocator";
 
 async function listen_on_port(port: number): Promise<net.Server> {
   return new Promise((resolve, reject) => {
@@ -48,7 +48,7 @@ async function reserve_then_release_port(): Promise<number> {
   return port;
 }
 
-describe("core-port-allocator", () => {
+describe("lifecycle-port-allocator", () => {
   it("生成固定回环地址的 Core API base URL", () => {
     expect(build_core_api_base_url(38191)).toBe("http://127.0.0.1:38191");
   });

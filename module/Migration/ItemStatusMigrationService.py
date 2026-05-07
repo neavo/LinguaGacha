@@ -50,7 +50,7 @@ class ItemStatusMigrationService:
         cls,
         item_data: dict[str, Any],
     ) -> tuple[dict[str, Any], bool]:
-        """只改写 item status 旧值，持久化细节交给 storage 层。"""
+        """只改写 item status 旧值，持久化细节交给 database 层。"""
 
         raw_status = item_data.get("status")
         normalized_status = cls.normalize_item_status_value(raw_status)

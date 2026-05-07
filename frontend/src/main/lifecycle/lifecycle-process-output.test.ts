@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   format_core_process_output_line,
   sanitize_core_process_output,
-} from "./core-process-output";
+} from "./lifecycle-process-output";
 
 describe("sanitize_core_process_output", () => {
   it("保留 Rich 颜色 SGR 控制序列", () => {

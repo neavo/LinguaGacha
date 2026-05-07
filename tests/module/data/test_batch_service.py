@@ -5,12 +5,12 @@ import threading
 import pytest
 
 from module.Data.Core.BatchService import BatchService
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Data.Core.ProjectSession import ProjectSession
 
 
 class TrackingRLock:
-    """测试里显式追踪当前线程是否持锁，防止缓存在锁外被写脏。"""
+    # 测试里显式追踪当前线程是否持锁，防止缓存在锁外被写脏。
 
     def __init__(self) -> None:
         self.lock = threading.RLock()
@@ -36,7 +36,7 @@ class TrackingRLock:
 
 
 class GuardedDict(dict):
-    """只有持有工程锁时才允许改写缓存，模拟真实并发约束。"""
+    # 只有持有工程锁时才允许改写缓存，模拟真实并发约束。
 
     def __init__(self, lock: TrackingRLock, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -54,7 +54,7 @@ class GuardedDict(dict):
 
 
 class GuardedList(list):
-    """条目缓存只允许在持锁状态下改写，避免工程切换时串写。"""
+    # 条目缓存只允许在持锁状态下改写，避免工程切换时串写。
 
     def __init__(self, lock: TrackingRLock, values: list[dict[str, object]]) -> None:
         super().__init__(values)
@@ -78,13 +78,13 @@ class RecordingPreparedBatchDb:
 
     def prepare_rule_delete_params(
         self,
-        rules: dict[LGDatabase.RuleType, Any] | None,
+        rules: dict[DatabaseRuleType, Any] | None,
     ) -> dict[str, object]:
         return {"rules": rules, "kind": "delete"}
 
     def prepare_rule_insert_params(
         self,
-        rules: dict[LGDatabase.RuleType, Any] | None,
+        rules: dict[DatabaseRuleType, Any] | None,
     ) -> dict[str, object]:
         return {"rules": rules, "kind": "insert"}
 
@@ -106,7 +106,7 @@ class RecordingFallbackBatchDb:
         self,
         *,
         items: list[dict[str, Any]] | None = None,
-        rules: dict[LGDatabase.RuleType, Any] | None = None,
+        rules: dict[DatabaseRuleType, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> None:
         self.payload = {
@@ -123,9 +123,7 @@ def build_service(db: object | None) -> tuple[BatchService, SimpleNamespace]:
         db=db,
         meta_cache=GuardedDict(state_lock),
         rule_cache=GuardedDict(state_lock),
-        rule_text_cache=GuardedDict(
-            state_lock, {LGDatabase.RuleType.GLOSSARY: "cached"}
-        ),
+        rule_text_cache=GuardedDict(state_lock, {DatabaseRuleType.GLOSSARY: "cached"}),
         item_cache=GuardedList(state_lock, [{"id": 1, "src": "old"}]),
         item_cache_index={1: 0},
     )
@@ -146,7 +144,7 @@ def test_update_batch_syncs_db_and_caches() -> None:
 
     service.update_batch(
         items=[{"id": 1, "src": "new"}, {"id": 2, "src": "skip"}],
-        rules={LGDatabase.RuleType.GLOSSARY: glossary},
+        rules={DatabaseRuleType.GLOSSARY: glossary},
         meta={"source_language": "JA"},
     )
 
@@ -155,25 +153,25 @@ def test_update_batch_syncs_db_and_caches() -> None:
             "items": [{"id": 1, "src": "new"}, {"id": 2, "src": "skip"}],
         },
         "rule_delete_params": {
-            "rules": {LGDatabase.RuleType.GLOSSARY: glossary},
+            "rules": {DatabaseRuleType.GLOSSARY: glossary},
             "kind": "delete",
         },
         "rule_insert_params": {
-            "rules": {LGDatabase.RuleType.GLOSSARY: glossary},
+            "rules": {DatabaseRuleType.GLOSSARY: glossary},
             "kind": "insert",
         },
         "meta_params": {"meta": {"source_language": "JA"}},
     }
     assert session.meta_cache["source_language"] == "JA"
-    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == glossary
-    assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
+    assert session.rule_cache[DatabaseRuleType.GLOSSARY] == glossary
+    assert DatabaseRuleType.GLOSSARY not in session.rule_text_cache
     assert session.item_cache[0]["src"] == "new"
 
 
 def test_update_batch_uses_fallback_db_writer_when_prepared_api_is_missing() -> None:
     db = RecordingFallbackBatchDb()
     service, session = build_service(db)
-    rules = {LGDatabase.RuleType.GLOSSARY: [{"src": "MP", "dst": "魔力"}]}
+    rules = {DatabaseRuleType.GLOSSARY: [{"src": "MP", "dst": "魔力"}]}
 
     service.update_batch(
         items=[{"id": 1, "src": "fallback"}],
@@ -188,8 +186,8 @@ def test_update_batch_uses_fallback_db_writer_when_prepared_api_is_missing() -> 
     }
     assert session.meta_cache["target_language"] == "zh-CN"
     assert (
-        session.rule_cache[LGDatabase.RuleType.GLOSSARY]
-        == rules[LGDatabase.RuleType.GLOSSARY]
+        session.rule_cache[DatabaseRuleType.GLOSSARY]
+        == rules[DatabaseRuleType.GLOSSARY]
     )
     assert session.item_cache[0]["src"] == "fallback"
 
@@ -208,7 +206,7 @@ def test_update_batch_noop_cache_sync_when_all_payloads_none() -> None:
     }
     assert session.meta_cache == {}
     assert session.rule_cache == {}
-    assert session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] == "cached"
+    assert session.rule_text_cache[DatabaseRuleType.GLOSSARY] == "cached"
     assert session.item_cache[0]["src"] == "old"
 
 
@@ -239,12 +237,12 @@ def test_update_batch_syncs_caches_while_state_lock_is_held() -> None:
 
     service.update_batch(
         items=[{"id": 1, "src": "locked"}],
-        rules={LGDatabase.RuleType.GLOSSARY: [{"src": "HP", "dst": "生命"}]},
+        rules={DatabaseRuleType.GLOSSARY: [{"src": "HP", "dst": "生命"}]},
         meta={"analysis_candidate_count": 3},
     )
 
     assert session.meta_cache["analysis_candidate_count"] == 3
-    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == [
+    assert session.rule_cache[DatabaseRuleType.GLOSSARY] == [
         {"src": "HP", "dst": "生命"}
     ]
     assert session.item_cache[0]["src"] == "locked"

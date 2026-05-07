@@ -12,14 +12,14 @@ import module.Data.DataManager as data_manager_module
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Data.Core.Item import Item
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Localizer.Localizer import Localizer
 
 
 def build_data_manager(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[DataManager, list[tuple[Base.Event, dict]]]:
-    """构造一个真实初始化后的 DataManager，再替换边界依赖。"""
+    # 构造一个真实初始化后的 DataManager，再替换边界依赖。
 
     meta_store: dict[str, object] = {}
     monkeypatch.setattr(DataManager, "subscribe", lambda *args, **kwargs: None)
@@ -204,7 +204,7 @@ def test_update_batch_no_longer_emits_legacy_quality_events(
     dm, emitted_events = build_data_manager(monkeypatch)
 
     dm.update_batch(
-        rules={LGDatabase.RuleType.GLOSSARY: [{"src": "HP", "dst": "生命"}]},
+        rules={DatabaseRuleType.GLOSSARY: [{"src": "HP", "dst": "生命"}]},
         meta={"glossary_enable": True, "name": "demo"},
     )
 
@@ -318,7 +318,7 @@ def test_create_project_logs_when_presets_loaded(
     logger.info.assert_called_once_with("已加载 术语表")
 
 
-def test_persist_add_files_payload_compresses_assets_before_store(
+def test_persist_add_files_payload_delegates_asset_bytes_to_database(
     monkeypatch: pytest.MonkeyPatch,
     fs,
 ) -> None:
@@ -327,7 +327,7 @@ def test_persist_add_files_payload_compresses_assets_before_store(
     connection = SimpleNamespace(commit=MagicMock())
     db = SimpleNamespace(
         asset_path_exists=MagicMock(return_value=False),
-        add_asset=MagicMock(),
+        add_asset_from_source=MagicMock(),
         set_items=MagicMock(),
         delete_analysis_item_checkpoints=MagicMock(),
         clear_analysis_candidate_aggregates=MagicMock(),
@@ -347,9 +347,6 @@ def test_persist_add_files_payload_compresses_assets_before_store(
     source_path = Path("/workspace/sample_02.txt")
     source_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.write_bytes(b"new content")
-
-    compress = MagicMock(return_value=b"compressed")
-    monkeypatch.setattr(data_manager_module.ZstdTool, "compress", compress)
 
     second_source_path = Path("/workspace/sample_03.txt")
     second_source_path.write_bytes(b"second content")
@@ -373,22 +370,16 @@ def test_persist_add_files_payload_compresses_assets_before_store(
         prefilter_config={},
     )
 
-    assert compress.call_args_list == [
-        call(b"new content"),
-        call(b"second content"),
-    ]
-    assert db.add_asset.call_args_list == [
+    assert db.add_asset_from_source.call_args_list == [
         call(
             "sample_02.txt",
-            b"compressed",
-            len(b"new content"),
+            str(source_path),
             sort_order=1,
             conn=connection,
         ),
         call(
             "sample_03.txt",
-            b"compressed",
-            len(b"second content"),
+            str(second_source_path),
             sort_order=2,
             conn=connection,
         ),

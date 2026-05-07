@@ -24,25 +24,25 @@ from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
 from module.Data.Project.ProjectRuntimeRevisionService import (
     ProjectRuntimeRevisionService,
 )
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseLegacyRuleType
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Data.Quality.QualityRuleService import QualityRuleService
 from module.Localizer.Localizer import Localizer
 from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
-from module.Utils.ZstdTool import ZstdTool
 
 
 class DataManager(Base):
-    """全局数据中间件。"""
+    # 全局数据中间件。
 
     instance: ClassVar["DataManager | None"] = None
     lock: ClassVar[threading.Lock] = threading.Lock()
 
-    RuleType = LGDatabase.RuleType
+    RuleType = DatabaseRuleType
     LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE: ClassVar[str] = (
-        LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE
+        DatabaseLegacyRuleType.TRANSLATION_PROMPT_ZH
     )
     LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE: ClassVar[str] = (
-        LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE
+        DatabaseLegacyRuleType.TRANSLATION_PROMPT_EN
     )
     LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY: ClassVar[str] = (
         "translation_prompt_legacy_migrated"
@@ -108,7 +108,7 @@ class DataManager(Base):
         return cls.instance
 
     def load_project(self, lg_path: str) -> None:
-        """加载工程并发出工程已加载事件。"""
+        # 加载工程并发出工程已加载事件。
 
         if self.is_loaded():
             self.unload_project()
@@ -117,7 +117,7 @@ class DataManager(Base):
         self.emit(Base.Event.PROJECT_LOADED, {"path": lg_path})
 
     def unload_project(self) -> None:
-        """卸载工程并发出工程已卸载事件。"""
+        # 卸载工程并发出工程已卸载事件。
 
         old_path = self.lifecycle_service.unload_project()
         if old_path:
@@ -132,7 +132,7 @@ class DataManager(Base):
             return self.session.lg_path
 
     def open_db(self) -> None:
-        """打开长连接。"""
+        # 打开长连接。
 
         with self.state_lock:
             db = self.session.db
@@ -140,7 +140,7 @@ class DataManager(Base):
                 db.open()
 
     def close_db(self) -> None:
-        """关闭长连接。"""
+        # 关闭长连接。
 
         with self.state_lock:
             db = self.session.db
@@ -148,14 +148,14 @@ class DataManager(Base):
                 db.close()
 
     def on_translation_activity(self, event: Base.Event, data: dict) -> None:
-        """翻译活动结束后清理条目缓存。"""
+        # 翻译活动结束后清理条目缓存。
 
         del event
         del data
         self.item_service.clear_item_cache()
 
     def handle_project_loaded_post_actions(self) -> None:
-        """在工程真正对外可见前刷新加载后派生缓存。"""
+        # 在工程真正对外可见前刷新加载后派生缓存。
 
         self.refresh_analysis_progress_snapshot_cache()
 
@@ -326,7 +326,7 @@ class DataManager(Base):
         return self.analysis_service.get_analysis_progress_snapshot()
 
     def get_task_progress_snapshot(self, task_type: str) -> dict[str, Any]:
-        """任务 API 统一从这里读取进度快照，避免调用方自己分支。"""
+        # 任务 API 统一从这里读取进度快照，避免调用方自己分支。
 
         if task_type == "analysis":
             return self.get_analysis_progress_snapshot()
@@ -427,12 +427,12 @@ class DataManager(Base):
             self.bump_project_runtime_section_revision("items")
             return merged_items
 
-    def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
+    def get_rules_cached(self, rule_type: DatabaseRuleType) -> list[dict[str, Any]]:
         return self.quality_rule_service.get_rules_cached(rule_type)
 
     def set_rules_cached(
         self,
-        rule_type: LGDatabase.RuleType,
+        rule_type: DatabaseRuleType,
         data: list[dict[str, Any]],
         save: bool = True,
     ) -> None:
@@ -440,7 +440,7 @@ class DataManager(Base):
 
     def normalize_quality_rules_for_write(
         self,
-        rule_type: LGDatabase.RuleType,
+        rule_type: DatabaseRuleType,
         data: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         return self.quality_rule_service.normalize_quality_rules_for_write(
@@ -448,10 +448,10 @@ class DataManager(Base):
             data,
         )
 
-    def get_rule_text_cached(self, rule_type: LGDatabase.RuleType) -> str:
+    def get_rule_text_cached(self, rule_type: DatabaseRuleType) -> str:
         return self.quality_rule_service.get_rule_text_cached(rule_type)
 
-    def set_rule_text_cached(self, rule_type: LGDatabase.RuleType, text: str) -> None:
+    def set_rule_text_cached(self, rule_type: DatabaseRuleType, text: str) -> None:
         self.quality_rule_service.set_rule_text_cached(rule_type, text)
 
     def get_glossary(self) -> list[dict[str, Any]]:
@@ -566,7 +566,7 @@ class DataManager(Base):
         ]
 
     def get_items_all(self) -> list[Item]:
-        """提供项目运行态使用的全量条目对象视图。"""
+        # 提供项目运行态使用的全量条目对象视图。
 
         return [Item.from_dict(item_dict) for item_dict in self.get_all_item_dicts()]
 
@@ -579,7 +579,7 @@ class DataManager(Base):
     def update_batch(
         self,
         items: list[dict[str, Any]] | None = None,
-        rules: dict[LGDatabase.RuleType, Any] | None = None,
+        rules: dict[DatabaseRuleType, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> None:
         self.batch_service.update_batch(items=items, rules=rules, meta=meta)
@@ -590,7 +590,7 @@ class DataManager(Base):
         *,
         reason: str,
     ) -> "ProjectItemChange":
-        """把条目对象或条目字典整理成稳定影响范围。"""
+        # 把条目对象或条目字典整理成稳定影响范围。
 
         from module.Data.Core.DataTypes import ProjectItemChange
 
@@ -720,7 +720,7 @@ class DataManager(Base):
         translation_extras: dict[str, Any],
         prefilter_config: dict[str, Any],
     ) -> dict[str, Any]:
-        """统一收口会重建分析事实的同步 mutation meta 镜像。"""
+        # 统一收口会重建分析事实的同步 mutation meta 镜像。
 
         return {
             "translation_extras": dict(translation_extras),
@@ -735,7 +735,7 @@ class DataManager(Base):
         items: list[dict[str, Any]],
         meta: dict[str, Any],
     ) -> None:
-        """在同一事务里整段替换 items，并同步 meta 与分析持久化事实。"""
+        # 在同一事务里整段替换 items，并同步 meta 与分析持久化事实。
 
         with self.state_lock:
             db = self.session.db
@@ -759,33 +759,19 @@ class DataManager(Base):
         meta: dict[str, Any],
         deleted_rel_paths: list[str] | None = None,
     ) -> None:
-        """在同一事务里写 items/meta，并同时清空分析持久化事实。"""
+        # 在同一事务里写 items/meta，并同时清空分析持久化事实。
 
         with self.state_lock:
             db = self.session.db
             if db is None:
                 raise RuntimeError("工程未加载")
 
-            item_params = db.prepare_item_update_params(items)
-            meta_params = db.prepare_meta_upsert_params(meta)
-
             with db.connection() as conn:
                 for rel_path in deleted_rel_paths or []:
                     db.delete_items_by_file_path(rel_path, conn=conn)
                     db.delete_asset(rel_path, conn=conn)
 
-                if item_params:
-                    conn.executemany(
-                        "UPDATE items SET data = ? WHERE id = ?",
-                        item_params,
-                    )
-
-                if meta_params:
-                    conn.executemany(
-                        "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                        meta_params,
-                    )
-
+                db.update_batch(items=items, meta=meta, conn=conn)
                 db.delete_analysis_item_checkpoints(conn=conn)
                 db.clear_analysis_candidate_aggregates(conn=conn)
                 conn.commit()
@@ -887,7 +873,7 @@ class DataManager(Base):
         finalized_items: list[dict[str, Any]],
         extras_snapshot: dict[str, Any],
     ) -> "ProjectItemChange":
-        """翻译提交统一走数据层显式入口，保证落库和刷新顺序一致。"""
+        # 翻译提交统一走数据层显式入口，保证落库和刷新顺序一致。
 
         self.update_batch(
             items=finalized_items,
@@ -954,7 +940,7 @@ class DataManager(Base):
         section_revisions: dict[str, int] | None = None,
         project_revision: int | None = None,
     ) -> None:
-        """直接推送项目运行态补丁，避免前端再整段重拉 bootstrap。"""
+        # 直接推送项目运行态补丁，避免前端再整段重拉 bootstrap。
 
         normalized_sections = [
             section
@@ -1011,7 +997,7 @@ class DataManager(Base):
         self.emit(Base.Event.PROJECT_RUNTIME_PATCH, payload)
 
     def try_begin_guarded_file_operation(self) -> None:
-        """在数据层兜底拦住忙碌态文件操作。"""
+        # 在数据层兜底拦住忙碌态文件操作。
 
         from module.Engine.Engine import Engine
 
@@ -1021,7 +1007,7 @@ class DataManager(Base):
             raise ValueError(Localizer.get().task_running)
 
     def require_loaded_lg_path(self) -> str:
-        """读取当前工程路径；未加载工程时统一抛出同一条错误。"""
+        # 读取当前工程路径；未加载工程时统一抛出同一条错误。
 
         lg_path = self.get_lg_path()
         if not self.is_loaded() or not lg_path:
@@ -1050,7 +1036,7 @@ class DataManager(Base):
         *,
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        """按前端确认后的完整顺序持久化文件顺序。"""
+        # 按前端确认后的完整顺序持久化文件顺序。
 
         from module.Engine.Engine import Engine
 
@@ -1082,7 +1068,7 @@ class DataManager(Base):
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        """持久化前端已确认的文件重置结果。"""
+        # 持久化前端已确认的文件重置结果。
 
         normalized_rel_paths = self.project_file_service.normalize_batch_rel_paths(
             rel_paths
@@ -1125,7 +1111,7 @@ class DataManager(Base):
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        """持久化前端已确认的文件删除结果。"""
+        # 持久化前端已确认的文件删除结果。
 
         normalized_rel_paths = self.project_file_service.normalize_batch_rel_paths(
             rel_paths
@@ -1207,15 +1193,12 @@ class DataManager(Base):
         conn: Any,
         meta: dict[str, Any],
     ) -> None:
+        # 保留调用点事务形态，实际 meta 序列化交给 DatabaseGateway。
+
         if self.session.db is None:
             raise RuntimeError("工程未加载")
 
-        meta_params = self.session.db.prepare_meta_upsert_params(meta)
-        if meta_params:
-            conn.executemany(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                meta_params,
-            )
+        self.session.db.upsert_meta_entries(meta, conn=conn)
 
     def persist_add_files_payload(
         self,
@@ -1225,7 +1208,8 @@ class DataManager(Base):
         prefilter_config: dict[str, Any],
         expected_section_revisions: dict[str, int] | None = None,
     ) -> None:
-        """在一个事务内持久化前端已确认的批量新增文件结果。"""
+        # 在一个事务内持久化前端已确认的批量新增文件结果。
+        # asset 只传 source_path 给 TS database，避免 Python 重新承担 .lg 压缩格式。
 
         self.try_begin_guarded_file_operation()
         try:
@@ -1293,14 +1277,12 @@ class DataManager(Base):
                         )
                         or 0
                     )
-                    with open(source_path, "rb") as f:
-                        original_data = f.read()
-
                     normalized_files.append(
                         {
                             "target_rel_path": target_rel_path,
                             "sort_index": sort_index,
-                            "original_data": original_data,
+                            # 只保存源路径给 database 读取，避免 Python 重新实现 asset 压缩。
+                            "source_path": source_path,
                             "parsed_items": parsed_items,
                         }
                     )
@@ -1320,12 +1302,9 @@ class DataManager(Base):
 
                 with db.connection() as conn:
                     for normalized_file in normalized_files:
-                        original_data = normalized_file["original_data"]
-                        compressed_data = ZstdTool.compress(original_data)
-                        db.add_asset(
+                        db.add_asset_from_source(
                             str(normalized_file["target_rel_path"]),
-                            compressed_data,
-                            len(original_data),
+                            str(normalized_file["source_path"]),
                             sort_order=int(normalized_file["sort_index"]),
                             conn=conn,
                         )

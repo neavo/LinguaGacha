@@ -5,15 +5,16 @@ from pathlib import Path
 
 from module.Data.Core.AssetService import AssetService
 from module.Data.Core.ItemService import ItemService
-from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
+from module.Data.Database.DatabaseGateway import DatabaseGateway
 from module.Migration.ProjectMetaMigrationService import ProjectMetaMigrationService
 from module.Migration.ProjectRuleMigrationService import ProjectRuleMigrationService
 
 
 class ProjectLifecycleService:
-    """工程生命周期服务。"""
+    # 工程生命周期服务。
 
     def __init__(
         self,
@@ -21,7 +22,7 @@ class ProjectLifecycleService:
         meta_service: MetaService,
         item_service: ItemService,
         asset_service: AssetService,
-        rule_type: type[LGDatabase.RuleType],
+        rule_type: type[DatabaseRuleType],
         legacy_prompt_zh_rule_type: str,
         legacy_prompt_en_rule_type: str,
         legacy_translation_prompt_migrated_meta_key: str,
@@ -38,14 +39,14 @@ class ProjectLifecycleService:
         )
 
     def load_project(self, lg_path: str) -> None:
-        """加载工程并完成必要的旧数据迁移。"""
+        # 加载工程并完成必要的旧数据迁移。
 
         with self.session.state_lock:
             if not Path(lg_path).exists():
                 raise FileNotFoundError(f"工程文件不存在: {lg_path}")
 
             self.session.lg_path = lg_path
-            self.session.db = LGDatabase(lg_path)
+            self.session.db = DatabaseGateway(lg_path)
             self.session.db.set_meta("updated_at", datetime.now().isoformat())
             self.meta_service.refresh_cache_from_db()
             ProjectMetaMigrationService.migrate_text_preserve_mode_if_needed(
@@ -68,7 +69,7 @@ class ProjectLifecycleService:
             self.asset_service.clear_decompress_cache()
 
     def unload_project(self) -> str | None:
-        """卸载工程并返回旧路径。"""
+        # 卸载工程并返回旧路径。
 
         with self.session.state_lock:
             old_path = self.session.lg_path

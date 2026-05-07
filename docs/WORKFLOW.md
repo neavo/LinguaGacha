@@ -44,7 +44,8 @@ flowchart TD
 | --- | --- |
 | Python 业务逻辑、数据流、API 行为变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest` |
 | API 契约、错误码、SSE topic、bootstrap 变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并补齐或更新相关 API 测试 |
-| Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
+| Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend run test`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
+| `.lg` database、DatabaseGateway、schema 或 asset 读写变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并执行 `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend run test`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
 | 渲染层结构、组件契约、样式边界、导航变化 | `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend run renderer:audit`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
 | 仅文档改动 | 自检链接、命名、阅读路径、权威来源和文档边界是否仍然准确 |
 
@@ -79,7 +80,7 @@ Agent 维护与实现约束的长期权威文档固定收口为：
 | 路由前缀、响应壳、错误码、bootstrap、SSE topic、`project.patch`、同步 mutation 规则 | `docs/API.md` |
 | `main / preload / shared / renderer` 分层、`window.desktopApp`、`desktop-api.ts`、`ProjectStore`、导航映射、样式归属 | `docs/FRONTEND.md` |
 | 视觉 token 权威来源、页面骨架、稳定组件语言、主题语义 | `DESIGN.md` |
-| 数据域职责、状态落点、唯一写入口、SQL 落点、文件格式分发、模型配置规则 | `docs/DATA.md` |
+| 数据域职责、状态落点、唯一写入口、`.lg` 物理存储落点、文件格式分发、模型配置规则 | `docs/DATA.md` |
 | Agent 协作入口、仓库级硬约束、最低验证与交付要求 | `AGENTS.md` |
 
 同步原则：

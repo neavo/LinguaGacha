@@ -3,19 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 from module.Data.Core.DataEnums import TextPreserveMode
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseGateway import DatabaseGateway
 
 
 class ProjectMetaMigrationService:
-    """统一承接工程 meta 旧字段向当前字段的迁移。"""
+    # 统一承接工程 meta 旧字段向当前字段的迁移。
 
     @classmethod
     def migrate_text_preserve_mode_if_needed(
         cls,
-        db: LGDatabase,
+        db: DatabaseGateway,
         meta_cache: dict[str, Any],
     ) -> bool:
-        """把旧的 bool 开关迁移成新的 mode 枚举。"""
+        # 把旧的 bool 开关迁移成新的 mode 枚举。
 
         raw_mode = meta_cache.get("text_preserve_mode")
         mode_valid = False

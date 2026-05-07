@@ -29,7 +29,7 @@ import {
 } from "../shared/ipc-channels";
 import { DESKTOP_TITLE_BAR_OVERLAY_HEIGHT, uses_title_bar_overlay } from "../shared/desktop-shell";
 import { type DesktopPathPickResult, type ThemeMode } from "../shared/desktop-types";
-import { CoreLifecycleManager } from "./core-lifecycle/core-lifecycle-manager";
+import { CoreLifecycleManager } from "./lifecycle/lifecycle-manager";
 import {
   LogWindowManager,
   LOG_WINDOW_QUERY_KEY,

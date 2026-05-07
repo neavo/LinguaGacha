@@ -1,13 +1,15 @@
 # LinguaGacha 架构文档
 
 ## 一句话总览
-LinguaGacha 是“无头 Python Core + Electron 桌面前端”的双进程工程。本文只回答系统如何分层、跨层边界在哪里、运行时主链路如何流动，以及读哪份文档才能做出正确维护判断。
+LinguaGacha 是“Electron main 内部 Database Service + 无头 Python Core + Electron 桌面前端”的本机多进程工程。本文只回答系统如何分层、跨层边界在哪里、运行时主链路如何流动，以及读哪份文档才能做出正确维护判断。
 
 ## 系统分层图
 
 ```mermaid
 flowchart LR
-    A["frontend/src/main"] --> B["frontend/src/preload"]
+    A["frontend/src/main"] --> M["database"]
+    M --> N["migration"]
+    A --> B["frontend/src/preload"]
     A --> C["frontend/src/shared"]
     B --> D["window.desktopApp"]
     D --> E["frontend/src/renderer"]
@@ -17,7 +19,8 @@ flowchart LR
     G --> I["module/Engine"]
     H --> J["module/File"]
     G --> K["module/Model"]
-    H --> L["module/Data/Storage/LGDatabase.py"]
+    H --> L["DatabaseGateway"]
+    L --> M
 ```
 
 分层规则：
@@ -36,11 +39,11 @@ flowchart LR
 | API -> Data | 工程事实、规则、分析与校对辅助由 `module/Data` 提供 | 防止 API 层直接拼装会话与数据库 |
 | API -> Engine | 后台任务启动、停止、进度与终态语义由 `module/Engine` 提供 | 防止数据层和界面层偷持任务生命周期 |
 | Data -> File | 外部文件解析与写回只能委托 `module/File` | 防止格式支持散落在工程服务里 |
-| Data -> Storage | SQL 只允许落在 `module/Data/Storage/LGDatabase.py` | 防止事务与 schema 规则碎裂 |
+| Data -> Database | Python 只通过 `module/Data/Database/DatabaseGateway.py` 调 Electron main 内部 database workflow；SQL / 事务 / `.lg` asset 读写只落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只落在 `frontend/src/main/utils/zstd-tool.ts`，`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts` | 防止事务、schema 与压缩格式在 Python / TS 两侧并行 |
 
 仓库级不变量：
 - `api/` 之外不新增前后端并行协议边界。
-- SQL 只允许落在 `module/Data/Storage/LGDatabase.py`；API 层不得直接持有数据库连接或 `ProjectSession`。
+- SQL、事务和 `.lg` 内 asset 读写只允许落在 Electron main 的 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/main/utils/zstd-tool.ts`；`.lg` 打开期 schema migration 与旧物理格式兼容规则只允许落在 `frontend/src/main/migration/`；API 层不得直接持有 database handle 或 `ProjectSession`。
 - 长期用户文案分成两处维护：Python Core 在 `module/Localizer/`，渲染层在 `frontend/src/renderer/i18n/`。
 - 跨层载荷优先传 `id`、值对象或不可变快照，不共享可变对象引用。
 
@@ -48,9 +51,10 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A["Electron main"] --> B["CoreLifecycleManager 从启动根目录解析 Core 目标"]
+    A["Electron main"] --> S["启动内部 Database Service"]
+    S --> B["CoreLifecycleManager 从启动根目录解析 Core 目标"]
     B --> C["优先启动平台 Core helper，否则 uv run app.py"]
-    C --> D["/api/health 校验实例 token"]
+    C --> D["注入 database env 并通过 /api/health 校验 Core API token"]
     D --> E["preload 暴露 window.desktopApp"]
     E --> F["renderer 启动 desktop-api.ts"]
     F --> G["/api/project/bootstrap/stream"]
@@ -61,10 +65,10 @@ flowchart TD
 ```
 
 运行时主链路的稳定事实：
-- Electron main 是 Python Core 伴生进程的生命周期拥有者；启动时由 `CoreLifecycleManager` 在高位端口范围内选择本机端口，并从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`，再校验 `/api/health` 实例 token 并创建窗口。开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 Electron 可执行文件所在目录，macOS 为 `.app/Contents/MacOS`。
+- Electron main 是内部 Database Service 与 Python Core 伴生进程的生命周期拥有者；启动顺序固定为 `Database Service -> Python Core -> renderer`。`CoreLifecycleManager` 在高位端口范围内选择 Core 本机端口，并从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`，再校验 `/api/health` 返回的 Core API token 并创建窗口。开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 Electron 可执行文件所在目录，macOS 为 `.app/Contents/MacOS`。
 - Python Core 的运行时路径统一收敛为两根：`APP_ROOT` 是应用根，开发态为仓库根、发布态为程序运行目录，承载 `resource/`、`version.txt` 和 Core 启动目标；`DATA_ROOT` 是可写数据根，承载 `userdata/` 与 `log/`。AppImage 与 macOS `.app` 固定把 `DATA_ROOT` 放到 `~/LinguaGacha`，其他场景优先使用可写的 `APP_ROOT`，不可写时回退 `~/LinguaGacha`。
-- Electron 侧 Core API 地址由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL`；`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
-- 应用退出时 Electron main 会优先调用内部 `/api/lifecycle/shutdown`，失败或超时后按平台清理 Core 进程树；渲染层不直接管理后端进程。
+- Electron 侧 Core API 地址和 token 由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL` / `LINGUAGACHA_CORE_API_TOKEN`；内部 Database Service 地址和 token 只注入 Python Core 的 `LINGUAGACHA_DATABASE_API_BASE_URL` / `LINGUAGACHA_DATABASE_API_TOKEN`，不进入 preload、`window.desktopApp` 或 renderer。`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
+- 应用退出时 Electron main 会优先调用内部 `/api/lifecycle/shutdown`，失败或超时后按平台清理 Core 进程树；Python Core 退出后再关闭 Database Service 并释放 SQLite handle，渲染层不直接管理后端进程。
 - 渲染层项目运行态由 bootstrap 首包和事件流共同驱动，而不是单次整页快照。
 - `ProjectStore` 是渲染层项目运行态最小事实仓库；页面本地筛选、弹窗、交互态不应上提到这里。
 - 校对页不会把 warnings、筛选面板 facets、搜索排序结果等派生事实塞回 `ProjectStore`；这些派生缓存由独立 worker 持有，主线程只同步原始 `project / items / quality` 输入并消费查询结果。
@@ -88,7 +92,7 @@ flowchart TD
 | `docs/ARCHITECTURE.md` | 系统分层、跨层边界、运行时主链路和模块关系 |
 | `docs/API.md` | HTTP / SSE / bootstrap / topic / 错误码 / mutation 契约 |
 | `docs/FRONTEND.md` | Electron / preload / renderer / `ProjectStore` / 导航与样式边界 |
-| `docs/DATA.md` | Python Core 数据域、状态拥有者、唯一写入口和 SQL 落点 |
+| `docs/DATA.md` | Python Core 数据域、状态拥有者、唯一写入口和 `.lg` 物理存储落点 |
 | `docs/WORKFLOW.md` | 任务起手式、验证矩阵、文档同步与交付自检 |
 | `PRODUCT.md` -> `DESIGN.md` | 产品语境与设计权威 |
 
@@ -98,7 +102,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `api/` | 本地 HTTP / SSE 契约、bootstrap、错误映射、事件桥 | `frontend/src/renderer`、`api/Client`、`module/*` | [`API.md`](./API.md) |
 | `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、根目录 `DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
-| `module/Data` | 工程事实、规则、分析、翻译结果、校对辅助 | `api/`、`module/File`、`Storage` | [`DATA.md`](./DATA.md) |
+| `module/Data` | 工程事实、规则、分析、翻译结果、校对辅助 | `api/`、`module/File`、Electron main Database Service | [`DATA.md`](./DATA.md) |
 | `module/Engine` | 后台任务生命周期、请求调度、停止与重试 | `api/`、`module/Data` | [`DATA.md`](./DATA.md) |
 | `module/File` | 文件格式解析、资产读取、导出写回 | `module/Data` | [`DATA.md`](./DATA.md) |
 | `module/Model` | 模型配置类型、模板补齐、排序与默认回退 | `api/`、`Config` | [`DATA.md`](./DATA.md) |

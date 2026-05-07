@@ -12,6 +12,8 @@
 | Electron 独立日志窗口 | `/api/logs/stream` | 只消费 `LogManager` 诊断日志事件，不进入项目运行态 |
 | Python 侧对象化客户端 | `api/Client/*.py` + `api/Models/*.py` | 客户端负责请求包装与对象化，不负责运行态缓存 |
 
+内部 Database Service 不属于公开 `api/` 协议：它由 Electron main 启动，只供 Python Core 的 `DatabaseGateway` 通过 token 调用。renderer、Python 客户端和外部调试脚本不应依赖 `/internal/database/*` 路径。
+
 协议层真实分工：
 - `api/Server/` 负责本地 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
@@ -37,11 +39,12 @@
 
 路径不变量：
 - 主业务协议统一落在 `/api/` 前缀，不扩展新的并行根前缀。
+- `/internal/database/*` 是 Electron main 进程内 database server 的受保护内部路由，不是 Python Core 对外 API，也不改变公开 `/api/*` 契约。
 - 公开 `GET` 稳定只有 `/api/health`、`/api/events/stream`、`/api/logs/stream`、`/api/project/bootstrap/stream` 四类；其余公开接口默认走 `POST + JSON body`。
-- `/api/lifecycle/shutdown` 是内部生命周期接口，只供 Electron main 调用；它要求 `X-LinguaGacha-Core-Token` 与当前 Core 实例 token 一致。
+- `/api/lifecycle/shutdown` 是内部生命周期接口，只供 Electron main 调用；它要求 `X-LinguaGacha-Core-Token` 与当前 Core API token 一致。
 - `OPTIONS` 由服务器统一回 `204`，CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
 
-`/api/health` 成功响应固定包含 `status`、`service` 与纯数值 `version`；当 Core 由 Electron main 启动并带有实例 token 时，响应 `data` 额外包含 `instanceToken`，用于避免误连旧进程。
+`/api/health` 成功响应固定包含 `status`、`service` 与纯数值 `version`；当 Core 由 Electron main 启动并带有 Core API token 时，响应 `data` 额外包含 `instanceToken`，用于避免误连旧进程。
 
 ## HTTP 响应壳
 

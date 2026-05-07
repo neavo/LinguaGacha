@@ -3,20 +3,21 @@ from typing import Any
 from base.BasePath import BasePath
 from base.LogManager import LogManager
 from module.Config import Config
-from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
+from module.Data.Database.DatabaseGateway import DatabaseGateway
 from module.Localizer.Localizer import Localizer
 from module.PromptPathResolver import PromptPathResolver
 from module.QualityRulePathResolver import QualityRulePathResolver
 
 
 class RuleService:
-    """质量规则（rules 表）访问与缓存。"""
+    # 质量规则（rules 表）访问与缓存。
 
     def __init__(self, session: ProjectSession) -> None:
         self.session = session
 
-    def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
+    def get_rules_cached(self, rule_type: DatabaseRuleType) -> list[dict[str, Any]]:
         with self.session.state_lock:
             cached = self.session.rule_cache.get(rule_type)
             if isinstance(cached, list):
@@ -32,7 +33,7 @@ class RuleService:
 
     def set_rules_cached(
         self,
-        rule_type: LGDatabase.RuleType,
+        rule_type: DatabaseRuleType,
         data: list[dict[str, Any]],
         save: bool = True,
     ) -> None:
@@ -47,7 +48,7 @@ class RuleService:
             # rules 变更后，文本类缓存可能与存储形态不一致，直接失效
             self.session.rule_text_cache.pop(rule_type, None)
 
-    def get_rule_text_cached(self, rule_type: LGDatabase.RuleType) -> str:
+    def get_rule_text_cached(self, rule_type: DatabaseRuleType) -> str:
         with self.session.state_lock:
             cached = self.session.rule_text_cache.get(rule_type)
             if isinstance(cached, str):
@@ -61,7 +62,7 @@ class RuleService:
             self.session.rule_text_cache[rule_type] = text
             return text
 
-    def set_rule_text_cached(self, rule_type: LGDatabase.RuleType, text: str) -> None:
+    def set_rule_text_cached(self, rule_type: DatabaseRuleType, text: str) -> None:
         with self.session.state_lock:
             db = self.session.db
             if db is not None:
@@ -70,11 +71,9 @@ class RuleService:
             # 文本类规则与列表类规则互斥，清理另一份缓存避免脏读
             self.session.rule_cache.pop(rule_type, None)
 
-    def initialize_project_rules(self, db: LGDatabase) -> list[str]:
-        """创建新工程时的规则初始化。
-
-        返回加载成功的预设名称列表，由调用方决定是否提示 UI。
-        """
+    def initialize_project_rules(self, db: DatabaseGateway) -> list[str]:
+        # 创建新工程时的规则初始化。
+        # 返回加载成功的预设名称列表，由调用方决定是否提示 UI。
         config = Config().load()
         loaded_presets: list[str] = []
 
@@ -101,28 +100,28 @@ class RuleService:
             (
                 BasePath.GLOSSARY_DIR_NAME,
                 config.glossary_default_preset,
-                LGDatabase.RuleType.GLOSSARY,
+                DatabaseRuleType.GLOSSARY,
                 "glossary_enable",
                 Localizer.get().app_glossary_page,
             ),
             (
                 BasePath.TEXT_PRESERVE_DIR_NAME,
                 config.text_preserve_default_preset,
-                LGDatabase.RuleType.TEXT_PRESERVE,
+                DatabaseRuleType.TEXT_PRESERVE,
                 "text_preserve_mode",
                 Localizer.get().app_text_preserve_page,
             ),
             (
                 BasePath.PRE_TRANSLATION_REPLACEMENT_DIR_NAME,
                 config.pre_translation_replacement_default_preset,
-                LGDatabase.RuleType.PRE_REPLACEMENT,
+                DatabaseRuleType.PRE_REPLACEMENT,
                 "pre_translation_replacement_enable",
                 Localizer.get().app_pre_translation_replacement_page,
             ),
             (
                 BasePath.POST_TRANSLATION_REPLACEMENT_DIR_NAME,
                 config.post_translation_replacement_default_preset,
-                LGDatabase.RuleType.POST_REPLACEMENT,
+                DatabaseRuleType.POST_REPLACEMENT,
                 "post_translation_replacement_enable",
                 Localizer.get().app_post_translation_replacement_page,
             ),
@@ -153,14 +152,14 @@ class RuleService:
             (
                 PromptPathResolver.TaskType.TRANSLATION,
                 config.translation_custom_prompt_default_preset,
-                LGDatabase.RuleType.TRANSLATION_PROMPT,
+                DatabaseRuleType.TRANSLATION_PROMPT,
                 "translation_prompt_enable",
                 Localizer.get().app_translation_prompt_page,
             ),
             (
                 PromptPathResolver.TaskType.ANALYSIS,
                 config.analysis_custom_prompt_default_preset,
-                LGDatabase.RuleType.ANALYSIS_PROMPT,
+                DatabaseRuleType.ANALYSIS_PROMPT,
                 "analysis_prompt_enable",
                 Localizer.get().app_analysis_prompt_page,
             ),

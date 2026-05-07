@@ -32,7 +32,7 @@ def test_get_all_asset_paths_reads_from_db() -> None:
 
 
 def test_get_asset_decompressed_returns_none_when_asset_missing() -> None:
-    db = SimpleNamespace(get_asset=MagicMock(return_value=None))
+    db = SimpleNamespace(read_asset_content=MagicMock(return_value=None))
     service, _ = build_service(db)
 
     assert service.get_asset_decompressed("missing") is None
@@ -41,20 +41,17 @@ def test_get_asset_decompressed_returns_none_when_asset_missing() -> None:
 def test_get_asset_decompressed_uses_cache_and_lru(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    db = SimpleNamespace(get_asset=MagicMock(side_effect=[b"a", b"b", b"c"]))
+    db = SimpleNamespace(
+        read_asset_content=MagicMock(side_effect=[b"dec-a", b"dec-b", b"dec-c"])
+    )
     service, session = build_service(db)
 
     monkeypatch.setattr(
         "module.Data.Core.AssetService.AssetService.ASSET_DECOMPRESS_CACHE_MAX", 2
     )
-    monkeypatch.setattr(
-        "module.Data.Core.AssetService.ZstdTool.decompress",
-        staticmethod(lambda data: b"dec-" + data),
-    )
-
     assert service.get_asset_decompressed("a") == b"dec-a"
     assert service.get_asset_decompressed("a") == b"dec-a"
-    assert db.get_asset.call_count == 1
+    assert db.read_asset_content.call_count == 1
 
     assert service.get_asset_decompressed("b") == b"dec-b"
     assert service.get_asset_decompressed("c") == b"dec-c"
@@ -64,20 +61,11 @@ def test_get_asset_decompressed_uses_cache_and_lru(
 def test_get_asset_decompressed_logs_and_returns_none_on_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    db = SimpleNamespace(get_asset=MagicMock(return_value=b"broken"))
+    db = SimpleNamespace(read_asset_content=MagicMock(side_effect=RuntimeError("boom")))
     service, _ = build_service(db)
 
     logger = MagicMock()
     monkeypatch.setattr("module.Data.Core.AssetService.LogManager.get", lambda: logger)
-
-    def fail_decompress(data: bytes) -> bytes:
-        del data
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(
-        "module.Data.Core.AssetService.ZstdTool.decompress",
-        staticmethod(fail_decompress),
-    )
 
     assert service.get_asset_decompressed("broken.bin") is None
     assert logger.error.call_count == 1

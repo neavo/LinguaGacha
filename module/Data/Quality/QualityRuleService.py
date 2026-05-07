@@ -7,14 +7,14 @@ from module.Data.Core.DataEnums import TextPreserveMode
 from module.Data.Core.ItemService import ItemService
 from module.Data.Core.MetaService import MetaService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.RuleService import RuleService
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
 from module.QualityRule.QualityRuleMerger import QualityRuleMerger
 
 
 class QualityRuleService:
-    """质量规则业务服务。"""
+    # 质量规则业务服务。
 
     RULE_STATISTICS_COUNTED_STATUSES = frozenset(
         {
@@ -36,12 +36,12 @@ class QualityRuleService:
         self.meta_service = meta_service
         self.item_service = item_service
 
-    def get_rules_cached(self, rule_type: LGDatabase.RuleType) -> list[dict[str, Any]]:
+    def get_rules_cached(self, rule_type: DatabaseRuleType) -> list[dict[str, Any]]:
         return self.rule_service.get_rules_cached(rule_type)
 
     def set_rules_cached(
         self,
-        rule_type: LGDatabase.RuleType,
+        rule_type: DatabaseRuleType,
         data: list[dict[str, Any]],
         save: bool = True,
     ) -> list[dict[str, Any]]:
@@ -51,10 +51,10 @@ class QualityRuleService:
 
     def normalize_quality_rules_for_write(
         self,
-        rule_type: LGDatabase.RuleType,
+        rule_type: DatabaseRuleType,
         data: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """统一收敛重复规则和空 src。"""
+        # 统一收敛重复规则和空 src。
 
         try:
             quality_type = QualityRuleMerger.RuleType(rule_type.value)
@@ -69,21 +69,21 @@ class QualityRuleService:
         )
         return merged
 
-    def get_rule_text_cached(self, rule_type: LGDatabase.RuleType) -> str:
+    def get_rule_text_cached(self, rule_type: DatabaseRuleType) -> str:
         return self.rule_service.get_rule_text_cached(rule_type)
 
-    def set_rule_text_cached(self, rule_type: LGDatabase.RuleType, text: str) -> None:
+    def set_rule_text_cached(self, rule_type: DatabaseRuleType, text: str) -> None:
         self.rule_service.set_rule_text_cached(rule_type, text)
 
     def get_glossary(self) -> list[dict[str, Any]]:
-        return self.get_rules_cached(LGDatabase.RuleType.GLOSSARY)
+        return self.get_rules_cached(DatabaseRuleType.GLOSSARY)
 
     def set_glossary(
         self,
         data: list[dict[str, Any]],
         save: bool = True,
     ) -> list[dict[str, Any]]:
-        return self.set_rules_cached(LGDatabase.RuleType.GLOSSARY, data, save)
+        return self.set_rules_cached(DatabaseRuleType.GLOSSARY, data, save)
 
     def merge_glossary_incoming(
         self,
@@ -92,7 +92,7 @@ class QualityRuleService:
         merge_mode: QualityRuleMerger.MergeMode,
         save: bool = False,
     ) -> tuple[list[dict[str, Any]] | None, QualityRuleMerger.Report]:
-        """把来料术语并入当前术语表。"""
+        # 把来料术语并入当前术语表。
 
         current = self.get_glossary()
         merged, report = QualityRuleMerger.merge(
@@ -124,10 +124,10 @@ class QualityRuleService:
         self.meta_service.set_meta("glossary_enable", bool(enable))
 
     def get_text_preserve(self) -> list[dict[str, Any]]:
-        return self.get_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE)
+        return self.get_rules_cached(DatabaseRuleType.TEXT_PRESERVE)
 
     def set_text_preserve(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return self.set_rules_cached(LGDatabase.RuleType.TEXT_PRESERVE, data, True)
+        return self.set_rules_cached(DatabaseRuleType.TEXT_PRESERVE, data, True)
 
     def get_text_preserve_mode(self) -> Any:
         raw = self.meta_service.get_meta(
@@ -155,10 +155,10 @@ class QualityRuleService:
         return normalized
 
     def get_pre_replacement(self) -> list[dict[str, Any]]:
-        return self.get_rules_cached(LGDatabase.RuleType.PRE_REPLACEMENT)
+        return self.get_rules_cached(DatabaseRuleType.PRE_REPLACEMENT)
 
     def set_pre_replacement(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return self.set_rules_cached(LGDatabase.RuleType.PRE_REPLACEMENT, data, True)
+        return self.set_rules_cached(DatabaseRuleType.PRE_REPLACEMENT, data, True)
 
     def get_pre_replacement_enable(self) -> bool:
         return bool(
@@ -169,10 +169,10 @@ class QualityRuleService:
         self.meta_service.set_meta("pre_translation_replacement_enable", bool(enable))
 
     def get_post_replacement(self) -> list[dict[str, Any]]:
-        return self.get_rules_cached(LGDatabase.RuleType.POST_REPLACEMENT)
+        return self.get_rules_cached(DatabaseRuleType.POST_REPLACEMENT)
 
     def set_post_replacement(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return self.set_rules_cached(LGDatabase.RuleType.POST_REPLACEMENT, data, True)
+        return self.set_rules_cached(DatabaseRuleType.POST_REPLACEMENT, data, True)
 
     def get_post_replacement_enable(self) -> bool:
         return bool(
@@ -183,10 +183,10 @@ class QualityRuleService:
         self.meta_service.set_meta("post_translation_replacement_enable", bool(enable))
 
     def get_translation_prompt(self) -> str:
-        return self.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT)
+        return self.get_rule_text_cached(DatabaseRuleType.TRANSLATION_PROMPT)
 
     def set_translation_prompt(self, text: str) -> None:
-        self.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, text)
+        self.set_rule_text_cached(DatabaseRuleType.TRANSLATION_PROMPT, text)
 
     def get_translation_prompt_enable(self) -> bool:
         return bool(self.meta_service.get_meta("translation_prompt_enable", False))
@@ -195,10 +195,10 @@ class QualityRuleService:
         self.meta_service.set_meta("translation_prompt_enable", bool(enable))
 
     def get_analysis_prompt(self) -> str:
-        return self.get_rule_text_cached(LGDatabase.RuleType.ANALYSIS_PROMPT)
+        return self.get_rule_text_cached(DatabaseRuleType.ANALYSIS_PROMPT)
 
     def set_analysis_prompt(self, text: str) -> None:
-        self.set_rule_text_cached(LGDatabase.RuleType.ANALYSIS_PROMPT, text)
+        self.set_rule_text_cached(DatabaseRuleType.ANALYSIS_PROMPT, text)
 
     def get_analysis_prompt_enable(self) -> bool:
         return bool(self.meta_service.get_meta("analysis_prompt_enable", False))
@@ -208,7 +208,7 @@ class QualityRuleService:
 
     @staticmethod
     def normalize_rule_statistics_text(value: Any) -> str:
-        """把统计输入统一成字符串。"""
+        # 把统计输入统一成字符串。
 
         if value is None:
             return ""
@@ -218,7 +218,7 @@ class QualityRuleService:
 
     @staticmethod
     def normalize_rule_statistics_status(value: Any) -> Base.ItemStatus:
-        """把条目状态统一成枚举。"""
+        # 把条目状态统一成枚举。
 
         if isinstance(value, Base.ItemStatus):
             return value
@@ -231,7 +231,7 @@ class QualityRuleService:
         return Base.ItemStatus.NONE
 
     def collect_rule_statistics_texts(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        """提取规则统计需要的 src/dst 文本快照。"""
+        # 提取规则统计需要的 src/dst 文本快照。
 
         src_texts: list[str] = []
         dst_texts: list[str] = []

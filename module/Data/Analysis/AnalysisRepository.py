@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime
 from typing import Any
 
@@ -8,11 +7,12 @@ from base.Base import Base
 from module.Data.Analysis.AnalysisCandidateService import AnalysisCandidateService
 from module.Data.Analysis.AnalysisProgressService import AnalysisProgressService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseGateway import DatabaseGateway
+from module.Data.Database.DatabaseGateway import DatabaseTransaction
 
 
 class AnalysisRepository:
-    """承接分析专用表读写和事务内 meta 同步。"""
+    # 承接分析专用表读写和事务内 meta 同步。
 
     ANALYSIS_CANDIDATE_COUNT_META_KEY: str = "analysis_candidate_count"
 
@@ -28,11 +28,11 @@ class AnalysisRepository:
 
     def persist_progress_snapshot_with_db(
         self,
-        db: LGDatabase,
-        conn: sqlite3.Connection,
+        db: DatabaseGateway,
+        conn: DatabaseTransaction,
         snapshot: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """在现有事务内持久化分析快照，并同步会话缓存。"""
+        # 在现有事务内持久化分析快照，并同步会话缓存。
 
         if snapshot is None:
             return None
@@ -44,11 +44,11 @@ class AnalysisRepository:
 
     def persist_analysis_candidate_count_with_db(
         self,
-        db: LGDatabase,
-        conn: sqlite3.Connection,
+        db: DatabaseGateway,
+        conn: DatabaseTransaction,
         count: int,
     ) -> int:
-        """候选术语数缓存和候选池提交同事务写回，避免项目检查读到旧值。"""
+        # 候选术语数缓存和候选池提交同事务写回，避免项目检查读到旧值。
         normalized_count = max(0, int(count))
         db.upsert_meta_entries(
             {self.ANALYSIS_CANDIDATE_COUNT_META_KEY: normalized_count},
@@ -60,7 +60,7 @@ class AnalysisRepository:
         return normalized_count
 
     def get_cached_analysis_candidate_count_or_none(self) -> int | None:
-        """区分缓存缺失和真实 0，避免旧工程首轮增量提交丢掉历史候选数。"""
+        # 区分缓存缺失和真实 0，避免旧工程首轮增量提交丢掉历史候选数。
         if self.ANALYSIS_CANDIDATE_COUNT_META_KEY not in self.session.meta_cache:
             return None
 
@@ -74,7 +74,7 @@ class AnalysisRepository:
         self,
         aggregate_map: dict[str, dict[str, Any]],
     ) -> int:
-        """只统计可导出的候选项，保持和 UI 展示口径一致。"""
+        # 只统计可导出的候选项，保持和 UI 展示口径一致。
         return sum(
             1
             for src, entry in aggregate_map.items()
@@ -85,7 +85,7 @@ class AnalysisRepository:
         self,
         aggregate_map: dict[str, dict[str, Any]],
     ) -> dict[str, dict[str, Any]]:
-        """事务内合并前先复制一份可变聚合，避免意外改脏原快照。"""
+        # 事务内合并前先复制一份可变聚合，避免意外改脏原快照。
         return {
             src: {
                 "src": entry["src"],
@@ -102,17 +102,17 @@ class AnalysisRepository:
 
     def build_full_candidate_count_with_db(
         self,
-        db: LGDatabase,
-        conn: sqlite3.Connection,
+        db: DatabaseGateway,
+        conn: DatabaseTransaction,
     ) -> int:
-        """候选数缓存缺失时回表重建一次真实基线，保证后续增量修正有依据。"""
+        # 候选数缓存缺失时回表重建一次真实基线，保证后续增量修正有依据。
         aggregate_map = self.candidate_service.normalize_candidate_aggregate_rows(
             db.get_analysis_candidate_aggregates(conn=conn)
         )
         return self.count_candidate_entries(aggregate_map)
 
     def get_item_checkpoints(self) -> dict[int, dict[str, Any]]:
-        """返回条目级检查点快照。"""
+        # 返回条目级检查点快照。
 
         with self.session.state_lock:
             db = self.session.db
@@ -125,7 +125,7 @@ class AnalysisRepository:
         self,
         checkpoints: list[dict[str, Any]],
     ) -> dict[int, dict[str, Any]]:
-        """批量写入条目级检查点，并返回最新快照。"""
+        # 批量写入条目级检查点，并返回最新快照。
 
         normalized_rows = self.progress_service.normalize_item_checkpoint_upsert_rows(
             checkpoints
@@ -142,7 +142,7 @@ class AnalysisRepository:
         return self.get_item_checkpoints()
 
     def get_candidate_aggregate(self) -> dict[str, dict[str, Any]]:
-        """返回项目级候选池汇总。"""
+        # 返回项目级候选池汇总。
 
         with self.session.state_lock:
             db = self.session.db
@@ -155,7 +155,7 @@ class AnalysisRepository:
         self,
         aggregates: dict[str, dict[str, Any]],
     ) -> dict[str, dict[str, Any]]:
-        """批量写入项目级候选池汇总。"""
+        # 批量写入项目级候选池汇总。
 
         normalized_rows: list[dict[str, Any]] = []
         for raw_src, raw_entry in aggregates.items():
@@ -197,7 +197,7 @@ class AnalysisRepository:
         glossary_entries: list[dict[str, Any]],
         progress_snapshot: dict[str, Any] | None,
     ) -> int:
-        """原子提交一批分析任务结果，并同步候选计数缓存。"""
+        # 原子提交一批分析任务结果，并同步候选计数缓存。
 
         now = datetime.now().isoformat()
         normalized_glossary_entries = (
@@ -297,7 +297,7 @@ class AnalysisRepository:
         return inserted_count
 
     def clear_progress(self) -> None:
-        """清空分析快照、检查点和候选池。"""
+        # 清空分析快照、检查点和候选池。
 
         with self.session.state_lock:
             db = self.session.db
@@ -311,7 +311,7 @@ class AnalysisRepository:
                 conn.commit()
 
     def clear_progress_with_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
-        """清空分析事实，并把调用方确认后的快照一并落库。"""
+        # 清空分析事实，并把调用方确认后的快照一并落库。
 
         normalized_snapshot = dict(snapshot)
         with self.session.state_lock:
@@ -332,7 +332,7 @@ class AnalysisRepository:
         return {} if persisted_snapshot is None else dict(persisted_snapshot)
 
     def reset_failed_checkpoints(self) -> int:
-        """仅清除失败检查点，不动候选池和成功检查点。"""
+        # 仅清除失败检查点，不动候选池和成功检查点。
 
         with self.session.state_lock:
             db = self.session.db
@@ -346,7 +346,7 @@ class AnalysisRepository:
         self,
         snapshot: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        """删除失败检查点，并把最新分析快照同事务写回。"""
+        # 删除失败检查点，并把最新分析快照同事务写回。
 
         normalized_snapshot = dict(snapshot)
         with self.session.state_lock:
@@ -372,7 +372,7 @@ class AnalysisRepository:
         checkpoints: list[dict[str, Any]],
         progress_snapshot: dict[str, Any] | None = None,
     ) -> dict[int, dict[str, Any]]:
-        """任务失败后记录当前条目的失败检查点，并和进度快照同事务落库。"""
+        # 任务失败后记录当前条目的失败检查点，并和进度快照同事务落库。
 
         now_text = datetime.now().isoformat()
         with self.session.state_lock:

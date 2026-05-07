@@ -6,24 +6,23 @@ from pathlib import Path
 from base.Base import Base
 from base.LogManager import LogManager
 from module.Config import Config
-from module.Data.Storage.LGDatabase import LGDatabase
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.Utils.ZstdTool import ZstdTool
+from module.Data.Database.DatabaseGateway import DatabaseGateway
 
 ProgressCallback = Callable[[int, int, str], None]
 
 
 @dataclass(frozen=True)
 class ProjectSourceFile:
-    """工程创建链路中的源文件快照，固定住原始路径与工程内相对路径。"""
+    # 工程创建链路中的源文件快照，固定住原始路径与工程内相对路径。
 
     source_path: str
     rel_path: str
 
 
 class ProjectService(Base):
-    """工程创建/预览服务。"""
+    # 工程创建/预览服务。
 
     # 支持的文件扩展名
     SUPPORTED_EXTENSIONS = {
@@ -54,19 +53,17 @@ class ProjectService(Base):
         self,
         source_path: str,
         output_path: str,
-        init_rules: Callable[[LGDatabase], list[str]] | None = None,
+        init_rules: Callable[[DatabaseGateway], list[str]] | None = None,
     ) -> list[str]:
-        """创建工程并写入 assets/items/meta。
-
-        返回：初始化成功加载的默认预设名称列表。
-        """
+        # 创建工程并写入 assets/items/meta。
+        # 返回：初始化成功加载的默认预设名称列表。
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         if Path(output_path).exists():
             Path(output_path).unlink()
 
         project_name = Path(source_path).name
-        db = LGDatabase.create(output_path, project_name)
+        db = DatabaseGateway.create(output_path, project_name)
 
         loaded_presets: list[str] = []
         if init_rules is not None:
@@ -93,8 +90,8 @@ class ProjectService(Base):
                 LogManager.get().error(f"Failed to read source file - {file_path}", e)
                 continue
 
-            compressed = ZstdTool.compress(original_data)
-            db.add_asset(rel_path, compressed, len(original_data))
+            # .lg asset 压缩由 TS database 持有，Python 只传源路径和解析所需 bytes。
+            db.add_asset_from_source(rel_path, file_path)
 
             try:
                 for item in file_manager.parse_asset(rel_path, original_data):
@@ -136,7 +133,7 @@ class ProjectService(Base):
         self,
         source_paths: list[str],
     ) -> dict[str, object]:
-        """只解析源文件草稿，不创建 .lg，也不执行预过滤。"""
+        # 只解析源文件草稿，不创建 .lg，也不执行预过滤。
 
         effective_source_paths = self.normalize_source_paths(source_paths)
         source_files = self.collect_source_file_entries(effective_source_paths)
@@ -206,9 +203,9 @@ class ProjectService(Base):
         project_settings: dict[str, object],
         translation_extras: dict[str, object],
         prefilter_config: dict[str, object],
-        init_rules: Callable[[LGDatabase], list[str]] | None = None,
+        init_rules: Callable[[DatabaseGateway], list[str]] | None = None,
     ) -> list[str]:
-        """把前端预过滤后的草稿事务化写成新工程。"""
+        # 把前端预过滤后的草稿事务化写成新工程。
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         if Path(output_path).exists():
@@ -219,7 +216,7 @@ class ProjectService(Base):
             effective_source_paths[0] if effective_source_paths else output_path
         )
         project_name = Path(project_name_seed).name
-        db = LGDatabase.create(output_path, project_name)
+        db = DatabaseGateway.create(output_path, project_name)
 
         loaded_presets: list[str] = []
         if init_rules is not None:
@@ -234,13 +231,10 @@ class ProjectService(Base):
                 source_file_path = str(file_record.get("source_path", "") or "")
                 if source_file_path == "":
                     continue
-                with open(source_file_path, "rb") as f:
-                    original_data = f.read()
-                compressed = ZstdTool.compress(original_data)
-                db.add_asset(
+                # source_path 只穿过网关给 TS database，Python 不再持有 .lg asset 压缩细节。
+                db.add_asset_from_source(
                     rel_path,
-                    compressed,
-                    len(original_data),
+                    source_file_path,
                     sort_order=int(file_record.get("sort_index", 0) or 0),
                     conn=conn,
                 )
@@ -263,14 +257,14 @@ class ProjectService(Base):
         lg_path: str,
         config: Config,
     ) -> dict[str, object]:
-        """读取工程设置镜像并按当前应用设置决定打开前对齐动作。"""
+        # 读取工程设置镜像并按当前应用设置决定打开前对齐动作。
 
         if not Path(lg_path).exists():
             raise FileNotFoundError(
                 Localizer.get().project_store_file_not_found.format(PATH=lg_path)
             )
 
-        db = LGDatabase(lg_path)
+        db = DatabaseGateway(lg_path)
         meta = db.get_all_meta()
         prefilter_config = (
             meta.get("prefilter_config", {})
@@ -357,14 +351,14 @@ class ProjectService(Base):
         prefilter_config: dict[str, object],
         expected_section_revisions: dict[str, int] | None,
     ) -> dict[str, object]:
-        """打开前直接对齐 .lg，避免未进入 loaded 时把状态绕回内存会话。"""
+        # 打开前直接对齐 .lg，避免未进入 loaded 时把状态绕回内存会话。
 
         if not Path(lg_path).exists():
             raise FileNotFoundError(
                 Localizer.get().project_store_file_not_found.format(PATH=lg_path)
             )
 
-        db = LGDatabase(lg_path)
+        db = DatabaseGateway(lg_path)
         if mode == "settings_only":
             db.upsert_meta_entries(
                 self.build_project_settings_only_meta(project_settings=project_settings)
@@ -408,7 +402,7 @@ class ProjectService(Base):
             },
         }
 
-    def build_project_draft_from_db(self, db: LGDatabase) -> dict[str, object]:
+    def build_project_draft_from_db(self, db: DatabaseGateway) -> dict[str, object]:
         asset_records = db.get_all_asset_records()
         items = db.get_all_items()
         file_type_by_path: dict[str, str] = {}
@@ -505,7 +499,7 @@ class ProjectService(Base):
             ),
         }
 
-    def get_file_section_revision(self, db: LGDatabase, section: str) -> int:
+    def get_file_section_revision(self, db: DatabaseGateway, section: str) -> int:
         raw_revision = db.get_meta(f"project_runtime_revision.{section}", 0)
         try:
             revision = int(raw_revision)
@@ -517,7 +511,7 @@ class ProjectService(Base):
 
     def assert_expected_file_revisions(
         self,
-        db: LGDatabase,
+        db: DatabaseGateway,
         expected_section_revisions: dict[str, int] | None,
         sections: tuple[str, ...],
     ) -> None:
@@ -537,7 +531,7 @@ class ProjectService(Base):
 
     def build_alignment_file_ack(
         self,
-        db: LGDatabase,
+        db: DatabaseGateway,
         updated_sections: list[str],
     ) -> dict[str, object]:
         section_revisions = {
@@ -624,7 +618,7 @@ class ProjectService(Base):
         return normalized_paths
 
     def collect_source_files_from_paths(self, source_paths: list[str]) -> list[str]:
-        """按用户选择顺序收集多个源路径下可导入的源文件。"""
+        # 按用户选择顺序收集多个源路径下可导入的源文件。
 
         return [
             source_file.source_path
@@ -739,11 +733,11 @@ class ProjectService(Base):
         )
 
     def get_project_preview(self, lg_path: str) -> dict:
-        """获取工程预览信息（不完全加载）。"""
+        # 获取工程预览信息（不完全加载）。
         if not Path(lg_path).exists():
             raise FileNotFoundError(
                 Localizer.get().project_store_file_not_found.format(PATH=lg_path)
             )
 
-        db = LGDatabase(lg_path)
+        db = DatabaseGateway(lg_path)
         return db.get_project_summary()

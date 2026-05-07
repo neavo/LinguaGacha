@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { CoreLaunchCommand, CoreLaunchEnvironment } from "./core-lifecycle-types";
+import type { CoreLaunchCommand, CoreLaunchEnvironment } from "./lifecycle-types";
 
 export const UV_BIN_ENV_NAME = "LINGUAGACHA_UV_BIN";
 export const NPM_INITIAL_CWD_ENV_NAME = "INIT_CWD";

@@ -3,25 +3,26 @@ from __future__ import annotations
 from typing import Any
 
 from base.BaseLanguage import BaseLanguage
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
+from module.Data.Database.DatabaseGateway import DatabaseGateway
 from module.Localizer.Localizer import Localizer
 
 
 class ProjectRuleMigrationService:
-    """统一承接工程规则旧槽位向当前规则类型的迁移。"""
+    # 统一承接工程规则旧槽位向当前规则类型的迁移。
 
     @classmethod
     def migrate_legacy_translation_prompt_text_once(
         cls,
-        db: LGDatabase,
+        db: DatabaseGateway,
         meta_cache: dict[str, Any],
         *,
-        rule_type: type[LGDatabase.RuleType],
+        rule_type: type[DatabaseRuleType],
         legacy_prompt_zh_rule_type: str,
         legacy_prompt_en_rule_type: str,
         legacy_translation_prompt_migrated_meta_key: str,
     ) -> bool:
-        """把旧工程中的 ZH/EN 翻译提示词正文迁移到新字段。"""
+        # 把旧工程中的 ZH/EN 翻译提示词正文迁移到新字段。
 
         if bool(meta_cache.get(legacy_translation_prompt_migrated_meta_key, False)):
             return False
@@ -56,7 +57,7 @@ class ProjectRuleMigrationService:
         legacy_prompt_zh_rule_type: str,
         legacy_prompt_en_rule_type: str,
     ) -> tuple[str, str]:
-        """按当前 UI 语言决定旧 ZH/EN 槽位的读取优先级。"""
+        # 按当前 UI 语言决定旧 ZH/EN 槽位的读取优先级。
 
         app_language = Localizer.get_app_language()
         if app_language == BaseLanguage.Enum.EN:
@@ -73,11 +74,11 @@ class ProjectRuleMigrationService:
     @classmethod
     def get_first_available_legacy_translation_prompt(
         cls,
-        db: LGDatabase,
+        db: DatabaseGateway,
         legacy_prompt_zh_rule_type: str,
         legacy_prompt_en_rule_type: str,
     ) -> str:
-        """按优先级读取第一个可用的旧提示词正文。"""
+        # 按优先级读取第一个可用的旧提示词正文。
 
         for legacy_rule_type in cls.get_preferred_legacy_translation_prompt_types(
             legacy_prompt_zh_rule_type,
@@ -91,11 +92,11 @@ class ProjectRuleMigrationService:
     @classmethod
     def mark_legacy_translation_prompt_migrated(
         cls,
-        db: LGDatabase,
+        db: DatabaseGateway,
         meta_cache: dict[str, Any],
         legacy_translation_prompt_migrated_meta_key: str,
     ) -> None:
-        """记录旧翻译提示词已经迁移完成。"""
+        # 记录旧翻译提示词已经迁移完成。
 
         db.set_meta(legacy_translation_prompt_migrated_meta_key, True)
         meta_cache[legacy_translation_prompt_migrated_meta_key] = True

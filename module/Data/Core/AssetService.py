@@ -3,11 +3,10 @@ from typing import Any
 
 from base.LogManager import LogManager
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Utils.ZstdTool import ZstdTool
 
 
 class AssetService:
-    """资产（assets 表）访问与解压缓存。"""
+    # 资产（assets 表）访问与解压缓存。
 
     # 限制缓存容量，避免大量大文件常驻内存。
     ASSET_DECOMPRESS_CACHE_MAX: int = 32
@@ -41,6 +40,8 @@ class AssetService:
             return db.get_asset(rel_path)
 
     def get_asset_decompressed(self, rel_path: str) -> bytes | None:
+        # 读取可解析的 asset 原始内容，压缩格式细节由 DatabaseGateway 屏蔽。
+
         with self.session.state_lock:
             cached = self.session.asset_decompress_cache.get(rel_path)
             if isinstance(cached, bytes):
@@ -48,14 +49,17 @@ class AssetService:
                 self.session.asset_decompress_cache[rel_path] = data
                 return data
 
-        compressed = self.get_asset(rel_path)
-        if compressed is None:
+        with self.session.state_lock:
+            db = self.session.db
+        if db is None:
             return None
 
         try:
-            decompressed = ZstdTool.decompress(compressed)
+            decompressed = db.read_asset_content(rel_path)
         except Exception as e:
-            LogManager.get().error(f"解压资产失败: {rel_path}", e)
+            LogManager.get().error(f"读取资产失败: {rel_path}", e)
+            return None
+        if decompressed is None:
             return None
 
         with self.session.state_lock:

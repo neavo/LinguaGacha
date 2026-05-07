@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { wait_for_process_exit } from "./core-process-terminator";
-import type { CoreProcessHandle } from "./core-lifecycle-types";
+import { wait_for_process_exit } from "./lifecycle-process-terminator";
+import type { CoreProcessHandle } from "./lifecycle-types";
 
 describe("wait_for_process_exit", () => {
   it("进程退出时返回 true", async () => {

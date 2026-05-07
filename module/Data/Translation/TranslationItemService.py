@@ -6,11 +6,10 @@ from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Core.ProjectSession import ProjectSession
 from module.File.FileManager import FileManager
-from module.Utils.ZstdTool import ZstdTool
 
 
 class TranslationItemService:
-    """按翻译模式获取条目列表（继续/新翻译/重置）。"""
+    # 按翻译模式获取条目列表（继续/新翻译/重置）。
 
     def __init__(self, session: ProjectSession) -> None:
         self.session = session
@@ -42,15 +41,13 @@ class TranslationItemService:
 
             asset_paths = db.get_all_asset_paths()
             for rel_path in asset_paths:
-                compressed = db.get_asset(rel_path)
-                if not compressed:
-                    continue
                 try:
-                    content = ZstdTool.decompress(compressed)
+                    # reset 需要重新解析原始资产内容，但压缩格式仍由 database 边界隐藏。
+                    content = db.read_asset_content(rel_path)
                 except Exception as e:
-                    LogManager.get().warning(
-                        f"Failed to decompress asset: {rel_path}", e
-                    )
+                    LogManager.get().warning(f"读取资产失败: {rel_path}", e)
+                    continue
+                if not content:
                     continue
                 parsed_items.extend(file_manager.parse_asset(rel_path, content))
 

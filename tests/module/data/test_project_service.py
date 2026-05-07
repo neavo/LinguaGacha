@@ -198,17 +198,15 @@ def test_create_preview_and_commit_use_same_batch_file_set(
         def connection(self) -> FakeConnectionContext:
             return FakeConnectionContext()
 
-        def add_asset(
+        def add_asset_from_source(
             self,
             rel_path: str,
-            compressed: bytes,
-            original_size: int,
+            source_path: str,
             *,
             sort_order: int | None = None,
             conn: FakeConnection | None = None,
         ) -> None:
-            del compressed
-            del original_size
+            del source_path
             del conn
             fake_db_assets.append((rel_path, int(sort_order or 0)))
 
@@ -252,7 +250,7 @@ def test_create_preview_and_commit_use_same_batch_file_set(
         FakeFileManager,
     )
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LGDatabase.create",
+        "module.Data.Project.ProjectService.DatabaseGateway.create",
         lambda output_path, project_name: FakeCommitDB(),
     )
 
@@ -308,7 +306,7 @@ def test_get_project_preview_reads_summary(monkeypatch: pytest.MonkeyPatch, fs) 
 
     fake_db = SimpleNamespace(get_project_summary=lambda: {"name": "demo"})
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LGDatabase", lambda path: fake_db
+        "module.Data.Project.ProjectService.DatabaseGateway", lambda path: fake_db
     )
 
     summary = service.get_project_preview(str(lg_path))
@@ -361,12 +359,12 @@ class DummyLocalizer:
 
 class FakeDB:
     def __init__(self) -> None:
-        self.assets: list[tuple[str, bytes, int]] = []
+        self.assets: list[tuple[str, str]] = []
         self.items: list[dict] | None = None
         self.meta: dict[str, object] = {}
 
-    def add_asset(self, rel_path: str, compressed: bytes, original_size: int) -> None:
-        self.assets.append((rel_path, compressed, original_size))
+    def add_asset_from_source(self, rel_path: str, source_path: str) -> None:
+        self.assets.append((rel_path, source_path))
 
     def set_items(self, items_dicts: list[dict]) -> None:
         self.items = items_dicts
@@ -398,7 +396,7 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     logger = DummyLogger()
 
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LGDatabase.create",
+        "module.Data.Project.ProjectService.DatabaseGateway.create",
         lambda output_path, project_name: fake_db,
     )
     monkeypatch.setattr(
@@ -406,16 +404,6 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     )
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.Localizer.get", lambda: DummyLocalizer()
-    )
-
-    compressed_inputs: list[bytes] = []
-
-    def fake_compress(data: bytes) -> bytes:
-        compressed_inputs.append(data)
-        return b"z" + data
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.ZstdTool.compress", fake_compress
     )
 
     class FakeFileManager:
@@ -453,8 +441,7 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     assert presets == ["default"]
     assert out_path.exists() is False
 
-    assert compressed_inputs == [b"hello"]
-    assert fake_db.assets == [("a.txt", b"zhello", 5)]
+    assert fake_db.assets == [("a.txt", str(src_dir / "a.txt"))]
     assert fake_db.items is not None
     assert fake_db.meta["source_language"] != ""
     assert fake_db.meta["target_language"] != ""
@@ -487,7 +474,7 @@ def test_create_skips_read_failures_and_continues(
     logger = DummyLogger()
 
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LGDatabase.create",
+        "module.Data.Project.ProjectService.DatabaseGateway.create",
         lambda output_path, project_name: fake_db,
     )
     monkeypatch.setattr(
@@ -509,10 +496,6 @@ def test_create_skips_read_failures_and_continues(
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.FileManager", FakeFileManager
     )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.ZstdTool.compress", lambda b: b"z"
-    )
-
     real_open = open
 
     def fake_open(file, mode="r", *args, **kwargs):
@@ -548,7 +531,7 @@ def test_create_logs_parse_errors_but_keeps_asset(
     logger = DummyLogger()
 
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LGDatabase.create",
+        "module.Data.Project.ProjectService.DatabaseGateway.create",
         lambda output_path, project_name: fake_db,
     )
     monkeypatch.setattr(
@@ -570,10 +553,6 @@ def test_create_logs_parse_errors_but_keeps_asset(
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.FileManager", FakeFileManager
     )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.ZstdTool.compress", lambda b: b"z"
-    )
-
     service.create(source_path=str(src_dir), output_path=str(out_path))
 
     assert fake_db.assets != []
@@ -600,7 +579,7 @@ def test_create_records_mtool_setting_without_marking_prefilter_done(
     logger = DummyLogger()
 
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LGDatabase.create",
+        "module.Data.Project.ProjectService.DatabaseGateway.create",
         lambda output_path, project_name: fake_db,
     )
     monkeypatch.setattr(
@@ -633,10 +612,6 @@ def test_create_records_mtool_setting_without_marking_prefilter_done(
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.FileManager", FakeFileManager
     )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.ZstdTool.compress", lambda b: b
-    )
-
     service.create(source_path=str(src_dir), output_path=str(out_path))
 
     assert fake_db.meta["mtool_optimizer_enable"] is True
@@ -667,7 +642,7 @@ def test_open_alignment_preview_requires_prefilter_when_src_dedup_missing(
         skip_duplicate_source_text_enable=True,
     )
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LGDatabase", lambda path: fake_db
+        "module.Data.Project.ProjectService.DatabaseGateway", lambda path: fake_db
     )
     monkeypatch.setattr(
         service,

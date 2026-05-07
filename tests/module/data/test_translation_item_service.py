@@ -42,7 +42,7 @@ def test_get_items_for_translation_reset_reparses_assets(
 ) -> None:
     db = SimpleNamespace(
         get_all_asset_paths=MagicMock(return_value=["a.txt", "b.txt"]),
-        get_asset=MagicMock(side_effect=[b"c1", b"c2"]),
+        read_asset_content=MagicMock(side_effect=[b"decoded-c1", b"decoded-c2"]),
     )
     service = build_service(db)
 
@@ -56,11 +56,6 @@ def test_get_items_for_translation_reset_reparses_assets(
     monkeypatch.setattr(
         "module.Data.Translation.TranslationItemService.FileManager", FakeFileManager
     )
-    monkeypatch.setattr(
-        "module.Data.Translation.TranslationItemService.ZstdTool.decompress",
-        staticmethod(lambda data: b"decoded-" + data),
-    )
-
     items = service.get_items_for_translation(Config(), Base.TranslationMode.RESET)
 
     assert [item.get_src() for item in items] == [
@@ -74,7 +69,9 @@ def test_get_items_for_translation_reset_skips_decompress_failure(
 ) -> None:
     db = SimpleNamespace(
         get_all_asset_paths=MagicMock(return_value=["a.txt", "b.txt"]),
-        get_asset=MagicMock(side_effect=[b"ok", b"bad"]),
+        read_asset_content=MagicMock(
+            side_effect=[b"decoded-ok", RuntimeError("broken")]
+        ),
     )
     service = build_service(db)
 
@@ -89,15 +86,6 @@ def test_get_items_for_translation_reset_skips_decompress_failure(
         "module.Data.Translation.TranslationItemService.FileManager", FakeFileManager
     )
 
-    def fake_decompress(data: bytes) -> bytes:
-        if data == b"bad":
-            raise RuntimeError("broken")
-        return b"decoded-" + data
-
-    monkeypatch.setattr(
-        "module.Data.Translation.TranslationItemService.ZstdTool.decompress",
-        staticmethod(fake_decompress),
-    )
     logger = MagicMock()
     monkeypatch.setattr(
         "module.Data.Translation.TranslationItemService.LogManager.get", lambda: logger
@@ -114,7 +102,7 @@ def test_get_items_for_translation_reset_skips_missing_asset_bytes(
 ) -> None:
     db = SimpleNamespace(
         get_all_asset_paths=MagicMock(return_value=["a.txt", "b.txt"]),
-        get_asset=MagicMock(side_effect=[None, b"c2"]),
+        read_asset_content=MagicMock(side_effect=[None, b"decoded-c2"]),
     )
     service = build_service(db)
 
@@ -128,11 +116,6 @@ def test_get_items_for_translation_reset_skips_missing_asset_bytes(
     monkeypatch.setattr(
         "module.Data.Translation.TranslationItemService.FileManager", FakeFileManager
     )
-    monkeypatch.setattr(
-        "module.Data.Translation.TranslationItemService.ZstdTool.decompress",
-        staticmethod(lambda data: b"decoded-" + data),
-    )
-
     items = service.get_items_for_translation(Config(), Base.TranslationMode.RESET)
 
     assert [item.get_src() for item in items] == ["b.txt:decoded-c2"]

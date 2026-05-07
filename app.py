@@ -19,7 +19,9 @@ from module.Localizer.Localizer import Localizer
 from module.Migration.UserDataMigrationService import UserDataMigrationService
 
 APP_VERSION_FILE_NAME: str = "version.txt"
-CORE_INSTANCE_TOKEN_ENV_NAME: str = "LINGUAGACHA_CORE_INSTANCE_TOKEN"
+CORE_API_TOKEN_ENV_NAME: str = "LINGUAGACHA_CORE_API_TOKEN"
+DATABASE_API_BASE_URL_ENV_NAME: str = "LINGUAGACHA_DATABASE_API_BASE_URL"
+DATABASE_API_TOKEN_ENV_NAME: str = "LINGUAGACHA_DATABASE_API_TOKEN"
 PARENT_PID_ENV_NAME: str = "LINGUAGACHA_PARENT_PID"
 SHUTDOWN_API_RESPONSE_DELAY_SECONDS: float = 0.05
 PARENT_WATCH_INTERVAL_SECONDS: float = 1.0
@@ -48,10 +50,8 @@ def excepthook(
 
 
 def thread_excepthook(args: threading.ExceptHookArgs) -> None:
-    """子线程未捕获异常处理。
-
-    注意：hook 本身不得抛异常，避免递归/抑制后续 hook 调用。
-    """
+    # 子线程未捕获异常处理。
+    # 注意：hook 本身不得抛异常，避免递归/抑制后续 hook 调用。
 
     try:
         thread_name = getattr(getattr(args, "thread", None), "name", "<unknown>")
@@ -65,10 +65,8 @@ def thread_excepthook(args: threading.ExceptHookArgs) -> None:
 
 
 def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
-    """析构/GC 阶段不可引发异常处理。
-
-    注意：不要持久化保存 unraisable.object / exc_value 等引用（可能导致对象复活/引用环）。
-    """
+    # 析构/GC 阶段不可引发异常处理。
+    # 注意：不要持久化保存 unraisable.object / exc_value 等引用（可能导致对象复活/引用环）。
 
     try:
         obj_repr = repr(getattr(unraisable, "object", None))
@@ -84,7 +82,7 @@ def unraisable_hook(unraisable: sys.UnraisableHookArgs) -> None:
 
 
 def disable_windows_quick_edit_mode() -> None:
-    """无头运行时仍复用旧终端保护，避免误选中文本卡住进程。"""
+    # 无头运行时仍复用旧终端保护，避免误选中文本卡住进程。
     if os.name == "nt":
         kernel32 = ctypes.windll.kernel32
 
@@ -97,7 +95,7 @@ def disable_windows_quick_edit_mode() -> None:
 
 
 def bootstrap_runtime() -> LogManager:
-    """统一收敛无头 Core API 入口共享的启动阶段。"""
+    # 统一收敛无头 Core API 入口共享的启动阶段。
     app_root = BasePath.resolve_app_root()
     is_frozen = getattr(sys, "frozen", False)
 
@@ -133,12 +131,26 @@ def bootstrap_runtime() -> LogManager:
     return logger
 
 
+def assert_database_runtime_env() -> None:
+    # Core 必须由 Electron main 注入内部 Database Service 地址和 token。
+
+    missing_names = [
+        name
+        for name in (DATABASE_API_BASE_URL_ENV_NAME, DATABASE_API_TOKEN_ENV_NAME)
+        if os.environ.get(name, "").strip() == ""
+    ]
+    if missing_names:
+        raise RuntimeError(
+            "缺少内部 Database Service 环境变量：" + ", ".join(missing_names)
+        )
+
+
 def cleanup_runtime(
     *,
     local_api_server_runtime: ServerBootstrap.ServerRuntime | None,
     logger: LogManager,
 ) -> None:
-    """统一关闭服务、卸载工程并冲刷日志，避免不同退出口各写一份。"""
+    # 统一关闭服务、卸载工程并冲刷日志，避免不同退出口各写一份。
     runtime_shutdown = getattr(local_api_server_runtime, "shutdown", None)
     if callable(runtime_shutdown):
         runtime_shutdown()
@@ -153,7 +165,7 @@ def cleanup_runtime(
 def wait_for_headless_shutdown(
     shutdown_event: threading.Event | None = None,
 ) -> None:
-    """无头模式持续驻留，直到收到中断信号。"""
+    # 无头模式持续驻留，直到收到中断信号。
     resolved_shutdown_event = (
         threading.Event() if shutdown_event is None else shutdown_event
     )
@@ -162,7 +174,7 @@ def wait_for_headless_shutdown(
 
 
 def request_shutdown_after_response(shutdown_event: threading.Event) -> None:
-    """HTTP 响应先写回，再异步触发统一清理路径。"""
+    # HTTP 响应先写回，再异步触发统一清理路径。
 
     shutdown_timer = threading.Timer(
         SHUTDOWN_API_RESPONSE_DELAY_SECONDS,
@@ -173,7 +185,7 @@ def request_shutdown_after_response(shutdown_event: threading.Event) -> None:
 
 
 def install_shutdown_signal_handlers(shutdown_event: threading.Event) -> None:
-    """Electron 关闭或终端中断都汇入同一个 shutdown event。"""
+    # Electron 关闭或终端中断都汇入同一个 shutdown event。
 
     def handle_signal(signal_number: int, frame) -> None:
         del signal_number
@@ -185,7 +197,7 @@ def install_shutdown_signal_handlers(shutdown_event: threading.Event) -> None:
 
 
 def load_parent_pid() -> int | None:
-    """读取 Electron main 传入的父进程 PID；缺失时跳过守护。"""
+    # 读取 Electron main 传入的父进程 PID；缺失时跳过守护。
 
     raw_parent_pid = os.environ.get(PARENT_PID_ENV_NAME, "").strip()
     if raw_parent_pid == "":
@@ -202,7 +214,7 @@ def load_parent_pid() -> int | None:
 
 
 def is_windows_process_alive(pid: int) -> bool:
-    """Windows 下用进程句柄查询存活状态，避免向父进程发送信号。"""
+    # Windows 下用进程句柄查询存活状态，避免向父进程发送信号。
 
     kernel32 = ctypes.windll.kernel32
     process_handle = kernel32.OpenProcess(
@@ -226,7 +238,7 @@ def is_windows_process_alive(pid: int) -> bool:
 
 
 def is_posix_process_alive(pid: int) -> bool:
-    """POSIX 下 signal 0 只做存在性探测，不会终止目标进程。"""
+    # POSIX 下 signal 0 只做存在性探测，不会终止目标进程。
 
     try:
         os.kill(pid, 0)
@@ -238,7 +250,7 @@ def is_posix_process_alive(pid: int) -> bool:
 
 
 def is_parent_process_alive(pid: int) -> bool:
-    """跨平台判断 Electron main 是否仍然存在。"""
+    # 跨平台判断 Electron main 是否仍然存在。
 
     if os.name == "nt":
         return is_windows_process_alive(pid)
@@ -250,7 +262,7 @@ def start_parent_process_watchdog(
     shutdown_event: threading.Event,
     logger: LogManager,
 ) -> threading.Thread | None:
-    """父进程消失时自动触发清理，避免 Core 成为孤儿进程。"""
+    # 父进程消失时自动触发清理，避免 Core 成为孤儿进程。
 
     parent_pid = load_parent_pid()
     if parent_pid is None:
@@ -275,7 +287,7 @@ def start_parent_process_watchdog(
 
 
 def run_headless_mode(*, logger: LogManager) -> None:
-    """无头模式负责本地 Core API 生命周期与统一清理。"""
+    # 无头模式负责本地 Core API 生命周期与统一清理。
     shutdown_event = threading.Event()
     install_shutdown_signal_handlers(shutdown_event)
     start_parent_process_watchdog(
@@ -283,7 +295,7 @@ def run_headless_mode(*, logger: LogManager) -> None:
         logger=logger,
     )
     core_lifecycle_app_service = CoreLifecycleAppService(
-        instance_token=os.environ.get(CORE_INSTANCE_TOKEN_ENV_NAME, ""),
+        instance_token=os.environ.get(CORE_API_TOKEN_ENV_NAME, ""),
         request_shutdown=lambda: request_shutdown_after_response(shutdown_event),
     )
     local_api_server_runtime = ServerBootstrap.start(
@@ -301,10 +313,11 @@ def run_headless_mode(*, logger: LogManager) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """无头 Core API 的唯一公开入口。"""
+    # 无头 Core API 的唯一公开入口。
     del argv
 
     logger = bootstrap_runtime()
+    assert_database_runtime_env()
     run_headless_mode(logger=logger)
     return 0
 

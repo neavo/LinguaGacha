@@ -1,7 +1,7 @@
 # LinguaGacha 数据域文档
 
 ## 一句话总览
-LinguaGacha 的 Python Core 以“工程事实、任务执行、文件格式、模型配置”四块稳定域协作。本文回答的不是目录长什么样，而是：`Data / Engine / File / Model` 分别拥有什么权威职责，项目级状态应该落在哪里，唯一写入口怎么判断，SQL 为什么只能落在 `module/Data/Storage/LGDatabase.py`，以及哪些非显然规则会影响未来维护。
+LinguaGacha 的 Python Core 以“工程事实、任务执行、文件格式、模型配置”四块稳定域协作。本文回答的不是目录长什么样，而是：`Data / Engine / File / Model` 分别拥有什么权威职责，项目级状态应该落在哪里，唯一写入口怎么判断，`.lg` 物理存储为什么只由 Electron main Database Service 持有，以及哪些非显然规则会影响未来维护。
 
 ## `Data / Engine / File / Model` 的职责边界
 
@@ -18,7 +18,8 @@ flowchart TD
     A --> C["Engine"]
     B --> D["Project / Quality / Analysis / Translation / Proofreading"]
     B --> E["FileManager"]
-    B --> F["module/Data/Storage/LGDatabase.py"]
+    B --> F["DatabaseGateway"]
+    F --> H["Electron main database service"]
     A --> G["Model Manager"]
     C --> H["DataManager commit / Base.Event"]
 ```
@@ -44,12 +45,13 @@ flowchart TD
 - 如果它是模型配置对象、模板选择、排序或激活模型回退，属于 `module/Model`。
 - 如果它只是页面筛选、弹窗开关、表格交互态，不属于 Python Core，留在前端页面本地状态。
 
-## SQL 唯一落点
+## `.lg` 物理存储唯一落点
 
-- SQL、schema、事务与 `.lg` 文件存储细节只允许落在 `module/Data/Storage/LGDatabase.py`。
-- `ProjectSession` 是会话状态容器，不承担 SQL。
-- API 层不得直接持有数据库连接，也不得直接持有 `ProjectSession`。
-- 若某个新需求看起来需要“在 API 里顺手写一条 SQL”，说明落点已经错了，应回到 `module/Data` 或 `module/Data/Storage/LGDatabase.py` 设计。
+- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/main/utils/zstd-tool.ts`；`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`。
+- Python Core 不直接导入 `sqlite3`，不理解 `.lg` 内压缩格式；只通过 `module/Data/Database/DatabaseGateway.py` 调内部 HTTP database workflow。
+- `ProjectSession` 是会话状态容器，只保存当前工程路径、gateway handle 与业务缓存，不承担 SQL 或压缩细节。
+- API 层不得直接持有 database handle，也不得直接持有 `ProjectSession`。
+- 若某个新需求看起来需要“在 Python 里顺手写一条 SQL”，说明落点已经错了；database workflow 回到 `frontend/src/main/database/`，Zstd 参数化工具回到 `frontend/src/main/utils/zstd-tool.ts`，打开期迁移规则回到 `frontend/src/main/migration/`，再由 `DatabaseGateway` 暴露窄入口。
 
 ## 典型数据流
 
@@ -81,11 +83,12 @@ flowchart TD
     C --> D["TaskRequester"]
     C --> E["commit loop"]
     E --> F["DataManager / AnalysisService / TranslationItemService"]
-    F --> G["module/Data/Storage/LGDatabase.py"]
+    F --> G["DatabaseGateway"]
+    G --> H["Electron main database service"]
 ```
 
 稳定事实：
-- `Engine` 负责执行骨架，`DataManager` 负责落库与工程事实更新。
+- `Engine` 负责执行骨架，`DataManager` 负责编排工程事实更新，真实落盘由 Database Service 完成。
 - `TaskPipeline` 的 commit loop 是唯一允许生成 retry context 的地方。
 - 停止语义是先切到 `STOPPING`，再由流水线与超时收尾，不是立刻中断网络 IO。
 - 翻译任务终态只保存项目事实；译文文件写出属于用户确认后的显式导出动作，不挂在任务完成收尾上。
@@ -123,9 +126,9 @@ flowchart TD
 | 场景 | 迁移入口 | 保持在原领域的内容 |
 | --- | --- | --- |
 | 启动期 userdata/config/preset 布局升级 | `module/Migration/UserDataMigrationService.py` | 配置读写仍由 `Config` 与路径 resolver 提供权威路径 |
-| `.lg` 打开期 schema 与 item 状态升级 | `module/Migration/ProjectSchemaMigrationService.py` | 建表、索引和 SQL 细节仍只落在 `module/Data/Storage/LGDatabase.py` |
+| `.lg` 打开期 schema、asset sort_order 与 item 状态升级 | `frontend/src/main/migration/` | `database` 只在打开工程时编排迁移，Python 只看到迁移后的 gateway 读写结果 |
 | 工程加载期 meta/rule 旧字段升级 | `module/Migration/ProjectMetaMigrationService.py`、`module/Migration/ProjectRuleMigrationService.py` | `ProjectLifecycleService` 只维持加载时机、cache 刷新和清理 |
-迁移目录只承接会写回旧数据、旧磁盘布局或旧配置事实的行为；读取兼容、payload 归一和文件格式 fallback 保留在原领域。例如 `LGDatabase.get_rules()` 的旧规则读取兼容、`Item/DataManager` 的状态边界归一，以及 EPUB/RenPy/TRANS writer fallback 都不是迁移入口。
+迁移目录只承接会写回旧 userdata、旧配置事实或 `.lg` 打开期旧物理格式的行为；`.lg` schema 与旧物理格式读取兼容留在 Electron main 内部，具体规则统一放在 `frontend/src/main/migration/project-database-migration-service.ts`。payload 归一和文件格式 fallback 保留在原领域，例如 `Item/DataManager` 的状态边界归一，以及 EPUB/RenPy/TRANS writer fallback 都不是迁移入口。
 
 ### 引擎域
 - `Engine.status` 是全局忙碌态的唯一权威来源，翻译与分析不会并行运行。
@@ -160,12 +163,12 @@ flowchart TD
 
 红线：
 - 不要把新的项目级状态顺手塞进 `DataManager`，先判断它是不是某个领域 service、更底层会话容器，或者根本应留在前端。
-- 不要把新的 SQL、事务或 schema 逻辑放到 `module/Data/Storage/LGDatabase.py` 之外。
+- 不要把新的 SQL 或事务逻辑放到 `frontend/src/main/database/` 之外；不要把 `.lg` 打开期迁移规则放到 `frontend/src/main/migration/` 之外。
 - 不要把共享任务语义写回 `module/Data`，也不要把工程事实塞进 `module/Engine`。
 
 ## 什么时候必须更新本文
 
 - `Data / Engine / File / Model` 的职责边界变化
 - `DataManager`、`ProjectSession`、`Engine.status`、`FileManager`、`Manager.py` 的权威入口变化
-- SQL 落点、文件格式分发优先级、模型模板规则变化
+- `.lg` 物理存储落点、文件格式分发优先级、模型模板规则变化
 - 同步 mutation、任务终态或工程事实流向变化

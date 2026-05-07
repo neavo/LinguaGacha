@@ -1,11 +1,11 @@
 from typing import Any
 
-from module.Data.Storage.LGDatabase import LGDatabase
 from module.Data.Core.ProjectSession import ProjectSession
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 
 
 class BatchService:
-    """批量事务写入（meta / rules / items），并同步会话缓存。"""
+    # 批量事务写入（meta / rules / items），并同步会话缓存。
 
     PREPARED_UPDATE_METHODS: tuple[str, ...] = (
         "prepare_item_update_params",
@@ -22,10 +22,10 @@ class BatchService:
         self,
         *,
         items: list[dict[str, Any]] | None,
-        rules: dict[LGDatabase.RuleType, Any] | None,
+        rules: dict[DatabaseRuleType, Any] | None,
         meta: dict[str, Any] | None,
     ) -> None:
-        """数据库提交成功后立即同步当前工程缓存，避免工程切换时缓存串写。"""
+        # 数据库提交成功后立即同步当前工程缓存，避免工程切换时缓存串写。
         # 1) 同步 meta 缓存
         if meta:
             for k, v in meta.items():
@@ -53,10 +53,11 @@ class BatchService:
         db: Any,
         *,
         items: list[dict[str, Any]] | None,
-        rules: dict[LGDatabase.RuleType, Any] | None,
+        rules: dict[DatabaseRuleType, Any] | None,
         meta: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """支持预序列化批量接口时，先在锁外准备好 SQL 参数。"""
+        # 兼容旧存储适配器的预处理接口；DatabaseGateway 直接走窄批量操作。
+
         supports_prepared_update = all(
             hasattr(db, attr_name) for attr_name in self.PREPARED_UPDATE_METHODS
         )
@@ -73,9 +74,11 @@ class BatchService:
     def update_batch(
         self,
         items: list[dict[str, Any]] | None = None,
-        rules: dict[LGDatabase.RuleType, Any] | None = None,
+        rules: dict[DatabaseRuleType, Any] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> None:
+        # 批量写入后再同步缓存，保证内存事实只追随已提交 database 事实。
+
         with self.session.state_lock:
             db = self.session.db
             if db is None:

@@ -4,7 +4,7 @@ import {
   format_core_shutdown_completed_log,
   format_lifecycle_error,
   format_ts_lifecycle_log,
-} from "./core-lifecycle-log";
+} from "./lifecycle-log";
 
 describe("format_ts_lifecycle_log", () => {
   it("使用 Rich 风格的 TS 日志列", () => {

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-import type { CoreProcessHandle } from "./core-lifecycle-types";
+import type { CoreProcessHandle } from "./lifecycle-types";
 
 const CORE_PROCESS_EXIT_TIMEOUT_MS = 5_000;
 

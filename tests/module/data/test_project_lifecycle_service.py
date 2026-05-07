@@ -10,7 +10,8 @@ from module.Data.Core.AssetService import AssetService
 from module.Data.Core.ItemService import ItemService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseLegacyRuleType
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 
 LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY = "translation_prompt_legacy_migrated"
 
@@ -28,9 +29,9 @@ def build_service(session: ProjectSession) -> ProjectLifecycleService:
         meta_service,
         item_service,
         asset_service,
-        LGDatabase.RuleType,
-        LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
-        LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
+        DatabaseRuleType,
+        DatabaseLegacyRuleType.TRANSLATION_PROMPT_ZH,
+        DatabaseLegacyRuleType.TRANSLATION_PROMPT_EN,
         LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
     )
 
@@ -48,7 +49,7 @@ def build_fake_db(
         get_rule_text_by_name=MagicMock(
             side_effect=lambda rule_type: (
                 legacy_prompt_zh
-                if rule_type == LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE
+                if rule_type == DatabaseLegacyRuleType.TRANSLATION_PROMPT_ZH
                 else legacy_prompt_en
             )
         ),
@@ -71,7 +72,8 @@ def test_load_project_sets_session_and_migrates_legacy_values(
 
     fake_db = build_fake_db(legacy_prompt_zh="旧中文提示词")
     monkeypatch.setattr(
-        "module.Data.Project.ProjectLifecycleService.LGDatabase", lambda path: fake_db
+        "module.Data.Project.ProjectLifecycleService.DatabaseGateway",
+        lambda path: fake_db,
     )
 
     service.load_project(str(lg_path))

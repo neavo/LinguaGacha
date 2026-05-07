@@ -4,7 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from base.BaseLanguage import BaseLanguage
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseLegacyRuleType
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Migration.ProjectRuleMigrationService import ProjectRuleMigrationService
 
 LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY = "translation_prompt_legacy_migrated"
@@ -21,7 +22,7 @@ def build_fake_db(
         get_rule_text_by_name=MagicMock(
             side_effect=lambda rule_type: (
                 legacy_prompt_zh
-                if rule_type == LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE
+                if rule_type == DatabaseLegacyRuleType.TRANSLATION_PROMPT_ZH
                 else legacy_prompt_en
             )
         ),
@@ -34,9 +35,9 @@ def migrate(db: SimpleNamespace, meta_cache: dict[str, object]) -> bool:
     return ProjectRuleMigrationService.migrate_legacy_translation_prompt_text_once(
         db,
         meta_cache,
-        rule_type=LGDatabase.RuleType,
-        legacy_prompt_zh_rule_type=LGDatabase.LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE,
-        legacy_prompt_en_rule_type=LGDatabase.LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE,
+        rule_type=DatabaseRuleType,
+        legacy_prompt_zh_rule_type=DatabaseLegacyRuleType.TRANSLATION_PROMPT_ZH,
+        legacy_prompt_en_rule_type=DatabaseLegacyRuleType.TRANSLATION_PROMPT_EN,
         legacy_translation_prompt_migrated_meta_key=(
             LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY
         ),
@@ -74,7 +75,7 @@ def test_migrate_legacy_translation_prompt_uses_fallback_and_marks_done(
 
     assert changed is True
     db.set_rule_text.assert_called_once_with(
-        LGDatabase.RuleType.TRANSLATION_PROMPT,
+        DatabaseRuleType.TRANSLATION_PROMPT,
         "旧中文提示词",
     )
     db.set_meta.assert_called_once_with(
@@ -99,7 +100,7 @@ def test_migrate_legacy_translation_prompt_prefers_current_ui_language(
     migrate(db, meta_cache)
 
     db.set_rule_text.assert_called_once_with(
-        LGDatabase.RuleType.TRANSLATION_PROMPT,
+        DatabaseRuleType.TRANSLATION_PROMPT,
         "Old English Prompt",
     )
 

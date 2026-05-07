@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from module.Config import Config
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Data.Core.RuleService import RuleService
 from module.PromptPathResolver import PromptPathResolver
@@ -31,59 +31,55 @@ def test_get_and_set_rules_cache_behavior() -> None:
     )
     service, session = build_service(db)
 
-    first = service.get_rules_cached(LGDatabase.RuleType.GLOSSARY)
-    second = service.get_rules_cached(LGDatabase.RuleType.GLOSSARY)
+    first = service.get_rules_cached(DatabaseRuleType.GLOSSARY)
+    second = service.get_rules_cached(DatabaseRuleType.GLOSSARY)
     assert first == second == [{"src": "HP", "dst": "生命值"}]
     assert db.get_rules.call_count == 1
 
-    session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] = "cached"
-    service.set_rules_cached(LGDatabase.RuleType.GLOSSARY, [{"src": "A", "dst": "甲"}])
+    session.rule_text_cache[DatabaseRuleType.GLOSSARY] = "cached"
+    service.set_rules_cached(DatabaseRuleType.GLOSSARY, [{"src": "A", "dst": "甲"}])
     db.set_rules.assert_called_once()
-    assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
+    assert DatabaseRuleType.GLOSSARY not in session.rule_text_cache
 
 
 def test_get_rules_cached_returns_empty_when_db_missing() -> None:
     service, session = build_service(None)
     assert session.rule_cache == {}
 
-    assert service.get_rules_cached(LGDatabase.RuleType.GLOSSARY) == []
+    assert service.get_rules_cached(DatabaseRuleType.GLOSSARY) == []
 
 
 def test_get_rule_text_cached_returns_empty_when_db_missing() -> None:
     service, session = build_service(None)
     assert session.rule_text_cache == {}
 
-    assert service.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == ""
+    assert service.get_rule_text_cached(DatabaseRuleType.TRANSLATION_PROMPT) == ""
 
 
 def test_set_rules_cached_updates_cache_even_when_db_missing() -> None:
     service, session = build_service(None)
-    session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] = "stale"
+    session.rule_text_cache[DatabaseRuleType.GLOSSARY] = "stale"
 
-    service.set_rules_cached(LGDatabase.RuleType.GLOSSARY, [{"src": "A", "dst": "B"}])
+    service.set_rules_cached(DatabaseRuleType.GLOSSARY, [{"src": "A", "dst": "B"}])
 
-    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == [
-        {"src": "A", "dst": "B"}
-    ]
-    assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
+    assert session.rule_cache[DatabaseRuleType.GLOSSARY] == [{"src": "A", "dst": "B"}]
+    assert DatabaseRuleType.GLOSSARY not in session.rule_text_cache
 
 
 def test_set_rules_cached_skips_db_write_when_save_disabled() -> None:
     db = SimpleNamespace(set_rules=MagicMock())
     service, session = build_service(db)
-    session.rule_text_cache[LGDatabase.RuleType.GLOSSARY] = "stale"
+    session.rule_text_cache[DatabaseRuleType.GLOSSARY] = "stale"
 
     service.set_rules_cached(
-        LGDatabase.RuleType.GLOSSARY,
+        DatabaseRuleType.GLOSSARY,
         [{"src": "A", "dst": "B"}],
         save=False,
     )
 
     db.set_rules.assert_not_called()
-    assert session.rule_cache[LGDatabase.RuleType.GLOSSARY] == [
-        {"src": "A", "dst": "B"}
-    ]
-    assert LGDatabase.RuleType.GLOSSARY not in session.rule_text_cache
+    assert session.rule_cache[DatabaseRuleType.GLOSSARY] == [{"src": "A", "dst": "B"}]
+    assert DatabaseRuleType.GLOSSARY not in session.rule_text_cache
 
 
 def test_get_and_set_rule_text_cache_behavior() -> None:
@@ -93,30 +89,24 @@ def test_get_and_set_rule_text_cache_behavior() -> None:
     )
     service, session = build_service(db)
 
-    assert (
-        service.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == "prompt"
-    )
-    assert (
-        service.get_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT) == "prompt"
-    )
+    assert service.get_rule_text_cached(DatabaseRuleType.TRANSLATION_PROMPT) == "prompt"
+    assert service.get_rule_text_cached(DatabaseRuleType.TRANSLATION_PROMPT) == "prompt"
     assert db.get_rule_text.call_count == 1
 
-    session.rule_cache[LGDatabase.RuleType.TRANSLATION_PROMPT] = [{"src": "A"}]
-    service.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, "new")
-    db.set_rule_text.assert_called_once_with(
-        LGDatabase.RuleType.TRANSLATION_PROMPT, "new"
-    )
-    assert LGDatabase.RuleType.TRANSLATION_PROMPT not in session.rule_cache
+    session.rule_cache[DatabaseRuleType.TRANSLATION_PROMPT] = [{"src": "A"}]
+    service.set_rule_text_cached(DatabaseRuleType.TRANSLATION_PROMPT, "new")
+    db.set_rule_text.assert_called_once_with(DatabaseRuleType.TRANSLATION_PROMPT, "new")
+    assert DatabaseRuleType.TRANSLATION_PROMPT not in session.rule_cache
 
 
 def test_set_rule_text_cached_updates_cache_even_when_db_missing() -> None:
     service, session = build_service(None)
-    session.rule_cache[LGDatabase.RuleType.TRANSLATION_PROMPT] = [{"src": "A"}]
+    session.rule_cache[DatabaseRuleType.TRANSLATION_PROMPT] = [{"src": "A"}]
 
-    service.set_rule_text_cached(LGDatabase.RuleType.TRANSLATION_PROMPT, "prompt")
+    service.set_rule_text_cached(DatabaseRuleType.TRANSLATION_PROMPT, "prompt")
 
-    assert session.rule_text_cache[LGDatabase.RuleType.TRANSLATION_PROMPT] == "prompt"
-    assert LGDatabase.RuleType.TRANSLATION_PROMPT not in session.rule_cache
+    assert session.rule_text_cache[DatabaseRuleType.TRANSLATION_PROMPT] == "prompt"
+    assert DatabaseRuleType.TRANSLATION_PROMPT not in session.rule_cache
 
 
 def test_initialize_project_rules_loads_all_available_presets(
@@ -193,11 +183,9 @@ def test_initialize_project_rules_loads_all_available_presets(
     db.set_meta.assert_any_call("text_preserve_mode", "smart")
     db.set_meta.assert_any_call("text_preserve_mode", "custom")
     db.set_rule_text.assert_any_call(
-        LGDatabase.RuleType.TRANSLATION_PROMPT, "翻译提示词正文"
+        DatabaseRuleType.TRANSLATION_PROMPT, "翻译提示词正文"
     )
-    db.set_rule_text.assert_any_call(
-        LGDatabase.RuleType.ANALYSIS_PROMPT, "分析提示词正文"
-    )
+    db.set_rule_text.assert_any_call(DatabaseRuleType.ANALYSIS_PROMPT, "分析提示词正文")
     db.set_meta.assert_any_call("translation_prompt_enable", True)
     db.set_meta.assert_any_call("analysis_prompt_enable", True)
 

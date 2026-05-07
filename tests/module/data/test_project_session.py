@@ -1,5 +1,5 @@
 from module.Data.Core.ProjectSession import ProjectSession
-from module.Data.Storage.LGDatabase import LGDatabase
+from module.Data.Database.DatabaseContracts import DatabaseRuleType
 
 
 def test_project_session_initial_state() -> None:
@@ -17,12 +17,12 @@ def test_project_session_initial_state() -> None:
 
 def test_clear_all_caches_only_clears_cache_fields() -> None:
     session = ProjectSession()
-    db = LGDatabase("demo/sample.lg")
+    db = object()
     session.db = db
     session.lg_path = "demo/sample.lg"
     session.meta_cache = {"name": "demo"}
-    session.rule_cache = {LGDatabase.RuleType.GLOSSARY: [{"src": "A"}]}
-    session.rule_text_cache = {LGDatabase.RuleType.TRANSLATION_PROMPT: "prompt"}
+    session.rule_cache = {DatabaseRuleType.GLOSSARY: [{"src": "A"}]}
+    session.rule_text_cache = {DatabaseRuleType.TRANSLATION_PROMPT: "prompt"}
     session.item_cache = [{"id": 1, "src": "A"}]
     session.item_cache_index = {1: 0}
     session.asset_decompress_cache["a.txt"] = b"data"
