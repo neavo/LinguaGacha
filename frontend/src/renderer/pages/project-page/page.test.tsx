@@ -57,7 +57,7 @@ const I18N_TEXT_BY_KEY: Record<string, string> = {
   "project_page.create.failed": "创建工程失败：{ERROR}",
   "project_page.create.failed_generic": "创建工程失败",
   "project_page.create.loading_toast": "正在创建工程 …",
-  "project_page.create.ready_status": "包含 {COUNT} 个源文件，准备就绪",
+  "project_page.create.ready_status": "已选择 {COUNT} 个源文件",
   "project_page.create.subtitle": "选择源文件创建 .lg 工程文件，创建完成后即不再需要源文件。",
   "project_page.create.title": "新建工程",
   "project_page.formats.title": "支持文件格式",
@@ -405,6 +405,68 @@ describe("ProjectPage", () => {
     expect(push_toast_mock).not.toHaveBeenCalledWith(
       "info",
       expect.stringContaining("已自动加载默认预设"),
+    );
+  });
+
+  it("多选源文件后使用完整 source_paths 创建工程", async () => {
+    const selected_paths = ["E:\\Source\\a.txt", "E:\\Source\\b.md"];
+    (
+      window.desktopApp.pickProjectSourceFilePath as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce({
+      canceled: false,
+      paths: [...selected_paths, "E:\\Source\\a.txt", " "],
+    });
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/project/source-files") {
+        return { source_files: selected_paths };
+      }
+      if (path === "/api/project/create-preview") {
+        return {
+          draft: {
+            files: [
+              { rel_path: "a.txt", source_path: "E:\\Source\\a.txt" },
+              { rel_path: "b.md", source_path: "E:\\Source\\b.md" },
+            ],
+            items: [],
+            section_revisions: { files: 0, items: 0, analysis: 0 },
+          },
+        };
+      }
+      if (path === "/api/project/create-commit") {
+        return { project: { path: "E:\\Source\\a_20260428_120000.lg", loaded: true } };
+      }
+      if (path === "/api/settings/recent-projects/add") {
+        return { settings: { recent_projects: [] } };
+      }
+
+      return {};
+    });
+    await mount_page();
+
+    await act(async () => {
+      get_button_by_text(container as HTMLElement, "选择文件").click();
+      await flush_async_updates();
+    });
+
+    expect(container?.textContent).toContain("已选择 2 个源文件");
+    expect(container?.textContent).toContain("已选择 2 个源文件");
+
+    await act(async () => {
+      get_button_by_text(container as HTMLElement, "创建工程").click();
+      await flush_async_updates();
+    });
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/source-files", {
+      source_paths: selected_paths,
+    });
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/create-preview", {
+      source_paths: selected_paths,
+    });
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/project/create-commit",
+      expect.objectContaining({
+        source_paths: selected_paths,
+      }),
     );
   });
 

@@ -313,7 +313,7 @@ export function create_workbench_reset_file_plan(args: {
       createProjectStoreReplaceSectionPatch("task", derived_state.task_snapshot),
     ],
     requestBody: {
-      rel_path: target_rel_path,
+      rel_paths: [target_rel_path],
       items: serialize_workbench_item_payloads(changed_items),
       derived_meta: derived_state.derived_meta,
       expected_section_revisions: build_expected_revisions(args.state, ["items", "analysis"]),

@@ -7,7 +7,7 @@ export const en_us_project_page = {
     title: "Create Project",
     subtitle: "Select source to create a self-contained .lg project.",
     drop_title: "Click or Drag Source File",
-    ready_status: "{COUNT} source files found, ready",
+    ready_status: "{COUNT} source files selected",
     loading_toast: "Creating project …",
     unavailable: "No supported source files found in this directory",
     failed: "Failed to create project: {ERROR}",

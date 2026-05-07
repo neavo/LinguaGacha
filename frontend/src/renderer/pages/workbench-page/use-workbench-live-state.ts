@@ -34,6 +34,7 @@ import {
 } from "@/app/desktop/desktop-runtime-context";
 import { useI18n } from "@/i18n";
 import { api_fetch } from "@/app/desktop/desktop-api";
+import { normalize_source_paths } from "@/lib/source-paths";
 import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,
@@ -165,16 +166,14 @@ function close_dialog_state(): WorkbenchDialogState {
   };
 }
 
-function normalize_workbench_file_parse_preview(
-  source_path: string,
-  payload: {
-    target_rel_path?: unknown;
-    file_type?: unknown;
-    parsed_items?: unknown;
-  },
-): WorkbenchFileParsePreview {
+function normalize_workbench_file_parse_preview(payload: {
+  source_path?: unknown;
+  target_rel_path?: unknown;
+  file_type?: unknown;
+  parsed_items?: unknown;
+}): WorkbenchFileParsePreview {
   return {
-    source_path,
+    source_path: String(payload.source_path ?? ""),
     target_rel_path: String(payload.target_rel_path ?? ""),
     file_type: String(payload.file_type ?? "NONE"),
     parsed_items: Array.isArray(payload.parsed_items)
@@ -1302,7 +1301,7 @@ export function useWorkbenchLiveState(
         add_plan,
         async (body) => {
           return await api_fetch<ProjectMutationAckPayload>(
-            "/api/project/workbench/add-file-batch",
+            "/api/project/workbench/add-file",
             body,
           );
         },
@@ -1315,6 +1314,7 @@ export function useWorkbenchLiveState(
       project_store,
       run_ack_only_file_mutation,
       settings_snapshot.mtool_optimizer_enable,
+      settings_snapshot.skip_duplicate_source_text_enable,
       settings_snapshot.source_language,
     ],
   );
@@ -1378,13 +1378,7 @@ export function useWorkbenchLiveState(
         return;
       }
 
-      const normalized_source_paths = Array.from(
-        new Set(
-          source_paths
-            .map((source_path) => source_path.trim())
-            .filter((source_path) => source_path !== ""),
-        ),
-      );
+      const normalized_source_paths = normalize_source_paths(source_paths);
       if (normalized_source_paths.length === 0) {
         push_toast("error", t("workbench_page.feedback.no_valid_file"));
         return;
@@ -1407,34 +1401,37 @@ export function useWorkbenchLiveState(
       await run_modal_progress_toast({
         message: t("workbench_page.feedback.add_file_loading_toast"),
         task: async () => {
-          for (const source_path of normalized_source_paths) {
-            try {
-              const parsed_file = normalize_workbench_file_parse_preview(
-                source_path,
-                await api_fetch<{
-                  target_rel_path?: unknown;
-                  file_type?: unknown;
-                  parsed_items?: unknown;
-                }>("/api/project/workbench/parse-file", {
-                  source_path,
-                }),
-              );
-              const target_path_key = normalize_path_key(parsed_file.target_rel_path);
-              if (
-                target_path_key === "" ||
-                existing_target_path_set.has(target_path_key) ||
-                batch_target_path_set.has(target_path_key)
-              ) {
-                continue;
-              }
-              batch_target_path_set.add(target_path_key);
-              parsed_files.push({
-                ...parsed_file,
-                target_rel_path: parsed_file.target_rel_path.trim(),
-              });
-            } catch {
-              // 批量添加只在整批无有效项时提示，单项解析失败按计划静默跳过。
+          const payload = await api_fetch<{ files?: unknown }>(
+            "/api/project/workbench/parse-file",
+            {
+              source_paths: normalized_source_paths,
+            },
+          );
+          const preview_files = Array.isArray(payload.files) ? payload.files : [];
+
+          for (const preview_file of preview_files) {
+            if (typeof preview_file !== "object" || preview_file === null) {
+              continue;
             }
+
+            const parsed_file = normalize_workbench_file_parse_preview(
+              preview_file as Record<string, unknown>,
+            );
+            const target_path_key = normalize_path_key(parsed_file.target_rel_path);
+            if (
+              parsed_file.source_path.trim() === "" ||
+              target_path_key === "" ||
+              existing_target_path_set.has(target_path_key) ||
+              batch_target_path_set.has(target_path_key)
+            ) {
+              continue;
+            }
+            batch_target_path_set.add(target_path_key);
+            parsed_files.push({
+              ...parsed_file,
+              source_path: parsed_file.source_path.trim(),
+              target_rel_path: parsed_file.target_rel_path.trim(),
+            });
           }
         },
       });
@@ -1630,15 +1627,8 @@ export function useWorkbenchLiveState(
           delete_plan,
           async (body) => {
             return await api_fetch<ProjectMutationAckPayload>(
-              current_dialog_state.target_rel_paths.length === 1
-                ? "/api/project/workbench/delete-file"
-                : "/api/project/workbench/delete-file-batch",
-              current_dialog_state.target_rel_paths.length === 1
-                ? {
-                    ...body,
-                    rel_path: current_dialog_state.target_rel_paths[0],
-                  }
-                : body,
+              "/api/project/workbench/delete-file",
+              body,
             );
           },
           barrier_checkpoint,

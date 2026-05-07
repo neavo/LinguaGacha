@@ -1073,9 +1073,9 @@ class DataManager(Base):
         finally:
             self.finish_file_operation()
 
-    def persist_reset_file(
+    def persist_reset_files(
         self,
-        rel_path: str,
+        rel_paths: list[str],
         *,
         item_payloads: list[dict[str, Any]],
         translation_extras: dict[str, Any],
@@ -1084,6 +1084,9 @@ class DataManager(Base):
     ) -> None:
         """持久化前端已确认的文件重置结果。"""
 
+        normalized_rel_paths = self.project_file_service.normalize_batch_rel_paths(
+            rel_paths
+        )
         self.try_begin_guarded_file_operation()
         try:
             with self.state_lock:
@@ -1096,8 +1099,9 @@ class DataManager(Base):
                 )
                 if self.session.db is None:
                     raise RuntimeError("工程未加载")
-                if not self.session.db.asset_path_exists(rel_path):
-                    raise ValueError(Localizer.get().workbench_msg_file_not_found)
+                for rel_path in normalized_rel_paths:
+                    if not self.session.db.asset_path_exists(rel_path):
+                        raise ValueError(Localizer.get().workbench_msg_file_not_found)
 
                 merged_items = self.merge_partial_item_payloads(item_payloads)
                 self.persist_items_meta_and_clear_analysis_state(
@@ -1364,6 +1368,9 @@ class DataManager(Base):
     def collect_source_files(self, source_path: str) -> list[str]:
         return self.project_service.collect_source_files(source_path)
 
+    def collect_source_files_from_paths(self, source_paths: list[str]) -> list[str]:
+        return self.project_service.collect_source_files_from_paths(source_paths)
+
     def create_project(
         self,
         source_path: str,
@@ -1391,13 +1398,16 @@ class DataManager(Base):
     def get_project_preview(self, lg_path: str) -> dict[str, Any]:
         return self.project_service.get_project_preview(lg_path)
 
-    def build_create_project_preview(self, source_path: str) -> dict[str, object]:
-        return self.project_service.build_create_preview(source_path)
+    def build_create_project_preview(
+        self,
+        source_paths: list[str],
+    ) -> dict[str, object]:
+        return self.project_service.build_create_preview(source_paths)
 
     def commit_create_project_preview(
         self,
         *,
-        source_path: str,
+        source_paths: list[str],
         output_path: str,
         files: list[dict[str, object]],
         items: list[dict[str, object]],
@@ -1406,7 +1416,7 @@ class DataManager(Base):
         prefilter_config: dict[str, object],
     ) -> None:
         loaded_presets = self.project_service.commit_create_preview(
-            source_path=source_path,
+            source_paths=source_paths,
             output_path=output_path,
             files=files,
             items=items,

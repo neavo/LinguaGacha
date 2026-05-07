@@ -1,11 +1,11 @@
 import pytest
 
 
-def test_add_file_batch_routes_through_workbench_manager(
+def test_add_file_routes_through_workbench_manager(
     workbench_app_service,
     fake_workbench_manager,
 ) -> None:
-    result = workbench_app_service.add_file_batch(
+    result = workbench_app_service.add_file(
         {
             "files": [
                 {
@@ -60,11 +60,44 @@ def test_parse_file_routes_through_workbench_manager(
     workbench_app_service,
     fake_workbench_manager,
 ) -> None:
-    result = workbench_app_service.parse_file({"source_path": "C:/next/b.txt"})
+    result = workbench_app_service.parse_file(
+        {"source_paths": ["C:/next/b.txt", "C:/next/c.txt"]}
+    )
 
-    assert result["target_rel_path"] == "script/b.txt"
-    assert result["file_type"] == "TXT"
-    assert fake_workbench_manager.parse_calls == [("C:/next/b.txt", None)]
+    assert result["files"][0]["target_rel_path"] == "script/b.txt"
+    assert result["files"][0]["file_type"] == "TXT"
+    assert result["files"][0]["source_path"] == "C:/next/b.txt"
+    assert fake_workbench_manager.parse_calls == [
+        ("C:/next/b.txt", None),
+        ("C:/next/c.txt", None),
+    ]
+
+
+def test_parse_file_skips_failed_entries(workbench_app_service) -> None:
+    class PartlyFailingWorkbenchManager:
+        def parse_file_preview(self, source_path: str) -> dict[str, object]:
+            if source_path.endswith("bad.txt"):
+                raise ValueError("parse failed")
+            return {
+                "target_rel_path": "ok.txt",
+                "file_type": "TXT",
+                "parsed_items": [],
+            }
+
+    service = type(workbench_app_service)(PartlyFailingWorkbenchManager())
+
+    result = service.parse_file({"source_paths": ["C:/next/ok.txt", "C:/next/bad.txt"]})
+
+    assert result == {
+        "files": [
+            {
+                "source_path": "C:/next/ok.txt",
+                "target_rel_path": "ok.txt",
+                "file_type": "TXT",
+                "parsed_items": [],
+            }
+        ]
+    }
 
 
 def test_reorder_files_routes_through_workbench_manager(
@@ -83,37 +116,25 @@ def test_reset_file_routes_through_workbench_manager(
     workbench_app_service,
     fake_workbench_manager,
 ) -> None:
-    result = workbench_app_service.reset_file({"rel_path": "script/a.txt"})
+    result = workbench_app_service.reset_file({"rel_paths": ["script/a.txt"]})
 
     assert result["accepted"] is True
-    assert fake_workbench_manager.reset_calls == ["script/a.txt"]
+    assert fake_workbench_manager.reset_calls == [["script/a.txt"]]
 
 
 def test_delete_file_routes_through_workbench_manager(
     workbench_app_service,
     fake_workbench_manager,
 ) -> None:
-    result = workbench_app_service.delete_file({"rel_path": "script/a.txt"})
-
-    assert result["accepted"] is True
-    assert fake_workbench_manager.delete_calls == ["script/a.txt"]
-
-
-def test_delete_file_batch_routes_through_workbench_manager(
-    workbench_app_service,
-    fake_workbench_manager,
-) -> None:
-    result = workbench_app_service.delete_file_batch(
+    result = workbench_app_service.delete_file(
         {"rel_paths": ["script/a.txt", "script/b.txt"]}
     )
 
     assert result["accepted"] is True
-    assert fake_workbench_manager.delete_batch_calls == [
-        ["script/a.txt", "script/b.txt"]
-    ]
+    assert fake_workbench_manager.delete_calls == [["script/a.txt", "script/b.txt"]]
 
 
-def test_add_file_batch_propagates_manager_value_error(workbench_app_service) -> None:
+def test_add_file_propagates_manager_value_error(workbench_app_service) -> None:
     class FailingWorkbenchManager:
         def persist_add_files_payload(
             self,
@@ -131,7 +152,7 @@ def test_add_file_batch_propagates_manager_value_error(workbench_app_service) ->
     service = type(workbench_app_service)(FailingWorkbenchManager())
 
     with pytest.raises(ValueError, match="duplicate: C:/next/b.txt"):
-        service.add_file_batch(
+        service.add_file(
             {
                 "files": [
                     {

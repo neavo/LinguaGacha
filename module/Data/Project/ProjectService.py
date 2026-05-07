@@ -1,4 +1,6 @@
+import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from base.Base import Base
@@ -10,6 +12,14 @@ from module.Localizer.Localizer import Localizer
 from module.Utils.ZstdTool import ZstdTool
 
 ProgressCallback = Callable[[int, int, str], None]
+
+
+@dataclass(frozen=True)
+class ProjectSourceFile:
+    """工程创建链路中的源文件快照，固定住原始路径与工程内相对路径。"""
+
+    source_path: str
+    rel_path: str
 
 
 class ProjectService(Base):
@@ -122,23 +132,30 @@ class ProjectService(Base):
 
         return loaded_presets
 
-    def build_create_preview(self, source_path: str) -> dict[str, object]:
+    def build_create_preview(
+        self,
+        source_paths: list[str],
+    ) -> dict[str, object]:
         """只解析源文件草稿，不创建 .lg，也不执行预过滤。"""
 
-        source_files = self.collect_source_files(source_path)
+        effective_source_paths = self.normalize_source_paths(source_paths)
+        source_files = self.collect_source_file_entries(effective_source_paths)
         config = Config().load()
         file_manager = FileManager(config)
         files: list[dict[str, object]] = []
         items: list[dict[str, object]] = []
         next_item_id = 1
 
-        for sort_index, file_path in enumerate(source_files):
-            rel_path = self.get_relative_path(source_path, file_path)
+        for sort_index, source_file in enumerate(source_files):
+            rel_path = source_file.rel_path
             try:
-                with open(file_path, "rb") as f:
+                with open(source_file.source_path, "rb") as f:
                     original_data = f.read()
             except Exception as e:
-                LogManager.get().error(f"Failed to read source file - {file_path}", e)
+                LogManager.get().error(
+                    f"Failed to read source file - {source_file.source_path}",
+                    e,
+                )
                 continue
 
             parsed_items = []
@@ -164,11 +181,12 @@ class ProjectService(Base):
                     "rel_path": rel_path,
                     "file_type": file_type,
                     "sort_index": sort_index,
+                    "source_path": source_file.source_path,
                 }
             )
 
         return {
-            "source_path": source_path,
+            "source_paths": effective_source_paths,
             "files": files,
             "items": items,
             "section_revisions": {
@@ -181,7 +199,7 @@ class ProjectService(Base):
     def commit_create_preview(
         self,
         *,
-        source_path: str,
+        source_paths: list[str],
         output_path: str,
         files: list[dict[str, object]],
         items: list[dict[str, object]],
@@ -196,17 +214,16 @@ class ProjectService(Base):
         if Path(output_path).exists():
             Path(output_path).unlink()
 
-        project_name = Path(source_path).name
+        effective_source_paths = self.normalize_source_paths(source_paths)
+        project_name_seed = (
+            effective_source_paths[0] if effective_source_paths else output_path
+        )
+        project_name = Path(project_name_seed).name
         db = LGDatabase.create(output_path, project_name)
 
         loaded_presets: list[str] = []
         if init_rules is not None:
             loaded_presets = init_rules(db)
-
-        source_file_by_rel_path = {
-            self.get_relative_path(source_path, file_path): file_path
-            for file_path in self.collect_source_files(source_path)
-        }
 
         with db.connection() as conn:
             for file_record in sorted(
@@ -214,8 +231,8 @@ class ProjectService(Base):
                 key=lambda record: int(record.get("sort_index", 0) or 0),
             ):
                 rel_path = str(file_record.get("rel_path", "") or "")
-                source_file_path = source_file_by_rel_path.get(rel_path)
-                if source_file_path is None:
+                source_file_path = str(file_record.get("source_path", "") or "")
+                if source_file_path == "":
                     continue
                 with open(source_file_path, "rb") as f:
                     original_data = f.read()
@@ -589,6 +606,126 @@ class ProjectService(Base):
             for f in path_obj.rglob("*")
             if f.is_file() and self.is_supported_file(str(f))
         ]
+
+    def normalize_source_paths(self, source_paths: list[str]) -> list[str]:
+        normalized_paths: list[str] = []
+        seen_keys: set[str] = set()
+
+        for source_path in source_paths:
+            normalized_path = str(source_path).strip()
+            if normalized_path == "":
+                continue
+            path_key = self.build_path_identity_key(normalized_path)
+            if path_key in seen_keys:
+                continue
+            seen_keys.add(path_key)
+            normalized_paths.append(normalized_path)
+
+        return normalized_paths
+
+    def collect_source_files_from_paths(self, source_paths: list[str]) -> list[str]:
+        """按用户选择顺序收集多个源路径下可导入的源文件。"""
+
+        return [
+            source_file.source_path
+            for source_file in self.collect_source_file_entries(
+                self.normalize_source_paths(source_paths)
+            )
+        ]
+
+    def collect_source_file_entries(
+        self,
+        source_paths: list[str],
+    ) -> list[ProjectSourceFile]:
+        normalized_source_paths = self.normalize_source_paths(source_paths)
+        source_file_candidates: list[ProjectSourceFile] = []
+        seen_file_keys: set[str] = set()
+
+        for normalized_source_path in normalized_source_paths:
+            for source_file in self.collect_source_files(normalized_source_path):
+                file_key = self.build_path_identity_key(source_file)
+                if file_key in seen_file_keys:
+                    continue
+                seen_file_keys.add(file_key)
+                source_file_candidates.append(
+                    ProjectSourceFile(
+                        source_path=source_file,
+                        rel_path=self.build_source_relative_path(
+                            source_root=normalized_source_path,
+                            source_file=source_file,
+                        ),
+                    )
+                )
+
+        used_rel_paths: set[str] = set()
+        source_files: list[ProjectSourceFile] = []
+
+        for index, source_file in enumerate(source_file_candidates):
+            unique_rel_path = self.build_unique_relative_path(
+                rel_path=source_file.rel_path,
+                used_rel_paths=used_rel_paths,
+                source_index=index,
+            )
+            source_files.append(
+                ProjectSourceFile(
+                    source_path=source_file.source_path,
+                    rel_path=unique_rel_path,
+                )
+            )
+
+        return source_files
+
+    def build_path_identity_key(self, source_path: str) -> str:
+        return os.path.normcase(str(Path(source_path).resolve(strict=False)))
+
+    def build_relative_path_identity_key(self, rel_path: str) -> str:
+        return rel_path.replace("\\", "/").casefold()
+
+    def build_source_relative_path(
+        self,
+        *,
+        source_root: str,
+        source_file: str,
+    ) -> str:
+        source_root_path = Path(source_root)
+        if source_root_path.is_file():
+            return Path(source_file).name
+
+        try:
+            return str(Path(source_file).relative_to(source_root_path))
+        except ValueError:
+            return Path(source_file).name
+
+    def build_unique_relative_path(
+        self,
+        *,
+        rel_path: str,
+        used_rel_paths: set[str],
+        source_index: int,
+    ) -> str:
+        rel_path_key = self.build_relative_path_identity_key(rel_path)
+        if rel_path_key not in used_rel_paths:
+            used_rel_paths.add(rel_path_key)
+            return rel_path
+
+        rel_path_obj = Path(rel_path)
+        parent_path = rel_path_obj.parent
+        stem = rel_path_obj.stem
+        suffix = rel_path_obj.suffix
+        unique_index = source_index + 1
+
+        while True:
+            candidate_name = f"{stem}_{unique_index}{suffix}"
+            candidate_path = (
+                candidate_name
+                if str(parent_path) == "."
+                else str(parent_path / candidate_name)
+            )
+            candidate_path_key = self.build_relative_path_identity_key(candidate_path)
+            if candidate_path_key not in used_rel_paths:
+                used_rel_paths.add(candidate_path_key)
+                return candidate_path
+            unique_index += 1
 
     def is_supported_file(self, file_path: str) -> bool:
         ext = Path(file_path).suffix.lower()
