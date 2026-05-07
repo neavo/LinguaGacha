@@ -32,7 +32,7 @@ flowchart LR
 | 边界 | 当前规则 | 为什么重要 |
 | --- | --- | --- |
 | Renderer -> Electron | 只能走 `window.desktopApp` | 防止页面绕过 preload 直接碰 Node / Electron |
-| Renderer -> Python Core | 只能走 `frontend/src/renderer/app/desktop-api.ts` -> `api/` | 保持前后端协议单点可维护 |
+| Renderer -> Python Core | 只能走 `frontend/src/renderer/app/desktop/desktop-api.ts` -> `api/` | 保持前后端协议单点可维护 |
 | API -> Data | 工程事实、规则、分析与校对辅助由 `module/Data` 提供 | 防止 API 层直接拼装会话与数据库 |
 | API -> Engine | 后台任务启动、停止、进度与终态语义由 `module/Engine` 提供 | 防止数据层和界面层偷持任务生命周期 |
 | Data -> File | 外部文件解析与写回只能委托 `module/File` | 防止格式支持散落在工程服务里 |
