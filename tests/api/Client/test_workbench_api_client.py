@@ -8,7 +8,7 @@ import pytest
     ("method_name", "kwargs", "expected_request", "expected_response"),
     [
         (
-            "add_file_batch",
+            "add_file",
             {
                 "files": [
                     {
@@ -32,7 +32,7 @@ import pytest
                 "expected_section_revisions": {"files": 1, "items": 2, "analysis": 3},
             },
             (
-                ProjectRoutes.WORKBENCH_ADD_FILE_BATCH_PATH,
+                ProjectRoutes.WORKBENCH_ADD_FILE_PATH,
                 {
                     "files": [
                         {
@@ -65,7 +65,7 @@ import pytest
         (
             "reset_file",
             {
-                "rel_path": "script/a.txt",
+                "rel_paths": ["script/a.txt"],
                 "items": [{"id": 1, "src": "line-1"}],
                 "derived_meta": {
                     "translation_extras": {"line": 1},
@@ -79,7 +79,7 @@ import pytest
             (
                 ProjectRoutes.WORKBENCH_RESET_FILE_PATH,
                 {
-                    "rel_path": "script/a.txt",
+                    "rel_paths": ["script/a.txt"],
                     "items": [{"id": 1, "src": "line-1"}],
                     "derived_meta": {
                         "translation_extras": {"line": 1},
@@ -96,39 +96,6 @@ import pytest
         (
             "delete_file",
             {
-                "rel_path": "script/a.txt",
-                "derived_meta": {
-                    "translation_extras": {"line": 1},
-                    "prefilter_config": {
-                        "source_language": "JA",
-                        "mtool_optimizer_enable": True,
-                    },
-                },
-                "expected_section_revisions": {"files": 1, "items": 2, "analysis": 3},
-            },
-            (
-                ProjectRoutes.WORKBENCH_DELETE_FILE_PATH,
-                {
-                    "rel_path": "script/a.txt",
-                    "derived_meta": {
-                        "translation_extras": {"line": 1},
-                        "prefilter_config": {
-                            "source_language": "JA",
-                            "mtool_optimizer_enable": True,
-                        },
-                    },
-                    "expected_section_revisions": {
-                        "files": 1,
-                        "items": 2,
-                        "analysis": 3,
-                    },
-                },
-            ),
-            {"accepted": True, "projectRevision": 9, "sectionRevisions": {"files": 4}},
-        ),
-        (
-            "delete_file_batch",
-            {
                 "rel_paths": ["script/a.txt"],
                 "derived_meta": {
                     "translation_extras": {"line": 1},
@@ -140,7 +107,7 @@ import pytest
                 "expected_section_revisions": {"files": 1, "items": 2, "analysis": 3},
             },
             (
-                ProjectRoutes.WORKBENCH_DELETE_FILE_BATCH_PATH,
+                ProjectRoutes.WORKBENCH_DELETE_FILE_PATH,
                 {
                     "rel_paths": ["script/a.txt"],
                     "derived_meta": {
@@ -198,19 +165,23 @@ def test_workbench_api_client_parse_file_forwards_payload(recording_api_client) 
     recording_api_client.queue_post_response(
         ProjectRoutes.WORKBENCH_PARSE_FILE_PATH,
         {
-            "target_rel_path": "script/b.txt",
-            "file_type": "TXT",
-            "parsed_items": [{"src": "line-1"}],
+            "files": [
+                {
+                    "source_path": "C:/next/b.txt",
+                    "target_rel_path": "script/b.txt",
+                    "file_type": "TXT",
+                    "parsed_items": [{"src": "line-1"}],
+                }
+            ],
         },
     )
 
-    result = workbench_client.parse_file("C:/next/b.txt", "script/a.txt")
+    result = workbench_client.parse_file(["C:/next/b.txt"])
 
     assert recording_api_client.post_requests[-1] == (
         ProjectRoutes.WORKBENCH_PARSE_FILE_PATH,
         {
-            "source_path": "C:/next/b.txt",
-            "rel_path": "script/a.txt",
+            "source_paths": ["C:/next/b.txt"],
         },
     )
-    assert result["target_rel_path"] == "script/b.txt"
+    assert result["files"][0]["target_rel_path"] == "script/b.txt"

@@ -1,5 +1,6 @@
 from typing import Any
 
+from base.LogManager import LogManager
 from module.Data.DataManager import DataManager
 from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 
@@ -52,30 +53,39 @@ class WorkbenchAppService:
             updated_sections
         )
 
+    def parse_string_list(self, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if isinstance(item, str)]
+
     def parse_file(self, request: dict[str, Any]) -> dict[str, object]:
-        """只读解析工作台文件，返回 TS planner 需要的标准化结果。"""
+        """只读解析工作台文件，批量返回 TS planner 需要的标准化结果。"""
 
-        source_path = str(request.get("source_path", ""))
-        rel_path_raw = request.get("rel_path")
-        current_rel_path = (
-            str(rel_path_raw)
-            if isinstance(rel_path_raw, str) and rel_path_raw
-            else None
-        )
+        source_paths = self.parse_string_list(request.get("source_paths"))
         parse_preview = getattr(self.data_manager, "parse_file_preview", None)
-        if callable(parse_preview):
-            return parse_preview(
-                source_path,
-                current_rel_path=current_rel_path,
-            )
-
         project_file_service = getattr(self.data_manager, "project_file_service", None)
-        if project_file_service is None:
+        if not callable(parse_preview) and project_file_service is None:
             raise AttributeError("缺少 project_file_service.parse_file_preview")
-        return project_file_service.parse_file_preview(
-            source_path,
-            current_rel_path=current_rel_path,
-        )
+
+        files: list[dict[str, object]] = []
+        for source_path in source_paths:
+            try:
+                preview = (
+                    parse_preview(source_path)
+                    if callable(parse_preview)
+                    else project_file_service.parse_file_preview(source_path)
+                )
+            except Exception as e:
+                # 批量预解析允许单个文件失败，调用方只关心整批中可添加的文件。
+                LogManager.get().warning(f"工作台文件预解析失败 - {source_path}", e)
+                continue
+            files.append(
+                {
+                    "source_path": source_path,
+                    **dict(preview),
+                }
+            )
+        return {"files": files}
 
     def parse_add_file_entries(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         raw_files = request.get("files", [])
@@ -107,8 +117,8 @@ class WorkbenchAppService:
             )
         return entries
 
-    def add_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
-        """批量执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
+    def add_file(self, request: dict[str, Any]) -> dict[str, object]:
+        """执行新增文件操作，失败时直接把异常交给 HTTP 边界。"""
 
         files = self.parse_add_file_entries(request)
         translation_extras, prefilter_config = self.parse_derived_meta(request)
@@ -123,7 +133,7 @@ class WorkbenchAppService:
     def reset_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行重置文件操作，失败时直接把异常交给 HTTP 边界。"""
 
-        rel_path = str(request.get("rel_path", ""))
+        rel_paths = self.parse_string_list(request.get("rel_paths"))
         items_raw = request.get("items", [])
         item_payloads = (
             [dict(item) for item in items_raw if isinstance(item, dict)]
@@ -131,8 +141,8 @@ class WorkbenchAppService:
             else []
         )
         translation_extras, prefilter_config = self.parse_derived_meta(request)
-        self.data_manager.persist_reset_file(
-            rel_path,
+        self.data_manager.persist_reset_files(
+            rel_paths,
             item_payloads=item_payloads,
             translation_extras=translation_extras,
             prefilter_config=prefilter_config,
@@ -143,25 +153,7 @@ class WorkbenchAppService:
     def delete_file(self, request: dict[str, Any]) -> dict[str, object]:
         """执行删除文件操作，失败时直接把异常交给 HTTP 边界。"""
 
-        rel_path = str(request.get("rel_path", ""))
-        translation_extras, prefilter_config = self.parse_derived_meta(request)
-        self.data_manager.persist_delete_files(
-            [rel_path],
-            translation_extras=translation_extras,
-            prefilter_config=prefilter_config,
-            expected_section_revisions=self.parse_expected_section_revisions(request),
-        )
-        return self.build_project_mutation_ack(("files", "items", "analysis"))
-
-    def delete_file_batch(self, request: dict[str, Any]) -> dict[str, object]:
-        """执行批量删除文件操作，失败时直接把异常交给 HTTP 边界。"""
-
-        rel_paths_raw = request.get("rel_paths", [])
-        rel_paths = (
-            [str(rel_path) for rel_path in rel_paths_raw]
-            if isinstance(rel_paths_raw, list)
-            else []
-        )
+        rel_paths = self.parse_string_list(request.get("rel_paths"))
         translation_extras, prefilter_config = self.parse_derived_meta(request)
         self.data_manager.persist_delete_files(
             rel_paths,

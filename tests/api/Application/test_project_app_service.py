@@ -259,13 +259,26 @@ def test_create_project_preview_returns_unpersisted_draft(
     fake_project_manager,
 ) -> None:
     result = project_app_service.create_project_preview(
-        {"source_path": "E:/Project/LinguaGacha/source"}
+        {
+            "source_paths": [
+                "E:/Project/LinguaGacha/source/a.txt",
+                "E:/Project/LinguaGacha/source/b.md",
+            ]
+        }
     )
 
     assert fake_project_manager.create_preview_calls == [
-        "E:/Project/LinguaGacha/source"
+        {
+            "source_paths": [
+                "E:/Project/LinguaGacha/source/a.txt",
+                "E:/Project/LinguaGacha/source/b.md",
+            ],
+        }
     ]
-    assert result["draft"]["source_path"] == "E:/Project/LinguaGacha/source"
+    assert result["draft"]["source_paths"] == [
+        "E:/Project/LinguaGacha/source/a.txt",
+        "E:/Project/LinguaGacha/source/b.md",
+    ]
     assert fake_project_manager.load_calls == []
 
 
@@ -275,10 +288,15 @@ def test_create_project_commit_persists_frontend_prefiltered_draft_and_loads(
 ) -> None:
     result = project_app_service.create_project_commit(
         {
-            "source_path": "E:/Project/LinguaGacha/source",
+            "source_paths": ["E:/Project/LinguaGacha/source/script.txt"],
             "path": "E:/Project/LinguaGacha/output/demo.lg",
             "draft": {
-                "files": [{"rel_path": "script.txt"}],
+                "files": [
+                    {
+                        "rel_path": "script.txt",
+                        "source_path": "E:/Project/LinguaGacha/source/script.txt",
+                    }
+                ],
                 "items": [{"id": 1, "status": "RULE_SKIPPED"}],
             },
             "project_settings": {
@@ -298,9 +316,14 @@ def test_create_project_commit_persists_frontend_prefiltered_draft_and_loads(
 
     assert fake_project_manager.create_commit_calls == [
         {
-            "source_path": "E:/Project/LinguaGacha/source",
+            "source_paths": ["E:/Project/LinguaGacha/source/script.txt"],
             "output_path": "E:/Project/LinguaGacha/output/demo.lg",
-            "files": [{"rel_path": "script.txt"}],
+            "files": [
+                {
+                    "rel_path": "script.txt",
+                    "source_path": "E:/Project/LinguaGacha/source/script.txt",
+                }
+            ],
             "items": [{"id": 1, "status": "RULE_SKIPPED"}],
             "project_settings": {
                 "source_language": "JA",
@@ -430,11 +453,31 @@ def test_collect_source_files_returns_serializable_paths(
     project_app_service,
 ) -> None:
     result = project_app_service.collect_source_files(
-        {"path": "E:/Project/LinguaGacha/source"}
+        {"source_paths": ["E:/Project/LinguaGacha/source"]}
     )
 
     assert result == {
         "source_files": ["E:/Project/LinguaGacha/source"],
+    }
+
+
+def test_collect_source_files_accepts_batch_source_paths(
+    project_app_service,
+) -> None:
+    result = project_app_service.collect_source_files(
+        {
+            "source_paths": [
+                "E:/Project/LinguaGacha/source/a.txt",
+                "E:/Project/LinguaGacha/source/b.md",
+            ],
+        }
+    )
+
+    assert result == {
+        "source_files": [
+            "E:/Project/LinguaGacha/source/a.txt",
+            "E:/Project/LinguaGacha/source/b.md",
+        ],
     }
 
 

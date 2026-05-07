@@ -13,27 +13,24 @@ class WorkbenchApiClient:
 
     def parse_file(
         self,
-        source_path: str,
-        rel_path: str | None = None,
+        source_paths: list[str],
     ) -> dict[str, Any]:
-        request: dict[str, Any] = {"source_path": source_path}
-        if rel_path:
-            request["rel_path"] = rel_path
+        request: dict[str, Any] = {"source_paths": source_paths}
         return self.api_client.post(
             ProjectRoutes.WORKBENCH_PARSE_FILE_PATH,
             request,
         )
 
-    def add_file_batch(
+    def add_file(
         self,
         files: list[dict[str, Any]],
         derived_meta: dict[str, Any],
         expected_section_revisions: dict[str, int],
     ) -> ProjectMutationAck:
-        """执行批量新增文件操作。"""
+        """执行新增文件操作，文件数量由 files 数组表达。"""
 
         response = self.api_client.post(
-            ProjectRoutes.WORKBENCH_ADD_FILE_BATCH_PATH,
+            ProjectRoutes.WORKBENCH_ADD_FILE_PATH,
             {
                 "files": files,
                 "derived_meta": derived_meta,
@@ -44,17 +41,17 @@ class WorkbenchApiClient:
 
     def reset_file(
         self,
-        rel_path: str,
+        rel_paths: list[str],
         items: list[dict[str, Any]],
         derived_meta: dict[str, Any],
         expected_section_revisions: dict[str, int],
     ) -> ProjectMutationAck:
-        """执行重置文件操作。"""
+        """执行重置文件操作，文件数量由 rel_paths 数组表达。"""
 
         response = self.api_client.post(
             ProjectRoutes.WORKBENCH_RESET_FILE_PATH,
             {
-                "rel_path": rel_path,
+                "rel_paths": rel_paths,
                 "items": items,
                 "derived_meta": derived_meta,
                 "expected_section_revisions": expected_section_revisions,
@@ -64,32 +61,14 @@ class WorkbenchApiClient:
 
     def delete_file(
         self,
-        rel_path: str,
-        derived_meta: dict[str, Any],
-        expected_section_revisions: dict[str, int],
-    ) -> ProjectMutationAck:
-        """执行删除文件操作。"""
-
-        response = self.api_client.post(
-            ProjectRoutes.WORKBENCH_DELETE_FILE_PATH,
-            {
-                "rel_path": rel_path,
-                "derived_meta": derived_meta,
-                "expected_section_revisions": expected_section_revisions,
-            },
-        )
-        return ProjectMutationAck.from_dict(response)
-
-    def delete_file_batch(
-        self,
         rel_paths: list[str],
         derived_meta: dict[str, Any],
         expected_section_revisions: dict[str, int],
     ) -> ProjectMutationAck:
-        """执行批量删除文件操作。"""
+        """执行删除文件操作，文件数量由 rel_paths 数组表达。"""
 
         response = self.api_client.post(
-            ProjectRoutes.WORKBENCH_DELETE_FILE_BATCH_PATH,
+            ProjectRoutes.WORKBENCH_DELETE_FILE_PATH,
             {
                 "rel_paths": rel_paths,
                 "derived_meta": derived_meta,

@@ -30,10 +30,13 @@ class ProjectApiClient:
         response = self.api_client.post(ProjectRoutes.UNLOAD_PATH, {})
         return ProjectSnapshot.from_dict(response.get("project", {}))
 
-    def collect_source_files(self, path: str) -> list[str]:
+    def collect_source_files(self, source_paths: list[str]) -> list[str]:
         """探测给定路径下可导入的源文件列表。"""
 
-        response = self.api_client.post(ProjectRoutes.SOURCE_FILES_PATH, {"path": path})
+        response = self.api_client.post(
+            ProjectRoutes.SOURCE_FILES_PATH,
+            {"source_paths": source_paths},
+        )
         source_files = response.get("source_files", [])
         return [str(file_path) for file_path in source_files]
 

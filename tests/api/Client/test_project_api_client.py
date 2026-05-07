@@ -62,7 +62,7 @@ def test_project_api_client_collects_source_files(
     base_url = start_api_server(project_app_service=project_app_service)
     project_client = ProjectApiClient(ApiClient(base_url))
 
-    result = project_client.collect_source_files("demo/input")
+    result = project_client.collect_source_files(["demo/input"])
 
     assert result == ["demo/input"]
 

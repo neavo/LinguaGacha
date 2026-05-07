@@ -655,7 +655,7 @@ ipcMain.handle(IPC_CHANNEL_OPEN_EXTERNAL_URL, async (_event, url: string) => {
 
 ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH, async () => {
   return pick_open_path({
-    properties: ["openFile"],
+    properties: ["openFile", "multiSelections"],
   });
 });
 

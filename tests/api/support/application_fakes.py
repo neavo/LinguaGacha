@@ -23,7 +23,7 @@ class FakeProjectManager:
         self.loaded: bool = False
         self.project_path: str = ""
         self.load_calls: list[str] = []
-        self.create_preview_calls: list[str] = []
+        self.create_preview_calls: list[dict[str, object]] = []
         self.create_commit_calls: list[dict[str, object]] = []
         self.open_alignment_preview_calls: list[str] = []
         self.settings_alignment_calls: list[dict[str, object]] = []
@@ -34,10 +34,13 @@ class FakeProjectManager:
         self.project_path = path
         self.load_calls.append(path)
 
-    def build_create_project_preview(self, source_path: str) -> dict[str, object]:
-        self.create_preview_calls.append(source_path)
+    def build_create_project_preview(
+        self,
+        source_paths: list[str],
+    ) -> dict[str, object]:
+        self.create_preview_calls.append({"source_paths": list(source_paths)})
         return {
-            "source_path": source_path,
+            "source_paths": list(source_paths),
             "files": [{"rel_path": "script.txt", "file_type": "TXT", "sort_index": 0}],
             "items": [{"id": 1, "src": "原文", "file_path": "script.txt", "row": 1}],
             "section_revisions": {"files": 0, "items": 0, "analysis": 0},
@@ -115,6 +118,9 @@ class FakeProjectManager:
 
     def collect_source_files(self, path: str) -> list[str]:
         return [path]
+
+    def collect_source_files_from_paths(self, source_paths: list[str]) -> list[str]:
+        return list(source_paths)
 
     def get_project_preview(self, path: str) -> dict[str, object]:
         return {
@@ -246,9 +252,8 @@ class FakeWorkbenchManager:
         self.add_batch_calls: list[list[str]] = []
         self.add_payloads: list[dict[str, object]] = []
         self.parse_calls: list[tuple[str, str | None]] = []
-        self.reset_calls: list[str] = []
-        self.delete_calls: list[str] = []
-        self.delete_batch_calls: list[list[str]] = []
+        self.reset_calls: list[list[str]] = []
+        self.delete_calls: list[list[str]] = []
         self.reorder_calls: list[list[str]] = []
 
     def parse_file_preview(
@@ -291,9 +296,9 @@ class FakeWorkbenchManager:
         )
         self.add_payloads.extend(dict(file) for file in files)
 
-    def persist_reset_file(
+    def persist_reset_files(
         self,
-        rel_path: str,
+        rel_paths: list[str],
         *,
         item_payloads: list[dict[str, object]],
         translation_extras: dict[str, object],
@@ -302,7 +307,7 @@ class FakeWorkbenchManager:
     ) -> None:
         del item_payloads, translation_extras, prefilter_config
         del expected_section_revisions
-        self.reset_calls.append(rel_path)
+        self.reset_calls.append(list(rel_paths))
 
     def persist_delete_files(
         self,
@@ -314,10 +319,7 @@ class FakeWorkbenchManager:
     ) -> None:
         del translation_extras, prefilter_config
         del expected_section_revisions
-        if len(rel_paths) == 1:
-            self.delete_calls.append(rel_paths[0])
-            return
-        self.delete_batch_calls.append(list(rel_paths))
+        self.delete_calls.append(list(rel_paths))
 
     def persist_reordered_files(
         self,

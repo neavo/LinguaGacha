@@ -784,9 +784,14 @@ describe("useWorkbenchLiveState", () => {
 
   it("添加文件解析成功后会先打开继承确认", async () => {
     vi.mocked(api_fetch).mockResolvedValueOnce({
-      target_rel_path: "new.txt",
-      file_type: "TXT",
-      parsed_items: [{ src: "hello", dst: "", row: 1 }],
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "hello", dst: "", row: 1 }],
+        },
+      ],
     });
     await render_hook();
 
@@ -797,7 +802,7 @@ describe("useWorkbenchLiveState", () => {
     expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
     expect(workbench_picker_fixture.current.pickWorkbenchFilePath).not.toHaveBeenCalled();
     expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
-      source_path: "E:/demo/new.txt",
+      source_paths: ["E:/demo/new.txt"],
     });
     expect(api_fetch).toHaveBeenCalledTimes(1);
   });
@@ -808,9 +813,14 @@ describe("useWorkbenchLiveState", () => {
       paths: ["E:/demo/new.txt"],
     });
     vi.mocked(api_fetch).mockResolvedValueOnce({
-      target_rel_path: "new.txt",
-      file_type: "TXT",
-      parsed_items: [{ src: "hello", dst: "", row: 1 }],
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "hello", dst: "", row: 1 }],
+        },
+      ],
     });
     await render_hook();
 
@@ -820,20 +830,27 @@ describe("useWorkbenchLiveState", () => {
 
     expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
     expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
-      source_path: "E:/demo/new.txt",
+      source_paths: ["E:/demo/new.txt"],
     });
   });
 
   it("批量添加会静默跳过解析失败和重名文件，只保留有效文件", async () => {
-    vi.mocked(api_fetch).mockImplementation(async (_path, body) => {
-      const source_path = String((body as { source_path?: unknown }).source_path ?? "");
-      if (source_path.endsWith("bad.txt")) {
-        throw new Error("parse failed");
-      }
+    vi.mocked(api_fetch).mockImplementation(async () => {
       return {
-        target_rel_path: source_path.endsWith("old-copy.txt") ? "old.txt" : "new.txt",
-        file_type: "TXT",
-        parsed_items: [{ src: "hello", dst: "", row: 1 }],
+        files: [
+          {
+            source_path: "E:/demo/new.txt",
+            target_rel_path: "new.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+          },
+          {
+            source_path: "E:/demo/old-copy.txt",
+            target_rel_path: "old.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+          },
+        ],
       };
     });
     runtime_fixture.current = {
@@ -854,14 +871,22 @@ describe("useWorkbenchLiveState", () => {
 
     expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
     expect(latest_state?.dialog_state.target_rel_paths).toEqual(["new.txt"]);
+    expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
+      source_paths: ["E:/demo/new.txt", "E:/demo/bad.txt", "E:/demo/old-copy.txt"],
+    });
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
   });
 
   it("批量添加没有有效文件时只提示一次错误", async () => {
     vi.mocked(api_fetch).mockResolvedValue({
-      target_rel_path: "old.txt",
-      file_type: "TXT",
-      parsed_items: [],
+      files: [
+        {
+          source_path: "E:/demo/old-copy.txt",
+          target_rel_path: "old.txt",
+          file_type: "TXT",
+          parsed_items: [],
+        },
+      ],
     });
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -902,16 +927,21 @@ describe("useWorkbenchLiveState", () => {
     );
   });
 
-  it("选择不继承会直接提交 add-file-batch", async () => {
+  it("选择不继承会直接提交 add-file", async () => {
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });
     vi.mocked(api_fetch)
       .mockResolvedValueOnce({
-        target_rel_path: "new.txt",
-        file_type: "TXT",
-        parsed_items: [{ src: "hello", dst: "", row: 1 }],
+        files: [
+          {
+            source_path: "E:/demo/new.txt",
+            target_rel_path: "new.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+          },
+        ],
       })
       .mockResolvedValueOnce({
         accepted: true,
@@ -939,7 +969,7 @@ describe("useWorkbenchLiveState", () => {
     });
 
     expect(api_fetch).toHaveBeenLastCalledWith(
-      "/api/project/workbench/add-file-batch",
+      "/api/project/workbench/add-file",
       expect.objectContaining({
         files: [
           expect.objectContaining({
@@ -958,9 +988,14 @@ describe("useWorkbenchLiveState", () => {
     });
     vi.mocked(api_fetch)
       .mockResolvedValueOnce({
-        target_rel_path: "new.txt",
-        file_type: "TXT",
-        parsed_items: [{ src: "hello", dst: "", row: 1 }],
+        files: [
+          {
+            source_path: "E:/demo/new.txt",
+            target_rel_path: "new.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+          },
+        ],
       })
       .mockResolvedValueOnce({
         accepted: true,
@@ -994,7 +1029,7 @@ describe("useWorkbenchLiveState", () => {
 
     expect(latest_state?.dialog_state.kind).toBeNull();
     expect(api_fetch).toHaveBeenLastCalledWith(
-      "/api/project/workbench/add-file-batch",
+      "/api/project/workbench/add-file",
       expect.objectContaining({
         files: [
           expect.objectContaining({

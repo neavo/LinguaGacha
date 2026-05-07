@@ -5,7 +5,7 @@ import pytest
 
 from base.BasePath import BasePath
 from module.Data.Core.Item import Item
-from module.Data.Project.ProjectService import ProjectService
+from module.Data.Project.ProjectService import ProjectService, ProjectSourceFile
 
 
 def test_is_supported_file_is_case_insensitive() -> None:
@@ -56,6 +56,239 @@ def test_get_relative_path_for_file_and_directory(fs) -> None:
     nested.parent.mkdir()
     nested.write_text("x", encoding="utf-8")
     assert service.get_relative_path(str(base_dir), str(nested)) == "sub\\b.txt"
+
+
+def test_collect_source_files_from_paths_keeps_order_and_removes_duplicates(fs) -> None:
+    del fs
+    service = ProjectService()
+    root_path = Path("/workspace/project_service")
+    root_path.mkdir(parents=True, exist_ok=True)
+    first_file = root_path / "a.txt"
+    second_file = root_path / "b.md"
+    ignored_file = root_path / "c.bin"
+    first_file.write_text("a", encoding="utf-8")
+    second_file.write_text("b", encoding="utf-8")
+    ignored_file.write_bytes(b"c")
+
+    collected = service.collect_source_files_from_paths(
+        [
+            str(first_file),
+            str(ignored_file),
+            str(first_file),
+            " ",
+            str(second_file),
+        ]
+    )
+
+    assert collected == [str(first_file), str(second_file)]
+
+
+def test_collect_source_file_entries_preserves_single_directory_root(fs) -> None:
+    del fs
+    service = ProjectService()
+    root_path = Path("/workspace/project_service")
+    source_dir = root_path / "source"
+    nested_file = source_dir / "chapter" / "script.txt"
+    nested_file.parent.mkdir(parents=True, exist_ok=True)
+    nested_file.write_text("script", encoding="utf-8")
+
+    entries = service.collect_source_file_entries([str(source_dir)])
+
+    assert entries == [
+        ProjectSourceFile(
+            source_path=str(nested_file),
+            rel_path="chapter\\script.txt",
+        )
+    ]
+
+
+def test_collect_source_file_entries_uses_file_names_for_batch_files(fs) -> None:
+    del fs
+    service = ProjectService()
+    root_path = Path("/workspace/project_service")
+    first_file = root_path / "source" / "script.txt"
+    second_file = root_path / "source" / "chapter" / "script.txt"
+    first_file.parent.mkdir(parents=True, exist_ok=True)
+    second_file.parent.mkdir(parents=True, exist_ok=True)
+    first_file.write_text("first", encoding="utf-8")
+    second_file.write_text("second", encoding="utf-8")
+
+    entries = service.collect_source_file_entries([str(first_file), str(second_file)])
+
+    assert entries == [
+        ProjectSourceFile(
+            source_path=str(first_file),
+            rel_path="script.txt",
+        ),
+        ProjectSourceFile(
+            source_path=str(second_file),
+            rel_path="script_2.txt",
+        ),
+    ]
+
+
+def test_build_unique_relative_path_uses_stable_suffix_for_conflicts() -> None:
+    service = ProjectService()
+    used_rel_paths: set[str] = set()
+
+    first_path = service.build_unique_relative_path(
+        rel_path="script.txt",
+        used_rel_paths=used_rel_paths,
+        source_index=0,
+    )
+    second_path = service.build_unique_relative_path(
+        rel_path="script.txt",
+        used_rel_paths=used_rel_paths,
+        source_index=1,
+    )
+
+    assert first_path == "script.txt"
+    assert second_path == "script_2.txt"
+
+
+def test_build_unique_relative_path_is_case_insensitive_for_conflicts() -> None:
+    service = ProjectService()
+    used_rel_paths: set[str] = set()
+
+    first_path = service.build_unique_relative_path(
+        rel_path="Script.txt",
+        used_rel_paths=used_rel_paths,
+        source_index=0,
+    )
+    second_path = service.build_unique_relative_path(
+        rel_path="script.txt",
+        used_rel_paths=used_rel_paths,
+        source_index=1,
+    )
+
+    assert first_path == "Script.txt"
+    assert second_path == "script_2.txt"
+
+
+def test_create_preview_and_commit_use_same_batch_file_set(
+    fs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fs
+    service = ProjectService()
+    root_path = Path("/workspace/project_service")
+    source_dir = root_path / "source"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    first_file = source_dir / "a.txt"
+    second_file = source_dir / "nested" / "b.md"
+    second_file.parent.mkdir()
+    first_file.write_bytes(b"a")
+    second_file.write_bytes(b"b")
+    output_path = root_path / "out" / "demo.lg"
+    fake_db_assets: list[tuple[str, int]] = []
+
+    class FakeConnection:
+        def commit(self) -> None:
+            return
+
+    class FakeConnectionContext:
+        def __enter__(self) -> FakeConnection:
+            return FakeConnection()
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            del exc_type
+            del exc_value
+            del traceback
+
+    class FakeCommitDB:
+        def connection(self) -> FakeConnectionContext:
+            return FakeConnectionContext()
+
+        def add_asset(
+            self,
+            rel_path: str,
+            compressed: bytes,
+            original_size: int,
+            *,
+            sort_order: int | None = None,
+            conn: FakeConnection | None = None,
+        ) -> None:
+            del compressed
+            del original_size
+            del conn
+            fake_db_assets.append((rel_path, int(sort_order or 0)))
+
+        def set_items(
+            self,
+            items_dicts: list[dict],
+            conn: FakeConnection | None = None,
+        ) -> None:
+            del items_dicts
+            del conn
+
+        def upsert_meta_entries(
+            self,
+            entries: dict[str, object],
+            conn: FakeConnection | None = None,
+        ) -> None:
+            del entries
+            del conn
+
+    class FakeConfig:
+        source_language = "JA"
+        target_language = "ZH"
+        mtool_optimizer_enable = True
+        skip_duplicate_source_text_enable = True
+
+    class FakeFileManager:
+        def __init__(self, config) -> None:
+            del config
+
+        def parse_asset(self, rel_path: str, original_data: bytes) -> list[Item]:
+            del rel_path
+            del original_data
+            return []
+
+    monkeypatch.setattr(
+        "module.Data.Project.ProjectService.Config.load",
+        lambda self: FakeConfig(),
+    )
+    monkeypatch.setattr(
+        "module.Data.Project.ProjectService.FileManager",
+        FakeFileManager,
+    )
+    monkeypatch.setattr(
+        "module.Data.Project.ProjectService.LGDatabase.create",
+        lambda output_path, project_name: FakeCommitDB(),
+    )
+
+    preview = service.build_create_preview([str(first_file), str(second_file)])
+    files = list(preview["files"])
+
+    service.commit_create_preview(
+        source_paths=[str(first_file), str(second_file)],
+        output_path=str(output_path),
+        files=files,
+        items=[],
+        project_settings={
+            "source_language": "JA",
+            "target_language": "ZH",
+            "mtool_optimizer_enable": True,
+            "skip_duplicate_source_text_enable": True,
+        },
+        translation_extras={},
+        prefilter_config={},
+    )
+
+    assert files == [
+        {
+            "rel_path": "a.txt",
+            "file_type": "NONE",
+            "sort_index": 0,
+            "source_path": str(first_file),
+        },
+        {
+            "rel_path": "b.md",
+            "file_type": "NONE",
+            "sort_index": 1,
+            "source_path": str(second_file),
+        },
+    ]
+    assert fake_db_assets == [("a.txt", 0), ("b.md", 1)]
 
 
 def test_get_project_preview_raises_when_file_not_exists(fs) -> None:

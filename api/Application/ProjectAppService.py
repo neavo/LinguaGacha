@@ -65,13 +65,15 @@ class ProjectAppService:
     def create_project_preview(self, request: dict[str, Any]) -> dict[str, object]:
         """解析新建工程草稿，不落盘、不预过滤。"""
 
-        source_path = str(request.get("source_path", "") or "")
-        return {"draft": self.project_manager.build_create_project_preview(source_path)}
+        source_paths = self.normalize_string_list_payload(request.get("source_paths"))
+        return {
+            "draft": self.project_manager.build_create_project_preview(source_paths)
+        }
 
     def create_project_commit(self, request: dict[str, Any]) -> dict[str, object]:
         """持久化前端预过滤后的新建工程草稿并加载工程。"""
 
-        source_path = str(request.get("source_path", "") or "")
+        source_paths = self.normalize_string_list_payload(request.get("source_paths"))
         output_path = str(request.get("path", "") or "")
         draft = self.normalize_dict_payload(request.get("draft"))
         files = self.normalize_list_of_dicts(draft.get("files", []))
@@ -82,7 +84,7 @@ class ProjectAppService:
         )
         prefilter_config = self.normalize_dict_payload(request.get("prefilter_config"))
         self.project_manager.commit_create_project_preview(
-            source_path=source_path,
+            source_paths=source_paths,
             output_path=output_path,
             files=files,
             items=items,
@@ -106,11 +108,13 @@ class ProjectAppService:
         self.project_manager.unload_project()
         return {"project": ProjectSnapshotPayload(path="", loaded=False).to_dict()}
 
-    def collect_source_files(self, request: dict[str, str]) -> dict[str, object]:
+    def collect_source_files(self, request: dict[str, Any]) -> dict[str, object]:
         """把源目录扫描结果转换为纯 JSON 列表。"""
 
-        path = str(request.get("path", ""))
-        source_files = self.project_manager.collect_source_files(path)
+        source_paths = self.normalize_string_list_payload(request.get("source_paths"))
+        source_files = self.project_manager.collect_source_files_from_paths(
+            source_paths
+        )
         return {"source_files": [str(file_path) for file_path in source_files]}
 
     def get_project_preview(self, request: dict[str, str]) -> dict[str, object]:
@@ -492,6 +496,11 @@ class ProjectAppService:
         if not isinstance(value, list):
             return []
         return [dict(item) for item in value if isinstance(item, dict)]
+
+    def normalize_string_list_payload(self, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if isinstance(item, str)]
 
     def normalize_expected_section_revisions(
         self,

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   create_workbench_add_files_plan,
+  create_workbench_delete_files_plan,
+  create_workbench_reset_file_plan,
   type WorkbenchFileParsePreview,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 
@@ -211,5 +213,37 @@ describe("workbench add-file translation inheritance planner", () => {
         parsed_items: [expect.objectContaining({ id: 9, dst: "你好" })],
       }),
     ]);
+  });
+});
+
+describe("workbench file mutation payload planner", () => {
+  it("重置单文件也使用 rel_paths 数组载荷", () => {
+    const plan = create_workbench_reset_file_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+      }),
+      rel_path: "old.txt",
+      settings: SETTINGS,
+    });
+
+    expect(plan.requestBody).toMatchObject({
+      rel_paths: ["old.txt"],
+    });
+    expect(plan.requestBody).not.toHaveProperty("rel_path");
+  });
+
+  it("删除文件使用统一 rel_paths 数组载荷", () => {
+    const plan = create_workbench_delete_files_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+      }),
+      rel_paths: ["old.txt"],
+      settings: SETTINGS,
+    });
+
+    expect(plan.requestBody).toMatchObject({
+      rel_paths: ["old.txt"],
+    });
+    expect(plan.requestBody).not.toHaveProperty("rel_path");
   });
 });

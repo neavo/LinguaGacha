@@ -42,6 +42,7 @@ import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { type LocaleKey, useI18n } from "@/i18n";
 import { has_path_drop_payload, resolve_dropped_path } from "@/lib/file-drop";
+import { normalize_source_paths } from "@/lib/source-paths";
 import { cn } from "@/lib/utils";
 import {
   SegmentedProgress,
@@ -84,9 +85,10 @@ type SelectedProject = {
 };
 
 type SelectedSource = {
-  path: string;
+  source_paths: string[];
   name: string;
   source_file_count: number;
+  output_name_seed_path: string;
 };
 
 type MissingRecentProjectState = {
@@ -812,12 +814,19 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     }
   }
 
-  async function handle_select_source_path(source_path: string): Promise<void> {
+  async function handle_select_source_paths(source_paths: string[]): Promise<void> {
+    const normalized_source_paths = normalize_source_paths(source_paths);
+    if (normalized_source_paths.length === 0) {
+      set_selected_source(null);
+      push_toast("warning", t("project_page.create.unavailable"));
+      return;
+    }
+
     set_is_source_checking(true);
 
     try {
       const payload = await api_fetch<ProjectSourceFilesPayload>("/api/project/source-files", {
-        path: source_path,
+        source_paths: normalized_source_paths,
       });
       const source_files = Array.isArray(payload.source_files) ? payload.source_files : [];
 
@@ -825,10 +834,16 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
         set_selected_source(null);
         push_toast("warning", t("project_page.create.unavailable"));
       } else {
+        const output_name_seed_path = normalized_source_paths[0] ?? "";
+        const selected_name = t("project_page.create.ready_status").replace(
+          "{COUNT}",
+          source_files.length.toString(),
+        );
         set_selected_source({
-          path: source_path,
-          name: extract_file_name(source_path),
+          source_paths: normalized_source_paths,
+          name: selected_name,
           source_file_count: source_files.length,
+          output_name_seed_path,
         });
       }
     } catch {
@@ -839,6 +854,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     }
   }
 
+  async function handle_select_source_path(source_path: string): Promise<void> {
+    await handle_select_source_paths([source_path]);
+  }
+
   async function handle_select_source_file(): Promise<void> {
     const result = await window.desktopApp.pickProjectSourceFilePath();
     const selected_path = result.paths[0] ?? null;
@@ -846,7 +865,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       return;
     }
 
-    await handle_select_source_path(selected_path);
+    await handle_select_source_paths(result.paths);
   }
 
   async function handle_select_source_folder(): Promise<void> {
@@ -969,7 +988,9 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     try {
       const loaded_default_preset_names = collect_loaded_default_preset_names(settings_snapshot, t);
-      const output_path = await resolve_project_output_path(selected_source.path);
+      const source_path = selected_source.output_name_seed_path;
+      const source_paths = selected_source.source_paths;
+      const output_path = await resolve_project_output_path(source_path);
       if (output_path === null || output_path === "") {
         return;
       }
@@ -984,7 +1005,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           const preview_payload = await api_fetch<ProjectCreatePreviewPayload>(
             "/api/project/create-preview",
             {
-              source_path: selected_source.path,
+              source_paths,
             },
           );
           const draft = preview_payload.draft ?? {};
@@ -996,7 +1017,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             },
           });
           const payload = await api_fetch<ProjectSnapshotPayload>("/api/project/create-commit", {
-            source_path: selected_source.path,
+            source_paths,
             path: normalized_output_path,
             draft: {
               files: draft.files ?? [],
@@ -1256,12 +1277,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               </span>
               <div className="project-home__selected-summary">
                 <p className="project-home__selected-name">{selected_source.name}</p>
-                <p className="project-home__selected-status">
-                  {t("project_page.create.ready_status").replace(
-                    "{COUNT}",
-                    selected_source.source_file_count.toString(),
-                  )}
-                </p>
               </div>
             </button>
           </AppContextMenuTrigger>
