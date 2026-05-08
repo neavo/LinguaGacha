@@ -3,6 +3,7 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http";
 
 import { DatabaseConflictError, ProjectDatabase } from "./database-operations";
 import type { DatabaseEnvelope, DatabaseOperation } from "./database-types";
+import { JsonTool } from "../../utils/json-tool";
 
 const DATABASE_TOKEN_HEADER_NAME = "x-linguagacha-database-token";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -35,7 +36,7 @@ function send_json(
   envelope: DatabaseEnvelope,
 ): void {
   response.writeHead(status_code, { "Content-Type": JSON_CONTENT_TYPE });
-  response.end(JSON.stringify(envelope));
+  response.end(JsonTool.stringifyStrict(envelope));
 }
 
 function build_error_envelope(error: unknown): DatabaseEnvelope {
@@ -52,13 +53,32 @@ function build_error_envelope(error: unknown): DatabaseEnvelope {
   return { ok: false, error: { code: "internal_error", message: "database 内部错误。" } };
 }
 
-// 只监听本机随机端口的内部 database HTTP 服务，不暴露给 preload 或 renderer。
+/**
+ * 只监听本机随机端口的内部 database HTTP 服务，不暴露给 preload 或 renderer。
+ */
 export class DatabaseServer {
-  private readonly database = new ProjectDatabase();
+  private readonly database: ProjectDatabase;
   private readonly token = create_database_token();
   private server: http.Server | null = null;
   private base_url: string | null = null;
 
+  /**
+   * 初始化 DatabaseServer 依赖，保持外部写入口清晰。
+   */
+  public constructor(database: ProjectDatabase = new ProjectDatabase()) {
+    this.database = database;
+  }
+
+  /**
+   * 按项目路径复用数据库句柄，确保同一工程只有一个连接。
+   */
+  public get_database(): ProjectDatabase {
+    return this.database;
+  }
+
+  /**
+   * 启动服务并返回稳定入口，避免重复启动产生多份运行态。
+   */
   public async start(): Promise<DatabaseServerStartResult> {
     if (this.server !== null && this.base_url !== null) {
       return { baseUrl: this.base_url, token: this.token };
@@ -88,6 +108,9 @@ export class DatabaseServer {
     return { baseUrl: this.base_url, token: this.token };
   }
 
+  /**
+   * 按拥有者顺序释放资源，避免退出时留下后台监听。
+   */
   public async stop(): Promise<void> {
     const server = this.server;
     this.server = null;
@@ -109,6 +132,9 @@ export class DatabaseServer {
     });
   }
 
+  /**
+   * 分发内部 database workflow，并在边界处统一校验 token。
+   */
   private async handle_request(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (request.headers[DATABASE_TOKEN_HEADER_NAME] !== this.token) {
@@ -135,9 +161,7 @@ export class DatabaseServer {
 
       const raw_body = await read_request_body(request);
       const body =
-        raw_body.byteLength === 0
-          ? {}
-          : (JSON.parse(raw_body.toString("utf-8")) as Record<string, unknown>);
+        raw_body.byteLength === 0 ? {} : JsonTool.parseStrict<Record<string, unknown>>(raw_body);
 
       if (url.pathname === "/internal/database/op") {
         // 单操作用于普通读写；事务语义只允许走 transaction 路由。

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 
-import { resolve_core_launch_command } from "./lifecycle-command-resolver";
+import { resolve_core_app_root, resolve_core_launch_command } from "./lifecycle-command-resolver";
 import { wait_for_core_health } from "./lifecycle-health-check";
 import {
   format_core_shutdown_completed_log,
@@ -12,6 +12,7 @@ import { build_core_api_base_url, allocate_core_api_port } from "./lifecycle-por
 import { force_kill_process_tree, wait_for_process_exit } from "./lifecycle-process-terminator";
 import { attach_core_process_output } from "./lifecycle-process-output";
 import { DatabaseServer } from "../database/database-server";
+import { ApiGatewayServer } from "../api/api-gateway-server";
 import type {
   CoreLaunchCommand,
   CoreLifecycleManagerOptions,
@@ -118,55 +119,73 @@ async function request_core_shutdown(base_url: string, instance_token: string): 
   }
 }
 
-// Electron main 持有 Core 与内部 Database Service 的启动、关闭和故障回收顺序。
+/**
+ * Electron main 持有 Core 与内部 Database Service 的启动、关闭和故障回收顺序。
+ */
 export class CoreLifecycleManager {
   private state: CoreLifecycleState = "idle";
   private readonly options: CoreLifecycleManagerOptions;
   private handle: CoreProcessHandle | null = null;
-  private base_url: string | null = null;
-  private instance_token: string | null = null;
+  private py_core_base_url: string | null = null;
+  private py_core_instance_token: string | null = null;
+  private gateway_server: ApiGatewayServer | null = null;
   private readonly database_server = new DatabaseServer();
 
+  /**
+   * 初始化 CoreLifecycleManager 依赖，保持外部写入口清晰。
+   */
   public constructor(options: CoreLifecycleManagerOptions) {
     this.options = options;
   }
 
+  /**
+   * 暴露生命周期终态，供调用方避免重复停止。
+   */
   public isStopped(): boolean {
     return this.state === "idle" || this.state === "stopped" || this.state === "failed";
   }
 
+  /**
+   * 启动服务并返回稳定入口，避免重复启动产生多份运行态。
+   */
   public async start(): Promise<CoreLifecycleStartResult> {
     if (this.state !== "idle" && this.state !== "stopped") {
       throw new Error(`Core 生命周期状态不允许启动：${this.state}`);
     }
 
     this.state = "starting";
-    const instance_token = create_instance_token();
-    const port = await allocate_core_api_port();
-    const base_url = build_core_api_base_url(port);
-    const launch_command = resolve_core_launch_command({
+    const py_core_instance_token = create_instance_token();
+    const public_port = await allocate_core_api_port();
+    const py_core_port = await allocate_core_api_port();
+    const public_base_url = build_core_api_base_url(public_port);
+    const py_core_base_url = build_core_api_base_url(py_core_port);
+    const launch_environment = {
       appRoot: this.options.appRoot,
       env: process.env,
       platform: process.platform,
-    });
+    };
+    const app_root = resolve_core_app_root(launch_environment);
+    const launch_command = resolve_core_launch_command(launch_environment);
     // Database 必须先于 Core 启动，Core 启动后会立即按 env 创建 DatabaseGateway。
     const database_start_result = await this.database_server.start();
     let has_logged_start_failure = false;
 
     write_ts_lifecycle_log(`Database Service 已启动 - ${database_start_result.baseUrl}`);
-    write_ts_lifecycle_log("Python Core 正在启动 …");
+    write_ts_lifecycle_log("Python Core 正在以内网端口启动 …");
 
     const spawn_request = build_core_process_spawn_request(
       launch_command,
-      base_url,
-      instance_token,
+      py_core_base_url,
+      py_core_instance_token,
       database_start_result.baseUrl,
       database_start_result.token,
     );
     const core_process = spawn(spawn_request.command, spawn_request.args, spawn_request.options);
     attach_core_process_output(core_process);
     if (core_process.pid !== undefined) {
-      write_ts_lifecycle_log(`Python Core PID[${core_process.pid}] 实例已启动 - ${base_url}`);
+      write_ts_lifecycle_log(
+        `Python Core PID[${core_process.pid}] 内部实例已启动 - ${py_core_base_url}`,
+      );
     }
     const handle = {
       process: core_process,
@@ -174,8 +193,8 @@ export class CoreLifecycleManager {
     };
 
     this.handle = handle;
-    this.base_url = base_url;
-    this.instance_token = instance_token;
+    this.py_core_base_url = py_core_base_url;
+    this.py_core_instance_token = py_core_instance_token;
 
     core_process.once("error", (error) => {
       if (this.state === "starting") {
@@ -193,16 +212,28 @@ export class CoreLifecycleManager {
       }
     });
 
+    let gateway_start_result: CoreLifecycleStartResult | null = null;
     try {
       await Promise.race([
-        wait_for_core_health(base_url, instance_token),
+        wait_for_core_health(py_core_base_url, py_core_instance_token),
         handle.exitPromise.then((result) => {
           throw new Error(`Python Core 在健康检查通过前退出，退出码：${result.exitCode ?? "null"}`);
         }),
       ]);
+      const gateway_server = new ApiGatewayServer({
+        appRoot: app_root,
+        publicPort: public_port,
+        pyCoreBaseUrl: py_core_base_url,
+        pyCoreToken: py_core_instance_token,
+        database: this.database_server.get_database(),
+      });
+      gateway_start_result = await gateway_server.start();
+      this.gateway_server = gateway_server;
+      await wait_for_core_health(gateway_start_result.baseUrl, gateway_start_result.instanceToken);
+      write_ts_lifecycle_log(`TS Gateway 已启动 - ${gateway_start_result.baseUrl}`);
     } catch (error) {
       if (!has_logged_start_failure) {
-        write_ts_lifecycle_log(`Python Core 启动失败 - ${format_lifecycle_error(error)}`);
+        write_ts_lifecycle_log(`Core / Gateway 启动失败 - ${format_lifecycle_error(error)}`);
       }
       this.state = "failed";
       await this.stop_core(false);
@@ -210,18 +241,29 @@ export class CoreLifecycleManager {
       throw error;
     }
 
-    process.env[CORE_API_BASE_URL_ENV_NAME] = base_url;
+    process.env[CORE_API_BASE_URL_ENV_NAME] = public_base_url;
     process.env[DATABASE_API_BASE_URL_ENV_NAME] = database_start_result.baseUrl;
     this.state = "ready";
-    return { baseUrl: base_url, instanceToken: instance_token };
+    if (gateway_start_result === null) {
+      throw new Error("TS Gateway 启动状态丢失。");
+    }
+    return gateway_start_result;
   }
 
+  /**
+   * 按拥有者顺序释放资源，避免退出时留下后台监听。
+   */
   public async stop(): Promise<void> {
     await this.stop_core(true);
   }
 
+  /**
+   * 维护 stop_core 的职责边界，避免同类逻辑散落到调用点。
+   */
   private async stop_core(should_log_lifecycle: boolean): Promise<void> {
     if (this.handle === null) {
+      await this.gateway_server?.stop();
+      this.gateway_server = null;
       await this.database_server.stop();
       this.state = "stopped";
       return;
@@ -233,8 +275,8 @@ export class CoreLifecycleManager {
     }
 
     const current_handle = this.handle;
-    const current_base_url = this.base_url;
-    const current_instance_token = this.instance_token;
+    const current_base_url = this.py_core_base_url;
+    const current_instance_token = this.py_core_instance_token;
     const current_pid = current_handle.process.pid;
     this.state = "stopping";
     if (should_log_lifecycle) {
@@ -260,8 +302,10 @@ export class CoreLifecycleManager {
     }
 
     this.handle = null;
-    this.base_url = null;
-    this.instance_token = null;
+    this.py_core_base_url = null;
+    this.py_core_instance_token = null;
+    await this.gateway_server?.stop();
+    this.gateway_server = null;
     await this.database_server.stop();
     this.state = "stopped";
     if (should_log_lifecycle) {

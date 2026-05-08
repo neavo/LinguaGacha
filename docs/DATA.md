@@ -1,7 +1,7 @@
 # LinguaGacha 数据域文档
 
 ## 一句话总览
-LinguaGacha 的 Python Core 以“工程事实、任务执行、文件格式、模型配置”四块稳定域协作。本文回答的不是目录长什么样，而是：`Data / Engine / File / Model` 分别拥有什么权威职责，项目级状态应该落在哪里，唯一写入口怎么判断，`.lg` 物理存储为什么只由 Electron main Database Service 持有，以及哪些非显然规则会影响未来维护。
+LinguaGacha 的数据域由 Electron main TS API 编排层和 P1 页面写入口、Electron main Database Service 的 `.lg` 物理存储，以及 Python Core 的工程事实 / 任务运行时共同协作。本文回答的不是目录长什么样，而是：`Data / Engine / File / Model` 分别拥有什么权威职责，项目级状态应该落在哪里，唯一写入口怎么判断，`.lg` 物理存储为什么只由 Electron main Database Service 持有，以及哪些非显然规则会影响未来维护。
 
 ## `Data / Engine / File / Model` 的职责边界
 
@@ -31,7 +31,10 @@ flowchart TD
 | 已加载工程、items、rules、meta、assets 缓存 | `ProjectSession` | `DataManager` 协调各领域 service |
 | 工程创建、加载、卸载 | `Project/ProjectService.py`、`ProjectLifecycleService.py` | `DataManager` |
 | 工作台文件集合与运行态编码 | `Project/ProjectFileService.py`、`ProjectRuntimeService.py` | `DataManager` |
-| 规则、提示词、预设 | `Quality/*` | `DataManager` |
+| 设置、最近项目 | `frontend/src/main/settings` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 settings 服务 |
+| 模型页 CRUD | `frontend/src/main/model` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 model 服务 |
+| 质量规则、提示词页面 CRUD 与预设 IO | `frontend/src/main/quality` + `frontend/src/main/database/` | TS Gateway 调用 quality 服务；写入后通过内部 runtime bridge 清理 Python Core 缓存 |
+| 规则、提示词运行时读取 | `Quality/*` | Python Core `DataManager` |
 | 分析候选、checkpoint、分析结果 | `Analysis/*` | `DataManager` |
 | 校对保存、校对 revision、重翻提交 | `Proofreading/*` 与 `Engine/Retranslate/*` | `ProofreadingAppService` 处理同步保存；重翻由 `TaskAppService` 启动 Engine 任务并回写数据层 |
 | 全局忙碌态与实时请求数 | `Engine.status`、`request_in_flight_count` | `Engine` |
@@ -47,11 +50,11 @@ flowchart TD
 
 ## `.lg` 物理存储唯一落点
 
-- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/main/utils/zstd-tool.ts`；`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`。
+- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/utils/zstd-tool.ts`；`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`。
 - Python Core 不直接导入 `sqlite3`，不理解 `.lg` 内压缩格式；只通过 `module/Data/Database/DatabaseGateway.py` 调内部 HTTP database workflow。
 - `ProjectSession` 是会话状态容器，只保存当前工程路径、gateway handle 与业务缓存，不承担 SQL 或压缩细节。
 - API 层不得直接持有 database handle，也不得直接持有 `ProjectSession`。
-- 若某个新需求看起来需要“在 Python 里顺手写一条 SQL”，说明落点已经错了；database workflow 回到 `frontend/src/main/database/`，Zstd 参数化工具回到 `frontend/src/main/utils/zstd-tool.ts`，打开期迁移规则回到 `frontend/src/main/migration/`，再由 `DatabaseGateway` 暴露窄入口。
+- 若某个新需求看起来需要“在 Python 里顺手写一条 SQL”，说明落点已经错了；database workflow 回到 `frontend/src/main/database/`，Zstd 参数化工具回到 `frontend/src/utils/zstd-tool.ts`，打开期迁移规则回到 `frontend/src/main/migration/`，再由 `DatabaseGateway` 暴露窄入口。
 
 ## 典型数据流
 
@@ -117,6 +120,8 @@ flowchart TD
 - `items.status` 只表达条目翻译事实，代码侧枚举为 `Base.ItemStatus`，当前有效集合为 `NONE / PROCESSED / ERROR / EXCLUDED / RULE_SKIPPED / LANGUAGE_SKIPPED / DUPLICATED`；打开旧 `.lg` 时会把 item `PROCESSED_IN_PAST` 持久化为 `PROCESSED`，把 item `PROCESSING` 持久化为 `NONE`。
 - 工程忙碌态、任务按钮和任务进度由 `Engine.status`、任务事件与 `translation_extras` / `task` 运行态驱动；旧 `.lg` 中的 `meta.project_status` 只是历史字段，打开工程时保持原样。
 - Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。
+- P1 后应用设置、最近项目、模型页 CRUD 由 TS main 的 `settings/` 与 `model/` 服务读写 `DATA_ROOT/userdata/config.json`；Python Core 的 `Config`、`ModelManager`、模型 `list-available/test` runner 与任务消费仍保留为内部运行时能力，并通过 `/internal/runtime/sync` 刷新内存状态。
+- P1 后质量规则与提示词页面 CRUD / 预设 IO 由 TS main 的 `quality/` 服务承载；`.lg` 写入仍只通过 Electron main `ProjectDatabase`，写入成功后由 `/internal/runtime/sync` 清理 Python Core 的 meta/rule/prompt 缓存，任务侧后续读取必须重新走 database。
 - 分析候选导入术语的预演和筛选属于前端 planner；Python 数据层保留候选聚合、候选数缓存和分析结果持久化。
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
 - 校对 `save-item`、`save-all`、`replace-all` 属于同步 mutation；重翻通过 `/api/tasks/start-retranslate` 进入任务型链路，Engine 持有任务生命周期与 `retranslating_item_ids`，批次提交再回写数据层与 `project.patch`。

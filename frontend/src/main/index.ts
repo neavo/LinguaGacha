@@ -26,7 +26,7 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
-} from "../shared/ipc-channels";
+} from "../shared/desktop-ipc-channels";
 import { DESKTOP_TITLE_BAR_OVERLAY_HEIGHT, uses_title_bar_overlay } from "../shared/desktop-shell";
 import { type DesktopPathPickResult, type ThemeMode } from "../shared/desktop-types";
 import { CoreLifecycleManager } from "./lifecycle/lifecycle-manager";

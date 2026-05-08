@@ -1,25 +1,26 @@
 # LinguaGacha API 文档
 
 ## 一句话总览
-`api/` 是 LinguaGacha Python Core 对外暴露的唯一本地 HTTP / SSE 协议边界。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
+Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；P1 业务写入口按语义分散到 `settings/`、`model/`、`quality/`，Python Core 内部桥与路径规则分别落在 `core/`、`paths/`。Python Core 保留内部 HTTP / SSE 服务、bootstrap、事件、任务和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
 
 ## 协议消费者与边界
 
 | 消费者 | 接入方式 | 边界约束 |
 | --- | --- | --- |
-| Electron 渲染层 | `frontend/src/renderer/app/desktop/desktop-api.ts` | 页面不得绕过它直连 `fetch` / `EventSource` 到随意路径 |
+| Electron 渲染层 | `frontend/src/renderer/app/desktop/desktop-api.ts` -> TS Gateway baseUrl | 页面不得绕过它直连 `fetch` / `EventSource` 到随意路径 |
 | 渲染层项目运行态 | `/api/project/bootstrap/stream` + `/api/events/stream` | `ProjectStore` 依赖 bootstrap + `project.patch` 建立最小事实源 |
 | Electron 独立日志窗口 | `/api/logs/stream` | 只消费 `LogManager` 诊断日志事件，不进入项目运行态 |
-| Python 侧对象化客户端 | `api/Client/*.py` + `api/Models/*.py` | 客户端负责请求包装与对象化，不负责运行态缓存 |
+| Python 侧对象化客户端 | `api/Contract/ApiPaths.py` + `api/Client/*.py` + `api/Models/*.py` | 路径常量、请求包装与对象化归客户端契约层，不从 Python server route 实现取常量 |
 
-内部 Database Service 不属于公开 `api/` 协议：它由 Electron main 启动，只供 Python Core 的 `DatabaseGateway` 通过 token 调用。renderer、Python 客户端和外部调试脚本不应依赖 `/internal/database/*` 路径。
+内部 Database Service 与 Python Core 内部端口都不属于公开 `api/` 协议：它们由 Electron main 启动，只供 TS Gateway 或 Python Core 通过 token 调用。renderer、Python 客户端和外部调试脚本不应依赖 `/internal/database/*`、`/internal/runtime/*` 或 Python Core 内部监听地址。
 
 协议层真实分工：
-- `api/Server/` 负责本地 HTTP 服务、路由注册与统一错误映射。
+- `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；P1 业务实现按语义落在 `settings/`、`model/`、`quality/`，Core 内部桥和路径解析分别落在 `core/`、`paths/`。
+- `api/Server/` 负责 Python Core 内部 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
 - `api/Contract/` 负责 HTTP 响应壳、bootstrap 行块和 SSE 线格式。
 - `api/Bridge/` 负责公开 topic 与 `project.patch`。
-- `api/Models/` 与 `api/Client/` 负责 Python 侧对象化契约。
+- `api/Contract/ApiPaths.py`、`api/Models/` 与 `api/Client/` 负责 Python 侧对象化契约。
 
 ## 路由族与路径前缀
 
@@ -33,18 +34,18 @@
 | 项目与同步 mutation | `/api/project/*` | 工程、工作台、校对、reset、导入术语等 |
 | 项目派生工具 | `/api/project/text-preserve/preset-rules`、`/api/project/export-converted-translation` | 为 TS 侧工具页提供预置规则读取与转换结果文件写出 |
 | 后台任务 | `/api/tasks/*` | 翻译、分析与重翻任务启动、停止、快照 |
-| 模型页 | `/api/models/*` | 快照、更新、激活、增删、重排、测试与可选模型查询 |
-| 质量规则与提示词 | `/api/quality/rules/*`、`/api/quality/prompts/*` | 规则、预设与提示词读写 |
-| 应用设置 | `/api/settings/*` | 应用设置快照、更新、最近项目维护 |
+| 模型页 | `/api/models/*` | TS Gateway 承载快照、更新、激活、增删、重排；`list-available` 与 `test` 代理 Python Core |
+| 质量规则与提示词 | `/api/quality/rules/*`、`/api/quality/prompts/*` | TS Gateway 承载页面 CRUD、导入导出与预设 IO |
+| 应用设置 | `/api/settings/*` | TS Gateway 承载应用设置快照、更新、最近项目维护 |
 
 路径不变量：
 - 主业务协议统一落在 `/api/` 前缀，不扩展新的并行根前缀。
-- `/internal/database/*` 是 Electron main 进程内 database server 的受保护内部路由，不是 Python Core 对外 API，也不改变公开 `/api/*` 契约。
+- `/internal/database/*` 是 Electron main 进程内 database server 的受保护内部路由；`/internal/runtime/project-state` 与 `/internal/runtime/sync` 是 TS Gateway 调 Python Core 的受保护运行时桥。它们都不是公开 API，也不改变公开 `/api/*` 契约。
 - 公开 `GET` 稳定只有 `/api/health`、`/api/events/stream`、`/api/logs/stream`、`/api/project/bootstrap/stream` 四类；其余公开接口默认走 `POST + JSON body`。
 - `/api/lifecycle/shutdown` 是内部生命周期接口，只供 Electron main 调用；它要求 `X-LinguaGacha-Core-Token` 与当前 Core API token 一致。
 - `OPTIONS` 由服务器统一回 `204`，CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
 
-`/api/health` 成功响应固定包含 `status`、`service` 与纯数值 `version`；当 Core 由 Electron main 启动并带有 Core API token 时，响应 `data` 额外包含 `instanceToken`，用于避免误连旧进程。
+`/api/health` 由 TS Gateway 响应，成功响应固定包含 `status`、`service` 与纯数值 `version`；当 Gateway 由 Electron main 启动时，响应 `data` 额外包含 Gateway 的 `instanceToken`，用于避免误连旧进程。
 
 ## HTTP 响应壳
 
@@ -187,8 +188,8 @@ flowchart TD
 - `quality/rules/save-entries`、`quality/rules/update-meta` 与 `quality/prompts/save` 会回 `ProjectMutationAck`，页面需要用它们对齐 `quality` 或 `prompts` section revision。
 - `analysis/import-glossary` 会分别校验运行态 section revision 与 glossary 自身 revision。
 - `tasks/snapshot` 是按需快照，不是订阅入口。
-- `settings/update` 只处理 `SettingsAppService.SETTING_KEYS` 白名单字段；应用语言只支持 `ZH` / `EN`。
-- `models/update` 只接受 `PATCH_ALLOWED_KEYS` 白名单字段；`models/reorder` 只能重排单一模型分组，`ordered_model_ids` 必须完整匹配该分组。
+- `settings/update` 由 TS Gateway 写 `DATA_ROOT/userdata/config.json`，只处理设置白名单字段；应用语言只支持 `ZH` / `EN`，写入后通过内部 runtime bridge 让 Python Core 刷新 `Localizer` 并发 `settings.changed`。
+- `models/update` 由 TS Gateway 写同一份 `config.json`，只接受模型 patch 白名单字段；`models/reorder` 只能重排单一模型分组，`ordered_model_ids` 必须完整匹配该分组；`list-available` 与 `test` 仍代理 Python Core 并读取最新配置。
 
 ## Python 客户端边界
 

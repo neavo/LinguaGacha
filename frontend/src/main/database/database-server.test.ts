@@ -2,6 +2,7 @@ import http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
+import { JsonTool } from "../../utils/json-tool";
 import { DatabaseServer } from "./database-server";
 
 function request_database_health(
@@ -46,7 +47,7 @@ describe("DatabaseServer", () => {
       expect(unauthorized.statusCode).toBe(401);
 
       const ok = await request_database_health(start_result.baseUrl, start_result.token);
-      expect(JSON.parse(ok.body)).toEqual({ ok: true, data: { status: "ok" } });
+      expect(JsonTool.parseStrict(ok.body)).toEqual({ ok: true, data: { status: "ok" } });
     } finally {
       await server.stop();
     }

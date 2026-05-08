@@ -37,6 +37,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
+import { JsonTool } from "../../../utils/json-tool";
 import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
@@ -195,7 +196,7 @@ function replace_first_visible_match(
 }
 
 function build_filter_signature(filters: ProofreadingFilterOptions): string {
-  return JSON.stringify({
+  return JsonTool.stringifyStrict({
     warning_types: [...filters.warning_types].sort(),
     statuses: [...filters.statuses].sort(),
     file_paths: [...filters.file_paths].sort(),
@@ -428,7 +429,7 @@ function build_list_query_signature(args: {
   is_regex: boolean;
   sort_state: AppTableSortState | null;
 }): string {
-  return JSON.stringify({
+  return JsonTool.stringifyStrict({
     revision: args.revision,
     filters: build_filter_signature(args.filters),
     keyword: args.keyword,
@@ -442,7 +443,7 @@ function build_filter_panel_signature(args: {
   revision: number;
   filters: ProofreadingFilterOptions;
 }): string {
-  return JSON.stringify({
+  return JsonTool.stringifyStrict({
     revision: args.revision,
     filters: build_filter_signature(args.filters),
   });

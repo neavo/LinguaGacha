@@ -6,7 +6,8 @@ import {
   PROJECT_DATABASE_SCHEMA_VERSION,
   ProjectDatabaseMigrationService,
 } from "../migration/project-database-migration-service";
-import { ZstdTool } from "../utils/zstd-tool";
+import { ZstdTool } from "../../utils/zstd-tool";
+import { JsonTool } from "../../utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
 
 type DatabaseRow = Record<string, unknown>;
@@ -17,11 +18,11 @@ function json_parse(raw_value: unknown): DatabaseJsonValue {
   if (typeof raw_value !== "string") {
     return null;
   }
-  return JSON.parse(raw_value) as DatabaseJsonValue;
+  return JsonTool.parseStrict<DatabaseJsonValue>(raw_value);
 }
 
 function json_stringify(value: DatabaseJsonValue): string {
-  return JSON.stringify(value);
+  return JsonTool.stringifyStrict(value);
 }
 
 function row_text(row: DatabaseRow, key: string): string {
@@ -59,17 +60,27 @@ function ensure_database_runtime_available(): void {
   }
 }
 
-// 用独立错误类型把可恢复的 database 冲突映射成稳定 HTTP 错误码。
+/**
+ * 用独立错误类型把可恢复的 database 冲突映射成稳定 HTTP 错误码。
+ */
 export class DatabaseConflictError extends Error {}
 
-// Electron main 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式。
+/**
+ * Electron main 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式。
+ */
 export class ProjectDatabase {
   private readonly open_databases = new Map<string, DatabaseSync>();
 
+  /**
+   * 初始化 ProjectDatabase 依赖，保持外部写入口清晰。
+   */
   public constructor() {
     ensure_database_runtime_available();
   }
 
+  /**
+   * 关闭底层资源，确保数据库句柄不会跨工程泄漏。
+   */
   public close(): void {
     for (const db of this.open_databases.values()) {
       db.close();
@@ -77,6 +88,9 @@ export class ProjectDatabase {
     this.open_databases.clear();
   }
 
+  /**
+   * 执行受支持的数据库操作名，保持 Python 只能走窄 workflow。
+   */
   public execute(operation: DatabaseOperation): DatabaseJsonValue {
     // DatabaseGateway 只发送窄操作名，TS 侧集中校验参数并保护 SQL 边界。
     const args = this.normalize_args(operation.args);
@@ -267,6 +281,9 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 在单个 SQLite 事务内执行批量操作，保证跨步骤写入原子性。
+   */
   public execute_transaction(operations: DatabaseOperation[]): null {
     if (operations.length === 0) {
       return null;
@@ -288,6 +305,9 @@ export class ProjectDatabase {
     return null;
   }
 
+  /**
+   * 按 asset 路径读取解压后的内容，隐藏 .lg 内部压缩格式。
+   */
   public read_asset_content(project_path: string, asset_path: string): Buffer | null {
     // Python Core 只消费解压后的原始 bytes，Zstd 格式细节留在 main 进程。
     const db = this.open_project(project_path);
@@ -298,12 +318,18 @@ export class ProjectDatabase {
     return ZstdTool.decompress(bytes_from_blob(row["data"]));
   }
 
+  /**
+   * 把外部参数归一为对象，避免每个操作重复兜底。
+   */
   private normalize_args(
     args: Record<string, DatabaseJsonValue> | undefined,
   ): Record<string, DatabaseJsonValue> {
     return args ?? {};
   }
 
+  /**
+   * 打开并迁移工程数据库，确保后续读写看到当前 schema。
+   */
   private open_project(project_path: string): DatabaseSync {
     const normalized_path = path.resolve(project_path);
     const cached = this.open_databases.get(normalized_path);
@@ -321,6 +347,9 @@ export class ProjectDatabase {
     return db;
   }
 
+  /**
+   * 关闭指定工程连接，释放 ProjectDatabase 缓存中的句柄。
+   */
   private close_project(project_path: string): void {
     const normalized_path = path.resolve(project_path);
     const db = this.open_databases.get(normalized_path);
@@ -331,6 +360,9 @@ export class ProjectDatabase {
     this.open_databases.delete(normalized_path);
   }
 
+  /**
+   * 创建新 .lg 数据库并初始化 schema，作为工程落盘入口。
+   */
   private create_project(project_path: string, name: string): null {
     const normalized_path = path.resolve(project_path);
     this.close_project(normalized_path);
@@ -348,6 +380,9 @@ export class ProjectDatabase {
     return null;
   }
 
+  /**
+   * 读取单个 meta 值，保持调用方不直接触碰 SQL。
+   */
   private get_meta(
     project_path: string,
     key: string,
@@ -358,21 +393,33 @@ export class ProjectDatabase {
     return row === undefined ? default_value : json_parse(row["value"]);
   }
 
+  /**
+   * 写入单个 meta 值，维持 meta 更新的统一序列化方式。
+   */
   private set_meta(project_path: string, key: string, value: DatabaseJsonValue): void {
     this.upsert_meta_entries(project_path, { [key]: value });
   }
 
+  /**
+   * 批量写入 meta 项，减少跨边界多次 database workflow。
+   */
   private upsert_meta_entries(project_path: string, meta: DatabaseRow): void {
     this.upsert_meta_entries_with_db(this.open_project(project_path), meta);
   }
 
+  /**
+   * 在既有事务连接内写入 meta，避免事务中重新取句柄。
+   */
   private upsert_meta_entries_with_db(db: DatabaseSync, meta: DatabaseRow): void {
     const statement = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
     for (const [key, value] of Object.entries(meta)) {
-      statement.run(key, JSON.stringify(value));
+      statement.run(key, JsonTool.stringifyStrict(value));
     }
   }
 
+  /**
+   * 读取完整 meta 快照，供运行态编码一次性构建事实。
+   */
   private get_all_meta(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
     const result: Record<string, DatabaseJsonValue> = {};
@@ -382,6 +429,9 @@ export class ProjectDatabase {
     return result;
   }
 
+  /**
+   * 读取分析 checkpoint，保持断点续跑只依赖持久事实。
+   */
   private get_analysis_item_checkpoints(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
     return db
@@ -399,6 +449,9 @@ export class ProjectDatabase {
       }));
   }
 
+  /**
+   * 批量保存分析 checkpoint，保证任务提交进度可恢复。
+   */
   private upsert_analysis_item_checkpoints(
     project_path: string,
     checkpoints: DatabaseJsonValue[],
@@ -423,6 +476,9 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 删除指定 checkpoint，避免重置后残留旧分析状态。
+   */
   private delete_analysis_item_checkpoints(project_path: string, status: string | null): number {
     const db = this.open_project(project_path);
     if (status === null) {
@@ -433,6 +489,9 @@ export class ProjectDatabase {
     );
   }
 
+  /**
+   * 归一候选聚合行，保护旧数据和新写入共用同一返回形状。
+   */
   private normalize_candidate_rows(rows: DatabaseRow[]): DatabaseJsonValue {
     return rows.map((row) => ({
       src: row_text(row, "src"),
@@ -445,6 +504,9 @@ export class ProjectDatabase {
     }));
   }
 
+  /**
+   * 读取分析候选聚合，供术语导入预演复用。
+   */
   private get_analysis_candidate_aggregates(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
     return this.normalize_candidate_rows(
@@ -458,6 +520,9 @@ export class ProjectDatabase {
     );
   }
 
+  /**
+   * 按原文批量读取候选聚合，减少分析辅助查询次数。
+   */
   private get_analysis_candidate_aggregates_by_srcs(
     project_path: string,
     srcs: string[],
@@ -480,6 +545,9 @@ export class ProjectDatabase {
     );
   }
 
+  /**
+   * 批量写入候选聚合，保持分析结果提交原子化。
+   */
   private upsert_analysis_candidate_aggregates(
     project_path: string,
     aggregates: DatabaseJsonValue[],
@@ -510,10 +578,16 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 清空候选聚合，确保分析重置不混入旧候选。
+   */
   private clear_analysis_candidate_aggregates(project_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM analysis_candidate_aggregate").run();
   }
 
+  /**
+   * 计算下一个 asset 排序位，保持文件列表顺序稳定。
+   */
   private get_next_asset_sort_order(db: DatabaseSync): number {
     const row = db
       .prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_sort_order FROM assets")
@@ -521,6 +595,9 @@ export class ProjectDatabase {
     return row === undefined ? 0 : row_number(row, "next_sort_order");
   }
 
+  /**
+   * 从源文件导入 asset，统一压缩和排序字段写入。
+   */
   private add_asset_from_source(
     project_path: string,
     asset_path: string,
@@ -538,6 +615,9 @@ export class ProjectDatabase {
     );
   }
 
+  /**
+   * 导入已压缩 asset，避免跨边界传输二进制细节。
+   */
   private add_asset_compressed_base64(
     project_path: string,
     asset_path: string,
@@ -554,6 +634,9 @@ export class ProjectDatabase {
     );
   }
 
+  /**
+   * 写入 asset buffer，集中处理压缩和记录插入。
+   */
   private add_asset_buffer(
     project_path: string,
     asset_path: string,
@@ -569,6 +652,9 @@ export class ProjectDatabase {
     ).run(asset_path, effective_sort_order, compressed, original_size, compressed.byteLength);
   }
 
+  /**
+   * 用源文件更新 asset 内容，保持路径记录不被调用方重建。
+   */
   private update_asset_from_source(
     project_path: string,
     asset_path: string,
@@ -588,6 +674,9 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 更新 asset 路径，保护路径唯一性由数据库入口维护。
+   */
   private update_asset_path(project_path: string, old_path: string, new_path: string): void {
     const result = this.open_project(project_path)
       .prepare("UPDATE assets SET path = ? WHERE path = ?")
@@ -597,6 +686,9 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 读取压缩 asset 文本，供需要原始压缩载荷的旧接口兼容。
+   */
   private get_asset_compressed_base64(project_path: string, asset_path: string): DatabaseJsonValue {
     const row = this.open_project(project_path)
       .prepare("SELECT data FROM assets WHERE path = ?")
@@ -604,10 +696,16 @@ export class ProjectDatabase {
     return row === undefined ? null : bytes_from_blob(row["data"]).toString("base64");
   }
 
+  /**
+   * 删除 asset 记录，保持文件移除只走存储入口。
+   */
   private delete_asset(project_path: string, asset_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM assets WHERE path = ?").run(asset_path);
   }
 
+  /**
+   * 检查 asset 路径是否占用，供导入链路生成稳定唯一名。
+   */
   private asset_path_exists(project_path: string, asset_path: string): boolean {
     const row = this.open_project(project_path)
       .prepare("SELECT 1 FROM assets WHERE path = ? LIMIT 1")
@@ -615,6 +713,9 @@ export class ProjectDatabase {
     return row !== undefined;
   }
 
+  /**
+   * 读取所有 asset 路径，供工作台文件集合重建。
+   */
   private get_all_asset_paths(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
       .prepare("SELECT path FROM assets ORDER BY sort_order ASC, id ASC")
@@ -622,6 +723,9 @@ export class ProjectDatabase {
       .map((row) => row_text(row, "path"));
   }
 
+  /**
+   * 读取 asset 记录快照，供运行态排序与导出使用。
+   */
   private get_all_asset_records(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
       .prepare("SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC")
@@ -629,6 +733,9 @@ export class ProjectDatabase {
       .map((row) => ({ path: row_text(row, "path"), sort_order: row_number(row, "sort_order") }));
   }
 
+  /**
+   * 批量更新 asset 顺序，保证文件重排一次事务完成。
+   */
   private update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
     const statement = this.open_project(project_path).prepare(
       "UPDATE assets SET sort_order = ? WHERE path = ?",
@@ -638,6 +745,9 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 读取全部条目事实，供 bootstrap 和项目快照重建。
+   */
   private get_all_items(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
       .prepare("SELECT id, data FROM items ORDER BY id")
@@ -645,6 +755,9 @@ export class ProjectDatabase {
       .map((row) => ({ ...this.value_record(json_parse(row["data"])), id: row_number(row, "id") }));
   }
 
+  /**
+   * 按 id 读取条目，减少校对和任务提交后的回查范围。
+   */
   private get_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
     const normalized_ids = [
       ...new Set(
@@ -671,6 +784,9 @@ export class ProjectDatabase {
       .filter((item): item is DatabaseRow => item !== undefined) as DatabaseJsonValue;
   }
 
+  /**
+   * 按文件删除条目，保证文件移除同步清理条目事实。
+   */
   private delete_items_by_file_path(project_path: string, file_path: string): number {
     const db = this.open_project(project_path);
     try {
@@ -702,6 +818,9 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 写入单条条目事实，统一 item payload 序列化规则。
+   */
   private set_item(project_path: string, item: DatabaseRow): number {
     const db = this.open_project(project_path);
     const item_id = item["id"];
@@ -709,13 +828,20 @@ export class ProjectDatabase {
     delete data["id"];
     if (item_id === undefined || item_id === null || item_id === "") {
       return Number(
-        db.prepare("INSERT INTO items (data) VALUES (?)").run(JSON.stringify(data)).lastInsertRowid,
+        db.prepare("INSERT INTO items (data) VALUES (?)").run(JsonTool.stringifyStrict(data))
+          .lastInsertRowid,
       );
     }
-    db.prepare("UPDATE items SET data = ? WHERE id = ?").run(JSON.stringify(data), Number(item_id));
+    db.prepare("UPDATE items SET data = ? WHERE id = ?").run(
+      JsonTool.stringifyStrict(data),
+      Number(item_id),
+    );
     return Number(item_id);
   }
 
+  /**
+   * 批量写入条目事实，确保导入和重置链路高效落盘。
+   */
   private set_items(project_path: string, items: DatabaseJsonValue[]): number[] {
     const db = this.open_project(project_path);
     db.prepare("DELETE FROM items").run();
@@ -728,15 +854,18 @@ export class ProjectDatabase {
       const data = { ...item };
       delete data["id"];
       if (item_id !== undefined && item_id !== null && item_id !== "") {
-        insert_with_id.run(Number(item_id), JSON.stringify(data));
+        insert_with_id.run(Number(item_id), JsonTool.stringifyStrict(data));
         ids.push(Number(item_id));
       } else {
-        ids.push(Number(insert.run(JSON.stringify(data)).lastInsertRowid));
+        ids.push(Number(insert.run(JsonTool.stringifyStrict(data)).lastInsertRowid));
       }
     }
     return ids;
   }
 
+  /**
+   * 预览批量替换影响范围，避免页面直接拼 SQL 选择条目。
+   */
   private preview_replace_all_item_ids(project_path: string, items: DatabaseJsonValue[]): number[] {
     const db = this.open_project(project_path);
     // 前端预演需要稳定 id，但不能为了预览提前改动 sqlite_sequence。
@@ -765,6 +894,9 @@ export class ProjectDatabase {
     return preview_ids;
   }
 
+  /**
+   * 按受限字段批量更新条目，收口校对批量 mutation。
+   */
   private update_batch(
     project_path: string,
     items: DatabaseJsonValue[] | null,
@@ -781,7 +913,7 @@ export class ProjectDatabase {
         }
         const data = { ...item };
         delete data["id"];
-        update_item.run(JSON.stringify(data), item["id"]);
+        update_item.run(JsonTool.stringifyStrict(data), item["id"]);
       }
     }
     if (rules !== null) {
@@ -794,6 +926,9 @@ export class ProjectDatabase {
     }
   }
 
+  /**
+   * 读取指定规则集合，保持质量规则运行时只看数据库事实。
+   */
   private get_rules(project_path: string, rule_type: string): DatabaseJsonValue {
     const rows = this.open_project(project_path)
       .prepare("SELECT data FROM rules WHERE type = ? ORDER BY id")
@@ -826,22 +961,34 @@ export class ProjectDatabase {
     return result;
   }
 
+  /**
+   * 写入指定规则集合，统一 revision 与 payload 维护。
+   */
   private set_rules(project_path: string, rule_type: string, rules: DatabaseJsonValue[]): void {
     this.set_rules_with_db(this.open_project(project_path), rule_type, rules);
   }
 
+  /**
+   * 在既有事务连接内写入规则，避免规则和 meta 分离提交。
+   */
   private set_rules_with_db(db: DatabaseSync, rule_type: string, rules: DatabaseJsonValue[]): void {
     db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
     db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
       rule_type,
-      JSON.stringify(rules),
+      JsonTool.stringifyStrict(rules),
     );
   }
 
+  /**
+   * 读取提示词或规则文本，统一文本规则落点。
+   */
   private get_rule_text(project_path: string, rule_type: string): string {
     return this.get_rule_text_by_name(project_path, rule_type);
   }
 
+  /**
+   * 按规则名读取文本，兼容旧调用方的命名入口。
+   */
   private get_rule_text_by_name(project_path: string, rule_type_name: string): string {
     const row = this.open_project(project_path)
       .prepare("SELECT data FROM rules WHERE type = ? LIMIT 1")
@@ -852,18 +999,24 @@ export class ProjectDatabase {
     return this.deserialize_rule_text_payload(row_text(row, "data"));
   }
 
+  /**
+   * 保存文本规则内容，保持 prompt 与规则文本写入一致。
+   */
   private set_rule_text(project_path: string, rule_type: string, text: string): void {
     const db = this.open_project(project_path);
     db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
     db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
       rule_type,
-      JSON.stringify({ text }),
+      JsonTool.stringifyStrict({ text }),
     );
   }
 
+  /**
+   * 解析文本规则载荷，兼容旧字符串和新对象格式。
+   */
   private deserialize_rule_text_payload(raw_data: string): string {
     try {
-      const data = JSON.parse(raw_data) as unknown;
+      const data = JsonTool.parseStrict(raw_data) as unknown;
       if (typeof data === "string") {
         return data;
       }
@@ -877,6 +1030,9 @@ export class ProjectDatabase {
     return "";
   }
 
+  /**
+   * 读取工程摘要，供打开预览和运行态快速判断使用。
+   */
   private get_project_summary(project_path: string): DatabaseJsonValue {
     const meta = this.value_record(this.get_all_meta(project_path));
     const db = this.open_project(project_path);
@@ -924,6 +1080,9 @@ export class ProjectDatabase {
     };
   }
 
+  /**
+   * 校验必填字符串，避免脏载荷进入数据库层。
+   */
   private require_string(args: Record<string, DatabaseJsonValue>, key: string): string {
     const value = args[key];
     if (typeof value !== "string" || value === "") {
@@ -932,11 +1091,17 @@ export class ProjectDatabase {
     return value;
   }
 
+  /**
+   * 校验可选字符串，统一空值和类型错误语义。
+   */
   private optional_string(args: Record<string, DatabaseJsonValue>, key: string): string | null {
     const value = args[key];
     return typeof value === "string" && value !== "" ? value : null;
   }
 
+  /**
+   * 校验必填数字，避免调用点散落类型断言。
+   */
   private require_number(args: Record<string, DatabaseJsonValue>, key: string): number {
     const value = args[key];
     if (typeof value !== "number") {
@@ -945,15 +1110,24 @@ export class ProjectDatabase {
     return value;
   }
 
+  /**
+   * 校验可选数字，统一空值和类型错误语义。
+   */
   private optional_number(args: Record<string, DatabaseJsonValue>, key: string): number | null {
     const value = args[key];
     return typeof value === "number" ? value : null;
   }
 
+  /**
+   * 校验必填对象，保证 workflow 参数形状稳定。
+   */
   private require_record(args: Record<string, DatabaseJsonValue>, key: string): DatabaseRow {
     return this.value_record(args[key]);
   }
 
+  /**
+   * 校验可选对象，减少调用点重复防御。
+   */
   private optional_record(
     args: Record<string, DatabaseJsonValue>,
     key: string,
@@ -965,6 +1139,9 @@ export class ProjectDatabase {
     return this.value_record(value);
   }
 
+  /**
+   * 校验必填数组，避免数据库操作接收非数组载荷。
+   */
   private require_array(args: Record<string, DatabaseJsonValue>, key: string): DatabaseJsonValue[] {
     const value = args[key];
     if (!Array.isArray(value)) {
@@ -973,6 +1150,9 @@ export class ProjectDatabase {
     return value;
   }
 
+  /**
+   * 校验可选数组，统一空载荷处理。
+   */
   private optional_array(
     args: Record<string, DatabaseJsonValue>,
     key: string,
@@ -981,14 +1161,23 @@ export class ProjectDatabase {
     return Array.isArray(value) ? value : null;
   }
 
+  /**
+   * 校验字符串数组，保护批量路径和 id 操作。
+   */
   private require_string_array(args: Record<string, DatabaseJsonValue>, key: string): string[] {
     return this.require_array(args, key).map((value) => String(value));
   }
 
+  /**
+   * 校验数字数组，保护批量序号操作。
+   */
   private require_number_array(args: Record<string, DatabaseJsonValue>, key: string): number[] {
     return this.require_array(args, key).map((value) => Number(value));
   }
 
+  /**
+   * 把 JSON 值收窄为对象，保留数据库 payload 的类型边界。
+   */
   private value_record(value: DatabaseJsonValue | unknown): DatabaseRow {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return {};

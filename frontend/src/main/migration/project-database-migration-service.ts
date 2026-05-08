@@ -1,5 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import { JsonTool } from "../../utils/json-tool";
+
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
 
 export const PROJECT_DATABASE_SCHEMA_VERSION = 2;
@@ -34,14 +36,22 @@ function row_number(row: ProjectDatabaseMigrationRow, key: string): number {
   return Number(value ?? 0);
 }
 
+/**
+ * 封装 .lg 打开期 schema 与旧物理格式兼容迁移。
+ */
 export class ProjectDatabaseMigrationService {
-  // database 服务打开工程时的唯一迁移入口，避免 Core 承担 .lg 旧物理格式。
+  /**
+   * database 服务打开工程时的唯一迁移入口，避免 Core 承担 .lg 旧物理格式。
+   */
   public static migrate(db: DatabaseSync): void {
     this.ensure_schema(db);
     this.migrate_asset_sort_order_if_needed(db);
     this.migrate_item_status_if_needed(db);
   }
 
+  /**
+   * 初始化缺失表结构，让旧工程补齐当前数据库能力。
+   */
   private static ensure_schema(db: DatabaseSync): void {
     // 新旧工程都经过同一个 schema 入口，避免建表逻辑散回 database 操作层。
     db.exec(`
@@ -87,6 +97,9 @@ export class ProjectDatabaseMigrationService {
     `);
   }
 
+  /**
+   * 为旧 asset 补齐排序字段，保持文件顺序可稳定回放。
+   */
   private static migrate_asset_sort_order_if_needed(db: DatabaseSync): void {
     // 旧 .lg 没有 sort_order 时，用自增 id 顺序还原用户导入顺序。
     const columns = db
@@ -105,6 +118,9 @@ export class ProjectDatabaseMigrationService {
     }
   }
 
+  /**
+   * 归一旧 item 状态，防止历史运行态污染当前任务语义。
+   */
   private static migrate_item_status_if_needed(db: DatabaseSync): void {
     // item 状态是业务事实，打开旧工程时直接写回当前允许集合。
     const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all();
@@ -112,13 +128,13 @@ export class ProjectDatabaseMigrationService {
     for (const row of rows) {
       const raw = row_text(row, "data");
       try {
-        const parsed = JSON.parse(raw) as ProjectDatabaseMigrationRow;
+        const parsed = JsonTool.parseStrict<ProjectDatabaseMigrationRow>(raw);
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
           continue;
         }
         const normalized = this.normalize_item_payload(parsed);
         if (normalized.changed) {
-          update.run(JSON.stringify(normalized.data), row_number(row, "id"));
+          update.run(JsonTool.stringifyStrict(normalized.data), row_number(row, "id"));
         }
       } catch {
         // 旧工程中损坏的单行 item 不阻塞打开；坏数据仍保留原样等待人工处理。
@@ -126,6 +142,9 @@ export class ProjectDatabaseMigrationService {
     }
   }
 
+  /**
+   * 规范 item payload 中的状态字段，兼容旧 JSON 形状。
+   */
   private static normalize_item_payload(item_data: ProjectDatabaseMigrationRow): {
     data: ProjectDatabaseMigrationRow;
     changed: boolean;
@@ -138,6 +157,9 @@ export class ProjectDatabaseMigrationService {
     return { data: { ...item_data, status: normalized_status }, changed: true };
   }
 
+  /**
+   * 把旧状态映射到当前有效枚举，保持前后端状态口径一致。
+   */
   private static normalize_status_value(value: unknown): string {
     // 未知状态宁可回到待处理，也不要把历史运行态泄露给当前任务链路。
     const raw_value = String(value ?? "");

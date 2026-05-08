@@ -1,7 +1,6 @@
 import pytest
 
 from api.Application.ProjectAppService import ProjectAppService
-from api.Application.SettingsAppService import SettingsAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from base.Base import Base
@@ -70,26 +69,3 @@ def workbench_app_service(
     fake_workbench_manager: FakeWorkbenchManager,
 ) -> WorkbenchAppService:
     return WorkbenchAppService(fake_workbench_manager)
-
-
-@pytest.fixture
-def settings_app_service(
-    fake_settings_config: FakeSettingsConfig,
-) -> SettingsAppService:
-    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
-    applied_localizer_languages: list[object] = []
-
-    def capture_emit(event: Base.Event, data: dict[str, object]) -> None:
-        emitted_events.append((event, data))
-
-    def capture_localizer_language(language: object) -> None:
-        applied_localizer_languages.append(language)
-
-    service = SettingsAppService(
-        config_loader=lambda: fake_settings_config,
-        event_emitter=capture_emit,
-        localizer_language_setter=capture_localizer_language,
-    )
-    service.emitted_events = emitted_events
-    service.applied_localizer_languages = applied_localizer_languages
-    return service

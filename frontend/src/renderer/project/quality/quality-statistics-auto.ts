@@ -8,6 +8,7 @@ import {
   isQualityStatisticsStaleError,
   type QualityStatisticsTaskExecutor,
 } from "@/project/quality/quality-statistics-worker-pool";
+import { JsonTool } from "../../../utils/json-tool";
 
 export type QualityStatisticsAutoTextSource = "src" | "dst";
 
@@ -67,7 +68,7 @@ type QualityStatisticsResultMap = QualityStatisticsTaskResult["results"];
 const MAX_PARTIAL_RULE_CHANGES = 6;
 
 function build_rule_dependency_signature(dependency_parts: unknown[]): string {
-  return JSON.stringify(dependency_parts);
+  return JsonTool.stringifyStrict(dependency_parts);
 }
 
 function compare_snapshot_rules(
@@ -131,7 +132,7 @@ function build_snapshot_rules(
 }
 
 function build_text_signature(texts: string[]): string {
-  return JSON.stringify(texts);
+  return JsonTool.stringifyStrict(texts);
 }
 
 function build_dependency_signature(
@@ -139,7 +140,7 @@ function build_dependency_signature(
   text_signature: string,
   rules: QualityStatisticsDependencyRuleSnapshot[],
 ): string {
-  return JSON.stringify({
+  return JsonTool.stringifyStrict({
     text_source,
     text_signature,
     tokens: rules.map((rule) => {
@@ -153,7 +154,7 @@ function build_snapshot_signature(
   text_signature: string,
   rules: QualityStatisticsDependencyRuleSnapshot[],
 ): string {
-  return JSON.stringify({
+  return JsonTool.stringifyStrict({
     text_source,
     text_signature,
     rules: rules.map((rule) => {

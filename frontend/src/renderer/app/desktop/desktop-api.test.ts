@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { JsonTool } from "../../../utils/json-tool";
+
+/**
+ * 模拟 EventSource 行为，隔离桌面 API 流测试对浏览器实现的依赖。
+ */
 class EventSourceStub {
   static instances: EventSourceStub[] = [];
 
@@ -8,20 +13,29 @@ class EventSourceStub {
   listeners = new Map<string, EventListener[]>();
   onerror: ((event: Event) => void) | null = null;
 
+  /**
+   * 初始化 EventSourceStub 依赖，保持外部写入口清晰。
+   */
   constructor(url: string) {
     this.url = url;
     EventSourceStub.instances.push(this);
   }
 
+  /**
+   * 登记测试监听器，模拟 EventSource 多事件订阅行为。
+   */
   addEventListener(type: string, listener: EventListener): void {
     const listeners = this.listeners.get(type) ?? [];
     listeners.push(listener);
     this.listeners.set(type, listeners);
   }
 
+  /**
+   * 触发测试事件，帮助断言桌面 API 流解析结果。
+   */
   emit(type: string, data: Record<string, unknown>): void {
     for (const listener of this.listeners.get(type) ?? []) {
-      listener({ data: JSON.stringify(data) } as MessageEvent<string>);
+      listener({ data: JsonTool.stringifyStrict(data) } as MessageEvent<string>);
     }
   }
 }

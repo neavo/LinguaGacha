@@ -1,3 +1,5 @@
+import { JsonTool } from "../../../utils/json-tool";
+
 type ApiEnvelope<data_type> = {
   ok: boolean;
   data?: data_type;
@@ -57,10 +59,16 @@ let cached_core_api_base_url: string | null = null;
 let cached_core_metadata: CoreMetadata | null = null;
 let pending_core_api_base_url_resolution: Promise<string> | null = null;
 
+/**
+ * 携带 Core API 错误码，保持渲染层错误分支可判定。
+ */
 export class DesktopApiError extends Error {
   code: string;
   status: number;
 
+  /**
+   * 初始化 DesktopApiError 依赖，保持外部写入口清晰。
+   */
   constructor(message: string, code = "unknown_error", status = 500) {
     super(message);
     this.name = "DesktopApiError";
@@ -90,7 +98,7 @@ function build_api_url(base_url: string, path: string): string {
 
 function parse_event_source_payload(event: MessageEvent<string>): Record<string, unknown> {
   try {
-    return JSON.parse(event.data) as Record<string, unknown>;
+    return JsonTool.parseStrict<Record<string, unknown>>(event.data);
   } catch {
     return {};
   }
@@ -263,7 +271,7 @@ export async function api_fetch<data_type>(
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JsonTool.stringifyStrict(body),
   });
   const payload = (await response.json()) as ApiEnvelope<data_type>;
 

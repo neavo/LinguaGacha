@@ -6,25 +6,23 @@ from http.server import ThreadingHTTPServer
 from api.Application.EventStreamService import EventStreamService
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.LogStreamService import LogStreamService
-from api.Application.ModelAppService import ModelAppService
+from api.Application.ModelProbeAppService import ModelProbeAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProjectBootstrapAppService import ProjectBootstrapAppService
 from api.Application.ProofreadingAppService import ProofreadingAppService
-from api.Application.QualityRuleAppService import QualityRuleAppService
-from api.Application.SettingsAppService import SettingsAppService
+from api.Application.RuntimeBridgeAppService import RuntimeBridgeAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
-from api.Server.Routes.SettingsRoutes import SettingsRoutes
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.LifecycleRoutes import LifecycleRoutes
 from api.Server.Routes.LogRoutes import LogRoutes
 from api.Server.Routes.TaskRoutes import TaskRoutes
-from api.Server.Routes.ModelRoutes import ModelRoutes
-from api.Server.Routes.QualityRoutes import QualityRoutes
+from api.Server.Routes.ModelProbeRoutes import ModelProbeRoutes
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
+from api.Server.Routes.RuntimeBridgeRoutes import RuntimeBridgeRoutes
 from module.Data.DataManager import DataManager
 from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 
@@ -55,29 +53,27 @@ class ServerBootstrap:
         cls,
         *,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
+        runtime_bridge_app_service: RuntimeBridgeAppService | None = None,
     ) -> ServerRuntime:
         """应用 UI 模式使用的默认启动入口。"""
 
         project_app_service = ProjectAppService()
         proofreading_app_service = ProofreadingAppService()
-        quality_rule_app_service = QualityRuleAppService()
         task_app_service = TaskAppService()
         workbench_app_service = WorkbenchAppService()
-        settings_app_service = SettingsAppService()
-        model_app_service = ModelAppService()
+        model_probe_app_service = ModelProbeAppService()
         project_bootstrap_app_service = ProjectBootstrapAppService(
             ProjectRuntimeService(DataManager.get())
         )
         return cls.start_for_test(
             project_app_service=project_app_service,
             proofreading_app_service=proofreading_app_service,
-            quality_rule_app_service=quality_rule_app_service,
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
-            settings_app_service=settings_app_service,
-            model_app_service=model_app_service,
+            model_probe_app_service=model_probe_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
             core_lifecycle_app_service=core_lifecycle_app_service,
+            runtime_bridge_app_service=runtime_bridge_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
             as_runtime=True,
         )
@@ -88,13 +84,12 @@ class ServerBootstrap:
         *,
         project_app_service: ProjectAppService | None = None,
         proofreading_app_service: ProofreadingAppService | None = None,
-        quality_rule_app_service: QualityRuleAppService | None = None,
         task_app_service: TaskAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
-        settings_app_service: SettingsAppService | None = None,
-        model_app_service: ModelAppService | None = None,
+        model_probe_app_service: ModelProbeAppService | None = None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
+        runtime_bridge_app_service: RuntimeBridgeAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
@@ -125,13 +120,12 @@ class ServerBootstrap:
             candidate_ports=resolved_candidate_ports,
             project_app_service=project_app_service,
             proofreading_app_service=proofreading_app_service,
-            quality_rule_app_service=quality_rule_app_service,
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
-            settings_app_service=settings_app_service,
-            model_app_service=model_app_service,
+            model_probe_app_service=model_probe_app_service,
             project_bootstrap_app_service=project_bootstrap_app_service,
             core_lifecycle_app_service=core_lifecycle_app_service,
+            runtime_bridge_app_service=runtime_bridge_app_service,
             event_stream_service=event_stream_service,
             log_stream_service=log_stream_service,
         )
@@ -170,13 +164,12 @@ class ServerBootstrap:
         candidate_ports: tuple[int, ...],
         project_app_service: ProjectAppService | None,
         proofreading_app_service: ProofreadingAppService | None,
-        quality_rule_app_service: QualityRuleAppService | None,
         task_app_service: TaskAppService | None,
         workbench_app_service: WorkbenchAppService | None,
-        settings_app_service: SettingsAppService | None,
-        model_app_service: ModelAppService | None,
+        model_probe_app_service: ModelProbeAppService | None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None,
         core_lifecycle_app_service: CoreLifecycleAppService | None,
+        runtime_bridge_app_service: RuntimeBridgeAppService | None,
         event_stream_service: EventStreamService,
         log_stream_service: LogStreamService,
     ) -> ThreadingHTTPServer:
@@ -186,8 +179,6 @@ class ServerBootstrap:
         for port in candidate_ports:
             core_api_server = CoreApiServer(port=port)
             core_api_server.register_routes()
-            if settings_app_service is not None:
-                SettingsRoutes.register(core_api_server, settings_app_service)
             cls.register_api_routes(
                 core_api_server,
                 project_app_service=project_app_service,
@@ -195,9 +186,9 @@ class ServerBootstrap:
                 proofreading_app_service=proofreading_app_service,
                 project_bootstrap_app_service=project_bootstrap_app_service,
                 task_app_service=task_app_service,
-                model_app_service=model_app_service,
-                quality_rule_app_service=quality_rule_app_service,
+                model_probe_app_service=model_probe_app_service,
                 core_lifecycle_app_service=core_lifecycle_app_service,
+                runtime_bridge_app_service=runtime_bridge_app_service,
                 event_stream_service=event_stream_service,
                 log_stream_service=log_stream_service,
             )
@@ -221,9 +212,9 @@ class ServerBootstrap:
         proofreading_app_service: ProofreadingAppService | None = None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None = None,
         task_app_service: TaskAppService | None = None,
-        model_app_service: ModelAppService | None = None,
-        quality_rule_app_service: QualityRuleAppService | None = None,
+        model_probe_app_service: ModelProbeAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
+        runtime_bridge_app_service: RuntimeBridgeAppService | None = None,
         event_stream_service: EventStreamService | None = None,
         log_stream_service: LogStreamService | None = None,
     ) -> None:
@@ -232,6 +223,8 @@ class ServerBootstrap:
         del cls
         if core_lifecycle_app_service is not None:
             LifecycleRoutes.register(core_api_server, core_lifecycle_app_service)
+        if runtime_bridge_app_service is not None:
+            RuntimeBridgeRoutes.register(core_api_server, runtime_bridge_app_service)
         if event_stream_service is not None:
             EventRoutes.register(core_api_server, event_stream_service)
         if log_stream_service is not None:
@@ -251,7 +244,5 @@ class ServerBootstrap:
             )
         if task_app_service is not None:
             TaskRoutes.register(core_api_server, task_app_service)
-        if model_app_service is not None:
-            ModelRoutes.register(core_api_server, model_app_service)
-        if quality_rule_app_service is not None:
-            QualityRoutes.register(core_api_server, quality_rule_app_service)
+        if model_probe_app_service is not None:
+            ModelProbeRoutes.register(core_api_server, model_probe_app_service)

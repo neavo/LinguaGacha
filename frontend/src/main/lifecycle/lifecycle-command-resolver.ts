@@ -27,6 +27,35 @@ function assert_source_app_root(app_root: string): void {
   }
 }
 
+function is_source_app_root(app_root: string): boolean {
+  return REQUIRED_SOURCE_FILES.every((required_file) => {
+    return fs.existsSync(path.join(app_root, required_file));
+  });
+}
+
+function is_packaged_app_root(app_root: string, platform: NodeJS.Platform): boolean {
+  return fs.existsSync(path.join(app_root, resolve_core_executable_file_name(platform)));
+}
+
+function find_app_root_from_candidate(
+  candidate_root: string,
+  platform: NodeJS.Platform,
+): string | null {
+  let current_root = path.resolve(candidate_root);
+
+  while (true) {
+    if (is_source_app_root(current_root) || is_packaged_app_root(current_root, platform)) {
+      return current_root;
+    }
+
+    const parent_root = path.dirname(current_root);
+    if (parent_root === current_root) {
+      return null;
+    }
+    current_root = parent_root;
+  }
+}
+
 function build_path_extensions(environment: CoreLaunchEnvironment): string[] {
   if (environment.platform !== "win32") {
     return [""];
@@ -84,17 +113,27 @@ function resolve_uv_command(environment: CoreLaunchEnvironment): string {
   return found_uv_command;
 }
 
-function resolve_app_root(environment: CoreLaunchEnvironment): string {
+export function resolve_core_app_root(environment: CoreLaunchEnvironment): string {
   const initial_cwd = environment.env[NPM_INITIAL_CWD_ENV_NAME];
+  const candidate_roots: string[] = [];
+
   if (typeof initial_cwd === "string" && initial_cwd.trim() !== "") {
-    return path.resolve(initial_cwd.trim());
+    candidate_roots.push(initial_cwd.trim());
+  }
+  candidate_roots.push(environment.appRoot);
+
+  for (const candidate_root of candidate_roots) {
+    const app_root = find_app_root_from_candidate(candidate_root, environment.platform);
+    if (app_root !== null) {
+      return app_root;
+    }
   }
 
   return path.resolve(environment.appRoot);
 }
 
 export function resolve_core_launch_command(environment: CoreLaunchEnvironment): CoreLaunchCommand {
-  const app_root = resolve_app_root(environment);
+  const app_root = resolve_core_app_root(environment);
   const core_executable_path = path.join(
     app_root,
     resolve_core_executable_file_name(environment.platform),

@@ -10,7 +10,11 @@ from module.Data.Core.Item import Item
 
 
 class _FakeProjectManagerForAnalysisGlossaryImport:
+    """提供分析术语导入测试替身，避免测试依赖真实工程管理器。"""
+
     def __init__(self) -> None:
+        """初始化 _FakeProjectManagerForAnalysisGlossaryImport 依赖和状态，保持对象写入口明确。"""
+
         self.session = type("FakeSession", (), {"state_lock": RLock()})()
         self.quality_rule_service = self
         self.meta_service = self
@@ -24,9 +28,13 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
         self.bumped_sections: list[tuple[str, ...]] = []
 
     def get_meta(self, key: str, default: object = None) -> object:
+        """读取测试 meta，模拟项目管理器 revision 来源。"""
+
         return self.meta.get(key, default)
 
     def set_meta(self, key: str, value: object) -> None:
+        """写入测试 meta，帮助测试断言 revision 变化。"""
+
         self.meta[key] = value
 
     def assert_project_runtime_section_revision(
@@ -34,6 +42,8 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
         section: str,
         expected_revision: int,
     ) -> int:
+        """记录 section revision 断言，模拟真实项目并发保护。"""
+
         current_revision = self.runtime_section_revisions.get(section, 0)
         if current_revision != expected_revision:
             raise ValueError(
@@ -48,6 +58,8 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
         expected_revision: int,
         entries: list[dict[str, object]],
     ) -> dict[str, object]:
+        """记录保存的规则条目，模拟术语导入写入口。"""
+
         assert rule_type == "glossary"
         self.saved_glossary_expected_revision = expected_revision
         self.saved_glossary_entries = [dict(entry) for entry in entries]
@@ -57,12 +69,16 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
         }
 
     def get_section_revision(self, stage: str) -> int:
+        """返回测试 section revision，保持 ack 构造可预测。"""
+
         return int(self.runtime_section_revisions.get(stage, 0))
 
     def build_project_mutation_ack(
         self,
         updated_sections: tuple[str, ...] | list[str],
     ) -> dict[str, object]:
+        """构建测试 mutation ack，避免测试依赖真实 DataManager。"""
+
         return {
             "accepted": True,
             "projectRevision": 12,
@@ -76,6 +92,8 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
         self,
         sections: tuple[str, ...] | list[str],
     ) -> dict[str, int]:
+        """推进测试 revision，模拟项目运行态版本递增。"""
+
         normalized_sections = tuple(str(section) for section in sections)
         self.bumped_sections.append(normalized_sections)
         for section in normalized_sections:
@@ -89,7 +107,11 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
 
 
 class _FakeProjectManagerForResetMutations:
+    """提供重置 mutation 测试替身，集中记录调用载荷和 revision 回执。"""
+
     def __init__(self) -> None:
+        """初始化 _FakeProjectManagerForResetMutations 依赖和状态，保持对象写入口明确。"""
+
         self.loaded = True
         self.project_path = "E:/Project/LinguaGacha/output/demo.lg"
         self.preview_translation_items = [
@@ -127,18 +149,26 @@ class _FakeProjectManagerForResetMutations:
         }
 
     def is_loaded(self) -> bool:
+        """返回测试加载态，驱动服务分支判断。"""
+
         return self.loaded
 
     def get_lg_path(self) -> str:
+        """返回测试工程路径，避免测试触碰真实文件。"""
+
         return self.project_path
 
     def preview_translation_reset_all(self, config: object) -> list[dict[str, object]]:
+        """返回翻译重置预览，模拟项目层预演结果。"""
+
         self.preview_translation_reset_all_calls.append(config)
         return [dict(item) for item in self.preview_translation_items]
 
     def apply_translation_reset_all_payload(
         self, **kwargs: object
     ) -> list[dict[str, object]]:
+        """记录全部翻译重置提交载荷，便于断言服务转发。"""
+
         self.apply_translation_reset_all_calls.append(dict(kwargs))
         self.runtime_section_revisions["items"] += 1
         self.runtime_section_revisions["analysis"] += 1
@@ -147,15 +177,21 @@ class _FakeProjectManagerForResetMutations:
     def apply_translation_reset_failed_payload(
         self, **kwargs: object
     ) -> list[dict[str, object]]:
+        """记录失败项翻译重置载荷，便于断言服务转发。"""
+
         self.apply_translation_reset_failed_calls.append(dict(kwargs))
         self.runtime_section_revisions["items"] += 1
         return [dict(item) for item in kwargs["item_payloads"]]
 
     def preview_analysis_reset_failed(self) -> dict[str, int]:
+        """返回失败项分析重置预览，模拟项目层筛选结果。"""
+
         self.preview_analysis_reset_failed_calls += 1
         return dict(self.preview_analysis_status_summary)
 
     def apply_analysis_reset_all_payload(self, **kwargs: object) -> dict[str, object]:
+        """记录全部分析重置载荷，便于断言服务转发。"""
+
         self.apply_analysis_reset_all_calls.append(dict(kwargs))
         self.runtime_section_revisions["analysis"] += 1
         return dict(kwargs["analysis_extras"])
@@ -163,6 +199,8 @@ class _FakeProjectManagerForResetMutations:
     def apply_analysis_reset_failed_payload(
         self, **kwargs: object
     ) -> tuple[int, dict[str, object]]:
+        """记录失败项分析重置载荷，便于断言服务转发。"""
+
         self.apply_analysis_reset_failed_calls.append(dict(kwargs))
         self.runtime_section_revisions["analysis"] += 1
         return 2, dict(kwargs["analysis_extras"])
@@ -171,6 +209,8 @@ class _FakeProjectManagerForResetMutations:
         self,
         updated_sections: tuple[str, ...] | list[str],
     ) -> dict[str, object]:
+        """构建测试 mutation ack，避免测试依赖真实 DataManager。"""
+
         section_revisions = {
             str(section): self.runtime_section_revisions[str(section)]
             for section in updated_sections
@@ -183,7 +223,11 @@ class _FakeProjectManagerForResetMutations:
 
 
 class _FakeProjectManagerForConvertedExport:
+    """提供简繁转换导出测试替身，隔离导出逻辑与真实项目状态。"""
+
     def __init__(self) -> None:
+        """初始化 _FakeProjectManagerForConvertedExport 依赖和状态，保持对象写入口明确。"""
+
         self.loaded = True
         self.custom_suffixes: list[str] = []
         self.items = [
@@ -221,22 +265,34 @@ class _FakeProjectManagerForConvertedExport:
         ]
 
     def is_loaded(self) -> bool:
+        """返回测试加载态，驱动服务分支判断。"""
+
         return self.loaded
 
     def get_items_all(self) -> list[Item]:
+        """返回测试条目集合，供转换导出构建快照。"""
+
         return self.items
 
     @contextmanager
     def export_custom_suffix_context(self, suffix: str):
+        """提供测试后缀上下文，避免导出测试依赖真实命名规则。"""
+
         self.custom_suffixes.append(suffix)
         yield
 
 
 class _FakeConvertedExportFileManager:
+    """提供转换导出文件写入替身，帮助测试断言写出载荷。"""
+
     def __init__(self) -> None:
+        """初始化 _FakeConvertedExportFileManager 依赖和状态，保持对象写入口明确。"""
+
         self.items: list[Item] = []
 
     def write_to_path(self, items: list[Item]) -> str:
+        """记录写出参数，帮助测试断言转换导出结果。"""
+
         self.items = items
         return "E:/Project/LinguaGacha/output/demo_译文_S2T"
 
@@ -512,7 +568,7 @@ def test_import_analysis_glossary_uses_glossary_revision_and_quality_section_rev
 ):
     fake_project_manager = _FakeProjectManagerForAnalysisGlossaryImport()
     project_app_service = ProjectAppService(fake_project_manager)
-    project_app_service.quality_rule_facade = fake_project_manager
+    project_app_service.quality_rule_mutation_service = fake_project_manager
     project_app_service.runtime_service = fake_project_manager
 
     result = project_app_service.import_analysis_glossary(

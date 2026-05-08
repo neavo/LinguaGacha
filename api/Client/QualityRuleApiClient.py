@@ -3,26 +3,28 @@ from __future__ import annotations
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
+from api.Contract.ApiPaths import QualityApiPaths
 from api.Models.ProjectRuntime import ProjectMutationAck
-from api.Server.Routes.QualityRoutes import QualityRoutes
 
 
 class QualityRuleApiClient:
     """质量规则 API 客户端。"""
 
     def __init__(self, api_client: ApiClient) -> None:
+        """初始化 QualityRuleApiClient 依赖和状态，保持对象写入口明确。"""
+
         self.api_client = api_client
 
     def save_entries(self, request: dict[str, Any]) -> ProjectMutationAck:
         """保存规则条目列表，并返回统一 mutation ack。"""
 
-        response = self.api_client.post(QualityRoutes.SAVE_ENTRIES_PATH, request)
+        response = self.api_client.post(QualityApiPaths.SAVE_ENTRIES_PATH, request)
         return ProjectMutationAck.from_dict(response)
 
     def import_rules(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         """从本地路径读取规则条目，由页面决定后续合并与保存。"""
 
-        response = self.api_client.post(QualityRoutes.IMPORT_RULES_PATH, request)
+        response = self.api_client.post(QualityApiPaths.IMPORT_RULES_PATH, request)
         entries_raw = response.get("entries", [])
         if not isinstance(entries_raw, list):
             return []
@@ -31,7 +33,7 @@ class QualityRuleApiClient:
     def export_rules(self, request: dict[str, Any]) -> str:
         """导出当前规则条目到本地路径。"""
 
-        response = self.api_client.post(QualityRoutes.EXPORT_RULES_PATH, request)
+        response = self.api_client.post(QualityApiPaths.EXPORT_RULES_PATH, request)
         return str(response.get("path", ""))
 
     def list_rule_presets(
@@ -41,7 +43,7 @@ class QualityRuleApiClient:
         """列出质量规则预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESETS_PATH,
+            QualityApiPaths.RULE_PRESETS_PATH,
             {"preset_dir_name": preset_dir_name},
         )
         builtin_raw = response.get("builtin_presets", [])
@@ -66,7 +68,7 @@ class QualityRuleApiClient:
         """读取质量规则预设正文。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_READ_PATH,
+            QualityApiPaths.RULE_PRESET_READ_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "virtual_id": virtual_id,
@@ -86,7 +88,7 @@ class QualityRuleApiClient:
         """保存质量规则用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_SAVE_PATH,
+            QualityApiPaths.RULE_PRESET_SAVE_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "name": name,
@@ -109,7 +111,7 @@ class QualityRuleApiClient:
         """重命名质量规则用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_RENAME_PATH,
+            QualityApiPaths.RULE_PRESET_RENAME_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "virtual_id": virtual_id,
@@ -127,7 +129,7 @@ class QualityRuleApiClient:
         """删除质量规则用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.RULE_PRESET_DELETE_PATH,
+            QualityApiPaths.RULE_PRESET_DELETE_PATH,
             {
                 "preset_dir_name": preset_dir_name,
                 "virtual_id": virtual_id,
@@ -138,14 +140,14 @@ class QualityRuleApiClient:
     def update_meta(self, request: dict[str, Any]) -> ProjectMutationAck:
         """更新规则 meta，并返回统一 mutation ack。"""
 
-        response = self.api_client.post(QualityRoutes.UPDATE_META_PATH, request)
+        response = self.api_client.post(QualityApiPaths.UPDATE_META_PATH, request)
         return ProjectMutationAck.from_dict(response)
 
     def get_prompt_template(self, task_type: str) -> dict[str, str]:
         """读取提示词页展示所需的模板文本。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_TEMPLATE_PATH,
+            QualityApiPaths.PROMPT_TEMPLATE_PATH,
             {"task_type": task_type},
         )
         template_raw = response.get("template", {})
@@ -156,19 +158,19 @@ class QualityRuleApiClient:
     def save_prompt(self, request: dict[str, Any]) -> ProjectMutationAck:
         """保存提示词正文与启用状态，并返回统一 mutation ack。"""
 
-        response = self.api_client.post(QualityRoutes.PROMPT_SAVE_PATH, request)
+        response = self.api_client.post(QualityApiPaths.PROMPT_SAVE_PATH, request)
         return ProjectMutationAck.from_dict(response)
 
     def read_prompt_import_text(self, request: dict[str, Any]) -> str:
         """从本地路径读取提示词正文。"""
 
-        response = self.api_client.post(QualityRoutes.PROMPT_IMPORT_PATH, request)
+        response = self.api_client.post(QualityApiPaths.PROMPT_IMPORT_PATH, request)
         return str(response.get("text", ""))
 
     def export_prompt(self, request: dict[str, Any]) -> str:
         """导出提示词到本地路径。"""
 
-        response = self.api_client.post(QualityRoutes.PROMPT_EXPORT_PATH, request)
+        response = self.api_client.post(QualityApiPaths.PROMPT_EXPORT_PATH, request)
         return str(response.get("path", ""))
 
     def list_prompt_presets(
@@ -178,7 +180,7 @@ class QualityRuleApiClient:
         """列出提示词预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESETS_PATH,
+            QualityApiPaths.PROMPT_PRESETS_PATH,
             {"task_type": task_type},
         )
         builtin_raw = response.get("builtin_presets", [])
@@ -199,7 +201,7 @@ class QualityRuleApiClient:
         """读取提示词预设正文。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_READ_PATH,
+            QualityApiPaths.PROMPT_PRESET_READ_PATH,
             {"task_type": task_type, "virtual_id": virtual_id},
         )
         return str(response.get("text", ""))
@@ -213,7 +215,7 @@ class QualityRuleApiClient:
         """保存提示词用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_SAVE_PATH,
+            QualityApiPaths.PROMPT_PRESET_SAVE_PATH,
             {"task_type": task_type, "name": name, "text": text},
         )
         return str(response.get("path", ""))
@@ -227,7 +229,7 @@ class QualityRuleApiClient:
         """重命名提示词用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_RENAME_PATH,
+            QualityApiPaths.PROMPT_PRESET_RENAME_PATH,
             {
                 "task_type": task_type,
                 "virtual_id": virtual_id,
@@ -245,7 +247,7 @@ class QualityRuleApiClient:
         """删除提示词用户预设。"""
 
         response = self.api_client.post(
-            QualityRoutes.PROMPT_PRESET_DELETE_PATH,
+            QualityApiPaths.PROMPT_PRESET_DELETE_PATH,
             {"task_type": task_type, "virtual_id": virtual_id},
         )
         return str(response.get("path", ""))

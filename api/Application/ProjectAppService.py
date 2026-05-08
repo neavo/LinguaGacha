@@ -8,7 +8,7 @@ from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.Data.Quality.QualityRuleFacadeService import QualityRuleFacadeService
+from module.Data.Quality.QualityRuleMutationService import QualityRuleMutationService
 from module.Data.Translation.TranslationExportItemService import (
     TranslationExportItemService,
 )
@@ -27,6 +27,8 @@ class ProjectAppService:
         config_loader: Any | None = None,
         file_manager_factory: Any | None = None,
     ) -> None:
+        """初始化 ProjectAppService 依赖和状态，保持对象写入口明确。"""
+
         self.project_manager = (
             project_manager if project_manager is not None else DataManager.get()
         )
@@ -49,7 +51,7 @@ class ProjectAppService:
             "meta_service",
             self.project_manager,
         )
-        self.quality_rule_facade = QualityRuleFacadeService(
+        self.quality_rule_mutation_service = QualityRuleMutationService(
             quality_rule_service,
             meta_service,
         )
@@ -246,6 +248,8 @@ class ProjectAppService:
         self,
         request: dict[str, Any],
     ) -> dict[str, object]:
+        """构建翻译重置预览，避免预演阶段改动项目事实。"""
+
         mode = str(request.get("mode", "") or "").lower()
         if mode != "all":
             raise ValueError("translation reset preview 仅支持 mode=all")
@@ -255,6 +259,8 @@ class ProjectAppService:
         return {"items": [dict(item) for item in items]}
 
     def apply_translation_reset(self, request: dict[str, Any]) -> dict[str, object]:
+        """提交翻译重置 mutation，保持 items 和 analysis revision 对齐。"""
+
         mode = str(request.get("mode", "") or "").lower()
         self.ensure_translation_mutation_ready()
 
@@ -304,6 +310,8 @@ class ProjectAppService:
         raise ValueError("translation reset 仅支持 mode=all 或 mode=failed")
 
     def preview_analysis_reset(self, request: dict[str, Any]) -> dict[str, object]:
+        """构建分析重置预览，避免预演阶段改动分析事实。"""
+
         mode = str(request.get("mode", "") or "").lower()
         if mode != "failed":
             raise ValueError("analysis reset preview 仅支持 mode=failed")
@@ -312,6 +320,8 @@ class ProjectAppService:
         return {"status_summary": self.project_manager.preview_analysis_reset_failed()}
 
     def apply_analysis_reset(self, request: dict[str, Any]) -> dict[str, object]:
+        """提交分析重置 mutation，保持 analysis section revision 对齐。"""
+
         mode = str(request.get("mode", "") or "").lower()
         self.ensure_analysis_mutation_ready()
 
@@ -376,7 +386,7 @@ class ProjectAppService:
         glossary_expected_revision = int(
             request.get("expected_glossary_revision", 0) or 0
         )
-        self.quality_rule_facade.save_entries(
+        self.quality_rule_mutation_service.save_entries(
             "glossary",
             expected_revision=glossary_expected_revision,
             entries=entries,
@@ -402,6 +412,8 @@ class ProjectAppService:
         return ProjectSnapshotPayload(path=project_path, loaded=is_loaded).to_dict()
 
     def load_text_preserve_preset_rules(self, text_type: Item.TextType) -> list[str]:
+        """读取文本保护预设规则，保持文件路径解析集中在服务层。"""
+
         path = (
             f"{BasePath.get_text_preserve_preset_dir()}/{text_type.value.lower()}.json"
         )
@@ -427,6 +439,8 @@ class ProjectAppService:
         self,
         converted_items: list[dict[str, Any]],
     ) -> dict[int, dict[str, Any]]:
+        """构建转换条目映射，避免导出链路重复遍历 payload。"""
+
         item_by_id: dict[int, dict[str, Any]] = {}
         for converted_item in converted_items:
             raw_item_id = converted_item.get("item_id", converted_item.get("id"))
@@ -445,6 +459,8 @@ class ProjectAppService:
         item: Item,
         converted_item_by_id: dict[int, dict[str, Any]],
     ) -> Item:
+        """合并转换后的条目字段，确保导出快照不回写项目事实。"""
+
         item_id = item.get_id()
         export_item = Item.from_dict(item.to_dict())
         if item_id is None:
@@ -462,6 +478,8 @@ class ProjectAppService:
         return export_item
 
     def normalize_name_dst_payload(self, value: Any) -> str | list[str] | None:
+        """归一姓名译文字段，兼容缺失或非字符串载荷。"""
+
         if value is None:
             return None
         if isinstance(value, list):
@@ -490,14 +508,20 @@ class ProjectAppService:
         return self.ensure_analysis_mutation_ready()
 
     def normalize_dict_payload(self, value: Any) -> dict[str, Any]:
+        """把未知载荷收窄为字典，防止调用方直接信任请求体。"""
+
         return dict(value) if isinstance(value, dict) else {}
 
     def normalize_list_of_dicts(self, value: Any) -> list[dict[str, Any]]:
+        """把未知载荷收窄为字典列表，保护批量 mutation 输入。"""
+
         if not isinstance(value, list):
             return []
         return [dict(item) for item in value if isinstance(item, dict)]
 
     def normalize_string_list_payload(self, value: Any) -> list[str]:
+        """把未知载荷收窄为字符串列表，统一路径和 id 列表语义。"""
+
         if not isinstance(value, list):
             return []
         return [str(item) for item in value if isinstance(item, str)]
@@ -506,6 +530,8 @@ class ProjectAppService:
         self,
         value: Any,
     ) -> dict[str, int] | None:
+        """归一期望 section revision，避免过期页面覆盖新事实。"""
+
         if not isinstance(value, dict):
             return None
 

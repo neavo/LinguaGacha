@@ -1,14 +1,16 @@
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
+from api.Contract.ApiPaths import ModelApiPaths
 from api.Models.Model import ModelPageSnapshot
-from api.Server.Routes.ModelRoutes import ModelRoutes
 
 
 class ModelApiClient:
     """模型 API 客户端，屏蔽具体路由细节并统一返回冻结快照。"""
 
     def __init__(self, api_client: ApiClient) -> None:
+        """初始化 ModelApiClient 依赖和状态，保持对象写入口明确。"""
+
         self.api_client = api_client
 
     def post_data(
@@ -33,7 +35,7 @@ class ModelApiClient:
     def get_snapshot(self) -> ModelPageSnapshot:
         """读取模型页完整快照，供页面首屏 hydration 使用。"""
 
-        return self.post_snapshot(ModelRoutes.SNAPSHOT_PATH, {})
+        return self.post_snapshot(ModelApiPaths.SNAPSHOT_PATH, {})
 
     def update_model(
         self,
@@ -43,7 +45,7 @@ class ModelApiClient:
         """按白名单 patch 更新模型，并返回最新快照。"""
 
         return self.post_snapshot(
-            ModelRoutes.UPDATE_PATH,
+            ModelApiPaths.UPDATE_PATH,
             {
                 "model_id": model_id,
                 "patch": patch,
@@ -54,7 +56,7 @@ class ModelApiClient:
         """切换激活模型并返回最新快照。"""
 
         return self.post_snapshot(
-            ModelRoutes.ACTIVATE_PATH,
+            ModelApiPaths.ACTIVATE_PATH,
             {"model_id": model_id},
         )
 
@@ -62,7 +64,7 @@ class ModelApiClient:
         """新增自定义模型并返回最新快照。"""
 
         return self.post_snapshot(
-            ModelRoutes.ADD_PATH,
+            ModelApiPaths.ADD_PATH,
             {"model_type": model_type},
         )
 
@@ -70,7 +72,7 @@ class ModelApiClient:
         """删除模型并返回最新快照。"""
 
         return self.post_snapshot(
-            ModelRoutes.DELETE_PATH,
+            ModelApiPaths.DELETE_PATH,
             {"model_id": model_id},
         )
 
@@ -78,7 +80,7 @@ class ModelApiClient:
         """重置预设模型并返回最新快照。"""
 
         return self.post_snapshot(
-            ModelRoutes.RESET_PRESET_PATH,
+            ModelApiPaths.RESET_PRESET_PATH,
             {"model_id": model_id},
         )
 
@@ -86,7 +88,7 @@ class ModelApiClient:
         """提交分组内的最终模型顺序，并返回最新快照。"""
 
         return self.post_snapshot(
-            ModelRoutes.REORDER_PATH,
+            ModelApiPaths.REORDER_PATH,
             {
                 "ordered_model_ids": ordered_model_ids,
             },
@@ -96,7 +98,7 @@ class ModelApiClient:
         """获取当前模型可见的模型标识列表。"""
 
         response = self.post_data(
-            ModelRoutes.LIST_AVAILABLE_PATH,
+            ModelApiPaths.LIST_AVAILABLE_PATH,
             {"model_id": model_id},
         )
         models = response.get("models", [])
@@ -108,6 +110,6 @@ class ModelApiClient:
         """触发模型测试，并返回稳定的结果载荷。"""
 
         return self.post_data(
-            ModelRoutes.TEST_PATH,
+            ModelApiPaths.TEST_PATH,
             {"model_id": model_id},
         )

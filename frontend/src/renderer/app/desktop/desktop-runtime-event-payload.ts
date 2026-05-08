@@ -2,10 +2,11 @@ import {
   isProjectStoreStage,
   type ProjectStoreSectionRevisions,
 } from "@/project/store/project-store";
+import { JsonTool } from "../../../utils/json-tool";
 
 export function parse_event_payload(event: MessageEvent<string>): Record<string, unknown> {
   try {
-    return JSON.parse(event.data) as Record<string, unknown>;
+    return JsonTool.parseStrict<Record<string, unknown>>(event.data);
   } catch {
     return {};
   }

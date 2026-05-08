@@ -5,11 +5,15 @@ import httpx
 import pytest
 
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
-from api.Application.SettingsAppService import SettingsAppService
+from api.Application.ModelProbeAppService import ModelProbeAppService
+from api.Application.RuntimeBridgeAppService import RuntimeBridgeAppService
+from api.Contract.ApiPaths import ModelApiPaths
+from api.Contract.ApiPaths import QualityApiPaths
+from api.Contract.ApiPaths import SettingsApiPaths
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
-from tests.api.support.application_fakes import FakeSettingsConfig
+from tests.api.support.application_fakes import FakeModelConfig
 
 
 def reserve_tcp_socket() -> socket.socket:
@@ -44,14 +48,9 @@ def test_start_for_test_exposes_health_endpoint(
         shutdown()
 
 
-def test_start_for_test_registers_provided_settings_service() -> None:
+def test_start_for_test_does_not_register_migrated_settings_routes() -> None:
     # Arrange
-    fake_settings_config = FakeSettingsConfig()
-    base_url, shutdown = ServerBootstrap.start_for_test(
-        settings_app_service=SettingsAppService(
-            config_loader=lambda: fake_settings_config
-        )
-    )
+    base_url, shutdown = ServerBootstrap.start_for_test()
 
     try:
         # Act
@@ -62,11 +61,8 @@ def test_start_for_test_registers_provided_settings_service() -> None:
         )
 
         # Assert
-        assert snapshot_response.status_code == 200
-        assert snapshot_response.json()["data"]["settings"]["app_language"] == "ZH"
-        assert update_response.status_code == 400
-        assert update_response.json()["ok"] is False
-        assert update_response.json()["error"]["code"] == "invalid_request"
+        assert snapshot_response.status_code == 404
+        assert update_response.status_code == 404
     finally:
         shutdown()
 
@@ -121,10 +117,13 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             stream_to_handler=lambda handler: None,
         ),
         task_app_service=object(),
-        model_app_service=object(),
-        quality_rule_app_service=object(),
+        model_probe_app_service=object(),
         core_lifecycle_app_service=SimpleNamespace(
             shutdown=lambda request, handler: {"accepted": True},
+        ),
+        runtime_bridge_app_service=SimpleNamespace(
+            get_project_state=lambda request, handler: {"loaded": False},
+            sync=lambda request, handler: {"accepted": True},
         ),
     )
 
@@ -139,9 +138,10 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             ("POST", "/api/project/workbench/add-file"),
             ("POST", "/api/project/proofreading/save-item"),
             ("POST", "/api/tasks/start-translation"),
-            ("POST", "/api/models/snapshot"),
-            ("POST", "/api/quality/rules/save-entries"),
+            ("POST", ModelApiPaths.LIST_AVAILABLE_PATH),
+            ("POST", ModelApiPaths.TEST_PATH),
             ("POST", "/api/lifecycle/shutdown"),
+            ("POST", "/internal/runtime/project-state"),
         )
     }
 
@@ -153,10 +153,72 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         "/api/project/workbench/add-file": "json",
         "/api/project/proofreading/save-item": "json",
         "/api/tasks/start-translation": "json",
-        "/api/models/snapshot": "json",
-        "/api/quality/rules/save-entries": "json",
+        ModelApiPaths.LIST_AVAILABLE_PATH: "json",
+        ModelApiPaths.TEST_PATH: "json",
         "/api/lifecycle/shutdown": "context_json",
+        "/internal/runtime/project-state": "context_json",
     }
+
+
+def test_start_for_test_registers_model_probe_routes() -> None:
+    # Arrange
+    model_probe_app_service = ModelProbeAppService(
+        config_loader=lambda: FakeModelConfig(),
+        available_models_loader=lambda model: [str(model["model_id"])],
+        api_test_runner=lambda model: {"success": True, "model_id": model["id"]},
+    )
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        model_probe_app_service=model_probe_app_service
+    )
+
+    try:
+        # Act
+        list_response = httpx.post(
+            f"{base_url}{ModelApiPaths.LIST_AVAILABLE_PATH}",
+            json={"model_id": "preset-1"},
+        )
+        test_response = httpx.post(
+            f"{base_url}{ModelApiPaths.TEST_PATH}",
+            json={"model_id": "preset-1"},
+        )
+
+        # Assert
+        assert list_response.status_code == 200
+        assert list_response.json()["data"] == {"models": ["gpt-4.1"]}
+        assert test_response.status_code == 200
+        assert test_response.json()["data"] == {
+            "success": True,
+            "model_id": "preset-1",
+        }
+    finally:
+        shutdown()
+
+
+def test_runtime_bridge_routes_require_explicit_service() -> None:
+    # Arrange
+    service = RuntimeBridgeAppService(instance_token="core-token")
+    service.data_manager = SimpleNamespace(
+        is_loaded=lambda: False,
+        get_lg_path=lambda: "",
+    )
+    base_url, shutdown = ServerBootstrap.start_for_test(
+        runtime_bridge_app_service=service
+    )
+
+    try:
+        # Act
+        rejected_response = httpx.post(f"{base_url}/internal/runtime/project-state")
+        accepted_response = httpx.post(
+            f"{base_url}/internal/runtime/project-state",
+            headers={RuntimeBridgeAppService.TOKEN_HEADER: "core-token"},
+        )
+
+        # Assert
+        assert rejected_response.status_code == 400
+        assert accepted_response.status_code == 200
+        assert accepted_response.json()["data"] == {"loaded": False, "projectPath": ""}
+    finally:
+        shutdown()
 
 
 def test_start_for_test_binds_next_candidate_port_when_previous_is_occupied() -> None:
@@ -198,16 +260,22 @@ class FakeThread:
     """最小线程桩：同步执行 target，方便断言启动和关闭语义。"""
 
     def __init__(self, *, target, daemon: bool) -> None:
+        """初始化 FakeThread 依赖和状态，保持对象写入口明确。"""
+
         self.target = target
         self.daemon = daemon
         self.started = False
         self.join_timeout: float | None = None
 
     def start(self) -> None:
+        """记录线程启动状态，避免 server bootstrap 测试创建真实线程。"""
+
         self.started = True
         self.target()
 
     def join(self, timeout: float | None = None) -> None:
+        """记录线程 join 调用，帮助断言关闭流程。"""
+
         self.join_timeout = timeout
 
 
@@ -215,18 +283,26 @@ class FakeHttpServer:
     """最小 HTTP 服务桩：记录测试启动时使用的轮询间隔与关闭动作。"""
 
     def __init__(self) -> None:
+        """初始化 FakeHttpServer 依赖和状态，保持对象写入口明确。"""
+
         self.server_address = ("127.0.0.1", 43210)
         self.poll_interval: float | None = None
         self.shutdown_called = False
         self.server_close_called = False
 
     def serve_forever(self, poll_interval: float = 0.5) -> None:
+        """记录 HTTP server 进入服务循环，避免测试阻塞。"""
+
         self.poll_interval = poll_interval
 
     def shutdown(self) -> None:
+        """记录 shutdown 调用，验证服务停止链路。"""
+
         self.shutdown_called = True
 
     def server_close(self) -> None:
+        """记录 server close 调用，验证 socket 释放链路。"""
+
         self.server_close_called = True
 
 
@@ -304,12 +380,11 @@ def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
     base_url, shutdown = ServerBootstrap.start_for_test(
         project_app_service=object(),
         proofreading_app_service=object(),
-        quality_rule_app_service=object(),
         task_app_service=SimpleNamespace(
             build_task_snapshot=lambda task_type: {"task_type": task_type}
         ),
         workbench_app_service=object(),
-        model_app_service=object(),
+        model_probe_app_service=object(),
         project_bootstrap_app_service=SimpleNamespace(
             runtime_service=None,
             stream_to_handler=lambda handler: None,
@@ -322,6 +397,18 @@ def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
         ("POST", "/api/v2/models/snapshot"),
         ("POST", "/api/workbench/snapshot"),
         ("POST", "/api/proofreading/snapshot"),
+        ("POST", SettingsApiPaths.SNAPSHOT_PATH),
+        ("POST", SettingsApiPaths.UPDATE_PATH),
+        ("POST", ModelApiPaths.SNAPSHOT_PATH),
+        ("POST", ModelApiPaths.UPDATE_PATH),
+        ("POST", ModelApiPaths.ACTIVATE_PATH),
+        ("POST", ModelApiPaths.ADD_PATH),
+        ("POST", ModelApiPaths.DELETE_PATH),
+        ("POST", ModelApiPaths.RESET_PRESET_PATH),
+        ("POST", ModelApiPaths.REORDER_PATH),
+        ("POST", QualityApiPaths.SAVE_ENTRIES_PATH),
+        ("POST", QualityApiPaths.UPDATE_META_PATH),
+        ("POST", QualityApiPaths.PROMPT_SAVE_PATH),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/query-proofreading"),

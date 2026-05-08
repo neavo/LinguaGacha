@@ -23,6 +23,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/renderer", "src/electron-env.d.ts"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src/renderer", "src/electron-env.d.ts"]
 }

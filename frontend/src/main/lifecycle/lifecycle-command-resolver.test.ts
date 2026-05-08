@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   NPM_INITIAL_CWD_ENV_NAME,
   UV_BIN_ENV_NAME,
+  resolve_core_app_root,
   resolve_core_launch_command,
 } from "./lifecycle-command-resolver";
 import type { CoreLaunchEnvironment } from "./lifecycle-types";
@@ -292,5 +293,66 @@ describe("resolve_core_launch_command", () => {
     expect(() => {
       resolve_core_launch_command(create_environment({ PATH: "" }, { appRoot: app_root }));
     }).toThrow("未找到 uv");
+  });
+});
+
+describe("resolve_core_app_root", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("开发态从 Node 子项目启动时向上找到应用资源根", () => {
+    const initial_cwd = path.resolve("repo", "frontend");
+    const app_root = path.resolve("repo");
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate_path) => {
+      return [path.join(app_root, "app.py"), path.join(app_root, "pyproject.toml")].includes(
+        String(candidate_path),
+      );
+    });
+
+    const result = resolve_core_app_root(
+      create_environment(
+        {
+          [NPM_INITIAL_CWD_ENV_NAME]: initial_cwd,
+        },
+        {
+          appRoot: initial_cwd,
+        },
+      ),
+    );
+
+    expect(result).toBe(app_root);
+  });
+
+  it("开发态 npm --prefix 启动时把 INIT_CWD 对应的应用根传给 Gateway", () => {
+    const npm_script_cwd = path.resolve("repo", "frontend");
+    const initial_cwd = path.resolve("repo");
+    vi.spyOn(fs, "existsSync").mockImplementation((candidate_path) => {
+      return [path.join(initial_cwd, "app.py"), path.join(initial_cwd, "pyproject.toml")].includes(
+        String(candidate_path),
+      );
+    });
+
+    const result = resolve_core_app_root(
+      create_environment(
+        {
+          [NPM_INITIAL_CWD_ENV_NAME]: initial_cwd,
+        },
+        {
+          appRoot: npm_script_cwd,
+        },
+      ),
+    );
+
+    expect(result).toBe(initial_cwd);
+  });
+
+  it("没有 INIT_CWD 时回退到传入的应用根", () => {
+    const app_root = path.resolve("release", "win-unpacked");
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+    const result = resolve_core_app_root(create_environment({}, { appRoot: app_root }));
+
+    expect(result).toBe(app_root);
   });
 });

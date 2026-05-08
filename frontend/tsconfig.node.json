@@ -9,5 +9,12 @@
     "strict": true,
     "types": ["electron-vite/node"]
   },
-  "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*", "src/electron-env.d.ts"]
+  "include": [
+    "electron.vite.config.ts",
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*",
+    "src/utils/**/*",
+    "src/electron-env.d.ts"
+  ]
 }

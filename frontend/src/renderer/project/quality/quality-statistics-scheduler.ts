@@ -17,6 +17,7 @@ import {
   getSharedQualityStatisticsWorkerPool,
   type QualityStatisticsTaskExecutor,
 } from "@/project/quality/quality-statistics-worker-pool";
+import { JsonTool } from "../../../utils/json-tool";
 
 type RefreshPriority = "warmup" | "background" | "foreground";
 
@@ -56,7 +57,7 @@ function build_request_key(args: {
   prepared_context: QualityStatisticsPreparedRuleContext;
   force_full: boolean;
 }): string {
-  return JSON.stringify({
+  return JsonTool.stringifyStrict({
     project_path: args.project_path,
     snapshot_signature:
       args.prepared_context.current_statistics_context.snapshot.snapshot_signature,
@@ -73,6 +74,9 @@ function create_executor_for_rule_type(
 ): QualityStatisticsTaskExecutor {
   const pool = getSharedQualityStatisticsWorkerPool();
   return {
+    /**
+     * 按当前缓存状态计算下一步统计任务，避免重复调度。
+     */
     async compute(input) {
       return await pool.submit(input, {
         stale_key: `quality-statistics:${rule_type}`,

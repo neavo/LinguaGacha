@@ -1,62 +1,71 @@
-from collections.abc import Callable
-from unittest.mock import Mock
-
-from api.Application.QualityRuleAppService import QualityRuleAppService
-from api.Client.ApiClient import ApiClient
 from api.Client.QualityRuleApiClient import QualityRuleApiClient
+from api.Contract.ApiPaths import QualityApiPaths
 from api.Models.ProjectRuntime import ProjectMutationAck
-from api.Server.Routes.QualityRoutes import QualityRoutes
-
-
-def build_quality_rule_facade() -> Mock:
-    """构造最小规则门面，目的是固定客户端与服务端之间的载荷契约。"""
-
-    quality_rule_facade = Mock()
-    quality_rule_facade.import_rules.return_value = [{"src": "勇者", "dst": "Hero"}]
-    quality_rule_facade.export_rules.return_value = "demo/output/glossary.json"
-    quality_rule_facade.list_presets.return_value = (
-        [
-            {
-                "name": "内置",
-                "virtual_id": "builtin:base.json",
-                "path": "resource/base.json",
-                "type": "builtin",
-            }
-        ],
-        [
-            {
-                "name": "用户",
-                "virtual_id": "user:mine.json",
-                "path": "user/mine.json",
-                "type": "user",
-            }
-        ],
-    )
-    quality_rule_facade.read_preset.return_value = [{"src": "勇者", "dst": "Hero"}]
-    quality_rule_facade.save_user_preset.return_value = {
-        "name": "新预设",
-        "virtual_id": "user:new.json",
-        "path": "user/new.json",
-        "type": "user",
-    }
-    quality_rule_facade.rename_user_preset.return_value = {
-        "name": "重命名后",
-        "virtual_id": "user:renamed.json",
-        "path": "user/renamed.json",
-        "type": "user",
-    }
-    quality_rule_facade.delete_user_preset.return_value = "user/renamed.json"
-    return quality_rule_facade
 
 
 def test_quality_rule_api_client_rule_import_export_and_presets_round_trip(
-    start_api_server: Callable[..., str],
+    recording_api_client,
 ) -> None:
-    quality_rule_facade = build_quality_rule_facade()
-    base_url = start_api_server(
-        quality_rule_app_service=QualityRuleAppService(quality_rule_facade)
+    quality_client = QualityRuleApiClient(recording_api_client)
+    recording_api_client.queue_post_response(
+        QualityApiPaths.IMPORT_RULES_PATH,
+        {"entries": [{"src": "勇者", "dst": "Hero"}]},
     )
-    quality_client = QualityRuleApiClient(ApiClient(base_url))
+    recording_api_client.queue_post_response(
+        QualityApiPaths.EXPORT_RULES_PATH,
+        {"path": "demo/output/glossary.json"},
+    )
+    recording_api_client.queue_post_response(
+        QualityApiPaths.RULE_PRESETS_PATH,
+        {
+            "builtin_presets": [
+                {
+                    "name": "内置",
+                    "virtual_id": "builtin:base.json",
+                    "path": "resource/base.json",
+                    "type": "builtin",
+                }
+            ],
+            "user_presets": [
+                {
+                    "name": "用户",
+                    "virtual_id": "user:mine.json",
+                    "path": "user/mine.json",
+                    "type": "user",
+                }
+            ],
+        },
+    )
+    recording_api_client.queue_post_response(
+        QualityApiPaths.RULE_PRESET_READ_PATH,
+        {"entries": [{"src": "勇者", "dst": "Hero"}]},
+    )
+    recording_api_client.queue_post_response(
+        QualityApiPaths.RULE_PRESET_SAVE_PATH,
+        {
+            "item": {
+                "name": "新预设",
+                "virtual_id": "user:new.json",
+                "path": "user/new.json",
+                "type": "user",
+            }
+        },
+    )
+    recording_api_client.queue_post_response(
+        QualityApiPaths.RULE_PRESET_RENAME_PATH,
+        {
+            "item": {
+                "name": "重命名后",
+                "virtual_id": "user:renamed.json",
+                "path": "user/renamed.json",
+                "type": "user",
+            }
+        },
+    )
+    recording_api_client.queue_post_response(
+        QualityApiPaths.RULE_PRESET_DELETE_PATH,
+        {"path": "user/renamed.json"},
+    )
 
     imported_entries = quality_client.import_rules(
         {
@@ -97,6 +106,49 @@ def test_quality_rule_api_client_rule_import_export_and_presets_round_trip(
     assert saved_item["virtual_id"] == "user:new.json"
     assert renamed_item["virtual_id"] == "user:renamed.json"
     assert deleted_path == "user/renamed.json"
+    assert recording_api_client.post_requests == [
+        (
+            QualityApiPaths.IMPORT_RULES_PATH,
+            {
+                "rule_type": "glossary",
+                "expected_revision": 2,
+                "path": "demo/input.json",
+            },
+        ),
+        (
+            QualityApiPaths.EXPORT_RULES_PATH,
+            {
+                "rule_type": "glossary",
+                "path": "demo/output.json",
+                "entries": [{"src": "勇者", "dst": "Hero"}],
+            },
+        ),
+        (QualityApiPaths.RULE_PRESETS_PATH, {"preset_dir_name": "glossary"}),
+        (
+            QualityApiPaths.RULE_PRESET_READ_PATH,
+            {"preset_dir_name": "glossary", "virtual_id": "builtin:base.json"},
+        ),
+        (
+            QualityApiPaths.RULE_PRESET_SAVE_PATH,
+            {
+                "preset_dir_name": "glossary",
+                "name": "新预设",
+                "entries": [{"src": "勇者", "dst": "Hero"}],
+            },
+        ),
+        (
+            QualityApiPaths.RULE_PRESET_RENAME_PATH,
+            {
+                "preset_dir_name": "glossary",
+                "virtual_id": "user:new.json",
+                "new_name": "重命名后",
+            },
+        ),
+        (
+            QualityApiPaths.RULE_PRESET_DELETE_PATH,
+            {"preset_dir_name": "glossary", "virtual_id": "user:renamed.json"},
+        ),
+    ]
 
 
 def test_quality_rule_api_client_save_entries_and_update_meta_return_project_mutation_ack(
@@ -104,11 +156,11 @@ def test_quality_rule_api_client_save_entries_and_update_meta_return_project_mut
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.SAVE_ENTRIES_PATH,
+        QualityApiPaths.SAVE_ENTRIES_PATH,
         {"accepted": True, "projectRevision": 9, "sectionRevisions": {"quality": 4}},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.UPDATE_META_PATH,
+        QualityApiPaths.UPDATE_META_PATH,
         {"accepted": True, "projectRevision": 10, "sectionRevisions": {"quality": 5}},
     )
 
@@ -138,11 +190,11 @@ def test_quality_rule_api_client_filters_invalid_rule_entry_payloads(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.IMPORT_RULES_PATH,
+        QualityApiPaths.IMPORT_RULES_PATH,
         {"entries": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_READ_PATH,
+        QualityApiPaths.RULE_PRESET_READ_PATH,
         {"entries": [{"src": "勇者", "dst": "Hero"}, "invalid"]},
     )
 
@@ -158,19 +210,19 @@ def test_quality_rule_api_client_normalizes_prompt_payload_variants(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_TEMPLATE_PATH,
+        QualityApiPaths.PROMPT_TEMPLATE_PATH,
         {"template": {"system": "system prompt", "version": 2}},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SAVE_PATH,
+        QualityApiPaths.PROMPT_SAVE_PATH,
         {"accepted": True, "projectRevision": 6, "sectionRevisions": {"prompts": 3}},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_IMPORT_PATH,
+        QualityApiPaths.PROMPT_IMPORT_PATH,
         {"text": "imported body"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_EXPORT_PATH,
+        QualityApiPaths.PROMPT_EXPORT_PATH,
         {"path": "demo/output/prompt.txt"},
     )
 
@@ -197,26 +249,26 @@ def test_quality_rule_api_client_normalizes_prompt_preset_payloads(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESETS_PATH,
+        QualityApiPaths.PROMPT_PRESETS_PATH,
         {
             "builtin_presets": [{"virtual_id": "builtin:base", "name": "内置"}],
             "user_presets": [{"virtual_id": "user:mine", "name": "用户"}],
         },
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_READ_PATH,
+        QualityApiPaths.PROMPT_PRESET_READ_PATH,
         {"text": "preset body"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_SAVE_PATH,
+        QualityApiPaths.PROMPT_PRESET_SAVE_PATH,
         {"path": "user/new.json"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_RENAME_PATH,
+        QualityApiPaths.PROMPT_PRESET_RENAME_PATH,
         {"item": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_PRESET_DELETE_PATH,
+        QualityApiPaths.PROMPT_PRESET_DELETE_PATH,
         {"path": "user/old.json"},
     )
 
@@ -243,27 +295,27 @@ def test_quality_rule_api_client_uses_default_ack_for_invalid_mutation_payloads(
 ) -> None:
     quality_client = QualityRuleApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_SAVE_PATH,
+        QualityApiPaths.RULE_PRESET_SAVE_PATH,
         {"item": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_RENAME_PATH,
+        QualityApiPaths.RULE_PRESET_RENAME_PATH,
         {"item": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_TEMPLATE_PATH,
+        QualityApiPaths.PROMPT_TEMPLATE_PATH,
         {"template": "invalid"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_SAVE_PATH,
+        QualityApiPaths.PROMPT_SAVE_PATH,
         {},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.PROMPT_IMPORT_PATH,
+        QualityApiPaths.PROMPT_IMPORT_PATH,
         {"text": "imported"},
     )
     recording_api_client.queue_post_response(
-        QualityRoutes.RULE_PRESET_READ_PATH,
+        QualityApiPaths.RULE_PRESET_READ_PATH,
         {"entries": "invalid"},
     )
 
