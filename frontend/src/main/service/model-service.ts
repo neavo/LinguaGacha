@@ -4,8 +4,8 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { CoreBridgeClient } from "../core/core-bridge-client";
-import { AppPathService } from "../paths/app-path-service";
-import { ConfigService } from "../settings/config-service";
+import { AppPathService } from "./path-service";
+import { ConfigService } from "./config-service";
 import { JsonTool } from "../../utils/json-tool";
 
 type ModelRecord = Record<string, ApiJsonValue>;

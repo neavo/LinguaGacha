@@ -1,7 +1,7 @@
 # LinguaGacha API 文档
 
 ## 一句话总览
-Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；应用设置、模型、质量规则 / 提示词与 P2 项目同步 mutation 分别落在 TS main 对应业务服务，Python Core 内部桥与路径规则分别落在 `core/`、`paths/`。Python Core 保留内部 HTTP / SSE 服务、bootstrap、事件、任务、解析 / 预演 / 导出和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
+Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；应用设置、模型、质量规则 / 提示词、P2 项目同步 mutation 与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、bootstrap、事件、任务、解析 / 预演 / 导出和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
 
 ## 协议消费者与边界
 
@@ -15,7 +15,7 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 内部 Database Service 与 Python Core 内部端口都不属于公开 `api/` 协议：它们由 Electron main 启动，只供 TS Gateway 或 Python Core 通过 token 调用。renderer、Python 客户端和外部调试脚本不应依赖 `/internal/database/*`、`/internal/runtime/*` 或 Python Core 内部监听地址。
 
 协议层真实分工：
-- `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 业务实现按语义落在 `settings/`、`model/`、`quality/`、`project/`，Core 内部桥和路径解析分别落在 `core/`、`paths/`。
+- `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
 - `api/Server/` 负责 Python Core 内部 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
 - `api/Contract/` 负责 HTTP 响应壳、bootstrap 行块和 SSE 线格式。
@@ -173,7 +173,7 @@ flowchart TD
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - `/api/project/text-preserve/preset-rules` 只读取指定 `text_type` 的预置文本保护规则，供 TS 侧按当前文本保护模式自行编译与分段保护。
-- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project` 直接写 `.lg` 并通过 `/internal/runtime/sync` 让 Python Core 清缓存；translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、reset preview、转换导出、文本保护预置、项目生命周期、校对和 `tasks/*` 仍代理到 Python Core。
+- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/service` 直接写 `.lg` 并通过 `/internal/runtime/sync` 让 Python Core 清缓存；translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、reset preview、转换导出、文本保护预置、项目生命周期、校对和 `tasks/*` 仍代理到 Python Core。
 
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。

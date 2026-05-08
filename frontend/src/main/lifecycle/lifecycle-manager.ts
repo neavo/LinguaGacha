@@ -13,7 +13,7 @@ import { force_kill_process_tree, wait_for_process_exit } from "./lifecycle-proc
 import { attach_core_process_output } from "./lifecycle-process-output";
 import { DatabaseServer } from "../database/database-server";
 import { ApiGatewayServer } from "../api/api-gateway-server";
-import { AppPathService } from "../paths/app-path-service";
+import { AppPathService } from "../service/path-service";
 import { LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
 import type {

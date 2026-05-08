@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { CoreBridgeClient } from "../core/core-bridge-client";
-import { AppPathService } from "../paths/app-path-service";
+import { AppPathService } from "./path-service";
 import { JsonTool } from "../../utils/json-tool";
 
 type ConfigRecord = Record<string, ApiJsonValue>;

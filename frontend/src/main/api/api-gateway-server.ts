@@ -5,12 +5,12 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 
 import { ProjectDatabase } from "../database/database-operations";
-import { ModelService } from "../model/model-service";
-import { ProjectService } from "../project/project-service";
-import { QualityService } from "../quality/quality-service";
+import { ModelService } from "../service/model-service";
+import { ProjectService } from "../service/project-service";
+import { QualityService } from "../service/quality-service";
 import { CoreBridgeClient } from "../core/core-bridge-client";
-import { AppPathService } from "../paths/app-path-service";
-import { ConfigService } from "../settings/config-service";
+import { AppPathService } from "../service/path-service";
+import { ConfigService } from "../service/config-service";
 import { LogManager } from "../log/log-manager";
 import type { LogAppendPayload, LogEvent, LogLevel, LogTargets } from "../log/log-types";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";

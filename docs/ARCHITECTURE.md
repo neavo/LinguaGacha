@@ -8,7 +8,7 @@ LinguaGacha 是“Electron main TS Gateway + 内部 Database Service + 无头 Py
 ```mermaid
 flowchart LR
     A["frontend/src/main"] --> O["api"]
-    A --> P["settings / model / quality / runtime"]
+    A --> P["service / runtime"]
     O --> P
     O --> M["database"]
     O --> G["api/Application + Contract + Bridge"]
@@ -28,10 +28,10 @@ flowchart LR
 ```
 
 分层规则：
-- `frontend/src/main` 处理 Electron 宿主、窗口、原生对话框、开发态调试入口、公开 TS Gateway 和内部 Database Service。
+- `frontend/src/main` 处理 Electron 宿主、窗口、原生对话框、开发态调试入口、公开 TS Gateway、已迁移页面领域服务和内部 Database Service。
 - `frontend/src/preload` 只负责通过 `contextBridge` 暴露 `window.desktopApp`。
 - `frontend/src/renderer` 只通过 `window.desktopApp` 和 `desktop-api.ts` 接入宿主与 Core API。
-- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`settings/`、`model/`、`quality/`、`project/` 分别承载应用设置、模型页、质量规则 / 提示词和已迁移项目同步 mutation，`core/` 与 `paths/` 分别承载 Python Core 内部桥和运行期路径规则。未迁移业务由 API 编排层代理到内部 Python Core。
+- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`service/` 承载应用设置、模型页、质量规则 / 提示词、已迁移项目同步 mutation 与 Electron main 运行期路径规则，`core/` 承载 Python Core 内部桥。未迁移业务由 API 编排层代理到内部 Python Core。
 - `api/` 保留 Python Core 的协议、事件、bootstrap、任务、解析 / 预演 / 导出与 Python 客户端对象化契约，不再是 Electron 渲染层直连的公开监听入口。
 - `module/Data` 持有工程事实，`module/Engine` 持有任务生命周期，`module/File` 持有格式解析与写回，`module/Model` 持有模型配置领域规则。
 
@@ -107,9 +107,9 @@ flowchart TD
 
 | 模块 | 核心职责 | 主要邻接层 | 详细规则所在 |
 | --- | --- | --- | --- |
-| `frontend/src/main/api` | Electron 运行时公开 HTTP / SSE Gateway、响应壳、代理与路由编排 | `frontend/src/renderer`、`frontend/src/main/{settings,model,quality,project,core,paths}`、`api/` | [`API.md`](./API.md) |
-| `frontend/src/main/{settings,model,quality,project}` | TS 写入口、配置 / 模型 / 质量 / 项目同步 mutation 领域服务 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/{core,paths}` | [`DATA.md`](./DATA.md) |
-| `frontend/src/main/{core,paths}` | Python Core 内部桥客户端与 Electron main 运行期路径规则 | `frontend/src/main/api`、`frontend/src/main/{settings,model,quality,project}`、`api/` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/api` | Electron 运行时公开 HTTP / SSE Gateway、响应壳、代理与路由编排 | `frontend/src/renderer`、`frontend/src/main/service`、`frontend/src/main/core`、`api/` | [`API.md`](./API.md) |
+| `frontend/src/main/service` | TS 写入口、配置 / 模型 / 质量 / 项目同步 mutation 领域服务与 Electron main 运行期路径规则 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`DATA.md`](./DATA.md) |
+| `frontend/src/main/core` | Python Core 内部桥客户端 | `frontend/src/main/api`、`frontend/src/main/service`、`api/` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `api/` | 内部 Python Core HTTP / SSE 契约、bootstrap、错误映射、事件桥与 Python 客户端兼容 | TS Gateway、`api/Client`、`module/*` | [`API.md`](./API.md) |
 | `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、根目录 `DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
 | `module/Data` | 工程事实、规则、分析、翻译结果、校对辅助 | `api/`、`module/File`、Electron main Database Service | [`DATA.md`](./DATA.md) |

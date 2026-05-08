@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { CoreBridgeClient } from "../core/core-bridge-client";
-import { AppPathService } from "../paths/app-path-service";
-import { ConfigService } from "../settings/config-service";
+import { AppPathService } from "./path-service";
+import { ConfigService } from "./config-service";
 import { QualityService } from "./quality-service";
 
 describe("QualityService", () => {

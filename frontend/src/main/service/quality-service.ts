@@ -8,8 +8,8 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
 import { CoreBridgeClient } from "../core/core-bridge-client";
-import { AppPathService } from "../paths/app-path-service";
-import { ConfigService } from "../settings/config-service";
+import { AppPathService } from "./path-service";
+import { ConfigService } from "./config-service";
 import { JsonTool } from "../../utils/json-tool";
 
 type JsonRecord = Record<string, ApiJsonValue>;
