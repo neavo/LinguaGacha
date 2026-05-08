@@ -45,7 +45,7 @@ Python：
 - 函数、类属性、实例属性与 `@dataclass` 字段必须显式标注类型，优先使用 `A | None`、`list[str]` 等现代写法
 - 数据载体优先使用 `dataclasses`，跨线程或跨边界传递的数据优先使用 `@dataclass(frozen=True)`
 - Python 模块对外只暴露类，常量与枚举优先设计为类属性
-- 使用 `LogManager.get().debug/info/warning/error(msg, e)` 记录日志，记录异常时必须把 `e` 传入日志接口，使用 `raise ... from e` 保留异常链
+- Python 业务仍使用 `LogManager.get().debug/info/warning/error(msg, e)` 记录日志；该对象是 TS 日志权威的兼容提交层，记录异常时必须把 `e` 传入日志接口，使用 `raise ... from e` 保留异常链
 
 TypeScript / React / CSS：
 - TypeScript 代码优先保持显式类型，只有第三方类型确实缺失时才局部使用 `any` 兜底

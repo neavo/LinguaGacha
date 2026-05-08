@@ -13,6 +13,9 @@ import { force_kill_process_tree, wait_for_process_exit } from "./lifecycle-proc
 import { attach_core_process_output } from "./lifecycle-process-output";
 import { DatabaseServer } from "../database/database-server";
 import { ApiGatewayServer } from "../api/api-gateway-server";
+import { AppPathService } from "../paths/app-path-service";
+import { LogManager } from "../log/log-manager";
+import { set_electron_main_log_manager } from "../log/log-bridge";
 import type {
   CoreLaunchCommand,
   CoreLifecycleManagerOptions,
@@ -26,6 +29,8 @@ const CORE_API_BASE_URL_ENV_NAME = "LINGUAGACHA_CORE_API_BASE_URL";
 const CORE_API_TOKEN_ENV_NAME = "LINGUAGACHA_CORE_API_TOKEN";
 const DATABASE_API_BASE_URL_ENV_NAME = "LINGUAGACHA_DATABASE_API_BASE_URL";
 const DATABASE_API_TOKEN_ENV_NAME = "LINGUAGACHA_DATABASE_API_TOKEN";
+const LOG_API_BASE_URL_ENV_NAME = "LINGUAGACHA_LOG_API_BASE_URL";
+const LOG_API_TOKEN_ENV_NAME = "LINGUAGACHA_LOG_API_TOKEN";
 const PARENT_PID_ENV_NAME = "LINGUAGACHA_PARENT_PID";
 const CORE_SHUTDOWN_PATH = "/api/lifecycle/shutdown";
 const CORE_SHUTDOWN_HTTP_TIMEOUT_MS = 1_000;
@@ -61,6 +66,8 @@ export function build_core_process_env(
   instance_token: string,
   database_base_url?: string,
   database_token?: string,
+  log_base_url?: string,
+  log_token?: string,
 ): NodeJS.ProcessEnv {
   // Core 只能通过环境变量获知本机协议入口，renderer 不参与后端地址传递。
   const core_process_env: NodeJS.ProcessEnv = {
@@ -74,6 +81,10 @@ export function build_core_process_env(
     core_process_env[DATABASE_API_BASE_URL_ENV_NAME] = database_base_url;
     core_process_env[DATABASE_API_TOKEN_ENV_NAME] = database_token;
   }
+  if (log_base_url !== undefined && log_token !== undefined) {
+    core_process_env[LOG_API_BASE_URL_ENV_NAME] = log_base_url;
+    core_process_env[LOG_API_TOKEN_ENV_NAME] = log_token;
+  }
   return core_process_env;
 }
 
@@ -83,6 +94,8 @@ export function build_core_process_spawn_request(
   instance_token: string,
   database_base_url?: string,
   database_token?: string,
+  log_base_url?: string,
+  log_token?: string,
   platform: NodeJS.Platform = process.platform,
 ): CoreProcessSpawnRequest {
   return {
@@ -91,7 +104,14 @@ export function build_core_process_spawn_request(
     options: {
       cwd: launch_command.cwd,
       detached: platform !== "win32",
-      env: build_core_process_env(base_url, instance_token, database_base_url, database_token),
+      env: build_core_process_env(
+        base_url,
+        instance_token,
+        database_base_url,
+        database_token,
+        log_base_url,
+        log_token,
+      ),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
@@ -130,23 +150,24 @@ export class CoreLifecycleManager {
   private py_core_instance_token: string | null = null;
   private gateway_server: ApiGatewayServer | null = null;
   private readonly database_server = new DatabaseServer();
+  private log_manager: LogManager | null = null;
 
   /**
-   * 初始化 CoreLifecycleManager 依赖，保持外部写入口清晰。
+   * 生命周期管理器只接收宿主参数，端口、token 与进程句柄都由自身拥有。
    */
   public constructor(options: CoreLifecycleManagerOptions) {
     this.options = options;
   }
 
   /**
-   * 暴露生命周期终态，供调用方避免重复停止。
+   * Electron 退出钩子只需要终态判断，避免重复进入 stop_core 收尾链路。
    */
   public isStopped(): boolean {
     return this.state === "idle" || this.state === "stopped" || this.state === "failed";
   }
 
   /**
-   * 启动服务并返回稳定入口，避免重复启动产生多份运行态。
+   * 启动顺序固定在这里，确保 Core 拿到的 database/log/Gateway 地址彼此一致。
    */
   public async start(): Promise<CoreLifecycleStartResult> {
     if (this.state !== "idle" && this.state !== "stopped") {
@@ -166,6 +187,11 @@ export class CoreLifecycleManager {
     };
     const app_root = resolve_core_app_root(launch_environment);
     const launch_command = resolve_core_launch_command(launch_environment);
+    const log_manager = new LogManager({
+      logDir: new AppPathService({ appRoot: app_root }).get_log_dir(),
+    });
+    this.log_manager = log_manager;
+    set_electron_main_log_manager(log_manager);
     // Database 必须先于 Core 启动，Core 启动后会立即按 env 创建 DatabaseGateway。
     const database_start_result = await this.database_server.start();
     let has_logged_start_failure = false;
@@ -179,6 +205,8 @@ export class CoreLifecycleManager {
       py_core_instance_token,
       database_start_result.baseUrl,
       database_start_result.token,
+      public_base_url,
+      py_core_instance_token,
     );
     const core_process = spawn(spawn_request.command, spawn_request.args, spawn_request.options);
     attach_core_process_output(core_process);
@@ -226,6 +254,7 @@ export class CoreLifecycleManager {
         pyCoreBaseUrl: py_core_base_url,
         pyCoreToken: py_core_instance_token,
         database: this.database_server.get_database(),
+        logManager: log_manager,
       });
       gateway_start_result = await gateway_server.start();
       this.gateway_server = gateway_server;
@@ -251,20 +280,23 @@ export class CoreLifecycleManager {
   }
 
   /**
-   * 按拥有者顺序释放资源，避免退出时留下后台监听。
+   * 退出请求统一汇入 stop_core，避免窗口事件和 IPC 各自清理后端进程。
    */
   public async stop(): Promise<void> {
     await this.stop_core(true);
   }
 
   /**
-   * 维护 stop_core 的职责边界，避免同类逻辑散落到调用点。
+   * Core 关闭、Gateway 停止与 Database 释放必须保持同一拥有者顺序。
    */
   private async stop_core(should_log_lifecycle: boolean): Promise<void> {
     if (this.handle === null) {
       await this.gateway_server?.stop();
       this.gateway_server = null;
       await this.database_server.stop();
+      await this.log_manager?.shutdown();
+      this.log_manager = null;
+      set_electron_main_log_manager(null);
       this.state = "stopped";
       return;
     }
@@ -288,8 +320,12 @@ export class CoreLifecycleManager {
     if (current_base_url !== null && current_instance_token !== null) {
       try {
         await request_core_shutdown(current_base_url, current_instance_token);
-      } catch {
-        // 关闭结果由最终日志统一呈现，避免终端在正常退出路径中堆叠中间状态。
+      } catch (error) {
+        this.log_manager?.warning("Python Core 优雅关闭请求失败，将继续执行进程清理。", {
+          source: "ts-lifecycle",
+          error_message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
       }
     }
 
@@ -311,5 +347,8 @@ export class CoreLifecycleManager {
     if (should_log_lifecycle) {
       write_ts_lifecycle_log(format_core_shutdown_completed_log(current_pid, was_force_killed));
     }
+    await this.log_manager?.shutdown();
+    this.log_manager = null;
+    set_electron_main_log_manager(null);
   }
 }

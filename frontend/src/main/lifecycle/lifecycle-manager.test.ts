@@ -5,10 +5,21 @@ import type { CoreLaunchCommand } from "./lifecycle-types";
 
 describe("build_core_process_env", () => {
   it("向 Python Core 注入生命周期必要环境变量", () => {
-    const env = build_core_process_env("http://127.0.0.1:3107", "token");
+    const env = build_core_process_env(
+      "http://127.0.0.1:3107",
+      "token",
+      "http://127.0.0.1:4001",
+      "database-token",
+      "http://127.0.0.1:4002",
+      "log-token",
+    );
 
     expect(env["LINGUAGACHA_CORE_API_BASE_URL"]).toBe("http://127.0.0.1:3107");
     expect(env["LINGUAGACHA_CORE_API_TOKEN"]).toBe("token");
+    expect(env["LINGUAGACHA_DATABASE_API_BASE_URL"]).toBe("http://127.0.0.1:4001");
+    expect(env["LINGUAGACHA_DATABASE_API_TOKEN"]).toBe("database-token");
+    expect(env["LINGUAGACHA_LOG_API_BASE_URL"]).toBe("http://127.0.0.1:4002");
+    expect(env["LINGUAGACHA_LOG_API_TOKEN"]).toBe("log-token");
     expect(env["PYTHONUNBUFFERED"]).toBe("1");
   });
 
@@ -36,6 +47,10 @@ describe("build_core_process_spawn_request", () => {
       launch_command,
       base_url,
       instance_token,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       "win32",
     );
 
@@ -59,6 +74,10 @@ describe("build_core_process_spawn_request", () => {
       launch_command,
       base_url,
       instance_token,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       "win32",
     );
 

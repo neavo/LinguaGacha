@@ -56,10 +56,11 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A["Electron main"] --> S["启动内部 Database Service"]
+    A["Electron main"] --> L["创建 TS LogManager"]
+    L --> S["启动内部 Database Service"]
     S --> B["CoreLifecycleManager 从启动根目录解析 Core 目标"]
     B --> C["优先启动平台 Core helper，否则 uv run app.py"]
-    C --> D["注入 database env 与内部 Core baseUrl"]
+    C --> D["注入 log / database env 与内部 Core baseUrl"]
     D --> T["启动 TS Gateway 并校验 /api/health"]
     T --> E["preload 暴露 window.desktopApp"]
     E --> F["renderer 启动 desktop-api.ts"]
@@ -71,9 +72,9 @@ flowchart TD
 ```
 
 运行时主链路的稳定事实：
-- Electron main 是 TS Gateway、内部 Database Service 与 Python Core 伴生进程的生命周期拥有者；启动顺序固定为 `Database Service -> Python Core 内部端口 -> TS Gateway 公开端口 -> renderer`。`CoreLifecycleManager` 在高位端口范围内分别选择公开 Gateway 端口与 Python Core 内部端口，并从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`。开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 Electron 可执行文件所在目录，macOS 为 `.app/Contents/MacOS`。
+- Electron main 是 TS Gateway、TS `LogManager`、内部 Database Service 与 Python Core 伴生进程的生命周期拥有者；启动顺序固定为 `TS LogManager -> Database Service -> Python Core 内部端口 -> TS Gateway 公开端口 -> renderer`。`CoreLifecycleManager` 在高位端口范围内分别选择公开 Gateway 端口与 Python Core 内部端口，并从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`。开发态启动根目录优先取 npm 保留的原始目录 `INIT_CWD`，不存在时回退到 Electron 主进程当前工作目录；打包态启动根目录固定为 Electron 可执行文件所在目录，macOS 为 `.app/Contents/MacOS`。
 - Python Core 的运行时路径统一收敛为两根：`APP_ROOT` 是应用根，开发态为仓库根、发布态为程序运行目录，承载 `resource/`、`version.txt` 和 Core 启动目标；`DATA_ROOT` 是可写数据根，承载 `userdata/` 与 `log/`。AppImage 与 macOS `.app` 固定把 `DATA_ROOT` 放到 `~/LinguaGacha`，其他场景优先使用可写的 `APP_ROOT`，不可写时回退 `~/LinguaGacha`。
-- Electron 侧公开 Core API 地址由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL`，其值指向 TS Gateway；Python Core 内部 baseUrl、Python token、Database Service 地址和 database token 只留在 Electron main 与 Python Core 之间，不进入 preload、`window.desktopApp` 或 renderer。`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
+- Electron 侧公开 Core API 地址由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL`，其值指向 TS Gateway；Python Core 内部 baseUrl、Python token、Database Service 地址和 database token 只留在 Electron main 与 Python Core 之间，不进入 preload、`window.desktopApp` 或 renderer。Python 日志通过 TS Gateway 的 `/api/logs/append` 提交，使用同一份 Core token。`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
 - 应用退出时 Electron main 会优先调用内部 `/api/lifecycle/shutdown`，失败或超时后按平台清理 Core 进程树；Python Core 退出后再关闭 Database Service 并释放 SQLite handle，渲染层不直接管理后端进程。
 - 渲染层项目运行态由 bootstrap 首包和事件流共同驱动，而不是单次整页快照。
 - `ProjectStore` 是渲染层项目运行态最小事实仓库；页面本地筛选、弹窗、交互态不应上提到这里。

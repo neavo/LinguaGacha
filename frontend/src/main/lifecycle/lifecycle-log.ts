@@ -1,3 +1,5 @@
+import { get_electron_main_log_manager } from "../log/log-bridge";
+
 const TS_LOG_LEVEL = "TS";
 const LOG_LEVEL_COLUMN_WIDTH = 8;
 
@@ -14,7 +16,12 @@ export function format_ts_lifecycle_log(message: string, date: Date = new Date()
 }
 
 export function write_ts_lifecycle_log(message: string): void {
-  process.stdout.write(`${format_ts_lifecycle_log(message)}\n`);
+  const log_manager = get_electron_main_log_manager();
+  if (log_manager === null) {
+    process.stdout.write(`${format_ts_lifecycle_log(message)}\n`);
+    return;
+  }
+  log_manager.info(message, { source: "ts-lifecycle" });
 }
 
 export function format_core_shutdown_completed_log(

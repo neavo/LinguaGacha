@@ -107,9 +107,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         event_stream_service=SimpleNamespace(
             stream_to_handler=lambda handler: None,
         ),
-        log_stream_service=SimpleNamespace(
-            stream_to_handler=lambda handler: None,
-        ),
         project_app_service=object(),
         workbench_app_service=object(),
         proofreading_app_service=object(),
@@ -132,7 +129,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         path: core_api_server.route_map[(method, path)].mode
         for method, path in (
             ("GET", "/api/events/stream"),
-            ("GET", "/api/logs/stream"),
             ("GET", "/api/project/bootstrap/stream"),
             ("POST", "/api/project/load"),
             ("POST", "/api/project/workbench/parse-file"),
@@ -147,7 +143,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
 
     assert active_route_modes == {
         "/api/events/stream": "stream",
-        "/api/logs/stream": "stream",
         "/api/project/bootstrap/stream": "stream",
         "/api/project/load": "json",
         "/api/project/workbench/parse-file": "json",

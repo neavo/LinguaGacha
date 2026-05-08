@@ -1,8 +1,14 @@
 import type { ChildProcess } from "node:child_process";
 
+import { get_electron_main_log_manager } from "../log/log-bridge";
+import type { LogLevel } from "../log/log-types";
+
 const ESCAPE_CHARACTER = String.fromCharCode(0x1b);
 const BELL_CHARACTER = String.fromCharCode(0x07);
 const TERMINAL_STYLE_RESET = `${ESCAPE_CHARACTER}[0m`;
+const SGR_SEQUENCE_PATTERN = new RegExp(`${ESCAPE_CHARACTER}\\[[0-9;]*m`, "g");
+const PYTHON_FALLBACK_LOG_PATTERN =
+  /^\[(DEBUG|INFO|WARNING|ERROR|FATAL)\]\s+\[python-core\]\s*(.*)$/;
 
 type OutputWriter = (text: string) => void;
 
@@ -82,6 +88,38 @@ export function format_core_process_output_line(line: string): string | null {
   return `${trimmed_line}${TERMINAL_STYLE_RESET}\n`;
 }
 
+export function normalize_core_process_log_message(line: string): string | null {
+  return normalize_core_process_log_record(line, "info")?.message ?? null;
+}
+
+export function normalize_core_process_log_record(
+  line: string,
+  fallback_level: LogLevel,
+): { level: LogLevel; message: string; source: string } | null {
+  const trimmed_line = line.trimEnd();
+  if (trimmed_line === "") {
+    return null;
+  }
+  const plain_text = trimmed_line.replace(SGR_SEQUENCE_PATTERN, "");
+  const fallback_match = PYTHON_FALLBACK_LOG_PATTERN.exec(plain_text);
+  if (fallback_match !== null) {
+    const message = fallback_match[2]?.trimEnd() ?? "";
+    return {
+      level: normalize_core_fallback_level(fallback_match[1]),
+      message,
+      source: "python-core",
+    };
+  }
+  if (plain_text.trimEnd() === "") {
+    return null;
+  }
+  return {
+    level: fallback_level,
+    message: plain_text,
+    source: fallback_level === "error" ? "python-stderr" : "python-stdout",
+  };
+}
+
 function create_line_forwarder(writer: OutputWriter): LineForwarder {
   let buffered_text = "";
 
@@ -113,10 +151,22 @@ function create_line_forwarder(writer: OutputWriter): LineForwarder {
 
 export function attach_core_process_output(core_process: ChildProcess): void {
   const stdout_forwarder = create_line_forwarder((text) => {
-    process.stdout.write(text);
+    const log_manager = get_electron_main_log_manager();
+    const record = normalize_core_process_log_record(text, "info");
+    if (log_manager === null || record === null) {
+      process.stdout.write(text);
+      return;
+    }
+    log_manager.append(record);
   });
   const stderr_forwarder = create_line_forwarder((text) => {
-    process.stderr.write(text);
+    const log_manager = get_electron_main_log_manager();
+    const record = normalize_core_process_log_record(text, "error");
+    if (log_manager === null || record === null) {
+      process.stderr.write(text);
+      return;
+    }
+    log_manager.append(record);
   });
 
   core_process.stdout?.on("data", (chunk: Buffer) => {
@@ -129,4 +179,20 @@ export function attach_core_process_output(core_process: ChildProcess): void {
     stdout_forwarder.flush();
     stderr_forwarder.flush();
   });
+}
+
+function normalize_core_fallback_level(level: string | undefined): LogLevel {
+  switch (level) {
+    case "DEBUG":
+      return "debug";
+    case "WARNING":
+      return "warning";
+    case "ERROR":
+      return "error";
+    case "FATAL":
+      return "fatal";
+    case "INFO":
+    default:
+      return "info";
+  }
 }

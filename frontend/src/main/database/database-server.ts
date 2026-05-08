@@ -4,6 +4,7 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { DatabaseConflictError, ProjectDatabase } from "./database-operations";
 import type { DatabaseEnvelope, DatabaseOperation } from "./database-types";
 import { JsonTool } from "../../utils/json-tool";
+import { write_electron_main_error } from "../log/log-bridge";
 
 const DATABASE_TOKEN_HEADER_NAME = "x-linguagacha-database-token";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -63,7 +64,7 @@ export class DatabaseServer {
   private base_url: string | null = null;
 
   /**
-   * 初始化 DatabaseServer 依赖，保持外部写入口清晰。
+   * Database Service 自持数据库句柄，API 层只能通过内部 workflow 触达它。
    */
   public constructor(database: ProjectDatabase = new ProjectDatabase()) {
     this.database = database;
@@ -77,7 +78,7 @@ export class DatabaseServer {
   }
 
   /**
-   * 启动服务并返回稳定入口，避免重复启动产生多份运行态。
+   * 重复 start 复用同一内部入口，避免 Core 侧持有的 database baseUrl 失效。
    */
   public async start(): Promise<DatabaseServerStartResult> {
     if (this.server !== null && this.base_url !== null) {
@@ -109,7 +110,7 @@ export class DatabaseServer {
   }
 
   /**
-   * 按拥有者顺序释放资源，避免退出时留下后台监听。
+   * Database Service 退出时同步关闭 SQLite handle，避免项目文件继续被占用。
    */
   public async stop(): Promise<void> {
     const server = this.server;
@@ -133,7 +134,7 @@ export class DatabaseServer {
   }
 
   /**
-   * 分发内部 database workflow，并在边界处统一校验 token。
+   * 内部 HTTP 边界先校验 token，再进入唯一 database workflow 写入口。
    */
   private async handle_request(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -199,7 +200,17 @@ export class DatabaseServer {
         error: { code: "invalid_request", message: "database 路由不存在。" },
       });
     } catch (error) {
-      send_json(response, 500, build_error_envelope(error));
+      const envelope = build_error_envelope(error);
+      if (envelope.ok === false && envelope.error.code === "internal_error") {
+        write_electron_main_error("Database Service 请求处理失败", {
+          error,
+          context: {
+            method: request.method ?? "",
+            path: url.pathname,
+          },
+        });
+      }
+      send_json(response, 500, envelope);
     }
   }
 }

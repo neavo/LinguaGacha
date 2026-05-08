@@ -11,14 +11,15 @@ import { QualityService } from "../quality/quality-service";
 import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "../paths/app-path-service";
 import { ConfigService } from "../settings/config-service";
+import { LogManager } from "../log/log-manager";
+import type { LogAppendPayload, LogEvent, LogLevel, LogTargets } from "../log/log-types";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
 const CORE_API_HOST = "127.0.0.1";
-const STREAM_PROXY_PATHS = new Set([
-  "/api/events/stream",
-  "/api/logs/stream",
-  "/api/project/bootstrap/stream",
-]);
+const STREAM_PROXY_PATHS = new Set(["/api/events/stream", "/api/project/bootstrap/stream"]);
+const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500;
+const LOG_APPEND_TOKEN_HEADER_NAME = "X-LinguaGacha-Core-Token";
+const CORS_ALLOWED_HEADERS = `Content-Type, ${LOG_APPEND_TOKEN_HEADER_NAME}`;
 
 export interface ApiGatewayServerOptions {
   appRoot: string;
@@ -26,6 +27,7 @@ export interface ApiGatewayServerOptions {
   pyCoreBaseUrl: string;
   pyCoreToken: string;
   database: ProjectDatabase;
+  logManager: LogManager;
 }
 
 /**
@@ -37,14 +39,14 @@ export class ApiGatewayServer {
   private server: Server | null = null;
 
   /**
-   * 初始化 ApiGatewayServer 依赖，保持外部写入口清晰。
+   * Gateway 只接收已组装好的运行期依赖，避免路由层自行解析全局状态。
    */
   public constructor(options: ApiGatewayServerOptions) {
     this.options = options;
   }
 
   /**
-   * 启动服务并返回稳定入口，避免重复启动产生多份运行态。
+   * 重复 start 返回同一入口，避免公开端口和实例 token 在运行期漂移。
    */
   public async start(): Promise<ApiGatewayStartResult> {
     if (this.server !== null) {
@@ -77,7 +79,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 按拥有者顺序释放资源，避免退出时留下后台监听。
+   * 只释放 Gateway 自己持有的监听器，Core 与 Database 生命周期由上层编排。
    */
   public async stop(): Promise<void> {
     const server = this.server;
@@ -97,7 +99,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 组装公开路由和代理规则，保持 Gateway 协议集中维护。
+   * 公开 `/api/*` 协议在这里集中注册，避免 renderer 依赖 Python 内部端口。
    */
   private create_app(): Hono {
     const paths = new AppPathService({ appRoot: this.options.appRoot });
@@ -123,7 +125,7 @@ export class ApiGatewayServer {
       await next();
       context.header("Access-Control-Allow-Origin", "*");
       context.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-      context.header("Access-Control-Allow-Headers", "Content-Type");
+      context.header("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
     });
 
     app.get("/api/health", (context) => {
@@ -135,6 +137,31 @@ export class ApiGatewayServer {
           instanceToken: this.instance_token,
         }),
       );
+    });
+
+    app.get("/api/logs/stream", () => {
+      return this.create_log_stream_response();
+    });
+    app.post("/api/logs/append", async (context) => {
+      const token = context.req.header(LOG_APPEND_TOKEN_HEADER_NAME);
+      if (token !== this.options.pyCoreToken) {
+        return context.json(api_error("invalid_request", "日志提交 token 无效。"), 401);
+      }
+      try {
+        const body = (await context.req.json().catch((error: unknown) => {
+          throw new SyntaxError(error instanceof Error ? error.message : "JSON 无效。");
+        })) as Record<string, ApiJsonValue>;
+        this.options.logManager.append(this.parse_log_append_payload(body));
+        return context.json(ok({ accepted: true }));
+      } catch (error) {
+        const envelope = this.error_to_envelope(error);
+        if (envelope.error.code === "internal_error") {
+          this.log_gateway_error("公开日志提交处理失败", error, {
+            path: "/api/logs/append",
+          });
+        }
+        return context.json(envelope, envelope.error.code === "invalid_request" ? 400 : 500);
+      }
     });
 
     this.post_json(app, "/api/settings/app", () => config_service.get_app_settings());
@@ -231,14 +258,23 @@ export class ApiGatewayServer {
     );
 
     app.all("*", async (context) => {
-      return this.proxy_to_py_core(context.req.raw);
+      try {
+        return await this.proxy_to_py_core(context.req.raw);
+      } catch (error) {
+        const source_url = new URL(context.req.url);
+        this.log_gateway_error("TS Gateway 代理 Python Core 失败", error, {
+          method: context.req.method,
+          path: source_url.pathname,
+        });
+        return context.json(api_error("internal_error", "Python Core 代理失败。"), 500);
+      }
     });
 
     return app;
   }
 
   /**
-   * 统一处理 POST JSON 响应壳和错误映射，避免路由各自发散。
+   * TS 直处理路由复用同一响应壳，避免错误码和 CORS 语义在各路由发散。
    */
   private post_json(
     app: Hono,
@@ -262,16 +298,20 @@ export class ApiGatewayServer {
             : envelope.error.code === "invalid_request"
               ? 400
               : 500;
+        if (status >= 500) {
+          this.log_gateway_error("TS Gateway 直接路由处理失败", error, { path: path_name });
+        }
         return context.json(envelope, status);
       }
     });
   }
 
   /**
-   * 代理未迁移路由到 Python Core，保留公开 API 前缀不变。
+   * 未迁移路由仍只暴露公开 Gateway 地址，Python 内部端口不进入前端协议。
    */
   private async proxy_to_py_core(request: Request): Promise<Response> {
     const source_url = new URL(request.url);
+    const is_stream_proxy = STREAM_PROXY_PATHS.has(source_url.pathname);
     const target_url = `${this.options.pyCoreBaseUrl}${source_url.pathname}${source_url.search}`;
     const headers = new Headers(request.headers);
     headers.delete("host");
@@ -283,7 +323,7 @@ export class ApiGatewayServer {
       body,
       headers,
       method: request.method,
-      signal: request.signal,
+      signal: is_stream_proxy ? undefined : request.signal,
     });
     const response_headers = new Headers(response.headers);
     response_headers.delete("content-length");
@@ -291,7 +331,7 @@ export class ApiGatewayServer {
     for (const [key, value] of this.cors_headers()) {
       response_headers.set(key, value);
     }
-    if (STREAM_PROXY_PATHS.has(source_url.pathname)) {
+    if (is_stream_proxy) {
       return new Response(response.body, {
         headers: response_headers,
         status: response.status,
@@ -306,7 +346,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 把内部异常折叠为稳定错误壳，避免泄漏实现细节。
+   * 内部异常只映射成稳定错误壳，调用方不需要理解 TS/Python 实现差异。
    */
   private error_to_envelope(error: unknown) {
     if (error instanceof SyntaxError) {
@@ -328,14 +368,126 @@ export class ApiGatewayServer {
     return new Headers({
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
     });
   }
 
   /**
-   * 从公开端口生成 Gateway 地址，作为 renderer 探活的唯一 baseUrl。
+   * renderer 只认公开 Gateway 地址，内部 Core 地址不会透出到 preload 边界。
    */
   private base_url(): string {
     return `http://${CORE_API_HOST}:${this.options.publicPort.toString()}`;
+  }
+
+  /**
+   * 公开日志流由 TS LogManager 直接提供，避免窗口再依赖 Python 内部 SSE。
+   */
+  private create_log_stream_response(): Response {
+    const encoder = new TextEncoder();
+    let unsubscribe: (() => void) | null = null;
+    let keepalive_timer: ReturnType<typeof setInterval> | null = null;
+    const close_stream = (): void => {
+      if (keepalive_timer !== null) {
+        clearInterval(keepalive_timer);
+        keepalive_timer = null;
+      }
+      unsubscribe?.();
+      unsubscribe = null;
+    };
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        const enqueue_text = (text: string): void => {
+          controller.enqueue(encoder.encode(text));
+        };
+        unsubscribe = this.options.logManager.subscribe((event) => {
+          enqueue_text(this.build_log_sse_frame(event));
+        });
+        keepalive_timer = setInterval(() => {
+          enqueue_text(": keepalive\n\n");
+        }, LOG_STREAM_KEEPALIVE_INTERVAL_MS);
+      },
+      cancel: () => {
+        close_stream();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Content-Type": "text/event-stream; charset=utf-8",
+      },
+      status: 200,
+    });
+  }
+
+  private build_log_sse_frame(event: LogEvent): string {
+    return `event: log.appended\ndata: ${JSON.stringify(event)}\n\n`;
+  }
+
+  private parse_log_append_payload(body: Record<string, ApiJsonValue>): LogAppendPayload {
+    const message = typeof body["message"] === "string" ? body["message"] : "";
+    const payload: LogAppendPayload = {
+      level: this.parse_log_level(body["level"]),
+      message,
+      source: typeof body["source"] === "string" ? body["source"] : "python-core",
+      targets: this.parse_log_targets(body["targets"]),
+    };
+    if (typeof body["error_message"] === "string") {
+      payload.error_message = body["error_message"];
+    }
+    if (typeof body["stack"] === "string") {
+      payload.stack = body["stack"];
+    }
+    if (
+      typeof body["context"] === "object" &&
+      body["context"] !== null &&
+      !Array.isArray(body["context"])
+    ) {
+      payload.context = body["context"] as Record<string, unknown>;
+    }
+    return payload;
+  }
+
+  private parse_log_level(value: ApiJsonValue | undefined): LogLevel {
+    if (
+      value === "debug" ||
+      value === "info" ||
+      value === "warning" ||
+      value === "error" ||
+      value === "fatal"
+    ) {
+      return value;
+    }
+    return "info";
+  }
+
+  private parse_log_targets(value: ApiJsonValue | undefined): Partial<LogTargets> | undefined {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return undefined;
+    }
+    const raw_targets = value as Record<string, unknown>;
+    const targets: Partial<LogTargets> = {};
+    for (const key of ["file", "console", "window"] as const) {
+      if (typeof raw_targets[key] === "boolean") {
+        targets[key] = raw_targets[key];
+      }
+    }
+    return targets;
+  }
+
+  private log_gateway_error(
+    message: string,
+    error: unknown,
+    context: Record<string, unknown>,
+  ): void {
+    this.options.logManager.error(message, {
+      source: "ts-gateway",
+      context,
+      error_message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
   }
 }

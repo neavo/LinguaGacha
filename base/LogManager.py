@@ -3,119 +3,112 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import asdict
 from dataclasses import dataclass
-from datetime import datetime
-from datetime import timezone
+import json
 import logging
 import os
 import queue
 import sys
+import threading
+import time
 import traceback
-from collections.abc import Sequence
-from logging.handlers import QueueHandler
-from logging.handlers import QueueListener
-from logging.handlers import TimedRotatingFileHandler
 from typing import Self
-
-from base.BasePath import BasePath
+from urllib import request
 
 
 @dataclass(frozen=True)
-class LogEvent:
-    """日志窗口的唯一跨层载荷，只携带纯文本诊断信息。"""
+class LogTargets:
+    """Python 兼容层只表达目标意图，真正输出由 TS LogManager 决定。"""
 
-    id: str
-    sequence: int
-    created_at: str
+    file: bool
+    console: bool
+    window: bool
+
+
+@dataclass(frozen=True)
+class LogPayload:
+    """Python -> TS 的结构化日志载荷，跨进程只传值对象。"""
+
     level: str
     message: str
+    source: str
+    targets: LogTargets
+    error_message: str | None = None
+    stack: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        """SSE 层统一消费普通字典，避免暴露 dataclass 实例。"""
-        return asdict(self)
+        payload = asdict(self)
+        if self.error_message is None:
+            payload.pop("error_message")
+        if self.stack is None:
+            payload.pop("stack")
+        return payload
 
 
-class LogTargetFilter(logging.Filter):
-    """按目标分流日志，避免业务线程自己挑 handler。"""
+class LogBridgeClient:
+    """向 TS Gateway 公开日志 API 提交日志，失败由 LogManager 负责缓存。"""
+
+    BASE_URL_ENV_NAME: str = "LINGUAGACHA_LOG_API_BASE_URL"
+    TOKEN_ENV_NAME: str = "LINGUAGACHA_LOG_API_TOKEN"
+    TOKEN_HEADER_NAME: str = "X-LinguaGacha-Core-Token"
+    APPEND_PATH: str = "/api/logs/append"
+    DEFAULT_TIMEOUT_SECONDS: float = 0.5
 
     def __init__(
         self,
-        *,
-        emit_key: str,
+        base_url: str | None = None,
+        token: str | None = None,
     ) -> None:
-        super().__init__()
-        self.emit_key: str = emit_key
+        self.base_url: str = base_url or os.environ.get(self.BASE_URL_ENV_NAME, "")
+        self.token: str = token or os.environ.get(self.TOKEN_ENV_NAME, "")
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        """只让目标匹配的记录通过，保证文件职责单一。"""
-        return bool(getattr(record, self.emit_key, False))
+    def is_available(self) -> bool:
+        return self.base_url != "" and self.token != ""
+
+    def submit(
+        self,
+        payload: LogPayload,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    ) -> None:
+        if not self.is_available():
+            raise RuntimeError("TS 日志桥环境变量未配置。")
+
+        body = json.dumps(payload.to_dict(), ensure_ascii=False).encode("utf-8")
+        append_request = request.Request(
+            f"{self.base_url}{self.APPEND_PATH}",
+            data=body,
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                self.TOKEN_HEADER_NAME: self.token,
+            },
+            method="POST",
+        )
+        with request.urlopen(append_request, timeout=timeout) as response:
+            if response.status >= 400:
+                raise RuntimeError(f"TS 日志桥提交失败：{response.status}")
 
 
 class LogManager:
-    """统一管理异步日志和崩溃兜底，避免工作线程被日志 I/O 拖慢。"""
+    """Python 侧保留兼容调用口，日志权威迁移到 Electron main。"""
 
-    DEFAULT_RING_BUFFER_SIZE: int = 1000
+    DEFAULT_BUFFER_SIZE: int = 1000
+    INITIAL_RETRY_DELAY_SECONDS: float = 0.2
+    MAX_RETRY_DELAY_SECONDS: float = 5.0
 
-    def __init__(self) -> None:
+    def __init__(self, bridge_client: LogBridgeClient | None = None) -> None:
         super().__init__()
-        self.async_enabled: bool = False
-        self.shutdown_complete: bool = False
-        self.next_event_sequence: int = 1
-        self.log_events: deque[LogEvent] = deque(maxlen=self.DEFAULT_RING_BUFFER_SIZE)
-        self.event_subscribers: list[queue.Queue[LogEvent]] = []
-
-        log_path = BasePath.get_log_dir()
-        os.makedirs(log_path, exist_ok=True)
-
-        # 文件日志始终是最权威的排障来源，所以保留原来的轮转策略。
-        self.file_handler = TimedRotatingFileHandler(
-            f"{log_path}/app.log",
-            when="midnight",
-            interval=1,
-            encoding="utf-8",
-            backupCount=3,
+        self.bridge_client: LogBridgeClient = bridge_client or LogBridgeClient()
+        self.pending_payloads: deque[LogPayload] = deque(
+            maxlen=self.DEFAULT_BUFFER_SIZE
         )
-        self.file_handler.setLevel(logging.DEBUG)
-        self.file_handler.setFormatter(
-            logging.Formatter(
-                "[%(asctime)s] [%(levelname)s] %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        self.file_handler.addFilter(LogTargetFilter(emit_key="emit_file"))
-
-        # 统一入口 logger 只负责把记录塞进队列，具体落地点交给监听线程。
-        self.log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
-        self.queue_handler = QueueHandler(self.log_queue)
-        self.app_logger = logging.getLogger(f"app_{id(self)}")
-        self.app_logger.handlers.clear()
-        self.app_logger.propagate = False
-        self.app_logger.setLevel(logging.DEBUG)
-        self.app_logger.addHandler(self.queue_handler)
-
-        self.queue_listener: QueueListener | None = None
-        try:
-            self.queue_listener = QueueListener(
-                self.log_queue,
-                self.file_handler,
-                respect_handler_level=True,
-            )
-            self.queue_listener.start()
-            self.async_enabled = True
-        except Exception as e:
-            # 日志系统自己出问题时必须退回同步直写，不能把整个应用拖崩。
-            self.async_enabled = False
-            self.queue_listener = None
-            self.dispatch_direct(
-                logging.ERROR,
-                "日志队列监听器启动失败，已降级为同步日志。",
-                e=e,
-                file=True,
-                console=False,
-            )
+        self.flush_signal: queue.Queue[None] = queue.Queue()
+        self.worker_lock: threading.Lock = threading.Lock()
+        self.worker_thread: threading.Thread | None = None
+        self.shutdown_requested: bool = False
 
     @classmethod
     def get(cls) -> Self:
-        """单例入口保持不变，避免仓库其他模块跟着改调用。"""
+        """单例入口保持不变，避免业务调用点批量迁移。"""
         if getattr(cls, "__instance__", None) is None:
             cls.__instance__ = cls()
 
@@ -128,16 +121,7 @@ class LogManager:
         file: bool = True,
         console: bool = True,
     ) -> None:
-        """print 继续保留裸控制台输出语义，但实际写出改走日志线程。"""
-        self.log(
-            logging.INFO,
-            msg,
-            e=e,
-            file=file,
-            console=console,
-            render_plain_console=True,
-            sync=False,
-        )
+        self.log(logging.INFO, msg, e=e, file=file, console=console, sync=False)
 
     def debug(
         self,
@@ -146,15 +130,7 @@ class LogManager:
         file: bool = True,
         console: bool = True,
     ) -> None:
-        """调试日志默认异步化，尽量别阻塞后台任务线程。"""
-        self.log(
-            logging.DEBUG,
-            msg,
-            e=e,
-            file=file,
-            console=console,
-            sync=False,
-        )
+        self.log(logging.DEBUG, msg, e=e, file=file, console=console, sync=False)
 
     def info(
         self,
@@ -163,15 +139,7 @@ class LogManager:
         file: bool = True,
         console: bool = True,
     ) -> None:
-        """信息日志默认异步化，维持现有调用口不变。"""
-        self.log(
-            logging.INFO,
-            msg,
-            e=e,
-            file=file,
-            console=console,
-            sync=False,
-        )
+        self.log(logging.INFO, msg, e=e, file=file, console=console, sync=False)
 
     def warning(
         self,
@@ -180,15 +148,7 @@ class LogManager:
         file: bool = True,
         console: bool = True,
     ) -> None:
-        """警告日志默认异步化，减少高并发下的 handler 锁竞争。"""
-        self.log(
-            logging.WARNING,
-            msg,
-            e=e,
-            file=file,
-            console=console,
-            sync=False,
-        )
+        self.log(logging.WARNING, msg, e=e, file=file, console=console, sync=False)
 
     def error(
         self,
@@ -197,15 +157,7 @@ class LogManager:
         file: bool = True,
         console: bool = True,
     ) -> None:
-        """错误日志默认异步化，平时场景优先保证业务线程吞吐。"""
-        self.log(
-            logging.ERROR,
-            msg,
-            e=e,
-            file=file,
-            console=console,
-            sync=False,
-        )
+        self.log(logging.ERROR, msg, e=e, file=file, console=console, sync=False)
 
     def fatal(
         self,
@@ -215,15 +167,7 @@ class LogManager:
         console: bool = True,
         level: int = logging.CRITICAL,
     ) -> None:
-        """崩溃兜底日志强制同步直写，避免进程退出前队列来不及刷盘。"""
-        self.log(
-            level,
-            msg,
-            e=e,
-            file=file,
-            console=console,
-            sync=True,
-        )
+        self.log(level, msg, e=e, file=file, console=console, sync=True)
 
     def log(
         self,
@@ -235,157 +179,115 @@ class LogManager:
         render_plain_console: bool = False,
         sync: bool = False,
     ) -> None:
-        """统一组装文件/控制台消息，避免不同方法重复拼异常文本。"""
+        """兼容旧签名；render_plain_console 已由 TS 控制台输出承接。"""
+        del render_plain_console
         if not file and not console:
             return
 
-        file_message, console_message = self.build_messages(msg, e)
+        payload = self.build_payload(level, msg, e, file=file, console=console)
+        if sync:
+            self.submit_sync(payload)
+            return
 
-        if file:
-            self.dispatch(
-                level,
-                file_message,
-                file=True,
-                console=False,
-                render_plain_console=False,
-                sync=sync,
-            )
+        self.enqueue_payload(payload)
 
-        if console:
-            self.publish_log_event(
-                level,
-                console_message,
-            )
-
-    def build_messages(
-        self,
-        msg: str,
-        e: Exception | BaseException | None,
-    ) -> tuple[str, str]:
-        """文件与控制台默认都保留完整堆栈，避免排障信息再被隐藏。"""
-        if e is None:
-            return msg, msg
-
-        message_with_error = f"{msg}\n{e}" if msg != "" else f"{e}"
-        traceback_text = self.get_traceback(e)
-        file_message = f"{message_with_error}\n{traceback_text}\n"
-        return file_message, file_message
-
-    def dispatch(
+    def build_payload(
         self,
         level: int,
-        message: str,
+        msg: str,
+        e: Exception | BaseException | None,
         *,
         file: bool,
         console: bool,
-        render_plain_console: bool,
-        sync: bool,
-    ) -> None:
-        """根据当前状态决定走异步队列还是同步直写。"""
-        del console
-        del render_plain_console
-        record = self.create_record(
-            level,
-            message,
-            file=file,
+    ) -> LogPayload:
+        error_message = None if e is None else str(e)
+        stack = None if e is None else self.get_traceback(e)
+        message = self.normalize_message(msg)
+        if message == "" and error_message is not None:
+            message = error_message
+        return LogPayload(
+            level=self.normalize_level(level),
+            message=message,
+            source="python-core",
+            targets=LogTargets(
+                file=file,
+                console=console,
+                window=console,
+            ),
+            error_message=error_message,
+            stack=stack,
         )
 
-        if sync or not self.async_enabled or self.shutdown_complete:
-            self.handle_record(record)
-            return
+    def enqueue_payload(self, payload: LogPayload) -> None:
+        self.pending_payloads.append(payload)
+        if self.bridge_client.is_available():
+            self.ensure_worker_started()
+            self.flush_signal.put(None)
 
-        self.app_logger.handle(record)
+    def submit_sync(self, payload: LogPayload) -> None:
+        try:
+            self.bridge_client.submit(payload, timeout=1.0)
+        except Exception:
+            self.pending_payloads.append(payload)
+            self.write_fallback_stderr(payload)
 
-    def dispatch_direct(
-        self,
-        level: int,
-        msg: str,
-        e: Exception | BaseException | None = None,
-        file: bool = True,
-        console: bool = True,
-    ) -> None:
-        """日志系统自救时直接写文件，并用 stderr 做极小兜底。"""
-        file_message, console_message = self.build_messages(msg, e)
-
-        if file:
-            self.handle_record(
-                self.create_record(
-                    level,
-                    file_message,
-                    file=True,
-                )
+    def ensure_worker_started(self) -> None:
+        with self.worker_lock:
+            if self.worker_thread is not None and self.worker_thread.is_alive():
+                return
+            self.worker_thread = threading.Thread(
+                target=self.flush_loop,
+                name="linguagacha-log-bridge",
+                daemon=True,
             )
+            self.worker_thread.start()
 
-        if console:
-            sys.stderr.write(f"{console_message}\n")
-            sys.stderr.flush()
+    def flush_loop(self) -> None:
+        retry_delay = self.INITIAL_RETRY_DELAY_SECONDS
+        while not self.shutdown_requested:
+            try:
+                self.flush_signal.get(timeout=retry_delay)
+            except queue.Empty:
+                pass
 
-    def get_handlers(self) -> tuple[logging.Handler, ...]:
-        """把 handler 列表收拢到一起，避免同步写和 flush 各自维护一份。"""
-        return (self.file_handler,)
+            if not self.pending_payloads:
+                retry_delay = self.INITIAL_RETRY_DELAY_SECONDS
+                continue
 
-    def create_record(
-        self,
-        level: int,
-        message: str,
-        *,
-        file: bool,
-    ) -> logging.LogRecord:
-        """把目标信息塞进 LogRecord，方便监听线程无状态分流。"""
-        return self.app_logger.makeRecord(
-            self.app_logger.name,
-            level,
-            fn="",
-            lno=0,
-            msg=message,
-            args=(),
-            exc_info=None,
-            extra={
-                "emit_file": file,
-            },
-        )
+            try:
+                self.flush_pending_once()
+                retry_delay = self.INITIAL_RETRY_DELAY_SECONDS
+            except Exception:
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, self.MAX_RETRY_DELAY_SECONDS)
 
-    def handle_record(self, record: logging.LogRecord) -> None:
-        """同步直写时也复用同一批 handler，保证格式和过滤规则一致。"""
-        for handler in self.get_handlers():
-            handler.handle(record)
-            handler.flush()
+    def flush_pending_once(self) -> None:
+        while self.pending_payloads:
+            payload = self.pending_payloads[0]
+            self.bridge_client.submit(payload)
+            self.pending_payloads.popleft()
 
     def shutdown(self) -> None:
-        """正常退出时先停监听线程，再尽量刷干净尾部日志。"""
-        if self.shutdown_complete:
-            return
-
-        self.shutdown_complete = True
-        if self.queue_listener is not None:
-            self.queue_listener.stop()
-            self.queue_listener = None
-
-        if self.queue_handler in self.app_logger.handlers:
-            self.app_logger.removeHandler(self.queue_handler)
-
-        self.flush_handlers()
-        self.close_handlers()
-        self.async_enabled = False
-
-    def flush_handlers(self) -> None:
-        """集中 flush 便于退出阶段和兜底阶段复用同一套收尾动作。"""
-        for handler in self.get_handlers():
+        self.shutdown_requested = True
+        if self.bridge_client.is_available():
             try:
-                handler.flush()
+                self.flush_pending_once()
             except Exception:
-                # 退出阶段只尽量冲刷日志，不能因为 flush 再抛异常打断收尾。
-                pass
+                # 进程退出时日志桥失败只能降级 stderr，不能阻断主收尾链路。
+                for payload in tuple(self.pending_payloads):
+                    self.write_fallback_stderr(payload)
+        if self.worker_thread is not None:
+            self.flush_signal.put(None)
+            self.worker_thread.join(timeout=1)
 
-    def close_handlers(self) -> None:
-        """退出时主动关闭 handler，避免文件句柄拖到 GC 才被动回收。"""
-        handlers = (*self.get_handlers(), self.queue_handler)
-        for handler in handlers:
-            try:
-                handler.close()
-            except Exception:
-                # 关闭阶段以尽力回收资源为主，单个 handler 失败不该阻断整体收尾。
-                pass
+    def write_fallback_stderr(self, payload: LogPayload) -> None:
+        text = payload.message
+        if payload.error_message is not None:
+            text = f"{text}\n{payload.error_message}"
+        if payload.stack is not None:
+            text = f"{text}\n{payload.stack}"
+        sys.stderr.write(f"[{payload.level.upper()}] [python-core] {text}\n")
+        sys.stderr.flush()
 
     def get_traceback(self, e: Exception | BaseException) -> str:
         """统一保留完整堆栈文本，避免各处自行格式化异常。"""
@@ -395,47 +297,8 @@ class LogManager:
         """兼容旧调用名，避免其他模块意外引用时断掉。"""
         return self.get_traceback(e)
 
-    def subscribe_events(self, *, replay: bool = True) -> queue.Queue[LogEvent]:
-        """给日志 SSE 分配独立队列，并按需回放最近日志。"""
-        subscriber: queue.Queue[LogEvent] = queue.Queue()
-        if replay:
-            for event in self.snapshot_events():
-                subscriber.put(event)
-        self.event_subscribers.append(subscriber)
-        return subscriber
-
-    def unsubscribe_events(self, subscriber: queue.Queue[LogEvent]) -> None:
-        """连接断开后移除订阅队列，避免日志窗口重复打开后泄漏。"""
-        if subscriber in self.event_subscribers:
-            self.event_subscribers.remove(subscriber)
-
-    def snapshot_events(self) -> Sequence[LogEvent]:
-        """返回不可变快照，避免调用方拿到内部 ring buffer 引用。"""
-        return tuple(self.log_events)
-
-    def publish_log_event(
-        self,
-        level: int,
-        message: str,
-    ) -> LogEvent:
-        """生成纯文本日志事件，并广播给当前订阅者。"""
-        sequence = self.next_event_sequence
-        self.next_event_sequence += 1
-        event = LogEvent(
-            id=f"log-{sequence}",
-            sequence=sequence,
-            created_at=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
-            level=self.normalize_event_level(level),
-            message=self.normalize_message(message),
-        )
-        self.log_events.append(event)
-        for subscriber in list(self.event_subscribers):
-            subscriber.put(event)
-        return event
-
     @classmethod
-    def normalize_event_level(cls, level: int) -> str:
-        """把 logging 级别收敛成日志窗口第一版协议。"""
+    def normalize_level(cls, level: int) -> str:
         if level >= logging.CRITICAL:
             return "fatal"
         if level >= logging.ERROR:
@@ -448,5 +311,4 @@ class LogManager:
 
     @classmethod
     def normalize_message(cls, message: str) -> str:
-        """统一纯文本换行，避免日志窗口收到终端控制格式。"""
         return str(message).replace("\r\n", "\n").replace("\r", "\n")

@@ -44,14 +44,16 @@ flowchart TD
 | --- | --- |
 | Python 业务逻辑、数据流、API 行为变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest` |
 | API 契约、错误码、SSE topic、bootstrap 变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并补齐或更新相关 API 测试 |
-| Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend run test`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
-| `.lg` database、DatabaseGateway、schema 或 asset 读写变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并执行 `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend run test`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
-| 渲染层结构、组件契约、样式边界、导航变化 | `npm --prefix frontend run format`、`npm --prefix frontend run format:check`、`npm --prefix frontend run lint`、`npm --prefix frontend run renderer:audit`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit`、`npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
+| Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest`；若触及 TS 类型、导入导出、preload / shared 公共面或构建配置，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit`，影响面较大时执行 `npm --prefix frontend run test` |
+| `.lg` database、DatabaseGateway、schema 或 asset 读写变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并执行 `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关前端测试；若触及 TS 类型或 Electron main 公共面，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
+| 渲染层结构、组件契约、样式边界、导航变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest`、`npm --prefix frontend run renderer:audit`；若触及组件 props、共享类型、导入导出或构建配置，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit` |
 | 仅文档改动 | 自检链接、命名、阅读路径、权威来源和文档边界是否仍然准确 |
 
 补充规则：
 - 若同时改动 Python 与前端，执行两边验证的并集。
 - 若任务只改文档，但文档声称某个实现边界已变化，就必须先确认代码真相再交付。
+- 前端本地只保留会实际改写文件的 `format` 命令；执行后不再追加只读格式检查命令。
+- `lint` 与 `tsc` 覆盖的问题不同，但不机械连跑；只有改动可能影响 TypeScript 类型、模块导入导出、公共契约或构建配置时才补 `tsc`。
 
 ## 文档同步规则
 

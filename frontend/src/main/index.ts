@@ -35,6 +35,7 @@ import {
   LOG_WINDOW_QUERY_KEY,
   LOG_WINDOW_QUERY_VALUE,
 } from "./log-window-manager";
+import { write_electron_main_error, write_electron_main_warning } from "./log/log-bridge";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 与 PySide 版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线。
@@ -227,10 +228,10 @@ async function open_devtools_and_toggle_inspect_mode(target_window: BrowserWindo
       );
 
       if (!inspect_mode_enabled) {
-        console.warn("[frontend] DevToolsAPI.enterInspectElementMode is unavailable");
+        write_electron_main_warning("DevToolsAPI.enterInspectElementMode 不可用");
       }
     } catch (error) {
-      console.warn("[frontend] failed to toggle inspect element mode", error);
+      write_electron_main_warning("切换 DevTools 元素检查模式失败", { error });
     }
   }
 }
@@ -395,32 +396,38 @@ function register_window_runtime_events(
       const error_message = `加载失败 (${error_code.toString()}): ${error_description}`;
 
       if (is_main_frame) {
-        console.error("[frontend] renderer load failed", {
-          error_code,
-          error_description,
-          validated_url,
+        write_electron_main_error("渲染层主框架加载失败", {
+          context: {
+            error_code,
+            error_description,
+            validated_url,
+          },
         });
         show_window_if_hidden(target_window);
         void target_window.loadURL(
           `data:text/html;charset=UTF-8,${encodeURIComponent(build_window_load_failure_page(validated_url, error_message))}`,
         );
       } else {
-        console.warn("[frontend] subframe load failed", {
-          error_code,
-          error_description,
-          validated_url,
+        write_electron_main_warning("渲染层子框架加载失败", {
+          context: {
+            error_code,
+            error_description,
+            validated_url,
+          },
         });
       }
     },
   );
 
   target_window.webContents.on("render-process-gone", (_event, details) => {
-    console.error("[frontend] renderer process gone", details);
+    write_electron_main_error("渲染进程已退出", {
+      context: details as unknown as Record<string, unknown>,
+    });
     show_window_if_hidden(target_window);
   });
 
   target_window.on("unresponsive", () => {
-    console.error("[frontend] window became unresponsive");
+    write_electron_main_error("窗口失去响应");
     show_window_if_hidden(target_window);
   });
 }
@@ -630,6 +637,7 @@ app.whenReady().then(async () => {
     log_window_manager = create_log_window_manager();
     createWindow();
   } catch (error) {
+    write_electron_main_error("LinguaGacha 启动失败", { error });
     const message = error instanceof Error ? error.message : "Python Core 启动失败。";
     dialog.showErrorBox("LinguaGacha 启动失败", message);
     app.exit(1);

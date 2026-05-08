@@ -1,168 +1,143 @@
-from pathlib import Path
+from __future__ import annotations
 
-import base.LogManager as log_manager_module
-from pyfakefs.fake_filesystem import FakeFilesystem
-from pytest import MonkeyPatch
+import logging
 
-
-def build_log_manager(
-    monkeypatch: MonkeyPatch,
-    log_dir: Path,
-) -> log_manager_module.LogManager:
-    """给每个测试单独造一套日志基础设施，避免单例和真实文件互相污染。"""
-    monkeypatch.setattr(
-        log_manager_module.BasePath,
-        "get_log_dir",
-        staticmethod(lambda: str(log_dir)),
-    )
-    return log_manager_module.LogManager()
+from base.LogManager import LogBridgeClient
+from base.LogManager import LogManager
+from base.LogManager import LogPayload
+from pytest import CaptureFixture
 
 
-def create_log_dir(fs: FakeFilesystem) -> Path:
-    """日志测试统一走 pyfakefs，避免真实文件系统状态影响断言。"""
-    log_dir = Path("C:/logs")
-    fs.create_dir(str(log_dir))
-    return log_dir
+class FakeLogBridgeClient(LogBridgeClient):
+    """测试用桥客户端只记录载荷，不触碰真实 HTTP 服务。"""
+
+    def __init__(self, *, available: bool = True, fail: bool = False) -> None:
+        super().__init__(base_url="http://127.0.0.1:1", token="token")
+        self.available = available
+        self.fail = fail
+        self.payloads: list[LogPayload] = []
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def submit(self, payload: LogPayload, *, timeout: float = 0.5) -> None:
+        del timeout
+        if self.fail:
+            raise RuntimeError("bridge failed")
+        self.payloads.append(payload)
 
 
-def read_log_text(log_dir: Path) -> str:
-    """统一从虚拟日志文件读取文本，避免每个测试重复拼路径。"""
-    return (log_dir / "app.log").read_text(encoding="utf-8")
+def test_info_log_flushes_to_ts_bridge_on_shutdown() -> None:
+    """普通日志先缓存，再由 shutdown 确保提交给 TS 日志权威。"""
+    client = FakeLogBridgeClient()
+    manager = LogManager(client)
+
+    manager.info("任务开始")
+    manager.shutdown()
+
+    assert [payload.message for payload in client.payloads] == ["任务开始"]
+    assert client.payloads[0].level == "info"
+    assert client.payloads[0].targets.file is True
+    assert client.payloads[0].targets.console is True
+    assert client.payloads[0].targets.window is True
 
 
-def test_error_flushes_async_file_log(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
+def test_bridge_client_uses_public_api_path_and_core_token_header() -> None:
+    """Python 日志桥只面向 TS Gateway 的公开 /api 日志提交接口。"""
+
+    assert LogBridgeClient.APPEND_PATH == "/api/logs/append"
+    assert LogBridgeClient.TOKEN_HEADER_NAME == "X-LinguaGacha-Core-Token"
+
+
+def test_console_false_keeps_file_only_target_semantics() -> None:
+    """旧 console=False 语义必须继续表示不进控制台与日志窗口。"""
+    client = FakeLogBridgeClient()
+    manager = LogManager(client)
+
+    manager.warning("只写文件", console=False)
+    manager.shutdown()
+
+    assert client.payloads[0].targets.file is True
+    assert client.payloads[0].targets.console is False
+    assert client.payloads[0].targets.window is False
+
+
+def test_exception_payload_preserves_error_message_and_stack() -> None:
+    """异常日志仍在 Python 侧格式化堆栈，再作为结构化字段交给 TS。"""
+    client = FakeLogBridgeClient()
+    manager = LogManager(client)
+    error = RuntimeError("boom")
+
+    manager.error("任务失败", error)
+    manager.shutdown()
+
+    payload = client.payloads[0]
+    assert payload.level == "error"
+    assert payload.message == "任务失败"
+    assert payload.error_message == "boom"
+    assert payload.stack is not None
+    assert "RuntimeError: boom" in payload.stack
+
+
+def test_fatal_submits_synchronously() -> None:
+    """fatal 不等后台线程，立即向 TS 日志桥提交。"""
+    client = FakeLogBridgeClient()
+    manager = LogManager(client)
+
+    manager.fatal("应用崩溃")
+
+    assert [payload.level for payload in client.payloads] == ["fatal"]
+    assert [payload.message for payload in client.payloads] == ["应用崩溃"]
+
+
+def test_bridge_unavailable_keeps_bounded_early_buffer() -> None:
+    """TS 日志接口未就绪时先保留有限缓存，避免早期日志无限占内存。"""
+    client = FakeLogBridgeClient(available=False)
+    manager = LogManager(client)
+    manager.pending_payloads = manager.pending_payloads.__class__(maxlen=2)
+
+    manager.info("一")
+    manager.info("二")
+    manager.info("三")
+
+    assert [payload.message for payload in manager.pending_payloads] == ["二", "三"]
+
+
+def test_empty_log_flushes_to_ts_bridge() -> None:
+    """旧版空分隔日志是有效日志，必须继续提交给 TS 日志权威。"""
+    client = FakeLogBridgeClient()
+    manager = LogManager(client)
+
+    manager.print("")
+    manager.info("接口测试开始")
+    manager.shutdown()
+
+    assert [payload.message for payload in client.payloads] == ["", "接口测试开始"]
+
+
+def test_fatal_falls_back_to_stderr_when_bridge_fails(
+    capsys: CaptureFixture[str],
 ) -> None:
-    """普通错误日志应先异步入队，并在 shutdown 时稳定落盘。"""
-    log_dir = create_log_dir(fs)
-    manager = build_log_manager(monkeypatch, log_dir)
+    """崩溃路径桥接失败时仍要写 stderr 作为最小兜底。"""
+    client = FakeLogBridgeClient(fail=True)
+    manager = LogManager(client)
 
-    try:
-        manager.error("任务失败", RuntimeError("boom"), console=False)
-        manager.shutdown()
+    manager.fatal("应用崩溃", RuntimeError("fatal"))
 
-        text = read_log_text(log_dir)
-        assert "任务失败" in text
-        assert "RuntimeError: boom" in text
-    finally:
-        manager.shutdown()
+    captured = capsys.readouterr()
+    assert "[FATAL] [python-core] 应用崩溃" in captured.err
+    assert "RuntimeError: fatal" in captured.err
 
 
-def test_console_log_publishes_log_event(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
+def test_empty_fallback_log_keeps_separator_on_stderr(
+    capsys: CaptureFixture[str],
 ) -> None:
-    """console=True 旧语义现在表示进入日志窗口事件流。"""
-    log_dir = create_log_dir(fs)
-    manager = build_log_manager(monkeypatch, log_dir)
+    """日志桥不可用时空分隔日志也要保留最小兜底输出。"""
+    client = FakeLogBridgeClient(fail=True)
+    manager = LogManager(client)
+    payload = manager.build_payload(logging.INFO, "", None, file=True, console=True)
 
-    try:
-        subscriber = manager.subscribe_events()
-        manager.warning("窗口日志", file=False, console=True)
+    manager.write_fallback_stderr(payload)
 
-        event = subscriber.get_nowait()
-        assert event.level == "warning"
-        assert event.message == "窗口日志"
-        assert event.sequence == 1
-        assert event.id == "log-1"
-    finally:
-        manager.shutdown()
-
-
-def test_console_false_does_not_publish_log_event(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """console=False 保留为只写文件，不进入日志窗口。"""
-    log_dir = create_log_dir(fs)
-    manager = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        subscriber = manager.subscribe_events()
-        manager.info("只进文件", console=False)
-        manager.shutdown()
-
-        assert subscriber.empty() is True
-        assert "只进文件" in read_log_text(log_dir)
-    finally:
-        manager.shutdown()
-
-
-def test_fatal_writes_file_immediately_and_marks_event_fatal(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """fatal 应同步直写文件，并在日志窗口里标记 fatal。"""
-    log_dir = create_log_dir(fs)
-    manager = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        subscriber = manager.subscribe_events()
-        manager.fatal("应用崩溃", RuntimeError("fatal"))
-
-        text = read_log_text(log_dir)
-        event = subscriber.get_nowait()
-        assert "应用崩溃" in text
-        assert "RuntimeError: fatal" in text
-        assert event.level == "fatal"
-        assert "RuntimeError: fatal" in event.message
-    finally:
-        manager.shutdown()
-
-
-def test_shutdown_closes_file_handler_stream(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """shutdown 应主动释放文件句柄，别把资源回收留给垃圾回收阶段。"""
-    log_dir = create_log_dir(fs)
-    manager = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        manager.info("收尾日志", console=False)
-        manager.shutdown()
-
-        assert manager.file_handler.stream is None
-    finally:
-        manager.shutdown()
-
-
-def test_subscribe_events_replays_ring_buffer(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """新订阅者应拿到当前进程内最近日志快照。"""
-    log_dir = create_log_dir(fs)
-    manager = build_log_manager(monkeypatch, log_dir)
-
-    try:
-        manager.info("第一条", file=False)
-        manager.error("第二条", file=False)
-
-        subscriber = manager.subscribe_events()
-        replayed_events = [subscriber.get_nowait(), subscriber.get_nowait()]
-
-        assert [event.message for event in replayed_events] == ["第一条", "第二条"]
-        assert [event.sequence for event in replayed_events] == [1, 2]
-    finally:
-        manager.shutdown()
-
-
-def test_log_event_ring_buffer_keeps_recent_limit(
-    fs: FakeFilesystem,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """ring buffer 只保留最近固定数量日志，避免日志窗口长期占用内存。"""
-    log_dir = create_log_dir(fs)
-    manager = build_log_manager(monkeypatch, log_dir)
-    manager.log_events = log_manager_module.deque(maxlen=2)
-
-    try:
-        manager.info("一", file=False)
-        manager.info("二", file=False)
-        manager.info("三", file=False)
-
-        assert [event.message for event in manager.snapshot_events()] == ["二", "三"]
-    finally:
-        manager.shutdown()
+    captured = capsys.readouterr()
+    assert captured.err == "[INFO] [python-core] \n"

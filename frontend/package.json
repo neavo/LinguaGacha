@@ -8,7 +8,6 @@
     "dev": "electron-vite dev",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && electron-builder",
     "format": "node ./scripts/format-related-files.mjs",
-    "format:check": "node ./scripts/format-related-files.mjs --check",
     "lint": "oxlint .",
     "test": "vitest run",
     "test:watch": "vitest",

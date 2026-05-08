@@ -9,7 +9,7 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 | --- | --- | --- |
 | Electron 渲染层 | `frontend/src/renderer/app/desktop/desktop-api.ts` -> TS Gateway baseUrl | 页面不得绕过它直连 `fetch` / `EventSource` 到随意路径 |
 | 渲染层项目运行态 | `/api/project/bootstrap/stream` + `/api/events/stream` | `ProjectStore` 依赖 bootstrap + `project.patch` 建立最小事实源 |
-| Electron 独立日志窗口 | `/api/logs/stream` | 只消费 `LogManager` 诊断日志事件，不进入项目运行态 |
+| Electron 独立日志窗口 | `/api/logs/stream` | 只消费 TS `LogManager` 诊断日志事件，不进入项目运行态 |
 | Python 侧对象化客户端 | `api/Contract/ApiPaths.py` + `api/Client/*.py` + `api/Models/*.py` | 路径常量、请求包装与对象化归客户端契约层，不从 Python server route 实现取常量 |
 
 内部 Database Service 与 Python Core 内部端口都不属于公开 `api/` 协议：它们由 Electron main 启动，只供 TS Gateway 或 Python Core 通过 token 调用。renderer、Python 客户端和外部调试脚本不应依赖 `/internal/database/*`、`/internal/runtime/*` 或 Python Core 内部监听地址。
@@ -29,7 +29,7 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 | 探活 | `/api/health` | Electron main 与渲染层启动前探活 |
 | 生命周期 | `/api/lifecycle/shutdown` | Electron main 请求 Core 优雅关闭的内部入口 |
 | 长期事件流 | `/api/events/stream` | 公开 SSE topic 与 `project.patch` |
-| 诊断日志流 | `/api/logs/stream` | 独立日志窗口订阅 `LogManager` 纯文本日志 |
+| 诊断日志流 | `/api/logs/stream` | 独立日志窗口订阅 TS `LogManager` 纯文本日志 |
 | bootstrap 首包 | `/api/project/bootstrap/stream` | 一次性阶段化项目首包 |
 | 项目与同步 mutation | `/api/project/*` | 工程、工作台、校对、reset、导入术语等 |
 | 项目派生工具 | `/api/project/text-preserve/preset-rules`、`/api/project/export-converted-translation` | 为 TS 侧工具页提供预置规则读取与转换结果文件写出 |
@@ -99,11 +99,11 @@ flowchart TD
 - 空闲时服务端发送 `: keepalive`。
 
 ### 诊断日志流
-- `/api/logs/stream` 独立于 `/api/events/stream`，只推送日志窗口需要的诊断日志，不混入 `ProjectStore` 运行态。
-- 连接建立后先回放当前进程内 `LogManager` ring buffer，再持续推送新增日志；持久排障历史仍以 `DATA_ROOT/log/app.log` 为准。
+- `/api/logs/stream` 由 TS Gateway 直接提供，独立于 `/api/events/stream`，只推送日志窗口需要的诊断日志，不混入 `ProjectStore` 运行态。
+- 连接建立后先回放当前进程内 TS `LogManager` ring buffer，再持续推送新增日志；持久排障历史以 `DATA_ROOT/log/app.yyyymmdd.log` 为准。
 - SSE 事件名固定为 `log.appended`，`data` 是扁平 `LogEvent`：`id`、`sequence`、`created_at`、`level`、`message`。
 - `level` 只使用 `debug / info / warning / error / fatal`；`message` 永远是纯文本，多行详情靠换行、缩进和 ASCII 标签表达。
-- 带 `console=False` 的日志调用只写文件，不进入 `/api/logs/stream`。
+- Python `LogManager` 是兼容提交层，通过 `POST /api/logs/append` 向 TS Gateway 提交结构化日志；旧调用参数 `console=False` 继续表示不进入控制台和日志窗口，只保留文件目标。
 
 ### bootstrap 首包
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   format_core_process_output_line,
+  normalize_core_process_log_message,
+  normalize_core_process_log_record,
   sanitize_core_process_output,
 } from "./lifecycle-process-output";
 
@@ -36,5 +38,39 @@ describe("format_core_process_output_line", () => {
 
   it("忽略空行", () => {
     expect(format_core_process_output_line("   ")).toBeNull();
+  });
+});
+
+describe("normalize_core_process_log_message", () => {
+  it("移除终端颜色并保留纯文本消息", () => {
+    const raw_text = "\u001B[31m[01:21:35] ERROR 失败\u001B[0m\n";
+
+    expect(normalize_core_process_log_message(raw_text)).toBe("[01:21:35] ERROR 失败");
+  });
+});
+
+describe("normalize_core_process_log_record", () => {
+  it("识别 Python fallback 前缀中的真实等级", () => {
+    expect(normalize_core_process_log_record("[INFO] [python-core] 收尾完成", "error")).toEqual({
+      level: "info",
+      message: "收尾完成",
+      source: "python-core",
+    });
+  });
+
+  it("保留 Python fallback 空消息并识别真实等级", () => {
+    expect(normalize_core_process_log_record("[INFO] [python-core] \u001B[0m\n", "error")).toEqual({
+      level: "info",
+      message: "",
+      source: "python-core",
+    });
+  });
+
+  it("普通 stderr 行仍按错误等级记录", () => {
+    expect(normalize_core_process_log_record("Traceback line", "error")).toEqual({
+      level: "error",
+      message: "Traceback line",
+      source: "python-stderr",
+    });
   });
 });
