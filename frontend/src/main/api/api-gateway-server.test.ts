@@ -126,6 +126,62 @@ describe("ApiGatewayServer", () => {
     expect(py_server.requests).toEqual([]);
   });
 
+  it("校对同步 mutation 由 TS Gateway 直接写库且只调用内部 runtime bridge", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "proofreading-direct-write.lg");
+    const py_server = await start_fake_py_server(lg_path);
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_core_api_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "proofreading-direct-write" },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [{ id: 1, src: "原文", dst: "", status: "NONE" }],
+      },
+    });
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/project/proofreading/save-item`, {
+      body: JsonTool.stringifyStrict({
+        items: [{ id: 1, dst: "译文", status: "PROCESSED" }],
+        translation_extras: { line: 1 },
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = (await response.json()) as {
+      ok?: boolean;
+      data?: { accepted?: boolean; sectionRevisions?: Record<string, number> };
+    };
+
+    expect(body.ok).toBe(true);
+    expect(body.data?.accepted).toBe(true);
+    expect(body.data?.sectionRevisions).toEqual({ items: 1, proofreading: 1 });
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
+    ]);
+    expect(py_server.requests.map((item) => item.path)).toEqual([
+      "/internal/runtime/project-state",
+      "/internal/runtime/sync",
+    ]);
+  });
+
   it("由 TS LogManager 直接提供公开日志流", async () => {
     const app_root = create_app_root();
     const py_server = await start_fake_py_server();
@@ -364,7 +420,7 @@ describe("ApiGatewayServer", () => {
     };
   }
 
-  async function start_fake_py_server(): Promise<{
+  async function start_fake_py_server(runtime_project_path?: string): Promise<{
     baseUrl: string;
     close: () => Promise<void>;
     requests: Array<{ method?: string; path?: string; raw: string }>;
@@ -378,6 +434,31 @@ describe("ApiGatewayServer", () => {
       request.on("end", () => {
         const raw = Buffer.concat(chunks).toString("utf-8");
         requests.push({ method: request.method, path: request.url, raw });
+        if (request.url === "/internal/runtime/project-state") {
+          response.writeHead(200, {
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          response.end(
+            JsonTool.stringifyStrict({
+              ok: true,
+              data: {
+                loaded: runtime_project_path !== undefined,
+                projectPath: runtime_project_path ?? "",
+                busy: false,
+              },
+            }),
+          );
+          return;
+        }
+        if (request.url === "/internal/runtime/sync") {
+          response.writeHead(200, {
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          response.end(JsonTool.stringifyStrict({ ok: true, data: { accepted: true } }));
+          return;
+        }
         response.writeHead(200, {
           "Access-Control-Allow-Origin": "*",
           "Content-Type": "application/json; charset=utf-8",

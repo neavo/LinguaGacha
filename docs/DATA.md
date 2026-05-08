@@ -37,7 +37,7 @@ flowchart TD
 | P2 项目同步 mutation | `frontend/src/main/service` + `frontend/src/main/database/` | TS Gateway 调用 project 服务；写入后通过内部 runtime bridge 清理 Python Core 缓存 |
 | 规则、提示词运行时读取 | `Quality/*` | Python Core `DataManager` |
 | 分析候选、checkpoint、分析结果 | `Analysis/*` | `DataManager` |
-| 校对保存、校对 revision、重翻提交 | `Proofreading/*` 与 `Engine/Retranslate/*` | `ProofreadingAppService` 处理同步保存；重翻由 `TaskAppService` 启动 Engine 任务并回写数据层 |
+| 校对保存、校对 revision、重翻提交 | `frontend/src/main/service`、`Proofreading/*` 与 `Engine/Retranslate/*` | 校对同步保存由 TS Gateway 调用 proofreading 服务直接写 `.lg`；Python 保留校对 revision 读侧与重翻任务链路，重翻由 `TaskAppService` 启动 Engine 任务并回写数据层 |
 | 全局忙碌态与实时请求数 | `Engine.status`、`request_in_flight_count` | `Engine` |
 | 文件格式解析与写回 | `FileManager.py` | `module/File` |
 | 模型列表整理、模板补齐、排序与默认回退 | `module/Model/Manager.py` | `module/Model` |
@@ -123,10 +123,10 @@ flowchart TD
 - Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。
 - P1 后应用设置、最近项目、模型页 CRUD 由 TS main 的 `service/` 服务读写 `DATA_ROOT/userdata/config.json`；Python Core 的 `Config`、`ModelManager`、模型 `list-available/test` runner 与任务消费仍保留为内部运行时能力，并通过 `/internal/runtime/sync` 刷新内存状态。
 - P1 后质量规则与提示词页面 CRUD / 预设 IO 由 TS main 的 `service/` 服务承载；`.lg` 写入仍只通过 Electron main `ProjectDatabase`，写入成功后由 `/internal/runtime/sync` 清理 Python Core 的 meta/rule/prompt 缓存，任务侧后续读取必须重新走 database。
-- P2 后工作台文件写 mutation、项目设置对齐、translation reset、analysis reset 与 analysis glossary import 由 TS main 的 `service/` 服务承载；Python Core 保留解析、reset preview、bootstrap、任务、导出和运行态读取，收到 `project_data_changed` 后按 section 清理 meta/items/assets/rules 缓存，其中 files/items/analysis/quality/project 变动都会让 meta cache 失效，工作台文件写 mutation 仍复用 Python Core 文件操作锁。
+- P2 后工作台文件写 mutation、项目设置对齐、translation reset、analysis reset、analysis glossary import 与校对同步保存由 TS main 的 `service/` 服务承载；Python Core 保留解析、reset preview、bootstrap、任务、导出和运行态读取，收到 `project_data_changed` 后按 section 清理 meta/items/assets/rules 缓存，其中 files/items/analysis/quality/project 变动都会让 meta cache 失效，工作台文件写 mutation 仍复用 Python Core 文件操作锁。
 - 分析候选导入术语的预演和筛选属于前端 planner；Python 数据层保留候选聚合、候选数缓存和分析结果持久化。
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
-- 校对 `save-item`、`save-all`、`replace-all` 属于同步 mutation；重翻通过 `/api/tasks/start-retranslate` 进入任务型链路，Engine 持有任务生命周期与 `retranslating_item_ids`，批次提交再回写数据层与 `project.patch`。
+- 校对 `save-item`、`save-all`、`replace-all` 属于 TS main 承载的同步 mutation，写入后推进 items 与 proofreading revision，并通过内部 runtime bridge 清理 Python Core 读侧缓存；重翻通过 `/api/tasks/start-retranslate` 进入任务型链路，Engine 持有任务生命周期与 `retranslating_item_ids`，批次提交再回写数据层与 `project.patch`。
 
 ### 迁移入口
 

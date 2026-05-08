@@ -18,9 +18,6 @@ class ProjectRoutes:
     TEXT_PRESERVE_PRESET_RULES_PATH: str = "/api/project/text-preserve/preset-rules"
     EXPORT_CONVERTED_TRANSLATION_PATH: str = "/api/project/export-converted-translation"
     WORKBENCH_PARSE_FILE_PATH: str = "/api/project/workbench/parse-file"
-    PROOFREADING_SAVE_ITEM_PATH: str = "/api/project/proofreading/save-item"
-    PROOFREADING_SAVE_ALL_PATH: str = "/api/project/proofreading/save-all"
-    PROOFREADING_REPLACE_ALL_PATH: str = "/api/project/proofreading/replace-all"
     BOOTSTRAP_STREAM_PATH: str = "/api/project/bootstrap/stream"
 
     @classmethod
@@ -29,7 +26,6 @@ class ProjectRoutes:
         core_api_server: CoreApiServer,
         project_app_service=None,
         workbench_app_service=None,
-        proofreading_app_service=None,
         project_bootstrap_app_service=None,
     ) -> None:
         """bootstrap 采用 GET stream，避免把加载命令和首包读取揉成一体。"""
@@ -132,28 +128,6 @@ class ProjectRoutes:
                 cls.WORKBENCH_PARSE_FILE_PATH,
                 lambda request: ApiResponse(
                     ok=True, data=workbench_app_service.parse_file(request)
-                ),
-            )
-        if proofreading_app_service is not None:
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_SAVE_ITEM_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.save_item(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_SAVE_ALL_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.save_all(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.PROOFREADING_REPLACE_ALL_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=proofreading_app_service.replace_all(request)
                 ),
             )
         if project_bootstrap_app_service is not None:

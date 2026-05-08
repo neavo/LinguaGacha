@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
+from api.Contract.ApiPaths import ProofreadingApiPaths
 from api.Models.ProjectRuntime import ProjectMutationAck
-from api.Server.Routes.ProjectRoutes import ProjectRoutes
 
 
 class ProofreadingApiClient:
@@ -16,23 +16,17 @@ class ProofreadingApiClient:
     def save_item(self, request: dict[str, Any]) -> ProjectMutationAck:
         """保存单条条目，并返回统一 mutation ack。"""
 
-        response = self.api_client.post(
-            ProjectRoutes.PROOFREADING_SAVE_ITEM_PATH, request
-        )
+        response = self.api_client.post(ProofreadingApiPaths.SAVE_ITEM_PATH, request)
         return ProjectMutationAck.from_dict(response)
 
     def save_all(self, request: dict[str, Any]) -> ProjectMutationAck:
         """批量保存条目，并返回统一 mutation ack。"""
 
-        response = self.api_client.post(
-            ProjectRoutes.PROOFREADING_SAVE_ALL_PATH, request
-        )
+        response = self.api_client.post(ProofreadingApiPaths.SAVE_ALL_PATH, request)
         return ProjectMutationAck.from_dict(response)
 
     def replace_all(self, request: dict[str, Any]) -> ProjectMutationAck:
         """执行批量替换，并返回统一 mutation ack。"""
 
-        response = self.api_client.post(
-            ProjectRoutes.PROOFREADING_REPLACE_ALL_PATH, request
-        )
+        response = self.api_client.post(ProofreadingApiPaths.REPLACE_ALL_PATH, request)
         return ProjectMutationAck.from_dict(response)

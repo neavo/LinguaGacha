@@ -34,12 +34,6 @@ WORKBENCH_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/workbench/parse-file", "parse_file"),
 )
 
-PROOFREADING_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
-    JsonRouteCase("/api/project/proofreading/save-item", "save_item"),
-    JsonRouteCase("/api/project/proofreading/save-all", "save_all"),
-    JsonRouteCase("/api/project/proofreading/replace-all", "replace_all"),
-)
-
 
 class StubBootstrapAppService:
     def __init__(self) -> None:
@@ -83,17 +77,14 @@ def test_project_routes_register_project_command_http_contract() -> None:
 def test_project_routes_register_runtime_mutation_http_contract() -> None:
     recorder = RouteRecorder()
     workbench_service = RecordingRouteService()
-    proofreading_service = RecordingRouteService()
 
     ProjectRoutes.register(
         recorder,
         workbench_app_service=workbench_service,
-        proofreading_app_service=proofreading_service,
     )
 
-    route_cases = WORKBENCH_ROUTE_CASES + PROOFREADING_ROUTE_CASES
     assert recorder.json_routes == [
-        ("POST", route_case.path) for route_case in route_cases
+        ("POST", route_case.path) for route_case in WORKBENCH_ROUTE_CASES
     ]
     assert recorder.stream_routes == []
 
@@ -106,20 +97,7 @@ def test_project_routes_register_runtime_mutation_http_contract() -> None:
             "data": {"handled_by": route_case.service_method, "request": request},
         }
 
-    for route_case in PROOFREADING_ROUTE_CASES:
-        request = {"route": route_case.path}
-        response = recorder.json_handlers[("POST", route_case.path)](request)
-
-        assert response.to_dict() == {
-            "ok": True,
-            "data": {"handled_by": route_case.service_method, "request": request},
-        }
-
     assert workbench_service.calls == [
         (route_case.service_method, {"route": route_case.path})
         for route_case in WORKBENCH_ROUTE_CASES
-    ]
-    assert proofreading_service.calls == [
-        (route_case.service_method, {"route": route_case.path})
-        for route_case in PROOFREADING_ROUTE_CASES
     ]

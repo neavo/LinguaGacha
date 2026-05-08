@@ -8,7 +8,6 @@ from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.ModelProbeAppService import ModelProbeAppService
 from api.Application.ProjectAppService import ProjectAppService
 from api.Application.ProjectBootstrapAppService import ProjectBootstrapAppService
-from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Application.RuntimeBridgeAppService import RuntimeBridgeAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
@@ -56,7 +55,6 @@ class ServerBootstrap:
         """应用 UI 模式使用的默认启动入口。"""
 
         project_app_service = ProjectAppService()
-        proofreading_app_service = ProofreadingAppService()
         task_app_service = TaskAppService()
         workbench_app_service = WorkbenchAppService()
         model_probe_app_service = ModelProbeAppService()
@@ -65,7 +63,6 @@ class ServerBootstrap:
         )
         return cls.start_for_test(
             project_app_service=project_app_service,
-            proofreading_app_service=proofreading_app_service,
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
             model_probe_app_service=model_probe_app_service,
@@ -81,7 +78,6 @@ class ServerBootstrap:
         cls,
         *,
         project_app_service: ProjectAppService | None = None,
-        proofreading_app_service: ProofreadingAppService | None = None,
         task_app_service: TaskAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
         model_probe_app_service: ModelProbeAppService | None = None,
@@ -116,7 +112,6 @@ class ServerBootstrap:
         http_server = cls.create_http_server_with_candidates(
             candidate_ports=resolved_candidate_ports,
             project_app_service=project_app_service,
-            proofreading_app_service=proofreading_app_service,
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
             model_probe_app_service=model_probe_app_service,
@@ -159,7 +154,6 @@ class ServerBootstrap:
         *,
         candidate_ports: tuple[int, ...],
         project_app_service: ProjectAppService | None,
-        proofreading_app_service: ProofreadingAppService | None,
         task_app_service: TaskAppService | None,
         workbench_app_service: WorkbenchAppService | None,
         model_probe_app_service: ModelProbeAppService | None,
@@ -178,7 +172,6 @@ class ServerBootstrap:
                 core_api_server,
                 project_app_service=project_app_service,
                 workbench_app_service=workbench_app_service,
-                proofreading_app_service=proofreading_app_service,
                 project_bootstrap_app_service=project_bootstrap_app_service,
                 task_app_service=task_app_service,
                 model_probe_app_service=model_probe_app_service,
@@ -203,7 +196,6 @@ class ServerBootstrap:
         *,
         project_app_service: ProjectAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
-        proofreading_app_service: ProofreadingAppService | None = None,
         project_bootstrap_app_service: ProjectBootstrapAppService | None = None,
         task_app_service: TaskAppService | None = None,
         model_probe_app_service: ModelProbeAppService | None = None,
@@ -223,14 +215,12 @@ class ServerBootstrap:
         if (
             project_app_service is not None
             or workbench_app_service is not None
-            or proofreading_app_service is not None
             or project_bootstrap_app_service is not None
         ):
             ProjectRoutes.register(
                 core_api_server,
                 project_app_service,
                 workbench_app_service,
-                proofreading_app_service,
                 project_bootstrap_app_service,
             )
         if task_app_service is not None:

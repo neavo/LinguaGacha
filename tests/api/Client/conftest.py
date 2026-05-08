@@ -6,7 +6,6 @@ import pytest
 
 from api.Application.ModelProbeAppService import ModelProbeAppService
 from api.Application.ProjectAppService import ProjectAppService
-from api.Application.ProofreadingAppService import ProofreadingAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.ServerBootstrap import ServerBootstrap
@@ -18,11 +17,7 @@ from tests.api.support.application_fakes import FakeWorkbenchManager
 
 
 type ServiceOverride = (
-    ModelProbeAppService
-    | ProjectAppService
-    | ProofreadingAppService
-    | TaskAppService
-    | WorkbenchAppService
+    ModelProbeAppService | ProjectAppService | TaskAppService | WorkbenchAppService
 )
 
 type StartApiServerFactory = Callable[..., str]

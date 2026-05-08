@@ -42,3 +42,11 @@ class QualityApiPaths:
     PROMPT_PRESET_SAVE_PATH: str = "/api/quality/prompts/presets/save"
     PROMPT_PRESET_RENAME_PATH: str = "/api/quality/prompts/presets/rename"
     PROMPT_PRESET_DELETE_PATH: str = "/api/quality/prompts/presets/delete"
+
+
+class ProofreadingApiPaths:
+    """公开校对 API 路径常量；同步保存由 Electron main 实现。"""
+
+    SAVE_ITEM_PATH: str = "/api/project/proofreading/save-item"
+    SAVE_ALL_PATH: str = "/api/project/proofreading/save-all"
+    REPLACE_ALL_PATH: str = "/api/project/proofreading/replace-all"

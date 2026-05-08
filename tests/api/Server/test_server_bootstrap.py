@@ -109,7 +109,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         ),
         project_app_service=object(),
         workbench_app_service=object(),
-        proofreading_app_service=object(),
         project_bootstrap_app_service=SimpleNamespace(
             stream_to_handler=lambda handler: None,
         ),
@@ -132,7 +131,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             ("GET", "/api/project/bootstrap/stream"),
             ("POST", "/api/project/load"),
             ("POST", "/api/project/workbench/parse-file"),
-            ("POST", "/api/project/proofreading/save-item"),
             ("POST", "/api/tasks/start-translation"),
             ("POST", ModelApiPaths.LIST_AVAILABLE_PATH),
             ("POST", ModelApiPaths.TEST_PATH),
@@ -146,7 +144,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         "/api/project/bootstrap/stream": "stream",
         "/api/project/load": "json",
         "/api/project/workbench/parse-file": "json",
-        "/api/project/proofreading/save-item": "json",
         "/api/tasks/start-translation": "json",
         ModelApiPaths.LIST_AVAILABLE_PATH: "json",
         ModelApiPaths.TEST_PATH: "json",
@@ -378,7 +375,6 @@ def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
     # Arrange
     base_url, shutdown = ServerBootstrap.start_for_test(
         project_app_service=object(),
-        proofreading_app_service=object(),
         task_app_service=SimpleNamespace(
             build_task_snapshot=lambda task_type: {"task_type": task_type}
         ),
@@ -408,6 +404,9 @@ def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
         ("POST", QualityApiPaths.SAVE_ENTRIES_PATH),
         ("POST", QualityApiPaths.UPDATE_META_PATH),
         ("POST", QualityApiPaths.PROMPT_SAVE_PATH),
+        ("POST", "/api/project/proofreading/save-item"),
+        ("POST", "/api/project/proofreading/save-all"),
+        ("POST", "/api/project/proofreading/replace-all"),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/query-proofreading"),

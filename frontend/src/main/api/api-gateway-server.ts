@@ -7,6 +7,7 @@ import { serve } from "@hono/node-server";
 import { ProjectDatabase } from "../database/database-operations";
 import { ModelService } from "../service/model-service";
 import { ProjectService } from "../service/project-service";
+import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
 import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "../service/path-service";
@@ -110,6 +111,7 @@ export class ApiGatewayServer {
     const config_service = new ConfigService(paths, core_bridge);
     const model_service = new ModelService(paths, config_service, core_bridge);
     const project_service = new ProjectService(this.options.database, core_bridge);
+    const proofreading_service = new ProofreadingService(this.options.database, core_bridge);
     const quality_service = new QualityService(
       paths,
       config_service,
@@ -206,6 +208,15 @@ export class ApiGatewayServer {
     );
     this.post_json(app, "/api/project/analysis/import-glossary", (body) =>
       project_service.import_analysis_glossary(body),
+    );
+    this.post_json(app, "/api/project/proofreading/save-item", (body) =>
+      proofreading_service.save_item(body),
+    );
+    this.post_json(app, "/api/project/proofreading/save-all", (body) =>
+      proofreading_service.save_all(body),
+    );
+    this.post_json(app, "/api/project/proofreading/replace-all", (body) =>
+      proofreading_service.replace_all(body),
     );
 
     this.post_json(app, "/api/quality/rules/save-entries", (body) =>
