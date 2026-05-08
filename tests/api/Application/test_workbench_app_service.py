@@ -1,65 +1,12 @@
-import pytest
-
-
-def test_add_file_routes_through_workbench_manager(
-    workbench_app_service,
-    fake_workbench_manager,
-) -> None:
-    result = workbench_app_service.add_file(
-        {
-            "files": [
-                {
-                    "source_path": "C:/next/b.txt",
-                    "target_rel_path": "script/b.txt",
-                    "file_record": {
-                        "rel_path": "script/b.txt",
-                        "file_type": "TXT",
-                        "sort_index": 2,
-                    },
-                    "parsed_items": [
-                        {
-                            "id": 101,
-                            "src": "line-1",
-                            "dst": "",
-                            "row": 1,
-                            "file_type": "TXT",
-                            "file_path": "script/b.txt",
-                            "text_type": "NONE",
-                            "status": "NONE",
-                            "retry_count": 0,
-                        }
-                    ],
-                }
-            ],
-            "derived_meta": {
-                "translation_extras": {"line": 1},
-                "prefilter_config": {
-                    "source_language": "JA",
-                    "mtool_optimizer_enable": True,
-                },
-            },
-            "expected_section_revisions": {
-                "files": 3,
-                "items": 5,
-                "analysis": 2,
-            },
-        }
-    )
-
-    assert result["accepted"] is True
-    assert result["sectionRevisions"] == {
-        "files": 1,
-        "items": 2,
-        "analysis": 3,
-    }
-    assert fake_workbench_manager.add_batch_calls == [["C:/next/b.txt"]]
-    assert fake_workbench_manager.add_payloads[0]["target_rel_path"] == "script/b.txt"
+from api.Application.WorkbenchAppService import WorkbenchAppService
 
 
 def test_parse_file_routes_through_workbench_manager(
-    workbench_app_service,
+    workbench_app_service: WorkbenchAppService,
     fake_workbench_manager,
 ) -> None:
+    """工作台 Py 服务只保留文件解析预演，写 mutation 已迁到 TS Gateway。"""
+
     result = workbench_app_service.parse_file(
         {"source_paths": ["C:/next/b.txt", "C:/next/c.txt"]}
     )
@@ -73,9 +20,13 @@ def test_parse_file_routes_through_workbench_manager(
     ]
 
 
-def test_parse_file_skips_failed_entries(workbench_app_service) -> None:
+def test_parse_file_skips_failed_entries() -> None:
+    """批量解析允许单文件失败，避免一个坏文件阻断整批预演。"""
+
     class PartlyFailingWorkbenchManager:
         def parse_file_preview(self, source_path: str) -> dict[str, object]:
+            """模拟只读解析能力，坏文件抛错后由服务层跳过。"""
+
             if source_path.endswith("bad.txt"):
                 raise ValueError("parse failed")
             return {
@@ -84,7 +35,7 @@ def test_parse_file_skips_failed_entries(workbench_app_service) -> None:
                 "parsed_items": [],
             }
 
-    service = type(workbench_app_service)(PartlyFailingWorkbenchManager())
+    service = WorkbenchAppService(PartlyFailingWorkbenchManager())
 
     result = service.parse_file({"source_paths": ["C:/next/ok.txt", "C:/next/bad.txt"]})
 
@@ -98,76 +49,3 @@ def test_parse_file_skips_failed_entries(workbench_app_service) -> None:
             }
         ]
     }
-
-
-def test_reorder_files_routes_through_workbench_manager(
-    workbench_app_service,
-    fake_workbench_manager,
-) -> None:
-    result = workbench_app_service.reorder_files(
-        {"ordered_rel_paths": ["script/b.txt", "script/a.txt"]}
-    )
-
-    assert result["accepted"] is True
-    assert fake_workbench_manager.reorder_calls == [["script/b.txt", "script/a.txt"]]
-
-
-def test_reset_file_routes_through_workbench_manager(
-    workbench_app_service,
-    fake_workbench_manager,
-) -> None:
-    result = workbench_app_service.reset_file({"rel_paths": ["script/a.txt"]})
-
-    assert result["accepted"] is True
-    assert fake_workbench_manager.reset_calls == [["script/a.txt"]]
-
-
-def test_delete_file_routes_through_workbench_manager(
-    workbench_app_service,
-    fake_workbench_manager,
-) -> None:
-    result = workbench_app_service.delete_file(
-        {"rel_paths": ["script/a.txt", "script/b.txt"]}
-    )
-
-    assert result["accepted"] is True
-    assert fake_workbench_manager.delete_calls == [["script/a.txt", "script/b.txt"]]
-
-
-def test_add_file_propagates_manager_value_error(workbench_app_service) -> None:
-    class FailingWorkbenchManager:
-        def persist_add_files_payload(
-            self,
-            files: list[dict[str, object]],
-            *,
-            translation_extras: dict[str, object],
-            prefilter_config: dict[str, object],
-            expected_section_revisions: dict[str, int] | None = None,
-        ) -> None:
-            del files
-            del translation_extras, prefilter_config
-            del expected_section_revisions
-            raise ValueError("duplicate: C:/next/b.txt")
-
-    service = type(workbench_app_service)(FailingWorkbenchManager())
-
-    with pytest.raises(ValueError, match="duplicate: C:/next/b.txt"):
-        service.add_file(
-            {
-                "files": [
-                    {
-                        "source_path": "C:/next/b.txt",
-                        "target_rel_path": "script/b.txt",
-                        "file_record": {
-                            "rel_path": "script/b.txt",
-                            "file_type": "TXT",
-                        },
-                        "parsed_items": [],
-                    }
-                ],
-                "derived_meta": {
-                    "translation_extras": {},
-                    "prefilter_config": {},
-                },
-            }
-        )

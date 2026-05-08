@@ -26,8 +26,6 @@ class FakeProjectManager:
         self.create_preview_calls: list[dict[str, object]] = []
         self.create_commit_calls: list[dict[str, object]] = []
         self.open_alignment_preview_calls: list[str] = []
-        self.settings_alignment_calls: list[dict[str, object]] = []
-        self.settings_alignment_file_calls: list[dict[str, object]] = []
 
     def load_project(self, path: str) -> None:
         self.loaded = True
@@ -74,19 +72,6 @@ class FakeProjectManager:
                 "skip_duplicate_source_text_enable": False,
             },
             "draft": None,
-        }
-
-    def apply_project_settings_alignment_payload(self, **kwargs: object) -> None:
-        self.settings_alignment_calls.append(dict(kwargs))
-
-    def apply_project_settings_alignment_file_payload(
-        self, **kwargs: object
-    ) -> dict[str, object]:
-        self.settings_alignment_file_calls.append(dict(kwargs))
-        return {
-            "accepted": True,
-            "projectRevision": 2,
-            "sectionRevisions": {"items": 2, "analysis": 2},
         }
 
     def get_section_revision(self, stage: str) -> int:
@@ -249,12 +234,7 @@ class FakeWorkbenchManager:
     """提供工作台文件操作所需的最小数据桩。"""
 
     def __init__(self) -> None:
-        self.add_batch_calls: list[list[str]] = []
-        self.add_payloads: list[dict[str, object]] = []
         self.parse_calls: list[tuple[str, str | None]] = []
-        self.reset_calls: list[list[str]] = []
-        self.delete_calls: list[list[str]] = []
-        self.reorder_calls: list[list[str]] = []
 
     def parse_file_preview(
         self,
@@ -280,55 +260,6 @@ class FakeWorkbenchManager:
                 }
             ],
         }
-
-    def persist_add_files_payload(
-        self,
-        files: list[dict[str, object]],
-        *,
-        translation_extras: dict[str, object],
-        prefilter_config: dict[str, object],
-        expected_section_revisions: dict[str, int] | None = None,
-    ) -> None:
-        del translation_extras, prefilter_config
-        del expected_section_revisions
-        self.add_batch_calls.append(
-            [str(file.get("source_path", "")) for file in files]
-        )
-        self.add_payloads.extend(dict(file) for file in files)
-
-    def persist_reset_files(
-        self,
-        rel_paths: list[str],
-        *,
-        item_payloads: list[dict[str, object]],
-        translation_extras: dict[str, object],
-        prefilter_config: dict[str, object],
-        expected_section_revisions: dict[str, int] | None = None,
-    ) -> None:
-        del item_payloads, translation_extras, prefilter_config
-        del expected_section_revisions
-        self.reset_calls.append(list(rel_paths))
-
-    def persist_delete_files(
-        self,
-        rel_paths: list[str],
-        *,
-        translation_extras: dict[str, object],
-        prefilter_config: dict[str, object],
-        expected_section_revisions: dict[str, int] | None = None,
-    ) -> None:
-        del translation_extras, prefilter_config
-        del expected_section_revisions
-        self.delete_calls.append(list(rel_paths))
-
-    def persist_reordered_files(
-        self,
-        ordered_rel_paths: list[str],
-        *,
-        expected_section_revisions: dict[str, int] | None = None,
-    ) -> None:
-        del expected_section_revisions
-        self.reorder_calls.append(list(ordered_rel_paths))
 
     def build_project_mutation_ack(
         self,

@@ -5,6 +5,7 @@ from typing import Any
 
 from api.Application.AppLanguageNormalizer import AppLanguageNormalizer
 from base.Base import Base
+from module.Engine.Engine import Engine
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Localizer.Localizer import Localizer
@@ -20,6 +21,7 @@ class RuntimeBridgeAppService:
 
         self.instance_token = instance_token.strip()
         self.data_manager = DataManager.get()
+        self.engine = Engine.get()
 
     def get_project_state(
         self,
@@ -34,6 +36,7 @@ class RuntimeBridgeAppService:
         return {
             "loaded": self.data_manager.is_loaded(),
             "projectPath": project_path,
+            "busy": self.is_engine_busy(),
         }
 
     def sync(
@@ -56,6 +59,12 @@ class RuntimeBridgeAppService:
             self.clear_project_quality_caches(clear_prompt_cache=False)
         elif sync_type == "project_prompts_changed":
             self.clear_project_quality_caches(clear_prompt_cache=True)
+        elif sync_type == "project_data_changed":
+            self.clear_project_data_caches(payload)
+        elif sync_type == "project_file_operation_begin":
+            self.begin_project_file_operation()
+        elif sync_type == "project_file_operation_end":
+            self.finish_project_file_operation()
         else:
             raise ValueError(f"未知 runtime sync 类型：{sync_type}")
 
@@ -90,6 +99,24 @@ class RuntimeBridgeAppService:
         config = Config().load()
         config.initialize_models()
 
+    def is_engine_busy(self) -> bool:
+        """读取 Engine 忙碌态，保持 TS 同步 mutation 与任务生命周期互斥。"""
+
+        return bool(getattr(self.engine, "is_busy", lambda: False)())
+
+    def begin_project_file_operation(self) -> None:
+        """进入工作台文件操作临界区，复用 Python Core 侧文件互斥锁。"""
+
+        if self.is_engine_busy():
+            raise ValueError(Localizer.get().task_running)
+        if not self.data_manager.try_begin_file_operation():
+            raise ValueError(Localizer.get().task_running)
+
+    def finish_project_file_operation(self) -> None:
+        """释放工作台文件操作临界区，允许后续文件 mutation 继续执行。"""
+
+        self.data_manager.finish_file_operation()
+
     def clear_project_quality_caches(self, *, clear_prompt_cache: bool) -> None:
         """清理项目质量缓存，确保规则和提示词改动后重新读取数据库。"""
 
@@ -98,4 +125,29 @@ class RuntimeBridgeAppService:
             session.meta_cache = {}
             session.rule_cache.clear()
             if clear_prompt_cache:
+                session.rule_text_cache.clear()
+
+    def clear_project_data_caches(self, payload: dict[str, Any]) -> None:
+        """按 TS 写入影响的 section 清理项目缓存，保留 Py 读侧重新取库能力。"""
+
+        sections_raw = payload.get("sections", [])
+        sections = (
+            {str(section) for section in sections_raw if isinstance(section, str)}
+            if isinstance(sections_raw, list)
+            else set()
+        )
+        session = self.data_manager.session
+        with session.state_lock:
+            if (
+                not sections
+                or {"project", "files", "items", "analysis", "quality"} & sections
+            ):
+                session.meta_cache = {}
+            if {"files", "items", "analysis"} & sections:
+                session.item_cache = None
+                session.item_cache_index = {}
+            if "files" in sections:
+                session.asset_decompress_cache.clear()
+            if "quality" in sections:
+                session.rule_cache.clear()
                 session.rule_text_cache.clear()

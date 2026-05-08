@@ -138,11 +138,7 @@ class _FakeProjectManagerForResetMutations:
             "line": 3,
         }
         self.preview_translation_reset_all_calls: list[object] = []
-        self.apply_translation_reset_all_calls: list[dict[str, object]] = []
-        self.apply_translation_reset_failed_calls: list[dict[str, object]] = []
         self.preview_analysis_reset_failed_calls: int = 0
-        self.apply_analysis_reset_all_calls: list[dict[str, object]] = []
-        self.apply_analysis_reset_failed_calls: list[dict[str, object]] = []
         self.runtime_section_revisions = {
             "items": 5,
             "analysis": 7,
@@ -164,46 +160,11 @@ class _FakeProjectManagerForResetMutations:
         self.preview_translation_reset_all_calls.append(config)
         return [dict(item) for item in self.preview_translation_items]
 
-    def apply_translation_reset_all_payload(
-        self, **kwargs: object
-    ) -> list[dict[str, object]]:
-        """记录全部翻译重置提交载荷，便于断言服务转发。"""
-
-        self.apply_translation_reset_all_calls.append(dict(kwargs))
-        self.runtime_section_revisions["items"] += 1
-        self.runtime_section_revisions["analysis"] += 1
-        return [dict(item) for item in kwargs["item_payloads"]]
-
-    def apply_translation_reset_failed_payload(
-        self, **kwargs: object
-    ) -> list[dict[str, object]]:
-        """记录失败项翻译重置载荷，便于断言服务转发。"""
-
-        self.apply_translation_reset_failed_calls.append(dict(kwargs))
-        self.runtime_section_revisions["items"] += 1
-        return [dict(item) for item in kwargs["item_payloads"]]
-
     def preview_analysis_reset_failed(self) -> dict[str, int]:
         """返回失败项分析重置预览，模拟项目层筛选结果。"""
 
         self.preview_analysis_reset_failed_calls += 1
         return dict(self.preview_analysis_status_summary)
-
-    def apply_analysis_reset_all_payload(self, **kwargs: object) -> dict[str, object]:
-        """记录全部分析重置载荷，便于断言服务转发。"""
-
-        self.apply_analysis_reset_all_calls.append(dict(kwargs))
-        self.runtime_section_revisions["analysis"] += 1
-        return dict(kwargs["analysis_extras"])
-
-    def apply_analysis_reset_failed_payload(
-        self, **kwargs: object
-    ) -> tuple[int, dict[str, object]]:
-        """记录失败项分析重置载荷，便于断言服务转发。"""
-
-        self.apply_analysis_reset_failed_calls.append(dict(kwargs))
-        self.runtime_section_revisions["analysis"] += 1
-        return 2, dict(kwargs["analysis_extras"])
 
     def build_project_mutation_ack(
         self,
@@ -417,66 +378,6 @@ def test_open_project_alignment_preview_does_not_load_project(
     assert fake_project_manager.load_calls == []
 
 
-def test_apply_project_settings_alignment_uses_loaded_runtime_ack(
-    project_app_service,
-    fake_project_manager,
-) -> None:
-    project_app_service.runtime_service = fake_project_manager
-
-    result = project_app_service.apply_project_settings_alignment(
-        {
-            "mode": "prefiltered_items",
-            "items": [{"id": 1, "status": "RULE_SKIPPED"}],
-            "project_settings": {"source_language": "JA"},
-            "translation_extras": {"line": 0},
-            "prefilter_config": {"source_language": "JA"},
-            "expected_section_revisions": {"items": 1, "analysis": 1},
-        }
-    )
-
-    assert fake_project_manager.settings_alignment_calls == [
-        {
-            "mode": "prefiltered_items",
-            "item_payloads": [{"id": 1, "status": "RULE_SKIPPED"}],
-            "translation_extras": {"line": 0},
-            "prefilter_config": {"source_language": "JA"},
-            "project_settings": {"source_language": "JA"},
-            "expected_section_revisions": {"items": 1, "analysis": 1},
-        }
-    ]
-    assert result["accepted"] is True
-
-
-def test_apply_project_settings_alignment_can_write_unloaded_project_file(
-    project_app_service,
-    fake_project_manager,
-) -> None:
-    result = project_app_service.apply_project_settings_alignment(
-        {
-            "path": "E:/Project/LinguaGacha/output/demo.lg",
-            "mode": "settings_only",
-            "project_settings": {"source_language": "JA"},
-        }
-    )
-
-    assert fake_project_manager.settings_alignment_file_calls == [
-        {
-            "lg_path": "E:/Project/LinguaGacha/output/demo.lg",
-            "mode": "settings_only",
-            "item_payloads": [],
-            "translation_extras": {},
-            "prefilter_config": {},
-            "project_settings": {"source_language": "JA"},
-            "expected_section_revisions": None,
-        }
-    ]
-    assert result == {
-        "accepted": True,
-        "projectRevision": 2,
-        "sectionRevisions": {"items": 2, "analysis": 2},
-    }
-
-
 def test_get_project_snapshot_uses_current_loaded_project_path(
     project_app_service,
     fake_project_manager,
@@ -563,54 +464,6 @@ def test_get_project_preview_returns_preview_payload(
     }
 
 
-def test_import_analysis_glossary_uses_glossary_revision_and_quality_section_revision() -> (
-    None
-):
-    fake_project_manager = _FakeProjectManagerForAnalysisGlossaryImport()
-    project_app_service = ProjectAppService(fake_project_manager)
-    project_app_service.quality_rule_mutation_service = fake_project_manager
-    project_app_service.runtime_service = fake_project_manager
-
-    result = project_app_service.import_analysis_glossary(
-        {
-            "entries": [
-                {
-                    "src": "艾琳",
-                    "dst": "Erin",
-                    "info": "角色名",
-                    "case_sensitive": True,
-                }
-            ],
-            "analysis_candidate_count": 0,
-            "expected_glossary_revision": 7,
-            "expected_section_revisions": {
-                "quality": 12,
-                "analysis": 3,
-            },
-        }
-    )
-
-    assert fake_project_manager.saved_glossary_expected_revision == 7
-    assert fake_project_manager.saved_glossary_entries == [
-        {
-            "src": "艾琳",
-            "dst": "Erin",
-            "info": "角色名",
-            "case_sensitive": True,
-        }
-    ]
-    assert fake_project_manager.meta["analysis_candidate_count"] == 0
-    assert fake_project_manager.bumped_sections == [("analysis",)]
-    assert result == {
-        "accepted": True,
-        "projectRevision": 12,
-        "sectionRevisions": {
-            "quality": 12,
-            "analysis": 4,
-        },
-    }
-
-
 def test_preview_translation_reset_returns_full_preview_items() -> None:
     fake_project_manager = _FakeProjectManagerForResetMutations()
     fake_config = object()
@@ -626,98 +479,6 @@ def test_preview_translation_reset_returns_full_preview_items() -> None:
     assert result == {"items": fake_project_manager.preview_translation_items}
 
 
-def test_apply_translation_reset_all_forwards_payload_and_returns_items_analysis_ack() -> (
-    None
-):
-    fake_project_manager = _FakeProjectManagerForResetMutations()
-    project_app_service = ProjectAppService(
-        fake_project_manager,
-        engine=SimpleNamespace(is_busy=lambda: False),
-    )
-    project_app_service.runtime_service = fake_project_manager
-
-    result = project_app_service.apply_translation_reset(
-        {
-            "mode": "all",
-            "items": fake_project_manager.preview_translation_items,
-            "translation_extras": {"line": 0},
-            "prefilter_config": {"source_language": "JA"},
-            "expected_section_revisions": {
-                "items": 5,
-                "analysis": 7,
-            },
-        }
-    )
-
-    assert fake_project_manager.apply_translation_reset_all_calls == [
-        {
-            "item_payloads": fake_project_manager.preview_translation_items,
-            "translation_extras": {"line": 0},
-            "prefilter_config": {"source_language": "JA"},
-            "expected_section_revisions": {"items": 5, "analysis": 7},
-        }
-    ]
-    assert result == {
-        "accepted": True,
-        "projectRevision": 8,
-        "sectionRevisions": {
-            "items": 6,
-            "analysis": 8,
-        },
-    }
-
-
-def test_apply_translation_reset_failed_forwards_payload_and_returns_items_ack() -> (
-    None
-):
-    fake_project_manager = _FakeProjectManagerForResetMutations()
-    project_app_service = ProjectAppService(
-        fake_project_manager,
-        engine=SimpleNamespace(is_busy=lambda: False),
-    )
-    project_app_service.runtime_service = fake_project_manager
-
-    result = project_app_service.apply_translation_reset(
-        {
-            "mode": "failed",
-            "items": [
-                {
-                    "id": 11,
-                    "dst": "",
-                    "status": "NONE",
-                    "retry_count": 0,
-                }
-            ],
-            "translation_extras": {"line": 3, "error_line": 0},
-            "expected_section_revisions": {
-                "items": 5,
-            },
-        }
-    )
-
-    assert fake_project_manager.apply_translation_reset_failed_calls == [
-        {
-            "item_payloads": [
-                {
-                    "id": 11,
-                    "dst": "",
-                    "status": "NONE",
-                    "retry_count": 0,
-                }
-            ],
-            "translation_extras": {"line": 3, "error_line": 0},
-            "expected_section_revisions": {"items": 5},
-        }
-    ]
-    assert result == {
-        "accepted": True,
-        "projectRevision": 6,
-        "sectionRevisions": {
-            "items": 6,
-        },
-    }
-
-
 def test_preview_analysis_reset_returns_status_summary() -> None:
     fake_project_manager = _FakeProjectManagerForResetMutations()
     project_app_service = ProjectAppService(
@@ -730,96 +491,6 @@ def test_preview_analysis_reset_returns_status_summary() -> None:
     assert fake_project_manager.preview_analysis_reset_failed_calls == 1
     assert result == {
         "status_summary": fake_project_manager.preview_analysis_status_summary
-    }
-
-
-def test_apply_analysis_reset_all_returns_analysis_ack() -> None:
-    fake_project_manager = _FakeProjectManagerForResetMutations()
-    project_app_service = ProjectAppService(
-        fake_project_manager,
-        engine=SimpleNamespace(is_busy=lambda: False),
-    )
-    project_app_service.runtime_service = fake_project_manager
-
-    result = project_app_service.apply_analysis_reset(
-        {
-            "mode": "all",
-            "analysis_extras": {
-                "start_time": 0.0,
-                "time": 0.0,
-                "total_line": 5,
-                "line": 0,
-                "processed_line": 0,
-                "error_line": 0,
-            },
-            "expected_section_revisions": {"analysis": 7},
-        }
-    )
-
-    assert fake_project_manager.apply_analysis_reset_all_calls == [
-        {
-            "analysis_extras": {
-                "start_time": 0.0,
-                "time": 0.0,
-                "total_line": 5,
-                "line": 0,
-                "processed_line": 0,
-                "error_line": 0,
-            },
-            "expected_section_revisions": {"analysis": 7},
-        }
-    ]
-    assert result == {
-        "accepted": True,
-        "projectRevision": 8,
-        "sectionRevisions": {
-            "analysis": 8,
-        },
-    }
-
-
-def test_apply_analysis_reset_failed_returns_analysis_ack() -> None:
-    fake_project_manager = _FakeProjectManagerForResetMutations()
-    project_app_service = ProjectAppService(
-        fake_project_manager,
-        engine=SimpleNamespace(is_busy=lambda: False),
-    )
-    project_app_service.runtime_service = fake_project_manager
-
-    result = project_app_service.apply_analysis_reset(
-        {
-            "mode": "failed",
-            "analysis_extras": {
-                "start_time": 12.0,
-                "time": 3.0,
-                "total_line": 5,
-                "line": 3,
-                "processed_line": 3,
-                "error_line": 0,
-            },
-            "expected_section_revisions": {"analysis": 7},
-        }
-    )
-
-    assert fake_project_manager.apply_analysis_reset_failed_calls == [
-        {
-            "analysis_extras": {
-                "start_time": 12.0,
-                "time": 3.0,
-                "total_line": 5,
-                "line": 3,
-                "processed_line": 3,
-                "error_line": 0,
-            },
-            "expected_section_revisions": {"analysis": 7},
-        }
-    ]
-    assert result == {
-        "accepted": True,
-        "projectRevision": 8,
-        "sectionRevisions": {
-            "analysis": 8,
-        },
     }
 
 

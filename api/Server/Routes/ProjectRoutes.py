@@ -11,21 +11,13 @@ class ProjectRoutes:
     SNAPSHOT_PATH: str = "/api/project/snapshot"
     UNLOAD_PATH: str = "/api/project/unload"
     OPEN_PREVIEW_PATH: str = "/api/project/open-preview"
-    SETTINGS_ALIGNMENT_APPLY_PATH: str = "/api/project/settings-alignment/apply"
-    ANALYSIS_IMPORT_GLOSSARY_PATH: str = "/api/project/analysis/import-glossary"
     TRANSLATION_RESET_PREVIEW_PATH: str = "/api/project/translation/reset-preview"
-    TRANSLATION_RESET_PATH: str = "/api/project/translation/reset"
     ANALYSIS_RESET_PREVIEW_PATH: str = "/api/project/analysis/reset-preview"
-    ANALYSIS_RESET_PATH: str = "/api/project/analysis/reset"
     SOURCE_FILES_PATH: str = "/api/project/source-files"
     PREVIEW_PATH: str = "/api/project/preview"
     TEXT_PRESERVE_PRESET_RULES_PATH: str = "/api/project/text-preserve/preset-rules"
     EXPORT_CONVERTED_TRANSLATION_PATH: str = "/api/project/export-converted-translation"
-    WORKBENCH_ADD_FILE_PATH: str = "/api/project/workbench/add-file"
     WORKBENCH_PARSE_FILE_PATH: str = "/api/project/workbench/parse-file"
-    WORKBENCH_RESET_FILE_PATH: str = "/api/project/workbench/reset-file"
-    WORKBENCH_DELETE_FILE_PATH: str = "/api/project/workbench/delete-file"
-    WORKBENCH_REORDER_FILES_PATH: str = "/api/project/workbench/reorder-files"
     PROOFREADING_SAVE_ITEM_PATH: str = "/api/project/proofreading/save-item"
     PROOFREADING_SAVE_ALL_PATH: str = "/api/project/proofreading/save-all"
     PROOFREADING_REPLACE_ALL_PATH: str = "/api/project/proofreading/replace-all"
@@ -90,22 +82,6 @@ class ProjectRoutes:
             )
             core_api_server.add_json_route(
                 "POST",
-                cls.SETTINGS_ALIGNMENT_APPLY_PATH,
-                lambda request: ApiResponse(
-                    ok=True,
-                    data=project_app_service.apply_project_settings_alignment(request),
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.ANALYSIS_IMPORT_GLOSSARY_PATH,
-                lambda request: ApiResponse(
-                    ok=True,
-                    data=project_app_service.import_analysis_glossary(request),
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
                 cls.TRANSLATION_RESET_PREVIEW_PATH,
                 lambda request: ApiResponse(
                     ok=True,
@@ -114,26 +90,10 @@ class ProjectRoutes:
             )
             core_api_server.add_json_route(
                 "POST",
-                cls.TRANSLATION_RESET_PATH,
-                lambda request: ApiResponse(
-                    ok=True,
-                    data=project_app_service.apply_translation_reset(request),
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
                 cls.ANALYSIS_RESET_PREVIEW_PATH,
                 lambda request: ApiResponse(
                     ok=True,
                     data=project_app_service.preview_analysis_reset(request),
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.ANALYSIS_RESET_PATH,
-                lambda request: ApiResponse(
-                    ok=True,
-                    data=project_app_service.apply_analysis_reset(request),
                 ),
             )
             core_api_server.add_json_route(
@@ -172,34 +132,6 @@ class ProjectRoutes:
                 cls.WORKBENCH_PARSE_FILE_PATH,
                 lambda request: ApiResponse(
                     ok=True, data=workbench_app_service.parse_file(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.WORKBENCH_ADD_FILE_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=workbench_app_service.add_file(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.WORKBENCH_RESET_FILE_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=workbench_app_service.reset_file(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.WORKBENCH_DELETE_FILE_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=workbench_app_service.delete_file(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.WORKBENCH_REORDER_FILES_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=workbench_app_service.reorder_files(request)
                 ),
             )
         if proofreading_app_service is not None:

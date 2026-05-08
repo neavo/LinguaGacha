@@ -135,7 +135,7 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             ("GET", "/api/logs/stream"),
             ("GET", "/api/project/bootstrap/stream"),
             ("POST", "/api/project/load"),
-            ("POST", "/api/project/workbench/add-file"),
+            ("POST", "/api/project/workbench/parse-file"),
             ("POST", "/api/project/proofreading/save-item"),
             ("POST", "/api/tasks/start-translation"),
             ("POST", ModelApiPaths.LIST_AVAILABLE_PATH),
@@ -150,7 +150,7 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         "/api/logs/stream": "stream",
         "/api/project/bootstrap/stream": "stream",
         "/api/project/load": "json",
-        "/api/project/workbench/add-file": "json",
+        "/api/project/workbench/parse-file": "json",
         "/api/project/proofreading/save-item": "json",
         "/api/tasks/start-translation": "json",
         ModelApiPaths.LIST_AVAILABLE_PATH: "json",
@@ -216,7 +216,11 @@ def test_runtime_bridge_routes_require_explicit_service() -> None:
         # Assert
         assert rejected_response.status_code == 400
         assert accepted_response.status_code == 200
-        assert accepted_response.json()["data"] == {"loaded": False, "projectPath": ""}
+        assert accepted_response.json()["data"] == {
+            "loaded": False,
+            "projectPath": "",
+            "busy": False,
+        }
     finally:
         shutdown()
 

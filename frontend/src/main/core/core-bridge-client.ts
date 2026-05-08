@@ -4,6 +4,7 @@ import { JsonTool } from "../../utils/json-tool";
 export interface ProjectStatePayload {
   loaded: boolean;
   projectPath: string;
+  busy: boolean;
 }
 
 interface CoreBridgeClientOptions {
@@ -33,7 +34,22 @@ export class CoreBridgeClient {
     const data = await this.post_internal("/internal/runtime/project-state", {});
     const loaded = typeof data["loaded"] === "boolean" ? data["loaded"] : false;
     const project_path = typeof data["projectPath"] === "string" ? data["projectPath"] : "";
-    return { loaded, projectPath: project_path };
+    const busy = typeof data["busy"] === "boolean" ? data["busy"] : false;
+    return { loaded, projectPath: project_path, busy };
+  }
+
+  /**
+   * 申请 Python Core 侧文件操作锁，保持工作台 mutation 与任务执行互斥。
+   */
+  public async begin_project_file_operation(): Promise<void> {
+    await this.sync_runtime("project_file_operation_begin", {});
+  }
+
+  /**
+   * 释放 Python Core 侧文件操作锁，确保异常路径不会长期占用锁。
+   */
+  public async finish_project_file_operation(): Promise<void> {
+    await this.sync_runtime("project_file_operation_end", {});
   }
 
   /**

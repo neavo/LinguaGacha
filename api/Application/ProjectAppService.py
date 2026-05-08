@@ -4,11 +4,9 @@ from base.BasePath import BasePath
 from module.Config import Config
 from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
-from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
-from module.Data.Quality.QualityRuleMutationService import QualityRuleMutationService
 from module.Data.Translation.TranslationExportItemService import (
     TranslationExportItemService,
 )
@@ -41,21 +39,6 @@ class ProjectAppService:
             if file_manager_factory is not None
             else lambda config: FileManager(config)
         )
-        quality_rule_service = getattr(
-            self.project_manager,
-            "quality_rule_service",
-            self.project_manager,
-        )
-        meta_service = getattr(
-            self.project_manager,
-            "meta_service",
-            self.project_manager,
-        )
-        self.quality_rule_mutation_service = QualityRuleMutationService(
-            quality_rule_service,
-            meta_service,
-        )
-        self.runtime_service = ProjectRuntimeService(self.project_manager)
 
     def load_project(self, request: dict[str, str]) -> dict[str, object]:
         """加载既有工程，并返回序列化后的工程快照。"""
@@ -198,52 +181,6 @@ class ProjectAppService:
             raise RuntimeError(Localizer.get().export_translation_failed)
         return {"accepted": True, "output_path": str(output_path)}
 
-    def apply_project_settings_alignment(
-        self,
-        request: dict[str, Any],
-    ) -> dict[str, object]:
-        """事务化写入项目设置镜像，必要时同时写入前端预过滤结果。"""
-
-        mode = str(request.get("mode", "") or "").lower()
-        item_payloads = self.normalize_list_of_dicts(request.get("items", []))
-        translation_extras = self.normalize_dict_payload(
-            request.get("translation_extras")
-        )
-        prefilter_config = self.normalize_dict_payload(request.get("prefilter_config"))
-        project_settings = self.normalize_dict_payload(request.get("project_settings"))
-        expected_section_revisions = self.normalize_expected_section_revisions(
-            request.get("expected_section_revisions")
-        )
-        project_path = str(request.get("path", "") or "").strip()
-        if project_path != "":
-            apply_to_file = getattr(
-                self.project_manager,
-                "apply_project_settings_alignment_file_payload",
-                None,
-            )
-            if callable(apply_to_file):
-                return apply_to_file(
-                    lg_path=project_path,
-                    mode=mode,
-                    item_payloads=item_payloads,
-                    translation_extras=translation_extras,
-                    prefilter_config=prefilter_config,
-                    project_settings=project_settings,
-                    expected_section_revisions=expected_section_revisions,
-                )
-
-        self.project_manager.apply_project_settings_alignment_payload(
-            mode=mode,
-            item_payloads=item_payloads,
-            translation_extras=translation_extras,
-            prefilter_config=prefilter_config,
-            project_settings=project_settings,
-            expected_section_revisions=expected_section_revisions,
-        )
-        if mode == "settings_only":
-            return self.runtime_service.build_project_mutation_ack([])
-        return self.runtime_service.build_project_mutation_ack(["items", "analysis"])
-
     def preview_translation_reset(
         self,
         request: dict[str, Any],
@@ -258,57 +195,6 @@ class ProjectAppService:
         items = self.project_manager.preview_translation_reset_all(self.config_loader())
         return {"items": [dict(item) for item in items]}
 
-    def apply_translation_reset(self, request: dict[str, Any]) -> dict[str, object]:
-        """提交翻译重置 mutation，保持 items 和 analysis revision 对齐。"""
-
-        mode = str(request.get("mode", "") or "").lower()
-        self.ensure_translation_mutation_ready()
-
-        expected_section_revisions = self.normalize_expected_section_revisions(
-            request.get("expected_section_revisions")
-        )
-        if mode == "all":
-            items_raw = request.get("items", [])
-            item_payloads = (
-                [dict(item) for item in items_raw if isinstance(item, dict)]
-                if isinstance(items_raw, list)
-                else []
-            )
-            translation_extras = self.normalize_dict_payload(
-                request.get("translation_extras")
-            )
-            prefilter_config = self.normalize_dict_payload(
-                request.get("prefilter_config")
-            )
-            self.project_manager.apply_translation_reset_all_payload(
-                item_payloads=item_payloads,
-                translation_extras=translation_extras,
-                prefilter_config=prefilter_config,
-                expected_section_revisions=expected_section_revisions,
-            )
-            return self.runtime_service.build_project_mutation_ack(
-                ["items", "analysis"]
-            )
-
-        if mode == "failed":
-            items_raw = request.get("items", [])
-            item_payloads = (
-                [dict(item) for item in items_raw if isinstance(item, dict)]
-                if isinstance(items_raw, list)
-                else []
-            )
-            translation_extras = self.normalize_dict_payload(
-                request.get("translation_extras")
-            )
-            self.project_manager.apply_translation_reset_failed_payload(
-                item_payloads=item_payloads,
-                translation_extras=translation_extras,
-                expected_section_revisions=expected_section_revisions,
-            )
-            return self.runtime_service.build_project_mutation_ack(["items"])
-
-        raise ValueError("translation reset 仅支持 mode=all 或 mode=failed")
-
     def preview_analysis_reset(self, request: dict[str, Any]) -> dict[str, object]:
         """构建分析重置预览，避免预演阶段改动分析事实。"""
 
@@ -318,85 +204,6 @@ class ProjectAppService:
 
         self.ensure_analysis_mutation_ready()
         return {"status_summary": self.project_manager.preview_analysis_reset_failed()}
-
-    def apply_analysis_reset(self, request: dict[str, Any]) -> dict[str, object]:
-        """提交分析重置 mutation，保持 analysis section revision 对齐。"""
-
-        mode = str(request.get("mode", "") or "").lower()
-        self.ensure_analysis_mutation_ready()
-
-        analysis_extras = self.normalize_dict_payload(request.get("analysis_extras"))
-        expected_section_revisions = self.normalize_expected_section_revisions(
-            request.get("expected_section_revisions")
-        )
-        if mode == "all":
-            self.project_manager.apply_analysis_reset_all_payload(
-                analysis_extras=analysis_extras,
-                expected_section_revisions=expected_section_revisions,
-            )
-            return self.runtime_service.build_project_mutation_ack(["analysis"])
-
-        if mode == "failed":
-            self.project_manager.apply_analysis_reset_failed_payload(
-                analysis_extras=analysis_extras,
-                expected_section_revisions=expected_section_revisions,
-            )
-            return self.runtime_service.build_project_mutation_ack(["analysis"])
-
-        raise ValueError("analysis reset 仅支持 mode=all 或 mode=failed")
-
-    def import_analysis_glossary(self, request: dict[str, Any]) -> dict[str, object]:
-        """持久化 TS 端已经筛好的分析候选导入结果。"""
-
-        expected_section_revisions_raw = request.get(
-            "expected_section_revisions",
-            {},
-        )
-        if (
-            isinstance(expected_section_revisions_raw, dict)
-            and "analysis" in expected_section_revisions_raw
-        ):
-            self.project_manager.assert_project_runtime_section_revision(
-                "analysis",
-                int(expected_section_revisions_raw["analysis"]),
-            )
-        if (
-            isinstance(expected_section_revisions_raw, dict)
-            and "quality" in expected_section_revisions_raw
-        ):
-            current_quality_revision = int(
-                self.runtime_service.get_section_revision("quality") or 0
-            )
-            expected_quality_revision = int(
-                expected_section_revisions_raw["quality"] or 0
-            )
-            if current_quality_revision != expected_quality_revision:
-                raise ValueError(
-                    "质量规则 section revision 冲突："
-                    f"当前={current_quality_revision}，"
-                    f"期望={expected_quality_revision}"
-                )
-
-        entries_raw = request.get("entries", [])
-        entries = (
-            [dict(entry) for entry in entries_raw if isinstance(entry, dict)]
-            if isinstance(entries_raw, list)
-            else []
-        )
-        glossary_expected_revision = int(
-            request.get("expected_glossary_revision", 0) or 0
-        )
-        self.quality_rule_mutation_service.save_entries(
-            "glossary",
-            expected_revision=glossary_expected_revision,
-            entries=entries,
-        )
-        self.project_manager.set_meta(
-            "analysis_candidate_count",
-            int(request.get("analysis_candidate_count", 0) or 0),
-        )
-        self.project_manager.bump_project_runtime_section_revisions(("analysis",))
-        return self.runtime_service.build_project_mutation_ack(["quality", "analysis"])
 
     def build_project_snapshot(self, fallback_path: str = "") -> dict[str, object]:
         """所有工程类响应都通过这里生成，保持字段来源单一。"""
@@ -525,24 +332,3 @@ class ProjectAppService:
         if not isinstance(value, list):
             return []
         return [str(item) for item in value if isinstance(item, str)]
-
-    def normalize_expected_section_revisions(
-        self,
-        value: Any,
-    ) -> dict[str, int] | None:
-        """归一期望 section revision，避免过期页面覆盖新事实。"""
-
-        if not isinstance(value, dict):
-            return None
-
-        normalized: dict[str, int] = {}
-        for section, revision in value.items():
-            if not isinstance(section, str):
-                continue
-            try:
-                normalized[section] = int(revision)
-            except TypeError:
-                continue
-            except ValueError:
-                continue
-        return normalized

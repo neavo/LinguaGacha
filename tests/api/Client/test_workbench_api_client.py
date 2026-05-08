@@ -1,6 +1,5 @@
 from api.Client.WorkbenchApiClient import WorkbenchApiClient
 from api.Models.ProjectRuntime import ProjectMutationAck
-from api.Server.Routes.ProjectRoutes import ProjectRoutes
 import pytest
 
 
@@ -32,7 +31,7 @@ import pytest
                 "expected_section_revisions": {"files": 1, "items": 2, "analysis": 3},
             },
             (
-                ProjectRoutes.WORKBENCH_ADD_FILE_PATH,
+                WorkbenchApiClient.WORKBENCH_ADD_FILE_PATH,
                 {
                     "files": [
                         {
@@ -77,7 +76,7 @@ import pytest
                 "expected_section_revisions": {"items": 2, "analysis": 3},
             },
             (
-                ProjectRoutes.WORKBENCH_RESET_FILE_PATH,
+                WorkbenchApiClient.WORKBENCH_RESET_FILE_PATH,
                 {
                     "rel_paths": ["script/a.txt"],
                     "items": [{"id": 1, "src": "line-1"}],
@@ -107,7 +106,7 @@ import pytest
                 "expected_section_revisions": {"files": 1, "items": 2, "analysis": 3},
             },
             (
-                ProjectRoutes.WORKBENCH_DELETE_FILE_PATH,
+                WorkbenchApiClient.WORKBENCH_DELETE_FILE_PATH,
                 {
                     "rel_paths": ["script/a.txt"],
                     "derived_meta": {
@@ -133,7 +132,7 @@ import pytest
                 "expected_section_revisions": {"files": 1},
             },
             (
-                ProjectRoutes.WORKBENCH_REORDER_FILES_PATH,
+                WorkbenchApiClient.WORKBENCH_REORDER_FILES_PATH,
                 {
                     "ordered_rel_paths": ["script/a.txt"],
                     "expected_section_revisions": {"files": 1},
@@ -163,7 +162,7 @@ def test_workbench_api_client_forwards_mutation_payloads(
 def test_workbench_api_client_parse_file_forwards_payload(recording_api_client) -> None:
     workbench_client = WorkbenchApiClient(recording_api_client)
     recording_api_client.queue_post_response(
-        ProjectRoutes.WORKBENCH_PARSE_FILE_PATH,
+        WorkbenchApiClient.WORKBENCH_PARSE_FILE_PATH,
         {
             "files": [
                 {
@@ -179,7 +178,7 @@ def test_workbench_api_client_parse_file_forwards_payload(recording_api_client) 
     result = workbench_client.parse_file(["C:/next/b.txt"])
 
     assert recording_api_client.post_requests[-1] == (
-        ProjectRoutes.WORKBENCH_PARSE_FILE_PATH,
+        WorkbenchApiClient.WORKBENCH_PARSE_FILE_PATH,
         {
             "source_paths": ["C:/next/b.txt"],
         },

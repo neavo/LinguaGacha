@@ -15,16 +15,9 @@ PROJECT_COMMAND_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/unload", "unload_project"),
     JsonRouteCase("/api/project/open-preview", "get_open_project_alignment_preview"),
     JsonRouteCase(
-        "/api/project/settings-alignment/apply",
-        "apply_project_settings_alignment",
-    ),
-    JsonRouteCase("/api/project/analysis/import-glossary", "import_analysis_glossary"),
-    JsonRouteCase(
         "/api/project/translation/reset-preview", "preview_translation_reset"
     ),
-    JsonRouteCase("/api/project/translation/reset", "apply_translation_reset"),
     JsonRouteCase("/api/project/analysis/reset-preview", "preview_analysis_reset"),
-    JsonRouteCase("/api/project/analysis/reset", "apply_analysis_reset"),
     JsonRouteCase("/api/project/source-files", "collect_source_files"),
     JsonRouteCase("/api/project/preview", "get_project_preview"),
     JsonRouteCase(
@@ -39,10 +32,6 @@ PROJECT_COMMAND_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
 
 WORKBENCH_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/workbench/parse-file", "parse_file"),
-    JsonRouteCase("/api/project/workbench/add-file", "add_file"),
-    JsonRouteCase("/api/project/workbench/reset-file", "reset_file"),
-    JsonRouteCase("/api/project/workbench/delete-file", "delete_file"),
-    JsonRouteCase("/api/project/workbench/reorder-files", "reorder_files"),
 )
 
 PROOFREADING_ROUTE_CASES: tuple[JsonRouteCase, ...] = (

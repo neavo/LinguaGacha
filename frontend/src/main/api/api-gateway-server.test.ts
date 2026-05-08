@@ -79,6 +79,46 @@ describe("ApiGatewayServer", () => {
     expect(body.data?.raw).toBe('{"value":7}');
   });
 
+  it("P2 项目同步 mutation 由 TS Gateway 直接处理且不转发到 Python Core", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_fake_py_server();
+    const database = new ProjectDatabase();
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      publicPort: await allocate_core_api_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+    const lg_path = path.join(app_root, "direct-write.lg");
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "direct-write" },
+    });
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/project/settings-alignment/apply`, {
+      body: JsonTool.stringifyStrict({
+        mode: "settings_only",
+        path: lg_path,
+        project_settings: { source_language: "JA", target_language: "ZH" },
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = (await response.json()) as {
+      ok?: boolean;
+      data?: { accepted?: boolean };
+    };
+
+    expect(body.ok).toBe(true);
+    expect(body.data?.accepted).toBe(true);
+    expect(py_server.requests).toEqual([]);
+  });
+
   it("公开端口监听失败时拒绝启动并保持 stop 幂等", async () => {
     const app_root = create_app_root();
     const py_server = await start_fake_py_server();
@@ -128,13 +168,20 @@ describe("ApiGatewayServer", () => {
     return app_root;
   }
 
-  async function start_fake_py_server(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  async function start_fake_py_server(): Promise<{
+    baseUrl: string;
+    close: () => Promise<void>;
+    requests: Array<{ method?: string; path?: string; raw: string }>;
+  }> {
+    const requests: Array<{ method?: string; path?: string; raw: string }> = [];
     const server = http.createServer((request, response) => {
       const chunks: Buffer[] = [];
       request.on("data", (chunk: Buffer) => {
         chunks.push(chunk);
       });
       request.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf-8");
+        requests.push({ method: request.method, path: request.url, raw });
         response.writeHead(200, {
           "Access-Control-Allow-Origin": "*",
           "Content-Type": "application/json; charset=utf-8",
@@ -144,7 +191,7 @@ describe("ApiGatewayServer", () => {
             ok: true,
             data: {
               method: request.method,
-              raw: Buffer.concat(chunks).toString("utf-8"),
+              raw,
             },
           }),
         );
@@ -163,6 +210,7 @@ describe("ApiGatewayServer", () => {
     }
     return {
       baseUrl: `http://127.0.0.1:${address.port.toString()}`,
+      requests,
       close: () =>
         new Promise<void>((resolve, reject) => {
           server.close((error) => {

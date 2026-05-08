@@ -6,6 +6,7 @@ import { serve } from "@hono/node-server";
 
 import { ProjectDatabase } from "../database/database-operations";
 import { ModelService } from "../model/model-service";
+import { ProjectService } from "../project/project-service";
 import { QualityService } from "../quality/quality-service";
 import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "../paths/app-path-service";
@@ -106,6 +107,7 @@ export class ApiGatewayServer {
     });
     const config_service = new ConfigService(paths, core_bridge);
     const model_service = new ModelService(paths, config_service, core_bridge);
+    const project_service = new ProjectService(this.options.database, core_bridge);
     const quality_service = new QualityService(
       paths,
       config_service,
@@ -153,6 +155,31 @@ export class ApiGatewayServer {
       model_service.reset_preset_model(body),
     );
     this.post_json(app, "/api/models/reorder", (body) => model_service.reorder_model(body));
+
+    this.post_json(app, "/api/project/workbench/add-file", (body) =>
+      project_service.add_workbench_file(body),
+    );
+    this.post_json(app, "/api/project/workbench/reset-file", (body) =>
+      project_service.reset_workbench_file(body),
+    );
+    this.post_json(app, "/api/project/workbench/delete-file", (body) =>
+      project_service.delete_workbench_file(body),
+    );
+    this.post_json(app, "/api/project/workbench/reorder-files", (body) =>
+      project_service.reorder_workbench_files(body),
+    );
+    this.post_json(app, "/api/project/settings-alignment/apply", (body) =>
+      project_service.apply_settings_alignment(body),
+    );
+    this.post_json(app, "/api/project/translation/reset", (body) =>
+      project_service.apply_translation_reset(body),
+    );
+    this.post_json(app, "/api/project/analysis/reset", (body) =>
+      project_service.apply_analysis_reset(body),
+    );
+    this.post_json(app, "/api/project/analysis/import-glossary", (body) =>
+      project_service.import_analysis_glossary(body),
+    );
 
     this.post_json(app, "/api/quality/rules/save-entries", (body) =>
       quality_service.save_rule_entries(body),
