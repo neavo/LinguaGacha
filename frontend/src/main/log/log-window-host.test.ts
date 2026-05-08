@@ -68,7 +68,7 @@ vi.mock("electron", () => {
   };
 });
 
-describe("LogWindowManager", () => {
+describe("LogWindowHost", () => {
   afterEach(() => {
     created_windows.length = 0;
     vi.restoreAllMocks();
@@ -76,10 +76,10 @@ describe("LogWindowManager", () => {
   });
 
   it("创建日志窗口并在重复打开时聚焦单例", async () => {
-    const { LogWindowManager } = await import("./log-window-manager");
+    const { LogWindowHost } = await import("./log-window-host");
     const load_target = vi.fn();
     const register_window = vi.fn();
-    const manager = new LogWindowManager({
+    const host = new LogWindowHost({
       createWindowOptions: () => ({
         width: 100,
         height: 100,
@@ -88,9 +88,9 @@ describe("LogWindowManager", () => {
       registerWindow: register_window,
     });
 
-    manager.open();
+    host.open();
     created_windows[0]?.emit("ready-to-show");
-    manager.open();
+    host.open();
 
     expect(created_windows).toHaveLength(1);
     expect(created_windows[0]?.options).toMatchObject({
@@ -105,32 +105,32 @@ describe("LogWindowManager", () => {
   });
 
   it("日志窗口显示时再次切换会关闭窗口", async () => {
-    const { LogWindowManager } = await import("./log-window-manager");
-    const manager = new LogWindowManager({
+    const { LogWindowHost } = await import("./log-window-host");
+    const host = new LogWindowHost({
       createWindowOptions: () => ({}),
       loadTarget: vi.fn(),
       registerWindow: vi.fn(),
     });
 
-    manager.toggle();
+    host.toggle();
     created_windows[0]?.emit("ready-to-show");
-    manager.toggle();
+    host.toggle();
 
     expect(created_windows).toHaveLength(1);
     expect(created_windows[0]?.destroyed).toBe(true);
   });
 
   it("关闭后允许重新创建日志窗口", async () => {
-    const { LogWindowManager } = await import("./log-window-manager");
-    const manager = new LogWindowManager({
+    const { LogWindowHost } = await import("./log-window-host");
+    const host = new LogWindowHost({
       createWindowOptions: () => ({}),
       loadTarget: vi.fn(),
       registerWindow: vi.fn(),
     });
 
-    manager.open();
-    manager.close();
-    manager.open();
+    host.open();
+    host.close();
+    host.open();
 
     expect(created_windows).toHaveLength(2);
   });
