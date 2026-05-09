@@ -21,6 +21,9 @@ import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
 import type { LogAppendPayload, LogEvent, LogLevel, LogTargets } from "../log/log-types";
 import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
+import { TaskDataService } from "../task/task-data-service";
+import { TaskEventHub } from "../task/task-event-hub";
+import { TaskRuntimeState } from "../task/task-runtime-state";
 import { TaskService } from "../task/task-service";
 import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import { JsonTool } from "../../utils/json-tool";
@@ -28,9 +31,6 @@ import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./
 
 // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API。
 const CORE_API_HOST = "127.0.0.1";
-
-// 长期事件流经 TS 适配 project.patch，其它 frame 继续透传 Python。
-const STREAM_PROXY_PATHS = new Set(["/api/events/stream"]);
 
 // 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏。
 const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500;
@@ -66,6 +66,12 @@ export class ApiGatewayServer {
 
   // 公开项目 loaded/path 由 Gateway 持有，Python 只保留任务和文件运行时状态。
   private readonly project_session_state = new ProjectSessionState();
+
+  // 任务 busy / 请求中数量 / 重翻条目由 TS Gateway 维护，不再按需查询 Python。
+  private readonly task_runtime_state = new TaskRuntimeState();
+
+  // 事件 hub 持有 Python 上游长连，Gateway stop 时必须显式关闭。
+  private event_hub: TaskEventHub | null = null;
 
   // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭。
   private server: Server | null = null;
@@ -114,6 +120,8 @@ export class ApiGatewayServer {
    * 只释放 Gateway 自己持有的监听器，Core 与 Database 生命周期由上层编排。
    */
   public async stop(): Promise<void> {
+    this.event_hub?.stop();
+    this.event_hub = null;
     const server = this.server;
     this.server = null;
     if (server === null) {
@@ -139,11 +147,22 @@ export class ApiGatewayServer {
       pyCoreBaseUrl: this.options.pyCoreBaseUrl,
       pyCoreToken: this.options.pyCoreToken,
     });
-    const config_service = new ConfigService(paths, core_bridge);
-    const model_service = new ModelService(paths, config_service, core_bridge);
+    const project_patch_adapter = new ProjectPatchAdapter(
+      this.options.database,
+      this.project_session_state,
+    );
+    const event_hub = new TaskEventHub({
+      pyCoreBaseUrl: this.options.pyCoreBaseUrl,
+      projectPatchAdapter: project_patch_adapter,
+      taskRuntimeState: this.task_runtime_state,
+      logManager: this.options.logManager,
+    });
+    this.event_hub = event_hub;
+    event_hub.start();
+    const config_service = new ConfigService(paths, event_hub);
+    const model_service = new ModelService(paths, config_service);
     const project_lifecycle_service = new ProjectLifecycleService(
       this.options.database,
-      core_bridge,
       this.project_session_state,
       config_service,
       paths,
@@ -151,17 +170,16 @@ export class ApiGatewayServer {
     );
     const project_service = new ProjectSyncMutationService(
       this.options.database,
-      core_bridge,
+      this.task_runtime_state,
       this.project_session_state,
     );
     const proofreading_service = new ProofreadingService(
       this.options.database,
-      core_bridge,
       this.project_session_state,
     );
     const task_snapshot_builder = new TaskSnapshotBuilder(
       this.options.database,
-      core_bridge,
+      this.task_runtime_state,
       this.project_session_state,
     );
     const project_runtime_service = new ProjectRuntimeEncoder(
@@ -172,12 +190,13 @@ export class ApiGatewayServer {
     const task_service = new TaskService(
       core_bridge,
       task_snapshot_builder,
+      this.task_runtime_state,
       this.project_session_state,
       config_service,
     );
     const project_reset_preview_service = new ProjectResetPreviewService(
       this.options.database,
-      core_bridge,
+      this.task_runtime_state,
       this.project_session_state,
     );
     const file_preview_service = new FilePreviewService(config_service);
@@ -187,15 +206,16 @@ export class ApiGatewayServer {
       this.project_session_state,
       this.options.logManager,
     );
-    const project_patch_adapter = new ProjectPatchAdapter(
+    const task_data_service = new TaskDataService(
       this.options.database,
       this.project_session_state,
+      this.task_runtime_state,
+      event_hub,
     );
     const quality_service = new QualityService(
       paths,
       config_service,
       this.options.database,
-      core_bridge,
       this.project_session_state,
     );
     const app = new Hono();
@@ -223,6 +243,9 @@ export class ApiGatewayServer {
 
     app.get("/api/logs/stream", () => {
       return this.create_log_stream_response();
+    });
+    app.get("/api/events/stream", () => {
+      return event_hub.create_stream_response();
     });
     app.get("/api/project/bootstrap/stream", async (context) => {
       try {
@@ -366,6 +389,40 @@ export class ApiGatewayServer {
       file_export_service.export_translation(),
     );
 
+    this.post_internal_json(app, "/internal/task-data/project-context", (body) =>
+      task_data_service.get_project_context(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/translation/items", (body) =>
+      task_data_service.get_translation_items(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/translation/commit", (body) =>
+      task_data_service.commit_translation_batch(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/translation/progress", (body) =>
+      task_data_service.update_translation_progress(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/analysis/context", (body) =>
+      task_data_service.get_analysis_context(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/analysis/reset", (body) =>
+      task_data_service.reset_analysis_progress(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/analysis/progress", (body) =>
+      task_data_service.update_analysis_progress(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/analysis/commit", (body) =>
+      task_data_service.commit_analysis_batch(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/retranslate/items", (body) =>
+      task_data_service.get_retranslate_items(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/retranslate/commit", (body) =>
+      task_data_service.commit_retranslate_batch(body),
+    );
+    this.post_internal_json(app, "/internal/task-data/retranslate/finalize", (body) =>
+      task_data_service.finalize_retranslate(body),
+    );
+
     this.post_json(app, "/api/quality/rules/save-entries", (body) =>
       quality_service.save_rule_entries(body),
     );
@@ -417,7 +474,7 @@ export class ApiGatewayServer {
 
     app.all("*", async (context) => {
       try {
-        return await this.proxy_to_py_core(context.req.raw, project_patch_adapter);
+        return await this.proxy_to_py_core(context.req.raw);
       } catch (error) {
         const source_url = new URL(context.req.url);
         this.log_gateway_error("TS Gateway 代理 Python Core 失败", error, {
@@ -465,14 +522,49 @@ export class ApiGatewayServer {
   }
 
   /**
+   * 内部 task-data 路由只允许 Python Core 携带 token 调用，不进入 renderer 协议。
+   */
+  private post_internal_json(
+    app: Hono,
+    path_name: string,
+    handler: (
+      body: Record<string, ApiJsonValue>,
+    ) => Record<string, ApiJsonValue> | Promise<Record<string, ApiJsonValue>>,
+  ): void {
+    app.post(path_name, async (context) => {
+      const token = context.req.header(LOG_APPEND_TOKEN_HEADER_NAME);
+      if (token !== this.options.pyCoreToken) {
+        return context.json(api_error("invalid_request", "内部 task-data token 无效。"), 401);
+      }
+      try {
+        const body = (await context.req.json().catch((error: unknown) => {
+          throw new SyntaxError(error instanceof Error ? error.message : "JSON 无效。");
+        })) as Record<string, ApiJsonValue>;
+        const data = await handler(body);
+        return context.json(ok(data));
+      } catch (error) {
+        const envelope = this.error_to_envelope(error);
+        const status =
+          envelope.error.code === "not_found"
+            ? 404
+            : envelope.error.code === "invalid_request"
+              ? 400
+              : 500;
+        if (status >= 500) {
+          this.log_gateway_error("TS Gateway 内部 task-data 路由处理失败", error, {
+            path: path_name,
+          });
+        }
+        return context.json(envelope, status);
+      }
+    });
+  }
+
+  /**
    * 未迁移路由仍只暴露公开 Gateway 地址，Python 内部端口不进入前端协议。
    */
-  private async proxy_to_py_core(
-    request: Request,
-    project_patch_adapter?: ProjectPatchAdapter,
-  ): Promise<Response> {
+  private async proxy_to_py_core(request: Request): Promise<Response> {
     const source_url = new URL(request.url);
-    const is_stream_proxy = STREAM_PROXY_PATHS.has(source_url.pathname);
     const target_url = `${this.options.pyCoreBaseUrl}${source_url.pathname}${source_url.search}`;
     const headers = new Headers(request.headers);
     headers.delete("host");
@@ -480,22 +572,11 @@ export class ApiGatewayServer {
       request.method === "GET" || request.method === "HEAD"
         ? undefined
         : await request.arrayBuffer();
-    const stream_abort_controller = is_stream_proxy ? new AbortController() : null;
-    const abort_stream_proxy = (): void => {
-      stream_abort_controller?.abort();
-    };
-    if (stream_abort_controller !== null) {
-      if (request.signal.aborted) {
-        stream_abort_controller.abort();
-      } else {
-        request.signal.addEventListener("abort", abort_stream_proxy, { once: true });
-      }
-    }
     const response = await fetch(target_url, {
       body,
       headers,
       method: request.method,
-      signal: stream_abort_controller?.signal ?? request.signal,
+      signal: request.signal,
     });
     const response_headers = new Headers(response.headers);
     response_headers.delete("content-length");
@@ -503,122 +584,11 @@ export class ApiGatewayServer {
     for (const [key, value] of this.cors_headers()) {
       response_headers.set(key, value);
     }
-    if (is_stream_proxy) {
-      if (source_url.pathname === "/api/events/stream" && project_patch_adapter !== undefined) {
-        return this.create_adapted_event_stream_response(
-          response,
-          response_headers,
-          project_patch_adapter,
-          abort_stream_proxy,
-        );
-      }
-      return new Response(response.body, {
-        headers: response_headers,
-        status: response.status,
-        statusText: response.statusText,
-      });
-    }
     return new Response(await response.arrayBuffer(), {
       headers: response_headers,
       status: response.status,
       statusText: response.statusText,
     });
-  }
-
-  /**
-   * 事件流只改写 project.patch data，普通事件和 keepalive 原样透传。
-   */
-  private create_adapted_event_stream_response(
-    response: Response,
-    response_headers: Headers,
-    project_patch_adapter: ProjectPatchAdapter,
-    abort_upstream: () => void,
-  ): Response {
-    const source_body = response.body;
-    if (source_body === null) {
-      return new Response(null, {
-        headers: response_headers,
-        status: response.status,
-        statusText: response.statusText,
-      });
-    }
-    const decoder = new TextDecoder();
-    const encoder = new TextEncoder();
-    let buffer = "";
-    let cancelled = false;
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-    const stream = new ReadableStream<Uint8Array>({
-      start: async (controller) => {
-        reader = source_body.getReader();
-        try {
-          for (;;) {
-            const result = await reader.read();
-            if (result.done) {
-              break;
-            }
-            buffer += decoder.decode(result.value, { stream: true });
-            const frames = buffer.split(/\r?\n\r?\n/);
-            buffer = frames.pop() ?? "";
-            for (const frame of frames) {
-              controller.enqueue(
-                encoder.encode(this.adapt_sse_frame(frame, project_patch_adapter)),
-              );
-            }
-          }
-          if (cancelled) {
-            return;
-          }
-          if (buffer !== "") {
-            controller.enqueue(encoder.encode(this.adapt_sse_frame(buffer, project_patch_adapter)));
-          }
-          controller.close();
-        } catch (error) {
-          if (cancelled) {
-            return;
-          }
-          controller.error(error);
-        } finally {
-          reader.releaseLock();
-          reader = null;
-        }
-      },
-      cancel: async () => {
-        cancelled = true;
-        await reader?.cancel().catch(() => undefined);
-        abort_upstream();
-      },
-    });
-    return new Response(stream, {
-      headers: response_headers,
-      status: response.status,
-      statusText: response.statusText,
-    });
-  }
-
-  /**
-   * 只解析单个 SSE frame；解析失败时原样返回，避免坏 frame 中断整条事件流。
-   */
-  private adapt_sse_frame(frame: string, project_patch_adapter: ProjectPatchAdapter): string {
-    const lines = frame.split(/\r?\n/);
-    const event_line = lines.find((line) => line.startsWith("event:"));
-    if (event_line?.slice("event:".length).trim() !== "project.patch") {
-      return `${frame}\n\n`;
-    }
-    const data_lines = lines
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice("data:".length).trimStart());
-    try {
-      const payload = JsonTool.parseStrict(data_lines.join("\n"));
-      if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-        return `${frame}\n\n`;
-      }
-      const adapted = project_patch_adapter.adapt_project_patch(
-        payload as Record<string, ApiJsonValue>,
-      );
-      return this.build_sse_frame("project.patch", adapted);
-    } catch {
-      return `${frame}\n\n`;
-    }
   }
 
   /**

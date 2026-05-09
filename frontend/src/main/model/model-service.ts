@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "../service/path-service";
 import { ConfigService } from "../service/config-service";
 import {
@@ -69,24 +68,18 @@ const DEFAULT_GENERATION_CONFIG: Record<string, ApiJsonValue> = {
 };
 
 /**
- * 封装 TS 侧模型配置 CRUD 与 Python Core 模型运行时同步。
+ * 封装 TS 侧模型配置 CRUD；Python 任务每次按配置文件读取最新模型。
  */
 export class ModelService {
   private readonly paths: AppPathService;
   private readonly config_service: ConfigService;
-  private readonly core_bridge: CoreBridgeClient | null;
 
   /**
    * 初始化 ModelService 依赖，保持外部写入口清晰。
    */
-  public constructor(
-    paths: AppPathService,
-    config_service: ConfigService,
-    core_bridge: CoreBridgeClient | null = null,
-  ) {
+  public constructor(paths: AppPathService, config_service: ConfigService) {
     this.paths = paths;
     this.config_service = config_service;
-    this.core_bridge = core_bridge;
   }
 
   /**
@@ -240,7 +233,6 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     config["models"] = this.sort_models(read_model_records(config)) as unknown as ApiJsonValue;
     this.config_service.save_config(config);
-    await this.core_bridge?.sync_runtime("models_changed", {});
     return this.build_snapshot_response(config);
   }
 

@@ -7,11 +7,8 @@ from base.Base import Base
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.Core.Item import Item
-from module.Data.DataManager import DataManager
-from module.Data.Proofreading.ProofreadingRevisionService import (
-    ProofreadingRevisionService,
-)
 from module.Engine.Engine import Engine
+from module.Engine.TaskDataClient import TaskDataClient
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskPipeline import TaskPipeline
 from module.Engine.TaskPipeline import TaskPipelineCommitResult
@@ -110,19 +107,14 @@ class RetranslateTaskHooks:
 class RetranslateTask(Base):
     """批量重翻任务，每个 item 仍是独立单条翻译请求。"""
 
-    RETRANSLATE_REASON: str = "retranslate_items"
-    TASK_TYPE: str = "retranslate"
-    VIEW_REVISION_SCOPE: str = "proofreading"
-
     def __init__(self) -> None:
         super().__init__()
-        self.dm: DataManager = DataManager.get()
+        self.task_data_client: TaskDataClient = TaskDataClient.get()
         self.config: Config = Config().load()
         self.model: dict[str, Any] | None = None
         self.items_cache: list[Item] = []
         self.task_limiter: TaskLimiter | None = None
         self.quality_snapshot: QualityRuleSnapshot | None = None
-        self.revision_service = ProofreadingRevisionService(self.dm)
         self.subscribe(
             Base.Event.RETRANSLATE_TASK,
             self.retranslate_run_event,
@@ -159,18 +151,16 @@ class RetranslateTask(Base):
 
     def start(self, data: dict[str, Any]) -> None:
         def prepare() -> bool:
-            self.dm = DataManager.get()
-            self.revision_service = ProofreadingRevisionService(self.dm)
+            self.task_data_client = TaskDataClient.get()
             self.config = Config().load()
 
             if not TaskRunnerLifecycle.ensure_project_loaded(
                 self,
-                dm=self.dm,
+                dm=self.task_data_client,
                 task_event=Base.Event.RETRANSLATE_TASK,
             ):
                 return False
 
-            self.dm.open_db()
             self.model = TaskRunnerLifecycle.resolve_active_model(
                 self,
                 config=self.config,
@@ -180,7 +170,13 @@ class RetranslateTask(Base):
                 return False
 
             TaskRunnerLifecycle.reset_request_runtime(reset_text_processor=True)
-            self.quality_snapshot = QualityRuleSnapshot.capture()
+            snapshot_override = data.get("quality_snapshot")
+            if isinstance(snapshot_override, QualityRuleSnapshot):
+                self.quality_snapshot = snapshot_override
+            elif isinstance(snapshot_override, dict):
+                self.quality_snapshot = QualityRuleSnapshot.from_dict(snapshot_override)
+            else:
+                self.quality_snapshot = QualityRuleSnapshot()
             item_ids = self.normalize_item_ids(data.get("item_ids", []))
             self.items_cache = self.build_retranslate_items(item_ids)
             return True
@@ -237,7 +233,7 @@ class RetranslateTask(Base):
         )
 
     def build_retranslate_items(self, item_ids: list[int]) -> list[Item]:
-        item_dicts = self.dm.get_item_dicts_by_ids(item_ids)
+        item_dicts = self.task_data_client.get_item_dicts_by_ids(item_ids)
         items: list[Item] = []
         for item_dict in item_dicts:
             item = Item.from_dict(item_dict)
@@ -254,33 +250,25 @@ class RetranslateTask(Base):
         if not finalized_items:
             return
 
-        with self.dm.state_lock:
-            translation_extras = self.build_synced_translation_extras(finalized_items)
-            self.dm.update_batch(
-                items=finalized_items,
-                meta={
-                    "translation_extras": translation_extras,
-                },
-            )
-            self.dm.bump_task_runtime_section_revisions(("items",))
-            self.revision_service.bump_revision(self.VIEW_REVISION_SCOPE)
-
+        translation_extras = self.build_synced_translation_extras(finalized_items)
+        self.task_data_client.commit_retranslate_batch(
+            finalized_items, translation_extras
+        )
         changed_item_ids = [
             int(item["id"])
             for item in finalized_items
             if isinstance(item.get("id"), int)
         ]
         Engine.get().remove_active_retranslate_item_ids(changed_item_ids)
-        self.emit_commit_patch(changed_item_ids)
 
     def build_synced_translation_extras(
         self,
         finalized_items: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        extras = dict(self.dm.get_translation_extras())
+        extras = dict(self.task_data_client.get_translation_extras())
         item_dict_by_id: dict[int, dict[str, Any]] = {
             int(item_dict["id"]): dict(item_dict)
-            for item_dict in self.dm.get_all_item_dicts()
+            for item_dict in self.task_data_client.get_all_item_dicts()
             if isinstance(item_dict.get("id"), int)
         }
         for item_dict in finalized_items:
@@ -310,61 +298,11 @@ class RetranslateTask(Base):
         extras["line"] = processed_line + error_line
         return extras
 
-    def build_task_block(self) -> dict[str, object]:
-        status = Engine.get().get_status()
-        status_value = str(getattr(status, "value", status))
-        return {
-            "task_type": self.TASK_TYPE,
-            "status": status_value,
-            "busy": Base.is_engine_busy(status),
-            "request_in_flight_count": Engine.get().get_request_in_flight_count(),
-            "line": 0,
-            "total_line": 0,
-            "processed_line": 0,
-            "error_line": 0,
-            "total_tokens": 0,
-            "total_output_tokens": 0,
-            "total_input_tokens": 0,
-            "time": 0.0,
-            "start_time": 0.0,
-            "retranslating_item_ids": Engine.get().get_active_retranslate_item_ids(),
-        }
-
-    def emit_commit_patch(self, changed_item_ids: list[int]) -> None:
-        updated_sections = ("items", "proofreading", "task")
-        self.dm.emit_project_runtime_patch(
-            reason=self.RETRANSLATE_REASON,
-            updated_sections=updated_sections,
-            patch=[
-                {
-                    "op": "merge_items",
-                    "item_ids": changed_item_ids,
-                },
-                {
-                    "op": "replace_proofreading",
-                },
-                {
-                    "op": "replace_task",
-                    "task": self.build_task_block(),
-                },
-            ],
-        )
-
     def emit_final_task_patch(self) -> None:
         Engine.get().clear_active_retranslate_item_ids()
-        self.dm.emit_project_runtime_patch(
-            reason=self.RETRANSLATE_REASON,
-            updated_sections=("task",),
-            patch=[
-                {
-                    "op": "replace_task",
-                    "task": self.build_task_block(),
-                }
-            ],
-        )
+        self.task_data_client.finalize_retranslate()
 
     def cleanup(self) -> None:
-        self.dm.close_db()
         self.items_cache = []
         self.model = None
         self.quality_snapshot = None

@@ -51,6 +51,7 @@ def create_translation_stub() -> Translation:
         mtool_optimizer_enable=False,
         output_folder_open_on_finish=False,
     )
+    translation.task_data_client = create_data_manager(loaded=True)
     setattr(translation, "emit", recorder.emit)
     setattr(translation, "emitted_events", recorder.events)
     return translation
@@ -194,10 +195,12 @@ def create_data_manager(*, loaded: bool, items: list[Item] | None = None) -> Any
         open_db=MagicMock(),
         close_db=MagicMock(),
         get_translation_extras=MagicMock(return_value={"line": 9, "time": 3}),
+        update_translation_progress=MagicMock(),
         get_analysis_extras=MagicMock(return_value={"line": 5, "time": 2}),
         get_analysis_progress_snapshot=MagicMock(return_value={"line": 5, "time": 2}),
         get_analysis_candidate_count=MagicMock(return_value=1),
         get_items_for_translation=MagicMock(return_value=item_list),
+        commit_translation_batch=MagicMock(),
         replace_all_items=MagicMock(),
         set_translation_extras=MagicMock(),
         run_project_prefilter=MagicMock(),
@@ -218,7 +221,11 @@ def setup_common_patches(
     logger: FakeLogManager,
 ) -> None:
     monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
-    monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
+    monkeypatch.setattr(
+        translation_module.TaskDataClient,
+        "get",
+        staticmethod(lambda: dm),
+    )
     monkeypatch.setattr(
         translation_module.Localizer, "get", staticmethod(build_localizer)
     )
@@ -269,38 +276,30 @@ def test_get_item_count_by_status_and_copy_items() -> None:
 def test_save_translation_state_skips_when_project_not_ready(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    del monkeypatch
     translation = create_translation_stub()
     translation.items_cache = None
-    fake_dm = SimpleNamespace(
-        is_loaded=lambda: False,
-        set_translation_extras=MagicMock(),
-    )
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
+    fake_dm = create_data_manager(loaded=False)
+    translation.task_data_client = fake_dm
 
     Translation.save_translation_state(translation)
 
-    fake_dm.set_translation_extras.assert_not_called()
+    fake_dm.update_translation_progress.assert_not_called()
 
 
 def test_save_translation_state_persists_extras(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    del monkeypatch
     translation = create_translation_stub()
     translation.items_cache = [Item(src="a")]
     translation.extras = {"line": 1}
-    fake_dm = SimpleNamespace(
-        is_loaded=lambda: True,
-        set_translation_extras=MagicMock(),
-    )
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
+    fake_dm = create_data_manager(loaded=True)
+    translation.task_data_client = fake_dm
 
     Translation.save_translation_state(translation)
 
-    fake_dm.set_translation_extras.assert_called_once_with({"line": 1})
+    fake_dm.update_translation_progress.assert_called_once_with({"line": 1})
 
 
 def test_get_task_buffer_size_has_lower_and_upper_bounds() -> None:
@@ -325,78 +324,6 @@ def test_translation_require_stop_sets_engine_status_and_emits_run_event(
         (
             Base.Event.TRANSLATION_REQUEST_STOP,
             {"sub_event": Base.SubEvent.RUN},
-        )
-    ]
-
-
-def test_project_check_run_ignores_non_request_sub_event() -> None:
-    translation = create_translation_stub()
-
-    Translation.project_check_run(
-        translation,
-        Base.Event.PROJECT_CHECK,
-        {"sub_event": Base.SubEvent.DONE},
-    )
-
-    assert emitted_events(translation) == []
-
-
-def test_project_check_run_emits_done_with_loaded_project(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    dm = create_data_manager(loaded=True)
-    engine = create_engine()
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
-
-    Translation.project_check_run(
-        translation,
-        Base.Event.PROJECT_CHECK,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert emitted_events(translation) == [
-        (
-            Base.Event.PROJECT_CHECK,
-            {
-                "sub_event": Base.SubEvent.DONE,
-                "extras": {"line": 9, "time": 3},
-                "analysis_extras": {"line": 5, "time": 2},
-                "analysis_candidate_count": 1,
-            },
-        )
-    ]
-    dm.get_analysis_progress_snapshot.assert_not_called()
-    dm.get_analysis_extras.assert_called_once()
-
-
-def test_project_check_run_emits_none_payload_when_project_unloaded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    dm = create_data_manager(loaded=False)
-    engine = create_engine()
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
-
-    Translation.project_check_run(
-        translation,
-        Base.Event.PROJECT_CHECK,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    assert emitted_events(translation) == [
-        (
-            Base.Event.PROJECT_CHECK,
-            {
-                "sub_event": Base.SubEvent.DONE,
-                "extras": {},
-                "analysis_extras": {},
-                "analysis_candidate_count": 0,
-            },
         )
     ]
 
@@ -465,7 +392,10 @@ def test_translation_run_emits_error_when_thread_start_fails(
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
 
     class StartFailThread:
-        def __init__(self, target: Any, args: tuple[Any, ...]) -> None:
+        def __init__(
+            self, target: Any, args: tuple[Any, ...] = (), **kwargs: Any
+        ) -> None:
+            del kwargs
             self.target = target
             self.args = args
 
@@ -708,7 +638,7 @@ def test_start_emits_failed_terminal_event_when_exception_occurs(
         },
     )
     dm = create_data_manager(loaded=True, items=[Item(src="line")])
-    dm.open_db = MagicMock(side_effect=RuntimeError("open failed"))
+    dm.get_items_for_translation = MagicMock(side_effect=RuntimeError("items failed"))
     engine = create_engine()
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
@@ -729,29 +659,31 @@ def test_start_emits_failed_terminal_event_when_exception_occurs(
 def test_get_item_count_copy_and_close_db_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    del monkeypatch
     translation = create_translation_stub()
     dm = create_data_manager(loaded=True)
-    monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
+    translation.task_data_client = dm
 
     assert Translation.get_item_count_by_status(translation, Base.ItemStatus.NONE) == 0
     assert Translation.copy_items(translation) == []
 
     Translation.close_db_connection(translation)
-    dm.close_db.assert_called_once()
+    dm.close_db.assert_not_called()
 
 
 def test_save_translation_state_without_extras_skips_meta_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    del monkeypatch
     translation = create_translation_stub()
     translation.items_cache = [Item(src="a")]
     translation.extras = {}
     dm = create_data_manager(loaded=True)
-    monkeypatch.setattr(translation_module.DataManager, "get", staticmethod(lambda: dm))
+    translation.task_data_client = dm
 
     Translation.save_translation_state(translation)
 
-    dm.set_translation_extras.assert_not_called()
+    dm.update_translation_progress.assert_not_called()
 
 
 def test_start_translation_pipeline_builds_pipeline_and_runs(

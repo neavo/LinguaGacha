@@ -32,18 +32,6 @@ class RecordingServerRuntime:
         self.shutdown_calls += 1
 
 
-class RecordingDataManager:
-    def __init__(self, *, loaded: bool) -> None:
-        self.loaded = loaded
-        self.unload_calls: int = 0
-
-    def is_loaded(self) -> bool:
-        return self.loaded
-
-    def unload_project(self) -> None:
-        self.unload_calls += 1
-
-
 class RecordingEngine:
     def __init__(self) -> None:
         self.run_calls: int = 0
@@ -59,20 +47,12 @@ class FakeLifecycleRequestHandler:
         }
 
 
-@pytest.mark.parametrize(
-    ("has_runtime", "project_loaded"),
-    [(True, True), (False, False)],
-)
+@pytest.mark.parametrize("has_runtime", [True, False])
 def test_cleanup_runtime_releases_only_existing_resources(
-    monkeypatch: pytest.MonkeyPatch,
     has_runtime: bool,
-    project_loaded: bool,
 ) -> None:
     logger = RecordingLogger()
     runtime = RecordingServerRuntime() if has_runtime else None
-    data_manager = RecordingDataManager(loaded=project_loaded)
-
-    monkeypatch.setattr(app_module.DataManager, "get", lambda: data_manager)
 
     app_module.cleanup_runtime(
         local_api_server_runtime=runtime,
@@ -81,7 +61,6 @@ def test_cleanup_runtime_releases_only_existing_resources(
 
     runtime_shutdown_calls = 0 if runtime is None else runtime.shutdown_calls
     assert runtime_shutdown_calls == int(has_runtime)
-    assert data_manager.unload_calls == int(project_loaded)
     assert logger.shutdown_calls == 1
 
 

@@ -99,7 +99,7 @@ class TranslationProgressTracker:
     def build_plan_snapshot(self, *, continue_mode: bool) -> TaskProgressSnapshot:
         """计划阶段统一构造初始快照，避免控制器拼接统计细节。"""
         if continue_mode:
-            dm_snapshot = self.translation.dm.get_translation_extras()
+            dm_snapshot = self.translation.task_data_client.get_translation_extras()
             snapshot = TaskProgressSnapshot.from_dict(dm_snapshot)
             return TaskProgressSnapshot(
                 start_time=time.time() - snapshot.time,

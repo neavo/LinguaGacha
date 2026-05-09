@@ -16,7 +16,7 @@ def create_translation_stub() -> SimpleNamespace:
     translation = SimpleNamespace()
     translation.extras = {}
     translation.items_cache = None
-    translation.dm = SimpleNamespace(get_translation_extras=lambda: {})
+    translation.task_data_client = SimpleNamespace(get_translation_extras=lambda: {})
     translation.save_count = 0
     translation.emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
     translation.save_translation_state = lambda: setattr(
@@ -122,7 +122,7 @@ def test_build_plan_snapshot_continue_mode_reuses_saved_tokens_and_live_counts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     translation = create_translation_stub()
-    translation.dm = SimpleNamespace(
+    translation.task_data_client = SimpleNamespace(
         get_translation_extras=lambda: {
             "time": 12.0,
             "total_line": 10,

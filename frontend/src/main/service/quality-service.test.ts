@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
-import type { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectSessionState } from "../project/project-session-state";
 import { AppPathService } from "./path-service";
 import { ConfigService } from "./config-service";
@@ -110,7 +109,6 @@ describe("QualityService", () => {
       paths,
       config_service,
       null as unknown as ProjectDatabase,
-      null as unknown as CoreBridgeClient,
       new ProjectSessionState(),
     );
     return { service, app_root };

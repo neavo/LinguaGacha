@@ -2,11 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "./path-service";
 import { JsonTool } from "../../utils/json-tool";
 
 type ConfigRecord = Record<string, ApiJsonValue>;
+
+interface SettingsEventPublisher {
+  // settings.changed 是 TS 本地事件，不能再绕回 Python runtime sync。
+  publish: (event_type: string, payload: Record<string, ApiJsonValue>) => void;
+}
 
 const SETTING_KEYS = [
   "app_language",
@@ -77,14 +81,14 @@ const DEFAULT_CONFIG: ConfigRecord = {
  */
 export class ConfigService {
   private readonly paths: AppPathService;
-  private readonly core_bridge: CoreBridgeClient | null;
+  private readonly event_publisher: SettingsEventPublisher | null;
 
   /**
    * 初始化 ConfigService 依赖，保持外部写入口清晰。
    */
-  public constructor(paths: AppPathService, core_bridge: CoreBridgeClient | null = null) {
+  public constructor(paths: AppPathService, event_publisher: SettingsEventPublisher | null = null) {
     this.paths = paths;
-    this.core_bridge = core_bridge;
+    this.event_publisher = event_publisher;
   }
 
   /**
@@ -97,7 +101,7 @@ export class ConfigService {
   }
 
   /**
-   * 更新应用设置白名单字段，并同步 Python Core 运行时。
+   * 更新应用设置白名单字段，并通过 TS 事件 hub 广播设置变化。
    */
   public async update_app_settings(
     request: Record<string, ApiJsonValue>,
@@ -113,10 +117,7 @@ export class ConfigService {
     }
     if (changed_keys.length > 0) {
       this.save_config(config);
-      await this.core_bridge?.sync_runtime("settings_changed", {
-        keys: changed_keys,
-        settings: this.build_settings_snapshot(config),
-      });
+      this.publish_settings_changed(changed_keys, config);
     }
     return { settings: this.build_settings_snapshot(config) };
   }
@@ -135,10 +136,7 @@ export class ConfigService {
         project_path,
       );
       this.save_config(config);
-      await this.core_bridge?.sync_runtime("settings_changed", {
-        keys: ["recent_projects"],
-        settings: this.build_settings_snapshot(config),
-      });
+      this.publish_settings_changed(["recent_projects"], config);
     }
     return { settings: this.build_settings_snapshot(config) };
   }
@@ -156,10 +154,7 @@ export class ConfigService {
         return item.path !== project_path;
       }) as unknown as ApiJsonValue;
       this.save_config(config);
-      await this.core_bridge?.sync_runtime("settings_changed", {
-        keys: ["recent_projects"],
-        settings: this.build_settings_snapshot(config),
-      });
+      this.publish_settings_changed(["recent_projects"], config);
     }
     return { settings: this.build_settings_snapshot(config) };
   }
@@ -201,6 +196,16 @@ export class ConfigService {
       snapshot[key] = config[key] ?? DEFAULT_CONFIG[key];
     }
     return snapshot;
+  }
+
+  /**
+   * 设置广播由 TS 直接发布，Python Core 下次任务读取配置文件即可看到最新值。
+   */
+  private publish_settings_changed(changed_keys: string[], config: ConfigRecord): void {
+    this.event_publisher?.publish("settings.changed", {
+      keys: changed_keys as unknown as ApiJsonValue,
+      settings: this.build_settings_snapshot(config),
+    });
   }
 
   /**

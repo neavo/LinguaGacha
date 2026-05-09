@@ -7,8 +7,8 @@ from base.Base import Base
 from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.Core.Item import Item
-from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
+from module.Engine.TaskDataClient import TaskDataClient
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskPipeline import TaskPipeline
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
@@ -44,7 +44,7 @@ class Translation(Base):
 
         # 配置
         self.config = Config().load()
-        self.dm: DataManager = DataManager.get()
+        self.task_data_client: TaskDataClient = TaskDataClient.get()
 
         # 翻译期间使用的质量规则快照（开始/继续时捕获）
         self.quality_snapshot: QualityRuleSnapshot | None = None
@@ -53,7 +53,6 @@ class Translation(Base):
         self.progress_tracker = TranslationProgressTracker(self)
 
         # 注册事件
-        self.subscribe(Base.Event.PROJECT_CHECK, self.project_check_run)
         self.subscribe(Base.Event.TRANSLATION_TASK, self.translation_run_event)
         self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.translation_stop_event)
 
@@ -107,42 +106,6 @@ class Translation(Base):
         """
         self.progress_tracker.sync_extras_line_stats()
 
-    def build_project_check_payload(self, dm: DataManager) -> dict[str, Any]:
-        """统一收敛工程检查返回值，避免线程任务里重复拼装字典。"""
-        if not dm.is_loaded():
-            return {
-                "extras": {},
-                "analysis_extras": {},
-                "analysis_candidate_count": 0,
-            }
-
-        return {
-            "extras": dm.get_translation_extras(),
-            "analysis_extras": dm.get_analysis_extras(),
-            "analysis_candidate_count": int(dm.get_analysis_candidate_count()),
-        }
-
-    # 翻译状态检查事件
-    def project_check_run(self, event: Base.Event, data: dict) -> None:
-        del event
-        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
-        if sub_event != Base.SubEvent.REQUEST:
-            return
-
-        def task() -> None:
-            dm = DataManager.get()
-            payload = self.build_project_check_payload(dm)
-
-            self.emit(
-                Base.Event.PROJECT_CHECK,
-                {
-                    "sub_event": Base.SubEvent.DONE,
-                    **payload,
-                },
-            )
-
-        threading.Thread(target=task).start()
-
     # 翻译启动生命周期事件
     def translation_run_event(self, event: Base.Event, data: dict) -> None:
         del event
@@ -189,8 +152,7 @@ class Translation(Base):
 
     # 实际的翻译流程
     def start(self, data: dict) -> None:
-        dm = DataManager.get()
-        self.dm = dm
+        self.task_data_client = TaskDataClient.get()
         run_state: dict[str, Any] = {
             "mode": Base.TranslationMode.NEW,
         }
@@ -208,12 +170,11 @@ class Translation(Base):
             self.config = config if isinstance(config, Config) else Config().load()
             if not TaskRunnerLifecycle.ensure_project_loaded(
                 self,
-                dm=dm,
+                dm=self.task_data_client,
                 task_event=Base.Event.TRANSLATION_TASK,
             ):
                 return False
 
-            dm.open_db()
             self.model = TaskRunnerLifecycle.resolve_active_model(
                 self,
                 config=self.config,
@@ -226,11 +187,14 @@ class Translation(Base):
             self.quality_snapshot = (
                 snapshot_override
                 if isinstance(snapshot_override, QualityRuleSnapshot)
-                else QualityRuleSnapshot.capture()
+                else QualityRuleSnapshot()
             )
 
             TaskRunnerLifecycle.reset_request_runtime(reset_text_processor=True)
-            self.items_cache = dm.get_items_for_translation(self.config, mode)
+            self.items_cache = self.task_data_client.get_items_for_translation(
+                self.config,
+                mode,
+            )
             return True
 
         def build_plan() -> TaskRunnerExecutionPlan:
@@ -383,18 +347,17 @@ class Translation(Base):
         return [Item.from_dict(item.to_dict()) for item in self.items_cache]
 
     def close_db_connection(self) -> None:
-        """关闭数据库长连接（翻译结束时调用，触发 WAL checkpoint）"""
-        DataManager.get().close_db()
+        """任务数据由 TS Gateway 管理，Python 翻译收尾不再持有数据库长连接。"""
+        return
 
     def save_translation_state(self) -> None:
-        """保存翻译状态到 .lg 文件"""
-        dm = DataManager.get()
-        if not dm.is_loaded() or self.items_cache is None:
+        """保存翻译进度到 TS 任务数据服务。"""
+        if not self.task_data_client.is_loaded() or self.items_cache is None:
             return
 
         # 保存翻译进度额外数据（仅当存在时）
         if self.extras:
-            dm.set_translation_extras(self.extras)
+            self.task_data_client.update_translation_progress(self.extras)
 
     def get_task_buffer_size(self, max_workers: int) -> int:
         # 缓冲区用于控制“已创建但未执行”的任务数量，避免一次性创建海量任务对象。
@@ -410,7 +373,7 @@ class Translation(Base):
 
         为什么串行：翻译提交需要把落库、缓存更新和局部刷新收口成同一条数据层入口。
         """
-        DataManager.get().apply_translation_batch_update(
+        self.task_data_client.commit_translation_batch(
             finalized_items,
             extras_snapshot,
         )

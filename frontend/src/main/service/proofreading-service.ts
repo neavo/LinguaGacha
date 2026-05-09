@@ -1,5 +1,4 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import {
@@ -29,22 +28,14 @@ export class ProofreadingService {
   // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库。
   private readonly database: ProjectDatabase;
 
-  // 写入后必须通知 Python 读侧清缓存，避免任务 / event bridge 继续读旧 item。
-  private readonly core_bridge: CoreBridgeClient;
-
   // 校对同步写入口只以 TS 公开会话状态定位当前工程。
   private readonly session_state: ProjectSessionState;
 
   /**
    * 注入数据库与运行时桥，保证写库和 Python 读侧缓存同步都可被测试替换。
    */
-  public constructor(
-    database: ProjectDatabase,
-    core_bridge: CoreBridgeClient,
-    session_state: ProjectSessionState,
-  ) {
+  public constructor(database: ProjectDatabase, session_state: ProjectSessionState) {
     this.database = database;
-    this.core_bridge = core_bridge;
     this.session_state = session_state;
   }
 
@@ -106,7 +97,6 @@ export class ProofreadingService {
         value: current_proofreading_revision + 1,
       }),
     ]);
-    await this.sync_project_data();
     return this.build_project_mutation_ack(project_path);
   }
 
@@ -272,15 +262,6 @@ export class ProofreadingService {
     return this.normalize_object(
       this.database.execute(this.op("getAllMeta", { projectPath: project_path })),
     );
-  }
-
-  /**
-   * 通知 Python Core 丢弃 items 相关缓存；meta cache 会随 items section 一并失效。
-   */
-  private async sync_project_data(): Promise<void> {
-    await this.core_bridge.sync_runtime("project_data_changed", {
-      sections: ["items"],
-    });
   }
 
   /**

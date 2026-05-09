@@ -129,6 +129,49 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
+function create_expected_quality_snapshot(): Record<string, unknown> {
+  return {
+    quality: {
+      glossary: {
+        enabled: false,
+        mode: "off",
+        revision: 0,
+        entries: [],
+      },
+      pre_replacement: {
+        enabled: false,
+        mode: "off",
+        revision: 0,
+        entries: [],
+      },
+      post_replacement: {
+        enabled: false,
+        mode: "off",
+        revision: 0,
+        entries: [],
+      },
+      text_preserve: {
+        enabled: false,
+        mode: "off",
+        revision: 0,
+        entries: [],
+      },
+    },
+    prompts: {
+      translation: {
+        enabled: false,
+        text: "",
+        revision: 0,
+      },
+      analysis: {
+        enabled: false,
+        text: "",
+        revision: 0,
+      },
+    },
+  };
+}
+
 function create_runtime_fixture(): RuntimeFixture {
   return {
     settings_snapshot: {
@@ -140,6 +183,7 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     project_store: {
       getState: () => {
+        const quality_snapshot = create_expected_quality_snapshot();
         return {
           project: {
             path: "E:/demo/sample.lg",
@@ -147,32 +191,8 @@ function create_runtime_fixture(): RuntimeFixture {
           proofreading: {
             revision: 1,
           },
-          quality: {
-            glossary: {
-              enabled: false,
-              mode: "off",
-              revision: 0,
-              entries: [],
-            },
-            pre_replacement: {
-              enabled: false,
-              mode: "off",
-              revision: 0,
-              entries: [],
-            },
-            post_replacement: {
-              enabled: false,
-              mode: "off",
-              revision: 0,
-              entries: [],
-            },
-            text_preserve: {
-              enabled: false,
-              mode: "off",
-              revision: 0,
-              entries: [],
-            },
-          },
+          quality: quality_snapshot.quality,
+          prompts: quality_snapshot.prompts,
           revisions: {
             sections: {
               items: 7,
@@ -701,6 +721,7 @@ describe("useProofreadingPageState", () => {
         items: 7,
         proofreading: 1,
       },
+      quality_snapshot: create_expected_quality_snapshot(),
     });
     expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -776,6 +797,7 @@ describe("useProofreadingPageState", () => {
         items: 7,
         proofreading: 1,
       },
+      quality_snapshot: create_expected_quality_snapshot(),
     });
     expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
   });

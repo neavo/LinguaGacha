@@ -112,9 +112,12 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             shutdown=lambda request, handler: {"accepted": True},
         ),
         runtime_bridge_app_service=SimpleNamespace(
-            get_project_state=lambda request, handler: {"loaded": False},
-            sync=lambda request, handler: {"accepted": True},
-            get_task_state=lambda request, handler: {"status": "IDLE"},
+            start_translation=lambda request, handler: {"accepted": True},
+            stop_translation=lambda request, handler: {"accepted": True},
+            start_analysis=lambda request, handler: {"accepted": True},
+            stop_analysis=lambda request, handler: {"accepted": True},
+            start_retranslate=lambda request, handler: {"accepted": True},
+            translate_single=lambda request, handler: {"success": True},
         ),
     )
 
@@ -126,8 +129,8 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             ("POST", ModelApiPaths.LIST_AVAILABLE_PATH),
             ("POST", ModelApiPaths.TEST_PATH),
             ("POST", "/api/lifecycle/shutdown"),
-            ("POST", "/internal/runtime/project-state"),
-            ("POST", "/internal/runtime/tasks/state"),
+            ("POST", "/internal/runtime/tasks/start-translation"),
+            ("POST", "/internal/runtime/tasks/start-retranslate"),
         )
     }
 
@@ -136,8 +139,8 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         ModelApiPaths.LIST_AVAILABLE_PATH: "json",
         ModelApiPaths.TEST_PATH: "json",
         "/api/lifecycle/shutdown": "context_json",
-        "/internal/runtime/project-state": "context_json",
-        "/internal/runtime/tasks/state": "context_json",
+        "/internal/runtime/tasks/start-translation": "context_json",
+        "/internal/runtime/tasks/start-retranslate": "context_json",
     }
 
 
@@ -175,33 +178,32 @@ def test_start_for_test_registers_model_probe_routes() -> None:
         shutdown()
 
 
-def test_runtime_bridge_routes_require_explicit_service() -> None:
+def test_runtime_bridge_routes_require_explicit_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
     service = RuntimeBridgeAppService(instance_token="core-token")
-    service.data_manager = SimpleNamespace(
-        is_loaded=lambda: False,
-        get_lg_path=lambda: "",
-    )
+    monkeypatch.setattr(Base, "emit", lambda self, event, payload: True)
     base_url, shutdown = ServerBootstrap.start_for_test(
         runtime_bridge_app_service=service
     )
 
     try:
         # Act
-        rejected_response = httpx.post(f"{base_url}/internal/runtime/project-state")
+        rejected_response = httpx.post(
+            f"{base_url}/internal/runtime/tasks/start-translation",
+            json={"mode": "NEW"},
+        )
         accepted_response = httpx.post(
-            f"{base_url}/internal/runtime/project-state",
+            f"{base_url}/internal/runtime/tasks/start-translation",
+            json={"mode": "NEW"},
             headers={RuntimeBridgeAppService.TOKEN_HEADER: "core-token"},
         )
 
         # Assert
         assert rejected_response.status_code == 400
         assert accepted_response.status_code == 200
-        assert accepted_response.json()["data"] == {
-            "loaded": False,
-            "projectPath": "",
-            "busy": False,
-        }
+        assert accepted_response.json()["data"] == {"accepted": True}
     finally:
         shutdown()
 
@@ -395,6 +397,9 @@ def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
         ("POST", "/api/project/create-preview"),
         ("POST", "/api/project/create-commit"),
         ("POST", "/api/project/open-preview"),
+        ("POST", "/internal/runtime/project-state"),
+        ("POST", "/internal/runtime/sync"),
+        ("POST", "/internal/runtime/tasks/state"),
         ("POST", "/api/project/export-converted-translation"),
         ("POST", "/api/project/workbench/parse-file"),
         ("GET", "/api/project/bootstrap/stream"),

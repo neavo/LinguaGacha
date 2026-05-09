@@ -4,11 +4,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectSessionState } from "../project/project-session-state";
+import { TaskRuntimeState } from "./task-runtime-state";
 import { TaskSnapshotBuilder } from "./task-snapshot-builder";
-import type { TaskEngineStatePayload } from "./task-types";
 
 describe("TaskSnapshotBuilder", () => {
   const cleanup_callbacks: Array<() => void> = [];
@@ -19,31 +18,27 @@ describe("TaskSnapshotBuilder", () => {
     }
   });
 
-  it("用 TS 数据库事实和内部 Engine 状态组装任务快照", async () => {
+  it("用 TS 数据库事实和 TS 运行态组装任务快照", async () => {
     const { database, project_path } = create_project_database();
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
     seed_project(database, project_path);
-    const builder = new TaskSnapshotBuilder(
-      database,
-      create_core_bridge({
-        status: "IDLE",
-        busy: false,
-        request_in_flight_count: 2,
-        active_task_type: "idle",
-        retranslating_item_ids: [101],
-      }),
-      session_state,
-    );
+    const task_runtime_state = new TaskRuntimeState();
+    task_runtime_state.begin_task("retranslate", [101]);
+    task_runtime_state.apply_progress_event({
+      task_type: "retranslate",
+      request_in_flight_count: 2,
+    });
+    const builder = new TaskSnapshotBuilder(database, task_runtime_state, session_state);
 
-    const translation = await builder.build_task_snapshot();
+    const translation = await builder.build_task_snapshot({ task_type: "translation" });
     const analysis = await builder.build_task_snapshot({ task_type: "analysis" });
     const retranslate = await builder.build_task_snapshot({ task_type: "retranslate" });
 
     expect(translation).toMatchObject({
       task_type: "translation",
-      status: "IDLE",
-      busy: false,
+      status: "REQUEST",
+      busy: true,
       request_in_flight_count: 2,
       line: 5,
       total_line: 10,
@@ -63,14 +58,12 @@ describe("TaskSnapshotBuilder", () => {
     });
   });
 
-  it("命令回执在 Engine 状态读取失败时仍返回本地受理快照", async () => {
+  it("命令回执直接读取 TS 运行态并覆盖公开意图", async () => {
+    const task_runtime_state = new TaskRuntimeState();
+    task_runtime_state.begin_task("retranslate", [1, 2]);
     const builder = new TaskSnapshotBuilder(
       {} as unknown as ProjectDatabase,
-      {
-        get_task_engine_state: async () => {
-          throw new Error("内部状态暂不可用");
-        },
-      } as unknown as CoreBridgeClient,
+      task_runtime_state,
       new ProjectSessionState(),
     );
 
@@ -97,12 +90,6 @@ describe("TaskSnapshotBuilder", () => {
     cleanup_callbacks.push(() => fs.rmSync(directory, { force: true, recursive: true }));
     cleanup_callbacks.push(() => database.close());
     return { database, project_path };
-  }
-
-  function create_core_bridge(engine_state: TaskEngineStatePayload): CoreBridgeClient {
-    return {
-      get_task_engine_state: async () => engine_state,
-    } as unknown as CoreBridgeClient;
   }
 
   function seed_project(database: ProjectDatabase, project_path: string): void {

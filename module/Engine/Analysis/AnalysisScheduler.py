@@ -8,7 +8,6 @@ from typing import Any
 from base.Base import Base
 from module.Data.Core.Item import Item
 from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisTask import AnalysisTask
@@ -29,7 +28,12 @@ class AnalysisScheduler:
 
     def is_skipped_analysis_status(self, status: Base.ItemStatus) -> bool:
         """分析跳过规则统一收口，避免入口和重试分支各写一套。"""
-        return DataManager.is_skipped_analysis_status(status)
+        return status in (
+            Base.ItemStatus.EXCLUDED,
+            Base.ItemStatus.RULE_SKIPPED,
+            Base.ItemStatus.LANGUAGE_SKIPPED,
+            Base.ItemStatus.DUPLICATED,
+        )
 
     def should_include_item(self, item: Item) -> bool:
         """分析只处理真正可能产出候选术语的条目。"""
@@ -62,7 +66,7 @@ class AnalysisScheduler:
 
     def get_checkpoint_map(self) -> dict[int, dict[str, Any]]:
         """分析续跑只看这份规整后的 checkpoint 快照。"""
-        raw_map = DataManager.get().get_analysis_item_checkpoints()
+        raw_map = self.analysis.task_data_client.get_analysis_item_checkpoints()
         normalized: dict[int, dict[str, Any]] = {}
 
         for raw_item_id, raw_checkpoint in raw_map.items():
@@ -121,7 +125,7 @@ class AnalysisScheduler:
         processed_line = 0
         error_line = 0
 
-        for item in DataManager.get().get_all_items():
+        for item in self.analysis.task_data_client.get_all_items():
             if not self.should_include_item(item):
                 continue
 
@@ -152,7 +156,7 @@ class AnalysisScheduler:
         del config
         checkpoint_map = self.get_checkpoint_map()
         pending_items: list[AnalysisItemContext] = []
-        for item in DataManager.get().get_pending_analysis_items():
+        for item in self.analysis.task_data_client.get_pending_analysis_items():
             context = self.build_item_context(item, checkpoint_map)
             if context is not None:
                 pending_items.append(context)

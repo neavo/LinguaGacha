@@ -19,6 +19,7 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { is_worker_client_error } from "@/lib/worker-client-error";
+import { serializeQualityRuntimeSnapshot } from "@/project/quality/quality-runtime";
 import {
   create_replace_all_plan,
   create_reset_items_plan,
@@ -1572,12 +1573,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       preferred_row_id_ref.current = active_row_id_ref.current;
       set_is_mutating(true);
       try {
+        const current_project_state = project_store.getState();
         const ack = await api_fetch<RetranslateTaskAck>("/api/tasks/start-retranslate", {
           item_ids,
           expected_section_revisions: {
-            items: project_store.getState().revisions.sections.items ?? 0,
+            items: current_project_state.revisions.sections.items ?? 0,
             proofreading: list_view.revision,
           },
+          quality_snapshot: serializeQualityRuntimeSnapshot(current_project_state),
         });
         const task = ack.task ?? {};
         const retranslating_item_ids = normalize_numeric_item_ids(task.retranslating_item_ids);

@@ -3,6 +3,7 @@ import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ConfigService } from "../service/config-service";
 import { resolve_active_model } from "../model/model-config-resolver";
 import { ProjectSessionState } from "../project/project-session-state";
+import { TaskRuntimeState } from "./task-runtime-state";
 import { TaskSnapshotBuilder } from "./task-snapshot-builder";
 import { type JsonRecord, type MutableJsonRecord } from "./task-types";
 
@@ -20,6 +21,9 @@ export class TaskService {
   // snapshot_builder 是公开任务快照唯一组装口径，命令回执也复用它。
   private readonly snapshot_builder: TaskSnapshotBuilder;
 
+  // task_runtime_state 负责命令受理后的乐观 busy 状态，避免回执等待 SSE。
+  private readonly task_runtime_state: TaskRuntimeState;
+
   // session_state 决定重翻 revision 校验是否能定位当前工程。
   private readonly session_state: ProjectSessionState;
 
@@ -32,11 +36,13 @@ export class TaskService {
   public constructor(
     core_bridge: CoreBridgeClient,
     snapshot_builder: TaskSnapshotBuilder,
+    task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
     config_service: ConfigService,
   ) {
     this.core_bridge = core_bridge;
     this.snapshot_builder = snapshot_builder;
+    this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
     this.config_service = config_service;
   }
@@ -47,7 +53,14 @@ export class TaskService {
   public async start_translation(request: JsonRecord): Promise<MutableJsonRecord> {
     const mode = this.require_mode(request["mode"], TRANSLATION_MODES, "NEW");
     const quality_snapshot = this.normalize_optional_record(request["quality_snapshot"]);
-    await this.core_bridge.start_translation({ mode, quality_snapshot });
+    const previous_state = this.task_runtime_state.snapshot();
+    this.task_runtime_state.begin_task("translation");
+    try {
+      await this.core_bridge.start_translation({ mode, quality_snapshot });
+    } catch (error) {
+      this.task_runtime_state.restore(previous_state);
+      throw error;
+    }
     return {
       accepted: true,
       task: (await this.snapshot_builder.build_command_ack(
@@ -62,7 +75,14 @@ export class TaskService {
    * 请求停止翻译任务；停止态由任务流水线异步收尾。
    */
   public async stop_translation(_request: JsonRecord): Promise<MutableJsonRecord> {
-    await this.core_bridge.stop_translation();
+    const previous_state = this.task_runtime_state.snapshot();
+    this.task_runtime_state.mark_stopping("translation");
+    try {
+      await this.core_bridge.stop_translation();
+    } catch (error) {
+      this.task_runtime_state.restore(previous_state);
+      throw error;
+    }
     return {
       accepted: true,
       task: (await this.snapshot_builder.build_command_ack(
@@ -79,7 +99,14 @@ export class TaskService {
   public async start_analysis(request: JsonRecord): Promise<MutableJsonRecord> {
     const mode = this.require_mode(request["mode"], ANALYSIS_MODES, "NEW");
     const quality_snapshot = this.normalize_optional_record(request["quality_snapshot"]);
-    await this.core_bridge.start_analysis({ mode, quality_snapshot });
+    const previous_state = this.task_runtime_state.snapshot();
+    this.task_runtime_state.begin_task("analysis");
+    try {
+      await this.core_bridge.start_analysis({ mode, quality_snapshot });
+    } catch (error) {
+      this.task_runtime_state.restore(previous_state);
+      throw error;
+    }
     return {
       accepted: true,
       task: (await this.snapshot_builder.build_command_ack(
@@ -94,7 +121,14 @@ export class TaskService {
    * 请求停止分析任务；公开层只表达 STOPPING 意图，不等待 Engine 终态。
    */
   public async stop_analysis(_request: JsonRecord): Promise<MutableJsonRecord> {
-    await this.core_bridge.stop_analysis();
+    const previous_state = this.task_runtime_state.snapshot();
+    this.task_runtime_state.mark_stopping("analysis");
+    try {
+      await this.core_bridge.stop_analysis();
+    } catch (error) {
+      this.task_runtime_state.restore(previous_state);
+      throw error;
+    }
     return {
       accepted: true,
       task: (await this.snapshot_builder.build_command_ack(
@@ -111,13 +145,24 @@ export class TaskService {
   public async start_retranslate(request: JsonRecord): Promise<MutableJsonRecord> {
     this.require_loaded_project_path();
     const item_ids = this.normalize_item_ids(request["item_ids"]);
+    const quality_snapshot = this.normalize_optional_record(request["quality_snapshot"]);
     if (item_ids.length === 0) {
       throw new Error("请选择要重新翻译的条目。");
     }
     this.assert_expected_section_revisions(
       this.normalize_expected_section_revisions(request["expected_section_revisions"]),
     );
-    await this.core_bridge.start_retranslate({ item_ids: item_ids as unknown as ApiJsonValue });
+    const previous_state = this.task_runtime_state.snapshot();
+    this.task_runtime_state.begin_task("retranslate", item_ids);
+    try {
+      await this.core_bridge.start_retranslate({
+        item_ids: item_ids as unknown as ApiJsonValue,
+        quality_snapshot,
+      });
+    } catch (error) {
+      this.task_runtime_state.restore(previous_state);
+      throw error;
+    }
     return {
       accepted: true,
       task: (await this.snapshot_builder.build_command_ack("retranslate", "REQUEST", true, {

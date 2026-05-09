@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
-import type { CoreBridgeClient } from "../core/core-bridge-client";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
@@ -145,9 +144,6 @@ export class ProjectLifecycleService {
   // database 是 .lg 物理事实唯一写入口，项目域只拼受限 operation。
   private readonly database: ProjectDatabase;
 
-  // core_bridge 只同步未迁移 Engine 的 Python 读侧缓存，不重新承载公开项目 API。
-  private readonly core_bridge: CoreBridgeClient;
-
   // session_state 是 renderer 可见 loaded/path 的唯一权威。
   private readonly session_state: ProjectSessionState;
 
@@ -165,14 +161,12 @@ export class ProjectLifecycleService {
    */
   public constructor(
     database: ProjectDatabase,
-    core_bridge: CoreBridgeClient,
     session_state: ProjectSessionState,
     config_service: ConfigService,
     paths: AppPathService,
     log_manager: LogManager,
   ) {
     this.database = database;
-    this.core_bridge = core_bridge;
     this.session_state = session_state;
     this.config_service = config_service;
     this.paths = paths;
@@ -193,7 +187,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 加载既有 .lg，并在标记 TS 会话前完成打开期兼容迁移与 Python 读侧同步。
+   * 加载既有 .lg，并在标记 TS 会话前完成打开期兼容迁移。
    */
   public async load_project(
     body: Record<string, ApiJsonValue>,
@@ -209,7 +203,6 @@ export class ProjectLifecycleService {
       }),
       ...this.build_open_compatibility_operations(project_path),
     ]);
-    await this.sync_python_project_load(project_path);
     this.session_state.mark_loaded(project_path);
     return this.build_loaded_project_response(project_path);
   }
@@ -306,11 +299,10 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 经内部桥触发 Python 真卸载，再释放 TS database 缓存句柄。
+   * 卸载公开工程会话，并释放 TS database 缓存句柄。
    */
   public async unload_project(): Promise<Record<string, ApiJsonValue>> {
     const state = this.session_state.snapshot();
-    await this.core_bridge.unload_project();
     this.session_state.clear();
     if (state.loaded && state.projectPath !== "") {
       this.database.execute({
@@ -429,46 +421,6 @@ export class ProjectLifecycleService {
       }
     }
     return "";
-  }
-
-  /**
-   * 同步 Python 读侧加载状态；失败时尽量恢复旧工程，避免任务读侧与 TS 会话分裂。
-   */
-  private async sync_python_project_load(project_path: string): Promise<void> {
-    const previous_state = this.session_state.snapshot();
-    try {
-      await this.core_bridge.load_project(project_path);
-    } catch (error) {
-      await this.restore_python_project_after_failed_load(previous_state, project_path);
-      throw error;
-    }
-  }
-
-  /**
-   * 新工程加载失败后重载旧工程；恢复失败只记日志，原始加载错误仍作为公开失败原因。
-   */
-  private async restore_python_project_after_failed_load(
-    previous_state: { loaded: boolean; projectPath: string },
-    failed_project_path: string,
-  ): Promise<void> {
-    if (
-      !previous_state.loaded ||
-      previous_state.projectPath === "" ||
-      previous_state.projectPath === failed_project_path
-    ) {
-      return;
-    }
-    try {
-      await this.core_bridge.load_project(previous_state.projectPath);
-    } catch (restore_error) {
-      this.log_non_blocking_project_lifecycle_error(
-        "内部 project_load 失败后恢复旧工程失败",
-        restore_error,
-        {
-          project_path: previous_state.projectPath,
-        },
-      );
-    }
   }
 
   /**

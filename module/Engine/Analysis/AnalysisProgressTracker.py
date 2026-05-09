@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from base.Base import Base
-from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
@@ -81,19 +80,20 @@ class AnalysisProgressTracker:
         )
         snapshot = snapshot.with_counts()
         snapshot = snapshot.with_elapsed(now=time.time())
-        normalized = DataManager.get().normalize_analysis_progress_snapshot(
-            snapshot.to_dict()
+        normalized = (
+            self.analysis.task_data_client.normalize_analysis_progress_snapshot(
+                snapshot.to_dict()
+            )
         )
         return TaskProgressSnapshot.from_dict(normalized)
 
     def refresh_progress_snapshot_cache(self) -> TaskProgressSnapshot:
         """在低频边界显式全量校准，并把最新快照回收到控制器。"""
-        dm = DataManager.get()
-        if not dm.is_loaded():
+        if not self.analysis.task_data_client.is_loaded():
             return self.build_runtime_progress_snapshot()
 
         refreshed_snapshot = TaskProgressSnapshot.from_dict(
-            dm.refresh_analysis_progress_snapshot_cache()
+            self.analysis.task_data_client.refresh_analysis_progress_snapshot_cache()
         )
         self.analysis.set_progress_snapshot(refreshed_snapshot)
         return refreshed_snapshot
@@ -176,19 +176,20 @@ class AnalysisProgressTracker:
         refresh_cache: bool = False,
     ) -> dict[str, Any]:
         """分析进度统一经由这个入口发事件；普通保存只写缓存，边界阶段再显式校准。"""
-        dm = DataManager.get()
         snapshot = self.build_runtime_progress_snapshot()
         if save_state:
-            if dm.is_loaded():
+            if self.analysis.task_data_client.is_loaded():
                 snapshot = TaskProgressSnapshot.from_dict(
-                    dm.update_analysis_progress_snapshot(snapshot.to_dict())
+                    self.analysis.task_data_client.update_analysis_progress_snapshot(
+                        snapshot.to_dict()
+                    )
                 )
         if refresh_cache:
             snapshot = self.refresh_progress_snapshot_cache()
 
         snapshot_dict = self.analysis.set_progress_snapshot(snapshot)
         snapshot_dict["analysis_candidate_count"] = int(
-            dm.get_analysis_candidate_count() or 0
+            self.analysis.task_data_client.get_analysis_candidate_count() or 0
         )
         self.analysis.emit(Base.Event.ANALYSIS_PROGRESS, snapshot_dict)
         return snapshot_dict

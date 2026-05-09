@@ -8,7 +8,7 @@ from base.Base import Base
 
 
 class ProjectPatchEventBridge:
-    """把内部任务终态裁成 ProjectStore 可直接消费的 patch 事件。"""
+    """把内部项目补丁裁成 ProjectStore 可直接消费的公开事件。"""
 
     PROJECT_PATCH_TOPIC: str = "project.patch"
 
@@ -24,15 +24,21 @@ class ProjectPatchEventBridge:
         event: Base.Event,
         data: dict[str, Any],
     ) -> tuple[str | None, dict[str, Any]]:
-        """仅暴露项目运行态真正需要的 task patch 事件。"""
+        """仅在可补齐 task 块时把终态裁成 patch，否则保留任务状态事件。"""
 
         if self.is_project_runtime_patch_event(event):
             return self.PROJECT_PATCH_TOPIC, dict(data)
 
-        if self.is_translation_done_event(event, data):
+        if self.task_snapshot_builder is not None and self.is_translation_done_event(
+            event,
+            data,
+        ):
             return self.PROJECT_PATCH_TOPIC, self.build_translation_task_patch(data)
 
-        if self.is_analysis_done_event(event, data):
+        if self.task_snapshot_builder is not None and self.is_analysis_done_event(
+            event,
+            data,
+        ):
             return self.PROJECT_PATCH_TOPIC, self.build_analysis_task_patch(data)
 
         return self.event_bridge.map_event(event, data)

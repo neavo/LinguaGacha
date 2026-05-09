@@ -7,7 +7,6 @@ import type { Row } from "exceljs";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "./path-service";
 import { ConfigService } from "./config-service";
 import { JsonTool } from "../../utils/json-tool";
@@ -64,9 +63,6 @@ export class QualityService {
   // 质量规则和提示词工程事实只通过 ProjectDatabase workflow 读写。
   private readonly database: ProjectDatabase;
 
-  // 写入后通知 Python Core 清理规则 / 提示词缓存，保持任务读侧一致。
-  private readonly core_bridge: CoreBridgeClient;
-
   // 页面级质量规则 / 提示词写入口以 TS 会话状态作为当前工程目标。
   private readonly session_state: ProjectSessionState;
 
@@ -77,13 +73,11 @@ export class QualityService {
     paths: AppPathService,
     config_service: ConfigService,
     database: ProjectDatabase,
-    core_bridge: CoreBridgeClient,
     session_state: ProjectSessionState,
   ) {
     this.paths = paths;
     this.config_service = config_service;
     this.database = database;
-    this.core_bridge = core_bridge;
     this.session_state = session_state;
   }
 
@@ -109,7 +103,6 @@ export class QualityService {
         value: current_revision + 1,
       }),
     ]);
-    await this.core_bridge.sync_runtime("project_rules_changed", { rule_type });
     return this.build_project_mutation_ack(project_path, ["quality"]);
   }
 
@@ -137,7 +130,6 @@ export class QualityService {
       ]);
       expected_revision = current_revision;
     }
-    await this.core_bridge.sync_runtime("project_rules_changed", { rule_type });
     return this.build_project_mutation_ack(project_path, ["quality"]);
   }
 
@@ -304,7 +296,6 @@ export class QualityService {
       );
     }
     this.database.execute_transaction(operations);
-    await this.core_bridge.sync_runtime("project_prompts_changed", { task_type });
     return this.build_project_mutation_ack(project_path, ["prompts"]);
   }
 

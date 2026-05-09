@@ -65,11 +65,7 @@ def test_analysis_progress_tracker_runtime_uses_memory_snapshot_only(
         _ for _ in ()
     ).throw(AssertionError("运行态不该单独写库"))
 
-    monkeypatch.setattr(
-        analysis_progress_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
 
     snapshot = tracker.persist_progress_snapshot(save_state=False)
@@ -94,11 +90,7 @@ def test_analysis_progress_tracker_emits_candidate_count_from_cache(
     )
     fake_data_manager.analysis_candidate_count = 5
 
-    monkeypatch.setattr(
-        analysis_progress_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
 
     snapshot = tracker.persist_progress_snapshot(save_state=False)
@@ -130,11 +122,7 @@ def test_analysis_progress_tracker_save_state_only_persists_runtime_snapshot(
         _ for _ in ()
     ).throw(AssertionError("普通持久化不该全量校准"))
 
-    monkeypatch.setattr(
-        analysis_progress_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
 
     snapshot = tracker.persist_progress_snapshot(save_state=True)
@@ -177,11 +165,7 @@ def test_analysis_progress_tracker_force_sync_refreshes_cache_after_persist(
     fake_data_manager.update_analysis_progress_snapshot = fake_persist
     fake_data_manager.refresh_analysis_progress_snapshot_cache = fake_refresh
 
-    monkeypatch.setattr(
-        analysis_progress_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
     monkeypatch.setattr(analysis_progress_module.time, "time", lambda: 112.0)
 
     snapshot = tracker.sync_progress_snapshot_after_commit(force=True)

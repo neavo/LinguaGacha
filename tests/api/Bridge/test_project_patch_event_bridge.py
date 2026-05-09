@@ -61,6 +61,27 @@ def test_project_patch_event_bridge_maps_analysis_done_to_store_patch() -> None:
     }
 
 
+def test_project_patch_event_bridge_keeps_done_status_event_without_task_snapshot() -> (
+    None
+):
+    bridge = ProjectPatchEventBridge()
+
+    topic, payload = bridge.map_event(
+        Base.Event.TRANSLATION_TASK,
+        {
+            "sub_event": Base.SubEvent.DONE,
+            "final_status": "SUCCESS",
+        },
+    )
+
+    assert topic == "task.status_changed"
+    assert payload == {
+        "task_type": "translation",
+        "status": "DONE",
+        "busy": False,
+    }
+
+
 def test_project_patch_event_bridge_ignores_unmapped_events() -> None:
     topic, payload = ProjectPatchEventBridge().map_event(
         Base.Event.PROJECT_CHECK,

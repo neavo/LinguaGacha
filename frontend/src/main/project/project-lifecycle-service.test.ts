@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { CoreBridgeClient, ProjectStatePayload } from "../core/core-bridge-client";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
@@ -43,7 +42,7 @@ describe("ProjectLifecycleService", () => {
     });
   });
 
-  it("load 写入打开期兼容迁移并在内部 project_load 成功后标记 TS 会话", async () => {
+  it("load 写入打开期兼容迁移并标记 TS 会话", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "legacy.lg"));
     const transaction_calls: DatabaseOperation[][] = [];
     const database = create_database({
@@ -55,9 +54,8 @@ describe("ProjectLifecycleService", () => {
       },
       transaction_calls,
     });
-    const core_bridge = create_core_bridge();
     const session_state = create_session_state();
-    const service = create_service({ database, core_bridge, session_state });
+    const service = create_service({ database, session_state });
 
     await expect(service.load_project({ path: project_path })).resolves.toEqual({
       project: { path: project_path, loaded: true },
@@ -89,31 +87,7 @@ describe("ProjectLifecycleService", () => {
         },
       },
     ]);
-    expect(core_bridge.load_project).toHaveBeenCalledWith(project_path);
     expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
-  });
-
-  it("load 内部 project_load 失败时不污染已有 TS 会话", async () => {
-    const project_path = write_file(path.join(create_temp_dir(), "broken.lg"));
-    const session_state = create_session_state({
-      loaded: true,
-      projectPath: "E:/Project/old.lg",
-    });
-    const core_bridge = create_core_bridge(undefined, [], [new Error("内部加载失败")]);
-    const service = create_service({
-      database: create_database(),
-      core_bridge,
-      session_state,
-    });
-
-    await expect(service.load_project({ path: project_path })).rejects.toThrow("内部加载失败");
-
-    expect(session_state.snapshot()).toEqual({
-      loaded: true,
-      projectPath: "E:/Project/old.lg",
-    });
-    expect(core_bridge.load_project).toHaveBeenNthCalledWith(1, project_path);
-    expect(core_bridge.load_project).toHaveBeenNthCalledWith(2, "E:/Project/old.lg");
   });
 
   it("open-preview 仅目标语言变化时返回 settings_only", () => {
@@ -229,12 +203,10 @@ describe("ProjectLifecycleService", () => {
     );
     const transaction_calls: DatabaseOperation[][] = [];
     const database = create_database({ transaction_calls, create_project_files: true });
-    const core_bridge = create_core_bridge();
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
       database,
-      core_bridge,
       log_manager,
       config: {
         glossary_default_preset: "builtin:base.json",
@@ -361,7 +333,6 @@ describe("ProjectLifecycleService", () => {
         },
       },
     ]);
-    expect(core_bridge.load_project).toHaveBeenCalledWith(project_path);
     expect(log_manager.info).toHaveBeenCalledWith("已自动加载默认预设：术语表 | 翻译提示词 …", {
       source: "ts-project-lifecycle",
     });
@@ -477,14 +448,12 @@ describe("ProjectLifecycleService", () => {
     ).toThrow("工程文件不存在");
   });
 
-  it("unload 先触发 Python 真卸载再释放旧工程 database 缓存", async () => {
+  it("unload 清理 TS 会话并释放旧工程 database 缓存", async () => {
     const calls: string[] = [];
     const project_path = "E:/Project/demo.lg";
     const database = create_database({ calls });
-    const core_bridge = create_core_bridge(undefined, calls);
     const service = create_service({
       database,
-      core_bridge,
       session_state: create_session_state({ loaded: true, projectPath: project_path }),
     });
 
@@ -495,7 +464,7 @@ describe("ProjectLifecycleService", () => {
       },
     });
 
-    expect(calls).toEqual(["unload_project", "closeProject"]);
+    expect(calls).toEqual(["closeProject"]);
     expect(database.execute).toHaveBeenCalledWith({
       name: "closeProject",
       args: { projectPath: project_path },
@@ -532,7 +501,6 @@ describe("ProjectLifecycleService", () => {
       execute: ReturnType<typeof vi.fn>;
       execute_transaction?: ReturnType<typeof vi.fn>;
     };
-    core_bridge?: CoreBridgeClient;
     session_state?: ProjectSessionState;
     config?: MutableJsonRecord;
     log_manager?: LogManager & {
@@ -543,7 +511,6 @@ describe("ProjectLifecycleService", () => {
     const app_root = options.app_root ?? create_temp_dir();
     return new ProjectLifecycleService(
       options.database,
-      options.core_bridge ?? create_core_bridge(),
       options.session_state ?? create_session_state(),
       create_config_service(options.config ?? {}),
       new AppPathService({ appRoot: app_root }),
@@ -605,38 +572,6 @@ describe("ProjectLifecycleService", () => {
     } as unknown as ProjectDatabase & {
       execute: ReturnType<typeof vi.fn>;
       execute_transaction: ReturnType<typeof vi.fn>;
-    };
-  }
-
-  function create_core_bridge(
-    state: ProjectStatePayload = {
-      loaded: false,
-      projectPath: "",
-      busy: false,
-    },
-    calls: string[] = [],
-    load_error: Error | Error[] | null = null,
-  ) {
-    const load_errors =
-      load_error === null ? [] : Array.isArray(load_error) ? [...load_error] : [load_error];
-    return {
-      get_project_state: vi.fn(async () => {
-        calls.push("get_project_state");
-        return state;
-      }),
-      load_project: vi.fn(async () => {
-        calls.push("load_project");
-        const current_error = load_errors.shift();
-        if (current_error !== undefined) {
-          throw current_error;
-        }
-      }),
-      unload_project: vi.fn(async () => {
-        calls.push("unload_project");
-      }),
-    } as unknown as CoreBridgeClient & {
-      load_project: ReturnType<typeof vi.fn>;
-      unload_project: ReturnType<typeof vi.fn>;
     };
   }
 

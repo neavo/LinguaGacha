@@ -10,6 +10,14 @@ import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { JsonTool } from "../../utils/json-tool";
 import { ApiGatewayServer } from "./api-gateway-server";
 
+type FakePyRequest = { method?: string; path?: string; raw: string };
+
+interface FakePyServer {
+  baseUrl: string;
+  close: () => Promise<void>;
+  requests: FakePyRequest[];
+}
+
 describe("ApiGatewayServer", () => {
   // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记。
   const cleanup_callbacks: Array<() => Promise<void> | void> = [];
@@ -123,7 +131,7 @@ describe("ApiGatewayServer", () => {
 
     expect(body.ok).toBe(true);
     expect(body.data?.accepted).toBe(true);
-    expect(py_server.requests).toEqual([]);
+    expect(get_py_requests_except_event_stream(py_server)).toEqual([]);
   });
 
   it("项目轻生命周期路由由 TS Gateway 直接处理", async () => {
@@ -196,22 +204,12 @@ describe("ApiGatewayServer", () => {
     expect(preview_body.data?.preview?.name).toBe("project-lifecycle");
     expect(source_files_body.data?.source_files).toEqual([path.join(source_dir, "script.txt")]);
     expect(unload_body.data?.project).toEqual({ path: "", loaded: false });
-    const py_request_paths = py_server.requests.map((item) => item.path);
-    expect(py_request_paths).toContain("/internal/runtime/sync");
+    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
     expect(py_request_paths).not.toContain("/api/project/load");
     expect(py_request_paths).not.toContain("/api/project/snapshot");
     expect(py_request_paths).not.toContain("/api/project/preview");
     expect(py_request_paths).not.toContain("/api/project/source-files");
     expect(py_request_paths).not.toContain("/api/project/unload");
-    expect(
-      py_server.requests
-        .filter((item) => item.path === "/internal/runtime/sync")
-        .filter((item) => item.raw !== "")
-        .map((item) => item.raw),
-    ).toEqual([
-      JsonTool.stringifyStrict({ type: "project_load", payload: { project_path: lg_path } }),
-      JsonTool.stringifyStrict({ type: "project_unload", payload: {} }),
-    ]);
   });
 
   it("项目生命周期路由不再代理到 Python Core 公开项目路径", async () => {
@@ -264,7 +262,7 @@ describe("ApiGatewayServer", () => {
     const load_body = (await load_response.json()) as { ok?: boolean };
     const open_preview_body = (await open_preview_response.json()) as { ok?: boolean };
     const create_commit_body = (await create_commit_response.json()) as { ok?: boolean };
-    const py_request_paths = py_server.requests.map((item) => item.path);
+    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
 
     expect(load_body.ok).toBe(true);
     expect(open_preview_body.ok).toBe(true);
@@ -272,7 +270,6 @@ describe("ApiGatewayServer", () => {
     expect(py_request_paths).not.toContain("/api/project/load");
     expect(py_request_paths).not.toContain("/api/project/create-commit");
     expect(py_request_paths).not.toContain("/api/project/open-preview");
-    expect(py_request_paths).toContain("/internal/runtime/sync");
   });
 
   it("项目 preview 缺失文件时映射为 not_found", async () => {
@@ -306,7 +303,7 @@ describe("ApiGatewayServer", () => {
     expect(response.status).toBe(404);
     expect(body.ok).toBe(false);
     expect(body.error?.code).toBe("not_found");
-    expect(py_server.requests).toEqual([]);
+    expect(get_py_requests_except_event_stream(py_server)).toEqual([]);
   });
 
   it("校对同步 mutation 由 TS Gateway 直接写库且只调用内部 runtime bridge", async () => {
@@ -364,11 +361,9 @@ describe("ApiGatewayServer", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
     ]);
-    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/project/load");
-    expect(py_server.requests.map((item) => item.path)).toContain("/internal/runtime/sync");
-    expect(py_server.requests.map((item) => item.path)).not.toContain(
-      "/api/project/proofreading/save-item",
-    );
+    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
+    expect(py_request_paths).not.toContain("/api/project/load");
+    expect(py_request_paths).not.toContain("/api/project/proofreading/save-item");
   });
 
   it("由 TS LogManager 直接提供公开日志流", async () => {
@@ -461,12 +456,10 @@ describe("ApiGatewayServer", () => {
     expect(text).toContain("event: completed");
     expect(text).toContain('"sectionRevisions"');
     expect(text).toContain("\\ud800");
-    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/project/load");
-    expect(py_server.requests.map((item) => item.path)).toContain("/internal/runtime/tasks/state");
-    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/tasks/snapshot");
-    expect(py_server.requests.map((item) => item.path)).not.toContain(
-      "/api/project/bootstrap/stream",
-    );
+    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
+    expect(py_request_paths).not.toContain("/api/project/load");
+    expect(py_request_paths).not.toContain("/api/tasks/snapshot");
+    expect(py_request_paths).not.toContain("/api/project/bootstrap/stream");
   });
 
   it("公开任务路由由 TS Gateway 直处理并只调用内部 Engine bridge", async () => {
@@ -496,7 +489,7 @@ describe("ApiGatewayServer", () => {
       ok?: boolean;
       data?: { accepted?: boolean; task?: { task_type?: string; status?: string; busy?: boolean } };
     };
-    const py_request_paths = py_server.requests.map((item) => item.path);
+    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
 
     expect(body.ok).toBe(true);
     expect(body.data?.accepted).toBe(true);
@@ -506,37 +499,10 @@ describe("ApiGatewayServer", () => {
       busy: true,
     });
     expect(py_request_paths).toContain("/internal/runtime/tasks/start-translation");
-    expect(py_request_paths).toContain("/internal/runtime/tasks/state");
     expect(py_request_paths).not.toContain("/api/tasks/start-translation");
   });
 
-  it("长期事件流继续代理到 Python Core", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
-
-    const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/events/stream`);
-    const text = await response.text();
-
-    expect(response.status).toBe(200);
-    expect(text).toContain("event: py.event");
-    expect(py_server.requests.map((item) => item.path)).toContain("/api/events/stream");
-  });
-
-  it("取消长期事件流时会关闭上游 Python Core 连接", async () => {
+  it("长期事件流由 TS event hub 广播 Python Core 事件", async () => {
     const app_root = create_app_root();
     const py_server = await start_abortable_event_py_server();
     const database = new ProjectDatabase();
@@ -554,22 +520,41 @@ describe("ApiGatewayServer", () => {
     cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
-    const controller = new AbortController();
-    const response = await fetch(`${started.baseUrl}/api/events/stream`, {
-      signal: controller.signal,
+    const stream = await read_http_stream_until(
+      `${started.baseUrl}/api/events/stream`,
+      "event: py.event",
+    );
+
+    expect(stream.status).toBe(200);
+    expect(stream.text).toContain("event: py.event");
+    expect(py_server.requests.map((item) => item.path)).toContain("/api/events/stream");
+  });
+
+  it("取消 renderer 事件订阅不会关闭后台 Python Core 事件流", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_abortable_event_py_server();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
     });
-    const reader = response.body?.getReader();
-    if (reader === undefined) {
-      throw new Error("事件流响应体为空。");
-    }
-    const chunk = await reader.read();
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
 
-    controller.abort();
+    const started = await gateway.start();
+    const stream = await read_http_stream_until(
+      `${started.baseUrl}/api/events/stream`,
+      "event: py.event",
+    );
 
-    expect(new TextDecoder().decode(chunk.value)).toContain("event: py.event");
-    await expect(
-      with_timeout(py_server.eventClosed, "上游事件流未关闭。"),
-    ).resolves.toBeUndefined();
+    expect(stream.text).toContain("event: py.event");
+    await expect_not_resolved_within(py_server.eventClosed, 150, "上游事件流被过早关闭。");
   });
 
   it("通过公开 /api/logs/append 接收 Python 日志提交", async () => {
@@ -807,14 +792,26 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * fake Python server 同时覆盖代理、runtime bridge 和任务快照三类边界。
+   * 后台事件 hub 会固定连接 Python SSE；业务路由断言需要排除这条基础设施请求。
    */
-  async function start_fake_py_server(runtime_project_path?: string): Promise<{
-    baseUrl: string;
-    close: () => Promise<void>;
-    requests: Array<{ method?: string; path?: string; raw: string }>;
-  }> {
-    const requests: Array<{ method?: string; path?: string; raw: string }> = [];
+  function get_py_requests_except_event_stream(py_server: FakePyServer): FakePyRequest[] {
+    return py_server.requests.filter((item) => item.path !== "/api/events/stream");
+  }
+
+  /**
+   * 路径列表只服务代理边界断言，避免每个用例重复过滤事件流噪音。
+   */
+  function get_py_request_paths_except_event_stream(py_server: FakePyServer): string[] {
+    return get_py_requests_except_event_stream(py_server)
+      .map((item) => item.path)
+      .filter((request_path): request_path is string => request_path !== undefined);
+  }
+
+  /**
+   * fake Python server 覆盖透明代理、任务命令桥和 Python 上游事件流。
+   */
+  async function start_fake_py_server(_runtime_project_path?: string): Promise<FakePyServer> {
+    const requests: FakePyRequest[] = [];
     const server = http.createServer((request, response) => {
       const chunks: Buffer[] = [];
       request.on("data", (chunk: Buffer) => {
@@ -823,50 +820,6 @@ describe("ApiGatewayServer", () => {
       request.on("end", () => {
         const raw = Buffer.concat(chunks).toString("utf-8");
         requests.push({ method: request.method, path: request.url, raw });
-        if (request.url === "/internal/runtime/project-state") {
-          response.writeHead(200, {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "application/json; charset=utf-8",
-          });
-          response.end(
-            JsonTool.stringifyStrict({
-              ok: true,
-              data: {
-                loaded: runtime_project_path !== undefined,
-                projectPath: runtime_project_path ?? "",
-                busy: false,
-              },
-            }),
-          );
-          return;
-        }
-        if (request.url === "/internal/runtime/sync") {
-          response.writeHead(200, {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "application/json; charset=utf-8",
-          });
-          response.end(JsonTool.stringifyStrict({ ok: true, data: { accepted: true } }));
-          return;
-        }
-        if (request.url === "/internal/runtime/tasks/state") {
-          response.writeHead(200, {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "application/json; charset=utf-8",
-          });
-          response.end(
-            JsonTool.stringifyStrict({
-              ok: true,
-              data: {
-                status: "IDLE",
-                busy: false,
-                request_in_flight_count: 0,
-                active_task_type: "idle",
-                retranslating_item_ids: [],
-              },
-            }),
-          );
-          return;
-        }
         if (request.url?.startsWith("/internal/runtime/tasks/")) {
           response.writeHead(200, {
             "Access-Control-Allow-Origin": "*",
@@ -929,12 +882,15 @@ describe("ApiGatewayServer", () => {
     baseUrl: string;
     close: () => Promise<void>;
     eventClosed: Promise<void>;
+    requests: FakePyRequest[];
   }> {
+    const requests: FakePyRequest[] = [];
     let resolve_event_closed: (() => void) | null = null;
     const event_closed = new Promise<void>((resolve) => {
       resolve_event_closed = resolve;
     });
     const server = http.createServer((request, response) => {
+      requests.push({ method: request.method, path: request.url, raw: "" });
       if (request.url !== "/api/events/stream") {
         response.writeHead(404).end();
         return;
@@ -944,7 +900,11 @@ describe("ApiGatewayServer", () => {
         "Content-Type": "text/event-stream; charset=utf-8",
       });
       response.write('event: py.event\ndata: {"ok":true}\n\n');
+      const event_timer = setInterval(() => {
+        response.write('event: py.event\ndata: {"ok":true}\n\n');
+      }, 50);
       request.on("close", () => {
+        clearInterval(event_timer);
         resolve_event_closed?.();
       });
     });
@@ -962,6 +922,7 @@ describe("ApiGatewayServer", () => {
     return {
       baseUrl: `http://127.0.0.1:${address.port.toString()}`,
       eventClosed: event_closed,
+      requests,
       close: () =>
         new Promise<void>((resolve, reject) => {
           server.closeAllConnections();
@@ -976,19 +937,76 @@ describe("ApiGatewayServer", () => {
     };
   }
 
-  async function with_timeout<T>(promise: Promise<T>, message: string): Promise<T> {
-    let timeout_id: ReturnType<typeof setTimeout> | null = null;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<T>((_resolve, reject) => {
-          timeout_id = setTimeout(() => reject(new Error(message)), 1000);
-        }),
-      ]);
-    } finally {
-      if (timeout_id !== null) {
+  /**
+   * 用 Node HTTP 客户端读取公开 SSE，读到目标片段后销毁请求来模拟 renderer 断开。
+   */
+  async function read_http_stream_until(
+    url: string,
+    expected_text: string,
+  ): Promise<{ status: number; text: string }> {
+    return await new Promise<{ status: number; text: string }>((resolve, reject) => {
+      let settled = false;
+      let text = "";
+      const request = http.get(url, (response) => {
+        const status = response.statusCode ?? 0;
+        response.setEncoding("utf-8");
+        response.on("data", (chunk: string) => {
+          text += chunk;
+          if (!settled && text.includes(expected_text)) {
+            settled = true;
+            clearTimeout(timeout_id);
+            request.destroy();
+            resolve({ status, text });
+          }
+        });
+        response.on("end", () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timeout_id);
+          reject(new Error(`事件流未收到 ${expected_text}。`));
+        });
+      });
+      const timeout_id = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        request.destroy();
+        reject(new Error(`事件流未收到 ${expected_text}。`));
+      }, 1000);
+      request.on("error", (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
         clearTimeout(timeout_id);
-      }
+        reject(error);
+      });
+    });
+  }
+
+  /**
+   * 反向断言只等待一个短窗口，用来确认 renderer 取消不会联动关闭上游 SSE。
+   */
+  async function expect_not_resolved_within(
+    promise: Promise<unknown>,
+    ms: number,
+    message: string,
+  ): Promise<void> {
+    const timeout_token = Symbol("timeout");
+    const result = await Promise.race([
+      promise.then(
+        () => "resolved" as const,
+        () => "rejected" as const,
+      ),
+      new Promise<typeof timeout_token>((resolve) => {
+        setTimeout(() => resolve(timeout_token), ms);
+      }),
+    ]);
+    if (result !== timeout_token) {
+      throw new Error(message);
     }
   }
 });

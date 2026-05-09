@@ -116,14 +116,9 @@ def install_analysis_start_runtime(
 ) -> None:
     # 启动类测试只验证生命周期行为，不该依赖真实提示词文件路径。
     monkeypatch.setattr(
-        analysis_module.DataManager,
+        analysis_module.TaskDataClient,
         "get",
         lambda: fake_data_manager,
-    )
-    monkeypatch.setattr(
-        analysis_module.QualityRuleSnapshot,
-        "capture",
-        lambda: quality_snapshot,
     )
     monkeypatch.setattr(
         analysis_module.AnalysisTask,
@@ -311,18 +306,19 @@ def test_start_stopped_execution_emits_stopped_done_without_importing_candidates
         "execute_task_contexts",
         lambda task_contexts, max_workers: "STOPPED",
     )
+    monkeypatch.setattr(
+        analysis.progress_tracker,
+        "persist_progress_snapshot",
+        lambda save_state: dict(analysis.extras),
+    )
 
     analysis.start({"mode": Base.AnalysisMode.NEW, "config": config})
 
     task_events = [
         (event, data) for event, data in emitted if event == Base.Event.ANALYSIS_TASK
     ]
-    progress_events = [
-        data for event, data in emitted if event == Base.Event.ANALYSIS_PROGRESS
-    ]
 
     assert fake_data_manager.updated_rules == []
-    assert progress_events[-1]["total_line"] == 2
     assert task_events == [
         (
             Base.Event.ANALYSIS_TASK,

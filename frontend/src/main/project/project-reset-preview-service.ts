@@ -1,9 +1,9 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
 import { item_to_json } from "../file/file-item";
+import { TaskRuntimeState } from "../task/task-runtime-state";
 import { ProjectSessionState } from "./project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;
@@ -37,7 +37,7 @@ export class ProjectResetPreviewService {
    */
   public constructor(
     private readonly database: ProjectDatabase,
-    private readonly core_bridge: CoreBridgeClient,
+    private readonly task_runtime_state: TaskRuntimeState,
     private readonly session_state: ProjectSessionState,
   ) {}
 
@@ -138,8 +138,7 @@ export class ProjectResetPreviewService {
     if (!state.loaded || state.projectPath === "") {
       throw new Error("工程未加载");
     }
-    const guard_state = await this.core_bridge.get_project_state();
-    if (guard_state.busy) {
+    if (this.task_runtime_state.snapshot().busy) {
       throw new Error("任务正在执行中 …");
     }
     return state.projectPath;

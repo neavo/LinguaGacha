@@ -7,5 +7,8 @@ import { afterEach } from "vitest";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  if (typeof document === "undefined") {
+    return;
+  }
   document.body.innerHTML = "";
 });

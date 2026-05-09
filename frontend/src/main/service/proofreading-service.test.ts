@@ -4,8 +4,6 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectStatePayload } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
@@ -13,31 +11,11 @@ import { ProofreadingService } from "./proofreading-service";
 let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
 
-class FakeCoreBridge {
-  public state: ProjectStatePayload = { loaded: true, projectPath: "", busy: false };
-  public sync_calls: Array<{ type: string; payload: Record<string, ApiJsonValue> }> = [];
-
-  /**
-   * 返回测试工程状态，模拟 TS Gateway 内部 runtime bridge。
-   */
-  public async get_project_state(): Promise<ProjectStatePayload> {
-    return this.state;
-  }
-
-  /**
-   * 记录缓存同步调用，便于断言 TS 写库后会通知 Python Core。
-   */
-  public async sync_runtime(type: string, payload: Record<string, ApiJsonValue>): Promise<void> {
-    this.sync_calls.push({ type, payload });
-  }
-}
-
 function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
 
 function create_service(): {
-  bridge: FakeCoreBridge;
   database: ProjectDatabase;
   service: ProofreadingService;
   session_state: ProjectSessionState;
@@ -45,19 +23,16 @@ function create_service(): {
 } {
   const database = new ProjectDatabase();
   cleanup_databases.push(database);
-  const bridge = new FakeCoreBridge();
   const session_state = new ProjectSessionState();
   const lg_path = project_path("proofreading.lg");
   database.execute({
     name: "createProject",
     args: { projectPath: lg_path, name: "proofreading" },
   });
-  bridge.state.projectPath = lg_path;
   session_state.mark_loaded(lg_path);
   return {
-    bridge,
     database,
-    service: new ProofreadingService(database, bridge as never, session_state),
+    service: new ProofreadingService(database, session_state),
     session_state,
     lg_path,
   };
@@ -76,7 +51,7 @@ afterEach(() => {
 
 describe("ProofreadingService", () => {
   it("保存单条校对结果时只合并白名单字段并同步 revision", async () => {
-    const { bridge, database, service, lg_path } = create_service();
+    const { database, service, lg_path } = create_service();
     database.execute({
       name: "setItems",
       args: {
@@ -149,9 +124,6 @@ describe("ProofreadingService", () => {
         args: { projectPath: lg_path, key: "translation_extras", default: {} },
       }),
     ).toEqual({ line: 9 });
-    expect(bridge.sync_calls).toEqual([
-      { type: "project_data_changed", payload: { sections: ["items"] } },
-    ]);
   });
 
   it("空 items 或不存在的 item 只写 translation_extras 但仍推进双 revision", async () => {
@@ -186,7 +158,7 @@ describe("ProofreadingService", () => {
   });
 
   it("items revision 冲突时拒绝写库且不触发 runtime sync", async () => {
-    const { bridge, database, service, lg_path } = create_service();
+    const { database, service, lg_path } = create_service();
     database.execute({
       name: "setItems",
       args: { projectPath: lg_path, items: [{ id: 1, dst: "旧译文" }] },
@@ -207,11 +179,10 @@ describe("ProofreadingService", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, dst: "旧译文" },
     ]);
-    expect(bridge.sync_calls).toEqual([]);
   });
 
   it("proofreading revision 冲突时拒绝写库且保留旧 meta", async () => {
-    const { bridge, database, service, lg_path } = create_service();
+    const { database, service, lg_path } = create_service();
     database.execute({
       name: "setMeta",
       args: { projectPath: lg_path, key: "proofreading_revision.proofreading", value: 4 },
@@ -231,7 +202,6 @@ describe("ProofreadingService", () => {
         args: { projectPath: lg_path, key: "translation_extras", default: null },
       }),
     ).toBeNull();
-    expect(bridge.sync_calls).toEqual([]);
   });
 
   it("坏值和负数 revision 按 0 读取并在成功后 bump 到 1", async () => {
@@ -260,7 +230,7 @@ describe("ProofreadingService", () => {
   });
 
   it("无法转换的 expected revision 会失败而不是归零", async () => {
-    const { bridge, database, service, lg_path } = create_service();
+    const { database, service, lg_path } = create_service();
 
     await expect(
       service.save_item({
@@ -275,7 +245,6 @@ describe("ProofreadingService", () => {
         args: { projectPath: lg_path, key: "project_runtime_revision.items", default: 0 },
       }),
     ).toBe(0);
-    expect(bridge.sync_calls).toEqual([]);
   });
 
   it("旧 PROCESSING 与未知 status 都会归一为 NONE", async () => {
@@ -305,10 +274,9 @@ describe("ProofreadingService", () => {
   });
 
   it("工程未加载时拒绝校对保存", async () => {
-    const { bridge, service, session_state } = create_service();
+    const { service, session_state } = create_service();
     session_state.clear();
 
     await expect(service.save_item({ items: [] })).rejects.toThrow("工程未加载");
-    expect(bridge.sync_calls).toEqual([]);
   });
 });

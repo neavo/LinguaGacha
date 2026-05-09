@@ -78,6 +78,7 @@ def build_hooks(
     initial_contexts: list[AnalysisTaskContext] | None = None,
 ) -> tuple[AnalysisTaskHooks, Analysis]:
     analysis = Analysis()
+    analysis.task_data_client = MagicMock()
     analysis.task_limiter = limiter
     analysis.progress_tracker = SimpleNamespace(
         update_extras_after_batch=MagicMock(),
@@ -142,12 +143,8 @@ def test_analysis_task_hooks_handle_commit_payloads_commits_success_result(
     context = build_context(item_ids=(1, 2))
     hooks, analysis = build_hooks(initial_contexts=[context])
     commit_result_spy = MagicMock(return_value=1)
-    fake_data_manager.commit_analysis_task_batch = commit_result_spy
-
-    monkeypatch.setattr(
-        "module.Engine.Analysis.AnalysisTaskHooks.DataManager.get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
+    analysis.task_data_client.commit_analysis_task_batch = commit_result_spy
 
     result = hooks.handle_commit_payloads(
         (
@@ -186,12 +183,8 @@ def test_analysis_task_hooks_handle_commit_payloads_requeues_retry_context(
     hooks, analysis = build_hooks(initial_contexts=[context])
     analysis.scheduler.create_retry_task_context = lambda task_context: retry_context
     update_error_spy = MagicMock()
-    fake_data_manager.update_analysis_task_error = update_error_spy
-
-    monkeypatch.setattr(
-        "module.Engine.Analysis.AnalysisTaskHooks.DataManager.get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
+    analysis.task_data_client.update_analysis_task_error = update_error_spy
 
     result = hooks.handle_commit_payloads(
         (
@@ -224,12 +217,8 @@ def test_analysis_task_hooks_handle_commit_payloads_marks_error_after_retry_limi
     context = build_context(item_ids=(4, 5), retry_count=2)
     hooks, analysis = build_hooks(initial_contexts=[context])
     commit_result_spy = MagicMock(return_value=0)
-    fake_data_manager.commit_analysis_task_batch = commit_result_spy
-
-    monkeypatch.setattr(
-        "module.Engine.Analysis.AnalysisTaskHooks.DataManager.get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
+    analysis.task_data_client.commit_analysis_task_batch = commit_result_spy
 
     result = hooks.handle_commit_payloads(
         (
@@ -259,12 +248,8 @@ def test_analysis_task_hooks_handle_commit_payloads_merges_success_and_error_bat
     error_context = build_context(item_ids=(2,), retry_count=2)
     hooks, analysis = build_hooks(initial_contexts=[success_context, error_context])
     commit_result_spy = MagicMock(return_value=1)
-    fake_data_manager.commit_analysis_task_batch = commit_result_spy
-
-    monkeypatch.setattr(
-        "module.Engine.Analysis.AnalysisTaskHooks.DataManager.get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
+    analysis.task_data_client.commit_analysis_task_batch = commit_result_spy
 
     result = hooks.handle_commit_payloads(
         (
@@ -396,12 +381,8 @@ def test_analysis_task_hooks_handle_commit_payloads_sets_stopped_flag(
     context = build_context(item_ids=(8,))
     hooks, analysis = build_hooks(initial_contexts=[context])
     commit_batch_spy = MagicMock()
-    fake_data_manager.commit_analysis_task_batch = commit_batch_spy
-
-    monkeypatch.setattr(
-        "module.Engine.Analysis.AnalysisTaskHooks.DataManager.get",
-        lambda: fake_data_manager,
-    )
+    analysis.task_data_client = fake_data_manager
+    analysis.task_data_client.commit_analysis_task_batch = commit_batch_spy
 
     result = hooks.handle_commit_payloads(
         (

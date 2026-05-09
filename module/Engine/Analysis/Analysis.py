@@ -5,13 +5,13 @@ from typing import Any
 
 from base.Base import Base
 from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisProgressTracker import AnalysisProgressTracker
 from module.Engine.Analysis.AnalysisScheduler import AnalysisScheduler
 from module.Engine.Analysis.AnalysisTask import AnalysisTask
 from module.Engine.Analysis.AnalysisTaskHooks import AnalysisTaskHooks
 from module.Engine.Engine import Engine
+from module.Engine.TaskDataClient import TaskDataClient
 from module.Engine.TaskPipeline import TaskPipeline
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskProgressSnapshot import TaskProgressSnapshot
@@ -32,6 +32,7 @@ class Analysis(Base):
         self.stop_requested: bool = False
         self.extras: dict[str, Any] = {}
         self.quality_snapshot: QualityRuleSnapshot | None = None
+        self.task_data_client: TaskDataClient = TaskDataClient.get()
         self.scheduler = AnalysisScheduler(self)
         self.progress_tracker = AnalysisProgressTracker(self)
 
@@ -103,7 +104,7 @@ class Analysis(Base):
 
     # 启动主流程时只在这里串联准备、执行、收尾，其他细节都交给流水线。
     def start(self, data: dict[str, Any]) -> None:
-        dm = DataManager.get()
+        self.task_data_client = TaskDataClient.get()
         run_state: dict[str, Any] = {
             "mode": Base.AnalysisMode.NEW,
             "task_contexts": [],
@@ -122,7 +123,7 @@ class Analysis(Base):
             self.config = config if isinstance(config, Config) else Config().load()
             if not TaskRunnerLifecycle.ensure_project_loaded(
                 self,
-                dm=dm,
+                dm=self.task_data_client,
                 task_event=Base.Event.ANALYSIS_TASK,
             ):
                 return False
@@ -135,20 +136,19 @@ class Analysis(Base):
             if self.model is None:
                 return False
 
-            dm.open_db()
             TaskRunnerLifecycle.reset_request_runtime(reset_text_processor=False)
             snapshot_override = data.get("quality_snapshot")
             self.quality_snapshot = (
                 snapshot_override
                 if snapshot_override is not None
-                else QualityRuleSnapshot.capture()
+                else QualityRuleSnapshot()
             )
 
             if mode in (Base.AnalysisMode.NEW, Base.AnalysisMode.RESET):
                 self.extras = {}
-                dm.clear_analysis_candidates_and_progress()
+                self.task_data_client.reset_analysis_progress()
             else:
-                self.extras = dm.get_analysis_progress_snapshot()
+                self.extras = self.task_data_client.get_analysis_progress_snapshot()
             return True
 
         def build_plan() -> TaskRunnerExecutionPlan:
@@ -209,7 +209,7 @@ class Analysis(Base):
                 execute=execute,
                 on_after_execute=AnalysisTask.log_run_finish,
                 finalize=lambda final_status: None,
-                cleanup=dm.close_db,
+                cleanup=lambda: None,
                 after_done=lambda final_status: None,
             ),
         )

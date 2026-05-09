@@ -67,16 +67,8 @@ class ServerBootstrap:
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
 
-        task_snapshot_builder = (
-            getattr(runtime_bridge_app_service, "build_task_snapshot", None)
-            if runtime_bridge_app_service is not None
-            else None
-        )
-
         event_stream_service = EventStreamService(
-            event_bridge=ProjectPatchEventBridge(
-                task_snapshot_builder=task_snapshot_builder,
-            )
+            event_bridge=ProjectPatchEventBridge()
         )
         resolved_candidate_ports = (
             cls.TEST_DEFAULT_PORTS if candidate_ports is None else candidate_ports

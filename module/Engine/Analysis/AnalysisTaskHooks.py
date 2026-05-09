@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from base.Base import Base
 from base.LogManager import LogManager
-from module.Data.DataManager import DataManager
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskResult
 from module.Engine.Engine import Engine
@@ -143,7 +142,7 @@ class AnalysisTaskHooks:
         tracker.mark_progress_dirty(commit_count=len(payloads))
 
         if success_checkpoints or error_checkpoints or glossary_entries:
-            DataManager.get().commit_analysis_task_batch(
+            self.analysis.task_data_client.commit_analysis_task_batch(
                 success_checkpoints=success_checkpoints,
                 error_checkpoints=error_checkpoints,
                 glossary_entries=glossary_entries,

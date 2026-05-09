@@ -43,6 +43,9 @@ class FakeDataManager:
         self.analysis_item_checkpoints = {}
         self.analysis_candidate_count = 0
 
+    def reset_analysis_progress(self) -> None:
+        self.clear_analysis_progress()
+
     def clear_analysis_candidates_and_progress(self) -> None:
         self.clear_analysis_progress()
 

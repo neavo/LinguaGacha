@@ -14,7 +14,6 @@ from base.Base import Base
 from base.BasePath import BasePath
 from base.LogManager import LogManager
 from module.Config import Config
-from module.Data.DataManager import DataManager
 from module.Engine.Engine import Engine
 from module.Localizer.Localizer import Localizer
 from module.Migration.UserDataMigrationService import UserDataMigrationService
@@ -155,10 +154,6 @@ def cleanup_runtime(
     runtime_shutdown = getattr(local_api_server_runtime, "shutdown", None)
     if callable(runtime_shutdown):
         runtime_shutdown()
-
-    data_manager = DataManager.get()
-    if data_manager.is_loaded():
-        data_manager.unload_project()
 
     logger.shutdown()
 

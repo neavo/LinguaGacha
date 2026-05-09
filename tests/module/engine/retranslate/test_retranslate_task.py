@@ -16,6 +16,7 @@ from module.Engine.Retranslate.RetranslateTask import (
 from module.Engine.Retranslate.RetranslateTask import (
     RetranslateTaskHooks,
 )
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 
 class FakeLimiter:
@@ -128,7 +129,7 @@ def test_hooks_run_context_marks_failed_single_item_as_error(monkeypatch) -> Non
     assert payload.item.get_status() == Base.ItemStatus.ERROR
 
 
-def test_commit_payloads_persists_batch_and_emits_runtime_patch(monkeypatch) -> None:
+def test_commit_payloads_persists_batch_and_updates_engine_runtime(monkeypatch) -> None:
     fake_engine = FakeEngine()
     monkeypatch.setattr(
         "module.Engine.Retranslate.RetranslateTask.Engine.get",
@@ -155,7 +156,7 @@ def test_commit_payloads_persists_batch_and_emits_runtime_patch(monkeypatch) -> 
         file_path="script/a.txt",
         status=Base.ItemStatus.RULE_SKIPPED,
     )
-    data_manager = SimpleNamespace(
+    task_data_client = SimpleNamespace(
         state_lock=threading.RLock(),
         get_all_item_dicts=MagicMock(
             return_value=[
@@ -172,16 +173,10 @@ def test_commit_payloads_persists_batch_and_emits_runtime_patch(monkeypatch) -> 
                 "time": 12.0,
             }
         ),
-        update_batch=MagicMock(),
-        bump_task_runtime_section_revisions=MagicMock(return_value={"items": 2}),
-        emit_project_runtime_patch=MagicMock(),
-    )
-    revision_service = SimpleNamespace(
-        bump_revision=MagicMock(return_value=3),
+        commit_retranslate_batch=MagicMock(),
     )
     task = RetranslateTask.__new__(RetranslateTask)
-    task.dm = data_manager
-    task.revision_service = revision_service
+    task.task_data_client = task_data_client
     success_item = Item(
         id=1,
         src="勇者",
@@ -210,26 +205,54 @@ def test_commit_payloads_persists_batch_and_emits_runtime_patch(monkeypatch) -> 
         )
     )
 
-    data_manager.update_batch.assert_called_once_with(
-        items=[success_item.to_dict(), failed_item.to_dict()],
-        meta={
-            "translation_extras": {
-                "line": 2,
-                "total_line": 2,
-                "processed_line": 1,
-                "error_line": 1,
-                "total_tokens": 99,
-                "time": 12.0,
-            }
+    task_data_client.commit_retranslate_batch.assert_called_once_with(
+        [success_item.to_dict(), failed_item.to_dict()],
+        {
+            "line": 2,
+            "total_line": 2,
+            "processed_line": 1,
+            "error_line": 1,
+            "total_tokens": 99,
+            "time": 12.0,
         },
     )
-    revision_service.bump_revision.assert_called_once_with("proofreading")
     assert fake_engine.retranslating_item_ids == []
-    patch = data_manager.emit_project_runtime_patch.call_args.kwargs["patch"]
-    assert [operation["op"] for operation in patch] == [
-        "merge_items",
-        "replace_proofreading",
-        "replace_task",
-    ]
-    assert patch[0]["item_ids"] == [1, 2]
-    assert patch[2]["task"]["retranslating_item_ids"] == []
+
+
+def test_start_uses_request_quality_snapshot(monkeypatch) -> None:
+    snapshot = QualityRuleSnapshot(
+        glossary_enable=True,
+        glossary_entries=[{"src": "勇者", "dst": "Hero"}],
+    )
+    task_data_client = SimpleNamespace(is_loaded=MagicMock(return_value=True))
+
+    class FakeConfig:
+        def load(self) -> "FakeConfig":
+            return self
+
+        def get_active_model(self) -> dict[str, object]:
+            return {"threshold": {"concurrency_limit": 1}}
+
+    def run_prepare_only(owner, *, task_event, hooks) -> None:
+        del owner, task_event
+        assert hooks.prepare() is True
+
+    monkeypatch.setattr(
+        "module.Engine.Retranslate.RetranslateTask.TaskDataClient.get",
+        lambda: task_data_client,
+    )
+    monkeypatch.setattr(
+        "module.Engine.Retranslate.RetranslateTask.Config",
+        lambda: FakeConfig(),
+    )
+    monkeypatch.setattr(
+        "module.Engine.Retranslate.RetranslateTask.TaskRunnerLifecycle.run_task_flow",
+        run_prepare_only,
+    )
+    task = RetranslateTask.__new__(RetranslateTask)
+    task.build_retranslate_items = MagicMock(return_value=[])
+
+    task.start({"item_ids": [3, "2", 3], "quality_snapshot": snapshot})
+
+    assert task.quality_snapshot is snapshot
+    task.build_retranslate_items.assert_called_once_with([3, 2])

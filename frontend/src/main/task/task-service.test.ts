@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CoreBridgeClient } from "../core/core-bridge-client";
 import type { ConfigService } from "../service/config-service";
 import { ProjectSessionState } from "../project/project-session-state";
+import { TaskRuntimeState } from "./task-runtime-state";
 import type { TaskSnapshotBuilder } from "./task-snapshot-builder";
 import { TaskService } from "./task-service";
 
@@ -21,6 +22,7 @@ describe("TaskService", () => {
         items: 7,
         proofreading: 2,
       }),
+      new TaskRuntimeState(),
       session_state,
       create_config_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -28,9 +30,29 @@ describe("TaskService", () => {
     const result = await service.start_retranslate({
       item_ids: [2, "1", 2],
       expected_section_revisions: { items: 7, proofreading: 2 },
+      quality_snapshot: {
+        quality: {
+          glossary: {
+            enabled: true,
+            entries: [{ src: "勇者", dst: "Hero" }],
+          },
+        },
+      },
     });
 
-    expect(calls).toEqual([{ item_ids: [2, 1] }]);
+    expect(calls).toEqual([
+      {
+        item_ids: [2, 1],
+        quality_snapshot: {
+          quality: {
+            glossary: {
+              enabled: true,
+              entries: [{ src: "勇者", dst: "Hero" }],
+            },
+          },
+        },
+      },
+    ]);
     expect(result).toEqual({
       accepted: true,
       task: {
@@ -52,6 +74,7 @@ describe("TaskService", () => {
         },
       } as unknown as CoreBridgeClient,
       create_snapshot_builder({}),
+      new TaskRuntimeState(),
       new ProjectSessionState(),
       create_config_service({ activate_model_id: "", models: [] }),
     );
@@ -72,6 +95,7 @@ describe("TaskService", () => {
         },
       } as unknown as CoreBridgeClient,
       create_snapshot_builder({}),
+      new TaskRuntimeState(),
       new ProjectSessionState(),
       create_config_service({ activate_model_id: "missing", models: [{ id: "model-1" }] }),
     );
@@ -88,6 +112,7 @@ describe("TaskService", () => {
     const service = new TaskService(
       {} as unknown as CoreBridgeClient,
       create_snapshot_builder({ items: 8, proofreading: 2 }),
+      new TaskRuntimeState(),
       session_state,
       create_config_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );

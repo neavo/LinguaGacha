@@ -1,9 +1,9 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { get_runtime_section_revision } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
+import { TaskRuntimeState } from "./task-runtime-state";
 import {
   is_task_type,
   type JsonRecord,
@@ -36,14 +36,14 @@ const ANALYSIS_SKIPPED_STATUSES = new Set([
 ]);
 
 /**
- * 在 TS Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读内部 Engine bridge。
+ * 在 TS Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 TS runtime state。
  */
 export class TaskSnapshotBuilder {
   // database 是持久任务进度的唯一读源，不能改为 Python DataManager 快照。
   private readonly database: ProjectDatabase;
 
-  // core_bridge 只读取受 token 保护的 Engine 运行态，不回调公开 `/api/tasks/*`。
-  private readonly core_bridge: CoreBridgeClient;
+  // task_runtime_state 是实时 busy / 请求中数量的唯一读源，不再反查 Python。
+  private readonly task_runtime_state: TaskRuntimeState;
 
   // session_state 决定当前公开工程路径，避免从 Python 会话反推 loaded/path。
   private readonly session_state: ProjectSessionState;
@@ -53,11 +53,11 @@ export class TaskSnapshotBuilder {
    */
   public constructor(
     database: ProjectDatabase,
-    core_bridge: CoreBridgeClient,
+    task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
   ) {
     this.database = database;
-    this.core_bridge = core_bridge;
+    this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
   }
 
@@ -65,7 +65,7 @@ export class TaskSnapshotBuilder {
    * 按请求体选择任务类型；缺失或非法时根据 Engine 与持久进度推导当前任务。
    */
   public async build_task_snapshot(request: JsonRecord = {}): Promise<MutableJsonRecord> {
-    const engine_state = await this.core_bridge.get_task_engine_state();
+    const engine_state = this.task_runtime_state.snapshot();
     const meta = this.get_loaded_project_meta();
     const requested_task_type = String(request["task_type"] ?? "");
     const task_type = is_task_type(requested_task_type)
@@ -83,41 +83,16 @@ export class TaskSnapshotBuilder {
     busy: boolean,
     overrides: JsonRecord = {},
   ): Promise<MutableJsonRecord> {
-    let snapshot: MutableJsonRecord;
-    try {
-      const engine_state = await this.core_bridge.get_task_engine_state();
-      snapshot = this.build_task_snapshot_from_state(
-        task_type,
-        engine_state,
-        this.get_loaded_project_meta(),
-      );
-    } catch {
-      // 命令已经被内部桥接受，二次快照失败不能反转公开受理语义。
-      snapshot = this.build_command_ack_fallback(task_type);
-    }
+    const snapshot = this.build_task_snapshot_from_state(
+      task_type,
+      this.task_runtime_state.snapshot(),
+      this.get_loaded_project_meta(),
+    );
     return {
       ...snapshot,
       ...overrides,
       busy,
       status,
-      task_type,
-    };
-  }
-
-  /**
-   * 命令回执兜底只表达已知意图，完整事实仍由后续 snapshot 或 SSE 对齐。
-   */
-  private build_command_ack_fallback(task_type: TaskType): MutableJsonRecord {
-    const snapshot = this.normalize_progress_snapshot({});
-    if (task_type === "analysis") {
-      snapshot["analysis_candidate_count"] = 0;
-    }
-    if (task_type === "retranslate") {
-      snapshot["retranslating_item_ids"] = [];
-    }
-    return {
-      ...snapshot,
-      request_in_flight_count: 0,
       task_type,
     };
   }

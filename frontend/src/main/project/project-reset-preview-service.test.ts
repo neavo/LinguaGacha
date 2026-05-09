@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
+import { TaskRuntimeState } from "../task/task-runtime-state";
 import { ProjectResetPreviewService } from "./project-reset-preview-service";
 import { ProjectSessionState } from "./project-session-state";
 
@@ -12,42 +13,23 @@ let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
 
 /**
- * reset preview 测试只需要 Core 的 busy 状态守卫。
- */
-class FakeCoreBridge {
-  // 测试直接切换 busy，验证 TS reset preview 的任务互斥守卫。
-  public busy = false;
-
-  /**
-   * 返回最小项目状态，ProjectSessionState 才是公开 loaded/path 权威。
-   */
-  public async get_project_state(): Promise<{
-    loaded: boolean;
-    projectPath: string;
-    busy: boolean;
-  }> {
-    return { loaded: true, projectPath: "", busy: this.busy };
-  }
-}
-
-/**
  * 每个用例创建独立 .lg 数据库和服务，避免状态串扰。
  */
 function create_service(): {
-  bridge: FakeCoreBridge;
   database: ProjectDatabase;
   lg_path: string;
   service: ProjectResetPreviewService;
+  task_runtime_state: TaskRuntimeState;
 } {
   const database = new ProjectDatabase();
   cleanup_databases.push(database);
-  const bridge = new FakeCoreBridge();
+  const task_runtime_state = new TaskRuntimeState();
   const session_state = new ProjectSessionState();
   const lg_path = path.join(temp_dir, "reset-preview.lg");
   database.execute({ name: "createProject", args: { projectPath: lg_path, name: "demo" } });
   session_state.mark_loaded(lg_path);
-  const service = new ProjectResetPreviewService(database, bridge as never, session_state);
-  return { bridge, database, lg_path, service };
+  const service = new ProjectResetPreviewService(database, task_runtime_state, session_state);
+  return { database, lg_path, service, task_runtime_state };
 }
 
 beforeEach(() => {

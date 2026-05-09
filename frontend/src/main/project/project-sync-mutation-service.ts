@@ -1,9 +1,9 @@
 import fs from "node:fs";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import { TaskRuntimeState } from "../task/task-runtime-state";
 import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
@@ -31,22 +31,25 @@ export class ProjectSyncMutationService {
   // 所有 .lg 写入必须经由 ProjectDatabase workflow，避免项目域直接碰 SQL。
   private readonly database: ProjectDatabase;
 
-  // Python Core 仍持有忙碌态和文件操作锁，TS 写入口必须通过桥保持互斥。
-  private readonly core_bridge: CoreBridgeClient;
+  // task_runtime_state 是同步 mutation 的 busy 守卫权威。
+  private readonly task_runtime_state: TaskRuntimeState;
 
   // 当前公开工程路径由 TS Gateway 会话状态提供，避免同步 mutation 回读 Py 缓存。
   private readonly session_state: ProjectSessionState;
+
+  // 工作台文件 mutation 在 TS 内部串行化，避免同一工程文件集合并发写入。
+  private file_operation_running = false;
 
   /**
    * 注入 database 与 Python runtime bridge，保持写库和缓存同步边界可测试。
    */
   public constructor(
     database: ProjectDatabase,
-    core_bridge: CoreBridgeClient,
+    task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
   ) {
     this.database = database;
-    this.core_bridge = core_bridge;
+    this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
   }
 
@@ -397,22 +400,24 @@ export class ProjectSyncMutationService {
     if (!state.loaded || state.projectPath === "") {
       throw new Error("工程未加载");
     }
-    const guard_state = await this.core_bridge.get_project_state();
-    if (guard_state.busy) {
+    if (this.task_runtime_state.snapshot().busy) {
       throw new Error("任务正在执行中 …");
     }
     return state.projectPath;
   }
 
   /**
-   * 工作台文件 mutation 复用 Python Core 文件互斥锁，避免并发改写文件集合。
+   * 工作台文件 mutation 使用 TS 互斥锁，避免并发改写文件集合。
    */
   private async run_with_file_operation_guard<T>(operation: () => Promise<T>): Promise<T> {
-    await this.core_bridge.begin_project_file_operation();
+    if (this.task_runtime_state.snapshot().busy || this.file_operation_running) {
+      throw new Error("任务正在执行中 …");
+    }
+    this.file_operation_running = true;
     try {
       return await operation();
     } finally {
-      await this.core_bridge.finish_project_file_operation();
+      this.file_operation_running = false;
     }
   }
 
@@ -489,12 +494,10 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 通知 Python Core 丢弃相关缓存，TS 写库后由 Py 后续读侧重新取库。
+   * 迁移后任务读侧直接从 TS task-data 取库；同步 mutation 不再通知 Python 清缓存。
    */
   private async sync_project_data(sections: string[]): Promise<void> {
-    await this.core_bridge.sync_runtime("project_data_changed", {
-      sections: sections as unknown as ApiJsonValue,
-    });
+    void sections;
   }
 
   /**

@@ -111,11 +111,7 @@ def test_analysis_scheduler_build_progress_snapshot_counts_current_status_and_re
         2: {"status": Base.ItemStatus.ERROR},
     }
 
-    monkeypatch.setattr(
-        analysis_scheduler_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    scheduler.analysis.task_data_client = fake_data_manager
 
     snapshot = scheduler.build_progress_snapshot(
         previous_extras={
@@ -152,11 +148,7 @@ def test_analysis_scheduler_build_task_contexts_continue_only_schedules_none_ite
         3: {"status": Base.ItemStatus.ERROR},
     }
 
-    monkeypatch.setattr(
-        analysis_scheduler_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    scheduler.analysis.task_data_client = fake_data_manager
 
     contexts = scheduler.build_analysis_task_contexts(scheduler.analysis.config)
 
@@ -175,11 +167,7 @@ def test_analysis_scheduler_build_task_contexts_splits_when_file_changes(
         build_item(3, "b1", file_path="b.txt"),
     ]
 
-    monkeypatch.setattr(
-        analysis_scheduler_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    scheduler.analysis.task_data_client = fake_data_manager
 
     contexts = scheduler.build_analysis_task_contexts(scheduler.analysis.config)
 
@@ -201,11 +189,7 @@ def test_analysis_scheduler_build_task_contexts_uses_shared_line_limit(
         build_item(2, "line-9"),
     ]
 
-    monkeypatch.setattr(
-        analysis_scheduler_module.DataManager,
-        "get",
-        lambda: fake_data_manager,
-    )
+    scheduler.analysis.task_data_client = fake_data_manager
 
     contexts = scheduler.build_analysis_task_contexts(scheduler.analysis.config)
 
