@@ -7,13 +7,11 @@ from api.Application.EventStreamService import EventStreamService
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.ModelProbeAppService import ModelProbeAppService
 from api.Application.RuntimeBridgeAppService import RuntimeBridgeAppService
-from api.Application.TaskAppService import TaskAppService
 from api.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.LifecycleRoutes import LifecycleRoutes
-from api.Server.Routes.TaskRoutes import TaskRoutes
 from api.Server.Routes.ModelProbeRoutes import ModelProbeRoutes
 from api.Server.Routes.RuntimeBridgeRoutes import RuntimeBridgeRoutes
 
@@ -48,10 +46,8 @@ class ServerBootstrap:
     ) -> ServerRuntime:
         """应用 UI 模式使用的默认启动入口。"""
 
-        task_app_service = TaskAppService()
         model_probe_app_service = ModelProbeAppService()
         return cls.start_for_test(
-            task_app_service=task_app_service,
             model_probe_app_service=model_probe_app_service,
             core_lifecycle_app_service=core_lifecycle_app_service,
             runtime_bridge_app_service=runtime_bridge_app_service,
@@ -63,7 +59,6 @@ class ServerBootstrap:
     def start_for_test(
         cls,
         *,
-        task_app_service: TaskAppService | None = None,
         model_probe_app_service: ModelProbeAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
         runtime_bridge_app_service: RuntimeBridgeAppService | None = None,
@@ -72,11 +67,11 @@ class ServerBootstrap:
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
 
-        task_snapshot_builder = None
-        if task_app_service is not None:
-            task_snapshot_builder = getattr(
-                task_app_service, "build_task_snapshot", None
-            )
+        task_snapshot_builder = (
+            getattr(runtime_bridge_app_service, "build_task_snapshot", None)
+            if runtime_bridge_app_service is not None
+            else None
+        )
 
         event_stream_service = EventStreamService(
             event_bridge=ProjectPatchEventBridge(
@@ -88,7 +83,6 @@ class ServerBootstrap:
         )
         http_server = cls.create_http_server_with_candidates(
             candidate_ports=resolved_candidate_ports,
-            task_app_service=task_app_service,
             model_probe_app_service=model_probe_app_service,
             core_lifecycle_app_service=core_lifecycle_app_service,
             runtime_bridge_app_service=runtime_bridge_app_service,
@@ -127,7 +121,6 @@ class ServerBootstrap:
         cls,
         *,
         candidate_ports: tuple[int, ...],
-        task_app_service: TaskAppService | None,
         model_probe_app_service: ModelProbeAppService | None,
         core_lifecycle_app_service: CoreLifecycleAppService | None,
         runtime_bridge_app_service: RuntimeBridgeAppService | None,
@@ -141,7 +134,6 @@ class ServerBootstrap:
             core_api_server.register_routes()
             cls.register_api_routes(
                 core_api_server,
-                task_app_service=task_app_service,
                 model_probe_app_service=model_probe_app_service,
                 core_lifecycle_app_service=core_lifecycle_app_service,
                 runtime_bridge_app_service=runtime_bridge_app_service,
@@ -162,7 +154,6 @@ class ServerBootstrap:
         cls,
         core_api_server: CoreApiServer,
         *,
-        task_app_service: TaskAppService | None = None,
         model_probe_app_service: ModelProbeAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
         runtime_bridge_app_service: RuntimeBridgeAppService | None = None,
@@ -177,7 +168,5 @@ class ServerBootstrap:
             RuntimeBridgeRoutes.register(core_api_server, runtime_bridge_app_service)
         if event_stream_service is not None:
             EventRoutes.register(core_api_server, event_stream_service)
-        if task_app_service is not None:
-            TaskRoutes.register(core_api_server, task_app_service)
         if model_probe_app_service is not None:
             ModelProbeRoutes.register(core_api_server, model_probe_app_service)

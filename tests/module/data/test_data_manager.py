@@ -6,11 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import module.Data.DataManager as data_manager_module
 from base.Base import Base
 from module.Data.DataManager import DataManager
 from module.Data.Database.DatabaseContracts import DatabaseRuleType
-from module.Localizer.Localizer import Localizer
 
 
 def build_data_manager(
@@ -58,12 +56,6 @@ def build_data_manager(
         get_translated_path=MagicMock(return_value="/tmp/translated"),
         get_bilingual_path=MagicMock(return_value="/tmp/bilingual"),
     )
-    dm.project_service = SimpleNamespace(
-        progress_callback=None,
-        set_progress_callback=MagicMock(),
-        create=MagicMock(return_value=[]),
-        SUPPORTED_EXTENSIONS={".txt"},
-    )
     dm.translation_item_service = SimpleNamespace(get_items_for_translation=MagicMock())
     dm.analysis_service = SimpleNamespace(
         refresh_analysis_progress_snapshot_cache=MagicMock(return_value={"line": 1})
@@ -86,7 +78,6 @@ def test_data_manager_init_sets_up_services(
     dm = DataManager()
 
     assert dm.session is not None
-    assert dm.project_service is not None
     assert dm.project_file_service is not None
     assert dm.analysis_service is not None
     assert dm.quality_rule_service is not None
@@ -217,26 +208,3 @@ def test_output_path_helpers_delegate_to_export_service(
 
     assert dm.get_translated_path() == "/tmp/translated"
     assert dm.get_bilingual_path() == "/tmp/bilingual"
-
-
-def test_create_project_logs_when_presets_loaded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, _emitted_events = build_data_manager(monkeypatch)
-    dm.project_service.create = MagicMock(return_value=["术语表"])
-    logger = MagicMock()
-    monkeypatch.setattr(
-        data_manager_module.LogManager, "get", staticmethod(lambda: logger)
-    )
-
-    class FakeLocalizer:
-        quality_default_preset_loaded_message = "已加载 {NAME}"
-
-    original = Localizer.get
-    Localizer.get = staticmethod(lambda: FakeLocalizer)  # type: ignore[assignment]
-    try:
-        dm.create_project("src", "out")
-    finally:
-        Localizer.get = original  # type: ignore[assignment]
-
-    logger.info.assert_called_once_with("已加载 术语表")

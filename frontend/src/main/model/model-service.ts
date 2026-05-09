@@ -4,11 +4,14 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { CoreBridgeClient } from "../core/core-bridge-client";
-import { AppPathService } from "./path-service";
-import { ConfigService } from "./config-service";
+import { AppPathService } from "../service/path-service";
+import { ConfigService } from "../service/config-service";
+import {
+  read_model_records,
+  resolve_active_model_id,
+  type ModelRecord,
+} from "./model-config-resolver";
 import { JsonTool } from "../../utils/json-tool";
-
-type ModelRecord = Record<string, ApiJsonValue>;
 
 const MODEL_TYPE_SORT_ORDER: Record<string, number> = {
   PRESET: 0,
@@ -112,7 +115,7 @@ export class ModelService {
       }
     }
     const config = this.load_config_with_models(false);
-    const models = this.read_models(config);
+    const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     models[index] = this.apply_patch(models[index] ?? {}, patch);
     config["models"] = models as unknown as ApiJsonValue;
@@ -127,7 +130,7 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_config_with_models(false);
-    const models = this.read_models(config);
+    const models = read_model_records(config);
     this.find_model_index_or_raise(models, model_id);
     config["activate_model_id"] = model_id;
     return this.persist_config_and_build_snapshot(config);
@@ -144,7 +147,7 @@ export class ModelService {
       throw new Error(`unknown model type: ${model_type}`);
     }
     const config = this.load_config_with_models(false);
-    const models = this.read_models(config);
+    const models = read_model_records(config);
     models.push(this.build_custom_model(model_type));
     config["models"] = models as unknown as ApiJsonValue;
     return this.persist_config_and_build_snapshot(config);
@@ -158,7 +161,7 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_config_with_models(false);
-    const models = this.read_models(config);
+    const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     const target_model = models[index] ?? {};
     if (String(target_model["type"] ?? "PRESET") === "PRESET") {
@@ -181,7 +184,7 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_config_with_models(false);
-    const models = this.read_models(config);
+    const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     if (String(models[index]?.["type"] ?? "") !== "PRESET") {
       throw new Error("model is not preset");
@@ -210,7 +213,7 @@ export class ModelService {
       throw new Error("ordered_model_ids is empty");
     }
     const config = this.load_config_with_models(false);
-    const models = this.read_models(config);
+    const models = read_model_records(config);
     const first_index = this.find_model_index_or_raise(models, ordered_ids[0] ?? "");
     const model_type = String(models[first_index]?.["type"] ?? "PRESET");
     const expected_ids = models
@@ -235,7 +238,7 @@ export class ModelService {
   private async persist_config_and_build_snapshot(
     config: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
-    config["models"] = this.sort_models(this.read_models(config)) as unknown as ApiJsonValue;
+    config["models"] = this.sort_models(read_model_records(config)) as unknown as ApiJsonValue;
     this.config_service.save_config(config);
     await this.core_bridge?.sync_runtime("models_changed", {});
     return this.build_snapshot_response(config);
@@ -246,10 +249,12 @@ export class ModelService {
    */
   private load_config_with_models(persist_defaults: boolean): Record<string, ApiJsonValue> {
     const config = this.config_service.load_config();
-    config["models"] = this.initialize_models(this.read_models(config)) as unknown as ApiJsonValue;
-    const models = this.read_models(config);
-    if (String(config["activate_model_id"] ?? "") === "" && models.length > 0) {
-      config["activate_model_id"] = String(models[0]?.["id"] ?? "");
+    config["models"] = this.initialize_models(
+      read_model_records(config),
+    ) as unknown as ApiJsonValue;
+    const active_model_id = resolve_active_model_id(config);
+    if (String(config["activate_model_id"] ?? "") === "" && active_model_id !== "") {
+      config["activate_model_id"] = active_model_id;
     }
     if (persist_defaults) {
       this.config_service.save_config(config);
@@ -372,22 +377,6 @@ export class ModelService {
   }
 
   /**
-   * 读取指定模型分组，统一空数组兜底。
-   */
-  private read_models(config: Record<string, ApiJsonValue>): ModelRecord[] {
-    const raw_models = config["models"];
-    if (!Array.isArray(raw_models)) {
-      return [];
-    }
-    return raw_models
-      .filter(
-        (item): item is ModelRecord =>
-          typeof item === "object" && item !== null && !Array.isArray(item),
-      )
-      .map((item) => ({ ...item }));
-  }
-
-  /**
    * 按 sort_index 排序模型，保持配置和页面顺序一致。
    */
   private sort_models(models: ModelRecord[]): ModelRecord[] {
@@ -448,14 +437,10 @@ export class ModelService {
   private build_snapshot_response(
     config: Record<string, ApiJsonValue>,
   ): Record<string, ApiJsonValue> {
-    const models = this.read_models(config);
-    let active_model_id = String(config["activate_model_id"] ?? "");
-    if (active_model_id === "" && models.length > 0) {
-      active_model_id = String(models[0]?.["id"] ?? "");
-    }
+    const models = read_model_records(config);
     return {
       snapshot: {
-        active_model_id,
+        active_model_id: resolve_active_model_id(config),
         models: models as unknown as ApiJsonValue,
       },
     };

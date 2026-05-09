@@ -462,10 +462,52 @@ describe("ApiGatewayServer", () => {
     expect(text).toContain('"sectionRevisions"');
     expect(text).toContain("\\ud800");
     expect(py_server.requests.map((item) => item.path)).not.toContain("/api/project/load");
-    expect(py_server.requests.map((item) => item.path)).toContain("/api/tasks/snapshot");
+    expect(py_server.requests.map((item) => item.path)).toContain("/internal/runtime/tasks/state");
+    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/tasks/snapshot");
     expect(py_server.requests.map((item) => item.path)).not.toContain(
       "/api/project/bootstrap/stream",
     );
+  });
+
+  it("公开任务路由由 TS Gateway 直处理并只调用内部 Engine bridge", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_fake_py_server();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/tasks/start-translation`, {
+      body: JsonTool.stringifyStrict({ mode: "NEW" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = (await response.json()) as {
+      ok?: boolean;
+      data?: { accepted?: boolean; task?: { task_type?: string; status?: string; busy?: boolean } };
+    };
+    const py_request_paths = py_server.requests.map((item) => item.path);
+
+    expect(body.ok).toBe(true);
+    expect(body.data?.accepted).toBe(true);
+    expect(body.data?.task).toMatchObject({
+      task_type: "translation",
+      status: "REQUEST",
+      busy: true,
+    });
+    expect(py_request_paths).toContain("/internal/runtime/tasks/start-translation");
+    expect(py_request_paths).toContain("/internal/runtime/tasks/state");
+    expect(py_request_paths).not.toContain("/api/tasks/start-translation");
   });
 
   it("长期事件流继续代理到 Python Core", async () => {
@@ -806,7 +848,7 @@ describe("ApiGatewayServer", () => {
           response.end(JsonTool.stringifyStrict({ ok: true, data: { accepted: true } }));
           return;
         }
-        if (request.url === "/api/tasks/snapshot") {
+        if (request.url === "/internal/runtime/tasks/state") {
           response.writeHead(200, {
             "Access-Control-Allow-Origin": "*",
             "Content-Type": "application/json; charset=utf-8",
@@ -815,14 +857,22 @@ describe("ApiGatewayServer", () => {
             JsonTool.stringifyStrict({
               ok: true,
               data: {
-                task: {
-                  task_type: "translation",
-                  status: "IDLE",
-                  busy: false,
-                },
+                status: "IDLE",
+                busy: false,
+                request_in_flight_count: 0,
+                active_task_type: "idle",
+                retranslating_item_ids: [],
               },
             }),
           );
+          return;
+        }
+        if (request.url?.startsWith("/internal/runtime/tasks/")) {
+          response.writeHead(200, {
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          response.end(JsonTool.stringifyStrict({ ok: true, data: { accepted: true } }));
           return;
         }
         if (request.url === "/api/events/stream") {

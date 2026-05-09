@@ -107,7 +107,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         event_stream_service=SimpleNamespace(
             stream_to_handler=lambda handler: None,
         ),
-        task_app_service=object(),
         model_probe_app_service=object(),
         core_lifecycle_app_service=SimpleNamespace(
             shutdown=lambda request, handler: {"accepted": True},
@@ -115,6 +114,7 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         runtime_bridge_app_service=SimpleNamespace(
             get_project_state=lambda request, handler: {"loaded": False},
             sync=lambda request, handler: {"accepted": True},
+            get_task_state=lambda request, handler: {"status": "IDLE"},
         ),
     )
 
@@ -123,21 +123,21 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         path: core_api_server.route_map[(method, path)].mode
         for method, path in (
             ("GET", "/api/events/stream"),
-            ("POST", "/api/tasks/start-translation"),
             ("POST", ModelApiPaths.LIST_AVAILABLE_PATH),
             ("POST", ModelApiPaths.TEST_PATH),
             ("POST", "/api/lifecycle/shutdown"),
             ("POST", "/internal/runtime/project-state"),
+            ("POST", "/internal/runtime/tasks/state"),
         )
     }
 
     assert active_route_modes == {
         "/api/events/stream": "stream",
-        "/api/tasks/start-translation": "json",
         ModelApiPaths.LIST_AVAILABLE_PATH: "json",
         ModelApiPaths.TEST_PATH: "json",
         "/api/lifecycle/shutdown": "context_json",
         "/internal/runtime/project-state": "context_json",
+        "/internal/runtime/tasks/state": "context_json",
     }
 
 
@@ -363,9 +363,6 @@ def test_start_for_test_returns_runtime_object_when_requested(
 def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
     # Arrange
     base_url, shutdown = ServerBootstrap.start_for_test(
-        task_app_service=SimpleNamespace(
-            build_task_snapshot=lambda task_type: {"task_type": task_type}
-        ),
         model_probe_app_service=object(),
     )
     old_runtime_routes = [
@@ -401,6 +398,14 @@ def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
         ("POST", "/api/project/export-converted-translation"),
         ("POST", "/api/project/workbench/parse-file"),
         ("GET", "/api/project/bootstrap/stream"),
+        ("POST", "/api/tasks/start-translation"),
+        ("POST", "/api/tasks/stop-translation"),
+        ("POST", "/api/tasks/start-analysis"),
+        ("POST", "/api/tasks/stop-analysis"),
+        ("POST", "/api/tasks/start-retranslate"),
+        ("POST", "/api/tasks/snapshot"),
+        ("POST", "/api/tasks/export-translation"),
+        ("POST", "/api/tasks/translate-single"),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/query-proofreading"),

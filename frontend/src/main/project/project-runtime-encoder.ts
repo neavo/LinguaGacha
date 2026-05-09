@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import {
   build_project_mutation_ack_from_meta,
   build_section_revisions_from_meta,
@@ -126,22 +126,22 @@ export class ProjectRuntimeEncoder {
   // database 是工程事实唯一读源，编码器不能直接持有 SQLite handle。
   private readonly database: ProjectDatabase;
 
-  // task block 仍借用 Python Engine 权威，避免 bootstrap 迁移扩大到任务生命周期。
-  private readonly core_bridge: CoreBridgeClient;
+  // task block 由 TS task builder 组装，避免 bootstrap 回调 Python 公开任务路由。
+  private readonly task_snapshot_builder: TaskSnapshotBuilder;
 
   // 公开 project block 由 TS 会话状态持有，避免 bootstrap 回读 Python DataManager 缓存。
   private readonly session_state: ProjectSessionState;
 
   /**
-   * 注入 database workflow 与 Python 任务桥，保持读取边界可测试。
+   * 注入 database workflow 与任务快照构建器，保持读取边界可测试。
    */
   public constructor(
     database: ProjectDatabase,
-    core_bridge: CoreBridgeClient,
+    task_snapshot_builder: TaskSnapshotBuilder,
     session_state: ProjectSessionState,
   ) {
     this.database = database;
-    this.core_bridge = core_bridge;
+    this.task_snapshot_builder = task_snapshot_builder;
     this.session_state = session_state;
   }
 
@@ -156,7 +156,7 @@ export class ProjectRuntimeEncoder {
       project_path === ""
         ? this.empty_items_snapshot()
         : this.build_runtime_items_snapshot(project_path);
-    const task_snapshot = await this.core_bridge.get_task_snapshot();
+    const task_snapshot = await this.task_snapshot_builder.build_task_snapshot();
     // 所有 stage payload 先构建完成再交给 Gateway 写流，避免失败时产生半截成功 SSE。
     const stage_payloads: Record<RuntimeSection, MutableJsonRecord> = {
       project: this.build_project_block(project_state),

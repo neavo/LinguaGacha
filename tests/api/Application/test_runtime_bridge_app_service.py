@@ -5,6 +5,7 @@ from collections import OrderedDict
 from types import SimpleNamespace
 
 from api.Application.RuntimeBridgeAppService import RuntimeBridgeAppService
+from base.Base import Base
 
 
 class FakeHeaders:
@@ -46,13 +47,29 @@ class FakeDataManager:
         self.load_project_calls: list[str] = []
         self.file_operation_allowed = True
         self.asset_content: dict[str, bytes | None] = {}
-        self.project_file_service = SimpleNamespace(
-            parse_file_preview=lambda source_path, current_rel_path=None: {
-                "target_rel_path": current_rel_path or "book.epub",
-                "file_type": "EPUB",
-                "parsed_items": [{"src": "章节", "file_type": "EPUB"}],
-            }
-        )
+        self.translation_extras: dict[str, int | float] = {
+            "line": 3,
+            "total_line": 9,
+            "processed_line": 2,
+            "error_line": 0,
+            "total_tokens": 128,
+            "total_input_tokens": 64,
+            "total_output_tokens": 64,
+            "time": 1.5,
+            "start_time": 10.0,
+        }
+        self.analysis_snapshot: dict[str, int | float] = {
+            "line": 4,
+            "total_line": 8,
+            "processed_line": 3,
+            "error_line": 1,
+            "total_tokens": 256,
+            "total_input_tokens": 128,
+            "total_output_tokens": 128,
+            "time": 2.5,
+            "start_time": 12.0,
+        }
+        self.analysis_candidate_count = 5
         self.session = SimpleNamespace(
             state_lock=contextlib.nullcontext(),
             meta_cache={"analysis_extras": {"line": 1}},
@@ -103,6 +120,69 @@ class FakeDataManager:
 
         return self.asset_content.get(rel_path)
 
+    def get_task_progress_snapshot(self, task_type: str) -> dict[str, int | float]:
+        """返回测试任务进度，隔离真实 DataManager 缓存。"""
+
+        if task_type == "analysis":
+            return dict(self.analysis_snapshot)
+        return dict(self.translation_extras)
+
+    def get_analysis_candidate_count(self) -> int:
+        """返回测试分析候选数，供内部事件桥快照使用。"""
+
+        return self.analysis_candidate_count
+
+
+class FakeTaskEngine:
+    """模拟 Engine 任务状态和单条翻译入口。"""
+
+    def __init__(self) -> None:
+        """初始化任务引擎桩，默认处于翻译中。"""
+
+        self.status = Base.TaskStatus.TRANSLATING
+        self.request_in_flight_count = 2
+        self.active_task_type = "translation"
+        self.active_retranslate_item_ids: list[int] = []
+        self.translate_single_dst = "【爱丽丝】"
+        self.translate_single_success = True
+
+    def get_status(self) -> Base.TaskStatus:
+        """返回测试任务状态。"""
+
+        return self.status
+
+    def is_busy(self) -> bool:
+        """返回基于状态的忙碌态。"""
+
+        return self.status in Base.ENGINE_BUSY_STATUSES
+
+    def get_request_in_flight_count(self) -> int:
+        """返回测试实时请求数。"""
+
+        return self.request_in_flight_count
+
+    def get_active_task_type(self) -> str:
+        """返回测试活跃任务类型。"""
+
+        return self.active_task_type
+
+    def set_active_retranslate_item_ids(self, item_ids: list[int]) -> None:
+        """记录内部重翻条目 id。"""
+
+        self.active_retranslate_item_ids = list(item_ids)
+
+    def get_active_retranslate_item_ids(self) -> list[int]:
+        """返回当前重翻条目 id。"""
+
+        return list(self.active_retranslate_item_ids)
+
+    def translate_single_item(self, item, config, callback) -> None:
+        """模拟单条翻译完成回调。"""
+
+        del config
+        item.set_dst(self.translate_single_dst)
+        callback(item, self.translate_single_success)
+
 
 def test_runtime_bridge_project_state_requires_token() -> None:
     service = RuntimeBridgeAppService(instance_token="secret")
@@ -126,6 +206,133 @@ def test_runtime_bridge_project_state_exposes_busy() -> None:
     result = service.get_project_state({}, FakeHandler("secret"))
 
     assert result["busy"] is True
+
+
+def test_runtime_bridge_task_state_requires_token() -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    fake_engine = FakeTaskEngine()
+    fake_engine.active_retranslate_item_ids = [1, 3]
+    service.data_manager = FakeDataManager()
+    service.engine = fake_engine
+
+    result = service.get_task_state({}, FakeHandler("secret"))
+
+    assert result == {
+        "status": Base.TaskStatus.TRANSLATING.value,
+        "busy": True,
+        "request_in_flight_count": 2,
+        "active_task_type": "translation",
+        "retranslating_item_ids": [1, 3],
+    }
+
+
+def test_runtime_bridge_task_commands_emit_engine_events(monkeypatch) -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    fake_engine = FakeTaskEngine()
+    fake_engine.status = Base.TaskStatus.IDLE
+    service.data_manager = FakeDataManager()
+    service.engine = fake_engine
+    emitted_events: list[tuple[Base.Event, dict[str, object]]] = []
+
+    def capture_emit(self, event: Base.Event, payload: dict[str, object]) -> bool:
+        """记录内部任务事件，避免测试触碰全局 EventManager。"""
+
+        del self
+        emitted_events.append((event, payload))
+        return True
+
+    monkeypatch.setattr(Base, "emit", capture_emit)
+
+    translation_result = service.start_translation(
+        {"mode": "NEW"},
+        FakeHandler("secret"),
+    )
+    analysis_result = service.start_analysis(
+        {"mode": "CONTINUE"},
+        FakeHandler("secret"),
+    )
+    stop_result = service.stop_translation({}, FakeHandler("secret"))
+    retranslate_result = service.start_retranslate(
+        {"item_ids": [2, "1", 2]},
+        FakeHandler("secret"),
+    )
+
+    assert translation_result == {"accepted": True}
+    assert analysis_result == {"accepted": True}
+    assert stop_result == {"accepted": True}
+    assert retranslate_result == {"accepted": True}
+    assert fake_engine.active_retranslate_item_ids == [2, 1]
+    assert emitted_events == [
+        (
+            Base.Event.TRANSLATION_TASK,
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "mode": Base.TranslationMode.NEW,
+                "quality_snapshot": None,
+            },
+        ),
+        (
+            Base.Event.ANALYSIS_TASK,
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "mode": Base.AnalysisMode.CONTINUE,
+                "quality_snapshot": None,
+            },
+        ),
+        (
+            Base.Event.TRANSLATION_REQUEST_STOP,
+            {"sub_event": Base.SubEvent.REQUEST},
+        ),
+        (
+            Base.Event.RETRANSLATE_TASK,
+            {
+                "sub_event": Base.SubEvent.REQUEST,
+                "item_ids": [2, 1],
+            },
+        ),
+    ]
+
+
+def test_runtime_bridge_build_task_snapshot_for_event_bridge() -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    service.data_manager = FakeDataManager()
+    service.engine = FakeTaskEngine()
+
+    result = service.build_task_snapshot("analysis")
+
+    assert result["task_type"] == "analysis"
+    assert result["status"] == Base.TaskStatus.TRANSLATING.value
+    assert result["request_in_flight_count"] == 2
+    assert result["line"] == 4
+    assert result["analysis_candidate_count"] == 5
+
+
+def test_runtime_bridge_translate_single_uses_engine(monkeypatch) -> None:
+    class FakeConfig:
+        """提供单条翻译测试所需的激活模型。"""
+
+        def load(self) -> "FakeConfig":
+            """返回自身，模拟真实 Config().load()。"""
+
+            return self
+
+        def get_active_model(self) -> dict[str, str]:
+            """返回激活模型，允许请求进入 Engine。"""
+
+            return {"id": "model-1"}
+
+    service = RuntimeBridgeAppService(instance_token="secret")
+    fake_engine = FakeTaskEngine()
+    service.data_manager = FakeDataManager()
+    service.engine = fake_engine
+    monkeypatch.setattr(
+        "api.Application.RuntimeBridgeAppService.Config",
+        lambda: FakeConfig(),
+    )
+
+    result = service.translate_single({"text": "【Alice】"}, FakeHandler("secret"))
+
+    assert result == {"success": True, "status": "OK", "dst": "【爱丽丝】"}
 
 
 def test_runtime_bridge_rejects_invalid_token() -> None:

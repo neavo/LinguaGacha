@@ -6,7 +6,6 @@ from typing import Any
 from typing import ClassVar
 
 from base.Base import Base
-from base.LogManager import LogManager
 from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Analysis.AnalysisService import AnalysisService
@@ -24,7 +23,6 @@ from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
 from module.Data.Database.DatabaseContracts import DatabaseLegacyRuleType
 from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Data.Quality.QualityRuleService import QualityRuleService
-from module.Localizer.Localizer import Localizer
 from module.Migration.ItemStatusMigrationService import ItemStatusMigrationService
 
 
@@ -57,13 +55,11 @@ class DataManager(Base):
         self.item_service = ItemService(self.session)
         self.asset_service = AssetService(self.session)
         self.batch_service = BatchService(self.session)
-        from module.Data.Project.ProjectService import ProjectService
         from module.Data.Translation.TranslationItemService import (
             TranslationItemService,
         )
 
         self.translation_item_service = TranslationItemService(self.session)
-        self.project_service = ProjectService()
         self.export_path_service = ExportPathService()
 
         self.lifecycle_service = ProjectLifecycleService(
@@ -88,10 +84,7 @@ class DataManager(Base):
             self.meta_service,
             self.item_service,
         )
-        self.project_file_service = ProjectFileService(
-            self.session,
-            self.project_service.SUPPORTED_EXTENSIONS,
-        )
+        self.project_file_service = ProjectFileService()
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_activity)
 
     @classmethod
@@ -725,68 +718,4 @@ class DataManager(Base):
     def get_bilingual_path(self) -> str:
         return self.export_path_service.get_bilingual_path(
             self.require_loaded_lg_path()
-        )
-
-    def create_project(
-        self,
-        source_path: str,
-        output_path: str,
-        progress_callback: Any | None = None,
-    ) -> None:
-        old_callback = self.project_service.progress_callback
-        self.project_service.set_progress_callback(progress_callback)
-        try:
-            loaded_presets = self.project_service.create(
-                source_path,
-                output_path,
-                init_rules=self.rule_service.initialize_project_rules,
-            )
-        finally:
-            self.project_service.set_progress_callback(old_callback)
-
-        if loaded_presets:
-            LogManager.get().info(
-                Localizer.get().quality_default_preset_loaded_message.format(
-                    NAME=" | ".join(loaded_presets)
-                )
-            )
-
-    def build_create_project_preview(
-        self,
-        source_paths: list[str],
-    ) -> dict[str, object]:
-        return self.project_service.build_create_preview(source_paths)
-
-    def commit_create_project_preview(
-        self,
-        *,
-        source_paths: list[str],
-        output_path: str,
-        files: list[dict[str, object]],
-        items: list[dict[str, object]],
-        project_settings: dict[str, object],
-        translation_extras: dict[str, object],
-        prefilter_config: dict[str, object],
-    ) -> None:
-        loaded_presets = self.project_service.commit_create_preview(
-            source_paths=source_paths,
-            output_path=output_path,
-            files=files,
-            items=items,
-            project_settings=project_settings,
-            translation_extras=translation_extras,
-            prefilter_config=prefilter_config,
-            init_rules=self.rule_service.initialize_project_rules,
-        )
-        if loaded_presets:
-            LogManager.get().info(
-                Localizer.get().quality_default_preset_loaded_message.format(
-                    NAME=" | ".join(loaded_presets)
-                )
-            )
-
-    def build_open_project_alignment_preview(self, lg_path: str) -> dict[str, object]:
-        return self.project_service.build_open_alignment_preview(
-            lg_path,
-            Config().load(),
         )

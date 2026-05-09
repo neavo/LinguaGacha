@@ -68,3 +68,17 @@ class ProofreadingApiPaths:
     SAVE_ITEM_PATH: str = "/api/project/proofreading/save-item"
     SAVE_ALL_PATH: str = "/api/project/proofreading/save-all"
     REPLACE_ALL_PATH: str = "/api/project/proofreading/replace-all"
+
+
+class TaskApiPaths:
+    """公开任务 API 路径常量；服务端实现由 TS Gateway 承载。"""
+
+    # Python 客户端只复用路径契约，不从 Python server route 反向取常量。
+    START_TRANSLATION_PATH: str = "/api/tasks/start-translation"
+    STOP_TRANSLATION_PATH: str = "/api/tasks/stop-translation"
+    START_ANALYSIS_PATH: str = "/api/tasks/start-analysis"
+    STOP_ANALYSIS_PATH: str = "/api/tasks/stop-analysis"
+    START_RETRANSLATE_PATH: str = "/api/tasks/start-retranslate"
+    SNAPSHOT_PATH: str = "/api/tasks/snapshot"
+    EXPORT_TRANSLATION_PATH: str = "/api/tasks/export-translation"
+    TRANSLATE_SINGLE_PATH: str = "/api/tasks/translate-single"

@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import type { TaskEngineStatePayload } from "../task/task-types";
 import { JsonTool } from "../../utils/json-tool";
 
 /**
@@ -11,9 +12,6 @@ export interface ProjectStatePayload {
   // busy 由 Engine 持有，reset 类同步 mutation 用它避免和后台任务并发写入。
   busy: boolean;
 }
-
-// 任务快照结构由 Python tasks/snapshot 定义，TS bootstrap 只透传当前公开字段。
-export type TaskSnapshotPayload = Record<string, ApiJsonValue>;
 
 /**
  * CoreBridgeClient 只接收内部 Core 地址和 token，不暴露到 preload/renderer。
@@ -52,15 +50,6 @@ export class CoreBridgeClient {
     const project_path = typeof data["projectPath"] === "string" ? data["projectPath"] : "";
     const busy = typeof data["busy"] === "boolean" ? data["busy"] : false;
     return { loaded, projectPath: project_path, busy };
-  }
-
-  /**
-   * 读取 Python 任务快照，bootstrap 只借用任务权威，不回调 TS 公开 Gateway。
-   */
-  public async get_task_snapshot(): Promise<TaskSnapshotPayload> {
-    const data = await this.post_py_core_json("/api/tasks/snapshot", {});
-    const task = data["task"];
-    return this.is_json_record(task) ? task : {};
   }
 
   /**
@@ -105,6 +94,65 @@ export class CoreBridgeClient {
   }
 
   /**
+   * 读取内部 Engine 任务状态；公开进度快照由 TS task builder 自己组装。
+   */
+  public async get_task_engine_state(): Promise<TaskEngineStatePayload> {
+    const data = await this.post_internal("/internal/runtime/tasks/state", {});
+    return {
+      status: typeof data["status"] === "string" ? data["status"] : "IDLE",
+      busy: typeof data["busy"] === "boolean" ? data["busy"] : false,
+      request_in_flight_count: this.read_number(data["request_in_flight_count"], 0),
+      active_task_type:
+        typeof data["active_task_type"] === "string" ? data["active_task_type"] : "idle",
+      retranslating_item_ids: this.normalize_number_list(data["retranslating_item_ids"]),
+    };
+  }
+
+  /**
+   * 通过内部桥启动翻译任务，Python 只接收 Engine 命令。
+   */
+  public async start_translation(body: Record<string, ApiJsonValue>): Promise<void> {
+    await this.post_internal("/internal/runtime/tasks/start-translation", body);
+  }
+
+  /**
+   * 通过内部桥请求停止翻译任务。
+   */
+  public async stop_translation(): Promise<void> {
+    await this.post_internal("/internal/runtime/tasks/stop-translation", {});
+  }
+
+  /**
+   * 通过内部桥启动分析任务，公开回执留给 TS task service 生成。
+   */
+  public async start_analysis(body: Record<string, ApiJsonValue>): Promise<void> {
+    await this.post_internal("/internal/runtime/tasks/start-analysis", body);
+  }
+
+  /**
+   * 通过内部桥请求停止分析任务。
+   */
+  public async stop_analysis(): Promise<void> {
+    await this.post_internal("/internal/runtime/tasks/stop-analysis", {});
+  }
+
+  /**
+   * 通过内部桥启动批量重翻任务，item_ids 已在 TS 公开边界去重。
+   */
+  public async start_retranslate(body: Record<string, ApiJsonValue>): Promise<void> {
+    await this.post_internal("/internal/runtime/tasks/start-retranslate", body);
+  }
+
+  /**
+   * 单条翻译继续复用 Python Engine 低频同步入口。
+   */
+  public async translate_single(
+    body: Record<string, ApiJsonValue>,
+  ): Promise<Record<string, ApiJsonValue>> {
+    return this.post_internal("/internal/runtime/tasks/translate-single", body);
+  }
+
+  /**
    * 统一内部运行时桥 POST 细节，避免 token 和响应壳校验散落。
    */
   private async post_internal(
@@ -141,9 +189,30 @@ export class CoreBridgeClient {
   }
 
   /**
-   * 内部 JSON 响应只允许普通对象继续向业务层传播，避免数组或 null 被当作快照。
+   * 内部 Engine 数字坏值统一归零，避免公开 snapshot 出现 NaN。
    */
-  private is_json_record(value: ApiJsonValue | undefined): value is Record<string, ApiJsonValue> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+  private read_number(value: ApiJsonValue | undefined, fallback: number): number {
+    const number_value = Number(value ?? fallback);
+    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
+  }
+
+  /**
+   * 归一内部重翻 id 列表，保护 Python 桥返回旧值或重复值。
+   */
+  private normalize_number_list(value: ApiJsonValue | undefined): number[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const ids: number[] = [];
+    const seen_ids = new Set<number>();
+    for (const item of value) {
+      const item_id = this.read_number(item, NaN);
+      if (!Number.isFinite(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
+        continue;
+      }
+      seen_ids.add(item_id);
+      ids.push(item_id);
+    }
+    return ids;
   }
 }

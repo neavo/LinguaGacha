@@ -1,12 +1,12 @@
 from typing import Any
 
 from api.Client.ApiClient import ApiClient
+from api.Contract.ApiPaths import TaskApiPaths
 from api.Models.Task import TaskSnapshot
-from api.Server.Routes.TaskRoutes import TaskRoutes
 
 
 class TaskApiClient:
-    """任务 API 客户端。"""
+    """任务 API 客户端，只依赖公开契约路径常量。"""
 
     def __init__(self, api_client: ApiClient) -> None:
         self.api_client = api_client
@@ -22,31 +22,31 @@ class TaskApiClient:
         return TaskSnapshot.from_dict(response.get("task", {}))
 
     def start_translation(self, request: dict[str, Any]) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.START_TRANSLATION_PATH, request)
+        return self.post_task_snapshot(TaskApiPaths.START_TRANSLATION_PATH, request)
 
     def stop_translation(self) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.STOP_TRANSLATION_PATH)
+        return self.post_task_snapshot(TaskApiPaths.STOP_TRANSLATION_PATH)
 
     def start_analysis(self, request: dict[str, Any]) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.START_ANALYSIS_PATH, request)
+        return self.post_task_snapshot(TaskApiPaths.START_ANALYSIS_PATH, request)
 
     def start_retranslate(
         self,
         request: dict[str, Any],
     ) -> TaskSnapshot:
         return self.post_task_snapshot(
-            TaskRoutes.START_RETRANSLATE_PATH,
+            TaskApiPaths.START_RETRANSLATE_PATH,
             request,
         )
 
     def stop_analysis(self) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.STOP_ANALYSIS_PATH)
+        return self.post_task_snapshot(TaskApiPaths.STOP_ANALYSIS_PATH)
 
     def export_translation(self) -> dict[str, Any]:
-        return self.api_client.post(TaskRoutes.EXPORT_TRANSLATION_PATH, {})
+        return self.api_client.post(TaskApiPaths.EXPORT_TRANSLATION_PATH, {})
 
     def get_task_snapshot(
         self,
         request: dict[str, Any] | None = None,
     ) -> TaskSnapshot:
-        return self.post_task_snapshot(TaskRoutes.SNAPSHOT_PATH, request)
+        return self.post_task_snapshot(TaskApiPaths.SNAPSHOT_PATH, request)

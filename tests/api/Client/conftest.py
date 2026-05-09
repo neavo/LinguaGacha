@@ -6,9 +6,6 @@ from typing import Any
 import pytest
 
 from api.Server.ServerBootstrap import ServerBootstrap
-from tests.api.support.application_fakes import FakeEngine
-from tests.api.support.application_fakes import FakeSettingsConfig
-from tests.api.support.application_fakes import FakeTaskDataManager
 
 
 type StartApiServerFactory = Callable[..., str]
@@ -46,21 +43,6 @@ class RecordingApiClient:
 
         self.get_requests.append(path)
         return deepcopy(self.get_responses.get(path, {}))
-
-
-@pytest.fixture
-def fake_task_data_manager() -> FakeTaskDataManager:
-    return FakeTaskDataManager()
-
-
-@pytest.fixture
-def fake_engine() -> FakeEngine:
-    return FakeEngine()
-
-
-@pytest.fixture
-def fake_settings_config() -> FakeSettingsConfig:
-    return FakeSettingsConfig()
 
 
 @pytest.fixture

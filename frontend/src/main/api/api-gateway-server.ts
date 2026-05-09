@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 
 import { ProjectDatabase } from "../database/database-operations";
-import { ModelService } from "../service/model-service";
+import { ModelService } from "../model/model-service";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
 import { ProjectSyncMutationService } from "../project/project-sync-mutation-service";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -21,6 +21,8 @@ import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
 import type { LogAppendPayload, LogEvent, LogLevel, LogTargets } from "../log/log-types";
 import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
+import { TaskService } from "../task/task-service";
+import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import { JsonTool } from "../../utils/json-tool";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
@@ -157,10 +159,21 @@ export class ApiGatewayServer {
       core_bridge,
       this.project_session_state,
     );
-    const project_runtime_service = new ProjectRuntimeEncoder(
+    const task_snapshot_builder = new TaskSnapshotBuilder(
       this.options.database,
       core_bridge,
       this.project_session_state,
+    );
+    const project_runtime_service = new ProjectRuntimeEncoder(
+      this.options.database,
+      task_snapshot_builder,
+      this.project_session_state,
+    );
+    const task_service = new TaskService(
+      core_bridge,
+      task_snapshot_builder,
+      this.project_session_state,
+      config_service,
     );
     const project_reset_preview_service = new ProjectResetPreviewService(
       this.options.database,
@@ -333,6 +346,21 @@ export class ApiGatewayServer {
     );
     this.post_json(app, "/api/project/export-converted-translation", (body) =>
       file_export_service.export_converted_translation(body),
+    );
+    this.post_json(app, "/api/tasks/start-translation", (body) =>
+      task_service.start_translation(body),
+    );
+    this.post_json(app, "/api/tasks/stop-translation", (body) =>
+      task_service.stop_translation(body),
+    );
+    this.post_json(app, "/api/tasks/start-analysis", (body) => task_service.start_analysis(body));
+    this.post_json(app, "/api/tasks/stop-analysis", (body) => task_service.stop_analysis(body));
+    this.post_json(app, "/api/tasks/start-retranslate", (body) =>
+      task_service.start_retranslate(body),
+    );
+    this.post_json(app, "/api/tasks/snapshot", (body) => task_service.get_task_snapshot(body));
+    this.post_json(app, "/api/tasks/translate-single", (body) =>
+      task_service.translate_single(body),
     );
     this.post_json(app, "/api/tasks/export-translation", () =>
       file_export_service.export_translation(),

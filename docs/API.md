@@ -1,7 +1,7 @@
 # LinguaGacha API 文档
 
 ## 一句话总览
-Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；项目轻生命周期、项目同步 mutation、reset preview、bootstrap 运行态编码、`project.patch` 补全与 section revision 收口在 `frontend/src/main/project/`，文件解析 / 写回收口在 `frontend/src/main/file/`，应用设置、模型、质量规则 / 提示词、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、事件、任务和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
+Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；项目轻生命周期、项目同步 mutation、reset preview、bootstrap 运行态编码、`project.patch` 补全与 section revision 收口在 `frontend/src/main/project/`，公开任务协议与 task snapshot 收口在 `frontend/src/main/task/`，文件解析 / 写回收口在 `frontend/src/main/file/`，模型页快照与 CRUD 收口在 `frontend/src/main/model/`，应用设置、质量规则 / 提示词、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、事件、Engine 运行时桥和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
 
 ## 协议消费者与边界
 
@@ -15,9 +15,11 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 内部 Database Service 与 Python Core 内部端口都不属于公开 `api/` 协议：它们由 Electron main 启动，只供 TS Gateway 或 Python Core 通过 token 调用。renderer、Python 客户端和外部调试脚本不应依赖 `/internal/database/*`、`/internal/runtime/*` 或 Python Core 内部监听地址。
 
 协议层真实分工：
-- `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 项目域实现收口在 `frontend/src/main/project/`，其它已迁移业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
+- `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 项目域实现收口在 `frontend/src/main/project/`，公开任务实现收口在 `frontend/src/main/task/`，模型页实现收口在 `frontend/src/main/model/`，其它已迁移业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
 - `frontend/src/main/project/` 负责项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 首包、`project.patch` 运行态补全与 section revision 编码；`load/create-commit/open-preview` 也是 TS 项目域公开实现，其中 runtime encoder 和 patch adapter 只做按需读取和请求内快照，不持有长期项目缓存。
+- `frontend/src/main/task/` 负责公开 `/api/tasks/*` 的命令校验、任务回执和 task snapshot 组装；持久进度从 Electron main Database Service 读取，实时忙碌态、请求中数量、活跃任务类型和重翻条目只通过内部 runtime task bridge 读取 Python Engine。
 - `frontend/src/main/file/` 负责公开文件解析 / 写回：`create-preview`、`workbench/parse-file`、translation reset all 的 asset 重解析、`tasks/export-translation` 和 `export-converted-translation` 的写回都走 TS 文件域。
+- `frontend/src/main/model/` 负责模型页快照、CRUD、重排、激活模型回退和模型配置读取；写入 `DATA_ROOT/userdata/config.json` 后通过内部 runtime bridge 刷新 Python Core 模型运行时。
 - `api/Server/` 负责 Python Core 内部 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
 - `api/Contract/` 负责 Python 侧 HTTP 响应壳、SSE 线格式和 Python 客户端对象化载荷。
@@ -42,7 +44,7 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 
 路径不变量：
 - 主业务协议统一落在 `/api/` 前缀，不扩展新的并行根前缀。
-- `/internal/database/*` 是 Electron main 进程内 database server 的受保护内部路由；`/internal/runtime/project-state` 与 `/internal/runtime/sync` 是 TS Gateway 调 Python Core 的受保护运行时桥。文件解析 / 写回不再占用 `/internal/runtime/*`，公开文件能力统一由 TS Gateway 的 `frontend/src/main/file/` 执行。
+- `/internal/database/*` 是 Electron main 进程内 database server 的受保护内部路由；`/internal/runtime/project-state`、`/internal/runtime/sync` 与 `/internal/runtime/tasks/*` 是 TS Gateway 调 Python Core 的受保护运行时桥。文件解析 / 写回不再占用 `/internal/runtime/*`，公开文件能力统一由 TS Gateway 的 `frontend/src/main/file/` 执行。
 - 公开 `GET` 稳定只有 `/api/health`、`/api/events/stream`、`/api/logs/stream`、`/api/project/bootstrap/stream` 四类；其余公开接口默认走 `POST + JSON body`。
 - `/api/lifecycle/shutdown` 是内部生命周期接口，只供 Electron main 调用；它要求 `X-LinguaGacha-Core-Token` 与当前 Core API token 一致。
 - `OPTIONS` 由服务器统一回 `204`，CORS 统一开放到 `Origin * / Methods GET,POST,OPTIONS / Headers Content-Type`。
@@ -110,7 +112,7 @@ flowchart TD
 
 ### bootstrap 首包
 
-`/api/project/bootstrap/stream` 由 TS Gateway 直接响应，是一次性阶段化首包，不是长期订阅流。TS 运行态编码器直接读取 Electron main Database Service 构建 `project / files / items / quality / prompts / analysis / proofreading` block，并通过 Python Core 受控 JSON 调用读取 `task` 快照；稳定事件型别如下：
+`/api/project/bootstrap/stream` 由 TS Gateway 直接响应，是一次性阶段化首包，不是长期订阅流。TS 运行态编码器直接读取 Electron main Database Service 构建 `project / files / items / quality / prompts / analysis / proofreading` block，并复用 TS task snapshot builder 构建 `task` block；稳定事件型别如下：
 
 | `event:` | 字段 | 用途 |
 | --- | --- | --- |
@@ -161,7 +163,7 @@ flowchart TD
 | --- | --- | --- |
 | 同步 mutation | 工作台 `add-file / reset-file / delete-file / reorder-files`，项目 `settings-alignment/apply`、`translation/reset`、`analysis/reset`、`analysis/import-glossary`，质量规则 `rules/save-entries / rules/update-meta`，提示词 `prompts/save`，校对 `save-item / save-all / replace-all` | 前端先本地 patch，再由服务端持久化并回 `ProjectMutationAck { accepted, projectRevision, sectionRevisions }` |
 | 只读预演 | `create-preview`、`open-preview`、`translation/reset-preview`、`analysis/reset-preview`、`workbench/parse-file`、`prompts/import` | 返回预演结果，不改运行态事实 |
-| 异步任务 | `tasks/*`，含 `/api/tasks/start-retranslate` | 依赖任务事件与必要的 `project.patch` 推进运行态 |
+| 异步任务 | `tasks/*`，含 `/api/tasks/start-retranslate` | 公开命令由 TS task service 受理，再经内部 runtime task bridge 驱动 Python Engine；运行态依赖任务事件与必要的 `project.patch` 推进 |
 
 翻译任务补充：
 - 翻译任务完成只保存项目事实，不自动写出译文文件。
@@ -177,10 +179,10 @@ flowchart TD
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - 简繁转换页按 `text_type` 读取内置文本保护规则时复用 `/api/quality/rules/presets/read`，请求 `preset_dir_name: "text_preserve"` 与 `virtual_id: "builtin:{lower_text_type}.json"`，页面只消费返回 `entries[].src`。
 - 项目轻生命周期中的 `/api/project/snapshot`、`/api/project/load`、`/api/project/create-commit`、`/api/project/open-preview`、`/api/project/unload`、`/api/project/preview`、`/api/project/source-files` 由 TS Gateway 的 `frontend/src/main/project/project-lifecycle-service.ts` 直处理；`create-preview` 由 `frontend/src/main/file/file-preview-service.ts` 解析源文件草稿。`load` 先由 TS 完成文件校验、`updated_at` 写入和打开期兼容迁移，再通过 `/internal/runtime/sync` 的 `project_load` 同步 Python Engine 读侧；`create-commit` 由 TS database workflow 创建 `.lg`、初始化默认预设、写入 asset/items/meta 后复用同一加载流程；`open-preview` 是只读设置对齐预演；`unload` 通过 `project_unload` 触发 Python `DataManager.unload_project()` 后再清空 TS 会话状态并释放 TS database 缓存。
-- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，reset preview 由 `frontend/src/main/project/project-reset-preview-service.ts` 直处理，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清任务读侧缓存。translation reset preview 的 all 模式直接用 TS 文件域解析 asset。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、转换导出和 `tasks/export-translation` 的文件能力由 TS 直处理，其它未迁移 `tasks/*` 仍代理 Python Core。
+- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，reset preview 由 `frontend/src/main/project/project-reset-preview-service.ts` 直处理，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清任务读侧缓存。translation reset preview 的 all 模式直接用 TS 文件域解析 asset。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、转换导出和 `tasks/export-translation` 的文件能力由 TS 直处理，公开 `tasks/*` 命令与快照由 TS task service 直处理。
 
 额外约束：
-- `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
+- `tasks/translate-single` 只给页面派生工具低频调用；TS task service 先做空文本和激活模型基础校验，再通过内部 runtime task bridge 让 Python Core 创建临时 `Item` 并复用引擎单条翻译入口。姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
 - `reorder-files` 的 `ordered_rel_paths` 必须完整覆盖当前文件集合。
 - 工作台文件协议的路径语义固定为动作路径表达业务动作、数组字段表达数量：`parse-file` 接收 `source_paths` 并返回 `files[]`，`add-file` 接收 `files[]`，`delete-file` 与 `reset-file` 接收 `rel_paths[]`。
 - `source-files`、`create-preview`、`create-commit` 的新建工程链路统一接收批量 `source_paths`；选择单个文件或文件夹时也按单元素数组传入。
@@ -194,7 +196,7 @@ flowchart TD
 - `analysis/import-glossary` 会分别校验运行态 section revision 与 glossary 自身 revision。
 - `tasks/snapshot` 是按需快照，不是订阅入口。
 - `settings/update` 由 TS Gateway 写 `DATA_ROOT/userdata/config.json`，只处理设置白名单字段；应用语言只支持 `ZH` / `EN`，写入后通过内部 runtime bridge 让 Python Core 刷新 `Localizer` 并发 `settings.changed`。
-- `models/update` 由 TS Gateway 写同一份 `config.json`，只接受模型 patch 白名单字段；`models/reorder` 只能重排单一模型分组，`ordered_model_ids` 必须完整匹配该分组；`list-available` 与 `test` 仍代理 Python Core 并读取最新配置。
+- `models/update` 由 `frontend/src/main/model/` 写同一份 `config.json`，只接受模型 patch 白名单字段；`models/reorder` 只能重排单一模型分组，`ordered_model_ids` 必须完整匹配该分组；`list-available` 与 `test` 仍代理 Python Core 并读取最新配置。
 
 ## Python 客户端边界
 
@@ -202,7 +204,7 @@ flowchart TD
 | --- | --- |
 | `ApiClient` | 默认只取响应体中的 `data`，不会校验 `ok`、保留 `error` 或主动抛出结构化业务异常 |
 | 对象化覆盖 | `SettingsApiClient`、`ProjectApiClient`、`ProofreadingApiClient` 主路径以对象化结果为主；新建工程链路由渲染层通过 `desktop-api.ts` 编排 |
-| 混合返回 | `TaskApiClient.export_translation()`、`ModelApiClient.test_model()`、`WorkbenchApiClient.parse_file()` 仍可能返回原始结构，其中工作台解析结果固定包在 `files[]` 内 |
+| 混合返回 | `TaskApiClient.export_translation()`、`ModelApiClient.test_model()`、`WorkbenchApiClient.parse_file()` 仍可能返回原始结构，其中任务路径常量来自 `TaskApiPaths`，不从 Python server route 取常量 |
 
 这意味着：
 - Python 客户端擅长做请求包装与 DTO 化，不承担 `ProjectStore` 风格的长期状态同步层。

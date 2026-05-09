@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
+import type { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import { ProjectRuntimeEncoder } from "./project-runtime-encoder";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
@@ -24,7 +24,7 @@ describe("ProjectRuntimeEncoder", () => {
     const { database, project_path } = create_project_database();
     const service = new ProjectRuntimeEncoder(
       database,
-      create_core_bridge({
+      create_task_snapshot_builder({
         task_type: "retranslate",
         status: "RUNNING",
         busy: true,
@@ -204,10 +204,12 @@ describe("ProjectRuntimeEncoder", () => {
   /**
    * runtime encoder 只依赖 CoreBridgeClient 的任务读方法，测试用窄 fake 固定边界。
    */
-  function create_core_bridge(task_snapshot: Record<string, unknown>): CoreBridgeClient {
+  function create_task_snapshot_builder(
+    task_snapshot: Record<string, unknown>,
+  ): TaskSnapshotBuilder {
     return {
-      get_task_snapshot: async () => task_snapshot,
-    } as unknown as CoreBridgeClient;
+      build_task_snapshot: async () => task_snapshot,
+    } as unknown as TaskSnapshotBuilder;
   }
 
   function create_session_state(project_path: string): ProjectSessionState {
