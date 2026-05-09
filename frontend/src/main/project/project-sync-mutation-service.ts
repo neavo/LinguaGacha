@@ -4,27 +4,15 @@ import type { ApiJsonValue } from "../api/api-types";
 import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import {
+  build_project_mutation_ack_from_meta,
+  get_runtime_section_revision,
+} from "./project-section-revision";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-const RUNTIME_SECTIONS = [
-  "project",
-  "files",
-  "items",
-  "quality",
-  "prompts",
-  "analysis",
-  "proofreading",
-  "task",
-] as const;
-const QUALITY_RULE_TYPES = [
-  "glossary",
-  "text_preserve",
-  "pre_replacement",
-  "post_replacement",
-] as const;
-const PROMPT_TASK_TYPES = ["translation", "analysis"] as const;
+// 同步 mutation 只允许写入当前有效 item 状态，旧状态归一在读取 / 校对入口完成。
 const ITEM_STATUS_VALUES = new Set([
   "NONE",
   "PROCESSED",
@@ -36,10 +24,13 @@ const ITEM_STATUS_VALUES = new Set([
 ]);
 
 /**
- * 承载 P2 项目同步 mutation，把 TS Gateway 的业务写入收口到 ProjectDatabase 窄操作。
+ * 承载项目同步 mutation，把 TS Gateway 的业务写入收口到 ProjectDatabase 窄操作。
  */
-export class ProjectService {
+export class ProjectSyncMutationService {
+  // 所有 .lg 写入必须经由 ProjectDatabase workflow，避免项目域直接碰 SQL。
   private readonly database: ProjectDatabase;
+
+  // Python Core 仍持有忙碌态和文件操作锁，TS 写入口必须通过桥保持互斥。
   private readonly core_bridge: CoreBridgeClient;
 
   /**
@@ -65,6 +56,7 @@ export class ProjectService {
         throw new Error("没有可添加的工作台文件");
       }
 
+      // 先在内存中完成路径唯一性校验，避免事务写到一半才发现冲突。
       const asset_records = this.get_asset_records(project_path);
       const existing_paths = new Set(asset_records.map((record) => record.path.toLowerCase()));
       const incoming_paths = new Set<string>();
@@ -89,6 +81,7 @@ export class ProjectService {
 
       const next_items = this.get_all_items(project_path);
       for (const file of normalized_files) {
+        // 新增文件会整体重建 items section，确保文件顺序和条目事实同事务对齐。
         next_items.push(
           ...file.parsed_items.map((item) =>
             this.normalize_workbench_item(item, file.target_rel_path),
@@ -450,7 +443,7 @@ export class ProjectService {
       if (!(section in expected)) {
         continue;
       }
-      const current = this.get_section_revision(meta, section);
+      const current = get_runtime_section_revision(meta, section);
       const wanted = expected[section] ?? 0;
       if (current !== wanted) {
         throw new Error(
@@ -464,48 +457,7 @@ export class ProjectService {
    * 构建 ProjectMutationAck，保持同步 mutation 旧响应形状。
    */
   private build_project_mutation_ack(project_path: string, updated_sections: string[]): JsonRecord {
-    const meta = this.get_all_meta(project_path);
-    const section_revisions: MutableJsonRecord = {};
-    for (const section of updated_sections) {
-      section_revisions[section] = this.get_section_revision(meta, section);
-    }
-    return {
-      accepted: true,
-      projectRevision: Math.max(
-        ...RUNTIME_SECTIONS.map((section) => this.get_section_revision(meta, section)),
-        0,
-      ),
-      sectionRevisions: section_revisions,
-    };
-  }
-
-  /**
-   * 读取 section revision，和 Python ProjectRuntimeService 保持同一 meta 口径。
-   */
-  private get_section_revision(meta: JsonRecord, section: string): number {
-    if (section === "quality") {
-      return Math.max(
-        ...QUALITY_RULE_TYPES.map((rule_type) =>
-          this.read_number(meta[`quality_rule_revision.${rule_type}`], 0),
-        ),
-        0,
-      );
-    }
-    if (section === "prompts") {
-      return Math.max(
-        ...PROMPT_TASK_TYPES.map((task_type) =>
-          this.read_number(meta[`quality_prompt_revision.${task_type}`], 0),
-        ),
-        0,
-      );
-    }
-    if (section === "files" || section === "items" || section === "analysis") {
-      return this.read_number(meta[`project_runtime_revision.${section}`], 0);
-    }
-    if (section === "proofreading") {
-      return this.read_number(meta["proofreading_revision.proofreading"], 0);
-    }
-    return 0;
+    return build_project_mutation_ack_from_meta(this.get_all_meta(project_path), updated_sections);
   }
 
   /**
@@ -520,7 +472,8 @@ export class ProjectService {
       this.op("setMeta", {
         projectPath: project_path,
         key: `project_runtime_revision.${section}`,
-        value: this.get_section_revision(meta, section) + 1,
+        // bump 前读取同一 meta 快照，确保同一事务内多个 section 按相同基线推进。
+        value: get_runtime_section_revision(meta, section) + 1,
       }),
     );
   }

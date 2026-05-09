@@ -1,7 +1,7 @@
 # LinguaGacha API 文档
 
 ## 一句话总览
-Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；应用设置、模型、质量规则 / 提示词、项目同步 mutation、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、bootstrap、事件、任务、解析 / 预演 / 导出和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
+Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；项目同步 mutation、bootstrap 运行态编码与 section revision 收口在 `frontend/src/main/project/`，应用设置、模型、质量规则 / 提示词、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、事件、任务、解析 / 预演 / 导出和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
 
 ## 协议消费者与边界
 
@@ -15,10 +15,11 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 内部 Database Service 与 Python Core 内部端口都不属于公开 `api/` 协议：它们由 Electron main 启动，只供 TS Gateway 或 Python Core 通过 token 调用。renderer、Python 客户端和外部调试脚本不应依赖 `/internal/database/*`、`/internal/runtime/*` 或 Python Core 内部监听地址。
 
 协议层真实分工：
-- `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
+- `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 项目域实现收口在 `frontend/src/main/project/`，其它已迁移业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
+- `frontend/src/main/project/` 负责项目同步 mutation、公开 bootstrap 首包、运行态 block 与 section revision 编码；其中 runtime encoder 只做按需读取和请求内快照，不持有长期项目缓存。
 - `api/Server/` 负责 Python Core 内部 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
-- `api/Contract/` 负责 HTTP 响应壳、bootstrap 行块和 SSE 线格式。
+- `api/Contract/` 负责 Python 侧 HTTP 响应壳、兼容 bootstrap 行块和 SSE 线格式。
 - `api/Bridge/` 负责公开 topic 与 `project.patch`。
 - `api/Contract/ApiPaths.py`、`api/Models/` 与 `api/Client/` 负责 Python 侧对象化契约。
 
@@ -97,6 +98,7 @@ flowchart TD
 - `/api/events/stream` 使用 `EventEnvelope.to_sse_payload()` 生成 SSE 载荷。
 - 线格式只包含 `event:` 与 `data:`，没有额外 `event_id`、`timestamp` 或 `topic` 回显。
 - 空闲时服务端发送 `: keepalive`。
+- 当前公开 `/api/events/stream` 仍由 TS Gateway 代理到 Python Core；它和 bootstrap 首包不是同一个权威入口。
 
 ### 诊断日志流
 - `/api/logs/stream` 由 TS Gateway 直接提供，独立于 `/api/events/stream`，只推送日志窗口需要的诊断日志，不混入 `ProjectStore` 运行态。
@@ -107,7 +109,7 @@ flowchart TD
 
 ### bootstrap 首包
 
-`/api/project/bootstrap/stream` 是一次性阶段化首包，不是长期订阅流。稳定事件型别如下：
+`/api/project/bootstrap/stream` 由 TS Gateway 直接响应，是一次性阶段化首包，不是长期订阅流。TS 运行态编码器直接读取 Electron main Database Service 构建 `project / files / items / quality / prompts / analysis / proofreading` block，并通过 Python Core 受控 JSON 调用读取 `task` 快照；稳定事件型别如下：
 
 | `event:` | 字段 | 用途 |
 | --- | --- | --- |
@@ -173,7 +175,7 @@ flowchart TD
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - `/api/project/text-preserve/preset-rules` 只读取指定 `text_type` 的预置文本保护规则，供 TS 侧按当前文本保护模式自行编译与分段保护。
-- P2 项目同步 mutation 与校对 `save-item / save-all / replace-all` 由 TS Gateway 的 `frontend/src/main/service` 直接写 `.lg` 并通过 `/internal/runtime/sync` 让 Python Core 清缓存；translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、reset preview、转换导出、文本保护预置、项目生命周期和 `tasks/*` 仍代理到 Python Core。
+- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清缓存。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、reset preview、转换导出、文本保护预置、项目生命周期和 `tasks/*` 仍代理到 Python Core。
 
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。

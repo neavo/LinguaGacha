@@ -2,27 +2,15 @@ import type { ApiJsonValue } from "../api/api-types";
 import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import {
+  build_project_mutation_ack_from_meta,
+  get_runtime_section_revision,
+} from "../project/project-section-revision";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-const RUNTIME_SECTIONS = [
-  "project",
-  "files",
-  "items",
-  "quality",
-  "prompts",
-  "analysis",
-  "proofreading",
-  "task",
-] as const;
-const QUALITY_RULE_TYPES = [
-  "glossary",
-  "text_preserve",
-  "pre_replacement",
-  "post_replacement",
-] as const;
-const PROMPT_TASK_TYPES = ["translation", "analysis"] as const;
+// 校对保存只能推进当前有效 item 状态，历史状态在入口归一后再落库。
 const VALID_ITEM_STATUS_VALUES = new Set([
   "NONE",
   "PROCESSED",
@@ -37,7 +25,10 @@ const VALID_ITEM_STATUS_VALUES = new Set([
  * 承载校对同步写入口，把 finalized payload 直接持久化到 Electron main 数据库。
  */
 export class ProofreadingService {
+  // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库。
   private readonly database: ProjectDatabase;
+
+  // 写入后必须通知 Python 读侧清缓存，避免任务 / event bridge 继续读旧 item。
   private readonly core_bridge: CoreBridgeClient;
 
   /**
@@ -217,61 +208,24 @@ export class ProofreadingService {
    * 构建 ProjectMutationAck，固定回传 items 与 proofreading 两个 section revision。
    */
   private build_project_mutation_ack(project_path: string): JsonRecord {
-    const meta = this.get_all_meta(project_path);
-    return {
-      accepted: true,
-      projectRevision: Math.max(
-        ...RUNTIME_SECTIONS.map((section) => this.get_section_revision(meta, section)),
-        0,
-      ),
-      sectionRevisions: {
-        items: this.get_project_runtime_revision(meta, "items"),
-        proofreading: this.get_proofreading_revision(meta),
-      },
-    };
-  }
-
-  /**
-   * 读取 section revision，和 Python ProjectRuntimeService 的 meta 口径保持一致。
-   */
-  private get_section_revision(meta: JsonRecord, section: string): number {
-    if (section === "quality") {
-      return Math.max(
-        ...QUALITY_RULE_TYPES.map((rule_type) =>
-          this.read_revision_meta(meta[`quality_rule_revision.${rule_type}`], 0),
-        ),
-        0,
-      );
-    }
-    if (section === "prompts") {
-      return Math.max(
-        ...PROMPT_TASK_TYPES.map((task_type) =>
-          this.read_revision_meta(meta[`quality_prompt_revision.${task_type}`], 0),
-        ),
-        0,
-      );
-    }
-    if (section === "files" || section === "items" || section === "analysis") {
-      return this.get_project_runtime_revision(meta, section);
-    }
-    if (section === "proofreading") {
-      return this.get_proofreading_revision(meta);
-    }
-    return 0;
+    return build_project_mutation_ack_from_meta(this.get_all_meta(project_path), [
+      "items",
+      "proofreading",
+    ]);
   }
 
   /**
    * 项目运行态 revision 的坏值和负值按旧服务读取为 0。
    */
   private get_project_runtime_revision(meta: JsonRecord, section: string): number {
-    return this.read_revision_meta(meta[`project_runtime_revision.${section}`], 0);
+    return get_runtime_section_revision(meta, section);
   }
 
   /**
    * 校对 revision 的坏值和负值按旧 ProofreadingRevisionService 读取为 0。
    */
   private get_proofreading_revision(meta: JsonRecord): number {
-    return this.read_revision_meta(meta["proofreading_revision.proofreading"], 0);
+    return get_runtime_section_revision(meta, "proofreading");
   }
 
   /**
@@ -332,17 +286,6 @@ export class ProofreadingService {
       return "NONE";
     }
     return VALID_ITEM_STATUS_VALUES.has(status) ? status : "NONE";
-  }
-
-  /**
-   * meta revision 读取沿用 Python int 语义，坏值和负数读作默认值。
-   */
-  private read_revision_meta(value: ApiJsonValue | undefined, fallback: number): number {
-    const parsed = this.parse_integer_like(value);
-    if (parsed === null || parsed < 0) {
-      return fallback;
-    }
-    return parsed;
   }
 
   /**

@@ -7,11 +7,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectStatePayload } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
-import { ProjectService } from "./project-service";
+import { ProjectSyncMutationService } from "./project-sync-mutation-service";
 
 let temp_dir = "";
 
+/**
+ * 只实现项目同步 mutation 需要的 Core bridge 方法，避免测试绕到真实 Python Core。
+ */
 class FakeCoreBridge {
+  // state 由用例直接调整，用来覆盖 loaded / busy 两类边界。
   public state: ProjectStatePayload = { loaded: true, projectPath: "", busy: false };
   public begin_error: Error | null = null;
   public begin_calls = 0;
@@ -50,14 +54,20 @@ class FakeCoreBridge {
   }
 }
 
+/**
+ * 所有临时工程路径都落在本用例目录下，避免误碰用户项目文件。
+ */
 function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
 
+/**
+ * 为每个用例创建独立 .lg 和服务实例，避免 revision / asset 顺序互相污染。
+ */
 function create_service(): {
   bridge: FakeCoreBridge;
   database: ProjectDatabase;
-  service: ProjectService;
+  service: ProjectSyncMutationService;
   lg_path: string;
 } {
   const database = new ProjectDatabase();
@@ -71,7 +81,7 @@ function create_service(): {
   return {
     bridge,
     database,
-    service: new ProjectService(database, bridge as never),
+    service: new ProjectSyncMutationService(database, bridge as never),
     lg_path,
   };
 }
@@ -84,7 +94,7 @@ afterEach(() => {
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
-describe("ProjectService", () => {
+describe("ProjectSyncMutationService", () => {
   it("写入 settings-only 对齐结果且不 bump 运行态 section", async () => {
     const { database, service, lg_path } = create_service();
 

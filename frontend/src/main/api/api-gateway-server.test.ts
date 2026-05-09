@@ -12,6 +12,7 @@ import { JsonTool } from "../../utils/json-tool";
 import { ApiGatewayServer } from "./api-gateway-server";
 
 describe("ApiGatewayServer", () => {
+  // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记。
   const cleanup_callbacks: Array<() => Promise<void> | void> = [];
 
   afterEach(async () => {
@@ -176,10 +177,13 @@ describe("ApiGatewayServer", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
     ]);
-    expect(py_server.requests.map((item) => item.path)).toEqual([
+    expect(py_server.requests.map((item) => item.path)).toContain(
       "/internal/runtime/project-state",
-      "/internal/runtime/sync",
-    ]);
+    );
+    expect(py_server.requests.map((item) => item.path)).toContain("/internal/runtime/sync");
+    expect(py_server.requests.map((item) => item.path)).not.toContain(
+      "/api/project/proofreading/save-item",
+    );
   });
 
   it("由 TS LogManager 直接提供公开日志流", async () => {
@@ -218,6 +222,88 @@ describe("ApiGatewayServer", () => {
     expect(text).toContain("event: log.appended");
     expect(text).toContain('"message":"启动完成"');
     expect(py_server.requests.map((item) => item.path)).not.toContain("/api/logs/stream");
+  });
+
+  it("由 TS Gateway 直接提供 bootstrap 流且不代理到 Python Core", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "bootstrap-direct.lg");
+    const py_server = await start_fake_py_server(lg_path);
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_core_api_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "bootstrap" } });
+    database.execute_transaction([
+      {
+        name: "setItems",
+        args: {
+          projectPath: lg_path,
+          items: [{ id: 1, file_path: "a.txt", row: 1, src: "原文", status: "NONE" }],
+        },
+      },
+      {
+        name: "setRuleText",
+        args: { projectPath: lg_path, ruleType: "translation_prompt", text: "\uD800" },
+      },
+      {
+        name: "setMeta",
+        args: { projectPath: lg_path, key: "quality_prompt_revision.translation", value: 1 },
+      },
+    ]);
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/project/bootstrap/stream`);
+    const text = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(text).toContain("event: stage_started");
+    expect(text).toContain('"stage":"project"');
+    expect(text).toContain("event: completed");
+    expect(text).toContain('"sectionRevisions"');
+    expect(text).toContain("\\ud800");
+    expect(py_server.requests.map((item) => item.path)).toContain(
+      "/internal/runtime/project-state",
+    );
+    expect(py_server.requests.map((item) => item.path)).toContain("/api/tasks/snapshot");
+    expect(py_server.requests.map((item) => item.path)).not.toContain(
+      "/api/project/bootstrap/stream",
+    );
+  });
+
+  it("长期事件流继续代理到 Python Core", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_fake_py_server();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_core_api_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/events/stream`);
+    const text = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(text).toContain("event: py.event");
+    expect(py_server.requests.map((item) => item.path)).toContain("/api/events/stream");
   });
 
   it("通过公开 /api/logs/append 接收 Python 日志提交", async () => {
@@ -399,6 +485,9 @@ describe("ApiGatewayServer", () => {
     return app_root;
   }
 
+  /**
+   * 使用内存 writer 避免 Gateway 测试把日志落到真实用户目录。
+   */
   function create_log_manager(app_root: string): LogManager {
     const log_manager = new LogManager({
       consoleWriter: () => undefined,
@@ -409,6 +498,9 @@ describe("ApiGatewayServer", () => {
     return log_manager;
   }
 
+  /**
+   * fake writer 只验证 LogManager 路由行为，不关心文件系统刷新细节。
+   */
   function create_memory_file_writer(): FileLogWriter {
     return {
       write: () => undefined,
@@ -420,6 +512,9 @@ describe("ApiGatewayServer", () => {
     };
   }
 
+  /**
+   * fake Python server 同时覆盖代理、runtime bridge 和任务快照三类边界。
+   */
   async function start_fake_py_server(runtime_project_path?: string): Promise<{
     baseUrl: string;
     close: () => Promise<void>;
@@ -457,6 +552,33 @@ describe("ApiGatewayServer", () => {
             "Content-Type": "application/json; charset=utf-8",
           });
           response.end(JsonTool.stringifyStrict({ ok: true, data: { accepted: true } }));
+          return;
+        }
+        if (request.url === "/api/tasks/snapshot") {
+          response.writeHead(200, {
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          response.end(
+            JsonTool.stringifyStrict({
+              ok: true,
+              data: {
+                task: {
+                  task_type: "translation",
+                  status: "IDLE",
+                  busy: false,
+                },
+              },
+            }),
+          );
+          return;
+        }
+        if (request.url === "/api/events/stream") {
+          response.writeHead(200, {
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "text/event-stream; charset=utf-8",
+          });
+          response.end('event: py.event\ndata: {"ok":true}\n\n');
           return;
         }
         response.writeHead(200, {

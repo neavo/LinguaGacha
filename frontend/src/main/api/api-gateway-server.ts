@@ -6,7 +6,7 @@ import { serve } from "@hono/node-server";
 
 import { ProjectDatabase } from "../database/database-operations";
 import { ModelService } from "../service/model-service";
-import { ProjectService } from "../service/project-service";
+import { ProjectSyncMutationService } from "../project/project-sync-mutation-service";
 import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
 import { CoreBridgeClient } from "../core/core-bridge-client";
@@ -14,19 +14,30 @@ import { AppPathService } from "../service/path-service";
 import { ConfigService } from "../service/config-service";
 import { LogManager } from "../log/log-manager";
 import type { LogAppendPayload, LogEvent, LogLevel, LogTargets } from "../log/log-types";
+import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
+import { JsonTool } from "../../utils/json-tool";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
 const CORE_API_HOST = "127.0.0.1";
-const STREAM_PROXY_PATHS = new Set(["/api/events/stream", "/api/project/bootstrap/stream"]);
+
+// 只有长期事件流继续代理 Python；bootstrap 已由 TS 项目域直接编码。
+const STREAM_PROXY_PATHS = new Set(["/api/events/stream"]);
+
+// 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏。
 const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500;
+
+// Python 日志提交复用 Core token，避免公开日志入口被 renderer 随意写入。
 const LOG_APPEND_TOKEN_HEADER_NAME = "X-LinguaGacha-Core-Token";
 const CORS_ALLOWED_HEADERS = `Content-Type, ${LOG_APPEND_TOKEN_HEADER_NAME}`;
 
 export interface ApiGatewayServerOptions {
+  // appRoot 决定版本、预设和用户数据路径解析，不在路由层重新猜测。
   appRoot: string;
   publicPort: number;
+  // Python Core 地址与 token 只给 Gateway 代理和内部桥使用。
   pyCoreBaseUrl: string;
   pyCoreToken: string;
+  // database 由生命周期层注入，Gateway 不负责创建或关闭 .lg 物理存储。
   database: ProjectDatabase;
   logManager: LogManager;
 }
@@ -36,7 +47,11 @@ export interface ApiGatewayServerOptions {
  */
 export class ApiGatewayServer {
   private readonly options: ApiGatewayServerOptions;
+
+  // instance token 用来让 renderer 探活时识别当前 Gateway 实例，避免误连旧进程。
   private readonly instance_token = crypto.randomBytes(24).toString("hex");
+
+  // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭。
   private server: Server | null = null;
 
   /**
@@ -110,8 +125,9 @@ export class ApiGatewayServer {
     });
     const config_service = new ConfigService(paths, core_bridge);
     const model_service = new ModelService(paths, config_service, core_bridge);
-    const project_service = new ProjectService(this.options.database, core_bridge);
+    const project_service = new ProjectSyncMutationService(this.options.database, core_bridge);
     const proofreading_service = new ProofreadingService(this.options.database, core_bridge);
+    const project_runtime_service = new ProjectRuntimeEncoder(this.options.database, core_bridge);
     const quality_service = new QualityService(
       paths,
       config_service,
@@ -143,6 +159,20 @@ export class ApiGatewayServer {
 
     app.get("/api/logs/stream", () => {
       return this.create_log_stream_response();
+    });
+    app.get("/api/project/bootstrap/stream", async (context) => {
+      try {
+        const events = await project_runtime_service.build_bootstrap_events();
+        return this.create_project_bootstrap_stream_response(events);
+      } catch (error) {
+        const envelope = this.error_to_envelope(error);
+        if (envelope.error.code === "internal_error") {
+          this.log_gateway_error("TS Gateway bootstrap 处理失败", error, {
+            path: "/api/project/bootstrap/stream",
+          });
+        }
+        return context.json(envelope, envelope.error.code === "invalid_request" ? 400 : 500);
+      }
     });
     app.post("/api/logs/append", async (context) => {
       const token = context.req.header(LOG_APPEND_TOKEN_HEADER_NAME);
@@ -436,6 +466,36 @@ export class ApiGatewayServer {
 
   private build_log_sse_frame(event: LogEvent): string {
     return `event: log.appended\ndata: ${JSON.stringify(event)}\n\n`;
+  }
+
+  /**
+   * bootstrap 是一次性 SSE，事件在写首帧前已构建完毕，避免半截成功流。
+   */
+  private create_project_bootstrap_stream_response(events: BootstrapSseEvent[]): Response {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        for (const event of events) {
+          controller.enqueue(encoder.encode(this.build_sse_frame(event.event, event.data)));
+        }
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Content-Type": "text/event-stream; charset=utf-8",
+      },
+      status: 200,
+    });
+  }
+
+  private build_sse_frame(event_type: string, payload: Record<string, ApiJsonValue>): string {
+    return `event: ${event_type}\ndata: ${JsonTool.stringifyStrict(payload)}\n\n`;
   }
 
   private parse_log_append_payload(body: Record<string, ApiJsonValue>): LogAppendPayload {

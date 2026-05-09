@@ -11,26 +11,39 @@ import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "./path-service";
 import { ConfigService } from "./config-service";
 import { JsonTool } from "../../utils/json-tool";
+import {
+  build_project_mutation_ack_from_meta,
+  get_runtime_section_revision,
+} from "../project/project-section-revision";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
+// 公开规则类型由页面协议决定，不能直接暴露数据库物理 type。
 const QUALITY_RULE_TYPES = [
   "glossary",
   "text_preserve",
   "pre_replacement",
   "post_replacement",
 ] as const;
+
+// 提示词只支持翻译与分析两类任务，和规则条目的 CRUD 边界分离。
 const PROMPT_TASK_TYPES = ["translation", "analysis"] as const;
+
+// 规则保存时需要把公开类型映射回旧数据库物理命名。
 const RULE_TYPE_TO_DATABASE_TYPE: Record<string, string> = {
   glossary: "glossary",
   text_preserve: "text_preserve",
   pre_replacement: "pre_translation_replacement",
   post_replacement: "post_translation_replacement",
 };
+
+// 提示词文本仍复用 rules 表文本 workflow，因此集中维护物理 type 映射。
 const PROMPT_TYPE_TO_DATABASE_TYPE: Record<string, string> = {
   translation: "translation_prompt",
   analysis: "analysis_prompt",
 };
+
+// enabled meta 只适用于三类布尔规则；text_preserve 使用 mode，不走布尔开关。
 const RULE_ENABLED_META_KEY: Record<string, string> = {
   glossary: "glossary_enable",
   pre_replacement: "pre_translation_replacement_enable",
@@ -41,9 +54,16 @@ const RULE_ENABLED_META_KEY: Record<string, string> = {
  * 封装 TS 侧质量规则与提示词 CRUD、预设 IO 和 revision 对齐。
  */
 export class QualityService {
+  // paths 统一解析内置 / 用户预设目录，服务层不在调用点拼接路径。
   private readonly paths: AppPathService;
+
+  // 提示词模板语言跟随应用配置，因此质量服务需要配置读取能力。
   private readonly config_service: ConfigService;
+
+  // 质量规则和提示词工程事实只通过 ProjectDatabase workflow 读写。
   private readonly database: ProjectDatabase;
+
+  // 写入后通知 Python Core 清理规则 / 提示词缓存，保持任务读侧一致。
   private readonly core_bridge: CoreBridgeClient;
 
   /**
@@ -415,82 +435,16 @@ export class QualityService {
     const meta = this.normalize_object(
       this.database.execute(this.op("getAllMeta", { projectPath: project_path })) as ApiJsonValue,
     );
-    const section_revisions: Record<string, ApiJsonValue> = {};
-    for (const section of updated_sections) {
-      section_revisions[section] = this.get_section_revision(meta, section);
-    }
-    return {
-      accepted: true,
-      projectRevision: Math.max(
-        ...Object.keys(this.build_all_section_revisions(meta)).map((section) =>
-          this.get_section_revision(meta, section),
-        ),
-        0,
-      ),
-      sectionRevisions: section_revisions,
-    };
-  }
-
-  /**
-   * 读取全部 section revision，帮助页面对齐局部写入后的事实版本。
-   */
-  private build_all_section_revisions(meta: JsonRecord): Record<string, number> {
-    const sections = [
-      "project",
-      "files",
-      "items",
-      "quality",
-      "prompts",
-      "analysis",
-      "proofreading",
-      "task",
-    ];
-    return Object.fromEntries(
-      sections.map((section) => [section, this.get_section_revision(meta, section)]),
-    );
-  }
-
-  /**
-   * 读取单个 section revision，作为 mutation ack 的事实来源。
-   */
-  private get_section_revision(meta: JsonRecord, section: string): number {
-    if (section === "quality") {
-      return Math.max(
-        ...QUALITY_RULE_TYPES.map((rule_type) =>
-          this.read_number(meta[this.build_rule_revision_key(rule_type)]),
-        ),
-        0,
-      );
-    }
-    if (section === "prompts") {
-      return Math.max(
-        ...PROMPT_TASK_TYPES.map((task_type) =>
-          this.read_number(meta[this.build_prompt_revision_key(task_type)]),
-        ),
-        0,
-      );
-    }
-    if (section === "files" || section === "items" || section === "analysis") {
-      return this.read_number(meta[`project_runtime_revision.${section}`]);
-    }
-    if (section === "proofreading") {
-      return this.read_number(meta["proofreading_revision.proofreading"]);
-    }
-    return 0;
+    return build_project_mutation_ack_from_meta(meta, updated_sections);
   }
 
   /**
    * 读取规则 revision，隔离 meta key 组合细节。
    */
   private get_rule_revision(project_path: string, rule_type: string): number {
-    return this.read_number(
-      this.database.execute(
-        this.op("getMeta", {
-          projectPath: project_path,
-          key: this.build_rule_revision_key(rule_type),
-          default: 0,
-        }),
-      ) as ApiJsonValue,
+    return get_runtime_section_revision(
+      this.read_project_meta(project_path),
+      `quality:${rule_type}`,
     );
   }
 
@@ -498,14 +452,18 @@ export class QualityService {
    * 读取提示词 revision，隔离 meta key 组合细节。
    */
   private get_prompt_revision(project_path: string, task_type: string): number {
-    return this.read_number(
-      this.database.execute(
-        this.op("getMeta", {
-          projectPath: project_path,
-          key: this.build_prompt_revision_key(task_type),
-          default: 0,
-        }),
-      ) as ApiJsonValue,
+    return get_runtime_section_revision(
+      this.read_project_meta(project_path),
+      `prompts:${task_type}`,
+    );
+  }
+
+  /**
+   * revision 读取复用运行态服务的 meta 口径，避免 bootstrap 和 mutation ack 分叉。
+   */
+  private read_project_meta(project_path: string): JsonRecord {
+    return this.normalize_object(
+      this.database.execute(this.op("getAllMeta", { projectPath: project_path })) as ApiJsonValue,
     );
   }
 
