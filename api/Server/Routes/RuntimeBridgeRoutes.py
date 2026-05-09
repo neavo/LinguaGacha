@@ -8,6 +8,8 @@ class RuntimeBridgeRoutes:
     PROJECT_STATE_PATH: str = "/internal/runtime/project-state"
     SYNC_PATH: str = "/internal/runtime/sync"
     PARSE_PROJECT_ASSETS_PATH: str = "/internal/runtime/parse-project-assets"
+    PARSE_SOURCE_EPUB_FILES_PATH: str = "/internal/runtime/parse-source-epub-files"
+    EXPORT_EPUB_ITEMS_PATH: str = "/internal/runtime/export-epub-items"
 
     @classmethod
     def register(
@@ -39,5 +41,23 @@ class RuntimeBridgeRoutes:
             lambda request, handler: ApiResponse(
                 ok=True,
                 data=runtime_bridge_app_service.parse_project_assets(request, handler),
+            ),
+        )
+        core_api_server.add_context_json_route(
+            "POST",
+            cls.PARSE_SOURCE_EPUB_FILES_PATH,
+            lambda request, handler: ApiResponse(
+                ok=True,
+                data=runtime_bridge_app_service.parse_source_epub_files(
+                    request, handler
+                ),
+            ),
+        )
+        core_api_server.add_context_json_route(
+            "POST",
+            cls.EXPORT_EPUB_ITEMS_PATH,
+            lambda request, handler: ApiResponse(
+                ok=True,
+                data=runtime_bridge_app_service.export_epub_items(request, handler),
             ),
         )

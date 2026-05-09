@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import contextlib
 from collections import OrderedDict
+import os
 from types import SimpleNamespace
+
+import pytest
 
 from api.Application.RuntimeBridgeAppService import RuntimeBridgeAppService
 
@@ -44,6 +47,14 @@ class FakeDataManager:
         self.finish_file_operation_count = 0
         self.unload_project_count = 0
         self.file_operation_allowed = True
+        self.asset_content: dict[str, bytes | None] = {}
+        self.project_file_service = SimpleNamespace(
+            parse_file_preview=lambda source_path, current_rel_path=None: {
+                "target_rel_path": current_rel_path or "book.epub",
+                "file_type": "EPUB",
+                "parsed_items": [{"src": "章节", "file_type": "EPUB"}],
+            }
+        )
         self.session = SimpleNamespace(
             state_lock=contextlib.nullcontext(),
             meta_cache={"analysis_extras": {"line": 1}},
@@ -81,6 +92,11 @@ class FakeDataManager:
         self.unload_project_count += 1
         self.loaded = False
         self.path = ""
+
+    def get_asset_decompressed(self, rel_path: str) -> bytes | None:
+        """返回测试 asset 内容，隔离真实数据库读取。"""
+
+        return self.asset_content.get(rel_path)
 
 
 def test_runtime_bridge_project_state_requires_token() -> None:
@@ -202,6 +218,147 @@ def test_runtime_bridge_project_unload_calls_data_manager() -> None:
     assert fake_data_manager.unload_project_count == 1
     assert fake_data_manager.is_loaded() is False
     assert fake_data_manager.get_lg_path() == ""
+
+
+def test_runtime_bridge_parse_source_epub_files_uses_project_file_service() -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    fake_data_manager = FakeDataManager()
+    calls: list[tuple[str, str | None]] = []
+
+    def parse_file_preview(
+        source_path: str,
+        *,
+        current_rel_path: str | None = None,
+    ) -> dict[str, object]:
+        """记录 EPUB 预解析参数，验证 current_rel_path 透传。"""
+
+        calls.append((source_path, current_rel_path))
+        return {
+            "target_rel_path": "old/book.epub",
+            "file_type": "EPUB",
+            "parsed_items": [{"src": "章节", "file_type": "EPUB"}],
+        }
+
+    fake_data_manager.project_file_service = SimpleNamespace(
+        parse_file_preview=parse_file_preview
+    )
+    service.data_manager = fake_data_manager
+
+    result = service.parse_source_epub_files(
+        {
+            "sourcePaths": ["E:/book.epub", "E:/script.txt"],
+            "currentRelPath": "old/original.epub",
+        },
+        FakeHandler("secret"),
+    )
+
+    assert calls == [("E:/book.epub", "old/original.epub")]
+    assert result == {
+        "files": [
+            {
+                "source_path": "E:/book.epub",
+                "target_rel_path": "old/book.epub",
+                "file_type": "EPUB",
+                "parsed_items": [{"src": "章节", "file_type": "EPUB"}],
+            }
+        ]
+    }
+
+
+def test_runtime_bridge_export_epub_items_writes_to_ts_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    fake_data_manager = FakeDataManager()
+    fake_data_manager.asset_content = {"book.epub": b"epub-bytes"}
+    service.data_manager = fake_data_manager
+    written: list[dict[str, object]] = []
+
+    class FakeConfig:
+        """避免测试读取真实配置文件。"""
+
+        def load(self) -> object:
+            """返回 EPUB 假 writer 不关心的配置对象。"""
+
+            return object()
+
+    class FakeEpub:
+        """记录 EPUB writer 收到的输出路径和双语标记。"""
+
+        def __init__(self, config: object) -> None:
+            """测试桩不依赖配置内容。"""
+
+            del config
+
+        def insert_target(self, file_path: str) -> str:
+            """模拟 EPUB 单语文件名后缀。"""
+
+            root, ext = os.path.splitext(file_path)
+            return f"{root}.zh{ext}"
+
+        def insert_source_target(self, file_path: str) -> str:
+            """模拟 EPUB 双语文件名后缀。"""
+
+            root, ext = os.path.splitext(file_path)
+            return f"{root}.ja.zh{ext}"
+
+        def build_epub_from_items(
+            self,
+            *,
+            original_epub_bytes: bytes,
+            items: list[object],
+            out_path: str,
+            bilingual: bool,
+        ) -> None:
+            """保存写回请求，验证 TS 目录未被 Python 重算。"""
+
+            written.append(
+                {
+                    "original": original_epub_bytes,
+                    "item_count": len(items),
+                    "out_path": out_path,
+                    "bilingual": bilingual,
+                }
+            )
+
+    monkeypatch.setattr("api.Application.RuntimeBridgeAppService.Config", FakeConfig)
+    monkeypatch.setattr("api.Application.RuntimeBridgeAppService.EPUB", FakeEpub)
+
+    result = service.export_epub_items(
+        {
+            "projectPath": "E:/Project/demo.lg",
+            "translatedPath": "E:/Project/demo_译文",
+            "bilingualPath": "E:/Project/demo_译文_双语对照",
+            "items": [
+                {
+                    "src": "章节",
+                    "dst": "译文",
+                    "file_type": "EPUB",
+                    "file_path": "book.epub",
+                    "extra_field": {"epub": {"parts": [{"path": "chapter.xhtml"}]}},
+                }
+            ],
+        },
+        FakeHandler("secret"),
+    )
+
+    assert result == {"accepted": True, "written_files": 1}
+    assert written == [
+        {
+            "original": b"epub-bytes",
+            "item_count": 1,
+            "out_path": os.path.join("E:/Project/demo_译文", "book.zh.epub"),
+            "bilingual": False,
+        },
+        {
+            "original": b"epub-bytes",
+            "item_count": 1,
+            "out_path": os.path.join(
+                "E:/Project/demo_译文_双语对照", "book.ja.zh.epub"
+            ),
+            "bilingual": True,
+        },
+    ]
 
 
 def test_runtime_bridge_file_operation_guard_rejects_busy_engine() -> None:

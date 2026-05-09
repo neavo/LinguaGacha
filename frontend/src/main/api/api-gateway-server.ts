@@ -16,12 +16,15 @@ import { QualityService } from "../service/quality-service";
 import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "../service/path-service";
 import { ConfigService } from "../service/config-service";
+import { FileExportService } from "../file/file-export-service";
+import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
 import type { LogAppendPayload, LogEvent, LogLevel, LogTargets } from "../log/log-types";
 import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
 import { JsonTool } from "../../utils/json-tool";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
+// 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API。
 const CORE_API_HOST = "127.0.0.1";
 
 // 长期事件流经 TS 适配 project.patch，其它 frame 继续透传 Python。
@@ -32,8 +35,12 @@ const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500;
 
 // Python 日志提交复用 Core token，避免公开日志入口被 renderer 随意写入。
 const LOG_APPEND_TOKEN_HEADER_NAME = "X-LinguaGacha-Core-Token";
+// CORS 允许头必须包含日志 token，否则 Python Core 无法通过 Gateway 写日志。
 const CORS_ALLOWED_HEADERS = `Content-Type, ${LOG_APPEND_TOKEN_HEADER_NAME}`;
 
+/**
+ * Gateway 启动参数由 Electron 生命周期层注入，路由层只消费不可变依赖。
+ */
 export interface ApiGatewayServerOptions {
   // appRoot 决定版本、预设和用户数据路径解析，不在路由层重新猜测。
   appRoot: string;
@@ -157,6 +164,13 @@ export class ApiGatewayServer {
       core_bridge,
       this.project_session_state,
     );
+    const file_preview_service = new FilePreviewService(config_service, core_bridge);
+    const file_export_service = new FileExportService(
+      this.options.database,
+      config_service,
+      this.project_session_state,
+      core_bridge,
+    );
     const project_patch_adapter = new ProjectPatchAdapter(
       this.options.database,
       this.project_session_state,
@@ -259,6 +273,9 @@ export class ApiGatewayServer {
     this.post_json(app, "/api/project/source-files", (body) =>
       project_lifecycle_service.collect_source_files(body),
     );
+    this.post_json(app, "/api/project/create-preview", (body) =>
+      file_preview_service.build_create_preview(body),
+    );
     this.post_json_proxy(app, "/api/project/load", (data) => {
       this.project_session_state.mark_loaded(this.extract_project_path(data));
     });
@@ -277,6 +294,9 @@ export class ApiGatewayServer {
     );
     this.post_json(app, "/api/project/workbench/reorder-files", (body) =>
       project_service.reorder_workbench_files(body),
+    );
+    this.post_json(app, "/api/project/workbench/parse-file", (body) =>
+      file_preview_service.parse_workbench_file(body),
     );
     this.post_json(app, "/api/project/settings-alignment/apply", (body) =>
       project_service.apply_settings_alignment(body),
@@ -304,6 +324,12 @@ export class ApiGatewayServer {
     );
     this.post_json(app, "/api/project/proofreading/replace-all", (body) =>
       proofreading_service.replace_all(body),
+    );
+    this.post_json(app, "/api/project/export-converted-translation", (body) =>
+      file_export_service.export_converted_translation(body),
+    );
+    this.post_json(app, "/api/tasks/export-translation", () =>
+      file_export_service.export_translation(),
     );
 
     this.post_json(app, "/api/quality/rules/save-entries", (body) =>
@@ -564,6 +590,9 @@ export class ApiGatewayServer {
     });
   }
 
+  /**
+   * 只解析单个 SSE frame；解析失败时原样返回，避免坏 frame 中断整条事件流。
+   */
   private adapt_sse_frame(frame: string, project_patch_adapter: ProjectPatchAdapter): string {
     const lines = frame.split(/\r?\n/);
     const event_line = lines.find((line) => line.startsWith("event:"));
@@ -665,6 +694,9 @@ export class ApiGatewayServer {
     });
   }
 
+  /**
+   * 日志 SSE frame 使用固定事件名，renderer 日志面板只需订阅 log.appended。
+   */
   private build_log_sse_frame(event: LogEvent): string {
     return `event: log.appended\ndata: ${JSON.stringify(event)}\n\n`;
   }
@@ -695,10 +727,16 @@ export class ApiGatewayServer {
     });
   }
 
+  /**
+   * SSE 序列化统一走严格 JSON，避免手写 data 行时出现不可解析负载。
+   */
   private build_sse_frame(event_type: string, payload: Record<string, ApiJsonValue>): string {
     return `event: ${event_type}\ndata: ${JsonTool.stringifyStrict(payload)}\n\n`;
   }
 
+  /**
+   * 从 Python load/create 响应中提取项目路径，用于同步 TS 会话状态。
+   */
   private extract_project_path(data: Record<string, ApiJsonValue>): string {
     const project = data["project"];
     if (typeof project !== "object" || project === null || Array.isArray(project)) {
@@ -708,6 +746,9 @@ export class ApiGatewayServer {
     return typeof path_value === "string" ? path_value : "";
   }
 
+  /**
+   * Python 日志提交 payload 在 Gateway 边界归一化，避免污染 TS LogManager。
+   */
   private parse_log_append_payload(body: Record<string, ApiJsonValue>): LogAppendPayload {
     const message = typeof body["message"] === "string" ? body["message"] : "";
     const payload: LogAppendPayload = {
@@ -732,6 +773,9 @@ export class ApiGatewayServer {
     return payload;
   }
 
+  /**
+   * 未知日志级别降级为 info，保证日志入口不会因旧 Core 字段失败。
+   */
   private parse_log_level(value: ApiJsonValue | undefined): LogLevel {
     if (
       value === "debug" ||
@@ -745,6 +789,9 @@ export class ApiGatewayServer {
     return "info";
   }
 
+  /**
+   * 日志输出目标只接受布尔字段，未知字段不会穿透到 LogManager。
+   */
   private parse_log_targets(value: ApiJsonValue | undefined): Partial<LogTargets> | undefined {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return undefined;
@@ -759,6 +806,9 @@ export class ApiGatewayServer {
     return targets;
   }
 
+  /**
+   * Gateway 自身异常统一打到 TS 日志源，便于和 Python Core 日志区分。
+   */
   private log_gateway_error(
     message: string,
     error: unknown,

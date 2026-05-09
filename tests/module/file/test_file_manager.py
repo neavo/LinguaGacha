@@ -5,412 +5,198 @@ from pathlib import Path
 
 import pytest
 
-from module.Data.Core.Item import Item
 from module.Config import Config
+from module.Data.Core.Item import Item
 from module.File.FileManager import FileManager
 
 
 def test_read_from_path_returns_empty_when_input_path_is_none(config: Config) -> None:
+    """没有输入路径时仍返回可用 Project 和空条目列表。"""
     project, items = FileManager(config).read_from_path(None)
 
     assert project.get_id() != ""
     assert items == []
 
 
-def test_read_from_path_dispatches_all_supported_extensions(
+# 目录读取只把 EPUB 文件分发给 Python FileManager。
+def test_read_from_path_dispatches_only_epub(
     config: Config,
     fs,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """目录读取只把 EPUB 文件分发给 Python FileManager。"""
     del fs
     root_path = Path("/workspace/input")
     root_path.mkdir(parents=True, exist_ok=True)
-    files = [
-        "a.MD",
-        "b.txt",
-        "c.ass",
-        "d.srt",
-        "e.epub",
-        "f.xlsx",
-        "g.rpy",
-        "h.trans",
-        "i.json",
-    ]
-    for name in files:
+    for name in ("a.txt", "b.epub", "c.json"):
         (root_path / name).write_bytes(b"dummy")
 
-    calls: dict[str, tuple[list[str], str]] = {}
+    calls: list[tuple[list[str], str]] = []
 
-    def build_reader(name: str):
-        class Reader:
-            def __init__(self, _: Config) -> None:
-                pass
+    class EpubReader:
+        """记录目录读取分发参数的 EPUB 假处理器。"""
 
-            def read_from_path(
-                self, abs_paths: list[str], input_path: str
-            ) -> list[Item]:
-                calls[name] = (list(abs_paths), input_path)
-                if not abs_paths:
-                    return []
-                return [
-                    Item.from_dict(
-                        {
-                            "src": name,
-                            "dst": name,
-                            "file_type": Item.FileType.TXT,
-                            "file_path": f"{name}.txt",
-                        }
-                    )
-                ]
+        def __init__(self, _: Config) -> None:
+            """测试桩不需要配置，但签名保持与真实 EPUB 一致。"""
+            pass
 
-        return Reader
+        def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
+            """保存 FileManager 传入的路径列表，供断言只包含 EPUB。"""
+            calls.append((list(abs_paths), input_path))
+            return [
+                Item.from_dict(
+                    {
+                        "src": "epub",
+                        "file_type": Item.FileType.EPUB,
+                        "file_path": "b.epub",
+                    }
+                )
+            ]
 
-    monkeypatch.setattr("module.File.FileManager.MD", build_reader("md"))
-    monkeypatch.setattr("module.File.FileManager.TXT", build_reader("txt"))
-    monkeypatch.setattr("module.File.FileManager.ASS", build_reader("ass"))
-    monkeypatch.setattr("module.File.FileManager.SRT", build_reader("srt"))
-    monkeypatch.setattr("module.File.FileManager.EPUB", build_reader("epub"))
-    monkeypatch.setattr("module.File.FileManager.XLSX", build_reader("xlsx"))
-    monkeypatch.setattr("module.File.FileManager.WOLFXLSX", build_reader("wolfxlsx"))
-    monkeypatch.setattr("module.File.FileManager.RenPy", build_reader("renpy"))
-    monkeypatch.setattr("module.File.FileManager.TRANS", build_reader("trans"))
-    monkeypatch.setattr("module.File.FileManager.KVJSON", build_reader("kvjson"))
-    monkeypatch.setattr(
-        "module.File.FileManager.MESSAGEJSON", build_reader("messagejson")
-    )
+    monkeypatch.setattr("module.File.FileManager.EPUB", EpubReader)
 
     _, items = FileManager(config).read_from_path(str(root_path))
 
-    assert len(items) == 11
-    assert calls["md"][1] == str(root_path)
-    assert calls["md"][0][0].endswith("/a.MD")
-    assert calls["txt"][0][0].endswith("/b.txt")
-    assert calls["ass"][0][0].endswith("/c.ass")
-    assert calls["srt"][0][0].endswith("/d.srt")
-    assert calls["epub"][0][0].endswith("/e.epub")
-    assert calls["xlsx"][0][0].endswith("/f.xlsx")
-    assert calls["wolfxlsx"][0][0].endswith("/f.xlsx")
-    assert calls["renpy"][0][0].endswith("/g.rpy")
-    assert calls["trans"][0][0].endswith("/h.trans")
-    assert calls["kvjson"][0][0].endswith("/i.json")
-    assert calls["messagejson"][0][0].endswith("/i.json")
+    assert [item.get_src() for item in items] == ["epub"]
+    assert len(calls) == 1
+    assert calls[0][1] == str(root_path)
+    assert calls[0][0][0].endswith("/b.epub")
 
 
-def test_read_from_path_accepts_single_file_path(
+# 单个 EPUB 文件读取时 base_path 应为其父目录。
+def test_read_from_path_accepts_single_epub_file(
     config: Config,
     fs,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """单个 EPUB 文件读取时 base_path 应为其父目录。"""
     del fs
     root_path = Path("/workspace/input")
     root_path.mkdir(parents=True, exist_ok=True)
-    file_path = root_path / "a.MD"
+    file_path = root_path / "a.epub"
     file_path.write_bytes(b"dummy")
 
-    calls: dict[str, tuple[list[str], str]] = {}
+    calls: list[tuple[list[str], str]] = []
 
-    def build_reader(name: str):
-        class Reader:
-            def __init__(self, _: Config) -> None:
-                pass
+    class EpubReader:
+        """记录单文件读取分发参数的 EPUB 假处理器。"""
 
-            def read_from_path(
-                self, abs_paths: list[str], input_path: str
-            ) -> list[Item]:
-                calls[name] = (list(abs_paths), input_path)
-                if not abs_paths:
-                    return []
-                return [Item.from_dict({"src": name})]
+        def __init__(self, _: Config) -> None:
+            """测试桩不需要配置，但签名保持与真实 EPUB 一致。"""
+            pass
 
-        return Reader
+        def read_from_path(self, abs_paths: list[str], input_path: str) -> list[Item]:
+            """保存 FileManager 传入的路径列表，供断言 base_path。"""
+            calls.append((list(abs_paths), input_path))
+            return [Item.from_dict({"src": "epub"})]
 
-    monkeypatch.setattr("module.File.FileManager.MD", build_reader("md"))
-    monkeypatch.setattr("module.File.FileManager.TXT", build_reader("txt"))
-    monkeypatch.setattr("module.File.FileManager.ASS", build_reader("ass"))
-    monkeypatch.setattr("module.File.FileManager.SRT", build_reader("srt"))
-    monkeypatch.setattr("module.File.FileManager.EPUB", build_reader("epub"))
-    monkeypatch.setattr("module.File.FileManager.XLSX", build_reader("xlsx"))
-    monkeypatch.setattr("module.File.FileManager.WOLFXLSX", build_reader("wolfxlsx"))
-    monkeypatch.setattr("module.File.FileManager.RenPy", build_reader("renpy"))
-    monkeypatch.setattr("module.File.FileManager.TRANS", build_reader("trans"))
-    monkeypatch.setattr("module.File.FileManager.KVJSON", build_reader("kvjson"))
-    monkeypatch.setattr(
-        "module.File.FileManager.MESSAGEJSON", build_reader("messagejson")
-    )
+    monkeypatch.setattr("module.File.FileManager.EPUB", EpubReader)
 
     _, items = FileManager(config).read_from_path(str(file_path))
 
-    assert [i.get_src() for i in items] == ["md"]
-    assert calls["md"][1] == str(root_path)
-    assert calls["md"][0][0].replace("\\", "/").endswith("/a.MD")
+    assert [item.get_src() for item in items] == ["epub"]
+    assert calls[0][1] == str(root_path)
+    assert calls[0][0][0].replace("\\", "/").endswith("/a.epub")
 
 
-def test_parse_asset_falls_back_between_wolf_xlsx_and_xlsx(
+# parse_asset 只保留 EPUB 流式解析，其它扩展名返回空列表。
+def test_parse_asset_dispatches_only_epub(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    called: dict[str, int] = {"wolf": 0, "xlsx": 0}
+    """parse_asset 只保留 EPUB 流式解析，其它扩展名返回空列表。"""
 
-    class WolfEmpty:
+    class EpubReader:
+        """验证 parse_asset 只把 EPUB 内容送入流式解析。"""
+
         def __init__(self, _: Config) -> None:
+            """测试桩不需要配置，但签名保持与真实 EPUB 一致。"""
             pass
 
         def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["wolf"] += 1
-            return []
+            """断言透传的 bytes 和相对路径没有被 FileManager 改写。"""
+            assert content == b"bytes"
+            assert rel_path == "a.epub"
+            return [Item.from_dict({"src": "epub"})]
 
-    class XlsxReader:
-        def __init__(self, _: Config) -> None:
-            pass
+    monkeypatch.setattr("module.File.FileManager.EPUB", EpubReader)
 
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["xlsx"] += 1
-            return [Item.from_dict({"src": "xlsx"})]
-
-    monkeypatch.setattr("module.File.FileManager.WOLFXLSX", WolfEmpty)
-    monkeypatch.setattr("module.File.FileManager.XLSX", XlsxReader)
-
-    items = FileManager(config).parse_asset("a.xlsx", b"bytes")
-
-    assert [item.get_src() for item in items] == ["xlsx"]
-    assert called == {"wolf": 1, "xlsx": 1}
+    assert [
+        item.get_src() for item in FileManager(config).parse_asset("a.epub", b"bytes")
+    ] == ["epub"]
+    assert FileManager(config).parse_asset("a.txt", b"bytes") == []
+    assert FileManager(config).parse_asset("a.json", b"bytes") == []
 
 
-def test_parse_asset_uses_wolf_xlsx_when_it_returns_items(
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    called: dict[str, int] = {"wolf": 0, "xlsx": 0}
-
-    class WolfReader:
-        def __init__(self, _: Config) -> None:
-            pass
-
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["wolf"] += 1
-            return [Item.from_dict({"src": "wolf"})]
-
-    class XlsxReader:
-        def __init__(self, _: Config) -> None:
-            pass
-
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["xlsx"] += 1
-            return [Item.from_dict({"src": "xlsx"})]
-
-    monkeypatch.setattr("module.File.FileManager.WOLFXLSX", WolfReader)
-    monkeypatch.setattr("module.File.FileManager.XLSX", XlsxReader)
-
-    items = FileManager(config).parse_asset("a.xlsx", b"bytes")
-
-    assert [item.get_src() for item in items] == ["wolf"]
-    assert called == {"wolf": 1, "xlsx": 0}
-
-
-def test_parse_asset_falls_back_between_kv_and_message_json(
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    called: dict[str, int] = {"kv": 0, "message": 0}
-
-    class KvEmpty:
-        def __init__(self, _: Config) -> None:
-            pass
-
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["kv"] += 1
-            return []
-
-    class MessageReader:
-        def __init__(self, _: Config) -> None:
-            pass
-
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["message"] += 1
-            return [Item.from_dict({"src": "message"})]
-
-    monkeypatch.setattr("module.File.FileManager.KVJSON", KvEmpty)
-    monkeypatch.setattr("module.File.FileManager.MESSAGEJSON", MessageReader)
-
-    items = FileManager(config).parse_asset("a.json", b"bytes")
-
-    assert [item.get_src() for item in items] == ["message"]
-    assert called == {"kv": 1, "message": 1}
-
-
-def test_parse_asset_uses_kvjson_when_it_returns_items(
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    called: dict[str, int] = {"kv": 0, "message": 0}
-
-    class KvReader:
-        def __init__(self, _: Config) -> None:
-            pass
-
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["kv"] += 1
-            return [Item.from_dict({"src": "kv"})]
-
-    class MessageReader:
-        def __init__(self, _: Config) -> None:
-            pass
-
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            called["message"] += 1
-            return [Item.from_dict({"src": "message"})]
-
-    monkeypatch.setattr("module.File.FileManager.KVJSON", KvReader)
-    monkeypatch.setattr("module.File.FileManager.MESSAGEJSON", MessageReader)
-
-    items = FileManager(config).parse_asset("a.json", b"bytes")
-
-    assert [item.get_src() for item in items] == ["kv"]
-    assert called == {"kv": 1, "message": 0}
-
-
-@pytest.mark.parametrize(
-    "rel_path,expected",
-    [
-        ("a.md", "md"),
-        ("a.txt", "txt"),
-        ("a.ass", "ass"),
-        ("a.srt", "srt"),
-        ("a.epub", "epub"),
-        ("a.rpy", "renpy"),
-        ("a.trans", "trans"),
-    ],
-)
-def test_parse_asset_dispatches_simple_extensions(
-    rel_path: str,
-    expected: str,
-    config: Config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class Reader:
-        def __init__(self, _: Config) -> None:
-            pass
-
-        def read_from_stream(self, content: bytes, rel_path: str) -> list[Item]:
-            del content
-            del rel_path
-            return [Item.from_dict({"src": expected})]
-
-    monkeypatch.setattr("module.File.FileManager.MD", Reader)
-    monkeypatch.setattr("module.File.FileManager.TXT", Reader)
-    monkeypatch.setattr("module.File.FileManager.ASS", Reader)
-    monkeypatch.setattr("module.File.FileManager.SRT", Reader)
-    monkeypatch.setattr("module.File.FileManager.EPUB", Reader)
-    monkeypatch.setattr("module.File.FileManager.RenPy", Reader)
-    monkeypatch.setattr("module.File.FileManager.TRANS", Reader)
-
-    items = FileManager(config).parse_asset(rel_path, b"bytes")
-
-    assert [item.get_src() for item in items] == [expected]
-
-
-def test_write_to_path_calls_all_writers_and_returns_output(
+# 写回阶段只调用 EPUB writer，并返回 DataManager 提供的输出路径。
+def test_write_to_path_calls_only_epub_writer_and_returns_output(
     config: Config,
     fs,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """写回阶段只调用 EPUB writer，并返回 DataManager 提供的输出路径。"""
     del fs
-    called: dict[str, int] = {}
     output_root = Path("/workspace/translated")
+    called: list[str] = []
 
     class DummyDataManager:
-        def __init__(self, out_path: Path) -> None:
-            self.out_path = out_path
+        """提供最小导出路径上下文，隔离真实 DataManager 单例。"""
 
         def timestamp_suffix_context(self):
+            """测试中不需要时间戳副作用，返回空上下文。"""
             return nullcontext()
 
         def get_translated_path(self) -> str:
-            return str(self.out_path)
+            """返回固定输出路径，供 write_to_path 结果断言。"""
+            return str(output_root)
 
-    class Writer:
-        def __init__(self, _: Config, name: str) -> None:
-            self.name = name
+    class EpubWriter:
+        """验证写回阶段只调用 EPUB writer。"""
+
+        def __init__(self, _: Config) -> None:
+            """测试桩不需要配置，但签名保持与真实 EPUB 一致。"""
+            pass
 
         def write_to_path(self, items: list[Item]) -> None:
-            del items
-            called[self.name] = called.get(self.name, 0) + 1
-
-    def build_writer(name: str):
-        class ConcreteWriter(Writer):
-            def __init__(self, cfg: Config) -> None:
-                super().__init__(cfg, name)
-
-        return ConcreteWriter
+            """保存调用标记并断言传入条目未被过滤。"""
+            assert [item.get_src() for item in items] == ["x"]
+            called.append("epub")
 
     monkeypatch.setattr(
         "module.File.FileManager.DataManager.get",
-        lambda: DummyDataManager(output_root),
+        lambda: DummyDataManager(),
     )
-    monkeypatch.setattr("module.File.FileManager.MD", build_writer("md"))
-    monkeypatch.setattr("module.File.FileManager.TXT", build_writer("txt"))
-    monkeypatch.setattr("module.File.FileManager.ASS", build_writer("ass"))
-    monkeypatch.setattr("module.File.FileManager.SRT", build_writer("srt"))
-    monkeypatch.setattr("module.File.FileManager.EPUB", build_writer("epub"))
-    monkeypatch.setattr("module.File.FileManager.XLSX", build_writer("xlsx"))
-    monkeypatch.setattr("module.File.FileManager.WOLFXLSX", build_writer("wolfxlsx"))
-    monkeypatch.setattr("module.File.FileManager.RenPy", build_writer("renpy"))
-    monkeypatch.setattr("module.File.FileManager.TRANS", build_writer("trans"))
-    monkeypatch.setattr("module.File.FileManager.KVJSON", build_writer("kvjson"))
-    monkeypatch.setattr(
-        "module.File.FileManager.MESSAGEJSON", build_writer("messagejson")
-    )
+    monkeypatch.setattr("module.File.FileManager.EPUB", EpubWriter)
 
     output = FileManager(config).write_to_path([Item.from_dict({"src": "x"})])
 
     assert output == str(output_root)
-    assert called == {
-        "md": 1,
-        "txt": 1,
-        "ass": 1,
-        "srt": 1,
-        "epub": 1,
-        "xlsx": 1,
-        "wolfxlsx": 1,
-        "renpy": 1,
-        "trans": 1,
-        "kvjson": 1,
-        "messagejson": 1,
-    }
+    assert called == ["epub"]
 
 
+# 目录遍历异常应被记录日志并返回空条目。
 def test_read_from_path_logs_error_when_walk_raises(
     config: Config,
     fs,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """目录遍历异常应被记录日志并返回空条目。"""
     del fs
     root = Path("/workspace/input")
     root.mkdir(parents=True, exist_ok=True)
 
     class DummyLocalizer:
+        """提供读取失败日志文案，避免依赖全局本地化状态。"""
+
         log_read_file_fail = "read failed"
 
     errors: list[tuple[str, Exception]] = []
 
     class DummyLogger:
+        """捕获 FileManager 记录的异常日志。"""
+
         def error(self, msg: str, e: Exception) -> None:
+            """保存日志消息和异常对象供断言。"""
             errors.append((msg, e))
 
     monkeypatch.setattr(
@@ -419,6 +205,7 @@ def test_read_from_path_logs_error_when_walk_raises(
     monkeypatch.setattr("module.File.FileManager.LogManager.get", lambda: DummyLogger())
 
     def boom(*args, **kwargs):
+        """模拟 os.walk 抛错，覆盖读取异常日志路径。"""
         del args
         del kwargs
         raise RuntimeError("boom")
@@ -431,17 +218,25 @@ def test_read_from_path_logs_error_when_walk_raises(
     assert errors and errors[0][0] == "read failed"
 
 
+# 写入依赖获取失败应被记录日志并返回空输出路径。
 def test_write_to_path_logs_error_when_data_manager_get_raises(
     config: Config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """写入依赖获取失败应被记录日志并返回空输出路径。"""
+
     class DummyLocalizer:
+        """提供写入失败日志文案，避免依赖全局本地化状态。"""
+
         log_write_file_fail = "write failed"
 
     errors: list[tuple[str, Exception]] = []
 
     class DummyLogger:
+        """捕获 FileManager 记录的异常日志。"""
+
         def error(self, msg: str, e: Exception) -> None:
+            """保存日志消息和异常对象供断言。"""
             errors.append((msg, e))
 
     monkeypatch.setattr(
@@ -450,6 +245,7 @@ def test_write_to_path_logs_error_when_data_manager_get_raises(
     monkeypatch.setattr("module.File.FileManager.LogManager.get", lambda: DummyLogger())
 
     def boom():
+        """模拟 DataManager 单例不可用，覆盖写入异常日志路径。"""
         raise RuntimeError("boom")
 
     monkeypatch.setattr("module.File.FileManager.DataManager.get", boom)
@@ -459,10 +255,12 @@ def test_write_to_path_logs_error_when_data_manager_get_raises(
 
 
 def test_read_from_path_returns_empty_when_path_not_exists(config: Config) -> None:
+    """不存在的输入路径不抛错，返回空条目。"""
     _, items = FileManager(config).read_from_path("/workspace/not-exists")
 
     assert items == []
 
 
 def test_parse_asset_returns_empty_for_unknown_extension(config: Config) -> None:
+    """未知扩展名不由 Python FileManager 解析。"""
     assert FileManager(config).parse_asset("a.bin", b"bytes") == []

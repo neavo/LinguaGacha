@@ -28,11 +28,11 @@ flowchart LR
 ```
 
 分层规则：
-- `frontend/src/main` 处理 Electron 宿主、窗口、原生对话框、开发态调试入口、公开 TS Gateway、已迁移页面领域服务和内部 Database Service。
+- `frontend/src/main` 处理 Electron 宿主、窗口、原生对话框、开发态调试入口、公开 TS Gateway、已迁移页面领域服务、非 EPUB 文件解析 / 写回和内部 Database Service。
 - `frontend/src/preload` 只负责通过 `contextBridge` 暴露 `window.desktopApp`。
 - `frontend/src/renderer` 只通过 `window.desktopApp` 和 `desktop-api.ts` 接入宿主与 Core API。
-- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载已迁移项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全和 section revision 口径；`service/` 承载应用设置、模型页、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则；`core/` 承载 Python Core 内部桥。未迁移业务由 API 编排层代理到内部 Python Core。
-- `api/` 保留 Python Core 的内部协议、事件、任务、解析 / 预演 / 导出与 Python 客户端对象化契约；公开 bootstrap、reset preview、section revision 和前端运行态 patch 编码权威在 TS Gateway，不再由 Python Core 公开承载。
+- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载已迁移项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全和 section revision 口径；`file/` 承载非 EPUB 文件解析 / 写回、create preview 草稿解析和导出目录语义；`service/` 承载应用设置、模型页、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则；`core/` 承载 Python Core 内部桥。未迁移业务由 API 编排层代理到内部 Python Core。
+- `api/` 保留 Python Core 的内部协议、事件、任务、EPUB 文件能力和 Python 客户端对象化契约；公开 bootstrap、非 EPUB 文件预演 / 导出、reset preview、section revision 和前端运行态 patch 编码权威在 TS Gateway，不再由 Python Core 公开承载。
 - `module/Data` 持有工程事实，`module/Engine` 持有任务生命周期，`module/File` 持有格式解析与写回，`module/Model` 持有模型配置领域规则。
 
 ## 跨层边界
@@ -43,7 +43,7 @@ flowchart LR
 | Renderer -> Core API | 只能走 `frontend/src/renderer/app/desktop/desktop-api.ts` -> TS Gateway `/api/` | 保持前后端协议单点可维护 |
 | API -> Data | 工程事实、规则、分析与校对辅助由 `module/Data` 提供 | 防止 API 层直接拼装会话与数据库 |
 | API -> Engine | 后台任务启动、停止、进度与终态语义由 `module/Engine` 提供 | 防止数据层和界面层偷持任务生命周期 |
-| Data -> File | 外部文件解析与写回只能委托 `module/File` | 防止格式支持散落在工程服务里 |
+| File format | 公开非 EPUB 文件解析与写回落在 `frontend/src/main/file/`；EPUB 暂留 `module/File/EPUB` 并只通过受控 Python 桥使用 | 防止已迁格式继续依赖 Python fallback，同时避免误删 EPUB 保留路径 |
 | Data -> Database | Python 只通过 `module/Data/Database/DatabaseGateway.py` 调 Electron main 内部 database workflow；SQL / 事务 / `.lg` asset 读写只落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只落在 `frontend/src/utils/zstd-tool.ts`，`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts` | 防止事务、schema 与压缩格式在 Python / TS 两侧并行 |
 
 仓库级不变量：
@@ -109,13 +109,14 @@ flowchart TD
 | --- | --- | --- | --- |
 | `frontend/src/main/api` | Electron 运行时公开 HTTP / SSE Gateway、响应壳、代理与路由编排 | `frontend/src/renderer`、`frontend/src/main/project`、`frontend/src/main/service`、`frontend/src/main/core`、`api/` | [`API.md`](./API.md) |
 | `frontend/src/main/project` | 项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全与 section revision 口径 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/file` | 非 EPUB 文件解析 / 写回、工作台 parse 预演、新建工程 create preview 解析、导出目录与重复译文补齐 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/service`、`frontend/src/main/core` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `frontend/src/main/service` | 配置 / 模型 / 质量 / 校对同步保存领域服务与 Electron main 运行期路径规则 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`DATA.md`](./DATA.md) |
 | `frontend/src/main/core` | Python Core 内部桥客户端 | `frontend/src/main/api`、`frontend/src/main/project`、`frontend/src/main/service`、`api/` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `api/` | 内部 Python Core HTTP / SSE 契约、错误映射、事件桥、任务与 Python 客户端兼容 | TS Gateway、`api/Client`、`module/*` | [`API.md`](./API.md) |
 | `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、根目录 `DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
 | `module/Data` | 工程事实、规则、分析、翻译结果、校对辅助 | `api/`、`module/File`、Electron main Database Service | [`DATA.md`](./DATA.md) |
 | `module/Engine` | 后台任务生命周期、请求调度、停止与重试 | `api/`、`module/Data` | [`DATA.md`](./DATA.md) |
-| `module/File` | 文件格式解析、资产读取、导出写回 | `module/Data` | [`DATA.md`](./DATA.md) |
+| `module/File` | EPUB 文件解析 / 写回与 Python 内部兼容能力；非 EPUB 公开路径已迁到 TS | `api/`、`module/Data`、`frontend/src/main/core` | [`DATA.md`](./DATA.md) |
 | `module/Model` | 模型配置类型、模板补齐、排序与默认回退 | `api/`、`Config` | [`DATA.md`](./DATA.md) |
 | 根目录 `DESIGN.md` 对应权威源 | 视觉 token、壳层节奏、页面骨架、组件语义 | `frontend/src/renderer` | [`DESIGN.md`](../DESIGN.md) |
 

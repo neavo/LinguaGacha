@@ -2,11 +2,14 @@ import type { ApiJsonValue } from "../api/api-types";
 import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import { FileFormatService } from "../file/file-format-service";
+import { item_to_json } from "../file/file-item";
 import { ProjectSessionState } from "./project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
+// reset preview 只接受当前 ItemStatus 字面量，历史状态在 normalize 阶段折叠。
 const VALID_ITEM_STATUS_VALUES = new Set([
   "NONE",
   "PROCESSED",
@@ -17,6 +20,7 @@ const VALID_ITEM_STATUS_VALUES = new Set([
   "DUPLICATED",
 ]);
 
+// 分析总数排除这些不会进入分析任务的状态，保持预演和真实任务摘要一致。
 const ANALYSIS_SKIPPED_STATUSES = new Set([
   "EXCLUDED",
   "RULE_SKIPPED",
@@ -28,6 +32,9 @@ const ANALYSIS_SKIPPED_STATUSES = new Set([
  * 承载公开 reset preview；TS 负责预演响应，Python 只提供受保护 asset 解析桥。
  */
 export class ProjectResetPreviewService {
+  /**
+   * reset preview 只读数据库并调用受保护解析桥，不负责提交真实 reset mutation。
+   */
   public constructor(
     private readonly database: ProjectDatabase,
     private readonly core_bridge: CoreBridgeClient,
@@ -44,7 +51,7 @@ export class ProjectResetPreviewService {
     }
     const project_path = await this.require_idle_project_path();
     const asset_records = this.get_asset_records(project_path);
-    const parsed_files = await this.core_bridge.parse_project_assets(
+    const parsed_files = await this.parse_project_assets(
       project_path,
       asset_records.map((record) => record.path),
     );
@@ -61,6 +68,40 @@ export class ProjectResetPreviewService {
         id: preview_ids[index] ?? item["id"] ?? 0,
       })) as unknown as ApiJsonValue,
     };
+  }
+
+  /**
+   * 非 EPUB asset 在 TS 侧重解析，EPUB 批量交给 Python 受保护桥保持旧能力。
+   */
+  private async parse_project_assets(
+    project_path: string,
+    rel_paths: string[],
+  ): Promise<Array<{ rel_path: string; items: JsonRecord[] }>> {
+    const format_service = new FileFormatService({
+      source_language: "JA",
+      target_language: "ZH",
+    });
+    const parsed_files: Array<{ rel_path: string; items: JsonRecord[] }> = [];
+    const epub_rel_paths: string[] = [];
+    for (const rel_path of rel_paths) {
+      if (format_service.is_epub_path(rel_path)) {
+        epub_rel_paths.push(rel_path);
+        continue;
+      }
+      const content = this.database.read_asset_content(project_path, rel_path);
+      if (content === null) {
+        parsed_files.push({ rel_path, items: [] });
+        continue;
+      }
+      const items = await format_service.parse_asset(rel_path, content);
+      parsed_files.push({ rel_path, items: items.map(item_to_json) });
+    }
+    if (epub_rel_paths.length > 0) {
+      parsed_files.push(
+        ...(await this.core_bridge.parse_project_assets(project_path, epub_rel_paths)),
+      );
+    }
+    return parsed_files;
   }
 
   /**
@@ -99,6 +140,9 @@ export class ProjectResetPreviewService {
     };
   }
 
+  /**
+   * reset 预演和真实 reset 一样要求工程已加载且后台任务空闲。
+   */
   private async require_idle_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
@@ -111,6 +155,9 @@ export class ProjectResetPreviewService {
     return state.projectPath;
   }
 
+  /**
+   * 读取 asset 顺序用于复现 create/reset 时的文件排序。
+   */
   private get_asset_records(project_path: string): Array<{ path: string; sort_order: number }> {
     const value = this.database.execute(
       this.op("getAllAssetRecords", { projectPath: project_path }),
@@ -128,6 +175,9 @@ export class ProjectResetPreviewService {
       .sort((left, right) => left.sort_order - right.sort_order);
   }
 
+  /**
+   * 分析预演只需要 item 当前事实，读取后复制一份避免误改数据库返回对象。
+   */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
     return Array.isArray(value)
@@ -137,6 +187,9 @@ export class ProjectResetPreviewService {
       : [];
   }
 
+  /**
+   * ERROR checkpoint 会在真实 failed reset 中被删除，预演据此计算剩余进度。
+   */
   private get_analysis_checkpoints(project_path: string): Map<number, string> {
     const value = this.database.execute(
       this.op("getAnalysisItemCheckpoints", { projectPath: project_path }),
@@ -158,6 +211,9 @@ export class ProjectResetPreviewService {
     return checkpoints;
   }
 
+  /**
+   * 向数据库申请 replace-all 的预览 id，确保前端看到的 id 与真实 mutation 规则一致。
+   */
   private preview_replace_all_item_ids(project_path: string, items: MutableJsonRecord[]): number[] {
     const value = this.database.execute(
       this.op("previewReplaceAllItemIds", {
@@ -168,6 +224,9 @@ export class ProjectResetPreviewService {
     return Array.isArray(value) ? value.map((item_id) => this.read_number(item_id, 0)) : [];
   }
 
+  /**
+   * 解析桥返回字段可能来自 Python 旧命名，这里收敛到公开 item payload。
+   */
   private normalize_item_payload(item: JsonRecord, fallback_file_path: string): MutableJsonRecord {
     return {
       ...item,
@@ -182,6 +241,9 @@ export class ProjectResetPreviewService {
     };
   }
 
+  /**
+   * 历史运行态状态在预演中折叠为当前状态枚举，避免旧工程扰动统计。
+   */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
     const status = String(value ?? "NONE");
     if (status === "PROCESSED_IN_PAST") {
@@ -193,15 +255,24 @@ export class ProjectResetPreviewService {
     return VALID_ITEM_STATUS_VALUES.has(status) ? status : "NONE";
   }
 
+  /**
+   * SQLite/JSON 数字统一截断为整数，避免 id 和 row 出现小数。
+   */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 
+  /**
+   * 数据库 JSON 返回只允许对象继续进入业务归一化。
+   */
   private is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
+  /**
+   * 数据库操作名和参数集中封装，减少调用点重复对象形状。
+   */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };
   }

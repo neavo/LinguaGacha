@@ -10,6 +10,14 @@ const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST";
 const LEGACY_PROCESSING = "PROCESSING";
 const CURRENT_PROCESSED = "PROCESSED";
 const CURRENT_NONE = "NONE";
+const LEGACY_RULE_TYPE_TO_CURRENT_TYPE = new Map([
+  ["GLOSSARY", "glossary"],
+  ["TEXT_PRESERVE", "text_preserve"],
+  ["PRE_REPLACEMENT", "pre_translation_replacement"],
+  ["POST_REPLACEMENT", "post_translation_replacement"],
+  ["TRANSLATION_PROMPT", "translation_prompt"],
+  ["ANALYSIS_PROMPT", "analysis_prompt"],
+]);
 const VALID_ITEM_STATUSES = new Set([
   "NONE",
   "PROCESSED",
@@ -45,6 +53,7 @@ export class ProjectDatabaseMigrationService {
    */
   public static migrate(db: DatabaseSync): void {
     this.ensure_schema(db);
+    this.migrate_rule_types_if_needed(db);
     this.migrate_asset_sort_order_if_needed(db);
     this.migrate_item_status_if_needed(db);
   }
@@ -95,6 +104,22 @@ export class ProjectDatabaseMigrationService {
       CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type);
       CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status);
     `);
+  }
+
+  /**
+   * 归一旧 Python 枚举泄露出的规则槽位名，保证运行态只读取当前物理类型。
+   */
+  private static migrate_rule_types_if_needed(db: DatabaseSync): void {
+    const target_exists = db.prepare("SELECT 1 FROM rules WHERE type = ? LIMIT 1");
+    const update_legacy = db.prepare("UPDATE rules SET type = ? WHERE type = ?");
+    const delete_legacy = db.prepare("DELETE FROM rules WHERE type = ?");
+    for (const [legacy_type, current_type] of LEGACY_RULE_TYPE_TO_CURRENT_TYPE) {
+      if (target_exists.get(current_type) === undefined) {
+        update_legacy.run(current_type, legacy_type);
+      } else {
+        delete_legacy.run(legacy_type);
+      }
+    }
   }
 
   /**

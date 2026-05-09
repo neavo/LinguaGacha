@@ -44,6 +44,14 @@ class DatabaseGateway(Base):
 
     RuleType = DatabaseRuleType
     SCHEMA_VERSION: ClassVar[int] = 2
+    RULE_TYPE_TO_DATABASE_TYPE: ClassVar[dict[str, str]] = {
+        DatabaseRuleType.GLOSSARY: "glossary",
+        DatabaseRuleType.TEXT_PRESERVE: "text_preserve",
+        DatabaseRuleType.PRE_REPLACEMENT: "pre_translation_replacement",
+        DatabaseRuleType.POST_REPLACEMENT: "post_translation_replacement",
+        DatabaseRuleType.TRANSLATION_PROMPT: "translation_prompt",
+        DatabaseRuleType.ANALYSIS_PROMPT: "analysis_prompt",
+    }
 
     DATABASE_API_BASE_URL_ENV_NAME: ClassVar[str] = "LINGUAGACHA_DATABASE_API_BASE_URL"
     DATABASE_API_TOKEN_ENV_NAME: ClassVar[str] = "LINGUAGACHA_DATABASE_API_TOKEN"
@@ -65,6 +73,13 @@ class DatabaseGateway(Base):
         if value == "":
             raise RuntimeError(f"缺少内部 database service 环境变量：{name}")
         return value.rstrip("/")
+
+    @classmethod
+    def to_database_rule_type(cls, rule_type: DatabaseRuleType | str) -> str:
+        # Python 业务枚举不是 .lg 物理槽位名，跨进程前必须归一。
+
+        raw_rule_type = str(rule_type)
+        return cls.RULE_TYPE_TO_DATABASE_TYPE.get(raw_rule_type, raw_rule_type)
 
     @classmethod
     def create(cls, project_path: str, name: str) -> "DatabaseGateway":
@@ -470,7 +485,10 @@ class DatabaseGateway(Base):
         # 批量写入口只传业务快照，规则枚举在网关边界转成稳定字符串。
 
         normalized_rules = (
-            {str(rule_type): rule_data for rule_type, rule_data in rules.items()}
+            {
+                self.to_database_rule_type(rule_type): rule_data
+                for rule_type, rule_data in rules.items()
+            }
             if rules
             else None
         )
@@ -485,7 +503,10 @@ class DatabaseGateway(Base):
         )
 
     def get_rules(self, rule_type: DatabaseRuleType) -> list[dict[str, Any]]:
-        data = self.execute_operation("getRules", {"ruleType": str(rule_type)})
+        data = self.execute_operation(
+            "getRules",
+            {"ruleType": self.to_database_rule_type(rule_type)},
+        )
         return data if isinstance(data, list) else []
 
     def set_rules(
@@ -496,13 +517,16 @@ class DatabaseGateway(Base):
         self.execute_operation(
             "setRules",
             {
-                "ruleType": str(rule_type),
+                "ruleType": self.to_database_rule_type(rule_type),
                 "rules": rules,
             },
         )
 
     def get_rule_text(self, rule_type: DatabaseRuleType) -> str:
-        data = self.execute_operation("getRuleText", {"ruleType": str(rule_type)})
+        data = self.execute_operation(
+            "getRuleText",
+            {"ruleType": self.to_database_rule_type(rule_type)},
+        )
         return str(data or "")
 
     def get_rule_text_by_name(self, rule_type_name: str) -> str:
@@ -516,7 +540,7 @@ class DatabaseGateway(Base):
         self.execute_operation(
             "setRuleText",
             {
-                "ruleType": str(rule_type),
+                "ruleType": self.to_database_rule_type(rule_type),
                 "text": text,
             },
         )

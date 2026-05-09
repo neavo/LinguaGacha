@@ -12,9 +12,16 @@ import { ProjectSessionState } from "./project-session-state";
 let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
 
+/**
+ * reset preview 测试只需要 Core 的 busy 状态和 EPUB 解析桥。
+ */
 class FakeCoreBridge {
+  // 测试直接切换 busy，验证 TS reset preview 的任务互斥守卫。
   public busy = false;
 
+  /**
+   * 返回最小项目状态，ProjectSessionState 才是公开 loaded/path 权威。
+   */
   public async get_project_state(): Promise<{
     loaded: boolean;
     projectPath: string;
@@ -23,6 +30,9 @@ class FakeCoreBridge {
     return { loaded: true, projectPath: "", busy: this.busy };
   }
 
+  /**
+   * 模拟 Python EPUB 解析桥，确保 TS 预演能合并保留路径结果。
+   */
   public async parse_project_assets(
     _project_path: string,
     rel_paths: string[],
@@ -42,6 +52,9 @@ class FakeCoreBridge {
   }
 }
 
+/**
+ * 每个用例创建独立 .lg 数据库和服务，避免状态串扰。
+ */
 function create_service(): {
   bridge: FakeCoreBridge;
   database: ProjectDatabase;
@@ -88,7 +101,7 @@ describe("ProjectResetPreviewService", () => {
     expect(result["items"]).toEqual([
       expect.objectContaining({
         id: 1,
-        src: "原文:script.txt",
+        src: "demo",
         file_path: "script.txt",
       }),
     ]);
@@ -124,6 +137,9 @@ describe("ProjectResetPreviewService", () => {
   });
 });
 
+/**
+ * 写入源文件并返回绝对路径，供数据库 asset 导入操作使用。
+ */
 function write_source_file(file_name: string): string {
   const file_path = path.join(temp_dir, file_name);
   fs.writeFileSync(file_path, "demo", "utf-8");
