@@ -15,7 +15,6 @@ class ProjectRoutes:
     ANALYSIS_RESET_PREVIEW_PATH: str = "/api/project/analysis/reset-preview"
     SOURCE_FILES_PATH: str = "/api/project/source-files"
     PREVIEW_PATH: str = "/api/project/preview"
-    TEXT_PRESERVE_PRESET_RULES_PATH: str = "/api/project/text-preserve/preset-rules"
     EXPORT_CONVERTED_TRANSLATION_PATH: str = "/api/project/export-converted-translation"
     WORKBENCH_PARSE_FILE_PATH: str = "/api/project/workbench/parse-file"
     BOOTSTRAP_STREAM_PATH: str = "/api/project/bootstrap/stream"
@@ -104,14 +103,6 @@ class ProjectRoutes:
                 cls.PREVIEW_PATH,
                 lambda request: ApiResponse(
                     ok=True, data=project_app_service.get_project_preview(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.TEXT_PRESERVE_PRESET_RULES_PATH,
-                lambda request: ApiResponse(
-                    ok=True,
-                    data=project_app_service.get_text_preserve_preset_rules(request),
                 ),
             )
             core_api_server.add_json_route(

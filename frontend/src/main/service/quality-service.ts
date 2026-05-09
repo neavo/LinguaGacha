@@ -841,7 +841,14 @@ export class QualityService {
    * 校验预设文件名，防止用户输入逃逸预设目录。
    */
   private ensure_preset_file_name(file_name: string, extension: ".json" | ".txt"): void {
-    if (file_name === "" || !file_name.toLowerCase().endsWith(extension)) {
+    const has_path_boundary =
+      path.basename(file_name) !== file_name ||
+      path.win32.basename(file_name) !== file_name ||
+      path.posix.basename(file_name) !== file_name ||
+      path.isAbsolute(file_name) ||
+      path.win32.isAbsolute(file_name) ||
+      path.posix.isAbsolute(file_name);
+    if (file_name === "" || has_path_boundary || !file_name.toLowerCase().endsWith(extension)) {
       throw new Error(`invalid virtual preset id: ${file_name}`);
     }
   }

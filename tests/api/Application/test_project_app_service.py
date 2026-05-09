@@ -494,24 +494,6 @@ def test_preview_analysis_reset_returns_status_summary() -> None:
     }
 
 
-def test_get_text_preserve_preset_rules_returns_rules_by_text_type() -> None:
-    project_app_service = ProjectAppService(_FakeProjectManagerForConvertedExport())
-    project_app_service.load_text_preserve_preset_rules = lambda text_type: [
-        f"{text_type.value}:rule"
-    ]
-
-    result = project_app_service.get_text_preserve_preset_rules(
-        {"text_types": ["renpy", "NONE", "unknown"]}
-    )
-
-    assert result == {
-        "rules": {
-            "RENPY": ["RENPY:rule"],
-            "NONE": ["NONE:rule"],
-        }
-    }
-
-
 def test_export_converted_translation_uses_converted_snapshot_without_mutating_project() -> (
     None
 ):

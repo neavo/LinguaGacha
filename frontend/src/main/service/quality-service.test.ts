@@ -36,6 +36,48 @@ describe("QualityService", () => {
     ).toEqual({ entries: [{ src: "A", dst: "甲" }] });
   });
 
+  it("读取 text_preserve 内置预设时使用质量规则预设目录", () => {
+    const { service, app_root } = create_service();
+    // text_preserve 复用质量规则预设目录解析，避免简繁转换页再走专用接口。
+    const preset_dir = path.join(app_root, "resource", "text_preserve", "preset");
+    fs.mkdirSync(preset_dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(preset_dir, "renpy.json"),
+      '[{"src":"\\\\[[^\\\\]]+\\\\]"}]',
+      "utf-8",
+    );
+
+    expect(
+      service.read_rule_preset({
+        preset_dir_name: "text_preserve",
+        virtual_id: "builtin:renpy.json",
+      }),
+    ).toEqual({ entries: [{ src: "\\[[^\\]]+\\]" }] });
+  });
+
+  it("读取规则预设时拒绝带目录边界的虚拟文件名", () => {
+    const { service } = create_service();
+
+    expect(() =>
+      service.read_rule_preset({
+        preset_dir_name: "glossary",
+        virtual_id: "builtin:../demo.json",
+      }),
+    ).toThrow("invalid virtual preset id");
+    expect(() =>
+      service.read_rule_preset({
+        preset_dir_name: "glossary",
+        virtual_id: "builtin:folder/demo.json",
+      }),
+    ).toThrow("invalid virtual preset id");
+    expect(() =>
+      service.read_rule_preset({
+        preset_dir_name: "glossary",
+        virtual_id: "builtin:folder\\demo.json",
+      }),
+    ).toThrow("invalid virtual preset id");
+  });
+
   it("导入外部 JSON 规则时显式修复可恢复的非标 JSON", async () => {
     const { service, app_root } = create_service();
     const file_path = path.join(app_root, "rules.json");

@@ -1,6 +1,5 @@
 from typing import Any
 
-from base.BasePath import BasePath
 from module.Config import Config
 from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
@@ -10,7 +9,6 @@ from module.Localizer.Localizer import Localizer
 from module.Data.Translation.TranslationExportItemService import (
     TranslationExportItemService,
 )
-from module.Utils.JSONTool import JSONTool
 from api.Contract.ProjectPayloads import ProjectPreviewPayload
 from api.Contract.ProjectPayloads import ProjectSnapshotPayload
 
@@ -120,24 +118,6 @@ class ProjectAppService:
             "preview": self.project_manager.build_open_project_alignment_preview(path)
         }
 
-    def get_text_preserve_preset_rules(
-        self,
-        request: dict[str, Any],
-    ) -> dict[str, object]:
-        """读取文本保护预置规则，供 TS 侧执行页面派生转换。"""
-
-        raw_text_types = request.get("text_types", [])
-        text_types = raw_text_types if isinstance(raw_text_types, list) else []
-        rules: dict[str, list[str]] = {}
-        for raw_text_type in text_types:
-            try:
-                text_type = Item.TextType(str(raw_text_type).upper())
-            except ValueError:
-                continue
-
-            rules[text_type.value] = self.load_text_preserve_preset_rules(text_type)
-        return {"rules": rules}
-
     def export_converted_translation(
         self,
         request: dict[str, Any],
@@ -217,30 +197,6 @@ class ProjectAppService:
 
         is_loaded = bool(self.project_manager.is_loaded())
         return ProjectSnapshotPayload(path=project_path, loaded=is_loaded).to_dict()
-
-    def load_text_preserve_preset_rules(self, text_type: Item.TextType) -> list[str]:
-        """读取文本保护预设规则，保持文件路径解析集中在服务层。"""
-
-        path = (
-            f"{BasePath.get_text_preserve_preset_dir()}/{text_type.value.lower()}.json"
-        )
-        try:
-            raw_entries = JSONTool.load_file(path)
-        except Exception:
-            # 不是每个文本类型都有预置保护规则，缺失时按空规则交给 TS 侧处理。
-            return []
-
-        if not isinstance(raw_entries, list):
-            return []
-
-        rules: list[str] = []
-        for entry in raw_entries:
-            if not isinstance(entry, dict):
-                continue
-            src = entry.get("src", "")
-            if isinstance(src, str) and src.strip():
-                rules.append(src.strip())
-        return rules
 
     def build_converted_item_map(
         self,

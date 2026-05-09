@@ -21,10 +21,6 @@ PROJECT_COMMAND_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/source-files", "collect_source_files"),
     JsonRouteCase("/api/project/preview", "get_project_preview"),
     JsonRouteCase(
-        "/api/project/text-preserve/preset-rules",
-        "get_text_preserve_preset_rules",
-    ),
-    JsonRouteCase(
         "/api/project/export-converted-translation",
         "export_converted_translation",
     ),

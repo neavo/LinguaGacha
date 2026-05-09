@@ -33,7 +33,7 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 | 诊断日志流 | `/api/logs/stream` | 独立日志窗口订阅 TS `LogManager` 纯文本日志 |
 | bootstrap 首包 | `/api/project/bootstrap/stream` | 一次性阶段化项目首包 |
 | 项目与同步 mutation | `/api/project/*` | 工程、工作台、校对、reset、导入术语等 |
-| 项目派生工具 | `/api/project/text-preserve/preset-rules`、`/api/project/export-converted-translation` | 为 TS 侧工具页提供预置规则读取与转换结果文件写出 |
+| 项目派生工具 | `/api/project/export-converted-translation` | 为 TS 侧工具页提供转换结果文件写出；内置文本保护预设读取复用质量规则预设 IO |
 | 后台任务 | `/api/tasks/*` | 翻译、分析与重翻任务启动、停止、快照 |
 | 模型页 | `/api/models/*` | TS Gateway 承载快照、更新、激活、增删、重排；`list-available` 与 `test` 代理 Python Core |
 | 质量规则与提示词 | `/api/quality/rules/*`、`/api/quality/prompts/*` | TS Gateway 承载页面 CRUD、导入导出与预设 IO |
@@ -174,8 +174,8 @@ flowchart TD
 
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
-- `/api/project/text-preserve/preset-rules` 只读取指定 `text_type` 的预置文本保护规则，供 TS 侧按当前文本保护模式自行编译与分段保护。
-- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清缓存。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、reset preview、转换导出、文本保护预置、项目生命周期和 `tasks/*` 仍代理到 Python Core。
+- 简繁转换页按 `text_type` 读取内置文本保护规则时复用 `/api/quality/rules/presets/read`，请求 `preset_dir_name: "text_preserve"` 与 `virtual_id: "builtin:{lower_text_type}.json"`，页面只消费返回 `entries[].src`。
+- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清缓存。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、reset preview、转换导出、项目生命周期和 `tasks/*` 仍代理到 Python Core。
 
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。

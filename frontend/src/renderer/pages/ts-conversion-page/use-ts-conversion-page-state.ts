@@ -13,23 +13,76 @@ import {
 import type {
   TsConversionDirection,
   TsConversionExportPayload,
-  TsConversionPresetRulesPayload,
+  TsConversionRulePresetPayload,
 } from "@/pages/ts-conversion-page/types";
 
 type TsConversionConfirmState = {
   open: boolean;
 };
 
+const TS_CONVERSION_PRESET_TEXT_TYPES = new Set(["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"]);
+
+// 确认弹窗状态保持独立构造，避免关闭和初始化分支各自拼对象。
 function create_empty_confirm_state(): TsConversionConfirmState {
   return {
     open: false,
   };
 }
 
+// 导出后缀沿用 Python 写出链路的既有命名约定，页面只按方向选择。
 function resolve_suffix(direction: TsConversionDirection): string {
   return direction === "s2t" ? "_S2T" : "_T2S";
 }
 
+// 质量规则预设返回原始 entries，简繁转换页只消费非空 src 作为保护规则。
+function extract_preset_rule_sources(entries: unknown[] | undefined): string[] {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return [];
+    }
+    const src = (entry as Record<string, unknown>).src;
+    return typeof src === "string" && src.trim() !== "" ? [src.trim()] : [];
+  });
+}
+
+// 单个 text_type 读取失败不应中断整次转换，缺失预设等价于没有保护规则。
+async function read_preset_rules_for_text_type(text_type: string): Promise<string[]> {
+  try {
+    const payload = await api_fetch<TsConversionRulePresetPayload>(
+      "/api/quality/rules/presets/read",
+      {
+        preset_dir_name: "text_preserve",
+        virtual_id: `builtin:${text_type.toLowerCase()}.json`,
+      },
+    );
+    return extract_preset_rule_sources(payload.entries);
+  } catch {
+    // 内置保护规则不是每个 text_type 都齐全，读取失败时按空规则继续导出。
+    return [];
+  }
+}
+
+// 按原始 text_type 大写键回填规则，保持转换逻辑与运行态条目字段一致。
+async function read_preset_rules_by_text_type(
+  text_types: string[],
+): Promise<Record<string, string[]>> {
+  // 未知 text_type 沿用旧 Python 路由语义跳过，避免把脏数据映射成其它预设。
+  const known_text_types = text_types.filter((text_type) =>
+    TS_CONVERSION_PRESET_TEXT_TYPES.has(text_type),
+  );
+  const entries = await Promise.all(
+    known_text_types.map(async (text_type) => {
+      return [text_type, await read_preset_rules_for_text_type(text_type)] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+// 页面状态只编排确认、进度和导出请求；实际转换规则留在纯逻辑模块。
 export function useTsConversionPageState() {
   const { t } = useI18n();
   const { project_snapshot, project_store } = useDesktopRuntime();
@@ -47,12 +100,15 @@ export function useTsConversionPageState() {
     create_empty_confirm_state(),
   );
   const [is_running, set_is_running] = useState(false);
+  // 用 ref 阻止同一轮异步转换被重复触发，避免重复写出文件。
   const run_active_ref = useRef(false);
 
+  // runtime_items 从 ProjectStore 派生，确认弹窗打开后仍以当前 store 快照执行转换。
   const runtime_items = useMemo(() => {
     return normalize_ts_conversion_runtime_items(project_store_state.items);
   }, [project_store_state.items]);
 
+  // 请求阶段只做可执行性校验，不提前读取预设或生成转换结果。
   const request_conversion = useCallback((): void => {
     if (run_active_ref.current) {
       push_toast("warning", t("ts_conversion_page.feedback.task_running"));
@@ -76,6 +132,7 @@ export function useTsConversionPageState() {
     set_confirm_state(create_empty_confirm_state());
   }, []);
 
+  // 确认后串行完成预设读取、文本转换和文件导出，保证进度提示生命周期完整。
   const confirm_conversion = useCallback(async (): Promise<void> => {
     if (run_active_ref.current) {
       return;
@@ -96,18 +153,12 @@ export function useTsConversionPageState() {
       const text_preserve_mode = String(text_preserve_slice.mode ?? "off");
       const normalized_text_preserve_mode = text_preserve_mode.toLowerCase();
       const custom_rules = build_ts_conversion_custom_rules(text_preserve_slice.entries);
+      // 非 custom 模式才读取内置预设；custom 模式完全使用项目中的页面规则。
       const preset_rules_by_text_type =
         preserve_text &&
         normalized_text_preserve_mode !== "off" &&
         normalized_text_preserve_mode !== "custom"
-          ? ((
-              await api_fetch<TsConversionPresetRulesPayload>(
-                "/api/project/text-preserve/preset-rules",
-                {
-                  text_types: collect_ts_conversion_text_types(runtime_items),
-                },
-              )
-            ).rules ?? {})
+          ? await read_preset_rules_by_text_type(collect_ts_conversion_text_types(runtime_items))
           : {};
 
       update_progress_toast(progress_toast_id, {
