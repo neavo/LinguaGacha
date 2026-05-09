@@ -8,6 +8,7 @@ import type { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectRuntimeEncoder } from "./project-runtime-encoder";
 import { get_runtime_section_revision } from "./project-section-revision";
+import { ProjectSessionState } from "./project-session-state";
 
 describe("ProjectRuntimeEncoder", () => {
   // 临时库必须按后进先出释放，确保 sqlite handle 先关再删目录。
@@ -23,12 +24,13 @@ describe("ProjectRuntimeEncoder", () => {
     const { database, project_path } = create_project_database();
     const service = new ProjectRuntimeEncoder(
       database,
-      create_core_bridge(project_path, {
+      create_core_bridge({
         task_type: "retranslate",
         status: "RUNNING",
         busy: true,
         retranslating_item_ids: [101],
       }),
+      create_session_state(project_path),
     );
     seed_runtime_project(database, project_path);
 
@@ -200,20 +202,18 @@ describe("ProjectRuntimeEncoder", () => {
   }
 
   /**
-   * runtime encoder 只依赖 CoreBridgeClient 的两个读方法，测试用窄 fake 固定边界。
+   * runtime encoder 只依赖 CoreBridgeClient 的任务读方法，测试用窄 fake 固定边界。
    */
-  function create_core_bridge(
-    project_path: string,
-    task_snapshot: Record<string, unknown>,
-  ): CoreBridgeClient {
+  function create_core_bridge(task_snapshot: Record<string, unknown>): CoreBridgeClient {
     return {
-      get_project_state: async () => ({
-        busy: false,
-        loaded: true,
-        projectPath: project_path,
-      }),
       get_task_snapshot: async () => task_snapshot,
     } as unknown as CoreBridgeClient;
+  }
+
+  function create_session_state(project_path: string): ProjectSessionState {
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    return session_state;
   }
 
   /**

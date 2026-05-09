@@ -15,6 +15,7 @@ import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
 } from "../project/project-section-revision";
+import { ProjectSessionState } from "../project/project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -66,6 +67,9 @@ export class QualityService {
   // 写入后通知 Python Core 清理规则 / 提示词缓存，保持任务读侧一致。
   private readonly core_bridge: CoreBridgeClient;
 
+  // 页面级质量规则 / 提示词写入口以 TS 会话状态作为当前工程目标。
+  private readonly session_state: ProjectSessionState;
+
   /**
    * 初始化 QualityService 依赖，保持外部写入口清晰。
    */
@@ -74,11 +78,13 @@ export class QualityService {
     config_service: ConfigService,
     database: ProjectDatabase,
     core_bridge: CoreBridgeClient,
+    session_state: ProjectSessionState,
   ) {
     this.paths = paths;
     this.config_service = config_service;
     this.database = database;
     this.core_bridge = core_bridge;
+    this.session_state = session_state;
   }
 
   /**
@@ -421,7 +427,7 @@ export class QualityService {
    * 校验工程路径，确保项目级规则写入有明确目标。
    */
   private async require_project_path(): Promise<string> {
-    const state = await this.core_bridge.get_project_state();
+    const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
       throw new Error("工程未加载");
     }

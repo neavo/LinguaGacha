@@ -31,8 +31,8 @@ flowchart LR
 - `frontend/src/main` 处理 Electron 宿主、窗口、原生对话框、开发态调试入口、公开 TS Gateway、已迁移页面领域服务和内部 Database Service。
 - `frontend/src/preload` 只负责通过 `contextBridge` 暴露 `window.desktopApp`。
 - `frontend/src/renderer` 只通过 `window.desktopApp` 和 `desktop-api.ts` 接入宿主与 Core API。
-- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载已迁移项目轻生命周期、项目同步 mutation、公开 bootstrap 运行态编码和 section revision 口径；`service/` 承载应用设置、模型页、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则；`core/` 承载 Python Core 内部桥。未迁移业务由 API 编排层代理到内部 Python Core。
-- `api/` 保留 Python Core 的内部协议、事件、任务、解析 / 预演 / 导出与 Python 客户端对象化契约；公开 bootstrap 编码权威在 TS Gateway，不再由 Python Core 公开承载。
+- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载已迁移项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全和 section revision 口径；`service/` 承载应用设置、模型页、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则；`core/` 承载 Python Core 内部桥。未迁移业务由 API 编排层代理到内部 Python Core。
+- `api/` 保留 Python Core 的内部协议、事件、任务、解析 / 预演 / 导出与 Python 客户端对象化契约；公开 bootstrap、reset preview、section revision 和前端运行态 patch 编码权威在 TS Gateway，不再由 Python Core 公开承载。
 - `module/Data` 持有工程事实，`module/Engine` 持有任务生命周期，`module/File` 持有格式解析与写回，`module/Model` 持有模型配置领域规则。
 
 ## 跨层边界
@@ -76,7 +76,7 @@ flowchart TD
 - Python Core 的运行时路径统一收敛为两根：`APP_ROOT` 是应用根，开发态为仓库根、发布态为程序运行目录，承载 `resource/`、`version.txt` 和 Core 启动目标；`DATA_ROOT` 是可写数据根，承载 `userdata/` 与 `log/`。AppImage 与 macOS `.app` 固定把 `DATA_ROOT` 放到 `~/LinguaGacha`，其他场景优先使用可写的 `APP_ROOT`，不可写时回退 `~/LinguaGacha`。
 - Electron 侧公开 Core API 地址由 `CoreLifecycleManager` 写入 `LINGUAGACHA_CORE_API_BASE_URL`，其值指向 TS Gateway；Python Core 内部 baseUrl、Python token、Database Service 地址和 database token 只留在 Electron main 与 Python Core 之间，不进入 preload、`window.desktopApp` 或 renderer。Python 日志通过 TS Gateway 的 `/api/logs/append` 提交，使用同一份 Core token。`frontend/src/shared/core-api-base-url.ts` 仍保留环境变量、启动参数和默认端口解析，供 preload 与外部调试兼容。
 - 应用退出时 Electron main 会优先调用内部 `/api/lifecycle/shutdown`，失败或超时后按平台清理 Core 进程树；Python Core 退出后再关闭 Database Service 并释放 SQLite handle，渲染层不直接管理后端进程。
-- 渲染层项目运行态由 bootstrap 首包和事件流共同驱动，而不是单次整页快照。
+- 渲染层项目运行态由 TS bootstrap 首包和 TS Gateway 适配后的事件流共同驱动，而不是单次整页快照。
 - `ProjectStore` 是渲染层项目运行态最小事实仓库；页面本地筛选、弹窗、交互态不应上提到这里。
 - 校对页不会把 warnings、筛选面板 facets、搜索排序结果等派生事实塞回 `ProjectStore`；这些派生缓存由独立 worker 持有，主线程只同步原始 `project / items / quality` 输入并消费查询结果。
 
@@ -108,7 +108,7 @@ flowchart TD
 | 模块 | 核心职责 | 主要邻接层 | 详细规则所在 |
 | --- | --- | --- | --- |
 | `frontend/src/main/api` | Electron 运行时公开 HTTP / SSE Gateway、响应壳、代理与路由编排 | `frontend/src/renderer`、`frontend/src/main/project`、`frontend/src/main/service`、`frontend/src/main/core`、`api/` | [`API.md`](./API.md) |
-| `frontend/src/main/project` | 项目轻生命周期、项目同步 mutation、公开 bootstrap 运行态编码与 section revision 口径 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/project` | 项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全与 section revision 口径 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `frontend/src/main/service` | 配置 / 模型 / 质量 / 校对同步保存领域服务与 Electron main 运行期路径规则 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`DATA.md`](./DATA.md) |
 | `frontend/src/main/core` | Python Core 内部桥客户端 | `frontend/src/main/api`、`frontend/src/main/project`、`frontend/src/main/service`、`api/` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `api/` | 内部 Python Core HTTP / SSE 契约、错误映射、事件桥、任务与 Python 客户端兼容 | TS Gateway、`api/Client`、`module/*` | [`API.md`](./API.md) |

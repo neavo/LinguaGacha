@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { CoreBridgeClient, ProjectStatePayload } from "../core/core-bridge-client";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
+import { ProjectSessionState } from "./project-session-state";
 
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = [];
@@ -17,13 +18,13 @@ describe("ProjectLifecycleService", () => {
     }
   });
 
-  it("snapshot 只暴露 Python 会话权威的加载态字段", async () => {
+  it("snapshot 只暴露 TS 会话权威的加载态字段", async () => {
     const service = new ProjectLifecycleService(
       create_database(),
-      create_core_bridge({
+      create_core_bridge(),
+      create_session_state({
         loaded: true,
         projectPath: "E:/Project/demo.lg",
-        busy: true,
       }),
     );
 
@@ -45,7 +46,11 @@ describe("ProjectLifecycleService", () => {
     const second_md = write_file(path.join(source_a, "nested", "a.md"));
     const ignored = write_file(path.join(source_a, "ignore.bin"));
     const third_json = write_file(path.join(source_b, "c.json"));
-    const service = new ProjectLifecycleService(create_database(), create_core_bridge());
+    const service = new ProjectLifecycleService(
+      create_database(),
+      create_core_bridge(),
+      create_session_state(),
+    );
 
     const result = service.collect_source_files({
       source_paths: ["", source_a, first_txt, ignored, source_b, source_a],
@@ -75,7 +80,11 @@ describe("ProjectLifecycleService", () => {
       },
       hidden_field: "不会外泄",
     });
-    const service = new ProjectLifecycleService(database, create_core_bridge());
+    const service = new ProjectLifecycleService(
+      database,
+      create_core_bridge(),
+      create_session_state(),
+    );
 
     expect(service.get_project_preview({ path: project_path })).toEqual({
       preview: {
@@ -103,7 +112,11 @@ describe("ProjectLifecycleService", () => {
   });
 
   it("preview 在工程文件不存在时抛出 ENOENT", () => {
-    const service = new ProjectLifecycleService(create_database(), create_core_bridge());
+    const service = new ProjectLifecycleService(
+      create_database(),
+      create_core_bridge(),
+      create_session_state(),
+    );
 
     expect(() =>
       service.get_project_preview({ path: path.join(create_temp_dir(), "missing.lg") }),
@@ -114,11 +127,12 @@ describe("ProjectLifecycleService", () => {
     const calls: string[] = [];
     const project_path = "E:/Project/demo.lg";
     const database = create_database(null, calls);
-    const core_bridge = create_core_bridge(
-      { loaded: true, projectPath: project_path, busy: false },
-      calls,
+    const core_bridge = create_core_bridge(undefined, calls);
+    const service = new ProjectLifecycleService(
+      database,
+      core_bridge,
+      create_session_state({ loaded: true, projectPath: project_path }),
     );
-    const service = new ProjectLifecycleService(database, core_bridge);
 
     await expect(service.unload_project()).resolves.toEqual({
       project: {
@@ -127,7 +141,7 @@ describe("ProjectLifecycleService", () => {
       },
     });
 
-    expect(calls).toEqual(["get_project_state", "unload_project", "closeProject"]);
+    expect(calls).toEqual(["unload_project", "closeProject"]);
     expect(database.execute).toHaveBeenCalledWith({
       name: "closeProject",
       args: { projectPath: project_path },
@@ -138,7 +152,8 @@ describe("ProjectLifecycleService", () => {
     const database = create_database();
     const service = new ProjectLifecycleService(
       database,
-      create_core_bridge({ loaded: false, projectPath: "", busy: false }),
+      create_core_bridge(),
+      create_session_state({ loaded: false, projectPath: "" }),
     );
 
     await service.unload_project();
@@ -184,5 +199,18 @@ describe("ProjectLifecycleService", () => {
         calls.push("unload_project");
       }),
     } as unknown as CoreBridgeClient;
+  }
+
+  function create_session_state(
+    state: { loaded: boolean; projectPath: string } = {
+      loaded: false,
+      projectPath: "",
+    },
+  ): ProjectSessionState {
+    const session_state = new ProjectSessionState();
+    if (state.loaded) {
+      session_state.mark_loaded(state.projectPath);
+    }
+    return session_state;
   }
 });

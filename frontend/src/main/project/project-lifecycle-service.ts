@@ -5,6 +5,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue } from "../database/database-types";
 import type { CoreBridgeClient } from "../core/core-bridge-client";
+import { ProjectSessionState } from "./project-session-state";
 
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([
   ".txt",
@@ -21,19 +22,20 @@ const SUPPORTED_SOURCE_EXTENSIONS = new Set([
 type JsonRecord = Record<string, DatabaseJsonValue | ApiJsonValue | undefined>;
 
 /**
- * 承载已迁移的项目轻生命周期公开接口，状态事实仍通过 Python 内部桥确认。
+ * 承载已迁移的项目轻生命周期公开接口，公开 loaded/path 由 TS 会话状态持有。
  */
 export class ProjectLifecycleService {
   public constructor(
     private readonly database: ProjectDatabase,
     private readonly core_bridge: CoreBridgeClient,
+    private readonly session_state: ProjectSessionState,
   ) {}
 
   /**
-   * 读取当前工程快照；loaded/path 只来自 Python 会话权威。
+   * 读取当前工程快照；公开 loaded/path 只来自 TS 会话权威。
    */
   public async get_project_snapshot(): Promise<Record<string, ApiJsonValue>> {
-    const state = await this.core_bridge.get_project_state();
+    const state = this.session_state.snapshot();
     return {
       project: {
         path: state.projectPath,
@@ -46,8 +48,9 @@ export class ProjectLifecycleService {
    * 经内部桥触发 Python 真卸载，再释放 TS database 缓存句柄。
    */
   public async unload_project(): Promise<Record<string, ApiJsonValue>> {
-    const state = await this.core_bridge.get_project_state();
+    const state = this.session_state.snapshot();
     await this.core_bridge.unload_project();
+    this.session_state.clear();
     if (state.loaded && state.projectPath !== "") {
       this.database.execute({
         name: "closeProject",

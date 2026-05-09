@@ -2,7 +2,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import { JsonTool } from "../../utils/json-tool";
 
 export interface ProjectStatePayload {
-  // loaded 与 projectPath 必须来自 Python 会话权威，TS 写入口只消费快照。
+  // loaded/projectPath 仅用于内部一致性兼容；公开状态由 TS ProjectSessionState 持有。
   loaded: boolean;
   projectPath: string;
   // busy 由 Engine 持有，reset 类同步 mutation 用它避免和后台任务并发写入。
@@ -11,6 +11,11 @@ export interface ProjectStatePayload {
 
 // 任务快照结构由 Python tasks/snapshot 定义，TS bootstrap 只透传当前公开字段。
 export type TaskSnapshotPayload = Record<string, ApiJsonValue>;
+
+export interface ParsedProjectAssetPayload {
+  rel_path: string;
+  items: Record<string, ApiJsonValue>[];
+}
 
 interface CoreBridgeClientOptions {
   // pyCoreBaseUrl 是 Electron main 内部地址，不能进入 preload 或 renderer。
@@ -38,7 +43,7 @@ export class CoreBridgeClient {
   }
 
   /**
-   * 读取 Python Core 当前工程运行态，供 TS 写入口构建 revision 回执。
+   * 读取 Python Core 内部运行态，当前主要用于 busy / 文件互斥等任务守卫。
    */
   public async get_project_state(): Promise<ProjectStatePayload> {
     const data = await this.post_internal("/internal/runtime/project-state", {});
@@ -89,6 +94,33 @@ export class CoreBridgeClient {
       type: change_type,
       payload,
     });
+  }
+
+  /**
+   * 调用受保护文件解析桥；这里只暴露 asset -> parsed item，不承载公开预演业务。
+   */
+  public async parse_project_assets(
+    project_path: string,
+    rel_paths: string[],
+  ): Promise<ParsedProjectAssetPayload[]> {
+    const data = await this.post_internal("/internal/runtime/parse-project-assets", {
+      projectPath: project_path,
+      relPaths: rel_paths,
+    });
+    const files = data["files"];
+    if (!Array.isArray(files)) {
+      return [];
+    }
+    return files
+      .filter((file): file is Record<string, ApiJsonValue> => this.is_json_record(file))
+      .map((file) => ({
+        rel_path: String(file["rel_path"] ?? ""),
+        items: Array.isArray(file["items"])
+          ? file["items"].filter((item): item is Record<string, ApiJsonValue> =>
+              this.is_json_record(item),
+            )
+          : [],
+      }));
   }
 
   /**

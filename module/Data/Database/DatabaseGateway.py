@@ -215,6 +215,19 @@ class DatabaseGateway(Base):
         data = self.execute_operation("getAllMeta", {})
         return data if isinstance(data, dict) else {}
 
+    def bump_runtime_section_revisions(self, sections: list[str]) -> dict[str, int]:
+        # Python 任务只表达哪些 section 变化，公开 revision 规则由 TS database workflow 持有。
+
+        data = self.execute_operation(
+            "bumpRuntimeSectionRevisions",
+            {"sections": sections},
+        )
+        return (
+            {str(section): int(revision) for section, revision in data.items()}
+            if isinstance(data, dict)
+            else {}
+        )
+
     def get_analysis_item_checkpoints(
         self,
         conn: DatabaseTransaction | None = None,

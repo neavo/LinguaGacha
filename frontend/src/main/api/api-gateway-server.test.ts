@@ -153,6 +153,11 @@ describe("ApiGatewayServer", () => {
     cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
+    await fetch(`${started.baseUrl}/api/project/load`, {
+      body: JsonTool.stringifyStrict({ path: lg_path }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
     const snapshot_response = await fetch(`${started.baseUrl}/api/project/snapshot`, {
       body: "{}",
       headers: { "Content-Type": "application/json" },
@@ -192,8 +197,8 @@ describe("ApiGatewayServer", () => {
     expect(source_files_body.data?.source_files).toEqual([path.join(source_dir, "script.txt")]);
     expect(unload_body.data?.project).toEqual({ path: "", loaded: false });
     const py_request_paths = py_server.requests.map((item) => item.path);
-    expect(py_request_paths).toContain("/internal/runtime/project-state");
     expect(py_request_paths).toContain("/internal/runtime/sync");
+    expect(py_request_paths).toContain("/api/project/load");
     expect(py_request_paths).not.toContain("/api/project/snapshot");
     expect(py_request_paths).not.toContain("/api/project/preview");
     expect(py_request_paths).not.toContain("/api/project/source-files");
@@ -296,6 +301,11 @@ describe("ApiGatewayServer", () => {
     });
 
     const started = await gateway.start();
+    await fetch(`${started.baseUrl}/api/project/load`, {
+      body: JsonTool.stringifyStrict({ path: lg_path }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
     const response = await fetch(`${started.baseUrl}/api/project/proofreading/save-item`, {
       body: JsonTool.stringifyStrict({
         items: [{ id: 1, dst: "译文", status: "PROCESSED" }],
@@ -316,9 +326,7 @@ describe("ApiGatewayServer", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
     ]);
-    expect(py_server.requests.map((item) => item.path)).toContain(
-      "/internal/runtime/project-state",
-    );
+    expect(py_server.requests.map((item) => item.path)).toContain("/api/project/load");
     expect(py_server.requests.map((item) => item.path)).toContain("/internal/runtime/sync");
     expect(py_server.requests.map((item) => item.path)).not.toContain(
       "/api/project/proofreading/save-item",
@@ -400,6 +408,11 @@ describe("ApiGatewayServer", () => {
     ]);
 
     const started = await gateway.start();
+    await fetch(`${started.baseUrl}/api/project/load`, {
+      body: JsonTool.stringifyStrict({ path: lg_path }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
     const response = await fetch(`${started.baseUrl}/api/project/bootstrap/stream`);
     const text = await response.text();
 
@@ -410,9 +423,7 @@ describe("ApiGatewayServer", () => {
     expect(text).toContain("event: completed");
     expect(text).toContain('"sectionRevisions"');
     expect(text).toContain("\\ud800");
-    expect(py_server.requests.map((item) => item.path)).toContain(
-      "/internal/runtime/project-state",
-    );
+    expect(py_server.requests.map((item) => item.path)).toContain("/api/project/load");
     expect(py_server.requests.map((item) => item.path)).toContain("/api/tasks/snapshot");
     expect(py_server.requests.map((item) => item.path)).not.toContain(
       "/api/project/bootstrap/stream",
@@ -443,6 +454,40 @@ describe("ApiGatewayServer", () => {
     expect(response.status).toBe(200);
     expect(text).toContain("event: py.event");
     expect(py_server.requests.map((item) => item.path)).toContain("/api/events/stream");
+  });
+
+  it("取消长期事件流时会关闭上游 Python Core 连接", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_abortable_event_py_server();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+
+    const started = await gateway.start();
+    const controller = new AbortController();
+    const response = await fetch(`${started.baseUrl}/api/events/stream`, {
+      signal: controller.signal,
+    });
+    const reader = response.body?.getReader();
+    if (reader === undefined) {
+      throw new Error("事件流响应体为空。");
+    }
+    const chunk = await reader.read();
+
+    controller.abort();
+
+    expect(new TextDecoder().decode(chunk.value)).toContain("event: py.event");
+    await expect(with_timeout(py_server.eventClosed, "上游事件流未关闭。")).resolves.toBeUndefined();
   });
 
   it("通过公开 /api/logs/append 接收 Python 日志提交", async () => {
@@ -740,6 +785,24 @@ describe("ApiGatewayServer", () => {
           );
           return;
         }
+        if (request.url === "/api/project/load") {
+          response.writeHead(200, {
+            "Access-Control-Allow-Origin": "*",
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          response.end(
+            JsonTool.stringifyStrict({
+              ok: true,
+              data: {
+                project: {
+                  path: runtime_project_path ?? "",
+                  loaded: runtime_project_path !== undefined,
+                },
+              },
+            }),
+          );
+          return;
+        }
         if (request.url === "/api/events/stream") {
           response.writeHead(200, {
             "Access-Control-Allow-Origin": "*",
@@ -788,5 +851,72 @@ describe("ApiGatewayServer", () => {
           });
         }),
     };
+  }
+
+  async function start_abortable_event_py_server(): Promise<{
+    baseUrl: string;
+    close: () => Promise<void>;
+    eventClosed: Promise<void>;
+  }> {
+    let resolve_event_closed: (() => void) | null = null;
+    const event_closed = new Promise<void>((resolve) => {
+      resolve_event_closed = resolve;
+    });
+    const server = http.createServer((request, response) => {
+      if (request.url !== "/api/events/stream") {
+        response.writeHead(404).end();
+        return;
+      }
+      response.writeHead(200, {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "text/event-stream; charset=utf-8",
+      });
+      response.write('event: py.event\ndata: {"ok":true}\n\n');
+      request.on("close", () => {
+        resolve_event_closed?.();
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    if (typeof address !== "object" || address === null) {
+      throw new Error("测试服务器未取得端口。");
+    }
+    return {
+      baseUrl: `http://127.0.0.1:${address.port.toString()}`,
+      eventClosed: event_closed,
+      close: () =>
+        new Promise<void>((resolve, reject) => {
+          server.closeAllConnections();
+          server.close((error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        }),
+    };
+  }
+
+  async function with_timeout<T>(promise: Promise<T>, message: string): Promise<T> {
+    let timeout_id: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          timeout_id = setTimeout(() => reject(new Error(message)), 1000);
+        }),
+      ]);
+    } finally {
+      if (timeout_id !== null) {
+        clearTimeout(timeout_id);
+      }
+    }
   }
 });

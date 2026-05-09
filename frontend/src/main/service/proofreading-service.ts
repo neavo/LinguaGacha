@@ -6,6 +6,7 @@ import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
 } from "../project/project-section-revision";
+import { ProjectSessionState } from "../project/project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -31,12 +32,20 @@ export class ProofreadingService {
   // 写入后必须通知 Python 读侧清缓存，避免任务 / event bridge 继续读旧 item。
   private readonly core_bridge: CoreBridgeClient;
 
+  // 校对同步写入口只以 TS 公开会话状态定位当前工程。
+  private readonly session_state: ProjectSessionState;
+
   /**
    * 注入数据库与运行时桥，保证写库和 Python 读侧缓存同步都可被测试替换。
    */
-  public constructor(database: ProjectDatabase, core_bridge: CoreBridgeClient) {
+  public constructor(
+    database: ProjectDatabase,
+    core_bridge: CoreBridgeClient,
+    session_state: ProjectSessionState,
+  ) {
     this.database = database;
     this.core_bridge = core_bridge;
+    this.session_state = session_state;
   }
 
   /**
@@ -105,7 +114,7 @@ export class ProofreadingService {
    * 当前 loaded 工程是校对保存的唯一目标。
    */
   private async require_loaded_project_path(): Promise<string> {
-    const state = await this.core_bridge.get_project_state();
+    const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
       throw new Error("工程未加载");
     }

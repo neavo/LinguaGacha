@@ -5,63 +5,6 @@ from api.Application.EventStreamService import EventStreamService
 from api.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 
 
-class StubRuntimeService:
-    def build_item_records(self, item_ids: list[int]) -> list[dict[str, object]]:
-        return [
-            {
-                "item_id": item_id,
-                "file_path": "chapter01.txt",
-                "src": "原文",
-                "dst": f"译文{item_id}",
-                "status": "DONE",
-            }
-            for item_id in item_ids
-        ]
-
-    def build_quality_block(self) -> dict[str, object]:
-        return {
-            "glossary": {
-                "entries": [{"src": "绿之塔", "dst": "绿塔"}],
-                "enabled": True,
-                "mode": "off",
-                "revision": 4,
-            },
-            "pre_replacement": {
-                "entries": [],
-                "enabled": False,
-                "mode": "off",
-                "revision": 0,
-            },
-            "post_replacement": {
-                "entries": [],
-                "enabled": False,
-                "mode": "off",
-                "revision": 0,
-            },
-            "text_preserve": {
-                "entries": [],
-                "enabled": False,
-                "mode": "off",
-                "revision": 0,
-            },
-        }
-
-    def build_analysis_block(self) -> dict[str, object]:
-        return {
-            "candidate_count": 3,
-            "status_summary": {"done": 3},
-        }
-
-    def get_section_revision(self, stage: str) -> int:
-        if stage == "quality":
-            return 4
-        if stage == "analysis":
-            return 8
-        if stage == "task":
-            return 6
-        return 0
-
-
 def build_task_snapshot(task_type: str) -> dict[str, object]:
     return {
         "task_type": task_type,
@@ -172,7 +115,6 @@ def test_stream_to_handler_swallow_connection_aborted_error() -> None:
 def test_publish_event_supports_project_patch_bridge() -> None:
     service = EventStreamService(
         event_bridge=ProjectPatchEventBridge(
-            runtime_service=StubRuntimeService(),
             task_snapshot_builder=build_task_snapshot,
         )
     )
@@ -191,13 +133,12 @@ def test_publish_event_supports_project_patch_bridge() -> None:
     assert envelope.topic == "project.patch"
     assert envelope.data["source"] == "task"
     assert envelope.data["updatedSections"] == ["items", "task"]
-    assert envelope.data["patch"][0]["items"][0]["item_id"] == 1
+    assert envelope.data["patch"][0]["item_ids"] == [1, 2]
 
 
 def test_publish_project_runtime_patch_supports_direct_patch_payload() -> None:
     service = EventStreamService(
         event_bridge=ProjectPatchEventBridge(
-            runtime_service=StubRuntimeService(),
             task_snapshot_builder=build_task_snapshot,
         )
     )
@@ -228,7 +169,6 @@ def test_publish_project_runtime_patch_supports_direct_patch_payload() -> None:
 def test_publish_unmapped_event_with_patch_bridge_is_ignored() -> None:
     service = EventStreamService(
         event_bridge=ProjectPatchEventBridge(
-            runtime_service=StubRuntimeService(),
             task_snapshot_builder=build_task_snapshot,
         )
     )

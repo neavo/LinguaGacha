@@ -21,9 +21,6 @@ from module.Data.Core.RuleService import RuleService
 from module.Data.Project.ExportPathService import ExportPathService
 from module.Data.Project.ProjectFileService import ProjectFileService
 from module.Data.Project.ProjectLifecycleService import ProjectLifecycleService
-from module.Data.Project.ProjectRuntimeRevisionService import (
-    ProjectRuntimeRevisionService,
-)
 from module.Data.Database.DatabaseContracts import DatabaseLegacyRuleType
 from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Data.Quality.QualityRuleService import QualityRuleService
@@ -95,8 +92,6 @@ class DataManager(Base):
             self.session,
             self.project_service.SUPPORTED_EXTENSIONS,
         )
-        self.runtime_revision_service = ProjectRuntimeRevisionService(self.meta_service)
-
         self.subscribe(Base.Event.TRANSLATION_TASK, self.on_translation_activity)
 
     @classmethod
@@ -165,24 +160,29 @@ class DataManager(Base):
     def set_meta(self, key: str, value: Any) -> None:
         self.meta_service.set_meta(key, value)
 
-    def assert_project_runtime_section_revision(
+    def assert_task_runtime_section_revision(
         self,
         section: str,
         expected_revision: int,
     ) -> int:
-        return self.runtime_revision_service.assert_revision(
-            section,
-            expected_revision,
+        current_revision = int(
+            self.get_meta(f"project_runtime_revision.{section}", 0) or 0
         )
+        if current_revision != expected_revision:
+            raise RuntimeError(
+                f"运行态 revision 冲突：section={section} 当前={current_revision} 期望={expected_revision}"
+            )
+        return current_revision
 
-    def bump_project_runtime_section_revision(self, section: str) -> int:
-        return self.runtime_revision_service.bump_revision(section)
-
-    def bump_project_runtime_section_revisions(
+    def bump_task_runtime_section_revisions(
         self,
         sections: tuple[str, ...] | list[str],
     ) -> dict[str, int]:
-        return self.runtime_revision_service.bump_revisions(sections)
+        with self.state_lock:
+            db = self.session.db
+        if db is None:
+            return {}
+        return db.bump_runtime_section_revisions([str(section) for section in sections])
 
     @staticmethod
     def normalize_item_status_value(status: Any) -> str:
@@ -272,9 +272,6 @@ class DataManager(Base):
     def reset_failed_analysis_checkpoints(self) -> int:
         return self.analysis_service.reset_failed_analysis_checkpoints()
 
-    def preview_analysis_reset_failed(self) -> dict[str, Any]:
-        return self.analysis_service.preview_failed_reset_status_summary()
-
     def get_analysis_status_summary(self) -> dict[str, Any]:
         return self.analysis_service.get_analysis_status_summary()
 
@@ -309,27 +306,6 @@ class DataManager(Base):
             checkpoints,
             progress_snapshot=progress_snapshot,
         )
-
-    def preview_translation_reset_all(
-        self,
-        config: Config,
-    ) -> list[dict[str, Any]]:
-        if not self.is_loaded():
-            raise RuntimeError("工程未加载")
-
-        items = self.translation_item_service.get_items_for_translation(
-            config,
-            Base.TranslationMode.RESET,
-        )
-        preview_ids = self.item_service.preview_replace_all_item_ids(items)
-
-        preview_payloads: list[dict[str, Any]] = []
-        for item, item_id in zip(items, preview_ids):
-            payload = item.to_dict()
-            payload["id"] = int(item_id)
-            preview_payloads.append(payload)
-
-        return preview_payloads
 
     def get_rules_cached(self, rule_type: DatabaseRuleType) -> list[dict[str, Any]]:
         return self.quality_rule_service.get_rules_cached(rule_type)
@@ -636,18 +612,13 @@ class DataManager(Base):
             reason="translation_batch_update",
         )
         if change.item_ids:
-            from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
-
-            runtime_service = ProjectRuntimeService(self)
             self.emit_project_runtime_patch(
                 reason=change.reason,
                 updated_sections=("items",),
                 patch=[
                     {
                         "op": "merge_items",
-                        "items": runtime_service.build_item_records(
-                            list(change.item_ids)
-                        ),
+                        "item_ids": list(change.item_ids),
                     }
                 ],
             )
@@ -716,12 +687,6 @@ class DataManager(Base):
             "patch": patch,
         }
 
-        runtime_service = None
-        if section_revisions is None or project_revision is None:
-            from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
-
-            runtime_service = ProjectRuntimeService(self)
-
         if section_revisions:
             normalized_section_revisions = {
                 str(section): int(revision)
@@ -730,19 +695,9 @@ class DataManager(Base):
             }
             if normalized_section_revisions:
                 payload["sectionRevisions"] = normalized_section_revisions
-        elif runtime_service is not None:
-            payload["sectionRevisions"] = {
-                section: int(runtime_service.get_section_revision(section) or 0)
-                for section in normalized_sections
-            }
 
         if project_revision is not None:
             payload["projectRevision"] = int(project_revision)
-        elif runtime_service is not None:
-            payload["projectRevision"] = max(
-                runtime_service.build_section_revisions().values(),
-                default=0,
-            )
 
         self.emit(Base.Event.PROJECT_RUNTIME_PATCH, payload)
 

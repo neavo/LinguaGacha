@@ -114,7 +114,7 @@ flowchart TD
 | `proofreading_change_signal` | 当前稳定发出 `full` / `delta` / `noop`，并携带 `updated_sections` 与 `item_ids` | 校对页 |
 
 补充说明：
-- `project.changed`、`task.*`、`settings.changed` 与 `project.patch` 都由 `DesktopRuntimeContext` 收口，再决定是否刷新页面派生状态。
+- `project.changed`、`task.*`、`settings.changed` 与 TS Gateway 补全后的 `project.patch` 都由 `DesktopRuntimeContext` 收口，再决定是否刷新页面派生状态。
 - 若 `project.patch` 载荷不合法，当前实现会回退为 `refresh_project_runtime()`，而不是让页面直接猜测修复策略。
 - 工作台与校对页在工程切换后都会先清空本地快照，再等待各自的 change signal 驱动首次有效刷新；不会在空 `ProjectStore` 上做 eager refresh。
 - 实时 UI 刷新统一由 `app/ui-runtime/LiveRefreshScheduler` 在入站侧合帧，频率由 `APP_LIVE_REFRESH_INTERVAL_MS` 控制；服务端 `project.patch`、任务进度、日志流与工作台任务波形共享这条节奏，本地同步 mutation、项目切换、非法 patch fallback 与任务终态仍走即时路径。
@@ -123,7 +123,7 @@ flowchart TD
 - 校对页只把 `project / items / quality` 视为后台派生真实输入；`prompts`、`analysis` 单独变化不会触发校对缓存失效，`proofreading / task` 仅在没有 item 载荷时发 `noop`。
 - 校对页把 `ProjectStore` 原始状态同步到独立 worker cache：`hydrate_full` 负责项目级全量同步，`apply_item_delta` 只重算变更条目，`build_list_view` 生成 `view_id` 与 worker 内的有序 row id 索引，`read_list_window` 只回传当前表格窗口 rows，`read_row_ids_range` / `read_items_by_row_ids` 供跨窗口选择、批量操作和编辑弹窗按需取数；warnings、默认 filters、筛选 facets、排序结果与当前视图索引都由 worker 持有，主线程只保留窗口 rows、选区、游标、弹窗等轻状态。
 - 工作台页收到 `merge_items` 合并后的 delta 时优先更新本地增量缓存；首次 bootstrap、项目 / 文件替换、分析摘要缺失或结构异常时回退全量重建。校对页同窗口 `full` 覆盖 `delta`，纯 `noop` 不触发列表与筛选面板查询。
-- 工作台、预过滤、翻译重置和校对 mutation planner 的输出边界是条目事实、`translation_extras`、分析 / 预过滤载荷、项目设置镜像和期望 revision；工程任务态由 `task` 运行态和事件流承接。
+- 工作台、预过滤、翻译重置和校对 mutation planner 的输出边界是条目事实、`translation_extras`、分析 / 预过滤载荷、项目设置镜像和期望 revision；工程任务态由 `task` 运行态和 TS Gateway 适配后的事件流承接。
 - 新建工程先调用 `create-preview` 获取未落盘草稿，由 `project/prefilter/prefilter-runner.ts` 调 worker 完成预过滤，再用 `create-commit` 写入 `.lg` 并加载；打开工程先调用 `open-preview`，在未 loaded 前完成 `settings-alignment/apply`，最后再进入 `/api/project/load`。
 - 实验室页的 `mtool_optimizer_enable` 与 `skip_duplicate_source_text_enable` 属于会改变预过滤结果的应用设置；保存后必须走同一条 project prefilter mutation 链路，把项目设置镜像与预过滤结果一起对齐到 `.lg`。
 - 校对页状态筛选只展示有效 item 状态；重译中的行级 spinner 由 `task_snapshot.task_type === "retranslate"` 与 `task_snapshot.retranslating_item_ids` 派生，页面本地只保留选区、弹窗和筛选等交互态。

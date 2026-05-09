@@ -124,6 +124,11 @@ export class ProjectDatabase {
         return null;
       case "getAllMeta":
         return this.get_all_meta(this.require_string(args, "projectPath"));
+      case "bumpRuntimeSectionRevisions":
+        return this.bump_runtime_section_revisions(
+          this.require_string(args, "projectPath"),
+          this.require_string_array(args, "sections"),
+        );
       case "getAnalysisItemCheckpoints":
         return this.get_analysis_item_checkpoints(this.require_string(args, "projectPath"));
       case "upsertAnalysisItemCheckpoints":
@@ -427,6 +432,43 @@ export class ProjectDatabase {
       result[row_text(row, "key")] = json_parse(row["value"]);
     }
     return result;
+  }
+
+  /**
+   * 由 Python 任务链路调用的窄 revision 推进入口；公开读取和 ack 仍由 TS 项目域计算。
+   */
+  private bump_runtime_section_revisions(
+    project_path: string,
+    sections: string[],
+  ): DatabaseJsonValue {
+    const db = this.open_project(project_path);
+    const supported_sections = new Set(["files", "items", "analysis"]);
+    const next_revisions: Record<string, number> = {};
+    for (const section of sections) {
+      if (!supported_sections.has(section) || section in next_revisions) {
+        continue;
+      }
+      const key = `project_runtime_revision.${section}`;
+      const current = this.normalize_revision_value(this.get_meta_from_db(db, key, 0));
+      const next = current + 1;
+      this.upsert_meta_entries_with_db(db, { [key]: next });
+      next_revisions[section] = next;
+    }
+    return next_revisions;
+  }
+
+  private get_meta_from_db(
+    db: DatabaseSync,
+    key: string,
+    default_value: DatabaseJsonValue,
+  ): DatabaseJsonValue {
+    const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
+    return row === undefined ? default_value : json_parse(row["value"]);
+  }
+
+  private normalize_revision_value(value: DatabaseJsonValue): number {
+    const revision = Number(value ?? 0);
+    return Number.isFinite(revision) && revision > 0 ? Math.trunc(revision) : 0;
   }
 
   /**

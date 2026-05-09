@@ -2,12 +2,12 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import ThreadingHTTPServer
+from typing import Any
 
 from api.Application.EventStreamService import EventStreamService
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.ModelProbeAppService import ModelProbeAppService
 from api.Application.ProjectAppService import ProjectAppService
-from api.Application.ProjectBootstrapAppService import ProjectBootstrapAppService
 from api.Application.RuntimeBridgeAppService import RuntimeBridgeAppService
 from api.Application.TaskAppService import TaskAppService
 from api.Application.WorkbenchAppService import WorkbenchAppService
@@ -20,8 +20,6 @@ from api.Server.Routes.TaskRoutes import TaskRoutes
 from api.Server.Routes.ModelProbeRoutes import ModelProbeRoutes
 from api.Server.Routes.ProjectRoutes import ProjectRoutes
 from api.Server.Routes.RuntimeBridgeRoutes import RuntimeBridgeRoutes
-from module.Data.DataManager import DataManager
-from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 
 
 class ServerBootstrap:
@@ -58,15 +56,12 @@ class ServerBootstrap:
         task_app_service = TaskAppService()
         workbench_app_service = WorkbenchAppService()
         model_probe_app_service = ModelProbeAppService()
-        project_bootstrap_app_service = ProjectBootstrapAppService(
-            ProjectRuntimeService(DataManager.get())
-        )
         return cls.start_for_test(
             project_app_service=project_app_service,
             task_app_service=task_app_service,
             workbench_app_service=workbench_app_service,
             model_probe_app_service=model_probe_app_service,
-            project_bootstrap_app_service=project_bootstrap_app_service,
+            project_bootstrap_app_service=None,
             core_lifecycle_app_service=core_lifecycle_app_service,
             runtime_bridge_app_service=runtime_bridge_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
@@ -81,7 +76,7 @@ class ServerBootstrap:
         task_app_service: TaskAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
         model_probe_app_service: ModelProbeAppService | None = None,
-        project_bootstrap_app_service: ProjectBootstrapAppService | None = None,
+        project_bootstrap_app_service: Any | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
         runtime_bridge_app_service: RuntimeBridgeAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
@@ -89,11 +84,6 @@ class ServerBootstrap:
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
         """为测试启动独立服务，返回访问地址与关闭函数。"""
 
-        runtime_service = (
-            getattr(project_bootstrap_app_service, "runtime_service", None)
-            if project_bootstrap_app_service is not None
-            else None
-        )
         task_snapshot_builder = None
         if task_app_service is not None:
             task_snapshot_builder = getattr(
@@ -102,7 +92,6 @@ class ServerBootstrap:
 
         event_stream_service = EventStreamService(
             event_bridge=ProjectPatchEventBridge(
-                runtime_service=runtime_service,
                 task_snapshot_builder=task_snapshot_builder,
             )
         )
@@ -157,7 +146,7 @@ class ServerBootstrap:
         task_app_service: TaskAppService | None,
         workbench_app_service: WorkbenchAppService | None,
         model_probe_app_service: ModelProbeAppService | None,
-        project_bootstrap_app_service: ProjectBootstrapAppService | None,
+        project_bootstrap_app_service: Any | None,
         core_lifecycle_app_service: CoreLifecycleAppService | None,
         runtime_bridge_app_service: RuntimeBridgeAppService | None,
         event_stream_service: EventStreamService,
@@ -196,7 +185,7 @@ class ServerBootstrap:
         *,
         project_app_service: ProjectAppService | None = None,
         workbench_app_service: WorkbenchAppService | None = None,
-        project_bootstrap_app_service: ProjectBootstrapAppService | None = None,
+        project_bootstrap_app_service: Any | None = None,
         task_app_service: TaskAppService | None = None,
         model_probe_app_service: ModelProbeAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,

@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient, type ProjectStatePayload } from "../core/core-bridge-client";
+import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import {
@@ -8,6 +8,7 @@ import {
   get_runtime_section_revision,
   type RuntimeSection,
 } from "./project-section-revision";
+import { ProjectSessionState } from "./project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -128,19 +129,27 @@ export class ProjectRuntimeEncoder {
   // task block 仍借用 Python Engine 权威，避免 bootstrap 迁移扩大到任务生命周期。
   private readonly core_bridge: CoreBridgeClient;
 
+  // 公开 project block 由 TS 会话状态持有，避免 bootstrap 回读 Python DataManager 缓存。
+  private readonly session_state: ProjectSessionState;
+
   /**
    * 注入 database workflow 与 Python 任务桥，保持读取边界可测试。
    */
-  public constructor(database: ProjectDatabase, core_bridge: CoreBridgeClient) {
+  public constructor(
+    database: ProjectDatabase,
+    core_bridge: CoreBridgeClient,
+    session_state: ProjectSessionState,
+  ) {
     this.database = database;
     this.core_bridge = core_bridge;
+    this.session_state = session_state;
   }
 
   /**
    * 一次性构建完整 bootstrap 事件序列，供 Gateway 在写流前完成失败判定。
    */
   public async build_bootstrap_events(): Promise<BootstrapSseEvent[]> {
-    const project_state = await this.core_bridge.get_project_state();
+    const project_state = this.session_state.snapshot();
     const project_path = project_state.loaded ? project_state.projectPath : "";
     const meta = project_path === "" ? {} : this.get_all_meta(project_path);
     const items_snapshot =
@@ -195,7 +204,10 @@ export class ProjectRuntimeEncoder {
     return build_project_mutation_ack_from_meta(this.get_all_meta(project_path), updated_sections);
   }
 
-  private build_project_block(project_state: ProjectStatePayload): MutableJsonRecord {
+  private build_project_block(project_state: {
+    loaded: boolean;
+    projectPath: string;
+  }): MutableJsonRecord {
     return {
       project: {
         path: project_state.projectPath,

@@ -355,7 +355,7 @@ class TaskAppService:
         if "items" in expected_section_revisions:
             assert_items_revision = getattr(
                 self.data_manager,
-                "assert_project_runtime_section_revision",
+                "assert_task_runtime_section_revision",
                 None,
             )
             if callable(assert_items_revision):

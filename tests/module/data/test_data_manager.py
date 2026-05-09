@@ -9,7 +9,6 @@ import pytest
 import module.Data.DataManager as data_manager_module
 from base.Base import Base
 from module.Data.DataManager import DataManager
-from module.Data.Core.Item import Item
 from module.Data.Database.DatabaseContracts import DatabaseRuleType
 from module.Localizer.Localizer import Localizer
 
@@ -182,35 +181,6 @@ def test_apply_translation_batch_update_emits_items_patch_for_project_runtime(
     dm, emitted_events = build_data_manager(monkeypatch)
     dm.update_batch = MagicMock()
 
-    class FakeRuntimeService:
-        def __init__(self, data_manager: DataManager) -> None:
-            self.data_manager = data_manager
-
-        def build_item_records(self, item_ids: list[int]) -> list[dict[str, object]]:
-            assert self.data_manager is dm
-            return [
-                {
-                    "item_id": item_id,
-                    "file_path": "script/a.txt",
-                    "src": "原文",
-                    "dst": "译文",
-                    "status": "DONE",
-                }
-                for item_id in item_ids
-            ]
-
-        def get_section_revision(self, section: str) -> int:
-            assert section == "items"
-            return 3
-
-        def build_section_revisions(self) -> dict[str, int]:
-            return {"items": 3}
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectRuntimeService.ProjectRuntimeService",
-        FakeRuntimeService,
-    )
-
     change = dm.apply_translation_batch_update(
         [
             {
@@ -229,20 +199,10 @@ def test_apply_translation_batch_update_emits_items_patch_for_project_runtime(
             {
                 "source": "translation_batch_update",
                 "updatedSections": ["items"],
-                "sectionRevisions": {"items": 3},
-                "projectRevision": 3,
                 "patch": [
                     {
                         "op": "merge_items",
-                        "items": [
-                            {
-                                "item_id": 7,
-                                "file_path": "script/a.txt",
-                                "src": "原文",
-                                "dst": "译文",
-                                "status": "DONE",
-                            }
-                        ],
+                        "item_ids": [7],
                     }
                 ],
             },
@@ -280,21 +240,3 @@ def test_create_project_logs_when_presets_loaded(
         Localizer.get = original  # type: ignore[assignment]
 
     logger.info.assert_called_once_with("已加载 术语表")
-
-
-def test_preview_translation_reset_all_assigns_preview_ids(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    dm, _events = build_data_manager(monkeypatch)
-    parsed_items = [Item(src="A"), Item(src="B")]
-    dm.translation_item_service = SimpleNamespace(
-        get_items_for_translation=MagicMock(return_value=parsed_items)
-    )
-    dm.item_service = SimpleNamespace(
-        preview_replace_all_item_ids=MagicMock(return_value=[9, 10])
-    )
-
-    preview_items = dm.preview_translation_reset_all(SimpleNamespace())
-
-    assert [item["id"] for item in preview_items] == [9, 10]
-    assert [item["src"] for item in preview_items] == ["A", "B"]

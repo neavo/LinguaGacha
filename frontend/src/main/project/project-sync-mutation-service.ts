@@ -8,6 +8,7 @@ import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
 } from "./project-section-revision";
+import { ProjectSessionState } from "./project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -33,12 +34,20 @@ export class ProjectSyncMutationService {
   // Python Core 仍持有忙碌态和文件操作锁，TS 写入口必须通过桥保持互斥。
   private readonly core_bridge: CoreBridgeClient;
 
+  // 当前公开工程路径由 TS Gateway 会话状态提供，避免同步 mutation 回读 Py 缓存。
+  private readonly session_state: ProjectSessionState;
+
   /**
    * 注入 database 与 Python runtime bridge，保持写库和缓存同步边界可测试。
    */
-  public constructor(database: ProjectDatabase, core_bridge: CoreBridgeClient) {
+  public constructor(
+    database: ProjectDatabase,
+    core_bridge: CoreBridgeClient,
+    session_state: ProjectSessionState,
+  ) {
     this.database = database;
     this.core_bridge = core_bridge;
+    this.session_state = session_state;
   }
 
   /**
@@ -373,7 +382,7 @@ export class ProjectSyncMutationService {
    * 当前 loaded 工程是大多数 P2 mutation 的唯一目标。
    */
   private async require_loaded_project_path(): Promise<string> {
-    const state = await this.core_bridge.get_project_state();
+    const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
       throw new Error("工程未加载");
     }
@@ -384,11 +393,12 @@ export class ProjectSyncMutationService {
    * reset 类同步 mutation 必须避开后台任务，保持与旧 Python 写入口一致。
    */
   private async require_idle_project_path(): Promise<string> {
-    const state = await this.core_bridge.get_project_state();
+    const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
       throw new Error("工程未加载");
     }
-    if (state.busy) {
+    const guard_state = await this.core_bridge.get_project_state();
+    if (guard_state.busy) {
       throw new Error("任务正在执行中 …");
     }
     return state.projectPath;

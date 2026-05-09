@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectStatePayload } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
+import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
 
 let temp_dir = "";
@@ -39,21 +40,25 @@ function create_service(): {
   bridge: FakeCoreBridge;
   database: ProjectDatabase;
   service: ProofreadingService;
+  session_state: ProjectSessionState;
   lg_path: string;
 } {
   const database = new ProjectDatabase();
   cleanup_databases.push(database);
   const bridge = new FakeCoreBridge();
+  const session_state = new ProjectSessionState();
   const lg_path = project_path("proofreading.lg");
   database.execute({
     name: "createProject",
     args: { projectPath: lg_path, name: "proofreading" },
   });
   bridge.state.projectPath = lg_path;
+  session_state.mark_loaded(lg_path);
   return {
     bridge,
     database,
-    service: new ProofreadingService(database, bridge as never),
+    service: new ProofreadingService(database, bridge as never, session_state),
+    session_state,
     lg_path,
   };
 }
@@ -300,8 +305,8 @@ describe("ProofreadingService", () => {
   });
 
   it("工程未加载时拒绝校对保存", async () => {
-    const { bridge, service } = create_service();
-    bridge.state = { loaded: false, projectPath: "", busy: false };
+    const { bridge, service, session_state } = create_service();
+    session_state.clear();
 
     await expect(service.save_item({ items: [] })).rejects.toThrow("工程未加载");
     expect(bridge.sync_calls).toEqual([]);

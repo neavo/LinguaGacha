@@ -1,6 +1,5 @@
 from contextlib import contextmanager
 from threading import RLock
-from types import SimpleNamespace
 
 import pytest
 
@@ -37,7 +36,7 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
 
         self.meta[key] = value
 
-    def assert_project_runtime_section_revision(
+    def assert_task_runtime_section_revision(
         self,
         section: str,
         expected_revision: int,
@@ -88,7 +87,7 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
             },
         }
 
-    def bump_project_runtime_section_revisions(
+    def bump_task_runtime_section_revisions(
         self,
         sections: tuple[str, ...] | list[str],
     ) -> dict[str, int]:
@@ -103,83 +102,6 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
         return {
             section: self.runtime_section_revisions[section]
             for section in normalized_sections
-        }
-
-
-class _FakeProjectManagerForResetMutations:
-    """提供重置 mutation 测试替身，集中记录调用载荷和 revision 回执。"""
-
-    def __init__(self) -> None:
-        """初始化 _FakeProjectManagerForResetMutations 依赖和状态，保持对象写入口明确。"""
-
-        self.loaded = True
-        self.project_path = "E:/Project/LinguaGacha/output/demo.lg"
-        self.preview_translation_items = [
-            {
-                "id": 11,
-                "src": "原文 A",
-                "dst": "",
-                "name_src": "Alice",
-                "name_dst": None,
-                "extra_field": "",
-                "tag": "",
-                "row": 1,
-                "file_type": "TXT",
-                "file_path": "script/a.txt",
-                "text_type": "NONE",
-                "status": "NONE",
-                "retry_count": 0,
-            }
-        ]
-        self.preview_analysis_status_summary = {
-            "total_line": 5,
-            "processed_line": 3,
-            "error_line": 0,
-            "line": 3,
-        }
-        self.preview_translation_reset_all_calls: list[object] = []
-        self.preview_analysis_reset_failed_calls: int = 0
-        self.runtime_section_revisions = {
-            "items": 5,
-            "analysis": 7,
-        }
-
-    def is_loaded(self) -> bool:
-        """返回测试加载态，驱动服务分支判断。"""
-
-        return self.loaded
-
-    def get_lg_path(self) -> str:
-        """返回测试工程路径，避免测试触碰真实文件。"""
-
-        return self.project_path
-
-    def preview_translation_reset_all(self, config: object) -> list[dict[str, object]]:
-        """返回翻译重置预览，模拟项目层预演结果。"""
-
-        self.preview_translation_reset_all_calls.append(config)
-        return [dict(item) for item in self.preview_translation_items]
-
-    def preview_analysis_reset_failed(self) -> dict[str, int]:
-        """返回失败项分析重置预览，模拟项目层筛选结果。"""
-
-        self.preview_analysis_reset_failed_calls += 1
-        return dict(self.preview_analysis_status_summary)
-
-    def build_project_mutation_ack(
-        self,
-        updated_sections: tuple[str, ...] | list[str],
-    ) -> dict[str, object]:
-        """构建测试 mutation ack，避免测试依赖真实 DataManager。"""
-
-        section_revisions = {
-            str(section): self.runtime_section_revisions[str(section)]
-            for section in updated_sections
-        }
-        return {
-            "accepted": True,
-            "projectRevision": max(section_revisions.values(), default=0),
-            "sectionRevisions": section_revisions,
         }
 
 
@@ -376,36 +298,6 @@ def test_open_project_alignment_preview_does_not_load_project(
     ]
     assert result["preview"]["action"] == "settings_only"
     assert fake_project_manager.load_calls == []
-
-
-def test_preview_translation_reset_returns_full_preview_items() -> None:
-    fake_project_manager = _FakeProjectManagerForResetMutations()
-    fake_config = object()
-    project_app_service = ProjectAppService(
-        fake_project_manager,
-        engine=SimpleNamespace(is_busy=lambda: False),
-        config_loader=lambda: fake_config,
-    )
-
-    result = project_app_service.preview_translation_reset({"mode": "all"})
-
-    assert fake_project_manager.preview_translation_reset_all_calls == [fake_config]
-    assert result == {"items": fake_project_manager.preview_translation_items}
-
-
-def test_preview_analysis_reset_returns_status_summary() -> None:
-    fake_project_manager = _FakeProjectManagerForResetMutations()
-    project_app_service = ProjectAppService(
-        fake_project_manager,
-        engine=SimpleNamespace(is_busy=lambda: False),
-    )
-
-    result = project_app_service.preview_analysis_reset({"mode": "failed"})
-
-    assert fake_project_manager.preview_analysis_reset_failed_calls == 1
-    assert result == {
-        "status_summary": fake_project_manager.preview_analysis_status_summary
-    }
 
 
 def test_export_converted_translation_uses_converted_snapshot_without_mutating_project() -> (

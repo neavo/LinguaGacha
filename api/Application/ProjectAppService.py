@@ -3,7 +3,6 @@ from typing import Any
 from module.Config import Config
 from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
-from module.Engine.Engine import Engine
 from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.Data.Translation.TranslationExportItemService import (
@@ -18,7 +17,6 @@ class ProjectAppService:
     def __init__(
         self,
         project_manager: Any | None = None,
-        engine: Any | None = None,
         config_loader: Any | None = None,
         file_manager_factory: Any | None = None,
     ) -> None:
@@ -27,7 +25,6 @@ class ProjectAppService:
         self.project_manager = (
             project_manager if project_manager is not None else DataManager.get()
         )
-        self.engine = engine if engine is not None else Engine.get()
         self.config_loader = (
             config_loader if config_loader is not None else lambda: Config().load()
         )
@@ -131,30 +128,6 @@ class ProjectAppService:
             raise RuntimeError(Localizer.get().export_translation_failed)
         return {"accepted": True, "output_path": str(output_path)}
 
-    def preview_translation_reset(
-        self,
-        request: dict[str, Any],
-    ) -> dict[str, object]:
-        """构建翻译重置预览，避免预演阶段改动项目事实。"""
-
-        mode = str(request.get("mode", "") or "").lower()
-        if mode != "all":
-            raise ValueError("translation reset preview 仅支持 mode=all")
-
-        self.ensure_translation_mutation_ready()
-        items = self.project_manager.preview_translation_reset_all(self.config_loader())
-        return {"items": [dict(item) for item in items]}
-
-    def preview_analysis_reset(self, request: dict[str, Any]) -> dict[str, object]:
-        """构建分析重置预览，避免预演阶段改动分析事实。"""
-
-        mode = str(request.get("mode", "") or "").lower()
-        if mode != "failed":
-            raise ValueError("analysis reset preview 仅支持 mode=failed")
-
-        self.ensure_analysis_mutation_ready()
-        return {"status_summary": self.project_manager.preview_analysis_reset_failed()}
-
     def build_project_snapshot(self, fallback_path: str = "") -> dict[str, object]:
         """所有工程类响应都通过这里生成，保持字段来源单一。"""
 
@@ -218,27 +191,6 @@ class ProjectAppService:
         if isinstance(value, list):
             return [str(name) for name in value]
         return str(value)
-
-    def ensure_analysis_mutation_ready(self) -> str:
-        """分析 reset preview/apply 共用的前置校验。"""
-
-        if bool(getattr(self.engine, "is_busy", lambda: False)()):
-            raise ValueError(Localizer.get().task_running)
-
-        is_loaded = getattr(self.project_manager, "is_loaded", None)
-        get_lg_path = getattr(self.project_manager, "get_lg_path", None)
-        if not callable(is_loaded) or not callable(get_lg_path) or not is_loaded():
-            raise ValueError(Localizer.get().alert_project_not_loaded)
-
-        lg_path = str(get_lg_path() or "")
-        if lg_path == "":
-            raise ValueError(Localizer.get().alert_project_not_loaded)
-        return lg_path
-
-    def ensure_translation_mutation_ready(self) -> str:
-        """翻译 reset preview/apply 共用的前置校验。"""
-
-        return self.ensure_analysis_mutation_ready()
 
     def normalize_dict_payload(self, value: Any) -> dict[str, Any]:
         """把未知载荷收窄为字典，防止调用方直接信任请求体。"""

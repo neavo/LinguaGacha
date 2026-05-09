@@ -8,7 +8,6 @@ from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
-from module.Data.Project.ProjectRuntimeService import ProjectRuntimeService
 from module.Data.Proofreading.ProofreadingRevisionService import (
     ProofreadingRevisionService,
 )
@@ -124,7 +123,6 @@ class RetranslateTask(Base):
         self.task_limiter: TaskLimiter | None = None
         self.quality_snapshot: QualityRuleSnapshot | None = None
         self.revision_service = ProofreadingRevisionService(self.dm)
-        self.runtime_service = ProjectRuntimeService(self.dm)
         self.subscribe(
             Base.Event.RETRANSLATE_TASK,
             self.retranslate_run_event,
@@ -162,7 +160,6 @@ class RetranslateTask(Base):
     def start(self, data: dict[str, Any]) -> None:
         def prepare() -> bool:
             self.dm = DataManager.get()
-            self.runtime_service = ProjectRuntimeService(self.dm)
             self.revision_service = ProofreadingRevisionService(self.dm)
             self.config = Config().load()
 
@@ -265,7 +262,7 @@ class RetranslateTask(Base):
                     "translation_extras": translation_extras,
                 },
             )
-            self.dm.bump_project_runtime_section_revisions(("items",))
+            self.dm.bump_task_runtime_section_revisions(("items",))
             self.revision_service.bump_revision(self.VIEW_REVISION_SCOPE)
 
         changed_item_ids = [
@@ -334,7 +331,6 @@ class RetranslateTask(Base):
         }
 
     def emit_commit_patch(self, changed_item_ids: list[int]) -> None:
-        runtime_view_block = self.runtime_service.build_proofreading_block()
         updated_sections = ("items", "proofreading", "task")
         self.dm.emit_project_runtime_patch(
             reason=self.RETRANSLATE_REASON,
@@ -342,25 +338,16 @@ class RetranslateTask(Base):
             patch=[
                 {
                     "op": "merge_items",
-                    "items": self.runtime_service.build_item_records(changed_item_ids),
+                    "item_ids": changed_item_ids,
                 },
                 {
                     "op": "replace_proofreading",
-                    "proofreading": runtime_view_block,
                 },
                 {
                     "op": "replace_task",
                     "task": self.build_task_block(),
                 },
             ],
-            section_revisions={
-                section: self.runtime_service.get_section_revision(section)
-                for section in updated_sections
-            },
-            project_revision=max(
-                self.runtime_service.build_section_revisions().values(),
-                default=0,
-            ),
         )
 
     def emit_final_task_patch(self) -> None:

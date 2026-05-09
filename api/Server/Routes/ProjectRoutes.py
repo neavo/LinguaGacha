@@ -10,8 +10,6 @@ class ProjectRoutes:
     CREATE_PREVIEW_PATH: str = ProjectApiPaths.CREATE_PREVIEW_PATH
     CREATE_COMMIT_PATH: str = ProjectApiPaths.CREATE_COMMIT_PATH
     OPEN_PREVIEW_PATH: str = ProjectApiPaths.OPEN_PREVIEW_PATH
-    TRANSLATION_RESET_PREVIEW_PATH: str = ProjectApiPaths.TRANSLATION_RESET_PREVIEW_PATH
-    ANALYSIS_RESET_PREVIEW_PATH: str = ProjectApiPaths.ANALYSIS_RESET_PREVIEW_PATH
     EXPORT_CONVERTED_TRANSLATION_PATH: str = (
         ProjectApiPaths.EXPORT_CONVERTED_TRANSLATION_PATH
     )
@@ -58,22 +56,6 @@ class ProjectRoutes:
                     data=project_app_service.get_open_project_alignment_preview(
                         request
                     ),
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.TRANSLATION_RESET_PREVIEW_PATH,
-                lambda request: ApiResponse(
-                    ok=True,
-                    data=project_app_service.preview_translation_reset(request),
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.ANALYSIS_RESET_PREVIEW_PATH,
-                lambda request: ApiResponse(
-                    ok=True,
-                    data=project_app_service.preview_analysis_reset(request),
                 ),
             )
             core_api_server.add_json_route(

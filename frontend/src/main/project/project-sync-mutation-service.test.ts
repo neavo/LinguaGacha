@@ -8,6 +8,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectStatePayload } from "../core/core-bridge-client";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectSyncMutationService } from "./project-sync-mutation-service";
+import { ProjectSessionState } from "./project-session-state";
 
 let temp_dir = "";
 
@@ -72,16 +73,18 @@ function create_service(): {
 } {
   const database = new ProjectDatabase();
   const bridge = new FakeCoreBridge();
+  const session_state = new ProjectSessionState();
   const lg_path = project_path("demo.lg");
   database.execute({
     name: "createProject",
     args: { projectPath: lg_path, name: "demo" },
   });
   bridge.state.projectPath = lg_path;
+  session_state.mark_loaded(lg_path);
   return {
     bridge,
     database,
-    service: new ProjectSyncMutationService(database, bridge as never),
+    service: new ProjectSyncMutationService(database, bridge as never, session_state),
     lg_path,
   };
 }

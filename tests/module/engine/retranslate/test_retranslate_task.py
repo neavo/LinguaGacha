@@ -173,31 +173,15 @@ def test_commit_payloads_persists_batch_and_emits_runtime_patch(monkeypatch) -> 
             }
         ),
         update_batch=MagicMock(),
-        bump_project_runtime_section_revisions=MagicMock(return_value={"items": 2}),
+        bump_task_runtime_section_revisions=MagicMock(return_value={"items": 2}),
         emit_project_runtime_patch=MagicMock(),
     )
     revision_service = SimpleNamespace(
         bump_revision=MagicMock(return_value=3),
     )
-    runtime_service = SimpleNamespace(
-        build_proofreading_block=MagicMock(return_value={"revision": 3}),
-        build_item_records=MagicMock(
-            return_value=[{"item_id": 1, "dst": "新译文", "status": "PROCESSED"}]
-        ),
-        get_section_revision=MagicMock(
-            side_effect=lambda section: {"items": 2, "proofreading": 3, "task": 0}.get(
-                section,
-                0,
-            )
-        ),
-        build_section_revisions=MagicMock(
-            return_value={"items": 2, "proofreading": 3, "task": 0}
-        ),
-    )
     task = RetranslateTask.__new__(RetranslateTask)
     task.dm = data_manager
     task.revision_service = revision_service
-    task.runtime_service = runtime_service
     success_item = Item(
         id=1,
         src="勇者",
@@ -247,4 +231,5 @@ def test_commit_payloads_persists_batch_and_emits_runtime_patch(monkeypatch) -> 
         "replace_proofreading",
         "replace_task",
     ]
+    assert patch[0]["item_ids"] == [1, 2]
     assert patch[2]["task"]["retranslating_item_ids"] == []

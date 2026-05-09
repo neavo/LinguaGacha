@@ -7,6 +7,7 @@ class RuntimeBridgeRoutes:
 
     PROJECT_STATE_PATH: str = "/internal/runtime/project-state"
     SYNC_PATH: str = "/internal/runtime/sync"
+    PARSE_PROJECT_ASSETS_PATH: str = "/internal/runtime/parse-project-assets"
 
     @classmethod
     def register(
@@ -30,5 +31,13 @@ class RuntimeBridgeRoutes:
             lambda request, handler: ApiResponse(
                 ok=True,
                 data=runtime_bridge_app_service.sync(request, handler),
+            ),
+        )
+        core_api_server.add_context_json_route(
+            "POST",
+            cls.PARSE_PROJECT_ASSETS_PATH,
+            lambda request, handler: ApiResponse(
+                ok=True,
+                data=runtime_bridge_app_service.parse_project_assets(request, handler),
             ),
         )

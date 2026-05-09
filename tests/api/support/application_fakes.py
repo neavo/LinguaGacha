@@ -189,7 +189,7 @@ class FakeTaskDataManager:
     def get_analysis_candidate_count(self) -> int:
         return self.analysis_candidate_count
 
-    def assert_project_runtime_section_revision(
+    def assert_task_runtime_section_revision(
         self,
         section: str,
         expected_revision: int,

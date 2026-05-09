@@ -8,6 +8,7 @@ from base.Base import Base
 from module.Engine.Engine import Engine
 from module.Config import Config
 from module.Data.DataManager import DataManager
+from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 
 
@@ -71,6 +72,41 @@ class RuntimeBridgeAppService:
             raise ValueError(f"未知 runtime sync 类型：{sync_type}")
 
         return {"accepted": True}
+
+    def parse_project_assets(
+        self,
+        request: dict[str, object],
+        handler: BaseHTTPRequestHandler,
+    ) -> dict[str, object]:
+        """受保护地解析工程 asset；公开 reset preview 语义由 TS Gateway 持有。"""
+
+        self.assert_token(handler)
+        project_path = str(request.get("projectPath", "") or "")
+        rel_paths_raw = request.get("relPaths", [])
+        rel_paths = (
+            [str(rel_path) for rel_path in rel_paths_raw if isinstance(rel_path, str)]
+            if isinstance(rel_paths_raw, list)
+            else []
+        )
+        if (
+            project_path == ""
+            or not self.data_manager.is_loaded()
+            or str(self.data_manager.get_lg_path() or "") != project_path
+        ):
+            raise ValueError(Localizer.get().alert_project_not_loaded)
+
+        file_manager = FileManager(Config().load())
+        files: list[dict[str, object]] = []
+        for rel_path in rel_paths:
+            content = self.data_manager.get_asset_decompressed(rel_path)
+            if not content:
+                files.append({"rel_path": rel_path, "items": []})
+                continue
+            items = [
+                item.to_dict() for item in file_manager.parse_asset(rel_path, content)
+            ]
+            files.append({"rel_path": rel_path, "items": items})
+        return {"files": files}
 
     def assert_token(self, handler: BaseHTTPRequestHandler) -> None:
         """校验内部 runtime token，防止公开路由误触内部桥。"""

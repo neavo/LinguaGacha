@@ -1,7 +1,7 @@
 # LinguaGacha API 文档
 
 ## 一句话总览
-Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；项目同步 mutation、bootstrap 运行态编码与 section revision 收口在 `frontend/src/main/project/`，应用设置、模型、质量规则 / 提示词、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、事件、任务、解析 / 预演 / 导出和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
+Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；项目同步 mutation、reset preview、bootstrap 运行态编码、`project.patch` 补全与 section revision 收口在 `frontend/src/main/project/`，应用设置、模型、质量规则 / 提示词、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、事件、任务、解析 / 导出和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
 
 ## 协议消费者与边界
 
@@ -16,10 +16,10 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 
 协议层真实分工：
 - `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 项目域实现收口在 `frontend/src/main/project/`，其它已迁移业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
-- `frontend/src/main/project/` 负责项目轻生命周期、项目同步 mutation、公开 bootstrap 首包、运行态 block 与 section revision 编码；其中 runtime encoder 只做按需读取和请求内快照，不持有长期项目缓存。
+- `frontend/src/main/project/` 负责项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 首包、`project.patch` 运行态补全与 section revision 编码；其中 runtime encoder 和 patch adapter 只做按需读取和请求内快照，不持有长期项目缓存。
 - `api/Server/` 负责 Python Core 内部 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
-- `api/Contract/` 负责 Python 侧 HTTP 响应壳、兼容 bootstrap 行块和 SSE 线格式。
+- `api/Contract/` 负责 Python 侧 HTTP 响应壳、SSE 线格式和 Python 客户端对象化载荷。
 - `api/Bridge/` 负责公开 topic 与 `project.patch`。
 - `api/Contract/ApiPaths.py`、`api/Models/` 与 `api/Client/` 负责 Python 侧对象化契约。
 
@@ -95,10 +95,10 @@ flowchart TD
 ```
 
 ### 普通事件流
-- `/api/events/stream` 使用 `EventEnvelope.to_sse_payload()` 生成 SSE 载荷。
+- `/api/events/stream` 由 TS Gateway 连接 Python Core 内部事件流；普通 SSE frame 原样透传，只对 `event: project.patch` 的 `data` 做受控适配。
 - 线格式只包含 `event:` 与 `data:`，没有额外 `event_id`、`timestamp` 或 `topic` 回显。
 - 空闲时服务端发送 `: keepalive`。
-- 当前公开 `/api/events/stream` 仍由 TS Gateway 代理到 Python Core；它和 bootstrap 首包不是同一个权威入口。
+- Python Core 只发任务事件和最小项目变更语义；item / analysis / proofreading 运行态块和 section revision 由 TS Gateway 从 database workflow 补全。
 
 ### 诊断日志流
 - `/api/logs/stream` 由 TS Gateway 直接提供，独立于 `/api/events/stream`，只推送日志窗口需要的诊断日志，不混入 `ProjectStore` 运行态。
@@ -147,12 +147,12 @@ flowchart TD
 | `task.progress_changed` | 只发送当前事件中真实出现的字段，不补齐缺失统计 |
 | `task.status_changed` | `DONE / ERROR / IDLE` 是桥接层对内部终态的公开解释 |
 | `settings.changed` | 是设置广播，不等于页面必须整页刷新 |
-| `project.patch` | 由 `ProjectPatchEventBridge` 额外补出的运行态补丁事件 |
+| `project.patch` | Python 任务事件触发后由 TS Gateway 补全的运行态补丁事件 |
 
 `project.patch` 的稳定语义：
-- 至少包含 `source`、`updatedSections` 与 `patch`，在可用时带 `projectRevision`、`sectionRevisions`。
+- 对 renderer 至少包含 `source`、`updatedSections`、`patch`、`projectRevision` 与 `sectionRevisions`；Python 内部事件可只携带 item id、分析变更或任务快照等最小语义。
 - 调用方应把它当成可直接合并进 `ProjectStore` 的运行态补丁，而不是“请刷新页面”的提示。
-- 异步任务终态、重翻提交，以及后端显式发出的 `PROJECT_RUNTIME_PATCH` 都可能产生它。
+- 异步任务终态、重翻提交，以及后端显式发出的 `PROJECT_RUNTIME_PATCH` 都可能产生它；完整旧载荷在迁移窗口内可透传，但最终运行态事实仍以 TS 补全结果为准。
 
 ## 同步 mutation 与异步任务的区别
 
@@ -175,8 +175,8 @@ flowchart TD
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - 简繁转换页按 `text_type` 读取内置文本保护规则时复用 `/api/quality/rules/presets/read`，请求 `preset_dir_name: "text_preserve"` 与 `virtual_id: "builtin:{lower_text_type}.json"`，页面只消费返回 `entries[].src`。
-- 项目轻生命周期中的 `/api/project/snapshot`、`/api/project/unload`、`/api/project/preview`、`/api/project/source-files` 由 TS Gateway 的 `frontend/src/main/project/project-lifecycle-service.ts` 直处理；`snapshot` 的 loaded/path 仍读取 `/internal/runtime/project-state`，`unload` 通过 `/internal/runtime/sync` 的 `project_unload` 触发 Python `DataManager.unload_project()` 后再释放 TS database 缓存。
-- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清缓存。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`load/create-preview/create-commit/open-preview`、reset preview、转换导出、`workbench/parse-file` 和 `tasks/*` 仍代理到 Python Core。
+- 项目轻生命周期中的 `/api/project/snapshot`、`/api/project/unload`、`/api/project/preview`、`/api/project/source-files` 由 TS Gateway 的 `frontend/src/main/project/project-lifecycle-service.ts` 直处理；`load/create-commit` 仍调用 Python Core 完成真实加载 / 新建提交，但成功后由 TS Gateway 更新公开会话状态；`unload` 通过 `/internal/runtime/sync` 的 `project_unload` 触发 Python `DataManager.unload_project()` 后再清空 TS 会话状态并释放 TS database 缓存。
+- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，reset preview 由 `frontend/src/main/project/project-reset-preview-service.ts` 直处理，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清任务读侧缓存。translation reset preview 的 all 模式通过受保护 `/internal/runtime/parse-project-assets` 复用 Python `FileManager.parse_asset()`，但公开预演响应、预览 id 和业务校验仍归 TS。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`create-preview/open-preview`、转换导出、`workbench/parse-file` 和 `tasks/*` 仍代理到 Python Core。
 
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。
