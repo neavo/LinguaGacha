@@ -30,14 +30,14 @@ flowchart TD
 | --- | --- | --- |
 | Python 已加载工程、items、rules、meta、assets 任务读侧缓存 | `ProjectSession` | `DataManager` 协调各领域 service；TS 写入口通过 runtime sync 失效缓存 |
 | 前端公开 loaded/path | `frontend/src/main/project/project-session-state.ts` | `/api/project/load`、`/api/project/create-commit` 成功后写入；`/api/project/unload` 成功后清空 |
-| 工程创建、加载、Python 会话卸载 | `Project/ProjectService.py`、`ProjectLifecycleService.py` | `DataManager`；公开 `unload` 入口由 TS Gateway 通过内部 runtime bridge 触发 |
-| 工作台文件集合 | `Project/ProjectFileService.py` | `DataManager` |
+| 工程创建、打开预演、加载与卸载编排 | `frontend/src/main/project/project-lifecycle-service.ts` + `project-session-state.ts` + `frontend/src/main/database/` | TS Gateway 调用项目轻生命周期服务；Python `DataManager.load_project()/unload_project()` 只通过内部 runtime bridge 同步未迁 Engine 读侧 |
+| 工作台文件集合 | `frontend/src/main/project/project-sync-mutation-service.ts` + `frontend/src/main/database/` | TS Gateway 调用项目同步 mutation 服务；Python Core 只保留任务读侧缓存与文件操作锁 |
 | 公开 bootstrap、`project.patch` 补全、ProjectMutationAck 与 section revision | `frontend/src/main/project/project-runtime-encoder.ts`、`project-patch-adapter.ts`、`project-section-revision.ts` | TS Gateway 按需读取 Electron main Database Service，并通过 `CoreBridgeClient` 读取 Python 任务快照或忙碌态 |
 | 设置、最近项目 | `frontend/src/main/service` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 settings 服务 |
 | 模型页 CRUD | `frontend/src/main/service` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 model 服务 |
 | 质量规则、提示词页面 CRUD 与预设 IO | `frontend/src/main/service` + `frontend/src/main/database/` | TS Gateway 调用 quality 服务；写入后通过内部 runtime bridge 清理 Python Core 缓存 |
 | P2 项目同步 mutation | `frontend/src/main/project/project-sync-mutation-service.ts` + `frontend/src/main/database/` | TS Gateway 调用项目同步 mutation 服务；写入后通过内部 runtime bridge 清理 Python Core 缓存 |
-| 项目轻生命周期 | `frontend/src/main/project/project-lifecycle-service.ts` + `project-session-state.ts` + `frontend/src/main/database/` + Python runtime bridge | `snapshot` 读取 TS 会话状态，`load/create-commit` 成功后更新 TS 会话状态，`unload` 触发 Python 真卸载后清空 TS 会话并释放 TS database 缓存，`preview/source-files` 由 TS 侧只读处理 |
+| 项目轻生命周期 | `frontend/src/main/project/project-lifecycle-service.ts` + `project-session-state.ts` + `frontend/src/main/database/` + Python runtime bridge | `snapshot` 读取 TS 会话状态，`load/create-commit/open-preview` 由 TS 侧处理数据库事实与公开响应，`load/create-commit` 成功后更新 TS 会话状态，`unload` 触发 Python 真卸载后清空 TS 会话并释放 TS database 缓存，`preview/source-files` 由 TS 侧只读处理 |
 | reset preview 公开预演 | `frontend/src/main/project/project-reset-preview-service.ts` + `frontend/src/main/database/` + `frontend/src/main/file` | TS Gateway 计算公开响应；翻译 all 预演直接用 TS 文件域重解析 asset |
 | 规则、提示词运行时读取 | `Quality/*` | Python Core `DataManager` |
 | 分析候选、checkpoint、分析结果 | `Analysis/*` | `DataManager` |
@@ -67,23 +67,24 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["ProjectLifecycleService"] --> B["ProjectSession"]
-    B --> C["DatabaseGateway"]
-    C --> D["Electron main database service"]
-    D --> E["TS ProjectRuntimeEncoder"]
-    E --> F["/api/project/bootstrap/stream"]
-    F --> G["ProjectStore"]
-    B --> H["Python 任务事件"]
-    H --> I["TS project.patch adapter"]
-    I --> G
+    A["TS ProjectLifecycleService"] --> B["ProjectSessionState"]
+    A --> C["Electron main database service"]
+    A --> D["CoreBridgeClient.project_load / project_unload"]
+    D --> E["Python DataManager / ProjectSession"]
+    C --> F["TS ProjectRuntimeEncoder"]
+    F --> G["/api/project/bootstrap/stream"]
+    G --> H["ProjectStore"]
+    E --> I["Python 任务事件"]
+    I --> J["TS project.patch adapter"]
+    J --> H
 ```
 
 稳定事实：
 - `DataManager` 是工程级数据门面，负责会话、规则、分析、翻译、工作台事件与跨 service 编排。
 - TS `ProjectRuntimeEncoder` 是公开 bootstrap block 与请求内运行态快照的编码权威，`project-patch-adapter.ts` 是任务事件补全为前端运行态 patch 的唯一入口，`project-section-revision.ts` 是 bootstrap、同步 mutation ack 与 patch revision 共享的 section revision 口径；Python Core 不再承载前端运行态块或公开 mutation ack 编码。
 - `Config` 是应用设置权威；工程 meta 中的 `source_language`、`target_language`、`mtool_optimizer_enable` 与 `skip_duplicate_source_text_enable` 只是打开 / 新建时同步的项目镜像。
-- 项目预过滤计算只在渲染层 runner / worker 中执行；Python 数据层只负责提供 create/open 草稿和事务化持久化前端提交的结果。
-- 新建工程草稿与提交的批量源路径由 `ProjectService` 统一归一、过滤和去重；TS `source-files` 只负责公开枚举可导入路径。目录源保留相对该目录的层级，文件源使用文件名，出现相对路径冲突时由稳定后缀保证资产路径唯一。
+- 项目预过滤计算只在渲染层 runner / worker 中执行；create/open 草稿、打开对齐预演和事务化提交都由 TS 文件域 / 项目域提供，Python 数据层只保留任务读侧所需的工程事实读取。
+- 新建工程草稿由 TS `FilePreviewService` 归一、过滤和去重，提交由 TS `ProjectLifecycleService` 事务化写入 `.lg`；TS `source-files` 只负责公开枚举可导入路径。目录源保留相对该目录的层级，文件源使用文件名，出现相对路径冲突时由稳定后缀保证资产路径唯一。
 - `source_language`、`mtool_optimizer_enable` 或 `skip_duplicate_source_text_enable` 不一致 / 缺失会要求前端重跑预过滤；仅 `target_language` 不一致时只同步项目镜像，不重写 items。
 
 ### 后台任务与数据提交
@@ -133,7 +134,7 @@ flowchart TD
 - Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。
 - P1 后应用设置、最近项目、模型页 CRUD 由 TS main 的 `service/` 服务读写 `DATA_ROOT/userdata/config.json`；Python Core 的 `Config`、`ModelManager`、模型 `list-available/test` runner 与任务消费仍保留为内部运行时能力，并通过 `/internal/runtime/sync` 刷新内存状态。
 - P1 后质量规则与提示词页面 CRUD / 预设 IO 由 TS main 的 `service/` 服务承载；`.lg` 写入仍只通过 Electron main `ProjectDatabase`，写入成功后由 `/internal/runtime/sync` 清理 Python Core 的 meta/rule/prompt 缓存，任务侧后续读取必须重新走 database。
-- P2 后工作台文件写 mutation、项目设置对齐、translation reset、analysis reset、analysis glossary import、reset preview、项目轻生命周期、公开 bootstrap 运行态编码与 `project.patch` 补全由 TS main 的 `project/` 项目域承载，校对同步保存仍由 TS main 的 `service/proofreading-service.ts` 承载；文件解析 / 写回由 TS main 的 `file/` 文件域承载；Python Core 保留加载、新建提交、任务和任务读侧缓存，收到 `project_data_changed` 后按 section 清理 meta/items/assets/rules 缓存，其中 files/items/analysis/quality/project 变动都会让 meta cache 失效，工作台文件写 mutation 仍复用 Python Core 文件操作锁，公开卸载入口仍通过内部桥调用 Python 真卸载。
+- P2 后工作台文件写 mutation、项目设置对齐、translation reset、analysis reset、analysis glossary import、reset preview、项目轻生命周期、公开 bootstrap 运行态编码与 `project.patch` 补全由 TS main 的 `project/` 项目域承载，校对同步保存仍由 TS main 的 `service/proofreading-service.ts` 承载；文件解析 / 写回由 TS main 的 `file/` 文件域承载；Python Core 保留任务和任务读侧缓存，`project_load/project_unload/project_data_changed` 都只经内部 runtime bridge 同步未迁 Engine 状态，其中 files/items/analysis/quality/project 变动都会让 meta cache 失效，工作台文件写 mutation 仍复用 Python Core 文件操作锁。
 - 分析候选导入术语的预演和筛选属于前端 planner；Python 数据层保留候选聚合、候选数缓存和分析结果持久化。
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
 - 校对 `save-item`、`save-all`、`replace-all` 属于 TS main 承载的同步 mutation，写入后推进 items 与 proofreading revision，并通过内部 runtime bridge 清理 Python Core 读侧缓存；重翻通过 `/api/tasks/start-retranslate` 进入任务型链路，Engine 持有任务生命周期与 `retranslating_item_ids`，批次提交再回写数据层与 `project.patch`。
@@ -144,7 +145,7 @@ flowchart TD
 | --- | --- | --- |
 | 启动期 userdata/config/preset 布局升级 | `module/Migration/UserDataMigrationService.py` | 配置读写仍由 `Config` 与路径 resolver 提供权威路径 |
 | `.lg` 打开期 schema、asset sort_order 与 item 状态升级 | `frontend/src/main/migration/` | `database` 只在打开工程时编排迁移，Python 只看到迁移后的 gateway 读写结果 |
-| 工程加载期 meta/rule 旧字段升级 | `module/Migration/ProjectMetaMigrationService.py`、`module/Migration/ProjectRuleMigrationService.py` | `ProjectLifecycleService` 只维持加载时机、cache 刷新和清理 |
+| 工程公开加载期 meta/rule 旧字段升级 | `frontend/src/main/project/project-lifecycle-service.ts` | `text_preserve_enable -> text_preserve_mode` 与旧 `CUSTOM_PROMPT_ZH/EN -> translation_prompt` 在 TS 公开加载流程中写回；Python migration service 只作为内部 `DataManager.load_project()` 的防御性兼容层 |
 迁移目录只承接会写回旧 userdata、旧配置事实或 `.lg` 打开期旧物理格式的行为；`.lg` schema 与旧物理格式读取兼容留在 Electron main 内部，具体规则统一放在 `frontend/src/main/migration/project-database-migration-service.ts`。payload 归一和文件格式 fallback 保留在原领域，例如 `Item/DataManager` 的状态边界归一、TS 文件域格式 fallback 与 EPUB legacy writer fallback 都不是迁移入口。
 
 ### 引擎域

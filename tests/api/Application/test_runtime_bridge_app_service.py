@@ -43,6 +43,7 @@ class FakeDataManager:
         self.begin_file_operation_count = 0
         self.finish_file_operation_count = 0
         self.unload_project_count = 0
+        self.load_project_calls: list[str] = []
         self.file_operation_allowed = True
         self.asset_content: dict[str, bytes | None] = {}
         self.project_file_service = SimpleNamespace(
@@ -89,6 +90,13 @@ class FakeDataManager:
         self.unload_project_count += 1
         self.loaded = False
         self.path = ""
+
+    def load_project(self, project_path: str) -> None:
+        """模拟加载工程会话，帮助断言内部 project_load 桥接载荷。"""
+
+        self.load_project_calls.append(project_path)
+        self.loaded = True
+        self.path = project_path
 
     def get_asset_decompressed(self, rel_path: str) -> bytes | None:
         """返回测试 asset 内容，隔离真实数据库读取。"""
@@ -215,6 +223,41 @@ def test_runtime_bridge_project_unload_calls_data_manager() -> None:
     assert fake_data_manager.unload_project_count == 1
     assert fake_data_manager.is_loaded() is False
     assert fake_data_manager.get_lg_path() == ""
+
+
+def test_runtime_bridge_project_load_calls_data_manager() -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    fake_data_manager = FakeDataManager()
+    fake_data_manager.loaded = False
+    fake_data_manager.path = ""
+    service.data_manager = fake_data_manager
+    service.engine = SimpleNamespace(is_busy=lambda: False)
+
+    result = service.sync(
+        {
+            "type": "project_load",
+            "payload": {"project_path": "E:/Project/demo.lg"},
+        },
+        FakeHandler("secret"),
+    )
+
+    assert result == {"accepted": True}
+    assert fake_data_manager.load_project_calls == ["E:/Project/demo.lg"]
+    assert fake_data_manager.is_loaded() is True
+    assert fake_data_manager.get_lg_path() == "E:/Project/demo.lg"
+
+
+def test_runtime_bridge_project_load_rejects_missing_path() -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    service.data_manager = FakeDataManager()
+    service.engine = SimpleNamespace(is_busy=lambda: False)
+
+    try:
+        service.sync({"type": "project_load", "payload": {}}, FakeHandler("secret"))
+    except ValueError as error:
+        assert "project_path" in str(error)
+    else:
+        raise AssertionError("project_load 缺少路径时应拒绝同步")
 
 
 def test_runtime_bridge_file_operation_guard_rejects_busy_engine() -> None:

@@ -198,20 +198,30 @@ describe("ApiGatewayServer", () => {
     expect(unload_body.data?.project).toEqual({ path: "", loaded: false });
     const py_request_paths = py_server.requests.map((item) => item.path);
     expect(py_request_paths).toContain("/internal/runtime/sync");
-    expect(py_request_paths).toContain("/api/project/load");
+    expect(py_request_paths).not.toContain("/api/project/load");
     expect(py_request_paths).not.toContain("/api/project/snapshot");
     expect(py_request_paths).not.toContain("/api/project/preview");
     expect(py_request_paths).not.toContain("/api/project/source-files");
     expect(py_request_paths).not.toContain("/api/project/unload");
-    expect(py_server.requests.findLast((item) => item.path === "/internal/runtime/sync")?.raw).toBe(
+    expect(
+      py_server.requests
+        .filter((item) => item.path === "/internal/runtime/sync")
+        .filter((item) => item.raw !== "")
+        .map((item) => item.raw),
+    ).toEqual([
+      JsonTool.stringifyStrict({ type: "project_load", payload: { project_path: lg_path } }),
       JsonTool.stringifyStrict({ type: "project_unload", payload: {} }),
-    );
+    ]);
   });
 
-  it("未迁移项目路由继续代理到 Python Core", async () => {
+  it("项目生命周期路由不再代理到 Python Core 公开项目路径", async () => {
     const app_root = create_app_root();
     const py_server = await start_fake_py_server();
     const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "ts-project-route.lg");
+    const source_path = path.join(app_root, "source.txt");
+    fs.writeFileSync(source_path, "原文", "utf-8");
+    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "route" } });
     const log_manager = create_log_manager(app_root);
     const gateway = new ApiGatewayServer({
       appRoot: app_root,
@@ -226,15 +236,43 @@ describe("ApiGatewayServer", () => {
     cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/project/load`, {
-      body: JsonTool.stringifyStrict({ path: "demo.lg" }),
+    const load_response = await fetch(`${started.baseUrl}/api/project/load`, {
+      body: JsonTool.stringifyStrict({ path: lg_path }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     });
-    const body = (await response.json()) as { ok?: boolean };
+    const open_preview_response = await fetch(`${started.baseUrl}/api/project/open-preview`, {
+      body: JsonTool.stringifyStrict({ path: lg_path }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const create_commit_response = await fetch(`${started.baseUrl}/api/project/create-commit`, {
+      body: JsonTool.stringifyStrict({
+        source_paths: [source_path],
+        path: path.join(app_root, "created-by-ts.lg"),
+        draft: {
+          files: [{ rel_path: "source.txt", source_path, sort_index: 0 }],
+          items: [{ id: 1, file_path: "source.txt", src: "原文", status: "NONE" }],
+        },
+        project_settings: { source_language: "JA", target_language: "ZH" },
+        translation_extras: {},
+        prefilter_config: {},
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const load_body = (await load_response.json()) as { ok?: boolean };
+    const open_preview_body = (await open_preview_response.json()) as { ok?: boolean };
+    const create_commit_body = (await create_commit_response.json()) as { ok?: boolean };
+    const py_request_paths = py_server.requests.map((item) => item.path);
 
-    expect(body.ok).toBe(true);
-    expect(py_server.requests.map((item) => item.path)).toContain("/api/project/load");
+    expect(load_body.ok).toBe(true);
+    expect(open_preview_body.ok).toBe(true);
+    expect(create_commit_body.ok).toBe(true);
+    expect(py_request_paths).not.toContain("/api/project/load");
+    expect(py_request_paths).not.toContain("/api/project/create-commit");
+    expect(py_request_paths).not.toContain("/api/project/open-preview");
+    expect(py_request_paths).toContain("/internal/runtime/sync");
   });
 
   it("项目 preview 缺失文件时映射为 not_found", async () => {
@@ -326,7 +364,7 @@ describe("ApiGatewayServer", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
     ]);
-    expect(py_server.requests.map((item) => item.path)).toContain("/api/project/load");
+    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/project/load");
     expect(py_server.requests.map((item) => item.path)).toContain("/internal/runtime/sync");
     expect(py_server.requests.map((item) => item.path)).not.toContain(
       "/api/project/proofreading/save-item",
@@ -423,7 +461,7 @@ describe("ApiGatewayServer", () => {
     expect(text).toContain("event: completed");
     expect(text).toContain('"sectionRevisions"');
     expect(text).toContain("\\ud800");
-    expect(py_server.requests.map((item) => item.path)).toContain("/api/project/load");
+    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/project/load");
     expect(py_server.requests.map((item) => item.path)).toContain("/api/tasks/snapshot");
     expect(py_server.requests.map((item) => item.path)).not.toContain(
       "/api/project/bootstrap/stream",
@@ -487,7 +525,9 @@ describe("ApiGatewayServer", () => {
     controller.abort();
 
     expect(new TextDecoder().decode(chunk.value)).toContain("event: py.event");
-    await expect(with_timeout(py_server.eventClosed, "上游事件流未关闭。")).resolves.toBeUndefined();
+    await expect(
+      with_timeout(py_server.eventClosed, "上游事件流未关闭。"),
+    ).resolves.toBeUndefined();
   });
 
   it("通过公开 /api/logs/append 接收 Python 日志提交", async () => {
@@ -779,24 +819,6 @@ describe("ApiGatewayServer", () => {
                   task_type: "translation",
                   status: "IDLE",
                   busy: false,
-                },
-              },
-            }),
-          );
-          return;
-        }
-        if (request.url === "/api/project/load") {
-          response.writeHead(200, {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "application/json; charset=utf-8",
-          });
-          response.end(
-            JsonTool.stringifyStrict({
-              ok: true,
-              data: {
-                project: {
-                  path: runtime_project_path ?? "",
-                  loaded: runtime_project_path !== undefined,
                 },
               },
             }),

@@ -143,6 +143,9 @@ export class ApiGatewayServer {
       this.options.database,
       core_bridge,
       this.project_session_state,
+      config_service,
+      paths,
+      this.options.logManager,
     );
     const project_service = new ProjectSyncMutationService(
       this.options.database,
@@ -276,12 +279,15 @@ export class ApiGatewayServer {
     this.post_json(app, "/api/project/create-preview", (body) =>
       file_preview_service.build_create_preview(body),
     );
-    this.post_json_proxy(app, "/api/project/load", (data) => {
-      this.project_session_state.mark_loaded(this.extract_project_path(data));
-    });
-    this.post_json_proxy(app, "/api/project/create-commit", (data) => {
-      this.project_session_state.mark_loaded(this.extract_project_path(data));
-    });
+    this.post_json(app, "/api/project/load", (body) =>
+      project_lifecycle_service.load_project(body),
+    );
+    this.post_json(app, "/api/project/create-commit", (body) =>
+      project_lifecycle_service.create_project_commit(body),
+    );
+    this.post_json(app, "/api/project/open-preview", (body) =>
+      project_lifecycle_service.get_open_alignment_preview(body),
+    );
 
     this.post_json(app, "/api/project/workbench/add-file", (body) =>
       project_service.add_workbench_file(body),
@@ -426,35 +432,6 @@ export class ApiGatewayServer {
           this.log_gateway_error("TS Gateway 直接路由处理失败", error, { path: path_name });
         }
         return context.json(envelope, status);
-      }
-    });
-  }
-
-  /**
-   * 已迁移状态包装路由仍调用 Python 业务实现，但成功后同步 TS 公开会话状态。
-   */
-  private post_json_proxy(
-    app: Hono,
-    path_name: string,
-    on_success: (data: Record<string, ApiJsonValue>) => void,
-  ): void {
-    app.post(path_name, async (context) => {
-      try {
-        const response = await this.proxy_to_py_core(context.req.raw);
-        if (!response.ok) {
-          return response;
-        }
-        const envelope = (await response.json()) as {
-          ok?: boolean;
-          data?: Record<string, ApiJsonValue>;
-        };
-        if (envelope.ok === true) {
-          on_success(envelope.data ?? {});
-        }
-        return context.json(envelope);
-      } catch (error) {
-        this.log_gateway_error("TS Gateway 包装 Python 路由失败", error, { path: path_name });
-        return context.json(api_error("internal_error", "Python Core 代理失败。"), 500);
       }
     });
   }
@@ -732,18 +709,6 @@ export class ApiGatewayServer {
    */
   private build_sse_frame(event_type: string, payload: Record<string, ApiJsonValue>): string {
     return `event: ${event_type}\ndata: ${JsonTool.stringifyStrict(payload)}\n\n`;
-  }
-
-  /**
-   * 从 Python load/create 响应中提取项目路径，用于同步 TS 会话状态。
-   */
-  private extract_project_path(data: Record<string, ApiJsonValue>): string {
-    const project = data["project"];
-    if (typeof project !== "object" || project === null || Array.isArray(project)) {
-      return "";
-    }
-    const path_value = (project as Record<string, ApiJsonValue>)["path"];
-    return typeof path_value === "string" ? path_value : "";
   }
 
   /**

@@ -107,11 +107,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         event_stream_service=SimpleNamespace(
             stream_to_handler=lambda handler: None,
         ),
-        project_app_service=object(),
-        workbench_app_service=object(),
-        project_bootstrap_app_service=SimpleNamespace(
-            stream_to_handler=lambda handler: None,
-        ),
         task_app_service=object(),
         model_probe_app_service=object(),
         core_lifecycle_app_service=SimpleNamespace(
@@ -128,9 +123,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         path: core_api_server.route_map[(method, path)].mode
         for method, path in (
             ("GET", "/api/events/stream"),
-            ("GET", "/api/project/bootstrap/stream"),
-            ("POST", "/api/project/load"),
-            ("POST", "/api/project/workbench/parse-file"),
             ("POST", "/api/tasks/start-translation"),
             ("POST", ModelApiPaths.LIST_AVAILABLE_PATH),
             ("POST", ModelApiPaths.TEST_PATH),
@@ -141,9 +133,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
 
     assert active_route_modes == {
         "/api/events/stream": "stream",
-        "/api/project/bootstrap/stream": "stream",
-        "/api/project/load": "json",
-        "/api/project/workbench/parse-file": "json",
         "/api/tasks/start-translation": "json",
         ModelApiPaths.LIST_AVAILABLE_PATH: "json",
         ModelApiPaths.TEST_PATH: "json",
@@ -374,16 +363,10 @@ def test_start_for_test_returns_runtime_object_when_requested(
 def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
     # Arrange
     base_url, shutdown = ServerBootstrap.start_for_test(
-        project_app_service=object(),
         task_app_service=SimpleNamespace(
             build_task_snapshot=lambda task_type: {"task_type": task_type}
         ),
-        workbench_app_service=object(),
         model_probe_app_service=object(),
-        project_bootstrap_app_service=SimpleNamespace(
-            runtime_service=None,
-            stream_to_handler=lambda handler: None,
-        ),
     )
     old_runtime_routes = [
         ("GET", "/api/v2/events/stream"),
@@ -411,6 +394,13 @@ def test_server_bootstrap_no_longer_registers_legacy_runtime_routes() -> None:
         ("POST", "/api/project/unload"),
         ("POST", "/api/project/source-files"),
         ("POST", "/api/project/preview"),
+        ("POST", "/api/project/load"),
+        ("POST", "/api/project/create-preview"),
+        ("POST", "/api/project/create-commit"),
+        ("POST", "/api/project/open-preview"),
+        ("POST", "/api/project/export-converted-translation"),
+        ("POST", "/api/project/workbench/parse-file"),
+        ("GET", "/api/project/bootstrap/stream"),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/snapshot"),
         ("POST", "/api/quality/rules/query-proofreading"),

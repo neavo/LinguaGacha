@@ -1,7 +1,7 @@
 # LinguaGacha API 文档
 
 ## 一句话总览
-Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；项目同步 mutation、reset preview、bootstrap 运行态编码、`project.patch` 补全与 section revision 收口在 `frontend/src/main/project/`，文件解析 / 写回收口在 `frontend/src/main/file/`，应用设置、模型、质量规则 / 提示词、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、事件、任务和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
+Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gateway 持有；项目轻生命周期、项目同步 mutation、reset preview、bootstrap 运行态编码、`project.patch` 补全与 section revision 收口在 `frontend/src/main/project/`，文件解析 / 写回收口在 `frontend/src/main/file/`，应用设置、模型、质量规则 / 提示词、校对同步保存与路径规则收口在 `frontend/src/main/service/`，Python Core 内部桥落在 `frontend/src/main/core/`。Python Core 保留内部 HTTP / SSE 服务、事件、任务和 Python 客户端兼容契约。本文只保留调用方必须知道的稳定契约：谁在消费它、路由族如何分组、响应壳和错误码如何解释、bootstrap 与 `project.patch` 如何驱动运行态，以及哪些写接口属于同步 mutation、哪些属于异步任务。
 
 ## 协议消费者与边界
 
@@ -16,7 +16,7 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 
 协议层真实分工：
 - `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 项目域实现收口在 `frontend/src/main/project/`，其它已迁移业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
-- `frontend/src/main/project/` 负责项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 首包、`project.patch` 运行态补全与 section revision 编码；其中 runtime encoder 和 patch adapter 只做按需读取和请求内快照，不持有长期项目缓存。
+- `frontend/src/main/project/` 负责项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 首包、`project.patch` 运行态补全与 section revision 编码；`load/create-commit/open-preview` 也是 TS 项目域公开实现，其中 runtime encoder 和 patch adapter 只做按需读取和请求内快照，不持有长期项目缓存。
 - `frontend/src/main/file/` 负责公开文件解析 / 写回：`create-preview`、`workbench/parse-file`、translation reset all 的 asset 重解析、`tasks/export-translation` 和 `export-converted-translation` 的写回都走 TS 文件域。
 - `api/Server/` 负责 Python Core 内部 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
@@ -176,7 +176,7 @@ flowchart TD
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - 简繁转换页按 `text_type` 读取内置文本保护规则时复用 `/api/quality/rules/presets/read`，请求 `preset_dir_name: "text_preserve"` 与 `virtual_id: "builtin:{lower_text_type}.json"`，页面只消费返回 `entries[].src`。
-- 项目轻生命周期中的 `/api/project/snapshot`、`/api/project/unload`、`/api/project/preview`、`/api/project/source-files` 由 TS Gateway 的 `frontend/src/main/project/project-lifecycle-service.ts` 直处理；`create-preview` 由 `frontend/src/main/file/file-preview-service.ts` 解析源文件草稿；`load/create-commit` 仍调用 Python Core 完成真实加载 / 新建提交，但成功后由 TS Gateway 更新公开会话状态；`unload` 通过 `/internal/runtime/sync` 的 `project_unload` 触发 Python `DataManager.unload_project()` 后再清空 TS 会话状态并释放 TS database 缓存。
+- 项目轻生命周期中的 `/api/project/snapshot`、`/api/project/load`、`/api/project/create-commit`、`/api/project/open-preview`、`/api/project/unload`、`/api/project/preview`、`/api/project/source-files` 由 TS Gateway 的 `frontend/src/main/project/project-lifecycle-service.ts` 直处理；`create-preview` 由 `frontend/src/main/file/file-preview-service.ts` 解析源文件草稿。`load` 先由 TS 完成文件校验、`updated_at` 写入和打开期兼容迁移，再通过 `/internal/runtime/sync` 的 `project_load` 同步 Python Engine 读侧；`create-commit` 由 TS database workflow 创建 `.lg`、初始化默认预设、写入 asset/items/meta 后复用同一加载流程；`open-preview` 是只读设置对齐预演；`unload` 通过 `project_unload` 触发 Python `DataManager.unload_project()` 后再清空 TS 会话状态并释放 TS database 缓存。
 - P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，reset preview 由 `frontend/src/main/project/project-reset-preview-service.ts` 直处理，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清任务读侧缓存。translation reset preview 的 all 模式直接用 TS 文件域解析 asset。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、转换导出和 `tasks/export-translation` 的文件能力由 TS 直处理，其它未迁移 `tasks/*` 仍代理 Python Core。
 
 额外约束：

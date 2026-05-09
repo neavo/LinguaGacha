@@ -50,4 +50,35 @@ describe("CoreBridgeClient", () => {
 
     await expect(client.get_task_snapshot()).rejects.toThrow("失败");
   });
+
+  it("加载工程只通过内部 runtime sync 提交 project_load", async () => {
+    const fetch_mock = vi.fn(async () => {
+      return new Response(JSON.stringify({ ok: true, data: { accepted: true } }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    });
+    vi.stubGlobal("fetch", fetch_mock);
+    const client = new CoreBridgeClient({
+      pyCoreBaseUrl: "http://127.0.0.1:12345",
+      pyCoreToken: "token",
+    });
+
+    await expect(client.load_project("E:/Project/demo.lg")).resolves.toBeUndefined();
+
+    expect(fetch_mock).toHaveBeenCalledWith(
+      "http://127.0.0.1:12345/internal/runtime/sync",
+      expect.objectContaining({
+        body: JSON.stringify({
+          type: "project_load",
+          payload: { project_path: "E:/Project/demo.lg" },
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          "X-LinguaGacha-Core-Token": "token",
+        },
+        method: "POST",
+      }),
+    );
+  });
 });

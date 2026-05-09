@@ -78,6 +78,13 @@ export class CoreBridgeClient {
   }
 
   /**
+   * 触发 Python Core 加载工程，只用于未迁移 Engine 的读侧缓存同步。
+   */
+  public async load_project(project_path: string): Promise<void> {
+    await this.sync_runtime("project_load", { project_path });
+  }
+
+  /**
    * 触发 Python Core 真实卸载工程，避免 TS 公开响应和 Python 会话状态分裂。
    */
   public async unload_project(): Promise<void> {

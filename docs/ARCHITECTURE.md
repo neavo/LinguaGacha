@@ -32,7 +32,7 @@ flowchart LR
 - `frontend/src/preload` 只负责通过 `contextBridge` 暴露 `window.desktopApp`。
 - `frontend/src/renderer` 只通过 `window.desktopApp` 和 `desktop-api.ts` 接入宿主与 Core API。
 - `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载已迁移项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全和 section revision 口径；`file/` 承载公开文件解析 / 写回、create preview 草稿解析和导出目录语义；`service/` 承载应用设置、模型页、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则；`core/` 承载 Python Core 内部桥。未迁移业务由 API 编排层代理到内部 Python Core。
-- `api/` 保留 Python Core 的内部协议、事件、任务和 Python 客户端对象化契约；公开 bootstrap、文件预演 / 导出、reset preview、section revision 和前端运行态 patch 编码权威在 TS Gateway，不再由 Python Core 公开承载。
+- `api/` 保留 Python Core 的内部协议、事件、任务和 Python 客户端对象化契约；公开项目轻生命周期、bootstrap、文件预演 / 导出、reset preview、section revision 和前端运行态 patch 编码权威在 TS Gateway，不再由 Python Core 公开承载。
 - `module/Data` 持有工程事实，`module/Engine` 持有任务生命周期，`module/Model` 持有模型配置领域规则。
 
 ## 跨层边界

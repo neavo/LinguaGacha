@@ -61,6 +61,8 @@ class RuntimeBridgeAppService:
             self.clear_project_quality_caches(clear_prompt_cache=True)
         elif sync_type == "project_data_changed":
             self.clear_project_data_caches(payload)
+        elif sync_type == "project_load":
+            self.load_project(payload)
         elif sync_type == "project_unload":
             self.unload_project()
         elif sync_type == "project_file_operation_begin":
@@ -123,6 +125,14 @@ class RuntimeBridgeAppService:
         """经内部桥卸载 Python 工程会话，保持公开 TS 响应与 Core 状态一致。"""
 
         self.data_manager.unload_project()
+
+    def load_project(self, payload: dict[str, Any]) -> None:
+        """经内部桥加载 Python 工程会话，只作为未迁 Engine 的读侧同步层。"""
+
+        project_path = str(payload.get("project_path", "") or "")
+        if project_path == "":
+            raise ValueError("project_load 缺少 project_path。")
+        self.data_manager.load_project(project_path)
 
     def clear_project_quality_caches(self, *, clear_prompt_cache: bool) -> None:
         """清理项目质量缓存，确保规则和提示词改动后重新读取数据库。"""

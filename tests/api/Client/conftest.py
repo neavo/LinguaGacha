@@ -1,24 +1,15 @@
 from collections.abc import Callable
 from collections.abc import Generator
 from copy import deepcopy
+from typing import Any
 
 import pytest
 
-from api.Application.ModelProbeAppService import ModelProbeAppService
-from api.Application.ProjectAppService import ProjectAppService
-from api.Application.TaskAppService import TaskAppService
-from api.Application.WorkbenchAppService import WorkbenchAppService
 from api.Server.ServerBootstrap import ServerBootstrap
 from tests.api.support.application_fakes import FakeEngine
-from tests.api.support.application_fakes import FakeProjectManager
 from tests.api.support.application_fakes import FakeSettingsConfig
 from tests.api.support.application_fakes import FakeTaskDataManager
-from tests.api.support.application_fakes import FakeWorkbenchManager
 
-
-type ServiceOverride = (
-    ModelProbeAppService | ProjectAppService | TaskAppService | WorkbenchAppService
-)
 
 type StartApiServerFactory = Callable[..., str]
 
@@ -58,11 +49,6 @@ class RecordingApiClient:
 
 
 @pytest.fixture
-def fake_project_manager() -> FakeProjectManager:
-    return FakeProjectManager()
-
-
-@pytest.fixture
 def fake_task_data_manager() -> FakeTaskDataManager:
     return FakeTaskDataManager()
 
@@ -70,11 +56,6 @@ def fake_task_data_manager() -> FakeTaskDataManager:
 @pytest.fixture
 def fake_engine() -> FakeEngine:
     return FakeEngine()
-
-
-@pytest.fixture
-def fake_workbench_manager() -> FakeWorkbenchManager:
-    return FakeWorkbenchManager()
 
 
 @pytest.fixture
@@ -86,7 +67,7 @@ def fake_settings_config() -> FakeSettingsConfig:
 def start_api_server() -> Generator[StartApiServerFactory, None, None]:
     runtimes: list[Callable[[], None]] = []
 
-    def factory(**services: ServiceOverride) -> str:
+    def factory(**services: Any) -> str:
         # 这里按后进先出关闭测试服务，避免后创建的资源泄漏到后续用例。
         base_url, shutdown = ServerBootstrap.start_for_test(**services)
         runtimes.append(shutdown)

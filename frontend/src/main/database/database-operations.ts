@@ -296,15 +296,29 @@ export class ProjectDatabase {
     // 单个事务只允许绑定一个工程文件，避免跨 .lg 写入出现半提交语义。
     const first_args = this.normalize_args(operations[0]?.args);
     const project_path = this.require_string(first_args, "projectPath");
+    const transaction_operations = [...operations];
+    let should_remove_created_project_on_failure = false;
+    if (transaction_operations[0]?.name === "createProject") {
+      // createProject 需要关闭旧句柄并重建文件，必须先完成文件级初始化，再把后续写入包进事务。
+      this.execute(transaction_operations.shift() as DatabaseOperation);
+      should_remove_created_project_on_failure = true;
+      if (transaction_operations.length === 0) {
+        return null;
+      }
+    }
     const db = this.open_project(project_path);
     db.exec("BEGIN IMMEDIATE");
     try {
-      for (const operation of operations) {
+      for (const operation of transaction_operations) {
         this.execute(operation);
       }
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
+      if (should_remove_created_project_on_failure) {
+        this.close_project(project_path);
+        fs.rmSync(project_path, { force: true });
+      }
       throw error;
     }
     return null;
