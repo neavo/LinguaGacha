@@ -64,8 +64,6 @@ def build_data_manager(
         set_progress_callback=MagicMock(),
         create=MagicMock(return_value=[]),
         SUPPORTED_EXTENSIONS={".txt"},
-        collect_source_files=MagicMock(return_value=["a.txt"]),
-        get_project_preview=MagicMock(return_value={"name": "demo"}),
     )
     dm.translation_item_service = SimpleNamespace(get_items_for_translation=MagicMock())
     dm.analysis_service = SimpleNamespace(

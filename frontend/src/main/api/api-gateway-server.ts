@@ -6,6 +6,7 @@ import { serve } from "@hono/node-server";
 
 import { ProjectDatabase } from "../database/database-operations";
 import { ModelService } from "../service/model-service";
+import { ProjectLifecycleService } from "../project/project-lifecycle-service";
 import { ProjectSyncMutationService } from "../project/project-sync-mutation-service";
 import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
@@ -125,6 +126,10 @@ export class ApiGatewayServer {
     });
     const config_service = new ConfigService(paths, core_bridge);
     const model_service = new ModelService(paths, config_service, core_bridge);
+    const project_lifecycle_service = new ProjectLifecycleService(
+      this.options.database,
+      core_bridge,
+    );
     const project_service = new ProjectSyncMutationService(this.options.database, core_bridge);
     const proofreading_service = new ProofreadingService(this.options.database, core_bridge);
     const project_runtime_service = new ProjectRuntimeEncoder(this.options.database, core_bridge);
@@ -214,6 +219,17 @@ export class ApiGatewayServer {
       model_service.reset_preset_model(body),
     );
     this.post_json(app, "/api/models/reorder", (body) => model_service.reorder_model(body));
+
+    this.post_json(app, "/api/project/snapshot", () =>
+      project_lifecycle_service.get_project_snapshot(),
+    );
+    this.post_json(app, "/api/project/unload", () => project_lifecycle_service.unload_project());
+    this.post_json(app, "/api/project/preview", (body) =>
+      project_lifecycle_service.get_project_preview(body),
+    );
+    this.post_json(app, "/api/project/source-files", (body) =>
+      project_lifecycle_service.collect_source_files(body),
+    );
 
     this.post_json(app, "/api/project/workbench/add-file", (body) =>
       project_service.add_workbench_file(body),

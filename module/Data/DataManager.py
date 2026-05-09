@@ -772,12 +772,6 @@ class DataManager(Base):
             self.require_loaded_lg_path()
         )
 
-    def collect_source_files(self, source_path: str) -> list[str]:
-        return self.project_service.collect_source_files(source_path)
-
-    def collect_source_files_from_paths(self, source_paths: list[str]) -> list[str]:
-        return self.project_service.collect_source_files_from_paths(source_paths)
-
     def create_project(
         self,
         source_path: str,
@@ -801,9 +795,6 @@ class DataManager(Base):
                     NAME=" | ".join(loaded_presets)
                 )
             )
-
-    def get_project_preview(self, lg_path: str) -> dict[str, Any]:
-        return self.project_service.get_project_preview(lg_path)
 
     def build_create_project_preview(
         self,

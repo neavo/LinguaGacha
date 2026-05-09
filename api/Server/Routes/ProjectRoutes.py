@@ -1,23 +1,22 @@
 from api.Contract.ApiResponse import ApiResponse
+from api.Contract.ApiPaths import ProjectApiPaths
 from api.Server.CoreApiServer import CoreApiServer
 
 
 class ProjectRoutes:
     """集中注册项目运行态相关路由。"""
 
-    LOAD_PATH: str = "/api/project/load"
-    CREATE_PREVIEW_PATH: str = "/api/project/create-preview"
-    CREATE_COMMIT_PATH: str = "/api/project/create-commit"
-    SNAPSHOT_PATH: str = "/api/project/snapshot"
-    UNLOAD_PATH: str = "/api/project/unload"
-    OPEN_PREVIEW_PATH: str = "/api/project/open-preview"
-    TRANSLATION_RESET_PREVIEW_PATH: str = "/api/project/translation/reset-preview"
-    ANALYSIS_RESET_PREVIEW_PATH: str = "/api/project/analysis/reset-preview"
-    SOURCE_FILES_PATH: str = "/api/project/source-files"
-    PREVIEW_PATH: str = "/api/project/preview"
-    EXPORT_CONVERTED_TRANSLATION_PATH: str = "/api/project/export-converted-translation"
-    WORKBENCH_PARSE_FILE_PATH: str = "/api/project/workbench/parse-file"
-    BOOTSTRAP_STREAM_PATH: str = "/api/project/bootstrap/stream"
+    LOAD_PATH: str = ProjectApiPaths.LOAD_PATH
+    CREATE_PREVIEW_PATH: str = ProjectApiPaths.CREATE_PREVIEW_PATH
+    CREATE_COMMIT_PATH: str = ProjectApiPaths.CREATE_COMMIT_PATH
+    OPEN_PREVIEW_PATH: str = ProjectApiPaths.OPEN_PREVIEW_PATH
+    TRANSLATION_RESET_PREVIEW_PATH: str = ProjectApiPaths.TRANSLATION_RESET_PREVIEW_PATH
+    ANALYSIS_RESET_PREVIEW_PATH: str = ProjectApiPaths.ANALYSIS_RESET_PREVIEW_PATH
+    EXPORT_CONVERTED_TRANSLATION_PATH: str = (
+        ProjectApiPaths.EXPORT_CONVERTED_TRANSLATION_PATH
+    )
+    WORKBENCH_PARSE_FILE_PATH: str = ProjectApiPaths.WORKBENCH_PARSE_FILE_PATH
+    BOOTSTRAP_STREAM_PATH: str = ProjectApiPaths.BOOTSTRAP_STREAM_PATH
 
     @classmethod
     def register(
@@ -53,20 +52,6 @@ class ProjectRoutes:
             )
             core_api_server.add_json_route(
                 "POST",
-                cls.SNAPSHOT_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=project_app_service.get_project_snapshot(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.UNLOAD_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=project_app_service.unload_project(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
                 cls.OPEN_PREVIEW_PATH,
                 lambda request: ApiResponse(
                     ok=True,
@@ -89,20 +74,6 @@ class ProjectRoutes:
                 lambda request: ApiResponse(
                     ok=True,
                     data=project_app_service.preview_analysis_reset(request),
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.SOURCE_FILES_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=project_app_service.collect_source_files(request)
-                ),
-            )
-            core_api_server.add_json_route(
-                "POST",
-                cls.PREVIEW_PATH,
-                lambda request: ApiResponse(
-                    ok=True, data=project_app_service.get_project_preview(request)
                 ),
             )
             core_api_server.add_json_route(

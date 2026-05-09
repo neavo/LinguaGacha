@@ -16,7 +16,7 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 
 协议层真实分工：
 - `frontend/src/main/api/` 负责 Electron 公开 Gateway、CORS、`/api/health`、路由编排和未迁移路由代理；TS 项目域实现收口在 `frontend/src/main/project/`，其它已迁移业务实现与路径解析收口在 `frontend/src/main/service/`，Core 内部桥落在 `frontend/src/main/core/`。
-- `frontend/src/main/project/` 负责项目同步 mutation、公开 bootstrap 首包、运行态 block 与 section revision 编码；其中 runtime encoder 只做按需读取和请求内快照，不持有长期项目缓存。
+- `frontend/src/main/project/` 负责项目轻生命周期、项目同步 mutation、公开 bootstrap 首包、运行态 block 与 section revision 编码；其中 runtime encoder 只做按需读取和请求内快照，不持有长期项目缓存。
 - `api/Server/` 负责 Python Core 内部 HTTP 服务、路由注册与统一错误映射。
 - `api/Application/` 负责把 Core 状态整理成稳定业务语义。
 - `api/Contract/` 负责 Python 侧 HTTP 响应壳、兼容 bootstrap 行块和 SSE 线格式。
@@ -175,7 +175,8 @@ flowchart TD
 项目派生工具补充：
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - 简繁转换页按 `text_type` 读取内置文本保护规则时复用 `/api/quality/rules/presets/read`，请求 `preset_dir_name: "text_preserve"` 与 `virtual_id: "builtin:{lower_text_type}.json"`，页面只消费返回 `entries[].src`。
-- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清缓存。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`workbench/parse-file`、reset preview、转换导出、项目生命周期和 `tasks/*` 仍代理到 Python Core。
+- 项目轻生命周期中的 `/api/project/snapshot`、`/api/project/unload`、`/api/project/preview`、`/api/project/source-files` 由 TS Gateway 的 `frontend/src/main/project/project-lifecycle-service.ts` 直处理；`snapshot` 的 loaded/path 仍读取 `/internal/runtime/project-state`，`unload` 通过 `/internal/runtime/sync` 的 `project_unload` 触发 Python `DataManager.unload_project()` 后再释放 TS database 缓存。
+- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后都通过 `/internal/runtime/sync` 让 Python Core 清缓存。translation / analysis reset 仍按 `Engine` 忙碌态拒绝同步写入，工作台文件写 mutation 通过内部 runtime bridge 复用 Python Core 文件操作锁；`load/create-preview/create-commit/open-preview`、reset preview、转换导出、`workbench/parse-file` 和 `tasks/*` 仍代理到 Python Core。
 
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用，Python Core 创建临时 `Item` 并复用引擎单条翻译入口；姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。

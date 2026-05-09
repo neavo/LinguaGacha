@@ -72,6 +72,13 @@ export class CoreBridgeClient {
   }
 
   /**
+   * 触发 Python Core 真实卸载工程，避免 TS 公开响应和 Python 会话状态分裂。
+   */
+  public async unload_project(): Promise<void> {
+    await this.sync_runtime("project_unload", {});
+  }
+
+  /**
    * 通知 Python Core 刷新内部缓存，保持 TS 写入后的运行时一致。
    */
   public async sync_runtime(

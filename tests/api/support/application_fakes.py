@@ -7,7 +7,6 @@
 """
 
 from copy import deepcopy
-from pathlib import Path
 
 from base.Base import Base
 from base.BaseLanguage import BaseLanguage
@@ -100,31 +99,6 @@ class FakeProjectManager:
 
     def get_lg_path(self) -> str:
         return self.project_path
-
-    def collect_source_files(self, path: str) -> list[str]:
-        return [path]
-
-    def collect_source_files_from_paths(self, source_paths: list[str]) -> list[str]:
-        return list(source_paths)
-
-    def get_project_preview(self, path: str) -> dict[str, object]:
-        return {
-            "path": path,
-            "name": Path(path).stem,
-            "source_language": "JA",
-            "target_language": "ZH",
-            "file_count": 1,
-            "created_at": "",
-            "updated_at": "",
-            "translation_stats": {
-                "total_items": 8,
-                "completed_count": 3,
-                "failed_count": 1,
-                "pending_count": 3,
-                "skipped_count": 1,
-                "completion_percent": 50.0,
-            },
-        }
 
 
 class FakeEngine:

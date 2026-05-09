@@ -42,6 +42,7 @@ class FakeDataManager:
         self.path = "E:/Project/demo.lg"
         self.begin_file_operation_count = 0
         self.finish_file_operation_count = 0
+        self.unload_project_count = 0
         self.file_operation_allowed = True
         self.session = SimpleNamespace(
             state_lock=contextlib.nullcontext(),
@@ -73,6 +74,13 @@ class FakeDataManager:
         """模拟释放 DataManager 文件操作锁。"""
 
         self.finish_file_operation_count += 1
+
+    def unload_project(self) -> None:
+        """模拟卸载工程会话，帮助断言内部桥真实触发数据层。"""
+
+        self.unload_project_count += 1
+        self.loaded = False
+        self.path = ""
 
 
 def test_runtime_bridge_project_state_requires_token() -> None:
@@ -177,6 +185,23 @@ def test_runtime_bridge_file_operation_guard_begin_and_end() -> None:
     assert end_result == {"accepted": True}
     assert fake_data_manager.begin_file_operation_count == 1
     assert fake_data_manager.finish_file_operation_count == 1
+
+
+def test_runtime_bridge_project_unload_calls_data_manager() -> None:
+    service = RuntimeBridgeAppService(instance_token="secret")
+    fake_data_manager = FakeDataManager()
+    service.data_manager = fake_data_manager
+    service.engine = SimpleNamespace(is_busy=lambda: False)
+
+    result = service.sync(
+        {"type": "project_unload", "payload": {}},
+        FakeHandler("secret"),
+    )
+
+    assert result == {"accepted": True}
+    assert fake_data_manager.unload_project_count == 1
+    assert fake_data_manager.is_loaded() is False
+    assert fake_data_manager.get_lg_path() == ""
 
 
 def test_runtime_bridge_file_operation_guard_rejects_busy_engine() -> None:

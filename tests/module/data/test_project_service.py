@@ -289,30 +289,6 @@ def test_create_preview_and_commit_use_same_batch_file_set(
     assert fake_db_assets == [("a.txt", 0), ("b.md", 1)]
 
 
-def test_get_project_preview_raises_when_file_not_exists(fs) -> None:
-    del fs
-    service = ProjectService()
-
-    with pytest.raises(FileNotFoundError):
-        service.get_project_preview("/workspace/project_service/missing.lg")
-
-
-def test_get_project_preview_reads_summary(monkeypatch: pytest.MonkeyPatch, fs) -> None:
-    del fs
-    service = ProjectService()
-    lg_path = Path("/workspace/project_service/demo.lg")
-    lg_path.parent.mkdir(parents=True, exist_ok=True)
-    lg_path.write_bytes(b"db")
-
-    fake_db = SimpleNamespace(get_project_summary=lambda: {"name": "demo"})
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.DatabaseGateway", lambda path: fake_db
-    )
-
-    summary = service.get_project_preview(str(lg_path))
-    assert summary == {"name": "demo"}
-
-
 def test_set_progress_callback_and_report_progress() -> None:
     service = ProjectService()
 

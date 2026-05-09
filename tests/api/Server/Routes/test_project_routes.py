@@ -11,15 +11,11 @@ PROJECT_COMMAND_ROUTE_CASES: tuple[JsonRouteCase, ...] = (
     JsonRouteCase("/api/project/load", "load_project"),
     JsonRouteCase("/api/project/create-preview", "create_project_preview"),
     JsonRouteCase("/api/project/create-commit", "create_project_commit"),
-    JsonRouteCase("/api/project/snapshot", "get_project_snapshot"),
-    JsonRouteCase("/api/project/unload", "unload_project"),
     JsonRouteCase("/api/project/open-preview", "get_open_project_alignment_preview"),
     JsonRouteCase(
         "/api/project/translation/reset-preview", "preview_translation_reset"
     ),
     JsonRouteCase("/api/project/analysis/reset-preview", "preview_analysis_reset"),
-    JsonRouteCase("/api/project/source-files", "collect_source_files"),
-    JsonRouteCase("/api/project/preview", "get_project_preview"),
     JsonRouteCase(
         "/api/project/export-converted-translation",
         "export_converted_translation",

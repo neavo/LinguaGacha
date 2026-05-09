@@ -9,7 +9,6 @@ from module.Localizer.Localizer import Localizer
 from module.Data.Translation.TranslationExportItemService import (
     TranslationExportItemService,
 )
-from api.Contract.ProjectPayloads import ProjectPreviewPayload
 from api.Contract.ProjectPayloads import ProjectSnapshotPayload
 
 
@@ -77,35 +76,6 @@ class ProjectAppService:
         )
         self.project_manager.load_project(output_path)
         return {"project": self.build_project_snapshot(output_path)}
-
-    def get_project_snapshot(self, request: dict[str, str]) -> dict[str, object]:
-        """提供显式查询接口，供 UI 首屏 hydration 使用。"""
-
-        del request
-        return {"project": self.build_project_snapshot()}
-
-    def unload_project(self, request: dict[str, str]) -> dict[str, object]:
-        """关闭当前工程，并返回重置后的快照。"""
-
-        del request
-        self.project_manager.unload_project()
-        return {"project": ProjectSnapshotPayload(path="", loaded=False).to_dict()}
-
-    def collect_source_files(self, request: dict[str, Any]) -> dict[str, object]:
-        """把源目录扫描结果转换为纯 JSON 列表。"""
-
-        source_paths = self.normalize_string_list_payload(request.get("source_paths"))
-        source_files = self.project_manager.collect_source_files_from_paths(
-            source_paths
-        )
-        return {"source_files": [str(file_path) for file_path in source_files]}
-
-    def get_project_preview(self, request: dict[str, str]) -> dict[str, object]:
-        """读取工程预览信息，供打开工程页展示摘要。"""
-
-        path = str(request.get("path", ""))
-        preview = self.project_manager.get_project_preview(path)
-        return {"preview": ProjectPreviewPayload.from_dict(preview).to_dict()}
 
     def get_open_project_alignment_preview(
         self,

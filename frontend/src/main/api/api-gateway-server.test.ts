@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
-import { allocate_core_api_port } from "../lifecycle/lifecycle-port-allocator";
 import { JsonTool } from "../../utils/json-tool";
 import { ApiGatewayServer } from "./api-gateway-server";
 
@@ -31,7 +30,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -61,7 +60,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -94,7 +93,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -127,6 +126,146 @@ describe("ApiGatewayServer", () => {
     expect(py_server.requests).toEqual([]);
   });
 
+  it("项目轻生命周期路由由 TS Gateway 直接处理", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "project-lifecycle.lg");
+    const source_dir = path.join(app_root, "source");
+    fs.mkdirSync(source_dir, { recursive: true });
+    fs.writeFileSync(path.join(source_dir, "script.txt"), "原文", "utf-8");
+    fs.writeFileSync(path.join(source_dir, "ignored.bin"), "bin", "utf-8");
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "project-lifecycle" },
+    });
+    const py_server = await start_fake_py_server(lg_path);
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+
+    const started = await gateway.start();
+    const snapshot_response = await fetch(`${started.baseUrl}/api/project/snapshot`, {
+      body: "{}",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const preview_response = await fetch(`${started.baseUrl}/api/project/preview`, {
+      body: JsonTool.stringifyStrict({ path: lg_path }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const source_files_response = await fetch(`${started.baseUrl}/api/project/source-files`, {
+      body: JsonTool.stringifyStrict({ source_paths: [source_dir] }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const unload_response = await fetch(`${started.baseUrl}/api/project/unload`, {
+      body: "{}",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const snapshot_body = (await snapshot_response.json()) as {
+      data?: { project?: { path?: string; loaded?: boolean; busy?: boolean } };
+    };
+    const preview_body = (await preview_response.json()) as {
+      data?: { preview?: { path?: string; name?: string } };
+    };
+    const source_files_body = (await source_files_response.json()) as {
+      data?: { source_files?: string[] };
+    };
+    const unload_body = (await unload_response.json()) as {
+      data?: { project?: { path?: string; loaded?: boolean } };
+    };
+
+    expect(snapshot_body.data?.project).toEqual({ path: lg_path, loaded: true });
+    expect(preview_body.data?.preview?.path).toBe(lg_path);
+    expect(preview_body.data?.preview?.name).toBe("project-lifecycle");
+    expect(source_files_body.data?.source_files).toEqual([path.join(source_dir, "script.txt")]);
+    expect(unload_body.data?.project).toEqual({ path: "", loaded: false });
+    const py_request_paths = py_server.requests.map((item) => item.path);
+    expect(py_request_paths).toContain("/internal/runtime/project-state");
+    expect(py_request_paths).toContain("/internal/runtime/sync");
+    expect(py_request_paths).not.toContain("/api/project/snapshot");
+    expect(py_request_paths).not.toContain("/api/project/preview");
+    expect(py_request_paths).not.toContain("/api/project/source-files");
+    expect(py_request_paths).not.toContain("/api/project/unload");
+    expect(py_server.requests.findLast((item) => item.path === "/internal/runtime/sync")?.raw).toBe(
+      JsonTool.stringifyStrict({ type: "project_unload", payload: {} }),
+    );
+  });
+
+  it("未迁移项目路由继续代理到 Python Core", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_fake_py_server();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/project/load`, {
+      body: JsonTool.stringifyStrict({ path: "demo.lg" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = (await response.json()) as { ok?: boolean };
+
+    expect(body.ok).toBe(true);
+    expect(py_server.requests.map((item) => item.path)).toContain("/api/project/load");
+  });
+
+  it("项目 preview 缺失文件时映射为 not_found", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_fake_py_server();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/project/preview`, {
+      body: JsonTool.stringifyStrict({ path: path.join(app_root, "missing.lg") }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = (await response.json()) as {
+      ok?: boolean;
+      error?: { code?: string };
+    };
+
+    expect(response.status).toBe(404);
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe("not_found");
+    expect(py_server.requests).toEqual([]);
+  });
+
   it("校对同步 mutation 由 TS Gateway 直接写库且只调用内部 runtime bridge", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
@@ -137,7 +276,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -196,7 +335,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -234,7 +373,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -289,7 +428,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -315,7 +454,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -359,7 +498,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_server.baseUrl,
       pyCoreToken: "py-token",
     });
@@ -416,7 +555,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
-      publicPort: await allocate_core_api_port(),
+      publicPort: await allocate_gateway_test_port(),
       pyCoreBaseUrl: py_core_base_url,
       pyCoreToken: "py-token",
     });
@@ -483,6 +622,34 @@ describe("ApiGatewayServer", () => {
     fs.writeFileSync(path.join(app_root, "version.txt"), "9.8.7", "utf-8");
     cleanup_callbacks.push(() => fs.rmSync(app_root, { force: true, recursive: true }));
     return app_root;
+  }
+
+  /**
+   * 测试使用 OS 分配的本机端口，避免随机高位端口在 Windows 上命中保留范围。
+   */
+  async function allocate_gateway_test_port(): Promise<number> {
+    const server = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    });
+    if (typeof address !== "object" || address === null) {
+      throw new Error("测试端口未取得地址。");
+    }
+    return address.port;
   }
 
   /**

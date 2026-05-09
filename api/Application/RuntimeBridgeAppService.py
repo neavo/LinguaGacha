@@ -61,6 +61,8 @@ class RuntimeBridgeAppService:
             self.clear_project_quality_caches(clear_prompt_cache=True)
         elif sync_type == "project_data_changed":
             self.clear_project_data_caches(payload)
+        elif sync_type == "project_unload":
+            self.unload_project()
         elif sync_type == "project_file_operation_begin":
             self.begin_project_file_operation()
         elif sync_type == "project_file_operation_end":
@@ -116,6 +118,11 @@ class RuntimeBridgeAppService:
         """释放工作台文件操作临界区，允许后续文件 mutation 继续执行。"""
 
         self.data_manager.finish_file_operation()
+
+    def unload_project(self) -> None:
+        """经内部桥卸载 Python 工程会话，保持公开 TS 响应与 Core 状态一致。"""
+
+        self.data_manager.unload_project()
 
     def clear_project_quality_caches(self, *, clear_prompt_cache: bool) -> None:
         """清理项目质量缓存，确保规则和提示词改动后重新读取数据库。"""

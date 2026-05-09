@@ -572,13 +572,3 @@ class ProjectService(Base):
             if Path(base_path).is_file()
             else str(Path(file_path).relative_to(base_path))
         )
-
-    def get_project_preview(self, lg_path: str) -> dict:
-        # 获取工程预览信息（不完全加载）。
-        if not Path(lg_path).exists():
-            raise FileNotFoundError(
-                Localizer.get().project_store_file_not_found.format(PATH=lg_path)
-            )
-
-        db = DatabaseGateway(lg_path)
-        return db.get_project_summary()

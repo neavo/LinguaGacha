@@ -21,6 +21,24 @@ class ModelApiPaths:
     TEST_PATH: str = "/api/models/test"
 
 
+class ProjectApiPaths:
+    """公开项目 API 路径常量，供 Gateway 客户端脱离 Python server 实现。"""
+
+    LOAD_PATH: str = "/api/project/load"
+    CREATE_PREVIEW_PATH: str = "/api/project/create-preview"
+    CREATE_COMMIT_PATH: str = "/api/project/create-commit"
+    SNAPSHOT_PATH: str = "/api/project/snapshot"
+    UNLOAD_PATH: str = "/api/project/unload"
+    OPEN_PREVIEW_PATH: str = "/api/project/open-preview"
+    TRANSLATION_RESET_PREVIEW_PATH: str = "/api/project/translation/reset-preview"
+    ANALYSIS_RESET_PREVIEW_PATH: str = "/api/project/analysis/reset-preview"
+    SOURCE_FILES_PATH: str = "/api/project/source-files"
+    PREVIEW_PATH: str = "/api/project/preview"
+    EXPORT_CONVERTED_TRANSLATION_PATH: str = "/api/project/export-converted-translation"
+    WORKBENCH_PARSE_FILE_PATH: str = "/api/project/workbench/parse-file"
+    BOOTSTRAP_STREAM_PATH: str = "/api/project/bootstrap/stream"
+
+
 class QualityApiPaths:
     """公开质量规则 API 路径常量；页面读写由 Electron main 实现。"""
 
