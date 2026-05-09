@@ -5,7 +5,6 @@ import ExcelJS from "exceljs";
 
 import { group_items, type ExportPaths } from "./file-format-shared";
 import { normalize_file_item, type FileFormatItem } from "../file-item";
-import { cell_to_text, is_wolf_sheet, load_workbook } from "./xlsx-shared";
 
 // WOLF XLSX 的源文和译文列号来自 Py 侧固定实现。
 const COL_SRC_TEXT = 6;
@@ -21,9 +20,9 @@ export class WOLFXLSXFormat {
    * 只处理识别为 WOLF 表头的工作表，普通 XLSX 留给 XLSXFormat。
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
-    const workbook = await load_workbook(content);
+    const workbook = await load_wolf_xlsx_workbook(content);
     const sheet = workbook.worksheets[0];
-    if (sheet === undefined || !is_wolf_sheet(sheet)) {
+    if (sheet === undefined || !is_wolf_xlsx_sheet(sheet)) {
       return [];
     }
     const items: FileFormatItem[] = [];
@@ -33,8 +32,9 @@ export class WOLFXLSXFormat {
         continue;
       }
       const dst_value = sheet.getCell(row, COL_DST_TEXT).value;
-      const src = cell_to_text(src_value);
-      const dst = dst_value === null || dst_value === undefined ? "" : cell_to_text(dst_value);
+      const src = wolf_xlsx_cell_to_text(src_value);
+      const dst =
+        dst_value === null || dst_value === undefined ? "" : wolf_xlsx_cell_to_text(dst_value);
       const fill_index = this.get_fg_color_index(sheet, row, COL_SRC_TEXT);
       items.push(
         normalize_file_item({
@@ -66,7 +66,8 @@ export class WOLFXLSXFormat {
   ): Promise<void> {
     for (const [rel_path, group] of group_items(items, "WOLFXLSX")) {
       const original = asset_reader(rel_path);
-      const workbook = original !== null ? await load_workbook(original) : new ExcelJS.Workbook();
+      const workbook =
+        original !== null ? await load_wolf_xlsx_workbook(original) : new ExcelJS.Workbook();
       const sheet = workbook.worksheets[0] ?? workbook.addWorksheet("Sheet");
       if (original === null) {
         sheet.getColumn(1).width = 64;
@@ -89,4 +90,58 @@ export class WOLFXLSXFormat {
     const fill = sheet.getCell(row, column).fill as Partial<{ fgColor?: { indexed?: number } }>;
     return fill.fgColor?.indexed ?? -1;
   }
+}
+
+/**
+ * ExcelJS 的 load 签名比实际可接收类型更窄，这里把二进制载荷固定转成 Buffer。
+ */
+async function load_wolf_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook();
+  await (workbook.xlsx.load as (data: unknown) => Promise<ExcelJS.Workbook>)(Buffer.from(content));
+  return workbook;
+}
+
+/**
+ * WOLF 表格也可能包含富文本或公式结果，解析时统一收敛成字符串。
+ */
+function wolf_xlsx_cell_to_text(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "object" && "text" in value && typeof value.text === "string") {
+    return value.text;
+  }
+  if (typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
+    return value.richText
+      .map((part) =>
+        typeof part === "object" && part !== null && "text" in part ? String(part.text ?? "") : "",
+      )
+      .join("");
+  }
+  if (typeof value === "object" && "result" in value) {
+    return String(value.result ?? "");
+  }
+  return String(value);
+}
+
+/**
+ * WOLF 官方表格通过前四列表头识别，避免普通双列表被专用解析器抢走。
+ */
+function is_wolf_xlsx_sheet(sheet: ExcelJS.Worksheet): boolean {
+  const expected = new Map([
+    [1, "code"],
+    [2, "flag"],
+    [3, "type"],
+    [4, "info"],
+  ]);
+  for (const [column, label] of expected) {
+    if (
+      !String(sheet.getCell(1, column).value ?? "")
+        .toLowerCase()
+        .includes(label)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

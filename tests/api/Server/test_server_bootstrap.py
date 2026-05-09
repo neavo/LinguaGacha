@@ -120,7 +120,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         runtime_bridge_app_service=SimpleNamespace(
             get_project_state=lambda request, handler: {"loaded": False},
             sync=lambda request, handler: {"accepted": True},
-            parse_project_assets=lambda request, handler: {"files": []},
         ),
     )
 
@@ -137,7 +136,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             ("POST", ModelApiPaths.TEST_PATH),
             ("POST", "/api/lifecycle/shutdown"),
             ("POST", "/internal/runtime/project-state"),
-            ("POST", "/internal/runtime/parse-project-assets"),
         )
     }
 
@@ -151,7 +149,6 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         ModelApiPaths.TEST_PATH: "json",
         "/api/lifecycle/shutdown": "context_json",
         "/internal/runtime/project-state": "context_json",
-        "/internal/runtime/parse-project-assets": "context_json",
     }
 
 

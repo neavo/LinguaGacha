@@ -159,15 +159,6 @@ class FakeTaskLimiter:
         return self.max_concurrency
 
 
-class FakeFileManager:
-    def __init__(self, config: Config) -> None:
-        del config
-
-    def write_to_path(self, items: list[Item]) -> str:
-        del items
-        return "E:/tmp/output.txt"
-
-
 def build_localizer() -> Any:
     return SimpleNamespace(
         task_running="task_running",
@@ -260,108 +251,6 @@ def test_get_concurrency_helpers_delegate_to_limiter() -> None:
     assert Translation.get_concurrency_limit(translation) == 9
 
 
-@pytest.mark.parametrize(
-    "engine_status",
-    [
-        Base.TaskStatus.TRANSLATING,
-        Base.TaskStatus.STOPPING,
-    ],
-)
-def test_resolve_export_items_uses_runtime_cache_for_manual_export_when_translation_active(
-    engine_status: Base.TaskStatus,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    cached_item = Item(src="live")
-    translation.items_cache = [cached_item]
-    copied_item = Item(src="copied")
-    translation.copy_items = lambda: [copied_item]
-    engine = create_engine(engine_status)
-
-    def fail_if_read_data_manager() -> None:
-        raise AssertionError("不应读取 DataManager")
-
-    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
-    monkeypatch.setattr(
-        translation_module.DataManager,
-        "get",
-        staticmethod(fail_if_read_data_manager),
-    )
-
-    resolved = Translation.resolve_export_items(
-        translation,
-        Translation.ExportSource.MANUAL,
-    )
-
-    assert resolved == [copied_item]
-    assert resolved[0] is not copied_item
-
-
-def test_resolve_export_items_reads_data_manager_for_manual_export_when_engine_idle(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.items_cache = [Item(src="stale")]
-    loaded_item = Item(src="db")
-    engine = create_engine(Base.TaskStatus.IDLE)
-    fake_dm = SimpleNamespace(
-        is_loaded=lambda: True, get_all_items=lambda: [loaded_item]
-    )
-    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
-
-    resolved = Translation.resolve_export_items(
-        translation,
-        Translation.ExportSource.MANUAL,
-    )
-
-    assert resolved == [loaded_item]
-    assert resolved[0] is not loaded_item
-
-
-def test_resolve_export_items_reads_data_manager_when_cache_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.items_cache = None
-    loaded_item = Item(src="db")
-    fake_dm = SimpleNamespace(
-        is_loaded=lambda: True, get_all_items=lambda: [loaded_item]
-    )
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
-
-    resolved = Translation.resolve_export_items(
-        translation,
-        Translation.ExportSource.MANUAL,
-    )
-
-    assert resolved == [loaded_item]
-    assert resolved[0] is not loaded_item
-
-
-def test_resolve_export_items_returns_empty_when_project_not_loaded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.items_cache = None
-    fake_dm = SimpleNamespace(is_loaded=lambda: False)
-    monkeypatch.setattr(
-        translation_module.DataManager, "get", staticmethod(lambda: fake_dm)
-    )
-
-    assert (
-        Translation.resolve_export_items(
-            translation,
-            Translation.ExportSource.MANUAL,
-        )
-        == []
-    )
-
-
 def test_get_item_count_by_status_and_copy_items() -> None:
     translation = create_translation_stub()
     first = Item(src="a")
@@ -438,146 +327,6 @@ def test_translation_require_stop_sets_engine_status_and_emits_run_event(
             {"sub_event": Base.SubEvent.RUN},
         )
     ]
-
-
-def test_translation_export_returns_immediately_when_engine_stopping(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = SimpleNamespace(get_status=lambda: Base.TaskStatus.STOPPING)
-    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
-    thread_factory = MagicMock()
-    monkeypatch.setattr(translation_module.threading, "Thread", thread_factory)
-
-    Translation.translation_export(
-        translation,
-        Base.Event.TRANSLATION_EXPORT,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    thread_factory.assert_not_called()
-
-
-def test_translation_export_ignores_non_request_sub_event(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = SimpleNamespace(get_status=lambda: Base.TaskStatus.IDLE)
-    monkeypatch.setattr(translation_module.Engine, "get", staticmethod(lambda: engine))
-    thread_factory = MagicMock()
-    monkeypatch.setattr(translation_module.threading, "Thread", thread_factory)
-
-    Translation.translation_export(
-        translation,
-        Base.Event.TRANSLATION_EXPORT,
-        {"sub_event": Base.SubEvent.RUN},
-    )
-
-    thread_factory.assert_not_called()
-
-
-def test_run_translation_export_manual_success_flow(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    processed_item = Item(
-        file_path="a.txt",
-        src="a",
-        dst="b",
-        status=Base.ItemStatus.PROCESSED,
-    )
-    duplicated_item = Item(
-        file_path="a.txt",
-        src="a",
-        status=Base.ItemStatus.DUPLICATED,
-    )
-    translation.resolve_export_items = lambda source: [processed_item, duplicated_item]
-    translation.mtool_optimizer_postprocess = MagicMock()
-    translation.check_and_wirte_result = MagicMock(return_value="E:/tmp/output.txt")
-    logger = FakeLogger()
-    monkeypatch.setattr(
-        translation_module.LogManager, "get", staticmethod(lambda: logger)
-    )
-    monkeypatch.setattr(
-        translation_module.Localizer,
-        "get",
-        staticmethod(
-            lambda: SimpleNamespace(
-                export_translation_start="start",
-                export_translation_success="success",
-                export_translation_failed="failed",
-            )
-        ),
-    )
-
-    Translation.run_translation_export(
-        translation,
-        source=Translation.ExportSource.MANUAL,
-        apply_mtool_postprocess=True,
-    )
-
-    translation.mtool_optimizer_postprocess.assert_called_once()
-    translation.check_and_wirte_result.assert_called_once()
-    exported_items = translation.check_and_wirte_result.call_args.args[0]
-    assert exported_items[1].get_dst() == "b"
-    assert exported_items[1].get_status() == Base.ItemStatus.PROCESSED
-    assert emitted_events(translation)[0] == (
-        Base.Event.TRANSLATION_EXPORT,
-        {
-            "sub_event": Base.SubEvent.RUN,
-            "source": "MANUAL",
-            "message": "start",
-        },
-    )
-    assert emitted_events(translation)[-1] == (
-        Base.Event.TRANSLATION_EXPORT,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "source": "MANUAL",
-            "output_path": "E:/tmp/output.txt",
-            "message": "success",
-        },
-    )
-
-
-def test_run_translation_export_emits_error_event_when_write_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.resolve_export_items = lambda source: [Item(src="a", dst="b")]
-    translation.mtool_optimizer_postprocess = MagicMock()
-    translation.check_and_wirte_result = MagicMock(side_effect=RuntimeError("boom"))
-    logger = FakeLogger()
-    monkeypatch.setattr(
-        translation_module.LogManager, "get", staticmethod(lambda: logger)
-    )
-    monkeypatch.setattr(
-        translation_module.Localizer,
-        "get",
-        staticmethod(
-            lambda: SimpleNamespace(
-                export_translation_start="start",
-                export_translation_success="success",
-                export_translation_failed="failed",
-            )
-        ),
-    )
-
-    Translation.run_translation_export(
-        translation,
-        source=Translation.ExportSource.MANUAL,
-        apply_mtool_postprocess=True,
-    )
-
-    assert has_emitted(
-        translation,
-        Base.Event.TRANSLATION_EXPORT,
-        {
-            "sub_event": Base.SubEvent.ERROR,
-            "source": "MANUAL",
-            "message": "failed",
-        },
-    )
 
 
 def test_project_check_run_ignores_non_request_sub_event() -> None:
@@ -742,55 +491,6 @@ def test_translation_run_emits_error_when_thread_start_fails(
     assert logger.error_messages == ["task_failed"]
 
 
-def test_run_translation_export_finishes_progress_when_no_items(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    engine = create_engine()
-    dm = create_data_manager(loaded=True)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    translation.resolve_export_items = lambda source: []
-    translation.check_and_wirte_result = MagicMock()
-
-    Translation.run_translation_export(
-        translation,
-        source=Translation.ExportSource.MANUAL,
-    )
-
-    translation.check_and_wirte_result.assert_not_called()
-    assert emitted_events(translation)[-1] == (
-        Base.Event.TRANSLATION_EXPORT,
-        {
-            "sub_event": Base.SubEvent.DONE,
-            "source": "MANUAL",
-            "empty": True,
-        },
-    )
-
-
-def test_translation_export_spawns_thread_when_not_stopping(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.run_translation_export = MagicMock()
-    engine = create_engine()
-    dm = create_data_manager(loaded=True)
-    logger = FakeLogManager()
-    setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
-    monkeypatch.setattr(translation_module.threading, "Thread", InlineThread)
-
-    Translation.translation_export(
-        translation,
-        Base.Event.TRANSLATION_EXPORT,
-        {"sub_event": Base.SubEvent.REQUEST},
-    )
-
-    translation.run_translation_export.assert_called_once_with(
-        source=Translation.ExportSource.MANUAL
-    )
-
-
 def test_start_handles_project_not_loaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -800,7 +500,6 @@ def test_start_handles_project_not_loaded(
     logger = FakeLogManager()
     setup_common_patches(monkeypatch, engine=engine, dm=dm, logger=logger)
     translation.mtool_optimizer_postprocess = MagicMock()
-    translation.run_translation_export = MagicMock()
     monkeypatch.setattr(
         translation_module.QualityRuleSnapshot,
         "capture",
@@ -931,14 +630,12 @@ def test_start_success_flow_saves_project_fact_without_writing_translation_file(
         item.set_status(Base.ItemStatus.PROCESSED)
 
     translation.start_translation_pipeline = fake_pipeline
-    translation.run_translation_export = MagicMock()
 
     Translation.start(
         translation,
         {"config": config, "mode": Base.TranslationMode.NEW},
     )
 
-    translation.run_translation_export.assert_not_called()
     assert any(
         event == Base.Event.TRANSLATION_TASK
         and payload.get("final_status") == "SUCCESS"
@@ -985,7 +682,6 @@ def test_start_continue_mode_handles_stop_and_failed_states(
         },
     )
     translation.start_translation_pipeline = lambda **kwargs: None
-    translation.run_translation_export = MagicMock()
 
     Translation.start(
         translation,
@@ -1123,47 +819,3 @@ def test_mtool_optimizer_postprocess_groups_kvjson_and_expands_lines(
     assert any(value.get_src() == "a" for value in items[3:])
     assert any(value.get_src() == "b" for value in items[3:])
     assert logger.info_messages[-1] == "mtool_done"
-
-
-def test_check_and_wirte_result_opens_output_folder_when_enabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.config.output_folder_open_on_finish = True
-    logger = FakeLogManager()
-    open_mock = MagicMock()
-    monkeypatch.setattr(translation_module, "FileManager", FakeFileManager)
-    monkeypatch.setattr(
-        translation_module.LogManager, "get", staticmethod(lambda: logger)
-    )
-    monkeypatch.setattr(
-        translation_module.Localizer, "get", staticmethod(build_localizer)
-    )
-    monkeypatch.setattr(translation_module.webbrowser, "open", open_mock)
-
-    Translation.check_and_wirte_result(translation, [Item(src="a", dst="b")])
-
-    assert emitted_events(translation) == []
-    open_mock.assert_called_once()
-
-
-def test_check_and_wirte_result_skips_open_when_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    translation = create_translation_stub()
-    translation.config.output_folder_open_on_finish = False
-    logger = FakeLogManager()
-    open_mock = MagicMock()
-    monkeypatch.setattr(translation_module, "FileManager", FakeFileManager)
-    monkeypatch.setattr(
-        translation_module.LogManager, "get", staticmethod(lambda: logger)
-    )
-    monkeypatch.setattr(
-        translation_module.Localizer, "get", staticmethod(build_localizer)
-    )
-    monkeypatch.setattr(translation_module.webbrowser, "open", open_mock)
-
-    Translation.check_and_wirte_result(translation, [Item(src="a", dst="b")])
-
-    assert emitted_events(translation) == []
-    open_mock.assert_not_called()

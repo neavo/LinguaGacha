@@ -164,12 +164,12 @@ export class ApiGatewayServer {
       core_bridge,
       this.project_session_state,
     );
-    const file_preview_service = new FilePreviewService(config_service, core_bridge);
+    const file_preview_service = new FilePreviewService(config_service);
     const file_export_service = new FileExportService(
       this.options.database,
       config_service,
       this.project_session_state,
-      core_bridge,
+      this.options.logManager,
     );
     const project_patch_adapter = new ProjectPatchAdapter(
       this.options.database,

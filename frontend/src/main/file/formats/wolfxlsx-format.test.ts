@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalize_file_item } from "../file-item";
 import { WOLFXLSXFormat } from "./wolfxlsx-format";
 
+// 每个用例独占工作簿输出目录，避免 WOLF 写回测试共享文件状态。
 let temp_dir = "";
 
 beforeEach(() => {
@@ -25,13 +26,13 @@ describe("WOLFXLSXFormat", () => {
     ["code", "flag", "type", "info"].forEach((label, index) => {
       sheet.getCell(1, index + 1).value = label;
     });
-    sheet.getCell(2, 6).value = "原文";
+    sheet.getCell(2, 6).value = { richText: [{ text: "原" }, { text: "文" }] };
     sheet.getCell(2, 6).fill = {
       type: "pattern",
       pattern: "solid",
       fgColor: { indexed: 9 } as never,
     };
-    sheet.getCell(2, 7).value = "译文";
+    sheet.getCell(2, 7).value = { formula: "F2", result: "译文" };
     const buffer = await workbook.xlsx.writeBuffer();
 
     const items = await new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "wolf.xlsx");
@@ -46,6 +47,18 @@ describe("WOLFXLSXFormat", () => {
         status: "PROCESSED",
       }),
     ]);
+  });
+
+  it("普通双列表不会被 WOLF 格式抢先解析", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    sheet.getCell(1, 1).value = "原文";
+    sheet.getCell(1, 2).value = "译文";
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    await expect(
+      new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "demo.xlsx"),
+    ).resolves.toEqual([]);
   });
 
   it("写回时复用原始工作簿并更新 WOLF 固定列", async () => {

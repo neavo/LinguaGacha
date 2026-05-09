@@ -29,7 +29,7 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
-  it("按公开支持扩展名识别文件，并单独标记 EPUB 保留路径", () => {
+  it("按公开支持扩展名识别文件，并单独标记 EPUB 路径", () => {
     const service = create_service();
 
     expect(service.is_supported_file("script.txt")).toBe(true);

@@ -2,23 +2,58 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import type { ProjectDatabase } from "../database/database-operations";
+import type { LogManager } from "../log/log-manager";
 import { ConfigService } from "../service/config-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import {
-  item_to_json,
   normalize_file_item,
   normalize_name,
   type FileFormatItem,
   type FileItemStatus,
 } from "./file-item";
 
+/**
+ * API 入参和返回值在文件域内按 JSON 对象处理，避免暴露内部类实例。
+ */
 type JsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * TS 侧导出服务，承载非 EPUB 写回和导出目录语义。
+ * 设置服务返回值只承诺 JSON 形态，导出层按需要逐项收窄类型。
+ */
+type ConfigRecord = Record<string, ApiJsonValue>;
+
+/**
+ * 导出层只依赖日志的公开 info/error 能力，避免把完整 LogManager 生命周期传进文件域。
+ */
+type FileExportLogManager = Pick<LogManager, "info" | "error">;
+
+/**
+ * TS 导出日志使用固定 source，便于日志侧区分 Core 兼容层和本机文件域输出。
+ */
+const FILE_EXPORT_LOG_SOURCE = "ts-file-export";
+
+/**
+ * 文案表对齐旧 Python Localizer 输出，导出路径迁移后仍保持用户可见日志口径。
+ */
+const EXPORT_LOG_TEXT = {
+  ZH: {
+    start: "生成译文中 …",
+    done: (output_path: string): string => `译文已保存至 ${output_path} …`,
+    failed: "译文生成失败 …",
+    write_failed: "文件写入失败 …",
+  },
+  EN: {
+    start: "Generating translation …",
+    done: (output_path: string): string => `Translation files saved to ${output_path} …`,
+    failed: "Failed to generate translation files …",
+    write_failed: "File writing failed …",
+  },
+};
+
+/**
+ * TS 侧导出服务，承载全部公开文件格式写回和导出目录语义。
  */
 export class FileExportService {
   /**
@@ -28,7 +63,7 @@ export class FileExportService {
     private readonly database: ProjectDatabase,
     private readonly config_service: ConfigService,
     private readonly session_state: ProjectSessionState,
-    private readonly core_bridge: CoreBridgeClient,
+    private readonly log_manager?: FileExportLogManager,
   ) {}
 
   /**
@@ -36,10 +71,18 @@ export class FileExportService {
    */
   public async export_translation(): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const items = this.read_project_items(project_path);
-    this.fill_duplicated_translations(items);
-    const output_path = await this.write_export(project_path, items, "");
-    return { accepted: true, output_path };
+    const config = this.config_service.load_config();
+    this.log_export_start(config);
+    try {
+      const items = this.read_project_items(project_path);
+      this.fill_duplicated_translations(items);
+      const output_path = await this.write_export(project_path, items, "", config);
+      this.log_export_done(config, output_path);
+      return { accepted: true, output_path };
+    } catch (error) {
+      this.log_export_failed(config, error);
+      throw error;
+    }
   }
 
   /**
@@ -47,6 +90,7 @@ export class FileExportService {
    */
   public async export_converted_translation(request: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
+    const config = this.config_service.load_config();
     const suffix = String(request["suffix"] ?? "");
     if (suffix !== "_S2T" && suffix !== "_T2S") {
       throw new Error("导出后缀无效。");
@@ -79,19 +123,26 @@ export class FileExportService {
       });
     });
     this.fill_duplicated_translations(export_items);
-    const output_path = await this.write_export(project_path, export_items, suffix);
-    return { accepted: true, output_path };
+    this.log_export_start(config);
+    try {
+      const output_path = await this.write_export(project_path, export_items, suffix, config);
+      this.log_export_done(config, output_path);
+      return { accepted: true, output_path };
+    } catch (error) {
+      this.log_export_failed(config, error);
+      throw error;
+    }
   }
 
   /**
-   * 实际写回只处理已迁移到 TS 的非 EPUB 项，EPUB 仍由 Python 旧路径保留。
+   * 实际写回统一进入 TS 文件域，避免文件格式能力在 Python/TS 间分叉。
    */
   private async write_export(
     project_path: string,
     items: FileFormatItem[],
     custom_suffix: string,
+    config: ConfigRecord,
   ): Promise<string> {
-    const config = this.config_service.load_config();
     const paths = this.build_export_paths(
       project_path,
       custom_suffix,
@@ -106,18 +157,13 @@ export class FileExportService {
         config["write_translated_name_fields_to_file"] ?? true,
       ),
     });
-    const non_epub_items = items.filter((item) => item.file_type !== "EPUB");
-    await format_service.write_items(non_epub_items, paths, (rel_path) =>
-      this.database.read_asset_content(project_path, rel_path),
-    );
-    const epub_items = items.filter((item) => item.file_type === "EPUB");
-    if (epub_items.length > 0) {
-      await this.core_bridge.export_epub_items(
-        project_path,
-        paths.translated_path,
-        paths.bilingual_path,
-        epub_items.map((item) => item_to_json(item)),
+    try {
+      await format_service.write_items(items, paths, (rel_path) =>
+        this.database.read_asset_content(project_path, rel_path),
       );
+    } catch (error) {
+      this.log_write_failed(config, error);
+      throw error;
     }
     return paths.translated_path;
   }
@@ -164,7 +210,7 @@ export class FileExportService {
         (item): item is JsonRecord =>
           typeof item === "object" && item !== null && !Array.isArray(item),
       )
-      .map((item) => normalize_file_item(item_to_json(normalize_file_item(item))));
+      .map((item) => normalize_file_item(item));
   }
 
   /**
@@ -225,5 +271,61 @@ export class FileExportService {
     return `_${now.getFullYear().toString()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
       now.getHours(),
     )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  }
+
+  /**
+   * 导出日志文案跟随应用语言，保持 TS 写回路径和旧 Python 导出提示一致。
+   */
+  private export_log_text(config: ConfigRecord): (typeof EXPORT_LOG_TEXT)["ZH"] {
+    return String(config["app_language"] ?? "ZH").toUpperCase() === "EN"
+      ? EXPORT_LOG_TEXT.EN
+      : EXPORT_LOG_TEXT.ZH;
+  }
+
+  /**
+   * 开始日志在真实文件写回前输出，便于日志窗口定位用户触发的导出动作。
+   */
+  private log_export_start(config: ConfigRecord): void {
+    this.log_manager?.info(this.export_log_text(config).start, { source: FILE_EXPORT_LOG_SOURCE });
+  }
+
+  /**
+   * 完成日志保留旧 Python 的前后空行，避免连续任务日志挤在一起。
+   */
+  private log_export_done(config: ConfigRecord, output_path: string): void {
+    const log_text = this.export_log_text(config);
+    this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
+    this.log_manager?.info(log_text.done(output_path), { source: FILE_EXPORT_LOG_SOURCE });
+    this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
+  }
+
+  /**
+   * 底层写文件失败时先记录文件写入错误，再让公开导出入口记录导出失败。
+   */
+  private log_write_failed(config: ConfigRecord, error: unknown): void {
+    this.log_manager?.error(this.export_log_text(config).write_failed, {
+      source: FILE_EXPORT_LOG_SOURCE,
+      ...this.error_log_payload(error),
+    });
+  }
+
+  /**
+   * 导出失败日志对齐旧 Python 入口的终态提示，同时保留异常详情给日志文件。
+   */
+  private log_export_failed(config: ConfigRecord, error: unknown): void {
+    this.log_manager?.error(this.export_log_text(config).failed, {
+      source: FILE_EXPORT_LOG_SOURCE,
+      ...this.error_log_payload(error),
+    });
+  }
+
+  /**
+   * TS 日志载荷显式拆出 message 和 stack，避免 Error 对象跨边界被 JSON 化丢字段。
+   */
+  private error_log_payload(error: unknown): { error_message?: string; stack?: string } {
+    if (error instanceof Error) {
+      return { error_message: error.message, stack: error.stack };
+    }
+    return { error_message: String(error) };
   }
 }

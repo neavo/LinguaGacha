@@ -11,10 +11,11 @@
   },
   "include": [
     "electron.vite.config.ts",
+    "src/electron-env.d.ts",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
     "src/utils/**/*",
-    "src/electron-env.d.ts"
+    "src/test/**/*"
   ]
 }

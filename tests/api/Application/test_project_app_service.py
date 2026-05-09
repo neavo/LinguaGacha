@@ -1,11 +1,8 @@
-from contextlib import contextmanager
 from threading import RLock
 
 import pytest
 
 from api.Application.ProjectAppService import ProjectAppService
-from base.Base import Base
-from module.Data.Core.Item import Item
 
 
 class _FakeProjectManagerForAnalysisGlossaryImport:
@@ -103,81 +100,6 @@ class _FakeProjectManagerForAnalysisGlossaryImport:
             section: self.runtime_section_revisions[section]
             for section in normalized_sections
         }
-
-
-class _FakeProjectManagerForConvertedExport:
-    """提供简繁转换导出测试替身，隔离导出逻辑与真实项目状态。"""
-
-    def __init__(self) -> None:
-        """初始化 _FakeProjectManagerForConvertedExport 依赖和状态，保持对象写入口明确。"""
-
-        self.loaded = True
-        self.custom_suffixes: list[str] = []
-        self.items = [
-            Item(
-                id=1,
-                src="源文",
-                dst="旧译文",
-                name_dst="旧姓名",
-                row=7,
-                file_type=Item.FileType.TXT,
-                file_path="script.txt",
-                text_type=Item.TextType.NONE,
-                status=Base.ItemStatus.PROCESSED,
-            ),
-            Item(
-                id=2,
-                src="第二行",
-                dst="保持原样",
-                name_dst=["甲", "乙"],
-                row=8,
-                file_type=Item.FileType.TXT,
-                file_path="script.txt",
-                text_type=Item.TextType.NONE,
-                status=Base.ItemStatus.PROCESSED,
-            ),
-            Item(
-                id=3,
-                src="源文",
-                row=9,
-                file_type=Item.FileType.TXT,
-                file_path="script.txt",
-                text_type=Item.TextType.NONE,
-                status=Base.ItemStatus.DUPLICATED,
-            ),
-        ]
-
-    def is_loaded(self) -> bool:
-        """返回测试加载态，驱动服务分支判断。"""
-
-        return self.loaded
-
-    def get_items_all(self) -> list[Item]:
-        """返回测试条目集合，供转换导出构建快照。"""
-
-        return self.items
-
-    @contextmanager
-    def export_custom_suffix_context(self, suffix: str):
-        """提供测试后缀上下文，避免导出测试依赖真实命名规则。"""
-
-        self.custom_suffixes.append(suffix)
-        yield
-
-
-class _FakeConvertedExportFileManager:
-    """提供转换导出文件写入替身，帮助测试断言写出载荷。"""
-
-    def __init__(self) -> None:
-        """初始化 _FakeConvertedExportFileManager 依赖和状态，保持对象写入口明确。"""
-
-        self.items: list[Item] = []
-
-    def write_to_path(self, items: list[Item]) -> str:
-        """记录写出参数，帮助测试断言转换导出结果。"""
-
-        self.items = items
-        return "E:/Project/LinguaGacha/output/demo_译文_S2T"
 
 
 def test_load_project_returns_loaded_snapshot(
@@ -300,53 +222,13 @@ def test_open_project_alignment_preview_does_not_load_project(
     assert fake_project_manager.load_calls == []
 
 
-def test_export_converted_translation_uses_converted_snapshot_without_mutating_project() -> (
-    None
-):
-    fake_project_manager = _FakeProjectManagerForConvertedExport()
-    fake_file_manager = _FakeConvertedExportFileManager()
-    project_app_service = ProjectAppService(
-        fake_project_manager,
-        config_loader=lambda: object(),
-        file_manager_factory=lambda config: fake_file_manager,
-    )
-
-    result = project_app_service.export_converted_translation(
-        {
-            "suffix": "_S2T",
-            "items": [
-                {"item_id": 1, "dst": "新譯文", "name_dst": "新姓名"},
-                {"item_id": 2, "dst": "保持原樣", "name_dst": ["甲", "乙"]},
-            ],
-        }
-    )
-
-    assert result == {
-        "accepted": True,
-        "output_path": "E:/Project/LinguaGacha/output/demo_译文_S2T",
-    }
-    assert fake_project_manager.custom_suffixes == ["_S2T"]
-    assert [item.get_dst() for item in fake_file_manager.items] == [
-        "新譯文",
-        "保持原樣",
-        "新譯文",
-    ]
-    assert fake_file_manager.items[0].get_name_dst() == "新姓名"
-    assert fake_file_manager.items[1].get_name_dst() == ["甲", "乙"]
-    assert fake_file_manager.items[2].get_status() == Base.ItemStatus.PROCESSED
-    assert fake_project_manager.items[0].get_dst() == "旧译文"
-    assert fake_project_manager.items[0].get_name_dst() == "旧姓名"
-    assert fake_project_manager.items[2].get_dst() == ""
-    assert fake_project_manager.items[2].get_status() == Base.ItemStatus.DUPLICATED
-
-
-def test_export_converted_translation_rejects_invalid_suffix() -> None:
-    project_app_service = ProjectAppService(_FakeProjectManagerForConvertedExport())
+def test_export_converted_translation_rejects_python_file_write_path() -> None:
+    project_app_service = ProjectAppService(object())
 
     with pytest.raises(ValueError):
         project_app_service.export_converted_translation(
             {
-                "suffix": "_BAD",
+                "suffix": "_S2T",
                 "items": [{"item_id": 1, "dst": "新譯文"}],
             }
         )

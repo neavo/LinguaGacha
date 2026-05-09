@@ -16,24 +16,6 @@ export interface ProjectStatePayload {
 export type TaskSnapshotPayload = Record<string, ApiJsonValue>;
 
 /**
- * Python 受保护 asset 解析桥返回的最小文件结果。
- */
-export interface ParsedProjectAssetPayload {
-  rel_path: string;
-  items: Record<string, ApiJsonValue>[];
-}
-
-/**
- * Python EPUB 源文件预览桥返回的工作台文件结果。
- */
-export interface ParsedSourceFilePreviewPayload {
-  source_path: string;
-  target_rel_path: string;
-  file_type: string;
-  parsed_items: Record<string, ApiJsonValue>[];
-}
-
-/**
  * CoreBridgeClient 只接收内部 Core 地址和 token，不暴露到 preload/renderer。
  */
 interface CoreBridgeClientOptions {
@@ -113,89 +95,6 @@ export class CoreBridgeClient {
       type: change_type,
       payload,
     });
-  }
-
-  /**
-   * 调用受保护文件解析桥；这里只暴露 asset -> parsed item，不承载公开预演业务。
-   */
-  public async parse_project_assets(
-    project_path: string,
-    rel_paths: string[],
-  ): Promise<ParsedProjectAssetPayload[]> {
-    const data = await this.post_internal("/internal/runtime/parse-project-assets", {
-      projectPath: project_path,
-      relPaths: rel_paths,
-    });
-    const files = data["files"];
-    if (!Array.isArray(files)) {
-      return [];
-    }
-    return files
-      .filter((file): file is Record<string, ApiJsonValue> => this.is_json_record(file))
-      .map((file) => ({
-        rel_path: String(file["rel_path"] ?? ""),
-        items: Array.isArray(file["items"])
-          ? file["items"].filter((item): item is Record<string, ApiJsonValue> =>
-              this.is_json_record(item),
-            )
-          : [],
-      }));
-  }
-
-  /**
-   * 工作台 EPUB 预解析仍由 Python EPUB 保留路径承载，TS 只消费标准预览结果。
-   */
-  public async parse_source_epub_files(
-    source_paths: string[],
-    current_rel_path?: string,
-  ): Promise<ParsedSourceFilePreviewPayload[]> {
-    const data = await this.post_internal("/internal/runtime/parse-source-epub-files", {
-      sourcePaths: source_paths,
-      ...(current_rel_path === undefined ? {} : { currentRelPath: current_rel_path }),
-    });
-    const files = data["files"];
-    if (!Array.isArray(files)) {
-      return [];
-    }
-    return files
-      .filter((file): file is Record<string, ApiJsonValue> => this.is_json_record(file))
-      .map((file) => ({
-        source_path: String(file["source_path"] ?? ""),
-        target_rel_path: String(file["target_rel_path"] ?? ""),
-        file_type: String(file["file_type"] ?? "NONE"),
-        parsed_items: Array.isArray(file["parsed_items"])
-          ? file["parsed_items"].filter((item): item is Record<string, ApiJsonValue> =>
-              this.is_json_record(item),
-            )
-          : [],
-      }));
-  }
-
-  /**
-   * EPUB 导出使用 TS 已确定的输出目录，避免 Python 重新计算目录造成混合导出分裂。
-   */
-  public async export_epub_items(
-    project_path: string,
-    translated_path: string,
-    bilingual_path: string,
-    items: Record<string, ApiJsonValue>[],
-  ): Promise<void> {
-    await this.post_internal("/internal/runtime/export-epub-items", {
-      projectPath: project_path,
-      translatedPath: translated_path,
-      bilingualPath: bilingual_path,
-      items: items as unknown as ApiJsonValue,
-    });
-  }
-
-  /**
-   * 少数保留 Python 路径（如 EPUB）需要在 TS 编排中复用公开内部业务。
-   */
-  public async proxy_json(
-    path_name: string,
-    body: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
-    return this.post_py_core_json(path_name, body);
   }
 
   /**

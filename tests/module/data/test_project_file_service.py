@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import importlib
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -27,27 +26,6 @@ def build_service() -> tuple[ProjectFileService, ProjectSession]:
     return service, session
 
 
-def install_stub_file_manager(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    items: list[Item],
-) -> None:
-    """把文件解析边界替换成稳定的桩，避免测试依赖真实格式解析。"""
-
-    file_manager_module = importlib.import_module("module.File.FileManager")
-
-    class StubFileManager:
-        def __init__(self, _config: object) -> None:
-            pass
-
-        def parse_asset(self, rel_path: str, content: bytes) -> list[Item]:
-            del rel_path
-            del content
-            return items
-
-    monkeypatch.setattr(file_manager_module, "FileManager", StubFileManager)
-
-
 def create_virtual_file(
     fs: FakeFilesystem,
     file_path: str,
@@ -64,73 +42,21 @@ def test_parse_file_preview_rejects_unsupported_extension() -> None:
         service.parse_file_preview("a.md")
 
 
-def test_parse_file_preview_returns_normalized_items_and_target_rel_path(
-    fs,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_parse_file_preview_returns_empty_payload_for_python_compatibility(fs) -> None:
     service, _session = build_service()
-    install_stub_file_manager(
-        monkeypatch,
-        items=[
-            Item.from_dict(
-                {
-                    "src": "a",
-                    "dst": "A",
-                    "name_src": "Alice",
-                    "name_dst": "爱丽丝",
-                    "extra_field": {"speaker": "narrator"},
-                    "tag": "line",
-                    "row": 3,
-                    "file_path": "a.txt",
-                    "file_type": Item.FileType.TXT,
-                    "text_type": Item.TextType.MD,
-                    "status": "PROCESSED",
-                    "retry_count": 2,
-                }
-            )
-        ],
-    )
     create_virtual_file(fs, "C:/workspace/a.txt")
 
     result = service.parse_file_preview("C:/workspace/a.txt")
 
     assert result["target_rel_path"] == "a.txt"
-    assert result["file_type"] == Item.FileType.TXT.value
-    assert result["parsed_items"] == [
-        {
-            "src": "a",
-            "dst": "A",
-            "name_src": "Alice",
-            "name_dst": "爱丽丝",
-            "extra_field": {"speaker": "narrator"},
-            "tag": "line",
-            "row": 3,
-            "file_type": Item.FileType.TXT.value,
-            "file_path": "a.txt",
-            "text_type": Item.TextType.MD.value,
-            "status": "PROCESSED",
-            "retry_count": 2,
-        }
-    ]
+    assert result["file_type"] == Item.FileType.NONE.value
+    assert result["parsed_items"] == []
 
 
 def test_parse_file_preview_keeps_parent_folder_when_replacing_file(
     fs,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service, _session = build_service()
-    install_stub_file_manager(
-        monkeypatch,
-        items=[
-            Item.from_dict(
-                {
-                    "src": "line-1",
-                    "file_path": "chapter\\b.txt",
-                    "file_type": Item.FileType.TXT,
-                }
-            )
-        ],
-    )
     create_virtual_file(fs, "C:/workspace/b.txt")
 
     result = service.parse_file_preview(
@@ -139,7 +65,7 @@ def test_parse_file_preview_keeps_parent_folder_when_replacing_file(
     )
 
     assert result["target_rel_path"] == "chapter\\b.txt"
-    assert result["parsed_items"][0]["file_path"] == "chapter\\b.txt"
+    assert result["parsed_items"] == []
 
 
 def test_reorder_files_updates_asset_sort_orders() -> None:

@@ -139,14 +139,10 @@ class TaskAppService:
         }
 
     def export_translation(self, request: dict[str, Any]) -> dict[str, object]:
-        """请求导出当前工程译文。"""
+        """Python Core 不再写出译文文件，公开导出由 TS Gateway 文件域处理。"""
 
         del request
-        self.event_emitter(
-            Base.Event.TRANSLATION_EXPORT,
-            {"sub_event": Base.SubEvent.REQUEST},
-        )
-        return {"accepted": True}
+        raise ValueError(Localizer.get().export_translation_failed)
 
     def translate_single(self, request: dict[str, Any]) -> dict[str, object]:
         """同步等待单条临时翻译，供前端页面派生工具低频调用。"""

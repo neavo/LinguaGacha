@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { write_epub_fixture } from "../../test/epub-fixture";
 import type { ConfigService } from "../service/config-service";
-import type { CoreBridgeClient } from "../core/core-bridge-client";
 import { FilePreviewService } from "./file-preview-service";
 
 let temp_dir = "";
@@ -34,7 +34,7 @@ describe("FilePreviewService", () => {
   it("工作台预解析只返回成功解析的文件", async () => {
     const source_file = path.join(temp_dir, "script.txt");
     fs.writeFileSync(source_file, "原文", "utf-8");
-    const service = new FilePreviewService(create_config_service(), {} as CoreBridgeClient);
+    const service = new FilePreviewService(create_config_service());
 
     await expect(
       service.parse_workbench_file({
@@ -51,19 +51,10 @@ describe("FilePreviewService", () => {
     });
   });
 
-  it("工作台预解析 EPUB 时走 Python EPUB 桥而不是静默丢弃", async () => {
+  it("工作台预解析 EPUB 时直接返回 TS 解析结果", async () => {
     const epub_file = path.join(temp_dir, "book.epub");
-    fs.writeFileSync(epub_file, "epub", "utf-8");
-    const core_bridge = {
-      parse_source_epub_files: async (source_paths: string[], current_rel_path?: string) =>
-        source_paths.map((source_path) => ({
-          source_path,
-          target_rel_path: current_rel_path === undefined ? "book.epub" : "old/book.epub",
-          file_type: "EPUB",
-          parsed_items: [{ src: "章节", file_type: "EPUB", file_path: "old/book.epub" }],
-        })),
-    } as unknown as CoreBridgeClient;
-    const service = new FilePreviewService(create_config_service(), core_bridge);
+    await write_epub_fixture(epub_file, "章节");
+    const service = new FilePreviewService(create_config_service());
 
     await expect(
       service.parse_workbench_file({
@@ -74,27 +65,26 @@ describe("FilePreviewService", () => {
       files: [
         {
           source_path: epub_file,
-          target_rel_path: "old/book.epub",
+          target_rel_path: path.join("old", "book.epub"),
           file_type: "EPUB",
-          parsed_items: [{ src: "章节", file_type: "EPUB", file_path: "old/book.epub" }],
+          parsed_items: [
+            expect.objectContaining({
+              src: "章节",
+              file_type: "EPUB",
+              file_path: path.join("old", "book.epub"),
+            }),
+          ],
         },
       ],
     });
   });
 
-  it("新建工程预览合并 TS 非 EPUB 解析和 Python EPUB 桥结果", async () => {
+  it("新建工程预览合并 TS 文本和 EPUB 解析结果", async () => {
     const txt_file = path.join(temp_dir, "script.txt");
     const epub_file = path.join(temp_dir, "book.epub");
     fs.writeFileSync(txt_file, "文本", "utf-8");
-    fs.writeFileSync(epub_file, "epub", "utf-8");
-    const core_bridge = {
-      proxy_json: async () => ({
-        draft: {
-          items: [{ src: "章节", dst: "", file_type: "EPUB" }],
-        },
-      }),
-    } as unknown as CoreBridgeClient;
-    const service = new FilePreviewService(create_config_service(), core_bridge);
+    await write_epub_fixture(epub_file, "章节");
+    const service = new FilePreviewService(create_config_service());
 
     const result = await service.build_create_preview({ source_paths: [txt_file, epub_file] });
     const draft = result["draft"] as {

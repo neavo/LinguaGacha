@@ -1,11 +1,9 @@
 from typing import Any
 
 from base.Base import Base
-from base.LogManager import LogManager
 from module.Data.Core.Item import Item
 from module.Config import Config
 from module.Data.Core.ProjectSession import ProjectSession
-from module.File.FileManager import FileManager
 
 
 class TranslationItemService:
@@ -36,22 +34,15 @@ class TranslationItemService:
             return result
 
         if mode == Base.TranslationMode.RESET:
-            file_manager = FileManager(config)
-            parsed_items: list[Item] = []
-
-            asset_paths = db.get_all_asset_paths()
-            for rel_path in asset_paths:
-                try:
-                    # reset 需要重新解析原始资产内容，但压缩格式仍由 database 边界隐藏。
-                    content = db.read_asset_content(rel_path)
-                except Exception as e:
-                    LogManager.get().warning(f"读取资产失败: {rel_path}", e)
-                    continue
-                if not content:
-                    continue
-                parsed_items.extend(file_manager.parse_asset(rel_path, content))
-
-            return parsed_items
+            # 真实全量重置由 TS 同步 mutation 重新解析 asset；旧任务入口只基于当前事实重开翻译。
+            result = []
+            for item_dict in db.get_all_items():
+                item = Item.from_dict(item_dict)
+                item.set_dst("")
+                item.set_status(Base.ItemStatus.NONE)
+                item.set_retry_count(0)
+                result.append(item)
+            return result
 
         items: list[dict[str, Any]] = db.get_all_items()
         result: list[Item] = []

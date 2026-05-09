@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler
-import os
 from typing import Any
 
 from api.Application.AppLanguageNormalizer import AppLanguageNormalizer
 from base.Base import Base
 from module.Engine.Engine import Engine
 from module.Config import Config
-from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
-from module.File.EPUB.EPUB import EPUB
-from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 
 
@@ -75,151 +71,6 @@ class RuntimeBridgeAppService:
             raise ValueError(f"未知 runtime sync 类型：{sync_type}")
 
         return {"accepted": True}
-
-    def parse_project_assets(
-        self,
-        request: dict[str, object],
-        handler: BaseHTTPRequestHandler,
-    ) -> dict[str, object]:
-        """受保护地解析工程 asset；公开 reset preview 语义由 TS Gateway 持有。"""
-
-        self.assert_token(handler)
-        project_path = str(request.get("projectPath", "") or "")
-        rel_paths_raw = request.get("relPaths", [])
-        rel_paths = (
-            [str(rel_path) for rel_path in rel_paths_raw if isinstance(rel_path, str)]
-            if isinstance(rel_paths_raw, list)
-            else []
-        )
-        if (
-            project_path == ""
-            or not self.data_manager.is_loaded()
-            or str(self.data_manager.get_lg_path() or "") != project_path
-        ):
-            raise ValueError(Localizer.get().alert_project_not_loaded)
-
-        file_manager = FileManager(Config().load())
-        files: list[dict[str, object]] = []
-        for rel_path in rel_paths:
-            content = self.data_manager.get_asset_decompressed(rel_path)
-            if not content:
-                files.append({"rel_path": rel_path, "items": []})
-                continue
-            items = [
-                item.to_dict() for item in file_manager.parse_asset(rel_path, content)
-            ]
-            files.append({"rel_path": rel_path, "items": items})
-        return {"files": files}
-
-    def parse_source_epub_files(
-        self,
-        request: dict[str, object],
-        handler: BaseHTTPRequestHandler,
-    ) -> dict[str, object]:
-        """受保护地解析本地 EPUB 源文件，供 TS 工作台预演复用。"""
-
-        self.assert_token(handler)
-        source_paths_raw = request.get("sourcePaths", [])
-        source_paths = (
-            [
-                str(source_path)
-                for source_path in source_paths_raw
-                if isinstance(source_path, str)
-            ]
-            if isinstance(source_paths_raw, list)
-            else []
-        )
-        current_rel_path_raw = request.get("currentRelPath")
-        current_rel_path = (
-            str(current_rel_path_raw)
-            if isinstance(current_rel_path_raw, str) and current_rel_path_raw != ""
-            else None
-        )
-        project_file_service = self.data_manager.project_file_service
-        files: list[dict[str, object]] = []
-        for source_path in source_paths:
-            if not source_path.lower().endswith(".epub"):
-                continue
-            preview = project_file_service.parse_file_preview(
-                source_path,
-                current_rel_path=current_rel_path,
-            )
-            files.append({"source_path": source_path, **preview})
-        return {"files": files}
-
-    def export_epub_items(
-        self,
-        request: dict[str, object],
-        handler: BaseHTTPRequestHandler,
-    ) -> dict[str, object]:
-        """受保护地把 EPUB 条目写入 TS 已确定的导出目录。"""
-
-        self.assert_token(handler)
-        project_path = str(request.get("projectPath", "") or "")
-        translated_path = str(request.get("translatedPath", "") or "")
-        bilingual_path = str(request.get("bilingualPath", "") or "")
-        if (
-            project_path == ""
-            or translated_path == ""
-            or bilingual_path == ""
-            or not self.data_manager.is_loaded()
-            or str(self.data_manager.get_lg_path() or "") != project_path
-        ):
-            raise ValueError(Localizer.get().alert_project_not_loaded)
-
-        items_raw = request.get("items", [])
-        item_payloads = (
-            [dict(item) for item in items_raw if isinstance(item, dict)]
-            if isinstance(items_raw, list)
-            else []
-        )
-        items = [
-            Item.from_dict(item)
-            for item in item_payloads
-            if str(item.get("file_type", "") or "") == Item.FileType.EPUB.value
-        ]
-        if len(items) == 0:
-            return {"accepted": True, "written_files": 0}
-
-        epub = EPUB(Config().load())
-        written_files = 0
-        for rel_path, group_items in self.group_items_by_file_path(items).items():
-            original_content = self.data_manager.get_asset_decompressed(rel_path)
-            if original_content is None:
-                continue
-
-            translated_epub_path = epub.insert_target(
-                os.path.join(translated_path, rel_path)
-            )
-            epub.build_epub_from_items(
-                original_epub_bytes=original_content,
-                items=group_items,
-                out_path=translated_epub_path,
-                bilingual=False,
-            )
-            bilingual_epub_path = epub.insert_source_target(
-                os.path.join(bilingual_path, rel_path)
-            )
-            epub.build_epub_from_items(
-                original_epub_bytes=original_content,
-                items=group_items,
-                out_path=bilingual_epub_path,
-                bilingual=True,
-            )
-            written_files += 1
-
-        return {"accepted": True, "written_files": written_files}
-
-    def group_items_by_file_path(self, items: list[Item]) -> dict[str, list[Item]]:
-        """按 EPUB asset 相对路径分组，避免导出调用点重复组织条目。"""
-
-        group: dict[str, list[Item]] = {}
-        for item in items:
-            rel_path = item.get_file_path()
-            if rel_path == "":
-                continue
-            group.setdefault(rel_path, []).append(item)
-        return group
 
     def assert_token(self, handler: BaseHTTPRequestHandler) -> None:
         """校验内部 runtime token，防止公开路由误触内部桥。"""

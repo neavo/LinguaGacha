@@ -1,8 +1,5 @@
-import os
 import threading
 import time
-import webbrowser
-from enum import StrEnum
 from itertools import zip_longest
 from typing import Any
 
@@ -11,9 +8,6 @@ from base.LogManager import LogManager
 from module.Config import Config
 from module.Data.Core.Item import Item
 from module.Data.DataManager import DataManager
-from module.Data.Translation.TranslationExportItemService import (
-    TranslationExportItemService,
-)
 from module.Engine.Engine import Engine
 from module.Engine.TaskLimiter import TaskLimiter
 from module.Engine.TaskPipeline import TaskPipeline
@@ -26,7 +20,6 @@ from module.Engine.Translation.TranslationProgressTracker import (
 )
 from module.Engine.Translation.TranslationScheduler import TranslationScheduler
 from module.Engine.Translation.TranslationTaskHooks import TranslationTaskHooks
-from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.PromptBuilder import PromptBuilder
 from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
@@ -34,9 +27,6 @@ from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
 
 # 翻译器
 class Translation(Base):
-    class ExportSource(StrEnum):
-        MANUAL = "MANUAL"
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -66,7 +56,6 @@ class Translation(Base):
         self.subscribe(Base.Event.PROJECT_CHECK, self.project_check_run)
         self.subscribe(Base.Event.TRANSLATION_TASK, self.translation_run_event)
         self.subscribe(Base.Event.TRANSLATION_REQUEST_STOP, self.translation_stop_event)
-        self.subscribe(Base.Event.TRANSLATION_EXPORT, self.translation_export)
 
     def get_concurrency_in_use(self) -> int:
         limiter = self.task_limiter
@@ -197,107 +186,6 @@ class Translation(Base):
             mark_stop_requested=lambda: setattr(self, "stop_requested", True),
         )
         # 同步流式下 stop 依赖底层 SDK/HTTP 超时收尾，响应可能有延迟；后续可优化为可中断 IO。
-
-    # 翻译结果手动导出事件
-    def should_use_runtime_export_items(self, source: ExportSource) -> bool:
-        """判断当前导出是否应该优先信任翻译运行态快照。"""
-        if self.items_cache is None:
-            return False
-        elif source == self.ExportSource.MANUAL:
-            # 手动导出只在翻译仍进行中时信任运行态快照；
-            # 引擎空闲后应回到工程事实，避免替换文件后的旧快照覆盖新数据。
-            engine_status = Engine.get().get_status()
-            return engine_status in (
-                Base.TaskStatus.TRANSLATING,
-                Base.TaskStatus.STOPPING,
-            )
-        else:
-            return False
-
-    def resolve_export_items(
-        self,
-        source: ExportSource = ExportSource.MANUAL,
-    ) -> list[Item]:
-        """统一导出数据来源，默认按手动导出口径兼容历史无参调用。"""
-        if self.should_use_runtime_export_items(source):
-            return TranslationExportItemService.clone_items(self.copy_items())
-        else:
-            dm = DataManager.get()
-            if not dm.is_loaded():
-                return []
-            else:
-                return TranslationExportItemService.clone_items(dm.get_all_items())
-
-    def run_translation_export(
-        self,
-        *,
-        source: ExportSource,
-        apply_mtool_postprocess: bool = True,
-    ) -> None:
-        """统一执行译文导出流程，让写文件行为只由显式导出入口触发。"""
-        source_value = str(source.value)
-        try:
-            LogManager.get().info(Localizer.get().export_translation_start)
-            self.emit(
-                Base.Event.TRANSLATION_EXPORT,
-                {
-                    "sub_event": Base.SubEvent.RUN,
-                    "source": source_value,
-                    "message": Localizer.get().export_translation_start,
-                },
-            )
-
-            items = self.resolve_export_items(source)
-            if not items:
-                self.emit(
-                    Base.Event.TRANSLATION_EXPORT,
-                    {
-                        "sub_event": Base.SubEvent.DONE,
-                        "source": source_value,
-                        "empty": True,
-                    },
-                )
-                return
-
-            if apply_mtool_postprocess:
-                self.mtool_optimizer_postprocess(items)
-            TranslationExportItemService.fill_duplicated_translations(items)
-            output_path = self.check_and_wirte_result(items)
-            self.emit(
-                Base.Event.TRANSLATION_EXPORT,
-                {
-                    "sub_event": Base.SubEvent.DONE,
-                    "source": source_value,
-                    "output_path": output_path,
-                    "message": Localizer.get().export_translation_success,
-                },
-            )
-        except Exception as e:
-            LogManager.get().error(Localizer.get().export_translation_failed, e)
-            self.emit(
-                Base.Event.TRANSLATION_EXPORT,
-                {
-                    "sub_event": Base.SubEvent.ERROR,
-                    "source": source_value,
-                    "message": Localizer.get().export_translation_failed,
-                },
-            )
-
-    def translation_export(self, event: Base.Event, data: dict) -> None:
-        sub_event: Base.SubEvent = data.get("sub_event", Base.SubEvent.REQUEST)
-        if sub_event != Base.SubEvent.REQUEST:
-            return
-
-        if Engine.get().get_status() == Base.TaskStatus.STOPPING:
-            return
-
-        del event
-        del data
-
-        def start_export() -> None:
-            self.run_translation_export(source=self.ExportSource.MANUAL)
-
-        threading.Thread(target=start_export).start()
 
     # 实际的翻译流程
     def start(self, data: dict) -> None:
@@ -588,19 +476,3 @@ class Translation(Base):
 
         # 打印日志
         LogManager.get().info(Localizer.get().translation_mtool_optimizer_post_log)
-
-    # 检查结果并写入文件
-    def check_and_wirte_result(self, items: list[Item]) -> str:
-        # 写入文件并获取实际输出路径（带时间戳）
-        output_path = FileManager(self.config).write_to_path(items)
-        LogManager.get().print("")
-
-        LogManager.get().info(
-            Localizer.get().export_translation_done.replace("{PATH}", output_path)
-        )
-        LogManager.get().print("")
-
-        # 打开输出文件夹
-        if self.config.output_folder_open_on_finish:
-            webbrowser.open(os.path.abspath(output_path))
-        return output_path

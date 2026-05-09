@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 
 from base.BasePath import BasePath
-from module.Data.Core.Item import Item
 from module.Data.Project.ProjectService import ProjectService, ProjectSourceFile
 
 
@@ -232,22 +231,9 @@ def test_create_preview_and_commit_use_same_batch_file_set(
         mtool_optimizer_enable = True
         skip_duplicate_source_text_enable = True
 
-    class FakeFileManager:
-        def __init__(self, config) -> None:
-            del config
-
-        def parse_asset(self, rel_path: str, original_data: bytes) -> list[Item]:
-            del rel_path
-            del original_data
-            return []
-
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.Config.load",
         lambda self: FakeConfig(),
-    )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.FileManager",
-        FakeFileManager,
     )
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.DatabaseGateway.create",
@@ -305,23 +291,6 @@ def test_set_progress_callback_and_report_progress() -> None:
     assert called == [(1, 2, "ok")]
 
 
-class DummyLogger:
-    def __init__(self) -> None:
-        self.errors: list[str] = []
-        self.infos: list[str] = []
-        self.prints: list[str] = []
-
-    def error(self, msg: str, e: Exception) -> None:
-        del e
-        self.errors.append(msg)
-
-    def info(self, msg: str) -> None:
-        self.infos.append(msg)
-
-    def print(self, msg: str) -> None:
-        self.prints.append(msg)
-
-
 class DummyLocalizer:
     project_store_ingesting_assets = "ingesting assets"
     project_store_ingesting_file = "ingesting {NAME}"
@@ -349,7 +318,7 @@ class FakeDB:
         self.meta[key] = value
 
 
-def test_create_ingests_assets_parses_items_and_writes_meta(
+def test_create_ingests_assets_and_writes_meta(
     fs, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     del fs
@@ -369,39 +338,13 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     out_path.write_bytes(b"old")
 
     fake_db = FakeDB()
-    logger = DummyLogger()
 
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.DatabaseGateway.create",
         lambda output_path, project_name: fake_db,
     )
     monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LogManager.get", lambda: logger
-    )
-    monkeypatch.setattr(
         "module.Data.Project.ProjectService.Localizer.get", lambda: DummyLocalizer()
-    )
-
-    class FakeFileManager:
-        def __init__(self, config) -> None:
-            del config
-
-        def parse_asset(self, rel_path: str, original_data: bytes) -> list[Item]:
-            del rel_path
-            del original_data
-            return [
-                Item.from_dict(
-                    {
-                        "src": "s",
-                        "dst": "s",
-                        "row": 1,
-                        "file_path": "a.txt",
-                    }
-                )
-            ]
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.FileManager", FakeFileManager
     )
 
     def init_rules(db) -> list[str]:
@@ -418,7 +361,7 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     assert out_path.exists() is False
 
     assert fake_db.assets == [("a.txt", str(src_dir / "a.txt"))]
-    assert fake_db.items is not None
+    assert fake_db.items is None
     assert fake_db.meta["source_language"] != ""
     assert fake_db.meta["target_language"] != ""
     assert fake_db.meta["skip_duplicate_source_text_enable"] is True
@@ -426,114 +369,6 @@ def test_create_ingests_assets_parses_items_and_writes_meta(
     assert isinstance(extras, dict)
     assert extras["total_line"] == 0
     assert progress != []
-
-
-def test_create_skips_read_failures_and_continues(
-    fs, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    del fs
-    BasePath.reset_for_test()
-    BasePath.initialize("/workspace/app", False)
-
-    service = ProjectService()
-    src_dir = Path("/workspace/project_service/src")
-    src_dir.mkdir(parents=True, exist_ok=True)
-    good = src_dir / "a.txt"
-    bad = src_dir / "b.md"
-    good.write_bytes(b"good")
-    bad.write_bytes(b"bad")
-
-    out_path = Path("/workspace/project_service/out/demo.lg")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    fake_db = FakeDB()
-    logger = DummyLogger()
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.DatabaseGateway.create",
-        lambda output_path, project_name: fake_db,
-    )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LogManager.get", lambda: logger
-    )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.Localizer.get", lambda: DummyLocalizer()
-    )
-
-    class FakeFileManager:
-        def __init__(self, config) -> None:
-            del config
-
-        def parse_asset(self, rel_path: str, original_data: bytes) -> list[Item]:
-            del rel_path
-            del original_data
-            return []
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.FileManager", FakeFileManager
-    )
-    real_open = open
-
-    def fake_open(file, mode="r", *args, **kwargs):
-        if file == str(bad) and "rb" in mode:
-            raise OSError("read failed")
-        return real_open(file, mode, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.open", fake_open)
-
-    service.create(source_path=str(src_dir), output_path=str(out_path))
-
-    assert len(fake_db.assets) == 1
-    assert fake_db.assets[0][0] == "a.txt"
-    assert len(logger.errors) == 1
-
-
-def test_create_logs_parse_errors_but_keeps_asset(
-    fs, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    del fs
-    BasePath.reset_for_test()
-    BasePath.initialize("/workspace/app", False)
-
-    service = ProjectService()
-    src_dir = Path("/workspace/project_service/src")
-    src_dir.mkdir(parents=True, exist_ok=True)
-    (src_dir / "a.txt").write_bytes(b"hello")
-
-    out_path = Path("/workspace/project_service/out/demo.lg")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    fake_db = FakeDB()
-    logger = DummyLogger()
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.DatabaseGateway.create",
-        lambda output_path, project_name: fake_db,
-    )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LogManager.get", lambda: logger
-    )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.Localizer.get", lambda: DummyLocalizer()
-    )
-
-    class FakeFileManager:
-        def __init__(self, config) -> None:
-            del config
-
-        def parse_asset(self, rel_path: str, original_data: bytes) -> list[Item]:
-            del rel_path
-            del original_data
-            raise ValueError("parse failed")
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.FileManager", FakeFileManager
-    )
-    service.create(source_path=str(src_dir), output_path=str(out_path))
-
-    assert fake_db.assets != []
-    assert fake_db.items is None
-    assert any("Failed to parse asset" in msg for msg in logger.errors)
 
 
 def test_create_records_mtool_setting_without_marking_prefilter_done(
@@ -552,14 +387,10 @@ def test_create_records_mtool_setting_without_marking_prefilter_done(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     fake_db = FakeDB()
-    logger = DummyLogger()
 
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.DatabaseGateway.create",
         lambda output_path, project_name: fake_db,
-    )
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.LogManager.get", lambda: logger
     )
     monkeypatch.setattr(
         "module.Data.Project.ProjectService.Localizer.get", lambda: DummyLocalizer()
@@ -576,24 +407,11 @@ def test_create_records_mtool_setting_without_marking_prefilter_done(
         lambda self: FakeConfig(),
     )
 
-    class FakeFileManager:
-        def __init__(self, config) -> None:
-            del config
-
-        def parse_asset(self, rel_path: str, original_data: bytes) -> list[Item]:
-            del rel_path
-            del original_data
-            return [Item.from_dict({"src": "s", "dst": "d", "row": 1})]
-
-    monkeypatch.setattr(
-        "module.Data.Project.ProjectService.FileManager", FakeFileManager
-    )
     service.create(source_path=str(src_dir), output_path=str(out_path))
 
     assert fake_db.meta["mtool_optimizer_enable"] is True
     assert fake_db.meta["skip_duplicate_source_text_enable"] is True
     assert "prefilter_config" not in fake_db.meta
-    assert logger.infos == []
 
 
 def test_open_alignment_preview_requires_prefilter_when_src_dedup_missing(

@@ -5,7 +5,6 @@ import ExcelJS from "exceljs";
 
 import { group_items, type ExportPaths } from "./file-format-shared";
 import { normalize_file_item, type FileFormatItem } from "../file-item";
-import { cell_to_text, is_wolf_sheet, load_workbook } from "./xlsx-shared";
 
 /**
  * 通用双列表格格式，第一列原文、第二列译文。
@@ -15,9 +14,9 @@ export class XLSXFormat {
    * WOLF 专用表头由 WOLFXLSXFormat 处理，普通格式在这里按双列读取。
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
-    const workbook = await load_workbook(content);
+    const workbook = await load_xlsx_workbook(content);
     const sheet = workbook.worksheets[0];
-    if (sheet === undefined || is_wolf_sheet(sheet)) {
+    if (sheet === undefined || is_wolf_xlsx_sheet(sheet)) {
       return [];
     }
     const items: FileFormatItem[] = [];
@@ -27,8 +26,8 @@ export class XLSXFormat {
         continue;
       }
       const dst_value = sheet.getCell(row, 2).value;
-      const src = cell_to_text(src_value);
-      const dst = dst_value === null || dst_value === undefined ? "" : cell_to_text(dst_value);
+      const src = xlsx_cell_to_text(src_value);
+      const dst = dst_value === null || dst_value === undefined ? "" : xlsx_cell_to_text(dst_value);
       items.push(
         normalize_file_item({
           src,
@@ -61,4 +60,58 @@ export class XLSXFormat {
       await workbook.xlsx.writeFile(target_path);
     }
   }
+}
+
+/**
+ * ExcelJS 的 load 签名比实际可接收类型更窄，这里把二进制载荷固定转成 Buffer。
+ */
+async function load_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook();
+  await (workbook.xlsx.load as (data: unknown) => Promise<ExcelJS.Workbook>)(Buffer.from(content));
+  return workbook;
+}
+
+/**
+ * 普通 XLSX 与 WOLF XLSX 都可能出现富文本或公式结果，解析时统一收敛成字符串。
+ */
+function xlsx_cell_to_text(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "object" && "text" in value && typeof value.text === "string") {
+    return value.text;
+  }
+  if (typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
+    return value.richText
+      .map((part) =>
+        typeof part === "object" && part !== null && "text" in part ? String(part.text ?? "") : "",
+      )
+      .join("");
+  }
+  if (typeof value === "object" && "result" in value) {
+    return String(value.result ?? "");
+  }
+  return String(value);
+}
+
+/**
+ * 普通 XLSX 解析器必须主动避开 WOLF 表头，让 WOLFXLSXFormat 保留专用列语义。
+ */
+function is_wolf_xlsx_sheet(sheet: ExcelJS.Worksheet): boolean {
+  const expected = new Map([
+    [1, "code"],
+    [2, "flag"],
+    [3, "type"],
+    [4, "info"],
+  ]);
+  for (const [column, label] of expected) {
+    if (
+      !String(sheet.getCell(1, column).value ?? "")
+        .toLowerCase()
+        .includes(label)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

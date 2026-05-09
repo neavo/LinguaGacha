@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from module.Data.Core.Item import Item
-from module.Config import Config
 from module.Data.Core.ProjectSession import ProjectSession
 from module.Localizer.Localizer import Localizer
 
@@ -74,7 +73,7 @@ class ProjectFileService:
         *,
         current_rel_path: str | None = None,
     ) -> dict[str, object]:
-        """只读解析本地文件，返回前端 planner 需要的标准化结果。"""
+        """Python Core 不再解析文件预览，公开工作台预演由 TS Gateway 处理。"""
 
         ext = Path(file_path).suffix.lower()
         if ext not in self.supported_extensions:
@@ -90,21 +89,10 @@ class ProjectFileService:
         if target_rel_path == "":
             raise ValueError(Localizer.get().workbench_msg_file_not_found)
 
-        with open(file_path, "rb") as f:
-            original_data = f.read()
-
-        from module.File.FileManager import FileManager
-
-        file_manager = FileManager(Config().load())
-        parsed_items = file_manager.parse_asset(target_rel_path, original_data)
-        item_dicts = [item.to_dict() for item in parsed_items]
         return {
             "target_rel_path": target_rel_path,
-            "file_type": self.pick_file_type(item_dicts),
-            "parsed_items": [
-                self.normalize_preview_item_payload(item_dict)
-                for item_dict in item_dicts
-            ],
+            "file_type": str(Item.FileType.NONE),
+            "parsed_items": [],
         }
 
     def reorder_files(self, ordered_rel_paths: list[str]) -> None:

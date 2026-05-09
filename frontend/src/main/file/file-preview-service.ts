@@ -2,23 +2,19 @@ import fs from "node:fs";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { ConfigService } from "../service/config-service";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { FileFormatService } from "./file-format-service";
 import { item_to_json } from "./file-item";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * TS 侧文件解析预演服务；非 EPUB 在 main 进程解析，EPUB 保留 Python 路径。
+ * TS 侧文件解析预演服务；公开源文件草稿只由 main 进程文件域解析。
  */
 export class FilePreviewService {
   /**
-   * 预演服务只编排配置、TS 格式处理器和 Python EPUB 桥，不直接写数据库。
+   * 预演服务只编排配置和 TS 格式处理器，不直接写数据库。
    */
-  public constructor(
-    private readonly config_service: ConfigService,
-    private readonly core_bridge: CoreBridgeClient,
-  ) {}
+  public constructor(private readonly config_service: ConfigService) {}
 
   /**
    * 工作台单文件预解析允许部分失败，用户界面只展示成功解析的候选。
@@ -31,16 +27,8 @@ export class FilePreviewService {
     const files: JsonRecord[] = [];
     for (const source_path of source_paths) {
       try {
-        if (format_service.is_epub_path(source_path)) {
-          const parsed_files = await this.core_bridge.parse_source_epub_files(
-            [source_path],
-            current_rel_path,
-          );
-          files.push(...(parsed_files as unknown as JsonRecord[]));
-        } else {
-          const parsed = await format_service.parse_file_preview(source_path, current_rel_path);
-          files.push({ source_path, ...(parsed as unknown as JsonRecord) });
-        }
+        const parsed = await format_service.parse_file_preview(source_path, current_rel_path);
+        files.push({ source_path, ...(parsed as unknown as JsonRecord) });
       } catch {
         // 批量预解析允许单个文件失败，调用方只消费成功项。
       }
@@ -49,7 +37,7 @@ export class FilePreviewService {
   }
 
   /**
-   * 新建工程预览统一分配临时 item id，非 EPUB 走 TS，EPUB 走 Python 桥。
+   * 新建工程预览统一分配临时 item id，所有公开文件格式都走 TS 文件域。
    */
   public async build_create_preview(request: JsonRecord): Promise<JsonRecord> {
     const source_paths = this.normalize_string_list(request["source_paths"]);
@@ -60,30 +48,6 @@ export class FilePreviewService {
     const items: JsonRecord[] = [];
     let next_item_id = 1;
     for (const [sort_index, source_file] of source_files.entries()) {
-      if (format_service.is_epub_path(source_file.source_path)) {
-        const epub_result = await this.core_bridge.proxy_json("/api/project/create-preview", {
-          source_paths: [source_file.source_path],
-        });
-        const draft = this.read_record(epub_result["draft"]);
-        const draft_items = Array.isArray(draft["items"]) ? draft["items"] : [];
-        let file_type = "NONE";
-        for (const item of draft_items) {
-          const record = this.read_record(item);
-          record["id"] = next_item_id;
-          record["file_path"] = source_file.rel_path;
-          record["file_type"] = String(record["file_type"] ?? "EPUB");
-          file_type = String(record["file_type"] ?? "EPUB");
-          items.push(record);
-          next_item_id += 1;
-        }
-        files.push({
-          rel_path: source_file.rel_path,
-          file_type,
-          sort_index,
-          source_path: source_file.source_path,
-        });
-        continue;
-      }
       const parsed_items = await format_service.parse_asset(
         source_file.rel_path,
         fs.readFileSync(source_file.source_path),
@@ -139,14 +103,5 @@ export class FilePreviewService {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
       : [];
-  }
-
-  /**
-   * Python EPUB 桥返回的 JSON 不可信，读取对象时统一兜底为空记录。
-   */
-  private read_record(value: unknown): JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as JsonRecord)
-      : {};
   }
 }

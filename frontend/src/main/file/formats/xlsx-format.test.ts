@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalize_file_item } from "../file-item";
 import { XLSXFormat } from "./xlsx-format";
 
+// 每个用例独占工作簿输出目录，避免 ExcelJS 文件写回互相影响。
 let temp_dir = "";
 
 beforeEach(() => {
@@ -22,8 +23,8 @@ describe("XLSXFormat", () => {
   it("按普通双列表读取原文和译文", async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Sheet");
-    sheet.getCell(1, 1).value = "原文";
-    sheet.getCell(1, 2).value = "译文";
+    sheet.getCell(1, 1).value = { richText: [{ text: "原" }, { text: "文" }] };
+    sheet.getCell(1, 2).value = { formula: "A1", result: "译文" };
     const buffer = await workbook.xlsx.writeBuffer();
 
     const items = await new XLSXFormat().read_from_stream(new Uint8Array(buffer), "demo.xlsx");
@@ -37,6 +38,20 @@ describe("XLSXFormat", () => {
         status: "PROCESSED",
       }),
     ]);
+  });
+
+  it("遇到 WOLF 表头时让专用格式处理器接管", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    ["code", "flag", "type", "info"].forEach((label, index) => {
+      sheet.getCell(1, index + 1).value = label;
+    });
+    sheet.getCell(2, 1).value = "普通列原文";
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    await expect(
+      new XLSXFormat().read_from_stream(new Uint8Array(buffer), "wolf.xlsx"),
+    ).resolves.toEqual([]);
   });
 
   it("写回普通双列表工作簿", async () => {

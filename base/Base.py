@@ -33,7 +33,6 @@ class Base:
             "TRANSLATION_REQUEST_STOP"  # 翻译 - 停止当前任务请求链路（REQUEST/RUN）
         )
         TRANSLATION_PROGRESS = "TRANSLATION_PROGRESS"  # 翻译 - 进度快照更新
-        TRANSLATION_EXPORT = "TRANSLATION_EXPORT"  # 翻译 - 导出
         ANALYSIS_TASK = "ANALYSIS_TASK"  # 分析 - 任务生命周期事件（发起/运行/结束）
         ANALYSIS_REQUEST_STOP = (
             "ANALYSIS_REQUEST_STOP"  # 分析 - 停止当前任务请求链路（REQUEST/RUN）

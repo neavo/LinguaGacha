@@ -16,8 +16,6 @@ dependencies = [
     "openpyxl",
     "orjson",
     "json-repair",
-    "lxml",
-    "beautifulsoup4",
     "charset-normalizer",
 ]
 

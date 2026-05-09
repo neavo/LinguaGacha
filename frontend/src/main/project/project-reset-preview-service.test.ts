@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectResetPreviewService } from "./project-reset-preview-service";
 import { ProjectSessionState } from "./project-session-state";
@@ -13,7 +12,7 @@ let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
 
 /**
- * reset preview 测试只需要 Core 的 busy 状态和 EPUB 解析桥。
+ * reset preview 测试只需要 Core 的 busy 状态守卫。
  */
 class FakeCoreBridge {
   // 测试直接切换 busy，验证 TS reset preview 的任务互斥守卫。
@@ -28,27 +27,6 @@ class FakeCoreBridge {
     busy: boolean;
   }> {
     return { loaded: true, projectPath: "", busy: this.busy };
-  }
-
-  /**
-   * 模拟 Python EPUB 解析桥，确保 TS 预演能合并保留路径结果。
-   */
-  public async parse_project_assets(
-    _project_path: string,
-    rel_paths: string[],
-  ): Promise<Array<{ rel_path: string; items: Record<string, ApiJsonValue>[] }>> {
-    return rel_paths.map((rel_path) => ({
-      rel_path,
-      items: [
-        {
-          src: `原文:${rel_path}`,
-          dst: "",
-          row: 1,
-          file_type: "TXT",
-          status: "NONE",
-        },
-      ],
-    }));
   }
 }
 
@@ -84,7 +62,7 @@ afterEach(() => {
 });
 
 describe("ProjectResetPreviewService", () => {
-  it("翻译 all 预演通过受保护解析桥生成预览 id", async () => {
+  it("翻译 all 预演通过 TS 文件域重解析生成预览 id", async () => {
     const { database, lg_path, service } = create_service();
     database.execute({
       name: "addAssetFromSource",

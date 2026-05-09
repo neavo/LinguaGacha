@@ -12,6 +12,7 @@ import { TRANSFormat } from "./formats/trans-format";
 import { TXTFormat } from "./formats/txt-format";
 import { WOLFXLSXFormat } from "./formats/wolfxlsx-format";
 import { XLSXFormat } from "./formats/xlsx-format";
+import { EPUBFormat } from "./formats/epub-format";
 import {
   build_bilingual_path,
   build_target_path,
@@ -35,7 +36,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 ]);
 
 /**
- * Electron main 侧非 EPUB 文件格式门面；具体格式逻辑按 Py 侧处理器拆分。
+ * Electron main 侧公开文件格式门面；具体格式逻辑按稳定格式处理器拆分。
  */
 export class FileFormatService {
   private readonly txt: TXTFormat;
@@ -48,6 +49,7 @@ export class FileFormatService {
   private readonly wolfxlsx: WOLFXLSXFormat;
   private readonly trans: TRANSFormat;
   private readonly renpy: RenPyFormat;
+  private readonly epub: EPUBFormat;
 
   /**
    * 构造时固定各格式处理器，保证一次服务实例内配置一致。
@@ -63,24 +65,22 @@ export class FileFormatService {
     this.wolfxlsx = new WOLFXLSXFormat();
     this.trans = new TRANSFormat();
     this.renpy = new RenPyFormat();
+    this.epub = new EPUBFormat(config);
   }
 
   /**
-   * 判断公开 TS 侧可接收的源文件格式，EPUB 只作为受控保留格式列入。
+   * 判断公开 TS 侧可接收的源文件格式。
    */
   public is_supported_file(file_path: string): boolean {
     return SUPPORTED_EXTENSIONS.has(path.extname(file_path).toLowerCase());
   }
 
-  /**
-   * EPUB 仍由 Python 桥处理，调用方需要用该判断分流。
-   */
   public is_epub_path(file_path: string): boolean {
     return path.extname(file_path).toLowerCase() === ".epub";
   }
 
   /**
-   * 按扩展名分发到具体格式处理器，JSON/XLSX 保持 Py 侧优先级回退顺序。
+   * 按扩展名分发到具体格式处理器，JSON/XLSX 保持历史优先级回退顺序。
    */
   public async parse_asset(rel_path: string, content: Uint8Array): Promise<FileFormatItem[]> {
     const ext = path.extname(rel_path).toLowerCase();
@@ -114,6 +114,9 @@ export class FileFormatService {
     if (ext === ".rpy") {
       return this.renpy.read_from_stream(content, rel_path);
     }
+    if (ext === ".epub") {
+      return this.epub.read_from_stream(content, rel_path);
+    }
     return [];
   }
 
@@ -126,9 +129,6 @@ export class FileFormatService {
   ): Promise<ParsedFilePreview> {
     if (!this.is_supported_file(file_path)) {
       throw new Error("不支持的文件格式。");
-    }
-    if (this.is_epub_path(file_path)) {
-      throw new Error("EPUB 解析仍由 Python 保留路径处理。");
     }
     const target_rel_path =
       current_rel_path === undefined || current_rel_path === ""
@@ -208,6 +208,7 @@ export class FileFormatService {
     await this.wolfxlsx.write_to_path(items, paths, asset_reader);
     await this.trans.write_to_path(items, paths, asset_reader);
     await this.renpy.write_to_path(items, paths, asset_reader);
+    await this.epub.write_to_path(items, paths, asset_reader);
   }
 
   /**

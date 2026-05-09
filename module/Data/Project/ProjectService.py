@@ -4,9 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from base.Base import Base
-from base.LogManager import LogManager
 from module.Config import Config
-from module.File.FileManager import FileManager
 from module.Localizer.Localizer import Localizer
 from module.Data.Database.DatabaseGateway import DatabaseGateway
 
@@ -77,27 +75,13 @@ class ProjectService(Base):
         )
 
         config = Config().load()
-        file_manager = FileManager(config)
         items: list[dict] = []
 
         for i, file_path in enumerate(source_files):
             rel_path = self.get_relative_path(source_path, file_path)
 
-            try:
-                with open(file_path, "rb") as f:
-                    original_data = f.read()
-            except Exception as e:
-                LogManager.get().error(f"Failed to read source file - {file_path}", e)
-                continue
-
-            # .lg asset 压缩由 TS database 持有，Python 只传源路径和解析所需 bytes。
+            # .lg asset 压缩由 TS database 持有，Python 只提交源路径。
             db.add_asset_from_source(rel_path, file_path)
-
-            try:
-                for item in file_manager.parse_asset(rel_path, original_data):
-                    items.append(item.to_dict())
-            except Exception as e:
-                LogManager.get().error(f"Failed to parse asset - {rel_path}", e)
 
             self.report_progress(
                 i + 1,
@@ -133,45 +117,16 @@ class ProjectService(Base):
         self,
         source_paths: list[str],
     ) -> dict[str, object]:
-        # 只解析源文件草稿，不创建 .lg，也不执行预过滤。
+        # 只构建源文件草稿，不创建 .lg，也不执行预过滤。
 
         effective_source_paths = self.normalize_source_paths(source_paths)
         source_files = self.collect_source_file_entries(effective_source_paths)
-        config = Config().load()
-        file_manager = FileManager(config)
         files: list[dict[str, object]] = []
         items: list[dict[str, object]] = []
-        next_item_id = 1
 
         for sort_index, source_file in enumerate(source_files):
             rel_path = source_file.rel_path
-            try:
-                with open(source_file.source_path, "rb") as f:
-                    original_data = f.read()
-            except Exception as e:
-                LogManager.get().error(
-                    f"Failed to read source file - {source_file.source_path}",
-                    e,
-                )
-                continue
-
-            parsed_items = []
-            try:
-                parsed_items = file_manager.parse_asset(rel_path, original_data)
-            except Exception as e:
-                LogManager.get().error(f"Failed to parse asset - {rel_path}", e)
-
             file_type = "NONE"
-            for item in parsed_items:
-                payload = item.to_dict()
-                payload["id"] = next_item_id
-                payload["file_path"] = str(
-                    payload.get("file_path", rel_path) or rel_path
-                )
-                payload["file_type"] = str(payload.get("file_type", "NONE") or "NONE")
-                file_type = str(payload["file_type"])
-                items.append(payload)
-                next_item_id += 1
 
             files.append(
                 {

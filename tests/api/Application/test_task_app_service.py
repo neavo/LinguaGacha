@@ -192,18 +192,12 @@ def test_get_task_snapshot_supports_retranslate_ids(
     assert result["task"]["retranslating_item_ids"] == [1, 3]
 
 
-def test_export_translation_emits_export_event_and_returns_accept_ack(
+def test_export_translation_rejects_python_file_write_path(
     task_app_service,
 ) -> None:
-    result = task_app_service.export_translation({})
-
-    assert result == {"accepted": True}
-    assert task_app_service.emitted_events == [
-        (
-            Base.Event.TRANSLATION_EXPORT,
-            {"sub_event": Base.SubEvent.REQUEST},
-        )
-    ]
+    with pytest.raises(ValueError):
+        task_app_service.export_translation({})
+    assert task_app_service.emitted_events == []
 
 
 def test_translate_single_returns_translated_text(

@@ -29,11 +29,11 @@ const ANALYSIS_SKIPPED_STATUSES = new Set([
 ]);
 
 /**
- * 承载公开 reset preview；TS 负责预演响应，Python 只提供受保护 asset 解析桥。
+ * 承载公开 reset preview；TS 负责预演响应和 asset 重解析。
  */
 export class ProjectResetPreviewService {
   /**
-   * reset preview 只读数据库并调用受保护解析桥，不负责提交真实 reset mutation。
+   * reset preview 只读数据库，不负责提交真实 reset mutation。
    */
   public constructor(
     private readonly database: ProjectDatabase,
@@ -51,7 +51,7 @@ export class ProjectResetPreviewService {
     }
     const project_path = await this.require_idle_project_path();
     const asset_records = this.get_asset_records(project_path);
-    const parsed_files = await this.parse_project_assets(
+    const parsed_files = await this.parse_database_assets(
       project_path,
       asset_records.map((record) => record.path),
     );
@@ -71,9 +71,9 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 非 EPUB asset 在 TS 侧重解析，EPUB 批量交给 Python 受保护桥保持旧能力。
+   * 所有公开 asset 都在 TS 文件域重解析，数据库仍是 asset bytes 的唯一读取边界。
    */
-  private async parse_project_assets(
+  private async parse_database_assets(
     project_path: string,
     rel_paths: string[],
   ): Promise<Array<{ rel_path: string; items: JsonRecord[] }>> {
@@ -82,12 +82,7 @@ export class ProjectResetPreviewService {
       target_language: "ZH",
     });
     const parsed_files: Array<{ rel_path: string; items: JsonRecord[] }> = [];
-    const epub_rel_paths: string[] = [];
     for (const rel_path of rel_paths) {
-      if (format_service.is_epub_path(rel_path)) {
-        epub_rel_paths.push(rel_path);
-        continue;
-      }
       const content = this.database.read_asset_content(project_path, rel_path);
       if (content === null) {
         parsed_files.push({ rel_path, items: [] });
@@ -95,11 +90,6 @@ export class ProjectResetPreviewService {
       }
       const items = await format_service.parse_asset(rel_path, content);
       parsed_files.push({ rel_path, items: items.map(item_to_json) });
-    }
-    if (epub_rel_paths.length > 0) {
-      parsed_files.push(
-        ...(await this.core_bridge.parse_project_assets(project_path, epub_rel_paths)),
-      );
     }
     return parsed_files;
   }
@@ -225,7 +215,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 解析桥返回字段可能来自 Python 旧命名，这里收敛到公开 item payload。
+   * 文件解析返回字段需要收敛到公开 item payload，避免数据库预览泄漏内部结构。
    */
   private normalize_item_payload(item: JsonRecord, fallback_file_path: string): MutableJsonRecord {
     return {
