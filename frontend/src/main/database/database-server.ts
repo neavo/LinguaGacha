@@ -1,10 +1,15 @@
 import crypto from "node:crypto";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 
 import { DatabaseConflictError, ProjectDatabase } from "./database-operations";
 import type { DatabaseEnvelope, DatabaseOperation } from "./database-types";
 import { JsonTool } from "../../utils/json-tool";
 import { write_electron_main_error } from "../log/log-bridge";
+import {
+  close_http_server_with_connections,
+  track_http_server_connections,
+} from "../server/http-server-connections";
 
 const DATABASE_TOKEN_HEADER_NAME = "x-linguagacha-database-token";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -62,6 +67,7 @@ export class DatabaseServer {
   private readonly token = create_database_token();
   private server: http.Server | null = null;
   private base_url: string | null = null;
+  private readonly server_sockets = new Set<Socket>();
 
   /**
    * Database Service 自持数据库句柄，API 层只能通过内部 workflow 触达它。
@@ -89,6 +95,7 @@ export class DatabaseServer {
     const server = http.createServer((request, response) => {
       void this.handle_request(request, response);
     });
+    track_http_server_connections(server, this.server_sockets);
 
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -116,21 +123,17 @@ export class DatabaseServer {
     const server = this.server;
     this.server = null;
     this.base_url = null;
-    this.database.close();
 
     if (server === null) {
+      this.database.close();
       return;
     }
 
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve();
-        }
-      });
-    });
+    try {
+      await close_http_server_with_connections(server, this.server_sockets);
+    } finally {
+      this.database.close();
+    }
   }
 
   /**

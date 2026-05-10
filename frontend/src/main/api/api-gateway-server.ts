@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { Server } from "node:http";
+import type { Socket } from "node:net";
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -27,6 +28,10 @@ import { TaskRuntimeState } from "../task/task-runtime-state";
 import { TaskService } from "../task/task-service";
 import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import { JsonTool } from "../../utils/json-tool";
+import {
+  close_http_server_with_connections,
+  track_http_server_connections,
+} from "../server/http-server-connections";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
 // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API。
@@ -76,6 +81,9 @@ export class ApiGatewayServer {
   // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭。
   private server: Server | null = null;
 
+  // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断。
+  private readonly server_sockets = new Set<Socket>();
+
   /**
    * Gateway 只接收已组装好的运行期依赖，避免路由层自行解析全局状态。
    */
@@ -109,6 +117,7 @@ export class ApiGatewayServer {
           resolve(pending_server);
         },
       ) as Server;
+      track_http_server_connections(pending_server, this.server_sockets);
 
       pending_server.once("error", handle_start_error);
     });
@@ -127,15 +136,7 @@ export class ApiGatewayServer {
     if (server === null) {
       return;
     }
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve();
-        }
-      });
-    });
+    await close_http_server_with_connections(server, this.server_sockets);
   }
 
   /**

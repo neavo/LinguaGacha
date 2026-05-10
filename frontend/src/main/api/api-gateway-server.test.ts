@@ -557,6 +557,33 @@ describe("ApiGatewayServer", () => {
     await expect_not_resolved_within(py_server.eventClosed, 150, "上游事件流被过早关闭。");
   });
 
+  it("退出时会主动关闭仍打开的 renderer 事件流", async () => {
+    const app_root = create_app_root();
+    const py_server = await start_abortable_event_py_server();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+      pyCoreBaseUrl: py_server.baseUrl,
+      pyCoreToken: "py-token",
+    });
+    cleanup_callbacks.push(() => database.close());
+    cleanup_callbacks.push(py_server.close);
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/events/stream`);
+    const reader = response.body?.getReader();
+    if (reader === undefined) {
+      throw new Error("事件流响应体为空。");
+    }
+    await reader.read();
+
+    await expect(gateway.stop()).resolves.toBeUndefined();
+  });
+
   it("通过公开 /api/logs/append 接收 Python 日志提交", async () => {
     const app_root = create_app_root();
     const py_server = await start_fake_py_server();
