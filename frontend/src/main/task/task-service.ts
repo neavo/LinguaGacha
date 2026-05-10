@@ -1,8 +1,8 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { ConfigService } from "../service/config-service";
 import { resolve_active_model } from "../model/model-config-resolver";
 import { ProjectSessionState } from "../project/project-session-state";
+import { TaskEngine } from "../task-engine/task-engine";
 import { TaskRuntimeState } from "./task-runtime-state";
 import { TaskSnapshotBuilder } from "./task-snapshot-builder";
 import { type JsonRecord, type MutableJsonRecord } from "./task-types";
@@ -12,11 +12,11 @@ const TRANSLATION_MODES = new Set(["NEW", "CONTINUE", "RESET"]);
 const ANALYSIS_MODES = new Set(["NEW", "CONTINUE", "RESET"]);
 
 /**
- * 公开 `/api/tasks/*` 的 TS 任务服务，负责校验请求、调用内部 Engine bridge 并组装回执。
+ * 公开 `/api/tasks/*` 的 TS 任务服务，负责校验请求、调用 TS Task Engine 并组装回执。
  */
 export class TaskService {
-  // core_bridge 只调用受保护的 `/internal/runtime/tasks/*`，不接触 Python 公开路由。
-  private readonly core_bridge: CoreBridgeClient;
+  // task_engine 是后台任务生命周期、调度和停止的唯一执行权威。
+  private readonly task_engine: TaskEngine;
 
   // snapshot_builder 是公开任务快照唯一组装口径，命令回执也复用它。
   private readonly snapshot_builder: TaskSnapshotBuilder;
@@ -34,13 +34,13 @@ export class TaskService {
    * 注入任务服务依赖，保持公开协议、运行态桥和配置读取边界可测试。
    */
   public constructor(
-    core_bridge: CoreBridgeClient,
+    task_engine: TaskEngine,
     snapshot_builder: TaskSnapshotBuilder,
     task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
     config_service: ConfigService,
   ) {
-    this.core_bridge = core_bridge;
+    this.task_engine = task_engine;
     this.snapshot_builder = snapshot_builder;
     this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
@@ -56,7 +56,7 @@ export class TaskService {
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.begin_task("translation");
     try {
-      await this.core_bridge.start_translation({ mode, quality_snapshot });
+      await this.task_engine.start_translation(mode, quality_snapshot);
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -78,7 +78,7 @@ export class TaskService {
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.mark_stopping("translation");
     try {
-      await this.core_bridge.stop_translation();
+      await this.task_engine.stop_translation();
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -102,7 +102,7 @@ export class TaskService {
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.begin_task("analysis");
     try {
-      await this.core_bridge.start_analysis({ mode, quality_snapshot });
+      await this.task_engine.start_analysis(mode, quality_snapshot);
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -118,13 +118,13 @@ export class TaskService {
   }
 
   /**
-   * 请求停止分析任务；公开层只表达 STOPPING 意图，不等待 Engine 终态。
+   * 请求停止分析任务；公开层只表达 STOPPING 意图，不等待 Task Engine 终态。
    */
   public async stop_analysis(_request: JsonRecord): Promise<MutableJsonRecord> {
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.mark_stopping("analysis");
     try {
-      await this.core_bridge.stop_analysis();
+      await this.task_engine.stop_analysis();
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -140,7 +140,7 @@ export class TaskService {
   }
 
   /**
-   * 启动批量重翻任务，TS 先完成 section revision 校验再交给内部 Engine。
+   * 启动批量重翻任务，TS 先完成 section revision 校验再交给 Task Engine。
    */
   public async start_retranslate(request: JsonRecord): Promise<MutableJsonRecord> {
     this.require_loaded_project_path();
@@ -155,10 +155,7 @@ export class TaskService {
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.begin_task("retranslate", item_ids);
     try {
-      await this.core_bridge.start_retranslate({
-        item_ids: item_ids as unknown as ApiJsonValue,
-        quality_snapshot,
-      });
+      await this.task_engine.start_retranslate(item_ids, quality_snapshot);
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -191,7 +188,7 @@ export class TaskService {
     if (!this.has_active_model()) {
       return { success: false, status: "NO_ACTIVE_MODEL", dst: "" };
     }
-    return this.core_bridge.translate_single({ text });
+    return this.task_engine.translate_single(text);
   }
 
   /**
@@ -262,7 +259,7 @@ export class TaskService {
   }
 
   /**
-   * 只允许对象型质量快照穿过内部桥，数组和 null 都按缺失处理。
+   * 只允许对象型质量快照穿过 executor 边界，数组和 null 都按缺失处理。
    */
   private normalize_optional_record(value: ApiJsonValue | undefined): ApiJsonValue {
     return this.is_record(value) ? { ...value } : null;
@@ -305,7 +302,7 @@ export class TaskService {
   }
 
   /**
-   * 单条翻译只做基础模型存在性判断；真实请求能力仍由 Python Engine 负责。
+   * 单条翻译只做基础模型存在性判断；真实请求能力由 Python work-unit executor 负责。
    */
   private has_active_model(): boolean {
     const config = this.config_service.load_config();

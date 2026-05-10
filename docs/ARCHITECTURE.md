@@ -13,6 +13,8 @@ flowchart LR
     O --> M["database"]
     O --> G["api/Application + Contract + Bridge"]
     M --> N["migration"]
+    A --> Q["task-engine"]
+    Q --> O
     A --> B["frontend/src/preload"]
     A --> C["frontend/src/shared"]
     B --> D["window.desktopApp"]
@@ -31,9 +33,9 @@ flowchart LR
 - `frontend/src/main` 处理 Electron 宿主、窗口、原生对话框、开发态调试入口、公开 TS Gateway、已迁移页面领域服务、公开文件解析 / 写回和内部 Database Service。
 - `frontend/src/preload` 只负责通过 `contextBridge` 暴露 `window.desktopApp`。
 - `frontend/src/renderer` 只通过 `window.desktopApp` 和 `desktop-api.ts` 接入宿主与 Core API。
-- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载已迁移项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全和 section revision 口径；`task/` 承载公开任务命令、任务回执和 task snapshot；`file/` 承载公开文件解析 / 写回、create preview 草稿解析和导出目录语义；`model/` 承载模型页快照、CRUD、重排和激活回退；`service/` 承载应用设置、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则；`core/` 承载 Python Core 内部桥。未迁移业务由 API 编排层代理到内部 Python Core。
-- `api/` 保留 Python Core 的内部协议、事件、Engine 任务命令桥和 Python 客户端对象化契约；公开项目轻生命周期、bootstrap、文件预演 / 导出、reset preview、任务协议、section revision 和前端运行态 patch 编码权威在 TS Gateway，不再由 Python Core 公开承载。
-- `module/Data` 持有工程事实，`module/Engine` 持有任务生命周期，`module/Model` 持有模型配置领域规则。
+- `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载已迁移项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全和 section revision 口径；`task/` 承载公开任务命令、任务回执、任务运行态和 task snapshot；`task-engine/` 承载后台任务生命周期、调度、限流、停止、重试与提交循环；`file/` 承载公开文件解析 / 写回、create preview 草稿解析和导出目录语义；`model/` 承载模型页快照、CRUD、重排和激活回退；`service/` 承载应用设置、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则。未迁移业务由 API 编排层代理到内部 Python Core。
+- `api/` 保留 Python Core 的内部协议、事件、task-executor 窄路由和 Python 客户端对象化契约；公开项目轻生命周期、bootstrap、文件预演 / 导出、reset preview、任务协议、任务执行态、section revision 和前端运行态 patch 编码权威在 TS Gateway，不再由 Python Core 公开承载。
+- `module/Data` 持有 Python 数据领域兼容门面，`module/Engine` 保留单次翻译 / 分析 work unit 与 LLM requester 能力，`module/Model` 持有模型配置领域规则。
 
 ## 跨层边界
 
@@ -42,9 +44,9 @@ flowchart LR
 | Renderer -> Electron | 只能走 `window.desktopApp` | 防止页面绕过 preload 直接碰 Node / Electron |
 | Renderer -> Core API | 只能走 `frontend/src/renderer/app/desktop/desktop-api.ts` -> TS Gateway `/api/` | 保持前后端协议单点可维护 |
 | API -> Data | 公开工程事实、规则、分析与校对辅助由 TS project / service / task data 域通过 database workflow 提供；Python 兼容数据门面仍只经 `module/Data` 访问 | 防止 API 层直接拼装会话与数据库 |
-| API -> Engine | 后台任务启动、停止、进度与终态语义由 `module/Engine` 提供 | 防止数据层和界面层偷持任务生命周期 |
+| API -> Task Engine / Python executor | 后台任务启动、停止、调度、进度与终态语义由 `frontend/src/main/task-engine` 提供；Python `module/Engine` 只执行单个 work unit | 防止数据层、界面层或 Python Core 偷持任务生命周期 |
 | File format | 公开文件解析与写回统一落在 `frontend/src/main/file/`，包括 EPUB AST / legacy 写回兼容 | 防止格式实现分散到 Python Core 或 API 编排层 |
-| Data -> Database | Python 任务热路径通过 `TaskDataClient` 回到 TS Gateway，Python 兼容数据门面只通过 `module/Data/Database/DatabaseGateway.py` 调 Electron main 内部 database workflow；SQL / 事务 / `.lg` asset 读写只落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts` | 防止事务、schema 与压缩格式在 Python / TS 两侧并行 |
+| Data -> Database | TS Task Engine 通过 `TaskDataService` 读写任务数据并提交项目事实；Python 兼容数据门面只通过 `module/Data/Database/DatabaseGateway.py` 调 Electron main 内部 database workflow；SQL / 事务 / `.lg` asset 读写只落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts` | 防止事务、schema 与压缩格式在 Python / TS 两侧并行 |
 
 仓库级不变量：
 - Electron 运行时公开协议只允许落在 TS Gateway 的 `/api/` 前缀；Python Core 退为 Electron main 内部服务，不能把内部端口暴露给 preload 或 renderer。
@@ -107,17 +109,17 @@ flowchart TD
 
 | 模块 | 核心职责 | 主要邻接层 | 详细规则所在 |
 | --- | --- | --- | --- |
-| `frontend/src/main/api` | Electron 运行时公开 HTTP / SSE Gateway、响应壳、代理与路由编排 | `frontend/src/renderer`、`frontend/src/main/project`、`frontend/src/main/task`、`frontend/src/main/model`、`frontend/src/main/service`、`frontend/src/main/core`、`api/` | [`API.md`](./API.md) |
-| `frontend/src/main/project` | 项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全与 section revision 口径 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
-| `frontend/src/main/task` | 公开任务命令、内部任务数据路由、事件 hub、任务运行态、任务回执和 task snapshot 组装 | `frontend/src/main/api`、`frontend/src/main/project`、`frontend/src/main/database`、`frontend/src/main/core`、`module/Engine` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/api` | Electron 运行时公开 HTTP / SSE Gateway、响应壳、代理与路由编排 | `frontend/src/renderer`、`frontend/src/main/project`、`frontend/src/main/task`、`frontend/src/main/task-engine`、`frontend/src/main/model`、`frontend/src/main/service`、`api/` | [`API.md`](./API.md) |
+| `frontend/src/main/project` | 项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全与 section revision 口径 | `frontend/src/main/api`、`frontend/src/main/database` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/task` | 公开任务命令、内部任务数据路由、事件 hub、任务运行态、任务回执和 task snapshot 组装 | `frontend/src/main/api`、`frontend/src/main/project`、`frontend/src/main/database`、`frontend/src/main/task-engine` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/task-engine` | 后台任务生命周期、调度、限流、停止、重试、提交循环与 Python task-executor 客户端 | `frontend/src/main/task`、`frontend/src/main/database`、`api/`、`module/Engine` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `frontend/src/main/file` | 文件解析 / 写回、工作台 parse 预演、新建工程 create preview 解析、导出目录与重复译文补齐 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/service`、`frontend/src/main/project` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
-| `frontend/src/main/model` | 模型页快照、CRUD、重排、激活模型回退与配置读取 | `frontend/src/main/api`、`frontend/src/main/service`、`frontend/src/main/core` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
-| `frontend/src/main/service` | 配置 / 质量 / 校对同步保存领域服务与 Electron main 运行期路径规则 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/core` | [`DATA.md`](./DATA.md) |
-| `frontend/src/main/core` | Python Core 内部任务命令桥客户端 | `frontend/src/main/api`、`frontend/src/main/task`、`api/` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/model` | 模型页快照、CRUD、重排、激活模型回退与配置读取 | `frontend/src/main/api`、`frontend/src/main/service` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
+| `frontend/src/main/service` | 配置 / 质量 / 校对同步保存领域服务与 Electron main 运行期路径规则 | `frontend/src/main/api`、`frontend/src/main/database` | [`DATA.md`](./DATA.md) |
 | `api/` | 内部 Python Core HTTP / SSE 契约、错误映射、事件桥、任务与 Python 客户端兼容 | TS Gateway、`api/Client`、`module/*` | [`API.md`](./API.md) |
 | `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、根目录 `DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
 | `module/Data` | Python 数据领域兼容门面与旧数据对象 | `api/`、Electron main Database Service | [`DATA.md`](./DATA.md) |
-| `module/Engine` | 后台任务生命周期、请求调度、停止、重试与 `TaskDataClient` 数据回调 | `api/`、`frontend/src/main/task` | [`DATA.md`](./DATA.md) |
+| `module/Engine` | 单次翻译 / 分析 work unit、LLM 请求封装与任务 executor 可复用的领域能力 | `api/`、`frontend/src/main/task-engine` | [`DATA.md`](./DATA.md) |
 | `module/Model` | 模型配置类型、模板补齐、排序与默认回退 | `api/`、`Config` | [`DATA.md`](./DATA.md) |
 | 根目录 `DESIGN.md` 对应权威源 | 视觉 token、壳层节奏、页面骨架、组件语义 | `frontend/src/renderer` | [`DESIGN.md`](../DESIGN.md) |
 

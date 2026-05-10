@@ -14,7 +14,6 @@ import { ProjectResetPreviewService } from "../project/project-reset-preview-ser
 import { ProjectPatchAdapter } from "../project/project-patch-adapter";
 import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
-import { CoreBridgeClient } from "../core/core-bridge-client";
 import { AppPathService } from "../service/path-service";
 import { ConfigService } from "../service/config-service";
 import { FileExportService } from "../file/file-export-service";
@@ -27,6 +26,8 @@ import { TaskEventHub } from "../task/task-event-hub";
 import { TaskRuntimeState } from "../task/task-runtime-state";
 import { TaskService } from "../task/task-service";
 import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
+import { TaskEngine } from "../task-engine/task-engine";
+import { PythonTaskExecutorClient } from "../task-engine/python-task-executor-client";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
   close_http_server_with_connections,
@@ -144,10 +145,6 @@ export class ApiGatewayServer {
    */
   private create_app(): Hono {
     const paths = new AppPathService({ appRoot: this.options.appRoot });
-    const core_bridge = new CoreBridgeClient({
-      pyCoreBaseUrl: this.options.pyCoreBaseUrl,
-      pyCoreToken: this.options.pyCoreToken,
-    });
     const project_patch_adapter = new ProjectPatchAdapter(
       this.options.database,
       this.project_session_state,
@@ -188,8 +185,27 @@ export class ApiGatewayServer {
       task_snapshot_builder,
       this.project_session_state,
     );
+    const task_data_service = new TaskDataService(
+      this.options.database,
+      this.project_session_state,
+      this.task_runtime_state,
+      event_hub,
+    );
+    const executor_client = new PythonTaskExecutorClient({
+      pyCoreBaseUrl: this.options.pyCoreBaseUrl,
+      pyCoreToken: this.options.pyCoreToken,
+    });
+    const task_engine = new TaskEngine({
+      taskDataService: task_data_service,
+      taskRuntimeState: this.task_runtime_state,
+      eventHub: event_hub,
+      executorClient: executor_client,
+      configService: config_service,
+      snapshotBuilder: task_snapshot_builder,
+      logManager: this.options.logManager,
+    });
     const task_service = new TaskService(
-      core_bridge,
+      task_engine,
       task_snapshot_builder,
       this.task_runtime_state,
       this.project_session_state,
@@ -206,12 +222,6 @@ export class ApiGatewayServer {
       config_service,
       this.project_session_state,
       this.options.logManager,
-    );
-    const task_data_service = new TaskDataService(
-      this.options.database,
-      this.project_session_state,
-      this.task_runtime_state,
-      event_hub,
     );
     const quality_service = new QualityService(
       paths,
@@ -420,10 +430,6 @@ export class ApiGatewayServer {
     this.post_internal_json(app, "/internal/task-data/retranslate/commit", (body) =>
       task_data_service.commit_retranslate_batch(body),
     );
-    this.post_internal_json(app, "/internal/task-data/retranslate/finalize", (body) =>
-      task_data_service.finalize_retranslate(body),
-    );
-
     this.post_json(app, "/api/quality/rules/save-entries", (body) =>
       quality_service.save_rule_entries(body),
     );

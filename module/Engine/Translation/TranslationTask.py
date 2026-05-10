@@ -1,5 +1,4 @@
 import itertools
-import threading
 import time
 from functools import lru_cache
 from typing import Callable
@@ -32,6 +31,7 @@ class TranslationTask(Base):
         is_sub_task: bool = False,
         skip_response_check: bool = False,
         quality_snapshot: QualityRuleSnapshot | None = None,
+        stop_checker: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__()
 
@@ -51,6 +51,8 @@ class TranslationTask(Base):
         self.retry_count = 0
 
         self.skip_response_check = skip_response_check
+        # work-unit executor 不再让 Engine 持有停止权；这里允许调用方注入窄停止判断。
+        self.stop_checker = stop_checker
 
         self.prompt_builder = PromptBuilder(
             self.config,
@@ -292,6 +294,8 @@ class TranslationTask(Base):
             return self.build_empty_result()
 
         def stop_checker() -> bool:
+            if self.stop_checker is not None:
+                return self.stop_checker()
             return Engine.get().get_status() == Base.TaskStatus.STOPPING
 
         request_response = TaskRequestExecutor.execute(
@@ -486,51 +490,3 @@ class TranslationTask(Base):
             return Localizer.get().response_checker_fail_degradation
         else:
             return ""
-
-    @staticmethod
-    def translate_single(
-        item: Item, config: Config, callback: Callable[[Item, bool], None]
-    ) -> None:
-        """
-        单条翻译的简化入口，复用 TranslationTask 的完整翻译流程。
-
-        注意：此方法为低频调用场景设计（用户手动触发单条重新翻译），
-        使用后台线程执行同步请求路径；SDK client 由 TaskRequester 按参数组合全局缓存复用。
-
-        Args:
-            item: 待翻译的 Item 对象
-            config: 翻译配置
-            callback: 翻译完成后的回调函数，签名为 (item, success) -> None
-        """
-
-        def task() -> None:
-            success = False
-            try:
-                # 获取激活的模型配置
-                model = config.get_active_model()
-                if not model:
-                    return
-
-                # 创建翻译任务（跳过术语表合并和响应校验）
-                translation_task = TranslationTask(
-                    config=config,
-                    model=model,
-                    items=[item],
-                    precedings=[],
-                    skip_response_check=True,
-                )
-
-                # 执行翻译（同步请求路径）
-                result = translation_task.start()
-                success = bool(result.get("row_count", 0) > 0)
-            except Exception as e:
-                LogManager.get().error(Localizer.get().task_failed, e)
-                success = False
-            finally:
-                # 回调通知
-                if callback:
-                    callback(item, success)
-
-        # 启动后台线程
-        thread = threading.Thread(target=task, name=f"{Engine.TASK_PREFIX}SINGLE")
-        thread.start()

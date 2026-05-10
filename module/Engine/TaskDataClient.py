@@ -279,11 +279,6 @@ class TaskDataClient:
             },
         )
 
-    def finalize_retranslate(self) -> dict[str, Any]:
-        """重翻终态 patch 由 TS 生成，Python 只负责触发。"""
-
-        return self.post_json("/internal/task-data/retranslate/finalize", {})
-
     def items_from_payload(self, value: object) -> list[Item]:
         """把 TS JSON item dict 转回 Engine 内部 Item 对象。"""
 

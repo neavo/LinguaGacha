@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { CoreBridgeClient } from "../core/core-bridge-client";
 import type { ConfigService } from "../service/config-service";
+import type { TaskEngine } from "../task-engine/task-engine";
 import { ProjectSessionState } from "../project/project-session-state";
 import { TaskRuntimeState } from "./task-runtime-state";
 import type { TaskSnapshotBuilder } from "./task-snapshot-builder";
@@ -14,10 +14,10 @@ describe("TaskService", () => {
     session_state.mark_loaded("E:/Project/demo.lg");
     const service = new TaskService(
       {
-        start_retranslate: async (body: Record<string, unknown>) => {
-          calls.push(body);
+        start_retranslate: async (item_ids: number[], quality_snapshot: unknown) => {
+          calls.push({ item_ids, quality_snapshot });
         },
-      } as unknown as CoreBridgeClient,
+      } as unknown as TaskEngine,
       create_snapshot_builder({
         items: 7,
         proofreading: 2,
@@ -72,7 +72,7 @@ describe("TaskService", () => {
           called = true;
           return { success: true, status: "OK", dst: "译文" };
         },
-      } as unknown as CoreBridgeClient,
+      } as unknown as TaskEngine,
       create_snapshot_builder({}),
       new TaskRuntimeState(),
       new ProjectSessionState(),
@@ -89,11 +89,11 @@ describe("TaskService", () => {
     const calls: Array<Record<string, unknown>> = [];
     const service = new TaskService(
       {
-        translate_single: async (body: Record<string, unknown>) => {
-          calls.push(body);
+        translate_single: async (text: string) => {
+          calls.push({ text });
           return { success: true, status: "OK", dst: "译文" };
         },
-      } as unknown as CoreBridgeClient,
+      } as unknown as TaskEngine,
       create_snapshot_builder({}),
       new TaskRuntimeState(),
       new ProjectSessionState(),
@@ -110,7 +110,7 @@ describe("TaskService", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
     const service = new TaskService(
-      {} as unknown as CoreBridgeClient,
+      {} as unknown as TaskEngine,
       create_snapshot_builder({ items: 8, proofreading: 2 }),
       new TaskRuntimeState(),
       session_state,

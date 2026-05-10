@@ -41,7 +41,7 @@ export class ProjectSyncMutationService {
   private file_operation_running = false;
 
   /**
-   * 注入 database 与 Python runtime bridge，保持写库和缓存同步边界可测试。
+   * 注入 database、任务运行态和会话状态，保持写库边界可测试。
    */
   public constructor(
     database: ProjectDatabase,

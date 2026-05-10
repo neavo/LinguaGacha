@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import pytest
 
 from module.Localizer.Localizer import Localizer
-from module.Engine.Analysis.Analysis import Analysis
 from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
 from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 from module.Engine.Analysis.AnalysisTask import AnalysisTask
@@ -39,9 +38,12 @@ class FakePipelineLogger:
 def build_analysis_task(
     context: AnalysisTaskContext | None = None,
 ) -> AnalysisTask:
-    analysis = Analysis()
-    analysis.model = {"name": "demo-model"}
-    analysis.quality_snapshot = SimpleNamespace()
+    analysis = SimpleNamespace(
+        config=SimpleNamespace(),
+        model={"name": "demo-model"},
+        quality_snapshot=SimpleNamespace(),
+        should_stop=lambda: False,
+    )
     return AnalysisTask(analysis, context or build_request_context())
 
 

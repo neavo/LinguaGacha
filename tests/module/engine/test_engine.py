@@ -1,11 +1,8 @@
 from types import SimpleNamespace
-import sys
 
 import pytest
 
 from base.Base import Base
-from module.Data.Core.Item import Item
-from module.Config import Config
 from module.Engine.Engine import Engine
 
 
@@ -58,61 +55,12 @@ def test_get_running_task_count_uses_translation_and_single_threads(
     assert engine.get_running_task_count() == 7
 
 
-def test_translate_single_item_delegates_to_translation_task(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[Item, Config, object]] = []
-
-    class FakeTranslationTask:
-        @staticmethod
-        def translate_single(item: Item, config: Config, callback: object) -> None:
-            calls.append((item, config, callback))
-
-    monkeypatch.setitem(
-        __import__("sys").modules,
-        "module.Engine.Translation.TranslationTask",
-        SimpleNamespace(TranslationTask=FakeTranslationTask),
-    )
-
-    engine = Engine()
-    item = Item(src="A")
-    config = Config()
-
-    def callback(result_item: Item, success: bool) -> None:
-        del result_item, success
-
-    engine.translate_single_item(item, config, callback)
-
-    assert len(calls) == 1
-    assert calls[0][0] is item
-    assert calls[0][1] is config
-
-
-def test_run_initializes_analysis_and_translation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakeAnalysis:
-        pass
-
-    class FakeTranslation:
-        pass
-
-    monkeypatch.setitem(
-        sys.modules,
-        "module.Engine.Analysis.Analysis",
-        SimpleNamespace(Analysis=FakeAnalysis),
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "module.Engine.Translation.Translation",
-        SimpleNamespace(Translation=FakeTranslation),
-    )
-
+def test_run_keeps_python_engine_as_request_compatibility_layer() -> None:
     engine = Engine()
     engine.run()
 
-    assert isinstance(engine.analysis, FakeAnalysis)
-    assert isinstance(engine.translation, FakeTranslation)
+    assert not hasattr(engine, "analysis")
+    assert not hasattr(engine, "translation")
 
 
 def test_get_running_task_count_without_translation_uses_single_threads(

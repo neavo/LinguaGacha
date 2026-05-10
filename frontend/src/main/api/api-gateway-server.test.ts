@@ -306,7 +306,7 @@ describe("ApiGatewayServer", () => {
     expect(get_py_requests_except_event_stream(py_server)).toEqual([]);
   });
 
-  it("校对同步 mutation 由 TS Gateway 直接写库且只调用内部 runtime bridge", async () => {
+  it("校对同步 mutation 由 TS Gateway 直接写库且不代理到 Python Core", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "proofreading-direct-write.lg");
@@ -462,7 +462,7 @@ describe("ApiGatewayServer", () => {
     expect(py_request_paths).not.toContain("/api/project/bootstrap/stream");
   });
 
-  it("公开任务路由由 TS Gateway 直处理并只调用内部 Engine bridge", async () => {
+  it("公开任务路由由 TS Gateway 直处理且不调用旧运行时任务桥", async () => {
     const app_root = create_app_root();
     const py_server = await start_fake_py_server();
     const database = new ProjectDatabase();
@@ -498,7 +498,7 @@ describe("ApiGatewayServer", () => {
       status: "REQUEST",
       busy: true,
     });
-    expect(py_request_paths).toContain("/internal/runtime/tasks/start-translation");
+    expect(py_request_paths).not.toContain("/internal/runtime/tasks/start-translation");
     expect(py_request_paths).not.toContain("/api/tasks/start-translation");
   });
 
@@ -835,7 +835,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * fake Python server 覆盖透明代理、任务命令桥和 Python 上游事件流。
+   * fake Python server 覆盖透明代理、task-executor 窄路由和 Python 上游事件流。
    */
   async function start_fake_py_server(_runtime_project_path?: string): Promise<FakePyServer> {
     const requests: FakePyRequest[] = [];
@@ -847,12 +847,25 @@ describe("ApiGatewayServer", () => {
       request.on("end", () => {
         const raw = Buffer.concat(chunks).toString("utf-8");
         requests.push({ method: request.method, path: request.url, raw });
-        if (request.url?.startsWith("/internal/runtime/tasks/")) {
+        if (request.url?.startsWith("/internal/task-executor/")) {
           response.writeHead(200, {
             "Access-Control-Allow-Origin": "*",
             "Content-Type": "application/json; charset=utf-8",
           });
-          response.end(JsonTool.stringifyStrict({ ok: true, data: { accepted: true } }));
+          response.end(
+            JsonTool.stringifyStrict({
+              ok: true,
+              data: {
+                items: [],
+                row_count: 0,
+                input_tokens: 0,
+                output_tokens: 0,
+                success: true,
+                status: "OK",
+                dst: "译文",
+              },
+            }),
+          );
           return;
         }
         if (request.url === "/api/events/stream") {

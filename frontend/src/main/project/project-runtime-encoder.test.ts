@@ -202,7 +202,7 @@ describe("ProjectRuntimeEncoder", () => {
   }
 
   /**
-   * runtime encoder 只依赖 CoreBridgeClient 的任务读方法，测试用窄 fake 固定边界。
+   * runtime encoder 只依赖任务快照 builder，测试用窄 fake 固定边界。
    */
   function create_task_snapshot_builder(
     task_snapshot: Record<string, unknown>,

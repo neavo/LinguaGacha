@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 from typing import Any
+from typing import Protocol
 
 from base.Base import Base
 from base.LogManager import LogManager
@@ -20,14 +20,30 @@ from module.Response.ResponseCleaner import ResponseCleaner
 from module.Text.TextHelper import TextHelper
 from module.TextProcessor import TextProcessor
 
-if TYPE_CHECKING:
-    from module.Engine.Analysis.Analysis import Analysis
+from module.Config import Config
+from module.QualityRule.QualityRuleSnapshot import QualityRuleSnapshot
+
+
+class AnalysisWorkUnitRuntime(Protocol):
+    """AnalysisTask 只依赖单个 work unit 所需的最小运行时能力。"""
+
+    config: Config
+    model: dict[str, Any] | None
+    quality_snapshot: QualityRuleSnapshot | None
+
+    def should_stop(self) -> bool:
+        """返回当前 work unit 是否应停止。"""
+        ...
 
 
 class AnalysisTask:
     """分析单任务执行器统一负责请求、解码和日志输出。"""
 
-    def __init__(self, analysis: Analysis, context: AnalysisTaskContext) -> None:
+    def __init__(
+        self,
+        analysis: AnalysisWorkUnitRuntime,
+        context: AnalysisTaskContext,
+    ) -> None:
         self.analysis = analysis
         self.context = context
 
@@ -159,7 +175,7 @@ class AnalysisTask:
         )
 
     @staticmethod
-    def log_run_start(analysis: Analysis) -> None:
+    def log_run_start(analysis: AnalysisWorkUnitRuntime) -> None:
         """任务启动日志统一放在 Task 类，方便控制器与 hook 共享同一口径。"""
         if analysis.model is None or analysis.quality_snapshot is None:
             return

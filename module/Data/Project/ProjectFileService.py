@@ -13,7 +13,7 @@ class ProjectFileService:
         self.file_op_running = False
 
     def is_file_op_running(self) -> bool:
-        """读取当前文件操作临界区状态，供 runtime bridge 诊断和测试使用。"""
+        """读取当前文件操作临界区状态，供项目文件 mutation 诊断和测试使用。"""
 
         with self.file_op_lock:
             return self.file_op_running

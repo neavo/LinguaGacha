@@ -6,21 +6,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from module.Engine.Analysis.Analysis import Analysis
 from module.Engine.Analysis.AnalysisTask import AnalysisTask
 
 analysis_task_module = import_module("module.Engine.Analysis.AnalysisTask")
-analysis_progress_module = import_module(
-    "module.Engine.Analysis.AnalysisProgressTracker"
-)
-analysis_scheduler_module = import_module("module.Engine.Analysis.AnalysisScheduler")
 
 
 def build_request_task() -> AnalysisTask:
     """统一构造最小分析任务，避免每个测试自己重复搭环境。"""
-    analysis = Analysis()
-    analysis.model = {"name": "demo-model"}
-    analysis.quality_snapshot = SimpleNamespace()
+    analysis = SimpleNamespace(
+        config=SimpleNamespace(),
+        model={"name": "demo-model"},
+        quality_snapshot=SimpleNamespace(),
+        should_stop=lambda: False,
+    )
     from module.Engine.Analysis.AnalysisModels import AnalysisItemContext
     from module.Engine.Analysis.AnalysisModels import AnalysisTaskContext
 

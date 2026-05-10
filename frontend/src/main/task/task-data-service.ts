@@ -270,23 +270,6 @@ export class TaskDataService {
   }
 
   /**
-   * 重翻终态补丁由 TS 生成，Python 只负责通知任务结束。
-   */
-  public finalize_retranslate(_request: JsonRecord): MutableJsonRecord {
-    this.event_hub.publish_project_patch({
-      source: "retranslate_items",
-      updatedSections: ["task"],
-      patch: [
-        {
-          op: "replace_task",
-          task: this.task_runtime_state.build_task_block("retranslate"),
-        },
-      ],
-    });
-    return { accepted: true };
-  }
-
-  /**
    * 当前 loaded 工程是所有任务数据 API 的唯一目标。
    */
   private require_loaded_project_path(): string {

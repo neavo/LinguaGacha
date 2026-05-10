@@ -1,10 +1,7 @@
 import threading
-from typing import Callable
 from typing import Self
 
 from base.Base import Base
-from module.Data.Core.Item import Item
-from module.Config import Config
 
 
 class Engine:
@@ -33,19 +30,8 @@ class Engine:
         return cls.__instance__
 
     def run(self) -> None:
-        from module.Engine.Analysis.Analysis import Analysis
-
-        self.analysis = Analysis()
-
-        from module.Engine.Translation.Translation import Translation
-
-        self.translation = Translation()
-
-        from module.Engine.Retranslate.RetranslateTask import (
-            RetranslateTask,
-        )
-
-        self.retranslate = RetranslateTask()
+        # TS Task Engine 已持有后台任务生命周期；Python Engine 只保留请求兼容状态。
+        return
 
     def get_status(self) -> Base.TaskStatus:
         with self.lock:
@@ -119,20 +105,3 @@ class Engine:
     def get_active_retranslate_item_ids(self) -> list[int]:
         with self.lock:
             return list(self.active_retranslate_item_ids)
-
-    def translate_single_item(
-        self, item: Item, config: Config, callback: Callable[[Item, bool], None]
-    ) -> None:
-        """
-        对单个条目执行翻译，通过后台线程 + 回调异步返回结果。
-        复用 TranslationTask 的完整翻译流程（预处理、响应校验、日志等）。
-
-        Args:
-            item: 待翻译的 Item 对象
-            config: 翻译配置
-            callback: 翻译完成后的回调函数，签名为 (item, success) -> None
-        """
-        # 延迟导入避免循环依赖
-        from module.Engine.Translation.TranslationTask import TranslationTask
-
-        TranslationTask.translate_single(item, config, callback)
