@@ -4,7 +4,7 @@ import {
   build_bilingual_path,
   build_target_path,
   group_items,
-  split_lines_like_python,
+  split_text_lines_for_items,
   write_text_file,
   type ExportPaths,
   type FileFormatServiceConfig,
@@ -21,10 +21,10 @@ export class ASSFormat {
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 读取 Events 段 Format 列数后抽取 Dialogue 尾部文本，与 Py 侧切片逻辑一致。
+   * 读取 Events 段 Format 列数后抽取 Dialogue 尾部文本，与旧切片逻辑一致。
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
-    const lines = split_lines_like_python(await TextTool.decode(content)).map((line) =>
+    const lines = split_text_lines_for_items(await TextTool.decode(content)).map((line) =>
       line.trim(),
     );
     let in_event = false;

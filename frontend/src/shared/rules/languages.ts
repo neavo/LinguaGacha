@@ -40,7 +40,7 @@ export type LanguageDefinition = {
   matches_character: CharacterMatcher | null;
 };
 
-// 这些字符范围对齐 Python TextBase，用于前端预过滤，不替代后端完整文本处理。
+// 这些字符范围对齐 历史 TextBase，用于前端预过滤，不替代后端完整文本处理。
 const CJK_CHARACTER_RANGES: readonly CodePointRange[] = [
   [0x4e00, 0x9fff],
   [0x3400, 0x4dbf],

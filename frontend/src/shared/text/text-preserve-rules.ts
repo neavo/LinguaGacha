@@ -49,7 +49,7 @@ export const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
 } as const;
 
 /**
- * 运行态 mode 来自 meta，可能是小写、旧大写或坏值；坏值按旧 Py 口径关闭。
+ * 运行态 mode 来自 meta，可能是小写、旧大写或坏值；坏值按旧口径关闭。
  */
 export function normalize_text_preserve_mode(value: string): TextPreserveMode {
   const normalized = value.trim().toLowerCase();

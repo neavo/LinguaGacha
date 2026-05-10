@@ -107,7 +107,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 归一旧 Python 枚举泄露出的规则槽位名，保证运行态只读取当前物理类型。
+   * 归一旧枚举泄露出的规则槽位名，保证运行态只读取当前物理类型。
    */
   private static migrate_rule_types_if_needed(db: DatabaseSync): void {
     const target_exists = db.prepare("SELECT 1 FROM rules WHERE type = ? LIMIT 1");

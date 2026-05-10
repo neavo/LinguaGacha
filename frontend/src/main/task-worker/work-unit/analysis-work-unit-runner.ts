@@ -245,7 +245,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 尽量复刻旧 Py AnalysisTask 的 chunk 日志：统计、原文、think/result 与术语候选同屏输出。
+   * 尽量复刻旧 AnalysisTask 的 chunk 日志：统计、原文、think/result 与术语候选同屏输出。
    */
   private build_analysis_logs(context: {
     start_time: number;

@@ -4,7 +4,7 @@ import {
   build_bilingual_path,
   build_target_path,
   group_items,
-  split_lines_like_python,
+  split_text_lines_for_items,
   write_text_file,
   type ExportPaths,
   type FileFormatServiceConfig,
@@ -12,7 +12,7 @@ import {
 import { normalize_file_item, type FileFormatItem } from "../file-item";
 
 /**
- * TXT 格式按行解析与写回，保持 Py 侧最朴素的一行一条规则。
+ * TXT 格式按行解析与写回，保持旧实现最朴素的一行一条规则。
  */
 export class TXTFormat {
   /**
@@ -25,7 +25,7 @@ export class TXTFormat {
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
     const text = await TextTool.decode(content);
-    return split_lines_like_python(text).map((line, index) =>
+    return split_text_lines_for_items(text).map((line, index) =>
       normalize_file_item({
         src: line,
         dst: "",

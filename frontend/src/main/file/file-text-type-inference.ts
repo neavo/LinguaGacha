@@ -1,7 +1,7 @@
 import { has_language_character } from "../../shared/rules/languages";
 import type { FileTextType } from "./file-item";
 
-// 这些启发式只用于 Py 侧同款兜底推断，不能替代具体格式处理器的 text_type。
+// 这些启发式只用于 旧实现同款兜底推断，不能替代具体格式处理器的 text_type。
 // WOLF 行常见以事件编号或数据库控制码开头，命中后优先级最高。
 const WOLF_PATTERNS = [/@\d+/iu, /\\[cus]db\[.+?:.+?:.+?\]/iu];
 

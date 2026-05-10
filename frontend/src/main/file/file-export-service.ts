@@ -35,7 +35,7 @@ type FileExportLogManager = Pick<LogManager, "info" | "error">;
 const FILE_EXPORT_LOG_SOURCE = "ts-file-export";
 
 /**
- * 文案表对齐旧 Python Localizer 输出，导出路径迁移后仍保持用户可见日志口径。
+ * 文案表对齐旧 历史 Localizer 输出，导出路径迁移后仍保持用户可见日志口径。
  */
 const EXPORT_LOG_TEXT = {
   ZH: {
@@ -135,7 +135,7 @@ export class FileExportService {
   }
 
   /**
-   * 实际写回统一进入 TS 文件域，避免文件格式能力在 Python/TS 间分叉。
+   * 实际写回统一进入 TS 文件域，避免文件格式能力在 新旧实现间分叉。
    */
   private async write_export(
     project_path: string,
@@ -214,7 +214,7 @@ export class FileExportService {
   }
 
   /**
-   * DUPLICATED 条目复用同文件同原文的已处理译文，保持旧 Python 导出行为。
+   * DUPLICATED 条目复用同文件同原文的已处理译文，保持旧导出行为。
    */
   private fill_duplicated_translations(items: FileFormatItem[]): void {
     const translation_by_file_src = new Map<string, { dst: string; name_dst: ApiJsonValue }>();
@@ -263,7 +263,7 @@ export class FileExportService {
   }
 
   /**
-   * 时间戳格式对齐 Python DataManager 旧导出目录后缀。
+   * 时间戳格式对齐 历史 DataManager 旧导出目录后缀。
    */
   private timestamp_suffix(): string {
     const now = new Date();
@@ -274,7 +274,7 @@ export class FileExportService {
   }
 
   /**
-   * 导出日志文案跟随应用语言，保持 TS 写回路径和旧 Python 导出提示一致。
+   * 导出日志文案跟随应用语言，保持 TS 写回路径和旧导出提示一致。
    */
   private export_log_text(config: ConfigRecord): (typeof EXPORT_LOG_TEXT)["ZH"] {
     return String(config["app_language"] ?? "ZH").toUpperCase() === "EN"
@@ -290,7 +290,7 @@ export class FileExportService {
   }
 
   /**
-   * 完成日志保留旧 Python 的前后空行，避免连续任务日志挤在一起。
+   * 完成日志保留旧实现的前后空行，避免连续任务日志挤在一起。
    */
   private log_export_done(config: ConfigRecord, output_path: string): void {
     const log_text = this.export_log_text(config);
@@ -310,7 +310,7 @@ export class FileExportService {
   }
 
   /**
-   * 导出失败日志对齐旧 Python 入口的终态提示，同时保留异常详情给日志文件。
+   * 导出失败日志对齐旧入口的终态提示，同时保留异常详情给日志文件。
    */
   private log_export_failed(config: ConfigRecord, error: unknown): void {
     this.log_manager?.error(this.export_log_text(config).failed, {

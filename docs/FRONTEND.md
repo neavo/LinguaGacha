@@ -67,7 +67,7 @@ flowchart LR
 
 ## 独立日志窗口
 
-- `src/main/log/` 是 Electron main 的日志权威：控制台输出、`DATA_ROOT/log/app.yyyymmdd.log` 文件输出和日志窗口 ring buffer 都由 TS `LogManager` 分别按目标开关管理；磁盘日志只保留日期最新的 3 份。保留 Python 工具的 `LogManager` 只写本地 stderr 兜底，不进入日志窗口。
+- `src/main/log/` 是 Electron main 的日志权威：控制台输出、`DATA_ROOT/log/app.yyyymmdd.log` 文件输出和日志窗口 ring buffer 都由 TS `LogManager` 分别按目标开关管理；磁盘日志只保留日期最新的 3 份。
 - Electron main 通过 `window.desktopApp.openLogWindow()` 维护日志窗口单例；主窗口项目 warmup ready 后只在侧栏日志入口显示红点提醒，不自动打开日志窗口。侧栏日志入口在窗口隐藏时显示并聚焦，窗口已显示时关闭，点击入口会清除本次提醒，关闭日志窗口不关闭主窗口。
 - 日志窗口复用同一个 renderer bundle，通过 `?window=logs` 进入日志模式；该模式不渲染主工作台 sidebar，也不注册为导航屏幕。
 - 主窗口侧栏底部动作区提供日志入口；入口只调用 preload 暴露能力，不直接触碰 Electron / Node。
@@ -141,7 +141,7 @@ flowchart TD
 | `project/lifecycle/` | bootstrap stream consumer 与 bootstrap loader | 工程加载生命周期归这里，`ProjectStore` 只接收已解析的 stage 载荷 |
 | `project/store/` | `ProjectStore`、项目条目文本采集 | 渲染层项目事实的权威仓库；页面只读快照或通过 `commit_local_project_patch(...)` 的唯一写入口提交本地 patch |
 | `project/prefilter/` | 预过滤 mutation builder / committer、runner、worker client / worker | 只表达规则如何应用到项目条目和 mutation 输出；可审查规则清单不放在这里 |
-| `shared/rules/` | 前后端共享的规则前缀、后缀、正则、标点、语言字符判断；规则口径跟随 Python `BaseLanguage` / `TextHelper` / `RuleFilter` / `LanguageFilter` | 只放可审查的纯规则与语言定义，不做项目条目遍历、worker 编排、HTTP mutation 或 Ruby 清理；Ruby 清理与译前 / 译后处理由 `src/shared/text/` 供 `src/main/task-worker/` 消费 |
+| `shared/rules/` | 前后端共享的规则前缀、后缀、正则、标点、语言字符判断 | 只放可审查的纯规则与语言定义，不做项目条目遍历、worker 编排、HTTP mutation 或 Ruby 清理；Ruby 清理与译前 / 译后处理由 `src/shared/text/` 供 `src/main/task-worker/` 消费 |
 | `project/reset/` | 翻译 / 分析 reset plan 与共享 reset state builders | 只放基于项目事实生成重置 mutation 的规则 |
 | `project/glossary-import/` | 分析术语导入 plan | 只放分析候选到术语表 mutation 的项目领域计划 |
 | `project/settings/` | 项目设置 alignment toast 与设置镜像辅助 | 只放项目设置同步相关的展示文案格式化和轻量领域辅助 |

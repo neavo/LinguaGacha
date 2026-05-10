@@ -9,13 +9,13 @@ import {
   group_items,
   language_suffix,
   prepare_name_fields,
-  split_lines_like_python,
+  split_text_lines_for_items,
 } from "./file-format-shared";
 
 describe("file-format-shared", () => {
-  it("按 Python splitlines 口径处理尾随换行", () => {
-    expect(split_lines_like_python("甲\n乙\n")).toEqual(["甲", "乙"]);
-    expect(split_lines_like_python("")).toEqual([]);
+  it("按历史 splitlines 口径处理尾随换行", () => {
+    expect(split_text_lines_for_items("甲\n乙\n")).toEqual(["甲", "乙"]);
+    expect(split_text_lines_for_items("")).toEqual([]);
   });
 
   it("根据语言配置构造单语和双语导出路径", () => {

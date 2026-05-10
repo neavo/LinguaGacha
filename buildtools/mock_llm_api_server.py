@@ -24,9 +24,9 @@
 - 每个请求模拟抖动（默认 2~20 秒，可通过 --min-jitter/--max-jitter 调整）；
   流式场景会把总抖动拆分到多段 SSE 消息上。
 
-一键启动示例（推荐用 uv）
+一键启动示例（直接使用系统 Python）
 1) 启动（本机回环，端口 8000）
-   uv run python buildtools/mock_llm_api_server.py --host 127.0.0.1 --port 8000
+   python buildtools/mock_llm_api_server.py --host 127.0.0.1 --port 8000
 
 2) 让 LinguaGacha 指向该服务
    API Base URL: http://127.0.0.1:8000/v1
@@ -58,15 +58,15 @@
 
 可选参数示例（压测/联调常用）
 - 更高并发 + 降低流式开销
-   uv run python buildtools/mock_llm_api_server.py --backlog 16384 --stream-chunk-lines 50
+   python buildtools/mock_llm_api_server.py --backlog 16384 --stream-chunk-lines 50
 - 缩短抖动（更快回归）
-   uv run python buildtools/mock_llm_api_server.py --min-jitter 0.2 --max-jitter 1.0
+   python buildtools/mock_llm_api_server.py --min-jitter 0.2 --max-jitter 1.0
 - 固定随机种子（输出可复现）
-   uv run python buildtools/mock_llm_api_server.py --seed 12345
+   python buildtools/mock_llm_api_server.py --seed 12345
 - 切到分析任务模式
-   uv run python buildtools/mock_llm_api_server.py --task analysis
+   python buildtools/mock_llm_api_server.py --task analysis
 - 调整日志级别（排查协议/边界问题）
-   uv run python buildtools/mock_llm_api_server.py --log-level DEBUG
+   python buildtools/mock_llm_api_server.py --log-level DEBUG
 
 参数示意（节选）
 - --backlog: asyncio.start_server(..., backlog=...) 的 backlog；高并发下过小会更容易出现连接排队/拒绝。

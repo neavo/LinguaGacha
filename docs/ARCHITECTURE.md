@@ -1,7 +1,7 @@
 # LinguaGacha 架构文档
 
 ## 一句话总览
-LinguaGacha 是“Electron main TS Gateway + 内部 Database Service + TS Task Engine + TS task-worker / pi-ai LLM adapter + Electron 桌面前端”的本机多进程工程；运行态不再保留 Python API / Data / Engine / Model 兼容层，Python 只留下配置、迁移、文本、过滤、路径解析和工具类模块。本文只回答系统如何分层、跨层边界在哪里、运行时主链路如何流动，以及读哪份文档才能做出正确维护判断。
+LinguaGacha 是“Electron main TS Gateway + 内部 Database Service + TS Task Engine + TS task-worker / pi-ai LLM adapter + Electron 桌面前端”的本机多进程工程；正式运行、开发、测试与发布链路均由 TypeScript / Node 承担，仅 `buildtools/mock_llm_api_server.py` 作为临时本地 LLM 调试脚本保留。本文只回答系统如何分层、跨层边界在哪里、运行时主链路如何流动，以及读哪份文档才能做出正确维护判断。
 
 ## 系统分层图
 
@@ -30,7 +30,6 @@ flowchart LR
 - `frontend/src/preload` 只负责通过 `contextBridge` 暴露 `window.desktopApp`。
 - `frontend/src/renderer` 只通过 `window.desktopApp` 和 `desktop-api.ts` 接入宿主与 Core API。
 - `frontend/src/main/api/` 是 Electron 运行时公开 `/api/*` HTTP / SSE 编排入口；`project/` 承载项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 运行态编码、`project.patch` 补全和 section revision 口径；`task/` 承载公开任务命令、任务回执、任务运行态和 task snapshot；`task-engine/` 承载后台任务生命周期、调度、限流、停止、重试与提交循环；`task-worker/` 承载单个 work unit 的确定性文本处理、prompt、pi-ai LLM adapter、响应解析和结果归一；`file/` 承载公开文件解析 / 写回、create preview 草稿解析和导出目录语义；`model/` 承载模型页快照、CRUD、重排、激活回退、远端模型列表与模型连通性测试；`service/` 承载应用设置、质量规则 / 提示词、校对同步保存与 Electron main 运行期路径规则。
-- Python 目录不承载运行态 API、数据门面、任务引擎或模型配置权威；保留模块只服务离线迁移、文本 / 过滤 / 质量规则工具、路径解析和配置文件读写。
 
 ## 跨层边界
 
@@ -39,14 +38,14 @@ flowchart LR
 | Renderer -> Electron | 只能走 `window.desktopApp` | 防止页面绕过 preload 直接碰 Node / Electron |
 | Renderer -> Core API | 只能走 `frontend/src/renderer/app/desktop/desktop-api.ts` -> TS Gateway `/api/` | 保持前后端协议单点可维护 |
 | API -> Data | 公开工程事实、规则、分析与校对辅助由 TS project / service / task data 域通过 database workflow 提供 | 防止 API 层直接拼装会话与数据库 |
-| API -> Task Engine / Task Worker / pi-ai LLM adapter | 后台任务启动、停止、调度、进度与终态语义由 `frontend/src/main/task-engine` 提供；单个 work unit 的确定性处理、prompt、真实 LLM 请求、响应归一和 provider 差异由 `frontend/src/main/task-worker` 提供 | 防止数据层、界面层或兼容 Python 模块偷持任务生命周期或并行解析业务结果 |
-| File format | 公开文件解析与写回统一落在 `frontend/src/main/file/`，包括 EPUB AST / legacy 写回兼容 | 防止格式实现分散到兼容 Python 模块或 API 编排层 |
+| API -> Task Engine / Task Worker / pi-ai LLM adapter | 后台任务启动、停止、调度、进度与终态语义由 `frontend/src/main/task-engine` 提供；单个 work unit 的确定性处理、prompt、真实 LLM 请求、响应归一和 provider 差异由 `frontend/src/main/task-worker` 提供 | 防止数据层、界面层或旧兼容层偷持任务生命周期或并行解析业务结果 |
+| File format | 公开文件解析与写回统一落在 `frontend/src/main/file/`，包括 EPUB AST / legacy 写回兼容 | 防止格式实现分散到旧兼容层或 API 编排层 |
 | Data -> Database | TS Project / Service / TaskDataService 通过 Electron main database workflow 读写项目事实；SQL / 事务 / `.lg` asset 读写只落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts` | 防止事务、schema 与压缩格式多处并行 |
 
 仓库级不变量：
 - Electron 运行时公开协议只允许落在 TS Gateway 的 `/api/` 前缀；内部 database 路由不能暴露给 preload 或 renderer，任务数据由 TS Task Engine 进程内直接调用 `TaskDataService`。
 - SQL、事务和 `.lg` 内 asset 读写只允许落在 Electron main 的 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`；`.lg` 打开期 schema migration 与旧物理格式兼容规则只允许落在 `frontend/src/main/migration/`；API 层不得直接持有 database handle。
-- 长期用户文案分成两处维护：Python 工具模块在 `module/Localizer/`，渲染层在 `frontend/src/renderer/i18n/`。
+- 长期用户文案归渲染层 `frontend/src/renderer/i18n/` 与 Electron main 领域服务内的本地化常量维护，不再存在独立跨语言文案层。
 - 跨层载荷优先传 `id`、值对象或不可变快照，不共享可变对象引用。
 
 ## 运行时主链路
@@ -110,8 +109,7 @@ flowchart TD
 | `frontend/src/main/file` | 文件解析 / 写回、工作台 parse 预演、新建工程 create preview 解析、导出目录与重复译文补齐 | `frontend/src/main/api`、`frontend/src/main/database`、`frontend/src/main/service`、`frontend/src/main/project` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `frontend/src/main/model` | 模型页快照、CRUD、重排、激活模型回退、远端模型列表与模型连通性测试 | `frontend/src/main/api`、`frontend/src/main/service`、`frontend/src/main/task-worker/llm` | [`API.md`](./API.md)、[`DATA.md`](./DATA.md) |
 | `frontend/src/main/service` | 配置 / 质量 / 校对同步保存领域服务与 Electron main 运行期路径规则 | `frontend/src/main/api`、`frontend/src/main/database` | [`DATA.md`](./DATA.md) |
-| `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | `api/`、根目录 `DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
-| `module/` 保留工具模块 | 配置读写、userdata 迁移、文本 / 过滤 / 质量规则工具、路径解析与本地日志兜底 | `base/`、`resource/`、`userdata/` | [`DATA.md`](./DATA.md) |
+| `frontend/` | Electron 宿主、bridge、React 渲染层、`ProjectStore` 消费 | 根目录 `DESIGN.md` 对应的前端语义 | [`FRONTEND.md`](./FRONTEND.md) |
 | 根目录 `DESIGN.md` 对应权威源 | 视觉 token、壳层节奏、页面骨架、组件语义 | `frontend/src/renderer` | [`DESIGN.md`](../DESIGN.md) |
 
 ## 维护约束

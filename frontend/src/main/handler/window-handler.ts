@@ -20,7 +20,7 @@ import {
 } from "../log/log-window-host";
 import { write_electron_main_error, write_electron_main_warning } from "../log/log-bridge";
 
-// 与 PySide 版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线。
+// 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线。
 const WINDOW_STANDARD_WIDTH = 1280;
 const WINDOW_STANDARD_HEIGHT = 800;
 // 主窗口背景要早于 renderer 首帧生效，避免加载阶段出现默认白屏或暗色闪烁。

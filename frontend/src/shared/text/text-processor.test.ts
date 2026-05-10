@@ -61,7 +61,7 @@ describe("TextProcessor", () => {
     expect(processor.srcs).toEqual(["\\n[1]こんにちは"]);
   });
 
-  it("译前正规化保持旧 Python 全角和半角片假名映射", () => {
+  it("译前正规化保持旧格式全角和半角片假名映射", () => {
     const processor = new TextProcessor(
       create_config(),
       {
@@ -101,7 +101,7 @@ describe("TextProcessor", () => {
     expect(processor.srcs).toEqual(["$& $&"]);
   });
 
-  it("正则替换兼容 Python 反向引用并保留 JS 美元占位字面量", () => {
+  it("正则替换兼容 历史反向引用并保留 JS 美元占位字面量", () => {
     const processor = new TextProcessor(
       create_config(),
       {

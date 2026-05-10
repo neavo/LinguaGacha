@@ -8,7 +8,7 @@ const IDLE_TASK_TYPE = "idle";
 const IDLE_STATUSES = new Set(["DONE", "ERROR", "IDLE"]);
 
 /**
- * TS Gateway 内的任务运行态权威，替代旧 Python runtime task 状态查询。
+ * TS Gateway 内的任务运行态权威，替代旧 旧 runtime task 状态查询。
  */
 export class TaskRuntimeState {
   // status 保留 Engine 公开字符串，避免前端按钮态在迁移期间换语义。

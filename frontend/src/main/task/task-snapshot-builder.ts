@@ -12,7 +12,7 @@ import {
   type TaskType,
 } from "./task-types";
 
-// 任务进度数值字段由旧 Python TaskSnapshotPayload 固定，迁移后继续逐项补齐零值。
+// 任务进度数值字段由历史 TaskSnapshotPayload 固定，迁移后继续逐项补齐零值。
 const TASK_PROGRESS_NUMBER_FIELDS = [
   "line",
   "total_line",
@@ -39,13 +39,13 @@ const ANALYSIS_SKIPPED_STATUSES = new Set([
  * 在 TS Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 TS runtime state。
  */
 export class TaskSnapshotBuilder {
-  // database 是持久任务进度的唯一读源，不能改为 Python DataManager 快照。
+  // database 是持久任务进度的唯一读源，不能改为 历史 DataManager 快照。
   private readonly database: ProjectDatabase;
 
-  // task_runtime_state 是实时 busy / 请求中数量的唯一读源，不再反查 Python。
+  // task_runtime_state 是实时 busy / 请求中数量的唯一读源，不再反查旧兼容层。
   private readonly task_runtime_state: TaskRuntimeState;
 
-  // session_state 决定当前公开工程路径，避免从 Python 会话反推 loaded/path。
+  // session_state 决定当前公开工程路径，避免从 旧会话反推 loaded/path。
   private readonly session_state: ProjectSessionState;
 
   /**
@@ -170,7 +170,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 分析覆盖率只依赖当前 `.lg` 中的 items 与 checkpoint，避免 Python 缓存决定公开快照。
+   * 分析覆盖率只依赖当前 `.lg` 中的 items 与 checkpoint，避免 旧缓存决定公开快照。
    */
   private build_analysis_status_summary(): MutableJsonRecord {
     const state = this.session_state.snapshot();
@@ -285,7 +285,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 数字进度使用整数，兼容旧 Python int 转换语义。
+   * 数字进度使用整数，兼容历史 int 转换语义。
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);

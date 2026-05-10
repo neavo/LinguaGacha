@@ -74,7 +74,7 @@ export class PunctuationFixer {
   }
 
   /**
-   * 数量检查沿用 Python 口径：源文目标符号数量可由译文目标+错误符号数量解释时才修。
+   * 数量检查沿用 历史口径：源文目标符号数量可由译文目标+错误符号数量解释时才修。
    */
   private static check(src: string, dst: string, key: string, values: readonly string[]): boolean {
     const num_s_x = this.count(src, key);

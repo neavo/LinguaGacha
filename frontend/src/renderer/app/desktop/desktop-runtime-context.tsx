@@ -1225,7 +1225,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     async function hydrate_runtime(): Promise<void> {
       try {
         // Core API 状态是共享权威源，渲染层启动或热更新时不能通过卸载工程去“重置会话”。
-        // 否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的 Py 应用状态一起清空。
+        // 否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的 旧应用状态一起清空。
         const [next_settings, next_project, next_task] = await Promise.all([
           api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
           api_fetch<ProjectSnapshotPayload>("/api/project/snapshot", {}),

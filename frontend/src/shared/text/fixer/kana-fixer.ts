@@ -20,7 +20,7 @@ const RULE_ONOMATOPOEIA = new Set([
  */
 export class KanaFixer {
   /**
-   * 只有小假名前后仍有日文假名时才保留，保持 Python 旧修复口径。
+   * 只有小假名前后仍有日文假名时才保留，保持 旧修复口径。
    */
   public static fix(dst: string): string {
     const chars = [...dst];

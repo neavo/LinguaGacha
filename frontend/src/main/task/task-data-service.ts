@@ -392,7 +392,7 @@ export class TaskDataService {
   }
 
   /**
-   * 同票时保留对象插入顺序，匹配 Python 字典遍历的稳定性。
+   * 同票时保留对象插入顺序，匹配 历史字典遍历的稳定性。
    */
   private pick_vote_winner(votes: Record<string, number>): string {
     let best_text = "";

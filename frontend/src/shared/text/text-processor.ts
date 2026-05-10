@@ -13,7 +13,7 @@ import { normalize_text_for_processing } from "./text-normalizer";
 import { build_text_preserve_rule, normalize_text_preserve_mode } from "./text-preserve-rules";
 import type { TextProcessingConfig, TextQualitySnapshot, TextTaskItemRecord } from "./text-types";
 
-// 姓名前缀兼容半角方括号和全角书名号，保持旧 Py 注入格式可逆。
+// 姓名前缀兼容半角方括号和全角书名号，保持旧注入格式可逆。
 const NAME_PATTERN = /^[\u005b【](.*?)[\u005d】]\s*/iu;
 // 空白归一化用于相似度判断，避免换行和多空格影响质量检查。
 const BLANK_PATTERN = /\s+/gu;
@@ -21,7 +21,7 @@ const BLANK_PATTERN = /\s+/gu;
 /**
  * 单个 item 的译前 / 译后文本处理器，完整状态只存在于一个 work unit 内。
  *
- * 处理顺序对齐迁移前 Python TextProcessor：
+ * 处理顺序对齐迁移前 历史 TextProcessor：
  * 正规化 -> 清理注音 -> 文本保护 -> 译前替换 -> 注入姓名 -> 翻译 ->
  * 提取姓名 -> 自动修复 -> 译后替换 -> 恢复文本保护与原始空白。
  */
@@ -187,7 +187,7 @@ export class TextProcessor {
   }
 
   /**
-   * 正规化集中在这里，保持后续规则只面对旧 Python 兼容后的文本。
+   * 正规化集中在这里，保持后续规则只面对旧格式兼容后的文本。
    */
   private normalize(src: string): string {
     return normalize_text_for_processing(src);
@@ -244,7 +244,7 @@ export class TextProcessor {
   }
 
   /**
-   * 译前替换只消费质量快照，不再读取 Python DataManager。
+   * 译前替换只消费质量快照，不再读取 历史 DataManager。
    */
   private replace_pre_translation(src: string): string {
     if (!this.quality_snapshot.pre_replacement_enable) {
@@ -315,7 +315,7 @@ export class TextProcessor {
   }
 
   /**
-   * 保护段比较会移除内部空白，和 Python 的 `RE_BLANK` 口径一致。
+   * 保护段比较会移除内部空白，和 历史实现的空白规则 口径一致。
    */
   private collect_non_blank_preserved_segments(text: string, rule: RegExp): string[] {
     const segments: string[] = [];
@@ -331,7 +331,7 @@ export class TextProcessor {
   }
 
   /**
-   * 替换规则兼容普通替换和正则替换，大小写规则与 Py 保持一致。
+   * 替换规则兼容普通替换和正则替换，大小写规则与旧规则保持一致。
    */
   private apply_replacements(
     text: string,
@@ -378,7 +378,7 @@ export class TextProcessor {
   }
 
   /**
-   * 检查规则入口独立命名，便于和 Python RuleType.CHECK 对齐。
+   * 检查规则入口独立命名，便于和 历史 CHECK 规则 对齐。
    */
   private get_re_check(text_type = this.read_text_type(this.item ?? {})): RegExp | null {
     return this.build_preserve_rule("check", text_type);
@@ -406,7 +406,7 @@ export class TextProcessor {
   }
 
   /**
-   * 正则替换兼容 Python re.sub 的常见反向引用，同时避免 JS `$&/$1` 语义误伤字面量。
+   * 正则替换兼容 历史正则替换 的常见反向引用，同时避免 JS `$&/$1` 语义误伤字面量。
    */
   private build_regex_replacement(replacement_text: string, args: unknown[]): string {
     const groups = args.at(-1);

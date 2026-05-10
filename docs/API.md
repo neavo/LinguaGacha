@@ -18,8 +18,8 @@ Electron 运行时公开 `/api/*` 入口由 `frontend/src/main/api/` 的 TS Gate
 - `frontend/src/main/project/` 负责项目轻生命周期、项目同步 mutation、reset preview、公开 bootstrap 首包、`project.patch` 运行态补全与 section revision 编码；`load/create-commit/open-preview` 也是 TS 项目域公开实现，其中 runtime encoder 和 patch adapter 只做按需读取和请求内快照，不持有长期项目缓存。
 - `frontend/src/main/task/` 负责公开 `/api/tasks/*` 的命令校验、任务回执、task snapshot、任务运行态、事件 hub 与进程内 `TaskDataService`；`frontend/src/main/task-engine/` 负责翻译、分析、重翻和单条翻译的执行编排；`frontend/src/main/task-worker/` 负责单个 work unit 的确定性处理、prompt、pi-ai LLM 请求、响应清洗 / 解码 / 校验和结果归一；持久进度从 Electron main Database Service 读取，实时忙碌态、请求中数量、活跃任务类型和重翻条目由 TS `TaskRuntimeState` 吸收命令受理、TS 任务事件与 `project.patch` 后维护。
 - `frontend/src/main/file/` 负责公开文件解析 / 写回：`create-preview`、`workbench/parse-file`、translation reset all 的 asset 重解析、`tasks/export-translation` 和 `export-converted-translation` 的写回都走 TS 文件域。
-- `frontend/src/main/model/` 负责模型页快照、CRUD、重排、激活模型回退、模型配置读取、远端模型列表查询和模型连通性测试；列表 / 测试按请求读取最新配置，不经 Python 代理。
-- 运行态不保留 Python server route、Python client DTO 或 Python topic bridge；公开协议字段以 TS Gateway 与渲染层 `desktop-api.ts` 为准。
+- `frontend/src/main/model/` 负责模型页快照、CRUD、重排、激活模型回退、模型配置读取、远端模型列表查询和模型连通性测试；列表 / 测试按请求读取最新配置，不经外部代理。
+- 运行态不保留跨语言 route、client DTO 或 topic bridge；公开协议字段以 TS Gateway 与渲染层 `desktop-api.ts` 为准。
 
 ## 路由族与路径前缀
 
@@ -102,7 +102,7 @@ flowchart TD
 - 连接建立后先回放当前进程内 TS `LogManager` ring buffer，再持续推送新增日志；持久排障历史以 `DATA_ROOT/log/app.yyyymmdd.log` 为准。
 - SSE 事件名固定为 `log.appended`，`data` 是扁平 `LogEvent`：`id`、`sequence`、`created_at`、`level`、`message`。
 - `level` 只使用 `debug / info / warning / error / fatal`；`message` 永远是纯文本，多行详情靠换行、缩进和 ASCII 标签表达。
-- TS-only 运行态不提供日志写入 POST；Python 工具日志只做本地 stderr 兜底，不进入 TS 日志窗口。
+- TS-only 运行态不提供日志写入 POST；日志窗口只消费 Electron main 的 TS `LogManager`。
 
 ### bootstrap 首包
 
@@ -173,7 +173,7 @@ flowchart TD
 - 简繁转换页在 TS 侧完成 OpenCC 转换，只把已转换的 `item_id / dst / name_dst` 载荷交给 `/api/project/export-converted-translation` 写出文件；该接口不写回 `.lg` 项目运行态，也不发 `project.patch`。
 - 简繁转换页按 `text_type` 读取内置文本保护规则时复用 `/api/quality/rules/presets/read`，请求 `preset_dir_name: "text_preserve"` 与 `virtual_id: "builtin:{lower_text_type}.json"`，页面只消费返回 `entries[].src`。
 - 项目轻生命周期中的 `/api/project/snapshot`、`/api/project/load`、`/api/project/create-commit`、`/api/project/open-preview`、`/api/project/unload`、`/api/project/preview`、`/api/project/source-files` 由 TS Gateway 的 `frontend/src/main/project/project-lifecycle-service.ts` 直处理；`create-preview` 由 `frontend/src/main/file/file-preview-service.ts` 解析源文件草稿。`load` 由 TS 完成文件校验、`updated_at` 写入、打开期兼容迁移和 TS 会话状态更新；`create-commit` 由 TS database workflow 创建 `.lg`、初始化默认预设、写入 asset/items/meta 后复用同一加载流程；`open-preview` 是只读设置对齐预演；`unload` 只清空 TS 会话状态并释放 TS database 缓存。
-- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，reset preview 由 `frontend/src/main/project/project-reset-preview-service.ts` 直处理，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后不再清理 Python 工程缓存，后续任务由 TS Task Engine 通过 `TaskDataService` 读取最新数据库事实。translation reset preview 的 all 模式直接用 TS 文件域解析 asset。translation / analysis reset 按 TS `TaskRuntimeState` 忙碌态拒绝同步写入，工作台文件写 mutation 使用 TS 文件操作互斥；`workbench/parse-file`、转换导出和 `tasks/export-translation` 的文件能力由 TS 直处理，公开 `tasks/*` 命令与快照由 TS task service 直处理。
+- P2 项目同步 mutation 由 TS Gateway 的 `frontend/src/main/project/project-sync-mutation-service.ts` 直接写 `.lg`，reset preview 由 `frontend/src/main/project/project-reset-preview-service.ts` 直处理，校对 `save-item / save-all / replace-all` 由 `frontend/src/main/service/proofreading-service.ts` 直接写 `.lg`；写入后由 TS Task Engine 通过 `TaskDataService` 读取最新数据库事实。translation reset preview 的 all 模式直接用 TS 文件域解析 asset。translation / analysis reset 按 TS `TaskRuntimeState` 忙碌态拒绝同步写入，工作台文件写 mutation 使用 TS 文件操作互斥；`workbench/parse-file`、转换导出和 `tasks/export-translation` 的文件能力由 TS 直处理，公开 `tasks/*` 命令与快照由 TS task service 直处理。
 
 额外约束：
 - `tasks/translate-single` 只给页面派生工具低频调用；TS task service 先做空文本和激活模型基础校验，再复用 TS task worker 的单条翻译链路调用 pi-ai adapter。姓名字段解析、格式兜底与导入术语表合并仍由渲染层完成。

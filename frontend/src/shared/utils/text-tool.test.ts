@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { TextTool } from "./text-tool";
 
 describe("TextTool", () => {
-  it("对齐 Python TextHelper 的标点与分割口径", () => {
+  it("对齐 历史 TextHelper 的标点与分割口径", () => {
     expect(TextTool.is_punctuation_character("，")).toBe(true);
     expect(TextTool.is_punctuation_character("!")).toBe(true);
     expect(TextTool.is_punctuation_character("·")).toBe(true);

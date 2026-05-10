@@ -70,7 +70,7 @@ const ROW_BASE_OPF_TITLE = 8_500_000_000;
 const ROW_BASE_NCX = 9_000_000_000;
 
 /**
- * 这些块级标签是翻译条目的主要边界，和旧 Python 抽取范围保持一致。
+ * 这些块级标签是翻译条目的主要边界，和旧抽取范围保持一致。
  */
 const BLOCK_TAGS = new Set([
   "p",
@@ -138,7 +138,7 @@ function is_valid_xml_text_code_point(code_point: number): boolean {
 }
 
 /**
- * EPUB AST 抽取器，复刻 Python slot_per_line 定位协议。
+ * EPUB AST 抽取器，复刻 历史 slot_per_line 定位协议。
  */
 export class EpubAst {
   /**
@@ -289,7 +289,7 @@ export class EpubAst {
   }
 
   /**
-   * 单文本摘要用于 ruby 清洗候选，保持和 Python 旧 digest 算法一致。
+   * 单文本摘要用于 ruby 清洗候选，保持和 旧 digest 算法一致。
    */
   public sha1_hex(text: string): string {
     return crypto.createHash("sha1").update(text, "utf-8").digest("hex");

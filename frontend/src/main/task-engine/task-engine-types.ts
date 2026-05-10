@@ -44,7 +44,7 @@ export type TaskItemRecord = MutableJsonRecord;
 export interface TranslationWorkUnitResult {
   // items 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交。
   items: TaskItemRecord[];
-  // row_count 对齐旧 Py 日志口径，表示本 work unit 覆盖行数。
+  // row_count 对齐旧 旧日志口径，表示本 work unit 覆盖行数。
   row_count: number;
   // token 字段用于任务统计累加，不作为成功与否的唯一依据。
   input_tokens: number;

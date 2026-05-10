@@ -34,7 +34,7 @@ export class ProjectSyncMutationService {
   // task_runtime_state 是同步 mutation 的 busy 守卫权威。
   private readonly task_runtime_state: TaskRuntimeState;
 
-  // 当前公开工程路径由 TS Gateway 会话状态提供，避免同步 mutation 回读 Py 缓存。
+  // 当前公开工程路径由 TS Gateway 会话状态提供，避免同步 mutation 回读 旧缓存。
   private readonly session_state: ProjectSessionState;
 
   // 工作台文件 mutation 在 TS 内部串行化，避免同一工程文件集合并发写入。
@@ -393,7 +393,7 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * reset 类同步 mutation 必须避开后台任务，保持与旧 Python 写入口一致。
+   * reset 类同步 mutation 必须避开后台任务，保持与旧写入口一致。
    */
   private async require_idle_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
@@ -494,7 +494,7 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 迁移后任务读侧直接从 TS task-data 取库；同步 mutation 不再通知 Python 清缓存。
+   * 迁移后任务读侧直接从 TS task-data 取库；同步 mutation 不再通知 旧缓存清理。
    */
   private async sync_project_data(sections: string[]): Promise<void> {
     void sections;

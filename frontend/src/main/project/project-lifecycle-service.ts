@@ -66,7 +66,7 @@ interface QualityDefaultPresetSpec {
   rule_type: string;
   // meta_key 表示预设成功加载后需要同步开启的工程设置。
   meta_key: string;
-  // meta_value 保持旧 Python 初始化语义：文本保护写 custom，其余写 true。
+  // meta_value 保持旧 旧初始化语义：文本保护写 custom，其余写 true。
   meta_value: DatabaseJsonValue;
   // display_name 只用于日志，不进入公开协议。
   display_name: string;
@@ -319,7 +319,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取 .lg 摘要预览，不加载 Python ProjectSession。
+   * 读取 .lg 摘要预览，不加载 旧 ProjectSession。
    */
   public get_project_preview(body: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const project_path = this.require_body_string(body, "path");
@@ -499,7 +499,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取质量规则预设，并把非对象条目过滤掉以兼容旧 Python 初始化行为。
+   * 读取质量规则预设，并把非对象条目过滤掉以兼容旧初始化行为。
    */
   private read_quality_rule_preset(
     preset_dir_name: string,
@@ -1069,7 +1069,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 从未知值读取布尔值，沿用旧 Python bool(...) 的宽松转换。
+   * 从未知值读取布尔值，沿用旧 bool(...) 的宽松转换。
    */
   private boolean_value(value: ApiJsonValue | DatabaseJsonValue | undefined): boolean {
     return Boolean(value ?? false);

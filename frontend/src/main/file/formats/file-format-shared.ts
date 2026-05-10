@@ -46,7 +46,7 @@ export interface ExportPaths {
   bilingual_path: string;
 }
 
-// 语言后缀对齐 Py 侧导出文件名，未知语言使用小写代码兜底。
+// 语言后缀对齐旧导出文件名，未知语言使用小写代码兜底。
 const LANGUAGE_SUFFIX: Record<string, string> = {
   JA: "ja",
   ZH: "zh",
@@ -68,9 +68,9 @@ const LANGUAGE_SUFFIX: Record<string, string> = {
 };
 
 /**
- * 模拟 Python splitlines 行为，但保留每一行作为独立翻译条目。
+ * 模拟历史 splitlines 行为，但保留每一行作为独立翻译条目。
  */
-export function split_lines_like_python(text: string): string[] {
+export function split_text_lines_for_items(text: string): string[] {
   if (text === "") {
     return [];
   }

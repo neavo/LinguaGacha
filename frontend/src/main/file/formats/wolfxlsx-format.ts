@@ -6,14 +6,14 @@ import ExcelJS from "exceljs";
 import { group_items, type ExportPaths } from "./file-format-shared";
 import { normalize_file_item, type FileFormatItem } from "../file-item";
 
-// WOLF XLSX 的源文和译文列号来自 Py 侧固定实现。
+// WOLF XLSX 的源文和译文列号来自 旧固定实现。
 const COL_SRC_TEXT = 6;
 const COL_DST_TEXT = 7;
 // 只有白色填充的源文列参与翻译，其它颜色被视为 WOLF 排除项。
 const FILL_COLOR_WHITELIST = new Set([9]);
 
 /**
- * WOLF RPG 导出的专用 XLSX 格式，列结构和填充色过滤对齐 Py 侧。
+ * WOLF RPG 导出的专用 XLSX 格式，列结构和填充色过滤对齐旧实现。
  */
 export class WOLFXLSXFormat {
   /**

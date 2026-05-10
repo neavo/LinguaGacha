@@ -290,7 +290,7 @@ function sort_visible_items(
 }
 
 /**
- * 智能文本保护沿用 Python 风格 `\U000xxxxx`，这里转成 JS 可编译的 Unicode escape。
+ * 智能文本保护沿用 旧格式风格 `\U000xxxxx`，这里转成 JS 可编译的 Unicode escape。
  */
 function normalize_regex_pattern_for_javascript(pattern: string): string {
   return pattern.replace(/\\U([0-9a-fA-F]{8})/gu, (_match, hex: string) => {

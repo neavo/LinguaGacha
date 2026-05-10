@@ -2,7 +2,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import { infer_text_type_from_source } from "./file-text-type-inference";
 
 /**
- * 文件条目状态沿用 Python ItemStatus 字面量，避免跨栈传输时再做映射表。
+ * 文件条目状态沿用 历史 ItemStatus 字面量，避免跨栈传输时再做映射表。
  */
 export type FileItemStatus =
   | "NONE"
@@ -36,7 +36,7 @@ export type FileItemType =
 export type FileTextType = "NONE" | "MD" | "KAG" | "WOLF" | "RENPY" | "RPGMAKER";
 
 /**
- * TS 文件处理器之间传递的规范条目；字段名保持 Python `Item.to_dict()` 兼容。
+ * TS 文件处理器之间传递的规范条目；字段名保持 历史 item 字典 兼容。
  */
 export interface FileFormatItem {
   id?: number;
@@ -139,7 +139,7 @@ export function item_to_json(item: FileFormatItem): Record<string, ApiJsonValue>
 }
 
 /**
- * 导出时优先使用译文，未处理条目回落原文，保持 Py 写回口径。
+ * 导出时优先使用译文，未处理条目回落原文，保持 旧写回口径。
  */
 export function effective_dst(item: FileFormatItem): string {
   return item.dst !== "" ? item.dst : item.src;

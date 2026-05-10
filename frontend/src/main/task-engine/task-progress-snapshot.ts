@@ -16,7 +16,7 @@ const EMPTY_PROGRESS: TaskProgressSnapshot = {
 };
 
 /**
- * 任务进度快照工具，复刻旧 Python `TaskProgressSnapshot` 的数值口径。
+ * 任务进度快照工具，复刻历史 `TaskProgressSnapshot` 的数值口径。
  */
 export class TaskProgressSnapshotTool {
   /**
@@ -105,7 +105,7 @@ export class TaskProgressSnapshotTool {
   }
 
   /**
-   * 整数字段保持旧 Python int 语义，非法值走 fallback。
+   * 整数字段保持历史 int 语义，非法值走 fallback。
    */
   private static read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);

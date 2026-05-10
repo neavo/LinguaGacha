@@ -25,7 +25,8 @@ flowchart TD
 - 先确认信息去留与归宿，再动代码或文档。
 - 同一改动若横跨多层，验证和文档同步都按并集执行。
 - 文档只记录未来维护必须知道、且不能轻易从代码表面读出的当前有效事实。
-- 发布打包版本号以 `version.txt` 为唯一事实源，文件内容保持不带 `v` 的纯数值形式；`pyproject.toml` 与 `frontend/package.json` 的 `version` 保持 `0.0.0` 占位，CI 构建前再临时注入真实版本。手动发布流水线稳定产物为 Windows x64 zip、macOS x64 / arm64 DMG 与 Linux x64 AppImage；每次成功构建后固定创建 GitHub Release 草稿，不自动正式发布。日志、标题、User-Agent 等需要带 `v` 的展示位置由调用处自行拼接。
+- 发布打包版本号以 `version.txt` 为唯一事实源，文件内容保持不带 `v` 的纯数值形式；`frontend/package.json` 的 `version` 保持 `0.0.0` 占位，CI 构建前再临时注入真实版本。手动发布流水线稳定产物为 Windows x64 zip、macOS x64 / arm64 DMG 与 Linux x64 AppImage；每次成功构建后固定创建 GitHub Release 草稿，不自动正式发布。日志、标题、User-Agent 等需要带 `v` 的展示位置由调用处自行拼接。
+- `buildtools/mock_llm_api_server.py` 是临时保留的本地 LLM 调试脚本；正式运行、测试、CI 和打包流程不得依赖它。
 
 ## 常见任务类型的阅读路径
 
@@ -42,7 +43,6 @@ flowchart TD
 
 | 变更类型 | 最低验证 |
 | --- | --- |
-| Python 工具逻辑、userdata 迁移、文本 / 过滤 / 路径工具变化 | `uv run ruff format` -> `uv run ruff check --fix` -> 相关 `uv run pytest ...`，影响面较大时执行 `uv run pytest` |
 | API 契约、错误码、SSE topic、bootstrap 变化 | 按受影响侧执行验证并补齐相关 API 测试；Electron TS Gateway 变化执行 `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest` 与必要的 `tsc` |
 | Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest`；若触及 TS 类型、导入导出、preload / shared 公共面或构建配置，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit`，影响面较大时执行 `npm --prefix frontend run test` |
 | `.lg` database、schema 或 asset 读写变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关前端测试；若触及 TS 类型或 Electron main 公共面，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
@@ -50,7 +50,7 @@ flowchart TD
 | 仅文档改动 | 自检链接、命名、阅读路径、权威来源和文档边界是否仍然准确 |
 
 补充规则：
-- 若同时改动 Python 与前端，执行两边验证的并集。
+- 若改动临时调试脚本，单独用本机解释器运行对应手动验证；不要把它接入正式验证矩阵。
 - 若任务只改文档，但文档声称某个实现边界已变化，就必须先确认代码真相再交付。
 - 前端本地只保留会实际改写文件的 `format` 命令；执行后不再追加只读格式检查命令。
 - `lint` 与 `tsc` 覆盖的问题不同，但不机械连跑；只有改动可能影响 TypeScript 类型、模块导入导出、公共契约或构建配置时才补 `tsc`。
@@ -74,7 +74,7 @@ Agent 维护与实现约束的长期权威文档固定收口为：
 - `PLAN.md` 或其它任务计划文件是阶段性任务材料；除非用户明确要求迁移或清理，否则不自动吸收进长期文档，也不自治删除。
 - `README*.md` 面向用户、发布页和公开项目介绍，不承载 Agent 维护规则。
 - `.codex/skills/**` 是技能说明，按技能生命周期维护。
-- `output/**`、`input_bak/**`、`.pytest_cache/**` 是生成物、样例、缓存或临时材料，有明确子目录与生命周期。
+- `output/**`、`input_bak/**` 是生成物、样例、缓存或临时材料，有明确子目录与生命周期。
 
 | 变更内容 | 必须同步 |
 | --- | --- |

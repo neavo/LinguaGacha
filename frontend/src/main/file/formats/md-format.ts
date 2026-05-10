@@ -3,14 +3,14 @@ import {
   effective_export_text,
   build_target_path,
   group_items,
-  split_lines_like_python,
+  split_text_lines_for_items,
   write_text_file,
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
 import { normalize_file_item, type FileFormatItem } from "../file-item";
 
-// Markdown 图片行在 Py 侧直接排除，避免把资源引用送进翻译。
+// 旧实现会直接排除 Markdown 图片行，避免把资源引用送进翻译。
 const IMAGE_PATTERN = /!\[.*?\]\(.*?\)/u;
 
 /**
@@ -23,12 +23,12 @@ export class MDFormat {
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 解析时用围栏状态标记代码块，维持 Py 侧对整行 Markdown 的处理方式。
+   * 解析时用围栏状态标记代码块，维持旧实现对整行 Markdown 的处理方式。
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
     const items: FileFormatItem[] = [];
     let in_code_block = false;
-    for (const line of split_lines_like_python(await TextTool.decode(content))) {
+    for (const line of split_text_lines_for_items(await TextTool.decode(content))) {
       if (line.trim().startsWith("```")) {
         in_code_block = !in_code_block;
       }

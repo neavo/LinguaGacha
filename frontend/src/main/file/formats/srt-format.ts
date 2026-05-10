@@ -4,7 +4,7 @@ import {
   build_bilingual_path,
   build_target_path,
   group_items,
-  split_lines_like_python,
+  split_text_lines_for_items,
   write_text_file,
   type ExportPaths,
   type FileFormatServiceConfig,
@@ -41,7 +41,7 @@ export class SRTFormat {
         }),
       );
     };
-    for (const line of split_lines_like_python(await TextTool.decode(content))) {
+    for (const line of split_text_lines_for_items(await TextTool.decode(content))) {
       const stripped = line.trim();
       if (stripped === "") {
         if (chunk.length > 0) {

@@ -6,7 +6,7 @@ import { TextTool } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   group_items,
-  split_lines_like_python,
+  split_text_lines_for_items,
   write_text_file,
   type ExportPaths,
 } from "./file-format-shared";
@@ -53,7 +53,7 @@ interface RenpySlot {
 }
 
 /**
- * RenPy 翻译脚本格式，按 Py 侧注释模板和目标行配对规则解析。
+ * RenPy 翻译脚本格式，按旧注释模板和目标行配对规则解析。
  */
 export class RenPyFormat {
   /**
@@ -67,7 +67,7 @@ export class RenPyFormat {
    * 扫描 translate 块、old/new strings 和注释模板，并把匹配到的目标行绑定到 extra_field。
    */
   public parse_text(rel_path: string, text: string): FileFormatItem[] {
-    const lines = split_lines_like_python(text);
+    const lines = split_text_lines_for_items(text);
     const items: FileFormatItem[] = [];
     let lang = "";
     let label = "";
@@ -206,7 +206,7 @@ export class RenPyFormat {
       if (original === null) {
         continue;
       }
-      const lines = split_lines_like_python(await TextTool.decode(original));
+      const lines = split_text_lines_for_items(await TextTool.decode(original));
       for (const item of group.sort((left, right) => right.row - left.row)) {
         const extra = read_json_record(item.extra_field);
         const renpy = read_json_record(extra["renpy"]);
@@ -615,7 +615,7 @@ export class RenPyFormat {
   }
 
   /**
-   * RenPy 翻译文件只需要处理 Py 侧覆盖的基础转义。
+   * RenPy 翻译文件只需要处理旧实现覆盖的基础转义。
    */
   private unescape_string(value: string): string {
     return value.replace(/\\"/gu, '"').replace(/\\n/gu, "\n");

@@ -145,7 +145,7 @@ export class TaskEventHub {
   }
 
   /**
-   * 将入站事件同步到 TaskRuntimeState，保证 snapshot 不再反查 Python。
+   * 将入站事件同步到 TaskRuntimeState，保证 snapshot 不再反查旧兼容层。
    */
   private apply_runtime_state(event_type: string, payload: JsonRecord): void {
     if (event_type === "task.status_changed") {

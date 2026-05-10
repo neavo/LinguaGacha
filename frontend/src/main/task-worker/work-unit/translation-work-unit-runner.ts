@@ -332,7 +332,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 尽量复刻旧 Py TranslationTask 的 chunk 日志：统计、提示词片段、think/result、SRC/DST 对照都保留。
+   * 尽量复刻旧 TranslationTask 的 chunk 日志：统计、提示词片段、think/result、SRC/DST 对照都保留。
    */
   private build_translation_logs(context: {
     checks: string[];
@@ -389,7 +389,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 拆分 / 重试信息来自 TaskEngine 传入的不可变上下文，日志里保留旧 Py 排障口径。
+   * 拆分 / 重试信息来自 TaskEngine 传入的不可变上下文，日志里保留旧排障口径。
    */
   private build_task_status_info(
     request:
@@ -421,7 +421,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 日志级别沿用旧 Py 口径：全失败是 error，部分行失败是 warning，全部通过是 info。
+   * 日志级别沿用旧口径：全失败是 error，部分行失败是 warning，全部通过是 info。
    */
   private resolve_log_level(checks: string[]): WorkUnitLogEntry["level"] {
     if (checks.every((check) => check === "NONE")) {

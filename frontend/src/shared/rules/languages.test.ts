@@ -19,7 +19,7 @@ describe("languages", () => {
     );
   });
 
-  it("按 Python BaseLanguage 口径归一化语言代码", () => {
+  it("按历史语言规则口径归一化语言代码", () => {
     expect(normalize_language_code("fr")).toBe("FR");
     expect(normalize_language_code(" VI ")).toBe("VI");
     expect(normalize_language_code("unknown")).toBeNull();

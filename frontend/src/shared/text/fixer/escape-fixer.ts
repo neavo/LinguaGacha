@@ -9,7 +9,7 @@ export class EscapeFixer {
    * 当源文和译文转义段数量一致时，把译文段逐个替换成源文段。
    */
   public static fix(src: string, dst: string): string {
-    // 理论上任务文本不会包含真实换行；若模型输出了换行，按旧 Py 口径先还原为 \n 字面量。
+    // 理论上任务文本不会包含真实换行；若模型输出了换行，按旧口径先还原为 \n 字面量。
     const normalized_dst = dst.replace(/\n/gu, "\\n");
     const src_results = src.match(ESCAPE_PATTERN) ?? [];
     const dst_results = normalized_dst.match(ESCAPE_PATTERN) ?? [];

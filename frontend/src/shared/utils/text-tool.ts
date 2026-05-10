@@ -3,7 +3,7 @@ import { is_fullwidth_code_point } from "../rules/languages";
 // 所有字符范围都用闭区间 code point 表达，避免 UTF-16 下标影响全角字符判断。
 type CodePointRange = readonly [number, number];
 
-// CJK 全角标点范围与 Py TextHelper 保持一致。
+// CJK 全角标点范围与 历史 TextHelper 保持一致。
 const CJK_PUNCTUATION_RANGES: readonly CodePointRange[] = [
   [0x3001, 0x303f],
   [0xff01, 0xff0f],
@@ -46,7 +46,7 @@ function strip_utf8_bom(text: string): string {
 }
 
 /**
- * 对齐 Python TextHelper 的文本判断与文件编码入口。
+ * 对齐 历史 TextHelper 的文本判断与文件编码入口。
  */
 export class TextTool {
   /**
@@ -112,7 +112,7 @@ export class TextTool {
   }
 
   /**
-   * 去掉首尾阿拉伯数字，保持 Py TextHelper 的轻量处理口径。
+   * 去掉首尾阿拉伯数字，保持 历史 TextHelper 的轻量处理口径。
    */
   public static strip_arabic_numerals(text: string): string {
     return text.replace(/^\d+|\d+$/gu, "");
@@ -156,7 +156,7 @@ export class TextTool {
   }
 
   /**
-   * 基于字符集合的 Jaccard 相似度，与 Py 侧轻量去重判断一致。
+   * 基于字符集合的 Jaccard 相似度，与 历史轻量去重判断一致。
    */
   public static check_similarity_by_jaccard(left: string, right: string): number {
     const left_set = new Set(left);
@@ -226,5 +226,5 @@ export const is_latin_punctuation_character =
 // 特殊标点函数式导出保留项目约定符号判断。
 export const is_special_punctuation_character =
   TextTool.is_special_punctuation_character.bind(TextTool);
-// 统一标点函数式导出是旧 Python helper 迁移后的兼容入口。
+// 统一标点函数式导出是旧 历史 helper 迁移后的兼容入口。
 export const is_punctuation_character = TextTool.is_punctuation_character.bind(TextTool);

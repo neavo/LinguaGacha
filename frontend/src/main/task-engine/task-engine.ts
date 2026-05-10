@@ -756,7 +756,7 @@ export class TaskEngine {
   }
 
   /**
-   * 构建翻译初始上下文，切块规则沿用旧 Python TaskScheduler 的边界。
+   * 构建翻译初始上下文，切块规则沿用旧 历史 TaskScheduler 的边界。
    */
   private build_translation_contexts(
     items: TaskItemRecord[],
@@ -885,7 +885,7 @@ export class TaskEngine {
   }
 
   /**
-   * 共享切块实现，只依赖 item 快照，不读取数据库或 Python 对象。
+   * 共享切块实现，只依赖 item 快照，不读取数据库或 跨层对象。
    */
   private generate_item_chunks(
     items: TaskItemRecord[],
@@ -1171,7 +1171,7 @@ export class TaskEngine {
   }
 
   /**
-   * 失败拆分比例沿用 Python `pow(16 / t0, 0.25)` 的收敛速度。
+   * 失败拆分比例沿用 历史 `pow(16 / t0, 0.25)` 的收敛速度。
    */
   private get_split_factor(token_threshold: number): number {
     return Math.pow(16 / Math.max(17, token_threshold), 0.25);
@@ -1204,7 +1204,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析 checkpoint payload 在 TS 侧生成，Python 不持有持久状态。
+   * 分析 checkpoint payload 在 TS 侧生成，worker 不持有持久状态。
    */
   private build_analysis_checkpoints(
     context: AnalysisContext,
@@ -1314,7 +1314,7 @@ export class TaskEngine {
   }
 
   /**
-   * 非空行数用于切块 line_limit，和 Python 旧实现保持同一量纲。
+   * 非空行数用于切块 line_limit，和 旧实现保持同一量纲。
    */
   private count_non_empty_lines(text: string): number {
     return text.split(/\r?\n/).filter((line) => line.trim() !== "").length;
@@ -1357,7 +1357,7 @@ export class TaskEngine {
   }
 
   /**
-   * 任务启动日志保留旧 Py 侧“API 名称 / 地址 / 模型”三行诊断，方便对照迁移前日志。
+   * 任务启动日志保留旧实现“API 名称 / 地址 / 模型”三行诊断，方便对照迁移前日志。
    */
   private log_task_run_start(task_label: string, model: MutableJsonRecord): void {
     this.append_log(

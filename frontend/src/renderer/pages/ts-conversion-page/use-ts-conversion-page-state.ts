@@ -29,7 +29,7 @@ function create_empty_confirm_state(): TsConversionConfirmState {
   };
 }
 
-// 导出后缀沿用 Python 写出链路的既有命名约定，页面只按方向选择。
+// 导出后缀沿用 旧写出链路的既有命名约定，页面只按方向选择。
 function resolve_suffix(direction: TsConversionDirection): string {
   return direction === "s2t" ? "_S2T" : "_T2S";
 }
@@ -70,7 +70,7 @@ async function read_preset_rules_for_text_type(text_type: string): Promise<strin
 async function read_preset_rules_by_text_type(
   text_types: string[],
 ): Promise<Record<string, string[]>> {
-  // 未知 text_type 沿用旧 Python 路由语义跳过，避免把脏数据映射成其它预设。
+  // 未知 text_type 沿用旧路由语义跳过，避免把脏数据映射成其它预设。
   const known_text_types = text_types.filter((text_type) =>
     TS_CONVERSION_PRESET_TEXT_TYPES.has(text_type),
   );

@@ -32,7 +32,7 @@ export class ProofreadingService {
   private readonly session_state: ProjectSessionState;
 
   /**
-   * 注入数据库与运行时桥，保证写库和 Python 读侧缓存同步都可被测试替换。
+   * 注入数据库与运行时桥，保证写库和 旧读侧缓存同步都可被测试替换。
    */
   public constructor(database: ProjectDatabase, session_state: ProjectSessionState) {
     this.database = database;
@@ -47,7 +47,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 保存批量校对结果，响应形状与旧 Python app service 保持一致。
+   * 保存批量校对结果，响应形状与旧 app service 保持一致。
    */
   public async save_all(request: JsonRecord): Promise<JsonRecord> {
     return this.persist_finalized_items(request);
@@ -112,7 +112,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 缺失期望值时宽容跳过；给出期望值时使用旧 Python 冲突消息。
+   * 缺失期望值时宽容跳过；给出期望值时使用旧冲突消息。
    */
   private assert_expected_revisions(
     expected: Record<string, number> | null,
@@ -135,7 +135,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 按旧 Py 入口的 finalized item 白名单，把 payload 合并到当前数据库事实上。
+   * 按旧入口的 finalized item 白名单，把 payload 合并到当前数据库事实上。
    */
   private merge_finalized_items(
     project_path: string,
@@ -171,7 +171,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 只接受旧 Py 写入口允许覆盖的字段，避免校对页顺手写入其它 item 事实。
+   * 只接受旧写入口允许覆盖的字段，避免校对页顺手写入其它 item 事实。
    */
   private merge_item_payload(
     current: MutableJsonRecord,
@@ -290,7 +290,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 模拟 Python int：数字截断，整数字符串可转，布尔值按 1/0，null 和非整数字符串失败。
+   * 模拟历史 int：数字截断，整数字符串可转，布尔值按 1/0，null 和非整数字符串失败。
    */
   private parse_integer_like(value: ApiJsonValue | undefined): number | null {
     if (typeof value === "number") {

@@ -14,7 +14,7 @@ import {
 type ApiJsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * TRANS processor.check 的返回结构，保持 Py 侧 src/dst/tag/status/skip 顺序语义。
+ * TRANS processor.check 的返回结构，保持 旧 src/dst/tag/status/skip 顺序语义。
  */
 interface TransCheckResult {
   src: string;
@@ -45,7 +45,7 @@ interface PatchTarget {
   row_index: number;
 }
 
-// 扩展名黑名单与 Py NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用。
+// 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用。
 const BLACKLIST_EXTENSIONS = [
   ".mp3",
   ".wav",
@@ -118,7 +118,7 @@ function to_mutable_record(value: unknown): ApiJsonRecord {
 }
 
 /**
- * TRANS 默认处理器，对齐 Py NONE：只按资源扩展名和颜色标签过滤。
+ * TRANS 默认处理器，对齐旧 NONE：只按资源扩展名和颜色标签过滤。
  */
 class NoneTransProcessor {
   public readonly text_type: FileTextType = "NONE";
@@ -400,7 +400,7 @@ class WolfTransProcessor extends NoneTransProcessor {
   }
 
   /**
-   * 从 WOLF 数据库 stringArgs 非 0 项收集应屏蔽文本，对齐 Py 侧 generate_block_text。
+   * 从 WOLF 数据库 stringArgs 非 0 项收集应屏蔽文本，对齐旧 generate_block_text。
    */
   private generate_block_text(project: ApiJsonRecord): Set<string> {
     const result = new Set<string>();
@@ -725,7 +725,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 根据 gameEngine 选择 Py 侧同名处理器，未知引擎退回 NONE。
+   * 根据 gameEngine 选择 历史同名处理器，未知引擎退回 NONE。
    */
   private get_processor(project: ApiJsonRecord): NoneTransProcessor {
     const engine = String(project["gameEngine"] ?? "").toLowerCase();
@@ -745,7 +745,7 @@ export class TRANSFormat {
   }
 
   /**
-   * indexOriginal/indexTranslation 必须是非负整数，避免 JS/Python 负索引差异。
+   * indexOriginal/indexTranslation 必须是非负整数，避免 JS 与历史负索引差异。
    */
   private non_negative_index(value: unknown, fallback: number): number {
     return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;

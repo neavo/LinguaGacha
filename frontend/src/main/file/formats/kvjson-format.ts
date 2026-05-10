@@ -41,7 +41,7 @@ export class KVJSONFormat {
   }
 
   /**
-   * 写回时重新生成 key -> 有效译文 的对象，保持 Py 侧四空格缩进。
+   * 写回时重新生成 key -> 有效译文 的对象，保持 旧四空格缩进。
    */
   public async write_to_path(items: FileFormatItem[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "KVJSON")) {

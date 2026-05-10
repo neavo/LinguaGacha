@@ -24,12 +24,12 @@
 - LinguaGacha 是“Electron main TS Gateway + 内部 Database Service + TS Task Engine + TS task-worker / pi-ai + Electron 桌面前端”的本机多进程工程
 - `frontend/src/main/api/` 是 Electron 运行态公开 HTTP / SSE 协议边界，HTTP / SSE 协议变化必须同步 [`docs/API.md`](docs/API.md)
 - 渲染层只通过 `window.desktopApp` 接入桌面宿主，再通过 `frontend/src/renderer/app/desktop/desktop-api.ts` 访问 Core API
-- 前端禁止绕过 preload 直连 Node / Electron，禁止直接导入 Python 模块
+- 前端禁止绕过 preload 直连 Node / Electron，禁止直接接入内部服务或调试脚本
 - 项目运行态主路径固定为 `/api/project/bootstrap/stream` 与 `/api/events/stream`
 - 页面消费 bootstrap + `project.patch`，不是整页快照轮询
 - 同一业务语义只允许一个权威来源与一个写入口，跨线程、跨模块、跨前后端只传 `id`、值对象或不可变快照，禁止共享可变对象引用
 - 新增状态前先判断它属于 `ProjectSessionState`、领域 service、`TaskRuntimeState`、`ProjectStore`，还是页面本地状态
-- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema / 旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`；运行态不保留 Python API / Data / Engine / Model 兼容层，API 层不得直接操作 database workflow 或持有数据库句柄
+- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema / 旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`；运行态不保留跨语言兼容层，API 层不得直接操作 database workflow 或持有数据库句柄
 - 前端职责、导航、组件、样式与文案归属以 [`docs/FRONTEND.md`](docs/FRONTEND.md) 为唯一权威
 
 ## 3. 编码硬约束
@@ -39,13 +39,6 @@
 - 类、方法与关键逻辑应编写简明注释，解释“为什么这样约束”，不要复述代码表面行为
 - 魔术值要收口到常量、枚举或冻结数据对象，避免散落在调用点
 - 只有“预期且无害”的场景才允许静默忽略异常，静默忽略异常时必须用注释说明为何可以静默忽略，需要包装语义时必须保留异常链
-
-Python：
-- Python 变量与函数用 `snake_case`，类用 `PascalCase`，常量用 `UPPER_SNAKE_CASE`，命名禁止首位下划线
-- 函数、类属性、实例属性与 `@dataclass` 字段必须显式标注类型，优先使用 `A | None`、`list[str]` 等现代写法
-- 数据载体优先使用 `dataclasses`，跨线程或跨边界传递的数据优先使用 `@dataclass(frozen=True)`
-- Python 模块对外只暴露类，常量与枚举优先设计为类属性
-- Python 业务仍使用 `LogManager.get().debug/info/warning/error(msg, e)` 记录日志；该对象是 TS 日志权威的兼容提交层，记录异常时必须把 `e` 传入日志接口，使用 `raise ... from e` 保留异常链
 
 TypeScript / React / CSS：
 - TypeScript 代码优先保持显式类型，只有第三方类型确实缺失时才局部使用 `any` 兜底

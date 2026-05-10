@@ -321,7 +321,7 @@ export class TaskService {
   }
 
   /**
-   * 模拟 Python int：数字截断，整数字符串可转，布尔值按 1/0。
+   * 模拟历史 int：数字截断，整数字符串可转，布尔值按 1/0。
    */
   private parse_integer_like(value: ApiJsonValue | undefined): number | null {
     if (typeof value === "number") {

@@ -125,10 +125,10 @@ export class ProjectRuntimeEncoder {
   // database 是工程事实唯一读源，编码器不能直接持有 SQLite handle。
   private readonly database: ProjectDatabase;
 
-  // task block 由 TS task builder 组装，避免 bootstrap 回调 Python 公开任务路由。
+  // task block 由 TS task builder 组装，避免 bootstrap 回调 旧公开任务路由。
   private readonly task_snapshot_builder: TaskSnapshotBuilder;
 
-  // 公开 project block 由 TS 会话状态持有，避免 bootstrap 回读 Python DataManager 缓存。
+  // 公开 project block 由 TS 会话状态持有，避免 bootstrap 回读 历史 DataManager 缓存。
   private readonly session_state: ProjectSessionState;
 
   /**
@@ -412,7 +412,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 旧数据缺少 text_type 时按 Python Item 的规则推断，保持筛选和保护规则输入一致。
+   * 旧数据缺少 text_type 时按历史 Item 的规则推断，保持筛选和保护规则输入一致。
    */
   private resolve_text_type_value(item: JsonRecord): string {
     if (item["text_type"] !== undefined && item["text_type"] !== null) {
@@ -476,7 +476,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 候选聚合以 src 为 key 输出，匹配 Python AnalysisCandidateService 的公开快照。
+   * 候选聚合以 src 为 key 输出，匹配 历史 AnalysisCandidateService 的公开快照。
    */
   private build_candidate_aggregate(project_path: string): MutableJsonRecord {
     const rows = this.database.execute(

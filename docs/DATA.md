@@ -8,11 +8,10 @@ LinguaGacha 的数据域由 Electron main TS API 编排层、TS Project / Servic
 | 领域 | 权威入口 | 稳定职责 | 不该做什么 |
 | --- | --- | --- | --- |
 | `frontend/src/main/task` | `TaskService`、`TaskDataService`、`TaskEventHub`、`TaskRuntimeState`、`TaskSnapshotBuilder` | 公开任务命令、内部任务数据读写、事件 hub、任务回执与 task snapshot；持久进度读 database，实时状态读 TS runtime state | 不绕过 Task Engine 执行后台任务，不绕过 database workflow，不把内部 token 暴露给 renderer |
-| `frontend/src/main/task-engine` | `TaskEngine`、`TaskPipeline`、`TaskLimiter`、`TaskRunLock` | 后台任务生命周期、调度、限流、停止、重试、提交循环和真实请求中数量 | 不持有 UI 状态，不直接写 SQL，不执行单个 work unit 的文本处理，不把整场任务控制权交回兼容 Python 模块 |
+| `frontend/src/main/task-engine` | `TaskEngine`、`TaskPipeline`、`TaskLimiter`、`TaskRunLock` | 后台任务生命周期、调度、限流、停止、重试、提交循环和真实请求中数量 | 不持有 UI 状态，不直接写 SQL，不执行单个 work unit 的文本处理，不把整场任务控制权交回旧兼容层 |
 | `frontend/src/main/task-worker` | `TaskWorkerPool`、`WorkUnitRunner`、`TranslationWorkUnitRunner`、`AnalysisWorkUnitRunner`、`PiAiLlmRequestClient` | 单个 work unit 的译前处理、提示词、pi-ai LLM adapter 调用、响应清洗 / 解码 / 校验和结果归一 | 不持有后台任务生命周期，不提交 `.lg` 项目事实，不直接写 SQL，不把 provider 差异散到 work unit 之外 |
-| `frontend/src/main/file` | `FileFormatService`、`FilePreviewService`、`FileExportService`、`formats/` | 公开文件格式分发、解析、导出写回、工作台 parse 预演与新建工程草稿解析 | 不直接持有 SQL，不绕过 Database Service，不把格式实现放回兼容 Python 模块 |
+| `frontend/src/main/file` | `FileFormatService`、`FilePreviewService`、`FileExportService`、`formats/` | 公开文件格式分发、解析、导出写回、工作台 parse 预演与新建工程草稿解析 | 不直接持有 SQL，不绕过 Database Service，不把格式实现放回旧兼容层 |
 | `frontend/src/main/model` | `ModelService`、`model-config-resolver` | 模型页快照、CRUD、重排、激活模型回退、配置写入、远端模型列表与模型连通性测试 | 不直接写 `.lg`，不把模型页面规则放回通用 service，不绕过 task-worker LLM adapter 重造测试请求语义 |
-| `module/` 保留工具 | `Config.py`、`Migration/`、`Filter/`、`Text/`、`QualityRule/`、路径 resolver、`Utils/` | 配置文件读写、userdata 迁移、纯文本 / 过滤 / 质量规则工具和路径解析 | 不承载运行态 API、项目数据门面、后台任务生命周期、模型配置权威或 `.lg` 写入口 |
 
 ```mermaid
 flowchart TD
@@ -40,7 +39,7 @@ flowchart TD
 | 设置、最近项目 | `frontend/src/main/service` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 settings 服务 |
 | 模型页 CRUD | `frontend/src/main/model` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 model 服务 |
 | 质量规则、提示词页面 CRUD 与预设 IO | `frontend/src/main/service` + `frontend/src/main/database/` | TS Gateway 调用 quality 服务；任务后续读取通过 `TaskDataService` 取得最新数据库事实 |
-| P2 项目同步 mutation | `frontend/src/main/project/project-sync-mutation-service.ts` + `frontend/src/main/database/` | TS Gateway 调用项目同步 mutation 服务；写入后回 `ProjectMutationAck`，不再通知 Python 清缓存 |
+| P2 项目同步 mutation | `frontend/src/main/project/project-sync-mutation-service.ts` + `frontend/src/main/database/` | TS Gateway 调用项目同步 mutation 服务；写入后回 `ProjectMutationAck` |
 | 项目轻生命周期 | `frontend/src/main/project/project-lifecycle-service.ts` + `project-session-state.ts` + `frontend/src/main/database/` | `snapshot` 读取 TS 会话状态，`load/create-commit/open-preview/unload/preview/source-files` 都由 TS 侧处理数据库事实与公开响应 |
 | reset preview 公开预演 | `frontend/src/main/project/project-reset-preview-service.ts` + `frontend/src/main/database/` + `frontend/src/main/file` | TS Gateway 计算公开响应；翻译 all 预演直接用 TS 文件域重解析 asset |
 | 规则、提示词运行时读取 | `frontend/src/main/task/task-data-service.ts` | TS Task Engine 获取任务所需 quality snapshot，再作为不可变载荷传给 TS task worker |
@@ -60,9 +59,9 @@ flowchart TD
 ## `.lg` 物理存储唯一落点
 
 - SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`；`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`。
-- 任务热路径由 TS Task Engine 通过 `TaskDataService` 调 database workflow；运行态不保留 Python 数据门面或 Python database gateway。
+- 任务热路径由 TS Task Engine 通过 `TaskDataService` 调 database workflow；运行态不保留跨语言数据门面或 database gateway。
 - API 层不得直接持有 database handle。
-- 若某个新需求看起来需要“在 Python 里顺手写一条 SQL”，说明落点已经错了；database workflow 回到 `frontend/src/main/database/`，Zstd 参数化工具回到 `frontend/src/shared/utils/zstd-tool.ts`，打开期迁移规则回到 `frontend/src/main/migration/`。
+- 若某个新需求看起来需要绕过 TS database workflow 顺手写 SQL，说明落点已经错了；database workflow 回到 `frontend/src/main/database/`，Zstd 参数化工具回到 `frontend/src/shared/utils/zstd-tool.ts`，打开期迁移规则回到 `frontend/src/main/migration/`。
 
 ## 典型数据流
 
@@ -134,7 +133,7 @@ flowchart TD
 - `items.status` 只表达条目翻译事实，代码侧枚举为 `Base.ItemStatus`，当前有效集合为 `NONE / PROCESSED / ERROR / EXCLUDED / RULE_SKIPPED / LANGUAGE_SKIPPED / DUPLICATED`；打开旧 `.lg` 时会把 item `PROCESSED_IN_PAST` 持久化为 `PROCESSED`，把 item `PROCESSING` 持久化为 `NONE`。
 - 工程忙碌态、任务按钮和任务进度由 TS `TaskRuntimeState`、TS 任务事件与 `translation_extras` / `analysis_extras` / `task` 运行态驱动；旧 `.lg` 中的 `meta.project_status` 只是历史字段，打开工程时保持原样。
 - 应用路径只保留应用根与数据根两个根概念；应用配置不是独立根，固定为数据根下的 `userdata/config.json`。
-- 应用设置、最近项目由 TS main 的 `service/` 服务读写 `DATA_ROOT/userdata/config.json`，模型页 CRUD、远端模型列表与模型连通性测试由 TS main 的 `model/` 服务读取同一份配置；Python `Config` 只保留配置文件读写工具语义。任务每次由 TS Task Engine 传入配置、模型和质量快照，TS task worker 消费这些不可变快照，不依赖跨进程缓存刷新。
+- 应用设置、最近项目由 TS main 的 `service/` 服务读写 `DATA_ROOT/userdata/config.json`，模型页 CRUD、远端模型列表与模型连通性测试由 TS main 的 `model/` 服务读取同一份配置。任务每次由 TS Task Engine 传入配置、模型和质量快照，TS task worker 消费这些不可变快照，不依赖跨进程缓存刷新。
 - 质量规则与提示词页面 CRUD / 预设 IO 由 TS main 的 `service/` 服务承载；`.lg` 写入仍只通过 Electron main `ProjectDatabase`，任务侧后续读取通过 `TaskDataService` 取得最新 database 事实。
 - 工作台文件写 mutation、项目设置对齐、translation reset、analysis reset、analysis glossary import、reset preview、项目轻生命周期、公开 bootstrap 运行态编码与 `project.patch` 补全由 TS main 的 `project/` 项目域承载，公开任务命令、task snapshot、进程内任务数据服务与事件 hub 由 TS main 的 `task/` 任务域承载，后台任务执行态由 TS main 的 `task-engine/` 承载，单个 work unit 与真实 LLM 请求由 TS main 的 `task-worker/` 承载，校对同步保存仍由 TS main 的 `service/proofreading-service.ts` 承载；文件解析 / 写回由 TS main 的 `file/` 文件域承载。
 - 分析候选导入术语的预演和筛选属于前端 planner；候选聚合、候选数缓存和分析结果持久化由 TS database / task data 域承载。
@@ -145,8 +144,7 @@ flowchart TD
 
 | 场景 | 迁移入口 | 保持在原领域的内容 |
 | --- | --- | --- |
-| 启动期 userdata/config/preset 布局升级 | `module/Migration/UserDataMigrationService.py` | 配置读写仍由 `Config` 与路径 resolver 提供工具路径 |
-| `.lg` 打开期 schema、asset sort_order 与 item 状态升级 | `frontend/src/main/migration/` | `database` 只在打开工程时编排迁移，Python 只看到迁移后的 gateway 读写结果 |
+| `.lg` 打开期 schema、asset sort_order 与 item 状态升级 | `frontend/src/main/migration/` | `database` 只在打开工程时编排迁移，调用方只看到迁移后的 TS Gateway 读写结果 |
 | 工程公开加载期 meta/rule 旧字段升级 | `frontend/src/main/project/project-lifecycle-service.ts` | `text_preserve_enable -> text_preserve_mode` 与旧 `CUSTOM_PROMPT_ZH/EN -> translation_prompt` 在 TS 公开加载流程中写回 |
 迁移目录只承接会写回旧 userdata、旧配置事实或 `.lg` 打开期旧物理格式的行为；`.lg` schema 与旧物理格式读取兼容留在 Electron main 内部，具体规则统一放在 `frontend/src/main/migration/project-database-migration-service.ts`。payload 归一和文件格式 fallback 保留在原领域，例如 item 状态边界归一、TS 文件域格式 fallback 与 EPUB legacy writer fallback 都不是迁移入口。
 
@@ -163,7 +161,7 @@ flowchart TD
 | `.xlsx` 解析 | TS `file-format-service` 显式先试 `wolfxlsx-format` 再回退 `xlsx-format`；整目录读取时两个 reader 都会遍历 `.xlsx`，再由 `xlsx-format` 主动跳过 WOLF 表头完成分流 |
 | `.json` 解析 | TS 文件域先尝试 `kvjson-format`，返回空条目时再回退到 `messagejson-format` |
 | `.trans` | TS `trans-format` 会按 `project.gameEngine` 二次分发到不同处理器 |
-| 公开文件入口 | 统一落在 TS `frontend/src/main/file/`，不通过 Python 作为格式 fallback |
+| 公开文件入口 | 统一落在 TS `frontend/src/main/file/`，不通过外部格式 fallback |
 | EPUB 写回 | 所有条目都带 `extra_field.epub.parts` 时走 AST writer，否则统一走 legacy writer |
 | EPUB ruby 清理 | 文件层只在叶子 block 的 `extra_field.epub.ruby_clean_candidate` 记录可清理结构候选；是否启用由 TS `frontend/src/shared/text/text-processor.ts` / `fixer/ruby-cleaner.ts` 按任务配置快照的 `clean_ruby` 决定，写回层在候选启用后可走块级写回并让双语原文保留原始 `<ruby>/<rt>` |
 
@@ -183,9 +181,9 @@ flowchart TD
 | 页面筛选、弹窗开关、局部交互状态 | 前端页面本地状态 | 不进入后端数据域 |
 
 红线：
-- 不要把新的项目级状态顺手塞进 Python 工具模块，先判断它是不是 TS project / task data / service 的职责、更底层 database workflow，或者根本应留在前端。
+- 不要把新的项目级状态顺手塞进调试脚本或临时工具，先判断它是不是 TS project / task data / service 的职责、更底层 database workflow，或者根本应留在前端。
 - 不要把新的 SQL 或事务逻辑放到 `frontend/src/main/database/` 之外；不要把 `.lg` 打开期迁移规则放到 `frontend/src/main/migration/` 之外。
-- 不要把共享任务语义写回 Python 工具模块；工程事实、整场任务生命周期、确定性 work unit 处理和真实 LLM 请求都必须留在 TS project / task-engine / task-worker 边界内。
+- 不要把共享任务语义写进调试脚本或临时工具；工程事实、整场任务生命周期、确定性 work unit 处理和真实 LLM 请求都必须留在 TS project / task-engine / task-worker 边界内。
 
 ## 什么时候必须更新本文
 

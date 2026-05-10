@@ -102,10 +102,11 @@
   - 暂时移除了 `CLI` 模式
 
 ## 开发指南 🛠️
-- 本项目由 `Python Core` 与 `Electron` 前端组成，推荐准备 [**uv**](https://github.com/astral-sh/uv) 与 [`Node.js 24`](https://nodejs.org/)
-- 安装依赖 `uv sync -U --extra test` `npm --prefix frontend install`
-- 更新依赖 `uv sync -U --extra test` `npm --prefix frontend update`
+- 本项目由 `Electron main TS Gateway`、内部数据库服务、任务引擎与 React 前端组成，推荐准备 [`Node.js 24`](https://nodejs.org/)
+- 安装依赖 `npm --prefix frontend install`
+- 更新依赖 `npm --prefix frontend update`
 - 运行应用 `npm --prefix frontend run dev`
+- `buildtools/mock_llm_api_server.py` 是临时保留的独立本地调试脚本，正式应用、CI 和打包流程不依赖它
 - 提交 PR 前请根据改动范围执行 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) 中的对应验证
 - 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 

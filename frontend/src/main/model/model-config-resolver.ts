@@ -18,7 +18,7 @@ export function read_model_records(config: Record<string, ApiJsonValue>): ModelR
 }
 
 /**
- * 复刻 Python Config.get_active_model() 的模型选择规则，避免 TS 侧出现第二套口径。
+ * 复刻 历史 Config.get_active_model() 的模型选择规则，避免 TS 侧出现第二套口径。
  */
 export function resolve_active_model(config: Record<string, ApiJsonValue>): ModelRecord | null {
   const models = read_model_records(config);

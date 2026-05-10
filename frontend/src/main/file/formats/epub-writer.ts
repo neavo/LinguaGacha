@@ -16,7 +16,7 @@ import type { FileFormatServiceConfig } from "./file-format-shared";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 /**
- * 旧 Python 写回会移除竖排样式，TS 侧沿用该兼容清理规则。
+ * 旧写回会移除竖排样式，TS 侧沿用该兼容清理规则。
  */
 const CSS_VERTICAL_WRITING_PATTERN = /[^;\s]*writing-mode\s*:\s*vertical-rl;*/giu;
 
@@ -488,7 +488,7 @@ export class EpubWriter {
   }
 
   /**
-   * legacy 写回保留 Python 时代的顺序替换策略，服务缺少 AST 元数据的旧项目。
+   * legacy 写回保留 历史实现的顺序替换策略，服务缺少 AST 元数据的旧项目。
    */
   private async build_epub_legacy(
     original_epub_bytes: Uint8Array,
@@ -670,7 +670,7 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 清洗去掉 Python 旧实现会移除的翻页方向属性。
+   * OPF 清洗去掉 旧实现会移除的翻页方向属性。
    */
   private sanitize_opf(text: string): string {
     return text.replace('page-progression-direction="rtl"', "");
