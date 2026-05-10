@@ -42,6 +42,10 @@ const config = {
       },
     },
     plugins: [react(), tailwindcss()],
+    worker: {
+      // 渲染层 Worker 都以 module worker 创建，ES 输出允许生产构建正常分包。
+      format: "es",
+    },
     build: {
       outDir: path.resolve(__dirname, "dist"),
     },

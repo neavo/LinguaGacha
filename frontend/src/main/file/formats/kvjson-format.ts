@@ -1,4 +1,5 @@
 import { JsonTool } from "../../../utils/json-tool";
+import { TextTool } from "../../../utils/text-tool";
 import {
   effective_export_text,
   group_items,
@@ -59,7 +60,6 @@ export class KVJSONFormat {
     try {
       return JsonTool.parseStrict(content);
     } catch {
-      const { TextTool } = await import("../../../utils/text-tool");
       return JsonTool.parseStrict(await TextTool.decode(content));
     }
   }

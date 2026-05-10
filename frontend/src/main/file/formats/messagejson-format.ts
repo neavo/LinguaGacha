@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { JsonTool } from "../../../utils/json-tool";
+import { TextTool } from "../../../utils/text-tool";
 import type { ApiJsonValue } from "../../api/api-types";
 import {
   effective_export_text,
@@ -93,7 +94,6 @@ export class MESSAGEJSONFormat {
     try {
       return JsonTool.parseStrict(content);
     } catch {
-      const { TextTool } = await import("../../../utils/text-tool");
       return JsonTool.parseStrict(await TextTool.decode(content));
     }
   }
