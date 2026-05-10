@@ -22,11 +22,17 @@ import {
   type ProofreadingVisibleItem,
   type ProofreadingWarningFragmentsByCode,
 } from "@/pages/proofreading-page/types";
-import { TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE } from "@/pages/proofreading-page/text-preserve-smart-patterns";
+import { is_hangul_character, is_kana_character } from "@shared/rules/languages";
+import { TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE } from "@shared/text/text-preserve-rules";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
+// 相似度阈值沿用任务侧轻量 Jaccard 口径，避免校对页给出另一套警告标准。
 const PROOFREADING_SIMILARITY_THRESHOLD = 0.8;
+
+// 重试次数达到该阈值才提示人工介入，低于阈值的错误仍交给任务重试消化。
 const PROOFREADING_RETRY_THRESHOLD = 2;
+
+// 跳过类状态仍要进入筛选统计，但不参与警告计算。
 const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
   "NONE",
   "RULE_SKIPPED",
@@ -34,15 +40,14 @@ const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
   "EXCLUDED",
   "DUPLICATED",
 ]);
-const EXCLUDED_HIRAGANA_CODE_POINTS = new Set([0x309b, 0x309c]);
-const EXCLUDED_KATAKANA_CODE_POINTS = new Set([0xff65, 0x30fb, 0x30fc]);
-const HANGEUL_REGEX = /[\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF]/u;
 
+// 校对术语索引只需要原文和译文，规则元数据在运行态里无用。
 type ProofreadingRuntimeGlossaryEntry = {
   src: string;
   dst: string;
 };
 
+// worker hydration 使用的最小 item 行，字段来自 bootstrap items block。
 export type ProofreadingRuntimeItemRecord = {
   item_id: number;
   file_path: string;
@@ -54,6 +59,7 @@ export type ProofreadingRuntimeItemRecord = {
   retry_count: number;
 };
 
+// 全量 hydrate 输入包含项目 revision、质量规则快照和当前源语言。
 export type ProofreadingRuntimeHydrationInput = {
   project_id: string;
   revision: number;
@@ -63,6 +69,7 @@ export type ProofreadingRuntimeHydrationInput = {
   source_language: string;
 };
 
+// 增量输入只携带变化 item，质量规则和源语言沿用已 hydrate 状态。
 export type ProofreadingRuntimeDeltaInput = {
   project_id: string;
   revision: number;
@@ -70,6 +77,7 @@ export type ProofreadingRuntimeDeltaInput = {
   items: ProofreadingRuntimeItemRecord[];
 };
 
+// 列表视图查询把筛选、搜索、排序和虚拟窗口边界集中传入 worker。
 export type ProofreadingListViewQuery = {
   filters: ProofreadingFilterOptions;
   keyword: string;
@@ -80,38 +88,45 @@ export type ProofreadingListViewQuery = {
   window_count?: number;
 };
 
+// 筛选面板查询只关心当前筛选条件，不需要窗口信息。
 export type ProofreadingFilterPanelQuery = {
   filters: ProofreadingFilterOptions;
 };
 
+// 已构建列表视图的窗口读取请求，view_id 用来隔离过期缓存。
 export type ProofreadingListWindowQuery = {
   view_id: string;
   start: number;
   count: number;
 };
 
+// 行 id 范围读取用于表格选择和批量操作，不需要传回完整 item。
 export type ProofreadingRowIdsRangeQuery = {
   view_id: string;
   start: number;
   count: number;
 };
 
+// 按行 id 回读 item，供编辑弹窗或批量操作获取当前缓存事实。
 export type ProofreadingItemsByRowIdsQuery = {
   row_ids: string[];
 };
 
+// 列表窗口响应保持轻量，只返回当前窗口内的可见行。
 export type ProofreadingListWindow = {
   view_id: string;
   start: number;
   rows: ProofreadingVisibleItem[];
 };
 
+// 同步状态是主线程判断 worker 缓存是否可继续复用的最小凭据。
 export type ProofreadingRuntimeSyncState = {
   revision: number;
   project_id: string;
   default_filters: ProofreadingFilterOptions;
 };
 
+// worker 内完整运行态，所有派生筛选计数都从这里维护。
 type ProofreadingRuntimeState = {
   project_id: string;
   revision: number;
@@ -130,6 +145,7 @@ type ProofreadingRuntimeState = {
   default_filters: ProofreadingFilterOptions;
 };
 
+// 列表视图缓存只保存排序后的 id 序列，避免重复复制大 item。
 type ProofreadingRuntimeListViewCache = {
   view_id: string;
   project_id: string;
@@ -137,39 +153,54 @@ type ProofreadingRuntimeListViewCache = {
   ordered_item_ids: string[];
 };
 
+// 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计。
 type ProofreadingFilterDimension = "warning_types" | "statuses" | "file_paths" | "glossary_terms";
 
+// 校对页替换规则只使用字面量替换，不执行正则替换。
 type ProofreadingReplacementRule = {
   search_text: string;
   replace_text: string;
 };
 
+// 术语索引按首字符分桶，减少每行校对时需要扫描的候选数量。
 type ProofreadingGlossaryIndex = {
   entries: ProofreadingRuntimeGlossaryEntry[];
   entry_by_first_character: Map<string, ProofreadingRuntimeGlossaryEntry[]>;
 };
 
+// 质量上下文是 hydrate 后的可执行规则，不再保留 UI 原始配置形状。
 type ProofreadingQualityContext = {
   glossary: ProofreadingGlossaryIndex;
   pre_replacements: ProofreadingReplacementRule[];
   post_replacements: ProofreadingReplacementRule[];
 };
 
+// 默认窗口大小控制 worker 每次返回量，防止大项目一次复制全量行。
 const PROOFREADING_DEFAULT_WINDOW_COUNT = 160;
 
+// 自然排序固定为文件路径 + 行号，是所有二级排序的稳定兜底。
 const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
   column_id: "file",
   direction: "ascending",
 };
 
+/**
+ * 文本排序固定使用简体中文 locale，确保文件名和术语排序在各系统上稳定。
+ */
 function compare_text(left: string, right: string): number {
   return left.localeCompare(right, "zh-Hans-CN");
 }
 
+/**
+ * 表格排序方向转成乘数，避免每个比较器重复写升降序分支。
+ */
 function normalize_sort_direction(direction: "ascending" | "descending"): number {
   return direction === "ascending" ? 1 : -1;
 }
 
+/**
+ * 原始 item 的自然顺序必须按文件、行号、item_id 固定，支撑虚拟列表稳定窗口。
+ */
 function compare_runtime_items(
   left_item: ProofreadingRuntimeItemRecord,
   right_item: ProofreadingRuntimeItemRecord,
@@ -187,6 +218,9 @@ function compare_runtime_items(
   return left_item.item_id - right_item.item_id;
 }
 
+/**
+ * 可见 item 的列排序只解释当前 UI 支持的列，未知列回退自然顺序。
+ */
 function compare_visible_items(
   left_item: ProofreadingClientItem,
   right_item: ProofreadingClientItem,
@@ -225,6 +259,9 @@ function compare_visible_items(
   return 0;
 }
 
+/**
+ * 可见列表排序会叠加自然顺序兜底，保证相同列值时行顺序不抖动。
+ */
 function sort_visible_items(
   items: ProofreadingClientItem[],
   sort_state: AppTableSortState | null,
@@ -252,12 +289,18 @@ function sort_visible_items(
   });
 }
 
+/**
+ * 智能文本保护沿用 Python 风格 `\U000xxxxx`，这里转成 JS 可编译的 Unicode escape。
+ */
 function normalize_regex_pattern_for_javascript(pattern: string): string {
   return pattern.replace(/\\U([0-9a-fA-F]{8})/gu, (_match, hex: string) => {
     return `\\u{${hex.replace(/^0+/, "") || "0"}}`;
   });
 }
 
+/**
+ * 创建全局正则失败时返回 null，坏规则不能让整个校对 worker 失效。
+ */
 function create_global_regex(pattern: string): RegExp | null {
   try {
     return new RegExp(normalize_regex_pattern_for_javascript(pattern), "giu");
@@ -266,10 +309,16 @@ function create_global_regex(pattern: string): RegExp | null {
   }
 }
 
+/**
+ * 搜索关键字按字面量模式时必须转义，避免用户输入被误解释为正则。
+ */
 function escape_regular_expression(source_text: string): string {
   return source_text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
+/**
+ * 根据搜索模式构造单次查询正则；空关键字表示不过滤。
+ */
 function create_search_pattern(keyword: string, is_regex: boolean): RegExp | null {
   const normalized_keyword = keyword.trim();
   if (normalized_keyword === "") {
@@ -283,6 +332,9 @@ function create_search_pattern(keyword: string, is_regex: boolean): RegExp | nul
   return new RegExp(escape_regular_expression(normalized_keyword), "iu");
 }
 
+/**
+ * 搜索匹配兼容正则和普通包含，非法正则由调用方传入 null 后宽松放行。
+ */
 function matches_search_pattern(
   text: string,
   search_pattern: RegExp | null,
@@ -305,6 +357,9 @@ function matches_search_pattern(
   return text.toLocaleLowerCase().includes(normalized_keyword.toLocaleLowerCase());
 }
 
+/**
+ * 搜索范围决定比较 src、dst 还是二者任一命中。
+ */
 function matches_proofreading_search_scope(args: {
   item: ProofreadingClientItem;
   search_pattern: RegExp | null;
@@ -326,6 +381,9 @@ function matches_proofreading_search_scope(args: {
   );
 }
 
+/**
+ * worker 接收主线程传来的 JSON，需要先归一成稳定 item 行。
+ */
 function normalize_runtime_item(record: unknown): ProofreadingRuntimeItemRecord | null {
   if (typeof record !== "object" || record === null) {
     return null;
@@ -349,6 +407,9 @@ function normalize_runtime_item(record: unknown): ProofreadingRuntimeItemRecord 
   };
 }
 
+/**
+ * 根据文本保护模式构建检查正则，custom 和 smart 在这里统一成 sample_regex。
+ */
 function create_text_preserve_regex(args: {
   mode: string;
   text_type: string;
@@ -384,6 +445,9 @@ function create_text_preserve_regex(args: {
   return create_global_regex(valid_patterns.join("|"));
 }
 
+/**
+ * 相似度检查前先剥离保护段，避免控制码让相似度误判。
+ */
 function strip_preserved_segments(text: string, sample_regex: RegExp | null): string {
   if (sample_regex === null) {
     return text;
@@ -392,6 +456,9 @@ function strip_preserved_segments(text: string, sample_regex: RegExp | null): st
   return text.replace(sample_regex, "");
 }
 
+/**
+ * 保护段比较只看非空片段，空白差异不应触发文本保护失败。
+ */
 function collect_non_blank_preserved_segments(text: string, sample_regex: RegExp | null): string[] {
   if (sample_regex === null) {
     return [];
@@ -407,6 +474,9 @@ function collect_non_blank_preserved_segments(text: string, sample_regex: RegExp
   return segments;
 }
 
+/**
+ * 构造文本保护失败片段时保留源/译两边差异，供编辑弹窗定位。
+ */
 function build_text_preserve_failed_fragments(args: {
   source_segments: string[];
   translation_segments: string[];
@@ -432,6 +502,9 @@ function build_text_preserve_failed_fragments(args: {
   return unique_strings(failed_fragments);
 }
 
+/**
+ * 连续语言残留按片段聚合，避免每个字符都生成一个警告碎片。
+ */
 function collect_contiguous_text_segments(
   text: string,
   is_fragment_character: (character: string) => boolean,
@@ -458,39 +531,23 @@ function collect_contiguous_text_segments(
   return unique_strings(segments);
 }
 
-function is_hiragana_residue_character(character: string): boolean {
-  const code_point = character.codePointAt(0);
-  return (
-    code_point !== undefined &&
-    code_point >= 0x3040 &&
-    code_point <= 0x309f &&
-    !EXCLUDED_HIRAGANA_CODE_POINTS.has(code_point)
-  );
-}
-
-function is_katakana_residue_character(character: string): boolean {
-  const code_point = character.codePointAt(0);
-  return (
-    code_point !== undefined &&
-    ((code_point >= 0x30a0 && code_point <= 0x30ff) ||
-      (code_point >= 0x31f0 && code_point <= 0x31ff) ||
-      (code_point >= 0xff65 && code_point <= 0xff9f)) &&
-    !EXCLUDED_KATAKANA_CODE_POINTS.has(code_point)
-  );
-}
-
+/**
+ * 假名残留片段使用共享语言规则，和任务侧响应检查保持一致。
+ */
 function collect_kana_residue_fragments(text: string): string[] {
-  return collect_contiguous_text_segments(text, (character) => {
-    return is_hiragana_residue_character(character) || is_katakana_residue_character(character);
-  });
+  return collect_contiguous_text_segments(text, is_kana_character);
 }
 
+/**
+ * 谚文残留片段使用共享语言规则，避免校对页复制韩文 Unicode 范围。
+ */
 function collect_hangeul_residue_fragments(text: string): string[] {
-  return collect_contiguous_text_segments(text, (character) => {
-    return HANGEUL_REGEX.test(character);
-  });
+  return collect_contiguous_text_segments(text, is_hangul_character);
 }
 
+/**
+ * 字面量替换不执行正则语义，保持质量规则预览和校对页一致。
+ */
 function replace_all_literal(text: string, search_text: string, replace_text: string): string {
   if (search_text === "") {
     return `${replace_text}${Array.from(text).join(replace_text)}${replace_text}`;
@@ -499,6 +556,9 @@ function replace_all_literal(text: string, search_text: string, replace_text: st
   return text.split(search_text).join(replace_text);
 }
 
+/**
+ * 应用译前/译后替换后再计算校对警告，和任务写入后的可见文本对齐。
+ */
 function apply_quality_replacements(
   item: ProofreadingRuntimeItemRecord,
   quality_context: ProofreadingQualityContext,
@@ -520,6 +580,9 @@ function apply_quality_replacements(
   };
 }
 
+/**
+ * 从质量规则 entries 里抽取可执行字面量替换规则。
+ */
 function build_replacement_rules(args: {
   enabled: boolean;
   entries: Array<{ src?: unknown; dst?: unknown }>;
@@ -545,6 +608,9 @@ function build_replacement_rules(args: {
   });
 }
 
+/**
+ * 构建术语首字符索引，避免每个 item 都全量扫描 glossary。
+ */
 function build_glossary_index(quality: ProjectStoreQualityState): ProofreadingGlossaryIndex {
   if (!quality.glossary.enabled) {
     return {
@@ -572,6 +638,9 @@ function build_glossary_index(quality: ProjectStoreQualityState): ProofreadingGl
   };
 }
 
+/**
+ * hydrate 时把 UI 质量状态转换成校对运行态可直接执行的上下文。
+ */
 function build_quality_context(quality: ProjectStoreQualityState): ProofreadingQualityContext {
   return {
     glossary: build_glossary_index(quality),
@@ -590,6 +659,9 @@ function build_quality_context(quality: ProjectStoreQualityState): ProofreadingQ
   };
 }
 
+/**
+ * 按源文本出现的首字符找候选术语，减少无关术语比较。
+ */
 function collect_candidate_glossary_entries(args: {
   glossary: ProofreadingGlossaryIndex;
   src_replaced: string;
@@ -613,6 +685,9 @@ function collect_candidate_glossary_entries(args: {
   return [...candidate_entries.values()];
 }
 
+/**
+ * 把术语分成已命中和未命中两组，筛选面板只统计未命中项。
+ */
 function partition_glossary_terms(args: {
   glossary: ProofreadingGlossaryIndex;
   src_replaced: string;
@@ -646,6 +721,9 @@ function partition_glossary_terms(args: {
   };
 }
 
+/**
+ * 相似度警告先做包含关系快判，再按字符集合 Jaccard 兜底。
+ */
 function has_similarity_error(args: {
   src_replaced: string;
   dst_replaced: string;
@@ -678,6 +756,9 @@ function has_similarity_error(args: {
   return intersection_size / union_size > PROOFREADING_SIMILARITY_THRESHOLD;
 }
 
+/**
+ * 构建对外可见 item 时一次性压缩文本和克隆数组，避免 UI 改到 worker 缓存。
+ */
 function create_proofreading_client_item(args: {
   item: ProofreadingRuntimeItemRecord;
   warnings: string[];
@@ -706,6 +787,9 @@ function create_proofreading_client_item(args: {
   };
 }
 
+/**
+ * 单条 item 的全部校对警告在这里生成，保证列表、面板和弹窗看到同一份判断。
+ */
 function evaluate_proofreading_item(args: {
   item: ProofreadingRuntimeItemRecord;
   quality_context: ProofreadingQualityContext;
@@ -809,14 +893,23 @@ function evaluate_proofreading_item(args: {
   });
 }
 
+/**
+ * 术语筛选使用稳定 key 表达二元组，避免数组引用参与比较。
+ */
 function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
   return `${term[0]}→${term[1]}`;
 }
 
+/**
+ * 字符串去重保持首次出现顺序，筛选项和 warning 片段都依赖这个稳定性。
+ */
 function unique_strings(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+/**
+ * 警告片段克隆只复制已知字段，避免未知结构从 worker 泄漏到 UI。
+ */
 function clone_warning_fragments_by_code(
   warning_fragments_by_code: ProofreadingWarningFragmentsByCode,
 ): ProofreadingWarningFragmentsByCode {
@@ -833,10 +926,16 @@ function clone_warning_fragments_by_code(
   };
 }
 
+/**
+ * 术语二元组是 readonly tuple，克隆后可安全传给 UI。
+ */
 function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossaryTerm {
   return [term[0], term[1]] as const;
 }
 
+/**
+ * 外部筛选输入可能不完整，必须和默认筛选合并后再参与计算。
+ */
 function normalize_runtime_filter_options(args: {
   filters: Partial<ProofreadingFilterOptions> | undefined;
   default_filters: ProofreadingFilterOptions;
@@ -883,10 +982,16 @@ function normalize_runtime_filter_options(args: {
   };
 }
 
+/**
+ * 术语 miss 只看 failed_glossary_terms，不把已命中术语算作警告。
+ */
 function item_has_glossary_miss(item: ProofreadingClientItem): boolean {
   return item.failed_glossary_terms.length > 0;
 }
 
+/**
+ * 术语筛选支持“无术语缺失”开关和指定 miss 术语列表两种语义。
+ */
 function item_matches_glossary_filter(
   item: ProofreadingClientItem,
   filters: ProofreadingFilterOptions,
@@ -907,6 +1012,9 @@ function item_matches_glossary_filter(
   });
 }
 
+/**
+ * 单个 item 必须同时满足 warning、status、file 和术语筛选。
+ */
 function item_matches_filters(
   item: ProofreadingClientItem,
   filters: ProofreadingFilterOptions,
@@ -931,6 +1039,9 @@ function item_matches_filters(
   return item_matches_glossary_filter(item, filters);
 }
 
+/**
+ * 构建筛选面板时可忽略某个维度，得到“其它条件下该维度可选项”的计数。
+ */
 function filter_items_by_context(args: {
   items: ProofreadingClientItem[];
   filters: ProofreadingFilterOptions;
@@ -975,6 +1086,9 @@ function filter_items_by_context(args: {
   });
 }
 
+/**
+ * 状态筛选值保留已知顺序，并把运行时出现的未知状态附在后面。
+ */
 function build_status_values(args: {
   items: ProofreadingClientItem[];
   filters: ProofreadingFilterOptions;
@@ -998,6 +1112,9 @@ function build_status_values(args: {
   return [...known_statuses, ...extra_statuses];
 }
 
+/**
+ * 警告筛选值保留已知顺序，同时补上动态出现的未知 warning。
+ */
 function build_warning_values(args: {
   items: ProofreadingClientItem[];
   filters: ProofreadingFilterOptions;
@@ -1018,6 +1135,9 @@ function build_warning_values(args: {
   return [...known_warnings, ...extra_warnings];
 }
 
+/**
+ * 统计当前上下文中的状态数量，筛选面板直接消费普通对象。
+ */
 function build_status_count_by_code(items: ProofreadingClientItem[]): Record<string, number> {
   const next_count_by_code: Record<string, number> = {};
   items.forEach((item) => {
@@ -1026,6 +1146,9 @@ function build_status_count_by_code(items: ProofreadingClientItem[]): Record<str
   return next_count_by_code;
 }
 
+/**
+ * 无警告项显式计入 NO_WARNING，保证“无警告”筛选有稳定计数。
+ */
 function build_warning_count_by_code(items: ProofreadingClientItem[]): Record<string, number> {
   const next_count_by_code: Record<string, number> = {
     [PROOFREADING_NO_WARNING_CODE]: 0,
@@ -1046,6 +1169,9 @@ function build_warning_count_by_code(items: ProofreadingClientItem[]): Record<st
   return next_count_by_code;
 }
 
+/**
+ * 文件路径计数按当前上下文重新计算，不复用全局计数避免筛选串味。
+ */
 function build_file_count_by_path(items: ProofreadingClientItem[]): Record<string, number> {
   const next_count_by_path: Record<string, number> = {};
   items.forEach((item) => {
@@ -1054,6 +1180,9 @@ function build_file_count_by_path(items: ProofreadingClientItem[]): Record<strin
   return next_count_by_path;
 }
 
+/**
+ * 术语缺失计数按 miss 术语聚合，用于筛选面板的术语维度。
+ */
 function build_term_count_entries(args: {
   items: ProofreadingClientItem[];
 }): ProofreadingFilterPanelTermEntry[] {
@@ -1085,6 +1214,9 @@ function build_term_count_entries(args: {
   });
 }
 
+/**
+ * 计数 map 支持正负 delta，归零时删除键避免面板出现空值项。
+ */
 function increment_map_count(map: Map<string, number>, key: string, delta: number): void {
   const next_count = (map.get(key) ?? 0) + delta;
   if (next_count <= 0) {
@@ -1095,6 +1227,9 @@ function increment_map_count(map: Map<string, number>, key: string, delta: numbe
   map.set(key, next_count);
 }
 
+/**
+ * 增量更新时同步维护所有计数索引，避免每次 delta 都全量重建。
+ */
 function apply_counter_delta(args: {
   state: ProofreadingRuntimeState;
   item: ProofreadingClientItem;
@@ -1125,6 +1260,9 @@ function apply_counter_delta(args: {
   });
 }
 
+/**
+ * 默认筛选从当前可见事实派生，进入页面时只展示最常用的有效范围。
+ */
 function build_default_filters_from_state(
   state: ProofreadingRuntimeState,
 ): ProofreadingFilterOptions {
@@ -1161,12 +1299,18 @@ function build_default_filters_from_state(
   };
 }
 
+/**
+ * 自然顺序缓存只保存 row id，避免排序结果复制完整条目导致 worker 内存翻倍。
+ */
 function rebuild_natural_item_ids(state: ProofreadingRuntimeState): void {
   state.natural_item_ids = [...state.raw_item_by_id.values()]
     .sort(compare_runtime_items)
     .map((item) => String(item.item_id));
 }
 
+/**
+ * 主线程只需要同步凭据和默认筛选，完整条目继续留在 worker 内部按窗口读取。
+ */
 function build_runtime_sync_state(state: ProofreadingRuntimeState): ProofreadingRuntimeSyncState {
   return {
     revision: state.revision,
@@ -1175,6 +1319,9 @@ function build_runtime_sync_state(state: ProofreadingRuntimeState): Proofreading
   };
 }
 
+/**
+ * 列表窗口输出保留压缩文本字段，渲染层可直接复用虚拟表所需的轻量行模型。
+ */
 function build_visible_items(items: ProofreadingClientItem[]): ProofreadingVisibleItem[] {
   return items.map((item) => {
     return {
@@ -1186,6 +1333,9 @@ function build_visible_items(items: ProofreadingClientItem[]): ProofreadingVisib
   });
 }
 
+/**
+ * 虚拟窗口边界在 worker 内收敛，调用方传入越界值时不会破坏缓存读取。
+ */
 function normalize_window_bounds(args: {
   start: number | undefined;
   count: number | undefined;
@@ -1203,6 +1353,9 @@ function normalize_window_bounds(args: {
   };
 }
 
+/**
+ * 根据缓存 row id 切片回读当前窗口，确保排序与筛选只在构建 list view 时发生一次。
+ */
 function build_window_rows(args: {
   state: ProofreadingRuntimeState;
   ordered_item_ids: string[];
@@ -1218,6 +1371,9 @@ function build_window_rows(args: {
   );
 }
 
+/**
+ * 全量 hydrate 初始化全部索引和质量上下文，后续 delta 只在这些索引上增量维护。
+ */
 function create_runtime_state(input: ProofreadingRuntimeHydrationInput): ProofreadingRuntimeState {
   const raw_item_by_id = new Map<string, ProofreadingRuntimeItemRecord>();
   const evaluated_item_by_id = new Map<string, ProofreadingClientItem>();
@@ -1278,6 +1434,9 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
   return state;
 }
 
+/**
+ * 将自然顺序 id 序列解析为可见条目，跳过已被过滤或尚未成功评估的记录。
+ */
 function resolve_items_in_natural_order(state: ProofreadingRuntimeState): ProofreadingClientItem[] {
   return state.natural_item_ids.flatMap((item_id) => {
     const item = state.evaluated_item_by_id.get(item_id);
@@ -1285,12 +1444,21 @@ function resolve_items_in_natural_order(state: ProofreadingRuntimeState): Proofr
   });
 }
 
+/**
+ * 创建校对运行态 worker 实例，集中管理项目态、列表缓存和筛选面板派生数据。
+ */
 export function createProofreadingRuntimeEngine() {
+  // 当前项目的完整运行态，dispose 或跨项目 hydrate 前不得泄露给渲染层。
   let state: ProofreadingRuntimeState | null = null;
+  // 最近一次列表视图的排序结果缓存，窗口滚动只读取 id 切片。
   let list_view_cache: ProofreadingRuntimeListViewCache | null = null;
+  // 视图 id 单调递增，避免同 revision 下筛选条件变化时复用旧窗口请求。
   let next_list_view_id = 0;
 
   return {
+    /**
+     * 接收主线程全量快照并重建 worker 索引，是每个项目进入校对页的起点。
+     */
     hydrate_full(input: ProofreadingRuntimeHydrationInput): ProofreadingRuntimeSyncState {
       state = create_runtime_state({
         ...input,
@@ -1301,6 +1469,9 @@ export function createProofreadingRuntimeEngine() {
       list_view_cache = null;
       return build_runtime_sync_state(state);
     },
+    /**
+     * 应用项目事件流中的条目增量，同时维护计数、自然顺序和默认筛选。
+     */
     apply_item_delta(input: ProofreadingRuntimeDeltaInput): ProofreadingRuntimeSyncState {
       if (state === null || state.project_id !== input.project_id) {
         throw new Error("proofreading runtime 尚未完成项目级 hydrate。");
@@ -1362,6 +1533,9 @@ export function createProofreadingRuntimeEngine() {
       list_view_cache = null;
       return build_runtime_sync_state(current_state);
     },
+    /**
+     * 构建一次新的列表视图，完成筛选、搜索、排序并缓存 row id 顺序供后续窗口读取。
+     */
     build_list_view(query: ProofreadingListViewQuery): ProofreadingListView {
       if (state === null) {
         return create_empty_proofreading_list_view();
@@ -1430,6 +1604,9 @@ export function createProofreadingRuntimeEngine() {
         invalid_regex_message,
       };
     },
+    /**
+     * 读取已构建列表视图的窗口切片，失效 view_id 直接返回空窗口防止旧请求覆盖新 UI。
+     */
     read_list_window(query: ProofreadingListWindowQuery): ProofreadingListWindow {
       if (
         state === null ||
@@ -1461,6 +1638,9 @@ export function createProofreadingRuntimeEngine() {
         }),
       };
     },
+    /**
+     * 返回当前列表窗口的 row id，供渲染层做选择、批量操作和延迟取详情。
+     */
     read_row_ids_range(query: ProofreadingRowIdsRangeQuery): string[] {
       if (
         state === null ||
@@ -1482,6 +1662,9 @@ export function createProofreadingRuntimeEngine() {
         window_bounds.start + window_bounds.count,
       );
     },
+    /**
+     * 按 row id 精确回读条目，避免详情面板为了少量行重新构建完整列表视图。
+     */
     read_items_by_row_ids(query: ProofreadingItemsByRowIdsQuery): ProofreadingClientItem[] {
       if (state === null) {
         return [];
@@ -1493,6 +1676,9 @@ export function createProofreadingRuntimeEngine() {
         return item === undefined ? [] : [item];
       });
     },
+    /**
+     * 构建筛选面板的可选项和计数，每个维度在计算自身时忽略对应筛选以保留可恢复选项。
+     */
     build_filter_panel(query: ProofreadingFilterPanelQuery): ProofreadingFilterPanelState {
       if (state === null) {
         return create_empty_proofreading_filter_panel_state();
@@ -1552,6 +1738,9 @@ export function createProofreadingRuntimeEngine() {
         }).length,
       };
     },
+    /**
+     * 释放指定项目的 worker 缓存，避免关闭项目后旧运行态继续响应异步请求。
+     */
     dispose_project(project_id?: string): void {
       if (state === null) {
         return;

@@ -26,7 +26,7 @@ flowchart LR
 - `frontend/package.json` 是前端命令入口，稳定命令包括 `dev`、`build`、`format`、`lint`、`test`、`renderer:audit`。
 - `electron.vite.config.ts` 固定 renderer root 为 `src/renderer`，开发态 host 固定为 `127.0.0.1`。
 - `src/main/index.ts` 是 Electron main 的启动装配入口；`src/main/handler/window-handler.ts` 收口主窗口 / 日志窗口共享的窗口能力、renderer 入口加载、运行期窗口保护事件和开发态 Chromium remote debugging 端口 `9222`，`src/main/handler/ipc-handler.ts` 收口 preload 暴露给 renderer 的桌面 IPC 注册。
-- `src/main/lifecycle/` 是 TS Gateway、Python Core 伴生进程与内部 Database Service 生命周期的唯一前端侧落点；Electron main 先创建 `src/main/log/` 的 TS `LogManager`，再启动 `src/main/database/` 内部服务并生成 token，从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`，最后启动 `src/main/api/` 的公开 `/api/*` Gateway。P1 业务服务按语义放在 `settings/`、`model/`、`quality/`，后台任务执行态放在 `task-engine/`，路径解析放在 `paths/`。
+- `src/main/lifecycle/` 是 TS Gateway、Python Core 伴生进程与内部 Database Service 生命周期的唯一前端侧落点；Electron main 先创建 `src/main/log/` 的 TS `LogManager`，再启动 `src/main/database/` 内部服务并生成 token，从启动根目录优先拉起平台 Core helper（Windows 为 `core.exe`，macOS / Linux 为 `core`），不存在时回退到 `uv run app.py`，最后启动 `src/main/api/` 的公开 `/api/*` Gateway。P1 业务服务按语义放在 `settings/`、`model/`、`quality/`，后台任务执行态放在 `task-engine/`，单个 work unit 处理放在 `task-worker/`，路径解析放在 `paths/`。
 - `src/main/database/` 是 `.lg` SQLite、事务和 asset 读写的唯一物理存储实现；`src/shared/utils/zstd-tool.ts` 是 Zstd 压缩等级、压缩与解压工具的唯一落点；`src/main/migration/project-database-migration-service.ts` 承接 `.lg` 打开期 schema 与旧物理格式迁移；内部服务只监听 `127.0.0.1` 随机端口，只接受 token 校验后的内部请求，不暴露给 preload 或 renderer。
 - `src/main/handler/window-handler.ts` 中用于查找 `dist/`、`public/` 的是前端 bundle 根，不是应用根；应用根语义只用于 `CoreLifecycleManager.appRoot` 和 Python Core 的 `APP_ROOT`。
 - 打包产物把 PyInstaller 生成的 Core helper、`_internal/`、`resource/` 与 `version.txt` 放在应用根目录；Windows / Linux 应用根是 Electron 可执行文件所在目录，macOS 应用根是 `.app/Contents/MacOS`。
@@ -48,7 +48,7 @@ flowchart LR
 
 ### Core API 地址来源
 - 应用正常启动时，Electron main 的 `CoreLifecycleManager` 会先启动内部 Database Service，再在高位端口范围内选择 Python Core 内部端口与 TS Gateway 公开端口。Python Core 通过内部端口完成健康检查后，公开地址写入 `LINGUAGACHA_CORE_API_BASE_URL`，该地址指向 TS Gateway。
-- `LINGUAGACHA_CORE_API_TOKEN` 只注入 Python Core 进程，用于 Electron main / TS Gateway 调用内部生命周期与 task-executor 窄路由，不暴露给 renderer。
+- `LINGUAGACHA_CORE_API_TOKEN` 只注入 Python Core 进程，用于 Electron main / TS Gateway 调用内部生命周期与 `/internal/llm/request` 窄路由，不暴露给 renderer。
 - `LINGUAGACHA_DATABASE_API_BASE_URL` 与 `LINGUAGACHA_DATABASE_API_TOKEN` 只注入 Python Core 进程，renderer 不读取也不转发。
 - `src/shared/core-api-base-url.ts` 按固定顺序解析 Core API 地址：
   1. 环境变量 `LINGUAGACHA_CORE_API_BASE_URL`
@@ -141,7 +141,7 @@ flowchart TD
 | `project/lifecycle/` | bootstrap stream consumer 与 bootstrap loader | 工程加载生命周期归这里，`ProjectStore` 只接收已解析的 stage 载荷 |
 | `project/store/` | `ProjectStore`、项目条目文本采集 | 渲染层项目事实的权威仓库；页面只读快照或通过 `commit_local_project_patch(...)` 的唯一写入口提交本地 patch |
 | `project/prefilter/` | 预过滤 mutation builder / committer、runner、worker client / worker | 只表达规则如何应用到项目条目和 mutation 输出；可审查规则清单不放在这里 |
-| `shared/rules/` | 前后端共享的规则前缀、后缀、正则、标点、语言字符判断；规则口径跟随 Python `BaseLanguage` / `TextHelper` / `RuleFilter` / `LanguageFilter` | 只放可审查的纯规则与语言定义，不做项目条目遍历、worker 编排、HTTP mutation 或 Ruby 清理；Ruby 清理由 Python `TextProcessor` / `RubyCleaner` 持有 |
+| `shared/rules/` | 前后端共享的规则前缀、后缀、正则、标点、语言字符判断；规则口径跟随 Python `BaseLanguage` / `TextHelper` / `RuleFilter` / `LanguageFilter` | 只放可审查的纯规则与语言定义，不做项目条目遍历、worker 编排、HTTP mutation 或 Ruby 清理；Ruby 清理与译前 / 译后处理由 `src/shared/text/` 供 `src/main/task-worker/` 消费 |
 | `project/reset/` | 翻译 / 分析 reset plan 与共享 reset state builders | 只放基于项目事实生成重置 mutation 的规则 |
 | `project/glossary-import/` | 分析术语导入 plan | 只放分析候选到术语表 mutation 的项目领域计划 |
 | `project/settings/` | 项目设置 alignment toast 与设置镜像辅助 | 只放项目设置同步相关的展示文案格式化和轻量领域辅助 |

@@ -68,7 +68,7 @@ const DEFAULT_GENERATION_CONFIG: Record<string, ApiJsonValue> = {
 };
 
 /**
- * 封装 TS 侧模型配置 CRUD；Python 任务每次按配置文件读取最新模型。
+ * 封装 TS 侧模型配置 CRUD；任务执行时由 TS 传入模型快照给 Python LLM adapter。
  */
 export class ModelService {
   private readonly paths: AppPathService;

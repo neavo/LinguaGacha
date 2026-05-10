@@ -8,7 +8,7 @@ import time
 from types import TracebackType
 
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
-from api.Application.TaskExecutorAppService import TaskExecutorAppService
+from api.Application.LlmRequestAppService import LlmRequestAppService
 from api.Server.ServerBootstrap import ServerBootstrap
 from base.Base import Base
 from base.BasePath import BasePath
@@ -294,12 +294,12 @@ def run_headless_mode(*, logger: LogManager) -> None:
         instance_token=os.environ.get(CORE_API_TOKEN_ENV_NAME, ""),
         request_shutdown=lambda: request_shutdown_after_response(shutdown_event),
     )
-    task_executor_app_service = TaskExecutorAppService(
+    llm_request_app_service = LlmRequestAppService(
         instance_token=os.environ.get(CORE_API_TOKEN_ENV_NAME, "")
     )
     local_api_server_runtime = ServerBootstrap.start(
         core_lifecycle_app_service=core_lifecycle_app_service,
-        task_executor_app_service=task_executor_app_service,
+        llm_request_app_service=llm_request_app_service,
     )
     try:
         wait_for_headless_shutdown(shutdown_event)

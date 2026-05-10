@@ -1,16 +1,17 @@
 # LinguaGacha 数据域文档
 
 ## 一句话总览
-LinguaGacha 的数据域由 Electron main TS API 编排层、TS Task Engine、TS 任务数据 / 运行态服务、Electron main Database Service 的 `.lg` 物理存储，以及 Python Core 的单次 work-unit executor 共同协作。本文回答的不是目录长什么样，而是：`Data / Engine / File / Model` 分别拥有什么权威职责，项目级状态应该落在哪里，唯一写入口怎么判断，`.lg` 物理存储为什么只由 Electron main Database Service 持有，以及哪些非显然规则会影响未来维护。
+LinguaGacha 的数据域由 Electron main TS API 编排层、TS Task Engine、TS task worker、TS 任务数据 / 运行态服务、Electron main Database Service 的 `.lg` 物理存储，以及 Python Core 的 LLM requester 共同协作。本文回答的不是目录长什么样，而是：`Data / Engine / File / Model` 分别拥有什么权威职责，项目级状态应该落在哪里，唯一写入口怎么判断，`.lg` 物理存储为什么只由 Electron main Database Service 持有，以及哪些非显然规则会影响未来维护。
 
 ## `Data / Engine / File / Model` 的职责边界
 
 | 领域 | 权威入口 | 稳定职责 | 不该做什么 |
 | --- | --- | --- | --- |
 | `module/Data` | `DataManager.py` | Python 数据领域兼容门面与旧测试对象；需要访问 `.lg` 时仍只能经 `DatabaseGateway` | 不作为任务数据热路径权威，不持有后台任务执行骨架，不散落 SQL，不承载公开 bootstrap / reset preview / 前端 patch 编码权威 |
-| `module/Engine` | `TranslationTask.py`、`AnalysisTask.py`、`TaskRequester.py` | 单次翻译 / 分析 work unit、LLM 请求封装和 Python executor 可复用能力 | 不持有后台任务生命周期，不调度整场任务，不提交 `.lg` 项目事实，不直接操作 `DataManager` 或 database workflow |
+| `module/Engine` | `TaskRequester.py`、`TaskRequesterStream.py`、`ModelApiTestRunner.py` | Python LLM SDK 请求封装、流式请求与模型探测兼容能力 | 不持有后台任务生命周期，不调度整场任务，不解析 work unit 业务结果，不提交 `.lg` 项目事实，不直接操作 `DataManager` 或 database workflow |
 | `frontend/src/main/task` | `TaskService`、`TaskDataService`、`TaskEventHub`、`TaskRuntimeState`、`TaskSnapshotBuilder` | 公开任务命令、内部任务数据读写、事件 hub、任务回执与 task snapshot；持久进度读 database，实时状态读 TS runtime state | 不绕过 Task Engine 执行后台任务，不绕过 database workflow，不把内部 token 暴露给 renderer |
-| `frontend/src/main/task-engine` | `TaskEngine`、`TaskPipeline`、`TaskLimiter`、`TaskRunLock`、`PythonTaskExecutorClient` | 后台任务生命周期、调度、限流、停止、重试、提交循环、真实请求中数量与 Python task-executor 调用 | 不持有 UI 状态，不直接写 SQL，不把整场任务控制权交回 Python Core |
+| `frontend/src/main/task-engine` | `TaskEngine`、`TaskPipeline`、`TaskLimiter`、`TaskRunLock` | 后台任务生命周期、调度、限流、停止、重试、提交循环和真实请求中数量 | 不持有 UI 状态，不直接写 SQL，不执行单个 work unit 的文本处理，不把整场任务控制权交回 Python Core |
+| `frontend/src/main/task-worker` | `TaskWorkerPool`、`WorkUnitRunner`、`TranslationWorkUnitRunner`、`AnalysisWorkUnitRunner`、`PyLlmRequestClient` | 单个 work unit 的译前处理、提示词、LLM adapter 调用、响应清洗 / 解码 / 校验和结果归一 | 不持有后台任务生命周期，不提交 `.lg` 项目事实，不直接写 SQL，不把真实 LLM SDK 分支搬到 TS |
 | `frontend/src/main/file` | `FileFormatService`、`FilePreviewService`、`FileExportService`、`formats/` | 公开文件格式分发、解析、导出写回、工作台 parse 预演与新建工程草稿解析 | 不直接持有 SQL，不绕过 Database Service，不把格式实现放回 Python Core |
 | `frontend/src/main/model` | `ModelService`、`model-config-resolver` | 模型页快照、CRUD、重排、激活模型回退与配置写入 | 不承载 Python 模型探测 runner，不直接写 `.lg`，不把模型页面规则放回通用 service |
 | `module/Model` | `Manager.py` + `Types.py` | 模型配置类型、模板补齐、分组排序、激活模型回退 | 不承载页面快照，不定义 API 响应壳 |
@@ -21,8 +22,9 @@ flowchart TD
     B --> C["Electron main database service"]
     A --> D["TaskService"]
     D --> E["TS Task Engine"]
-    E --> F["Python task-executor"]
-    F --> G["module/Engine work unit"]
+    E --> F["TS task-worker"]
+    F --> G["/internal/llm/request"]
+    G --> J["Python TaskRequester"]
     E --> B
     E --> H["TS TaskEventHub"]
     A --> I["ModelService / Python model probe"]
@@ -37,17 +39,17 @@ flowchart TD
 | 工程创建、打开预演、加载与卸载编排 | `frontend/src/main/project/project-lifecycle-service.ts` + `project-session-state.ts` + `frontend/src/main/database/` | TS Gateway 调用项目轻生命周期服务；Python Core 不再持有项目加载 / 卸载同步状态 |
 | 工作台文件集合 | `frontend/src/main/project/project-sync-mutation-service.ts` + `frontend/src/main/database/` | TS Gateway 调用项目同步 mutation 服务；文件写互斥由 TS main 内部状态维护 |
 | 公开 bootstrap、`project.patch` 补全、ProjectMutationAck 与 section revision | `frontend/src/main/project/project-runtime-encoder.ts`、`project-patch-adapter.ts`、`project-section-revision.ts` | TS Gateway 按需读取 Electron main Database Service；`task` block 复用 `TaskSnapshotBuilder` 从 database + `TaskRuntimeState` 组装 |
-| 公开任务命令、任务回执与 task snapshot | `frontend/src/main/task` + `frontend/src/main/task-engine` | TS task service 校验公开请求并生成回执；TS Task Engine 持有后台任务执行态并通过 `/internal/task-executor/*` 调 Python 单次 work unit |
+| 公开任务命令、任务回执与 task snapshot | `frontend/src/main/task` + `frontend/src/main/task-engine` + `frontend/src/main/task-worker` | TS task service 校验公开请求并生成回执；TS Task Engine 持有后台任务执行态；TS task worker 执行单个 work unit 并通过 `/internal/llm/request` 调 Python LLM adapter |
 | 设置、最近项目 | `frontend/src/main/service` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 settings 服务 |
 | 模型页 CRUD | `frontend/src/main/model` + `DATA_ROOT/userdata/config.json` | TS Gateway 调用 model 服务 |
 | 质量规则、提示词页面 CRUD 与预设 IO | `frontend/src/main/service` + `frontend/src/main/database/` | TS Gateway 调用 quality 服务；任务后续读取通过 `TaskDataService` 取得最新数据库事实 |
 | P2 项目同步 mutation | `frontend/src/main/project/project-sync-mutation-service.ts` + `frontend/src/main/database/` | TS Gateway 调用项目同步 mutation 服务；写入后回 `ProjectMutationAck`，不再通知 Python 清缓存 |
 | 项目轻生命周期 | `frontend/src/main/project/project-lifecycle-service.ts` + `project-session-state.ts` + `frontend/src/main/database/` | `snapshot` 读取 TS 会话状态，`load/create-commit/open-preview/unload/preview/source-files` 都由 TS 侧处理数据库事实与公开响应 |
 | reset preview 公开预演 | `frontend/src/main/project/project-reset-preview-service.ts` + `frontend/src/main/database/` + `frontend/src/main/file` | TS Gateway 计算公开响应；翻译 all 预演直接用 TS 文件域重解析 asset |
-| 规则、提示词运行时读取 | `frontend/src/main/task/task-data-service.ts` | TS Task Engine 获取任务所需 quality snapshot，再作为不可变载荷传给 Python work unit |
+| 规则、提示词运行时读取 | `frontend/src/main/task/task-data-service.ts` | TS Task Engine 获取任务所需 quality snapshot，再作为不可变载荷传给 TS task worker |
 | 分析候选、checkpoint、分析结果 | `frontend/src/main/task/task-data-service.ts` + `frontend/src/main/database/` | TS Task Engine 批量读取 / 提交，TS Gateway 统一推进持久事实；Python 只返回单个分析 chunk 的候选结果 |
 | 校对保存、校对 revision、重翻提交 | `frontend/src/main/service/proofreading-service.ts`、`frontend/src/main/task/task-data-service.ts` 与 `frontend/src/main/task-engine` | 校对同步保存由 TS Gateway 调用 proofreading 服务直接写 `.lg`；重翻由 TS task service 校验 revision 后启动 TS Task Engine，批次提交回到 TS task data 服务 |
-| 全局忙碌态与实时请求数 | `frontend/src/main/task/task-runtime-state.ts` | TS task service 命令受理、Python 任务事件和 `project.patch` 共同更新 |
+| 全局忙碌态与实时请求数 | `frontend/src/main/task/task-runtime-state.ts` | TS task service 命令受理、TS 任务事件和 `project.patch` 共同更新 |
 | 文件格式解析与写回 | `frontend/src/main/file` | TS Gateway 的文件预演、reset preview、导出服务；EPUB 由 TS `formats/epub-*` 实现 |
 | 模型列表整理、模板补齐、排序与默认回退 | `module/Model/Manager.py` | `module/Model` |
 
@@ -77,7 +79,7 @@ flowchart TD
     C --> D["TS ProjectRuntimeEncoder"]
     D --> E["/api/project/bootstrap/stream"]
     E --> F["ProjectStore"]
-    G["Python 任务事件"] --> H["TS TaskEventHub"]
+    G["TS 任务事件"] --> H["TS TaskEventHub"]
     H --> I["TS project.patch adapter"]
     I --> F
 ```
@@ -95,9 +97,9 @@ flowchart TD
 flowchart TD
     A["TS TaskService"] --> B["TS Task Engine"]
     B --> C["TaskRunLock / TaskLimiter / TaskPipeline"]
-    C --> D["PythonTaskExecutorClient"]
-    D --> E["/internal/task-executor/*"]
-    E --> F["Python work unit"]
+    C --> D["TaskWorkerPool / WorkUnitRunner"]
+    D --> E["/internal/llm/request"]
+    E --> F["Python TaskRequester"]
     C --> G["commit loop"]
     G --> H["TS TaskDataService"]
     H --> I["Electron main database service"]
@@ -105,7 +107,7 @@ flowchart TD
 ```
 
 稳定事实：
-- TS Task Engine 负责执行骨架、调度、停止、重试和提交；Python work unit 只负责单次 LLM 请求与结果解析。
+- TS Task Engine 负责执行骨架、调度、停止、重试和提交；TS task worker 负责单个 work unit 的确定性文本处理、prompt、响应解析和校验；Python Core 只负责真实 LLM SDK 请求。
 - TS `TaskPipeline` 的 commit loop 是唯一允许生成 retry context 的地方。
 - 停止语义是先切到 `STOPPING`，再由流水线与超时收尾，不是立刻中断网络 IO。
 - 翻译任务终态只保存项目事实；译文文件写出属于用户确认后的显式导出动作，不挂在任务完成收尾上。
@@ -136,9 +138,9 @@ flowchart TD
 - `items.status` 只表达条目翻译事实，代码侧枚举为 `Base.ItemStatus`，当前有效集合为 `NONE / PROCESSED / ERROR / EXCLUDED / RULE_SKIPPED / LANGUAGE_SKIPPED / DUPLICATED`；打开旧 `.lg` 时会把 item `PROCESSED_IN_PAST` 持久化为 `PROCESSED`，把 item `PROCESSING` 持久化为 `NONE`。
 - 工程忙碌态、任务按钮和任务进度由 TS `TaskRuntimeState`、TS 任务事件与 `translation_extras` / `analysis_extras` / `task` 运行态驱动；旧 `.lg` 中的 `meta.project_status` 只是历史字段，打开工程时保持原样。
 - Python Core 路径只保留 `APP_ROOT` 与 `DATA_ROOT` 两个根概念；应用配置不是独立根，固定为 `DATA_ROOT/userdata/config.json`。
-- 应用设置、最近项目由 TS main 的 `service/` 服务读写 `DATA_ROOT/userdata/config.json`，模型页 CRUD 由 TS main 的 `model/` 服务读写同一份配置；Python Core 的 `Config`、`ModelManager`、模型 `list-available/test` runner 与任务 work unit 消费仍保留为内部运行时能力，但任务每次由 TS Task Engine 传入配置、模型和质量快照，不再依赖跨进程缓存刷新。
+- 应用设置、最近项目由 TS main 的 `service/` 服务读写 `DATA_ROOT/userdata/config.json`，模型页 CRUD 由 TS main 的 `model/` 服务读写同一份配置；Python Core 的 `Config`、`ModelManager` 与模型 `list-available/test` runner 仍保留为内部运行时能力；任务每次由 TS Task Engine 传入配置、模型和质量快照，TS task worker 消费这些不可变快照，不再依赖跨进程缓存刷新。
 - 质量规则与提示词页面 CRUD / 预设 IO 由 TS main 的 `service/` 服务承载；`.lg` 写入仍只通过 Electron main `ProjectDatabase`，任务侧后续读取通过 `TaskDataService` 取得最新 database 事实。
-- 工作台文件写 mutation、项目设置对齐、translation reset、analysis reset、analysis glossary import、reset preview、项目轻生命周期、公开 bootstrap 运行态编码与 `project.patch` 补全由 TS main 的 `project/` 项目域承载，公开任务命令、task snapshot、任务数据内部路由与事件 hub 由 TS main 的 `task/` 任务域承载，后台任务执行态由 TS main 的 `task-engine/` 承载，校对同步保存仍由 TS main 的 `service/proofreading-service.ts` 承载；文件解析 / 写回由 TS main 的 `file/` 文件域承载；Python Core 保留单次 work unit 和模型探测能力，不再持有项目读侧缓存、项目同步、任务调度或文件操作锁。
+- 工作台文件写 mutation、项目设置对齐、translation reset、analysis reset、analysis glossary import、reset preview、项目轻生命周期、公开 bootstrap 运行态编码与 `project.patch` 补全由 TS main 的 `project/` 项目域承载，公开任务命令、task snapshot、任务数据内部路由与事件 hub 由 TS main 的 `task/` 任务域承载，后台任务执行态由 TS main 的 `task-engine/` 承载，单个 work unit 由 TS main 的 `task-worker/` 承载，校对同步保存仍由 TS main 的 `service/proofreading-service.ts` 承载；文件解析 / 写回由 TS main 的 `file/` 文件域承载；Python Core 保留 LLM 请求和模型探测能力，不再持有项目读侧缓存、项目同步、任务调度、结果解析或文件操作锁。
 - 分析候选导入术语的预演和筛选属于前端 planner；Python 数据层保留候选聚合、候选数缓存和分析结果持久化。
 - `translation reset` 与 `analysis reset` 属于同步 mutation，不是后台任务链路。
 - 校对 `save-item`、`save-all`、`replace-all` 属于 TS main 承载的同步 mutation，写入后推进 items 与 proofreading revision；重翻通过 TS task service 的 `/api/tasks/start-retranslate` 进入任务型链路，`TaskRuntimeState` 持有公开忙碌态与 `retranslating_item_ids`，批次提交经 TS Task Engine 回到 TS 数据层并发布 `project.patch`。
@@ -167,7 +169,7 @@ flowchart TD
 | `.trans` | TS `trans-format` 会按 `project.gameEngine` 二次分发到不同处理器 |
 | 公开文件入口 | 统一落在 TS `frontend/src/main/file/`，不通过 Python Core 作为格式 fallback |
 | EPUB 写回 | 所有条目都带 `extra_field.epub.parts` 时走 AST writer，否则统一走 legacy writer |
-| EPUB ruby 清理 | 文件层只在叶子 block 的 `extra_field.epub.ruby_clean_candidate` 记录可清理结构候选；是否启用由 `TextProcessor` / `RubyCleaner` 按 `Config.clean_ruby` 决定，写回层在候选启用后可走块级写回并让双语原文保留原始 `<ruby>/<rt>` |
+| EPUB ruby 清理 | 文件层只在叶子 block 的 `extra_field.epub.ruby_clean_candidate` 记录可清理结构候选；是否启用由 TS `frontend/src/shared/text/text-processor.ts` / `fixer/ruby-cleaner.ts` 按任务配置快照的 `clean_ruby` 决定，写回层在候选启用后可走块级写回并让双语原文保留原始 `<ruby>/<rt>` |
 
 ### 模型域
 - `module/Model/Manager.py` 是模型列表整理、分组排序、模板补齐和激活模型回退的唯一规则入口。
@@ -187,7 +189,7 @@ flowchart TD
 红线：
 - 不要把新的项目级状态顺手塞进 `DataManager`，先判断它是不是 TS project / task data / service 的职责、更底层 database workflow，或者根本应留在前端。
 - 不要把新的 SQL 或事务逻辑放到 `frontend/src/main/database/` 之外；不要把 `.lg` 打开期迁移规则放到 `frontend/src/main/migration/` 之外。
-- 不要把共享任务语义写回 `module/Data`，也不要把工程事实或整场任务生命周期塞进 `module/Engine`；Python work unit 需要工程事实时由 TS Task Engine 传入不可变快照。
+- 不要把共享任务语义写回 `module/Data`，也不要把工程事实、整场任务生命周期或确定性 work unit 处理塞进 `module/Engine`；TS task worker 需要工程事实时由 TS Task Engine 传入不可变快照。
 
 ## 什么时候必须更新本文
 

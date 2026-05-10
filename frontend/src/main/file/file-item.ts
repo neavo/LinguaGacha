@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import { infer_text_type_from_source } from "./file-text-type-inference";
 
 /**
  * 文件条目状态沿用 Python ItemStatus 字面量，避免跨栈传输时再做映射表。
@@ -53,6 +54,7 @@ export interface FileFormatItem {
   retry_count: number;
 }
 
+// 状态白名单在反序列化入口收口，兼容旧状态名后再交给格式处理器。
 const VALID_STATUS = new Set<FileItemStatus>([
   "NONE",
   "PROCESSED",
@@ -63,6 +65,7 @@ const VALID_STATUS = new Set<FileItemStatus>([
   "DUPLICATED",
 ]);
 
+// 物理文件类型白名单集中在入口规范化层，格式处理器只接收已知值。
 const VALID_FILE_TYPE = new Set<FileItemType>([
   "NONE",
   "MD",
@@ -78,16 +81,8 @@ const VALID_FILE_TYPE = new Set<FileItemType>([
   "MESSAGEJSON",
 ]);
 
+// text_type 只描述规则/引擎语义，不能混入文件格式枚举。
 const VALID_TEXT_TYPE = new Set<FileTextType>(["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"]);
-
-// 这些启发式只用于 Py 侧同款兜底推断，不能替代具体格式处理器的 text_type。
-const WOLF_PATTERNS = [/@\d+/iu, /\\[cus]db\[.+?:.+?:.+?\]/iu];
-const RPGMAKER_PATTERNS = [
-  /en\(.{0,8}[vs]\[\d+\].{0,16}\)/iu,
-  /if\(.{0,8}[vs]\[\d+\].{0,16}\)/iu,
-  /[/\\][a-z]{1,8}[<[][a-z\d]{0,16}[>\]]/iu,
-];
-const RENPY_PATTERNS = [/\{[^{\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]*?\}/iu];
 
 /**
  * 将外部 JSON 或数据库行收敛成稳定 FileFormatItem，避免格式处理器重复防御字段缺失。
@@ -100,7 +95,7 @@ export function normalize_file_item(payload: Partial<FileFormatItem>): FileForma
     text_type === "NONE" &&
     (file_type === "XLSX" || file_type === "KVJSON" || file_type === "MESSAGEJSON")
   ) {
-    text_type = infer_text_type(src);
+    text_type = infer_text_type_from_source(src);
   }
   return {
     src,
@@ -205,20 +200,4 @@ export function read_json_record(value: unknown): Record<string, ApiJsonValue> {
 function normalize_number(value: unknown, fallback: number): number {
   const parsed = Number(value ?? fallback);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
-}
-
-/**
- * 只有缺少显式 text_type 的通用表格 / JSON 格式才需要根据原文推断引擎类型。
- */
-function infer_text_type(src: string): FileTextType {
-  if (WOLF_PATTERNS.some((pattern) => pattern.test(src))) {
-    return "WOLF";
-  }
-  if (RPGMAKER_PATTERNS.some((pattern) => pattern.test(src))) {
-    return "RPGMAKER";
-  }
-  if (RENPY_PATTERNS.some((pattern) => pattern.test(src))) {
-    return "RENPY";
-  }
-  return "NONE";
 }

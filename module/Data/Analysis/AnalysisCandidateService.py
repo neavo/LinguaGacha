@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
-from module.Engine.Analysis.AnalysisFakeNameInjector import AnalysisFakeNameInjector
 from module.Utils.JSONTool import JSONTool
+
+
+CONTROL_CODE_PATTERN = re.compile(r"\\(?:n|N){1,2}\[\d+\]")
 
 
 class AnalysisCandidateService:
@@ -310,11 +313,9 @@ class AnalysisCandidateService:
         dst = self.pick_candidate_winner(entry.get("dst_votes", {}))
         info = self.pick_candidate_winner(entry.get("info_votes", {}))
         normalized_info = info.strip().lower()
-        is_control_code_self_mapping = (
-            AnalysisFakeNameInjector.is_control_code_self_mapping(
-                str(src).strip(),
-                str(dst).strip(),
-            )
+        is_control_code_self_mapping = self.is_control_code_self_mapping(
+            str(src).strip(),
+            str(dst).strip(),
         )
 
         if src == "" or dst == "" or normalized_info == "":
@@ -330,6 +331,26 @@ class AnalysisCandidateService:
             "info": info,
             "case_sensitive": bool(entry.get("case_sensitive", False)),
         }
+
+    def is_control_code_self_mapping(self, src: str, dst: str) -> bool:
+        """判断纯控制码自映射，避免候选转术语时误删合法控制符。"""
+
+        normalized_src = src.strip()
+        normalized_dst = dst.strip()
+        return (
+            normalized_src != ""
+            and normalized_src == normalized_dst
+            and self.is_control_code_text(normalized_src)
+        )
+
+    def is_control_code_text(self, text: str) -> bool:
+        """只接受单个完整控制码，带普通文本前后缀时不能放行。"""
+
+        normalized_text = text.strip()
+        return (
+            normalized_text != ""
+            and CONTROL_CODE_PATTERN.fullmatch(normalized_text) is not None
+        )
 
     def build_glossary_from_candidates(
         self,

@@ -293,6 +293,36 @@ def test_build_glossary_from_candidates_skips_placeholder_and_self_mapping_noise
     ]
 
 
+def test_build_glossary_from_candidates_keeps_control_code_self_mapping() -> None:
+    service = AnalysisCandidateService()
+
+    glossary = service.build_glossary_from_candidates(
+        {
+            r"\n[7]": build_candidate_entry(
+                src=r"\n[7]",
+                dst_votes={r"\n[7]": 2},
+                info_votes={"控制码": 2},
+                observation_count=2,
+            ),
+            r"前缀\n[7]": build_candidate_entry(
+                src=r"前缀\n[7]",
+                dst_votes={r"前缀\n[7]": 2},
+                info_votes={"控制码": 2},
+                observation_count=2,
+            ),
+        }
+    )
+
+    assert glossary == [
+        {
+            "src": r"\n[7]",
+            "dst": r"\n[7]",
+            "info": "控制码",
+            "case_sensitive": False,
+        }
+    ]
+
+
 def test_pick_candidate_winner_returns_empty_for_no_votes() -> None:
     service = AnalysisCandidateService()
 

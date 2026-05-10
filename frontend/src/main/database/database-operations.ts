@@ -449,7 +449,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 由 Python 任务链路调用的窄 revision 推进入口；公开读取和 ack 仍由 TS 项目域计算。
+   * 由内部任务数据路由调用的窄 revision 推进入口；公开读取和 ack 仍由 TS 项目域计算。
    */
   private bump_runtime_section_revisions(
     project_path: string,

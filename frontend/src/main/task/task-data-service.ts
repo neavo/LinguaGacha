@@ -10,7 +10,7 @@ import type { JsonRecord, MutableJsonRecord } from "./task-types";
 const ANALYSIS_CHECKPOINT_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
 
 /**
- * TS 任务数据服务，是 Python Engine 读写项目任务事实的唯一内部入口。
+ * TS 任务数据服务，是 Task Engine 读写项目任务事实的唯一内部入口。
  */
 export class TaskDataService {
   /**
@@ -24,7 +24,7 @@ export class TaskDataService {
   ) {}
 
   /**
-   * Python 任务启动前读取当前工程上下文，不再依赖 DataManager 会话缓存。
+   * TS 任务启动前读取当前工程上下文，不再依赖 DataManager 会话缓存。
    */
   public get_project_context(_request: JsonRecord): MutableJsonRecord {
     const state = this.session_state.snapshot();
@@ -544,7 +544,7 @@ export class TaskDataService {
   }
 
   /**
-   * 重翻按 id 批量取项，过滤非对象行保护 Python 任务入口。
+   * 重翻按 id 批量取项，过滤非对象行保护 TS work unit 入口。
    */
   private get_items_by_ids(project_path: string, item_ids: number[]): MutableJsonRecord[] {
     const value = this.database.execute(

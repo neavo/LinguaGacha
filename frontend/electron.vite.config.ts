@@ -3,6 +3,7 @@ import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 
+// Electron 三端构建配置在这里集中维护，确保 main/preload/renderer 输出目录互不覆盖。
 const config = {
   main: {
     build: {
@@ -11,9 +12,11 @@ const config = {
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, "src/main/index.ts"),
+        // task worker 必须作为独立入口产物输出，worker_threads 运行时不能从 main bundle 内动态取源码。
+        "task-worker-entry": path.resolve(__dirname, "src/main/task-worker/task-worker-entry.ts"),
       },
       output: {
-        entryFileNames: "index.js",
+        entryFileNames: "[name].js",
       },
     },
   },
@@ -25,6 +28,10 @@ const config = {
     rollupOptions: {
       input: {
         preload: path.resolve(__dirname, "src/preload/index.ts"),
+      },
+      output: {
+        // BrowserWindow 的 preload 契约固定读取 dist-electron/index.mjs，产物名不能随入口名漂移。
+        entryFileNames: "index.mjs",
       },
     },
   },

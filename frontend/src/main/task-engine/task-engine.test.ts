@@ -8,8 +8,8 @@ import type { TaskEventHub } from "../task/task-event-hub";
 import type { MutableJsonRecord } from "../task/task-types";
 import type { TaskRuntimeState } from "../task/task-runtime-state";
 import type { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
-import type { PythonTaskExecutorClient } from "./python-task-executor-client";
-import { PythonTaskExecutorTransportError } from "./python-task-executor-client";
+import type { TaskWorkUnitExecutor } from "../task-worker/task-work-unit-executor";
+import { WorkUnitExecutorTransportError } from "../task-worker/task-work-unit-executor";
 import { TaskEngine } from "./task-engine";
 
 describe("TaskEngine", () => {
@@ -41,7 +41,7 @@ describe("TaskEngine", () => {
           output_tokens: 2,
           stopped: false,
         }),
-      } as unknown as PythonTaskExecutorClient,
+      } as unknown as TaskWorkUnitExecutor,
       configService: create_config_service(),
       snapshotBuilder: {
         build_task_snapshot: async () => ({ task_type: "translation", status: "DONE" }),
@@ -105,10 +105,7 @@ describe("TaskEngine", () => {
           const item_id = Number(items[0]?.["id"] ?? 0);
           if (item_id === 1 && !failed_once_ids.has(item_id)) {
             failed_once_ids.add(item_id);
-            throw new PythonTaskExecutorTransportError(
-              "fetch failed",
-              new TypeError("fetch failed"),
-            );
+            throw new WorkUnitExecutorTransportError("fetch failed", new TypeError("fetch failed"));
           }
           return {
             items: items.map((item) => ({
@@ -122,7 +119,7 @@ describe("TaskEngine", () => {
             stopped: false,
           };
         },
-      } as unknown as PythonTaskExecutorClient,
+      } as unknown as TaskWorkUnitExecutor,
       configService: create_config_service(2),
       snapshotBuilder: {
         build_task_snapshot: async () => ({ task_type: "translation", status: "DONE" }),

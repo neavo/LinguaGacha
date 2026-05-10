@@ -60,4 +60,12 @@ describe("file-item", () => {
     expect(read_json_record(["not-record"])).toEqual({});
     expect(normalize_status("PROCESSING")).toBe("NONE");
   });
+
+  it("通用表格和 JSON 条目缺少 text_type 时复用共享引擎类型推断", () => {
+    expect(normalize_file_item({ src: "{i}Start{/i}", file_type: "KVJSON" }).text_type).toBe(
+      "RENPY",
+    );
+    expect(normalize_file_item({ src: "{中文正文}", file_type: "KVJSON" }).text_type).toBe("NONE");
+    expect(normalize_file_item({ src: "@12 你好", file_type: "XLSX" }).text_type).toBe("WOLF");
+  });
 });

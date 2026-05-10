@@ -1,6 +1,7 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import { infer_text_type_from_source } from "../file/file-text-type-inference";
 import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import {
   build_project_mutation_ack_from_meta,
@@ -10,7 +11,9 @@ import {
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 
+// JsonRecord 表示从数据库或 meta 读取出的普通 JSON 字典，编码器不会保留对象引用。
 type JsonRecord = Record<string, ApiJsonValue>;
+// MutableJsonRecord 用于组装 SSE payload，离开编码器后仍按值传递给前端。
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 // RowBlock 是 files/items 的稳定 wire shape，字段顺序本身就是协议。
@@ -49,6 +52,7 @@ const BOOTSTRAP_STAGE_DEFINITIONS: Array<{
 
 // RowBlock 字段顺序由 renderer 直接消费，不能在调用点临时拼装。
 const FILES_BLOCK_FIELDS = ["rel_path", "file_type", "sort_index"] as const;
+// items 字段顺序覆盖校对、任务和文件预览共同读取的最小条目事实。
 const ITEMS_BLOCK_FIELDS = [
   "item_id",
   "file_path",
@@ -69,18 +73,22 @@ const QUALITY_RULE_TYPES = [
   "post_replacement",
   "text_preserve",
 ] as const;
+// 公开 quality key 到数据库 rule type 的映射集中维护，避免 bootstrap 各块重复拼字符串。
 const QUALITY_RULE_DATABASE_TYPE: Record<string, string> = {
   glossary: "glossary",
   pre_replacement: "pre_translation_replacement",
   post_replacement: "post_translation_replacement",
   text_preserve: "text_preserve",
 };
+// 启用开关来自 meta，缺失时按不同规则的旧默认值兜底。
 const QUALITY_RULE_ENABLED_META_KEY: Record<string, string> = {
   glossary: "glossary_enable",
   pre_replacement: "pre_translation_replacement_enable",
   post_replacement: "post_translation_replacement_enable",
 };
+// prompt stage 只输出翻译和分析两类模板，顺序用于稳定前端 diff。
 const PROMPT_TASK_TYPES = ["translation", "analysis"] as const;
+// prompt 公开 key 与数据库物理 type 不同，读取时必须经由该映射。
 const PROMPT_DATABASE_TYPE: Record<string, string> = {
   analysis: "analysis_prompt",
   translation: "translation_prompt",
@@ -99,6 +107,7 @@ const VALID_ITEM_STATUS_VALUES = new Set([
 
 // analysis summary 只统计可分析条目，checkpoint 只接受任务进度使用的三态。
 const ANALYSIS_CHECKPOINT_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
+// 被翻译规则跳过的条目不进入术语分析进度统计。
 const ANALYSIS_SKIPPED_STATUSES = new Set([
   "EXCLUDED",
   "RULE_SKIPPED",
@@ -108,16 +117,6 @@ const ANALYSIS_SKIPPED_STATUSES = new Set([
 
 // 旧 Item.__post_init__ 会按文件类型和原文模式推断 text_type，TS 首包需要等价兜底。
 const TEXT_TYPE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
-const WOLF_PATTERNS = [/@\d+/i, /\\[cus]db\[.+?:.+?:.+?\]/i];
-const RPGMAKER_PATTERNS = [
-  /en\(.{0,8}[vs]\[\d+\].{0,16}\)/i,
-  /if\(.{0,8}[vs]\[\d+\].{0,16}\)/i,
-  /[/\\][a-z]{1,8}[<[][a-z\d]{0,16}[>\]]/i,
-];
-const RENPY_PATTERNS = [
-  /\{[^{\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]*?\}/iu,
-  /\[[^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]*?\]/iu,
-];
 
 /**
  * Electron main 侧项目运行态编码器，只做请求内快照，不持有长期项目缓存。
@@ -204,6 +203,9 @@ export class ProjectRuntimeEncoder {
     return build_project_mutation_ack_from_meta(this.get_all_meta(project_path), updated_sections);
   }
 
+  /**
+   * project block 只暴露加载态和路径，其他会话细节继续留在主进程。
+   */
   private build_project_block(project_state: {
     loaded: boolean;
     projectPath: string;
@@ -420,17 +422,7 @@ export class ProjectRuntimeEncoder {
     if (!TEXT_TYPE_FILE_TYPES.has(file_type)) {
       return "NONE";
     }
-    const src = String(item["src"] ?? "");
-    if (WOLF_PATTERNS.some((pattern) => pattern.test(src))) {
-      return "WOLF";
-    }
-    if (RPGMAKER_PATTERNS.some((pattern) => pattern.test(src))) {
-      return "RPGMAKER";
-    }
-    if (RENPY_PATTERNS.some((pattern) => pattern.test(src))) {
-      return "RENPY";
-    }
-    return "NONE";
+    return infer_text_type_from_source(String(item["src"] ?? ""));
   }
 
   /**

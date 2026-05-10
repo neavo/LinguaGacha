@@ -10,7 +10,7 @@ export type JsonRecord = Record<string, ApiJsonValue>;
 export type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * Python Engine 运行态只描述实时任务事实，不携带公开进度快照。
+ * TS TaskRuntimeState 只描述实时任务事实，不携带公开进度快照。
  */
 export interface TaskEngineStatePayload {
   // status 是 Engine 原始状态字符串，公开快照直接透传这个稳定语义。

@@ -10,8 +10,10 @@ import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ApiGatewayServer } from "./api-gateway-server";
 
+// fake Python 请求只记录代理断言需要的最小 HTTP 事实。
 type FakePyRequest = { method?: string; path?: string; raw: string };
 
+// fake Python server 抽象统一清理入口，避免每个用例直接操作 Node Server。
 interface FakePyServer {
   baseUrl: string;
   close: () => Promise<void>;
@@ -835,7 +837,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * fake Python server 覆盖透明代理、task-executor 窄路由和 Python 上游事件流。
+   * fake Python server 覆盖透明代理、LLM adapter 窄路由和 Python 上游事件流。
    */
   async function start_fake_py_server(_runtime_project_path?: string): Promise<FakePyServer> {
     const requests: FakePyRequest[] = [];
@@ -847,7 +849,7 @@ describe("ApiGatewayServer", () => {
       request.on("end", () => {
         const raw = Buffer.concat(chunks).toString("utf-8");
         requests.push({ method: request.method, path: request.url, raw });
-        if (request.url?.startsWith("/internal/task-executor/")) {
+        if (request.url === "/internal/llm/request") {
           response.writeHead(200, {
             "Access-Control-Allow-Origin": "*",
             "Content-Type": "application/json; charset=utf-8",
@@ -856,13 +858,14 @@ describe("ApiGatewayServer", () => {
             JsonTool.stringifyStrict({
               ok: true,
               data: {
-                items: [],
-                row_count: 0,
                 input_tokens: 0,
                 output_tokens: 0,
-                success: true,
-                status: "OK",
-                dst: "译文",
+                response_result: '{"0":"译文"}',
+                response_think: "",
+                cancelled: false,
+                timeout: false,
+                degraded: false,
+                error: "",
               },
             }),
           );
@@ -918,6 +921,9 @@ describe("ApiGatewayServer", () => {
     };
   }
 
+  /**
+   * 构造可观察 close 事件的上游 SSE，用来验证 Gateway 停止时才关闭 Python 长连。
+   */
   async function start_abortable_event_py_server(): Promise<{
     baseUrl: string;
     close: () => Promise<void>;

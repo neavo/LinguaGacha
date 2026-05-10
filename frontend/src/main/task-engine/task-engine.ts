@@ -10,9 +10,9 @@ import { TaskEventHub } from "../task/task-event-hub";
 import { TaskRuntimeState } from "../task/task-runtime-state";
 import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import {
-  PythonTaskExecutorTransportError,
-  type PythonTaskExecutorClient,
-} from "./python-task-executor-client";
+  WorkUnitExecutorTransportError,
+  type TaskWorkUnitExecutor,
+} from "../task-worker/task-work-unit-executor";
 import type {
   AnalysisWorkUnitResult,
   TaskItemRecord,
@@ -25,35 +25,51 @@ import { TaskPipeline } from "./task-pipeline";
 import { TaskProgressSnapshotTool } from "./task-progress-snapshot";
 import { TaskRunLock } from "./task-run-lock";
 
+// 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断。
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]);
+
+// 跳过状态来自公开 item status，TaskEngine 不再把这些条目派发给 worker。
 const TRANSLATION_SKIPPED_STATUSES = new Set([
   "EXCLUDED",
   "RULE_SKIPPED",
   "LANGUAGE_SKIPPED",
   "DUPLICATED",
 ]);
+
+// 分析和翻译共享跳过语义，避免同一 item 状态被两个任务解释出不同结果。
 const ANALYSIS_SKIPPED_STATUSES = TRANSLATION_SKIPPED_STATUSES;
+
+// 翻译重试次数高于分析，因为翻译支持拆分重试，分析只按 chunk 重试。
 const TRANSLATION_RETRY_LIMIT = 3;
+// 分析失败只重发同一 chunk，过多重试会阻塞后续文件 checkpoint。
 const ANALYSIS_RETRY_LIMIT = 2;
+
+// 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
 const DEFAULT_INPUT_TOKEN_LIMIT = 512;
+// 分析 prompt 额外包含术语抽取说明，默认 token 门槛与翻译保持一致但独立调参。
 const DEFAULT_ANALYSIS_INPUT_TOKEN_LIMIT = 512;
+
+// chunk 拆分优先在句末标点处分割，减少上下文被硬切断的概率。
 const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]);
 
+// TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实。
 interface TaskEngineOptions {
   taskDataService: TaskDataService;
   taskRuntimeState: TaskRuntimeState;
   eventHub: TaskEventHub;
-  executorClient: PythonTaskExecutorClient;
+  executorClient: TaskWorkUnitExecutor;
   configService: ConfigService;
   snapshotBuilder: TaskSnapshotBuilder;
   logManager: LogManager;
 }
 
+// 一次任务启动时冻结配置和模型，运行中不跟随设置页热变更。
 interface TaskRuntimeSnapshot {
   config_snapshot: MutableJsonRecord;
   model: MutableJsonRecord;
 }
 
+// 翻译 context 是 pipeline 的最小工作单元，包含 chunk、preceding 与重试元信息。
 interface TranslationContext {
   work_unit_id: string;
   items: TaskItemRecord[];
@@ -64,17 +80,20 @@ interface TranslationContext {
   is_initial: boolean;
 }
 
+// 翻译提交项只携带可批量写库的数据和 token 累计值。
 interface TranslationCommitEntry {
   items: TaskItemRecord[];
   input_tokens: number;
   output_tokens: number;
 }
 
+// 拆分重试会同时产生新 context 和强制失败条目，两者必须分开提交。
 interface TranslationRetryPlan {
   retry_contexts: TranslationContext[];
   forced_error_items: TaskItemRecord[];
 }
 
+// 分析 item 上下文不传完整 item，防止 worker 误写非分析字段。
 interface AnalysisItemContext {
   item_id: number;
   file_path: string;
@@ -83,6 +102,7 @@ interface AnalysisItemContext {
   previous_status: string | null;
 }
 
+// 分析 context 按文件路径聚合，日志和候选 first_seen_index 都依赖稳定顺序。
 interface AnalysisContext {
   work_unit_id: string;
   file_path: string;
@@ -90,6 +110,7 @@ interface AnalysisContext {
   retry_count: number;
 }
 
+// 分析提交项把 checkpoint、候选和进度 delta 分开，避免提交时再次推导。
 interface AnalysisCommitEntry {
   success_checkpoints: MutableJsonRecord[];
   error_checkpoints: MutableJsonRecord[];
@@ -104,14 +125,18 @@ interface AnalysisCommitEntry {
  * Electron main 的后台任务执行权威，持有生命周期、调度、限流、停止、重试和提交循环。
  */
 export class TaskEngine {
+  // task_data_service 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database。
   private readonly task_data_service: TaskDataService;
   private readonly task_runtime_state: TaskRuntimeState;
   private readonly event_hub: TaskEventHub;
-  private readonly executor_client: PythonTaskExecutorClient;
+  // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果。
+  private readonly executor_client: TaskWorkUnitExecutor;
   private readonly config_service: ConfigService;
   private readonly snapshot_builder: TaskSnapshotBuilder;
   private readonly log_manager: LogManager;
+  // run_lock 是整场任务互斥与停止信号的唯一权威。
   private readonly run_lock = new TaskRunLock();
+  // request_in_flight_count 只表达实时网络压力，不落库也不参与恢复。
   private request_in_flight_count = 0;
 
   /**
@@ -186,7 +211,9 @@ export class TaskEngine {
       },
       new AbortController().signal,
     );
-    return response;
+    this.emit_work_unit_logs(response.logs);
+    const { logs: _logs, ...public_response } = response;
+    return public_response;
   }
 
   /**
@@ -215,6 +242,7 @@ export class TaskEngine {
     try {
       this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
+      this.log_task_run_start("翻译任务", runtime.model);
       const payload = this.task_data_service.get_translation_items({ mode });
       const all_items = this.normalize_record_list(payload["items"]);
       const meta = this.normalize_record(payload["meta"]);
@@ -254,6 +282,7 @@ export class TaskEngine {
         this.log_task_error("TS 翻译任务执行失败。", error);
       }
     } finally {
+      this.log_task_run_finish("翻译任务", final_status);
       await this.finish_run(handle, final_status);
     }
   }
@@ -270,6 +299,7 @@ export class TaskEngine {
     try {
       this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
+      this.log_task_run_start("分析任务", runtime.model);
       if (mode === "NEW" || mode === "RESET") {
         this.task_data_service.reset_analysis_progress({});
       }
@@ -309,6 +339,7 @@ export class TaskEngine {
         this.log_task_error("TS 分析任务执行失败。", error);
       }
     } finally {
+      this.log_task_run_finish("分析任务", final_status);
       await this.finish_run(handle, final_status);
     }
   }
@@ -325,6 +356,7 @@ export class TaskEngine {
     try {
       this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
+      this.log_task_run_start("重翻任务", runtime.model);
       const payload = this.task_data_service.get_retranslate_items({
         item_ids: item_ids as unknown as ApiJsonValue,
       });
@@ -360,6 +392,7 @@ export class TaskEngine {
         this.log_task_error("TS 重翻任务执行失败。", error);
       }
     } finally {
+      this.log_task_run_finish("重翻任务", final_status);
       await this.finish_run(handle, final_status);
     }
   }
@@ -399,6 +432,7 @@ export class TaskEngine {
           signal,
         ),
     );
+    this.emit_work_unit_logs(result.logs);
     return this.build_translation_worker_result(context, result);
   }
 
@@ -427,6 +461,7 @@ export class TaskEngine {
         signal,
       ),
     );
+    this.emit_work_unit_logs(result.logs);
     return this.build_analysis_worker_result(context, result);
   }
 
@@ -460,6 +495,7 @@ export class TaskEngine {
           signal,
         ),
     );
+    this.emit_work_unit_logs(result.logs);
     if (result.items.length === 0 && result.row_count === 0) {
       return this.build_translation_worker_result(context, result);
     }
@@ -485,7 +521,7 @@ export class TaskEngine {
     try {
       return await this.call_with_limiter(handle, limiter, signal, callback);
     } catch (error) {
-      if (signal.aborted || !(error instanceof PythonTaskExecutorTransportError)) {
+      if (signal.aborted || !(error instanceof WorkUnitExecutorTransportError)) {
         throw error;
       }
       return {
@@ -1318,6 +1354,54 @@ export class TaskEngine {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
+  }
+
+  /**
+   * 任务启动日志保留旧 Py 侧“API 名称 / 地址 / 模型”三行诊断，方便对照迁移前日志。
+   */
+  private log_task_run_start(task_label: string, model: MutableJsonRecord): void {
+    this.append_log(
+      "info",
+      `${task_label}启动\nAPI 名称 - ${String(model["name"] ?? "")}\nAPI 地址 - ${String(
+        model["api_url"] ?? "",
+      )}\n模型 - ${String(model["model_id"] ?? "")}`,
+      "ts-task-engine",
+    );
+  }
+
+  /**
+   * 任务终态日志和公开 task.status_changed 分开写，避免只看日志时丢失收尾信息。
+   */
+  private log_task_run_finish(task_label: string, status: string): void {
+    const message =
+      status === "DONE"
+        ? `${task_label}完成。`
+        : status === "IDLE"
+          ? `${task_label}已停止。`
+          : `${task_label}失败。`;
+    this.append_log(status === "ERROR" ? "warning" : "info", message, "ts-task-engine");
+  }
+
+  /**
+   * worker 返回的日志仍由 main 侧 LogManager 写出，保证文件、控制台和日志窗口三类目标不分叉。
+   */
+  private emit_work_unit_logs(
+    logs?: Array<{ level: "info" | "warning" | "error"; message: string }>,
+  ): void {
+    if (logs === undefined) {
+      return;
+    }
+    for (const entry of logs) {
+      this.append_log(entry.level, entry.message, "ts-task-worker");
+    }
+  }
+
+  /**
+   * 测试桩可能只实现部分日志方法；生产环境仍会走完整 LogManager。
+   */
+  private append_log(level: "info" | "warning" | "error", message: string, source: string): void {
+    const log_manager = this.log_manager as Partial<Pick<LogManager, "info" | "warning" | "error">>;
+    log_manager[level]?.(message, { source });
   }
 
   /**

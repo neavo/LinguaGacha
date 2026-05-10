@@ -6,14 +6,14 @@ from http.server import ThreadingHTTPServer
 from api.Application.EventStreamService import EventStreamService
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.ModelProbeAppService import ModelProbeAppService
-from api.Application.TaskExecutorAppService import TaskExecutorAppService
+from api.Application.LlmRequestAppService import LlmRequestAppService
 from api.Bridge.ProjectPatchEventBridge import ProjectPatchEventBridge
 from api.Server.CoreApiServer import CoreApiServer
 from api.Server.CoreApiPortCatalog import CoreApiPortCatalog
 from api.Server.Routes.EventRoutes import EventRoutes
 from api.Server.Routes.LifecycleRoutes import LifecycleRoutes
 from api.Server.Routes.ModelProbeRoutes import ModelProbeRoutes
-from api.Server.Routes.TaskExecutorRoutes import TaskExecutorRoutes
+from api.Server.Routes.LlmRequestRoutes import LlmRequestRoutes
 
 
 class ServerBootstrap:
@@ -42,7 +42,7 @@ class ServerBootstrap:
         cls,
         *,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
-        task_executor_app_service: TaskExecutorAppService | None = None,
+        llm_request_app_service: LlmRequestAppService | None = None,
     ) -> ServerRuntime:
         """应用 UI 模式使用的默认启动入口。"""
 
@@ -50,7 +50,7 @@ class ServerBootstrap:
         return cls.start_for_test(
             model_probe_app_service=model_probe_app_service,
             core_lifecycle_app_service=core_lifecycle_app_service,
-            task_executor_app_service=task_executor_app_service,
+            llm_request_app_service=llm_request_app_service,
             candidate_ports=CoreApiPortCatalog.load_candidates(),
             as_runtime=True,
         )
@@ -61,7 +61,7 @@ class ServerBootstrap:
         *,
         model_probe_app_service: ModelProbeAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
-        task_executor_app_service: TaskExecutorAppService | None = None,
+        llm_request_app_service: LlmRequestAppService | None = None,
         candidate_ports: tuple[int, ...] | None = None,
         as_runtime: bool = False,
     ) -> tuple[str, Callable[[], None]] | ServerRuntime:
@@ -77,7 +77,7 @@ class ServerBootstrap:
             candidate_ports=resolved_candidate_ports,
             model_probe_app_service=model_probe_app_service,
             core_lifecycle_app_service=core_lifecycle_app_service,
-            task_executor_app_service=task_executor_app_service,
+            llm_request_app_service=llm_request_app_service,
             event_stream_service=event_stream_service,
         )
         serve_forever_poll_interval = cls.get_serve_forever_poll_interval(
@@ -115,7 +115,7 @@ class ServerBootstrap:
         candidate_ports: tuple[int, ...],
         model_probe_app_service: ModelProbeAppService | None,
         core_lifecycle_app_service: CoreLifecycleAppService | None,
-        task_executor_app_service: TaskExecutorAppService | None,
+        llm_request_app_service: LlmRequestAppService | None,
         event_stream_service: EventStreamService,
     ) -> ThreadingHTTPServer:
         """按候选端口顺序尝试绑定，确保前后端发现顺序一致。"""
@@ -128,7 +128,7 @@ class ServerBootstrap:
                 core_api_server,
                 model_probe_app_service=model_probe_app_service,
                 core_lifecycle_app_service=core_lifecycle_app_service,
-                task_executor_app_service=task_executor_app_service,
+                llm_request_app_service=llm_request_app_service,
                 event_stream_service=event_stream_service,
             )
 
@@ -148,7 +148,7 @@ class ServerBootstrap:
         *,
         model_probe_app_service: ModelProbeAppService | None = None,
         core_lifecycle_app_service: CoreLifecycleAppService | None = None,
-        task_executor_app_service: TaskExecutorAppService | None = None,
+        llm_request_app_service: LlmRequestAppService | None = None,
         event_stream_service: EventStreamService | None = None,
     ) -> None:
         """统一收口 API 路由注册入口，确保服务端只暴露单一版本边界。"""
@@ -156,8 +156,8 @@ class ServerBootstrap:
         del cls
         if core_lifecycle_app_service is not None:
             LifecycleRoutes.register(core_api_server, core_lifecycle_app_service)
-        if task_executor_app_service is not None:
-            TaskExecutorRoutes.register(core_api_server, task_executor_app_service)
+        if llm_request_app_service is not None:
+            LlmRequestRoutes.register(core_api_server, llm_request_app_service)
         if event_stream_service is not None:
             EventRoutes.register(core_api_server, event_stream_service)
         if model_probe_app_service is not None:

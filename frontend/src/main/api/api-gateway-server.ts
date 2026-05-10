@@ -27,7 +27,7 @@ import { TaskRuntimeState } from "../task/task-runtime-state";
 import { TaskService } from "../task/task-service";
 import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
 import { TaskEngine } from "../task-engine/task-engine";
-import { PythonTaskExecutorClient } from "../task-engine/python-task-executor-client";
+import { TaskWorkerPool } from "../task-worker/task-worker-pool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
   close_http_server_with_connections,
@@ -52,12 +52,14 @@ const CORS_ALLOWED_HEADERS = `Content-Type, ${LOG_APPEND_TOKEN_HEADER_NAME}`;
 export interface ApiGatewayServerOptions {
   // appRoot 决定版本、预设和用户数据路径解析，不在路由层重新猜测。
   appRoot: string;
+  // publicPort 由生命周期端口分配器保证唯一，Gateway 只按该端口监听。
   publicPort: number;
   // Python Core 地址与 token 只给 Gateway 代理和内部桥使用。
   pyCoreBaseUrl: string;
   pyCoreToken: string;
   // database 由生命周期层注入，Gateway 不负责创建或关闭 .lg 物理存储。
   database: ProjectDatabase;
+  // logManager 是日志窗口、SSE 和 Python 兼容提交层的唯一汇聚点。
   logManager: LogManager;
 }
 
@@ -70,7 +72,7 @@ export class ApiGatewayServer {
   // instance token 用来让 renderer 探活时识别当前 Gateway 实例，避免误连旧进程。
   private readonly instance_token = crypto.randomBytes(24).toString("hex");
 
-  // 公开项目 loaded/path 由 Gateway 持有，Python 只保留任务和文件运行时状态。
+  // 公开项目 loaded/path 由 Gateway 持有，Python 只保留内部兼容状态与 LLM adapter 能力。
   private readonly project_session_state = new ProjectSessionState();
 
   // 任务 busy / 请求中数量 / 重翻条目由 TS Gateway 维护，不再按需查询 Python。
@@ -81,6 +83,9 @@ export class ApiGatewayServer {
 
   // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭。
   private server: Server | null = null;
+
+  // task_worker_pool 持有 worker_threads，Gateway stop 时必须主动释放。
+  private task_worker_pool: TaskWorkerPool | null = null;
 
   // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断。
   private readonly server_sockets = new Set<Socket>();
@@ -132,6 +137,8 @@ export class ApiGatewayServer {
   public async stop(): Promise<void> {
     this.event_hub?.stop();
     this.event_hub = null;
+    await this.task_worker_pool?.dispose();
+    this.task_worker_pool = null;
     const server = this.server;
     this.server = null;
     if (server === null) {
@@ -191,10 +198,12 @@ export class ApiGatewayServer {
       this.task_runtime_state,
       event_hub,
     );
-    const executor_client = new PythonTaskExecutorClient({
+    const executor_client = new TaskWorkerPool({
+      appRoot: this.options.appRoot,
       pyCoreBaseUrl: this.options.pyCoreBaseUrl,
       pyCoreToken: this.options.pyCoreToken,
     });
+    this.task_worker_pool = executor_client;
     const task_engine = new TaskEngine({
       taskDataService: task_data_service,
       taskRuntimeState: this.task_runtime_state,

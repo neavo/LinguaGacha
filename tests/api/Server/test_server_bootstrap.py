@@ -6,7 +6,7 @@ import pytest
 
 from api.Application.CoreLifecycleAppService import CoreLifecycleAppService
 from api.Application.ModelProbeAppService import ModelProbeAppService
-from api.Application.TaskExecutorAppService import TaskExecutorAppService
+from api.Application.LlmRequestAppService import LlmRequestAppService
 from api.Contract.ApiPaths import ModelApiPaths
 from api.Contract.ApiPaths import QualityApiPaths
 from api.Contract.ApiPaths import SettingsApiPaths
@@ -111,11 +111,8 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         core_lifecycle_app_service=SimpleNamespace(
             shutdown=lambda request, handler: {"accepted": True},
         ),
-        task_executor_app_service=SimpleNamespace(
-            execute_translation_chunk=lambda request, handler: {"row_count": 0},
-            execute_analysis_chunk=lambda request, handler: {"success": True},
-            execute_retranslate_item=lambda request, handler: {"row_count": 0},
-            execute_translate_single=lambda request, handler: {"success": True},
+        llm_request_app_service=SimpleNamespace(
+            request=lambda request, handler: {"response_result": "ok"},
         ),
     )
 
@@ -127,8 +124,7 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
             ("POST", ModelApiPaths.LIST_AVAILABLE_PATH),
             ("POST", ModelApiPaths.TEST_PATH),
             ("POST", "/api/lifecycle/shutdown"),
-            ("POST", "/internal/task-executor/translation-chunk"),
-            ("POST", "/internal/task-executor/translate-single"),
+            ("POST", "/internal/llm/request"),
         )
     }
 
@@ -137,8 +133,7 @@ def test_register_api_routes_delegates_active_route_groups() -> None:
         ModelApiPaths.LIST_AVAILABLE_PATH: "json",
         ModelApiPaths.TEST_PATH: "json",
         "/api/lifecycle/shutdown": "context_json",
-        "/internal/task-executor/translation-chunk": "context_json",
-        "/internal/task-executor/translate-single": "context_json",
+        "/internal/llm/request": "context_json",
     }
 
 
@@ -176,40 +171,28 @@ def test_start_for_test_registers_model_probe_routes() -> None:
         shutdown()
 
 
-def test_task_executor_routes_require_explicit_service() -> None:
+def test_llm_request_route_requires_explicit_service() -> None:
     # Arrange
-    service = TaskExecutorAppService(instance_token="core-token")
-    base_url, shutdown = ServerBootstrap.start_for_test(
-        task_executor_app_service=service
-    )
+    service = LlmRequestAppService(instance_token="core-token")
+    base_url, shutdown = ServerBootstrap.start_for_test(llm_request_app_service=service)
     model = {"id": "model-1", "api_format": "OpenAI", "model_id": "gpt-test"}
     payload = {
         "run_id": "run-1",
         "work_unit_id": "unit-1",
-        "task_type": "translation",
         "model": model,
         "config_snapshot": {"activate_model_id": "model-1", "models": [model]},
-        "quality_snapshot": {},
-        "items": [],
-        "precedings": [],
+        "messages": [{"role": "user", "content": "原文"}],
     }
 
     try:
         # Act
         rejected_response = httpx.post(
-            f"{base_url}/internal/task-executor/translation-chunk",
+            f"{base_url}/internal/llm/request",
             json=payload,
-        )
-        accepted_response = httpx.post(
-            f"{base_url}/internal/task-executor/translation-chunk",
-            json=payload,
-            headers={TaskExecutorAppService.TOKEN_HEADER: "core-token"},
         )
 
         # Assert
         assert rejected_response.status_code == 400
-        assert accepted_response.status_code == 200
-        assert accepted_response.json()["data"]["row_count"] == 0
     finally:
         shutdown()
 

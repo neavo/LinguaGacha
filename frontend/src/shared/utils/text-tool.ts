@@ -1,3 +1,6 @@
+import { is_fullwidth_code_point } from "../rules/languages";
+
+// 所有字符范围都用闭区间 code point 表达，避免 UTF-16 下标影响全角字符判断。
 type CodePointRange = readonly [number, number];
 
 // CJK 全角标点范围与 Py TextHelper 保持一致。
@@ -147,7 +150,7 @@ export class TextTool {
     let total = 0;
     for (const char of text) {
       const cp = char.codePointAt(0) ?? 0;
-      total += this.is_fullwidth_code_point(cp) ? 2 : 1;
+      total += is_fullwidth_code_point(cp) ? 2 : 1;
     }
     return total;
   }
@@ -213,32 +216,15 @@ export class TextTool {
       return strip_utf8_bom(new TextDecoder("utf-8").decode(content));
     }
   }
-
-  /**
-   * 全角范围判断用于显示长度估算，不参与语言学意义上的字符分类。
-   */
-  private static is_fullwidth_code_point(code_point: number): boolean {
-    return (
-      code_point >= 0x1100 &&
-      (code_point <= 0x115f ||
-        code_point === 0x2329 ||
-        code_point === 0x232a ||
-        (code_point >= 0x2e80 && code_point <= 0xa4cf && code_point !== 0x303f) ||
-        (code_point >= 0xac00 && code_point <= 0xd7a3) ||
-        (code_point >= 0xf900 && code_point <= 0xfaff) ||
-        (code_point >= 0xfe10 && code_point <= 0xfe19) ||
-        (code_point >= 0xfe30 && code_point <= 0xfe6f) ||
-        (code_point >= 0xff00 && code_point <= 0xff60) ||
-        (code_point >= 0xffe0 && code_point <= 0xffe6) ||
-        (code_point >= 0x20000 && code_point <= 0x3fffd))
-    );
-  }
 }
 
 // 兼容旧调用点的函数式导出，真实实现仍收口在 TextTool 类上。
 export const is_cjk_punctuation_character = TextTool.is_cjk_punctuation_character.bind(TextTool);
+// 拉丁标点函数式导出用于旧规则模块迁移期复用。
 export const is_latin_punctuation_character =
   TextTool.is_latin_punctuation_character.bind(TextTool);
+// 特殊标点函数式导出保留项目约定符号判断。
 export const is_special_punctuation_character =
   TextTool.is_special_punctuation_character.bind(TextTool);
+// 统一标点函数式导出是旧 Python helper 迁移后的兼容入口。
 export const is_punctuation_character = TextTool.is_punctuation_character.bind(TextTool);
