@@ -44,11 +44,11 @@ flowchart LR
 | API -> Data | 公开工程事实、规则、分析与校对辅助由 TS project / service / task data 域通过 database workflow 提供；Python 兼容数据门面仍只经 `module/Data` 访问 | 防止 API 层直接拼装会话与数据库 |
 | API -> Engine | 后台任务启动、停止、进度与终态语义由 `module/Engine` 提供 | 防止数据层和界面层偷持任务生命周期 |
 | File format | 公开文件解析与写回统一落在 `frontend/src/main/file/`，包括 EPUB AST / legacy 写回兼容 | 防止格式实现分散到 Python Core 或 API 编排层 |
-| Data -> Database | Python 任务热路径通过 `TaskDataClient` 回到 TS Gateway，Python 兼容数据门面只通过 `module/Data/Database/DatabaseGateway.py` 调 Electron main 内部 database workflow；SQL / 事务 / `.lg` asset 读写只落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只落在 `frontend/src/utils/zstd-tool.ts`，`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts` | 防止事务、schema 与压缩格式在 Python / TS 两侧并行 |
+| Data -> Database | Python 任务热路径通过 `TaskDataClient` 回到 TS Gateway，Python 兼容数据门面只通过 `module/Data/Database/DatabaseGateway.py` 调 Electron main 内部 database workflow；SQL / 事务 / `.lg` asset 读写只落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts` | 防止事务、schema 与压缩格式在 Python / TS 两侧并行 |
 
 仓库级不变量：
 - Electron 运行时公开协议只允许落在 TS Gateway 的 `/api/` 前缀；Python Core 退为 Electron main 内部服务，不能把内部端口暴露给 preload 或 renderer。
-- SQL、事务和 `.lg` 内 asset 读写只允许落在 Electron main 的 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/utils/zstd-tool.ts`；`.lg` 打开期 schema migration 与旧物理格式兼容规则只允许落在 `frontend/src/main/migration/`；API 层不得直接持有 database handle 或 `ProjectSession`。
+- SQL、事务和 `.lg` 内 asset 读写只允许落在 Electron main 的 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`；`.lg` 打开期 schema migration 与旧物理格式兼容规则只允许落在 `frontend/src/main/migration/`；API 层不得直接持有 database handle 或 `ProjectSession`。
 - 长期用户文案分成两处维护：Python Core 在 `module/Localizer/`，渲染层在 `frontend/src/renderer/i18n/`。
 - 跨层载荷优先传 `id`、值对象或不可变快照，不共享可变对象引用。
 

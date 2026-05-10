@@ -2,7 +2,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import { TextTool } from "../../../utils/text-tool";
+import { TextTool } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   group_items,

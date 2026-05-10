@@ -29,7 +29,7 @@
 - 页面消费 bootstrap + `project.patch`，不是整页快照轮询
 - 同一业务语义只允许一个权威来源与一个写入口，跨线程、跨模块、跨前后端只传 `id`、值对象或不可变快照，禁止共享可变对象引用
 - 新增状态前先判断它属于 `ProjectSession`、领域 service、`DataManager`、`ProjectStore`，还是页面本地状态
-- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/utils/zstd-tool.ts`，`.lg` 打开期 schema / 旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`，Python Core 只能通过 `module/Data/Database/DatabaseGateway.py` 访问，API 层不得直接操作 database workflow，不得持有 `ProjectSession`
+- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema / 旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`，Python Core 只能通过 `module/Data/Database/DatabaseGateway.py` 访问，API 层不得直接操作 database workflow，不得持有 `ProjectSession`
 - 前端职责、导航、组件、样式与文案归属以 [`docs/FRONTEND.md`](docs/FRONTEND.md) 为唯一权威
 
 ## 3. 编码硬约束

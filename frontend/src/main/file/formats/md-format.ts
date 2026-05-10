@@ -1,4 +1,4 @@
-import { TextTool } from "../../../utils/text-tool";
+import { TextTool } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   build_target_path,

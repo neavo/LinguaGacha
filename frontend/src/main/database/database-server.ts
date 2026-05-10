@@ -4,7 +4,7 @@ import type { Socket } from "node:net";
 
 import { DatabaseConflictError, ProjectDatabase } from "./database-operations";
 import type { DatabaseEnvelope, DatabaseOperation } from "./database-types";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import { write_electron_main_error } from "../log/log-bridge";
 import {
   close_http_server_with_connections,

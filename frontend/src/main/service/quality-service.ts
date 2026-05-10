@@ -9,7 +9,7 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "./path-service";
 import { ConfigService } from "./config-service";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,

@@ -8,7 +8,7 @@ import {
   isQualityStatisticsStaleError,
   type QualityStatisticsTaskExecutor,
 } from "@/project/quality/quality-statistics-worker-pool";
-import { JsonTool } from "../../../utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 
 export type QualityStatisticsAutoTextSource = "src" | "dst";
 

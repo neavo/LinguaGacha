@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
 import { DatabaseServer } from "./database-server";

@@ -27,7 +27,7 @@ import { TaskEventHub } from "../task/task-event-hub";
 import { TaskRuntimeState } from "../task/task-runtime-state";
 import { TaskService } from "../task/task-service";
 import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import {
   close_http_server_with_connections,
   track_http_server_connections,

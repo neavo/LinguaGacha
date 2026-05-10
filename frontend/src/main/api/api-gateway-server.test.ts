@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import { ApiGatewayServer } from "./api-gateway-server";
 
 type FakePyRequest = { method?: string; path?: string; raw: string };

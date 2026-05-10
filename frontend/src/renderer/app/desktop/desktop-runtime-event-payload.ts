@@ -2,7 +2,7 @@ import {
   isProjectStoreStage,
   type ProjectStoreSectionRevisions,
 } from "@/project/store/project-store";
-import { JsonTool } from "../../../utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 
 export function parse_event_payload(event: MessageEvent<string>): Record<string, unknown> {
   try {

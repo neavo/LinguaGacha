@@ -9,7 +9,7 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-
 import type { LogManager } from "../log/log-manager";
 import type { ConfigService } from "../service/config-service";
 import { AppPathService } from "../service/path-service";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
 import { ProjectSessionState } from "./project-session-state";
 

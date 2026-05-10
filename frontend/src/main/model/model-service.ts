@@ -10,7 +10,7 @@ import {
   resolve_active_model_id,
   type ModelRecord,
 } from "./model-config-resolver";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 
 const MODEL_TYPE_SORT_ORDER: Record<string, number> = {
   PRESET: 0,

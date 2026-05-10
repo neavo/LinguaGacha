@@ -39,6 +39,7 @@ const config = {
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "src/renderer"),
+        "@shared": path.resolve(__dirname, "src/shared"),
       },
     },
     plugins: [react(), tailwindcss()],

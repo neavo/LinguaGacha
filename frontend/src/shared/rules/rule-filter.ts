@@ -1,4 +1,4 @@
-import { is_punctuation_character } from "../../../utils/text-tool";
+import { is_punctuation_character } from "../utils/text-tool";
 
 // 统一兼容 Windows、Unix 和旧 Mac 换行，确保多行过滤判断稳定。
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/gu;

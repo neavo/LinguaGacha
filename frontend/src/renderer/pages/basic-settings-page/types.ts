@@ -4,7 +4,7 @@ import {
   ALL_LANGUAGE_CODE,
   SOURCE_TARGET_LANGUAGE_CODES,
   type SourceTargetLanguageCode,
-} from "@/project/rules/languages";
+} from "@shared/rules/languages";
 
 export const ALL_LANGUAGE_VALUE = ALL_LANGUAGE_CODE;
 

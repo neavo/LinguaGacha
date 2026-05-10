@@ -6,8 +6,8 @@ import {
   normalize_runtime_project_item_record,
   type RuntimeProjectItemRecord,
 } from "@/project/reset/reset-state-builders";
-import { should_skip_by_language_filter } from "@/project/rules/language-filter";
-import { should_skip_by_rule_filter } from "@/project/rules/rule-filter";
+import { should_skip_by_language_filter } from "@shared/rules/language-filter";
+import { should_skip_by_rule_filter } from "@shared/rules/rule-filter";
 
 type ProjectPrefilterFileRecord = {
   rel_path: string;

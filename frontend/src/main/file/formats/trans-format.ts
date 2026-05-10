@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import { JsonTool } from "../../../utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 import { group_items, write_text_file, type ExportPaths } from "./file-format-shared";
 import {
   normalize_file_item,

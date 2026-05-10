@@ -5,8 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { JsonTool } from "../../utils/json-tool";
-import { ZstdTool } from "../../utils/zstd-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
+import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { ProjectDatabase } from "./database-operations";
 
 let temp_dir = "";

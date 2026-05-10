@@ -1,4 +1,4 @@
-import { JsonTool } from "../../../utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 
 type ApiEnvelope<data_type> = {
   ok: boolean;

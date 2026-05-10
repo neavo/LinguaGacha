@@ -1,7 +1,7 @@
 import type { LogManager } from "../log/log-manager";
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectPatchAdapter } from "../project/project-patch-adapter";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import { TaskRuntimeState } from "./task-runtime-state";
 import type { JsonRecord } from "./task-types";
 

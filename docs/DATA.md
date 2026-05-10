@@ -59,11 +59,11 @@ flowchart TD
 
 ## `.lg` 物理存储唯一落点
 
-- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/utils/zstd-tool.ts`；`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`。
+- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`；Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`；`.lg` 打开期 schema 与旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`。
 - Python Core 不直接导入 `sqlite3`，不理解 `.lg` 内压缩格式；任务热路径通过 `TaskDataClient` 调 TS Gateway，仍需兼容旧数据门面时只通过 `module/Data/Database/DatabaseGateway.py` 调内部 HTTP database workflow。
 - `ProjectSession` 是 Python 数据门面的会话状态容器，不再是任务热路径的 loaded/path 权威。
 - API 层不得直接持有 database handle，也不得直接持有 `ProjectSession`。
-- 若某个新需求看起来需要“在 Python 里顺手写一条 SQL”，说明落点已经错了；database workflow 回到 `frontend/src/main/database/`，Zstd 参数化工具回到 `frontend/src/utils/zstd-tool.ts`，打开期迁移规则回到 `frontend/src/main/migration/`，再由 `DatabaseGateway` 暴露窄入口。
+- 若某个新需求看起来需要“在 Python 里顺手写一条 SQL”，说明落点已经错了；database workflow 回到 `frontend/src/main/database/`，Zstd 参数化工具回到 `frontend/src/shared/utils/zstd-tool.ts`，打开期迁移规则回到 `frontend/src/main/migration/`，再由 `DatabaseGateway` 暴露窄入口。
 
 ## 典型数据流
 

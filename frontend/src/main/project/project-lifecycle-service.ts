@@ -7,7 +7,7 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-
 import type { LogManager } from "../log/log-manager";
 import type { ConfigService } from "../service/config-service";
 import type { AppPathService } from "../service/path-service";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 

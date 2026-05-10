@@ -1,5 +1,5 @@
-import { JsonTool } from "../../../utils/json-tool";
-import { TextTool } from "../../../utils/text-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
+import { TextTool } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   group_items,

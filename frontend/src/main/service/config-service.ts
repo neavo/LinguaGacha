@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "./path-service";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 
 type ConfigRecord = Record<string, ApiJsonValue>;
 

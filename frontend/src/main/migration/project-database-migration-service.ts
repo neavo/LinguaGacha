@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
 

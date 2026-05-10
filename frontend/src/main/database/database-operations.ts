@@ -6,8 +6,8 @@ import {
   PROJECT_DATABASE_SCHEMA_VERSION,
   ProjectDatabaseMigrationService,
 } from "../migration/project-database-migration-service";
-import { ZstdTool } from "../../utils/zstd-tool";
-import { JsonTool } from "../../utils/json-tool";
+import { ZstdTool } from "../../shared/utils/zstd-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
 
 type DatabaseRow = Record<string, unknown>;

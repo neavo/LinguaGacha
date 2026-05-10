@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { JsonTool } from "../../utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 
 /**
  * CoreBridgeClient 只接收内部 Core 地址和 token，不暴露到 preload/renderer。

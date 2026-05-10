@@ -17,7 +17,7 @@ import {
   getSharedQualityStatisticsWorkerPool,
   type QualityStatisticsTaskExecutor,
 } from "@/project/quality/quality-statistics-worker-pool";
-import { JsonTool } from "../../../utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 
 type RefreshPriority = "warmup" | "background" | "foreground";
 

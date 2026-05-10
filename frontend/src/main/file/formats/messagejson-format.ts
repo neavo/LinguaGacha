@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import { JsonTool } from "../../../utils/json-tool";
-import { TextTool } from "../../../utils/text-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
+import { TextTool } from "../../../shared/utils/text-tool";
 import type { ApiJsonValue } from "../../api/api-types";
 import {
   effective_export_text,

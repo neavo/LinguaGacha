@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { JsonTool } from "../../../utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 
 /**
  * 模拟 EventSource 行为，隔离桌面 API 流测试对浏览器实现的依赖。

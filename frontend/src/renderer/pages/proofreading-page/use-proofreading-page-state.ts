@@ -38,7 +38,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
-import { JsonTool } from "../../../utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
