@@ -46,7 +46,7 @@ function send_json(
 }
 
 function build_error_envelope(error: unknown): DatabaseEnvelope {
-  // 内部 HTTP 边界仍返回稳定错误壳，避免 Python 侧解析 Node 异常结构。
+  // 内部 HTTP 边界仍返回稳定错误壳，避免调用方解析 Node 异常结构。
   if (error instanceof DatabaseConflictError) {
     return { ok: false, error: { code: "database_conflict", message: error.message } };
   }
@@ -175,7 +175,7 @@ export class DatabaseServer {
       }
 
       if (url.pathname === "/internal/database/transaction") {
-        // Python 只负责排队，BEGIN/COMMIT/ROLLBACK 必须在同一个 DB handle 内完成。
+        // 调用方只负责排队，BEGIN/COMMIT/ROLLBACK 必须在同一个 DB handle 内完成。
         const operations = Array.isArray(body["operations"])
           ? (body["operations"] as DatabaseOperation[])
           : [];
@@ -184,7 +184,7 @@ export class DatabaseServer {
       }
 
       if (url.pathname === "/internal/database/read-asset-content") {
-        // bytes 响应不包 JSON，避免大文件 base64 膨胀后再回到 Python。
+        // bytes 响应不包 JSON，避免大文件 base64 膨胀后再回到调用方。
         const project_path = typeof body["projectPath"] === "string" ? body["projectPath"] : "";
         const asset_path = typeof body["path"] === "string" ? body["path"] : "";
         const content = this.database.read_asset_content(project_path, asset_path);

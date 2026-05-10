@@ -94,7 +94,7 @@ export class TaskService {
   }
 
   /**
-   * 启动分析任务；mode 校验保持和 Python AnalysisMode 枚举一致。
+   * 启动分析任务；mode 校验保持公开任务枚举一致。
    */
   public async start_analysis(request: JsonRecord): Promise<MutableJsonRecord> {
     const mode = this.require_mode(request["mode"], ANALYSIS_MODES, "NEW");
@@ -302,7 +302,7 @@ export class TaskService {
   }
 
   /**
-   * 单条翻译只做基础模型存在性判断；真实请求能力由 Python work-unit executor 负责。
+   * 单条翻译只做基础模型存在性判断；真实请求能力由 work-unit executor 负责。
    */
   private has_active_model(): boolean {
     const config = this.config_service.load_config();

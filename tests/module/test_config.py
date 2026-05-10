@@ -312,75 +312,20 @@ class TestConfigModels:
         assert len(errors) == 1
         assert isinstance(errors[0][1], OSError)
 
-    def test_initialize_models_sets_active_model_id_when_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeManager:
-            def __init__(self) -> None:
-                self.calls: list[tuple[str, object]] = []
-                self.activate_model_id: str = ""
-                self.models: list[dict[str, object]] = []
-
-            def initialize_models(
-                self, models: list[dict[str, object]]
-            ) -> tuple[list[dict[str, object]], int]:
-                self.calls.append(("initialize_models", list(models)))
-                return ([{"id": "m1"}], 2)
-
-            def set_models(self, models: list[dict[str, object]] | None) -> None:
-                self.calls.append(("set_models", models))
-                self.models = list(models or [])
-
-            def set_active_model_id(self, model_id: str) -> None:
-                self.calls.append(("set_active_model_id", model_id))
-                self.activate_model_id = model_id
-
-            def get_models_as_dict(self) -> list[dict[str, object]]:
-                return list(self.models)
-
-        fake = FakeManager()
-        monkeypatch.setattr("module.Config.ModelManager.get", lambda: fake)
-
-        config = Config(app_language=BaseLanguage.Enum.EN, models=None)
+    def test_initialize_models_sets_active_model_id_when_missing(self) -> None:
+        config = Config(app_language=BaseLanguage.Enum.EN, models=[{"id": "m1"}])
         migrated = config.initialize_models()
 
-        assert migrated == 2
+        assert migrated == 0
         assert config.models == [{"id": "m1"}]
         assert config.activate_model_id == "m1"
-        assert fake.activate_model_id == "m1"
 
-    def test_initialize_models_keeps_existing_active_model_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeManager:
-            def __init__(self) -> None:
-                self.activate_model_id: str = ""
-                self.models: list[dict[str, object]] = []
-
-            def initialize_models(
-                self, models: list[dict[str, object]]
-            ) -> tuple[list[dict[str, object]], int]:
-                del models
-                return ([{"id": "m1"}, {"id": "m2"}], 0)
-
-            def set_models(self, models: list[dict[str, object]] | None) -> None:
-                self.models = list(models or [])
-
-            def set_active_model_id(self, model_id: str) -> None:
-                self.activate_model_id = model_id
-
-            def get_models_as_dict(self) -> list[dict[str, object]]:
-                return list(self.models)
-
-        fake = FakeManager()
-        monkeypatch.setattr("module.Config.ModelManager.get", lambda: fake)
-
+    def test_initialize_models_keeps_existing_active_model_id(self) -> None:
         config = Config(activate_model_id="m2", models=[{"id": "m2"}])
         migrated = config.initialize_models()
 
         assert migrated == 0
         assert config.activate_model_id == "m2"
-        assert fake.activate_model_id == "m2"
 
     def test_get_model_and_get_active_model_and_fallbacks(
         self, monkeypatch: pytest.MonkeyPatch
@@ -397,19 +342,7 @@ class TestConfigModels:
 
         assert Config(models=[]).get_active_model() is None
 
-    def test_set_model_updates_existing_and_syncs_to_manager(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeManager:
-            def __init__(self) -> None:
-                self.models: list[dict[str, object]] | None = None
-
-            def set_models(self, models: list[dict[str, object]] | None) -> None:
-                self.models = models
-
-        fake = FakeManager()
-        monkeypatch.setattr("module.Config.ModelManager.get", lambda: fake)
-
+    def test_set_model_updates_existing(self) -> None:
         config = Config(models=[{"id": "m1", "type": "PRESET"}, {"id": "m2"}])
         config.set_model({"id": "m2", "type": "CUSTOM"})
 
@@ -417,40 +350,14 @@ class TestConfigModels:
             {"id": "m1", "type": "PRESET"},
             {"id": "m2", "type": "CUSTOM"},
         ]
-        assert fake.models == config.models
 
-    def test_set_model_keeps_models_when_id_not_found_and_still_syncs(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeManager:
-            def __init__(self) -> None:
-                self.models: list[dict[str, object]] | None = None
-
-            def set_models(self, models: list[dict[str, object]] | None) -> None:
-                self.models = models
-
-        fake = FakeManager()
-        monkeypatch.setattr("module.Config.ModelManager.get", lambda: fake)
-
+    def test_set_model_keeps_models_when_id_not_found(self) -> None:
         config = Config(models=[{"id": "m1", "type": "PRESET"}])
         config.set_model({"id": "missing", "type": "CUSTOM"})
 
         assert config.models == [{"id": "m1", "type": "PRESET"}]
-        assert fake.models == config.models
 
-    def test_set_active_model_id_calls_manager(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class FakeManager:
-            def __init__(self) -> None:
-                self.active_id: str = ""
-
-            def set_active_model_id(self, model_id: str) -> None:
-                self.active_id = model_id
-
-        fake = FakeManager()
-        monkeypatch.setattr("module.Config.ModelManager.get", lambda: fake)
-
+    def test_set_active_model_id_updates_config_field(self) -> None:
         config = Config(models=[{"id": "m1"}], activate_model_id="m1")
         config.set_active_model_id("m2")
-        assert fake.active_id == "m2"
+        assert config.activate_model_id == "m2"

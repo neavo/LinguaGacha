@@ -108,7 +108,7 @@ export class TaskDataService {
   }
 
   /**
-   * 分析任务一次性读取 items、checkpoint、meta 和候选数，供 Python 构建计划。
+   * 分析任务一次性读取 items、checkpoint 和 meta，供 Task Engine 构建计划。
    */
   public get_analysis_context(_request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -138,7 +138,7 @@ export class TaskDataService {
   }
 
   /**
-   * 分析进度快照只写 meta；需要时会附带当前候选数量回给 Python。
+   * 分析进度快照只写 meta；需要时会附带当前候选数量回给 Task Engine。
    */
   public update_analysis_progress(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -159,7 +159,7 @@ export class TaskDataService {
   }
 
   /**
-   * 分析批次提交 checkpoint、候选池与进度，避免 Python 再经 DatabaseGateway 写库。
+   * 分析批次提交 checkpoint、候选池与进度，确保分析写入口仍在 TS 数据服务。
    */
   public commit_analysis_batch(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -210,7 +210,7 @@ export class TaskDataService {
   }
 
   /**
-   * 重翻任务读取指定条目，进入 Python 前重置为待翻译态。
+   * 重翻任务读取指定条目，进入 work unit 前重置为待翻译态。
    */
   public get_retranslate_items(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -292,7 +292,7 @@ export class TaskDataService {
   }
 
   /**
-   * 从当前 meta 构建指定 section revision 响应，供 Python 测试和日志使用。
+   * 从当前 meta 构建指定 section revision 响应，供任务提交回执和日志使用。
    */
   private build_section_revisions(project_path: string, sections: string[]): MutableJsonRecord {
     const meta = this.get_all_meta(project_path);
@@ -452,7 +452,7 @@ export class TaskDataService {
   }
 
   /**
-   * 失败 checkpoint 在 TS 侧补齐错误次数，避免 Python 持有旧 checkpoint 缓存。
+   * 失败 checkpoint 在 TS 侧补齐错误次数，避免 worker 持有旧 checkpoint 缓存。
    */
   private normalize_error_checkpoint_rows(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     const project_path = this.require_loaded_project_path();
@@ -561,7 +561,7 @@ export class TaskDataService {
   }
 
   /**
-   * meta 快照统一转成普通对象，避免 undefined 泄漏到 Python JSON。
+   * meta 快照统一转成普通对象，避免 undefined 泄漏到内部 JSON。
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
     return this.normalize_object(
@@ -594,7 +594,7 @@ export class TaskDataService {
   }
 
   /**
-   * Python 提交的 item payload 必须先收窄为普通对象数组。
+   * work unit 提交的 item payload 必须先收窄为普通对象数组。
    */
   private normalize_items(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     return Array.isArray(value)

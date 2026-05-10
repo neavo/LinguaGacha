@@ -6,13 +6,6 @@ readme = "README.md"
 requires-python = "==3.14.*"
 dependencies = [
     # System
-    "openai",
-    "anthropic",
-    "google-genai",
-    "httpx",
-    "tiktoken",
-
-    # Tools
     "openpyxl",
     "orjson",
     "json-repair",
@@ -20,9 +13,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-build = [
-    "pyinstaller",
-]
 test = [
     "pytest",
     "pytest-cov",
@@ -32,7 +22,7 @@ test = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=module --cov-branch --cov-report=term-missing"
+addopts = "--cov=base --cov=module --cov-branch --cov-report=term-missing"
 
 [tool.coverage.run]
 data_file = "tests/.coverage"

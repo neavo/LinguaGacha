@@ -8,7 +8,7 @@ import { JsonTool } from "../../shared/utils/json-tool";
 type ConfigRecord = Record<string, ApiJsonValue>;
 
 interface SettingsEventPublisher {
-  // settings.changed 是 TS 本地事件，不能再绕回 Python runtime sync。
+  // settings.changed 是 TS 本地事件，避免配置更新绕回旧运行态同步链路。
   publish: (event_type: string, payload: Record<string, ApiJsonValue>) => void;
 }
 
@@ -199,7 +199,7 @@ export class ConfigService {
   }
 
   /**
-   * 设置广播由 TS 直接发布，Python Core 下次任务读取配置文件即可看到最新值。
+   * 设置广播由 TS 直接发布，后续任务读取配置文件即可看到最新值。
    */
   private publish_settings_changed(changed_keys: string[], config: ConfigRecord): void {
     this.event_publisher?.publish("settings.changed", {

@@ -5,20 +5,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectDatabase } from "../database/database-operations";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
-import { JsonTool } from "../../shared/utils/json-tool";
 import { ApiGatewayServer } from "./api-gateway-server";
-
-// fake Python 请求只记录代理断言需要的最小 HTTP 事实。
-type FakePyRequest = { method?: string; path?: string; raw: string };
-
-// fake Python server 抽象统一清理入口，避免每个用例直接操作 Node Server。
-interface FakePyServer {
-  baseUrl: string;
-  close: () => Promise<void>;
-  requests: FakePyRequest[];
-}
 
 describe("ApiGatewayServer", () => {
   // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记。
@@ -32,51 +22,27 @@ describe("ApiGatewayServer", () => {
   });
 
   it("由 TS Gateway 响应公开健康检查", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/health`);
     const body = (await response.json()) as {
       ok?: boolean;
-      data?: { service?: string; version?: string; instanceToken?: string };
+      data?: { service?: string; version?: string };
     };
 
     expect(body.ok).toBe(true);
     expect(body.data?.service).toBe("linguagacha-core");
     expect(body.data?.version).toBe("9.8.7");
-    expect(body.data?.instanceToken).toBe(started.instanceToken);
+    expect(Object.keys(body.data ?? {})).not.toContain("instance" + "Token");
   });
 
-  it("把未迁移 JSON 路由透明代理到内部 Python Core", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+  it("未知 JSON 路由不再代理并返回稳定 not_found", async () => {
+    const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/proxy-target`, {
@@ -84,32 +50,19 @@ describe("ApiGatewayServer", () => {
       headers: { "Content-Type": "application/json" },
       method: "POST",
     });
-    const body = (await response.json()) as {
-      ok?: boolean;
-      data?: { method?: string; raw?: string };
-    };
+    const body = (await response.json()) as { ok?: boolean; error?: { code?: string } };
 
-    expect(body.ok).toBe(true);
-    expect(body.data?.method).toBe("POST");
-    expect(body.data?.raw).toBe('{"value":7}');
+    expect(response.status).toBe(404);
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe("not_found");
   });
 
-  it("P2 项目同步 mutation 由 TS Gateway 直接处理且不转发到 Python Core", async () => {
+  it("P2 项目同步 mutation 由 TS Gateway 直接处理", async () => {
     const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
     const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
     const lg_path = path.join(app_root, "direct-write.lg");
     database.execute({
       name: "createProject",
@@ -133,7 +86,6 @@ describe("ApiGatewayServer", () => {
 
     expect(body.ok).toBe(true);
     expect(body.data?.accepted).toBe(true);
-    expect(get_py_requests_except_event_stream(py_server)).toEqual([]);
   });
 
   it("项目轻生命周期路由由 TS Gateway 直接处理", async () => {
@@ -148,48 +100,22 @@ describe("ApiGatewayServer", () => {
       name: "createProject",
       args: { projectPath: lg_path, name: "project-lifecycle" },
     });
-    const py_server = await start_fake_py_server(lg_path);
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
-    await fetch(`${started.baseUrl}/api/project/load`, {
-      body: JsonTool.stringifyStrict({ path: lg_path }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
+    const snapshot_response = await post_json(started.baseUrl, "/api/project/snapshot", {});
+    const preview_response = await post_json(started.baseUrl, "/api/project/preview", {
+      path: lg_path,
     });
-    const snapshot_response = await fetch(`${started.baseUrl}/api/project/snapshot`, {
-      body: "{}",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    const source_files_response = await post_json(started.baseUrl, "/api/project/source-files", {
+      source_paths: [source_dir],
     });
-    const preview_response = await fetch(`${started.baseUrl}/api/project/preview`, {
-      body: JsonTool.stringifyStrict({ path: lg_path }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const source_files_response = await fetch(`${started.baseUrl}/api/project/source-files`, {
-      body: JsonTool.stringifyStrict({ source_paths: [source_dir] }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const unload_response = await fetch(`${started.baseUrl}/api/project/unload`, {
-      body: "{}",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
+    const unload_response = await post_json(started.baseUrl, "/api/project/unload", {});
     const snapshot_body = (await snapshot_response.json()) as {
-      data?: { project?: { path?: string; loaded?: boolean; busy?: boolean } };
+      data?: { project?: { path?: string; loaded?: boolean } };
     };
     const preview_body = (await preview_response.json()) as {
       data?: { preview?: { path?: string; name?: string } };
@@ -206,125 +132,69 @@ describe("ApiGatewayServer", () => {
     expect(preview_body.data?.preview?.name).toBe("project-lifecycle");
     expect(source_files_body.data?.source_files).toEqual([path.join(source_dir, "script.txt")]);
     expect(unload_body.data?.project).toEqual({ path: "", loaded: false });
-    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
-    expect(py_request_paths).not.toContain("/api/project/load");
-    expect(py_request_paths).not.toContain("/api/project/snapshot");
-    expect(py_request_paths).not.toContain("/api/project/preview");
-    expect(py_request_paths).not.toContain("/api/project/source-files");
-    expect(py_request_paths).not.toContain("/api/project/unload");
   });
 
-  it("项目生命周期路由不再代理到 Python Core 公开项目路径", async () => {
+  it("项目生命周期创建与预览路由保持公开响应壳稳定", async () => {
     const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "ts-project-route.lg");
     const source_path = path.join(app_root, "source.txt");
     fs.writeFileSync(source_path, "原文", "utf-8");
     database.execute({ name: "createProject", args: { projectPath: lg_path, name: "route" } });
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
-    const load_response = await fetch(`${started.baseUrl}/api/project/load`, {
-      body: JsonTool.stringifyStrict({ path: lg_path }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    const load_response = await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
+    const open_preview_response = await post_json(started.baseUrl, "/api/project/open-preview", {
+      path: lg_path,
     });
-    const open_preview_response = await fetch(`${started.baseUrl}/api/project/open-preview`, {
-      body: JsonTool.stringifyStrict({ path: lg_path }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const create_commit_response = await fetch(`${started.baseUrl}/api/project/create-commit`, {
-      body: JsonTool.stringifyStrict({
-        source_paths: [source_path],
-        path: path.join(app_root, "created-by-ts.lg"),
-        draft: {
-          files: [{ rel_path: "source.txt", source_path, sort_index: 0 }],
-          items: [{ id: 1, file_path: "source.txt", src: "原文", status: "NONE" }],
-        },
-        project_settings: { source_language: "JA", target_language: "ZH" },
-        translation_extras: {},
-        prefilter_config: {},
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    const create_commit_response = await post_json(started.baseUrl, "/api/project/create-commit", {
+      source_paths: [source_path],
+      path: path.join(app_root, "created-by-ts.lg"),
+      draft: {
+        files: [{ rel_path: "source.txt", source_path, sort_index: 0 }],
+        items: [{ id: 1, file_path: "source.txt", src: "原文", status: "NONE" }],
+      },
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      translation_extras: {},
+      prefilter_config: {},
     });
     const load_body = (await load_response.json()) as { ok?: boolean };
     const open_preview_body = (await open_preview_response.json()) as { ok?: boolean };
     const create_commit_body = (await create_commit_response.json()) as { ok?: boolean };
-    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
 
     expect(load_body.ok).toBe(true);
     expect(open_preview_body.ok).toBe(true);
     expect(create_commit_body.ok).toBe(true);
-    expect(py_request_paths).not.toContain("/api/project/load");
-    expect(py_request_paths).not.toContain("/api/project/create-commit");
-    expect(py_request_paths).not.toContain("/api/project/open-preview");
   });
 
   it("项目 preview 缺失文件时映射为 not_found", async () => {
     const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
     const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/project/preview`, {
-      body: JsonTool.stringifyStrict({ path: path.join(app_root, "missing.lg") }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    const response = await post_json(started.baseUrl, "/api/project/preview", {
+      path: path.join(app_root, "missing.lg"),
     });
-    const body = (await response.json()) as {
-      ok?: boolean;
-      error?: { code?: string };
-    };
+    const body = (await response.json()) as { ok?: boolean; error?: { code?: string } };
 
     expect(response.status).toBe(404);
     expect(body.ok).toBe(false);
     expect(body.error?.code).toBe("not_found");
-    expect(get_py_requests_except_event_stream(py_server)).toEqual([]);
   });
 
-  it("校对同步 mutation 由 TS Gateway 直接写库且不代理到 Python Core", async () => {
+  it("校对同步 mutation 由 TS Gateway 直接写库", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "proofreading-direct-write.lg");
-    const py_server = await start_fake_py_server(lg_path);
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
     database.execute({
       name: "createProject",
       args: { projectPath: lg_path, name: "proofreading-direct-write" },
@@ -338,19 +208,11 @@ describe("ApiGatewayServer", () => {
     });
 
     const started = await gateway.start();
-    await fetch(`${started.baseUrl}/api/project/load`, {
-      body: JsonTool.stringifyStrict({ path: lg_path }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const response = await fetch(`${started.baseUrl}/api/project/proofreading/save-item`, {
-      body: JsonTool.stringifyStrict({
-        items: [{ id: 1, dst: "译文", status: "PROCESSED" }],
-        translation_extras: { line: 1 },
-        expected_section_revisions: { items: 0, proofreading: 0 },
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
+    const response = await post_json(started.baseUrl, "/api/project/proofreading/save-item", {
+      items: [{ id: 1, dst: "译文", status: "PROCESSED" }],
+      translation_extras: { line: 1 },
+      expected_section_revisions: { items: 0, proofreading: 0 },
     });
     const body = (await response.json()) as {
       ok?: boolean;
@@ -363,29 +225,16 @@ describe("ApiGatewayServer", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
     ]);
-    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
-    expect(py_request_paths).not.toContain("/api/project/load");
-    expect(py_request_paths).not.toContain("/api/project/proofreading/save-item");
   });
 
   it("由 TS LogManager 直接提供公开日志流", async () => {
     const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
     const database = new ProjectDatabase();
     const log_manager = create_log_manager(app_root);
     log_manager.info("启动完成", { source: "test" });
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const gateway = await create_gateway_with_database(app_root, database, log_manager);
     cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => log_manager.shutdown());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
     const controller = new AbortController();
@@ -403,26 +252,15 @@ describe("ApiGatewayServer", () => {
     expect(response.status).toBe(200);
     expect(text).toContain("event: log.appended");
     expect(text).toContain('"message":"启动完成"');
-    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/logs/stream");
   });
 
-  it("由 TS Gateway 直接提供 bootstrap 流且不代理到 Python Core", async () => {
+  it("由 TS Gateway 直接提供 bootstrap 流", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "bootstrap-direct.lg");
-    const py_server = await start_fake_py_server(lg_path);
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+    const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
     database.execute({ name: "createProject", args: { projectPath: lg_path, name: "bootstrap" } });
     database.execute_transaction([
       {
@@ -443,11 +281,7 @@ describe("ApiGatewayServer", () => {
     ]);
 
     const started = await gateway.start();
-    await fetch(`${started.baseUrl}/api/project/load`, {
-      body: JsonTool.stringifyStrict({ path: lg_path }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
+    await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
     const response = await fetch(`${started.baseUrl}/api/project/bootstrap/stream`);
     const text = await response.text();
 
@@ -458,40 +292,21 @@ describe("ApiGatewayServer", () => {
     expect(text).toContain("event: completed");
     expect(text).toContain('"sectionRevisions"');
     expect(text).toContain("\\ud800");
-    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
-    expect(py_request_paths).not.toContain("/api/project/load");
-    expect(py_request_paths).not.toContain("/api/tasks/snapshot");
-    expect(py_request_paths).not.toContain("/api/project/bootstrap/stream");
   });
 
-  it("公开任务路由由 TS Gateway 直处理且不调用旧运行时任务桥", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
+  it("公开任务路由由 TS Gateway 直处理", async () => {
+    const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/tasks/start-translation`, {
-      body: JsonTool.stringifyStrict({ mode: "NEW" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    const response = await post_json(started.baseUrl, "/api/tasks/start-translation", {
+      mode: "NEW",
     });
     const body = (await response.json()) as {
       ok?: boolean;
       data?: { accepted?: boolean; task?: { task_type?: string; status?: string; busy?: boolean } };
     };
-    const py_request_paths = get_py_request_paths_except_event_stream(py_server);
 
     expect(body.ok).toBe(true);
     expect(body.data?.accepted).toBe(true);
@@ -500,223 +315,25 @@ describe("ApiGatewayServer", () => {
       status: "REQUEST",
       busy: true,
     });
-    expect(py_request_paths).not.toContain("/internal/runtime/tasks/start-translation");
-    expect(py_request_paths).not.toContain("/api/tasks/start-translation");
   });
 
-  it("长期事件流由 TS event hub 广播 Python Core 事件", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_abortable_event_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
-    cleanup_callbacks.push(() => gateway.stop());
+  it("长期事件流由 TS event hub 提供 keepalive 并在退出时关闭", async () => {
+    const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
 
     const started = await gateway.start();
     const stream = await read_http_stream_until(
       `${started.baseUrl}/api/events/stream`,
-      "event: py.event",
+      "keepalive",
     );
 
     expect(stream.status).toBe(200);
-    expect(stream.text).toContain("event: py.event");
-    expect(py_server.requests.map((item) => item.path)).toContain("/api/events/stream");
-  });
-
-  it("取消 renderer 事件订阅不会关闭后台 Python Core 事件流", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_abortable_event_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
-
-    const started = await gateway.start();
-    const stream = await read_http_stream_until(
-      `${started.baseUrl}/api/events/stream`,
-      "event: py.event",
-    );
-
-    expect(stream.text).toContain("event: py.event");
-    await expect_not_resolved_within(py_server.eventClosed, 150, "上游事件流被过早关闭。");
-  });
-
-  it("退出时会主动关闭仍打开的 renderer 事件流", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_abortable_event_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
-    cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
-
-    const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/events/stream`);
-    const reader = response.body?.getReader();
-    if (reader === undefined) {
-      throw new Error("事件流响应体为空。");
-    }
-    await reader.read();
-
+    expect(stream.text).toContain(": keepalive");
     await expect(gateway.stop()).resolves.toBeUndefined();
-  });
-
-  it("通过公开 /api/logs/append 接收 Python 日志提交", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
-
-    const started = await gateway.start();
-    const rejected_response = await fetch(`${started.baseUrl}/api/logs/append`, {
-      body: JsonTool.stringifyStrict({ level: "info", message: "拒绝日志" }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const accepted_response = await fetch(`${started.baseUrl}/api/logs/append`, {
-      body: JsonTool.stringifyStrict({
-        level: "warning",
-        message: "公开日志",
-        targets: { console: false, file: false, window: true },
-      }),
-      headers: {
-        "Content-Type": "application/json",
-        "X-LinguaGacha-Core-Token": "py-token",
-      },
-      method: "POST",
-    });
-    const body = (await accepted_response.json()) as { ok?: boolean };
-
-    expect(rejected_response.status).toBe(401);
-    expect(accepted_response.status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(log_manager.snapshot_events().map((event) => event.message)).toEqual(["公开日志"]);
-    expect(py_server.requests.map((item) => item.path)).not.toContain("/api/logs/append");
-  });
-
-  it("公开日志提交会接收空消息且不阻断后续 Python 日志", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
-    });
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
-
-    const started = await gateway.start();
-    const headers = {
-      "Content-Type": "application/json",
-      "X-LinguaGacha-Core-Token": "py-token",
-    };
-    const empty_response = await fetch(`${started.baseUrl}/api/logs/append`, {
-      body: JsonTool.stringifyStrict({ level: "info", message: "" }),
-      headers,
-      method: "POST",
-    });
-    const accepted_response = await fetch(`${started.baseUrl}/api/logs/append`, {
-      body: JsonTool.stringifyStrict({
-        level: "info",
-        message: "接口测试开始",
-        targets: { console: false, file: false, window: true },
-      }),
-      headers,
-      method: "POST",
-    });
-    const empty_body = (await empty_response.json()) as {
-      ok?: boolean;
-      data?: { accepted?: boolean };
-    };
-    const accepted_body = (await accepted_response.json()) as {
-      ok?: boolean;
-      data?: { accepted?: boolean };
-    };
-
-    expect(empty_response.status).toBe(200);
-    expect(empty_body).toEqual({ ok: true, data: { accepted: true } });
-    expect(accepted_response.status).toBe(200);
-    expect(accepted_body).toEqual({ ok: true, data: { accepted: true } });
-    expect(log_manager.snapshot_events().map((event) => event.message)).toEqual([
-      "",
-      "接口测试开始",
-    ]);
-  });
-
-  it("代理 Python Core 失败时写入 TS Gateway 日志", async () => {
-    const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
-    const py_core_base_url = py_server.baseUrl;
-    await py_server.close();
-    const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const gateway = new ApiGatewayServer({
-      appRoot: app_root,
-      database,
-      logManager: log_manager,
-      publicPort: await allocate_gateway_test_port(),
-      pyCoreBaseUrl: py_core_base_url,
-      pyCoreToken: "py-token",
-    });
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-
-    const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/proxy-target`, { method: "POST" });
-    const body = (await response.json()) as { ok?: boolean };
-
-    expect(response.status).toBe(500);
-    expect(body.ok).toBe(false);
-    expect(log_manager.snapshot_events().map((event) => event.message)).toContain(
-      "TS Gateway 代理 Python Core 失败",
-    );
   });
 
   it("公开端口监听失败时拒绝启动并保持 stop 幂等", async () => {
     const app_root = create_app_root();
-    const py_server = await start_fake_py_server();
     const database = new ProjectDatabase();
     const log_manager = create_log_manager(app_root);
     const occupied_server = http.createServer();
@@ -727,20 +344,8 @@ describe("ApiGatewayServer", () => {
         resolve();
       });
     });
-    cleanup_callbacks.push(
-      () =>
-        new Promise<void>((resolve, reject) => {
-          occupied_server.close((error) => {
-            if (error) {
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        }),
-    );
+    cleanup_callbacks.push(() => close_node_server(occupied_server));
     cleanup_callbacks.push(() => database.close());
-    cleanup_callbacks.push(py_server.close);
     const address = occupied_server.address();
     if (typeof address !== "object" || address === null) {
       throw new Error("测试占用端口未取得地址。");
@@ -750,14 +355,45 @@ describe("ApiGatewayServer", () => {
       database,
       logManager: log_manager,
       publicPort: address.port,
-      pyCoreBaseUrl: py_server.baseUrl,
-      pyCoreToken: "py-token",
     });
 
     await expect(gateway.start()).rejects.toThrow();
     await expect(gateway.stop()).resolves.toBeUndefined();
   });
 
+  /**
+   * 创建默认 Gateway 三件套，让常规用例不用重复布置生命周期依赖。
+   */
+  async function create_gateway(): Promise<{
+    appRoot: string;
+    database: ProjectDatabase;
+    gateway: ApiGatewayServer;
+  }> {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const gateway = await create_gateway_with_database(app_root, database);
+    return { appRoot: app_root, database, gateway };
+  }
+
+  /**
+   * 按指定 database 构造 Gateway，方便项目写库前后共享同一实例。
+   */
+  async function create_gateway_with_database(
+    app_root: string,
+    database: ProjectDatabase,
+    log_manager: LogManager = create_log_manager(app_root),
+  ): Promise<ApiGatewayServer> {
+    return new ApiGatewayServer({
+      appRoot: app_root,
+      database,
+      logManager: log_manager,
+      publicPort: await allocate_gateway_test_port(),
+    });
+  }
+
+  /**
+   * 临时 appRoot 提供 version 和资源根，避免测试污染真实用户目录。
+   */
   function create_app_root(): string {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-gateway-test-"));
     fs.writeFileSync(path.join(app_root, "version.txt"), "9.8.7", "utf-8");
@@ -778,15 +414,7 @@ describe("ApiGatewayServer", () => {
       });
     });
     const address = server.address();
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve();
-        }
-      });
-    });
+    await close_node_server(server);
     if (typeof address !== "object" || address === null) {
       throw new Error("测试端口未取得地址。");
     }
@@ -821,166 +449,19 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * 后台事件 hub 会固定连接 Python SSE；业务路由断言需要排除这条基础设施请求。
+   * POST JSON helper 固定请求壳，让用例只表达业务路径和 payload。
    */
-  function get_py_requests_except_event_stream(py_server: FakePyServer): FakePyRequest[] {
-    return py_server.requests.filter((item) => item.path !== "/api/events/stream");
-  }
-
-  /**
-   * 路径列表只服务代理边界断言，避免每个用例重复过滤事件流噪音。
-   */
-  function get_py_request_paths_except_event_stream(py_server: FakePyServer): string[] {
-    return get_py_requests_except_event_stream(py_server)
-      .map((item) => item.path)
-      .filter((request_path): request_path is string => request_path !== undefined);
-  }
-
-  /**
-   * fake Python server 覆盖透明代理、LLM adapter 窄路由和 Python 上游事件流。
-   */
-  async function start_fake_py_server(_runtime_project_path?: string): Promise<FakePyServer> {
-    const requests: FakePyRequest[] = [];
-    const server = http.createServer((request, response) => {
-      const chunks: Buffer[] = [];
-      request.on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-      request.on("end", () => {
-        const raw = Buffer.concat(chunks).toString("utf-8");
-        requests.push({ method: request.method, path: request.url, raw });
-        if (request.url === "/internal/llm/request") {
-          response.writeHead(200, {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "application/json; charset=utf-8",
-          });
-          response.end(
-            JsonTool.stringifyStrict({
-              ok: true,
-              data: {
-                input_tokens: 0,
-                output_tokens: 0,
-                response_result: '{"0":"译文"}',
-                response_think: "",
-                cancelled: false,
-                timeout: false,
-                degraded: false,
-                error: "",
-              },
-            }),
-          );
-          return;
-        }
-        if (request.url === "/api/events/stream") {
-          response.writeHead(200, {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "text/event-stream; charset=utf-8",
-          });
-          response.end('event: py.event\ndata: {"ok":true}\n\n');
-          return;
-        }
-        response.writeHead(200, {
-          "Access-Control-Allow-Origin": "*",
-          "Content-Type": "application/json; charset=utf-8",
-        });
-        response.end(
-          JsonTool.stringifyStrict({
-            ok: true,
-            data: {
-              method: request.method,
-              raw,
-            },
-          }),
-        );
-      });
+  async function post_json(
+    base_url: string,
+    path_name: string,
+    body: Record<string, unknown>,
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
+    return await fetch(`${base_url}${path_name}`, {
+      body: JsonTool.stringifyStrict(body),
+      headers: { "Content-Type": "application/json", ...headers },
+      method: "POST",
     });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
-      });
-    });
-    const address = server.address();
-    if (typeof address !== "object" || address === null) {
-      throw new Error("测试服务器未取得端口。");
-    }
-    return {
-      baseUrl: `http://127.0.0.1:${address.port.toString()}`,
-      requests,
-      close: () =>
-        new Promise<void>((resolve, reject) => {
-          server.close((error) => {
-            if (error) {
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        }),
-    };
-  }
-
-  /**
-   * 构造可观察 close 事件的上游 SSE，用来验证 Gateway 停止时才关闭 Python 长连。
-   */
-  async function start_abortable_event_py_server(): Promise<{
-    baseUrl: string;
-    close: () => Promise<void>;
-    eventClosed: Promise<void>;
-    requests: FakePyRequest[];
-  }> {
-    const requests: FakePyRequest[] = [];
-    let resolve_event_closed: (() => void) | null = null;
-    const event_closed = new Promise<void>((resolve) => {
-      resolve_event_closed = resolve;
-    });
-    const server = http.createServer((request, response) => {
-      requests.push({ method: request.method, path: request.url, raw: "" });
-      if (request.url !== "/api/events/stream") {
-        response.writeHead(404).end();
-        return;
-      }
-      response.writeHead(200, {
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": "text/event-stream; charset=utf-8",
-      });
-      response.write('event: py.event\ndata: {"ok":true}\n\n');
-      const event_timer = setInterval(() => {
-        response.write('event: py.event\ndata: {"ok":true}\n\n');
-      }, 50);
-      request.on("close", () => {
-        clearInterval(event_timer);
-        resolve_event_closed?.();
-      });
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
-      });
-    });
-    const address = server.address();
-    if (typeof address !== "object" || address === null) {
-      throw new Error("测试服务器未取得端口。");
-    }
-    return {
-      baseUrl: `http://127.0.0.1:${address.port.toString()}`,
-      eventClosed: event_closed,
-      requests,
-      close: () =>
-        new Promise<void>((resolve, reject) => {
-          server.closeAllConnections();
-          server.close((error) => {
-            if (error) {
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        }),
-    };
   }
 
   /**
@@ -1034,25 +515,17 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * 反向断言只等待一个短窗口，用来确认 renderer 取消不会联动关闭上游 SSE。
+   * Node server close 需要 promise 化，确保端口释放后再启动下一段测试。
    */
-  async function expect_not_resolved_within(
-    promise: Promise<unknown>,
-    ms: number,
-    message: string,
-  ): Promise<void> {
-    const timeout_token = Symbol("timeout");
-    const result = await Promise.race([
-      promise.then(
-        () => "resolved" as const,
-        () => "rejected" as const,
-      ),
-      new Promise<typeof timeout_token>((resolve) => {
-        setTimeout(() => resolve(timeout_token), ms);
-      }),
-    ]);
-    if (result !== timeout_token) {
-      throw new Error(message);
-    }
+  async function close_node_server(server: http.Server): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    });
   }
 });

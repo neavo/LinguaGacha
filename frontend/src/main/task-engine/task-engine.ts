@@ -140,7 +140,7 @@ export class TaskEngine {
   private request_in_flight_count = 0;
 
   /**
-   * 注入任务执行依赖，保证任务数据写入口和 Python executor 边界可测试。
+   * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试。
    */
   public constructor(options: TaskEngineOptions) {
     this.task_data_service = options.taskDataService;
@@ -161,7 +161,7 @@ export class TaskEngine {
   }
 
   /**
-   * 请求停止翻译任务；停止事件由 TS 本地发布，不再调用 Python 整场任务桥。
+   * 请求停止翻译任务；停止事件由 TS 本地发布并向 work unit 传播 abort。
    */
   public async stop_translation(): Promise<void> {
     this.request_stop("translation");
@@ -176,7 +176,7 @@ export class TaskEngine {
   }
 
   /**
-   * 请求停止分析任务；已发 work unit 等 Python 请求超时或返回后由 run_id 隔离。
+   * 请求停止分析任务；已发 work unit 超时或返回后由 run_id 隔离。
    */
   public async stop_analysis(): Promise<void> {
     this.request_stop("analysis");
@@ -288,7 +288,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析主流程：TS 解释 checkpoint，Python 只负责单个 chunk 请求。
+   * 分析主流程：TS 解释 checkpoint，work unit 只负责单个 chunk 请求。
    */
   private async run_analysis(
     handle: TaskRunHandle,
@@ -466,7 +466,7 @@ export class TaskEngine {
   }
 
   /**
-   * 执行单条重翻，失败时由 TS 直接构造 ERROR item，避免 Python 持有提交权。
+   * 执行单条重翻，失败时由 TS 直接构造 ERROR item，避免 worker 持有提交权。
    */
   private async execute_retranslate_context(
     handle: TaskRunHandle,
@@ -535,7 +535,7 @@ export class TaskEngine {
   }
 
   /**
-   * 带限流执行 Python 请求，同时维护 TS 侧真实 request_in_flight_count。
+   * 带限流执行 work unit 请求，同时维护 TS 侧真实 request_in_flight_count。
    */
   private async call_with_limiter<T>(
     handle: TaskRunHandle,
@@ -1405,7 +1405,7 @@ export class TaskEngine {
   }
 
   /**
-   * 任务异常统一写入 TS 日志，便于和 Python work-unit 日志并排排查。
+   * 任务异常统一写入 TS 日志，便于和 work-unit 日志并排排查。
    */
   private log_task_error(message: string, error: unknown): void {
     this.log_manager.error(message, {

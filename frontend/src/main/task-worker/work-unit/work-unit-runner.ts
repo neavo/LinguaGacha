@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import { PyLlmRequestClient } from "../llm/py-llm-request-client";
+import { PiAiLlmRequestClient } from "../llm/pi-ai-llm-request-client";
 import { AnalysisWorkUnitRunner } from "./analysis-work-unit-runner";
 import { TranslationWorkUnitRunner } from "./translation-work-unit-runner";
 import type {
@@ -15,10 +15,6 @@ import type {
 export interface WorkUnitRunnerOptions {
   // appRoot 用于读取资源模板和预设，不能从 worker 当前目录反推。
   appRoot: string;
-  // pyCoreBaseUrl 是 Python Core 内部地址，仅 Electron main 可注入。
-  pyCoreBaseUrl: string;
-  // pyCoreToken 只用于内部 LLM adapter，不暴露给 renderer。
-  pyCoreToken: string;
 }
 
 /**
@@ -32,10 +28,7 @@ export class WorkUnitRunner {
    * 每个 worker 持有自己的 runner 和 LLM client，避免跨线程共享可变对象。
    */
   public constructor(options: WorkUnitRunnerOptions) {
-    const llm_client = new PyLlmRequestClient({
-      pyCoreBaseUrl: options.pyCoreBaseUrl,
-      pyCoreToken: options.pyCoreToken,
-    });
+    const llm_client = new PiAiLlmRequestClient({ appRoot: options.appRoot });
     this.translation_runner = new TranslationWorkUnitRunner(options.appRoot, llm_client);
     this.analysis_runner = new AnalysisWorkUnitRunner(options.appRoot, llm_client);
   }

@@ -5,7 +5,7 @@ import { TextTool } from "../../../shared/utils/text-tool";
 import { PromptBuilder } from "../prompt/prompt-builder";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { PyLlmRequestClient } from "../llm/py-llm-request-client";
+import type { LlmRequestClient } from "../llm/llm-request-types";
 import type {
   AnalysisWorkUnitRequest,
   AnalysisWorkUnitResult,
@@ -35,12 +35,12 @@ export class AnalysisWorkUnitRunner {
   // app_root 只用于读取分析提示词模板，runner 不依赖进程 cwd。
   private readonly app_root: string;
   // llm_client 是分析链路唯一外部调用口，便于取消和错误统一处理。
-  private readonly llm_client: PyLlmRequestClient;
+  private readonly llm_client: LlmRequestClient;
 
   /**
    * 只注入资源根和 LLM 客户端，runner 不接触数据库或事件。
    */
-  public constructor(app_root: string, llm_client: PyLlmRequestClient) {
+  public constructor(app_root: string, llm_client: LlmRequestClient) {
     this.app_root = app_root;
     this.llm_client = llm_client;
   }

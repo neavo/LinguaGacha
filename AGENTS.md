@@ -12,7 +12,7 @@
 | 系统分层、跨层边界、模块关系、阅读地图 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | HTTP / SSE / bootstrap / topic / 错误码 / mutation 契约 | [`docs/API.md`](docs/API.md) |
 | Electron / preload / renderer / `ProjectStore` / 导航与样式边界 | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
-| Core 数据域、状态拥有者、唯一写入口、`.lg` 物理存储落点 | [`docs/DATA.md`](docs/DATA.md) |
+| 数据域、状态拥有者、唯一写入口、`.lg` 物理存储落点 | [`docs/DATA.md`](docs/DATA.md) |
 | 任务起手式、验证矩阵、文档同步、交付自检 | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) |
 | 产品语境与设计权威 | [`PRODUCT.md`](PRODUCT.md) -> [`DESIGN.md`](DESIGN.md) |
 
@@ -21,15 +21,15 @@
 
 ## 2. 仓库级硬约束
 
-- LinguaGacha 是“Electron main 内部 Database Service + 无头 Core + Electron 桌面前端”的本机多进程工程
-- `api/` 是 Core 对外暴露的唯一 HTTP / SSE 协议边界，HTTP / SSE 协议变化必须同步 [`docs/API.md`](docs/API.md)
+- LinguaGacha 是“Electron main TS Gateway + 内部 Database Service + TS Task Engine + TS task-worker / pi-ai + Electron 桌面前端”的本机多进程工程
+- `frontend/src/main/api/` 是 Electron 运行态公开 HTTP / SSE 协议边界，HTTP / SSE 协议变化必须同步 [`docs/API.md`](docs/API.md)
 - 渲染层只通过 `window.desktopApp` 接入桌面宿主，再通过 `frontend/src/renderer/app/desktop/desktop-api.ts` 访问 Core API
 - 前端禁止绕过 preload 直连 Node / Electron，禁止直接导入 Python 模块
 - 项目运行态主路径固定为 `/api/project/bootstrap/stream` 与 `/api/events/stream`
 - 页面消费 bootstrap + `project.patch`，不是整页快照轮询
 - 同一业务语义只允许一个权威来源与一个写入口，跨线程、跨模块、跨前后端只传 `id`、值对象或不可变快照，禁止共享可变对象引用
-- 新增状态前先判断它属于 `ProjectSession`、领域 service、`DataManager`、`ProjectStore`，还是页面本地状态
-- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema / 旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`，Python Core 只能通过 `module/Data/Database/DatabaseGateway.py` 访问，API 层不得直接操作 database workflow，不得持有 `ProjectSession`
+- 新增状态前先判断它属于 `ProjectSessionState`、领域 service、`TaskRuntimeState`、`ProjectStore`，还是页面本地状态
+- SQL、事务与 `.lg` 内 asset 读写只允许落在 `frontend/src/main/database/`，Zstd 压缩参数与压缩 / 解压工具只允许落在 `frontend/src/shared/utils/zstd-tool.ts`，`.lg` 打开期 schema / 旧物理格式迁移统一落在 `frontend/src/main/migration/project-database-migration-service.ts`；运行态不保留 Python API / Data / Engine / Model 兼容层，API 层不得直接操作 database workflow 或持有数据库句柄
 - 前端职责、导航、组件、样式与文案归属以 [`docs/FRONTEND.md`](docs/FRONTEND.md) 为唯一权威
 
 ## 3. 编码硬约束

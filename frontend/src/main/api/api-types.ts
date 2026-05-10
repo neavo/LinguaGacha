@@ -23,7 +23,6 @@ export type ApiEnvelope = ApiSuccessEnvelope | ApiErrorEnvelope;
 
 export interface ApiGatewayStartResult {
   baseUrl: string;
-  instanceToken: string;
 }
 
 export function ok(data: ApiJsonValue): ApiSuccessEnvelope {

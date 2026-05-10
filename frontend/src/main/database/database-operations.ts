@@ -89,10 +89,10 @@ export class ProjectDatabase {
   }
 
   /**
-   * 执行受支持的数据库操作名，保持 Python 只能走窄 workflow。
+   * 执行受支持的数据库操作名，保持调用方只能走窄 workflow。
    */
   public execute(operation: DatabaseOperation): DatabaseJsonValue {
-    // DatabaseGateway 只发送窄操作名，TS 侧集中校验参数并保护 SQL 边界。
+    // TS 服务只发送窄操作名，database 侧集中校验参数并保护 SQL 边界。
     const args = this.normalize_args(operation.args);
     switch (operation.name) {
       case "closeProject":
@@ -328,7 +328,7 @@ export class ProjectDatabase {
    * 按 asset 路径读取解压后的内容，隐藏 .lg 内部压缩格式。
    */
   public read_asset_content(project_path: string, asset_path: string): Buffer | null {
-    // Python Core 只消费解压后的原始 bytes，Zstd 格式细节留在 main 进程。
+    // 调用方只消费解压后的原始 bytes，Zstd 格式细节留在 main 进程。
     const db = this.open_project(project_path);
     const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(asset_path);
     if (row === undefined) {

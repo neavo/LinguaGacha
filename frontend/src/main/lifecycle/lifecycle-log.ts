@@ -24,14 +24,6 @@ export function write_ts_lifecycle_log(message: string): void {
   log_manager.info(message, { source: "ts-lifecycle" });
 }
 
-export function format_core_shutdown_completed_log(
-  pid: number | undefined,
-  was_force_killed: boolean,
-): string {
-  const exit_mode = was_force_killed ? "强制关闭" : "优雅退出";
-  return `Python Core PID[${pid ?? "unknown"}] 实例${exit_mode} …`;
-}
-
 export function format_lifecycle_error(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

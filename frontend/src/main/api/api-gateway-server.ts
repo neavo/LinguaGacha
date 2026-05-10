@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import type { Server } from "node:http";
 import type { Socket } from "node:net";
 
@@ -19,7 +18,7 @@ import { ConfigService } from "../service/config-service";
 import { FileExportService } from "../file/file-export-service";
 import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
-import type { LogAppendPayload, LogEvent, LogLevel, LogTargets } from "../log/log-types";
+import type { LogEvent } from "../log/log-types";
 import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
 import { TaskDataService } from "../task/task-data-service";
 import { TaskEventHub } from "../task/task-event-hub";
@@ -41,10 +40,8 @@ const CORE_API_HOST = "127.0.0.1";
 // 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏。
 const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500;
 
-// Python 日志提交复用 Core token，避免公开日志入口被 renderer 随意写入。
-const LOG_APPEND_TOKEN_HEADER_NAME = "X-LinguaGacha-Core-Token";
-// CORS 允许头必须包含日志 token，否则 Python Core 无法通过 Gateway 写日志。
-const CORS_ALLOWED_HEADERS = `Content-Type, ${LOG_APPEND_TOKEN_HEADER_NAME}`;
+// 公开 Gateway 只接受 JSON 请求头，内部授权材料不进入 CORS 可读面。
+const CORS_ALLOWED_HEADERS = "Content-Type";
 
 /**
  * Gateway 启动参数由 Electron 生命周期层注入，路由层只消费不可变依赖。
@@ -54,31 +51,25 @@ export interface ApiGatewayServerOptions {
   appRoot: string;
   // publicPort 由生命周期端口分配器保证唯一，Gateway 只按该端口监听。
   publicPort: number;
-  // Python Core 地址与 token 只给 Gateway 代理和内部桥使用。
-  pyCoreBaseUrl: string;
-  pyCoreToken: string;
   // database 由生命周期层注入，Gateway 不负责创建或关闭 .lg 物理存储。
   database: ProjectDatabase;
-  // logManager 是日志窗口、SSE 和 Python 兼容提交层的唯一汇聚点。
+  // logManager 是日志窗口、SSE 和内部提交层的唯一汇聚点。
   logManager: LogManager;
 }
 
 /**
- * 封装 Electron 公开 API Gateway 的路由、代理和生命周期边界。
+ * 封装 Electron 公开 API Gateway 的路由和生命周期边界。
  */
 export class ApiGatewayServer {
   private readonly options: ApiGatewayServerOptions;
 
-  // instance token 用来让 renderer 探活时识别当前 Gateway 实例，避免误连旧进程。
-  private readonly instance_token = crypto.randomBytes(24).toString("hex");
-
-  // 公开项目 loaded/path 由 Gateway 持有，Python 只保留内部兼容状态与 LLM adapter 能力。
+  // 公开项目 loaded/path 由 Gateway 持有，避免 renderer 直接读取数据库状态。
   private readonly project_session_state = new ProjectSessionState();
 
-  // 任务 busy / 请求中数量 / 重翻条目由 TS Gateway 维护，不再按需查询 Python。
+  // 任务 busy / 请求中数量 / 重翻条目由 TS Gateway 维护，避免运行态分散。
   private readonly task_runtime_state = new TaskRuntimeState();
 
-  // 事件 hub 持有 Python 上游长连，Gateway stop 时必须显式关闭。
+  // 事件 hub 持有本地订阅者，Gateway stop 时必须显式关闭。
   private event_hub: TaskEventHub | null = null;
 
   // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭。
@@ -102,7 +93,7 @@ export class ApiGatewayServer {
    */
   public async start(): Promise<ApiGatewayStartResult> {
     if (this.server !== null) {
-      return { baseUrl: this.base_url(), instanceToken: this.instance_token };
+      return { baseUrl: this.base_url() };
     }
     const app = this.create_app();
     const server = await new Promise<Server>((resolve, reject) => {
@@ -128,7 +119,7 @@ export class ApiGatewayServer {
       pending_server.once("error", handle_start_error);
     });
     this.server = server;
-    return { baseUrl: this.base_url(), instanceToken: this.instance_token };
+    return { baseUrl: this.base_url() };
   }
 
   /**
@@ -148,7 +139,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 公开 `/api/*` 协议在这里集中注册，避免 renderer 依赖 Python 内部端口。
+   * 公开 `/api/*` 协议在这里集中注册，避免 renderer 依赖内部实现端口。
    */
   private create_app(): Hono {
     const paths = new AppPathService({ appRoot: this.options.appRoot });
@@ -157,10 +148,8 @@ export class ApiGatewayServer {
       this.project_session_state,
     );
     const event_hub = new TaskEventHub({
-      pyCoreBaseUrl: this.options.pyCoreBaseUrl,
       projectPatchAdapter: project_patch_adapter,
       taskRuntimeState: this.task_runtime_state,
-      logManager: this.options.logManager,
     });
     this.event_hub = event_hub;
     event_hub.start();
@@ -200,8 +189,6 @@ export class ApiGatewayServer {
     );
     const executor_client = new TaskWorkerPool({
       appRoot: this.options.appRoot,
-      pyCoreBaseUrl: this.options.pyCoreBaseUrl,
-      pyCoreToken: this.options.pyCoreToken,
     });
     this.task_worker_pool = executor_client;
     const task_engine = new TaskEngine({
@@ -256,7 +243,6 @@ export class ApiGatewayServer {
           status: "ok",
           service: "linguagacha-core",
           version: paths.read_version(),
-          instanceToken: this.instance_token,
         }),
       );
     });
@@ -281,28 +267,6 @@ export class ApiGatewayServer {
         return context.json(envelope, envelope.error.code === "invalid_request" ? 400 : 500);
       }
     });
-    app.post("/api/logs/append", async (context) => {
-      const token = context.req.header(LOG_APPEND_TOKEN_HEADER_NAME);
-      if (token !== this.options.pyCoreToken) {
-        return context.json(api_error("invalid_request", "日志提交 token 无效。"), 401);
-      }
-      try {
-        const body = (await context.req.json().catch((error: unknown) => {
-          throw new SyntaxError(error instanceof Error ? error.message : "JSON 无效。");
-        })) as Record<string, ApiJsonValue>;
-        this.options.logManager.append(this.parse_log_append_payload(body));
-        return context.json(ok({ accepted: true }));
-      } catch (error) {
-        const envelope = this.error_to_envelope(error);
-        if (envelope.error.code === "internal_error") {
-          this.log_gateway_error("公开日志提交处理失败", error, {
-            path: "/api/logs/append",
-          });
-        }
-        return context.json(envelope, envelope.error.code === "invalid_request" ? 400 : 500);
-      }
-    });
-
     this.post_json(app, "/api/settings/app", () => config_service.get_app_settings());
     this.post_json(app, "/api/settings/update", (body) => config_service.update_app_settings(body));
     this.post_json(app, "/api/settings/recent-projects/add", (body) =>
@@ -321,6 +285,10 @@ export class ApiGatewayServer {
       model_service.reset_preset_model(body),
     );
     this.post_json(app, "/api/models/reorder", (body) => model_service.reorder_model(body));
+    this.post_json(app, "/api/models/list-available", (body) =>
+      model_service.list_available_models(body),
+    );
+    this.post_json(app, "/api/models/test", (body) => model_service.test_model(body));
 
     this.post_json(app, "/api/project/snapshot", () =>
       project_lifecycle_service.get_project_snapshot(),
@@ -409,36 +377,6 @@ export class ApiGatewayServer {
       file_export_service.export_translation(),
     );
 
-    this.post_internal_json(app, "/internal/task-data/project-context", (body) =>
-      task_data_service.get_project_context(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/translation/items", (body) =>
-      task_data_service.get_translation_items(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/translation/commit", (body) =>
-      task_data_service.commit_translation_batch(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/translation/progress", (body) =>
-      task_data_service.update_translation_progress(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/analysis/context", (body) =>
-      task_data_service.get_analysis_context(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/analysis/reset", (body) =>
-      task_data_service.reset_analysis_progress(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/analysis/progress", (body) =>
-      task_data_service.update_analysis_progress(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/analysis/commit", (body) =>
-      task_data_service.commit_analysis_batch(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/retranslate/items", (body) =>
-      task_data_service.get_retranslate_items(body),
-    );
-    this.post_internal_json(app, "/internal/task-data/retranslate/commit", (body) =>
-      task_data_service.commit_retranslate_batch(body),
-    );
     this.post_json(app, "/api/quality/rules/save-entries", (body) =>
       quality_service.save_rule_entries(body),
     );
@@ -488,17 +426,8 @@ export class ApiGatewayServer {
       quality_service.delete_prompt_preset(body),
     );
 
-    app.all("*", async (context) => {
-      try {
-        return await this.proxy_to_py_core(context.req.raw);
-      } catch (error) {
-        const source_url = new URL(context.req.url);
-        this.log_gateway_error("TS Gateway 代理 Python Core 失败", error, {
-          method: context.req.method,
-          path: source_url.pathname,
-        });
-        return context.json(api_error("internal_error", "Python Core 代理失败。"), 500);
-      }
+    app.all("*", (context) => {
+      return context.json(api_error("not_found", "API 路由不存在。"), 404);
     });
 
     return app;
@@ -538,77 +467,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 内部 task-data 路由只允许 Python Core 携带 token 调用，不进入 renderer 协议。
-   */
-  private post_internal_json(
-    app: Hono,
-    path_name: string,
-    handler: (
-      body: Record<string, ApiJsonValue>,
-    ) => Record<string, ApiJsonValue> | Promise<Record<string, ApiJsonValue>>,
-  ): void {
-    app.post(path_name, async (context) => {
-      const token = context.req.header(LOG_APPEND_TOKEN_HEADER_NAME);
-      if (token !== this.options.pyCoreToken) {
-        return context.json(api_error("invalid_request", "内部 task-data token 无效。"), 401);
-      }
-      try {
-        const body = (await context.req.json().catch((error: unknown) => {
-          throw new SyntaxError(error instanceof Error ? error.message : "JSON 无效。");
-        })) as Record<string, ApiJsonValue>;
-        const data = await handler(body);
-        return context.json(ok(data));
-      } catch (error) {
-        const envelope = this.error_to_envelope(error);
-        const status =
-          envelope.error.code === "not_found"
-            ? 404
-            : envelope.error.code === "invalid_request"
-              ? 400
-              : 500;
-        if (status >= 500) {
-          this.log_gateway_error("TS Gateway 内部 task-data 路由处理失败", error, {
-            path: path_name,
-          });
-        }
-        return context.json(envelope, status);
-      }
-    });
-  }
-
-  /**
-   * 未迁移路由仍只暴露公开 Gateway 地址，Python 内部端口不进入前端协议。
-   */
-  private async proxy_to_py_core(request: Request): Promise<Response> {
-    const source_url = new URL(request.url);
-    const target_url = `${this.options.pyCoreBaseUrl}${source_url.pathname}${source_url.search}`;
-    const headers = new Headers(request.headers);
-    headers.delete("host");
-    const body =
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer();
-    const response = await fetch(target_url, {
-      body,
-      headers,
-      method: request.method,
-      signal: request.signal,
-    });
-    const response_headers = new Headers(response.headers);
-    response_headers.delete("content-length");
-    response_headers.delete("transfer-encoding");
-    for (const [key, value] of this.cors_headers()) {
-      response_headers.set(key, value);
-    }
-    return new Response(await response.arrayBuffer(), {
-      headers: response_headers,
-      status: response.status,
-      statusText: response.statusText,
-    });
-  }
-
-  /**
-   * 内部异常只映射成稳定错误壳，调用方不需要理解 TS/Python 实现差异。
+   * 内部异常只映射成稳定错误壳，调用方不需要理解 main 进程实现细节。
    */
   private error_to_envelope(error: unknown) {
     if (error instanceof SyntaxError) {
@@ -635,14 +494,14 @@ export class ApiGatewayServer {
   }
 
   /**
-   * renderer 只认公开 Gateway 地址，内部 Core 地址不会透出到 preload 边界。
+   * renderer 只认公开 Gateway 地址，内部服务地址不会透出到 preload 边界。
    */
   private base_url(): string {
     return `http://${CORE_API_HOST}:${this.options.publicPort.toString()}`;
   }
 
   /**
-   * 公开日志流由 TS LogManager 直接提供，避免窗口再依赖 Python 内部 SSE。
+   * 公开日志流由 TS LogManager 直接提供，避免窗口依赖内部日志实现。
    */
   private create_log_stream_response(): Response {
     const encoder = new TextEncoder();
@@ -726,67 +585,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * Python 日志提交 payload 在 Gateway 边界归一化，避免污染 TS LogManager。
-   */
-  private parse_log_append_payload(body: Record<string, ApiJsonValue>): LogAppendPayload {
-    const message = typeof body["message"] === "string" ? body["message"] : "";
-    const payload: LogAppendPayload = {
-      level: this.parse_log_level(body["level"]),
-      message,
-      source: typeof body["source"] === "string" ? body["source"] : "python-core",
-      targets: this.parse_log_targets(body["targets"]),
-    };
-    if (typeof body["error_message"] === "string") {
-      payload.error_message = body["error_message"];
-    }
-    if (typeof body["stack"] === "string") {
-      payload.stack = body["stack"];
-    }
-    if (
-      typeof body["context"] === "object" &&
-      body["context"] !== null &&
-      !Array.isArray(body["context"])
-    ) {
-      payload.context = body["context"] as Record<string, unknown>;
-    }
-    return payload;
-  }
-
-  /**
-   * 未知日志级别降级为 info，保证日志入口不会因旧 Core 字段失败。
-   */
-  private parse_log_level(value: ApiJsonValue | undefined): LogLevel {
-    if (
-      value === "debug" ||
-      value === "info" ||
-      value === "warning" ||
-      value === "error" ||
-      value === "fatal"
-    ) {
-      return value;
-    }
-    return "info";
-  }
-
-  /**
-   * 日志输出目标只接受布尔字段，未知字段不会穿透到 LogManager。
-   */
-  private parse_log_targets(value: ApiJsonValue | undefined): Partial<LogTargets> | undefined {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return undefined;
-    }
-    const raw_targets = value as Record<string, unknown>;
-    const targets: Partial<LogTargets> = {};
-    for (const key of ["file", "console", "window"] as const) {
-      if (typeof raw_targets[key] === "boolean") {
-        targets[key] = raw_targets[key];
-      }
-    }
-    return targets;
-  }
-
-  /**
-   * Gateway 自身异常统一打到 TS 日志源，便于和 Python Core 日志区分。
+   * Gateway 自身异常统一打到 TS 日志源，便于和其他内部日志区分。
    */
   private log_gateway_error(
     message: string,

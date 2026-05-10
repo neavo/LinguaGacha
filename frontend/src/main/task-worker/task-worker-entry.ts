@@ -29,7 +29,7 @@ class TaskWorkerEntry {
   private readonly controllers = new Map<string, AbortController>();
 
   /**
-   * workerData 由 TaskWorkerPool 注入，包含资源根和 Python 内部连接信息。
+   * workerData 由 TaskWorkerPool 注入，只包含 work unit 需要的资源根。
    */
   public constructor(options: WorkUnitRunnerOptions) {
     this.runner = new WorkUnitRunner(options);

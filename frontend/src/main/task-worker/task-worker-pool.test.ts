@@ -4,34 +4,27 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PiAiLlmRequestClient } from "./llm/pi-ai-llm-request-client";
 import { TaskWorkerPool } from "./task-worker-pool";
 
 describe("TaskWorkerPool", () => {
   afterEach(() => {
-    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("源码测试环境回退 direct runner 后仍执行完整翻译 work unit", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              ok: true,
-              data: {
-                response_result: '{"0":"你好"}',
-                input_tokens: 1,
-                output_tokens: 2,
-              },
-            }),
-          ),
-      ),
-    );
+    vi.spyOn(PiAiLlmRequestClient.prototype, "request").mockResolvedValue({
+      response_think: "",
+      response_result: '{"0":"你好"}',
+      input_tokens: 1,
+      output_tokens: 2,
+      cancelled: false,
+      timeout: false,
+      degraded: false,
+      error: "",
+    });
     const pool = new TaskWorkerPool({
       appRoot: await create_template_root(),
-      pyCoreBaseUrl: "http://127.0.0.1:1234",
-      pyCoreToken: "token-1",
       workerCount: 2,
     });
 

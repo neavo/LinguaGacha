@@ -17,8 +17,6 @@ import {
 // worker 池只关心运行环境依赖，任务语义由 body 里的 method 和 runner 决定。
 interface TaskWorkerPoolOptions {
   appRoot: string;
-  pyCoreBaseUrl: string;
-  pyCoreToken: string;
   workerCount?: number;
 }
 
@@ -62,8 +60,6 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
     if (this.should_use_direct_runner(worker_entry_url)) {
       this.direct_runner = new WorkUnitRunner({
         appRoot: this.options.appRoot,
-        pyCoreBaseUrl: this.options.pyCoreBaseUrl,
-        pyCoreToken: this.options.pyCoreToken,
       });
       return;
     }
@@ -231,8 +227,6 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
       worker: new Worker(new URL("./task-worker-entry.js", import.meta.url), {
         workerData: {
           appRoot: this.options.appRoot,
-          pyCoreBaseUrl: this.options.pyCoreBaseUrl,
-          pyCoreToken: this.options.pyCoreToken,
         },
       }),
       busy: false,

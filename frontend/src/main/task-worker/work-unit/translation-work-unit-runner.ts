@@ -10,8 +10,7 @@ import {
 import { PromptBuilder } from "../prompt/prompt-builder";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { PyLlmRequestClient } from "../llm/py-llm-request-client";
-import type { PyLlmRequestResult } from "../llm/llm-request-types";
+import type { LlmRequestClient, LlmRequestResult } from "../llm/llm-request-types";
 import type {
   RetranslateWorkUnitRequest,
   TranslateSingleWorkUnitRequest,
@@ -27,13 +26,13 @@ import type {
 export class TranslationWorkUnitRunner {
   // app_root 用于读取项目内提示词模板，worker 不依赖当前工作目录。
   private readonly app_root: string;
-  // llm_client 是 Python adapter 的唯一出口，runner 不直接拼内部 HTTP 细节。
-  private readonly llm_client: PyLlmRequestClient;
+  // llm_client 是 LLM 请求唯一出口，runner 不直接拼供应商协议细节。
+  private readonly llm_client: LlmRequestClient;
 
   /**
    * app_root 用于读取提示词模板，llm_client 是唯一网络请求出口。
    */
-  public constructor(app_root: string, llm_client: PyLlmRequestClient) {
+  public constructor(app_root: string, llm_client: LlmRequestClient) {
     this.app_root = app_root;
     this.llm_client = llm_client;
   }
@@ -227,7 +226,7 @@ export class TranslationWorkUnitRunner {
       stream_degraded: boolean;
       request_timeout: boolean;
     },
-    response: PyLlmRequestResult,
+    response: LlmRequestResult,
   ): Promise<TranslationWorkUnitResult> {
     const cleaner_result = ResponseCleaner.extract_why_from_response(response.response_result);
     const normalized_think = ResponseCleaner.merge_text_blocks(

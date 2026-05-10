@@ -10,7 +10,7 @@ flowchart TD
     C -->|Electron / Renderer| E["读 FRONTEND"]
     C -->|页面语义 / 样式| F["读 PRODUCT"]
     F --> F0["读 DESIGN"]
-    C -->|Python Core 数据域| G["读 DATA"]
+    C -->|数据域 / 状态落点| G["读 DATA"]
     D --> H["确认状态拥有者 / 唯一写入口 / 跨层载荷"]
     E --> H
     F0 --> H
@@ -35,17 +35,17 @@ flowchart TD
 | 本地 HTTP / SSE 契约、bootstrap、topic、错误码 | `ARCHITECTURE` -> `API` |
 | Electron 壳层、preload、共享桥接、渲染层分层 | `ARCHITECTURE` -> `FRONTEND` |
 | React 页面、组件、样式、交互语义 | `ARCHITECTURE` -> `PRODUCT` -> `DESIGN` -> `FRONTEND` |
-| Python Core 数据域、状态落点、唯一写入口 | `ARCHITECTURE` -> `DATA` |
+| 数据域、状态落点、唯一写入口 | `ARCHITECTURE` -> `DATA` |
 | 任务执行、验证矩阵、交付要求 | `WORKFLOW` |
 
 ## 最低验证要求
 
 | 变更类型 | 最低验证 |
 | --- | --- |
-| Python 业务逻辑、数据流、API 行为变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest` |
-| API 契约、错误码、SSE topic、bootstrap 变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并补齐或更新相关 API 测试 |
+| Python 工具逻辑、userdata 迁移、文本 / 过滤 / 路径工具变化 | `uv run ruff format` -> `uv run ruff check --fix` -> 相关 `uv run pytest ...`，影响面较大时执行 `uv run pytest` |
+| API 契约、错误码、SSE topic、bootstrap 变化 | 按受影响侧执行验证并补齐相关 API 测试；Electron TS Gateway 变化执行 `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest` 与必要的 `tsc` |
 | Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest`；若触及 TS 类型、导入导出、preload / shared 公共面或构建配置，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit`，影响面较大时执行 `npm --prefix frontend run test` |
-| `.lg` database、DatabaseGateway、schema 或 asset 读写变化 | `uv run ruff format` -> `uv run ruff check --fix` -> `uv run pytest`，并执行 `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关前端测试；若触及 TS 类型或 Electron main 公共面，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
+| `.lg` database、schema 或 asset 读写变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关前端测试；若触及 TS 类型或 Electron main 公共面，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
 | 渲染层结构、组件契约、样式边界、导航变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest`、`npm --prefix frontend run renderer:audit`；若触及组件 props、共享类型、导入导出或构建配置，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit` |
 | 仅文档改动 | 自检链接、命名、阅读路径、权威来源和文档边界是否仍然准确 |
 

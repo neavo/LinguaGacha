@@ -16,7 +16,7 @@ const TEMPLATE_DIR_NAME = "template";
 const PRESET_DIR_NAME = "preset";
 
 /**
- * TS Gateway 与 Python Core 共享同一套运行时根规则，避免配置和预设写到两处。
+ * TS Gateway 统一持有运行时根规则，避免配置和预设写到两处。
  */
 export class AppPathService {
   private readonly app_root: string;

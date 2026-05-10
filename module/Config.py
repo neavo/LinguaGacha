@@ -11,7 +11,6 @@ from base.BasePath import BasePath
 from base.BaseLanguage import BaseLanguage
 from base.LogManager import LogManager
 from module.Localizer.Localizer import Localizer
-from module.Model.Manager import ModelManager
 from module.Utils.JSONTool import JSONTool
 
 
@@ -207,29 +206,22 @@ class Config:
 
         return self
 
-    # 初始化模型管理器
     def initialize_models(self) -> int:
-        """初始化模型列表，如果没有则从预设复制。返回兼容保留的固定迁移数量。"""
-        manager = ModelManager.get()
-        self.models, migrated_count = manager.initialize_models(self.models or [])
-        manager.set_models(self.models)
-        # 如果没有激活模型，设置为第一个
+        """保留配置字段归一化；模型预设与迁移权威已经迁到 TS model service。"""
+        self.models = list(self.models or [])
         if not self.activate_model_id and self.models:
             self.activate_model_id = self.models[0].get("id", "")
-        manager.set_active_model_id(self.activate_model_id)
-        return migrated_count
+        return 0
 
-    # 获取模型配置
     def get_model(self, model_id: str) -> dict[str, Any] | None:
-        """根据 ID 获取模型配置字典"""
+        """根据 ID 读取配置中的模型字典，供保留 Python 工具做只读兼容。"""
         for model in self.models or []:
             if model.get("id") == model_id:
                 return model
         return None
 
-    # 更新模型配置
     def set_model(self, model_data: dict[str, Any]) -> None:
-        """更新模型配置"""
+        """仅更新配置内存对象；运行态模型 CRUD 由 TS model service 负责。"""
         models = self.models or []
         model_id = model_data.get("id")
         for i, model in enumerate(models):
@@ -238,26 +230,20 @@ class Config:
                 break
 
         self.models = models
-        # 同步到 ModelManager
-        ModelManager.get().set_models(models)
 
-    # 获取激活的模型
     def get_active_model(self) -> dict[str, Any] | None:
-        """获取当前激活的模型配置"""
+        """读取当前激活模型；缺失时回退配置中的第一项。"""
         if self.activate_model_id:
             model = self.get_model(self.activate_model_id)
             if model:
                 return model
-        # 如果没有或找不到，返回第一个
         if self.models:
             return self.models[0]
         return None
 
-    # 设置激活的模型
     def set_active_model_id(self, model_id: str) -> None:
-        """设置激活的模型 ID"""
+        """只写配置字段；TS 运行态不会读取 Python 模型门面。"""
         self.activate_model_id = model_id
-        ModelManager.get().set_active_model_id(model_id)
 
     # ========== 最近打开的工程 ==========
     def add_recent_project(self, path: str, name: str) -> None:

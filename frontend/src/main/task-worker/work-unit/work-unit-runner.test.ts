@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import type { PyLlmRequestClient } from "../llm/py-llm-request-client";
-import type { PyLlmRequestBody, PyLlmRequestResult } from "../llm/llm-request-types";
+import type { LlmRequestBody, LlmRequestClient, LlmRequestResult } from "../llm/llm-request-types";
 import { AnalysisWorkUnitRunner } from "./analysis-work-unit-runner";
 import { TranslationWorkUnitRunner } from "./translation-work-unit-runner";
 import { WorkUnitRunner } from "./work-unit-runner";
@@ -14,7 +13,7 @@ import { WorkUnitRunner } from "./work-unit-runner";
 describe("work-unit runner", () => {
   it("翻译 runner 执行预处理、LLM 调用、响应解码和 item 回写", async () => {
     const app_root = await create_template_root();
-    const captured_requests: PyLlmRequestBody[] = [];
+    const captured_requests: LlmRequestBody[] = [];
     const runner = new TranslationWorkUnitRunner(
       app_root,
       create_llm_client(captured_requests, {
@@ -96,8 +95,6 @@ describe("work-unit runner", () => {
   it("统一分发器拒绝未知 work-unit 方法", async () => {
     const runner = new WorkUnitRunner({
       appRoot: await create_template_root(),
-      pyCoreBaseUrl: "http://127.0.0.1:1234",
-      pyCoreToken: "token-1",
     });
 
     await expect(runner.run("missing", {}, new AbortController().signal)).rejects.toThrow(
@@ -110,11 +107,11 @@ describe("work-unit runner", () => {
  * 构造内存版 LLM client，捕获请求体以验证 runner 没有绕过协议边界。
  */
 function create_llm_client(
-  captured_requests: PyLlmRequestBody[],
-  overrides: Partial<PyLlmRequestResult>,
-): PyLlmRequestClient {
+  captured_requests: LlmRequestBody[],
+  overrides: Partial<LlmRequestResult>,
+): LlmRequestClient {
   return {
-    request: async (body: PyLlmRequestBody) => {
+    request: async (body: LlmRequestBody) => {
       captured_requests.push(body);
       return {
         response_think: "",
@@ -128,7 +125,7 @@ function create_llm_client(
         ...overrides,
       };
     },
-  } as unknown as PyLlmRequestClient;
+  };
 }
 
 /**

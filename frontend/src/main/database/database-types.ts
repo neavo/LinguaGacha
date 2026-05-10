@@ -8,7 +8,7 @@ export type DatabaseJsonValue =
   | { [key: string]: DatabaseJsonValue };
 
 export interface DatabaseOperation {
-  // 操作名由 DatabaseGateway 固定发出，database 层集中分发和校验。
+  // 操作名由 TS 服务固定发出，database 层集中分发和校验。
   name: string;
   args?: Record<string, DatabaseJsonValue>;
 }

@@ -12,7 +12,7 @@ interface TaskLimiterOptions {
  * Task Engine 限流器，统一持有并发槽和每分钟请求数节奏。
  */
 export class TaskLimiter {
-  // max_concurrency 是 worker 同时发出 Python work unit 的上限。
+  // max_concurrency 是 worker 同时执行 work unit 的上限。
   public readonly max_concurrency: number;
 
   // rpm_limit 只表示每分钟请求数，不参与反推并发。

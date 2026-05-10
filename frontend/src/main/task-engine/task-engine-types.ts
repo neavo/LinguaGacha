@@ -39,7 +39,7 @@ export interface TaskProgressSnapshot {
 export type TaskItemRecord = MutableJsonRecord;
 
 /**
- * Python executor 返回的翻译类 work-unit 结果。
+ * work-unit executor 返回的翻译类结果。
  */
 export interface TranslationWorkUnitResult {
   // items 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交。
@@ -59,7 +59,7 @@ export interface TranslationWorkUnitResult {
 }
 
 /**
- * Python executor 返回的分析 work-unit 结果。
+ * work-unit executor 返回的分析结果。
  */
 export interface AnalysisWorkUnitResult {
   // success 表示分析结果可进入 checkpoint 提交流程。
