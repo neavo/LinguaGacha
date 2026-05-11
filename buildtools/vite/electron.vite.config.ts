@@ -61,11 +61,6 @@ const config = {
     build: {
       outDir: path.resolve(build_root, "dist"),
     },
-    rollupOptions: {
-      input: {
-        index: path.resolve(project_root, "src/renderer/index.html"),
-      },
-    },
   },
 };
 

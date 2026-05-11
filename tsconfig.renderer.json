@@ -1,0 +1,38 @@
+{
+    "compilerOptions": {
+        "allowImportingTsExtensions": true,
+        "erasableSyntaxOnly": true,
+        "isolatedModules": true,
+        "jsx": "react-jsx",
+        "lib": [
+            "ES2023",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "noEmit": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedSideEffectImports": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "paths": {
+            "@/*": [
+                "./src/renderer/*"
+            ],
+            "@shared/*": [
+                "./src/shared/*"
+            ]
+        },
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "target": "ES2023",
+        "verbatimModuleSyntax": true
+    },
+    "include": [
+        "src/renderer",
+        "src/shared",
+        "src/electron-env.d.ts"
+    ]
+}

@@ -33,3 +33,5 @@ lerna-debug.log*
 *.lg
 /*.xlsx
 /*.json
+
+!/tsconfig*.json
