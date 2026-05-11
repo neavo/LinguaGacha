@@ -88,7 +88,7 @@
   - 优化与改进 #535 #536 #539 #541
 
 - 20260428 v0.99.3
-  - Optimizations and Improvements #535 #536 #539 #541
+  - 优化与改进 #535 #536 #539 #541
 
 - 20260428 v0.99.2
   - 优化与改进 #531 #533
@@ -102,11 +102,9 @@
   - 暂时移除了 `CLI` 模式
 
 ## 开发指南 🛠️
-- 本项目由 `Electron main TS Gateway`、内部数据库服务、任务引擎与 React 前端组成，推荐准备 [`Node.js 24`](https://nodejs.org/)
-- 安装依赖 `npm --prefix frontend install`
-- 更新依赖 `npm --prefix frontend update`
-- 运行应用 `npm --prefix frontend run dev`
-- `buildtools/mock_llm_api_server.py` 是临时保留的独立本地调试脚本，正式应用、CI 和打包流程不依赖它
+- 先安装 [`Node.js 24`](https://nodejs.org/)，然后初始化 `npm install`
+- 更新依赖 `npm update`
+- 运行应用 `npm run dev`
 - 提交 PR 前请根据改动范围执行 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) 中的对应验证
 - 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 

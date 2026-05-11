@@ -1,4 +1,4 @@
 interface:
-  display_name: "Project Docs"
-  short_description: "指导项目长期文档的维护，当编纂、检查、优化和重构项目级长期文档时使用"
-  default_prompt: "基于项目文件中体现的事实，遵循技能 $project-docs 要求，检查、优化和重构当前项目的文档系统，从严判断，宁缺毋滥"
+  display_name: Project Docs
+  short_description: 治理 LinguaGacha 长期文档权威边界与阅读路径
+  default_prompt: 以“全局最优”而非“最小改动”原则，使用 $project-docs 检查并优化 LinguaGacha 长期文档的权威归宿、阅读路径和验证边界

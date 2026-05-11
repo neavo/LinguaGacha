@@ -100,11 +100,9 @@
   - Temporarily removed `CLI` mode
 
 ## Development Guide 🛠️
-- This project consists of an `Electron main TS Gateway`, an internal database service, a task engine, and a React frontend. We recommend preparing [`Node.js 24`](https://nodejs.org/)
-- Install dependencies `npm --prefix frontend install`
-- Update dependencies `npm --prefix frontend update`
-- Run the application `npm --prefix frontend run dev`
-- `buildtools/mock_llm_api_server.py` is a temporarily retained standalone local debugging script; the official app, CI, and packaging flow do not depend on it
+- First install [`Node.js 24`](https://nodejs.org/), then initialize with `npm install`
+- Update dependencies `npm update`
+- Run the application `npm run dev`
 - Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
 - For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 

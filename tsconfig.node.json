@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "tsBuildInfoFile": "./build/tsconfig.node.tsbuildinfo",
+    "types": ["electron-vite/node"]
+  },
+  "include": [
+    "buildtools/vite/electron.vite.config.ts",
+    "src/electron-env.d.ts",
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*",
+    "src/test/**/*"
+  ]
+}

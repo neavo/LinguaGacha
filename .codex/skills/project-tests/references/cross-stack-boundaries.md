@@ -121,8 +121,8 @@ expect(snapshots.at(-1)).toMatchObject({
 uv run pytest tests/path/to/contract_test.py -v
 
 # 前端目标测试
-npm --prefix frontend run test -- src/path/to/consumer.test.ts
-npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit
+npm run test -- src/path/to/consumer.test.ts
+npm exec -- tsc -p tsconfig.json --noEmit
 ```
 
 如果项目不使用这些命令，换成仓库现有的等价测试、lint 和类型检查命令。

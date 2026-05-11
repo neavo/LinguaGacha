@@ -1,106 +1,70 @@
-# LinguaGacha 工作流文档
+# LinguaGacha 工作流
 
-## 任务起手式
+本文件规定任务起手式、阅读路径、验证矩阵、文档同步和交付自检。专题正文不要写在这里；这里只告诉维护者何时读哪里、跑什么、交付时说明什么。
+
+## 1. 起手式
+
+1. 先判断任务类型，再按下表选择阅读路径。
+2. 除非任务只涉及纯文档自检，否则先读 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
+3. 改代码前确认状态拥有者、唯一写入口和事件回流路径。
+4. 改动若会改变长期边界，同一任务内同步对应文档。
+5. 完成后回看 diff，确认没有制造并行规则、旧入口或低密度重复正文。
+
+## 2. 阅读路径
+
+| 任务类型 | 必读 | 视情况补读 |
+| --- | --- | --- |
+| 架构、跨层边界、进程链路 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | [`docs/BACKEND.md`](BACKEND.md)、[`docs/FRONTEND.md`](FRONTEND.md) |
+| API、SSE、bootstrap、mutation、错误码 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/api/`、`src/renderer/app/desktop/` |
+| 数据库、`.lg`、migration、状态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/migration/`、相关 service 测试 |
+| 任务引擎、worker、任务事件 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/task*`、`src/main/task-worker/` |
+| preload、renderer、ProjectStore、导航 | [`docs/FRONTEND.md`](FRONTEND.md) | `src/preload/`、`src/renderer/app/`、相关页面 |
+| 前端视觉和交互 | [`docs/FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、相关 CSS 和组件 |
+| 长期文档治理 | `.codex/skills/project-docs/SKILL.md` | `AGENTS.md` 与 `docs/` 目标形态 |
+
+## 3. 验证矩阵
+
+| 改动范围 | 最小验证 | 追加验证 |
+| --- | --- | --- |
+| 纯长期文档 | `npm run lint` 可选；必须检查链接和目标文档形态 | 涉及 README / 脚本提示时跑相关脚本或全文检索 |
+| TypeScript 非视觉逻辑 | `npm test -- <相关 test 文件>` 或 `npm test` | `npm run lint` |
+| 后端 API / database / task | 相关 `src/main/**/*.test.ts` | `npm test`，必要时 `npm run build` |
+| renderer 状态 / 页面逻辑 | 相关 `src/renderer/**/*.test.ts(x)` | `npm run lint` |
+| 前端视觉 / CSS / 组件外观 | 相关组件或页面测试，`npm run renderer:audit` | Electron 真机检查；需要时接 9222 DevTools |
+| 跨前后端运行态 | 后端相关测试 + renderer runtime/store 测试 | `npm test`，必要时启动 `npm run dev` 真机走主链路 |
+| 构建或打包配置 | `npm run build` | 按影响范围追加测试 |
+
+无法执行、只执行部分或验证失败时，交付必须说明原因、影响范围和剩余风险。
+
+## 4. 文档同步规则
 
 ```mermaid
 flowchart TD
-    A["收到任务"] --> B["先读 ARCHITECTURE"]
-    B --> C{"改动主要落在哪一层"}
-    C -->|协议 / 路由 / SSE| D["读 API"]
-    C -->|Electron / Renderer| E["读 FRONTEND"]
-    C -->|页面语义 / 样式| F["读 PRODUCT"]
-    F --> F0["读 DESIGN"]
-    C -->|数据域 / 状态落点| G["读 DATA"]
-    D --> H["确认状态拥有者 / 唯一写入口 / 跨层载荷"]
-    E --> H
-    F0 --> H
-    G --> H
-    H --> I["实现改动"]
-    I --> J["执行对应验证"]
-    J --> K["同步受影响文档"]
-    K --> L["回看 Diff 后交付"]
+  A["改动会影响未来维护判断吗？"] -->|否| B["不写长期文档"]
+  A -->|是| C["能从代码表面直接看出吗？"]
+  C -->|是| B
+  C -->|否| D["选择唯一归宿"]
+  D --> E["架构 -> ARCHITECTURE"]
+  D --> F["后端协议/状态/存储 -> BACKEND"]
+  D --> G["前端接入/运行态/导航/样式消费 -> FRONTEND"]
+  D --> H["验证/阅读/交付流程 -> WORKFLOW"]
+  D --> I["协作/编码/交付硬约束 -> AGENTS"]
 ```
 
-执行原则：
-- 先确认信息去留与归宿，再动代码或文档。
-- 同一改动若横跨多层，验证和文档同步都按并集执行。
-- 文档只记录未来维护必须知道、且不能轻易从代码表面读出的当前有效事实。
-- 发布打包版本号以 `version.txt` 为唯一事实源，文件内容保持不带 `v` 的纯数值形式；`frontend/package.json` 的 `version` 保持 `0.0.0` 占位，CI 构建前再临时注入真实版本。手动发布流水线稳定产物为 Windows x64 zip、macOS x64 / arm64 DMG 与 Linux x64 AppImage；每次成功构建后固定创建 GitHub Release 草稿，不自动正式发布。日志、标题、User-Agent 等需要带 `v` 的展示位置由调用处自行拼接。
-- `buildtools/mock_llm_api_server.py` 是临时保留的本地 LLM 调试脚本；正式运行、测试、CI 和打包流程不得依赖它。
+- 同一规则只能有一个权威归宿；其它位置只保留短引用。
+- `AGENTS.md` 只保留代理协作、仓库级硬约束、编码约束和交付硬约束，不展开专题正文。
+- `docs/ARCHITECTURE.md` 是阅读路由和系统分层，不承载协议字段、状态表或验证矩阵。
+- 后端协议与数据域权威都归 `docs/BACKEND.md`，不得新增并行 API 或数据域入口。
+- `docs/FRONTEND.md` 不替代产品与设计流程；遇到产品语义或设计权威，提醒走 `PRODUCT.md` / `DESIGN.md` 对应流程。
+- 删除或迁移文档入口前，必须全文检索 README、脚本报错、测试断言和技能提示，确认不再指向旧入口。
 
-## 常见任务类型的阅读路径
+## 5. 交付自检
 
-| 任务类型 | 阅读顺序 |
-| --- | --- |
-| 仓库结构、阅读入口、跨层关系 | `ARCHITECTURE` |
-| 本地 HTTP / SSE 契约、bootstrap、topic、错误码 | `ARCHITECTURE` -> `API` |
-| Electron 壳层、preload、共享桥接、渲染层分层 | `ARCHITECTURE` -> `FRONTEND` |
-| React 页面、组件、样式、交互语义 | `ARCHITECTURE` -> `PRODUCT` -> `DESIGN` -> `FRONTEND` |
-| 数据域、状态落点、唯一写入口 | `ARCHITECTURE` -> `DATA` |
-| 任务执行、验证矩阵、交付要求 | `WORKFLOW` |
+交付前逐项确认：
 
-## 最低验证要求
-
-| 变更类型 | 最低验证 |
-| --- | --- |
-| API 契约、错误码、SSE topic、bootstrap 变化 | 按受影响侧执行验证并补齐相关 API 测试；Electron TS Gateway 变化执行 `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest` 与必要的 `tsc` |
-| Electron 主进程、preload、共享桥接变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest`；若触及 TS 类型、导入导出、preload / shared 公共面或构建配置，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit`，影响面较大时执行 `npm --prefix frontend run test` |
-| `.lg` database、schema 或 asset 读写变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关前端测试；若触及 TS 类型或 Electron main 公共面，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.node.json --noEmit` |
-| 渲染层结构、组件契约、样式边界、导航变化 | `npm --prefix frontend run format`、`npm --prefix frontend run lint`、相关 `vitest`、`npm --prefix frontend run renderer:audit`；若触及组件 props、共享类型、导入导出或构建配置，再执行 `npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit` |
-| 仅文档改动 | 自检链接、命名、阅读路径、权威来源和文档边界是否仍然准确 |
-
-补充规则：
-- 若改动临时调试脚本，单独用本机解释器运行对应手动验证；不要把它接入正式验证矩阵。
-- 若任务只改文档，但文档声称某个实现边界已变化，就必须先确认代码真相再交付。
-- 前端本地只保留会实际改写文件的 `format` 命令；执行后不再追加只读格式检查命令。
-- `lint` 与 `tsc` 覆盖的问题不同，但不机械连跑；只有改动可能影响 TypeScript 类型、模块导入导出、公共契约或构建配置时才补 `tsc`。
-
-## 文档同步规则
-
-Agent 维护与实现约束的长期权威文档固定收口为：
-- `AGENTS.md`
-- `docs/ARCHITECTURE.md`
-- `docs/API.md`
-- `docs/FRONTEND.md`
-- `docs/WORKFLOW.md`
-- `docs/DATA.md`
-
-产品与设计权威固定收口为：
-- `PRODUCT.md`
-- `DESIGN.md`
-
-不参与长期权威竞争的 Markdown：
-- `PRODUCT.md` 是 `$impeccable` 的产品上下文，提供用户、产品目的、品牌气质和反参考；它与 `DESIGN.md` 并存，但不承载 Agent 维护规则或实现协作规则。
-- `PLAN.md` 或其它任务计划文件是阶段性任务材料；除非用户明确要求迁移或清理，否则不自动吸收进长期文档，也不自治删除。
-- `README*.md` 面向用户、发布页和公开项目介绍，不承载 Agent 维护规则。
-- `.codex/skills/**` 是技能说明，按技能生命周期维护。
-- `output/**`、`input_bak/**` 是生成物、样例、缓存或临时材料，有明确子目录与生命周期。
-
-| 变更内容 | 必须同步 |
-| --- | --- |
-| 系统分层、跨层边界、阅读路径、模块关系矩阵 | `docs/ARCHITECTURE.md` |
-| 路由前缀、响应壳、错误码、bootstrap、SSE topic、`project.patch`、同步 mutation 规则 | `docs/API.md` |
-| `main / preload / shared / renderer` 分层、`window.desktopApp`、`desktop-api.ts`、`ProjectStore`、导航映射、样式归属 | `docs/FRONTEND.md` |
-| 视觉 token 权威来源、页面骨架、稳定组件语言、主题语义 | `DESIGN.md` |
-| 数据域职责、状态落点、唯一写入口、`.lg` 物理存储落点、文件格式分发、模型配置规则 | `docs/DATA.md` |
-| Agent 协作入口、仓库级硬约束、最低验证与交付要求 | `AGENTS.md` |
-
-同步原则：
-- 若同一改动同时影响架构边界与设计语义，先更新权威文档，再调整实现与局部说明。
-- 文档之间只保留一个权威版本；其他文档只做必要引用，不复制大段规则。
-- 长期文档只陈述当前有效规则；任务过程、阶段性方案和变更叙事留给 Git、PR 或任务记录。
-- 删除或迁移遗留文档前，要同步检查脚本报错、README、技能提示和测试断言中的文档链接；工具链入口不得继续指向已迁空的目录级 `SPEC.md`。
-
-## 交付前自检清单
-
-1. 这次改动的状态拥有者、唯一写入口和跨层载荷是否仍然清楚。
-2. Diff 中是否出现把协议边界、任务语义、样式语义散到错误层级的情况。
-3. 对应验证是否已经执行；若未执行或失败，是否已记录原因与影响范围。
-4. 受影响的长期文档是否已经同步，且没有留下坏链接或重复正文。
-5. 若涉及前端视觉改动，是否已经按 `DESIGN.md` 的权威来源核对。
-
-## 交付要求
-
-- 交付前必须回看 Diff，确认命名、注释、实现边界和文档边界仍然一致。
-- 若验证未执行、执行失败，或只完成了部分验证，必须在交付说明中明确写出原因与影响范围。
-- 若任务涉及前端视觉改动，交付时要明确说明是否依照 `DESIGN.md` 完成核对。
+- `git diff` 中的命名、注释、实现边界和文档边界一致。
+- 没有把专题正文写进 `AGENTS.md` 或 `ARCHITECTURE.md`。
+- 没有新增与 `BACKEND.md`、`FRONTEND.md` 并行的临时权威入口。
+- 协议、状态、数据库、前端运行态和验证要求的变更已同步到唯一归宿。
+- 验证命令已按矩阵执行，并在交付中说明结果。
+- 前端视觉改动已说明是否核对 `DESIGN.md` 和是否执行 `npm run renderer:audit`。

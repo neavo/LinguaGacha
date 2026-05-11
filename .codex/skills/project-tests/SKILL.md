@@ -136,7 +136,7 @@ Get-ChildItem -LiteralPath <ts-source-root> -Recurse -File -Include "*.test.ts",
 ```powershell
 uv run pytest tests/ -v
 
-npm --prefix frontend run test
+npm run test
 ```
 
 ## 提交前检查
