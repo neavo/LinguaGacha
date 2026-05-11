@@ -2,7 +2,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { infer_text_type_from_source } from "../file/file-text-type-inference";
-import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
+import { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
 import {
   build_project_mutation_ack_from_meta,
   build_section_revisions_from_meta,

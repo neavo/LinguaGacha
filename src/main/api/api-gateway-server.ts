@@ -19,19 +19,21 @@ import { FileExportService } from "../file/file-export-service";
 import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
 import type { LogEvent } from "../log/log-types";
+import { CoreEventHub } from "../events/core-event-hub";
 import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
-import { TaskDataService } from "../task/task-data-service";
-import { TaskEventHub } from "../task/task-event-hub";
-import { TaskRuntimeState } from "../task/task-runtime-state";
-import { TaskService } from "../task/task-service";
-import { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
-import { TaskEngine } from "../task-engine/task-engine";
+import { ProjectPatchPublisher } from "../project/project-patch-publisher";
+import { TaskCommandService } from "../task-engine/command/task-command-service";
+import { TaskEngine } from "../task-engine/orchestration/task-engine";
+import { TaskRuntimeProjector } from "../task-engine/runtime/task-runtime-projector";
+import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
+import { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
+import { ProjectTaskStore } from "../task-engine/store/project-task-store";
 import { TaskWorkerPool } from "../task-worker/task-worker-pool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
-  close_http_server_with_connections,
-  track_http_server_connections,
-} from "../server/http-server-connections";
+  close_api_gateway_with_connections,
+  track_api_gateway_connections,
+} from "./api-gateway-connections";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
 // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API。
@@ -69,8 +71,8 @@ export class ApiGatewayServer {
   // 任务 busy / 请求中数量 / 重翻条目由 API Gateway 维护，避免运行态分散。
   private readonly task_runtime_state = new TaskRuntimeState();
 
-  // 事件 hub 持有本地订阅者，Gateway stop 时必须显式关闭。
-  private event_hub: TaskEventHub | null = null;
+  // core_event_hub 持有本地订阅者，Gateway stop 时必须显式关闭。
+  private core_event_hub: CoreEventHub | null = null;
 
   // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭。
   private server: Server | null = null;
@@ -114,7 +116,7 @@ export class ApiGatewayServer {
           resolve(pending_server);
         },
       ) as Server;
-      track_http_server_connections(pending_server, this.server_sockets);
+      track_api_gateway_connections(pending_server, this.server_sockets);
 
       pending_server.once("error", handle_start_error);
     });
@@ -126,8 +128,8 @@ export class ApiGatewayServer {
    * 只释放 Gateway 自己持有的监听器，Core 与 Database 生命周期由上层编排。
    */
   public async stop(): Promise<void> {
-    this.event_hub?.stop();
-    this.event_hub = null;
+    this.core_event_hub?.stop();
+    this.core_event_hub = null;
     await this.task_worker_pool?.dispose();
     this.task_worker_pool = null;
     const server = this.server;
@@ -135,7 +137,7 @@ export class ApiGatewayServer {
     if (server === null) {
       return;
     }
-    await close_http_server_with_connections(server, this.server_sockets);
+    await close_api_gateway_with_connections(server, this.server_sockets);
   }
 
   /**
@@ -147,13 +149,17 @@ export class ApiGatewayServer {
       this.options.database,
       this.project_session_state,
     );
-    const event_hub = new TaskEventHub({
-      projectPatchAdapter: project_patch_adapter,
-      taskRuntimeState: this.task_runtime_state,
+    const task_runtime_projector = new TaskRuntimeProjector(this.task_runtime_state);
+    const core_event_hub = new CoreEventHub({
+      projectors: [task_runtime_projector],
     });
-    this.event_hub = event_hub;
-    event_hub.start();
-    const config_service = new ConfigService(paths, event_hub);
+    const project_patch_publisher = new ProjectPatchPublisher(
+      project_patch_adapter,
+      core_event_hub,
+    );
+    this.core_event_hub = core_event_hub;
+    core_event_hub.start();
+    const config_service = new ConfigService(paths, core_event_hub);
     const model_service = new ModelService(paths, config_service);
     const project_lifecycle_service = new ProjectLifecycleService(
       this.options.database,
@@ -181,26 +187,26 @@ export class ApiGatewayServer {
       task_snapshot_builder,
       this.project_session_state,
     );
-    const task_data_service = new TaskDataService(
+    const project_task_store = new ProjectTaskStore(
       this.options.database,
       this.project_session_state,
       this.task_runtime_state,
-      event_hub,
+      project_patch_publisher,
     );
     const executor_client = new TaskWorkerPool({
       appRoot: this.options.appRoot,
     });
     this.task_worker_pool = executor_client;
     const task_engine = new TaskEngine({
-      taskDataService: task_data_service,
-      taskRuntimeState: this.task_runtime_state,
-      eventHub: event_hub,
+      taskStore: project_task_store,
+      coreEventHub: core_event_hub,
+      projectPatchPublisher: project_patch_publisher,
       executorClient: executor_client,
       configService: config_service,
       snapshotBuilder: task_snapshot_builder,
       logManager: this.options.logManager,
     });
-    const task_service = new TaskService(
+    const task_command_service = new TaskCommandService(
       task_engine,
       task_snapshot_builder,
       this.task_runtime_state,
@@ -251,7 +257,7 @@ export class ApiGatewayServer {
       return this.create_log_stream_response();
     });
     app.get("/api/events/stream", () => {
-      return event_hub.create_stream_response();
+      return core_event_hub.create_stream_response();
     });
     app.get("/api/project/bootstrap/stream", async (context) => {
       try {
@@ -359,19 +365,25 @@ export class ApiGatewayServer {
       file_export_service.export_converted_translation(body),
     );
     this.post_json(app, "/api/tasks/start-translation", (body) =>
-      task_service.start_translation(body),
+      task_command_service.start_translation(body),
     );
     this.post_json(app, "/api/tasks/stop-translation", (body) =>
-      task_service.stop_translation(body),
+      task_command_service.stop_translation(body),
     );
-    this.post_json(app, "/api/tasks/start-analysis", (body) => task_service.start_analysis(body));
-    this.post_json(app, "/api/tasks/stop-analysis", (body) => task_service.stop_analysis(body));
+    this.post_json(app, "/api/tasks/start-analysis", (body) =>
+      task_command_service.start_analysis(body),
+    );
+    this.post_json(app, "/api/tasks/stop-analysis", (body) =>
+      task_command_service.stop_analysis(body),
+    );
     this.post_json(app, "/api/tasks/start-retranslate", (body) =>
-      task_service.start_retranslate(body),
+      task_command_service.start_retranslate(body),
     );
-    this.post_json(app, "/api/tasks/snapshot", (body) => task_service.get_task_snapshot(body));
+    this.post_json(app, "/api/tasks/snapshot", (body) =>
+      task_command_service.get_task_snapshot(body),
+    );
     this.post_json(app, "/api/tasks/translate-single", (body) =>
-      task_service.translate_single(body),
+      task_command_service.translate_single(body),
     );
     this.post_json(app, "/api/tasks/export-translation", () =>
       file_export_service.export_translation(),

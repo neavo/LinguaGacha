@@ -19,7 +19,7 @@
 | `POST /api/settings/*` | 应用设置和最近项目 | 由 `ConfigService` 写入并发 `settings.changed` |
 | `POST /api/models/*` | 模型配置、激活、测试 | 由 `ModelService` 和配置服务持有 |
 | `POST /api/project/*` | 工程生命周期、工作台、reset、导出、校对 mutation | 按领域服务分发，不能在路由层写数据库 |
-| `POST /api/tasks/*` | 翻译、分析、重翻、停止、任务快照和导出 | 由 `TaskService`、`TaskEngine`、导出服务承接 |
+| `POST /api/tasks/*` | 翻译、分析、重翻、停止、任务快照和导出 | 由 `TaskCommandService`、`TaskEngine`、导出服务承接 |
 | `POST /api/quality/*` | 质量规则与提示词 | 由 `QualityService` 持有写入口 |
 
 ## 2. Bootstrap 契约
@@ -50,15 +50,16 @@ stage_started -> stage_payload -> stage_completed
 flowchart LR
   A["HTTP 同步 mutation"] --> B["领域服务写 ProjectDatabase"]
   B --> C["ProjectMutationAck<br/>revision 对齐"]
-  B --> D["TaskEventHub.publish_project_patch"]
+  B --> D["ProjectPatchPublisher.publish_project_patch"]
   D --> E["ProjectPatchAdapter<br/>补全数据库事实与 section revision"]
-  E --> F["/api/events/stream: project.patch"]
-  F --> G["renderer ProjectStore"]
+  E --> F["CoreEventHub.publish"]
+  F --> G["/api/events/stream: project.patch"]
+  G --> H["renderer ProjectStore"]
 ```
 
 - `project.patch` 是项目运行态增量事实的唯一公开事件；同步 mutation 的 HTTP ack 不替代 patch。
 - `ProjectMutationAck` 只表达接受状态和 revision 对齐信息，不承载页面最终事实。
-- `TaskEventHub` 是公开事件广播与 `TaskRuntimeState` 吸收的共同入口；任务状态变更和 project patch 不能绕过它各自广播。
+- `CoreEventHub` 是公开运行期事件总线；`TaskRuntimeProjector` 从 `task.*` 和 `project.patch` 投影 `TaskRuntimeState`，任务状态变更和 project patch 不能绕过各自发布入口。
 - `ProjectPatchAdapter` 只适配 `project.patch`，负责把最小 patch 补成 renderer 可消费的项目事实，并补齐 section revision。
 - 事件 topic 变化、patch operation 变化或 ack 语义变化，都必须同步 `src/renderer/app/desktop/desktop-runtime-context.tsx` 与相关测试。
 
@@ -67,8 +68,11 @@ flowchart LR
 | 领域 | 权威职责 | 写入口 |
 | --- | --- | --- |
 | project | 工程加载态、bootstrap 编码、工作台文件 mutation、reset、分析导入、project patch 适配 | `ProjectLifecycleService`、`ProjectSyncMutationService`、`ProjectRuntimeEncoder`、`ProjectPatchAdapter` |
-| task | 任务命令、任务快照、运行时 busy、请求中数量、重翻行级状态 | `TaskService`、`TaskRuntimeState`、`TaskSnapshotBuilder` |
-| task-engine | 任务锁、流水线、限流、worker 调度、进度提交 | `TaskEngine`、`TaskDataService` |
+| events | 公开运行期事件广播、SSE 订阅和 keepalive | `CoreEventHub` |
+| task-engine/command | 任务命令、请求校验、命令回执 | `TaskCommandService` |
+| task-engine/runtime | 任务快照、运行时 busy、请求中数量、重翻行级状态、事件投影 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimeProjector` |
+| task-engine/orchestration | 任务锁、流水线、限流、worker 调度、进度提交 | `TaskEngine` |
+| task-engine/store | 任务输入读取、任务结果提交、任务 project patch | `ProjectTaskStore` |
 | task-worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `TaskWorkerPool`、`task-worker-entry`、各 work unit runner |
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |

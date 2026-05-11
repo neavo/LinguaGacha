@@ -3,7 +3,7 @@ import fs from "node:fs";
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import { TaskRuntimeState } from "../task/task-runtime-state";
+import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
 import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
@@ -494,7 +494,7 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 迁移后任务读侧直接从 TaskDataService 取库；同步 mutation 不再通知旧缓存清理。
+   * 任务读侧直接从 ProjectTaskStore 取库；同步 mutation 不再通知旧缓存清理。
    */
   private async sync_project_data(sections: string[]): Promise<void> {
     void sections;

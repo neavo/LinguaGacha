@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import { PiAiLlmRequestClient } from "../llm/pi-ai-llm-request-client";
+import { PiAiLlmRequestClient } from "../llm/llm-request-client";
 import { AnalysisWorkUnitRunner } from "./analysis-work-unit-runner";
 import { TranslationWorkUnitRunner } from "./translation-work-unit-runner";
 import type {

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-types";
-import type { LlmRequestMessage } from "../llm/llm-request-types";
+import type { LlmRequestMessage } from "../llm/llm-types";
 
 // 中文提示词模板使用“原文”占位，英文模板使用“Source”占位，避免字符串散落在构造逻辑里。
 const SOURCE_PLACEHOLDER_ZH = "原文";

@@ -1,32 +1,20 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import { TextProcessor } from "../../../shared/text/text-processor";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
-import { TextTool } from "../../../shared/utils/text-tool";
+import { AnalysisPostPipeline } from "../pipeline/analysis-post-pipeline";
+import {
+  AnalysisPrePipeline,
+  type AnalysisItemContext,
+  type AnalysisTaskContext,
+} from "../pipeline/analysis-pre-pipeline";
 import { PromptBuilder } from "../prompt/prompt-builder";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LlmRequestClient } from "../llm/llm-request-types";
+import type { LlmRequestClient } from "../llm/llm-types";
 import type {
   AnalysisWorkUnitRequest,
   AnalysisWorkUnitResult,
   WorkUnitLogEntry,
 } from "./work-unit-types";
-import { AnalysisFakeNameInjector } from "./analysis-fake-name-injector";
-
-// 分析 item 上下文只携带 prompt 与 checkpoint 必需字段，避免 worker 持有完整数据库行。
-interface AnalysisItemContext {
-  item_id: number;
-  file_path: string;
-  src_text: string;
-  first_name_src: string | null;
-}
-
-// 一个分析 chunk 的执行上下文，file_path 用于日志聚合，retry_count 用于任务诊断。
-interface AnalysisTaskContext {
-  file_path: string;
-  retry_count: number;
-  items: AnalysisItemContext[];
-}
 
 /**
  * 分析 work unit runner，负责 prompt、LLM 请求和候选术语归一。
@@ -54,8 +42,8 @@ export class AnalysisWorkUnitRunner {
   ): Promise<AnalysisWorkUnitResult> {
     const context = this.read_context(request.context);
     const quality_snapshot = TextQualitySnapshotTool.from_api_value(request.quality_snapshot);
-    const prompt_srcs = this.build_prompt_source_texts(context.items);
-    if (prompt_srcs.length === 0) {
+    const prepared = new AnalysisPrePipeline().process_context(context);
+    if (prepared.prompt_srcs.length === 0) {
       return {
         success: true,
         stopped: false,
@@ -64,14 +52,12 @@ export class AnalysisWorkUnitRunner {
         glossary_entries: [],
       };
     }
-    const fake_name_injector = new AnalysisFakeNameInjector(prompt_srcs);
-    const request_srcs = fake_name_injector.inject_texts(prompt_srcs);
     const prompt_builder = new PromptBuilder(
       this.app_root,
       this.config_to_prompt_config(request.config_snapshot),
       quality_snapshot,
     );
-    const prompt_result = await prompt_builder.generate_glossary_prompt(request_srcs);
+    const prompt_result = await prompt_builder.generate_glossary_prompt(prepared.request_srcs);
     const start_time = Date.now();
     const llm_result = await this.llm_client.request(
       {
@@ -108,7 +94,7 @@ export class AnalysisWorkUnitRunner {
           start_time,
           input_tokens: llm_result.input_tokens,
           output_tokens: llm_result.output_tokens,
-          srcs: prompt_srcs,
+          srcs: prepared.prompt_srcs,
           glossary_entries: [],
           response_think: llm_result.response_think,
           response_result: llm_result.response_result,
@@ -123,10 +109,9 @@ export class AnalysisWorkUnitRunner {
       cleaner_result.why_text,
     );
     const decoded = await new ResponseDecoder().decode(cleaner_result.cleaned_response_result);
-    const normalized_entries = this.normalize_glossary_entries(
-      decoded.glossary_entries,
-      fake_name_injector,
-    );
+    const normalized_entries = new AnalysisPostPipeline(
+      prepared.fake_name_injector,
+    ).normalize_glossary_entries(decoded.glossary_entries);
     if (
       normalized_entries.length === 0 &&
       !ResponseCleaner.has_why_block(llm_result.response_result)
@@ -141,7 +126,7 @@ export class AnalysisWorkUnitRunner {
           start_time,
           input_tokens: llm_result.input_tokens,
           output_tokens: llm_result.output_tokens,
-          srcs: prompt_srcs,
+          srcs: prepared.prompt_srcs,
           glossary_entries: [],
           response_think: normalized_think,
           response_result: cleaner_result.cleaned_response_result,
@@ -160,7 +145,7 @@ export class AnalysisWorkUnitRunner {
         start_time,
         input_tokens: llm_result.input_tokens,
         output_tokens: llm_result.output_tokens,
-        srcs: prompt_srcs,
+        srcs: prepared.prompt_srcs,
         glossary_entries: normalized_entries,
         response_think: normalized_think,
         response_result: cleaner_result.cleaned_response_result,
@@ -168,80 +153,6 @@ export class AnalysisWorkUnitRunner {
         level: "info",
       }),
     };
-  }
-
-  /**
-   * 分析输入沿用翻译姓名前缀注入，但不改变上下文快照。
-   */
-  private build_prompt_source_texts(items: AnalysisItemContext[]): string[] {
-    const prompt_srcs: string[] = [];
-    for (const item of items) {
-      const src_text = item.src_text.trim();
-      if (src_text === "") {
-        continue;
-      }
-      prompt_srcs.push(...TextProcessor.inject_name([src_text], item.first_name_src));
-    }
-    return prompt_srcs;
-  }
-
-  /**
-   * 模型术语输出归一成固定 `src/dst/info/case_sensitive` 结构。
-   */
-  private normalize_glossary_entries(
-    glossary_entries: Array<Record<string, string>>,
-    fake_name_injector: AnalysisFakeNameInjector,
-  ): Array<Record<string, ApiJsonValue>> {
-    const normalized: Array<Record<string, ApiJsonValue>> = [];
-    for (const raw of glossary_entries) {
-      let src = String(raw.src ?? "").trim();
-      let dst = String(raw.dst ?? "").trim();
-      const restored = fake_name_injector.restore_glossary_entry(src, dst);
-      if (restored === null) {
-        continue;
-      }
-      [src, dst] = restored;
-      const info = String(raw.info ?? "").trim();
-      if (AnalysisFakeNameInjector.is_control_code_self_mapping(src, dst)) {
-        normalized.push(this.build_glossary_entry(src, dst, info));
-        continue;
-      }
-      for (const [src_part, dst_part] of this.split_glossary_entry_pairs(src, dst)) {
-        const normalized_src = src_part.trim();
-        const normalized_dst = dst_part.trim();
-        if (normalized_src === "" || normalized_dst === "") {
-          continue;
-        }
-        if (normalized_src === normalized_dst) {
-          continue;
-        }
-        normalized.push(this.build_glossary_entry(normalized_src, normalized_dst, info));
-      }
-    }
-    return normalized;
-  }
-
-  /**
-   * 复合术语按标点和空格拆分，源译分段数量不同时保留原整项。
-   */
-  private split_glossary_entry_pairs(src: string, dst: string): Array<[string, string]> {
-    const src_parts = TextTool.split_by_punctuation(src, true);
-    const dst_parts = TextTool.split_by_punctuation(dst, true);
-    if (src_parts.length !== dst_parts.length) {
-      return [[src, dst]];
-    }
-    return src_parts.map((src_part, index) => [src_part, dst_parts[index] ?? ""]);
-  }
-
-  /**
-   * 候选术语结构统一在这里生成。
-   */
-  private build_glossary_entry(
-    src: string,
-    dst: string,
-    info: string,
-  ): Record<string, ApiJsonValue> {
-    return { src, dst, info, case_sensitive: false };
   }
 
   /**

@@ -17,7 +17,7 @@
 | 架构、跨层边界、进程链路 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | [`docs/BACKEND.md`](BACKEND.md)、[`docs/FRONTEND.md`](FRONTEND.md) |
 | API、SSE、bootstrap、mutation、错误码 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/api/`、`src/renderer/app/desktop/` |
 | 数据库、`.lg`、migration、状态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/migration/`、相关 service 测试 |
-| 任务引擎、worker、任务事件 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/task*`、`src/main/task-worker/` |
+| 任务命令、运行态、引擎、worker、事件 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/task-engine/`、`src/main/task-worker/`、`src/main/events/` |
 | preload、renderer、ProjectStore、导航 | [`docs/FRONTEND.md`](FRONTEND.md) | `src/preload/`、`src/renderer/app/`、相关页面 |
 | 前端视觉和交互 | [`docs/FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、相关 CSS 和组件 |
 | 长期文档治理 | `.codex/skills/project-docs/SKILL.md` | `AGENTS.md` 与 `docs/` 目标形态 |

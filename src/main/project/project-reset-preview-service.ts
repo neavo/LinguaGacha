@@ -3,7 +3,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
 import { item_to_json } from "../file/file-item";
-import { TaskRuntimeState } from "../task/task-runtime-state";
+import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
 import { ProjectSessionState } from "./project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;

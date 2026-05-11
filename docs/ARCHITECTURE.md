@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 改系统分层、跨进程链路、模块归属 | 本文 | [`docs/BACKEND.md`](BACKEND.md) 或 [`docs/FRONTEND.md`](FRONTEND.md) |
 | 改 HTTP / SSE / bootstrap / mutation / 错误码 | [`docs/BACKEND.md`](BACKEND.md) | 相关 service 与测试 |
-| 改数据库、`.lg` 存储、迁移、任务运行态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/project/`、`src/main/task/` |
+| 改数据库、`.lg` 存储、迁移、任务运行态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/project/`、`src/main/task-engine/` |
 | 改 Electron preload、renderer、`ProjectStore`、导航、页面状态 | [`docs/FRONTEND.md`](FRONTEND.md) | 相关页面和组件测试 |
 | 判断要跑哪些检查、是否同步文档 | [`docs/WORKFLOW.md`](WORKFLOW.md) | 本文与对应专题文档 |
 
@@ -18,11 +18,12 @@
 flowchart LR
   A["Electron main<br/>窗口与生命周期"] --> B["CoreLifecycleManager<br/>端口、日志、数据库、Gateway"]
   B --> C["ApiGatewayServer<br/>本机 HTTP / SSE 边界"]
-  C --> D["Project / Task / Service 领域服务"]
+  C --> D["Project / TaskEngine / Service 领域服务"]
   D --> E["ProjectDatabase workflow<br/>SQL、事务、.lg asset"]
-  D --> F["TaskEngine"]
+  D --> F["task-engine<br/>command/runtime/orchestration/store"]
   F --> G["TaskWorkerPool / task-worker"]
   G --> H["pi-ai 与提示词/响应处理"]
+  F --> M["CoreEventHub / events"]
   I["preload: window.desktopApp"] --> J["renderer desktop-api.ts"]
   J --> C
   J --> K["DesktopRuntimeProvider + ProjectStore"]
@@ -33,7 +34,8 @@ flowchart LR
 - `CoreLifecycleManager` 按 `LogManager -> ProjectDatabase -> ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 仍持有数据库或日志句柄。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 句柄缓存的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
-- `TaskEngine` 通过 `TaskDataService` 取项目事实，通过 `TaskWorkerPool` 执行 work unit，再由 `TaskEventHub` 汇回公开 SSE。
+- `task-engine` 是任务域主控包：`command` 受理 `/api/tasks/*`，`runtime` 持有公开运行态和快照，`orchestration` 编排任务，`store` 读写项目任务事实。
+- `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `TaskWorkerPool` 执行 work unit；任务事件经 `CoreEventHub` 广播，并由 `TaskRuntimeProjector` 投影回 `TaskRuntimeState`。
 - renderer 只通过 preload 暴露的 `window.desktopApp` 获得宿主能力和 Core API base URL，再由 `desktop-api.ts` 发起 HTTP / SSE。
 
 ## 3. 主链路
@@ -64,7 +66,7 @@ sequenceDiagram
   participant UI as Renderer
   participant API as API Gateway
   participant Enc as ProjectRuntimeEncoder
-  participant Hub as TaskEventHub
+  participant Hub as CoreEventHub
   participant Store as ProjectStore
 
   UI->>API: /api/project/bootstrap/stream
@@ -87,7 +89,9 @@ sequenceDiagram
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
 | `src/main/project/` | 项目会话、bootstrap 编码、project patch、同步 mutation | Electron preload、页面局部状态 |
-| `src/main/task*` | 任务运行态、任务引擎、worker 调度、任务事件 | 项目文件格式解析的长期拥有权 |
+| `src/main/task-engine/` | 任务命令、运行态、快照、编排、项目任务事实读写 | worker 内提示词、LLM 请求、响应清洗解码 |
+| `src/main/task-worker/` | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | 数据库写入、全局任务状态、任务进度提交 |
+| `src/main/events/` | Core 公开运行期事件总线与 SSE 连接管理 | 任务编排、项目 patch 补全、领域状态规则 |
 | `src/main/database/` | SQL、事务、`.lg` asset 压缩读写、database operation | HTTP 协议和页面 DTO |
 | `src/preload/` | 窄宿主桥接、原生对话框和 Core base URL 暴露 | Core 业务实现、Node 能力泛开放 |
 | `src/renderer/app/` | 桌面运行时、导航、shell、页面 runtime provider | 后端协议权威或数据库规则 |

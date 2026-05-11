@@ -5,14 +5,14 @@ import path from "node:path";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../service/path-service";
 import { ConfigService } from "../service/config-service";
-import { PiAiLlmRequestClient } from "../task-worker/llm/pi-ai-llm-request-client";
-import type { LlmRequestMessage, LlmRequestResult } from "../task-worker/llm/llm-request-types";
+import { PiAiLlmRequestClient } from "../task-worker/llm/llm-request-client";
+import type { LlmRequestMessage, LlmRequestResult } from "../task-worker/llm/llm-types";
 import {
   collect_api_keys,
   get_primary_api_key,
   normalize_api_url,
   type LinguaGachaApiFormat,
-} from "../task-worker/llm/linguagacha-model-to-pi-ai";
+} from "../task-worker/llm/llm-model-adapter";
 import {
   read_model_records,
   resolve_active_model_id,

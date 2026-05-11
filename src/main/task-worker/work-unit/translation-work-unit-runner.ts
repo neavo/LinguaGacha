@@ -1,5 +1,4 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import { TextProcessor, TextResponseChecker } from "../../../shared/text/text-processor";
 import {
   TextProcessingConfigTool,
   TextQualitySnapshotTool,
@@ -7,10 +6,16 @@ import {
   type TextQualitySnapshot,
   type TextTaskItemRecord,
 } from "../../../shared/text/text-types";
+import {
+  TranslationPrePipeline,
+  type TranslationPrePipelineContext,
+} from "../pipeline/translation-pre-pipeline";
+import { TranslationPostPipeline } from "../pipeline/translation-post-pipeline";
 import { PromptBuilder } from "../prompt/prompt-builder";
+import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LlmRequestClient, LlmRequestResult } from "../llm/llm-request-types";
+import type { LlmRequestClient, LlmRequestResult } from "../llm/llm-types";
 import type {
   RetranslateWorkUnitRequest,
   TranslateSingleWorkUnitRequest,
@@ -100,13 +105,11 @@ export class TranslationWorkUnitRunner {
   ): Promise<TranslationWorkUnitResult> {
     const config = TextProcessingConfigTool.from_api_value(request.config_snapshot);
     const quality_snapshot = TextQualitySnapshotTool.from_api_value(request.quality_snapshot);
-    const processors = items.map((item) => new TextProcessor(config, item, quality_snapshot));
     const prepared = await this.prepare_request_data(
       request,
       config,
       quality_snapshot,
       items,
-      processors,
       precedings,
     );
     if (prepared.done) {
@@ -133,7 +136,7 @@ export class TranslationWorkUnitRunner {
         start_time: Date.now(),
         console_log: prepared.console_log,
         srcs: prepared.srcs,
-        processors,
+        pipeline_contexts: prepared.pipeline_contexts,
         items,
         skip_response_check,
         stream_degraded: response.degraded,
@@ -154,7 +157,6 @@ export class TranslationWorkUnitRunner {
     config: TextProcessingConfig,
     quality_snapshot: TextQualitySnapshot,
     items: TextTaskItemRecord[],
-    processors: TextProcessor[],
     precedings: TextTaskItemRecord[],
   ): Promise<
     | { done: true; result: TranslationWorkUnitResult }
@@ -163,14 +165,16 @@ export class TranslationWorkUnitRunner {
         srcs: string[];
         messages: Array<{ role: string; content: string }>;
         console_log: string[];
+        pipeline_contexts: TranslationPrePipelineContext[];
       }
   > {
     const srcs: string[] = [];
     const samples: string[] = [];
-    for (const processor of processors) {
-      processor.pre_process();
-      srcs.push(...processor.srcs);
-      samples.push(...processor.samples);
+    const pre_pipeline = new TranslationPrePipeline(config, quality_snapshot);
+    const pipeline_contexts = items.map((item) => pre_pipeline.process_item(item));
+    for (const pipeline_context of pipeline_contexts) {
+      srcs.push(...pipeline_context.srcs);
+      samples.push(...pipeline_context.samples);
     }
     if (srcs.length === 0) {
       for (const item of items) {
@@ -203,6 +207,7 @@ export class TranslationWorkUnitRunner {
       srcs,
       messages: prompt_result.messages,
       console_log: prompt_result.console_log,
+      pipeline_contexts,
     };
   }
 
@@ -220,7 +225,7 @@ export class TranslationWorkUnitRunner {
       start_time: number;
       console_log: string[];
       srcs: string[];
-      processors: TextProcessor[];
+      pipeline_contexts: TranslationPrePipelineContext[];
       items: TextTaskItemRecord[];
       skip_response_check: boolean;
       stream_degraded: boolean;
@@ -258,17 +263,18 @@ export class TranslationWorkUnitRunner {
       while (check_queue.length < context.srcs.length) {
         check_queue.push("NONE");
       }
+      const post_pipeline = new TranslationPostPipeline(context.config, context.quality_snapshot);
       for (let index = 0; index < context.items.length; index += 1) {
-        const processor = context.processors[index];
+        const pipeline_context = context.pipeline_contexts[index];
         const item = context.items[index];
-        if (processor === undefined || item === undefined) {
+        if (pipeline_context === undefined || item === undefined) {
           continue;
         }
-        const length = processor.srcs.length;
+        const length = pipeline_context.srcs.length;
         const item_dsts = dst_queue.splice(0, length);
         const item_checks = check_queue.splice(0, length);
         if (item_checks.every((check) => check === "NONE")) {
-          const processed = processor.post_process(item_dsts);
+          const processed = post_pipeline.process_item(pipeline_context, item_dsts);
           item.dst = processed.dst;
           if (processed.name !== null) {
             item.name_dst = processed.name;
@@ -320,7 +326,7 @@ export class TranslationWorkUnitRunner {
       return dsts.map(() => "NONE");
     }
     const first_item = context.items[0];
-    return TextResponseChecker.check(
+    return ResponseChecker.check(
       context.srcs,
       dsts,
       String(first_item?.text_type ?? "TXT"),

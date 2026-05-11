@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiJsonValue } from "../api/api-types";
 import { ConfigService } from "../service/config-service";
 import { AppPathService } from "../service/path-service";
-import { PiAiLlmRequestClient } from "../task-worker/llm/pi-ai-llm-request-client";
+import { PiAiLlmRequestClient } from "../task-worker/llm/llm-request-client";
 import { ModelService } from "./model-service";
 
 describe("ModelService 远端模型能力", () => {

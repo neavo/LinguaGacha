@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PiAiLlmRequestClient } from "./llm/pi-ai-llm-request-client";
+import { PiAiLlmRequestClient } from "./llm/llm-request-client";
 import { TaskWorkerPool } from "./task-worker-pool";
 
 describe("TaskWorkerPool", () => {

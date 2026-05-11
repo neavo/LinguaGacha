@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
-import type { TaskSnapshotBuilder } from "../task/task-snapshot-builder";
+import type { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
 import { ProjectRuntimeEncoder } from "./project-runtime-encoder";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
