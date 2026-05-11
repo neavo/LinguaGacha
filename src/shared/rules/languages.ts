@@ -136,6 +136,27 @@ const TH_CHARACTER_RANGES: readonly CodePointRange[] = [
 // 越南语额外字符只覆盖越南语专用扩展，普通拉丁字母由 LATIN 范围负责。
 const VI_CHARACTER_RANGES: readonly CodePointRange[] = [[0x1ea0, 0x1ef9]];
 
+// Python unicodedata.east_asian_width 把 A/W/F 都按全角计，显示长度估算需保留这批常见 A/W 段。
+const PYTHON_WIDE_OR_AMBIGUOUS_WIDTH_RANGES: readonly CodePointRange[] = [
+  [0x00a1, 0x00ff],
+  [0x0100, 0x017f],
+  [0x0250, 0x02ff],
+  [0x0370, 0x03ff],
+  [0x2010, 0x2027],
+  [0x2030, 0x205e],
+  [0x2103, 0x2103],
+  [0x2116, 0x2116],
+  [0x2160, 0x216f],
+  [0x2190, 0x21ff],
+  [0x2200, 0x22ff],
+  [0x2460, 0x24ff],
+  [0x2500, 0x257f],
+  [0x25a0, 0x25ff],
+  [0x2600, 0x27bf],
+  [0xfe00, 0xfe0f],
+  [0x1f000, 0x1faff],
+];
+
 // 各欧洲语言额外字符只补足拉丁范围无法表达的语言特征。
 const DE_EXTRA_CHARACTERS = new Set(["Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]);
 // 法语额外字符包含合字和常见重音字母，补足拉丁范围外的语言特征。
@@ -214,6 +235,14 @@ function is_code_point_in_ranges(char: string, ranges: readonly CodePointRange[]
   return ranges.some(([start, end]) => value >= start && value <= end);
 }
 
+// 数值版范围判断供显示宽度估算复用。
+function is_numeric_code_point_in_ranges(
+  code_point: number,
+  ranges: readonly CodePointRange[],
+): boolean {
+  return ranges.some(([start, end]) => code_point >= start && code_point <= end);
+}
+
 // 例外点判断用于“范围减集合”的假名残留规则。
 function is_code_point_excluded(char: string, excluded_code_points: ReadonlySet<number>): boolean {
   const value = code_point(char);
@@ -229,6 +258,34 @@ function has_matching_character(text: string, matches_character: CharacterMatche
   }
 
   return false;
+}
+
+// 全量匹配沿用 Python all 的空字符串真值语义。
+function all_matching_characters(text: string, matches_character: CharacterMatcher): boolean {
+  for (const char of text) {
+    if (!matches_character(char)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// 首尾剥离只移除边缘非目标字符，中间内容必须原样保留。
+function strip_non_matching_characters(text: string, matches_character: CharacterMatcher): string {
+  const chars = [...text.trim()];
+  let start = 0;
+  let end = chars.length - 1;
+
+  while (start <= end && !matches_character(chars[start] ?? "")) {
+    start += 1;
+  }
+
+  while (end >= start && !matches_character(chars[end] ?? "")) {
+    end -= 1;
+  }
+
+  return start > end ? "" : chars.slice(start, end + 1).join("");
 }
 
 // 中文字符判断只覆盖汉字范围，假名和谚文由各自语言函数补充。
@@ -265,6 +322,36 @@ export function is_katakana_character(char: string): boolean {
 // 假名聚合入口供校对和 fixer 复用，不让调用方重复拼平假名/片假名判断。
 export function is_kana_character(char: string): boolean {
   return is_hiragana_character(char) || is_katakana_character(char);
+}
+
+// 平假名文本入口对齐历史 JA.any_hiragana。
+export function has_any_hiragana_character(text: string): boolean {
+  return has_matching_character(text, is_hiragana_character);
+}
+
+// 平假名全量入口对齐历史 JA.all_hiragana。
+export function has_only_hiragana_characters(text: string): boolean {
+  return all_matching_characters(text, is_hiragana_character);
+}
+
+// 片假名文本入口对齐历史 JA.any_katakana。
+export function has_any_katakana_character(text: string): boolean {
+  return has_matching_character(text, is_katakana_character);
+}
+
+// 片假名全量入口对齐历史 JA.all_katakana。
+export function has_only_katakana_characters(text: string): boolean {
+  return all_matching_characters(text, is_katakana_character);
+}
+
+// 谚文文本入口对齐历史 KO.any_hangeul。
+export function has_any_hangul_character(text: string): boolean {
+  return has_matching_character(text, is_hangul_character);
+}
+
+// 谚文全量入口对齐历史 KO.all_hangeul。
+export function has_only_hangul_characters(text: string): boolean {
+  return all_matching_characters(text, is_hangul_character);
 }
 
 // 日文允许汉字或假名命中，符合原文混排的常见场景。
@@ -406,22 +493,53 @@ export function has_language_character(text: string, language_code: LanguageCode
   return has_matching_character(text, matches_character);
 }
 
+// 单字符语言判断入口对齐历史 TextBase.char。
+export function is_language_character(char: string, language_code: LanguageCode): boolean {
+  const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
+  if (matches_character === null) {
+    return true;
+  }
+
+  return matches_character(char);
+}
+
+// 全量语言判断入口对齐历史 TextBase.all。
+export function all_language_characters(text: string, language_code: LanguageCode): boolean {
+  const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
+  if (matches_character === null) {
+    return true;
+  }
+
+  return all_matching_characters(text, matches_character);
+}
+
+// 语言边缘剥离入口对齐历史 TextBase.strip_non_target。
+export function strip_non_language_characters(text: string, language_code: LanguageCode): string {
+  const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
+  if (matches_character === null) {
+    return text.trim();
+  }
+
+  return strip_non_matching_characters(text, matches_character);
+}
+
 /**
  * 东亚全角显示宽度判断，用于 UI/日志长度估算，不参与语言过滤。
  */
 export function is_fullwidth_code_point(code_point: number): boolean {
   return (
-    code_point >= 0x1100 &&
-    (code_point <= 0x115f ||
-      code_point === 0x2329 ||
-      code_point === 0x232a ||
-      (code_point >= 0x2e80 && code_point <= 0xa4cf && code_point !== 0x303f) ||
-      (code_point >= 0xac00 && code_point <= 0xd7a3) ||
-      (code_point >= 0xf900 && code_point <= 0xfaff) ||
-      (code_point >= 0xfe10 && code_point <= 0xfe19) ||
-      (code_point >= 0xfe30 && code_point <= 0xfe6f) ||
-      (code_point >= 0xff00 && code_point <= 0xff60) ||
-      (code_point >= 0xffe0 && code_point <= 0xffe6) ||
-      (code_point >= 0x20000 && code_point <= 0x3fffd))
+    is_numeric_code_point_in_ranges(code_point, PYTHON_WIDE_OR_AMBIGUOUS_WIDTH_RANGES) ||
+    (code_point >= 0x1100 &&
+      (code_point <= 0x115f ||
+        code_point === 0x2329 ||
+        code_point === 0x232a ||
+        (code_point >= 0x2e80 && code_point <= 0xa4cf && code_point !== 0x303f) ||
+        (code_point >= 0xac00 && code_point <= 0xd7a3) ||
+        (code_point >= 0xf900 && code_point <= 0xfaff) ||
+        (code_point >= 0xfe10 && code_point <= 0xfe19) ||
+        (code_point >= 0xfe30 && code_point <= 0xfe6f) ||
+        (code_point >= 0xff00 && code_point <= 0xff60) ||
+        (code_point >= 0xffe0 && code_point <= 0xffe6) ||
+        (code_point >= 0x20000 && code_point <= 0x3fffd)))
   );
 }

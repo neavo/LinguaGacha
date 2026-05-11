@@ -3,6 +3,7 @@ import path from "node:path";
 
 import ExcelJS from "exceljs";
 
+import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, type ExportPaths } from "./file-format-shared";
 import { normalize_file_item, type FileFormatItem } from "../file-item";
 
@@ -26,8 +27,11 @@ export class XLSXFormat {
         continue;
       }
       const dst_value = sheet.getCell(row, 2).value;
-      const src = xlsx_cell_to_text(src_value);
-      const dst = dst_value === null || dst_value === undefined ? "" : xlsx_cell_to_text(dst_value);
+      const src = SpreadsheetTool.cellValueToText(src_value);
+      const dst =
+        dst_value === null || dst_value === undefined
+          ? ""
+          : SpreadsheetTool.cellValueToText(dst_value);
       items.push(
         normalize_file_item({
           src,
@@ -52,8 +56,8 @@ export class XLSXFormat {
       sheet.getColumn(1).width = 64;
       sheet.getColumn(2).width = 64;
       for (const item of group.sort((left, right) => left.row - right.row)) {
-        sheet.getCell(item.row, 1).value = item.src;
-        sheet.getCell(item.row, 2).value = item.dst;
+        SpreadsheetTool.setCellValue(sheet, item.row, 1, item.src);
+        SpreadsheetTool.setCellValue(sheet, item.row, 2, item.dst);
       }
       const target_path = path.join(paths.translated_path, rel_path);
       fs.mkdirSync(path.dirname(target_path), { recursive: true });
@@ -69,29 +73,6 @@ async function load_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook
   const workbook = new ExcelJS.Workbook();
   await (workbook.xlsx.load as (data: unknown) => Promise<ExcelJS.Workbook>)(Buffer.from(content));
   return workbook;
-}
-
-/**
- * 普通 XLSX 与 WOLF XLSX 都可能出现富文本或公式结果，解析时统一收敛成字符串。
- */
-function xlsx_cell_to_text(value: ExcelJS.CellValue): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  if (typeof value === "object" && "text" in value && typeof value.text === "string") {
-    return value.text;
-  }
-  if (typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
-    return value.richText
-      .map((part) =>
-        typeof part === "object" && part !== null && "text" in part ? String(part.text ?? "") : "",
-      )
-      .join("");
-  }
-  if (typeof value === "object" && "result" in value) {
-    return String(value.result ?? "");
-  }
-  return String(value);
 }
 
 /**

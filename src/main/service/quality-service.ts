@@ -10,6 +10,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "./path-service";
 import { ConfigService } from "./config-service";
 import { JsonTool } from "../../shared/utils/json-tool";
+import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
 import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
@@ -729,16 +730,17 @@ export class QualityService {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("rules");
     worksheet.columns = [{ width: 24 }, { width: 24 }, { width: 24 }, { width: 24 }, { width: 24 }];
-    worksheet.addRow(["src", "dst", "info", "regex", "case_sensitive"]);
-    worksheet.addRows(
-      entries.map((entry) => [
-        entry["src"] ?? "",
-        entry["dst"] ?? "",
-        entry["info"] ?? "",
-        entry["regex"] ?? "",
-        entry["case_sensitive"] ?? "",
-      ]),
-    );
+    ["src", "dst", "info", "regex", "case_sensitive"].forEach((value, index) => {
+      SpreadsheetTool.setCellValue(worksheet, 1, index + 1, value, 10);
+    });
+    entries.forEach((entry, index) => {
+      const row = index + 2;
+      SpreadsheetTool.setCellValue(worksheet, row, 1, entry["src"] ?? "", 10);
+      SpreadsheetTool.setCellValue(worksheet, row, 2, entry["dst"] ?? "", 10);
+      SpreadsheetTool.setCellValue(worksheet, row, 3, entry["info"] ?? "", 10);
+      SpreadsheetTool.setCellValue(worksheet, row, 4, entry["regex"] ?? "", 10);
+      SpreadsheetTool.setCellValue(worksheet, row, 5, entry["case_sensitive"] ?? "", 10);
+    });
     await workbook.xlsx.writeFile(`${base_path}.xlsx`);
   }
 
@@ -746,7 +748,7 @@ export class QualityService {
    * 读取 Excel 单元格文本，统一空值和字符串转换。
    */
   private read_excel_cell_text(row: Row, column_number: number): string {
-    return row.getCell(column_number).text.trim();
+    return SpreadsheetTool.cellValueToText(row.getCell(column_number).value).trim();
   }
 
   /**

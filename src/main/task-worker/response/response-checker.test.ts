@@ -1,66 +1,279 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../shared/text/text-types";
+import { TextTool } from "../../../shared/utils/text-tool";
 import { ResponseChecker } from "./response-checker";
 
-describe("ResponseChecker", () => {
-  it("响应检查能识别退化、行数错误和日文残留", () => {
-    const config = create_config();
-    const quality_snapshot = create_quality_snapshot();
+describe("响应检查器整体检查", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
+  it("流式退化时为每行返回退化错误", () => {
     expect(
-      ResponseChecker.check(["原文"], ["译文"], "TXT", config, quality_snapshot, 0, true),
-    ).toEqual(["FAIL_DEGRADATION"]);
+      check_response(["原文1", "原文2"], ["译文1", "译文2"], {
+        stream_degraded: true,
+      }),
+    ).toEqual(["FAIL_DEGRADATION", "FAIL_DEGRADATION"]);
+  });
+
+  it("译文结果为空时为每行返回数据错误", () => {
+    expect(check_response(["原文1", "原文2"], ["", ""])).toEqual(["FAIL_DATA", "FAIL_DATA"]);
+    expect(check_response(["原文1", "原文2"], [])).toEqual(["FAIL_DATA", "FAIL_DATA"]);
+  });
+
+  it("单条重试达到阈值时跳过后续校验", () => {
+    expect(check_response(["原文"], ["任意内容"], { item_retry_count: 2 })).toEqual(["NONE"]);
+  });
+
+  it("原文和译文行数不一致时为每行返回行数错误", () => {
+    expect(check_response(["a", "b"], ["1"])).toEqual(["FAIL_LINE_COUNT", "FAIL_LINE_COUNT"]);
+  });
+
+  it("整体检查返回逐行检查发现的假名残留", () => {
     expect(
-      ResponseChecker.check(["こんにちは"], [], "TXT", config, quality_snapshot, 0, false),
-    ).toEqual(["FAIL_DATA"]);
-    expect(
-      ResponseChecker.check(
-        ["こんにちは"],
-        ["こんにちは"],
-        "TXT",
-        config,
-        quality_snapshot,
-        0,
-        false,
-      ),
+      check_response(["こんにちは"], ["テスト"], {
+        config: create_config({ check_similarity: false }),
+      }),
     ).toEqual(["LINE_ERROR_KANA"]);
   });
 
-  it("响应检查按传入 text_type 使用 smart 保护规则剥离控制码", () => {
-    const config = create_config();
-    const quality_snapshot = create_quality_snapshot({
-      text_preserve_mode: "smart",
-    });
-
+  it("逐行检查通过时返回无错误", () => {
     expect(
-      ResponseChecker.check(
-        ["@12こんにちは"],
-        ["@12こんにちは"],
-        "WOLF",
-        config,
-        quality_snapshot,
-        0,
-        false,
-      ),
-    ).toEqual(["LINE_ERROR_KANA"]);
-    expect(
-      ResponseChecker.check(
-        ["@12こんにちは"],
-        ["@13こんにちは"],
-        "WOLF",
-        config,
-        quality_snapshot,
-        0,
-        false,
-      ),
-    ).toEqual(["FAIL_DATA"]);
+      check_response(["こんにちは"], ["你好"], {
+        config: create_config({ check_similarity: false }),
+      }),
+    ).toEqual(["NONE"]);
   });
 });
 
-/**
- * 生成响应检查默认配置，测试通过 overrides 聚焦单个规则分支。
- */
+describe("响应检查器逐行规则", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("原文非空且译文为空时返回空行错误", () => {
+    expect(
+      check_lines(["有内容"], [""], {
+        config: create_config({ source_language: "ZH", target_language: "EN" }),
+      }),
+    ).toEqual(["LINE_ERROR_EMPTY_LINE"]);
+  });
+
+  it("规则过滤命中时跳过质量检查", () => {
+    expect(check_lines(["12345"], ["任意译文"])).toEqual(["NONE"]);
+  });
+
+  it("语言过滤命中时跳过质量检查", () => {
+    expect(check_lines(["Hello World"], ["任何译文"])).toEqual(["NONE"]);
+  });
+
+  it("检测日文源语言的假名残留", () => {
+    expect(
+      check_lines(["こんにちは"], ["テスト"], {
+        config: create_config({
+          source_language: "JA",
+          target_language: "ZH",
+          check_kana_residue: true,
+          check_similarity: false,
+        }),
+      }),
+    ).toEqual(["LINE_ERROR_KANA"]);
+  });
+
+  it("检测韩文源语言的谚文残留", () => {
+    expect(
+      check_lines(["안녕하세요"], ["테스트"], {
+        config: create_config({
+          source_language: "KO",
+          target_language: "ZH",
+          check_hangeul_residue: true,
+          check_similarity: false,
+        }),
+      }),
+    ).toEqual(["LINE_ERROR_HANGEUL"]);
+  });
+
+  it("通用语言对中原文译文相同会返回相似错误", () => {
+    expect(
+      check_lines(["same text"], ["same text"], {
+        config: create_config({ source_language: "EN", target_language: "ZH" }),
+      }),
+    ).toEqual(["LINE_ERROR_SIMILARITY"]);
+  });
+
+  it("相似条件不满足时返回无错误", () => {
+    expect(
+      check_lines(["alpha"], ["beta"], {
+        config: create_config({ source_language: "EN", target_language: "ZH" }),
+      }),
+    ).toEqual(["NONE"]);
+  });
+
+  it("日翻中相似检查要求译文包含假名", () => {
+    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+
+    expect(
+      check_lines(["こんにちは"], ["你好世界"], {
+        config: create_config({
+          source_language: "JA",
+          target_language: "ZH",
+          check_kana_residue: false,
+        }),
+      }),
+    ).toEqual(["NONE"]);
+  });
+
+  it("日翻中相似且译文包含假名时返回相似错误", () => {
+    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+
+    expect(
+      check_lines(["こんにちは"], ["あいうえお"], {
+        config: create_config({
+          source_language: "JA",
+          target_language: "ZH",
+          check_kana_residue: false,
+        }),
+      }),
+    ).toEqual(["LINE_ERROR_SIMILARITY"]);
+  });
+
+  it("韩翻中相似且译文包含谚文时返回相似错误", () => {
+    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+
+    expect(
+      check_lines(["안녕하세요"], ["테스트"], {
+        config: create_config({
+          source_language: "KO",
+          target_language: "ZH",
+          check_hangeul_residue: false,
+        }),
+      }),
+    ).toEqual(["LINE_ERROR_SIMILARITY"]);
+  });
+
+  it("韩翻中相似但译文不含谚文时返回无错误", () => {
+    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+
+    expect(
+      check_lines(["안녕하세요"], ["你好世界"], {
+        config: create_config({
+          source_language: "KO",
+          target_language: "ZH",
+          check_hangeul_residue: false,
+        }),
+      }),
+    ).toEqual(["NONE"]);
+  });
+
+  it("残留检查前会剥离保护片段", () => {
+    expect(
+      check_lines(["こんにちは<かな>"], ["中文<かな>"], {
+        config: create_config({ check_similarity: false }),
+        quality_snapshot: create_quality_snapshot({
+          text_preserve_mode: "custom",
+          text_preserve_entries: [{ src: "<[^>]+>" }],
+        }),
+      }),
+    ).toEqual(["NONE"]);
+  });
+
+  it("保护片段不一致时仍按剥离后的可见文本继续检查", () => {
+    expect(
+      check_response(["@12こんにちは"], ["@13こんにちは"], {
+        text_type: "WOLF",
+        quality_snapshot: create_quality_snapshot({
+          text_preserve_mode: "smart",
+        }),
+      }),
+    ).toEqual(["LINE_ERROR_KANA"]);
+  });
+});
+
+describe("响应检查器任意源语言", () => {
+  it("任意源语言不会因语言过滤短路相似检查", () => {
+    expect(
+      check_lines(["Hello World"], ["Hello World"], {
+        config: create_config({
+          source_language: "ALL",
+          target_language: "ZH",
+          check_kana_residue: false,
+          check_hangeul_residue: false,
+          check_similarity: true,
+        }),
+      }),
+    ).toEqual(["LINE_ERROR_SIMILARITY"]);
+  });
+
+  it("任意源语言下正常翻译仍能通过检查", () => {
+    expect(
+      check_lines(["こんにちは"], ["你好"], {
+        config: create_config({
+          source_language: "ALL",
+          target_language: "ZH",
+          check_kana_residue: false,
+          check_hangeul_residue: false,
+          check_similarity: true,
+        }),
+      }),
+    ).toEqual(["NONE"]);
+  });
+
+  it("任意源语言下空译文仍返回空行错误", () => {
+    expect(
+      check_lines(["Hello World"], [""], {
+        config: create_config({
+          source_language: "ALL",
+          target_language: "ZH",
+          check_kana_residue: false,
+          check_hangeul_residue: false,
+          check_similarity: false,
+        }),
+      }),
+    ).toEqual(["LINE_ERROR_EMPTY_LINE"]);
+  });
+});
+
+function check_response(
+  srcs: string[],
+  dsts: string[],
+  options: {
+    text_type?: string;
+    config?: TextProcessingConfig;
+    quality_snapshot?: TextQualitySnapshot;
+    item_retry_count?: number;
+    stream_degraded?: boolean;
+  } = {},
+): string[] {
+  return ResponseChecker.check(
+    srcs,
+    dsts,
+    options.text_type ?? "NONE",
+    options.config ?? create_config(),
+    options.quality_snapshot ?? create_quality_snapshot(),
+    options.item_retry_count ?? 0,
+    options.stream_degraded ?? false,
+  );
+}
+
+function check_lines(
+  srcs: string[],
+  dsts: string[],
+  options: {
+    text_type?: string;
+    config?: TextProcessingConfig;
+    quality_snapshot?: TextQualitySnapshot;
+  } = {},
+): string[] {
+  return ResponseChecker.check_lines(
+    srcs,
+    dsts,
+    options.text_type ?? "NONE",
+    options.config ?? create_config(),
+    options.quality_snapshot ?? create_quality_snapshot(),
+  );
+}
+
 function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProcessingConfig {
   return {
     source_language: "JA",
@@ -74,9 +287,6 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
   };
 }
 
-/**
- * 生成默认质量快照，避免每个用例重复书写完整规则结构。
- */
 function create_quality_snapshot(
   overrides: Partial<TextQualitySnapshot> = {},
 ): TextQualitySnapshot {

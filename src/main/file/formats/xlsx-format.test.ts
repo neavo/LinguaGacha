@@ -65,6 +65,13 @@ describe("XLSXFormat", () => {
           file_type: "XLSX",
           file_path: "demo.xlsx",
         }),
+        normalize_file_item({
+          src: "=SUM(A1:A2)",
+          dst: "=SUM(B1:B2)",
+          row: 2,
+          file_type: "XLSX",
+          file_path: "demo.xlsx",
+        }),
       ],
       {
         translated_path: temp_dir,
@@ -76,5 +83,7 @@ describe("XLSXFormat", () => {
 
     expect(workbook.worksheets[0]?.getCell(1, 1).value).toBe("原文");
     expect(workbook.worksheets[0]?.getCell(1, 2).value).toBe("译文");
+    expect(workbook.worksheets[0]?.getCell(2, 1).value).toBe("'=SUM(A1:A2)");
+    expect(workbook.worksheets[0]?.getCell(2, 1).font.size).toBe(9);
   });
 });

@@ -8,9 +8,6 @@ import {
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../shared/text/text-types";
 import { TextTool } from "../../../shared/utils/text-tool";
 
-// 空白归一化用于相似度判断，避免换行和多空格影响质量检查。
-const BLANK_PATTERN = /\s+/gu;
-
 /**
  * 翻译响应行质量检查器，按模型结果决定哪些行可提交。
  */
@@ -39,6 +36,19 @@ export class ResponseChecker {
     if (srcs.length !== dsts.length) {
       return srcs.map(() => "FAIL_LINE_COUNT");
     }
+    return this.check_lines(srcs, dsts, text_type, config, quality_snapshot);
+  }
+
+  /**
+   * 逐行检查入口保留给单元测试和调用方区分“整包解析失败”与“单行空译文”。
+   */
+  public static check_lines(
+    srcs: string[],
+    dsts: string[],
+    text_type: string,
+    config: TextProcessingConfig,
+    quality_snapshot: TextQualitySnapshot,
+  ): string[] {
     return srcs.map((src, index) =>
       this.check_line(src, dsts[index] ?? "", text_type, config, quality_snapshot),
     );
@@ -64,9 +74,6 @@ export class ResponseChecker {
       should_skip_by_language_filter(src, config.source_language)
     ) {
       return "NONE";
-    }
-    if (!this.check_preserved_segments(src, dst, text_type, quality_snapshot)) {
-      return "FAIL_DATA";
     }
     const preserve_rule =
       normalize_text_preserve_mode(quality_snapshot.text_preserve_mode) === "off"
@@ -97,26 +104,7 @@ export class ResponseChecker {
   }
 
   /**
-   * 文本保护检查比较逐个非空保护段，而不是比较整块命中结果。
-   */
-  private static check_preserved_segments(
-    src: string,
-    dst: string,
-    text_type: string,
-    quality_snapshot: TextQualitySnapshot,
-  ): boolean {
-    const rule = this.get_sample_rule(text_type, quality_snapshot);
-    if (rule === null) {
-      return true;
-    }
-    return (
-      this.collect_non_blank_preserved_segments(src, rule).join("\u0000") ===
-      this.collect_non_blank_preserved_segments(dst, rule).join("\u0000")
-    );
-  }
-
-  /**
-   * 样例规则用于保护段比较和剥离，必须和译前样例收集保持同源。
+   * 样例规则只用于剥离保护片段，保持和迁移前响应检查的宽容口径一致。
    */
   private static get_sample_rule(
     text_type: string,
@@ -128,22 +116,6 @@ export class ResponseChecker {
       entries: quality_snapshot.text_preserve_entries,
       kind: "sample",
     });
-  }
-
-  /**
-   * 保护段比较会移除内部空白，和历史实现的空白规则口径一致。
-   */
-  private static collect_non_blank_preserved_segments(text: string, rule: RegExp): string[] {
-    const segments: string[] = [];
-    rule.lastIndex = 0;
-    for (const match of text.matchAll(rule)) {
-      const segment = (match[0] ?? "").replace(BLANK_PATTERN, "");
-      if (segment !== "") {
-        segments.push(segment);
-      }
-    }
-    rule.lastIndex = 0;
-    return segments;
   }
 
   /**

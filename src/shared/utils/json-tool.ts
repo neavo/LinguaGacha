@@ -36,6 +36,85 @@ function decode_text(input: JsonToolTextInput): string {
 }
 
 /**
+ * 将 Python 标准库兼容的非有限数字令牌转成 JSON 可解析哨兵，保持损坏 JSON 仍按严格路径抛错。
+ */
+function replace_non_finite_tokens(text: string): string {
+  let result = "";
+  let in_string = false;
+  let escaping = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] ?? "";
+    if (in_string) {
+      result += char;
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === '"') {
+        in_string = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      in_string = true;
+      result += char;
+      continue;
+    }
+
+    const rest = text.slice(index);
+    const matched = rest.match(/^-?Infinity|^NaN/);
+    if (
+      matched !== null &&
+      is_json_token_boundary(text[index - 1]) &&
+      is_json_token_boundary(text[index + matched[0].length])
+    ) {
+      result += `{"__linguagacha_non_finite_json_number__":${JSON.stringify(matched[0])}}`;
+      index += matched[0].length - 1;
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
+/**
+ * 非有限数字只允许出现在 JSON 值边界，避免误伤字符串外的普通标识残片。
+ */
+function is_json_token_boundary(char: string | undefined): boolean {
+  return char === undefined || /[\s,[\]{}:]/.test(char);
+}
+
+/**
+ * 还原非有限数字哨兵对象，对齐 Python json.loads 对 NaN/Infinity 的兼容行为。
+ */
+function revive_non_finite_numbers(_key: string, value: unknown): unknown {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    Object.keys(value).length === 1 &&
+    "__linguagacha_non_finite_json_number__" in value
+  ) {
+    const token = (value as { __linguagacha_non_finite_json_number__: string })[
+      "__linguagacha_non_finite_json_number__"
+    ];
+    if (token === "NaN") {
+      return Number.NaN;
+    }
+    if (token === "Infinity") {
+      return Number.POSITIVE_INFINITY;
+    }
+    if (token === "-Infinity") {
+      return Number.NEGATIVE_INFINITY;
+    }
+  }
+  return value;
+}
+
+/**
  * 延迟加载 fs/promises 读取 UTF-8 文本，避免 renderer 打包路径静态引入 Node 文件模块。
  */
 async function read_utf8_file(file_path: string): Promise<string> {
@@ -56,10 +135,40 @@ async function write_utf8_file(file_path: string, text: string): Promise<void> {
  */
 export class JsonTool {
   /**
-   * 严格解析 JSON 字符串，避免静默吞掉坏配置。
+   * 解析 JSON，并在严格解析失败时仅兼容 Python 标准库接受的非有限数字。
+   */
+  public static loads<value_type = unknown>(input: JsonToolTextInput): value_type {
+    const text = decode_text(input);
+    try {
+      return JSON.parse(text) as value_type;
+    } catch (error) {
+      try {
+        return JSON.parse(replace_non_finite_tokens(text), revive_non_finite_numbers) as value_type;
+      } catch {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * 保留既有严格入口名，实际解析规则与 loads 一致，避免调用点分裂出第二套兼容策略。
    */
   public static parseStrict<value_type = unknown>(input: JsonToolTextInput): value_type {
-    return JSON.parse(decode_text(input)) as value_type;
+    return this.loads<value_type>(input);
+  }
+
+  /**
+   * 序列化为 JSON 文本，默认使用紧凑格式。
+   */
+  public static dumps(value: unknown, options: JsonToolStringifyOptions = {}): string {
+    return this.stringifyStrict(value, options);
+  }
+
+  /**
+   * 序列化为 UTF-8 bytes，便于调用方直接写入二进制文件。
+   */
+  public static dumpsBytes(value: unknown, options: JsonToolStringifyOptions = {}): Buffer {
+    return Buffer.from(this.stringifyStrict(value, options), "utf-8");
   }
 
   /**
@@ -89,6 +198,15 @@ export class JsonTool {
   }
 
   /**
+   * 尝试修复并解析 JSON，保留 Py 侧工具命名的对应入口。
+   */
+  public static async repairLoads<value_type = unknown>(
+    input: JsonToolTextInput,
+  ): Promise<value_type> {
+    return await this.repairParse<value_type>(input);
+  }
+
+  /**
    * 读取 JSON 文件并套用默认值，统一缺失文件处理。
    */
   public static async readJsonFile<value_type = unknown>(
@@ -102,7 +220,17 @@ export class JsonTool {
   }
 
   /**
-   * 写入 JSON 文件，确保目录存在且格式稳定。
+   * 从文件读取 JSON，保留 Py 侧工具命名的对应入口。
+   */
+  public static async loadFile<value_type = unknown>(
+    file_path: string,
+    options: JsonToolReadFileOptions = {},
+  ): Promise<value_type> {
+    return await this.readJsonFile<value_type>(file_path, options);
+  }
+
+  /**
+   * 写入 JSON 文件，先完成序列化再落盘，避免失败时破坏已有文件。
    */
   public static async writeJsonFile(
     file_path: string,
@@ -112,5 +240,16 @@ export class JsonTool {
     // 先完成序列化再写盘，避免不可序列化值把目标文件截断。
     const text = this.stringifyStrict(value, options);
     await write_utf8_file(file_path, text);
+  }
+
+  /**
+   * 写入 JSON 文件，保留 Py 侧工具命名的对应入口。
+   */
+  public static async saveFile(
+    file_path: string,
+    value: unknown,
+    options: JsonToolStringifyOptions = {},
+  ): Promise<void> {
+    await this.writeJsonFile(file_path, value, options);
   }
 }

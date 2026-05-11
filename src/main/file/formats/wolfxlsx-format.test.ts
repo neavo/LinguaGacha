@@ -79,6 +79,13 @@ describe("WOLFXLSXFormat", () => {
           file_type: "WOLFXLSX",
           file_path: "wolf.xlsx",
         }),
+        normalize_file_item({
+          src: "=SUM(F1:F2)",
+          dst: "=SUM(G1:G2)",
+          row: 3,
+          file_type: "WOLFXLSX",
+          file_path: "wolf.xlsx",
+        }),
       ],
       {
         translated_path: temp_dir,
@@ -91,5 +98,7 @@ describe("WOLFXLSXFormat", () => {
 
     expect(workbook.worksheets[0]?.getCell(2, 6).value).toBe("原文");
     expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("译文");
+    expect(workbook.worksheets[0]?.getCell(3, 6).value).toBe("'=SUM(F1:F2)");
+    expect(workbook.worksheets[0]?.getCell(3, 6).alignment.horizontal).toBe("left");
   });
 });

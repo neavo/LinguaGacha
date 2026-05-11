@@ -46,6 +46,22 @@ function strip_utf8_bom(text: string): string {
 }
 
 /**
+ * 统一历史编码名归一化规则，避免探测入口之间出现大小写和 BOM 差异。
+ */
+function normalize_detected_encoding(encoding: string, add_sig_to_utf8: boolean): string {
+  let normalized_encoding = encoding;
+  let normalized_key = normalized_encoding.toLowerCase().replace(/_/gu, "-");
+  if (normalized_key === "ascii") {
+    normalized_encoding = "utf-8";
+    normalized_key = "utf-8";
+  }
+  if (add_sig_to_utf8 && (normalized_key === "utf-8" || normalized_key === "utf8")) {
+    return "utf-8-sig";
+  }
+  return normalized_encoding;
+}
+
+/**
  * 对齐历史 TextHelper 的文本判断与文件编码入口。
  */
 export class TextTool {
@@ -177,28 +193,41 @@ export class TextTool {
   /**
    * 自动探测编码并将 ASCII/UTF-8 统一归入 UTF-8-SIG 处理入口。
    */
-  public static async detect_encoding(
-    content: Uint8Array,
+  public static async get_encoding(
+    path: string | null = null,
+    content: Uint8Array | null = null,
     add_sig_to_utf8 = true,
   ): Promise<string> {
     let encoding = "utf-8";
+
     try {
-      const chardet = await import("chardet");
-      const detected = chardet.detect(content as never);
-      if (typeof detected === "string" && detected.trim() !== "") {
-        encoding = detected.trim();
+      let detection_content = content;
+      if (path !== null) {
+        const fs = await import("node:fs/promises");
+        detection_content = await fs.readFile(path);
+      }
+      if (detection_content !== null) {
+        const chardet = await import("chardet");
+        const detected = chardet.detect(detection_content as never);
+        if (typeof detected === "string" && detected.trim() !== "") {
+          encoding = detected.trim();
+        }
       }
     } catch {
       // 编码探测失败时回退 UTF-8，保持解析主流程可继续。
     }
-    const normalized = encoding.toLowerCase().replace(/_/gu, "-");
-    if (normalized === "ascii") {
-      encoding = "utf-8";
-    }
-    if (add_sig_to_utf8 && (normalized === "utf-8" || normalized === "utf8")) {
-      encoding = "utf-8-sig";
-    }
-    return encoding;
+
+    return normalize_detected_encoding(encoding, add_sig_to_utf8);
+  }
+
+  /**
+   * 自动探测二进制内容编码，保留迁移期旧入口名称。
+   */
+  public static async detect_encoding(
+    content: Uint8Array,
+    add_sig_to_utf8 = true,
+  ): Promise<string> {
+    return this.get_encoding(null, content, add_sig_to_utf8);
   }
 
   /**
