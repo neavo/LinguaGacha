@@ -1,6 +1,6 @@
-import { should_skip_by_language_filter } from "../../../shared/rules/language-filter";
-import { is_hangul_character, is_kana_character } from "../../../shared/rules/languages";
-import { should_skip_by_rule_filter } from "../../../shared/rules/rule-filter";
+import { is_hangul_character, is_kana_character } from "../../../base/language";
+import { should_skip_by_language_prefilter } from "../../../shared/prefilter/language-prefilter";
+import { should_skip_by_rule_prefilter } from "../../../shared/prefilter/rule-prefilter";
 import {
   build_text_preserve_rule,
   normalize_text_preserve_mode,
@@ -70,8 +70,8 @@ export class ResponseChecker {
       return "LINE_ERROR_EMPTY_LINE";
     }
     if (
-      should_skip_by_rule_filter(src) ||
-      should_skip_by_language_filter(src, config.source_language)
+      should_skip_by_rule_prefilter(src) ||
+      should_skip_by_language_prefilter(src, config.source_language)
     ) {
       return "NONE";
     }

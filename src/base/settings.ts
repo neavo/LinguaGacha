@@ -10,7 +10,7 @@ export {
   strip_non_language_characters,
   type LanguageCode,
   type SourceTargetLanguageCode,
-} from "../shared/rules/languages";
+} from "./language";
 
 // AppLanguage 是配置文件、运行态 settings 和 i18n locale 派生的唯一语言值域。
 export const APP_LANGUAGES = ["ZH", "EN"] as const;

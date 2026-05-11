@@ -21,7 +21,7 @@ import {
   is_kana_character,
   normalize_language_code,
   strip_non_language_characters,
-} from "./languages";
+} from "./language";
 
 describe("languages", () => {
   it("以语言定义表作为前端语言代码清单事实源", () => {

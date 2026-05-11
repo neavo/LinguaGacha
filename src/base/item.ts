@@ -1,4 +1,4 @@
-import { has_language_character } from "../shared/rules/languages";
+import { has_language_character } from "./language";
 import type { JsonRecord, JsonValue } from "./json";
 
 // Item 状态沿用公开载荷和 .lg 历史事实，所有兼容旧值的折叠都在本文件收口。

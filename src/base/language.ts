@@ -9,23 +9,23 @@ export const ALL_LANGUAGE_CODE = "ALL";
 
 // 公开源/目标语言列表由 UI、过滤器和质量检查共用，避免各模块维护不同顺序。
 export const SOURCE_TARGET_LANGUAGE_CODES = [
-  "ZH", // 中文 (Chinese)
-  "EN", // 英文 (English)
-  "JA", // 日文 (Japanese)
-  "KO", // 韩文 (Korean)
-  "RU", // 俄文 (Russian)
-  "AR", // 阿拉伯文 (Arabic)
-  "DE", // 德文 (German)
-  "FR", // 法文 (French)
-  "PL", // 波兰文 (Polish)
-  "ES", // 西班牙文 (Spanish)
-  "IT", // 意大利文 (Italian)
-  "PT", // 葡萄牙文 (Portuguese)
-  "HU", // 匈牙利文 (Hungarian)
-  "TR", // 土耳其文 (Turkish)
-  "TH", // 泰文 (Thai)
-  "ID", // 印尼文 (Indonesian)
-  "VI", // 越南文 (Vietnamese)
+  "ZH", // 中文
+  "EN", // 英文
+  "JA", // 日文
+  "KO", // 韩文
+  "RU", // 俄文
+  "AR", // 阿拉伯文
+  "DE", // 德文
+  "FR", // 法文
+  "PL", // 波兰文
+  "ES", // 西班牙文
+  "IT", // 意大利文
+  "PT", // 葡萄牙文
+  "HU", // 匈牙利文
+  "TR", // 土耳其文
+  "TH", // 泰文
+  "ID", // 印尼文
+  "VI", // 越南文
 ] as const;
 
 // 源/目标语言类型从唯一列表派生，新增语言时无需重复维护联合类型。

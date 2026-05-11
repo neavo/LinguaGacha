@@ -6,8 +6,8 @@ import {
   normalize_runtime_project_item_record,
   type RuntimeProjectItemRecord,
 } from "@/project/reset/reset-state-builders";
-import { should_skip_by_language_filter } from "@shared/rules/language-filter";
-import { should_skip_by_rule_filter } from "@shared/rules/rule-filter";
+import { should_skip_by_language_prefilter } from "@shared/prefilter/language-prefilter";
+import { should_skip_by_rule_prefilter } from "@shared/prefilter/rule-prefilter";
 
 type ProjectPrefilterFileRecord = {
   rel_path: string;
@@ -108,12 +108,12 @@ export function compute_project_prefilter_mutation(
     if (item.status !== "NONE") {
       continue;
     }
-    if (should_skip_by_rule_filter(item.src)) {
+    if (should_skip_by_rule_prefilter(item.src)) {
       item.status = "RULE_SKIPPED";
       rule_skipped += 1;
       continue;
     }
-    if (should_skip_by_language_filter(item.src, input.source_language)) {
+    if (should_skip_by_language_prefilter(item.src, input.source_language)) {
       item.status = "LANGUAGE_SKIPPED";
       language_skipped += 1;
     }
