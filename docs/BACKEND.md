@@ -96,7 +96,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 ## 6. 数据库与 `.lg` 物理存储
 
 - SQL、事务、SQLite 句柄缓存和 `.lg` asset 读写只允许落在 `src/main/database/`。
-- `.lg` 打开期 schema 与旧物理格式迁移只允许落在 `src/main/migration/project-database-migration-service.ts`。
+- 旧版本写回型迁移规则只允许落在 `src/main/migration/`；`.lg` 物理迁移仍通过 database workflow 执行，工程语义迁移仍生成 database operation，userdata 迁移仍消费 `ConfigService` / `AppPathService` 的当前落点。
 - Zstd 压缩/解压参数和运行时能力检查只允许落在 `src/shared/utils/zstd-tool.ts`。
 - `ProjectDatabase.execute()` 是上层服务使用的窄 workflow；新增 operation 必须集中校验参数，避免 SQL 语义散落到 service。
 - `execute_transaction()` 单个事务只允许绑定一个工程文件，避免跨 `.lg` 半提交。

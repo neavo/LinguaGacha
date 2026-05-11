@@ -5,6 +5,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
+import { ProjectCompatibilityMigrationService } from "../migration/project-compatibility-migration-service";
 import type { ConfigService } from "../service/config-service";
 import type { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -34,15 +35,6 @@ const ITEM_STATUS_VALUES = new Set([
   "LANGUAGE_SKIPPED",
   "DUPLICATED",
 ]);
-
-// 文本保护 mode 是打开期兼容迁移的目标集合，不能把旧 bool 继续带进运行态。
-const TEXT_PRESERVE_MODE_VALUES = new Set(["smart", "custom", "off"]);
-
-// 旧翻译提示词槽位只在打开旧工程时读取一次，当前物理槽位仍是 translation_prompt。
-const LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE = "CUSTOM_PROMPT_ZH";
-const LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE = "CUSTOM_PROMPT_EN";
-const LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY = "translation_prompt_legacy_migrated";
-const TRANSLATION_PROMPT_RULE_TYPE = "translation_prompt";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -156,6 +148,9 @@ export class ProjectLifecycleService {
   // log_manager 记录默认预设初始化结果，响应体不扩大公开协议。
   private readonly log_manager: LogManager;
 
+  // compatibility_migration_service 只生成旧工程写回操作，事务仍由生命周期入口持有。
+  private readonly compatibility_migration_service: ProjectCompatibilityMigrationService;
+
   /**
    * 初始化项目生命周期依赖，保持公开路由层只负责装配。
    */
@@ -171,6 +166,10 @@ export class ProjectLifecycleService {
     this.config_service = config_service;
     this.paths = paths;
     this.log_manager = log_manager;
+    this.compatibility_migration_service = new ProjectCompatibilityMigrationService(
+      database,
+      config_service,
+    );
   }
 
   /**
@@ -201,7 +200,7 @@ export class ProjectLifecycleService {
         key: "updated_at",
         value: this.build_timestamp(),
       }),
-      ...this.build_open_compatibility_operations(project_path),
+      ...this.compatibility_migration_service.build_open_compatibility_operations(project_path),
     ]);
     this.session_state.mark_loaded(project_path);
     return this.build_loaded_project_response(project_path);
@@ -362,65 +361,6 @@ export class ProjectLifecycleService {
       }
     }
     return { source_files };
-  }
-
-  /**
-   * 构建打开旧工程时需要写回的兼容操作，所有写入仍经 database transaction。
-   */
-  private build_open_compatibility_operations(project_path: string): DatabaseOperation[] {
-    const meta = this.get_all_meta(project_path);
-    const operations: DatabaseOperation[] = [];
-    const raw_text_preserve_mode = this.string_value(meta["text_preserve_mode"]);
-    if (!TEXT_PRESERVE_MODE_VALUES.has(raw_text_preserve_mode)) {
-      operations.push(
-        this.op("setMeta", {
-          projectPath: project_path,
-          key: "text_preserve_mode",
-          value: this.boolean_value(meta["text_preserve_enable"]) ? "custom" : "smart",
-        }),
-      );
-    }
-
-    if (!this.boolean_value(meta[LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY])) {
-      const current_prompt = this.get_rule_text(project_path, TRANSLATION_PROMPT_RULE_TYPE).trim();
-      const legacy_prompt =
-        current_prompt === "" ? this.get_legacy_translation_prompt(project_path) : "";
-      if (legacy_prompt !== "") {
-        operations.push(
-          this.op("setRuleText", {
-            projectPath: project_path,
-            ruleType: TRANSLATION_PROMPT_RULE_TYPE,
-            text: legacy_prompt,
-          }),
-        );
-      }
-      operations.push(
-        this.op("setMeta", {
-          projectPath: project_path,
-          key: LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
-          value: true,
-        }),
-      );
-    }
-    return operations;
-  }
-
-  /**
-   * 按当前应用语言优先读取旧 ZH/EN 翻译提示词槽位，保持旧迁移语义。
-   */
-  private get_legacy_translation_prompt(project_path: string): string {
-    const config = this.config_service.load_config();
-    const preferred_rule_types =
-      String(config["app_language"] ?? "ZH").toUpperCase() === "EN"
-        ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]
-        : [LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE];
-    for (const rule_type of preferred_rule_types) {
-      const candidate = this.get_rule_text_by_name(project_path, rule_type).trim();
-      if (candidate !== "") {
-        return candidate;
-      }
-    }
-    return "";
   }
 
   /**
@@ -970,31 +910,6 @@ export class ProjectLifecycleService {
         path: this.string_value(item["path"]),
         sort_order: this.number_value(item["sort_order"], 0),
       }));
-  }
-
-  /**
-   * 读取当前物理规则文本，供打开期旧提示词迁移使用。
-   */
-  private get_rule_text(project_path: string, rule_type: string): string {
-    return this.string_value(
-      this.database.execute(
-        this.op("getRuleText", { projectPath: project_path, ruleType: rule_type }),
-      ) as ApiJsonValue,
-    );
-  }
-
-  /**
-   * 按原始规则名读取旧槽位文本，避免迁移前的 legacy 名称被当前映射吞掉。
-   */
-  private get_rule_text_by_name(project_path: string, rule_type_name: string): string {
-    return this.string_value(
-      this.database.execute(
-        this.op("getRuleTextByName", {
-          projectPath: project_path,
-          ruleTypeName: rule_type_name,
-        }),
-      ) as ApiJsonValue,
-    );
   }
 
   /**

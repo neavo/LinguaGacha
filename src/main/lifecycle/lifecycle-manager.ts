@@ -3,6 +3,7 @@ import { write_lifecycle_log } from "./lifecycle-log";
 import { build_core_api_base_url, allocate_core_api_port } from "./lifecycle-port-allocator";
 import { ProjectDatabase } from "../database/database-operations";
 import { ApiGatewayServer } from "../api/api-gateway-server";
+import { UserDataMigrationService } from "../migration/user-data-migration-service";
 import { AppPathService } from "../service/path-service";
 import { LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
@@ -67,6 +68,7 @@ export class CoreLifecycleManager {
     set_electron_main_log_manager(log_manager);
 
     try {
+      new UserDataMigrationService(paths, log_manager).run_startup_migrations();
       write_lifecycle_log("ProjectDatabase 已就绪");
       const gateway_server = new ApiGatewayServer({
         appRoot: app_root,

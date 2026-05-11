@@ -4,12 +4,16 @@ import { JsonTool } from "../../shared/utils/json-tool";
 
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
 
+// .lg schema 版本只在新建工程写入，打开旧工程时实际能力由幂等迁移补齐。
 export const PROJECT_DATABASE_SCHEMA_VERSION = 2;
 
+// 旧任务状态曾经把运行中和历史已处理态持久化到 item payload。
 const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST";
 const LEGACY_PROCESSING = "PROCESSING";
+// 当前 item status 只允许稳定事实，不保留运行中临时态。
 const CURRENT_PROCESSED = "PROCESSED";
 const CURRENT_NONE = "NONE";
+// Python 旧规则枚举是大写槽位，TS 当前物理类型统一为小写业务名。
 const LEGACY_RULE_TYPE_TO_CURRENT_TYPE = new Map([
   ["GLOSSARY", "glossary"],
   ["TEXT_PRESERVE", "text_preserve"],
@@ -18,6 +22,7 @@ const LEGACY_RULE_TYPE_TO_CURRENT_TYPE = new Map([
   ["TRANSLATION_PROMPT", "translation_prompt"],
   ["ANALYSIS_PROMPT", "analysis_prompt"],
 ]);
+// item payload 中只有这些状态可以继续进入当前运行态。
 const VALID_ITEM_STATUSES = new Set([
   "NONE",
   "PROCESSED",
@@ -28,11 +33,17 @@ const VALID_ITEM_STATUSES = new Set([
   "DUPLICATED",
 ]);
 
+/**
+ * SQLite 行值可能来自不同底层类型，迁移读取文本统一在这里收窄。
+ */
 function row_text(row: ProjectDatabaseMigrationRow, key: string): string {
   const value = row[key];
   return typeof value === "string" ? value : String(value ?? "");
 }
 
+/**
+ * SQLite INTEGER 可能以 number 或 bigint 返回，迁移写回 id 前统一转 number。
+ */
 function row_number(row: ProjectDatabaseMigrationRow, key: string): number {
   const value = row[key];
   if (typeof value === "number") {
@@ -114,6 +125,7 @@ export class ProjectDatabaseMigrationService {
     const update_legacy = db.prepare("UPDATE rules SET type = ? WHERE type = ?");
     const delete_legacy = db.prepare("DELETE FROM rules WHERE type = ?");
     for (const [legacy_type, current_type] of LEGACY_RULE_TYPE_TO_CURRENT_TYPE) {
+      // 当前物理类型已存在时保留当前事实，旧槽位视为重复历史残留。
       if (target_exists.get(current_type) === undefined) {
         update_legacy.run(current_type, legacy_type);
       } else {
@@ -153,6 +165,7 @@ export class ProjectDatabaseMigrationService {
     for (const row of rows) {
       const raw = row_text(row, "data");
       try {
+        // item JSON 可能来自更早版本，只有对象 payload 才具备可迁移状态字段。
         const parsed = JsonTool.parseStrict<ProjectDatabaseMigrationRow>(raw);
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
           continue;

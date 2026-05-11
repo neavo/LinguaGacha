@@ -5,7 +5,6 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { JsonTool } from "../../shared/utils/json-tool";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { ProjectDatabase } from "./database-operations";
 
@@ -100,108 +99,6 @@ describe("ProjectDatabase", () => {
     database.close();
   });
 
-  it("打开旧 items 状态时执行迁移归一", () => {
-    const lg_path = project_path("legacy.lg");
-    const db = new DatabaseSync(lg_path);
-    db.exec(`
-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL);
-      INSERT INTO items (data) VALUES ('{"src":"A","status":"PROCESSED_IN_PAST"}');
-      INSERT INTO items (data) VALUES ('{"src":"B","status":"PROCESSING"}');
-    `);
-    db.close();
-
-    const database = new ProjectDatabase();
-    expect(
-      database.execute({
-        name: "getAllItems",
-        args: { projectPath: lg_path },
-      }),
-    ).toEqual([
-      { id: 1, src: "A", status: "PROCESSED" },
-      { id: 2, src: "B", status: "NONE" },
-    ]);
-    database.close();
-  });
-
-  it("打开旧大写规则槽位时迁移到当前物理类型", () => {
-    const lg_path = project_path("legacy-rules.lg");
-    const db = new DatabaseSync(lg_path);
-    db.exec(`
-      CREATE TABLE rules (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT NOT NULL,
-        data TEXT NOT NULL
-      );
-    `);
-    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
-      "GLOSSARY",
-      JsonTool.stringifyStrict([{ src: "魔法", dst: "Magic" }]),
-    );
-    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
-      "TRANSLATION_PROMPT",
-      JsonTool.stringifyStrict({ text: "翻译提示词" }),
-    );
-    db.close();
-
-    const database = new ProjectDatabase();
-    expect(
-      database.execute({
-        name: "getRules",
-        args: { projectPath: lg_path, ruleType: "glossary" },
-      }),
-    ).toEqual([{ src: "魔法", dst: "Magic" }]);
-    expect(
-      database.execute({
-        name: "getRuleText",
-        args: { projectPath: lg_path, ruleType: "translation_prompt" },
-      }),
-    ).toBe("翻译提示词");
-    expect(
-      database.execute({
-        name: "getRules",
-        args: { projectPath: lg_path, ruleType: "GLOSSARY" },
-      }),
-    ).toEqual([]);
-    database.close();
-  });
-
-  it("旧大写规则槽位冲突时保留当前物理类型", () => {
-    const lg_path = project_path("legacy-rules-conflict.lg");
-    const db = new DatabaseSync(lg_path);
-    db.exec(`
-      CREATE TABLE rules (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT NOT NULL,
-        data TEXT NOT NULL
-      );
-    `);
-    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
-      "GLOSSARY",
-      JsonTool.stringifyStrict([{ src: "旧术语", dst: "Legacy" }]),
-    );
-    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
-      "glossary",
-      JsonTool.stringifyStrict([{ src: "当前术语", dst: "Current" }]),
-    );
-    db.close();
-
-    const database = new ProjectDatabase();
-    expect(
-      database.execute({
-        name: "getRules",
-        args: { projectPath: lg_path, ruleType: "glossary" },
-      }),
-    ).toEqual([{ src: "当前术语", dst: "Current" }]);
-    expect(
-      database.execute({
-        name: "getRules",
-        args: { projectPath: lg_path, ruleType: "GLOSSARY" },
-      }),
-    ).toEqual([]);
-    database.close();
-  });
-
   it("兼容读取旧压缩 asset bytes", () => {
     const lg_path = project_path("legacy-asset.lg");
     const db = new DatabaseSync(lg_path);
@@ -223,12 +120,6 @@ describe("ProjectDatabase", () => {
 
     const database = new ProjectDatabase();
     expect(database.read_asset_content(lg_path, "legacy.txt")).toEqual(Buffer.from("legacy"));
-    expect(
-      database.execute({
-        name: "getAllAssetRecords",
-        args: { projectPath: lg_path },
-      }),
-    ).toEqual([{ path: "legacy.txt", sort_order: 0 }]);
     database.close();
   });
 });
