@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { normalize_file_item } from "../file-item";
+import { normalize_item } from "../../../base/item";
 import { MDFormat } from "./md-format";
 
 let temp_dir = "";
@@ -39,7 +39,7 @@ describe("MDFormat", () => {
     const format = new MDFormat({ source_language: "JA", target_language: "ZH" });
     await format.write_to_path(
       [
-        normalize_file_item({
+        normalize_item({
           src: "原文",
           dst: "译文",
           row: 0,

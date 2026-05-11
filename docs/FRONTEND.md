@@ -40,6 +40,7 @@ project, files, items, quality, prompts, analysis, proofreading, task
 - `project.patch` 不能消费时，运行时可以触发完整 bootstrap 刷新；页面不应自己调用多个 snapshot 拼接替代。
 - 本地乐观 patch 必须通过 `commit_local_project_patch()`，并提供可回滚的 section 快照。
 - `ProjectStore` patch revision 默认合并，乐观 patch 使用 exact revision；新增 patch operation 必须同步 store、runtime context 和测试。
+- renderer 与 main 共享的基础值域从 `src/base` 导入；页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层业务枚举。
 
 ## 4. 事件流与页面刷新
 
@@ -75,5 +76,6 @@ project, files, items, quality, prompts, analysis, proofreading, task
 - preload 暴露能力、`window.desktopApp` 类型或 Core API 接入方式变化。
 - `desktop-api.ts` 的响应壳、错误、SSE、bootstrap 或外部网络调用语义变化。
 - `ProjectStore` section、patch operation、revision 对齐、本地乐观 patch 或 bootstrap 消费方式变化。
+- 改 renderer 消费的跨层基础值域、合法值集合、normalize 或派生判断。
 - 导航注册、项目页 runtime adapter、barrier 或页面共享缓存策略变化。
 - 样式 token、设计系统审查脚本或前端视觉边界变化。

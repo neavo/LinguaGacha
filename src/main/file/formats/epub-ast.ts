@@ -16,7 +16,7 @@ import { decodeHTML } from "entities";
 import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import { normalize_file_item, read_json_record, type FileFormatItem } from "../file-item";
+import { normalize_item, read_json_record, type Item } from "../../../base/item";
 
 /**
  * EPUB slot 定位引用，path 指向元素，slot 区分元素首段文本和元素后的 tail 文本。
@@ -312,11 +312,11 @@ export class EpubAst {
   /**
    * 读取 EPUB 包并按 OPF spine/nav/ncx 顺序生成可写回的翻译条目。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const zip_reader = await JSZip.loadAsync(content);
     const opf_path = await this.parse_container_opf_path(zip_reader);
     const pkg = await this.parse_opf(zip_reader, opf_path);
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
 
     const opf_title_item = this.extract_item_from_opf_title(rel_path, pkg);
     if (opf_title_item !== null) {
@@ -491,15 +491,12 @@ export class EpubAst {
   /**
    * OPF 标题作为独立条目抽取，写回后可同步到 XHTML title。
    */
-  public extract_item_from_opf_title(
-    rel_path: string,
-    pkg: EpubPackageInfo,
-  ): FileFormatItem | null {
+  public extract_item_from_opf_title(rel_path: string, pkg: EpubPackageInfo): Item | null {
     if (pkg.opf_title_path === null || pkg.opf_title_text === null) {
       return null;
     }
     const digest = this.sha1_hex_with_null_separator([pkg.opf_title_text]);
-    return normalize_file_item({
+    return normalize_item({
       src: pkg.opf_title_text,
       dst: "",
       tag: pkg.opf_path,
@@ -745,7 +742,7 @@ export class EpubAst {
     spine_index: number,
     rel_path: string,
     is_nav = false,
-  ): FileFormatItem[] {
+  ): Item[] {
     const root = this.parse_xhtml_or_html(raw);
     const elem_list = this.flatten_elements(root);
     const path_map = this.build_elem_path_map(root);
@@ -774,7 +771,7 @@ export class EpubAst {
       in_skipped_map,
       has_block_descendant_map,
     );
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     let unit_index = 0;
     for (const unit of units) {
       const item = this.create_item_from_slots(
@@ -799,13 +796,9 @@ export class EpubAst {
   /**
    * NCX 目录只抽取 text 节点，目录条目使用独立高位行号段。
    */
-  public extract_items_from_ncx(
-    ncx_path: string,
-    raw: Uint8Array,
-    rel_path: string,
-  ): FileFormatItem[] {
+  public extract_items_from_ncx(ncx_path: string, raw: Uint8Array, rel_path: string): Item[] {
     const root = this.parse_ncx_xml(raw);
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     let unit_index = 0;
     for (const elem of this.find_descendants(root, "text")) {
       const text = this.normalize_slot_text(this.read_text_slot(elem));
@@ -814,7 +807,7 @@ export class EpubAst {
       }
       const elem_path = this.build_elem_path_map(root).get(elem) ?? "";
       items.push(
-        normalize_file_item({
+        normalize_item({
           src: text,
           dst: "",
           tag: ncx_path,
@@ -839,7 +832,7 @@ export class EpubAst {
   }
 
   /**
-   * slot 列表组装成 FileFormatItem，摘要和路径 metadata 是 AST 写回的契约。
+   * slot 列表组装成 Item，摘要和路径 metadata 是 AST 写回的契约。
    */
   public create_item_from_slots(
     doc_path: string,
@@ -850,7 +843,7 @@ export class EpubAst {
     slots: Array<[EpubPartRef, string]>,
     is_nav: boolean,
     ruby_clean_candidate: Record<string, string> | null,
-  ): FileFormatItem | null {
+  ): Item | null {
     const part_defs: EpubPartRef[] = [];
     const part_texts: string[] = [];
     let has_non_empty_text = false;
@@ -877,7 +870,7 @@ export class EpubAst {
       epub_extra["ruby_clean_candidate"] = ruby_clean_candidate as ApiJsonValue;
     }
 
-    return normalize_file_item({
+    return normalize_item({
       src: part_texts.join("\n"),
       dst: "",
       tag: doc_path,
@@ -1160,7 +1153,7 @@ export class EpubAst {
 /**
  * 从通用 extra_field 中读取 EPUB metadata，非对象或数组都视为无 AST 信息。
  */
-export function read_epub_extra(item: FileFormatItem): Record<string, ApiJsonValue> | null {
+export function read_epub_extra(item: Item): Record<string, ApiJsonValue> | null {
   const extra = read_json_record(item.extra_field);
   const epub = extra["epub"];
   return typeof epub === "object" && epub !== null && !Array.isArray(epub)

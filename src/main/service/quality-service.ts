@@ -16,40 +16,23 @@ import {
   get_runtime_section_revision,
 } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
+import {
+  build_quality_rule_revision_key,
+  normalize_quality_rule_type,
+  normalize_text_preserve_mode,
+  resolve_quality_rule_database_type,
+  resolve_quality_rule_enabled_meta_key,
+  type QualityRuleType,
+} from "../../base/quality";
+import {
+  build_prompt_enabled_meta_key,
+  build_prompt_revision_key,
+  normalize_prompt_task_type,
+  resolve_prompt_database_type,
+  type PromptTaskType,
+} from "../../base/prompt";
 
 type JsonRecord = Record<string, ApiJsonValue>;
-
-// 公开规则类型由页面协议决定，不能直接暴露数据库物理 type。
-const QUALITY_RULE_TYPES = [
-  "glossary",
-  "text_preserve",
-  "pre_replacement",
-  "post_replacement",
-] as const;
-
-// 提示词只支持翻译与分析两类任务，和规则条目的 CRUD 边界分离。
-const PROMPT_TASK_TYPES = ["translation", "analysis"] as const;
-
-// 规则保存时需要把公开类型映射回旧数据库物理命名。
-const RULE_TYPE_TO_DATABASE_TYPE: Record<string, string> = {
-  glossary: "glossary",
-  text_preserve: "text_preserve",
-  pre_replacement: "pre_translation_replacement",
-  post_replacement: "post_translation_replacement",
-};
-
-// 提示词文本仍复用 rules 表文本 workflow，因此集中维护物理 type 映射。
-const PROMPT_TYPE_TO_DATABASE_TYPE: Record<string, string> = {
-  translation: "translation_prompt",
-  analysis: "analysis_prompt",
-};
-
-// enabled meta 只适用于三类布尔规则；text_preserve 使用 mode，不走布尔开关。
-const RULE_ENABLED_META_KEY: Record<string, string> = {
-  glossary: "glossary_enable",
-  pre_replacement: "pre_translation_replacement_enable",
-  post_replacement: "post_translation_replacement_enable",
-};
 
 /**
  * 封装 质量规则与提示词 CRUD、预设 IO 和 revision 对齐。
@@ -86,7 +69,7 @@ export class QualityService {
    * 保存规则条目并返回 mutation ack，保持页面 revision 对齐。
    */
   public async save_rule_entries(request: JsonRecord): Promise<JsonRecord> {
-    const rule_type = this.normalize_rule_type(String(request["rule_type"] ?? ""));
+    const rule_type = this.normalize_rule_type(request["rule_type"]);
     const expected_revision = Number(request["expected_revision"] ?? 0);
     const entries = this.normalize_rule_entries(request["entries"]);
     const project_path = await this.require_project_path();
@@ -95,7 +78,7 @@ export class QualityService {
     this.database.execute_transaction([
       this.op("setRules", {
         projectPath: project_path,
-        ruleType: RULE_TYPE_TO_DATABASE_TYPE[rule_type] ?? rule_type,
+        ruleType: resolve_quality_rule_database_type(rule_type),
         rules: entries as unknown as DatabaseJsonValue,
       }),
       this.op("setMeta", {
@@ -111,7 +94,7 @@ export class QualityService {
    * 更新规则 meta 并返回 mutation ack，避免页面直接改工程事实。
    */
   public async update_rule_meta(request: JsonRecord): Promise<JsonRecord> {
-    const rule_type = this.normalize_rule_type(String(request["rule_type"] ?? ""));
+    const rule_type = this.normalize_rule_type(request["rule_type"]);
     const project_path = await this.require_project_path();
     let current_revision = this.get_rule_revision(project_path, rule_type);
     let expected_revision = Number(request["expected_revision"] ?? 0);
@@ -250,7 +233,7 @@ export class QualityService {
    * 读取提示词模板，保持任务类型到模板路径的映射集中。
    */
   public get_prompt_template(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     const config = this.config_service.load_config();
     const language = String(config["app_language"] ?? "ZH").toLowerCase();
     const template_dir = this.paths.get_prompt_template_dir(
@@ -270,7 +253,7 @@ export class QualityService {
    * 保存工程提示词并返回 mutation ack，保持 prompts revision 对齐。
    */
   public async save_prompt(request: JsonRecord): Promise<JsonRecord> {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     const expected_revision = Number(request["expected_revision"] ?? 0);
     const project_path = await this.require_project_path();
     const current_revision = this.get_prompt_revision(project_path, task_type);
@@ -278,7 +261,7 @@ export class QualityService {
     const operations: DatabaseOperation[] = [
       this.op("setRuleText", {
         projectPath: project_path,
-        ruleType: PROMPT_TYPE_TO_DATABASE_TYPE[task_type] ?? task_type,
+        ruleType: resolve_prompt_database_type(task_type),
         text: String(request["text"] ?? ""),
       }),
       this.op("setMeta", {
@@ -291,7 +274,7 @@ export class QualityService {
       operations.push(
         this.op("setMeta", {
           projectPath: project_path,
-          key: `${task_type}_prompt_enable`,
+          key: build_prompt_enabled_meta_key(task_type),
           value: Boolean(request["enabled"]),
         }),
       );
@@ -317,14 +300,14 @@ export class QualityService {
    * 导出提示词文本，保持文件写出留在 Electron main。
    */
   public async export_prompt(request: JsonRecord): Promise<JsonRecord> {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     const project_path = await this.require_project_path();
     const output_path = this.ensure_txt_suffix(String(request["path"] ?? ""));
     const text = String(
       this.database.execute(
         this.op("getRuleText", {
           projectPath: project_path,
-          ruleType: PROMPT_TYPE_TO_DATABASE_TYPE[task_type] ?? task_type,
+          ruleType: resolve_prompt_database_type(task_type),
         }),
       ) ?? "",
     );
@@ -336,7 +319,7 @@ export class QualityService {
    * 列出提示词预设，统一内置和用户预设的虚拟 id。
    */
   public list_prompt_presets(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     return {
       builtin_presets: this.list_preset_items(
         "builtin",
@@ -357,7 +340,7 @@ export class QualityService {
    * 读取提示词预设文本，隐藏资源目录差异。
    */
   public read_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     const preset_path = this.resolve_prompt_preset_path(
       task_type,
       String(request["virtual_id"] ?? ""),
@@ -369,7 +352,7 @@ export class QualityService {
    * 保存用户提示词预设，统一命名和后缀规则。
    */
   public save_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     const directory = this.paths.get_prompt_user_preset_dir(task_type);
     fs.mkdirSync(directory, { recursive: true });
     const file_path = path.join(
@@ -384,7 +367,7 @@ export class QualityService {
    * 重命名用户提示词预设，保护内置预设只读。
    */
   public rename_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     const { source, file_name } = this.split_virtual_id(
       String(request["virtual_id"] ?? ""),
       ".txt",
@@ -402,7 +385,7 @@ export class QualityService {
    * 删除用户提示词预设，避免调用方自行判断预设来源。
    */
   public delete_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(String(request["task_type"] ?? ""));
+    const task_type = this.normalize_prompt_task_type(request["task_type"]);
     const { source, file_name } = this.split_virtual_id(
       String(request["virtual_id"] ?? ""),
       ".txt",
@@ -439,7 +422,7 @@ export class QualityService {
   /**
    * 读取规则 revision，隔离 meta key 组合细节。
    */
-  private get_rule_revision(project_path: string, rule_type: string): number {
+  private get_rule_revision(project_path: string, rule_type: QualityRuleType): number {
     return get_runtime_section_revision(
       this.read_project_meta(project_path),
       `quality:${rule_type}`,
@@ -449,7 +432,7 @@ export class QualityService {
   /**
    * 读取提示词 revision，隔离 meta key 组合细节。
    */
-  private get_prompt_revision(project_path: string, task_type: string): number {
+  private get_prompt_revision(project_path: string, task_type: PromptTaskType): number {
     return get_runtime_section_revision(
       this.read_project_meta(project_path),
       `prompts:${task_type}`,
@@ -468,24 +451,24 @@ export class QualityService {
   /**
    * 生成规则 revision key，避免调用方拼接 meta 名称。
    */
-  private build_rule_revision_key(rule_type: string): string {
-    return `quality_rule_revision.${rule_type}`;
+  private build_rule_revision_key(rule_type: QualityRuleType): string {
+    return build_quality_rule_revision_key(rule_type);
   }
 
   /**
    * 生成提示词 revision key，避免调用方拼接 meta 名称。
    */
-  private build_prompt_revision_key(task_type: string): string {
-    return `quality_prompt_revision.${task_type}`;
+  private build_prompt_revision_key(task_type: PromptTaskType): string {
+    return build_prompt_revision_key(task_type);
   }
 
   /**
    * 映射规则类型到 meta key，保持规则类型命名唯一。
    */
-  private resolve_rule_meta_key(rule_type: string, key: string): string {
+  private resolve_rule_meta_key(rule_type: QualityRuleType, key: string): string {
     if (key === "enabled") {
-      const meta_key = RULE_ENABLED_META_KEY[rule_type];
-      if (meta_key === undefined) {
+      const meta_key = resolve_quality_rule_enabled_meta_key(rule_type);
+      if (meta_key === null) {
         throw new Error(`当前规则类型不支持布尔启用切换：${rule_type}`);
       }
       return meta_key;
@@ -500,7 +483,7 @@ export class QualityService {
    * 归一规则 meta 值，兼容旧项目缺失字段。
    */
   private normalize_rule_meta_value(
-    rule_type: string,
+    rule_type: QualityRuleType,
     key: string,
     value: ApiJsonValue,
   ): ApiJsonValue {
@@ -508,8 +491,7 @@ export class QualityService {
       return Boolean(value);
     }
     if (rule_type === "text_preserve" && key === "mode") {
-      const mode = String(value);
-      return mode === "smart" || mode === "custom" || mode === "off" ? mode : "off";
+      return normalize_text_preserve_mode(value);
     }
     return value;
   }
@@ -539,21 +521,15 @@ export class QualityService {
   /**
    * 归一规则类型，保护质量规则接口只接受已知分组。
    */
-  private normalize_rule_type(value: string): string {
-    if (!QUALITY_RULE_TYPES.includes(value as (typeof QUALITY_RULE_TYPES)[number])) {
-      throw new Error(`未知的质量规则类型：${value}`);
-    }
-    return value;
+  private normalize_rule_type(value: ApiJsonValue | undefined): QualityRuleType {
+    return normalize_quality_rule_type(String(value ?? ""));
   }
 
   /**
    * 归一提示词任务类型，保护提示词目录映射。
    */
-  private normalize_prompt_task_type(value: string): string {
-    if (!PROMPT_TASK_TYPES.includes(value as (typeof PROMPT_TASK_TYPES)[number])) {
-      throw new Error(`未知提示词任务类型：${value}`);
-    }
-    return value;
+  private normalize_prompt_task_type(value: ApiJsonValue | undefined): PromptTaskType {
+    return normalize_prompt_task_type(String(value ?? ""));
   }
 
   /**

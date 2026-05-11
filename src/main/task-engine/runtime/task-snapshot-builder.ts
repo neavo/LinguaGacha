@@ -4,6 +4,8 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../../database/databa
 import { get_runtime_section_revision } from "../../project/project-section-revision";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "./task-runtime-state";
+import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "../../../base/task";
+import { normalize_item_status } from "../../../base/item";
 import {
   is_task_type,
   type JsonRecord,
@@ -25,15 +27,6 @@ const TASK_PROGRESS_NUMBER_FIELDS = [
 
 // 时间字段保留浮点值，避免任务耗时在序列化后被截断。
 const TASK_PROGRESS_FLOAT_FIELDS = ["time", "start_time"] as const;
-
-// 分析摘要只统计当前仍可分析的条目状态。
-const ANALYSIS_CHECKPOINT_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
-const ANALYSIS_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
 
 /**
  * 在 API Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 `TaskRuntimeState`。
@@ -183,7 +176,7 @@ export class TaskSnapshotBuilder {
     let error_line = 0;
     for (const item of this.get_all_items(state.projectPath)) {
       const status = this.normalize_item_status(item["status"]);
-      if (ANALYSIS_SKIPPED_STATUSES.has(status)) {
+      if (is_task_skipped_item_status(status)) {
         continue;
       }
       const item_id = this.read_number(item["id"], 0);
@@ -256,7 +249,7 @@ export class TaskSnapshotBuilder {
       }
       const item_id = this.read_number(row["item_id"], 0);
       const status = String(row["status"] ?? "");
-      if (item_id > 0 && ANALYSIS_CHECKPOINT_STATUSES.has(status)) {
+      if (item_id > 0 && (TASK_PROGRESS_STATUSES as readonly string[]).includes(status)) {
         checkpoints.set(item_id, status);
       }
     }
@@ -267,14 +260,7 @@ export class TaskSnapshotBuilder {
    * 历史处理中状态在任务进度统计里归一为当前可消费状态。
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
-    const status = String(value ?? "NONE");
-    if (status === "PROCESSED_IN_PAST") {
-      return "PROCESSED";
-    }
-    if (status === "PROCESSING") {
-      return "NONE";
-    }
-    return status;
+    return normalize_item_status(value);
   }
 
   /**

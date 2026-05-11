@@ -4,6 +4,13 @@ import path from "node:path";
 import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 
 import type { ApiJsonValue } from "../../api/api-types";
+import {
+  model_api_format_supports_reasoning_by_default,
+  normalize_model_api_format,
+  normalize_model_thinking_level,
+  type ModelThinkingLevel,
+  type ModelApiFormat,
+} from "../../../base/model";
 
 const REPO_URL = "https://github.com/neavo/LinguaGacha";
 const USER_AGENT_NAME = "LinguaGacha";
@@ -11,10 +18,8 @@ const DEFAULT_VERSION = "0.0.0";
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096;
 const OUTPUT_TOKEN_LIMIT_AUTO_VALUES = new Set([0, -1]);
 
-export type LinguaGachaApiFormat = "OpenAI" | "SakuraLLM" | "Google" | "Anthropic";
-
 export interface LinguaGachaModelSnapshot {
-  api_format: LinguaGachaApiFormat;
+  api_format: ModelApiFormat;
   api_keys: string[];
   api_url: string;
   extra_body: Record<string, ApiJsonValue>;
@@ -23,7 +28,7 @@ export interface LinguaGachaModelSnapshot {
   model_id: string;
   output_token_limit: number;
   pi_model: Model<Api>;
-  thinking_level: "OFF" | "LOW" | "MEDIUM" | "HIGH";
+  thinking_level: ModelThinkingLevel;
 }
 
 /**
@@ -130,7 +135,7 @@ export function is_output_token_limit_auto(value: number): boolean {
 /**
  * OpenAI-compatible 与 Sakura URL 需要去掉 chat completions 后缀。
  */
-export function normalize_api_url(url: string, api_format: LinguaGachaApiFormat): string {
+export function normalize_api_url(url: string, api_format: ModelApiFormat): string {
   const trimmed = url.trim().replace(/\/+$/u, "");
   if (api_format === "OpenAI" || api_format === "SakuraLLM") {
     return trimmed.replace(/\/chat\/completions$/iu, "");
@@ -179,27 +184,21 @@ function read_enabled_record(
 /**
  * 未识别格式按 OpenAI-compatible 兜底，避免旧配置阻断任务启动。
  */
-function normalize_api_format(value: string): LinguaGachaApiFormat {
-  if (value === "SakuraLLM" || value === "Google" || value === "Anthropic") {
-    return value;
-  }
-  return "OpenAI";
+function normalize_api_format(value: string): ModelApiFormat {
+  return normalize_model_api_format(value);
 }
 
 /**
  * 思考挡位只允许四档稳定值，坏值在边界处收窄为关闭。
  */
-function normalize_thinking_level(value: string): "OFF" | "LOW" | "MEDIUM" | "HIGH" {
-  if (value === "LOW" || value === "MEDIUM" || value === "HIGH") {
-    return value;
-  }
-  return "OFF";
+function normalize_thinking_level(value: string): ModelThinkingLevel {
+  return normalize_model_thinking_level(value);
 }
 
 /**
  * 将 LinguaGacha 的供应商枚举映射到 pi-ai API 名称。
  */
-function resolve_pi_api(api_format: LinguaGachaApiFormat): Api {
+function resolve_pi_api(api_format: ModelApiFormat): Api {
   if (api_format === "Google") {
     return "google-generative-ai";
   }
@@ -212,7 +211,7 @@ function resolve_pi_api(api_format: LinguaGachaApiFormat): Api {
 /**
  * provider 用于 pi-ai 选择默认传输实现，与 api 名称分开维护。
  */
-function resolve_pi_provider(api_format: LinguaGachaApiFormat): Provider {
+function resolve_pi_provider(api_format: ModelApiFormat): Provider {
   if (api_format === "Google") {
     return "google";
   }
@@ -235,7 +234,7 @@ function resolve_max_tokens(output_token_limit: number): number {
 /**
  * OpenAI-compatible 模型的思考格式差异集中在 compat，调用方不再散落正则。
  */
-function resolve_compat(model_id: string, api_format: LinguaGachaApiFormat): Model<Api>["compat"] {
+function resolve_compat(model_id: string, api_format: ModelApiFormat): Model<Api>["compat"] {
   if (api_format !== "OpenAI" && api_format !== "SakuraLLM") {
     return undefined;
   }
@@ -251,8 +250,8 @@ function resolve_compat(model_id: string, api_format: LinguaGachaApiFormat): Mod
 /**
  * reasoning 标记只表达模型是否可能产出思考内容，具体挡位由 payload patch 决定。
  */
-function should_enable_pi_reasoning(model_id: string, api_format: LinguaGachaApiFormat): boolean {
-  if (api_format === "Google" || api_format === "Anthropic") {
+function should_enable_pi_reasoning(model_id: string, api_format: ModelApiFormat): boolean {
+  if (model_api_format_supports_reasoning_by_default(api_format)) {
     return true;
   }
   return /gpt-5|qwen3\.5|doubao-seed-(?:1-6|1-8|2-0)|deepseek|kimi|glm/iu.test(model_id);

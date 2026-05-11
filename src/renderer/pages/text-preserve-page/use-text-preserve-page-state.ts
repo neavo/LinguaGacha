@@ -52,6 +52,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
+import { normalize_text_preserve_mode } from "@base/quality";
 
 type TextPreserveSnapshot = {
   revision: number;
@@ -101,14 +102,6 @@ function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveE
     src: String(entry.src ?? ""),
     info: String(entry.info ?? ""),
   });
-}
-
-function normalize_mode(candidate: string | undefined): TextPreserveMode {
-  if (candidate === "smart" || candidate === "custom") {
-    return candidate;
-  }
-
-  return DEFAULT_MODE;
 }
 
 function create_empty_filter_state(): TextPreserveFilterState {
@@ -422,7 +415,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const apply_snapshot = useCallback((snapshot: TextPreserveSnapshot): void => {
     set_revision(snapshot.revision);
-    set_mode(normalize_mode(snapshot.meta.mode));
+    set_mode(normalize_text_preserve_mode(snapshot.meta.mode));
     set_entries(
       snapshot.entries.map((entry) => {
         return normalize_entry(entry);

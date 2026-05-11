@@ -2,6 +2,9 @@ import type { QualityStatisticsDependencySnapshot } from "@/project/quality/qual
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@/i18n";
+import type { TextPreserveMode } from "@base/quality";
+
+export type { TextPreserveMode };
 
 export type TextPreserveEntry = {
   entry_id?: string;
@@ -10,8 +13,6 @@ export type TextPreserveEntry = {
 };
 
 export type TextPreserveEntryId = string;
-
-export type TextPreserveMode = "off" | "smart" | "custom";
 
 export type TextPreserveDialogMode = "create" | "edit";
 

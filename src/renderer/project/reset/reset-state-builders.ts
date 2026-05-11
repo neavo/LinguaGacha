@@ -1,3 +1,5 @@
+import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "@base/task";
+
 export type RuntimeProjectItemRecord = {
   item_id: number;
   file_path: string;
@@ -9,14 +11,6 @@ export type RuntimeProjectItemRecord = {
   text_type: string;
   retry_count: number;
 };
-
-const TRACKED_TRANSLATION_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
-const ANALYSIS_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
 
 export function normalize_runtime_project_item_record(
   value: unknown,
@@ -107,7 +101,7 @@ export function build_translation_task_and_project_state(args: {
     if (item.status === "ERROR") {
       error_line += 1;
     }
-    if (TRACKED_TRANSLATION_STATUSES.has(item.status)) {
+    if ((TASK_PROGRESS_STATUSES as readonly string[]).includes(item.status)) {
       total_line += 1;
     }
   }
@@ -134,7 +128,7 @@ export function build_analysis_status_summary(
 ): Record<string, unknown> {
   let total_line = 0;
   for (const item of items) {
-    if (item.src.trim() === "" || ANALYSIS_SKIPPED_STATUSES.has(item.status)) {
+    if (item.src.trim() === "" || is_task_skipped_item_status(item.status)) {
       continue;
     }
     total_line += 1;

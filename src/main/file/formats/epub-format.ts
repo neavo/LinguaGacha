@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { FileFormatItem } from "../file-item";
+import type { Item } from "../../../base/item";
 import {
   build_bilingual_path,
   build_target_path,
@@ -35,7 +35,7 @@ export class EPUBFormat {
   /**
    * EPUB 读取交给 AST 层处理，门面保留统一 FileFormat 接口形状。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     return this.ast.read_from_stream(content, rel_path);
   }
 
@@ -43,7 +43,7 @@ export class EPUBFormat {
    * 写回时同时生成译文版和双语对照版，缺失原始 asset 时跳过该 EPUB。
    */
   public async write_to_path(
-    items: FileFormatItem[],
+    items: Item[],
     paths: ExportPaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {

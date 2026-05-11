@@ -1,7 +1,7 @@
 import type { MutableJsonRecord, TaskType } from "../runtime/task-runtime-types";
+import { TASK_IDLE_STATUSES as BASE_TASK_IDLE_STATUSES } from "../../../base/task";
 
-// 任务终态集合用于锁和运行态判断，避免各 runner 自行解释完成语义。
-export const TASK_IDLE_STATUSES = new Set(["DONE", "ERROR", "IDLE"]);
+export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
 
 /**
  * Task Engine 内部运行实例，负责把一次后台任务和取消信号绑定在一起。

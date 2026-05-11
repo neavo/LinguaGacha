@@ -1,4 +1,4 @@
-const TRANSLATION_TASK_ACTIVE_STATUSES = ["REQUEST", "RUN", "TRANSLATING", "STOPPING"] as const;
+import { is_active_translation_task_status as is_base_active_translation_task_status } from "@base/task";
 
 export type TranslationTaskActionKind =
   | "reset-all"
@@ -106,9 +106,7 @@ export function normalize_translation_task_snapshot_payload(
 }
 
 export function is_active_translation_task_status(status: string): boolean {
-  return TRANSLATION_TASK_ACTIVE_STATUSES.includes(
-    status as (typeof TRANSLATION_TASK_ACTIVE_STATUSES)[number],
-  );
+  return is_base_active_translation_task_status(status);
 }
 
 export function has_translation_task_progress(snapshot: TranslationTaskSnapshot | null): boolean {

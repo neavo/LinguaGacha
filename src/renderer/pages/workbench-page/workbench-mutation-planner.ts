@@ -4,6 +4,7 @@ import {
   type ProjectStorePatchOperation,
   type ProjectStoreState,
 } from "@/project/store/project-store";
+import { is_task_skipped_item_status } from "@base/task";
 
 type WorkbenchPlannerSettings = {
   source_language: string;
@@ -401,9 +402,6 @@ type WorkbenchParsedItemRecord = {
   retry_count: number;
 };
 
-const INHERITABLE_STATUSES = new Set(["PROCESSED"]);
-const STRUCTURAL_STATUSES = new Set(["EXCLUDED", "RULE_SKIPPED", "LANGUAGE_SKIPPED", "DUPLICATED"]);
-
 function normalize_casefold_path(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
 }
@@ -537,7 +535,7 @@ function build_translation_inheritance_candidates(
   for (const item of old_items) {
     const status = normalize_status_value(item.status);
     const dst = item.dst.trim();
-    if (!INHERITABLE_STATUSES.has(status) || dst === "") {
+    if (status !== "PROCESSED" || dst === "") {
       global_index += 1;
       continue;
     }
@@ -600,7 +598,7 @@ function inherit_completed_translations(args: {
     item.dst = candidate.dst;
     item.name_dst = candidate.name_dst ?? null;
     item.retry_count = candidate.retry_count;
-    if (!STRUCTURAL_STATUSES.has(normalize_status_value(item.status))) {
+    if (!is_task_skipped_item_status(normalize_status_value(item.status))) {
       item.status = candidate.status;
     }
   }

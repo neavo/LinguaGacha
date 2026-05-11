@@ -2,31 +2,13 @@ import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
-import { item_to_json } from "../file/file-item";
+import { item_to_json, normalize_item_status } from "../../base/item";
+import { is_task_skipped_item_status } from "../../base/task";
 import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
 import { ProjectSessionState } from "./project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
-
-// reset preview 只接受当前 ItemStatus 字面量，历史状态在 normalize 阶段折叠。
-const VALID_ITEM_STATUS_VALUES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
-// 分析总数排除这些不会进入分析任务的状态，保持预演和真实任务摘要一致。
-const ANALYSIS_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
 
 /**
  * 承载公开 reset preview；当前服务负责预演响应和 asset 重解析。
@@ -108,7 +90,7 @@ export class ProjectResetPreviewService {
     let processed_line = 0;
     for (const item of this.get_all_items(project_path)) {
       const status = this.normalize_item_status(item["status"]);
-      if (ANALYSIS_SKIPPED_STATUSES.has(status)) {
+      if (is_task_skipped_item_status(status)) {
         continue;
       }
       const item_id = this.read_number(item["id"], 0);
@@ -234,14 +216,7 @@ export class ProjectResetPreviewService {
    * 历史运行态状态在预演中折叠为当前状态枚举，避免旧工程扰动统计。
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
-    const status = String(value ?? "NONE");
-    if (status === "PROCESSED_IN_PAST") {
-      return "PROCESSED";
-    }
-    if (status === "PROCESSING") {
-      return "NONE";
-    }
-    return VALID_ITEM_STATUS_VALUES.has(status) ? status : "NONE";
+    return normalize_item_status(value);
   }
 
   /**

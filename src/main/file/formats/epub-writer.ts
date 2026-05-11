@@ -7,11 +7,11 @@ import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import {
-  effective_dst,
-  normalize_file_item,
+  resolve_item_effective_dst,
+  normalize_item,
   read_json_record,
-  type FileFormatItem,
-} from "../file-item";
+  type Item,
+} from "../../../base/item";
 import type { FileFormatServiceConfig } from "./file-format-shared";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
@@ -42,7 +42,7 @@ export class EpubWriter {
   /**
    * 只有带 parts 定位的条目才能走 AST 写回，旧数据继续走顺序兼容写回。
    */
-  public has_epub_ast_metadata(item: FileFormatItem): boolean {
+  public has_epub_ast_metadata(item: Item): boolean {
     const epub = read_epub_extra(item);
     const parts = epub?.["parts"];
     return Array.isArray(parts) && parts.length > 0;
@@ -53,11 +53,11 @@ export class EpubWriter {
    */
   public async build_epub(
     original_epub_bytes: Uint8Array,
-    items: FileFormatItem[],
+    items: Item[],
     out_path: string,
     bilingual: boolean,
   ): Promise<void> {
-    const normalized_items = items.map((item) => normalize_file_item(item));
+    const normalized_items = items.map((item) => normalize_item(item));
     const use_ast = normalized_items.every((item) => this.has_epub_ast_metadata(item));
     if (use_ast) {
       await this.build_epub_ast(original_epub_bytes, normalized_items, out_path, bilingual);
@@ -71,11 +71,11 @@ export class EpubWriter {
    */
   private async build_epub_ast(
     original_epub_bytes: Uint8Array,
-    items: FileFormatItem[],
+    items: Item[],
     out_path: string,
     bilingual: boolean,
   ): Promise<void> {
-    const by_doc = new Map<string, FileFormatItem[]>();
+    const by_doc = new Map<string, Item[]>();
     for (const item of items.filter((candidate) => candidate.file_type === "EPUB")) {
       const epub = read_epub_extra(item);
       if (epub === null) {
@@ -144,7 +144,7 @@ export class EpubWriter {
    */
   private async resolve_opf_title_sync_pair(
     source_zip: JSZip,
-    by_doc: Map<string, FileFormatItem[]>,
+    by_doc: Map<string, Item[]>,
     bilingual: boolean,
   ): Promise<[string, string] | null> {
     const candidate = this.extract_opf_title_sync_pair(by_doc);
@@ -175,9 +175,7 @@ export class EpubWriter {
   /**
    * 从 OPF 元数据条目提取单行标题替换对，只有真实译文才参与同步。
    */
-  private extract_opf_title_sync_pair(
-    by_doc: Map<string, FileFormatItem[]>,
-  ): [string, string] | null {
+  private extract_opf_title_sync_pair(by_doc: Map<string, Item[]>): [string, string] | null {
     for (const [doc_path, doc_items] of by_doc.entries()) {
       if (!doc_path.toLowerCase().endsWith(".opf")) {
         continue;
@@ -209,7 +207,7 @@ export class EpubWriter {
     output_zip: JSZip,
     name: string,
     raw: Uint8Array,
-    doc_items: FileFormatItem[],
+    doc_items: Item[],
     bilingual: boolean,
   ): Promise<void> {
     if (doc_items.length === 0) {
@@ -238,7 +236,7 @@ export class EpubWriter {
     output_zip: JSZip,
     name: string,
     raw: Uint8Array,
-    doc_items: FileFormatItem[],
+    doc_items: Item[],
     bilingual: boolean,
     opf_title_sync_pair: [string, string] | null,
   ): Promise<void> {
@@ -269,7 +267,7 @@ export class EpubWriter {
   private apply_items_to_tree(
     root: Element,
     doc_path: string,
-    items: FileFormatItem[],
+    items: Item[],
     bilingual: boolean,
   ): [number, number] {
     let applied = 0;
@@ -300,7 +298,7 @@ export class EpubWriter {
         continue;
       }
 
-      const item_dst = effective_dst(item);
+      const item_dst = resolve_item_effective_dst(item);
       const dst_lines = item_dst.split("\n");
       if (dst_lines.length !== parts.length) {
         if (
@@ -407,7 +405,7 @@ export class EpubWriter {
     root: Element,
     elem_by_path: Map<string, Element>,
     epub: Record<string, ApiJsonValue>,
-    item: FileFormatItem,
+    item: Item,
     item_dst: string,
     allow_bilingual_insert: boolean,
     block_refs: Array<[Element, Element]>,
@@ -492,15 +490,15 @@ export class EpubWriter {
    */
   private async build_epub_legacy(
     original_epub_bytes: Uint8Array,
-    items: FileFormatItem[],
+    items: Item[],
     out_path: string,
     bilingual: boolean,
   ): Promise<void> {
     const sorted_items = items
       .filter((item) => item.file_type === "EPUB")
-      .map((item) => normalize_file_item(item))
+      .map((item) => normalize_item(item))
       .sort((left, right) => left.row - right.row);
-    const tag_group = new Map<string, FileFormatItem[]>();
+    const tag_group = new Map<string, Item[]>();
     for (const item of sorted_items) {
       const bucket = tag_group.get(item.tag) ?? [];
       bucket.push(item);
@@ -535,7 +533,7 @@ export class EpubWriter {
   /**
    * NCX legacy 写回按 text 节点顺序消费条目，匹配旧目录翻译行为。
    */
-  private process_legacy_ncx(raw: Uint8Array, target_items: FileFormatItem[]): string {
+  private process_legacy_ncx(raw: Uint8Array, target_items: Item[]): string {
     const root = this.ast.parse_ncx_xml(raw);
     let item_index = 0;
     for (const text_elem of this.ast.find_descendants(root, "text")) {
@@ -544,7 +542,7 @@ export class EpubWriter {
       }
       this.ast.write_text_slot(
         text_elem,
-        effective_dst(target_items[item_index] as FileFormatItem),
+        resolve_item_effective_dst(target_items[item_index] as Item),
       );
       item_index += 1;
     }
@@ -554,11 +552,7 @@ export class EpubWriter {
   /**
    * HTML legacy 写回按块级标签顺序替换，并在双语模式插入原文克隆。
    */
-  private process_legacy_html(
-    raw: Uint8Array,
-    target_items: FileFormatItem[],
-    bilingual: boolean,
-  ): string {
+  private process_legacy_html(raw: Uint8Array, target_items: Item[], bilingual: boolean): string {
     const root = this.ast.parse_xhtml_or_html(raw);
     const is_nav_page = this.ast.is_nav_page(root);
     let item_index = 0;
@@ -574,8 +568,8 @@ export class EpubWriter {
       ) {
         continue;
       }
-      const item = target_items[item_index] as FileFormatItem;
-      const item_dst = effective_dst(item);
+      const item = target_items[item_index] as Item;
+      const item_dst = resolve_item_effective_dst(item);
       if (
         bilingual &&
         !is_nav_page &&

@@ -1,7 +1,24 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import { infer_text_type_from_source } from "../file/file-text-type-inference";
+import {
+  infer_item_text_type_from_source,
+  normalize_item_file_type,
+  normalize_item_status,
+} from "../../base/item";
+import {
+  QUALITY_RULE_TYPES,
+  normalize_text_preserve_mode,
+  resolve_quality_rule_database_type,
+  resolve_quality_rule_enabled_meta_key,
+  type QualityRuleType,
+} from "../../base/quality";
+import {
+  PROMPT_TASK_TYPES,
+  build_prompt_enabled_meta_key,
+  resolve_prompt_database_type,
+} from "../../base/prompt";
+import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "../../base/task";
 import { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
 import {
   build_project_mutation_ack_from_meta,
@@ -65,58 +82,6 @@ const ITEMS_BLOCK_FIELDS = [
   "text_type",
   "retry_count",
 ] as const;
-
-// 公开质量块名和数据库物理 rule type 不完全一致，所以两套命名在这里集中映射。
-const QUALITY_RULE_TYPES = [
-  "glossary",
-  "pre_replacement",
-  "post_replacement",
-  "text_preserve",
-] as const;
-// 公开 quality key 到数据库 rule type 的映射集中维护，避免 bootstrap 各块重复拼字符串。
-const QUALITY_RULE_DATABASE_TYPE: Record<string, string> = {
-  glossary: "glossary",
-  pre_replacement: "pre_translation_replacement",
-  post_replacement: "post_translation_replacement",
-  text_preserve: "text_preserve",
-};
-// 启用开关来自 meta，缺失时按不同规则的旧默认值兜底。
-const QUALITY_RULE_ENABLED_META_KEY: Record<string, string> = {
-  glossary: "glossary_enable",
-  pre_replacement: "pre_translation_replacement_enable",
-  post_replacement: "post_translation_replacement_enable",
-};
-// prompt stage 只输出翻译和分析两类模板，顺序用于稳定前端 diff。
-const PROMPT_TASK_TYPES = ["translation", "analysis"] as const;
-// prompt 公开 key 与数据库物理 type 不同，读取时必须经由该映射。
-const PROMPT_DATABASE_TYPE: Record<string, string> = {
-  analysis: "analysis_prompt",
-  translation: "translation_prompt",
-};
-
-// runtime encoder 兼容旧状态，但只向前端输出当前有效状态集合。
-const VALID_ITEM_STATUS_VALUES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
-// analysis summary 只统计可分析条目，checkpoint 只接受任务进度使用的三态。
-const ANALYSIS_CHECKPOINT_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
-// 被翻译规则跳过的条目不进入术语分析进度统计。
-const ANALYSIS_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
-// 旧 Item.__post_init__ 会按文件类型和原文模式推断 text_type，bootstrap 需要等价兜底。
-const TEXT_TYPE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
 
 /**
  * Electron main 侧项目运行态编码器，只做请求内快照，不持有长期项目缓存。
@@ -283,19 +248,21 @@ export class ProjectRuntimeEncoder {
   private build_quality_rule_slice(
     project_path: string,
     meta: JsonRecord,
-    rule_type: string,
+    rule_type: QualityRuleType,
   ): MutableJsonRecord {
+    const enabled_meta_key = resolve_quality_rule_enabled_meta_key(rule_type);
     return {
       entries: this.get_rule_entries(
         project_path,
-        QUALITY_RULE_DATABASE_TYPE[rule_type] ?? rule_type,
+        resolve_quality_rule_database_type(rule_type),
       ) as unknown as ApiJsonValue,
       enabled: Boolean(
-        rule_type === "text_preserve"
-          ? false
-          : meta[QUALITY_RULE_ENABLED_META_KEY[rule_type] ?? ""],
+        rule_type === "text_preserve" || enabled_meta_key === null ? false : meta[enabled_meta_key],
       ),
-      mode: rule_type === "text_preserve" ? String(meta["text_preserve_mode"] ?? "off") : "off",
+      mode:
+        rule_type === "text_preserve"
+          ? normalize_text_preserve_mode(meta["text_preserve_mode"])
+          : "off",
       revision: get_runtime_section_revision(meta, `quality:${rule_type}`),
     };
   }
@@ -310,8 +277,8 @@ export class ProjectRuntimeEncoder {
         {
           task_type,
           revision: get_runtime_section_revision(meta, `prompts:${task_type}`),
-          meta: { enabled: Boolean(meta[`${task_type}_prompt_enable`] ?? false) },
-          text: this.get_rule_text(project_path, PROMPT_DATABASE_TYPE[task_type] ?? task_type),
+          meta: { enabled: Boolean(meta[build_prompt_enabled_meta_key(task_type)] ?? false) },
+          text: this.get_rule_text(project_path, resolve_prompt_database_type(task_type)),
         },
       ]),
     ) as MutableJsonRecord;
@@ -379,7 +346,7 @@ export class ProjectRuntimeEncoder {
       if (file_path !== "") {
         records_by_path.set(file_path, {
           rel_path: file_path,
-          file_type: this.read_enum_value(item["file_type"], "NONE"),
+          file_type: normalize_item_file_type(item["file_type"]),
         });
       }
     }
@@ -419,24 +386,17 @@ export class ProjectRuntimeEncoder {
       return this.read_enum_value(item["text_type"], "NONE");
     }
     const file_type = this.read_enum_value(item["file_type"], "NONE");
-    if (!TEXT_TYPE_FILE_TYPES.has(file_type)) {
+    if (file_type !== "XLSX" && file_type !== "KVJSON" && file_type !== "MESSAGEJSON") {
       return "NONE";
     }
-    return infer_text_type_from_source(String(item["src"] ?? ""));
+    return infer_item_text_type_from_source(String(item["src"] ?? ""));
   }
 
   /**
    * 运行态只输出当前有效状态；历史处理中状态在首包里归一为可消费状态。
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
-    const status = this.read_enum_value(value, "NONE");
-    if (status === "PROCESSED_IN_PAST") {
-      return "PROCESSED";
-    }
-    if (status === "PROCESSING") {
-      return "NONE";
-    }
-    return VALID_ITEM_STATUS_VALUES.has(status) ? status : "NONE";
+    return normalize_item_status(value);
   }
 
   /**
@@ -452,7 +412,7 @@ export class ProjectRuntimeEncoder {
     let error_line = 0;
     for (const item of snapshot.item_records) {
       const status = String(item["status"] ?? "NONE");
-      if (ANALYSIS_SKIPPED_STATUSES.has(status)) {
+      if (is_task_skipped_item_status(status)) {
         continue;
       }
       const item_id = this.read_number(item["item_id"], 0);
@@ -643,7 +603,7 @@ export class ProjectRuntimeEncoder {
    */
   private normalize_checkpoint_status(value: ApiJsonValue | undefined): string | null {
     const status = this.read_enum_value(value, "");
-    return ANALYSIS_CHECKPOINT_STATUSES.has(status) ? status : null;
+    return (TASK_PROGRESS_STATUSES as readonly string[]).includes(status) ? status : null;
   }
 
   /**

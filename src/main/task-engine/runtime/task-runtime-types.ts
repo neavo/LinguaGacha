@@ -1,9 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-
-// 公开任务类型固定为三类，API Gateway 和内部 Engine bridge 都只传这些字符串。
-export const TASK_TYPES = ["translation", "analysis", "retranslate"] as const;
-
-export type TaskType = (typeof TASK_TYPES)[number];
+export { TASK_TYPES, is_task_type, type TaskType } from "../../../base/task";
 
 export type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -23,11 +19,4 @@ export interface TaskRuntimeStatePayload {
   active_task_type: string;
   // 重翻条目 id 属于 Engine 运行态，不落入 ProjectStore 其它 section。
   retranslating_item_ids: number[];
-}
-
-/**
- * 判断公开任务类型，避免路由层把任意字符串透到 Engine 语义里。
- */
-export function is_task_type(value: string): value is TaskType {
-  return (TASK_TYPES as readonly string[]).includes(value);
 }

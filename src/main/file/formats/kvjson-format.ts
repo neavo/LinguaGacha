@@ -6,7 +6,7 @@ import {
   write_text_file,
   type ExportPaths,
 } from "./file-format-shared";
-import { normalize_file_item, type FileFormatItem } from "../file-item";
+import { normalize_item, type Item } from "../../../base/item";
 
 /**
  * 键值 JSON 格式把 key 作为原文，value 作为已有译文。
@@ -15,19 +15,19 @@ export class KVJSONFormat {
   /**
    * 读取对象型 JSON，非字符串键值对不进入翻译条目。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const data = await this.parse_json_with_encoding(content);
     if (typeof data !== "object" || data === null || Array.isArray(data)) {
       return [];
     }
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     for (const [key, value] of Object.entries(data)) {
       if (typeof key !== "string" || typeof value !== "string") {
         continue;
       }
       const dst = value === key ? "" : value;
       items.push(
-        normalize_file_item({
+        normalize_item({
           src: key,
           dst,
           row: items.length,
@@ -43,7 +43,7 @@ export class KVJSONFormat {
   /**
    * 写回时重新生成 key -> 有效译文 的对象，保持旧四空格缩进。
    */
-  public async write_to_path(items: FileFormatItem[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "KVJSON")) {
       const data = Object.fromEntries(group.map((item) => [item.src, effective_export_text(item)]));
       await write_text_file(

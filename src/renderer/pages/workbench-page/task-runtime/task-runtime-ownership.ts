@@ -1,4 +1,6 @@
-type WorkbenchTaskRuntimeKind = "translation" | "analysis";
+import type { PromptTaskType } from "@base/prompt";
+
+type WorkbenchTaskRuntimeKind = PromptTaskType;
 
 type TaskSnapshotWithKind = {
   task_type?: unknown;

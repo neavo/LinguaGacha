@@ -12,8 +12,7 @@ import {
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { en_us_messages, zh_cn_messages } from "@/i18n/messages";
 import type { Locale, LocaleMessageSchema } from "@/i18n/types";
-
-const DEFAULT_LOCALE: Locale = "zh-CN";
+import { normalize_app_language, resolve_app_locale } from "@base/settings";
 
 type JoinPath<prefix extends string, key extends string> = prefix extends ""
   ? key
@@ -39,14 +38,6 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 const ELEMENT_NODE_TYPE = 1;
 const TEXT_NODE_TYPE = 3;
-
-function resolve_locale_from_app_language(app_language: string): Locale {
-  if (app_language === "EN") {
-    return "en-US";
-  }
-
-  return DEFAULT_LOCALE;
-}
 
 function flatten_message_map(
   message_tree: Record<string, unknown>,
@@ -182,7 +173,7 @@ const MESSAGE_MAP_BY_LOCALE: Readonly<Record<Locale, ReadonlyMap<LocaleKey, stri
 export function LocaleProvider({ children }: { children: ReactNode }): ReactNode {
   const { settings_snapshot } = useDesktopRuntime();
   const locale = useMemo<Locale>(() => {
-    return resolve_locale_from_app_language(settings_snapshot.app_language);
+    return resolve_app_locale(normalize_app_language(settings_snapshot.app_language));
   }, [settings_snapshot.app_language]);
   const message_map = MESSAGE_MAP_BY_LOCALE[locale];
 

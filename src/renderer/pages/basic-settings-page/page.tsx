@@ -7,8 +7,8 @@ import {
   ALL_LANGUAGE_VALUE,
   LANGUAGE_CODES,
   LANGUAGE_LABEL_KEYS,
-  PROJECT_SAVE_MODE,
   PROJECT_SAVE_MODE_LABEL_KEYS,
+  PROJECT_SAVE_MODE_OPTIONS,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
   is_project_save_mode,
@@ -104,18 +104,16 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
   }, [t]);
 
   const project_save_mode_options = useMemo(() => {
-    return [PROJECT_SAVE_MODE.MANUAL, PROJECT_SAVE_MODE.FIXED, PROJECT_SAVE_MODE.SOURCE].map(
-      (mode) => {
-        return {
-          value: mode,
-          label: t(PROJECT_SAVE_MODE_LABEL_KEYS[mode]),
-        };
-      },
-    );
+    return PROJECT_SAVE_MODE_OPTIONS.map((mode) => {
+      return {
+        value: mode,
+        label: t(PROJECT_SAVE_MODE_LABEL_KEYS[mode]),
+      };
+    });
   }, [t]);
 
   const project_save_mode_description =
-    basic_settings_state.snapshot.project_save_mode === PROJECT_SAVE_MODE.FIXED &&
+    basic_settings_state.snapshot.project_save_mode === "FIXED" &&
     basic_settings_state.snapshot.project_fixed_path !== ""
       ? replace_placeholder(
           t("basic_settings_page.fields.project_save_mode.description_fixed"),

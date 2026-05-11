@@ -5,6 +5,7 @@ import {
   type ProjectStoreSectionRevisions,
   type ProjectStoreState,
 } from "@/project/store/project-store";
+import { TASK_PROGRESS_STATUSES } from "@base/task";
 
 type ProofreadingStoreItem = {
   item_id: number;
@@ -43,7 +44,6 @@ export type ProofreadingMutationPlan = {
   };
 };
 
-const TRACKED_PROGRESS_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
 const TASK_ONLY_KEYS = new Set([
   "task_type",
   "status",
@@ -167,7 +167,7 @@ function build_derived_state(args: {
     if (item.status === "ERROR") {
       error_line += 1;
     }
-    if (TRACKED_PROGRESS_STATUSES.has(item.status)) {
+    if ((TASK_PROGRESS_STATUSES as readonly string[]).includes(item.status)) {
       total_line += 1;
     }
   }

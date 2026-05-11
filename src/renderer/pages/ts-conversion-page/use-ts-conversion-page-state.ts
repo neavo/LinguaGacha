@@ -15,12 +15,13 @@ import type {
   TsConversionExportPayload,
   TsConversionRulePresetPayload,
 } from "@/pages/ts-conversion-page/types";
+import { ITEM_TEXT_TYPES } from "@base/item";
 
 type TsConversionConfirmState = {
   open: boolean;
 };
 
-const TS_CONVERSION_PRESET_TEXT_TYPES = new Set(["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"]);
+const TS_CONVERSION_PRESET_TEXT_TYPES = new Set<string>(ITEM_TEXT_TYPES);
 
 // 确认弹窗状态保持独立构造，避免关闭和初始化分支各自拼对象。
 function create_empty_confirm_state(): TsConversionConfirmState {

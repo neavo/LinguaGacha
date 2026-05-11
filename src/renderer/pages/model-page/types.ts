@@ -1,10 +1,6 @@
-const MODEL_TYPE_VALUES = ["PRESET", "CUSTOM_GOOGLE", "CUSTOM_OPENAI", "CUSTOM_ANTHROPIC"] as const;
+import type { ModelThinkingLevel, ModelType } from "@base/model";
 
-const MODEL_THINKING_LEVEL_VALUES = ["OFF", "LOW", "MEDIUM", "HIGH"] as const;
-
-export type ModelType = (typeof MODEL_TYPE_VALUES)[number];
-
-export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVEL_VALUES)[number];
+export type { ModelThinkingLevel, ModelType };
 
 export type ModelRequestSnapshot = {
   extra_headers: Record<string, string>;

@@ -9,7 +9,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { normalize_file_item, type FileFormatItem } from "../file-item";
+import { normalize_item, type Item } from "../../../base/item";
 
 /**
  * SRT 格式以字幕块为单位解析，序号和时间轴放入 row/extra_field。
@@ -23,15 +23,15 @@ export class SRTFormat {
   /**
    * 解析时按空行切块，只接受「序号 + 时间轴 + 正文」结构。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
-    const items: FileFormatItem[] = [];
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
+    const items: Item[] = [];
     let chunk: string[] = [];
     const process_chunk = (): void => {
       if (chunk.length < 3 || !/^\d+$/u.test(chunk[0] ?? "")) {
         return;
       }
       items.push(
-        normalize_file_item({
+        normalize_item({
           src: chunk.slice(2).join("\n"),
           dst: "",
           extra_field: chunk[1] ?? "",
@@ -61,19 +61,19 @@ export class SRTFormat {
   /**
    * 写回时重新生成 SRT 块，保持序号、时间轴和空行分隔。
    */
-  public async write_to_path(items: FileFormatItem[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "SRT")) {
       let translated = "";
       let bilingual = "";
       for (const item of group) {
         const row = String(item.row);
         const time_code = String(item.extra_field ?? "");
-        const effective_dst = effective_export_text(item);
-        translated += `${row}\n${time_code}\n${effective_dst}\n\n`;
+        const resolve_item_effective_dst = effective_export_text(item);
+        translated += `${row}\n${time_code}\n${resolve_item_effective_dst}\n\n`;
         const content =
-          this.config.deduplication_in_bilingual && item.src === effective_dst
-            ? effective_dst
-            : `${item.src}\n${effective_dst}`;
+          this.config.deduplication_in_bilingual && item.src === resolve_item_effective_dst
+            ? resolve_item_effective_dst
+            : `${item.src}\n${resolve_item_effective_dst}`;
         bilingual += `${row}\n${time_code}\n${content}\n\n`;
       }
       await write_text_file(

@@ -5,6 +5,7 @@ import type {
   WorkbenchSnapshotEntry,
   WorkbenchStats,
 } from "./types";
+import { is_task_skipped_item_status } from "@base/task";
 
 type BuildWorkbenchViewArgs = {
   files: Record<string, unknown>;
@@ -24,13 +25,6 @@ export type WorkbenchViewCache = {
     skipped_count: number;
   };
 };
-
-const ANALYSIS_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
 
 function normalizeWorkbenchFileRecord(value: unknown): WorkbenchSelectorFileRecord | null {
   if (typeof value !== "object" || value === null) {
@@ -89,7 +83,7 @@ function buildAnalysisStatsFromItems(item_values: WorkbenchSelectorItemRecord[])
   let total_line = 0;
 
   for (const item of item_values) {
-    if (item.src.trim() === "" || ANALYSIS_SKIPPED_STATUSES.has(item.status)) {
+    if (item.src.trim() === "" || is_task_skipped_item_status(item.status)) {
       continue;
     }
     total_line += 1;

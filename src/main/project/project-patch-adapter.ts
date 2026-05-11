@@ -7,28 +7,11 @@ import {
   type RuntimeSection,
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
+import { normalize_item_status } from "../../base/item";
+import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "../../base/task";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
-
-const VALID_ITEM_STATUS_VALUES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
-const ANALYSIS_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
-const ANALYSIS_CHECKPOINT_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
 
 /**
  * 只适配 project.patch：普通 SSE frame 保持透传，运行态事实由 database 补全。
@@ -141,7 +124,7 @@ export class ProjectPatchAdapter {
     let error_line = 0;
     for (const item of this.get_all_items(project_path)) {
       const status = this.normalize_item_status(item["status"]);
-      if (ANALYSIS_SKIPPED_STATUSES.has(status)) {
+      if (is_task_skipped_item_status(status)) {
         continue;
       }
       const item_id = this.read_number(item["id"], 0);
@@ -207,7 +190,7 @@ export class ProjectPatchAdapter {
       }
       const item_id = this.read_number(row["item_id"], 0);
       const status = String(row["status"] ?? "");
-      if (item_id > 0 && ANALYSIS_CHECKPOINT_STATUSES.has(status)) {
+      if (item_id > 0 && (TASK_PROGRESS_STATUSES as readonly string[]).includes(status)) {
         checkpoints.set(item_id, status);
       }
     }
@@ -268,14 +251,7 @@ export class ProjectPatchAdapter {
   }
 
   private normalize_item_status(value: ApiJsonValue | undefined): string {
-    const status = String(value ?? "NONE");
-    if (status === "PROCESSED_IN_PAST") {
-      return "PROCESSED";
-    }
-    if (status === "PROCESSING") {
-      return "NONE";
-    }
-    return VALID_ITEM_STATUS_VALUES.has(status) ? status : "NONE";
+    return normalize_item_status(value);
   }
 
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {

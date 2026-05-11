@@ -3,12 +3,12 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import {
-  effective_dst,
-  normalize_file_item,
-  normalize_name,
-  type FileFormatItem,
-  type FileItemType,
-} from "../file-item";
+  resolve_item_effective_dst,
+  normalize_item,
+  normalize_item_name,
+  type Item,
+  type ItemFileType,
+} from "../../../base/item";
 
 /**
  * 文件格式处理器共享配置，来源于应用设置或测试显式注入。
@@ -26,7 +26,7 @@ export interface FileFormatServiceConfig {
  */
 export interface ParsedFilePreview {
   target_rel_path: string;
-  file_type: FileItemType;
+  file_type: ItemFileType;
   parsed_items: Record<string, ApiJsonValue>[];
 }
 
@@ -130,11 +130,8 @@ export async function write_text_file(file_path: string, content: string): Promi
 /**
  * 按原始文件路径分组，写回时每个物理文件独立处理。
  */
-export function group_items(
-  items: FileFormatItem[],
-  file_type: FileItemType,
-): Map<string, FileFormatItem[]> {
-  const group = new Map<string, FileFormatItem[]>();
+export function group_items(items: Item[], file_type: ItemFileType): Map<string, Item[]> {
+  const group = new Map<string, Item[]>();
   for (const item of items.filter((candidate) => candidate.file_type === file_type)) {
     const bucket = group.get(item.file_path) ?? [];
     bucket.push(item);
@@ -146,18 +143,15 @@ export function group_items(
 /**
  * 统计同一 name_src 的多数 name_dst，保持人名字段写回稳定。
  */
-export function prepare_name_fields(
-  items: FileFormatItem[],
-  config: FileFormatServiceConfig,
-): FileFormatItem[] {
-  const cloned = items.map((item) => normalize_file_item(item));
+export function prepare_name_fields(items: Item[], config: FileFormatServiceConfig): Item[] {
+  const cloned = items.map((item) => normalize_item(item));
   if (config.write_translated_name_fields_to_file === false) {
     return cloned.map((item) => ({ ...item, name_dst: item.name_src }));
   }
   const counts = new Map<string, Map<string, number>>();
   for (const item of cloned) {
-    const item_name_src = normalize_name(item.name_src);
-    const item_name_dst = normalize_name(item.name_dst);
+    const item_name_src = normalize_item_name(item.name_src);
+    const item_name_dst = normalize_item_name(item.name_dst);
     const src_names = Array.isArray(item_name_src)
       ? item_name_src
       : item_name_src === null
@@ -193,6 +187,6 @@ export function prepare_name_fields(
 /**
  * 导出统一使用有效译文，未来若增加状态级策略只需改这里。
  */
-export function effective_export_text(item: FileFormatItem): string {
-  return effective_dst(item);
+export function effective_export_text(item: Item): string {
+  return resolve_item_effective_dst(item);
 }

@@ -1,4 +1,6 @@
-export type LogLevel = "debug" | "info" | "warning" | "error" | "fatal";
+import type { LogLevel } from "../../base/log";
+
+export type { LogLevel };
 
 export interface LogTargets {
   file: boolean;

@@ -1,11 +1,9 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { JsonRecord, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
+import { is_task_idle_status, is_task_type } from "../../../base/task";
 
 // Engine 空闲态统一用 idle 表达，避免快照里继续泄漏旧任务类型。
 const IDLE_TASK_TYPE = "idle";
-
-// 这些终态不会再占用全局任务锁，任务 busy 权威必须在入站事件处即时释放。
-const IDLE_STATUSES = new Set(["DONE", "ERROR", "IDLE"]);
 
 /**
  * API Gateway 内的任务运行态权威，替代旧任务状态查询。
@@ -78,7 +76,7 @@ export class TaskRuntimeState {
     const task_type = this.read_task_type(payload);
     const status = typeof payload["status"] === "string" ? payload["status"] : this.status;
     this.status = status;
-    this.busy = this.read_boolean(payload["busy"], !IDLE_STATUSES.has(status));
+    this.busy = this.read_boolean(payload["busy"], !is_task_idle_status(status));
     this.active_task_type = this.busy && task_type !== null ? task_type : IDLE_TASK_TYPE;
     if (!this.busy) {
       this.request_in_flight_count = 0;
@@ -107,7 +105,7 @@ export class TaskRuntimeState {
   public apply_task_snapshot(payload: JsonRecord): void {
     const task_type = this.read_task_type(payload);
     this.status = typeof payload["status"] === "string" ? payload["status"] : this.status;
-    this.busy = this.read_boolean(payload["busy"], !IDLE_STATUSES.has(this.status));
+    this.busy = this.read_boolean(payload["busy"], !is_task_idle_status(this.status));
     this.request_in_flight_count = this.read_number(
       payload["request_in_flight_count"],
       this.request_in_flight_count,
@@ -161,10 +159,7 @@ export class TaskRuntimeState {
    */
   private read_task_type(payload: JsonRecord): TaskType | null {
     const task_type = String(payload["task_type"] ?? "");
-    if (task_type === "translation" || task_type === "analysis" || task_type === "retranslate") {
-      return task_type;
-    }
-    return null;
+    return is_task_type(task_type) ? task_type : null;
   }
 
   /**

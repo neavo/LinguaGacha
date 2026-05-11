@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, type ExportPaths } from "./file-format-shared";
-import { normalize_file_item, type FileFormatItem } from "../file-item";
+import { normalize_item, type Item } from "../../../base/item";
 
 // WOLF XLSX 的源文和译文列号来自旧固定实现。
 const COL_SRC_TEXT = 6;
@@ -20,13 +20,13 @@ export class WOLFXLSXFormat {
   /**
    * 只处理识别为 WOLF 表头的工作表，普通 XLSX 留给 XLSXFormat。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const workbook = await load_wolf_xlsx_workbook(content);
     const sheet = workbook.worksheets[0];
     if (sheet === undefined || !is_wolf_xlsx_sheet(sheet)) {
       return [];
     }
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     for (let row = 2; row <= sheet.rowCount; row += 1) {
       const src_value = sheet.getCell(row, COL_SRC_TEXT).value;
       if (src_value === null || src_value === undefined) {
@@ -40,7 +40,7 @@ export class WOLFXLSXFormat {
           : SpreadsheetTool.cellValueToText(dst_value);
       const fill_index = this.get_fg_color_index(sheet, row, COL_SRC_TEXT);
       items.push(
-        normalize_file_item({
+        normalize_item({
           src,
           dst,
           row,
@@ -63,7 +63,7 @@ export class WOLFXLSXFormat {
    * 写回时优先复用原始工作簿，避免破坏 WOLF 表格的其它列。
    */
   public async write_to_path(
-    items: FileFormatItem[],
+    items: Item[],
     paths: ExportPaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {

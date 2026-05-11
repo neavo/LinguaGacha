@@ -6,20 +6,10 @@ import {
   get_runtime_section_revision,
 } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
+import { normalize_item_status } from "../../base/item";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
-
-// 校对保存只能推进当前有效 item 状态，历史状态在入口归一后再落库。
-const VALID_ITEM_STATUS_VALUES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
 
 /**
  * 承载校对同步写入口，把 finalized payload 直接持久化到 Electron main 数据库。
@@ -268,14 +258,7 @@ export class ProofreadingService {
    * 兼容当前状态域和两个历史状态值。
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
-    const status = String(value ?? "");
-    if (status === "PROCESSED_IN_PAST") {
-      return "PROCESSED";
-    }
-    if (status === "PROCESSING") {
-      return "NONE";
-    }
-    return VALID_ITEM_STATUS_VALUES.has(status) ? status : "NONE";
+    return normalize_item_status(value);
   }
 
   /**

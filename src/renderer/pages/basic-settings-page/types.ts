@@ -2,24 +2,20 @@ import type { SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
 import type { LocaleKey } from "@/i18n";
 import {
   ALL_LANGUAGE_CODE,
+  PROJECT_SAVE_MODES,
   SOURCE_TARGET_LANGUAGE_CODES,
+  type ProjectSaveMode,
   type SourceTargetLanguageCode,
-} from "@shared/rules/languages";
+} from "@base/settings";
+
+export type { ProjectSaveMode };
 
 export const ALL_LANGUAGE_VALUE = ALL_LANGUAGE_CODE;
-
-export const PROJECT_SAVE_MODE = {
-  MANUAL: "MANUAL",
-  FIXED: "FIXED",
-  SOURCE: "SOURCE",
-} as const;
 
 export const LANGUAGE_CODES = SOURCE_TARGET_LANGUAGE_CODES;
 
 export const REQUEST_TIMEOUT_MIN = 0;
 export const REQUEST_TIMEOUT_MAX = 9_999_999;
-
-export type ProjectSaveMode = (typeof PROJECT_SAVE_MODE)[keyof typeof PROJECT_SAVE_MODE];
 
 type LanguageCode = SourceTargetLanguageCode;
 
@@ -71,6 +67,8 @@ export const PROJECT_SAVE_MODE_LABEL_KEYS: Readonly<Record<ProjectSaveMode, Loca
   SOURCE: "basic_settings_page.fields.project_save_mode.options.source",
 };
 
+export const PROJECT_SAVE_MODE_OPTIONS = PROJECT_SAVE_MODES;
+
 export function build_basic_settings_snapshot(
   settings_snapshot: SettingsSnapshot,
 ): BasicSettingsSnapshot {
@@ -85,5 +83,5 @@ export function build_basic_settings_snapshot(
 }
 
 export function is_project_save_mode(candidate: string): candidate is ProjectSaveMode {
-  return Object.values(PROJECT_SAVE_MODE).includes(candidate as ProjectSaveMode);
+  return PROJECT_SAVE_MODES.includes(candidate as ProjectSaveMode);
 }

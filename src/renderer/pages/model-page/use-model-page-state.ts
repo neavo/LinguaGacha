@@ -14,11 +14,11 @@ import type {
   ModelRequestSnapshot,
   ModelSelectorState,
   ModelTestResult,
-  ModelThinkingLevel,
   ModelThinkingSnapshot,
   ModelThresholdSnapshot,
   ModelType,
 } from "@/pages/model-page/types";
+import { MODEL_TYPES, normalize_model_thinking_level, normalize_model_type } from "@base/model";
 
 type ModelPageSnapshotPayload = {
   snapshot?: Partial<ModelPageSnapshot> & {
@@ -58,12 +58,7 @@ type UseModelPageStateResult = {
   select_model_id: (model_name: string) => Promise<void>;
 };
 
-const MODEL_TYPE_ORDER: ModelType[] = [
-  "PRESET",
-  "CUSTOM_GOOGLE",
-  "CUSTOM_OPENAI",
-  "CUSTOM_ANTHROPIC",
-];
+const MODEL_TYPE_ORDER: readonly ModelType[] = MODEL_TYPES;
 
 const MODEL_CATEGORY_META: Record<
   ModelType,
@@ -150,30 +145,6 @@ function create_selector_state(): ModelSelectorState {
   };
 }
 
-function normalize_model_type(candidate: unknown): ModelType {
-  if (candidate === "CUSTOM_GOOGLE") {
-    return "CUSTOM_GOOGLE";
-  } else if (candidate === "CUSTOM_OPENAI") {
-    return "CUSTOM_OPENAI";
-  } else if (candidate === "CUSTOM_ANTHROPIC") {
-    return "CUSTOM_ANTHROPIC";
-  } else {
-    return "PRESET";
-  }
-}
-
-function normalize_thinking_level(candidate: unknown): ModelThinkingLevel {
-  if (candidate === "LOW") {
-    return "LOW";
-  } else if (candidate === "MEDIUM") {
-    return "MEDIUM";
-  } else if (candidate === "HIGH") {
-    return "HIGH";
-  } else {
-    return "OFF";
-  }
-}
-
 function read_number(candidate: unknown, fallback_value: number): number {
   const parsed_value = Number(candidate);
   if (Number.isFinite(parsed_value)) {
@@ -239,7 +210,7 @@ function normalize_thinking_snapshot(candidate: unknown): ModelThinkingSnapshot 
       : {};
 
   return {
-    level: normalize_thinking_level(source.level),
+    level: normalize_model_thinking_level(source.level),
   };
 }
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "./path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
+import { normalize_app_language, normalize_project_save_mode } from "../../base/settings";
 
 type ConfigRecord = Record<string, ApiJsonValue>;
 
@@ -213,13 +214,10 @@ export class ConfigService {
    */
   private normalize_setting_value(key: string, value: ApiJsonValue): ApiJsonValue {
     if (key === "app_language") {
-      const language = String(value ?? "")
-        .trim()
-        .toUpperCase();
-      if (language !== "ZH" && language !== "EN") {
-        throw new Error("应用语言只支持 ZH 或 EN。");
-      }
-      return language;
+      return normalize_app_language(value);
+    }
+    if (key === "project_save_mode") {
+      return normalize_project_save_mode(value);
     }
     if (BOOLEAN_SETTING_KEYS.has(key)) {
       return Boolean(value);

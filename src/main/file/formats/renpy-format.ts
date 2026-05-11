@@ -10,7 +10,7 @@ import {
   write_text_file,
   type ExportPaths,
 } from "./file-format-shared";
-import { normalize_file_item, read_json_record, type FileFormatItem } from "../file-item";
+import { normalize_item, read_json_record, type Item } from "../../../base/item";
 
 const RESOURCE_EXTENSIONS = new Set([
   ".mp3",
@@ -59,16 +59,16 @@ export class RenPyFormat {
   /**
    * 文件流入口只负责解码，实际解析拆到 parse_text 便于 golden 和单元测试复用。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     return this.parse_text(rel_path, await TextTool.decode(content));
   }
 
   /**
    * 扫描 translate 块、old/new strings 和注释模板，并把匹配到的目标行绑定到 extra_field。
    */
-  public parse_text(rel_path: string, text: string): FileFormatItem[] {
+  public parse_text(rel_path: string, text: string): Item[] {
     const lines = split_text_lines_for_items(text);
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     let lang = "";
     let label = "";
     let header_line = 0;
@@ -106,7 +106,7 @@ export class RenPyFormat {
         }
         const target_line = target_index >= 0 ? (lines[target_index] ?? "") : "";
         items.push(
-          normalize_file_item({
+          normalize_item({
             src,
             dst: new_match ? this.unescape_string(new_match[1] ?? "") : "",
             row: index + 1,
@@ -165,7 +165,7 @@ export class RenPyFormat {
             ? null
             : (target_literals[name_slot.lit_index]?.value ?? name_src);
         items.push(
-          normalize_file_item({
+          normalize_item({
             src,
             dst,
             name_src,
@@ -197,7 +197,7 @@ export class RenPyFormat {
    * 写回时按 target_line 倒序替换，避免前面行数变化影响后续定位。
    */
   public async write_to_path(
-    items: FileFormatItem[],
+    items: Item[],
     paths: ExportPaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {

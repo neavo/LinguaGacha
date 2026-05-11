@@ -8,7 +8,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { normalize_file_item, type FileFormatItem } from "../file-item";
+import { normalize_item, type Item } from "../../../base/item";
 
 // 旧实现会直接排除 Markdown 图片行，避免把资源引用送进翻译。
 const IMAGE_PATTERN = /!\[.*?\]\(.*?\)/u;
@@ -25,15 +25,15 @@ export class MDFormat {
   /**
    * 解析时用围栏状态标记代码块，维持旧实现对整行 Markdown 的处理方式。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
-    const items: FileFormatItem[] = [];
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
+    const items: Item[] = [];
     let in_code_block = false;
     for (const line of split_text_lines_for_items(await TextTool.decode(content))) {
       if (line.trim().startsWith("```")) {
         in_code_block = !in_code_block;
       }
       items.push(
-        normalize_file_item({
+        normalize_item({
           src: line,
           dst: "",
           row: items.length,
@@ -50,7 +50,7 @@ export class MDFormat {
   /**
    * Markdown 只写单语译文文件，行序由解析 row 自然保持。
    */
-  public async write_to_path(items: FileFormatItem[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "MD")) {
       await write_text_file(
         build_target_path(this.config, paths.translated_path, rel_path),

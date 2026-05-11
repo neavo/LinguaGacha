@@ -15,7 +15,6 @@ import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
-  PROJECT_SAVE_MODE,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
   build_basic_settings_snapshot,
@@ -405,7 +404,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         return;
       }
 
-      if (next_mode === PROJECT_SAVE_MODE.FIXED) {
+      if (next_mode === "FIXED") {
         try {
           const result = await window.desktopApp.pickFixedProjectDirectory(
             previous_snapshot.project_fixed_path,

@@ -11,21 +11,20 @@ import {
   collect_api_keys,
   get_primary_api_key,
   normalize_api_url,
-  type LinguaGachaApiFormat,
 } from "../task-worker/llm/llm-model-adapter";
+import {
+  MODEL_TEMPLATE_FILENAME_BY_TYPE,
+  type ModelApiFormat,
+  normalize_model_api_format,
+  resolve_model_template_filename,
+  resolve_model_type_sort_order,
+} from "../../base/model";
 import {
   read_model_records,
   resolve_active_model_id,
   type ModelRecord,
 } from "./model-config-resolver";
 import { JsonTool } from "../../shared/utils/json-tool";
-
-const MODEL_TYPE_SORT_ORDER: Record<string, number> = {
-  PRESET: 0,
-  CUSTOM_GOOGLE: 1,
-  CUSTOM_OPENAI: 2,
-  CUSTOM_ANTHROPIC: 3,
-};
 
 const PATCH_ALLOWED_KEYS = new Set([
   "name",
@@ -39,12 +38,6 @@ const PATCH_ALLOWED_KEYS = new Set([
 ]);
 
 const PATCH_OBJECT_KEYS = new Set(["thinking", "threshold", "generation", "request"]);
-
-const TEMPLATE_FILENAME_BY_TYPE: Record<string, string> = {
-  CUSTOM_GOOGLE: "preset_model_custom_google.json",
-  CUSTOM_OPENAI: "preset_model_custom_openai.json",
-  CUSTOM_ANTHROPIC: "preset_model_custom_anthropic.json",
-};
 
 const DEFAULT_REQUEST_CONFIG: Record<string, ApiJsonValue> = {
   extra_headers: {},
@@ -147,7 +140,7 @@ export class ModelService {
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const model_type = String(request["model_type"] ?? "");
-    if (!(model_type in TEMPLATE_FILENAME_BY_TYPE)) {
+    if (resolve_model_template_filename(model_type) === null) {
       throw new Error(`unknown model type: ${model_type}`);
     }
     const config = this.load_config_with_models(false);
@@ -335,7 +328,7 @@ export class ModelService {
    */
   private async fetch_openai_available_models(
     model: ModelRecord,
-    api_format: LinguaGachaApiFormat,
+    api_format: ModelApiFormat,
   ): Promise<string[]> {
     const api_url = normalize_api_url(String(model["api_url"] ?? ""), api_format);
     const data = await this.fetch_json(`${api_url}/models`, {
@@ -463,12 +456,9 @@ export class ModelService {
   /**
    * API 格式缺失时按 OpenAI-compatible 处理。
    */
-  private read_model_api_format(model: ModelRecord): LinguaGachaApiFormat {
+  private read_model_api_format(model: ModelRecord): ModelApiFormat {
     const value = String(model["api_format"] ?? "OpenAI");
-    if (value === "SakuraLLM" || value === "Google" || value === "Anthropic") {
-      return value;
-    }
-    return "OpenAI";
+    return normalize_model_api_format(value);
   }
 
   /**
@@ -530,7 +520,7 @@ export class ModelService {
         models.push(this.normalize_model(preset));
       }
     }
-    for (const model_type of Object.keys(TEMPLATE_FILENAME_BY_TYPE)) {
+    for (const model_type of Object.keys(MODEL_TEMPLATE_FILENAME_BY_TYPE)) {
       if (!models.some((model) => String(model["type"] ?? "") === model_type)) {
         models.push(this.build_custom_model(model_type));
       }
@@ -558,7 +548,7 @@ export class ModelService {
   private build_custom_model(model_type: string): ModelRecord {
     const template_path = path.join(
       this.paths.get_model_preset_dir(),
-      TEMPLATE_FILENAME_BY_TYPE[model_type] ?? "",
+      resolve_model_template_filename(model_type) ?? "",
     );
     const template = this.read_json_file(template_path, {});
     const model =
@@ -638,10 +628,7 @@ export class ModelService {
    */
   private sort_models(models: ModelRecord[]): ModelRecord[] {
     return [...models].sort((a, b) => {
-      return (
-        (MODEL_TYPE_SORT_ORDER[String(a["type"] ?? "")] ?? 99) -
-        (MODEL_TYPE_SORT_ORDER[String(b["type"] ?? "")] ?? 99)
-      );
+      return resolve_model_type_sort_order(a["type"]) - resolve_model_type_sort_order(b["type"]);
     });
   }
 

@@ -4,12 +4,12 @@ import type { ApiJsonValue } from "../../api/api-types";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { group_items, write_text_file, type ExportPaths } from "./file-format-shared";
 import {
-  normalize_file_item,
+  normalize_item,
   read_json_record,
-  type FileFormatItem,
-  type FileItemStatus,
-  type FileTextType,
-} from "../file-item";
+  type Item,
+  type ItemStatus,
+  type ItemTextType,
+} from "../../../base/item";
 
 type ApiJsonRecord = Record<string, ApiJsonValue>;
 
@@ -20,7 +20,7 @@ interface TransCheckResult {
   src: string;
   dst: string;
   tag: string[];
-  status: FileItemStatus;
+  status: ItemStatus;
   skip_internal_filter: boolean;
 }
 
@@ -32,7 +32,7 @@ interface TransSnapshot {
   file_key: string;
   src: string;
   dst: string;
-  status: FileItemStatus;
+  status: ItemStatus;
   extra_field: ApiJsonRecord;
 }
 
@@ -121,7 +121,7 @@ function to_mutable_record(value: unknown): ApiJsonRecord {
  * TRANS 默认处理器，对齐旧 NONE：只按资源扩展名和颜色标签过滤。
  */
 class NoneTransProcessor {
-  public readonly text_type: FileTextType = "NONE";
+  public readonly text_type: ItemTextType = "NONE";
 
   /**
    * project 保存完整 .trans 工程对象，供子类生成过滤缓存。
@@ -247,21 +247,21 @@ class NoneTransProcessor {
  * KAG .trans 只改变 text_type，过滤逻辑继承 NONE。
  */
 class KagTransProcessor extends NoneTransProcessor {
-  public override readonly text_type: FileTextType = "KAG";
+  public override readonly text_type: ItemTextType = "KAG";
 }
 
 /**
  * RENPY .trans 只改变 text_type，过滤逻辑继承 NONE。
  */
 class RenPyTransProcessor extends NoneTransProcessor {
-  public override readonly text_type: FileTextType = "RENPY";
+  public override readonly text_type: ItemTextType = "RENPY";
 }
 
 /**
  * RPG Maker .trans 在默认过滤上叠加路径和地址黑名单。
  */
 class RpgMakerTransProcessor extends NoneTransProcessor {
-  public override readonly text_type: FileTextType = "RPGMAKER";
+  public override readonly text_type: ItemTextType = "RPGMAKER";
 
   private static readonly BLACKLIST_PATH = [/\.js$/iu];
 
@@ -319,7 +319,7 @@ class RpgMakerTransProcessor extends NoneTransProcessor {
  * WOLF .trans 使用地址白名单/黑名单和数据库屏蔽文本集合。
  */
 class WolfTransProcessor extends NoneTransProcessor {
-  public override readonly text_type: FileTextType = "WOLF";
+  public override readonly text_type: ItemTextType = "WOLF";
 
   private static readonly WHITELIST_ADDRESS = [
     /\/Database\/stringArgs\/0$/iu,
@@ -432,7 +432,7 @@ export class TRANSFormat {
   /**
    * 读取 .trans project.files，以 data 行为权威并按同索引读取 tags/context/parameters。
    */
-  public read_from_stream(content: Uint8Array, rel_path: string): FileFormatItem[] {
+  public read_from_stream(content: Uint8Array, rel_path: string): Item[] {
     const root = JsonTool.parseStrict<ApiJsonRecord>(content);
     if (typeof root !== "object" || root === null || Array.isArray(root)) {
       return [];
@@ -444,7 +444,7 @@ export class TRANSFormat {
     const processor = this.get_processor(project as ApiJsonRecord);
     processor.pre_process();
 
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     for (const [file_key, entry_raw] of Object.entries(files)) {
       const entry = read_json_record(entry_raw);
       const data_list = Array.isArray(entry["data"]) ? entry["data"] : [];
@@ -461,7 +461,7 @@ export class TRANSFormat {
         const parameter = record_array(parameters_list[row_index]);
         const checked = processor.check(file_key, [src, dst], tag, context);
         items.push(
-          normalize_file_item({
+          normalize_item({
             src: checked.src,
             dst: checked.dst,
             extra_field: {
@@ -487,7 +487,7 @@ export class TRANSFormat {
    * 写回优先使用 trans_ref 最小补丁；缺失定位信息时回退旧重建路径。
    */
   public async write_to_path(
-    items: FileFormatItem[],
+    items: Item[],
     paths: ExportPaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {

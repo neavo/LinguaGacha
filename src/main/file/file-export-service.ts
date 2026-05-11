@@ -7,12 +7,7 @@ import type { LogManager } from "../log/log-manager";
 import { ConfigService } from "../service/config-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
-import {
-  normalize_file_item,
-  normalize_name,
-  type FileFormatItem,
-  type FileItemStatus,
-} from "./file-item";
+import { normalize_item, normalize_item_name, type Item, type ItemStatus } from "../../base/item";
 
 /**
  * API 入参和返回值在文件域内按 JSON 对象处理，避免暴露内部类实例。
@@ -116,10 +111,10 @@ export class FileExportService {
       if (converted === undefined) {
         return item;
       }
-      return normalize_file_item({
+      return normalize_item({
         ...item,
         dst: String(converted["dst"] ?? item.dst),
-        name_dst: normalize_name(converted["name_dst"] ?? item.name_dst),
+        name_dst: normalize_item_name(converted["name_dst"] ?? item.name_dst),
       });
     });
     this.fill_duplicated_translations(export_items);
@@ -139,7 +134,7 @@ export class FileExportService {
    */
   private async write_export(
     project_path: string,
-    items: FileFormatItem[],
+    items: Item[],
     custom_suffix: string,
     config: ConfigRecord,
   ): Promise<string> {
@@ -197,7 +192,7 @@ export class FileExportService {
   /**
    * 从数据库读取条目后立即规范化，后续导出逻辑只处理稳定结构。
    */
-  private read_project_items(project_path: string): FileFormatItem[] {
+  private read_project_items(project_path: string): Item[] {
     const raw_items = this.database.execute({
       name: "getAllItems",
       args: { projectPath: project_path },
@@ -210,13 +205,13 @@ export class FileExportService {
         (item): item is JsonRecord =>
           typeof item === "object" && item !== null && !Array.isArray(item),
       )
-      .map((item) => normalize_file_item(item));
+      .map((item) => normalize_item(item));
   }
 
   /**
    * DUPLICATED 条目复用同文件同原文的已处理译文，保持旧导出行为。
    */
-  private fill_duplicated_translations(items: FileFormatItem[]): void {
+  private fill_duplicated_translations(items: Item[]): void {
     const translation_by_file_src = new Map<string, { dst: string; name_dst: ApiJsonValue }>();
     for (const item of items) {
       if (item.status !== "PROCESSED") {
@@ -240,7 +235,7 @@ export class FileExportService {
       }
       item.dst = translation.dst;
       item.name_dst = translation.name_dst as string | string[] | null;
-      item.status = "PROCESSED" satisfies FileItemStatus;
+      item.status = "PROCESSED" satisfies ItemStatus;
     }
   }
 

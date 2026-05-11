@@ -1,4 +1,6 @@
 import type { ApiJsonValue } from "../api/api-types";
+import { QUALITY_RULE_TYPES, build_quality_rule_revision_key } from "../../base/quality";
+import { PROMPT_TASK_TYPES, build_prompt_revision_key } from "../../base/prompt";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -17,17 +19,6 @@ export const RUNTIME_SECTIONS = [
 
 export type RuntimeSection = (typeof RUNTIME_SECTIONS)[number];
 
-// 质量规则 revision 使用公开 rule type 计算，和数据库物理 type 映射解耦。
-const QUALITY_REVISION_TYPES = [
-  "glossary",
-  "text_preserve",
-  "pre_replacement",
-  "post_replacement",
-] as const;
-
-// prompts section 只由翻译 / 分析两类提示词组成，和质量规则 revision 分开计算。
-const PROMPT_TASK_TYPES = ["translation", "analysis"] as const;
-
 /**
  * 统一读取项目运行态 section revision，供 bootstrap 和同步 mutation ack 共享口径。
  */
@@ -40,8 +31,8 @@ export function get_runtime_section_revision(meta: JsonRecord, section: string):
   }
   if (section === "quality") {
     return Math.max(
-      ...QUALITY_REVISION_TYPES.map((rule_type) =>
-        read_revision_meta(meta[`quality_rule_revision.${rule_type}`]),
+      ...QUALITY_RULE_TYPES.map((rule_type) =>
+        read_revision_meta(meta[build_quality_rule_revision_key(rule_type)]),
       ),
       0,
     );
@@ -49,7 +40,7 @@ export function get_runtime_section_revision(meta: JsonRecord, section: string):
   if (section === "prompts") {
     return Math.max(
       ...PROMPT_TASK_TYPES.map((task_type) =>
-        read_revision_meta(meta[`quality_prompt_revision.${task_type}`]),
+        read_revision_meta(meta[build_prompt_revision_key(task_type)]),
       ),
       0,
     );

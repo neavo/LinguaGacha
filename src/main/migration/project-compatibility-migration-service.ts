@@ -1,11 +1,11 @@
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ConfigService } from "../service/config-service";
+import { is_text_preserve_mode } from "../../base/quality";
+import { normalize_app_language } from "../../base/settings";
 
 type MigrationMetaRecord = Record<string, DatabaseJsonValue>;
 
-// 文本保护 mode 是旧 bool 开关写回后的当前稳定集合。
-const TEXT_PRESERVE_MODE_VALUES = new Set(["smart", "custom", "off"]);
 // 旧翻译提示词按语言拆成两个原始规则槽位，迁移时只读取一次。
 const LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE = "CUSTOM_PROMPT_ZH";
 const LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE = "CUSTOM_PROMPT_EN";
@@ -37,7 +37,7 @@ export class ProjectCompatibilityMigrationService {
     const operations: DatabaseOperation[] = [];
     const raw_text_preserve_mode = this.string_value(meta["text_preserve_mode"]);
     // 旧工程只有 bool 开关；当前运行态必须持久化成 mode 枚举。
-    if (!TEXT_PRESERVE_MODE_VALUES.has(raw_text_preserve_mode)) {
+    if (!is_text_preserve_mode(raw_text_preserve_mode)) {
       operations.push(
         this.op("setMeta", {
           projectPath: project_path,
@@ -78,7 +78,7 @@ export class ProjectCompatibilityMigrationService {
   private get_legacy_translation_prompt(project_path: string): string {
     const config = this.config_service.load_config();
     const preferred_rule_types =
-      String(config["app_language"] ?? "ZH").toUpperCase() === "EN"
+      normalize_app_language(config["app_language"]) === "EN"
         ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]
         : [LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE];
     for (const rule_type of preferred_rule_types) {

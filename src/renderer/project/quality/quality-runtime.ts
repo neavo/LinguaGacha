@@ -5,10 +5,12 @@ import type {
   ProjectStoreQualityState,
   ProjectStoreState,
 } from "@/project/store/project-store";
+import type { PromptTaskType } from "@base/prompt";
+import type { QualityRuleType } from "@base/quality";
 
-type QualityRuntimeRuleType = "glossary" | "pre_replacement" | "post_replacement" | "text_preserve";
+type QualityRuntimeRuleType = QualityRuleType;
 
-type QualityRuntimeTaskType = "translation" | "analysis";
+type QualityRuntimeTaskType = PromptTaskType;
 
 type ProofreadingLookupQuery = {
   keyword: string;

@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 import { JsonTool } from "../../shared/utils/json-tool";
+import { is_item_status } from "../../base/item";
 
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
 
@@ -22,17 +23,6 @@ const LEGACY_RULE_TYPE_TO_CURRENT_TYPE = new Map([
   ["TRANSLATION_PROMPT", "translation_prompt"],
   ["ANALYSIS_PROMPT", "analysis_prompt"],
 ]);
-// item payload 中只有这些状态可以继续进入当前运行态。
-const VALID_ITEM_STATUSES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
 /**
  * SQLite 行值可能来自不同底层类型，迁移读取文本统一在这里收窄。
  */
@@ -188,7 +178,7 @@ export class ProjectDatabaseMigrationService {
     changed: boolean;
   } {
     const raw_status = item_data["status"];
-    const normalized_status = this.normalize_status_value(raw_status);
+    const normalized_status = this.normalize_item_status_value(raw_status);
     if (raw_status === normalized_status) {
       return { data: item_data, changed: false };
     }
@@ -198,7 +188,7 @@ export class ProjectDatabaseMigrationService {
   /**
    * 把旧状态映射到当前有效枚举，保持前后端状态口径一致。
    */
-  private static normalize_status_value(value: unknown): string {
+  private static normalize_item_status_value(value: unknown): string {
     // 未知状态宁可回到待处理，也不要把历史运行态泄露给当前任务链路。
     const raw_value = String(value ?? "");
     if (raw_value === LEGACY_PROCESSED_IN_PAST) {
@@ -207,7 +197,7 @@ export class ProjectDatabaseMigrationService {
     if (raw_value === LEGACY_PROCESSING) {
       return CURRENT_NONE;
     }
-    if (VALID_ITEM_STATUSES.has(raw_value)) {
+    if (is_item_status(raw_value)) {
       return raw_value;
     }
     return CURRENT_NONE;

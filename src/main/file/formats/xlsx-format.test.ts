@@ -5,7 +5,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { normalize_file_item } from "../file-item";
+import { normalize_item } from "../../../base/item";
 import { XLSXFormat } from "./xlsx-format";
 
 // 每个用例独占工作簿输出目录，避免 ExcelJS 文件写回互相影响。
@@ -58,14 +58,14 @@ describe("XLSXFormat", () => {
     const format = new XLSXFormat();
     await format.write_to_path(
       [
-        normalize_file_item({
+        normalize_item({
           src: "原文",
           dst: "译文",
           row: 1,
           file_type: "XLSX",
           file_path: "demo.xlsx",
         }),
-        normalize_file_item({
+        normalize_item({
           src: "=SUM(A1:A2)",
           dst: "=SUM(B1:B2)",
           row: 2,

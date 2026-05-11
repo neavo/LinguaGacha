@@ -17,6 +17,11 @@ import { Textarea } from "@/shadcn/textarea";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { SettingHelpButton } from "@/widgets/setting-help-button/setting-help-button";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
+import {
+  MODEL_THINKING_LEVELS,
+  model_api_format_supports_reasoning_by_default,
+  normalize_model_api_format,
+} from "@base/model";
 
 type ModelBasicSettingsDialogProps = {
   open: boolean;
@@ -28,14 +33,11 @@ type ModelBasicSettingsDialogProps = {
   onClose: () => void;
 };
 
-const THINKING_LEVEL_VALUES: ModelThinkingLevel[] = ["OFF", "LOW", "MEDIUM", "HIGH"];
+const THINKING_LEVEL_VALUES: readonly ModelThinkingLevel[] = MODEL_THINKING_LEVELS;
 const THINKING_SUPPORT_URL_BY_LOCALE = {
   "zh-CN": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
   "en-US": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
 } as const;
-const CONNECTION_FIELD_API_FORMATS = ["OpenAI", "Google", "Anthropic", "SakuraLLM"] as const;
-const THINKING_FIELD_API_FORMATS = ["OpenAI", "Google", "Anthropic"] as const;
-
 function resolve_thinking_label(
   t: ReturnType<typeof useI18n>["t"],
   thinking_level: ModelThinkingLevel,
@@ -52,14 +54,14 @@ function resolve_thinking_label(
 }
 
 function should_show_connection_fields(api_format: string): boolean {
-  return CONNECTION_FIELD_API_FORMATS.includes(
-    api_format as (typeof CONNECTION_FIELD_API_FORMATS)[number],
-  );
+  return normalize_model_api_format(api_format) === api_format;
 }
 
 function should_show_thinking_field(api_format: string): boolean {
-  return THINKING_FIELD_API_FORMATS.includes(
-    api_format as (typeof THINKING_FIELD_API_FORMATS)[number],
+  const normalized_api_format = normalize_model_api_format(api_format);
+  return (
+    normalized_api_format === "OpenAI" ||
+    model_api_format_supports_reasoning_by_default(normalized_api_format)
   );
 }
 

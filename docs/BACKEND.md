@@ -102,6 +102,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 - `execute_transaction()` 单个事务只允许绑定一个工程文件，避免跨 `.lg` 半提交。
 - asset 内容以 Zstd 压缩 blob 存储在 `.lg` 内；调用方读取时消费解压 bytes，不理解压缩格式。
 - 运行态不保留独立 database gateway 或旧 DTO bridge；历史格式兼容只在 migration、runtime encoder 或 patch adapter 的明确边界内处理。
+- 跨 API、数据库 payload、任务运行态和 worker 的基础值域从 `src/base` 导入；后端领域服务只在边界做兼容迁移或 normalize，不另建同义字符串集合。
 
 ## 7. 更新触发条件
 
@@ -112,3 +113,4 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 - 新增后端状态拥有者、写入口、任务事件来源或跨层载荷规则。
 - 改 database operation、事务语义、`.lg` schema、asset 压缩、migration 或文件格式存储落点。
 - 改任务引擎与 worker 的事实回流方式。
+- 改跨后端领域共享的基础值域、合法值集合、normalize 或派生判断。

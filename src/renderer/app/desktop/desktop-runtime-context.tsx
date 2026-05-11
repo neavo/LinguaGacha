@@ -34,19 +34,23 @@ import {
   parse_event_payload,
 } from "@/app/desktop/desktop-runtime-event-payload";
 import { LiveRefreshScheduler } from "@/app/ui-runtime/live-refresh-scheduler";
+import {
+  normalize_app_language,
+  normalize_project_save_mode,
+  type AppLanguage,
+  type ProjectSaveMode,
+} from "@base/settings";
 
 type RecentProjectEntry = {
   path: string;
   name: string;
 };
 
-type AppLanguage = "ZH" | "EN";
-
 export type SettingsSnapshot = {
   app_language: AppLanguage;
   source_language: string;
   target_language: string;
-  project_save_mode: string;
+  project_save_mode: ProjectSaveMode;
   project_fixed_path: string;
   output_folder_open_on_finish: boolean;
   request_timeout: number;
@@ -276,18 +280,6 @@ type RuntimeLiveRefreshPayload =
 
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null);
 
-function normalize_app_language(app_language: unknown): AppLanguage {
-  if (
-    String(app_language ?? "")
-      .trim()
-      .toUpperCase() === "EN"
-  ) {
-    return "EN";
-  }
-
-  return "ZH";
-}
-
 function normalize_recent_projects(
   recent_projects: Array<Partial<RecentProjectEntry>> | undefined,
 ): RecentProjectEntry[] {
@@ -309,9 +301,7 @@ export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): S
     app_language: normalize_app_language(snapshot.app_language),
     source_language: String(snapshot.source_language ?? DEFAULT_SETTINGS_SNAPSHOT.source_language),
     target_language: String(snapshot.target_language ?? DEFAULT_SETTINGS_SNAPSHOT.target_language),
-    project_save_mode: String(
-      snapshot.project_save_mode ?? DEFAULT_SETTINGS_SNAPSHOT.project_save_mode,
-    ),
+    project_save_mode: normalize_project_save_mode(snapshot.project_save_mode),
     project_fixed_path: String(snapshot.project_fixed_path ?? ""),
     output_folder_open_on_finish: Boolean(
       snapshot.output_folder_open_on_finish ??

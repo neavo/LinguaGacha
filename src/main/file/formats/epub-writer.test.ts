@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../test/epub-fixture";
-import { normalize_file_item, type FileFormatItem } from "../file-item";
+import { normalize_item, type Item } from "../../../base/item";
 import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
@@ -35,15 +35,12 @@ function create_writer(): EpubWriter {
 /**
  * writer 测试只借 AST 生成定位 metadata，断言归属仍聚焦写回产物。
  */
-async function create_translated_epub_item(
-  epub_asset: Buffer,
-  dst: string,
-): Promise<FileFormatItem> {
+async function create_translated_epub_item(epub_asset: Buffer, dst: string): Promise<Item> {
   const [item] = await new EpubAst().read_from_stream(epub_asset, "book.epub");
   if (item === undefined) {
     throw new Error("EPUB fixture 未生成正文条目。");
   }
-  return normalize_file_item({
+  return normalize_item({
     ...item,
     dst,
     status: "PROCESSED",
@@ -81,7 +78,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const out_path = path.join(temp_dir, "legacy", "book.zh.epub");
-    const legacy_item = normalize_file_item({
+    const legacy_item = normalize_item({
       src: "章节",
       dst: "译文",
       row: 0,
@@ -102,7 +99,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const out_path = path.join(temp_dir, "legacy-special-dollar", "book.zh.epub");
-    const legacy_item = normalize_file_item({
+    const legacy_item = normalize_item({
       src: "章节",
       dst: "译文$& $1 $$",
       row: 0,

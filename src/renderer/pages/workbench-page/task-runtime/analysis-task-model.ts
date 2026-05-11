@@ -1,4 +1,4 @@
-const ANALYSIS_TASK_ACTIVE_STATUSES = ["REQUEST", "RUN", "ANALYZING", "STOPPING"] as const;
+import { is_active_analysis_task_status as is_base_active_analysis_task_status } from "@base/task";
 
 export type AnalysisTaskActionKind =
   | "reset-all"
@@ -110,9 +110,7 @@ export function normalize_analysis_task_snapshot_payload(
 }
 
 export function is_active_analysis_task_status(status: string): boolean {
-  return ANALYSIS_TASK_ACTIVE_STATUSES.includes(
-    status as (typeof ANALYSIS_TASK_ACTIVE_STATUSES)[number],
-  );
+  return is_base_active_analysis_task_status(status);
 }
 
 export function has_analysis_task_progress(snapshot: AnalysisTaskSnapshot | null): boolean {

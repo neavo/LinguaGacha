@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
 
-import { normalize_file_item } from "../file-item";
+import { normalize_item } from "../../../base/item";
 import {
   build_bilingual_path,
   build_target_path,
@@ -30,8 +30,8 @@ describe("file-format-shared", () => {
 
   it("按文件类型和文件路径分组条目", () => {
     const items = [
-      normalize_file_item({ src: "甲", file_type: "TXT", file_path: "a.txt" }),
-      normalize_file_item({ src: "乙", file_type: "MD", file_path: "b.md" }),
+      normalize_item({ src: "甲", file_type: "TXT", file_path: "a.txt" }),
+      normalize_item({ src: "乙", file_type: "MD", file_path: "b.md" }),
     ];
 
     expect([...group_items(items, "TXT").keys()]).toEqual(["a.txt"]);
@@ -40,13 +40,13 @@ describe("file-format-shared", () => {
   it("按多数译名准备 name_dst 字段", () => {
     const [first, second] = prepare_name_fields(
       [
-        normalize_file_item({
+        normalize_item({
           src: "台词1",
           name_src: "太郎",
           name_dst: "塔罗",
           file_type: "MESSAGEJSON",
         }),
-        normalize_file_item({
+        normalize_item({
           src: "台词2",
           name_src: "太郎",
           name_dst: "太郎译",
@@ -57,6 +57,6 @@ describe("file-format-shared", () => {
     );
 
     expect([first?.name_dst, second?.name_dst]).toEqual(["塔罗", "塔罗"]);
-    expect(effective_export_text(normalize_file_item({ src: "原文", dst: "" }))).toBe("原文");
+    expect(effective_export_text(normalize_item({ src: "原文", dst: "" }))).toBe("原文");
   });
 });

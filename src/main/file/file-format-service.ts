@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { item_to_json, type FileFormatItem, type FileItemType } from "./file-item";
+import { item_to_json, type Item, type ItemFileType } from "../../base/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
 import { MDFormat } from "./formats/md-format";
@@ -82,7 +82,7 @@ export class FileFormatService {
   /**
    * 按扩展名分发到具体格式处理器，JSON/XLSX 保持历史优先级回退顺序。
    */
-  public async parse_asset(rel_path: string, content: Uint8Array): Promise<FileFormatItem[]> {
+  public async parse_asset(rel_path: string, content: Uint8Array): Promise<Item[]> {
     const ext = path.extname(rel_path).toLowerCase();
     if (ext === ".md") {
       return this.md.read_from_stream(content, rel_path);
@@ -194,7 +194,7 @@ export class FileFormatService {
    * 写回时逐格式处理，同一批 items 由各格式自行筛选自己的 file_type。
    */
   public async write_items(
-    items: FileFormatItem[],
+    items: Item[],
     paths: ExportPaths,
     asset_reader: (rel_path: string) => Buffer | null,
   ): Promise<void> {
@@ -214,7 +214,7 @@ export class FileFormatService {
   /**
    * 预览文件类型取第一个有效条目，空文件或无法识别时返回 NONE。
    */
-  public pick_file_type(items: FileFormatItem[]): FileItemType {
+  public pick_file_type(items: Item[]): ItemFileType {
     for (const item of items) {
       if (item.file_type !== "NONE") {
         return item.file_type;

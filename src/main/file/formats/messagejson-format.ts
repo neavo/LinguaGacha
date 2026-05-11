@@ -12,11 +12,11 @@ import {
   type FileFormatServiceConfig,
 } from "./file-format-shared";
 import {
-  normalize_file_item,
-  normalize_name,
+  normalize_item,
+  normalize_item_name,
   read_json_record,
-  type FileFormatItem,
-} from "../file-item";
+  type Item,
+} from "../../../base/item";
 
 /**
  * message JSON 格式用于 KAG 风格 name/message 数组结构。
@@ -30,12 +30,12 @@ export class MESSAGEJSONFormat {
   /**
    * 只解析数组内含 message 字符串的对象，name/names 作为角色名字段保存。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const data = await this.parse_json_with_encoding(content);
     if (!Array.isArray(data)) {
       return [];
     }
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     for (const entry of data) {
       const record = read_json_record(entry);
       if (typeof record["message"] !== "string") {
@@ -46,7 +46,7 @@ export class MESSAGEJSONFormat {
         : undefined;
       const name = typeof record["name"] === "string" ? record["name"] : names;
       items.push(
-        normalize_file_item({
+        normalize_item({
           src: record["message"],
           dst: "",
           name_src: name,
@@ -64,14 +64,14 @@ export class MESSAGEJSONFormat {
   /**
    * 写回时按配置整理 name_dst，多数译名会被用于同名角色。
    */
-  public async write_to_path(items: FileFormatItem[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "MESSAGEJSON")) {
       const normalized = prepare_name_fields(group, this.config);
       const data = normalized
         .sort((left, right) => left.row - right.row)
         .map((item) => {
           const message = effective_export_text(item);
-          const name = normalize_name(item.name_dst);
+          const name = normalize_item_name(item.name_dst);
           if (typeof name === "string") {
             return { name, message };
           }

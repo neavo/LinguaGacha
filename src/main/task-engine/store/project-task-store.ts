@@ -6,8 +6,7 @@ import { get_runtime_section_revision } from "../../project/project-section-revi
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
-
-const ANALYSIS_CHECKPOINT_STATUSES = new Set(["NONE", "PROCESSED", "ERROR"]);
+import { TASK_PROGRESS_STATUSES } from "../../../base/task";
 
 /**
  * 项目任务存储端口，是 TaskEngine 读写项目任务事实的唯一内部入口。
@@ -438,7 +437,7 @@ export class ProjectTaskStore {
       }
       const item_id = this.read_number(raw_row["item_id"], 0);
       const status = String(raw_row["status"] ?? "");
-      if (item_id <= 0 || !ANALYSIS_CHECKPOINT_STATUSES.has(status)) {
+      if (item_id <= 0 || !(TASK_PROGRESS_STATUSES as readonly string[]).includes(status)) {
         continue;
       }
       rows.push({

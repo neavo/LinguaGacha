@@ -9,6 +9,7 @@ import { ProjectCompatibilityMigrationService } from "../migration/project-compa
 import type { ConfigService } from "../service/config-service";
 import type { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
+import { normalize_item_status } from "../../base/item";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 
@@ -23,17 +24,6 @@ const SUPPORTED_SOURCE_EXTENSIONS = new Set([
   ".srt",
   ".rpy",
   ".trans",
-]);
-
-// 写入 items 前只允许当前有效状态，旧状态归一由 database 打开期迁移兜底。
-const ITEM_STATUS_VALUES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
 ]);
 
 type JsonRecord = Record<string, ApiJsonValue>;
@@ -750,7 +740,6 @@ export class ProjectLifecycleService {
    * 归一单条 item，保护状态和数字字段，同时保留 EPUB 等格式 extra_field。
    */
   private normalize_item_payload(item: JsonRecord): MutableJsonRecord {
-    const status = this.string_value(item["status"]) || "NONE";
     const normalized: MutableJsonRecord = {
       ...item,
       src: this.string_value(item["src"]),
@@ -763,7 +752,7 @@ export class ProjectLifecycleService {
       file_type: this.string_value(item["file_type"]) || "NONE",
       file_path: this.string_value(item["file_path"]),
       text_type: this.string_value(item["text_type"]) || "NONE",
-      status: ITEM_STATUS_VALUES.has(status) ? status : "NONE",
+      status: normalize_item_status(item["status"]),
       retry_count: this.number_value(item["retry_count"], 0),
     };
     if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {

@@ -1,7 +1,7 @@
 import { CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE } from "../rules/languages";
 import type { TextJsonRecord } from "./text-types";
-
-export type TextPreserveMode = "off" | "smart" | "custom";
+export { normalize_text_preserve_mode, type TextPreserveMode } from "../../base/quality";
+import { normalize_text_preserve_mode } from "../../base/quality";
 
 export type TextPreserveRuleKind = "check" | "sample" | "prefix" | "suffix";
 
@@ -47,17 +47,6 @@ export const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
   RPGMAKER: RPGMAKER_LIKE_PATTERNS,
   WOLF: RPGMAKER_LIKE_PATTERNS,
 } as const;
-
-/**
- * 运行态 mode 来自 meta，可能是小写、旧大写或坏值；坏值按旧口径关闭。
- */
-export function normalize_text_preserve_mode(value: string): TextPreserveMode {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "smart" || normalized === "custom") {
-    return normalized;
-  }
-  return "off";
-}
 
 /**
  * 根据 mode 和 text_type 展开可执行正则片段，custom 只读用户 entries，smart 只读预置表。

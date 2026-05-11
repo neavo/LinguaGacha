@@ -1,4 +1,7 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
+import { normalize_log_level, type LogLevel } from "@base/log";
+
+export type { LogLevel };
 
 type ApiEnvelope<data_type> = {
   ok: boolean;
@@ -33,8 +36,6 @@ type EventSourceJsonEvent = {
   type: string;
   [key: string]: unknown;
 };
-
-export type LogLevel = "debug" | "info" | "warning" | "error" | "fatal";
 
 export type LogEvent = {
   id: string;
@@ -390,20 +391,6 @@ export function open_project_bootstrap_stream(): AsyncIterable<EventSourceJsonEv
     path: "/api/project/bootstrap/stream",
     event_types: ["stage_started", "stage_payload", "stage_completed", "completed", "failed"],
   });
-}
-
-function normalize_log_level(value: unknown): LogLevel {
-  if (
-    value === "debug" ||
-    value === "info" ||
-    value === "warning" ||
-    value === "error" ||
-    value === "fatal"
-  ) {
-    return value;
-  }
-
-  return "info";
 }
 
 function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {

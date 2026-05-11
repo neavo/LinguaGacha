@@ -24,20 +24,10 @@ import { TaskLimiter } from "./task-limiter";
 import { TaskPipeline } from "./task-pipeline";
 import { TaskProgressSnapshotTool } from "./task-progress-snapshot";
 import { TaskRunLock } from "./task-run-lock";
+import { is_task_skipped_item_status } from "../../../base/task";
 
 // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断。
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]);
-
-// 跳过状态来自公开 item status，TaskEngine 不再把这些条目派发给 worker。
-const TRANSLATION_SKIPPED_STATUSES = new Set([
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
-
-// 分析和翻译共享跳过语义，避免同一 item 状态被两个任务解释出不同结果。
-const ANALYSIS_SKIPPED_STATUSES = TRANSLATION_SKIPPED_STATUSES;
 
 // 翻译重试次数高于分析，因为翻译支持拆分重试，分析只按 chunk 重试。
 const TRANSLATION_RETRY_LIMIT = 3;
@@ -968,7 +958,7 @@ export class TaskEngine {
     const current_file_path = String(chunk[chunk.length - 1]?.["file_path"] ?? "");
     for (let index = start - skipped_count - chunk.length - 1; index >= 0; index -= 1) {
       const item = items[index];
-      if (item === undefined || TRANSLATION_SKIPPED_STATUSES.has(this.read_status(item))) {
+      if (item === undefined || is_task_skipped_item_status(this.read_status(item))) {
         continue;
       }
       const src = String(item["src"] ?? "").trim();
@@ -997,7 +987,7 @@ export class TaskEngine {
     meta: MutableJsonRecord,
   ): TaskProgressSnapshot {
     const total_line = items.filter(
-      (item) => !TRANSLATION_SKIPPED_STATUSES.has(this.read_status(item)),
+      (item) => !is_task_skipped_item_status(this.read_status(item)),
     ).length;
     const processed_line = items.filter((item) => this.read_status(item) === "PROCESSED").length;
     const error_line = items.filter((item) => this.read_status(item) === "ERROR").length;
@@ -1282,7 +1272,7 @@ export class TaskEngine {
    */
   private is_analyzable_item(item: TaskItemRecord): boolean {
     return (
-      !ANALYSIS_SKIPPED_STATUSES.has(this.read_status(item)) &&
+      !is_task_skipped_item_status(this.read_status(item)) &&
       String(item["src"] ?? "").trim() !== ""
     );
   }

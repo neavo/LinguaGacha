@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, type ExportPaths } from "./file-format-shared";
-import { normalize_file_item, type FileFormatItem } from "../file-item";
+import { normalize_item, type Item } from "../../../base/item";
 
 /**
  * 通用双列表格格式，第一列原文、第二列译文。
@@ -14,13 +14,13 @@ export class XLSXFormat {
   /**
    * WOLF 专用表头由 WOLFXLSXFormat 处理，普通格式在这里按双列读取。
    */
-  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<FileFormatItem[]> {
+  public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const workbook = await load_xlsx_workbook(content);
     const sheet = workbook.worksheets[0];
     if (sheet === undefined || is_wolf_xlsx_sheet(sheet)) {
       return [];
     }
-    const items: FileFormatItem[] = [];
+    const items: Item[] = [];
     for (let row = 1; row <= sheet.rowCount; row += 1) {
       const src_value = sheet.getCell(row, 1).value;
       if (src_value === null || src_value === undefined) {
@@ -33,7 +33,7 @@ export class XLSXFormat {
           ? ""
           : SpreadsheetTool.cellValueToText(dst_value);
       items.push(
-        normalize_file_item({
+        normalize_item({
           src,
           dst,
           row,
@@ -49,7 +49,7 @@ export class XLSXFormat {
   /**
    * 写回时新建简单双列表，不复用原始工作簿中的展示样式。
    */
-  public async write_to_path(items: FileFormatItem[], paths: ExportPaths): Promise<void> {
+  public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "XLSX")) {
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet("Sheet");

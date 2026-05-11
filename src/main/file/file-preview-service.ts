@@ -3,7 +3,7 @@ import fs from "node:fs";
 import type { ApiJsonValue } from "../api/api-types";
 import { ConfigService } from "../service/config-service";
 import { FileFormatService } from "./file-format-service";
-import { item_to_json } from "./file-item";
+import { item_to_json } from "../../base/item";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 

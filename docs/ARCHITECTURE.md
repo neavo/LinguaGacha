@@ -7,6 +7,7 @@
 | 任务判断 | 先读 | 再读 |
 | --- | --- | --- |
 | 改系统分层、跨进程链路、模块归属 | 本文 | [`docs/BACKEND.md`](BACKEND.md) 或 [`docs/FRONTEND.md`](FRONTEND.md) |
+| 改跨 main / renderer / worker 的基础值域、normalize 或派生判断 | 本文 | [`docs/BACKEND.md`](BACKEND.md)、[`docs/FRONTEND.md`](FRONTEND.md) |
 | 改 HTTP / SSE / bootstrap / mutation / 错误码 | [`docs/BACKEND.md`](BACKEND.md) | 相关 service 与测试 |
 | 改数据库、`.lg` 存储、迁移、任务运行态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/project/`、`src/main/task-engine/` |
 | 改 Electron preload、renderer、`ProjectStore`、导航、页面状态 | [`docs/FRONTEND.md`](FRONTEND.md) | 相关页面和组件测试 |
@@ -16,6 +17,8 @@
 
 ```mermaid
 flowchart LR
+  N["src/base<br/>跨层基础值域"] --> D
+  N --> J
   A["Electron main<br/>窗口与生命周期"] --> B["CoreLifecycleManager<br/>端口、日志、数据库、Gateway"]
   B --> C["ApiGatewayServer<br/>本机 HTTP / SSE 边界"]
   C --> D["Project / TaskEngine / Service 领域服务"]
@@ -31,6 +34,7 @@ flowchart LR
 ```
 
 - Electron main 是桌面宿主和 Core 的同一进程；当前运行态没有独立 backend 子进程或内部 HTTP 回环服务。
+- `src/base` 是 main、renderer、preload、worker 和测试共享的基础值域层，只承载跨层稳定数据结构、合法值集合、normalize/type guard 和派生判断；不能反向依赖 main、renderer 或 Electron 宿主边界。
 - `CoreLifecycleManager` 按 `LogManager -> ProjectDatabase -> ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 仍持有数据库或日志句柄。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 句柄缓存的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
@@ -86,6 +90,7 @@ sequenceDiagram
 
 | 层 | 固定职责 | 不能承接 |
 | --- | --- | --- |
+| `src/base/` | 跨层基础值域、normalize/type guard、不可变映射和派生判断 | HTTP 路由、数据库 workflow、页面状态、文件格式算法 |
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
 | `src/main/project/` | 项目会话、bootstrap 编码、project patch、同步 mutation | Electron preload、页面局部状态 |
@@ -100,6 +105,7 @@ sequenceDiagram
 ## 5. 更新触发条件
 
 - 新增或重排运行时层、跨进程通信方式、Core 生命周期资源，必须更新本文。
+- 新增跨 main / renderer / worker 共享值域、合法值集合或基础派生判断，必须先判断是否属于 `src/base`，并在分层关系变化时更新本文。
 - 改公开 API、SSE、状态写入口、数据库存储、任务事件语义，更新 [`docs/BACKEND.md`](BACKEND.md)，本文只在链路或层级改变时同步。
 - 改 preload、`ProjectStore`、导航、页面运行态消费方式，更新 [`docs/FRONTEND.md`](FRONTEND.md)，本文只保留分层关系。
 - 改验证命令、任务起手式或文档同步要求，更新 [`docs/WORKFLOW.md`](WORKFLOW.md)。

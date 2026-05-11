@@ -9,20 +9,10 @@ import {
   get_runtime_section_revision,
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
+import { normalize_item_status } from "../../base/item";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
-
-// 同步 mutation 只允许写入当前有效 item 状态，旧状态归一在读取 / 校对入口完成。
-const ITEM_STATUS_VALUES = new Set([
-  "NONE",
-  "PROCESSED",
-  "ERROR",
-  "EXCLUDED",
-  "RULE_SKIPPED",
-  "LANGUAGE_SKIPPED",
-  "DUPLICATED",
-]);
 
 /**
  * 承载项目同步 mutation，把 API Gateway 的业务写入收口到 ProjectDatabase 窄操作。
@@ -627,13 +617,12 @@ export class ProjectSyncMutationService {
    * 归一单条 item，防止状态和数字字段以脏类型进入数据库。
    */
   private normalize_item_payload(item: JsonRecord): MutableJsonRecord {
-    const status = String(item["status"] ?? "NONE");
     const normalized: MutableJsonRecord = {
       ...item,
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
       row: this.read_number(item["row"], 0),
-      status: ITEM_STATUS_VALUES.has(status) ? status : "NONE",
+      status: normalize_item_status(item["status"]),
       retry_count: this.read_number(item["retry_count"], 0),
     };
     if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {

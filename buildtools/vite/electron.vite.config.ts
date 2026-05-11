@@ -17,7 +17,10 @@ const config = {
       input: {
         index: path.resolve(project_root, "src/main/index.ts"),
         // task worker 必须作为独立入口产物输出，worker_threads 运行时不能从 main bundle 内动态取源码。
-        "task-worker-entry": path.resolve(project_root, "src/main/task-worker/task-worker-entry.ts"),
+        "task-worker-entry": path.resolve(
+          project_root,
+          "src/main/task-worker/task-worker-entry.ts",
+        ),
       },
       output: {
         entryFileNames: "[name].js",
@@ -50,6 +53,7 @@ const config = {
     resolve: {
       alias: {
         "@": path.resolve(project_root, "src/renderer"),
+        "@base": path.resolve(project_root, "src/base"),
         "@shared": path.resolve(project_root, "src/shared"),
       },
     },
