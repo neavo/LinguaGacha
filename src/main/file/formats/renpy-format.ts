@@ -86,7 +86,7 @@ export class RenPyFormat {
       const old_match = line.trim().match(/^old\s+"((?:\\.|[^"\\])*)"/u);
       if (old_match !== null) {
         const src = this.unescape_string(old_match[1] ?? "");
-        if (src === "") {
+        if (src === "" || this.looks_like_resource_path(src) || !this.is_translatable_text(src)) {
           continue;
         }
         let target_index = -1;

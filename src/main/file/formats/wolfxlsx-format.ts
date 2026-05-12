@@ -88,8 +88,10 @@ export class WOLFXLSXFormat {
    * ExcelJS 没有填充色时返回 -1，与 openpyxl 未设置颜色的过滤语义一致
    */
   private get_fg_color_index(sheet: ExcelJS.Worksheet, row: number, column: number): number {
-    const fill = sheet.getCell(row, column).fill as Partial<{ fgColor?: { indexed?: number } }>;
-    return fill.fgColor?.indexed ?? -1;
+    const fill = sheet.getCell(row, column).fill as
+      | Partial<{ fgColor?: { indexed?: number } }>
+      | undefined;
+    return fill?.fgColor?.indexed ?? -1;
   }
 }
 

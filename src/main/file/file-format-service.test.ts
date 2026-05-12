@@ -57,6 +57,30 @@ describe("FileFormatService", () => {
     expect(message_items.map((item) => item.file_type)).toEqual(["MESSAGEJSON"]);
   });
 
+  it.each([
+    ["a.md", "正文", "MD"],
+    [
+      "a.ass",
+      "[Events]\nFormat: Layer, Start, End, Style, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,字幕",
+      "ASS",
+    ],
+    ["a.srt", "1\n00:00:01,000 --> 00:00:02,000\n字幕\n", "SRT"],
+  ] as const)("按简单扩展名解析 %s", async (rel_path, content, expected_type) => {
+    const service = create_service();
+
+    const items = await service.parse_asset(rel_path, new TextEncoder().encode(content));
+
+    expect(items.at(-1)?.file_type).toBe(expected_type);
+  });
+
+  it("未知扩展名解析为空列表", async () => {
+    const service = create_service();
+
+    await expect(service.parse_asset("a.bin", new TextEncoder().encode("bytes"))).resolves.toEqual(
+      [],
+    );
+  });
+
   it("收集源文件时去重输入路径并为重复相对路径生成稳定文件名", () => {
     const service = create_service();
     const left_dir = path.join(temp_dir, "left");
@@ -76,6 +100,17 @@ describe("FileFormatService", () => {
         .collect_source_file_entries([left_dir, right_dir])
         .map((entry) => entry.rel_path.replace(/\\/gu, "/")),
     ).toEqual(["script.txt", "script_2.txt"]);
+  });
+
+  it("收集单文件路径时使用文件名作为工程相对路径", () => {
+    const service = create_service();
+    const source_file = path.join(temp_dir, "nested", "a.MD");
+    fs.mkdirSync(path.dirname(source_file), { recursive: true });
+    fs.writeFileSync(source_file, "dummy", "utf-8");
+
+    expect(service.collect_source_file_entries([source_file])).toEqual([
+      { source_path: source_file, rel_path: "a.MD" },
+    ]);
   });
 
   it("工作台预览替换文件时沿用旧相对目录", async () => {

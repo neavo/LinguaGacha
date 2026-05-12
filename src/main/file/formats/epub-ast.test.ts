@@ -1,10 +1,40 @@
 import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
 
 import { create_epub_fixture } from "../../../test/epub-fixture";
 import { Item } from "../../../base/item";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 describe("EpubAst", () => {
+  it("归一化 slot 文本时压缩行内空白", () => {
+    const ast = new EpubAst();
+
+    expect(ast.normalize_slot_text("a\n\tb  c")).toBe("a b c");
+    expect(ast.normalize_slot_text("不变")).toBe("不变");
+  });
+
+  it("修复 HTML 命名实体时保留 CDATA 原文", () => {
+    const ast = new EpubAst();
+
+    const fixed = ast.normalize_html_named_entities_for_xml(
+      "<p>&nbsp; &foo; <![CDATA[&nbsp;]]></p>",
+    );
+
+    expect(fixed).toContain("&#160;");
+    expect(fixed).toContain("&amp;foo;");
+    expect(fixed).toContain("<![CDATA[&nbsp;]]>");
+  });
+
+  it("修复 NCX 裸 ampersand 时不改 CDATA 和既有实体", () => {
+    const ast = new EpubAst();
+
+    const fixed = ast.fix_ncx_bare_ampersands("<text>a&b <![CDATA[c&d]]> e&amp;f</text>");
+
+    expect(fixed).toContain("a&amp;b");
+    expect(fixed).toContain("<![CDATA[c&d]]>");
+    expect(fixed).toContain("e&amp;f");
+  });
+
   it("从 EPUB spine 提取正文条目并写入 AST metadata", async () => {
     const ast = new EpubAst();
     const epub_asset = await create_epub_fixture("章节");
@@ -38,6 +68,53 @@ describe("EpubAst", () => {
       }),
     );
     expect(epub?.["parts"]).toEqual([{ slot: "text", path: "/html[1]/body[1]/p[1]" }]);
+  });
+
+  it("提取 OPF 标题、NCX 目录并跳过非 HTML spine", async () => {
+    const ast = new EpubAst();
+    const zip = new JSZip();
+    zip.file(
+      "META-INF/container.xml",
+      `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
+    );
+    zip.file(
+      "OPS/package.opf",
+      `<package version="x" xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <metadata><dc:title>  Book  Title  </dc:title></metadata>
+        <manifest>
+          <item id="chap" href="chapter.xhtm" media-type="application/xhtml+xml"/>
+          <item id="bin" href="asset.bin" media-type="application/octet-stream"/>
+          <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+        </manifest>
+        <spine toc="ncx"><itemref idref="bin"/><itemref idref="chap"/></spine>
+      </package>`,
+    );
+    zip.file("OPS/chapter.xhtm", "<html><body><p>正文</p></body></html>");
+    zip.file(
+      "OPS/toc.ncx",
+      "<ncx><navMap><navPoint><navLabel><text>A&B</text></navLabel></navPoint></navMap></ncx>",
+    );
+    const epub_asset = await zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+
+    const items = await ast.read_from_stream(epub_asset, "book.epub");
+
+    expect(items.map((item) => item.src)).toEqual([" Book Title ", "正文", "A&B"]);
+    expect(items.map((item) => item.row)).toEqual([
+      EpubAst.ROW_BASE_OPF_TITLE,
+      EpubAst.ROW_MULTIPLIER,
+      EpubAst.ROW_BASE_NCX,
+    ]);
+  });
+
+  it("抽取 XHTML 时跳过 code 和 rt 子树并保留 tail 文本顺序", () => {
+    const ast = new EpubAst();
+    const raw = new TextEncoder().encode(
+      "<html><body><p>Head<code>skip</code>Tail<ruby>漢<rt>かん</rt></ruby>End</p></body></html>",
+    );
+
+    const items = ast.extract_items_from_document("OPS/chapter.xhtml", raw, 0, "book.epub");
+
+    expect(items.map((item) => item.src)).toEqual(["Head\nTail\n漢\nEnd"]);
   });
 
   it("缺少 EPUB metadata 时返回空 extra", () => {

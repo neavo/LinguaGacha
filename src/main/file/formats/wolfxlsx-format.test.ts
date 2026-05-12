@@ -19,7 +19,103 @@ afterEach(() => {
 });
 
 describe("WOLFXLSXFormat", () => {
-  it("按 WOLF 表头、固定列和填充色读取条目", async () => {
+  it("按 WOLF 表头、固定列和填充色设置条目状态", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    ["code", "flag", "type", "info"].forEach((label, index) => {
+      sheet.getCell(1, index + 1).value = label;
+    });
+    sheet.getCell(2, 6).value = "原文1";
+    sheet.getCell(2, 6).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { indexed: 9 } as never,
+    };
+    sheet.getCell(3, 6).value = "原文2";
+    sheet.getCell(3, 6).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { indexed: 9 } as never,
+    };
+    sheet.getCell(3, 7).value = "已译2";
+    sheet.getCell(4, 6).value = "原文3";
+    sheet.getCell(4, 6).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { indexed: 44 } as never,
+    };
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const items = await new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "wolf.xlsx");
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        src: "原文1",
+        row: 2,
+        file_type: "WOLFXLSX",
+        text_type: "WOLF",
+        status: "NONE",
+      }),
+      expect.objectContaining({
+        src: "原文2",
+        dst: "已译2",
+        row: 3,
+        status: "PROCESSED",
+      }),
+      expect.objectContaining({
+        src: "原文3",
+        row: 4,
+        status: "EXCLUDED",
+      }),
+    ]);
+  });
+
+  it("普通双列表不会被 WOLF 格式抢先解析", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    sheet.getCell(1, 1).value = "原文";
+    sheet.getCell(1, 2).value = "译文";
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    await expect(
+      new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "demo.xlsx"),
+    ).resolves.toEqual([]);
+  });
+
+  it("跳过源文为空的 WOLF 行", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    ["code", "flag", "type", "info"].forEach((label, index) => {
+      sheet.getCell(1, index + 1).value = label;
+    });
+    sheet.getCell(3, 6).value = "原文";
+    sheet.getCell(3, 6).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { indexed: 9 } as never,
+    };
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const items = await new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "wolf.xlsx");
+
+    expect(items.map((item) => item.src)).toEqual(["原文"]);
+  });
+
+  it("缺少 indexed 填充色时按排除项处理", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    ["code", "flag", "type", "info"].forEach((label, index) => {
+      sheet.getCell(1, index + 1).value = label;
+    });
+    sheet.getCell(2, 6).value = "text";
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const items = await new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "wolf.xlsx");
+
+    expect(items[0]?.status).toBe("EXCLUDED");
+  });
+
+  it("支持富文本和公式结果单元格转成纯文本", async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Sheet");
     ["code", "flag", "type", "info"].forEach((label, index) => {
@@ -36,7 +132,7 @@ describe("WOLFXLSXFormat", () => {
 
     const items = await new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "wolf.xlsx");
 
-    expect(items).toEqual([
+    expect(items[0]).toEqual(
       expect.objectContaining({
         src: "原文",
         dst: "译文",
@@ -45,19 +141,7 @@ describe("WOLFXLSXFormat", () => {
         text_type: "WOLF",
         status: "PROCESSED",
       }),
-    ]);
-  });
-
-  it("普通双列表不会被 WOLF 格式抢先解析", async () => {
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Sheet");
-    sheet.getCell(1, 1).value = "原文";
-    sheet.getCell(1, 2).value = "译文";
-    const buffer = await workbook.xlsx.writeBuffer();
-
-    await expect(
-      new WOLFXLSXFormat().read_from_stream(new Uint8Array(buffer), "demo.xlsx"),
-    ).resolves.toEqual([]);
+    );
   });
 
   it("写回时复用原始工作簿并更新 WOLF 固定列", async () => {
@@ -99,5 +183,58 @@ describe("WOLFXLSXFormat", () => {
     expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("译文");
     expect(workbook.worksheets[0]?.getCell(3, 6).value).toBe("'=SUM(F1:F2)");
     expect(workbook.worksheets[0]?.getCell(3, 6).alignment.horizontal).toBe("left");
+  });
+
+  it("原始资产缺失时新建工作簿并写入固定列", async () => {
+    const format = new WOLFXLSXFormat();
+
+    await format.write_to_path(
+      [
+        Item.from_json({
+          src: "原文",
+          dst: "译文",
+          row: 2,
+          file_type: "WOLFXLSX",
+          file_path: "wolf/game.xlsx",
+        }),
+      ],
+      {
+        translated_path: temp_dir,
+        bilingual_path: path.join(temp_dir, "bilingual"),
+      },
+      () => null,
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(path.join(temp_dir, "wolf", "game.xlsx"));
+
+    expect(workbook.worksheets[0]?.getColumn(1).width).toBe(64);
+    expect(workbook.worksheets[0]?.getColumn(2).width).toBe(64);
+    expect(workbook.worksheets[0]?.getCell(2, 6).value).toBe("原文");
+    expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("译文");
+  });
+
+  it("写回时保留空译文为空单元格", async () => {
+    const format = new WOLFXLSXFormat();
+
+    await format.write_to_path(
+      [
+        Item.from_json({
+          src: "原文",
+          dst: "",
+          row: 2,
+          file_type: "WOLFXLSX",
+          file_path: "wolf/empty.xlsx",
+        }),
+      ],
+      {
+        translated_path: temp_dir,
+        bilingual_path: path.join(temp_dir, "bilingual"),
+      },
+      () => null,
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(path.join(temp_dir, "wolf", "empty.xlsx"));
+
+    expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("");
   });
 });

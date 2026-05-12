@@ -18,23 +18,63 @@ afterEach(() => {
 });
 
 describe("TXTFormat", () => {
-  it("按行解析 TXT 并保留行号", async () => {
+  it("按不同换行符拆分 TXT 流并标记文件类型", async () => {
     const format = new TXTFormat({ source_language: "JA", target_language: "ZH" });
 
-    await expect(
-      format.read_from_stream(new TextEncoder().encode("甲\n乙"), "demo.txt"),
-    ).resolves.toEqual([
-      expect.objectContaining({ src: "甲", row: 0, file_type: "TXT", file_path: "demo.txt" }),
-      expect.objectContaining({ src: "乙", row: 1, file_type: "TXT", file_path: "demo.txt" }),
-    ]);
+    const items = await format.read_from_stream(
+      new TextEncoder().encode("第一行\r\n第二行\n第三行"),
+      "a.txt",
+    );
+
+    expect(items.map((item) => item.src)).toEqual(["第一行", "第二行", "第三行"]);
+    expect(items.every((item) => item.file_type === "TXT")).toBe(true);
+    expect(items.map((item) => item.row)).toEqual([0, 1, 2]);
   });
 
-  it("写出译文和双语目录，并按配置折叠重复双语行", async () => {
+  it("写出译文和双语 TXT 文件", async () => {
     const format = new TXTFormat({
       source_language: "JA",
       target_language: "ZH",
       deduplication_in_bilingual: true,
     });
+    await format.write_to_path(
+      [
+        Item.from_json({
+          src: "同文",
+          dst: "同文",
+          row: 0,
+          file_type: "TXT",
+          file_path: "story/dialog.txt",
+        }),
+        Item.from_json({
+          src: "原文",
+          dst: "译文",
+          row: 1,
+          file_type: "TXT",
+          file_path: "story/dialog.txt",
+        }),
+      ],
+      {
+        translated_path: path.join(temp_dir, "translated"),
+        bilingual_path: path.join(temp_dir, "bilingual"),
+      },
+    );
+
+    expect(
+      fs.readFileSync(path.join(temp_dir, "translated", "story", "dialog.zh.txt"), "utf-8"),
+    ).toBe("同文\n译文");
+    expect(
+      fs.readFileSync(path.join(temp_dir, "bilingual", "story", "dialog.ja.zh.txt"), "utf-8"),
+    ).toBe("同文\n原文\n译文");
+  });
+
+  it("空译文写回时使用原文并在双语输出中去重", async () => {
+    const format = new TXTFormat({
+      source_language: "JA",
+      target_language: "ZH",
+      deduplication_in_bilingual: true,
+    });
+
     await format.write_to_path(
       [
         Item.from_json({

@@ -18,18 +18,18 @@ afterEach(() => {
 });
 
 describe("KVJSONFormat", () => {
-  it("把 JSON 对象的 key 作为原文，差异 value 作为已有译文", async () => {
+  it("按 key/value 关系设置 KVJSON 状态", async () => {
     const format = new KVJSONFormat();
 
     const items = await format.read_from_stream(
-      new TextEncoder().encode(JSON.stringify({ 甲: "甲", 乙: "乙译", 空: "" })),
-      "kv.json",
+      new TextEncoder().encode(JSON.stringify({ "": "", 已翻: "已处理", 待翻: "待翻", 忽略: 1 })),
+      "a.json",
     );
 
     expect(items.map((item) => [item.src, item.dst, item.status])).toEqual([
-      ["甲", "", "NONE"],
-      ["乙", "乙译", "PROCESSED"],
-      ["空", "", "NONE"],
+      ["", "", "EXCLUDED"],
+      ["已翻", "已处理", "PROCESSED"],
+      ["待翻", "", "NONE"],
     ]);
   });
 
@@ -49,11 +49,25 @@ describe("KVJSONFormat", () => {
     await format.write_to_path(
       [
         Item.from_json({
-          src: "原文",
-          dst: "译文",
+          src: "k1",
+          dst: "v1",
           row: 0,
           file_type: "KVJSON",
-          file_path: "kv.json",
+          file_path: "json/data.json",
+        }),
+        Item.from_json({
+          src: "k2",
+          dst: "v2",
+          row: 1,
+          file_type: "KVJSON",
+          file_path: "json/data.json",
+        }),
+        Item.from_json({
+          src: "k3",
+          dst: "",
+          row: 2,
+          file_type: "KVJSON",
+          file_path: "json/data.json",
         }),
       ],
       {
@@ -62,8 +76,10 @@ describe("KVJSONFormat", () => {
       },
     );
 
-    expect(JSON.parse(fs.readFileSync(path.join(temp_dir, "kv.json"), "utf-8"))).toEqual({
-      原文: "译文",
+    expect(JSON.parse(fs.readFileSync(path.join(temp_dir, "json", "data.json"), "utf-8"))).toEqual({
+      k1: "v1",
+      k2: "v2",
+      k3: "k3",
     });
   });
 });

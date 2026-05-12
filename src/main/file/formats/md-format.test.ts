@@ -18,33 +18,56 @@ afterEach(() => {
 });
 
 describe("MDFormat", () => {
-  it("排除图片行和代码块行，正文保持可翻译", async () => {
+  it("标记代码块和图片行为排除状态", async () => {
     const format = new MDFormat({ source_language: "JA", target_language: "ZH" });
 
     const items = await format.read_from_stream(
-      new TextEncoder().encode("正文\n![图](a.png)\n```js\ncode\n```"),
-      "demo.md",
+      new TextEncoder().encode("标题\n```python\nprint('hi')\n```\n![img](a.png)\n正文"),
+      "docs/readme.md",
     );
 
-    expect(items.map((item) => [item.src, item.status])).toEqual([
-      ["正文", "NONE"],
-      ["![图](a.png)", "EXCLUDED"],
-      ["```js", "EXCLUDED"],
-      ["code", "EXCLUDED"],
-      ["```", "NONE"],
+    expect(items.map((item) => item.src)).toEqual([
+      "标题",
+      "```python",
+      "print('hi')",
+      "```",
+      "![img](a.png)",
+      "正文",
+    ]);
+    expect(items.map((item) => item.status)).toEqual([
+      "NONE",
+      "EXCLUDED",
+      "EXCLUDED",
+      "NONE",
+      "EXCLUDED",
+      "NONE",
     ]);
   });
 
-  it("写出目标语言后缀的 Markdown 译文", async () => {
+  it("写出目标语言后缀的 Markdown 译文并忽略其它文件类型", async () => {
     const format = new MDFormat({ source_language: "JA", target_language: "ZH" });
     await format.write_to_path(
       [
         Item.from_json({
-          src: "原文",
-          dst: "译文",
+          src: "a",
+          dst: "甲",
           row: 0,
           file_type: "MD",
-          file_path: "notes.md",
+          file_path: "docs/readme.md",
+        }),
+        Item.from_json({
+          src: "b",
+          dst: "乙",
+          row: 1,
+          file_type: "MD",
+          file_path: "docs/readme.md",
+        }),
+        Item.from_json({
+          src: "ignore",
+          dst: "ignore",
+          row: 0,
+          file_type: "TXT",
+          file_path: "docs/other.txt",
         }),
       ],
       {
@@ -53,6 +76,9 @@ describe("MDFormat", () => {
       },
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "translated", "notes.zh.md"), "utf-8")).toBe("译文");
+    expect(
+      fs.readFileSync(path.join(temp_dir, "translated", "docs", "readme.zh.md"), "utf-8"),
+    ).toBe("甲\n乙");
+    expect(fs.existsSync(path.join(temp_dir, "translated", "docs", "other.zh.txt"))).toBe(false);
   });
 });
