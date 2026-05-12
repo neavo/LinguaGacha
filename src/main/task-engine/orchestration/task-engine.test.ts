@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ApiJsonValue } from "../../api/api-types";
 import type { CoreEventHub } from "../../events/core-event-hub";
 import type { LogManager } from "../../log/log-manager";
-import type { ConfigService } from "../../service/config-service";
+import type { SettingService } from "../../service/setting-service";
 import type { ProjectPatchPublisher } from "../../project/project-patch-publisher";
 import type { TaskSnapshotBuilder } from "../runtime/task-snapshot-builder";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
@@ -43,7 +43,7 @@ describe("TaskEngine", () => {
           stopped: false,
         }),
       } as unknown as TaskWorkUnitExecutor,
-      configService: create_config_service(),
+      SettingService: create_setting_service(),
       snapshotBuilder: {
         build_task_snapshot: async () => ({ task_type: "translation", status: "DONE" }),
       } as unknown as TaskSnapshotBuilder,
@@ -122,7 +122,7 @@ describe("TaskEngine", () => {
           };
         },
       } as unknown as TaskWorkUnitExecutor,
-      configService: create_config_service(2),
+      SettingService: create_setting_service(2),
       snapshotBuilder: {
         build_task_snapshot: async () => ({ task_type: "translation", status: "DONE" }),
       } as unknown as TaskSnapshotBuilder,
@@ -172,7 +172,7 @@ describe("TaskEngine", () => {
     };
   }
 
-  function create_config_service(concurrency_limit = 1): ConfigService {
+  function create_setting_service(concurrency_limit = 1): SettingService {
     const model = {
       id: "model-1",
       threshold: {
@@ -181,11 +181,11 @@ describe("TaskEngine", () => {
       },
     };
     return {
-      load_config: () => ({
+      load_setting: () => ({
         activate_model_id: "model-1",
         models: [model],
       }),
-    } as unknown as ConfigService;
+    } as unknown as SettingService;
   }
 
   function create_log_manager(): LogManager {

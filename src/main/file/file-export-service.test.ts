@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import type { ConfigService } from "../service/config-service";
+import type { SettingService } from "../service/setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileExportService } from "./file-export-service";
 
@@ -25,16 +25,16 @@ afterEach(() => {
 /**
  * 导出测试使用固定设置，便于断言目标路径和日志语言。
  */
-function create_config_service(): ConfigService {
+function create_setting_service(): SettingService {
   return {
-    load_config: () => ({
+    load_setting: () => ({
       source_language: "JA",
       target_language: "ZH",
       app_language: "ZH",
       deduplication_in_bilingual: true,
       write_translated_name_fields_to_file: true,
     }),
-  } as unknown as ConfigService;
+  } as unknown as SettingService;
 }
 
 interface CollectedLogEntry {
@@ -94,7 +94,7 @@ describe("FileExportService", () => {
     const log_collector = create_log_collector();
     const service = new FileExportService(
       database,
-      create_config_service(),
+      create_setting_service(),
       session_state,
       log_collector,
     );
@@ -138,7 +138,7 @@ describe("FileExportService", () => {
     }) as typeof fs.mkdirSync);
     const service = new FileExportService(
       database,
-      create_config_service(),
+      create_setting_service(),
       session_state,
       log_collector,
     );
@@ -160,7 +160,7 @@ describe("FileExportService", () => {
     session_state.mark_loaded(path.join(temp_dir, "demo.lg"));
     const service = new FileExportService(
       { execute: () => [], read_asset_content: () => null } as unknown as ProjectDatabase,
-      create_config_service(),
+      create_setting_service(),
       session_state,
     );
 

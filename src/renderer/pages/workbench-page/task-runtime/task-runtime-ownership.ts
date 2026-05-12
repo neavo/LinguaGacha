@@ -1,6 +1,6 @@
-import type { PromptTaskType } from "@base/prompt";
+import type { PromptKind } from "@base/prompt";
 
-type WorkbenchTaskRuntimeKind = PromptTaskType;
+type WorkbenchTaskRuntimeKind = PromptKind;
 
 type TaskSnapshotWithKind = {
   task_type?: unknown;

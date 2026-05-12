@@ -1,8 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import {
-  is_output_token_limit_auto,
-  type LinguaGachaModelSnapshot,
-} from "./llm-model-adapter";
+import { is_output_token_limit_auto, type LinguaGachaModelSnapshot } from "./llm-model-adapter";
 
 const ANTHROPIC_AUTO_MAX_TOKENS_MIN = 8192;
 const CLAUDE_THINKING_BUDGETS: Record<"LOW" | "MEDIUM" | "HIGH", number> = {
@@ -42,7 +39,7 @@ export function build_pi_ai_provider_options(
 }
 
 /**
- * onPayload 是复刻旧 SDK payload 的逃生门，所有非通用字段都集中在这里。
+ * onPayload 是供应商 payload 修补入口，所有非通用字段都集中在这里。
  */
 export function patch_linguagacha_payload(
   payload: unknown,
@@ -62,7 +59,7 @@ export function patch_linguagacha_payload(
 }
 
 /**
- * OpenAI-compatible 分支把旧 extra_body 语义展开到顶层，避免发送字面 extra_body 字段。
+ * OpenAI-compatible 分支把 extra_body 内容展开到顶层，避免发送字面 extra_body 字段。
  */
 function patch_openai_payload(
   payload: Record<string, unknown>,
@@ -84,7 +81,7 @@ function patch_openai_payload(
 }
 
 /**
- *旧思考挡位映射保留在 TS 边界，避免模型名规则散到任务 runner。
+ * 思考挡位映射保留在 TS 边界，避免模型名规则散到任务 runner。
  */
 function build_openai_thinking_body(
   snapshot: LinguaGachaModelSnapshot,
@@ -107,7 +104,7 @@ function build_openai_thinking_body(
 }
 
 /**
- * Google payload 需要把 generation 字段放入 config，并强制保留旧安全阈值。
+ * Google payload 需要把 generation 字段放入 config，并强制保留安全阈值。
  */
 function patch_google_payload(
   payload: Record<string, unknown>,
@@ -218,7 +215,7 @@ function patch_anthropic_payload(
 }
 
 /**
- * pi-ai 的 Anthropic thinking option 从旧 payload 预算派生，保持双入口一致。
+ * pi-ai 的 Anthropic thinking option 复用 thinking 预算，保持双入口一致。
  */
 function build_anthropic_thinking_option(
   snapshot: LinguaGachaModelSnapshot,
@@ -270,7 +267,7 @@ function resolve_max_tokens_for_request(snapshot: LinguaGachaModelSnapshot): num
 }
 
 /**
- * Anthropic thinking 开启时温度由供应商规则控制，adapter 不再发送旧温度字段。
+ * Anthropic thinking 开启时温度由供应商规则控制，adapter 不发送温度字段。
  */
 function should_send_temperature(snapshot: LinguaGachaModelSnapshot): boolean {
   return snapshot.api_format !== "Anthropic" || snapshot.thinking_level === "OFF";

@@ -6,10 +6,10 @@ import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
 import { ProjectCompatibilityMigrationService } from "../migration/project-compatibility-migration-service";
-import type { ConfigService } from "../service/config-service";
+import type { SettingService } from "../service/setting-service";
 import type { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { normalize_item_status } from "../../base/item";
+import { Item } from "../../base/item";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 
@@ -42,13 +42,13 @@ interface CreateCommitFileRecord {
 interface QualityDefaultPresetSpec {
   // config_key 对应用户设置里的默认预设虚拟 ID。
   config_key: string;
-  // preset_dir_name 决定内置和用户预设目录。
-  preset_dir_name: string;
+  // preset_directory 决定内置和用户预设目录。
+  preset_directory: string;
   // rule_type 是 rules 表当前物理类型。
   rule_type: string;
   // meta_key 表示预设成功加载后需要同步开启的工程设置。
   meta_key: string;
-  // meta_value 保持旧初始化语义：文本保护写 custom，其余写 true。
+  // meta_value 是预设启用后的工程设置值。
   meta_value: DatabaseJsonValue;
   // display_name 只用于日志，不进入公开协议。
   display_name: string;
@@ -70,7 +70,7 @@ interface PromptDefaultPresetSpec {
 const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
   {
     config_key: "glossary_default_preset",
-    preset_dir_name: "glossary",
+    preset_directory: "glossary",
     rule_type: "glossary",
     meta_key: "glossary_enable",
     meta_value: true,
@@ -78,7 +78,7 @@ const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
   },
   {
     config_key: "text_preserve_default_preset",
-    preset_dir_name: "text_preserve",
+    preset_directory: "text_preserve",
     rule_type: "text_preserve",
     meta_key: "text_preserve_mode",
     meta_value: "custom",
@@ -86,7 +86,7 @@ const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
   },
   {
     config_key: "pre_translation_replacement_default_preset",
-    preset_dir_name: "pre_translation_replacement",
+    preset_directory: "pre_translation_replacement",
     rule_type: "pre_translation_replacement",
     meta_key: "pre_translation_replacement_enable",
     meta_value: true,
@@ -94,7 +94,7 @@ const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
   },
   {
     config_key: "post_translation_replacement_default_preset",
-    preset_dir_name: "post_translation_replacement",
+    preset_directory: "post_translation_replacement",
     rule_type: "post_translation_replacement",
     meta_key: "post_translation_replacement_enable",
     meta_value: true,
@@ -129,8 +129,8 @@ export class ProjectLifecycleService {
   // session_state 是 renderer 可见 loaded/path 的唯一权威。
   private readonly session_state: ProjectSessionState;
 
-  // config_service 提供当前应用设置，用于打开预演与默认预设选择。
-  private readonly config_service: ConfigService;
+  // setting_service 提供当前应用设置，用于打开预演与默认预设选择。
+  private readonly setting_service: SettingService;
 
   // paths 统一解析内置 / 用户预设目录，避免项目域拼第二套路由规则。
   private readonly paths: AppPathService;
@@ -138,7 +138,7 @@ export class ProjectLifecycleService {
   // log_manager 记录默认预设初始化结果，响应体不扩大公开协议。
   private readonly log_manager: LogManager;
 
-  // compatibility_migration_service 只生成旧工程写回操作，事务仍由生命周期入口持有。
+  // compatibility_migration_service 只生成兼容写回操作，事务仍由生命周期入口持有。
   private readonly compatibility_migration_service: ProjectCompatibilityMigrationService;
 
   /**
@@ -147,18 +147,18 @@ export class ProjectLifecycleService {
   public constructor(
     database: ProjectDatabase,
     session_state: ProjectSessionState,
-    config_service: ConfigService,
+    setting_service: SettingService,
     paths: AppPathService,
     log_manager: LogManager,
   ) {
     this.database = database;
     this.session_state = session_state;
-    this.config_service = config_service;
+    this.setting_service = setting_service;
     this.paths = paths;
     this.log_manager = log_manager;
     this.compatibility_migration_service = new ProjectCompatibilityMigrationService(
       database,
-      config_service,
+      setting_service,
     );
   }
 
@@ -308,7 +308,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取 .lg 摘要预览，不加载旧 ProjectSession。
+   * 读取 .lg 摘要预览，不加载工程会话。
    */
   public get_project_preview(body: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const project_path = this.require_body_string(body, "path");
@@ -360,7 +360,7 @@ export class ProjectLifecycleService {
     operations: DatabaseOperation[];
     loaded_names: string[];
   } {
-    const config = this.config_service.load_config();
+    const config = this.setting_service.load_setting();
     const operations: DatabaseOperation[] = [
       this.op("setMeta", {
         projectPath: project_path,
@@ -376,7 +376,7 @@ export class ProjectLifecycleService {
         continue;
       }
       try {
-        const entries = this.read_quality_rule_preset(spec.preset_dir_name, virtual_id);
+        const entries = this.read_quality_rule_preset(spec.preset_directory, virtual_id);
         operations.push(
           this.op("setRules", {
             projectPath: project_path,
@@ -392,7 +392,7 @@ export class ProjectLifecycleService {
         loaded_names.push(spec.display_name);
       } catch (error) {
         this.log_non_blocking_project_lifecycle_error("默认质量规则预设加载失败", error, {
-          preset_dir_name: spec.preset_dir_name,
+          preset_directory: spec.preset_directory,
           virtual_id,
         });
       }
@@ -429,13 +429,13 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取质量规则预设，并把非对象条目过滤掉以兼容旧初始化行为。
+   * 读取质量规则预设，并把非对象条目过滤掉。
    */
   private read_quality_rule_preset(
-    preset_dir_name: string,
+    preset_directory: string,
     virtual_id: string,
   ): MutableJsonRecord[] {
-    const preset_path = this.resolve_quality_rule_preset_path(preset_dir_name, virtual_id);
+    const preset_path = this.resolve_quality_rule_preset_path(preset_directory, virtual_id);
     const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
     if (!Array.isArray(data)) {
       throw new Error(`质量规则预设载荷无效：${preset_path}`);
@@ -455,14 +455,14 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 解析质量规则预设虚拟 ID 到真实路径，兼容旧 builtin:zh:file.json 形状。
+   * 解析质量规则预设虚拟 ID 到真实路径。
    */
-  private resolve_quality_rule_preset_path(preset_dir_name: string, virtual_id: string): string {
+  private resolve_quality_rule_preset_path(preset_directory: string, virtual_id: string): string {
     const { source, file_name } = this.split_virtual_id(virtual_id, ".json");
     const directory =
       source === "builtin"
-        ? this.paths.get_quality_rule_builtin_preset_dir(preset_dir_name)
-        : this.paths.get_quality_rule_user_preset_dir(preset_dir_name);
+        ? this.paths.get_quality_rule_builtin_preset_dir(preset_directory)
+        : this.paths.get_quality_rule_user_preset_dir(preset_directory);
     return path.join(directory, file_name);
   }
 
@@ -546,7 +546,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建 asset 写入操作，跳过缺少源文件路径的草稿记录以延续旧提交语义。
+   * 构建 asset 写入操作，跳过缺少源文件路径的草稿记录。
    */
   private build_asset_operations(
     project_path: string,
@@ -635,7 +635,7 @@ export class ProjectLifecycleService {
     mtool_optimizer_enable: boolean;
     skip_duplicate_source_text_enable: boolean;
   } {
-    const config = this.config_service.load_config();
+    const config = this.setting_service.load_setting();
     return {
       source_language: this.string_value(config["source_language"]) || "JA",
       target_language: this.string_value(config["target_language"]) || "ZH",
@@ -678,7 +678,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 判断设置镜像是否缺失，旧工程缺字段时必须触发预过滤对齐。
+   * 判断设置镜像是否缺失，缺字段时必须触发预过滤对齐。
    */
   private is_setting_mirror_missing(
     meta: MutableJsonRecord,
@@ -689,7 +689,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 新建工程名沿用旧语义：优先第一个源路径名称，否则使用输出文件名。
+   * 新建工程名优先使用第一个源路径名称，否则使用输出文件名。
    */
   private build_project_name(source_paths: string[], project_path: string): string {
     const seed_path = source_paths[0] ?? project_path;
@@ -752,7 +752,7 @@ export class ProjectLifecycleService {
       file_type: this.string_value(item["file_type"]) || "NONE",
       file_path: this.string_value(item["file_path"]),
       text_type: this.string_value(item["text_type"]) || "NONE",
-      status: normalize_item_status(item["status"]),
+      status: Item.normalize_status(item["status"]),
       retry_count: this.number_value(item["retry_count"], 0),
     };
     if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {
@@ -865,7 +865,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取全部 meta，用于打开预演、旧字段迁移和 section revision。
+   * 读取全部 meta，用于打开预演、兼容处理和 section revision。
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
     return this.normalize_object(
@@ -973,14 +973,14 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 从未知值读取布尔值，沿用旧 bool(...) 的宽松转换。
+   * 从未知值读取布尔值，使用 bool(...) 宽松转换。
    */
   private boolean_value(value: ApiJsonValue | DatabaseJsonValue | undefined): boolean {
     return Boolean(value ?? false);
   }
 
   /**
-   * 从未知值读取带默认值的布尔，缺失时保持旧项目语义。
+   * 从未知值读取带默认值的布尔，缺失时保持项目默认语义。
    */
   private boolean_value_with_default(
     value: ApiJsonValue | DatabaseJsonValue | undefined,

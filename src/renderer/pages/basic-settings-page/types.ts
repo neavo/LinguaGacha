@@ -6,7 +6,7 @@ import {
   SOURCE_TARGET_LANGUAGE_CODES,
   type ProjectSaveMode,
   type SourceTargetLanguageCode,
-} from "@base/settings";
+} from "@base/setting";
 
 export type { ProjectSaveMode };
 

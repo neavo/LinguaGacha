@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, type ExportPaths } from "./file-format-shared";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 
 /**
  * 通用双列表格格式，第一列原文、第二列译文。
@@ -33,7 +33,7 @@ export class XLSXFormat {
           ? ""
           : SpreadsheetTool.cellValueToText(dst_value);
       items.push(
-        normalize_item({
+        Item.from_json({
           src,
           dst,
           row,

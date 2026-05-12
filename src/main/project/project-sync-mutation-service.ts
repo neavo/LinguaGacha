@@ -9,7 +9,7 @@ import {
   get_runtime_section_revision,
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
-import { normalize_item_status } from "../../base/item";
+import { Item } from "../../base/item";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -622,7 +622,7 @@ export class ProjectSyncMutationService {
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
       row: this.read_number(item["row"], 0),
-      status: normalize_item_status(item["status"]),
+      status: Item.normalize_status(item["status"]),
       retry_count: this.read_number(item["retry_count"], 0),
     };
     if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {

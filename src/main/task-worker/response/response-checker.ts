@@ -1,4 +1,4 @@
-import { is_hangul_character, is_kana_character } from "../../../base/language";
+import { is_hangul_character, is_kana_character } from "../../../shared/language";
 import { should_skip_by_language_prefilter } from "../../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../../shared/prefilter/rule-prefilter";
 import {

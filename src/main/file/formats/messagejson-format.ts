@@ -11,12 +11,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import {
-  normalize_item,
-  normalize_item_name,
-  read_json_record,
-  type Item,
-} from "../../../base/item";
+import { Item, read_json_record } from "../../../base/item";
 
 /**
  * message JSON 格式用于 KAG 风格 name/message 数组结构。
@@ -46,7 +41,7 @@ export class MESSAGEJSONFormat {
         : undefined;
       const name = typeof record["name"] === "string" ? record["name"] : names;
       items.push(
-        normalize_item({
+        Item.from_json({
           src: record["message"],
           dst: "",
           name_src: name,
@@ -71,7 +66,7 @@ export class MESSAGEJSONFormat {
         .sort((left, right) => left.row - right.row)
         .map((item) => {
           const message = effective_export_text(item);
-          const name = normalize_item_name(item.name_dst);
+          const name = Item.normalize_name(item.name_dst);
           if (typeof name === "string") {
             return { name, message };
           }

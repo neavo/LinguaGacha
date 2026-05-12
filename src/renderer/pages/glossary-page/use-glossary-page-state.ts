@@ -572,7 +572,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<GlossaryPresetPayload>("/api/quality/rules/presets", {
-      preset_dir_name: "glossary",
+      rule_type: "glossary",
     });
     const default_virtual_id = String(settings_snapshot.glossary_default_preset ?? "");
 
@@ -1116,7 +1116,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         const payload = await api_fetch<{ entries: GlossaryEntry[] }>(
           "/api/quality/rules/presets/read",
           {
-            preset_dir_name: "glossary",
+            rule_type: "glossary",
             virtual_id,
           },
         );
@@ -1212,7 +1212,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       try {
         await api_fetch("/api/quality/rules/presets/save", {
-          preset_dir_name: "glossary",
+          rule_type: "glossary",
           name: normalized_name,
           entries: entries
             .map((entry) => {
@@ -1251,7 +1251,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         const payload = await api_fetch<{ item?: GlossaryPresetItem }>(
           "/api/quality/rules/presets/rename",
           {
-            preset_dir_name: "glossary",
+            rule_type: "glossary",
             virtual_id,
             new_name: normalized_name,
           },
@@ -1447,7 +1447,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       try {
         if (confirm_state.target_virtual_id !== null) {
           await api_fetch("/api/quality/rules/presets/delete", {
-            preset_dir_name: "glossary",
+            rule_type: "glossary",
             virtual_id: confirm_state.target_virtual_id,
           });
 

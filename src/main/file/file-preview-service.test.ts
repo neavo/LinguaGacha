@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { write_epub_fixture } from "../../test/epub-fixture";
-import type { ConfigService } from "../service/config-service";
+import type { SettingService } from "../service/setting-service";
 import { FilePreviewService } from "./file-preview-service";
 
 let temp_dir = "";
@@ -18,23 +18,23 @@ afterEach(() => {
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
-function create_config_service(): ConfigService {
+function create_setting_service(): SettingService {
   return {
-    load_config: () => ({
+    load_setting: () => ({
       source_language: "JA",
       target_language: "ZH",
       app_language: "ZH",
       deduplication_in_bilingual: true,
       write_translated_name_fields_to_file: true,
     }),
-  } as unknown as ConfigService;
+  } as unknown as SettingService;
 }
 
 describe("FilePreviewService", () => {
   it("工作台预解析只返回成功解析的文件", async () => {
     const source_file = path.join(temp_dir, "script.txt");
     fs.writeFileSync(source_file, "原文", "utf-8");
-    const service = new FilePreviewService(create_config_service());
+    const service = new FilePreviewService(create_setting_service());
 
     await expect(
       service.parse_workbench_file({
@@ -54,7 +54,7 @@ describe("FilePreviewService", () => {
   it("工作台预解析 EPUB 时直接返回 解析结果", async () => {
     const epub_file = path.join(temp_dir, "book.epub");
     await write_epub_fixture(epub_file, "章节");
-    const service = new FilePreviewService(create_config_service());
+    const service = new FilePreviewService(create_setting_service());
 
     await expect(
       service.parse_workbench_file({
@@ -84,7 +84,7 @@ describe("FilePreviewService", () => {
     const epub_file = path.join(temp_dir, "book.epub");
     fs.writeFileSync(txt_file, "文本", "utf-8");
     await write_epub_fixture(epub_file, "章节");
-    const service = new FilePreviewService(create_config_service());
+    const service = new FilePreviewService(create_setting_service());
 
     const result = await service.build_create_preview({ source_paths: [txt_file, epub_file] });
     const draft = result["draft"] as {

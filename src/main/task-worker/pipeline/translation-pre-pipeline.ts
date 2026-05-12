@@ -168,7 +168,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 译前替换只消费质量快照，不读取历史会话。
+   * 译前替换只消费质量快照。
    */
   private replace_pre_translation(src: string): string {
     if (!this.quality_snapshot.pre_replacement_enable) {
@@ -225,7 +225,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 检查规则入口独立命名，便于和历史 CHECK 规则对齐。
+   * 检查规则入口独立命名，便于和 CHECK 规则对齐。
    */
   private get_re_check(text_type: string): RegExp | null {
     return this.build_preserve_rule("check", text_type);

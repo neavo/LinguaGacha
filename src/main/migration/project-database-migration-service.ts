@@ -1,9 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 
 import { JsonTool } from "../../shared/utils/json-tool";
-import { is_item_status } from "../../base/item";
+import { Item, is_item_file_type, is_item_status, is_item_text_type } from "../../base/item";
+import { is_task_progress_status } from "../../shared/task";
 
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
+type ProjectDatabaseMigrationItem = Record<string, unknown>;
 
 // .lg schema 版本只在新建工程写入，打开旧工程时实际能力由幂等迁移补齐。
 export const PROJECT_DATABASE_SCHEMA_VERSION = 2;
@@ -23,6 +25,19 @@ const LEGACY_RULE_TYPE_TO_CURRENT_TYPE = new Map([
   ["TRANSLATION_PROMPT", "translation_prompt"],
   ["ANALYSIS_PROMPT", "analysis_prompt"],
 ]);
+const CURRENT_RULE_ENTRY_TYPES = new Set([
+  "glossary",
+  "text_preserve",
+  "pre_translation_replacement",
+  "post_translation_replacement",
+]);
+const CURRENT_RULE_TEXT_TYPES = new Set([
+  "translation_prompt",
+  "analysis_prompt",
+  "CUSTOM_PROMPT_ZH",
+  "CUSTOM_PROMPT_EN",
+]);
+const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
 /**
  * SQLite 行值可能来自不同底层类型，迁移读取文本统一在这里收窄。
  */
@@ -55,8 +70,10 @@ export class ProjectDatabaseMigrationService {
   public static migrate(db: DatabaseSync): void {
     this.ensure_schema(db);
     this.migrate_rule_types_if_needed(db);
+    this.migrate_rule_payloads_if_needed(db);
     this.migrate_asset_sort_order_if_needed(db);
     this.migrate_item_status_if_needed(db);
+    this.migrate_analysis_checkpoint_status_if_needed(db);
   }
 
   /**
@@ -125,6 +142,45 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
+   * 归一规则 payload 物理形状，让运行态只读取当前规则表格式。
+   */
+  private static migrate_rule_payloads_if_needed(db: DatabaseSync): void {
+    const rows = db.prepare("SELECT id, type, data FROM rules ORDER BY id").all();
+    const rows_by_type = new Map<string, ProjectDatabaseMigrationRow[]>();
+    for (const row of rows) {
+      const type = row_text(row, "type");
+      if (!CURRENT_RULE_ENTRY_TYPES.has(type) && !CURRENT_RULE_TEXT_TYPES.has(type)) {
+        continue;
+      }
+      const bucket = rows_by_type.get(type) ?? [];
+      bucket.push(row);
+      rows_by_type.set(type, bucket);
+    }
+
+    const update = db.prepare("UPDATE rules SET data = ? WHERE id = ?");
+    const delete_row = db.prepare("DELETE FROM rules WHERE id = ?");
+    for (const [rule_type, rule_rows] of rows_by_type) {
+      if (rule_rows.length === 0) {
+        continue;
+      }
+      const normalized_data = CURRENT_RULE_TEXT_TYPES.has(rule_type)
+        ? { text: this.deserialize_rule_text_rows(rule_rows) }
+        : this.deserialize_rule_entry_rows(rule_rows);
+      const first_row = rule_rows[0];
+      if (first_row === undefined) {
+        continue;
+      }
+      const normalized_raw = JsonTool.stringifyStrict(normalized_data);
+      if (row_text(first_row, "data") !== normalized_raw) {
+        update.run(normalized_raw, row_number(first_row, "id"));
+      }
+      for (const extra_row of rule_rows.slice(1)) {
+        delete_row.run(row_number(extra_row, "id"));
+      }
+    }
+  }
+
+  /**
    * 为旧 asset 补齐排序字段，保持文件顺序可稳定回放。
    */
   private static migrate_asset_sort_order_if_needed(db: DatabaseSync): void {
@@ -177,12 +233,61 @@ export class ProjectDatabaseMigrationService {
     data: ProjectDatabaseMigrationRow;
     changed: boolean;
   } {
-    const raw_status = item_data["status"];
+    const normalized: ProjectDatabaseMigrationItem = { ...item_data };
+    let changed = false;
+
+    const raw_status = normalized["status"];
     const normalized_status = this.normalize_item_status_value(raw_status);
-    if (raw_status === normalized_status) {
-      return { data: item_data, changed: false };
+    if (raw_status !== normalized_status) {
+      normalized["status"] = normalized_status;
+      changed = true;
     }
-    return { data: { ...item_data, status: normalized_status }, changed: true };
+
+    if (normalized["row"] === undefined && normalized["row_number"] !== undefined) {
+      normalized["row"] = row_value_number(normalized["row_number"], 0);
+      changed = true;
+    }
+    if (normalized["row_number"] !== undefined) {
+      delete normalized["row_number"];
+      changed = true;
+    }
+
+    const raw_file_type = normalized["file_type"];
+    const normalized_file_type =
+      typeof raw_file_type === "string" && is_item_file_type(raw_file_type)
+        ? raw_file_type
+        : "NONE";
+    if (raw_file_type !== normalized_file_type) {
+      normalized["file_type"] = normalized_file_type;
+      changed = true;
+    }
+
+    const raw_text_type = normalized["text_type"];
+    const normalized_text_type = this.normalize_item_text_type_value(
+      raw_text_type,
+      normalized_file_type,
+      row_value_text(normalized["src"]),
+    );
+    if (raw_text_type !== normalized_text_type) {
+      normalized["text_type"] = normalized_text_type;
+      changed = true;
+    }
+
+    const raw_row = normalized["row"];
+    const normalized_row = row_value_number(raw_row, 0);
+    if (raw_row !== normalized_row) {
+      normalized["row"] = normalized_row;
+      changed = true;
+    }
+
+    const raw_retry_count = normalized["retry_count"];
+    const normalized_retry_count = row_value_number(raw_retry_count, 0);
+    if (raw_retry_count !== normalized_retry_count) {
+      normalized["retry_count"] = normalized_retry_count;
+      changed = true;
+    }
+
+    return { data: normalized, changed };
   }
 
   /**
@@ -202,4 +307,127 @@ export class ProjectDatabaseMigrationService {
     }
     return CURRENT_NONE;
   }
+
+  /**
+   * text_type 缺失或无效时写回当前文本规则语义。
+   */
+  private static normalize_item_text_type_value(
+    value: unknown,
+    file_type: string,
+    src: string,
+  ): string {
+    const raw_value = typeof value === "string" && is_item_text_type(value) ? value : "NONE";
+    if (raw_value === "NONE" && TEXT_TYPE_INFERENCE_FILE_TYPES.has(file_type)) {
+      return Item.infer_text_type_from_source(src);
+    }
+    return raw_value;
+  }
+
+  /**
+   * 归一分析 checkpoint 状态，避免运行态继续过滤持久旧值。
+   */
+  private static migrate_analysis_checkpoint_status_if_needed(db: DatabaseSync): void {
+    const rows = db.prepare("SELECT item_id, status FROM analysis_item_checkpoint").all();
+    const update = db.prepare("UPDATE analysis_item_checkpoint SET status = ? WHERE item_id = ?");
+    for (const row of rows) {
+      const raw_status = row_text(row, "status");
+      const normalized_status = this.normalize_checkpoint_status_value(raw_status);
+      if (raw_status !== normalized_status) {
+        update.run(normalized_status, row_number(row, "item_id"));
+      }
+    }
+  }
+
+  /**
+   * checkpoint 只保留任务进度三态。
+   */
+  private static normalize_checkpoint_status_value(value: unknown): string {
+    const raw_value = String(value ?? "");
+    if (raw_value === LEGACY_PROCESSED_IN_PAST) {
+      return CURRENT_PROCESSED;
+    }
+    if (raw_value === LEGACY_PROCESSING) {
+      return CURRENT_NONE;
+    }
+    return is_task_progress_status(raw_value) ? raw_value : CURRENT_NONE;
+  }
+
+  /**
+   * 读取文本规则旧载荷并输出当前 { text } 形状。
+   */
+  private static deserialize_rule_text_rows(rows: ProjectDatabaseMigrationRow[]): string {
+    for (const row of rows) {
+      const text = this.deserialize_rule_text(row_text(row, "data"));
+      if (text.trim() !== "") {
+        return text;
+      }
+    }
+    return "";
+  }
+
+  /**
+   * 读取条目规则旧载荷并输出当前单行数组形状。
+   */
+  private static deserialize_rule_entry_rows(rows: ProjectDatabaseMigrationRow[]): unknown[] {
+    const first_data = this.try_parse_json(row_text(rows[0] ?? {}, "data"));
+    if (Array.isArray(first_data)) {
+      return first_data.map((entry) =>
+        typeof entry === "object" && entry !== null && !Array.isArray(entry)
+          ? entry
+          : { value: entry },
+      );
+    }
+
+    const entries: unknown[] = [];
+    for (const row of rows) {
+      const data = this.try_parse_json(row_text(row, "data"));
+      if (Array.isArray(data)) {
+        entries.push(
+          ...data.map((entry) =>
+            typeof entry === "object" && entry !== null && !Array.isArray(entry)
+              ? entry
+              : { value: entry },
+          ),
+        );
+      } else if (typeof data === "object" && data !== null) {
+        entries.push(data);
+      }
+    }
+    return entries;
+  }
+
+  /**
+   * 读取文本规则字符串或对象载荷。
+   */
+  private static deserialize_rule_text(raw_data: string): string {
+    const data = this.try_parse_json(raw_data);
+    if (typeof data === "string") {
+      return data;
+    }
+    if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+      const text = (data as ProjectDatabaseMigrationRow)["text"];
+      return typeof text === "string" ? text : String(text ?? "");
+    }
+    return "";
+  }
+
+  /**
+   * JSON 损坏时返回 null，让迁移保留可打开性。
+   */
+  private static try_parse_json(raw_data: string): unknown {
+    try {
+      return JsonTool.parseStrict(raw_data) as unknown;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function row_value_text(value: unknown): string {
+  return typeof value === "string" ? value : String(value ?? "");
+}
+
+function row_value_number(value: unknown, fallback: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }

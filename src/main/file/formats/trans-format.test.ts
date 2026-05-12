@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { normalize_item } from "../../../base/item";
+import { Item } from "../../../base/item";
 import { TRANSFormat } from "./trans-format";
 
 let temp_dir = "";
@@ -99,7 +99,7 @@ describe("TRANSFormat", () => {
 
     await format.write_to_path(
       [
-        normalize_item({
+        Item.from_json({
           src: "原文",
           dst: "译文",
           tag: "/demo.map",

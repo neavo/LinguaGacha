@@ -9,7 +9,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 
 /**
  * ASS 字幕格式按 Events/Dialogue 文本字段解析，保留整行模板用于写回。
@@ -43,7 +43,7 @@ export class ASSFormat {
         ? line.split(",").slice(format_field_num).join(",")
         : "";
       const extra_field = content_value === "" ? line : line.replace(content_value, "{{CONTENT}}");
-      return normalize_item({
+      return Item.from_json({
         src: content_value.replace(/\\N/gu, "\n"),
         dst: "",
         extra_field,
@@ -77,17 +77,14 @@ export class ASSFormat {
       const bilingual = group
         .map((item) => {
           const extra_field = String(item.extra_field ?? "");
-          const resolve_item_effective_dst = effective_export_text(item);
-          if (this.config.deduplication_in_bilingual && item.src === resolve_item_effective_dst) {
-            return extra_field.replace(
-              "{{CONTENT}}",
-              resolve_item_effective_dst.replace(/\n/gu, "\\N"),
-            );
+          const item_dst = effective_export_text(item);
+          if (this.config.deduplication_in_bilingual && item.src === item_dst) {
+            return extra_field.replace("{{CONTENT}}", item_dst.replace(/\n/gu, "\\N"));
           }
           return extra_field
             .replace("{{CONTENT}}", "{{CONTENT}}\\N{{CONTENT}}")
             .replace("{{CONTENT}}", item.src.replace(/\n/gu, "\\N"))
-            .replace("{{CONTENT}}", resolve_item_effective_dst.replace(/\n/gu, "\\N"));
+            .replace("{{CONTENT}}", item_dst.replace(/\n/gu, "\\N"));
         })
         .join("\n");
       await write_text_file(

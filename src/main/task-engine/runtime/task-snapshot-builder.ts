@@ -4,8 +4,7 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../../database/databa
 import { get_runtime_section_revision } from "../../project/project-section-revision";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "./task-runtime-state";
-import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "../../../base/task";
-import { normalize_item_status } from "../../../base/item";
+import { is_task_skipped_item_status } from "../../../shared/task";
 import {
   is_task_type,
   type JsonRecord,
@@ -14,7 +13,7 @@ import {
   type TaskType,
 } from "./task-runtime-types";
 
-// 任务进度数值字段由历史 TaskSnapshotPayload 固定，迁移后继续逐项补齐零值。
+// 任务进度数值字段按 TaskSnapshotPayload 固定，缺失时逐项补齐零值。
 const TASK_PROGRESS_NUMBER_FIELDS = [
   "line",
   "total_line",
@@ -32,13 +31,13 @@ const TASK_PROGRESS_FLOAT_FIELDS = ["time", "start_time"] as const;
  * 在 API Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 `TaskRuntimeState`。
  */
 export class TaskSnapshotBuilder {
-  // database 是持久任务进度的唯一读源，不能改为历史会话快照。
+  // database 是持久任务进度的唯一读源。
   private readonly database: ProjectDatabase;
 
-  // task_runtime_state 是实时 busy / 请求中数量的唯一读源，不再反查非权威入口。
+  // task_runtime_state 是实时 busy / 请求中数量的唯一读源。
   private readonly task_runtime_state: TaskRuntimeState;
 
-  // session_state 决定当前公开工程路径，避免从旧会话反推 loaded/path。
+  // session_state 决定当前公开工程路径。
   private readonly session_state: ProjectSessionState;
 
   /**
@@ -163,7 +162,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 分析覆盖率只依赖当前 `.lg` 中的 items 与 checkpoint，避免旧缓存决定公开快照。
+   * 分析覆盖率只依赖当前 `.lg` 中的 items 与 checkpoint。
    */
   private build_analysis_status_summary(): MutableJsonRecord {
     const state = this.session_state.snapshot();
@@ -175,7 +174,7 @@ export class TaskSnapshotBuilder {
     let processed_line = 0;
     let error_line = 0;
     for (const item of this.get_all_items(state.projectPath)) {
-      const status = this.normalize_item_status(item["status"]);
+      const status = String(item["status"] ?? "NONE");
       if (is_task_skipped_item_status(status)) {
         continue;
       }
@@ -200,7 +199,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 进度字段坏值按旧 TaskSnapshotPayload 归零，额外字段继续透传给前端兼容窗口。
+   * 进度字段坏值归零，额外字段继续透传给前端兼容窗口。
    */
   private normalize_progress_snapshot(raw_snapshot: JsonRecord): MutableJsonRecord {
     const snapshot: MutableJsonRecord = { ...raw_snapshot };
@@ -249,18 +248,11 @@ export class TaskSnapshotBuilder {
       }
       const item_id = this.read_number(row["item_id"], 0);
       const status = String(row["status"] ?? "");
-      if (item_id > 0 && (TASK_PROGRESS_STATUSES as readonly string[]).includes(status)) {
+      if (item_id > 0) {
         checkpoints.set(item_id, status);
       }
     }
     return checkpoints;
-  }
-
-  /**
-   * 历史处理中状态在任务进度统计里归一为当前可消费状态。
-   */
-  private normalize_item_status(value: ApiJsonValue | undefined): string {
-    return normalize_item_status(value);
   }
 
   /**
@@ -271,7 +263,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 数字进度使用整数，兼容历史 int 转换语义。
+   * 数字进度使用整数转换语义。
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -279,7 +271,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 时间进度保留小数，避免耗时显示在迁移后抖动。
+   * 时间进度保留小数，避免耗时显示抖动。
    */
   private read_float(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);

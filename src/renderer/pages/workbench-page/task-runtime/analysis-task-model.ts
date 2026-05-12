@@ -1,4 +1,4 @@
-import { is_active_analysis_task_status as is_base_active_analysis_task_status } from "@base/task";
+import { is_active_analysis_task_status as is_base_active_analysis_task_status } from "@shared/task";
 
 export type AnalysisTaskActionKind =
   | "reset-all"

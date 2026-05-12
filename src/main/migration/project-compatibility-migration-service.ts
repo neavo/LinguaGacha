@@ -1,8 +1,8 @@
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import type { ConfigService } from "../service/config-service";
+import type { SettingService } from "../service/setting-service";
 import { is_text_preserve_mode } from "../../base/quality";
-import { normalize_app_language } from "../../base/settings";
+import { normalize_app_language } from "../../base/setting";
 
 type MigrationMetaRecord = Record<string, DatabaseJsonValue>;
 
@@ -19,14 +19,14 @@ const TRANSLATION_PROMPT_RULE_TYPE = "translation_prompt";
  */
 export class ProjectCompatibilityMigrationService {
   private readonly database: ProjectDatabase;
-  private readonly config_service: ConfigService;
+  private readonly setting_service: SettingService;
 
   /**
    * 注入当前工程事实读写入口和应用语言来源，避免迁移服务自行解析全局状态。
    */
-  public constructor(database: ProjectDatabase, config_service: ConfigService) {
+  public constructor(database: ProjectDatabase, setting_service: SettingService) {
     this.database = database;
-    this.config_service = config_service;
+    this.setting_service = setting_service;
   }
 
   /**
@@ -76,7 +76,7 @@ export class ProjectCompatibilityMigrationService {
    * 按当前应用语言优先读取旧 ZH/EN 翻译提示词槽位，保持旧迁移语义。
    */
   private get_legacy_translation_prompt(project_path: string): string {
-    const config = this.config_service.load_config();
+    const config = this.setting_service.load_setting();
     const preferred_rule_types =
       normalize_app_language(config["app_language"]) === "EN"
         ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]

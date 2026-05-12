@@ -5,7 +5,7 @@ import {
   type ProjectStoreSectionRevisions,
   type ProjectStoreState,
 } from "@/project/store/project-store";
-import { TASK_PROGRESS_STATUSES } from "@base/task";
+import { TASK_PROGRESS_STATUSES } from "@shared/task";
 
 type ProofreadingStoreItem = {
   item_id: number;

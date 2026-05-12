@@ -14,11 +14,11 @@ import { ProjectPatchAdapter } from "../project/project-patch-adapter";
 import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
 import { AppPathService } from "../service/path-service";
-import { ConfigService } from "../service/config-service";
+import { SettingService } from "../service/setting-service";
 import { FileExportService } from "../file/file-export-service";
 import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
-import type { LogEvent } from "../log/log-types";
+import type { LogEvent } from "../../shared/log";
 import { CoreEventHub } from "../events/core-event-hub";
 import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
 import { ProjectPatchPublisher } from "../project/project-patch-publisher";
@@ -159,12 +159,12 @@ export class ApiGatewayServer {
     );
     this.core_event_hub = core_event_hub;
     core_event_hub.start();
-    const config_service = new ConfigService(paths, core_event_hub);
-    const model_service = new ModelService(paths, config_service);
+    const setting_service = new SettingService(paths, core_event_hub);
+    const model_service = new ModelService(paths, setting_service);
     const project_lifecycle_service = new ProjectLifecycleService(
       this.options.database,
       this.project_session_state,
-      config_service,
+      setting_service,
       paths,
       this.options.logManager,
     );
@@ -202,7 +202,7 @@ export class ApiGatewayServer {
       coreEventHub: core_event_hub,
       projectPatchPublisher: project_patch_publisher,
       executorClient: executor_client,
-      configService: config_service,
+      SettingService: setting_service,
       snapshotBuilder: task_snapshot_builder,
       logManager: this.options.logManager,
     });
@@ -211,23 +211,23 @@ export class ApiGatewayServer {
       task_snapshot_builder,
       this.task_runtime_state,
       this.project_session_state,
-      config_service,
+      setting_service,
     );
     const project_reset_preview_service = new ProjectResetPreviewService(
       this.options.database,
       this.task_runtime_state,
       this.project_session_state,
     );
-    const file_preview_service = new FilePreviewService(config_service);
+    const file_preview_service = new FilePreviewService(setting_service);
     const file_export_service = new FileExportService(
       this.options.database,
-      config_service,
+      setting_service,
       this.project_session_state,
       this.options.logManager,
     );
     const quality_service = new QualityService(
       paths,
-      config_service,
+      setting_service,
       this.options.database,
       this.project_session_state,
     );
@@ -273,13 +273,15 @@ export class ApiGatewayServer {
         return context.json(envelope, envelope.error.code === "invalid_request" ? 400 : 500);
       }
     });
-    this.post_json(app, "/api/settings/app", () => config_service.get_app_settings());
-    this.post_json(app, "/api/settings/update", (body) => config_service.update_app_settings(body));
+    this.post_json(app, "/api/settings/app", () => setting_service.get_app_settings());
+    this.post_json(app, "/api/settings/update", (body) =>
+      setting_service.update_app_settings(body),
+    );
     this.post_json(app, "/api/settings/recent-projects/add", (body) =>
-      config_service.add_recent_project(body),
+      setting_service.add_recent_project(body),
     );
     this.post_json(app, "/api/settings/recent-projects/remove", (body) =>
-      config_service.remove_recent_project(body),
+      setting_service.remove_recent_project(body),
     );
 
     this.post_json(app, "/api/models/snapshot", () => model_service.get_snapshot());

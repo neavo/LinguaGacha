@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import type { ConfigService } from "../service/config-service";
+import type { SettingService } from "../service/setting-service";
 import { ProjectCompatibilityMigrationService } from "./project-compatibility-migration-service";
 
 type MutableJsonRecord = Record<string, DatabaseJsonValue>;
@@ -103,11 +103,11 @@ function create_service(options: {
       return null;
     }),
   } as unknown as ProjectDatabase;
-  const config_service = {
-    load_config: vi.fn(() => ({
+  const setting_service = {
+    load_setting: vi.fn(() => ({
       app_language: "ZH",
       ...options.config,
     })),
-  } as unknown as ConfigService;
-  return new ProjectCompatibilityMigrationService(database, config_service);
+  } as unknown as SettingService;
+  return new ProjectCompatibilityMigrationService(database, setting_service);
 }

@@ -8,7 +8,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "./path-service";
-import { ConfigService } from "./config-service";
+import { SettingService } from "./setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
 import {
@@ -16,21 +16,8 @@ import {
   get_runtime_section_revision,
 } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
-import {
-  build_quality_rule_revision_key,
-  normalize_quality_rule_type,
-  normalize_text_preserve_mode,
-  resolve_quality_rule_database_type,
-  resolve_quality_rule_enabled_meta_key,
-  type QualityRuleType,
-} from "../../base/quality";
-import {
-  build_prompt_enabled_meta_key,
-  build_prompt_revision_key,
-  normalize_prompt_task_type,
-  resolve_prompt_database_type,
-  type PromptTaskType,
-} from "../../base/prompt";
+import { QualityRule, type QualityRuleKind } from "../../base/quality";
+import { Prompt, type PromptKind } from "../../base/prompt";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -42,7 +29,7 @@ export class QualityService {
   private readonly paths: AppPathService;
 
   // 提示词模板语言跟随应用配置，因此质量服务需要配置读取能力。
-  private readonly config_service: ConfigService;
+  private readonly setting_service: SettingService;
 
   // 质量规则和提示词工程事实只通过 ProjectDatabase workflow 读写。
   private readonly database: ProjectDatabase;
@@ -55,12 +42,12 @@ export class QualityService {
    */
   public constructor(
     paths: AppPathService,
-    config_service: ConfigService,
+    setting_service: SettingService,
     database: ProjectDatabase,
     session_state: ProjectSessionState,
   ) {
     this.paths = paths;
-    this.config_service = config_service;
+    this.setting_service = setting_service;
     this.database = database;
     this.session_state = session_state;
   }
@@ -78,7 +65,7 @@ export class QualityService {
     this.database.execute_transaction([
       this.op("setRules", {
         projectPath: project_path,
-        ruleType: resolve_quality_rule_database_type(rule_type),
+        ruleType: QualityRule.from_json(rule_type).database_type,
         rules: entries as unknown as DatabaseJsonValue,
       }),
       this.op("setMeta", {
@@ -140,17 +127,17 @@ export class QualityService {
    * 列出内置和用户规则预设，统一虚拟 id 语义。
    */
   public list_rule_presets(request: JsonRecord): JsonRecord {
-    const preset_dir_name = String(request["preset_dir_name"] ?? "");
+    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     return {
       builtin_presets: this.list_preset_items(
         "builtin",
-        this.paths.get_quality_rule_builtin_preset_dir(preset_dir_name),
-        this.paths.get_quality_rule_builtin_preset_relative_dir(preset_dir_name),
+        this.paths.get_quality_rule_builtin_preset_dir(preset_directory),
+        this.paths.get_quality_rule_builtin_preset_relative_dir(preset_directory),
         ".json",
       ) as unknown as ApiJsonValue,
       user_presets: this.list_preset_items(
         "user",
-        this.paths.get_quality_rule_user_preset_dir(preset_dir_name),
+        this.paths.get_quality_rule_user_preset_dir(preset_directory),
         undefined,
         ".json",
       ) as unknown as ApiJsonValue,
@@ -161,9 +148,9 @@ export class QualityService {
    * 读取规则预设内容，隐藏内置和用户目录差异。
    */
   public read_rule_preset(request: JsonRecord): JsonRecord {
-    const preset_dir_name = String(request["preset_dir_name"] ?? "");
+    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const preset_path = this.resolve_rule_preset_path(
-      preset_dir_name,
+      preset_directory,
       String(request["virtual_id"] ?? ""),
     );
     const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
@@ -177,10 +164,10 @@ export class QualityService {
    * 保存用户规则预设，确保文件名和目录规则一致。
    */
   public save_rule_preset(request: JsonRecord): JsonRecord {
-    const preset_dir_name = String(request["preset_dir_name"] ?? "");
+    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const name = this.normalize_preset_name(String(request["name"] ?? ""));
     const entries = this.normalize_rule_entries(request["entries"]);
-    const directory = this.paths.get_quality_rule_user_preset_dir(preset_dir_name);
+    const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     fs.mkdirSync(directory, { recursive: true });
     const file_name = `${name}.json`;
     fs.writeFileSync(
@@ -195,7 +182,7 @@ export class QualityService {
    * 重命名用户规则预设，保护内置预设不可变边界。
    */
   public rename_rule_preset(request: JsonRecord): JsonRecord {
-    const preset_dir_name = String(request["preset_dir_name"] ?? "");
+    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const { source, file_name } = this.split_virtual_id(
       String(request["virtual_id"] ?? ""),
       ".json",
@@ -203,7 +190,7 @@ export class QualityService {
     if (source !== "user") {
       throw new Error("builtin preset cannot be renamed");
     }
-    const directory = this.paths.get_quality_rule_user_preset_dir(preset_dir_name);
+    const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     const new_file_name = `${this.normalize_preset_name(String(request["new_name"] ?? ""))}.json`;
     fs.renameSync(path.join(directory, file_name), path.join(directory, new_file_name));
     return { item: this.build_preset_item("user", new_file_name, directory, ".json") };
@@ -213,7 +200,7 @@ export class QualityService {
    * 删除用户规则预设，避免调用方误删内置资源。
    */
   public delete_rule_preset(request: JsonRecord): JsonRecord {
-    const preset_dir_name = String(request["preset_dir_name"] ?? "");
+    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const { source, file_name } = this.split_virtual_id(
       String(request["virtual_id"] ?? ""),
       ".json",
@@ -222,7 +209,7 @@ export class QualityService {
       throw new Error("builtin preset cannot be deleted");
     }
     const file_path = path.join(
-      this.paths.get_quality_rule_user_preset_dir(preset_dir_name),
+      this.paths.get_quality_rule_user_preset_dir(preset_directory),
       file_name,
     );
     fs.rmSync(file_path);
@@ -233,8 +220,8 @@ export class QualityService {
    * 读取提示词模板，保持任务类型到模板路径的映射集中。
    */
   public get_prompt_template(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
-    const config = this.config_service.load_config();
+    const task_type = Prompt.from_json(request["task_type"]).kind;
+    const config = this.setting_service.load_setting();
     const language = String(config["app_language"] ?? "ZH").toLowerCase();
     const template_dir = this.paths.get_prompt_template_dir(
       task_type,
@@ -253,7 +240,7 @@ export class QualityService {
    * 保存工程提示词并返回 mutation ack，保持 prompts revision 对齐。
    */
   public async save_prompt(request: JsonRecord): Promise<JsonRecord> {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
+    const task_type = Prompt.from_json(request["task_type"]).kind;
     const expected_revision = Number(request["expected_revision"] ?? 0);
     const project_path = await this.require_project_path();
     const current_revision = this.get_prompt_revision(project_path, task_type);
@@ -261,12 +248,12 @@ export class QualityService {
     const operations: DatabaseOperation[] = [
       this.op("setRuleText", {
         projectPath: project_path,
-        ruleType: resolve_prompt_database_type(task_type),
+        ruleType: Prompt.from_json(task_type).database_type,
         text: String(request["text"] ?? ""),
       }),
       this.op("setMeta", {
         projectPath: project_path,
-        key: this.build_prompt_revision_key(task_type),
+        key: this.prompt_revision_key(task_type),
         value: current_revision + 1,
       }),
     ];
@@ -274,7 +261,7 @@ export class QualityService {
       operations.push(
         this.op("setMeta", {
           projectPath: project_path,
-          key: build_prompt_enabled_meta_key(task_type),
+          key: Prompt.from_json(task_type).enabled_meta_key,
           value: Boolean(request["enabled"]),
         }),
       );
@@ -300,14 +287,14 @@ export class QualityService {
    * 导出提示词文本，保持文件写出留在 Electron main。
    */
   public async export_prompt(request: JsonRecord): Promise<JsonRecord> {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
+    const task_type = Prompt.from_json(request["task_type"]).kind;
     const project_path = await this.require_project_path();
     const output_path = this.ensure_txt_suffix(String(request["path"] ?? ""));
     const text = String(
       this.database.execute(
         this.op("getRuleText", {
           projectPath: project_path,
-          ruleType: resolve_prompt_database_type(task_type),
+          ruleType: Prompt.from_json(task_type).database_type,
         }),
       ) ?? "",
     );
@@ -319,7 +306,7 @@ export class QualityService {
    * 列出提示词预设，统一内置和用户预设的虚拟 id。
    */
   public list_prompt_presets(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
+    const task_type = Prompt.from_json(request["task_type"]).kind;
     return {
       builtin_presets: this.list_preset_items(
         "builtin",
@@ -340,7 +327,7 @@ export class QualityService {
    * 读取提示词预设文本，隐藏资源目录差异。
    */
   public read_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
+    const task_type = Prompt.from_json(request["task_type"]).kind;
     const preset_path = this.resolve_prompt_preset_path(
       task_type,
       String(request["virtual_id"] ?? ""),
@@ -352,7 +339,7 @@ export class QualityService {
    * 保存用户提示词预设，统一命名和后缀规则。
    */
   public save_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
+    const task_type = Prompt.from_json(request["task_type"]).kind;
     const directory = this.paths.get_prompt_user_preset_dir(task_type);
     fs.mkdirSync(directory, { recursive: true });
     const file_path = path.join(
@@ -367,7 +354,7 @@ export class QualityService {
    * 重命名用户提示词预设，保护内置预设只读。
    */
   public rename_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
+    const task_type = Prompt.from_json(request["task_type"]).kind;
     const { source, file_name } = this.split_virtual_id(
       String(request["virtual_id"] ?? ""),
       ".txt",
@@ -385,7 +372,7 @@ export class QualityService {
    * 删除用户提示词预设，避免调用方自行判断预设来源。
    */
   public delete_prompt_preset(request: JsonRecord): JsonRecord {
-    const task_type = this.normalize_prompt_task_type(request["task_type"]);
+    const task_type = Prompt.from_json(request["task_type"]).kind;
     const { source, file_name } = this.split_virtual_id(
       String(request["virtual_id"] ?? ""),
       ".txt",
@@ -422,7 +409,7 @@ export class QualityService {
   /**
    * 读取规则 revision，隔离 meta key 组合细节。
    */
-  private get_rule_revision(project_path: string, rule_type: QualityRuleType): number {
+  private get_rule_revision(project_path: string, rule_type: QualityRuleKind): number {
     return get_runtime_section_revision(
       this.read_project_meta(project_path),
       `quality:${rule_type}`,
@@ -432,7 +419,7 @@ export class QualityService {
   /**
    * 读取提示词 revision，隔离 meta key 组合细节。
    */
-  private get_prompt_revision(project_path: string, task_type: PromptTaskType): number {
+  private get_prompt_revision(project_path: string, task_type: PromptKind): number {
     return get_runtime_section_revision(
       this.read_project_meta(project_path),
       `prompts:${task_type}`,
@@ -451,49 +438,36 @@ export class QualityService {
   /**
    * 生成规则 revision key，避免调用方拼接 meta 名称。
    */
-  private build_rule_revision_key(rule_type: QualityRuleType): string {
-    return build_quality_rule_revision_key(rule_type);
+  private build_rule_revision_key(rule_type: QualityRuleKind): string {
+    return QualityRule.from_json(rule_type).revision_meta_key;
   }
 
   /**
    * 生成提示词 revision key，避免调用方拼接 meta 名称。
    */
-  private build_prompt_revision_key(task_type: PromptTaskType): string {
-    return build_prompt_revision_key(task_type);
+  private prompt_revision_key(task_type: PromptKind): string {
+    return Prompt.from_json(task_type).revision_meta_key;
   }
 
   /**
    * 映射规则类型到 meta key，保持规则类型命名唯一。
    */
-  private resolve_rule_meta_key(rule_type: QualityRuleType, key: string): string {
+  private resolve_rule_meta_key(rule_type: QualityRuleKind, key: string): string {
     if (key === "enabled") {
-      const meta_key = resolve_quality_rule_enabled_meta_key(rule_type);
-      if (meta_key === null) {
-        throw new Error(`当前规则类型不支持布尔启用切换：${rule_type}`);
-      }
-      return meta_key;
+      return QualityRule.from_json(rule_type).resolve_meta_key(key);
     }
-    if (rule_type === "text_preserve" && key === "mode") {
-      return "text_preserve_mode";
-    }
-    throw new Error(`当前规则类型不支持该 meta 写入：${rule_type} -> ${key}`);
+    return QualityRule.from_json(rule_type).resolve_meta_key(key);
   }
 
   /**
    * 归一规则 meta 值，兼容旧项目缺失字段。
    */
   private normalize_rule_meta_value(
-    rule_type: QualityRuleType,
+    rule_type: QualityRuleKind,
     key: string,
     value: ApiJsonValue,
   ): ApiJsonValue {
-    if (key === "enabled") {
-      return Boolean(value);
-    }
-    if (rule_type === "text_preserve" && key === "mode") {
-      return normalize_text_preserve_mode(value);
-    }
-    return value;
+    return QualityRule.from_json(rule_type).normalize_meta_value(key, value) as ApiJsonValue;
   }
 
   /**
@@ -521,49 +495,29 @@ export class QualityService {
   /**
    * 归一规则类型，保护质量规则接口只接受已知分组。
    */
-  private normalize_rule_type(value: ApiJsonValue | undefined): QualityRuleType {
-    return normalize_quality_rule_type(String(value ?? ""));
+  private normalize_rule_type(value: ApiJsonValue | undefined): QualityRuleKind {
+    return QualityRule.from_json(value).kind;
   }
 
   /**
    * 归一提示词任务类型，保护提示词目录映射。
    */
-  private normalize_prompt_task_type(value: ApiJsonValue | undefined): PromptTaskType {
-    return normalize_prompt_task_type(String(value ?? ""));
+  private normalize_prompt_kind(value: ApiJsonValue | undefined): PromptKind {
+    return Prompt.from_json(value).kind;
   }
 
   /**
    * 归一规则条目列表，确保写入数据库前字段完整。
    */
   private normalize_rule_entries(value: ApiJsonValue | undefined): JsonRecord[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    const result: JsonRecord[] = [];
-    for (const entry of value) {
-      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-        continue;
-      }
-      const normalized = this.normalize_rule_entry(entry);
-      if (String(normalized["src"] ?? "") === "") {
-        continue;
-      }
-      result.push(normalized);
-    }
-    return result;
+    return QualityRule.normalize_entries(value) as JsonRecord[];
   }
 
   /**
    * 归一单条规则，兼容导入和页面编辑两种来源。
    */
   private normalize_rule_entry(entry: JsonRecord): JsonRecord {
-    return {
-      src: String(entry["src"] ?? "").trim(),
-      dst: String(entry["dst"] ?? "").trim(),
-      info: String(entry["info"] ?? "").trim(),
-      regex: Boolean(entry["regex"] ?? false),
-      case_sensitive: Boolean(entry["case_sensitive"] ?? false),
-    };
+    return QualityRule.normalize_entry(entry) as JsonRecord;
   }
 
   /**
@@ -771,12 +725,12 @@ export class QualityService {
   /**
    * 解析规则预设路径，保护内置与用户预设边界。
    */
-  private resolve_rule_preset_path(preset_dir_name: string, virtual_id: string): string {
+  private resolve_rule_preset_path(preset_directory: string, virtual_id: string): string {
     const { source, file_name } = this.split_virtual_id(virtual_id, ".json");
     const directory =
       source === "builtin"
-        ? this.paths.get_quality_rule_builtin_preset_dir(preset_dir_name)
-        : this.paths.get_quality_rule_user_preset_dir(preset_dir_name);
+        ? this.paths.get_quality_rule_builtin_preset_dir(preset_directory)
+        : this.paths.get_quality_rule_user_preset_dir(preset_directory);
     return path.join(directory, file_name);
   }
 

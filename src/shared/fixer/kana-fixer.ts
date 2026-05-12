@@ -1,4 +1,4 @@
-import { is_kana_character } from "../../base/language";
+import { is_kana_character } from "../language";
 
 // 拟声词小假名：这些字符只有贴在其它假名旁边时才认为是有效日文残留。
 const RULE_ONOMATOPOEIA = new Set([

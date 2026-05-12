@@ -1,5 +1,5 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { normalize_log_level, type LogLevel } from "@base/log";
+import { normalize_log_level, type LogLevel } from "@shared/log";
 
 export type { LogLevel };
 

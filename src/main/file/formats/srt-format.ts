@@ -9,7 +9,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 
 /**
  * SRT 格式以字幕块为单位解析，序号和时间轴放入 row/extra_field。
@@ -31,7 +31,7 @@ export class SRTFormat {
         return;
       }
       items.push(
-        normalize_item({
+        Item.from_json({
           src: chunk.slice(2).join("\n"),
           dst: "",
           extra_field: chunk[1] ?? "",
@@ -68,12 +68,12 @@ export class SRTFormat {
       for (const item of group) {
         const row = String(item.row);
         const time_code = String(item.extra_field ?? "");
-        const resolve_item_effective_dst = effective_export_text(item);
-        translated += `${row}\n${time_code}\n${resolve_item_effective_dst}\n\n`;
+        const item_dst = effective_export_text(item);
+        translated += `${row}\n${time_code}\n${item_dst}\n\n`;
         const content =
-          this.config.deduplication_in_bilingual && item.src === resolve_item_effective_dst
-            ? resolve_item_effective_dst
-            : `${item.src}\n${resolve_item_effective_dst}`;
+          this.config.deduplication_in_bilingual && item.src === item_dst
+            ? item_dst
+            : `${item.src}\n${item_dst}`;
         bilingual += `${row}\n${time_code}\n${content}\n\n`;
       }
       await write_text_file(

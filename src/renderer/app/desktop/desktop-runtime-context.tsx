@@ -39,7 +39,7 @@ import {
   normalize_project_save_mode,
   type AppLanguage,
   type ProjectSaveMode,
-} from "@base/settings";
+} from "@base/setting";
 
 type RecentProjectEntry = {
   path: string;

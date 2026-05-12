@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
-import type { ConfigService } from "../service/config-service";
+import type { SettingService } from "../service/setting-service";
 import { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
@@ -365,7 +365,7 @@ describe("ProjectLifecycleService", () => {
     expect(log_manager.error).toHaveBeenCalledWith(
       "默认质量规则预设加载失败",
       expect.objectContaining({
-        context: { preset_dir_name: "glossary", virtual_id: "builtin:missing.json" },
+        context: { preset_directory: "glossary", virtual_id: "builtin:missing.json" },
         source: "project-lifecycle",
       }),
     );
@@ -512,7 +512,7 @@ describe("ProjectLifecycleService", () => {
     return new ProjectLifecycleService(
       options.database,
       options.session_state ?? create_session_state(),
-      create_config_service(options.config ?? {}),
+      create_setting_service(options.config ?? {}),
       new AppPathService({ appRoot: app_root }),
       options.log_manager ?? create_log_manager(),
     );
@@ -588,9 +588,9 @@ describe("ProjectLifecycleService", () => {
     return session_state;
   }
 
-  function create_config_service(config: MutableJsonRecord) {
+  function create_setting_service(config: MutableJsonRecord) {
     return {
-      load_config: vi.fn(() => ({
+      load_setting: vi.fn(() => ({
         app_language: "ZH",
         source_language: "JA",
         target_language: "ZH",
@@ -598,7 +598,7 @@ describe("ProjectLifecycleService", () => {
         skip_duplicate_source_text_enable: true,
         ...config,
       })),
-    } as unknown as ConfigService;
+    } as unknown as SettingService;
   }
 
   function create_log_manager() {

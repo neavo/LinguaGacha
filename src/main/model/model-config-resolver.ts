@@ -18,7 +18,7 @@ export function read_model_records(config: Record<string, ApiJsonValue>): ModelR
 }
 
 /**
- * 复刻历史 Config.get_active_model() 的模型选择规则，避免 服务端出现第二套口径。
+ * 复刻历史设置文件中的激活模型选择规则，避免服务端出现第二套口径。
  */
 export function resolve_active_model(config: Record<string, ApiJsonValue>): ModelRecord | null {
   const models = read_model_records(config);

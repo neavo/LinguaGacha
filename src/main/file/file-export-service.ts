@@ -4,10 +4,10 @@ import path from "node:path";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import { ConfigService } from "../service/config-service";
+import { SettingService } from "../service/setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
-import { normalize_item, normalize_item_name, type Item, type ItemStatus } from "../../base/item";
+import { Item, type ItemStatus } from "../../base/item";
 
 /**
  * API 入参和返回值在文件域内按 JSON 对象处理，避免暴露内部类实例。
@@ -17,7 +17,7 @@ type JsonRecord = Record<string, ApiJsonValue>;
 /**
  * 设置服务返回值只承诺 JSON 形态，导出层按需要逐项收窄类型。
  */
-type ConfigRecord = Record<string, ApiJsonValue>;
+type SettingRecord = Record<string, ApiJsonValue>;
 
 /**
  * 导出层只依赖日志的公开 info/error 能力，避免把完整 LogManager 生命周期传进文件域。
@@ -30,7 +30,7 @@ type FileExportLogManager = Pick<LogManager, "info" | "error">;
 const FILE_EXPORT_LOG_SOURCE = "file-export";
 
 /**
- * 文案表对齐历史 Localizer 输出，导出路径迁移后仍保持用户可见日志口径。
+ * 文案表固定文件导出日志口径。
  */
 const EXPORT_LOG_TEXT = {
   ZH: {
@@ -56,7 +56,7 @@ export class FileExportService {
    */
   public constructor(
     private readonly database: ProjectDatabase,
-    private readonly config_service: ConfigService,
+    private readonly setting_service: SettingService,
     private readonly session_state: ProjectSessionState,
     private readonly log_manager?: FileExportLogManager,
   ) {}
@@ -66,7 +66,7 @@ export class FileExportService {
    */
   public async export_translation(): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const config = this.config_service.load_config();
+    const config = this.setting_service.load_setting();
     this.log_export_start(config);
     try {
       const items = this.read_project_items(project_path);
@@ -85,7 +85,7 @@ export class FileExportService {
    */
   public async export_converted_translation(request: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const config = this.config_service.load_config();
+    const config = this.setting_service.load_setting();
     const suffix = String(request["suffix"] ?? "");
     if (suffix !== "_S2T" && suffix !== "_T2S") {
       throw new Error("导出后缀无效。");
@@ -111,10 +111,10 @@ export class FileExportService {
       if (converted === undefined) {
         return item;
       }
-      return normalize_item({
+      return Item.from_json({
         ...item,
         dst: String(converted["dst"] ?? item.dst),
-        name_dst: normalize_item_name(converted["name_dst"] ?? item.name_dst),
+        name_dst: Item.normalize_name(converted["name_dst"] ?? item.name_dst),
       });
     });
     this.fill_duplicated_translations(export_items);
@@ -136,7 +136,7 @@ export class FileExportService {
     project_path: string,
     items: Item[],
     custom_suffix: string,
-    config: ConfigRecord,
+    config: SettingRecord,
   ): Promise<string> {
     const paths = this.build_export_paths(
       project_path,
@@ -205,11 +205,11 @@ export class FileExportService {
         (item): item is JsonRecord =>
           typeof item === "object" && item !== null && !Array.isArray(item),
       )
-      .map((item) => normalize_item(item));
+      .map((item) => Item.from_json(item));
   }
 
   /**
-   * DUPLICATED 条目复用同文件同原文的已处理译文，保持旧导出行为。
+   * DUPLICATED 条目复用同文件同原文的已处理译文，保持导出口径稳定。
    */
   private fill_duplicated_translations(items: Item[]): void {
     const translation_by_file_src = new Map<string, { dst: string; name_dst: ApiJsonValue }>();
@@ -258,7 +258,7 @@ export class FileExportService {
   }
 
   /**
-   * 时间戳格式对齐历史导出目录后缀。
+   * 时间戳使用固定导出目录后缀格式。
    */
   private timestamp_suffix(): string {
     const now = new Date();
@@ -271,7 +271,7 @@ export class FileExportService {
   /**
    * 导出日志文案跟随应用语言，保持文件写回路径和既有导出提示一致。
    */
-  private export_log_text(config: ConfigRecord): (typeof EXPORT_LOG_TEXT)["ZH"] {
+  private export_log_text(config: SettingRecord): (typeof EXPORT_LOG_TEXT)["ZH"] {
     return String(config["app_language"] ?? "ZH").toUpperCase() === "EN"
       ? EXPORT_LOG_TEXT.EN
       : EXPORT_LOG_TEXT.ZH;
@@ -280,14 +280,14 @@ export class FileExportService {
   /**
    * 开始日志在真实文件写回前输出，便于日志窗口定位用户触发的导出动作。
    */
-  private log_export_start(config: ConfigRecord): void {
+  private log_export_start(config: SettingRecord): void {
     this.log_manager?.info(this.export_log_text(config).start, { source: FILE_EXPORT_LOG_SOURCE });
   }
 
   /**
-   * 完成日志保留旧实现的前后空行，避免连续任务日志挤在一起。
+   * 完成日志输出前后空行，避免连续任务日志挤在一起。
    */
-  private log_export_done(config: ConfigRecord, output_path: string): void {
+  private log_export_done(config: SettingRecord, output_path: string): void {
     const log_text = this.export_log_text(config);
     this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
     this.log_manager?.info(log_text.done(output_path), { source: FILE_EXPORT_LOG_SOURCE });
@@ -297,7 +297,7 @@ export class FileExportService {
   /**
    * 底层写文件失败时先记录文件写入错误，再让公开导出入口记录导出失败。
    */
-  private log_write_failed(config: ConfigRecord, error: unknown): void {
+  private log_write_failed(config: SettingRecord, error: unknown): void {
     this.log_manager?.error(this.export_log_text(config).write_failed, {
       source: FILE_EXPORT_LOG_SOURCE,
       ...this.error_log_payload(error),
@@ -305,9 +305,9 @@ export class FileExportService {
   }
 
   /**
-   * 导出失败日志对齐旧入口的终态提示，同时保留异常详情给日志文件。
+   * 导出失败日志输出终态提示，同时保留异常详情给日志文件。
    */
-  private log_export_failed(config: ConfigRecord, error: unknown): void {
+  private log_export_failed(config: SettingRecord, error: unknown): void {
     this.log_manager?.error(this.export_log_text(config).failed, {
       source: FILE_EXPORT_LOG_SOURCE,
       ...this.error_log_payload(error),

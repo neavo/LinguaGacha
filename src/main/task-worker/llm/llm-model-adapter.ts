@@ -5,9 +5,7 @@ import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import {
-  model_api_format_supports_reasoning_by_default,
-  normalize_model_api_format,
-  normalize_model_thinking_level,
+  Model as BaseModel,
   type ModelThinkingLevel,
   type ModelApiFormat,
 } from "../../../base/model";
@@ -185,14 +183,14 @@ function read_enabled_record(
  * 未识别格式按 OpenAI-compatible 兜底，避免旧配置阻断任务启动。
  */
 function normalize_api_format(value: string): ModelApiFormat {
-  return normalize_model_api_format(value);
+  return BaseModel.normalize_api_format(value);
 }
 
 /**
  * 思考挡位只允许四档稳定值，坏值在边界处收窄为关闭。
  */
 function normalize_thinking_level(value: string): ModelThinkingLevel {
-  return normalize_model_thinking_level(value);
+  return BaseModel.normalize_thinking_level(value);
 }
 
 /**
@@ -251,7 +249,7 @@ function resolve_compat(model_id: string, api_format: ModelApiFormat): Model<Api
  * reasoning 标记只表达模型是否可能产出思考内容，具体挡位由 payload patch 决定。
  */
 function should_enable_pi_reasoning(model_id: string, api_format: ModelApiFormat): boolean {
-  if (model_api_format_supports_reasoning_by_default(api_format)) {
+  if (BaseModel.api_format_supports_reasoning_by_default(api_format)) {
     return true;
   }
   return /gpt-5|qwen3\.5|doubao-seed-(?:1-6|1-8|2-0)|deepseek|kimi|glm/iu.test(model_id);

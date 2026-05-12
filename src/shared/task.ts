@@ -1,13 +1,13 @@
-// 公开任务类型固定为三类，API、运行态和页面任务面板都使用这一组。
+// 任务类型；公开值用小写业务名。
 export const TASK_TYPES = ["translation", "analysis", "retranslate"] as const;
 
-// TaskMode 是基础命令模式值域，具体命令可在服务层收窄子集。
+// 翻译/分析模式（用户意图）。
 export const TASK_MODES = ["full", "selected", "resume"] as const;
 
-// TaskStatus 只承载跨层稳定状态；旧 Engine 细分状态通过派生函数识别。
+// 任务状态；公开快照只暴露跨层稳定状态。
 export const TASK_STATUSES = ["IDLE", "RUNNING", "DONE", "ERROR", "STOPPING"] as const;
 
-// 翻译引擎的细分运行态在运行态层折叠为公开任务状态。
+// 翻译 - 任务生命周期事件（发起/运行/结束）。
 export const TRANSLATION_TASK_ACTIVE_STATUSES = [
   "REQUEST",
   "RUN",
@@ -15,7 +15,7 @@ export const TRANSLATION_TASK_ACTIVE_STATUSES = [
   "STOPPING",
 ] as const;
 
-// 分析引擎的细分运行态只用于活跃性判断，不写入公开状态枚举。
+// 分析 - 任务生命周期事件（发起/运行/结束）。
 export const ANALYSIS_TASK_ACTIVE_STATUSES = ["REQUEST", "RUN", "ANALYZING", "STOPPING"] as const;
 
 // 空闲状态集合用于任务启动互斥和页面按钮可用性判断。
@@ -62,7 +62,7 @@ export function is_task_status(value: unknown): value is TaskStatus {
   return TASK_STATUS_SET.has(value as TaskStatus);
 }
 
-// 空闲性判断兼容旧运行态字符串，供互斥检查复用。
+// 空闲性判断接受公开空闲状态，供互斥检查复用。
 export function is_task_idle_status(value: unknown): value is TaskIdleStatus {
   return TASK_IDLE_STATUS_SET.has(String(value));
 }
@@ -77,17 +77,17 @@ export function is_task_skipped_item_status(value: unknown): boolean {
   return TASK_SKIPPED_ITEM_STATUS_SET.has(String(value));
 }
 
-// 翻译活跃态来自旧引擎细分状态，统一供快照折叠使用。
+// 翻译活跃态统一供快照折叠使用。
 export function is_active_translation_task_status(value: unknown): boolean {
   return TRANSLATION_TASK_ACTIVE_STATUS_SET.has(String(value));
 }
 
-// 分析活跃态来自旧引擎细分状态，统一供快照折叠使用。
+// 分析活跃态统一供快照折叠使用。
 export function is_active_analysis_task_status(value: unknown): boolean {
   return ANALYSIS_TASK_ACTIVE_STATUS_SET.has(String(value));
 }
 
-// 未知任务类型按调用方给定回退值处理，避免旧 payload 阻断任务恢复。
+// 未知任务类型按调用方给定回退值处理，避免异常 payload 阻断任务恢复。
 export function normalize_task_type(value: unknown, fallback: TaskType = "translation"): TaskType {
   return is_task_type(value) ? value : fallback;
 }

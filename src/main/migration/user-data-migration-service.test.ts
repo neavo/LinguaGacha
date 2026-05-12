@@ -74,7 +74,7 @@ describe("UserDataMigrationService", () => {
   it("把默认预设旧路径和三段式 builtin 标识归一为当前虚拟 ID", () => {
     const service = create_service();
 
-    const [normalized, changed] = service.normalize_config_payload({
+    const [normalized, changed] = service.normalize_setting_payload({
       glossary_default_preset: "resource/preset/glossary/zh/01_demo.json",
       text_preserve_default_preset: "resource/preset/text_preserve/user/mine.json",
       pre_translation_replacement_default_preset:

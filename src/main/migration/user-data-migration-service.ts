@@ -6,7 +6,7 @@ import type { LogManager } from "../log/log-manager";
 import type { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 
-type ConfigRecord = Record<string, ApiJsonValue>;
+type SettingFileRecord = Record<string, ApiJsonValue>;
 type PresetSource = "builtin" | "user";
 
 // 启动期迁移只处理历史固定落点，当前写入口仍由 AppPathService 给出。
@@ -21,13 +21,13 @@ const QUALITY_RULE_PRESET_EXTENSION = ".json";
 // 历史内置资源目录只出现过中英文两层。
 const LANGUAGE_DIR_NAMES = ["zh", "en"] as const;
 // 只有质量规则默认预设经历过旧路径到虚拟 ID 的配置迁移。
-const QUALITY_RULE_PRESET_CONFIG_KEYS = {
+const QUALITY_RULE_PRESET_SETTING_KEYS = {
   glossary_default_preset: "glossary",
   text_preserve_default_preset: "text_preserve",
   pre_translation_replacement_default_preset: "pre_translation_replacement",
   post_translation_replacement_default_preset: "post_translation_replacement",
 } as const;
-const QUALITY_RULE_PRESET_DIR_NAMES = Object.values(QUALITY_RULE_PRESET_CONFIG_KEYS);
+const QUALITY_RULE_PRESET_DIRECTORIES = Object.values(QUALITY_RULE_PRESET_SETTING_KEYS);
 
 /**
  * 统一承接启动期 userdata 与旧预设布局迁移。
@@ -45,7 +45,7 @@ export class UserDataMigrationService {
   }
 
   /**
-   * 启动期迁移入口必须先于 ConfigService 读取配置执行。
+   * 启动期迁移入口必须先于 SettingService 读取配置执行。
    */
   public run_startup_migrations(): void {
     this.migrate_default_config_if_needed();
@@ -88,9 +88,9 @@ export class UserDataMigrationService {
    * 把旧版质量规则用户预设迁到当前 userdata 目录。
    */
   public migrate_quality_rule_user_presets(): void {
-    for (const preset_dir_name of QUALITY_RULE_PRESET_DIR_NAMES) {
-      const source_dir = this.get_quality_rule_legacy_user_preset_dir(preset_dir_name);
-      const destination_dir = this.paths.get_quality_rule_user_preset_dir(preset_dir_name);
+    for (const preset_directory of QUALITY_RULE_PRESET_DIRECTORIES) {
+      const source_dir = this.get_quality_rule_legacy_user_preset_dir(preset_directory);
+      const destination_dir = this.paths.get_quality_rule_user_preset_dir(preset_directory);
       fs.mkdirSync(destination_dir, { recursive: true });
       this.move_directory_items(source_dir, destination_dir, QUALITY_RULE_PRESET_EXTENSION);
     }
@@ -100,10 +100,10 @@ export class UserDataMigrationService {
    * 把旧版质量规则内置预设目录迁到当前 resource/<type>/preset 结构。
    */
   public migrate_quality_rule_builtin_layout(): void {
-    for (const preset_dir_name of QUALITY_RULE_PRESET_DIR_NAMES) {
-      const destination_dir = this.paths.get_quality_rule_builtin_preset_dir(preset_dir_name);
+    for (const preset_directory of QUALITY_RULE_PRESET_DIRECTORIES) {
+      const destination_dir = this.paths.get_quality_rule_builtin_preset_dir(preset_directory);
       fs.mkdirSync(destination_dir, { recursive: true });
-      for (const source_dir of this.iter_quality_rule_builtin_source_dirs(preset_dir_name)) {
+      for (const source_dir of this.iter_quality_rule_builtin_source_dirs(preset_directory)) {
         this.move_directory_items(source_dir, destination_dir, QUALITY_RULE_PRESET_EXTENSION);
       }
     }
@@ -119,12 +119,16 @@ export class UserDataMigrationService {
     }
 
     try {
-      const config_data = JsonTool.parseStrict(fs.readFileSync(config_path)) as unknown;
-      if (typeof config_data !== "object" || config_data === null || Array.isArray(config_data)) {
+      const setting_data = JsonTool.parseStrict(fs.readFileSync(config_path)) as unknown;
+      if (
+        typeof setting_data !== "object" ||
+        setting_data === null ||
+        Array.isArray(setting_data)
+      ) {
         return;
       }
-      const [normalized_config, changed] = this.normalize_config_payload(
-        config_data as ConfigRecord,
+      const [normalized_config, changed] = this.normalize_setting_payload(
+        setting_data as SettingFileRecord,
       );
       if (!changed) {
         return;
@@ -142,22 +146,24 @@ export class UserDataMigrationService {
   /**
    * 把旧版默认预设路径归一化成新的虚拟 ID。
    */
-  public normalize_config_payload(config_data: ConfigRecord): [ConfigRecord, boolean] {
-    const normalized = { ...config_data };
+  public normalize_setting_payload(setting_data: SettingFileRecord): [SettingFileRecord, boolean] {
+    const normalized = { ...setting_data };
     let changed = false;
 
-    for (const [config_key, preset_dir_name] of Object.entries(QUALITY_RULE_PRESET_CONFIG_KEYS)) {
-      const current_value = normalized[config_key];
+    for (const [setting_key, preset_directory] of Object.entries(
+      QUALITY_RULE_PRESET_SETTING_KEYS,
+    )) {
+      const current_value = normalized[setting_key];
       if (typeof current_value !== "string" || current_value === "") {
         continue;
       }
 
       const resolved_value = this.normalize_quality_rule_default_preset_value(
-        preset_dir_name,
+        preset_directory,
         current_value,
       );
       if (resolved_value !== current_value) {
-        normalized[config_key] = resolved_value;
+        normalized[setting_key] = resolved_value;
         changed = true;
       }
     }
@@ -169,7 +175,7 @@ export class UserDataMigrationService {
    * 把旧路径或旧三段式 builtin 标识统一转换成稳定的虚拟 ID。
    */
   public normalize_quality_rule_default_preset_value(
-    preset_dir_name: string,
+    preset_directory: string,
     value: string,
   ): string {
     if (value === "") {
@@ -183,17 +189,17 @@ export class UserDataMigrationService {
 
     const file_name = path.basename(value);
     if (!file_name.toLowerCase().endsWith(QUALITY_RULE_PRESET_EXTENSION)) {
-      this.log_warning(`归一化默认预设值失败：${preset_dir_name} -> ${value}`, undefined);
+      this.log_warning(`归一化默认预设值失败：${preset_directory} -> ${value}`, undefined);
       return "";
     }
 
     // 旧配置里保存的是路径而非来源标记，只能通过命中的历史目录反推出来源。
     const resolved_source = this.resolve_quality_rule_source_from_path(
-      preset_dir_name,
+      preset_directory,
       path.dirname(value),
     );
     if (resolved_source === null) {
-      this.log_warning(`归一化默认预设值失败：${preset_dir_name} -> ${value}`, undefined);
+      this.log_warning(`归一化默认预设值失败：${preset_directory} -> ${value}`, undefined);
       return "";
     }
 
@@ -235,12 +241,12 @@ export class UserDataMigrationService {
   /**
    * 旧质量规则用户预设位于 resource/preset/<type>/user。
    */
-  private get_quality_rule_legacy_user_preset_dir(preset_dir_name: string): string {
+  private get_quality_rule_legacy_user_preset_dir(preset_directory: string): string {
     return path.join(
       this.paths.get_app_root(),
       RESOURCE_DIR_NAME,
       PRESET_DIR_NAME,
-      preset_dir_name,
+      preset_directory,
       USER_DIR_NAME,
     );
   }
@@ -248,14 +254,14 @@ export class UserDataMigrationService {
   /**
    * 枚举旧 builtin 两种布局：resource/<type>/preset/<lang> 与 resource/preset/<type>/<lang>。
    */
-  private iter_quality_rule_builtin_source_dirs(preset_dir_name: string): string[] {
+  private iter_quality_rule_builtin_source_dirs(preset_directory: string): string[] {
     const directories: string[] = [];
     for (const language of LANGUAGE_DIR_NAMES) {
       directories.push(
         path.join(
           this.paths.get_app_root(),
           RESOURCE_DIR_NAME,
-          preset_dir_name,
+          preset_directory,
           PRESET_DIR_NAME,
           language,
         ),
@@ -265,7 +271,7 @@ export class UserDataMigrationService {
           this.paths.get_app_root(),
           RESOURCE_DIR_NAME,
           PRESET_DIR_NAME,
-          preset_dir_name,
+          preset_directory,
           language,
         ),
       );
@@ -379,20 +385,20 @@ export class UserDataMigrationService {
    * 通过旧路径所在目录判断默认预设来源，最终统一收敛为 user/builtin。
    */
   private resolve_quality_rule_source_from_path(
-    preset_dir_name: string,
+    preset_directory: string,
     raw_dir: string,
   ): PresetSource | null {
     const user_directories = [
-      this.paths.get_quality_rule_user_preset_dir(preset_dir_name),
-      this.get_quality_rule_legacy_user_preset_dir(preset_dir_name),
+      this.paths.get_quality_rule_user_preset_dir(preset_directory),
+      this.get_quality_rule_legacy_user_preset_dir(preset_directory),
     ];
     if (user_directories.some((directory) => this.is_same_directory(raw_dir, directory))) {
       return "user";
     }
 
     const builtin_directories = [
-      this.paths.get_quality_rule_builtin_preset_dir(preset_dir_name),
-      ...this.iter_quality_rule_builtin_source_dirs(preset_dir_name),
+      this.paths.get_quality_rule_builtin_preset_dir(preset_directory),
+      ...this.iter_quality_rule_builtin_source_dirs(preset_directory),
     ];
     if (builtin_directories.some((directory) => this.is_same_directory(raw_dir, directory))) {
       return "builtin";

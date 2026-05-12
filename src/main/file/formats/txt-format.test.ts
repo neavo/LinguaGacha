@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { normalize_item } from "../../../base/item";
+import { Item } from "../../../base/item";
 import { TXTFormat } from "./txt-format";
 
 let temp_dir = "";
@@ -37,14 +37,14 @@ describe("TXTFormat", () => {
     });
     await format.write_to_path(
       [
-        normalize_item({
+        Item.from_json({
           src: "原文",
           dst: "译文",
           row: 0,
           file_type: "TXT",
           file_path: "script.txt",
         }),
-        normalize_item({
+        Item.from_json({
           src: "同文",
           dst: "",
           row: 1,

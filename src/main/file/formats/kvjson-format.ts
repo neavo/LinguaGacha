@@ -6,7 +6,7 @@ import {
   write_text_file,
   type ExportPaths,
 } from "./file-format-shared";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 
 /**
  * 键值 JSON 格式把 key 作为原文，value 作为已有译文。
@@ -27,7 +27,7 @@ export class KVJSONFormat {
       }
       const dst = value === key ? "" : value;
       items.push(
-        normalize_item({
+        Item.from_json({
           src: key,
           dst,
           row: items.length,

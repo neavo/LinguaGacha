@@ -5,12 +5,12 @@ import type {
   ProjectStoreQualityState,
   ProjectStoreState,
 } from "@/project/store/project-store";
-import type { PromptTaskType } from "@base/prompt";
-import type { QualityRuleType } from "@base/quality";
+import type { PromptKind } from "@base/prompt";
+import type { QualityRuleKind } from "@base/quality";
 
-type QualityRuntimeRuleType = QualityRuleType;
+type QualityRuntimeRuleType = QualityRuleKind;
 
-type QualityRuntimeTaskType = PromptTaskType;
+type QualityRuntimeTaskType = PromptKind;
 
 type ProofreadingLookupQuery = {
   keyword: string;

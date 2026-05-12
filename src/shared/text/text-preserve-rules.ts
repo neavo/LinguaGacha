@@ -1,4 +1,4 @@
-import { CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE } from "../../base/language";
+import { CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE } from "../language";
 import type { TextJsonRecord } from "./text-types";
 export { normalize_text_preserve_mode, type TextPreserveMode } from "../../base/quality";
 import { normalize_text_preserve_mode } from "../../base/quality";

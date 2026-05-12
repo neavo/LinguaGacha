@@ -5,7 +5,7 @@ import type {
   WorkbenchSnapshotEntry,
   WorkbenchStats,
 } from "./types";
-import { is_task_skipped_item_status } from "@base/task";
+import { is_task_skipped_item_status } from "@shared/task";
 
 type BuildWorkbenchViewArgs = {
   files: Record<string, unknown>;

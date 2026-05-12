@@ -56,7 +56,7 @@ async function read_preset_rules_for_text_type(text_type: string): Promise<strin
     const payload = await api_fetch<TsConversionRulePresetPayload>(
       "/api/quality/rules/presets/read",
       {
-        preset_dir_name: "text_preserve",
+        rule_type: "text_preserve",
         virtual_id: `builtin:${text_type.toLowerCase()}.json`,
       },
     );

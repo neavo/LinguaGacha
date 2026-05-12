@@ -2,8 +2,8 @@ import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
-import { item_to_json, normalize_item_status } from "../../base/item";
-import { is_task_skipped_item_status } from "../../base/task";
+import { Item } from "../../base/item";
+import { is_task_skipped_item_status } from "../../shared/task";
 import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
 import { ProjectSessionState } from "./project-session-state";
 
@@ -71,7 +71,7 @@ export class ProjectResetPreviewService {
         continue;
       }
       const items = await format_service.parse_asset(rel_path, content);
-      parsed_files.push({ rel_path, items: items.map(item_to_json) });
+      parsed_files.push({ rel_path, items: items.map((item) => Item.from_json(item).to_json()) });
     }
     return parsed_files;
   }
@@ -213,10 +213,10 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 历史运行态状态在预演中折叠为当前状态枚举，避免旧工程扰动统计。
+   * 重置预演只接受当前状态枚举，非法值按未处理状态兜底。
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
-    return normalize_item_status(value);
+    return Item.normalize_status(value);
   }
 
   /**

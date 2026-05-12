@@ -10,7 +10,7 @@ import {
   write_text_file,
   type ExportPaths,
 } from "./file-format-shared";
-import { normalize_item, read_json_record, type Item } from "../../../base/item";
+import { Item, read_json_record } from "../../../base/item";
 
 const RESOURCE_EXTENSIONS = new Set([
   ".mp3",
@@ -106,7 +106,7 @@ export class RenPyFormat {
         }
         const target_line = target_index >= 0 ? (lines[target_index] ?? "") : "";
         items.push(
-          normalize_item({
+          Item.from_json({
             src,
             dst: new_match ? this.unescape_string(new_match[1] ?? "") : "",
             row: index + 1,
@@ -165,7 +165,7 @@ export class RenPyFormat {
             ? null
             : (target_literals[name_slot.lit_index]?.value ?? name_src);
         items.push(
-          normalize_item({
+          Item.from_json({
             src,
             dst,
             name_src,

@@ -16,7 +16,7 @@
 | `GET /api/project/bootstrap/stream` | 一次性项目运行态 bootstrap | 事件顺序是前后端契约 |
 | `GET /api/events/stream` | 项目、任务、设置的运行期增量事件 | 页面运行态主事件源 |
 | `GET /api/logs/stream` | 日志窗口增量事件 | 只暴露 `log.appended` |
-| `POST /api/settings/*` | 应用设置和最近项目 | 由 `ConfigService` 写入并发 `settings.changed` |
+| `POST /api/settings/*` | 应用设置和最近项目 | 由 `SettingService` 写入并发 `settings.changed` |
 | `POST /api/models/*` | 模型配置、激活、测试 | 由 `ModelService` 和配置服务持有 |
 | `POST /api/project/*` | 工程生命周期、工作台、reset、导出、校对 mutation | 按领域服务分发，不能在路由层写数据库 |
 | `POST /api/tasks/*` | 翻译、分析、重翻、停止、任务快照和导出 | 由 `TaskCommandService`、`TaskEngine`、导出服务承接 |
@@ -76,7 +76,7 @@ flowchart LR
 | task-worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `TaskWorkerPool`、`task-worker-entry`、各 work unit runner |
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |
-| service | 设置、路径、质量规则、提示词、校对保存 | `ConfigService`、`QualityService`、`ProofreadingService` |
+| service | 设置、路径、质量规则、提示词、校对保存 | `SettingService`、`QualityService`、`ProofreadingService` |
 | log | 内部日志聚合、日志窗口和日志 SSE | `LogManager`、`LogWindowHost` |
 
 API 层只分发到领域服务和包装协议语义，不直接操作 database workflow，不持有 SQLite 句柄，不把内部服务对象暴露给 renderer。
@@ -96,13 +96,15 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 ## 6. 数据库与 `.lg` 物理存储
 
 - SQL、事务、SQLite 句柄缓存和 `.lg` asset 读写只允许落在 `src/main/database/`。
-- 旧版本写回型迁移规则只允许落在 `src/main/migration/`；`.lg` 物理迁移仍通过 database workflow 执行，工程语义迁移仍生成 database operation，userdata 迁移仍消费 `ConfigService` / `AppPathService` 的当前落点。
+- 旧版本写回型迁移规则只允许落在 `src/main/migration/`；`.lg` 物理迁移仍通过 database workflow 执行，工程语义迁移仍生成 database operation，userdata 迁移仍消费 `SettingService` / `AppPathService` 的当前落点。
 - Zstd 压缩/解压参数和运行时能力检查只允许落在 `src/shared/utils/zstd-tool.ts`。
 - `ProjectDatabase.execute()` 是上层服务使用的窄 workflow；新增 operation 必须集中校验参数，避免 SQL 语义散落到 service。
 - `execute_transaction()` 单个事务只允许绑定一个工程文件，避免跨 `.lg` 半提交。
 - asset 内容以 Zstd 压缩 blob 存储在 `.lg` 内；调用方读取时消费解压 bytes，不理解压缩格式。
 - 运行态不保留独立 database gateway 或旧 DTO bridge；历史格式兼容只在 migration、runtime encoder 或 patch adapter 的明确边界内处理。
-- 跨 API、数据库 payload、任务运行态和 worker 的基础值域从 `src/base` 导入；后端领域服务只在边界做兼容迁移或 normalize，不另建同义字符串集合。
+- 跨 API、数据库 payload、任务运行态和 worker 的实体和值对象从 `src/base` 导入；`Item`、`Setting`、`Model`、`Prompt`、`QualityRule` 负责 JSON 反序列化、序列化、合法值集合和贴身派生判断，后端领域服务只在 IO、数据库、路径、网络和事件边界处理副作用。
+- 跨运行时复用的 task、language、log 和 JSON 工具从 `src/shared` 导入；运行态不得为这些共享规则另建并行词表或局部兜底。
+- 质量规则预设接口以公开 `rule_type` 为入参，物理预设目录只由 `QualityRule` 派生；提示词目录、rules 表物理类型、meta key 和默认预设 setting key 只由 `Prompt` 派生。
 
 ## 7. 更新触发条件
 
@@ -113,4 +115,4 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 - 新增后端状态拥有者、写入口、任务事件来源或跨层载荷规则。
 - 改 database operation、事务语义、`.lg` schema、asset 压缩、migration 或文件格式存储落点。
 - 改任务引擎与 worker 的事实回流方式。
-- 改跨后端领域共享的基础值域、合法值集合、normalize 或派生判断。
+- 改跨后端领域共享的实体值对象、共享规则、合法值集合、normalize 或派生判断。

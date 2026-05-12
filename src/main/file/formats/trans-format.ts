@@ -3,13 +3,7 @@ import path from "node:path";
 import type { ApiJsonValue } from "../../api/api-types";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { group_items, write_text_file, type ExportPaths } from "./file-format-shared";
-import {
-  normalize_item,
-  read_json_record,
-  type Item,
-  type ItemStatus,
-  type ItemTextType,
-} from "../../../base/item";
+import { Item, read_json_record, type ItemStatus, type ItemTextType } from "../../../base/item";
 
 type ApiJsonRecord = Record<string, ApiJsonValue>;
 
@@ -461,7 +455,7 @@ export class TRANSFormat {
         const parameter = record_array(parameters_list[row_index]);
         const checked = processor.check(file_key, [src, dst], tag, context);
         items.push(
-          normalize_item({
+          Item.from_json({
             src: checked.src,
             dst: checked.dst,
             extra_field: {

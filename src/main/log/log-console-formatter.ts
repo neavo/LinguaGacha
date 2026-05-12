@@ -1,4 +1,4 @@
-import type { LogAppendPayload, LogLevel } from "./log-types";
+import type { LogAppendPayload, LogLevel } from "../../shared/log";
 
 const CONSOLE_LEVEL_COLUMN_WIDTH = 7;
 const ANSI_RESET = "\x1b[0m";

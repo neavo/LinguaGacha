@@ -1,8 +1,4 @@
-import {
-  ALL_LANGUAGE_CODE,
-  has_language_character,
-  normalize_language_code,
-} from "../../base/language";
+import { ALL_LANGUAGE_CODE, has_language_character, normalize_language_code } from "../language";
 
 // 语言预过滤只依赖基础语言值域，未知语言保持不过滤以兼容未来配置扩展。
 export function has_prefilter_language_character(text: string, source_language: string): boolean {

@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../test/epub-fixture";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
@@ -40,7 +40,7 @@ async function create_translated_epub_item(epub_asset: Buffer, dst: string): Pro
   if (item === undefined) {
     throw new Error("EPUB fixture 未生成正文条目。");
   }
-  return normalize_item({
+  return Item.from_json({
     ...item,
     dst,
     status: "PROCESSED",
@@ -78,7 +78,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const out_path = path.join(temp_dir, "legacy", "book.zh.epub");
-    const legacy_item = normalize_item({
+    const legacy_item = Item.from_json({
       src: "章节",
       dst: "译文",
       row: 0,
@@ -99,7 +99,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const out_path = path.join(temp_dir, "legacy-special-dollar", "book.zh.epub");
-    const legacy_item = normalize_item({
+    const legacy_item = Item.from_json({
       src: "章节",
       dst: "译文$& $1 $$",
       row: 0,

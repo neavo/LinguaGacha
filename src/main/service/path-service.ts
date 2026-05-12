@@ -102,22 +102,22 @@ export class AppPathService {
   /**
    * 返回内置质量规则预设目录，保持规则资源入口集中。
    */
-  public get_quality_rule_builtin_preset_dir(preset_dir_name: string): string {
-    return this.get_resource_path(preset_dir_name, PRESET_DIR_NAME);
+  public get_quality_rule_builtin_preset_dir(preset_directory: string): string {
+    return this.get_resource_path(preset_directory, PRESET_DIR_NAME);
   }
 
   /**
    * 返回内置质量规则相对目录，用于组合预设虚拟 id。
    */
-  public get_quality_rule_builtin_preset_relative_dir(preset_dir_name: string): string {
-    return this.get_resource_relative_path(preset_dir_name, PRESET_DIR_NAME);
+  public get_quality_rule_builtin_preset_relative_dir(preset_directory: string): string {
+    return this.get_resource_relative_path(preset_directory, PRESET_DIR_NAME);
   }
 
   /**
    * 返回用户质量规则预设目录，保持用户文件写入口集中。
    */
-  public get_quality_rule_user_preset_dir(preset_dir_name: string): string {
-    return this.get_user_data_path(preset_dir_name);
+  public get_quality_rule_user_preset_dir(preset_directory: string): string {
+    return this.get_user_data_path(preset_directory);
   }
 
   /**

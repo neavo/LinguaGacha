@@ -7,6 +7,32 @@ export const TASK_VISIBLE_LOG_LEVELS = ["info", "warning", "error"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 export type TaskVisibleLogLevel = (typeof TASK_VISIBLE_LOG_LEVELS)[number];
 
+export interface LogTargets {
+  file: boolean; // 写入日志文件。
+  console: boolean; // 输出到控制台。
+  window: boolean; // 推送到日志窗口和 SSE 订阅者。
+}
+
+export interface LogEvent {
+  id: string; // 单条日志事件 ID。
+  sequence: number; // 进程内递增序号。
+  created_at: string; // ISO 时间戳。
+  level: LogLevel; // 公开日志等级。
+  message: string; // 已格式化日志正文。
+}
+
+export interface LogAppendPayload {
+  level: LogLevel; // 写入等级。
+  message: string; // 原始日志正文。
+  source?: string; // 产生日志的模块或任务源。
+  error_message?: string; // Error.message 的边界快照。
+  stack?: string; // Error.stack 的边界快照。
+  context?: Record<string, unknown>; // 额外结构化上下文。
+  targets?: Partial<LogTargets>; // 单次写入的输出目标覆盖。
+}
+
+export type LogSubscriber = (event: LogEvent) => void;
+
 const LOG_LEVEL_SET = new Set<LogLevel>(LOG_LEVELS);
 const TASK_VISIBLE_LOG_LEVEL_SET = new Set<TaskVisibleLogLevel>(TASK_VISIBLE_LOG_LEVELS);
 

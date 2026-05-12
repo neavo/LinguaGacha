@@ -17,9 +17,9 @@
 
 ```mermaid
 flowchart LR
-  N["src/base<br/>跨层基础值域"] --> D
+  N["src/base<br/>实体和值对象"] --> D
   N --> J
-  N --> S["src/shared<br/>跨运行时纯算法"]
+  N --> S["src/shared<br/>跨运行时共享规则"]
   S --> D
   S --> J
   A["Electron main<br/>窗口与生命周期"] --> B["CoreLifecycleManager<br/>端口、日志、数据库、Gateway"]
@@ -37,8 +37,8 @@ flowchart LR
 ```
 
 - Electron main 是桌面宿主和 Core 的同一进程；当前运行态没有独立 backend 子进程或内部 HTTP 回环服务。
-- `src/base` 是 main、renderer、preload、worker 和测试共享的基础值域层，只承载跨层稳定数据结构、合法值集合、normalize/type guard 和派生判断；不能反向依赖 main、renderer 或 Electron 宿主边界。
-- `src/shared` 是 main、renderer、worker 和测试可复用的纯算法层，只承载无状态文本工具、fixer、prefilter 和压缩能力；跨层基础值域仍归 `src/base`。
+- `src/base` 只承载跨层数据实体和值对象的序列化、反序列化、合法值集合和贴身派生判断；不能反向依赖 main、renderer 或 Electron 宿主边界。
+- `src/shared` 承载 main、renderer、worker 和测试复用的跨运行时共享规则、协议词表与纯工具，包括 task、language、log、文本工具、fixer、prefilter、JSON 和压缩能力。
 - `CoreLifecycleManager` 按 `LogManager -> ProjectDatabase -> ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 仍持有数据库或日志句柄。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 句柄缓存的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
@@ -94,8 +94,8 @@ sequenceDiagram
 
 | 层 | 固定职责 | 不能承接 |
 | --- | --- | --- |
-| `src/base/` | 跨层基础值域、normalize/type guard、不可变映射和派生判断 | HTTP 路由、数据库 workflow、页面状态、文件格式算法 |
-| `src/shared/` | 跨运行时无状态算法：文本工具、fixer、prefilter、压缩能力 | 基础值域权威、HTTP 路由、数据库 workflow、页面状态 |
+| `src/base/` | 数据实体和值对象的 JSON 边界、合法值集合和贴身派生判断 | HTTP 路由、数据库 workflow、页面状态、文件格式算法、跨运行时通用工具 |
+| `src/shared/` | 跨运行时共享规则、协议词表和纯工具：task、language、log、文本工具、fixer、prefilter、JSON、压缩能力 | HTTP 路由、数据库 workflow、页面状态、实体持久化语义 |
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
 | `src/main/project/` | 项目会话、bootstrap 编码、project patch、同步 mutation | Electron preload、页面局部状态 |
@@ -110,7 +110,7 @@ sequenceDiagram
 ## 5. 更新触发条件
 
 - 新增或重排运行时层、跨进程通信方式、Core 生命周期资源，必须更新本文。
-- 新增跨 main / renderer / worker 共享值域、合法值集合、基础派生判断或纯算法，必须先判断归属 `src/base` 还是 `src/shared`，并在分层关系变化时更新本文。
+- 新增跨 main / renderer / worker 共享规则、协议词表、合法值集合、基础派生判断或纯工具，必须先判断归属 `src/base` 还是 `src/shared`，并在分层关系变化时更新本文。
 - 改公开 API、SSE、状态写入口、数据库存储、任务事件语义，更新 [`docs/BACKEND.md`](BACKEND.md)，本文只在链路或层级改变时同步。
 - 改 preload、`ProjectStore`、导航、页面运行态消费方式，更新 [`docs/FRONTEND.md`](FRONTEND.md)，本文只保留分层关系。
 - 改验证命令、任务起手式或文档同步要求，更新 [`docs/WORKFLOW.md`](WORKFLOW.md)。

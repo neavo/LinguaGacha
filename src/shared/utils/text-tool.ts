@@ -1,4 +1,4 @@
-import { is_fullwidth_code_point } from "../../base/language";
+import { is_fullwidth_code_point } from "../language";
 
 // 所有字符范围都用闭区间 code point 表达，避免 UTF-16 下标影响全角字符判断。
 type CodePointRange = readonly [number, number];

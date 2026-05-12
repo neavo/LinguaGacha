@@ -8,7 +8,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 
 // 旧实现会直接排除 Markdown 图片行，避免把资源引用送进翻译。
 const IMAGE_PATTERN = /!\[.*?\]\(.*?\)/u;
@@ -33,7 +33,7 @@ export class MDFormat {
         in_code_block = !in_code_block;
       }
       items.push(
-        normalize_item({
+        Item.from_json({
           src: line,
           dst: "",
           row: items.length,

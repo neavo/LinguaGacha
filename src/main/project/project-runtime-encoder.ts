@@ -1,24 +1,9 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import {
-  infer_item_text_type_from_source,
-  normalize_item_file_type,
-  normalize_item_status,
-} from "../../base/item";
-import {
-  QUALITY_RULE_TYPES,
-  normalize_text_preserve_mode,
-  resolve_quality_rule_database_type,
-  resolve_quality_rule_enabled_meta_key,
-  type QualityRuleType,
-} from "../../base/quality";
-import {
-  PROMPT_TASK_TYPES,
-  build_prompt_enabled_meta_key,
-  resolve_prompt_database_type,
-} from "../../base/prompt";
-import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "../../base/task";
+import { QualityRule, type QualityRuleKind } from "../../base/quality";
+import { Prompt } from "../../base/prompt";
+import { is_task_skipped_item_status } from "../../shared/task";
 import { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
 import {
   build_project_mutation_ack_from_meta,
@@ -90,10 +75,10 @@ export class ProjectRuntimeEncoder {
   // database 是工程事实唯一读源，编码器不能直接持有 SQLite handle。
   private readonly database: ProjectDatabase;
 
-  // task block 由 TaskSnapshotBuilder 组装，避免 bootstrap 回调旧公开任务路由。
+  // task block 由 TaskSnapshotBuilder 组装，避免 bootstrap 回调任务公开路由。
   private readonly task_snapshot_builder: TaskSnapshotBuilder;
 
-  // 公开 project block 由 会话状态持有，避免 bootstrap 回读历史会话 缓存。
+  // 公开 project block 由会话状态持有，避免 bootstrap 回读会话缓存。
   private readonly session_state: ProjectSessionState;
 
   /**
@@ -184,7 +169,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * files block 优先使用 asset 表顺序；旧工程缺 asset 时回退 item 首次出现顺序。
+   * files block 优先使用 asset 表顺序；缺 asset 时回退 item 首次出现顺序。
    */
   private build_files_block(project_path: string, snapshot: RuntimeItemsSnapshot): RowBlock {
     const asset_records = project_path === "" ? [] : this.get_asset_records(project_path);
@@ -219,13 +204,13 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 质量块按公开 rule type 输出，避免页面理解数据库里的旧物理命名。
+   * 质量块按公开 rule type 输出，避免页面理解数据库物理命名。
    */
   private build_quality_block(project_path: string, meta: JsonRecord): MutableJsonRecord {
     return Object.fromEntries(
-      QUALITY_RULE_TYPES.map((rule_type) => [
-        rule_type,
-        this.build_quality_rule_slice(project_path, meta, rule_type),
+      QualityRule.all().map((rule) => [
+        rule.kind,
+        this.build_quality_rule_slice(project_path, meta, rule.kind),
       ]),
     ) as MutableJsonRecord;
   }
@@ -235,8 +220,8 @@ export class ProjectRuntimeEncoder {
    */
   private build_empty_quality_block(): MutableJsonRecord {
     return Object.fromEntries(
-      QUALITY_RULE_TYPES.map((rule_type) => [
-        rule_type,
+      QualityRule.all().map((rule) => [
+        rule.kind,
         { entries: [], enabled: false, mode: "off", revision: 0 },
       ]),
     ) as MutableJsonRecord;
@@ -248,21 +233,18 @@ export class ProjectRuntimeEncoder {
   private build_quality_rule_slice(
     project_path: string,
     meta: JsonRecord,
-    rule_type: QualityRuleType,
+    rule_type: QualityRuleKind,
   ): MutableJsonRecord {
-    const enabled_meta_key = resolve_quality_rule_enabled_meta_key(rule_type);
+    const enabled_meta_key = QualityRule.from_json(rule_type).enabled_meta_key;
     return {
       entries: this.get_rule_entries(
         project_path,
-        resolve_quality_rule_database_type(rule_type),
+        QualityRule.from_json(rule_type).database_type,
       ) as unknown as ApiJsonValue,
       enabled: Boolean(
         rule_type === "text_preserve" || enabled_meta_key === null ? false : meta[enabled_meta_key],
       ),
-      mode:
-        rule_type === "text_preserve"
-          ? normalize_text_preserve_mode(meta["text_preserve_mode"])
-          : "off",
+      mode: rule_type === "text_preserve" ? String(meta["text_preserve_mode"] ?? "off") : "off",
       revision: get_runtime_section_revision(meta, `quality:${rule_type}`),
     };
   }
@@ -272,13 +254,13 @@ export class ProjectRuntimeEncoder {
    */
   private build_prompts_block(project_path: string, meta: JsonRecord): MutableJsonRecord {
     return Object.fromEntries(
-      PROMPT_TASK_TYPES.map((task_type) => [
-        task_type,
+      Prompt.all().map((prompt) => [
+        prompt.kind,
         {
-          task_type,
-          revision: get_runtime_section_revision(meta, `prompts:${task_type}`),
-          meta: { enabled: Boolean(meta[build_prompt_enabled_meta_key(task_type)] ?? false) },
-          text: this.get_rule_text(project_path, resolve_prompt_database_type(task_type)),
+          task_type: prompt.kind,
+          revision: get_runtime_section_revision(meta, `prompts:${prompt.kind}`),
+          meta: { enabled: Boolean(meta[prompt.enabled_meta_key] ?? false) },
+          text: this.get_rule_text(project_path, prompt.database_type),
         },
       ]),
     ) as MutableJsonRecord;
@@ -289,9 +271,9 @@ export class ProjectRuntimeEncoder {
    */
   private build_empty_prompts_block(): MutableJsonRecord {
     return Object.fromEntries(
-      PROMPT_TASK_TYPES.map((task_type) => [
-        task_type,
-        { task_type, revision: 0, meta: { enabled: false }, text: "" },
+      Prompt.all().map((prompt) => [
+        prompt.kind,
+        { task_type: prompt.kind, revision: 0, meta: { enabled: false }, text: "" },
       ]),
     ) as MutableJsonRecord;
   }
@@ -346,7 +328,7 @@ export class ProjectRuntimeEncoder {
       if (file_path !== "") {
         records_by_path.set(file_path, {
           rel_path: file_path,
-          file_type: normalize_item_file_type(item["file_type"]),
+          file_type: String(item["file_type"] ?? "NONE"),
         });
       }
     }
@@ -361,7 +343,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 数据库 item JSON 转成公开 item 行记录，兼容旧状态和旧 row 字段名。
+   * 数据库 item JSON 转成公开 item 行记录。
    */
   private normalize_item_record(item: JsonRecord): MutableJsonRecord {
     return {
@@ -372,31 +354,10 @@ export class ProjectRuntimeEncoder {
       dst: String(item["dst"] ?? ""),
       name_src: item["name_src"] ?? null,
       name_dst: item["name_dst"] ?? null,
-      status: this.normalize_item_status(item["status"]),
-      text_type: this.resolve_text_type_value(item),
+      status: String(item["status"] ?? "NONE"),
+      text_type: String(item["text_type"] ?? "NONE"),
       retry_count: this.read_number(item["retry_count"], 0),
     };
-  }
-
-  /**
-   *旧数据缺少 text_type 时按历史 Item 的规则推断，保持筛选和保护规则输入一致。
-   */
-  private resolve_text_type_value(item: JsonRecord): string {
-    if (item["text_type"] !== undefined && item["text_type"] !== null) {
-      return this.read_enum_value(item["text_type"], "NONE");
-    }
-    const file_type = this.read_enum_value(item["file_type"], "NONE");
-    if (file_type !== "XLSX" && file_type !== "KVJSON" && file_type !== "MESSAGEJSON") {
-      return "NONE";
-    }
-    return infer_item_text_type_from_source(String(item["src"] ?? ""));
-  }
-
-  /**
-   * 运行态只输出当前有效状态；历史处理中状态在首包里归一为可消费状态。
-   */
-  private normalize_item_status(value: ApiJsonValue | undefined): string {
-    return normalize_item_status(value);
   }
 
   /**
@@ -436,7 +397,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 候选聚合以 src 为 key 输出，匹配历史 AnalysisCandidateService 的公开快照。
+   * 候选聚合以 src 为 key 输出公开快照。
    */
   private build_candidate_aggregate(project_path: string): MutableJsonRecord {
     const rows = this.database.execute(
@@ -519,7 +480,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * asset 顺序来自 database workflow；这里兼容 path/sort_order 与旧 rel_path/sort_index 名。
+   * asset 顺序来自 database workflow，编码器只读取当前 path/sort_order 字段。
    */
   private get_asset_records(project_path: string): Array<{ rel_path: string; sort_index: number }> {
     const value = this.database.execute(
@@ -534,24 +495,21 @@ export class ProjectRuntimeEncoder {
       if (!this.is_record(raw_record)) {
         continue;
       }
-      const rel_path = String(raw_record["path"] ?? raw_record["rel_path"] ?? "").trim();
+      const rel_path = String(raw_record["path"] ?? "").trim();
       if (rel_path === "" || seen_rel_paths.has(rel_path)) {
         continue;
       }
       seen_rel_paths.add(rel_path);
       records.push({
         rel_path,
-        sort_index: Math.max(
-          0,
-          this.read_number(raw_record["sort_order"] ?? raw_record["sort_index"], 0),
-        ),
+        sort_index: Math.max(0, this.read_number(raw_record["sort_order"], 0)),
       });
     }
     return records;
   }
 
   /**
-   * 规则 entries 允许旧库里出现非对象项，统一包装成可序列化记录。
+   * 规则 entries 允许非对象项，统一包装成可序列化记录。
    */
   private get_rule_entries(project_path: string, rule_type: string): MutableJsonRecord[] {
     const value = this.database.execute(
@@ -590,20 +548,12 @@ export class ProjectRuntimeEncoder {
         continue;
       }
       const item_id = this.read_number(row["item_id"], 0);
-      const status = this.normalize_checkpoint_status(row["status"]);
-      if (item_id > 0 && status !== null) {
+      const status = String(row["status"] ?? "NONE");
+      if (item_id > 0) {
         checkpoints.set(item_id, status);
       }
     }
     return checkpoints;
-  }
-
-  /**
-   * checkpoint 状态只接受任务进度三态，其它坏值按缺失处理。
-   */
-  private normalize_checkpoint_status(value: ApiJsonValue | undefined): string | null {
-    const status = this.read_enum_value(value, "");
-    return (TASK_PROGRESS_STATUSES as readonly string[]).includes(status) ? status : null;
   }
 
   /**
@@ -613,19 +563,6 @@ export class ProjectRuntimeEncoder {
     return this.normalize_object(
       this.database.execute(this.op("getAllMeta", { projectPath: project_path })),
     );
-  }
-
-  /**
-   * 枚举字段从旧库读出时可能不是字符串，统一转成公开字符串值。
-   */
-  private read_enum_value(value: ApiJsonValue | undefined, fallback: string): string {
-    if (typeof value === "string") {
-      return value;
-    }
-    if (typeof value === "number" || typeof value === "boolean") {
-      return String(value);
-    }
-    return fallback;
   }
 
   /**

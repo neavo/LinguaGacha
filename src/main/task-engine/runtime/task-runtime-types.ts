@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-export { TASK_TYPES, is_task_type, type TaskType } from "../../../base/task";
+export { TASK_TYPES, is_task_type, type TaskType } from "../../../shared/task";
 
 export type JsonRecord = Record<string, ApiJsonValue>;
 

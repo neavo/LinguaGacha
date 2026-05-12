@@ -299,7 +299,7 @@ export class ProjectDatabase {
     const transaction_operations = [...operations];
     let should_remove_created_project_on_failure = false;
     if (transaction_operations[0]?.name === "createProject") {
-      // createProject 需要关闭旧句柄并重建文件，必须先完成文件级初始化，再把后续写入包进事务。
+      // createProject 需要关闭现有句柄并重建文件，必须先完成文件级初始化，再把后续写入包进事务。
       this.execute(transaction_operations.shift() as DatabaseOperation);
       should_remove_created_project_on_failure = true;
       if (transaction_operations.length === 0) {
@@ -360,7 +360,7 @@ export class ProjectDatabase {
     db.exec("PRAGMA journal_mode=WAL");
     db.exec("PRAGMA synchronous=NORMAL");
     db.exec("PRAGMA busy_timeout=5000");
-    // 每次首次打开都先跑幂等迁移，兼容旧 .lg，同时让业务读到当前 schema。
+    // 每次首次打开都先跑幂等迁移，兼容既有 .lg，同时让业务读到当前 schema。
     ProjectDatabaseMigrationService.migrate(db);
     this.open_databases.set(normalized_path, db);
     return db;
@@ -533,7 +533,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 删除指定 checkpoint，避免重置后残留旧分析状态。
+   * 删除指定 checkpoint，避免重置后残留分析状态。
    */
   private delete_analysis_item_checkpoints(project_path: string, status: string | null): number {
     const db = this.open_project(project_path);
@@ -546,7 +546,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 归一候选聚合行，保护旧数据和新写入共用同一返回形状。
+   * 归一候选聚合行，确保不同写入来源共用同一返回形状。
    */
   private normalize_candidate_rows(rows: DatabaseRow[]): DatabaseJsonValue {
     return rows.map((row) => ({
@@ -635,7 +635,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 清空候选聚合，确保分析重置不混入旧候选。
+   * 清空候选聚合，确保分析重置不混入残留候选。
    */
   private clear_analysis_candidate_aggregates(project_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM analysis_candidate_aggregate").run();
@@ -743,7 +743,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取压缩 asset 文本，供需要原始压缩载荷的旧接口兼容。
+   * 读取压缩 asset 文本，供需要原始压缩载荷的接口兼容。
    */
   private get_asset_compressed_base64(project_path: string, asset_path: string): DatabaseJsonValue {
     const row = this.open_project(project_path)
@@ -986,35 +986,18 @@ export class ProjectDatabase {
    * 读取指定规则集合，保持质量规则运行时只看数据库事实。
    */
   private get_rules(project_path: string, rule_type: string): DatabaseJsonValue {
-    const rows = this.open_project(project_path)
+    const row = this.open_project(project_path)
       .prepare("SELECT data FROM rules WHERE type = ? ORDER BY id")
-      .all(rule_type);
-    if (rows.length === 0) {
+      .get(rule_type);
+    if (row === undefined) {
       return [];
     }
     try {
-      const first_data = json_parse(rows[0]?.["data"]);
-      if (Array.isArray(first_data)) {
-        // 当前规则以单行数组存储；旧工程多行对象会在后续分支平铺兼容。
-        return first_data;
-      }
+      const data = json_parse(row["data"]);
+      return Array.isArray(data) ? data : [];
     } catch {
       return [];
     }
-    const result: DatabaseJsonValue[] = [];
-    for (const row of rows) {
-      try {
-        const data = json_parse(row["data"]);
-        if (Array.isArray(data)) {
-          result.push(...data);
-        } else if (typeof data === "object" && data !== null) {
-          result.push(data);
-        }
-      } catch {
-        continue;
-      }
-    }
-    return result;
   }
 
   /**
@@ -1043,7 +1026,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按规则名读取文本，兼容旧调用方的命名入口。
+   * 按规则名读取文本，兼容命名入口。
    */
   private get_rule_text_by_name(project_path: string, rule_type_name: string): string {
     const row = this.open_project(project_path)
@@ -1068,14 +1051,11 @@ export class ProjectDatabase {
   }
 
   /**
-   * 解析文本规则载荷，兼容旧字符串和新对象格式。
+   * 解析当前文本规则对象载荷。
    */
   private deserialize_rule_text_payload(raw_data: string): string {
     try {
       const data = JsonTool.parseStrict(raw_data) as unknown;
-      if (typeof data === "string") {
-        return data;
-      }
       if (typeof data === "object" && data !== null && !Array.isArray(data)) {
         const text = (data as DatabaseRow)["text"];
         return typeof text === "string" ? text : String(text ?? "");

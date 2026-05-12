@@ -4,7 +4,7 @@ import {
   type ProjectStorePatchOperation,
   type ProjectStoreState,
 } from "@/project/store/project-store";
-import { is_task_skipped_item_status } from "@base/task";
+import { is_task_skipped_item_status } from "@shared/task";
 
 type WorkbenchPlannerSettings = {
   source_language: string;

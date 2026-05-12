@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { item_to_json, type Item, type ItemFileType } from "../../base/item";
+import { Item, type ItemFileType } from "../../base/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
 import { MDFormat } from "./formats/md-format";
@@ -138,7 +138,7 @@ export class FileFormatService {
     return {
       target_rel_path,
       file_type: this.pick_file_type(parsed_items),
-      parsed_items: parsed_items.map(item_to_json),
+      parsed_items: parsed_items.map((item) => Item.from_json(item).to_json()),
     };
   }
 

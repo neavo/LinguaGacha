@@ -18,7 +18,7 @@ import type {
   ModelThresholdSnapshot,
   ModelType,
 } from "@/pages/model-page/types";
-import { MODEL_TYPES, normalize_model_thinking_level, normalize_model_type } from "@base/model";
+import { MODEL_TYPES, Model } from "@base/model";
 
 type ModelPageSnapshotPayload = {
   snapshot?: Partial<ModelPageSnapshot> & {
@@ -210,7 +210,7 @@ function normalize_thinking_snapshot(candidate: unknown): ModelThinkingSnapshot 
       : {};
 
   return {
-    level: normalize_model_thinking_level(source.level),
+    level: Model.normalize_thinking_level(source.level),
   };
 }
 
@@ -248,7 +248,7 @@ function normalize_model_entry(
 
   return {
     id: String(source.id ?? ""),
-    type: normalize_model_type(source.type),
+    type: Model.normalize_type(source.type),
     name: String(source.name ?? ""),
     api_format: String(source.api_format ?? "OpenAI"),
     api_url: String(source.api_url ?? ""),

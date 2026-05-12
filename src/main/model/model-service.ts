@@ -4,7 +4,7 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../service/path-service";
-import { ConfigService } from "../service/config-service";
+import { SettingService } from "../service/setting-service";
 import { PiAiLlmRequestClient } from "../task-worker/llm/llm-request-client";
 import type { LlmRequestMessage, LlmRequestResult } from "../task-worker/llm/llm-types";
 import {
@@ -12,13 +12,7 @@ import {
   get_primary_api_key,
   normalize_api_url,
 } from "../task-worker/llm/llm-model-adapter";
-import {
-  MODEL_TEMPLATE_FILENAME_BY_TYPE,
-  type ModelApiFormat,
-  normalize_model_api_format,
-  resolve_model_template_filename,
-  resolve_model_type_sort_order,
-} from "../../base/model";
+import { Model, type ModelApiFormat } from "../../base/model";
 import {
   read_model_records,
   resolve_active_model_id,
@@ -39,35 +33,6 @@ const PATCH_ALLOWED_KEYS = new Set([
 
 const PATCH_OBJECT_KEYS = new Set(["thinking", "threshold", "generation", "request"]);
 
-const DEFAULT_REQUEST_CONFIG: Record<string, ApiJsonValue> = {
-  extra_headers: {},
-  extra_headers_custom_enable: false,
-  extra_body: {},
-  extra_body_custom_enable: false,
-};
-
-const DEFAULT_THRESHOLD_CONFIG: Record<string, ApiJsonValue> = {
-  input_token_limit: 512,
-  output_token_limit: 4096,
-  rpm_limit: 0,
-  concurrency_limit: 0,
-};
-
-const DEFAULT_THINKING_CONFIG: Record<string, ApiJsonValue> = {
-  level: "OFF",
-};
-
-const DEFAULT_GENERATION_CONFIG: Record<string, ApiJsonValue> = {
-  temperature: 0.95,
-  temperature_custom_enable: false,
-  top_p: 0.95,
-  top_p_custom_enable: false,
-  presence_penalty: 0,
-  presence_penalty_custom_enable: false,
-  frequency_penalty: 0,
-  frequency_penalty_custom_enable: false,
-};
-
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
@@ -76,21 +41,21 @@ const BROWSER_USER_AGENT =
  */
 export class ModelService {
   private readonly paths: AppPathService;
-  private readonly config_service: ConfigService;
+  private readonly setting_service: SettingService;
 
   /**
    * 初始化 ModelService 依赖，保持外部写入口清晰。
    */
-  public constructor(paths: AppPathService, config_service: ConfigService) {
+  public constructor(paths: AppPathService, setting_service: SettingService) {
     this.paths = paths;
-    this.config_service = config_service;
+    this.setting_service = setting_service;
   }
 
   /**
    * 读取模型页完整快照，供 UI 一次性恢复配置状态。
    */
   public get_snapshot(): Record<string, ApiJsonValue> {
-    const config = this.load_config_with_models(true);
+    const config = this.load_setting_with_models(true);
     return this.build_snapshot_response(config);
   }
 
@@ -111,7 +76,7 @@ export class ModelService {
         throw new Error(`forbidden model patch key: ${key}`);
       }
     }
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     models[index] = this.apply_patch(models[index] ?? {}, patch);
@@ -126,7 +91,7 @@ export class ModelService {
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const model_id = String(request["model_id"] ?? "");
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
     this.find_model_index_or_raise(models, model_id);
     config["activate_model_id"] = model_id;
@@ -140,10 +105,10 @@ export class ModelService {
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const model_type = String(request["model_type"] ?? "");
-    if (resolve_model_template_filename(model_type) === null) {
+    if (Model.resolve_template_filename(model_type) === null) {
       throw new Error(`unknown model type: ${model_type}`);
     }
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
     models.push(this.build_custom_model(model_type));
     config["models"] = models as unknown as ApiJsonValue;
@@ -157,7 +122,7 @@ export class ModelService {
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const model_id = String(request["model_id"] ?? "");
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     const target_model = models[index] ?? {};
@@ -180,7 +145,7 @@ export class ModelService {
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const model_id = String(request["model_id"] ?? "");
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     if (String(models[index]?.["type"] ?? "") !== "PRESET") {
@@ -209,7 +174,7 @@ export class ModelService {
     if (ordered_ids.length === 0) {
       throw new Error("ordered_model_ids is empty");
     }
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
     const first_index = this.find_model_index_or_raise(models, ordered_ids[0] ?? "");
     const model_type = String(models[first_index]?.["type"] ?? "PRESET");
@@ -235,7 +200,7 @@ export class ModelService {
   public async list_available_models(
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
     const models = await this.fetch_available_models(model);
     return { models: models as unknown as ApiJsonValue };
@@ -247,7 +212,7 @@ export class ModelService {
   public async test_model(
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
-    const config = this.load_config_with_models(false);
+    const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
     const keys = collect_api_keys(String(model["api_key"] ?? ""));
     const client = new PiAiLlmRequestClient({ appRoot: this.paths.get_app_root() });
@@ -458,7 +423,7 @@ export class ModelService {
    */
   private read_model_api_format(model: ModelRecord): ModelApiFormat {
     const value = String(model["api_format"] ?? "OpenAI");
-    return normalize_model_api_format(value);
+    return Model.normalize_api_format(value);
   }
 
   /**
@@ -487,15 +452,15 @@ export class ModelService {
     config: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     config["models"] = this.sort_models(read_model_records(config)) as unknown as ApiJsonValue;
-    this.config_service.save_config(config);
+    this.setting_service.save_setting(config);
     return this.build_snapshot_response(config);
   }
 
   /**
    * 读取配置并补齐模型列表，兼容缺失或旧格式配置。
    */
-  private load_config_with_models(persist_defaults: boolean): Record<string, ApiJsonValue> {
-    const config = this.config_service.load_config();
+  private load_setting_with_models(persist_defaults: boolean): Record<string, ApiJsonValue> {
+    const config = this.setting_service.load_setting();
     config["models"] = this.initialize_models(
       read_model_records(config),
     ) as unknown as ApiJsonValue;
@@ -504,7 +469,7 @@ export class ModelService {
       config["activate_model_id"] = active_model_id;
     }
     if (persist_defaults) {
-      this.config_service.save_config(config);
+      this.setting_service.save_setting(config);
     }
     return config;
   }
@@ -520,7 +485,7 @@ export class ModelService {
         models.push(this.normalize_model(preset));
       }
     }
-    for (const model_type of Object.keys(MODEL_TEMPLATE_FILENAME_BY_TYPE)) {
+    for (const model_type of Model.custom_types()) {
       if (!models.some((model) => String(model["type"] ?? "") === model_type)) {
         models.push(this.build_custom_model(model_type));
       }
@@ -548,7 +513,7 @@ export class ModelService {
   private build_custom_model(model_type: string): ModelRecord {
     const template_path = path.join(
       this.paths.get_model_preset_dir(),
-      resolve_model_template_filename(model_type) ?? "",
+      Model.resolve_template_filename(model_type) ?? "",
     );
     const template = this.read_json_file(template_path, {});
     const model =
@@ -564,22 +529,7 @@ export class ModelService {
    * 归一模型对象，保护配置文件旧字段和缺省字段。
    */
   private normalize_model(model: ModelRecord): ModelRecord {
-    return {
-      id: String(model["id"] ?? crypto.randomUUID()),
-      type: String(model["type"] ?? "PRESET"),
-      name: String(model["name"] ?? ""),
-      api_format: String(model["api_format"] ?? "OpenAI"),
-      api_url: String(model["api_url"] ?? ""),
-      api_key: String(model["api_key"] ?? "no_key_required"),
-      model_id: String(model["model_id"] ?? ""),
-      request: this.normalize_object_with_defaults(model["request"], DEFAULT_REQUEST_CONFIG),
-      threshold: this.normalize_object_with_defaults(model["threshold"], DEFAULT_THRESHOLD_CONFIG),
-      thinking: this.normalize_object_with_defaults(model["thinking"], DEFAULT_THINKING_CONFIG),
-      generation: this.normalize_object_with_defaults(
-        model["generation"],
-        DEFAULT_GENERATION_CONFIG,
-      ),
-    };
+    return Model.from_json(model, crypto.randomUUID()).to_json() as ModelRecord;
   }
 
   /**
@@ -611,24 +561,11 @@ export class ModelService {
   }
 
   /**
-   * 用默认值补齐对象字段，兼容部分写入的历史配置。
-   */
-  private normalize_object_with_defaults(
-    value: ApiJsonValue | undefined,
-    defaults: Record<string, ApiJsonValue>,
-  ): Record<string, ApiJsonValue> {
-    return {
-      ...defaults,
-      ...this.normalize_object(value),
-    };
-  }
-
-  /**
    * 按 sort_index 排序模型，保持配置和页面顺序一致。
    */
   private sort_models(models: ModelRecord[]): ModelRecord[] {
     return [...models].sort((a, b) => {
-      return resolve_model_type_sort_order(a["type"]) - resolve_model_type_sort_order(b["type"]);
+      return Model.resolve_type_sort_order(a["type"]) - Model.resolve_type_sort_order(b["type"]);
     });
   }
 

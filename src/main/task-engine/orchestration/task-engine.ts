@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import type { LogManager } from "../../log/log-manager";
 import { resolve_active_model } from "../../model/model-config-resolver";
-import type { ConfigService } from "../../service/config-service";
+import type { SettingService } from "../../service/setting-service";
 import type { ApiJsonValue } from "../../api/api-types";
 import { CoreEventHub } from "../../events/core-event-hub";
 import { ProjectPatchPublisher } from "../../project/project-patch-publisher";
@@ -24,7 +24,7 @@ import { TaskLimiter } from "./task-limiter";
 import { TaskPipeline } from "./task-pipeline";
 import { TaskProgressSnapshotTool } from "./task-progress-snapshot";
 import { TaskRunLock } from "./task-run-lock";
-import { is_task_skipped_item_status } from "../../../base/task";
+import { is_task_skipped_item_status } from "../../../shared/task";
 
 // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断。
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]);
@@ -52,8 +52,8 @@ interface TaskEngineOptions {
   projectPatchPublisher: ProjectPatchPublisher;
   // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异。
   executorClient: TaskWorkUnitExecutor;
-  // configService 在每次任务启动时提供设置与模型快照。
-  configService: ConfigService;
+  // SettingService 在每次任务启动时提供设置与模型快照。
+  SettingService: SettingService;
   // snapshotBuilder 生成公开 task snapshot，供终态 project patch 复用。
   snapshotBuilder: TaskSnapshotBuilder;
   // logManager 统一收敛任务引擎和 worker 回放日志。
@@ -130,7 +130,7 @@ export class TaskEngine {
   private readonly project_patch_publisher: ProjectPatchPublisher;
   // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果。
   private readonly executor_client: TaskWorkUnitExecutor;
-  private readonly config_service: ConfigService;
+  private readonly setting_service: SettingService;
   private readonly snapshot_builder: TaskSnapshotBuilder;
   private readonly log_manager: LogManager;
   // run_lock 是整场任务互斥与停止信号的唯一权威。
@@ -146,7 +146,7 @@ export class TaskEngine {
     this.core_event_hub = options.coreEventHub;
     this.project_patch_publisher = options.projectPatchPublisher;
     this.executor_client = options.executorClient;
-    this.config_service = options.configService;
+    this.setting_service = options.SettingService;
     this.snapshot_builder = options.snapshotBuilder;
     this.log_manager = options.logManager;
   }
@@ -755,7 +755,7 @@ export class TaskEngine {
   }
 
   /**
-   * 构建翻译初始上下文，切块规则沿用历史 TaskScheduler 的边界。
+   * 构建翻译初始上下文，切块规则使用 TaskScheduler 边界。
    */
   private build_translation_contexts(
     items: TaskItemRecord[],
@@ -780,7 +780,7 @@ export class TaskEngine {
   }
 
   /**
-   * 翻译失败上下文按旧语义先拆分，单条最多重试三次，超限标 ERROR。
+   * 翻译失败上下文先拆分，单条最多重试三次，超限标 ERROR。
    */
   private build_translation_retry_plan(
     context: TranslationContext,
@@ -1142,7 +1142,7 @@ export class TaskEngine {
    * 读取当前配置和激活模型，作为一次任务 run 的不可变快照。
    */
   private resolve_runtime_snapshot(): TaskRuntimeSnapshot {
-    const config_snapshot = this.config_service.load_config();
+    const config_snapshot = this.setting_service.load_setting();
     const model = resolve_active_model(config_snapshot);
     if (model === null) {
       throw new Error("没有可用的激活模型。");
@@ -1162,7 +1162,7 @@ export class TaskEngine {
   }
 
   /**
-   * 输入 token 阈值读取集中处理，保护旧模型配置缺字段场景。
+   * 输入 token 阈值读取集中处理，保护模型配置缺字段场景。
    */
   private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
     const threshold = this.normalize_record(model["threshold"]);
@@ -1170,7 +1170,7 @@ export class TaskEngine {
   }
 
   /**
-   * 失败拆分比例沿用历史 `pow(16 / t0, 0.25)` 的收敛速度。
+   * 失败拆分比例使用 `pow(16 / t0, 0.25)` 的收敛速度。
    */
   private get_split_factor(token_threshold: number): number {
     return Math.pow(16 / Math.max(17, token_threshold), 0.25);
@@ -1268,7 +1268,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析跳过规则和迁移前的稳定语义保持一致。
+   * 分析跳过规则保持稳定语义。
    */
   private is_analyzable_item(item: TaskItemRecord): boolean {
     return (
@@ -1299,21 +1299,14 @@ export class TaskEngine {
   }
 
   /**
-   * item 状态读取集中归一，兼容旧 PROCESSING / PROCESSED_IN_PAST 字符串。
+   * 读取 item 当前状态事实。
    */
   private read_status(item: TaskItemRecord): string {
-    const status = String(item["status"] ?? "NONE");
-    if (status === "PROCESSING") {
-      return "NONE";
-    }
-    if (status === "PROCESSED_IN_PAST") {
-      return "PROCESSED";
-    }
-    return status;
+    return String(item["status"] ?? "NONE");
   }
 
   /**
-   * 非空行数用于切块 line_limit，和旧实现保持同一量纲。
+   * 非空行数用于切块 line_limit，保持同一量纲。
    */
   private count_non_empty_lines(text: string): number {
     return text.split(/\r?\n/).filter((line) => line.trim() !== "").length;
@@ -1356,7 +1349,7 @@ export class TaskEngine {
   }
 
   /**
-   * 任务启动日志保留旧实现“API 名称 / 地址 / 模型”三行诊断，方便对照迁移前日志。
+   * 任务启动日志输出“API 名称 / 地址 / 模型”三行诊断。
    */
   private log_task_run_start(task_label: string, model: MutableJsonRecord): void {
     this.append_log(

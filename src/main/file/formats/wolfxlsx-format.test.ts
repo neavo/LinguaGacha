@@ -5,7 +5,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { normalize_item } from "../../../base/item";
+import { Item } from "../../../base/item";
 import { WOLFXLSXFormat } from "./wolfxlsx-format";
 
 // 每个用例独占工作簿输出目录，避免 WOLF 写回测试共享文件状态。
@@ -72,14 +72,14 @@ describe("WOLFXLSXFormat", () => {
 
     await format.write_to_path(
       [
-        normalize_item({
+        Item.from_json({
           src: "原文",
           dst: "译文",
           row: 2,
           file_type: "WOLFXLSX",
           file_path: "wolf.xlsx",
         }),
-        normalize_item({
+        Item.from_json({
           src: "=SUM(F1:F2)",
           dst: "=SUM(G1:G2)",
           row: 3,

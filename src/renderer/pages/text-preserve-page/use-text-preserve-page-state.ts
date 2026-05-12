@@ -67,9 +67,8 @@ type TextPreservePresetPayload = {
   user_presets: TextPreservePresetItem[];
 };
 
-const TEXT_PRESERVE_RULE_TYPE = "text_preserve";
-const TEXT_PRESERVE_PRESET_DIR_NAME = "text_preserve";
 const TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY = "text_preserve_default_preset";
+const TEXT_PRESERVE_RULE_TYPE = "text_preserve";
 const TEXT_PRESERVE_TITLE_KEY: LocaleKey = "text_preserve_page.title";
 const TEXT_PRESERVE_EXPORT_FILE_NAME = "text_preserve.json";
 const DEFAULT_MODE: TextPreserveMode = "off";
@@ -535,7 +534,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     const preset_payload = await api_fetch<TextPreservePresetPayload>(
       "/api/quality/rules/presets",
       {
-        preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
+        rule_type: TEXT_PRESERVE_RULE_TYPE,
       },
     );
     const default_virtual_id = String(
@@ -1018,7 +1017,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         const payload = await api_fetch<{ entries: Array<Record<string, unknown>> }>(
           "/api/quality/rules/presets/read",
           {
-            preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
+            rule_type: TEXT_PRESERVE_RULE_TYPE,
             virtual_id,
           },
         );
@@ -1115,7 +1114,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
       try {
         await api_fetch("/api/quality/rules/presets/save", {
-          preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
+          rule_type: TEXT_PRESERVE_RULE_TYPE,
           name: normalized_name,
           entries: entries
             .map((entry) => {
@@ -1150,7 +1149,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         const payload = await api_fetch<{ item?: TextPreservePresetItem }>(
           "/api/quality/rules/presets/rename",
           {
-            preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
+            rule_type: TEXT_PRESERVE_RULE_TYPE,
             virtual_id,
             new_name: normalized_name,
           },
@@ -1451,7 +1450,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       try {
         if (confirm_state.target_virtual_id !== null) {
           await api_fetch("/api/quality/rules/presets/delete", {
-            preset_dir_name: TEXT_PRESERVE_PRESET_DIR_NAME,
+            rule_type: TEXT_PRESERVE_RULE_TYPE,
             virtual_id: confirm_state.target_virtual_id,
           });
 

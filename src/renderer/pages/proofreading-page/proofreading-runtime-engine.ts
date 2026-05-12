@@ -22,7 +22,7 @@ import {
   type ProofreadingVisibleItem,
   type ProofreadingWarningFragmentsByCode,
 } from "@/pages/proofreading-page/types";
-import { is_hangul_character, is_kana_character } from "@base/language";
+import { is_hangul_character, is_kana_character } from "@shared/language";
 import { TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE } from "@shared/text/text-preserve-rules";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 

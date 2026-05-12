@@ -108,11 +108,44 @@ describe("ProjectDatabaseMigrationService", () => {
     ]);
   });
 
-  it("旧 item 状态写回当前允许集合并保留损坏 JSON 原文", () => {
+  it("旧规则 payload 写回当前单行数组和文本对象形状", () => {
+    const db = open_database("legacy-rule-payload.lg");
+    db.exec(`
+      CREATE TABLE rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        data TEXT NOT NULL
+      );
+    `);
+    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
+      "glossary",
+      JsonTool.stringifyStrict({ src: "甲", dst: "A" }),
+    );
+    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
+      "glossary",
+      JsonTool.stringifyStrict([{ src: "乙", dst: "B" }, "散落值"]),
+    );
+    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
+      "translation_prompt",
+      JsonTool.stringifyStrict("旧提示词"),
+    );
+
+    ProjectDatabaseMigrationService.migrate(db);
+
+    expect(read_rule_rows(db)).toEqual([
+      {
+        type: "glossary",
+        data: [{ src: "甲", dst: "A" }, { src: "乙", dst: "B" }, { value: "散落值" }],
+      },
+      { type: "translation_prompt", data: { text: "旧提示词" } },
+    ]);
+  });
+
+  it("旧 item payload 写回当前字段和值域并保留损坏 JSON 原文", () => {
     const db = open_database("legacy-items.lg");
     db.exec(`
       CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL);
-      INSERT INTO items (data) VALUES ('{"src":"A","status":"PROCESSED_IN_PAST"}');
+      INSERT INTO items (data) VALUES ('{"src":"@12 A","status":"PROCESSED_IN_PAST","file_type":"XLSX","row_number":"7"}');
       INSERT INTO items (data) VALUES ('{"src":"B","status":"PROCESSING"}');
       INSERT INTO items (data) VALUES ('{"src":"C","status":"UNKNOWN"}');
       INSERT INTO items (data) VALUES ('not-json');
@@ -121,10 +154,43 @@ describe("ProjectDatabaseMigrationService", () => {
     ProjectDatabaseMigrationService.migrate(db);
 
     expect(read_item_payloads(db)).toEqual([
-      { src: "A", status: "PROCESSED" },
-      { src: "B", status: "NONE" },
-      { src: "C", status: "NONE" },
+      {
+        src: "@12 A",
+        status: "PROCESSED",
+        file_type: "XLSX",
+        row: 7,
+        text_type: "WOLF",
+        retry_count: 0,
+      },
+      { src: "B", status: "NONE", file_type: "NONE", text_type: "NONE", row: 0, retry_count: 0 },
+      { src: "C", status: "NONE", file_type: "NONE", text_type: "NONE", row: 0, retry_count: 0 },
       "not-json",
+    ]);
+  });
+
+  it("旧分析 checkpoint 状态写回任务进度三态", () => {
+    const db = open_database("legacy-checkpoints.lg");
+    db.exec(`
+      CREATE TABLE analysis_item_checkpoint (
+        item_id INTEGER PRIMARY KEY,
+        status TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        error_count INTEGER NOT NULL
+      );
+      INSERT INTO analysis_item_checkpoint (item_id, status, updated_at, error_count)
+      VALUES (1, 'PROCESSED_IN_PAST', '2026-01-01', 0);
+      INSERT INTO analysis_item_checkpoint (item_id, status, updated_at, error_count)
+      VALUES (2, 'PROCESSING', '2026-01-01', 0);
+      INSERT INTO analysis_item_checkpoint (item_id, status, updated_at, error_count)
+      VALUES (3, 'BROKEN', '2026-01-01', 0);
+    `);
+
+    ProjectDatabaseMigrationService.migrate(db);
+
+    expect(read_checkpoint_statuses(db)).toEqual([
+      { item_id: 1, status: "PROCESSED" },
+      { item_id: 2, status: "NONE" },
+      { item_id: 3, status: "NONE" },
     ]);
   });
 });
@@ -181,4 +247,14 @@ function read_item_payloads(db: DatabaseSync): unknown[] {
         return raw;
       }
     });
+}
+
+function read_checkpoint_statuses(db: DatabaseSync): Array<{ item_id: number; status: string }> {
+  return db
+    .prepare("SELECT item_id, status FROM analysis_item_checkpoint ORDER BY item_id")
+    .all()
+    .map((row) => ({
+      item_id: Number(row["item_id"]),
+      status: String(row["status"]),
+    }));
 }

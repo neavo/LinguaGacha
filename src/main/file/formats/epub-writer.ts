@@ -6,27 +6,22 @@ import { Element, isTag, Text, type ChildNode } from "domhandler";
 import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import {
-  resolve_item_effective_dst,
-  normalize_item,
-  read_json_record,
-  type Item,
-} from "../../../base/item";
+import { Item, read_json_record } from "../../../base/item";
 import type { FileFormatServiceConfig } from "./file-format-shared";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 /**
- *旧写回会移除竖排样式，当前写回沿用该兼容清理规则。
+ * 导出写回会移除竖排样式。
  */
 const CSS_VERTICAL_WRITING_PATTERN = /[^;\s]*writing-mode\s*:\s*vertical-rl;*/giu;
 
 /**
- *旧顺序写回只能安全处理这些块级标签，避免在内联节点中错位替换。
+ * 顺序写回只处理这些块级标签，避免在内联节点中错位替换。
  */
 const EPUB_LEGACY_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td"]);
 
 /**
- * EPUB 写回器，优先使用 AST 定位，旧项目缺少 parts 时回退顺序写回。
+ * EPUB 写回器，优先使用 AST 定位，缺少 parts 时回退顺序写回。
  */
 export class EpubWriter {
   /**
@@ -40,7 +35,7 @@ export class EpubWriter {
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 只有带 parts 定位的条目才能走 AST 写回，旧数据继续走顺序兼容写回。
+   * 只有带 parts 定位的条目才能走 AST 写回，缺少定位时走顺序兼容写回。
    */
   public has_epub_ast_metadata(item: Item): boolean {
     const epub = read_epub_extra(item);
@@ -49,7 +44,7 @@ export class EpubWriter {
   }
 
   /**
-   * 根据条目元数据选择 AST 或 legacy 写回路径，保证新旧项目都能导出。
+   * 根据条目元数据选择 AST 或顺序写回路径，保证项目能导出。
    */
   public async build_epub(
     original_epub_bytes: Uint8Array,
@@ -57,7 +52,7 @@ export class EpubWriter {
     out_path: string,
     bilingual: boolean,
   ): Promise<void> {
-    const normalized_items = items.map((item) => normalize_item(item));
+    const normalized_items = items.map((item) => Item.from_json(item));
     const use_ast = normalized_items.every((item) => this.has_epub_ast_metadata(item));
     if (use_ast) {
       await this.build_epub_ast(original_epub_bytes, normalized_items, out_path, bilingual);
@@ -140,7 +135,7 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 标题成功写回后同步 XHTML title，避免书名与页面标题出现新旧混杂。
+   * OPF 标题成功写回后同步 XHTML title，避免书名与页面标题不一致。
    */
   private async resolve_opf_title_sync_pair(
     source_zip: JSZip,
@@ -298,7 +293,7 @@ export class EpubWriter {
         continue;
       }
 
-      const item_dst = resolve_item_effective_dst(item);
+      const item_dst = Item.from_json(item).effective_dst();
       const dst_lines = item_dst.split("\n");
       if (dst_lines.length !== parts.length) {
         if (
@@ -465,7 +460,7 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 书名变更时同步 XHTML head/title，只改完全匹配旧标题的节点。
+   * OPF 书名变更时同步 XHTML head/title，只改完全匹配原标题的节点。
    */
   private sync_xhtml_title(root: Element, src_title: string, dst_title: string): boolean {
     let changed = false;
@@ -486,7 +481,7 @@ export class EpubWriter {
   }
 
   /**
-   * legacy 写回保留历史实现的顺序替换策略，服务缺少 AST 元数据的旧项目。
+   * 顺序写回使用顺序替换策略，服务缺少 AST 元数据的项目。
    */
   private async build_epub_legacy(
     original_epub_bytes: Uint8Array,
@@ -496,7 +491,7 @@ export class EpubWriter {
   ): Promise<void> {
     const sorted_items = items
       .filter((item) => item.file_type === "EPUB")
-      .map((item) => normalize_item(item))
+      .map((item) => Item.from_json(item))
       .sort((left, right) => left.row - right.row);
     const tag_group = new Map<string, Item[]>();
     for (const item of sorted_items) {
@@ -531,7 +526,7 @@ export class EpubWriter {
   }
 
   /**
-   * NCX legacy 写回按 text 节点顺序消费条目，匹配旧目录翻译行为。
+   * NCX 顺序写回按 text 节点顺序消费条目。
    */
   private process_legacy_ncx(raw: Uint8Array, target_items: Item[]): string {
     const root = this.ast.parse_ncx_xml(raw);
@@ -542,7 +537,7 @@ export class EpubWriter {
       }
       this.ast.write_text_slot(
         text_elem,
-        resolve_item_effective_dst(target_items[item_index] as Item),
+        Item.from_json(target_items[item_index] as Item).effective_dst(),
       );
       item_index += 1;
     }
@@ -569,7 +564,7 @@ export class EpubWriter {
         continue;
       }
       const item = target_items[item_index] as Item;
-      const item_dst = resolve_item_effective_dst(item);
+      const item_dst = Item.from_json(item).effective_dst();
       if (
         bilingual &&
         !is_nav_page &&
@@ -599,7 +594,7 @@ export class EpubWriter {
   }
 
   /**
-   * 导出统一移除竖排 class/style，避免翻译后横排文本仍受旧排版约束。
+   * 导出统一移除竖排 class/style，避免翻译后横排文本仍受原排版约束。
    */
   private remove_vertical_style(dom: Element): void {
     const class_attr = dom.attribs["class"];
@@ -623,7 +618,7 @@ export class EpubWriter {
   }
 
   /**
-   * legacy 块不能包含另一个候选块，否则顺序替换会同时命中父子节点。
+   * 顺序写回块不能包含另一个候选块，否则替换会同时命中父子节点。
    */
   private has_legacy_tag_descendant(dom: Element): boolean {
     return this.ast
@@ -633,7 +628,7 @@ export class EpubWriter {
   }
 
   /**
-   * 递归收集元素可见文本，供 legacy 空文本过滤和字符串替换判断使用。
+   * 递归收集元素可见文本，供空文本过滤和字符串替换判断使用。
    */
   private collect_text_content(elem: Element): string {
     const parts: string[] = [];
@@ -664,14 +659,14 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 清洗去掉旧实现会移除的翻页方向属性。
+   * OPF 清洗去掉翻页方向属性。
    */
   private sanitize_opf(text: string): string {
     return text.replace('page-progression-direction="rtl"', "");
   }
 
   /**
-   * CSS 清洗延续旧导出的竖排样式移除规则。
+   * CSS 清洗移除竖排样式。
    */
   private sanitize_css(text: string): string {
     return text.replace(CSS_VERTICAL_WRITING_PATTERN, "");

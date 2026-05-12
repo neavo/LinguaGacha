@@ -1,4 +1,4 @@
-import { is_hangul_character } from "../../base/language";
+import { is_hangul_character } from "../language";
 
 // 拟声词谚文：这些字符只有贴在其它韩文旁边时才认为是有效韩文残留。
 const RULE_ONOMATOPOEIA = new Set(["뿅", "슝", "쩝", "콕", "끙", "힝"]);

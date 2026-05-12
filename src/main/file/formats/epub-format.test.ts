@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { create_epub_fixture } from "../../../test/epub-fixture";
+import { Item } from "../../../base/item";
 import { EPUBFormat } from "./epub-format";
 
 // 每个用例独占 EPUB 输出目录，避免门面写回断言共享文件状态。
@@ -54,11 +55,11 @@ describe("EPUBFormat", () => {
 
     await format.write_to_path(
       [
-        {
-          ...parsed_item,
+        Item.from_json({
+          ...parsed_item.to_json(),
           dst: "译文",
           status: "PROCESSED",
-        },
+        }),
       ],
       paths,
       (rel_path) => (rel_path === "book.epub" ? epub_asset : null),

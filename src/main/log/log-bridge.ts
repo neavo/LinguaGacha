@@ -2,7 +2,7 @@ import process from "node:process";
 
 import type { LogManager } from "./log-manager";
 import { format_console_log } from "./log-console-formatter";
-import type { LogAppendPayload, LogLevel } from "./log-types";
+import type { LogAppendPayload, LogLevel } from "../../shared/log";
 
 let active_log_manager: LogManager | null = null;
 

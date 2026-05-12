@@ -1,5 +1,5 @@
 import type { MutableJsonRecord, TaskType } from "../runtime/task-runtime-types";
-import { TASK_IDLE_STATUSES as BASE_TASK_IDLE_STATUSES } from "../../../base/task";
+import { TASK_IDLE_STATUSES as BASE_TASK_IDLE_STATUSES } from "../../../shared/task";
 
 export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
 

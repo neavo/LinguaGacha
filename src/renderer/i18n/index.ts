@@ -12,7 +12,7 @@ import {
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { en_us_messages, zh_cn_messages } from "@/i18n/messages";
 import type { Locale, LocaleMessageSchema } from "@/i18n/types";
-import { normalize_app_language, resolve_app_locale } from "@base/settings";
+import { normalize_app_language, resolve_app_locale } from "@base/setting";
 
 type JoinPath<prefix extends string, key extends string> = prefix extends ""
   ? key

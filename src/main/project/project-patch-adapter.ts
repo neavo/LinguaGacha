@@ -7,8 +7,7 @@ import {
   type RuntimeSection,
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
-import { normalize_item_status } from "../../base/item";
-import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "../../base/task";
+import { is_task_skipped_item_status } from "../../shared/task";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -101,7 +100,7 @@ export class ProjectPatchAdapter {
       dst: String(item["dst"] ?? ""),
       name_src: item["name_src"] ?? null,
       name_dst: item["name_dst"] ?? null,
-      status: this.normalize_item_status(item["status"]),
+      status: String(item["status"] ?? "NONE"),
       text_type: String(item["text_type"] ?? "NONE"),
       retry_count: this.read_number(item["retry_count"], 0),
     };
@@ -123,7 +122,7 @@ export class ProjectPatchAdapter {
     let processed_line = 0;
     let error_line = 0;
     for (const item of this.get_all_items(project_path)) {
-      const status = this.normalize_item_status(item["status"]);
+      const status = String(item["status"] ?? "NONE");
       if (is_task_skipped_item_status(status)) {
         continue;
       }
@@ -190,7 +189,7 @@ export class ProjectPatchAdapter {
       }
       const item_id = this.read_number(row["item_id"], 0);
       const status = String(row["status"] ?? "");
-      if (item_id > 0 && (TASK_PROGRESS_STATUSES as readonly string[]).includes(status)) {
+      if (item_id > 0) {
         checkpoints.set(item_id, status);
       }
     }
@@ -248,10 +247,6 @@ export class ProjectPatchAdapter {
     return this.normalize_object(
       this.database.execute(this.op("getAllMeta", { projectPath: project_path })),
     );
-  }
-
-  private normalize_item_status(value: ApiJsonValue | undefined): string {
-    return normalize_item_status(value);
   }
 
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {

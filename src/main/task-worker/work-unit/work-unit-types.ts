@@ -26,7 +26,7 @@ export interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
   items: ApiJsonValue;
   // precedings 只用于上下文提示词，不参与当前 chunk 的写回。
   precedings?: ApiJsonValue;
-  // 以下字段保留旧调度日志语义，避免迁移后任务诊断信息丢失。
+  // 以下字段用于调度日志诊断，避免任务诊断信息丢失。
   split_count?: ApiJsonValue;
   retry_count?: ApiJsonValue;
   token_threshold?: ApiJsonValue;
@@ -53,7 +53,7 @@ export interface TranslateSingleWorkUnitRequest extends WorkUnitBaseRequest {
  * 分析请求由 TaskEngine 预先切块，worker 只执行单个 chunk。
  */
 export interface AnalysisWorkUnitRequest extends WorkUnitBaseRequest {
-  // context 包含分析 chunk 所需候选、语言和术语上下文，worker 不再回读数据库。
+  // context 包含分析 chunk 所需候选、语言和术语上下文，worker 只消费快照输入。
   context: ApiJsonValue;
 }
 
@@ -73,7 +73,7 @@ export interface WorkUnitLogEntry {
 export interface TranslationWorkUnitResult {
   // items 只包含本 work unit 处理后的条目快照，由 TaskEngine 统一提交。
   items: TextTaskItemRecord[];
-  // row_count 沿用旧日志口径，表示本次成功覆盖的输入行数。
+  // row_count 按日志口径表示本次成功覆盖的输入行数。
   row_count: number;
   // token 计数向任务统计累加，不参与业务分支判断。
   input_tokens: number;

@@ -6,7 +6,7 @@ import { get_runtime_section_revision } from "../../project/project-section-revi
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
-import { TASK_PROGRESS_STATUSES } from "../../../base/task";
+import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
 
 /**
  * 项目任务存储端口，是 TaskEngine 读写项目任务事实的唯一内部入口。

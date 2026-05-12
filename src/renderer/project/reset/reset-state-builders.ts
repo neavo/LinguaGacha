@@ -1,4 +1,4 @@
-import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "@base/task";
+import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "@shared/task";
 
 export type RuntimeProjectItemRecord = {
   item_id: number;

@@ -6,7 +6,7 @@ import {
   get_runtime_section_revision,
 } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
-import { normalize_item_status } from "../../base/item";
+import { Item } from "../../base/item";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -30,14 +30,14 @@ export class ProofreadingService {
   }
 
   /**
-   * 保存单条校对结果，和旧入口共享同一 finalized payload 语义。
+   * 保存单条校对结果，使用 finalized payload 语义。
    */
   public async save_item(request: JsonRecord): Promise<JsonRecord> {
     return this.persist_finalized_items(request);
   }
 
   /**
-   * 保存批量校对结果，响应形状与旧 app service 保持一致。
+   * 保存批量校对结果，响应形状保持稳定。
    */
   public async save_all(request: JsonRecord): Promise<JsonRecord> {
     return this.persist_finalized_items(request);
@@ -102,7 +102,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 缺失期望值时宽容跳过；给出期望值时使用旧冲突消息。
+   * 缺失期望值时宽容跳过；给出期望值时使用冲突消息。
    */
   private assert_expected_revisions(
     expected: Record<string, number> | null,
@@ -125,7 +125,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 按旧入口的 finalized item 白名单，把 payload 合并到当前数据库事实上。
+   * 按 finalized item 白名单，把 payload 合并到当前数据库事实上。
    */
   private merge_finalized_items(
     project_path: string,
@@ -161,7 +161,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 只接受旧写入口允许覆盖的字段，避免校对页顺手写入其它 item 事实。
+   * 只接受校对写入口允许覆盖的字段，避免校对页顺手写入其它 item 事实。
    */
   private merge_item_payload(
     current: MutableJsonRecord,
@@ -204,21 +204,21 @@ export class ProofreadingService {
   }
 
   /**
-   * 项目运行态 revision 的坏值和负值按旧服务读取为 0。
+   * 项目运行态 revision 的坏值和负值读取为 0。
    */
   private get_project_runtime_revision(meta: JsonRecord, section: string): number {
     return get_runtime_section_revision(meta, section);
   }
 
   /**
-   * 校对 revision 的坏值和负值按旧 ProofreadingRevisionService 读取为 0。
+   * 校对 revision 的坏值和负值读取为 0。
    */
   private get_proofreading_revision(meta: JsonRecord): number {
     return get_runtime_section_revision(meta, "proofreading");
   }
 
   /**
-   * 归一期望 section revisions；非对象视为缺失，坏 revision 值沿用旧入口直接报错。
+   * 归一期望 section revisions；非对象视为缺失，坏 revision 值直接报错。
    */
   private normalize_expected_section_revisions(
     value: ApiJsonValue | undefined,
@@ -255,14 +255,14 @@ export class ProofreadingService {
   }
 
   /**
-   * 兼容当前状态域和两个历史状态值。
+   * 校对写入口只接受当前状态域，非法值按未处理状态兜底。
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
-    return normalize_item_status(value);
+    return Item.normalize_status(value);
   }
 
   /**
-   * 写入字段和 expected revision 使用严格转换，转换失败时保持旧接口失败语义。
+   * 写入字段和 expected revision 使用严格转换，转换失败时保持失败语义。
    */
   private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
@@ -273,7 +273,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 模拟历史 int：数字截断，整数字符串可转，布尔值按 1/0，null 和非整数字符串失败。
+   * 模拟 int：数字截断，整数字符串可转，布尔值按 1/0，null 和非整数字符串失败。
    */
   private parse_integer_like(value: ApiJsonValue | undefined): number | null {
     if (typeof value === "number") {

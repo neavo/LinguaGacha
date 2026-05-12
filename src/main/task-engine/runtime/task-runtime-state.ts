@@ -1,15 +1,15 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { JsonRecord, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
-import { is_task_idle_status, is_task_type } from "../../../base/task";
+import { is_task_idle_status, is_task_type } from "../../../shared/task";
 
-// Engine 空闲态统一用 idle 表达，避免快照里继续泄漏旧任务类型。
+// Engine 空闲态统一用 idle 表达，避免快照泄漏任务类型细节。
 const IDLE_TASK_TYPE = "idle";
 
 /**
- * API Gateway 内的任务运行态权威，替代旧任务状态查询。
+ * API Gateway 内的任务运行态权威。
  */
 export class TaskRuntimeState {
-  // status 保留 Engine 公开字符串，避免前端按钮态在迁移期间换语义。
+  // status 保留 Engine 公开字符串，避免前端按钮态换语义。
   private status = "IDLE";
 
   // busy 是同步 mutation、reset preview 和任务按钮共享的唯一运行时互斥事实。
@@ -59,7 +59,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 命令调用失败时恢复旧快照，避免 乐观占用造成永久忙碌。
+   * 命令调用失败时恢复前置快照，避免乐观占用造成永久忙碌。
    */
   public restore(snapshot: TaskRuntimeStatePayload): void {
     this.status = snapshot.status;
@@ -163,7 +163,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 布尔读取集中处理，兼容旧事件没有 busy 字段的情况。
+   * 布尔读取集中处理，兼容事件缺少 busy 字段的情况。
    */
   private read_boolean(value: ApiJsonValue | undefined, fallback: boolean): boolean {
     return typeof value === "boolean" ? value : fallback;

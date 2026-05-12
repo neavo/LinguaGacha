@@ -513,7 +513,7 @@ export function useTextReplacementPageState(
     const preset_payload = await api_fetch<TextReplacementPresetPayload>(
       "/api/quality/rules/presets",
       {
-        preset_dir_name: config.preset_dir_name,
+        rule_type: config.rule_type,
       },
     );
     const default_virtual_id = String(settings_snapshot[config.default_preset_settings_key] ?? "");
@@ -525,7 +525,7 @@ export function useTextReplacementPageState(
         default_virtual_id,
       ),
     );
-  }, [config.default_preset_settings_key, config.preset_dir_name, settings_snapshot]);
+  }, [config.default_preset_settings_key, config.rule_type, settings_snapshot]);
 
   useEffect(() => {
     if (!project_snapshot.loaded) {
@@ -1030,7 +1030,7 @@ export function useTextReplacementPageState(
         const payload = await api_fetch<{ entries: TextReplacementEntry[] }>(
           "/api/quality/rules/presets/read",
           {
-            preset_dir_name: config.preset_dir_name,
+            rule_type: config.rule_type,
             virtual_id,
           },
         );
@@ -1043,7 +1043,7 @@ export function useTextReplacementPageState(
         }
       }
     },
-    [config.preset_dir_name, persist_merged_entries, push_toast, readonly, t],
+    [config.rule_type, persist_merged_entries, push_toast, readonly, t],
   );
 
   const request_reset_entries = useCallback((): void => {
@@ -1126,7 +1126,7 @@ export function useTextReplacementPageState(
 
       try {
         await api_fetch("/api/quality/rules/presets/save", {
-          preset_dir_name: config.preset_dir_name,
+          rule_type: config.rule_type,
           name: normalized_name,
           entries: entries
             .map((entry) => {
@@ -1146,7 +1146,7 @@ export function useTextReplacementPageState(
         return false;
       }
     },
-    [config.preset_dir_name, entries, push_toast, readonly, refresh_preset_menu, t],
+    [config.rule_type, entries, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const rename_preset = useCallback(
@@ -1165,7 +1165,7 @@ export function useTextReplacementPageState(
         const payload = await api_fetch<{ item?: TextReplacementPresetItem }>(
           "/api/quality/rules/presets/rename",
           {
-            preset_dir_name: config.preset_dir_name,
+            rule_type: config.rule_type,
             virtual_id,
             new_name: normalized_name,
           },
@@ -1467,7 +1467,7 @@ export function useTextReplacementPageState(
       try {
         if (confirm_state.target_virtual_id !== null) {
           await api_fetch("/api/quality/rules/presets/delete", {
-            preset_dir_name: config.preset_dir_name,
+            rule_type: config.rule_type,
             virtual_id: confirm_state.target_virtual_id,
           });
 

@@ -1,9 +1,9 @@
 import fs from "node:fs";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { ConfigService } from "../service/config-service";
+import { SettingService } from "../service/setting-service";
 import { FileFormatService } from "./file-format-service";
-import { item_to_json } from "../../base/item";
+import { Item } from "../../base/item";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -14,7 +14,7 @@ export class FilePreviewService {
   /**
    * 预演服务只编排配置和 格式处理器，不直接写数据库。
    */
-  public constructor(private readonly config_service: ConfigService) {}
+  public constructor(private readonly setting_service: SettingService) {}
 
   /**
    * 工作台单文件预解析允许部分失败，用户界面只展示成功解析的候选。
@@ -54,7 +54,7 @@ export class FilePreviewService {
       );
       let file_type = "NONE";
       for (const item of parsed_items) {
-        const payload = item_to_json(item);
+        const payload = Item.from_json(item).to_json();
         payload["id"] = next_item_id;
         payload["file_path"] =
           String(payload["file_path"] ?? source_file.rel_path) || source_file.rel_path;
@@ -84,7 +84,7 @@ export class FilePreviewService {
    * 每次按当前配置创建格式服务，避免设置页改动后预演仍使用旧语言。
    */
   private create_format_service(): FileFormatService {
-    const config = this.config_service.load_config();
+    const config = this.setting_service.load_setting();
     return new FileFormatService({
       source_language: String(config["source_language"] ?? "JA"),
       target_language: String(config["target_language"] ?? "ZH"),

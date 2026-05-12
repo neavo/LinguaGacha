@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { ConfigService } from "../service/config-service";
+import { SettingService } from "../service/setting-service";
 import { AppPathService } from "../service/path-service";
 import { PiAiLlmRequestClient } from "../task-worker/llm/llm-request-client";
 import { ModelService } from "./model-service";
@@ -151,12 +151,12 @@ async function create_model_service(models: Array<Record<string, ApiJsonValue>>)
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-model-service-"));
   await write_model_presets(app_root);
   const paths = new AppPathService({ appRoot: app_root });
-  const config_service = new ConfigService(paths);
-  config_service.save_config({
+  const setting_service = new SettingService(paths);
+  setting_service.save_setting({
     activate_model_id: models[0]?.["id"] ?? "",
     models: models as unknown as ApiJsonValue,
   });
-  return { service: new ModelService(paths, config_service) };
+  return { service: new ModelService(paths, setting_service) };
 }
 
 /**

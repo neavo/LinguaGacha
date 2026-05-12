@@ -235,7 +235,8 @@ describe("ProjectRuntimeEncoder", () => {
               row: 2,
               src: "@12 你好",
               dst: "",
-              status: "PROCESSED_IN_PAST",
+              status: "PROCESSED",
+              text_type: "WOLF",
               retry_count: 2,
             },
             {

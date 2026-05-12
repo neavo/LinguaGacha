@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { create_epub_fixture } from "../../../test/epub-fixture";
-import { normalize_item } from "../../../base/item";
+import { Item } from "../../../base/item";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 describe("EpubAst", () => {
@@ -43,7 +43,7 @@ describe("EpubAst", () => {
   it("缺少 EPUB metadata 时返回空 extra", () => {
     expect(
       read_epub_extra(
-        normalize_item({
+        Item.from_json({
           src: "原文",
           file_type: "TXT",
           file_path: "script.txt",

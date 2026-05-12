@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ProjectDatabase } from "../database/database-operations";
 import { ProjectSessionState } from "../project/project-session-state";
 import { AppPathService } from "./path-service";
-import { ConfigService } from "./config-service";
+import { SettingService } from "./setting-service";
 import { QualityService } from "./quality-service";
 
 describe("QualityService", () => {
@@ -31,7 +31,7 @@ describe("QualityService", () => {
 
     expect(
       service.read_rule_preset({
-        preset_dir_name: "glossary",
+        rule_type: "glossary",
         virtual_id: "builtin:demo.json",
       }),
     ).toEqual({ entries: [{ src: "A", dst: "甲" }] });
@@ -50,7 +50,7 @@ describe("QualityService", () => {
 
     expect(
       service.read_rule_preset({
-        preset_dir_name: "text_preserve",
+        rule_type: "text_preserve",
         virtual_id: "builtin:renpy.json",
       }),
     ).toEqual({ entries: [{ src: "\\[[^\\]]+\\]" }] });
@@ -61,19 +61,19 @@ describe("QualityService", () => {
 
     expect(() =>
       service.read_rule_preset({
-        preset_dir_name: "glossary",
+        rule_type: "glossary",
         virtual_id: "builtin:../demo.json",
       }),
     ).toThrow("invalid virtual preset id");
     expect(() =>
       service.read_rule_preset({
-        preset_dir_name: "glossary",
+        rule_type: "glossary",
         virtual_id: "builtin:folder/demo.json",
       }),
     ).toThrow("invalid virtual preset id");
     expect(() =>
       service.read_rule_preset({
-        preset_dir_name: "glossary",
+        rule_type: "glossary",
         virtual_id: "builtin:folder\\demo.json",
       }),
     ).toThrow("invalid virtual preset id");
@@ -123,10 +123,10 @@ describe("QualityService", () => {
       env: {},
       platform: process.platform,
     });
-    const config_service = new ConfigService(paths);
+    const setting_service = new SettingService(paths);
     const service = new QualityService(
       paths,
-      config_service,
+      setting_service,
       null as unknown as ProjectDatabase,
       new ProjectSessionState(),
     );

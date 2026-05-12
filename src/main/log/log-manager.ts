@@ -3,7 +3,13 @@ import path from "node:path";
 import process from "node:process";
 
 import { format_console_log } from "./log-console-formatter";
-import type { LogAppendPayload, LogEvent, LogLevel, LogSubscriber, LogTargets } from "./log-types";
+import type {
+  LogAppendPayload,
+  LogEvent,
+  LogLevel,
+  LogSubscriber,
+  LogTargets,
+} from "../../shared/log";
 
 const DEFAULT_RING_BUFFER_SIZE = 1000;
 const MAX_LOG_FILE_COUNT = 3;

@@ -17,11 +17,7 @@ import { Textarea } from "@/shadcn/textarea";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { SettingHelpButton } from "@/widgets/setting-help-button/setting-help-button";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
-import {
-  MODEL_THINKING_LEVELS,
-  model_api_format_supports_reasoning_by_default,
-  normalize_model_api_format,
-} from "@base/model";
+import { MODEL_THINKING_LEVELS, Model } from "@base/model";
 
 type ModelBasicSettingsDialogProps = {
   open: boolean;
@@ -54,14 +50,14 @@ function resolve_thinking_label(
 }
 
 function should_show_connection_fields(api_format: string): boolean {
-  return normalize_model_api_format(api_format) === api_format;
+  return Model.normalize_api_format(api_format) === api_format;
 }
 
 function should_show_thinking_field(api_format: string): boolean {
-  const normalized_api_format = normalize_model_api_format(api_format);
+  const normalized_api_format = Model.normalize_api_format(api_format);
   return (
     normalized_api_format === "OpenAI" ||
-    model_api_format_supports_reasoning_by_default(normalized_api_format)
+    Model.api_format_supports_reasoning_by_default(normalized_api_format)
   );
 }
 

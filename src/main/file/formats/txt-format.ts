@@ -9,7 +9,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 
 /**
  * TXT 格式按行解析与写回，保持旧实现最朴素的一行一条规则。
@@ -26,7 +26,7 @@ export class TXTFormat {
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const text = await TextTool.decode(content);
     return split_text_lines_for_items(text).map((line, index) =>
-      normalize_item({
+      Item.from_json({
         src: line,
         dst: "",
         row: index,
@@ -50,10 +50,10 @@ export class TXTFormat {
     for (const [rel_path, group] of group_items(items, "TXT")) {
       const bilingual = group
         .map((item) => {
-          const resolve_item_effective_dst = effective_export_text(item);
-          return this.config.deduplication_in_bilingual && item.src === resolve_item_effective_dst
-            ? resolve_item_effective_dst
-            : `${item.src}\n${resolve_item_effective_dst}`;
+          const item_dst = effective_export_text(item);
+          return this.config.deduplication_in_bilingual && item.src === item_dst
+            ? item_dst
+            : `${item.src}\n${item_dst}`;
         })
         .join("\n");
       await write_text_file(

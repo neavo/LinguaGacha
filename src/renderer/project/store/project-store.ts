@@ -1,3 +1,6 @@
+import { Prompt } from "@base/prompt";
+import { QualityRule } from "@base/quality";
+
 export type ProjectStoreStage =
   | "project"
   | "files"
@@ -327,29 +330,9 @@ function mergeSectionRecords(args: {
 function normalizeQualityRuleSlice(
   value: ProjectStoreQualityRuleSlice | Record<string, unknown> | undefined,
 ): ProjectStoreQualityRuleSlice {
-  if (value === undefined || value === null) {
-    return createEmptyQualityRuleSlice();
-  }
-
-  const candidate = value as {
-    entries?: unknown;
-    enabled?: unknown;
-    mode?: unknown;
-    revision?: unknown;
-  };
-
-  return {
-    entries: Array.isArray(candidate.entries)
-      ? candidate.entries.flatMap((entry) => {
-          return typeof entry === "object" && entry !== null
-            ? [{ ...(entry as Record<string, unknown>) }]
-            : [];
-        })
-      : [],
-    enabled: Boolean(candidate.enabled),
-    mode: String(candidate.mode ?? "off"),
-    revision: Number(candidate.revision ?? 0),
-  };
+  return QualityRule.from_json("glossary").normalize_slice(
+    value ?? createEmptyQualityRuleSlice(),
+  ) as ProjectStoreQualityRuleSlice;
 }
 
 function normalizeQualityState(
@@ -376,28 +359,7 @@ function normalizeQualityState(
 function normalizePromptSlice(
   value: ProjectStorePromptSlice | Record<string, unknown> | undefined,
 ): ProjectStorePromptSlice {
-  if (value === undefined || value === null) {
-    return {
-      text: "",
-      enabled: false,
-      revision: 0,
-    };
-  }
-
-  const candidate = value as {
-    text?: unknown;
-    enabled?: unknown;
-    revision?: unknown;
-    meta?: {
-      enabled?: unknown;
-    };
-  };
-
-  return {
-    text: String(candidate.text ?? ""),
-    enabled: Boolean(candidate.enabled ?? candidate.meta?.enabled),
-    revision: Number(candidate.revision ?? 0),
-  };
+  return Prompt.translation().normalize_slice(value ?? { text: "", enabled: false, revision: 0 });
 }
 
 function normalizePromptsState(

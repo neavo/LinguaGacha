@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import { ConfigService } from "../../service/config-service";
+import { SettingService } from "../../service/setting-service";
 import { resolve_active_model } from "../../model/model-config-resolver";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskEngine } from "../orchestration/task-engine";
@@ -27,8 +27,8 @@ export class TaskCommandService {
   // session_state 决定重翻 revision 校验是否能定位当前工程。
   private readonly session_state: ProjectSessionState;
 
-  // config_service 只用于单条翻译前的主动模型可用性检查。
-  private readonly config_service: ConfigService;
+  // setting_service 只用于单条翻译前的主动模型可用性检查。
+  private readonly setting_service: SettingService;
 
   /**
    * 注入任务命令依赖，保持公开协议、运行态桥和配置读取边界可测试。
@@ -38,13 +38,13 @@ export class TaskCommandService {
     snapshot_builder: TaskSnapshotBuilder,
     task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
-    config_service: ConfigService,
+    setting_service: SettingService,
   ) {
     this.task_engine = task_engine;
     this.snapshot_builder = snapshot_builder;
     this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
-    this.config_service = config_service;
+    this.setting_service = setting_service;
   }
 
   /**
@@ -305,7 +305,7 @@ export class TaskCommandService {
    * 单条翻译只做基础模型存在性判断；真实请求能力由 work-unit executor 负责。
    */
   private has_active_model(): boolean {
-    const config = this.config_service.load_config();
+    const config = this.setting_service.load_setting();
     return resolve_active_model(config) !== null;
   }
 

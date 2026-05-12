@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-types";
 import type { LlmRequestMessage } from "../llm/llm-types";
+import { Prompt } from "../../../base/prompt";
 
 // 中文提示词模板使用“原文”占位，英文模板使用“Source”占位，避免字符串散落在构造逻辑里。
 const SOURCE_PLACEHOLDER_ZH = "原文";
@@ -177,21 +178,22 @@ export class PromptBuilder {
    */
   public async build_main(): Promise<string> {
     const context = this.resolve_prompt_context();
+    const prompt = Prompt.translation();
     const prefix = await this.read_prompt_text(
-      "translation_prompt",
+      prompt.directory_name,
       context.prompt_language,
       "prefix.txt",
     );
     const base = this.quality_snapshot.translation_prompt_enable
       ? this.quality_snapshot.translation_prompt
-      : await this.read_prompt_text("translation_prompt", context.prompt_language, "base.txt");
+      : await this.read_prompt_text(prompt.directory_name, context.prompt_language, "base.txt");
     const thinking = await this.read_prompt_text(
-      "translation_prompt",
+      prompt.directory_name,
       context.prompt_language,
       "thinking.txt",
     );
     const suffix = await this.read_prompt_text(
-      "translation_prompt",
+      prompt.directory_name,
       context.prompt_language,
       "suffix.txt",
     );
@@ -205,21 +207,22 @@ export class PromptBuilder {
    */
   public async build_glossary_analysis_main(): Promise<string> {
     const context = this.resolve_prompt_context();
+    const prompt = Prompt.analysis();
     const prefix = await this.read_prompt_text(
-      "analysis_prompt",
+      prompt.directory_name,
       context.prompt_language,
       "prefix.txt",
     );
     const base = this.quality_snapshot.analysis_prompt_enable
       ? this.quality_snapshot.analysis_prompt
-      : await this.read_prompt_text("analysis_prompt", context.prompt_language, "base.txt");
+      : await this.read_prompt_text(prompt.directory_name, context.prompt_language, "base.txt");
     const thinking = await this.read_prompt_text(
-      "analysis_prompt",
+      prompt.directory_name,
       context.prompt_language,
       "thinking.txt",
     );
     const suffix = await this.read_prompt_text(
-      "analysis_prompt",
+      prompt.directory_name,
       context.prompt_language,
       "suffix.txt",
     );

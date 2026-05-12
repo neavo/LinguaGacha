@@ -1,4 +1,4 @@
-import { is_active_translation_task_status as is_base_active_translation_task_status } from "@base/task";
+import { is_active_translation_task_status as is_base_active_translation_task_status } from "@shared/task";
 
 export type TranslationTaskActionKind =
   | "reset-all"

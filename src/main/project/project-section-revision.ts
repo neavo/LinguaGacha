@@ -1,6 +1,6 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { QUALITY_RULE_TYPES, build_quality_rule_revision_key } from "../../base/quality";
-import { PROMPT_TASK_TYPES, build_prompt_revision_key } from "../../base/prompt";
+import { QualityRule } from "../../base/quality";
+import { Prompt } from "../../base/prompt";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -31,17 +31,13 @@ export function get_runtime_section_revision(meta: JsonRecord, section: string):
   }
   if (section === "quality") {
     return Math.max(
-      ...QUALITY_RULE_TYPES.map((rule_type) =>
-        read_revision_meta(meta[build_quality_rule_revision_key(rule_type)]),
-      ),
+      ...QualityRule.all().map((rule) => read_revision_meta(meta[rule.revision_meta_key])),
       0,
     );
   }
   if (section === "prompts") {
     return Math.max(
-      ...PROMPT_TASK_TYPES.map((task_type) =>
-        read_revision_meta(meta[build_prompt_revision_key(task_type)]),
-      ),
+      ...Prompt.all().map((prompt) => read_revision_meta(meta[prompt.revision_meta_key])),
       0,
     );
   }

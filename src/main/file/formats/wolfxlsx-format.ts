@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, type ExportPaths } from "./file-format-shared";
-import { normalize_item, type Item } from "../../../base/item";
+import { Item } from "../../../base/item";
 
 // WOLF XLSX 的源文和译文列号来自旧固定实现。
 const COL_SRC_TEXT = 6;
@@ -40,7 +40,7 @@ export class WOLFXLSXFormat {
           : SpreadsheetTool.cellValueToText(dst_value);
       const fill_index = this.get_fg_color_index(sheet, row, COL_SRC_TEXT);
       items.push(
-        normalize_item({
+        Item.from_json({
           src,
           dst,
           row,

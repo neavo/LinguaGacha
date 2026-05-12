@@ -2,13 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import {
-  resolve_item_effective_dst,
-  normalize_item,
-  normalize_item_name,
-  type Item,
-  type ItemFileType,
-} from "../../../base/item";
+import { Item, type ItemFileType } from "../../../base/item";
 
 /**
  * 文件格式处理器共享配置，来源于应用设置或测试显式注入。
@@ -144,14 +138,14 @@ export function group_items(items: Item[], file_type: ItemFileType): Map<string,
  * 统计同一 name_src 的多数 name_dst，保持人名字段写回稳定。
  */
 export function prepare_name_fields(items: Item[], config: FileFormatServiceConfig): Item[] {
-  const cloned = items.map((item) => normalize_item(item));
+  const cloned = items.map((item) => Item.from_json(item));
   if (config.write_translated_name_fields_to_file === false) {
-    return cloned.map((item) => ({ ...item, name_dst: item.name_src }));
+    return cloned.map((item) => Item.from_json({ ...item.to_json(), name_dst: item.name_src }));
   }
   const counts = new Map<string, Map<string, number>>();
   for (const item of cloned) {
-    const item_name_src = normalize_item_name(item.name_src);
-    const item_name_dst = normalize_item_name(item.name_dst);
+    const item_name_src = Item.normalize_name(item.name_src);
+    const item_name_dst = Item.normalize_name(item.name_dst);
     const src_names = Array.isArray(item_name_src)
       ? item_name_src
       : item_name_src === null
@@ -175,10 +169,16 @@ export function prepare_name_fields(items: Item[], config: FileFormatServiceConf
   }
   return cloned.map((item) => {
     if (typeof item.name_src === "string") {
-      return { ...item, name_dst: final_names.get(item.name_src) ?? item.name_src };
+      return Item.from_json({
+        ...item.to_json(),
+        name_dst: final_names.get(item.name_src) ?? item.name_src,
+      });
     }
     if (Array.isArray(item.name_src)) {
-      return { ...item, name_dst: item.name_src.map((name) => final_names.get(name) ?? name) };
+      return Item.from_json({
+        ...item.to_json(),
+        name_dst: item.name_src.map((name) => final_names.get(name) ?? name),
+      });
     }
     return item;
   });
@@ -188,5 +188,5 @@ export function prepare_name_fields(items: Item[], config: FileFormatServiceConf
  * 导出统一使用有效译文，未来若增加状态级策略只需改这里。
  */
 export function effective_export_text(item: Item): string {
-  return resolve_item_effective_dst(item);
+  return Item.from_json(item).effective_dst();
 }

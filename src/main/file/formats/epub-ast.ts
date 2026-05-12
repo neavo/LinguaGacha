@@ -16,7 +16,7 @@ import { decodeHTML } from "entities";
 import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import { normalize_item, read_json_record, type Item } from "../../../base/item";
+import { Item, read_json_record } from "../../../base/item";
 
 /**
  * EPUB slot 定位引用，path 指向元素，slot 区分元素首段文本和元素后的 tail 文本。
@@ -496,7 +496,7 @@ export class EpubAst {
       return null;
     }
     const digest = this.sha1_hex_with_null_separator([pkg.opf_title_text]);
-    return normalize_item({
+    return Item.from_json({
       src: pkg.opf_title_text,
       dst: "",
       tag: pkg.opf_path,
@@ -807,7 +807,7 @@ export class EpubAst {
       }
       const elem_path = this.build_elem_path_map(root).get(elem) ?? "";
       items.push(
-        normalize_item({
+        Item.from_json({
           src: text,
           dst: "",
           tag: ncx_path,
@@ -870,7 +870,7 @@ export class EpubAst {
       epub_extra["ruby_clean_candidate"] = ruby_clean_candidate as ApiJsonValue;
     }
 
-    return normalize_item({
+    return Item.from_json({
       src: part_texts.join("\n"),
       dst: "",
       tag: doc_path,

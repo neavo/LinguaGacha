@@ -197,11 +197,11 @@ describe("useTsConversionPageState", () => {
       false,
     );
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/presets/read", {
-      preset_dir_name: "text_preserve",
+      rule_type: "text_preserve",
       virtual_id: "builtin:renpy.json",
     });
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/presets/read", {
-      preset_dir_name: "text_preserve",
+      rule_type: "text_preserve",
       virtual_id: "builtin:none.json",
     });
     expect(api_fetch_mock).toHaveBeenCalledWith(
@@ -296,14 +296,14 @@ describe("useTsConversionPageState", () => {
       [
         "/api/quality/rules/presets/read",
         {
-          preset_dir_name: "text_preserve",
+          rule_type: "text_preserve",
           virtual_id: "builtin:renpy.json",
         },
       ],
       [
         "/api/quality/rules/presets/read",
         {
-          preset_dir_name: "text_preserve",
+          rule_type: "text_preserve",
           virtual_id: "builtin:none.json",
         },
       ],

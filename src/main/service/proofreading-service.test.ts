@@ -91,7 +91,7 @@ describe("ProofreadingService", () => {
           src: "新原文",
           dst: "新译文",
           name_dst: "不应写入",
-          status: "PROCESSED_IN_PAST",
+          status: "PROCESSED",
           text_type: "name",
           retry_count: "2",
         },
@@ -247,7 +247,7 @@ describe("ProofreadingService", () => {
     ).toBe(0);
   });
 
-  it("旧 PROCESSING 与未知 status 都会归一为 NONE", async () => {
+  it("未知 status 会归一为 NONE", async () => {
     const { database, service, lg_path } = create_service();
     database.execute({
       name: "setItems",
@@ -262,7 +262,7 @@ describe("ProofreadingService", () => {
 
     await service.replace_all({
       items: [
-        { item_id: 1, status: "PROCESSING" },
+        { item_id: 1, status: "BROKEN_STATUS" },
         { item_id: 2, status: "SOMETHING_NEW" },
       ],
     });

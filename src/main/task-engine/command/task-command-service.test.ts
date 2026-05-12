@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ConfigService } from "../../service/config-service";
+import type { SettingService } from "../../service/setting-service";
 import type { TaskEngine } from "../orchestration/task-engine";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
@@ -24,7 +24,7 @@ describe("TaskCommandService", () => {
       }),
       new TaskRuntimeState(),
       session_state,
-      create_config_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     const result = await service.start_retranslate({
@@ -76,7 +76,7 @@ describe("TaskCommandService", () => {
       create_snapshot_builder({}),
       new TaskRuntimeState(),
       new ProjectSessionState(),
-      create_config_service({ activate_model_id: "", models: [] }),
+      create_setting_service({ activate_model_id: "", models: [] }),
     );
 
     const result = await service.translate_single({ text: "原文" });
@@ -97,7 +97,7 @@ describe("TaskCommandService", () => {
       create_snapshot_builder({}),
       new TaskRuntimeState(),
       new ProjectSessionState(),
-      create_config_service({ activate_model_id: "missing", models: [{ id: "model-1" }] }),
+      create_setting_service({ activate_model_id: "missing", models: [{ id: "model-1" }] }),
     );
 
     const result = await service.translate_single({ text: " 原文 " });
@@ -114,7 +114,7 @@ describe("TaskCommandService", () => {
       create_snapshot_builder({ items: 8, proofreading: 2 }),
       new TaskRuntimeState(),
       session_state,
-      create_config_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     await expect(
@@ -142,9 +142,9 @@ describe("TaskCommandService", () => {
     } as unknown as TaskSnapshotBuilder;
   }
 
-  function create_config_service(config: Record<string, unknown>): ConfigService {
+  function create_setting_service(config: Record<string, unknown>): SettingService {
     return {
-      load_config: () => config,
-    } as unknown as ConfigService;
+      load_setting: () => config,
+    } as unknown as SettingService;
   }
 });

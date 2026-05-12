@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { format_console_log } from "./log-console-formatter";
-import type { LogAppendPayload } from "./log-types";
+import type { LogAppendPayload } from "../../shared/log";
 
 describe("format_console_log", () => {
   const created_at = new Date(2012, 11, 12, 12, 12, 12);

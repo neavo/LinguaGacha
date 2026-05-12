@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { normalize_item } from "../../../base/item";
+import { Item } from "../../../base/item";
 import { MESSAGEJSONFormat } from "./messagejson-format";
 
 let temp_dir = "";
@@ -47,7 +47,7 @@ describe("MESSAGEJSONFormat", () => {
     });
     await format.write_to_path(
       [
-        normalize_item({
+        Item.from_json({
           src: "台词",
           dst: "译文",
           name_src: "名前",
