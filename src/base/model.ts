@@ -190,6 +190,13 @@ export class Model {
   }
 
   /**
+   * 预设模型来自内置资源，只允许重置，不允许删除
+   */
+  public is_preset(): boolean {
+    return this.type === "PRESET";
+  }
+
+  /**
    * 模型配置从磁盘和页面表单进入时先收窄到稳定类型
    */
   public static normalize_type(value: unknown): ModelType {

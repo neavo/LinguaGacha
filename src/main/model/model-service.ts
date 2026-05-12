@@ -20,6 +20,7 @@ import {
 } from "./model-config-resolver";
 import { JsonTool } from "../../shared/utils/json-tool";
 
+// 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
 const PATCH_ALLOWED_KEYS = new Set([
   "name",
   "api_url",
@@ -31,8 +32,10 @@ const PATCH_ALLOWED_KEYS = new Set([
   "request",
 ]);
 
+// 嵌套配置字段采用浅合并，保留未出现在 patch 中的历史配置项
 const PATCH_OBJECT_KEYS = new Set(["thinking", "threshold", "generation", "request"]);
 
+// 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
@@ -526,10 +529,12 @@ export class ModelService {
   }
 
   /**
-   * 归一模型对象，保护配置文件旧字段和缺省字段
+   * 归一模型对象，保护配置文件旧字段和缺省字段；已有 ID 不重新取 UUID，避免初始化消耗新增模型的确定 ID
    */
   private normalize_model(model: ModelRecord): ModelRecord {
-    return Model.from_json(model, crypto.randomUUID()).to_json() as ModelRecord;
+    const existing_id = String(model["id"] ?? "").trim();
+    const fallback_id = existing_id === "" ? crypto.randomUUID() : existing_id;
+    return Model.from_json(model, fallback_id).to_json() as ModelRecord;
   }
 
   /**
