@@ -96,6 +96,115 @@ describe("QualityService", () => {
     });
   });
 
+  it("导入外部规则时按扩展名分发并拒绝未知格式", async () => {
+    const { service, app_root } = create_service();
+    const json_path = path.join(app_root, "rules.JSON");
+    const text_path = path.join(app_root, "rules.txt");
+    fs.writeFileSync(json_path, '[{"src":"HP","dst":"生命值"}]', "utf-8");
+    fs.writeFileSync(text_path, "HP=生命值", "utf-8");
+
+    await expect(service.import_rules({ path: json_path })).resolves.toEqual({
+      entries: [
+        {
+          src: "HP",
+          dst: "生命值",
+          info: "",
+          regex: false,
+          case_sensitive: false,
+        },
+      ],
+    });
+    await expect(service.import_rules({ path: text_path })).resolves.toEqual({ entries: [] });
+    await expect(service.import_rules({ path: "" })).resolves.toEqual({ entries: [] });
+  });
+
+  it("导入外部 JSON 规则时兼容列表、RPG Maker Actors 与 KV 字典", async () => {
+    const { service, app_root } = create_service();
+    const list_path = path.join(app_root, "list.json");
+    const actors_path = path.join(app_root, "actors.json");
+    const kv_path = path.join(app_root, "kv.json");
+    fs.writeFileSync(
+      list_path,
+      JSON.stringify([{ src: " HP ", dst: "生命值", info: "i", regex: 1 }, { src: "   " }, "bad"]),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      actors_path,
+      JSON.stringify([
+        { id: 7, name: "勇者", nickname: "小勇" },
+        { id: 8, name: "", nickname: "弓手" },
+      ]),
+      "utf-8",
+    );
+    fs.writeFileSync(kv_path, JSON.stringify({ A: "甲", "": "skip", B: null }), "utf-8");
+
+    await expect(service.import_rules({ path: list_path })).resolves.toEqual({
+      entries: [
+        {
+          src: "HP",
+          dst: "生命值",
+          info: "i",
+          regex: true,
+          case_sensitive: false,
+        },
+      ],
+    });
+    await expect(service.import_rules({ path: actors_path })).resolves.toEqual({
+      entries: [
+        { src: "\\n[7]", dst: "勇者", info: "", regex: false, case_sensitive: false },
+        { src: "\\N[7]", dst: "勇者", info: "", regex: false, case_sensitive: false },
+        { src: "\\nn[7]", dst: "小勇", info: "", regex: false, case_sensitive: false },
+        { src: "\\NN[7]", dst: "小勇", info: "", regex: false, case_sensitive: false },
+        { src: "\\nn[8]", dst: "弓手", info: "", regex: false, case_sensitive: false },
+        { src: "\\NN[8]", dst: "弓手", info: "", regex: false, case_sensitive: false },
+      ],
+    });
+    await expect(service.import_rules({ path: kv_path })).resolves.toEqual({
+      entries: [
+        { src: "A", dst: "甲", info: "", regex: false, case_sensitive: false },
+        { src: "B", dst: "", info: "", regex: false, case_sensitive: false },
+      ],
+    });
+  });
+
+  it("导入外部 XLSX 规则时跳过表头和空首列并解析布尔字段", async () => {
+    const { service, app_root } = create_service();
+    const file_path = path.join(app_root, "rules.xlsx");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("rules");
+    sheet.getCell(1, 1).value = "src";
+    sheet.getCell(1, 2).value = "dst";
+    sheet.getCell(2, 1).value = "HP";
+    sheet.getCell(2, 2).value = "生命值";
+    sheet.getCell(2, 3).value = "term";
+    sheet.getCell(2, 4).value = "true";
+    sheet.getCell(2, 5).value = "TRUE";
+    sheet.getCell(3, 1).value = "";
+    sheet.getCell(3, 2).value = "应跳过";
+    sheet.getCell(4, 1).value = "MP";
+    sheet.getCell(4, 2).value = "魔力";
+    await workbook.xlsx.writeFile(file_path);
+
+    await expect(service.import_rules({ path: file_path })).resolves.toEqual({
+      entries: [
+        {
+          src: "HP",
+          dst: "生命值",
+          info: "term",
+          regex: true,
+          case_sensitive: true,
+        },
+        {
+          src: "MP",
+          dst: "魔力",
+          info: "",
+          regex: false,
+          case_sensitive: false,
+        },
+      ],
+    });
+  });
+
   it("导出外部 XLSX 规则时复用表格工具样式并转义公式文本", async () => {
     const { service, app_root } = create_service();
     const file_path = path.join(app_root, "exports", "rules.xlsx");

@@ -103,7 +103,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 - asset 内容以 Zstd 压缩 blob 存储在 `.lg` 内；调用方读取时消费解压 bytes，不理解压缩格式。
 - 运行态不保留独立 database gateway 或旧 DTO bridge；历史格式兼容只在 migration、runtime encoder 或 patch adapter 的明确边界内处理。
 - 跨 API、数据库 payload、任务运行态和 worker 的实体和值对象从 `src/base` 导入；`Item`、`Setting`、`Model`、`Prompt`、`QualityRule` 负责 JSON 反序列化、序列化、合法值集合和贴身派生判断，后端领域服务只在 IO、数据库、路径、网络和事件边界处理副作用。
-- 跨运行时复用的 task、language、log 和 JSON 工具从 `src/shared` 导入；运行态不得为这些共享规则另建并行词表或局部兜底。
+- 跨运行时复用的 task、quality、language、log 和 JSON 工具从 `src/shared` 导入；质量规则合并、预演和任务快照归一只复用 `src/shared/quality`，运行态不得为这些共享规则另建并行词表或局部兜底。
 - 质量规则预设接口以公开 `rule_type` 为入参，物理预设目录只由 `QualityRule` 派生；提示词目录、rules 表物理类型、meta key 和默认预设 setting key 只由 `Prompt` 派生。
 
 ## 7. 更新触发条件

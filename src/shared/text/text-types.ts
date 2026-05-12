@@ -1,3 +1,5 @@
+import { QualityRuleSnapshotTool } from "../quality/snapshot";
+
 // 文本处理层只接受可序列化 JSON 值，避免 worker 与主线程共享可变对象实例
 export type TextJsonValue =
   | null
@@ -67,64 +69,21 @@ export class TextQualitySnapshotTool {
    * 从 API JSON 恢复成不可变值对象；缺失字段按“规则关闭”处理
    */
   public static from_api_value(value: TextJsonValue | undefined): TextQualitySnapshot {
-    const root = this.read_record(value);
-    const quality = this.read_record(root["quality"]);
-    const prompts = this.read_record(root["prompts"]);
-    const glossary = this.read_record(quality["glossary"]);
-    const text_preserve = this.read_record(quality["text_preserve"]);
-    const pre_replacement = this.read_record(quality["pre_replacement"]);
-    const post_replacement = this.read_record(quality["post_replacement"]);
-    const translation = this.read_record(prompts["translation"]);
-    const analysis = this.read_record(prompts["analysis"]);
+    const snapshot = QualityRuleSnapshotTool.from_json(value);
     return {
-      glossary_enable: this.read_boolean(glossary["enabled"], true),
-      glossary_entries: this.read_record_list(glossary["entries"]),
-      text_preserve_mode: this.read_string(text_preserve["mode"], "OFF"),
-      text_preserve_entries: this.read_record_list(text_preserve["entries"]),
-      pre_replacement_enable: this.read_boolean(pre_replacement["enabled"], false),
-      pre_replacement_entries: this.read_record_list(pre_replacement["entries"]),
-      post_replacement_enable: this.read_boolean(post_replacement["enabled"], false),
-      post_replacement_entries: this.read_record_list(post_replacement["entries"]),
-      translation_prompt_enable: this.read_boolean(translation["enabled"], false),
-      translation_prompt: this.read_string(translation["text"], ""),
-      analysis_prompt_enable: this.read_boolean(analysis["enabled"], false),
-      analysis_prompt: this.read_string(analysis["text"], ""),
+      glossary_enable: snapshot.glossary_enable,
+      glossary_entries: snapshot.glossary_entries,
+      text_preserve_mode: snapshot.text_preserve_mode,
+      text_preserve_entries: snapshot.text_preserve_entries,
+      pre_replacement_enable: snapshot.pre_replacement_enable,
+      pre_replacement_entries: snapshot.pre_replacement_entries,
+      post_replacement_enable: snapshot.post_replacement_enable,
+      post_replacement_entries: snapshot.post_replacement_entries,
+      translation_prompt_enable: snapshot.translation_prompt_enable,
+      translation_prompt: snapshot.translation_prompt,
+      analysis_prompt_enable: snapshot.analysis_prompt_enable,
+      analysis_prompt: snapshot.analysis_prompt,
     };
-  }
-
-  /**
-   * 普通对象归一，保证数组和 null 不会被当作配置字典
-   */
-  private static read_record(value: TextJsonValue | undefined): TextJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
-  }
-
-  /**
-   * 规则列表只保留普通对象项，避免坏 JSON 污染正则拼接
-   */
-  private static read_record_list(value: TextJsonValue | undefined): TextJsonRecord[] {
-    return Array.isArray(value)
-      ? value
-          .filter(
-            (item): item is TextJsonRecord =>
-              typeof item === "object" && item !== null && !Array.isArray(item),
-          )
-          .map((item) => ({ ...item }))
-      : [];
-  }
-
-  /**
-   * 布尔字段只接受真实 boolean，字符串由调用方显式迁移后再传入
-   */
-  private static read_boolean(value: TextJsonValue | undefined, fallback: boolean): boolean {
-    return typeof value === "boolean" ? value : fallback;
-  }
-
-  /**
-   * 文本字段统一转字符串，保持旧配置中数字误填也能可见地参与替换
-   */
-  private static read_string(value: TextJsonValue | undefined, fallback: string): string {
-    return value === undefined || value === null ? fallback : String(value);
   }
 }
 

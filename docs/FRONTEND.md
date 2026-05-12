@@ -43,7 +43,7 @@ project, files, items, quality, prompts, analysis, proofreading, task
 - `project.patch` 不能消费时，运行时可以触发完整 bootstrap 刷新；页面不应自己调用多个 snapshot 拼接替代。
 - 本地乐观 patch 必须通过 `commit_local_project_patch()`，并提供可回滚的 section 快照。
 - `ProjectStore` patch revision 默认合并，乐观 patch 使用 exact revision；新增 patch operation 必须同步 store、runtime context 和测试。
-- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入；Electron 桌面宿主契约从 `src/desktop` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
+- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并、分析导入预演和任务快照序列化复用 `src/shared/quality`；Electron 桌面宿主契约从 `src/desktop` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
 - `ProjectStore` 只消费 `Prompt` 和 `QualityRule` 派生出的公开 key 与切片归一化结果；页面发起质量规则预设请求时传 `rule_type`，不传物理预设目录名。
 
 ## 4. 事件流与页面刷新

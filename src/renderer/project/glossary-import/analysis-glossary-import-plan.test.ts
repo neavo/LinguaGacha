@@ -128,6 +128,7 @@ describe("create_analysis_glossary_import_plan", () => {
         src: "艾琳",
         dst: "Erin",
         info: "角色名",
+        regex: false,
         case_sensitive: true,
       },
     ]);

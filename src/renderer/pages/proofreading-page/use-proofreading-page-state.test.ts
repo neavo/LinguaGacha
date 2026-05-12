@@ -134,24 +134,20 @@ function create_expected_quality_snapshot(): Record<string, unknown> {
     quality: {
       glossary: {
         enabled: false,
-        mode: "off",
         revision: 0,
         entries: [],
       },
       pre_replacement: {
         enabled: false,
-        mode: "off",
         revision: 0,
         entries: [],
       },
       post_replacement: {
         enabled: false,
-        mode: "off",
         revision: 0,
         entries: [],
       },
       text_preserve: {
-        enabled: false,
         mode: "off",
         revision: 0,
         entries: [],

@@ -6,6 +6,11 @@ import type {
 } from "@/project/quality/quality-statistics";
 import { getSharedQualityStatisticsWorkerPool } from "@/project/quality/quality-statistics-worker-pool";
 import { getQualityRuleSlice, replaceQualityRuleSlice } from "@/project/quality/quality-runtime";
+import {
+  QualityRuleMergeModeValue,
+  QualityRuleMergeRuleTypeValue,
+  preview_quality_rule_merge,
+} from "@shared/quality/merger";
 
 type CandidateAggregateEntry = {
   src: string;
@@ -151,10 +156,6 @@ function build_glossary_from_candidates(
   return glossary_entries;
 }
 
-function fold_src(src: string): string {
-  return src.normalize("NFKC").replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLocaleLowerCase();
-}
-
 function normalize_glossary_entry(entry: Record<string, unknown>): GlossaryEntry | null {
   const src = String(entry.src ?? "").trim();
   if (src === "") {
@@ -172,134 +173,25 @@ function merge_fill_empty(
   existing_entries: GlossaryEntry[],
   incoming_entries: GlossaryEntry[],
 ): MergePreview {
-  const groups = new Map<
-    string,
-    Array<{
-      entry: GlossaryEntry;
-      order: number;
-      is_existing: boolean;
-      incoming_index: number | null;
-    }>
-  >();
-  const existing_keys = new Set<string>();
-
-  function ingest(
-    entries: GlossaryEntry[],
-    options: { is_existing: boolean; order_offset: number },
-  ): void {
-    entries.forEach((entry, index) => {
-      const src_fold = fold_src(entry.src);
-      const group = groups.get(src_fold);
-      const item = {
-        entry,
-        order: options.order_offset + index,
-        is_existing: options.is_existing,
-        incoming_index: options.is_existing ? null : index,
-      };
-      if (group === undefined) {
-        groups.set(src_fold, [item]);
-      } else {
-        group.push(item);
-      }
-    });
-  }
-
-  ingest(existing_entries, {
-    is_existing: true,
-    order_offset: 0,
-  });
-  ingest(incoming_entries, {
-    is_existing: false,
-    order_offset: existing_entries.length,
+  const preview = preview_quality_rule_merge({
+    rule_type: QualityRuleMergeRuleTypeValue.GLOSSARY,
+    existing: existing_entries,
+    incoming: incoming_entries,
+    merge_mode: QualityRuleMergeModeValue.FILL_EMPTY,
   });
 
-  for (const [src_fold, items] of groups) {
-    const fold_only = items.some((item) => !item.entry.case_sensitive);
-    if (fold_only) {
-      if (items.some((item) => item.is_existing)) {
-        existing_keys.add(src_fold);
-      }
-      continue;
-    }
-
-    for (const item of items) {
-      if (!item.is_existing) {
-        continue;
-      }
-      existing_keys.add(`${src_fold}::${item.entry.src}`);
-    }
-  }
-
-  const kept_entries: Array<{
-    key: string;
-    order: number;
-    entry: GlossaryEntry;
-    incoming_indexes: number[];
-  }> = [];
-  let added = 0;
-  let filled = 0;
-
-  for (const [src_fold, raw_items] of groups) {
-    const items = [...raw_items].sort(
-      (left_item, right_item) => left_item.order - right_item.order,
-    );
-    const fold_only = items.some((item) => !item.entry.case_sensitive);
-    const grouped_items = fold_only
-      ? new Map<string, typeof items>([[src_fold, items]])
-      : items.reduce((map, item) => {
-          const key = `${src_fold}::${item.entry.src}`;
-          const group = map.get(key);
-          if (group === undefined) {
-            map.set(key, [item]);
-          } else {
-            group.push(item);
-          }
-          return map;
-        }, new Map<string, typeof items>());
-
-    for (const [key, grouped] of grouped_items) {
-      const base = { ...grouped[0].entry };
-      const incoming_indexes = grouped
-        .flatMap((item) => (item.incoming_index === null ? [] : [item.incoming_index]))
-        .sort((left_index, right_index) => left_index - right_index);
-
-      for (const item of grouped.slice(1)) {
-        if (base.dst === "" && item.entry.dst !== "") {
-          base.dst = item.entry.dst;
-          filled += 1;
-        }
-        if (base.info === "" && item.entry.info !== "") {
-          base.info = item.entry.info;
-          filled += 1;
-        }
-      }
-
-      if (!existing_keys.has(key)) {
-        added += 1;
-      }
-
-      kept_entries.push({
-        key,
-        order: grouped[0].order,
-        entry: base,
-        incoming_indexes,
-      });
-    }
-  }
-
-  kept_entries.sort((left_entry, right_entry) => left_entry.order - right_entry.order);
   return {
-    merged_entries: kept_entries.map((entry) => entry.entry),
-    entries: kept_entries.map((entry) => {
+    merged_entries: preview.merged as GlossaryEntry[],
+    entries: preview.entries.map((entry) => {
       return {
-        entry: entry.entry,
-        is_new: !existing_keys.has(entry.key),
-        incoming_indexes: entry.incoming_indexes,
+        entry: entry.entry as GlossaryEntry,
+        is_new: entry.is_new,
+        incoming_indexes: [...entry.incoming_indexes],
       };
     }),
     report: {
-      added,
-      filled,
+      added: preview.report.added,
+      filled: preview.report.filled,
     },
   };
 }

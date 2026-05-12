@@ -288,7 +288,8 @@ export function is_text_preserve_mode(value: unknown): value is TextPreserveMode
 
 // 旧配置可能保存大写模式名，归一化后再决定是否启用保护
 export function normalize_text_preserve_mode(value: unknown): TextPreserveMode {
-  const normalized = String(value ?? "")
+  const normalized_value = read_record(value)["value"] ?? value;
+  const normalized = String(normalized_value ?? "")
     .trim()
     .toLowerCase();
   return is_text_preserve_mode(normalized) ? normalized : "off";

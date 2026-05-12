@@ -42,7 +42,7 @@ flowchart LR
 
 - Electron main 是桌面宿主和 Core 的同一进程；当前运行态没有独立 backend 子进程或内部 HTTP 回环服务。
 - `src/base` 只承载跨层数据实体和值对象的序列化、反序列化、合法值集合和贴身派生判断；不能反向依赖 main、renderer 或 Electron 宿主边界。
-- `src/shared` 承载 main、renderer、worker 和测试复用的跨运行时共享规则、协议词表与纯工具，包括 task、language、log、文本工具、fixer、prefilter、JSON 和压缩能力；Electron 桌面宿主契约不放在这里。
+- `src/shared` 承载 main、renderer、worker 和测试复用的跨运行时共享规则、协议词表与纯工具，包括 task、quality、language、log、文本工具、fixer、prefilter、JSON 和压缩能力；Electron 桌面宿主契约不放在这里。
 - `src/desktop` 承载 Electron main / preload / renderer 共同遵守的桌面宿主契约，包括 `window.desktopApp`、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略。
 - `CoreLifecycleManager` 按 `LogManager -> ProjectDatabase -> ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 仍持有数据库或日志句柄。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
@@ -100,7 +100,7 @@ sequenceDiagram
 | 层 | 固定职责 | 不能承接 |
 | --- | --- | --- |
 | `src/base/` | 数据实体和值对象的 JSON 边界、合法值集合和贴身派生判断 | HTTP 路由、数据库 workflow、页面状态、文件格式算法、跨运行时通用工具 |
-| `src/shared/` | 跨运行时业务共享规则、协议词表和纯工具：task、language、log、文本工具、fixer、prefilter、JSON、压缩能力 | HTTP 路由、数据库 workflow、页面状态、实体持久化语义、Electron 宿主桥接 |
+| `src/shared/` | 跨运行时业务共享规则、协议词表和纯工具：task、quality、language、log、文本工具、fixer、prefilter、JSON、压缩能力 | HTTP 路由、数据库 workflow、页面状态、实体持久化语义、Electron 宿主桥接 |
 | `src/desktop/` | Electron main / preload / renderer 的桌面宿主契约：桥接 API、IPC、标题栏壳层、Core API 地址注入、外链策略 | Core 业务实现、数据库 workflow、renderer 页面状态 |
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
