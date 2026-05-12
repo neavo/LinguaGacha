@@ -6,7 +6,9 @@
 
 ```mermaid
 flowchart LR
-  A["preload<br/>window.desktopApp"] --> B["desktop-api.ts"]
+  X["src/desktop<br/>桌面宿主契约"] --> A["preload<br/>window.desktopApp"]
+  X --> B["desktop-api.ts"]
+  A --> B
   B --> C["DesktopRuntimeProvider"]
   C --> D["ProjectStore"]
   C --> E["settings / project / task snapshot"]
@@ -16,7 +18,8 @@ flowchart LR
 ```
 
 - renderer 只能通过 `window.desktopApp` 接入 Electron 宿主能力；禁止直接访问 Node、Electron、文件系统或内部服务。
-- `src/preload/index.ts` 是宿主桥接唯一暴露点，负责 Core API base URL、原生对话框、外链、窗口关闭、日志窗口和标题栏主题。
+- `src/desktop` 是 main、preload、renderer 共享的桌面宿主契约归宿，负责 `window.desktopApp` 类型、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略。
+- `src/preload/index.ts` 是宿主桥接唯一暴露点，只实现 `src/desktop` 契约并负责 Core API base URL、原生对话框、外链、窗口关闭、日志窗口和标题栏主题的窄桥接。
 - `src/renderer/app/desktop/desktop-api.ts` 是 renderer 访问 Core API 的唯一封装，负责 `/api/health` 探测、POST 响应壳解析、SSE 连接和错误类型。
 - 页面代码不得绕过 `desktop-api.ts` 拼接 Core API URL；新增 Core 调用应先在该层收口。
 
@@ -40,7 +43,7 @@ project, files, items, quality, prompts, analysis, proofreading, task
 - `project.patch` 不能消费时，运行时可以触发完整 bootstrap 刷新；页面不应自己调用多个 snapshot 拼接替代。
 - 本地乐观 patch 必须通过 `commit_local_project_patch()`，并提供可回滚的 section 快照。
 - `ProjectStore` patch revision 默认合并，乐观 patch 使用 exact revision；新增 patch operation 必须同步 store、runtime context 和测试。
-- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时共享规则、协议词表和纯工具从 `src/shared` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层业务枚举。
+- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入；Electron 桌面宿主契约从 `src/desktop` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
 - `ProjectStore` 只消费 `Prompt` 和 `QualityRule` 派生出的公开 key 与切片归一化结果；页面发起质量规则预设请求时传 `rule_type`，不传物理预设目录名。
 
 ## 4. 事件流与页面刷新
@@ -75,6 +78,7 @@ project, files, items, quality, prompts, analysis, proofreading, task
 必须同步更新本文的改动：
 
 - preload 暴露能力、`window.desktopApp` 类型或 Core API 接入方式变化。
+- `src/desktop` 的桥接 API、IPC、标题栏壳层、Core API 地址注入或外链策略变化。
 - `desktop-api.ts` 的响应壳、错误、SSE、bootstrap 或外部网络调用语义变化。
 - `ProjectStore` section、patch operation、revision 对齐、本地乐观 patch 或 bootstrap 消费方式变化。
 - 改 renderer 消费的跨层基础值域、合法值集合、normalize 或派生判断。

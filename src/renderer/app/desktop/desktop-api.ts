@@ -1,4 +1,5 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
+import { normalize_core_api_base_url } from "@desktop/core-api-endpoint";
 import { normalize_log_level, type LogLevel } from "@shared/log";
 
 export type { LogLevel };
@@ -78,12 +79,8 @@ export class DesktopApiError extends Error {
   }
 }
 
-function normalize_base_url(base_url: string): string {
-  return base_url.trim().replace(/\/+$/u, "");
-}
-
 function read_core_api_base_url(): string {
-  const base_url = normalize_base_url(window.desktopApp.coreApi.baseUrl);
+  const base_url = normalize_core_api_base_url(window.desktopApp.coreApi.baseUrl);
 
   if (base_url === "") {
     throw new DesktopApiError("Core API 地址未配置。", "missing_core_api_base_url", 500);

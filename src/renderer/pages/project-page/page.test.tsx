@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectPage } from "@/pages/project-page/page";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 const {
   api_fetch_mock,
@@ -248,17 +249,19 @@ function install_desktop_app_fixture(): void {
   Object.defineProperty(window, "desktopApp", {
     configurable: true,
     writable: true,
-    value: {
-      getPathForFile: vi.fn(() => ""),
-      pickFixedProjectDirectory: vi.fn(async () => ({ canceled: true, paths: [] })),
-      pickProjectFilePath: vi.fn(async () => ({ canceled: true, paths: [] })),
-      pickProjectSavePath: vi.fn(async () => ({ canceled: true, paths: [] })),
-      pickProjectSourceDirectoryPath: vi.fn(async () => ({ canceled: true, paths: [] })),
-      pickProjectSourceFilePath: vi.fn(async () => ({
-        canceled: false,
-        paths: ["E:\\Source\\demo.txt"],
-      })),
-    },
+    value: create_desktop_bridge_api_mock({
+      methods: {
+        getPathForFile: vi.fn(() => ""),
+        pickFixedProjectDirectory: vi.fn(async () => ({ canceled: true, paths: [] })),
+        pickProjectFilePath: vi.fn(async () => ({ canceled: true, paths: [] })),
+        pickProjectSavePath: vi.fn(async () => ({ canceled: true, paths: [] })),
+        pickProjectSourceDirectoryPath: vi.fn(async () => ({ canceled: true, paths: [] })),
+        pickProjectSourceFilePath: vi.fn(async () => ({
+          canceled: false,
+          paths: ["E:\\Source\\demo.txt"],
+        })),
+      },
+    }),
   });
 }
 

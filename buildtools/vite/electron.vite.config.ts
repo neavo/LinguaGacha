@@ -54,6 +54,7 @@ const config = {
       alias: {
         "@": path.resolve(project_root, "src/renderer"),
         "@base": path.resolve(project_root, "src/base"),
+        "@desktop": path.resolve(project_root, "src/desktop"),
         "@shared": path.resolve(project_root, "src/shared"),
       },
     },

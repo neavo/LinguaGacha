@@ -1,6 +1,6 @@
 import { resolve_core_app_root } from "./lifecycle-command-resolver";
 import { write_lifecycle_log } from "./lifecycle-log";
-import { build_core_api_base_url, allocate_core_api_port } from "./lifecycle-port-allocator";
+import { allocate_core_api_port } from "./lifecycle-port-allocator";
 import { ProjectDatabase } from "../database/database-operations";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { UserDataMigrationService } from "../migration/user-data-migration-service";
@@ -13,8 +13,6 @@ import type {
   CoreLifecycleState,
   CoreProcessExitResult,
 } from "./lifecycle-types";
-
-const CORE_API_BASE_URL_ENV_NAME = "LINGUAGACHA_CORE_API_BASE_URL";
 
 /**
  * Electron main 持有 API Gateway、ProjectDatabase 与日志系统的启动关闭顺序。
@@ -55,7 +53,6 @@ export class CoreLifecycleManager {
 
     this.state = "starting";
     const public_port = await allocate_core_api_port();
-    const public_base_url = build_core_api_base_url(public_port);
     const launch_environment = {
       appRoot: this.options.appRoot,
       env: process.env,
@@ -79,7 +76,6 @@ export class CoreLifecycleManager {
       const gateway_start_result = await gateway_server.start();
       this.gateway_server = gateway_server;
       write_lifecycle_log(`API Gateway 已启动 - ${gateway_start_result.baseUrl}`);
-      process.env[CORE_API_BASE_URL_ENV_NAME] = public_base_url;
       this.state = "ready";
       return gateway_start_result;
     } catch (error) {

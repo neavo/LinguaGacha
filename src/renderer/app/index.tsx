@@ -35,13 +35,12 @@ import { AppSidebar } from "@/app/shell/app-sidebar";
 import { AppTitlebar } from "@/app/shell/app-titlebar";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 import { LogWindowPage } from "@/pages/log-window-page/page";
+import type { ThemeMode } from "@desktop/bridge-types";
 
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const THEME_STORAGE_KEY = "lg-theme-mode";
 const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode";
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
-
-type ThemeMode = "light" | "dark";
 
 const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "proofreading",

@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(project_root, "src/renderer"),
       "@base": path.resolve(project_root, "src/base"),
+      "@desktop": path.resolve(project_root, "src/desktop"),
       "@shared": path.resolve(project_root, "src/shared"),
     },
   },
@@ -19,7 +20,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: ["**/node_modules/**", "**/build/**", "**/dist/**", "**/dist-electron/**"],
     clearMocks: true,
-    // Why: 渲染层测试长期跑在浏览器模拟环境里，提前打包重 UI 依赖能明显减少重复模块加载成本。
+    // 原因：渲染层测试长期跑在浏览器模拟环境里，提前打包重 UI 依赖能明显减少重复模块加载成本。
     deps: {
       optimizer: {
         client: {

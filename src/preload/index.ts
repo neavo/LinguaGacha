@@ -15,31 +15,16 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
-} from "../shared/desktop-ipc-channels";
-import { resolve_core_api_base_url } from "../shared/core-api-base-url";
-import {
-  DESKTOP_TITLE_BAR_HEIGHT,
-  resolve_title_bar_control_side,
-  resolve_title_bar_safe_area_end,
-  resolve_title_bar_safe_area_start,
-  uses_title_bar_overlay,
-} from "../shared/desktop-shell";
-import {
-  type DesktopShellInfo,
-  type DesktopPathPickResult,
-  type ThemeMode,
-} from "../shared/desktop-types";
-const DESKTOP_SHELL_INFO: DesktopShellInfo = {
-  platform: process.platform,
-  usesTitleBarOverlay: uses_title_bar_overlay(process.platform),
-  titleBarHeight: DESKTOP_TITLE_BAR_HEIGHT,
-  titleBarControlSide: resolve_title_bar_control_side(process.platform),
-  titleBarSafeAreaStart: resolve_title_bar_safe_area_start(process.platform),
-  titleBarSafeAreaEnd: resolve_title_bar_safe_area_end(process.platform),
-};
-const CORE_API_BASE_URL = resolve_core_api_base_url();
+} from "../desktop/ipc-contract";
+import { resolve_core_api_base_url_from_argv } from "../desktop/core-api-endpoint";
+import { resolve_desktop_shell_info } from "../desktop/shell-contract";
+import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../desktop/bridge-api";
+import type { DesktopPathPickResult, DesktopPlatform, ThemeMode } from "../desktop/bridge-types";
 
-contextBridge.exposeInMainWorld("desktopApp", {
+const DESKTOP_SHELL_INFO = resolve_desktop_shell_info(process.platform as DesktopPlatform);
+const CORE_API_BASE_URL = resolve_core_api_base_url_from_argv(process.argv);
+
+const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   shell: DESKTOP_SHELL_INFO,
   coreApi: {
     baseUrl: CORE_API_BASE_URL,
@@ -151,4 +136,6 @@ contextBridge.exposeInMainWorld("desktopApp", {
   async pickPromptExportFilePath(): Promise<DesktopPathPickResult> {
     return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH);
   },
-});
+};
+
+contextBridge.exposeInMainWorld(DESKTOP_BRIDGE_GLOBAL_NAME, DESKTOP_BRIDGE_API);

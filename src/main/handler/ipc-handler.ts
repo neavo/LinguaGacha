@@ -15,8 +15,9 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_TITLE_BAR_THEME,
-} from "../../shared/desktop-ipc-channels";
-import { type DesktopPathPickResult, type ThemeMode } from "../../shared/desktop-types";
+} from "../../desktop/ipc-contract";
+import { resolve_external_url } from "../../desktop/external-url-policy";
+import { type DesktopPathPickResult, type ThemeMode } from "../../desktop/bridge-types";
 import { type LogWindowHost } from "../log/log-window-host";
 import { sync_title_bar_overlay } from "./window-handler";
 
@@ -201,24 +202,4 @@ async function pick_save_path(
     canceled: result.canceled || result.filePath === undefined,
     paths: result.filePath === undefined ? [] : [result.filePath],
   };
-}
-
-/**
- * 校验外部链接，只允许交给系统浏览器处理 http / https，阻断本地协议注入。
- */
-function resolve_external_url(url: string): string {
-  const normalized_url = url.trim();
-
-  if (normalized_url === "") {
-    throw new Error("外部链接不能为空。");
-  }
-
-  const parsed_url = new URL(normalized_url);
-  const protocol = parsed_url.protocol.toLowerCase();
-
-  if (protocol !== "http:" && protocol !== "https:") {
-    throw new Error("当前只支持通过系统浏览器打开 http 或 https 链接。");
-  }
-
-  return parsed_url.toString();
 }

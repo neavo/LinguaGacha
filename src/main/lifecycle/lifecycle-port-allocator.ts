@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import net from "node:net";
 
-export const CORE_API_HOST = "127.0.0.1";
+import { CORE_API_HOST } from "../../desktop/core-api-endpoint";
+
+export { CORE_API_HOST, build_core_api_base_url } from "../../desktop/core-api-endpoint";
+
 export const CORE_API_PORT_MIN = 49_152;
 export const CORE_API_PORT_MAX = 65_535;
 const CORE_API_PORT_ALLOCATION_MAX_ATTEMPTS = 128;
@@ -9,10 +12,6 @@ const CORE_API_PORT_ALLOCATION_MAX_ATTEMPTS = 128;
 export interface CoreApiPortAllocationOptions {
   maxAttempts?: number;
   pickPort?: () => number;
-}
-
-export function build_core_api_base_url(port: number): string {
-  return `http://${CORE_API_HOST}:${port.toString()}`;
 }
 
 function pick_high_core_api_port(): number {

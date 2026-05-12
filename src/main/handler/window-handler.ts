@@ -7,12 +7,13 @@ import {
 } from "electron";
 import path from "node:path";
 
-import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../../shared/desktop-ipc-channels";
+import { build_core_api_base_url_argument } from "../../desktop/core-api-endpoint";
+import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../../desktop/ipc-contract";
 import {
-  DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
+  resolve_title_bar_overlay_theme,
   uses_title_bar_overlay,
-} from "../../shared/desktop-shell";
-import { type ThemeMode } from "../../shared/desktop-types";
+} from "../../desktop/shell-contract";
+import { type DesktopPlatform, type ThemeMode } from "../../desktop/bridge-types";
 import {
   LOG_WINDOW_QUERY_KEY,
   LOG_WINDOW_QUERY_VALUE,
@@ -25,11 +26,6 @@ const WINDOW_STANDARD_WIDTH = 1280;
 const WINDOW_STANDARD_HEIGHT = 800;
 // 主窗口背景要早于 renderer 首帧生效，避免加载阶段出现默认白屏或暗色闪烁。
 const WINDOW_BACKGROUND_COLOR = "#F8FAFC";
-// 标题栏 Overlay 使用原生按钮，颜色需要和 renderer 壳层主题保持一致。
-const LIGHT_TITLE_BAR_OVERLAY_COLOR = "#F4F5F7";
-const LIGHT_TITLE_BAR_SYMBOL_COLOR = "#1F2329";
-const DARK_TITLE_BAR_OVERLAY_COLOR = "#121319";
-const DARK_TITLE_BAR_SYMBOL_COLOR = "#EEF2F7";
 // 主窗口隐藏菜单栏后，开发态仍保留显式快捷键作为 DevTools 唯一稳定入口。
 const DEVTOOLS_TOGGLE_KEY = "F12";
 const DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY = "i";
@@ -53,12 +49,14 @@ const RENDERER_DEV_SERVER_URL = process.env["ELECTRON_RENDERER_URL"] ?? null;
 
 export type MainWindowHostOptions = {
   desktopBundleDir: string;
+  coreApiBaseUrl: string;
   shouldBypassCloseConfirmation: () => boolean;
   onClosed: () => void;
 };
 
 export type LogWindowHostFactoryOptions = {
   desktopBundleDir: string;
+  coreApiBaseUrl: string;
 };
 
 /**
@@ -85,7 +83,7 @@ export function configure_renderer_public_path(desktop_bundle_dir: string): void
 export function create_log_window_host(options: LogWindowHostFactoryOptions): LogWindowHost {
   return new LogWindowHost({
     createWindowOptions: () => {
-      return create_window_options(options.desktopBundleDir);
+      return create_window_options(options.desktopBundleDir, options.coreApiBaseUrl);
     },
     registerWindow: (target_window) => {
       register_development_devtools_shortcut(target_window);
@@ -106,7 +104,9 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
  * 创建主工作台窗口，并把启动加载、关闭确认和运行期保护事件都挂到同一处。
  */
 export function create_main_window(options: MainWindowHostOptions): BrowserWindow {
-  const main_window = new BrowserWindow(create_window_options(options.desktopBundleDir));
+  const main_window = new BrowserWindow(
+    create_window_options(options.desktopBundleDir, options.coreApiBaseUrl),
+  );
   register_development_devtools_shortcut(main_window);
   register_window_runtime_events(main_window, {
     confirmOnClose: true,
@@ -142,7 +142,7 @@ export function sync_title_bar_overlay(
   if (target_window === null) {
     return;
   }
-  if (!uses_title_bar_overlay(process.platform)) {
+  if (!uses_title_bar_overlay(process.platform as DesktopPlatform)) {
     return;
   }
 
@@ -381,19 +381,7 @@ function register_window_runtime_events(
  * 根据当前主题生成原生标题栏 Overlay 配色，保证系统按钮和网页壳层视觉一致。
  */
 function build_title_bar_overlay(theme_mode: ThemeMode): Electron.TitleBarOverlay {
-  if (theme_mode === "dark") {
-    return {
-      color: DARK_TITLE_BAR_OVERLAY_COLOR,
-      symbolColor: DARK_TITLE_BAR_SYMBOL_COLOR,
-      height: DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
-    };
-  } else {
-    return {
-      color: LIGHT_TITLE_BAR_OVERLAY_COLOR,
-      symbolColor: LIGHT_TITLE_BAR_SYMBOL_COLOR,
-      height: DESKTOP_TITLE_BAR_OVERLAY_HEIGHT,
-    };
-  }
+  return resolve_title_bar_overlay_theme(theme_mode);
 }
 
 /**
@@ -423,7 +411,10 @@ function load_renderer_entry(
 /**
  * 创建所有窗口共享的原生能力配置，避免主窗口和日志窗口出现壳层策略分叉。
  */
-function create_window_options(desktop_bundle_dir: string): BrowserWindowConstructorOptions {
+function create_window_options(
+  desktop_bundle_dir: string,
+  core_api_base_url: string,
+): BrowserWindowConstructorOptions {
   const vite_public = process.env.VITE_PUBLIC ?? resolve_renderer_dist(desktop_bundle_dir);
   const window_options: BrowserWindowConstructorOptions = {
     title: "LinguaGacha",
@@ -439,6 +430,7 @@ function create_window_options(desktop_bundle_dir: string): BrowserWindowConstru
       preload: path.join(desktop_bundle_dir, "index.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      additionalArguments: [build_core_api_base_url_argument(core_api_base_url)],
       // electron-vite 产出的预加载脚本默认是 ESM，关闭 sandbox 才能让 Electron 按模块语义正确执行。
       sandbox: false,
     },
@@ -447,7 +439,7 @@ function create_window_options(desktop_bundle_dir: string): BrowserWindowConstru
   if (process.platform === "darwin") {
     // macOS 优先沿用系统原生 inset 布局，避免网页壳层再额外模拟右侧镜像留白。
     window_options.titleBarStyle = "hiddenInset";
-  } else if (uses_title_bar_overlay(process.platform)) {
+  } else if (uses_title_bar_overlay(process.platform as DesktopPlatform)) {
     // Windows 和 Linux 通过 Overlay 把原生控制按钮保留下来，避免沦为纯网页外壳。
     window_options.titleBarStyle = "hidden";
     window_options.titleBarOverlay = build_title_bar_overlay(

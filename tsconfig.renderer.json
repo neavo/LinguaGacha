@@ -14,6 +14,7 @@
     "noUnusedParameters": true,
     "paths": {
       "@/*": ["./src/renderer/*"],
+      "@desktop/*": ["./src/desktop/*"],
       "@shared/*": ["./src/shared/*"],
       "@base/*": ["./src/base/*"]
     },
@@ -24,5 +25,5 @@
     "tsBuildInfoFile": "./build/tsconfig.renderer.tsbuildinfo",
     "verbatimModuleSyntax": true
   },
-  "include": ["src/renderer", "src/base", "src/shared", "src/electron-env.d.ts"]
+  "include": ["src/renderer", "src/base", "src/shared", "src/desktop", "src/electron-env.d.ts"]
 }

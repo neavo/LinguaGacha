@@ -23,6 +23,8 @@ configure_development_remote_debugging();
 let win: BrowserWindow | null = null;
 // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态。
 let log_window_host: LogWindowHost | null = null;
+// Core API 地址由生命周期启动结果注入窗口，preload 不再猜测固定端口或读取环境兜底。
+let core_api_base_url: string | null = null;
 // 退出流程只允许进入一次，防止 before-quit、后端异常和窗口关闭同时触发重复清理。
 let is_app_shutdown_in_progress = false;
 // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程。
@@ -49,6 +51,7 @@ const core_lifecycle_manager = new CoreLifecycleManager({
 function create_main_window_for_runtime(): void {
   win = create_main_window({
     desktopBundleDir: desktop_bundle_dir,
+    coreApiBaseUrl: require_core_api_base_url(),
     shouldBypassCloseConfirmation: () => {
       return is_app_shutdown_in_progress || is_renderer_confirmed_app_quit;
     },
@@ -57,6 +60,17 @@ function create_main_window_for_runtime(): void {
       log_window_host?.close();
     },
   });
+}
+
+/**
+ * 窗口只能在 Core 生命周期 ready 后创建，避免 preload 暴露不可用的 API 地址。
+ */
+function require_core_api_base_url(): string {
+  if (core_api_base_url === null) {
+    throw new Error("Core API 地址尚未就绪。");
+  }
+
+  return core_api_base_url;
 }
 
 /**
@@ -119,9 +133,11 @@ app.on("activate", () => {
 // Electron ready 后才能启动后端和创建窗口，保证 app API 与原生资源都已可用。
 app.whenReady().then(async () => {
   try {
-    await core_lifecycle_manager.start();
+    const core_start_result = await core_lifecycle_manager.start();
+    core_api_base_url = core_start_result.baseUrl;
     log_window_host = create_log_window_host({
       desktopBundleDir: desktop_bundle_dir,
+      coreApiBaseUrl: core_start_result.baseUrl,
     });
     register_runtime_ipc_handlers();
     create_main_window_for_runtime();

@@ -15,6 +15,7 @@
     "buildtools/vite/electron.vite.config.ts",
     "src/electron-env.d.ts",
     "src/base",
+    "src/desktop",
     "src/main",
     "src/preload",
     "src/shared",

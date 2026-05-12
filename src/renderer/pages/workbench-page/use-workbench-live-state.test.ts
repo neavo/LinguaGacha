@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
+import type { DesktopPathPickResult } from "@desktop/bridge-types";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 type RuntimeFixture = {
   align_project_runtime_ack: ReturnType<typeof vi.fn>;
@@ -79,7 +81,7 @@ type AnalysisTaskRuntimeFixture = {
 };
 
 type WorkbenchPickerFixture = {
-  pickWorkbenchFilePath: ReturnType<typeof vi.fn>;
+  pickWorkbenchFilePath: ReturnType<typeof vi.fn<() => Promise<DesktopPathPickResult>>>;
 };
 
 type ToastFixture = {
@@ -101,7 +103,7 @@ const analysis_runtime_fixture: { current: AnalysisTaskRuntimeFixture } = {
 
 const workbench_picker_fixture: { current: WorkbenchPickerFixture } = {
   current: {
-    pickWorkbenchFilePath: vi.fn(),
+    pickWorkbenchFilePath: vi.fn<() => Promise<DesktopPathPickResult>>(),
   },
 };
 
@@ -116,7 +118,9 @@ const toast_fixture: { current: ToastFixture } = {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 Object.defineProperty(window, "desktopApp", {
-  value: workbench_picker_fixture.current,
+  value: create_desktop_bridge_api_mock({
+    methods: workbench_picker_fixture.current,
+  }),
   configurable: true,
 });
 

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LogEvent } from "@/app/desktop/desktop-api";
 import { LogWindowPage } from "@/pages/log-window-page/page";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 type StreamController = {
   closed: boolean;
@@ -269,15 +270,11 @@ describe("LogWindowPage", () => {
     Object.defineProperty(window, "desktopApp", {
       configurable: true,
       writable: true,
-      value: {
-        shell: {
-          titleBarHeight: 40,
-          titleBarSafeAreaStart: 0,
-          titleBarSafeAreaEnd: 144,
-          titleBarControlSide: "right",
+      value: create_desktop_bridge_api_mock({
+        methods: {
+          setTitleBarTheme: vi.fn(),
         },
-        setTitleBarTheme: vi.fn(),
-      },
+      }),
     });
     container = document.createElement("div");
     document.body.append(container);

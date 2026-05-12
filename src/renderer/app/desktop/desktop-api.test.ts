@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 /**
  * 模拟 EventSource 行为，隔离桌面 API 流测试对浏览器实现的依赖。
@@ -44,13 +45,14 @@ function install_desktop_api_host(base_url: string): void {
   Object.defineProperty(window, "desktopApp", {
     configurable: true,
     writable: true,
-    value: {
-      shell: {},
+    value: create_desktop_bridge_api_mock({
       coreApi: {
         baseUrl: base_url,
       },
-      openExternalUrl: vi.fn(),
-    },
+      methods: {
+        openExternalUrl: vi.fn(),
+      },
+    }),
   });
 }
 
