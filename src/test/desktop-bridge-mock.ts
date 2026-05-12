@@ -10,7 +10,7 @@ export type DesktopBridgeApiMockOverrides = {
   methods?: Partial<Omit<DesktopBridgeApi, "shell" | "coreApi">>;
 };
 
-// renderer 测试统一从这里生成 window.desktopApp，避免桥接契约在多个测试里手写漂移。
+// renderer 测试统一从这里生成 window.desktopApp，避免桥接契约在多个测试里手写漂移
 export function create_desktop_bridge_api_mock(
   overrides: DesktopBridgeApiMockOverrides = {},
 ): DesktopBridgeApi {

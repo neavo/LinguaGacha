@@ -20,7 +20,7 @@ const {
   };
 });
 
-// 测试只需要模拟 hook 会消费的 ProjectStore 切片，避免把完整运行态搬进页面测试。
+// 测试只需要模拟 hook 会消费的 ProjectStore 切片，避免把完整运行态搬进页面测试
 type RuntimeState = {
   items: Record<string, Record<string, unknown>>;
   quality: {
@@ -31,11 +31,10 @@ type RuntimeState = {
   };
 };
 
-// runtime_state 每个用例重建，保证 hook 通过 useSyncExternalStore 读到隔离快照。
-let runtime_state: RuntimeState;
+let runtime_state: RuntimeState; // runtime_state 每个用例重建，保证 hook 通过 useSyncExternalStore 读到隔离快照
 const project_store_listeners = new Set<() => void>();
 
-// ProjectStore 替身只暴露订阅和读取能力，符合页面 hook 的真实依赖边界。
+// ProjectStore 替身只暴露订阅和读取能力，符合页面 hook 的真实依赖边界
 const project_store = {
   subscribe: (listener: () => void) => {
     project_store_listeners.add(listener);
@@ -83,7 +82,7 @@ vi.mock("@/i18n", () => {
   };
 });
 
-// 探针组件把 hook 的公开状态交给测试，避免测试依赖 React 内部实现。
+// 探针组件把 hook 的公开状态交给测试，避免测试依赖 React 内部实现
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTsConversionPageState>) => void;
 }): JSX.Element | null {
@@ -126,7 +125,7 @@ describe("useTsConversionPageState", () => {
       },
     };
     push_progress_toast_mock.mockReturnValue("ts-conversion-progress");
-    // 默认 API mock 覆盖成功路径：先读每个内置预设，再导出转换结果。
+    // 默认 API mock 覆盖成功路径：先读每个内置预设，再导出转换结果
     api_fetch_mock.mockImplementation(async (path: string, body: Record<string, unknown>) => {
       if (path === "/api/quality/rules/presets/read") {
         if (body.virtual_id === "builtin:renpy.json") {
@@ -166,7 +165,7 @@ describe("useTsConversionPageState", () => {
     dismiss_toast_mock.mockReset();
   });
 
-  // 每个用例单独挂载 hook 探针，确保状态初始化和卸载副作用完整执行。
+  // 每个用例单独挂载 hook 探针，确保状态初始化和卸载副作用完整执行
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);

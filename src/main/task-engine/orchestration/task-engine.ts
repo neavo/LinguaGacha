@@ -26,47 +26,34 @@ import { TaskProgressSnapshotTool } from "./task-progress-snapshot";
 import { TaskRunLock } from "./task-run-lock";
 import { is_task_skipped_item_status } from "../../../shared/task";
 
-// 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断。
-const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]);
+const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
 
-// 翻译重试次数高于分析，因为翻译支持拆分重试，分析只按 chunk 重试。
-const TRANSLATION_RETRY_LIMIT = 3;
-// 分析失败只重发同一 chunk，过多重试会阻塞后续文件 checkpoint。
-const ANALYSIS_RETRY_LIMIT = 2;
+const TRANSLATION_RETRY_LIMIT = 3; // 翻译重试次数高于分析，因为翻译支持拆分重试，分析只按 chunk 重试
+const ANALYSIS_RETRY_LIMIT = 2; // 分析失败只重发同一 chunk，过多重试会阻塞后续文件 checkpoint
 
-// 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt。
-const DEFAULT_INPUT_TOKEN_LIMIT = 512;
-// 分析 prompt 额外包含术语抽取说明，默认 token 门槛与翻译保持一致但独立调参。
-const DEFAULT_ANALYSIS_INPUT_TOKEN_LIMIT = 512;
+const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt
+const DEFAULT_ANALYSIS_INPUT_TOKEN_LIMIT = 512; // 分析 prompt 额外包含术语抽取说明，默认 token 门槛与翻译保持一致但独立调参
 
-// chunk 拆分优先在句末标点处分割，减少上下文被硬切断的概率。
-const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]);
+const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // chunk 拆分优先在句末标点处分割，减少上下文被硬切断的概率
 
-// TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实。
+// TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实
 interface TaskEngineOptions {
-  // taskStore 是任务编排器读写项目任务事实的唯一端口。
-  taskStore: ProjectTaskStore;
-  // coreEventHub 只承接 task.status_changed / task.progress_changed 等公开事件广播。
-  coreEventHub: CoreEventHub;
-  // projectPatchPublisher 负责发布需要补齐数据库事实的 project.patch。
-  projectPatchPublisher: ProjectPatchPublisher;
-  // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异。
-  executorClient: TaskWorkUnitExecutor;
-  // SettingService 在每次任务启动时提供设置与模型快照。
-  SettingService: SettingService;
-  // snapshotBuilder 生成公开 task snapshot，供终态 project patch 复用。
-  snapshotBuilder: TaskSnapshotBuilder;
-  // logManager 统一收敛任务引擎和 worker 回放日志。
-  logManager: LogManager;
+  taskStore: ProjectTaskStore; // taskStore 是任务编排器读写项目任务事实的唯一端口
+  coreEventHub: CoreEventHub; // coreEventHub 只承接 task.status_changed / task.progress_changed 等公开事件广播
+  projectPatchPublisher: ProjectPatchPublisher; // projectPatchPublisher 负责发布需要补齐数据库事实的 project.patch
+  executorClient: TaskWorkUnitExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
+  SettingService: SettingService; // SettingService 在每次任务启动时提供设置与模型快照
+  snapshotBuilder: TaskSnapshotBuilder; // snapshotBuilder 生成公开 task snapshot，供终态 project patch 复用
+  logManager: LogManager; // logManager 统一收敛任务引擎和 worker 回放日志
 }
 
-// 一次任务启动时冻结配置和模型，运行中不跟随设置页热变更。
+// 一次任务启动时冻结配置和模型，运行中不跟随设置页热变更
 interface TaskRuntimeSnapshot {
   config_snapshot: MutableJsonRecord;
   model: MutableJsonRecord;
 }
 
-// 翻译 context 是 pipeline 的最小工作单元，包含 chunk、preceding 与重试元信息。
+// 翻译 context 是 pipeline 的最小工作单元，包含 chunk、preceding 与重试元信息
 interface TranslationContext {
   work_unit_id: string;
   items: TaskItemRecord[];
@@ -77,20 +64,20 @@ interface TranslationContext {
   is_initial: boolean;
 }
 
-// 翻译提交项只携带可批量写库的数据和 token 累计值。
+// 翻译提交项只携带可批量写库的数据和 token 累计值
 interface TranslationCommitEntry {
   items: TaskItemRecord[];
   input_tokens: number;
   output_tokens: number;
 }
 
-// 拆分重试会同时产生新 context 和强制失败条目，两者必须分开提交。
+// 拆分重试会同时产生新 context 和强制失败条目，两者必须分开提交
 interface TranslationRetryPlan {
   retry_contexts: TranslationContext[];
   forced_error_items: TaskItemRecord[];
 }
 
-// 分析 item 上下文不传完整 item，防止 worker 误写非分析字段。
+// 分析 item 上下文不传完整 item，防止 worker 误写非分析字段
 interface AnalysisItemContext {
   item_id: number;
   file_path: string;
@@ -99,7 +86,7 @@ interface AnalysisItemContext {
   previous_status: string | null;
 }
 
-// 分析 context 按文件路径聚合，日志和候选 first_seen_index 都依赖稳定顺序。
+// 分析 context 按文件路径聚合，日志和候选 first_seen_index 都依赖稳定顺序
 interface AnalysisContext {
   work_unit_id: string;
   file_path: string;
@@ -107,7 +94,7 @@ interface AnalysisContext {
   retry_count: number;
 }
 
-// 分析提交项把 checkpoint、候选和进度 delta 分开，避免提交时再次推导。
+// 分析提交项把 checkpoint、候选和进度 delta 分开，避免提交时再次推导
 interface AnalysisCommitEntry {
   success_checkpoints: MutableJsonRecord[];
   error_checkpoints: MutableJsonRecord[];
@@ -119,27 +106,21 @@ interface AnalysisCommitEntry {
 }
 
 /**
- * Electron main 的后台任务执行权威，持有生命周期、调度、限流、停止、重试和提交循环。
+ * Electron main 的后台任务执行权威，持有生命周期、调度、限流、停止、重试和提交循环
  */
 export class TaskEngine {
-  // task_store 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database。
-  private readonly task_store: ProjectTaskStore;
-  // core_event_hub 只发布公开任务事件，运行态吸收由 TaskRuntimeProjector 完成。
-  private readonly core_event_hub: CoreEventHub;
-  // project_patch_publisher 负责把最小 project patch 补齐后送入公开事件流。
-  private readonly project_patch_publisher: ProjectPatchPublisher;
-  // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果。
-  private readonly executor_client: TaskWorkUnitExecutor;
+  private readonly task_store: ProjectTaskStore; // task_store 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
+  private readonly core_event_hub: CoreEventHub; // core_event_hub 只发布公开任务事件，运行态吸收由 TaskRuntimeProjector 完成
+  private readonly project_patch_publisher: ProjectPatchPublisher; // project_patch_publisher 负责把最小 project patch 补齐后送入公开事件流
+  private readonly executor_client: TaskWorkUnitExecutor; // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果
   private readonly setting_service: SettingService;
   private readonly snapshot_builder: TaskSnapshotBuilder;
   private readonly log_manager: LogManager;
-  // run_lock 是整场任务互斥与停止信号的唯一权威。
-  private readonly run_lock = new TaskRunLock();
-  // request_in_flight_count 只表达实时网络压力，不落库也不参与恢复。
-  private request_in_flight_count = 0;
+  private readonly run_lock = new TaskRunLock(); // run_lock 是整场任务互斥与停止信号的唯一权威
+  private request_in_flight_count = 0; // request_in_flight_count 只表达实时网络压力，不落库也不参与恢复
 
   /**
-   * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试。
+   * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
   public constructor(options: TaskEngineOptions) {
     this.task_store = options.taskStore;
@@ -152,7 +133,7 @@ export class TaskEngine {
   }
 
   /**
-   * 启动翻译后台任务；方法只完成排队受理，真实执行在后台 promise 中收尾。
+   * 启动翻译后台任务；方法只完成排队受理，真实执行在后台 promise 中收尾
    */
   public async start_translation(mode: string, quality_snapshot: ApiJsonValue): Promise<void> {
     const handle = this.run_lock.begin("translation");
@@ -160,14 +141,14 @@ export class TaskEngine {
   }
 
   /**
-   * 请求停止翻译任务；停止事件由 本地发布并向 work unit 传播 abort。
+   * 请求停止翻译任务；停止事件由 本地发布并向 work unit 传播 abort
    */
   public async stop_translation(): Promise<void> {
     this.request_stop("translation");
   }
 
   /**
-   * 启动分析后台任务，当前服务负责 reset / checkpoint / commit 全链路。
+   * 启动分析后台任务，当前服务负责 reset / checkpoint / commit 全链路
    */
   public async start_analysis(mode: string, quality_snapshot: ApiJsonValue): Promise<void> {
     const handle = this.run_lock.begin("analysis");
@@ -175,14 +156,14 @@ export class TaskEngine {
   }
 
   /**
-   * 请求停止分析任务；已发 work unit 超时或返回后由 run_id 隔离。
+   * 请求停止分析任务；已发 work unit 超时或返回后由 run_id 隔离
    */
   public async stop_analysis(): Promise<void> {
     this.request_stop("analysis");
   }
 
   /**
-   * 启动批量重翻任务，当前服务持有 item 队列、提交和行级 busy patch。
+   * 启动批量重翻任务，当前服务持有 item 队列、提交和行级 busy patch
    */
   public async start_retranslate(
     item_ids: number[],
@@ -193,7 +174,7 @@ export class TaskEngine {
   }
 
   /**
-   * 单条翻译不占后台全局锁，只走 work-unit executor 并保持公开响应形状。
+   * 单条翻译不占后台全局锁，只走 work-unit executor 并保持公开响应形状
    */
   public async translate_single(text: string): Promise<MutableJsonRecord> {
     const runtime = this.resolve_runtime_snapshot();
@@ -216,7 +197,7 @@ export class TaskEngine {
   }
 
   /**
-   * 统一处理停止请求，保证 runtime state 和公开事件流同步进入 STOPPING。
+   * 统一处理停止请求，保证 runtime state 和公开事件流同步进入 STOPPING
    */
   private request_stop(task_type: TaskType): void {
     if (!this.run_lock.request_stop(task_type)) {
@@ -230,7 +211,7 @@ export class TaskEngine {
   }
 
   /**
-   * 翻译主流程：取数据、切块、限流执行、批量提交并发布最终 task patch。
+   * 翻译主流程：取数据、切块、限流执行、批量提交并发布最终 task patch
    */
   private async run_translation(
     handle: TaskRunHandle,
@@ -287,7 +268,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析主流程：Task Engine 解释 checkpoint，work unit 只负责单个 chunk 请求。
+   * 分析主流程：Task Engine 解释 checkpoint，work unit 只负责单个 chunk 请求
    */
   private async run_analysis(
     handle: TaskRunHandle,
@@ -344,7 +325,7 @@ export class TaskEngine {
   }
 
   /**
-   * 重翻主流程：每个 item 是一个 work unit，提交后由 ProjectTaskStore 推进 proofreading patch。
+   * 重翻主流程：每个 item 是一个 work unit，提交后由 ProjectTaskStore 推进 proofreading patch
    */
   private async run_retranslate(
     handle: TaskRunHandle,
@@ -397,7 +378,7 @@ export class TaskEngine {
   }
 
   /**
-   * 执行翻译 chunk，并把失败条目转换成高优重试上下文。
+   * 执行翻译 chunk，并把失败条目转换成高优重试上下文
    */
   private async execute_translation_context(
     handle: TaskRunHandle,
@@ -436,7 +417,7 @@ export class TaskEngine {
   }
 
   /**
-   * 执行分析 chunk，失败会按固定次数重试，最终失败才写 ERROR checkpoint。
+   * 执行分析 chunk，失败会按固定次数重试，最终失败才写 ERROR checkpoint
    */
   private async execute_analysis_context(
     handle: TaskRunHandle,
@@ -465,7 +446,7 @@ export class TaskEngine {
   }
 
   /**
-   * 执行单条重翻，失败时直接接构造 ERROR item，避免 worker 持有提交权。
+   * 执行单条重翻，失败时直接接构造 ERROR item，避免 worker 持有提交权
    */
   private async execute_retranslate_context(
     handle: TaskRunHandle,
@@ -508,7 +489,7 @@ export class TaskEngine {
   }
 
   /**
-   * executor 网络抖动只让当前 chunk 进入翻译重试计划，不能中止整场任务和丢弃其它完成结果。
+   * executor 网络抖动只让当前 chunk 进入翻译重试计划，不能中止整场任务和丢弃其它完成结果
    */
   private async call_translation_executor_with_retryable_transport(
     context: TranslationContext,
@@ -534,7 +515,7 @@ export class TaskEngine {
   }
 
   /**
-   * 带限流执行 work unit 请求，同时维护 服务端真实 request_in_flight_count。
+   * 带限流执行 work unit 请求，同时维护 服务端真实 request_in_flight_count
    */
   private async call_with_limiter<T>(
     handle: TaskRunHandle,
@@ -553,7 +534,7 @@ export class TaskEngine {
   }
 
   /**
-   * 翻译 worker 结果拆成可提交终态 items 与需要重试的上下文。
+   * 翻译 worker 结果拆成可提交终态 items 与需要重试的上下文
    */
   private build_translation_worker_result(
     context: TranslationContext,
@@ -584,7 +565,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析 worker 结果转换为 checkpoint、候选和 token 提交载荷。
+   * 分析 worker 结果转换为 checkpoint、候选和 token 提交载荷
    */
   private build_analysis_worker_result(context: AnalysisContext, result: AnalysisWorkUnitResult) {
     if (result.stopped) {
@@ -641,7 +622,7 @@ export class TaskEngine {
   }
 
   /**
-   * 提交翻译批次并推进持久进度；迟到 run 不允许写入。
+   * 提交翻译批次并推进持久进度；迟到 run 不允许写入
    */
   private async commit_translation_entries(
     handle: TaskRunHandle,
@@ -677,7 +658,7 @@ export class TaskEngine {
   }
 
   /**
-   * 提交分析批次，候选聚合和 checkpoint 写入仍走 ProjectTaskStore。
+   * 提交分析批次，候选聚合和 checkpoint 写入仍走 ProjectTaskStore
    */
   private async commit_analysis_entries(
     handle: TaskRunHandle,
@@ -719,7 +700,7 @@ export class TaskEngine {
   }
 
   /**
-   * 提交重翻结果，ProjectTaskStore 会同步推进 items、proofreading 和 task patch。
+   * 提交重翻结果，ProjectTaskStore 会同步推进 items、proofreading 和 task patch
    */
   private async commit_retranslate_entries(
     handle: TaskRunHandle,
@@ -755,7 +736,7 @@ export class TaskEngine {
   }
 
   /**
-   * 构建翻译初始上下文，切块规则使用 TaskScheduler 边界。
+   * 构建翻译初始上下文，切块规则使用 TaskScheduler 边界
    */
   private build_translation_contexts(
     items: TaskItemRecord[],
@@ -780,7 +761,7 @@ export class TaskEngine {
   }
 
   /**
-   * 翻译失败上下文先拆分，单条最多重试三次，超限标 ERROR。
+   * 翻译失败上下文先拆分，单条最多重试三次，超限标 ERROR
    */
   private build_translation_retry_plan(
     context: TranslationContext,
@@ -830,7 +811,7 @@ export class TaskEngine {
   }
 
   /**
-   * 构建分析上下文，checkpoint 已完成或错误的条目不会重复调度。
+   * 构建分析上下文，checkpoint 已完成或错误的条目不会重复调度
    */
   private build_analysis_contexts(
     items: TaskItemRecord[],
@@ -869,7 +850,7 @@ export class TaskEngine {
   }
 
   /**
-   * 重翻每个 item 独立执行，保持行级 busy patch 能逐条收敛。
+   * 重翻每个 item 独立执行，保持行级 busy patch 能逐条收敛
    */
   private build_retranslate_context(item: TaskItemRecord): TranslationContext {
     return {
@@ -884,7 +865,7 @@ export class TaskEngine {
   }
 
   /**
-   * 共享切块实现，只依赖 item 快照，不读取数据库或 跨层对象。
+   * 共享切块实现，只依赖 item 快照，不读取数据库或 跨层对象
    */
   private generate_item_chunks(
     items: TaskItemRecord[],
@@ -945,7 +926,7 @@ export class TaskEngine {
   }
 
   /**
-   * 生成翻译上文块，边界跟随文件路径和句末标点。
+   * 生成翻译上文块，边界跟随文件路径和句末标点
    */
   private generate_preceding_chunk(
     items: TaskItemRecord[],
@@ -979,7 +960,7 @@ export class TaskEngine {
   }
 
   /**
-   * 根据任务模式和当前 item 状态创建翻译进度初始值。
+   * 根据任务模式和当前 item 状态创建翻译进度初始值
    */
   private build_translation_progress(
     mode: string,
@@ -1008,7 +989,7 @@ export class TaskEngine {
   }
 
   /**
-   * 根据 checkpoint 和 meta 创建分析进度初始值。
+   * 根据 checkpoint 和 meta 创建分析进度初始值
    */
   private build_analysis_progress(
     mode: string,
@@ -1041,7 +1022,7 @@ export class TaskEngine {
   }
 
   /**
-   * 重翻进度复用 translation_extras 的 token 累计，但本轮行数只看选中条目。
+   * 重翻进度复用 translation_extras 的 token 累计，但本轮行数只看选中条目
    */
   private build_retranslate_progress(
     items: TaskItemRecord[],
@@ -1055,7 +1036,7 @@ export class TaskEngine {
   }
 
   /**
-   * 运行结束后发布终态，并补一帧 replace_task patch 给 ProjectStore。
+   * 运行结束后发布终态，并补一帧 replace_task patch 给 ProjectStore
    */
   private async finish_run(handle: TaskRunHandle, status: string): Promise<void> {
     const still_current = this.run_lock.is_current(handle.run_id);
@@ -1068,7 +1049,7 @@ export class TaskEngine {
   }
 
   /**
-   * 翻译结束时只持久化进度 extras，不额外触发 item patch。
+   * 翻译结束时只持久化进度 extras，不额外触发 item patch
    */
   private async update_translation_progress_if_current(
     handle: TaskRunHandle,
@@ -1083,7 +1064,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析结束时保存最后一次耗时，候选和 checkpoint 已由批次提交完成。
+   * 分析结束时保存最后一次耗时，候选和 checkpoint 已由批次提交完成
    */
   private async update_analysis_progress_if_current(
     handle: TaskRunHandle,
@@ -1098,14 +1079,14 @@ export class TaskEngine {
   }
 
   /**
-   * 发布 task.status_changed，TaskRuntimeState 会在事件 hub 内同步吸收。
+   * 发布 task.status_changed，TaskRuntimeState 会在事件 hub 内同步吸收
    */
   private emit_status(task_type: TaskType, status: string, busy: boolean): void {
     this.core_event_hub.publish("task.status_changed", { task_type, status, busy });
   }
 
   /**
-   * 发布 task.progress_changed，只携带真实出现的进度字段和请求中数量。
+   * 发布 task.progress_changed，只携带真实出现的进度字段和请求中数量
    */
   private emit_progress(task_type: TaskType, progress: TaskProgressSnapshot): void {
     this.core_event_hub.publish("task.progress_changed", {
@@ -1116,7 +1097,7 @@ export class TaskEngine {
   }
 
   /**
-   * 请求数变化立即广播，保证前端看到的 in-flight 是真实发出请求数。
+   * 请求数变化立即广播，保证前端看到的 in-flight 是真实发出请求数
    */
   private change_request_in_flight_count(task_type: TaskType, delta: number): void {
     this.request_in_flight_count = Math.max(0, this.request_in_flight_count + delta);
@@ -1127,7 +1108,7 @@ export class TaskEngine {
   }
 
   /**
-   * 终态 task patch 复用公开 snapshot builder，避免手写进度字段漏同步。
+   * 终态 task patch 复用公开 snapshot builder，避免手写进度字段漏同步
    */
   private async publish_task_patch(task_type: TaskType): Promise<void> {
     const task = await this.snapshot_builder.build_task_snapshot({ task_type });
@@ -1139,7 +1120,7 @@ export class TaskEngine {
   }
 
   /**
-   * 读取当前配置和激活模型，作为一次任务 run 的不可变快照。
+   * 读取当前配置和激活模型，作为一次任务 run 的不可变快照
    */
   private resolve_runtime_snapshot(): TaskRuntimeSnapshot {
     const config_snapshot = this.setting_service.load_setting();
@@ -1151,7 +1132,7 @@ export class TaskEngine {
   }
 
   /**
-   * 从模型阈值构建限流器；并发缺省固定为 8，RPM 只控制每分钟节奏。
+   * 从模型阈值构建限流器；并发缺省固定为 8，RPM 只控制每分钟节奏
    */
   private build_limiter(model: MutableJsonRecord): TaskLimiter {
     const threshold = this.normalize_record(model["threshold"]);
@@ -1162,7 +1143,7 @@ export class TaskEngine {
   }
 
   /**
-   * 输入 token 阈值读取集中处理，保护模型配置缺字段场景。
+   * 输入 token 阈值读取集中处理，保护模型配置缺字段场景
    */
   private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
     const threshold = this.normalize_record(model["threshold"]);
@@ -1170,14 +1151,14 @@ export class TaskEngine {
   }
 
   /**
-   * 失败拆分比例使用 `pow(16 / t0, 0.25)` 的收敛速度。
+   * 失败拆分比例使用 `pow(16 / t0, 0.25)` 的收敛速度
    */
   private get_split_factor(token_threshold: number): number {
     return Math.pow(16 / Math.max(17, token_threshold), 0.25);
   }
 
   /**
-   * 重试超限后强制接受为 ERROR，保证失败条目最终有可提交终态。
+   * 重试超限后强制接受为 ERROR，保证失败条目最终有可提交终态
    */
   private force_accept_translation_item(item: TaskItemRecord): void {
     if (String(item["dst"] ?? "") === "") {
@@ -1187,7 +1168,7 @@ export class TaskEngine {
   }
 
   /**
-   * 重翻失败时 Task Engine 本地构造 ERROR item，确保行级 busy 能收尾。
+   * 重翻失败时 Task Engine 本地构造 ERROR item，确保行级 busy 能收尾
    */
   private ensure_retranslate_terminal_item(
     source_item: TaskItemRecord,
@@ -1203,7 +1184,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析 checkpoint payload 在 服务端生成，worker 不持有持久状态。
+   * 分析 checkpoint payload 在 服务端生成，worker 不持有持久状态
    */
   private build_analysis_checkpoints(
     context: AnalysisContext,
@@ -1219,7 +1200,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析上下文转 executor payload，保持 dataclass 字段名稳定。
+   * 分析上下文转 executor payload，保持 dataclass 字段名稳定
    */
   private analysis_context_to_payload(context: AnalysisContext): MutableJsonRecord {
     return {
@@ -1230,7 +1211,7 @@ export class TaskEngine {
   }
 
   /**
-   * 从 item 和 checkpoint map 构建不可变分析输入快照。
+   * 从 item 和 checkpoint map 构建不可变分析输入快照
    */
   private build_analysis_item_context(
     item: TaskItemRecord,
@@ -1253,7 +1234,7 @@ export class TaskEngine {
   }
 
   /**
-   * checkpoint 只接受三态状态，坏数据不会影响调度。
+   * checkpoint 只接受三态状态，坏数据不会影响调度
    */
   private build_checkpoint_status_map(checkpoints: MutableJsonRecord[]): Map<number, string> {
     const result = new Map<number, string>();
@@ -1268,7 +1249,7 @@ export class TaskEngine {
   }
 
   /**
-   * 分析跳过规则保持稳定语义。
+   * 分析跳过规则保持稳定语义
    */
   private is_analyzable_item(item: TaskItemRecord): boolean {
     return (
@@ -1278,7 +1259,7 @@ export class TaskEngine {
   }
 
   /**
-   * 姓名字段可能是字符串或数组，分析 prompt 只需要第一个说话人名。
+   * 姓名字段可能是字符串或数组，分析 prompt 只需要第一个说话人名
    */
   private read_first_name_src(item: TaskItemRecord): string | null {
     const name_src = item["name_src"];
@@ -1292,35 +1273,35 @@ export class TaskEngine {
   }
 
   /**
-   * item id 同时兼容数据库内部 id 和公开 RowBlock 的 item_id。
+   * item id 同时兼容数据库内部 id 和公开 RowBlock 的 item_id
    */
   private read_item_id(item: TaskItemRecord): number {
     return this.read_number(item["id"] ?? item["item_id"], 0);
   }
 
   /**
-   * 读取 item 当前状态事实。
+   * 读取 item 当前状态事实
    */
   private read_status(item: TaskItemRecord): string {
     return String(item["status"] ?? "NONE");
   }
 
   /**
-   * 非空行数用于切块 line_limit，保持同一量纲。
+   * 非空行数用于切块 line_limit，保持同一量纲
    */
   private count_non_empty_lines(text: string): number {
     return text.split(/\r?\n/).filter((line) => line.trim() !== "").length;
   }
 
   /**
-   * 当前实现暂无 tiktoken 依赖；这里用字符长度估算，只影响切块大小，不改变写入事实。
+   * 当前实现暂无 tiktoken 依赖；这里用字符长度估算，只影响切块大小，不改变写入事实
    */
   private estimate_token_count(text: string): number {
     return Math.max(1, Math.ceil(text.length / 2));
   }
 
   /**
-   * JSON 普通对象数组归一，保护 task-data 返回值边界。
+   * JSON 普通对象数组归一，保护 task-data 返回值边界
    */
   private normalize_record_list(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     if (!Array.isArray(value)) {
@@ -1334,14 +1315,14 @@ export class TaskEngine {
   }
 
   /**
-   * JSON 普通对象归一，避免数组和 null 进入业务分支。
+   * JSON 普通对象归一，避免数组和 null 进入业务分支
    */
   private normalize_record(value: ApiJsonValue | undefined): MutableJsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
   }
 
   /**
-   * 数字字段统一截断，坏值回退到调用方默认值。
+   * 数字字段统一截断，坏值回退到调用方默认值
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -1349,7 +1330,7 @@ export class TaskEngine {
   }
 
   /**
-   * 任务启动日志输出“API 名称 / 地址 / 模型”三行诊断。
+   * 任务启动日志输出“API 名称 / 地址 / 模型”三行诊断
    */
   private log_task_run_start(task_label: string, model: MutableJsonRecord): void {
     this.append_log(
@@ -1362,7 +1343,7 @@ export class TaskEngine {
   }
 
   /**
-   * 任务终态日志和公开 task.status_changed 分开写，避免只看日志时丢失收尾信息。
+   * 任务终态日志和公开 task.status_changed 分开写，避免只看日志时丢失收尾信息
    */
   private log_task_run_finish(task_label: string, status: string): void {
     const message =
@@ -1375,7 +1356,7 @@ export class TaskEngine {
   }
 
   /**
-   * worker 返回的日志仍由 main 侧 LogManager 写出，保证文件、控制台和日志窗口三类目标不分叉。
+   * worker 返回的日志仍由 main 侧 LogManager 写出，保证文件、控制台和日志窗口三类目标不分叉
    */
   private emit_work_unit_logs(
     logs?: Array<{ level: "info" | "warning" | "error"; message: string }>,
@@ -1389,7 +1370,7 @@ export class TaskEngine {
   }
 
   /**
-   * 测试桩可能只实现部分日志方法；生产环境仍会走完整 LogManager。
+   * 测试桩可能只实现部分日志方法；生产环境仍会走完整 LogManager
    */
   private append_log(level: "info" | "warning" | "error", message: string, source: string): void {
     const log_manager = this.log_manager as Partial<Pick<LogManager, "info" | "warning" | "error">>;
@@ -1397,7 +1378,7 @@ export class TaskEngine {
   }
 
   /**
-   * 任务异常统一写入 应用日志，便于和 work-unit 日志并排排查。
+   * 任务异常统一写入 应用日志，便于和 work-unit 日志并排排查
    */
   private log_task_error(message: string, error: unknown): void {
     this.log_manager.error(message, {

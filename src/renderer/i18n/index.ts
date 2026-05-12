@@ -137,7 +137,7 @@ function parse_rich_text_root(source_text: string): Element | null {
   if (typeof DOMParser === "undefined") {
     return null;
   } else {
-    // 统一用受控容器包一层，避免多根节点时每个调用方各自补壳处理。
+    // 统一用受控容器包一层，避免多根节点时每个调用方各自补壳处理
     const document = new DOMParser().parseFromString(
       `<lg-rich-text>${source_text}</lg-rich-text>`,
       "text/html",
@@ -189,8 +189,7 @@ export function LocaleProvider({ children }: { children: ReactNode }): ReactNode
     [message_map],
   );
 
-  // Why: 文案函数会进入很多页面级 callback/effect 的依赖数组，
-  // 这里必须稳定引用，避免页面在静置时持续重复刷新。
+  // 原因：文案函数会进入很多页面级 callback/effect 的依赖数组，这里必须稳定引用，避免页面在静置时持续重复刷新
   const context_value = useMemo<LocaleContextValue>(() => {
     return {
       locale,

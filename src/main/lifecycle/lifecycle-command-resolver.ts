@@ -34,7 +34,7 @@ function find_app_root_from_candidate(candidate_root: string): string | null {
 }
 
 /**
- * 解析应用根目录；运行态只需要找到 resource 与 version.txt，不再解析后端进程入口。
+ * 解析应用根目录；运行态只需要找到 resource 与 version.txt，不再解析后端进程入口
  */
 export function resolve_core_app_root(environment: CoreLaunchEnvironment): string {
   const initial_cwd = environment.env[NPM_INITIAL_CWD_ENV_NAME];

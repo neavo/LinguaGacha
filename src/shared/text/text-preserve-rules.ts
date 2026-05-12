@@ -5,17 +5,16 @@ import { normalize_text_preserve_mode } from "../../base/quality";
 
 export type TextPreserveRuleKind = "check" | "sample" | "prefix" | "suffix";
 
-// NONE 规则是所有文本类型的最小保护集合，避免 `<br>` 和空白段参与差异检查。
-const NONE_PATTERNS = ["<br>", "\\s"] as const;
+const NONE_PATTERNS = ["<br>", "\\s"] as const; // NONE 规则是所有文本类型的最小保护集合，避免 `<br>` 和空白段参与差异检查
 
-// Ren'Py/KAG 控制段内部若含中日韩正文，就不能当作可保护脚手架。
+// Ren'Py/KAG 控制段内部若含中日韩正文，就不能当作可保护脚手架
 const RENPY_LIKE_PATTERNS = [
   `\\{[^\\{${CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE}]*?\\}`,
   `\\[[^\\[${CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE}]*?\\]`,
   ...NONE_PATTERNS,
 ] as const;
 
-// RPGMaker/WOLF 共享控制码形态较多，集中在同一组规则避免校对页和任务侧漂移。
+// RPGMaker/WOLF 共享控制码形态较多，集中在同一组规则避免校对页和任务侧漂移
 const RPGMAKER_LIKE_PATTERNS = [
   "<.+?:.+?>",
   "en\\(.{0,8}[vs]\\[\\d+\\].{0,16}\\)",
@@ -38,7 +37,7 @@ const RPGMAKER_LIKE_PATTERNS = [
   ...NONE_PATTERNS,
 ] as const;
 
-// 按 text_type 映射智能保护规则，任务 worker 和校对页必须共用同一张表。
+// 按 text_type 映射智能保护规则，任务 worker 和校对页必须共用同一张表
 export const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
   NONE: NONE_PATTERNS,
   MD: NONE_PATTERNS,
@@ -49,7 +48,7 @@ export const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
 } as const;
 
 /**
- * 根据 mode 和 text_type 展开可执行正则片段，custom 只读用户 entries，smart 只读预置表。
+ * 根据 mode 和 text_type 展开可执行正则片段，custom 只读用户 entries，smart 只读预置表
  */
 export function resolve_text_preserve_patterns(args: {
   mode: string;
@@ -71,7 +70,7 @@ export function resolve_text_preserve_patterns(args: {
 }
 
 /**
- * 构造保护正则。返回 null 代表当前模式下没有任何保护规则。
+ * 构造保护正则。返回 null 代表当前模式下没有任何保护规则
  */
 export function build_text_preserve_rule(args: {
   mode: string;

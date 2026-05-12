@@ -209,7 +209,7 @@ export const app_editor_whitespace_extension: Extension = [
 
 export function resolve_app_editor_mode_extensions(mode: AppEditorMode): Extension {
   if (mode === "markdown") {
-    // 为什么：提示词编辑器里常见的标题、链接、删除线都依赖 Markdown 语言扩展才能得到稳定高亮。
+    // 为什么：提示词编辑器里常见的标题、链接、删除线都依赖 Markdown 语言扩展才能得到稳定高亮
     return markdown({ base: markdownLanguage });
   }
 

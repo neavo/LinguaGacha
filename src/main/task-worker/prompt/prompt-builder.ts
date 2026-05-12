@@ -6,12 +6,10 @@ import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/te
 import type { LlmRequestMessage } from "../llm/llm-types";
 import { Prompt } from "../../../base/prompt";
 
-// 中文提示词模板使用“原文”占位，英文模板使用“Source”占位，避免字符串散落在构造逻辑里。
-const SOURCE_PLACEHOLDER_ZH = "原文";
-// 英文模板占位符单独保留，避免后续模板本地化时误改中文占位。
-const SOURCE_PLACEHOLDER_EN = "Source";
+const SOURCE_PLACEHOLDER_ZH = "原文"; // 中文提示词模板使用“原文”占位，英文模板使用“Source”占位，避免字符串散落在构造逻辑里
+const SOURCE_PLACEHOLDER_EN = "Source"; // 英文模板占位符单独保留，避免后续模板本地化时误改中文占位
 
-// 中文 UI 下展示的语言名，直接写入模型提示词。
+// 中文 UI 下展示的语言名，直接写入模型提示词
 const LANGUAGE_NAME_ZH: Record<string, string> = {
   ZH: "简体中文",
   EN: "英语",
@@ -32,7 +30,7 @@ const LANGUAGE_NAME_ZH: Record<string, string> = {
   VI: "越南语",
 };
 
-// 非中文 UI 下展示的语言名，保持和资源模板英文语境一致。
+// 非中文 UI 下展示的语言名，保持和资源模板英文语境一致
 const LANGUAGE_NAME_EN: Record<string, string> = {
   ZH: "Simplified Chinese",
   EN: "English",
@@ -54,7 +52,7 @@ const LANGUAGE_NAME_EN: Record<string, string> = {
 };
 
 /**
- * 提示词构造所需的最小配置快照，worker 只读取语言与界面语言。
+ * 提示词构造所需的最小配置快照，worker 只读取语言与界面语言
  */
 export interface PromptBuilderConfig {
   app_language?: string;
@@ -63,7 +61,7 @@ export interface PromptBuilderConfig {
 }
 
 /**
- * PromptBuilder 输出给 LLM adapter 的消息和本地日志展示文本。
+ * PromptBuilder 输出给 LLM adapter 的消息和本地日志展示文本
  */
 export interface PromptBuildResult {
   messages: LlmRequestMessage[];
@@ -71,7 +69,7 @@ export interface PromptBuildResult {
 }
 
 /**
- * worker 侧提示词构造器，读取资源模板并拼接本次 work unit 动态数据。
+ * worker 侧提示词构造器，读取资源模板并拼接本次 work unit 动态数据
  */
 export class PromptBuilder {
   private readonly app_root: string;
@@ -79,7 +77,7 @@ export class PromptBuilder {
   private readonly quality_snapshot: TextQualitySnapshot;
 
   /**
-   * app_root 由 Electron main 注入，worker 不自行猜测资源根。
+   * app_root 由 Electron main 注入，worker 不自行猜测资源根
    */
   public constructor(
     app_root: string,
@@ -92,7 +90,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 生成普通翻译提示词；system 放稳定指令，user 放本次输入和术语。
+   * 生成普通翻译提示词；system 放稳定指令，user 放本次输入和术语
    */
   public async generate_prompt(
     srcs: string[],
@@ -135,7 +133,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 生成 SakuraLLM 固定提示词，保持旧模型专用语义。
+   * 生成 SakuraLLM 固定提示词，保持旧模型专用语义
    */
   public generate_prompt_sakura(srcs: string[]): PromptBuildResult {
     const messages: LlmRequestMessage[] = [
@@ -159,7 +157,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 生成术语分析提示词；分析链路不混入上文或翻译控制字符示例。
+   * 生成术语分析提示词；分析链路不混入上文或翻译控制字符示例
    */
   public async generate_glossary_prompt(srcs: string[]): Promise<PromptBuildResult> {
     const instruction_text = await this.build_glossary_analysis_main();
@@ -174,7 +172,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 翻译主提示词从自定义快照或资源模板读取。
+   * 翻译主提示词从自定义快照或资源模板读取
    */
   public async build_main(): Promise<string> {
     const context = this.resolve_prompt_context();
@@ -203,7 +201,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 分析主提示词只替换目标语言，不携带源语言占位。
+   * 分析主提示词只替换目标语言，不携带源语言占位
    */
   public async build_glossary_analysis_main(): Promise<string> {
     const context = this.resolve_prompt_context();
@@ -233,7 +231,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 参考上文只放 user prompt，避免系统指令随上下文变化。
+   * 参考上文只放 user prompt，避免系统指令随上下文变化
    */
   public build_preceding(precedings: TextTaskItemRecord[]): string {
     if (precedings.length === 0) {
@@ -250,7 +248,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 术语表按当前输入全文命中过滤，未命中时不污染 prompt。
+   * 术语表按当前输入全文命中过滤，未命中时不污染 prompt
    */
   public build_glossary(srcs: string[]): string {
     const result = this.build_glossary_lines(srcs, " -> ");
@@ -263,14 +261,14 @@ export class PromptBuilder {
   }
 
   /**
-   * SakuraLLM 术语格式不带空格，保持旧提示词格式。
+   * SakuraLLM 术语格式不带空格，保持旧提示词格式
    */
   public build_glossary_sakura(srcs: string[]): string {
     return this.build_glossary_lines(srcs, "->").join("\n");
   }
 
   /**
-   * 控制字符示例只在系统提示词明确要求控制符时加入。
+   * 控制字符示例只在系统提示词明确要求控制符时加入
    */
   public build_control_characters_samples(main: string, samples: string[]): string {
     const unique_samples = [...new Set(samples.map((sample) => sample.trim()).filter(Boolean))];
@@ -294,7 +292,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 翻译输入固定为 jsonline，响应解码器也按此格式优先解析。
+   * 翻译输入固定为 jsonline，响应解码器也按此格式优先解析
    */
   public build_inputs(srcs: string[]): string {
     const inputs = srcs
@@ -306,7 +304,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 分析输入保持纯文本，减少模型把 JSON key 当作术语。
+   * 分析输入保持纯文本，减少模型把 JSON key 当作术语
    */
   public build_analysis_inputs(srcs: string[]): string {
     if (srcs.length === 0) {
@@ -316,7 +314,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 模板段落拼接统一在这里处理，保证输出约束始终位于最后。
+   * 模板段落拼接统一在这里处理，保证输出约束始终位于最后
    */
   public join_prompt_sections(
     prefix: string,
@@ -333,21 +331,21 @@ export class PromptBuilder {
   }
 
   /**
-   * UI 语言只支持中英提示词模板，未知值回退中文。
+   * UI 语言只支持中英提示词模板，未知值回退中文
    */
   private get_prompt_ui_language(): "zh" | "en" {
     return String(this.config.app_language ?? "ZH").toUpperCase() === "EN" ? "en" : "zh";
   }
 
   /**
-   * 中文 UI 决定提示词标题和语言名显示口径。
+   * 中文 UI 决定提示词标题和语言名显示口径
    */
   private is_prompt_ui_zh(): boolean {
     return this.get_prompt_ui_language() === "zh";
   }
 
   /**
-   * 解析提示词语言、源语言占位和目标语言名。
+   * 解析提示词语言、源语言占位和目标语言名
    */
   private resolve_prompt_context(): {
     prompt_language: "zh" | "en";
@@ -368,7 +366,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 模板路径固定在 resource 下，worker 不读用户预设目录。
+   * 模板路径固定在 resource 下，worker 不读用户预设目录
    */
   private async read_prompt_text(
     task_dir_name: string,
@@ -387,7 +385,7 @@ export class PromptBuilder {
   }
 
   /**
-   * 术语匹配尊重大小写标志，命中后按指定分隔符生成行文本。
+   * 术语匹配尊重大小写标志，命中后按指定分隔符生成行文本
    */
   private build_glossary_lines(srcs: string[], separator: string): string[] {
     const full_text = srcs.join("\n");

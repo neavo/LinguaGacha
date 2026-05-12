@@ -1,14 +1,14 @@
 import { is_cjk_language_code } from "../language";
 
-// 数量匹配规则 A：以 CJK/全角风格为目标，修复模型把源文符号改成半角或相邻样式的情况。
+// 数量匹配规则 A：以 CJK/全角风格为目标，修复模型把源文符号改成半角或相邻样式的情况
 const RULE_SAME_COUNT_A: Record<string, readonly string[]> = {
-  "　": [" "], // 全角空格和半角空格之间的转换。
+  "　": [" "], // 全角空格和半角空格之间的转换
   "：": [":"],
   "・": ["·"],
   "？": ["?"],
   "！": ["!"],
-  "\u2014": ["\u002d", "\u2015"], // 破折号互转：\u002d = -，\u2014 = —，\u2015 = ―。
-  "\u2015": ["\u002d", "\u2014"], // 破折号互转：\u002d = -，\u2014 = —，\u2015 = ―。
+  "\u2014": ["\u002d", "\u2015"], // 破折号互转：\u002d = -，\u2014 = —，\u2015 = ―
+  "\u2015": ["\u002d", "\u2014"], // 破折号互转：\u002d = -，\u2014 = —，\u2015 = ―
   "<": ["＜", "《"],
   ">": ["＞", "》"],
   "＜": ["<", "《"],
@@ -31,28 +31,28 @@ const RULE_SAME_COUNT_A: Record<string, readonly string[]> = {
   "”": ["’", "」", "』"],
 };
 
-// 数量匹配规则 B：以半角/非 CJK 风格为目标，补齐与规则 A 相反方向的可逆替换。
+// 数量匹配规则 B：以半角/非 CJK 风格为目标，补齐与规则 A 相反方向的可逆替换
 const RULE_SAME_COUNT_B: Record<string, readonly string[]> = {
-  " ": ["　"], // 全角空格和半角空格之间的转换。
+  " ": ["　"], // 全角空格和半角空格之间的转换
   ":": ["："],
   "·": ["・"],
   "?": ["？"],
   "!": ["！"],
-  "\u002d": ["\u2014", "\u2015"], // 破折号互转：\u002d = -，\u2014 = —，\u2015 = ―。
+  "\u002d": ["\u2014", "\u2015"], // 破折号互转：\u002d = -，\u2014 = —，\u2015 = ―
 };
 
-// 强制替换规则：译文语言为 CJK 时，把日式钩括号统一成中文弯引号。
+// 强制替换规则：译文语言为 CJK 时，把日式钩括号统一成中文弯引号
 const RULE_FORCE_CJK: Record<string, readonly string[]> = {
   "「": ["“"],
   "」": ["”"],
 };
 
 /**
- * 标点修复器，按源文数量恢复容易互转的全角/半角与引号。
+ * 标点修复器，按源文数量恢复容易互转的全角/半角与引号
  */
 export class PunctuationFixer {
   /**
-   * 先修首尾引号，再按语言组合决定应用哪些数量修复规则。
+   * 先修首尾引号，再按语言组合决定应用哪些数量修复规则
    */
   public static fix(
     src: string,
@@ -74,7 +74,7 @@ export class PunctuationFixer {
   }
 
   /**
-   * 数量检查沿用历史口径：源文目标符号数量可由译文目标+错误符号数量解释时才修。
+   * 数量检查沿用历史口径：源文目标符号数量可由译文目标+错误符号数量解释时才修
    */
   private static check(src: string, dst: string, key: string, values: readonly string[]): boolean {
     const num_s_x = this.count(src, key);
@@ -85,7 +85,7 @@ export class PunctuationFixer {
   }
 
   /**
-   * 顺序应用修复规则，后续规则可继续基于前一轮结果判断。
+   * 顺序应用修复规则，后续规则可继续基于前一轮结果判断
    */
   private static apply_fix_rules(
     src: string,
@@ -102,7 +102,7 @@ export class PunctuationFixer {
   }
 
   /**
-   * 将一组易错符号全部替换为源文目标符号。
+   * 将一组易错符号全部替换为源文目标符号
    */
   private static apply_replace_rules(dst: string, key: string, values: readonly string[]): string {
     let result = dst;
@@ -113,7 +113,7 @@ export class PunctuationFixer {
   }
 
   /**
-   * 首尾引号优先按源文形态恢复，减少模型自动改写引号风格。
+   * 首尾引号优先按源文形态恢复，减少模型自动改写引号风格
    */
   private static fix_start_end(src: string, dst: string, target_language: string): string {
     let result = dst;
@@ -135,7 +135,7 @@ export class PunctuationFixer {
   }
 
   /**
-   * 字符串计数使用 split，避免正则转义遗漏特殊符号。
+   * 字符串计数使用 split，避免正则转义遗漏特殊符号
    */
   private static count(text: string, token: string): number {
     return token === "" ? 0 : text.split(token).length - 1;

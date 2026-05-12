@@ -63,7 +63,7 @@ describe("TaskWorkerPool", () => {
 });
 
 /**
- * direct runner 回退测试需要真实模板目录，用临时 appRoot 隔离资源读取。
+ * direct runner 回退测试需要真实模板目录，用临时 appRoot 隔离资源读取
  */
 async function create_template_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-pool-"));
@@ -73,7 +73,7 @@ async function create_template_root(): Promise<string> {
 }
 
 /**
- * 写入最小可用模板，确保 pool 测试只关注执行路径而非提示词内容。
+ * 写入最小可用模板，确保 pool 测试只关注执行路径而非提示词内容
  */
 async function write_template(
   app_root: string,

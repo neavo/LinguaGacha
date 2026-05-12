@@ -191,7 +191,7 @@ function partition_glossary_terms(
   applied_terms: ProofreadingGlossaryTerm[];
   failed_terms: ProofreadingGlossaryTerm[];
 } {
-  // 为什么：弹窗里展示的是“当前草稿”的真实状态，术语胶囊和下划线都要跟着 draft_dst 实时刷新。
+  // 为什么：弹窗里展示的是“当前草稿”的真实状态，术语胶囊和下划线都要跟着 draft_dst 实时刷新
   const all_terms = dedupe_glossary_terms([
     ...item.applied_glossary_terms,
     ...item.failed_glossary_terms,
@@ -248,8 +248,7 @@ function build_glossary_highlights(
   source_highlights: ProofreadingCodeEditorHighlight[];
   translation_highlights: ProofreadingCodeEditorHighlight[];
 } {
-  // 为什么：命中的术语要同时标亮原文和译文，未命中的术语只在原文保留警告提示，方便人工补齐。
-  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_dst);
+  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_dst); // 为什么：命中的术语要同时标亮原文和译文，未命中的术语只在原文保留警告提示，方便人工补齐
   const source_highlights: ProofreadingCodeEditorHighlight[] = [];
   const translation_highlights: ProofreadingCodeEditorHighlight[] = [];
 

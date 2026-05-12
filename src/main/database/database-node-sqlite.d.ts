@@ -1,5 +1,5 @@
 declare module "node:sqlite" {
-  // Electron 当前 runtime 已提供 node:sqlite，但 TypeScript 类型尚未稳定发布。
+  // Electron 当前 runtime 已提供 node:sqlite，但 TypeScript 类型尚未稳定发布
   export interface StatementSync {
     all(...params: unknown[]): Record<string, unknown>[];
     get(...params: unknown[]): Record<string, unknown> | undefined;

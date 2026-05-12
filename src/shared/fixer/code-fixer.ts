@@ -1,9 +1,9 @@
 /**
- * 代码保护段修复器，删除译文中相对源文多出来的保护段。
+ * 代码保护段修复器，删除译文中相对源文多出来的保护段
  */
 export class CodeFixer {
   /**
-   * 只有源文保护段是译文保护段的有序子集时才删除多余项。
+   * 只有源文保护段是译文保护段的有序子集时才删除多余项
    */
   public static fix(src: string, dst: string, rule: RegExp | null): string {
     if (rule === null) {
@@ -31,7 +31,7 @@ export class CodeFixer {
   }
 
   /**
-   * 正则必须重新设置 lastIndex，保证 global 规则多次使用不串状态。
+   * 正则必须重新设置 lastIndex，保证 global 规则多次使用不串状态
    */
   private static collect_codes(text: string, rule: RegExp): string[] {
     rule.lastIndex = 0;
@@ -47,7 +47,7 @@ export class CodeFixer {
   }
 
   /**
-   * 判断 x 是否是 y 的有序子集，并记录 y 中多余元素索引。
+   * 判断 x 是否是 y 的有序子集，并记录 y 中多余元素索引
    */
   private static is_ordered_subset(
     x: string[],

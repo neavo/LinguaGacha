@@ -1,5 +1,5 @@
 /**
- * 保存 API Gateway 对外公开的项目会话状态。
+ * 保存 API Gateway 对外公开的项目会话状态
  */
 export class ProjectSessionState {
   private project_path = "";
@@ -7,7 +7,7 @@ export class ProjectSessionState {
   private loaded = false;
 
   /**
-   * 成功加载或新建工程后由 Gateway 包装路由更新，失败响应不得改写状态。
+   * 成功加载或新建工程后由 Gateway 包装路由更新，失败响应不得改写状态
    */
   public mark_loaded(project_path: string): void {
     const normalized_path = project_path.trim();
@@ -20,7 +20,7 @@ export class ProjectSessionState {
   }
 
   /**
-   * 卸载成功后清空公开会话状态。
+   * 卸载成功后清空公开会话状态
    */
   public clear(): void {
     this.project_path = "";
@@ -28,7 +28,7 @@ export class ProjectSessionState {
   }
 
   /**
-   * 返回不可变快照，避免调用方共享可变状态引用。
+   * 返回不可变快照，避免调用方共享可变状态引用
    */
   public snapshot(): { loaded: boolean; projectPath: string } {
     return {

@@ -10,38 +10,29 @@ import type {
 } from "../../../shared/text/text-types";
 
 /**
- * 翻译译前流程产物，显式保存译后恢复需要的每行状态。
+ * 翻译译前流程产物，显式保存译后恢复需要的每行状态
  */
 export interface TranslationPrePipelineContext {
-  // item 保留当前 work unit 的可写快照，译后流程只回写这份对象。
-  item: TextTaskItemRecord | null;
-  // source_text 是 ruby 清理后的完整源文本，译后按原行数重建 dst。
-  source_text: string;
-  // srcs 是真正送入模型的行，空行和完全保护行不会进入请求。
-  srcs: string[];
-  // samples 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明。
-  samples: string[];
-  // valid_line_indexes 记录送入模型的源行位置，译后只按这些行回填。
-  valid_line_indexes: Set<number>;
-  // prefix_codes_by_line 按行保存前缀保护码，恢复时保持原始左侧位置。
-  prefix_codes_by_line: Map<number, string[]>;
-  // suffix_codes_by_line 单独保存后缀保护码，避免恢复时改变原始右侧顺序。
-  suffix_codes_by_line: Map<number, string[]>;
-  // leading_whitespace_by_line 记录行首空白，避免模型输出破坏原文件排版。
-  leading_whitespace_by_line: Map<number, string>;
-  // trailing_whitespace_by_line 记录行尾空白，保留脚本行末格式。
-  trailing_whitespace_by_line: Map<number, string>;
+  item: TextTaskItemRecord | null; // item 保留当前 work unit 的可写快照，译后流程只回写这份对象
+  source_text: string; // source_text 是 ruby 清理后的完整源文本，译后按原行数重建 dst
+  srcs: string[]; // srcs 是真正送入模型的行，空行和完全保护行不会进入请求
+  samples: string[]; // samples 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
+  valid_line_indexes: Set<number>; // valid_line_indexes 记录送入模型的源行位置，译后只按这些行回填
+  prefix_codes_by_line: Map<number, string[]>; // prefix_codes_by_line 按行保存前缀保护码，恢复时保持原始左侧位置
+  suffix_codes_by_line: Map<number, string[]>; // suffix_codes_by_line 单独保存后缀保护码，避免恢复时改变原始右侧顺序
+  leading_whitespace_by_line: Map<number, string>; // leading_whitespace_by_line 记录行首空白，避免模型输出破坏原文件排版
+  trailing_whitespace_by_line: Map<number, string>; // trailing_whitespace_by_line 记录行尾空白，保留脚本行末格式
 }
 
 /**
- * 翻译译前 pipeline，负责把 item 源文本转换成模型输入和显式恢复上下文。
+ * 翻译译前 pipeline，负责把 item 源文本转换成模型输入和显式恢复上下文
  */
 export class TranslationPrePipeline {
   private readonly config: TextProcessingConfig;
   private readonly quality_snapshot: TextQualitySnapshot;
 
   /**
-   * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存。
+   * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存
    */
   public constructor(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
     this.config = config;
@@ -49,7 +40,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 按固定顺序执行：归一化、ruby、保护、替换、姓名注入。
+   * 按固定顺序执行：归一化、ruby、保护、替换、姓名注入
    */
   public process_item(item: TextTaskItemRecord | null): TranslationPrePipelineContext {
     const context = this.create_empty_context(item);
@@ -85,7 +76,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 创建空上下文，保证无 item 和空 item 分支也返回同一形状。
+   * 创建空上下文，保证无 item 和空 item 分支也返回同一形状
    */
   private create_empty_context(item: TextTaskItemRecord | null): TranslationPrePipelineContext {
     return {
@@ -102,14 +93,14 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * Ruby 行级清理受 clean_ruby 控制，格式例外由 TextRubyCleaner 维护。
+   * Ruby 行级清理受 clean_ruby 控制，格式例外由 TextRubyCleaner 维护
    */
   private clean_ruby(src: string, text_type: string): string {
     return this.config.clean_ruby ? TextRubyCleaner.clean(src, text_type) : src;
   }
 
   /**
-   * 记录每行原始头尾空白，并返回可参与翻译的正文。
+   * 记录每行原始头尾空白，并返回可参与翻译的正文
    */
   private extract_line_edge_whitespace(
     context: TranslationPrePipelineContext,
@@ -126,7 +117,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 按规则提取前后缀保护段，提取结果在译后流程末尾恢复。
+   * 按规则提取前后缀保护段，提取结果在译后流程末尾恢复
    */
   private prefix_suffix_process(
     context: TranslationPrePipelineContext,
@@ -154,7 +145,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 完全保护行不能送给模型，否则会把代码段翻译成自然语言。
+   * 完全保护行不能送给模型，否则会把代码段翻译成自然语言
    */
   private is_fully_preserved_line(src: string, text_type: string): boolean {
     const rule = this.get_re_check(text_type);
@@ -168,7 +159,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 译前替换只消费质量快照。
+   * 译前替换只消费质量快照
    */
   private replace_pre_translation(src: string): string {
     if (!this.quality_snapshot.pre_replacement_enable) {
@@ -178,7 +169,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 收集控制字符示例，Markdown 额外注入固定代码示例。
+   * 收集控制字符示例，Markdown 额外注入固定代码示例
    */
   private collect_samples(
     context: TranslationPrePipelineContext,
@@ -196,7 +187,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 抽取匹配段并返回剩余正文，供前后缀保护逻辑复用。
+   * 抽取匹配段并返回剩余正文，供前后缀保护逻辑复用
    */
   private extract(rule: RegExp, line: string): { line: string; codes: string[] } {
     const codes: string[] = [];
@@ -210,7 +201,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 文本保护规则按运行态 mode 展开，smart 使用共享预置规则，custom 使用用户 entries。
+   * 文本保护规则按运行态 mode 展开，smart 使用共享预置规则，custom 使用用户 entries
    */
   private build_preserve_rule(
     kind: "check" | "sample" | "prefix" | "suffix",
@@ -225,42 +216,42 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 检查规则入口独立命名，便于和 CHECK 规则对齐。
+   * 检查规则入口独立命名，便于和 CHECK 规则对齐
    */
   private get_re_check(text_type: string): RegExp | null {
     return this.build_preserve_rule("check", text_type);
   }
 
   /**
-   * 样例规则用于控制字符示例和响应校验。
+   * 样例规则用于控制字符示例和响应校验
    */
   private get_re_sample(text_type: string): RegExp | null {
     return this.build_preserve_rule("sample", text_type);
   }
 
   /**
-   * 前缀保护规则只允许从行首抽取。
+   * 前缀保护规则只允许从行首抽取
    */
   private get_re_prefix(text_type: string): RegExp | null {
     return this.build_preserve_rule("prefix", text_type);
   }
 
   /**
-   * 后缀保护规则只允许从行尾抽取。
+   * 后缀保护规则只允许从行尾抽取
    */
   private get_re_suffix(text_type: string): RegExp | null {
     return this.build_preserve_rule("suffix", text_type);
   }
 
   /**
-   * item 文本类型缺失时按 TXT 处理，避免正则规则读取空键。
+   * item 文本类型缺失时按 TXT 处理，避免正则规则读取空键
    */
   private read_text_type(item: TextTaskItemRecord): string {
     return String(item.text_type ?? "TXT").toUpperCase();
   }
 
   /**
-   * name_src 可以是字符串或数组，worker 只注入第一个非空姓名。
+   * name_src 可以是字符串或数组，worker 只注入第一个非空姓名
    */
   private read_first_name_src(item: TextTaskItemRecord): string | null {
     const name_src = item.name_src;

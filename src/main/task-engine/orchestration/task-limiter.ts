@@ -1,5 +1,4 @@
-// 默认并发与实施计划一致，未显式设置时不再按 RPM 反推 worker 数。
-const DEFAULT_CONCURRENCY_LIMIT = 8;
+const DEFAULT_CONCURRENCY_LIMIT = 8; // 默认并发与实施计划一致，未显式设置时不再按 RPM 反推 worker 数
 const ONE_MINUTE_MS = 60_000;
 
 interface TaskLimiterOptions {
@@ -9,29 +8,23 @@ interface TaskLimiterOptions {
 }
 
 /**
- * Task Engine 限流器，统一持有并发槽和每分钟请求数节奏。
+ * Task Engine 限流器，统一持有并发槽和每分钟请求数节奏
  */
 export class TaskLimiter {
-  // max_concurrency 是 worker 同时执行 work unit 的上限。
-  public readonly max_concurrency: number;
+  public readonly max_concurrency: number; // max_concurrency 是 worker 同时执行 work unit 的上限
 
-  // rpm_limit 只表示每分钟请求数，不参与反推并发。
-  private readonly rpm_limit: number;
+  private readonly rpm_limit: number; // rpm_limit 只表示每分钟请求数，不参与反推并发
 
-  // now_provider 让限流测试可以注入虚拟时钟。
-  private readonly now_provider: () => number;
+  private readonly now_provider: () => number; // now_provider 让限流测试可以注入虚拟时钟
 
-  // in_use 记录已占用并发槽的请求数量。
-  private in_use = 0;
+  private in_use = 0; // in_use 记录已占用并发槽的请求数量
 
-  // request_timestamps 记录最近一分钟内真正放行的请求。
-  private request_timestamps: number[] = [];
+  private request_timestamps: number[] = []; // request_timestamps 记录最近一分钟内真正放行的请求
 
-  // waiters 在 release 时被唤醒，避免无槽时忙等。
-  private waiters: Array<() => void> = [];
+  private waiters: Array<() => void> = []; // waiters 在 release 时被唤醒，避免无槽时忙等
 
   /**
-   * 初始化限流参数；显式并发必须大于 0，否则固定回退 8。
+   * 初始化限流参数；显式并发必须大于 0，否则固定回退 8
    */
   public constructor(options: TaskLimiterOptions = {}) {
     const raw_concurrency = Math.trunc(Number(options.concurrency_limit ?? 0));
@@ -41,7 +34,7 @@ export class TaskLimiter {
   }
 
   /**
-   * 申请一次请求资格；调用方必须在 work unit 返回后执行 release。
+   * 申请一次请求资格；调用方必须在 work unit 返回后执行 release
    */
   public async acquire(signal: AbortSignal): Promise<() => void> {
     for (;;) {
@@ -62,7 +55,7 @@ export class TaskLimiter {
   }
 
   /**
-   * 释放并发槽并唤醒一个等待者，保持后续队列继续推进。
+   * 释放并发槽并唤醒一个等待者，保持后续队列继续推进
    */
   private release(): void {
     this.in_use = Math.max(0, this.in_use - 1);
@@ -71,7 +64,7 @@ export class TaskLimiter {
   }
 
   /**
-   * 清理一分钟窗口外的请求时间戳，保证 RPM 判断只看当前窗口。
+   * 清理一分钟窗口外的请求时间戳，保证 RPM 判断只看当前窗口
    */
   private compact_request_timestamps(): void {
     if (this.rpm_limit <= 0) {
@@ -83,7 +76,7 @@ export class TaskLimiter {
   }
 
   /**
-   * 返回下一次可发请求还需等待多久；0 表示已有 RPM 令牌。
+   * 返回下一次可发请求还需等待多久；0 表示已有 RPM 令牌
    */
   private get_rpm_delay_ms(): number {
     if (this.rpm_limit <= 0 || this.request_timestamps.length < this.rpm_limit) {
@@ -94,7 +87,7 @@ export class TaskLimiter {
   }
 
   /**
-   * 等待任意并发槽释放；停止时要立刻退出等待。
+   * 等待任意并发槽释放；停止时要立刻退出等待
    */
   private async wait_for_release(signal: AbortSignal): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -115,7 +108,7 @@ export class TaskLimiter {
   }
 
   /**
-   * RPM 等待使用可取消定时器，停止命令不需要等完整窗口。
+   * RPM 等待使用可取消定时器，停止命令不需要等完整窗口
    */
   private async delay(ms: number, signal: AbortSignal): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -136,7 +129,7 @@ export class TaskLimiter {
   }
 
   /**
-   * 所有等待点都先检查 abort，避免停止后继续发新 work unit。
+   * 所有等待点都先检查 abort，避免停止后继续发新 work unit
    */
   private throw_if_aborted(signal: AbortSignal): void {
     if (signal.aborted) {

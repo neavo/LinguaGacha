@@ -16,8 +16,7 @@ import { ProjectSessionState } from "./project-session-state";
 type MutableJsonRecord = Record<string, DatabaseJsonValue>;
 
 describe("ProjectLifecycleService", () => {
-  // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区。
-  const cleanup_paths: string[] = [];
+  const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
 
   afterEach(() => {
     while (cleanup_paths.length > 0) {

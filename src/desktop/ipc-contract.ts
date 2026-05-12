@@ -17,7 +17,7 @@ export const IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH = "dialog:pick-glossary-expor
 export const IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH = "dialog:pick-prompt-import-file-path";
 export const IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH = "dialog:pick-prompt-export-file-path";
 
-// invoke 型 IPC 的参数和返回值集中在契约层，避免 main / preload 各写一份隐式形状。
+// invoke 型 IPC 的参数和返回值集中在契约层，避免 main / preload 各写一份隐式形状
 export type DesktopIpcInvokeContract = {
   [IPC_CHANNEL_QUIT_APP]: {
     args: [];
@@ -73,7 +73,7 @@ export type DesktopIpcInvokeContract = {
   };
 };
 
-// send 型 IPC 只用于无返回值通知，当前由 renderer 主题同步和 main 关闭请求组成。
+// send 型 IPC 只用于无返回值通知，当前由 renderer 主题同步和 main 关闭请求组成
 export type DesktopIpcSendContract = {
   [IPC_CHANNEL_TITLE_BAR_THEME]: {
     args: [theme_mode: ThemeMode];

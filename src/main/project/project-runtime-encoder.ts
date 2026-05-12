@@ -13,16 +13,16 @@ import {
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 
-// JsonRecord 表示从数据库或 meta 读取出的普通 JSON 字典，编码器不会保留对象引用。
+// JsonRecord 表示从数据库或 meta 读取出的普通 JSON 字典，编码器不会保留对象引用
 type JsonRecord = Record<string, ApiJsonValue>;
-// MutableJsonRecord 用于组装 SSE payload，离开编码器后仍按值传递给前端。
+// MutableJsonRecord 用于组装 SSE payload，离开编码器后仍按值传递给前端
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-// RowBlock 是 files/items 的稳定 wire shape，字段顺序本身就是协议。
+// RowBlock 是 files/items 的稳定 wire shape，字段顺序本身就是协议
 type RowBlock = { fields: string[]; rows: ApiJsonValue[][] };
 
 /**
- * Gateway 写 SSE 时只需要事件名和 data，编码器不持有底层 stream。
+ * Gateway 写 SSE 时只需要事件名和 data，编码器不持有底层 stream
  */
 export interface BootstrapSseEvent {
   event: string;
@@ -30,14 +30,14 @@ export interface BootstrapSseEvent {
 }
 
 /**
- * files 与 items 必须复用同一轮 item 快照，避免首包中 file_type 和 item 行来自不同读点。
+ * files 与 items 必须复用同一轮 item 快照，避免首包中 file_type 和 item 行来自不同读点
  */
 interface RuntimeItemsSnapshot {
   item_records: MutableJsonRecord[];
   records_by_path: Map<string, { rel_path: string; file_type: string }>;
 }
 
-// stage 顺序是前端 ProjectStore 初始化契约，新增或重排必须同步 API 文档。
+// stage 顺序是前端 ProjectStore 初始化契约，新增或重排必须同步 API 文档
 const BOOTSTRAP_STAGE_DEFINITIONS: Array<{
   stage: RuntimeSection;
   message: string;
@@ -52,9 +52,8 @@ const BOOTSTRAP_STAGE_DEFINITIONS: Array<{
   { stage: "task", message: "正在加载任务状态" },
 ];
 
-// RowBlock 字段顺序由 renderer 直接消费，不能在调用点临时拼装。
-const FILES_BLOCK_FIELDS = ["rel_path", "file_type", "sort_index"] as const;
-// items 字段顺序覆盖校对、任务和文件预览共同读取的最小条目事实。
+const FILES_BLOCK_FIELDS = ["rel_path", "file_type", "sort_index"] as const; // RowBlock 字段顺序由 renderer 直接消费，不能在调用点临时拼装
+// items 字段顺序覆盖校对、任务和文件预览共同读取的最小条目事实
 const ITEMS_BLOCK_FIELDS = [
   "item_id",
   "file_path",
@@ -69,20 +68,17 @@ const ITEMS_BLOCK_FIELDS = [
 ] as const;
 
 /**
- * Electron main 侧项目运行态编码器，只做请求内快照，不持有长期项目缓存。
+ * Electron main 侧项目运行态编码器，只做请求内快照，不持有长期项目缓存
  */
 export class ProjectRuntimeEncoder {
-  // database 是工程事实唯一读源，编码器不能直接持有 SQLite handle。
-  private readonly database: ProjectDatabase;
+  private readonly database: ProjectDatabase; // database 是工程事实唯一读源，编码器不能直接持有 SQLite handle
 
-  // task block 由 TaskSnapshotBuilder 组装，避免 bootstrap 回调任务公开路由。
-  private readonly task_snapshot_builder: TaskSnapshotBuilder;
+  private readonly task_snapshot_builder: TaskSnapshotBuilder; // task block 由 TaskSnapshotBuilder 组装，避免 bootstrap 回调任务公开路由
 
-  // 公开 project block 由会话状态持有，避免 bootstrap 回读会话缓存。
-  private readonly session_state: ProjectSessionState;
+  private readonly session_state: ProjectSessionState; // 公开 project block 由会话状态持有，避免 bootstrap 回读会话缓存
 
   /**
-   * 注入 database workflow 与任务快照构建器，保持读取边界可测试。
+   * 注入 database workflow 与任务快照构建器，保持读取边界可测试
    */
   public constructor(
     database: ProjectDatabase,
@@ -95,7 +91,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 一次性构建完整 bootstrap 事件序列，供 Gateway 在写流前完成失败判定。
+   * 一次性构建完整 bootstrap 事件序列，供 Gateway 在写流前完成失败判定
    */
   public async build_bootstrap_events(): Promise<BootstrapSseEvent[]> {
     const project_state = this.session_state.snapshot();
@@ -106,7 +102,7 @@ export class ProjectRuntimeEncoder {
         ? this.empty_items_snapshot()
         : this.build_runtime_items_snapshot(project_path);
     const task_snapshot = await this.task_snapshot_builder.build_task_snapshot();
-    // 所有 stage payload 先构建完成再交给 Gateway 写流，避免失败时产生半截成功 SSE。
+    // 所有 stage payload 先构建完成再交给 Gateway 写流，避免失败时产生半截成功 SSE
     const stage_payloads: Record<RuntimeSection, MutableJsonRecord> = {
       project: this.build_project_block(project_state),
       files: this.build_files_block(project_path, items_snapshot),
@@ -144,7 +140,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 给同步 mutation 复用同一 ProjectMutationAck revision 口径。
+   * 给同步 mutation 复用同一 ProjectMutationAck revision 口径
    */
   public build_project_mutation_ack(
     project_path: string,
@@ -154,7 +150,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * project block 只暴露加载态和路径，其他会话细节继续留在主进程。
+   * project block 只暴露加载态和路径，其他会话细节继续留在主进程
    */
   private build_project_block(project_state: {
     loaded: boolean;
@@ -169,7 +165,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * files block 优先使用 asset 表顺序；缺 asset 时回退 item 首次出现顺序。
+   * files block 优先使用 asset 表顺序；缺 asset 时回退 item 首次出现顺序
    */
   private build_files_block(project_path: string, snapshot: RuntimeItemsSnapshot): RowBlock {
     const asset_records = project_path === "" ? [] : this.get_asset_records(project_path);
@@ -192,7 +188,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * items block 只输出前端需要的稳定行字段，隔离数据库 item JSON 的内部扩展字段。
+   * items block 只输出前端需要的稳定行字段，隔离数据库 item JSON 的内部扩展字段
    */
   private build_items_block(snapshot: RuntimeItemsSnapshot): RowBlock {
     return {
@@ -204,7 +200,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 质量块按公开 rule type 输出，避免页面理解数据库物理命名。
+   * 质量块按公开 rule type 输出，避免页面理解数据库物理命名
    */
   private build_quality_block(project_path: string, meta: JsonRecord): MutableJsonRecord {
     return Object.fromEntries(
@@ -216,7 +212,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 工程未加载时仍返回完整质量块形状，保持 bootstrap stage payload 可合并。
+   * 工程未加载时仍返回完整质量块形状，保持 bootstrap stage payload 可合并
    */
   private build_empty_quality_block(): MutableJsonRecord {
     return Object.fromEntries(
@@ -228,7 +224,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 单个质量规则切片同时收口 entries、meta 与 revision，避免 UI 侧自行拼接。
+   * 单个质量规则切片同时收口 entries、meta 与 revision，避免 UI 侧自行拼接
    */
   private build_quality_rule_slice(
     project_path: string,
@@ -250,7 +246,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 提示词块只暴露 translation / analysis 两类任务提示词，和质量规则 entries 分离。
+   * 提示词块只暴露 translation / analysis 两类任务提示词，和质量规则 entries 分离
    */
   private build_prompts_block(project_path: string, meta: JsonRecord): MutableJsonRecord {
     return Object.fromEntries(
@@ -267,7 +263,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 工程未加载时仍返回固定提示词形状，避免前端为未加载态写特殊解析分支。
+   * 工程未加载时仍返回固定提示词形状，避免前端为未加载态写特殊解析分支
    */
   private build_empty_prompts_block(): MutableJsonRecord {
     return Object.fromEntries(
@@ -279,7 +275,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * analysis block 把持久化 extras、候选池和当前 item 覆盖率组合成最小运行态。
+   * analysis block 把持久化 extras、候选池和当前 item 覆盖率组合成最小运行态
    */
   private build_analysis_block(
     project_path: string,
@@ -295,7 +291,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 工程未加载时输出零值摘要，保持分析页初始化输入稳定。
+   * 工程未加载时输出零值摘要，保持分析页初始化输入稳定
    */
   private build_empty_analysis_block(): MutableJsonRecord {
     return {
@@ -307,7 +303,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * proofreading block 目前只需要 revision，真实条目事实仍由 items block 表达。
+   * proofreading block 目前只需要 revision，真实条目事实仍由 items block 表达
    */
   private build_proofreading_block(meta: JsonRecord): MutableJsonRecord {
     return {
@@ -316,7 +312,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 一次读取 item 表并派生文件索引，让 files/items 在同一 bootstrap 中自洽。
+   * 一次读取 item 表并派生文件索引，让 files/items 在同一 bootstrap 中自洽
    */
   private build_runtime_items_snapshot(project_path: string): RuntimeItemsSnapshot {
     const item_records: MutableJsonRecord[] = [];
@@ -336,14 +332,14 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 未加载工程使用空快照，避免 bootstrap 路径触碰空 projectPath 的数据库。
+   * 未加载工程使用空快照，避免 bootstrap 路径触碰空 projectPath 的数据库
    */
   private empty_items_snapshot(): RuntimeItemsSnapshot {
     return { item_records: [], records_by_path: new Map() };
   }
 
   /**
-   * 数据库 item JSON 转成公开 item 行记录。
+   * 数据库 item JSON 转成公开 item 行记录
    */
   private normalize_item_record(item: JsonRecord): MutableJsonRecord {
     return {
@@ -361,7 +357,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 分析覆盖率按当前 item 文本重新计算，跳过状态和空 src 不能计入总量。
+   * 分析覆盖率按当前 item 文本重新计算，跳过状态和空 src 不能计入总量
    */
   private build_analysis_status_summary(
     project_path: string,
@@ -397,7 +393,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 候选聚合以 src 为 key 输出公开快照。
+   * 候选聚合以 src 为 key 输出公开快照
    */
   private build_candidate_aggregate(project_path: string): MutableJsonRecord {
     const rows = this.database.execute(
@@ -417,7 +413,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 候选池单项要过滤空 src 和无译文票数项，避免导入术语预演看到不可用候选。
+   * 候选池单项要过滤空 src 和无译文票数项，避免导入术语预演看到不可用候选
    */
   private normalize_candidate_aggregate_entry(value: ApiJsonValue): MutableJsonRecord | null {
     if (!this.is_record(value)) {
@@ -450,7 +446,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 票数 map 合并重复 key 并剔除非正票数，保持候选池排序和 winner 选择稳定。
+   * 票数 map 合并重复 key 并剔除非正票数，保持候选池排序和 winner 选择稳定
    */
   private normalize_vote_map(value: ApiJsonValue | undefined): MutableJsonRecord {
     if (!this.is_record(value)) {
@@ -468,7 +464,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 读取全部 item 仍只通过 ProjectDatabase workflow，保持 SQL 落点集中。
+   * 读取全部 item 仍只通过 ProjectDatabase workflow，保持 SQL 落点集中
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
@@ -480,7 +476,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * asset 顺序来自 database workflow，编码器只读取当前 path/sort_order 字段。
+   * asset 顺序来自 database workflow，编码器只读取当前 path/sort_order 字段
    */
   private get_asset_records(project_path: string): Array<{ rel_path: string; sort_index: number }> {
     const value = this.database.execute(
@@ -509,7 +505,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 规则 entries 允许非对象项，统一包装成可序列化记录。
+   * 规则 entries 允许非对象项，统一包装成可序列化记录
    */
   private get_rule_entries(project_path: string, rule_type: string): MutableJsonRecord[] {
     const value = this.database.execute(
@@ -522,7 +518,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 提示词文本走规则文本 workflow，避免 runtime encoder 知道 rules 表物理细节。
+   * 提示词文本走规则文本 workflow，避免 runtime encoder 知道 rules 表物理细节
    */
   private get_rule_text(project_path: string, rule_type: string): string {
     return String(
@@ -533,7 +529,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * checkpoint 以 item_id 建索引，分析摘要只需要当前覆盖状态而不暴露更新时间。
+   * checkpoint 以 item_id 建索引，分析摘要只需要当前覆盖状态而不暴露更新时间
    */
   private get_analysis_checkpoints(project_path: string): Map<number, string> {
     const value = this.database.execute(
@@ -557,7 +553,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * meta 是 revision 与运行态 extras 的共同来源，读取后只在本次请求内复用。
+   * meta 是 revision 与运行态 extras 的共同来源，读取后只在本次请求内复用
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
     return this.normalize_object(
@@ -566,7 +562,7 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 运行态数字坏值回退到调用方给定默认值，避免 NaN 进入 SSE payload。
+   * 运行态数字坏值回退到调用方给定默认值，避免 NaN 进入 SSE payload
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -574,21 +570,21 @@ export class ProjectRuntimeEncoder {
   }
 
   /**
-   * 只把普通对象当作 JSON record，避免数组或 null 被误当 meta / row。
+   * 只把普通对象当作 JSON record，避免数组或 null 被误当 meta / row
    */
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
     return this.is_record(value) ? { ...value } : {};
   }
 
   /**
-   * 类型收窄集中在一个入口，减少各 builder 里重复写对象判断。
+   * 类型收窄集中在一个入口，减少各 builder 里重复写对象判断
    */
   private is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
-   * database operation 在编码器内统一创建，避免操作名和参数形状散落。
+   * database operation 在编码器内统一创建，避免操作名和参数形状散落
    */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };

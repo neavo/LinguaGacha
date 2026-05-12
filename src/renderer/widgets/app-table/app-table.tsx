@@ -641,7 +641,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
 
     update_viewport_height();
 
-    // Why: 短表补位依赖“可用滚动区域高度”而不是首帧 viewport 内容高度，直接观察 scroll host 更稳定。
+    // 原因：短表补位依赖“可用滚动区域高度”而不是首帧 viewport 内容高度，直接观察 scroll host 更稳定
     const resize_observer = new ResizeObserver(() => {
       update_viewport_height();
     });
@@ -760,7 +760,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
           inline: "nearest",
         });
       } else {
-        // 为什么：虚拟列表里目标行可能还没挂到 DOM，上卷交给 virtualizer 才能稳定命中。
+        // 为什么：虚拟列表里目标行可能还没挂到 DOM，上卷交给 virtualizer 才能稳定命中
         virtualizer.scrollToIndex(row_index, {
           align: "auto",
         });
@@ -864,7 +864,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     }
 
     suppress_click_ref.current = true;
-    // Why: 这里只扫描当前视口中实际挂载的行节点，把框选每帧的成本压到可见规模。
+    // 原因：这里只扫描当前视口中实际挂载的行节点，把框选每帧的成本压到可见规模
     const next_row_ids = [...row_elements_ref.current.entries()]
       .filter(([, row_element]) => {
         return intersects_selection_box(row_element, current_state);
@@ -1297,8 +1297,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
               };
             }
 
-            // 为什么：键盘切换项目时要让虚拟表格主动把目标行滚进视口，否则选择状态会“跳”到屏幕外。
-            scroll_row_index_into_view(target_row_index, target_row_id);
+            scroll_row_index_into_view(target_row_index, target_row_id); // 为什么：键盘切换项目时要让虚拟表格主动把目标行滚进视口，否则选择状态会“跳”到屏幕外
             emit_selection_change(next_selection_state, {
               active_row_index: target_row_index,
               anchor_row_index: selection_mode === "none" ? null : target_row_index,

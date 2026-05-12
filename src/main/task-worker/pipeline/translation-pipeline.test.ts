@@ -139,7 +139,7 @@ describe("翻译文本 pipeline", () => {
 });
 
 /**
- * 构造译前和译后 pipeline，确保同一用例共享同一批配置快照。
+ * 构造译前和译后 pipeline，确保同一用例共享同一批配置快照
  */
 function create_pipeline_pair(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
   return {
@@ -149,7 +149,7 @@ function create_pipeline_pair(config: TextProcessingConfig, quality_snapshot: Te
 }
 
 /**
- * 生成翻译 pipeline 默认配置，测试通过 overrides 聚焦单个规则分支。
+ * 生成翻译 pipeline 默认配置，测试通过 overrides 聚焦单个规则分支
  */
 function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProcessingConfig {
   return {
@@ -165,7 +165,7 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
 }
 
 /**
- * 生成默认质量快照，避免每个用例重复书写完整规则结构。
+ * 生成默认质量快照，避免每个用例重复书写完整规则结构
  */
 function create_quality_snapshot(
   overrides: Partial<TextQualitySnapshot> = {},

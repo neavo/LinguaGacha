@@ -418,7 +418,7 @@ export function SearchBar<scope_value extends string = string>(
     regex,
   } = props;
   const card_props = resolve_search_bar_card_props(props);
-  // 将替换动作的可用性收口在 SearchBar 内，避免页面层重复维护同一组前置条件。
+  // 将替换动作的可用性收口在 SearchBar 内，避免页面层重复维护同一组前置条件
   const replace_actions_disabled =
     variant !== "replace" ||
     disabled === true ||

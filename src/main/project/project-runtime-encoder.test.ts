@@ -11,8 +11,7 @@ import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 
 describe("ProjectRuntimeEncoder", () => {
-  // 临时库必须按后进先出释放，确保 sqlite handle 先关再删目录。
-  const cleanup_callbacks: Array<() => void> = [];
+  const cleanup_callbacks: Array<() => void> = []; // 临时库必须按后进先出释放，确保 sqlite handle 先关再删目录
 
   afterEach(() => {
     while (cleanup_callbacks.length > 0) {
@@ -186,7 +185,7 @@ describe("ProjectRuntimeEncoder", () => {
   });
 
   /**
-   * 创建真实临时 .lg，确保 runtime encoder 测试覆盖 database workflow 返回形状。
+   * 创建真实临时 .lg，确保 runtime encoder 测试覆盖 database workflow 返回形状
    */
   function create_project_database(): { database: ProjectDatabase; project_path: string } {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-runtime-test-"));
@@ -202,7 +201,7 @@ describe("ProjectRuntimeEncoder", () => {
   }
 
   /**
-   * runtime encoder 只依赖任务快照 builder，测试用窄 fake 固定边界。
+   * runtime encoder 只依赖任务快照 builder，测试用窄 fake 固定边界
    */
   function create_task_snapshot_builder(
     task_snapshot: Record<string, unknown>,
@@ -219,7 +218,7 @@ describe("ProjectRuntimeEncoder", () => {
   }
 
   /**
-   * 构造覆盖八个 bootstrap block 的项目事实，避免每个断言重复准备数据库。
+   * 构造覆盖八个 bootstrap block 的项目事实，避免每个断言重复准备数据库
    */
   function seed_runtime_project(database: ProjectDatabase, project_path: string): void {
     database.execute_transaction([

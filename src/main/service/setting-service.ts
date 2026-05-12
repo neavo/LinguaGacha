@@ -7,19 +7,18 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { Setting } from "../../base/setting";
 
 interface SettingsEventPublisher {
-  // settings.changed 是本地事件，避免设置更新绕回旧运行态同步链路。
-  publish: (event_type: string, payload: Record<string, ApiJsonValue>) => void;
+  publish: (event_type: string, payload: Record<string, ApiJsonValue>) => void; // settings.changed 是本地事件，避免设置更新绕回旧运行态同步链路
 }
 
 /**
- * 封装应用设置与最近项目设置文件的唯一写入口。
+ * 封装应用设置与最近项目设置文件的唯一写入口
  */
 export class SettingService {
   private readonly paths: AppPathService;
   private readonly event_publisher: SettingsEventPublisher | null;
 
   /**
-   * 初始化 SettingService 依赖，保持外部写入口清晰。
+   * 初始化 SettingService 依赖，保持外部写入口清晰
    */
   public constructor(paths: AppPathService, event_publisher: SettingsEventPublisher | null = null) {
     this.paths = paths;
@@ -27,7 +26,7 @@ export class SettingService {
   }
 
   /**
-   * 读取应用设置快照，保持 UI 只消费白名单字段。
+   * 读取应用设置快照，保持 UI 只消费白名单字段
    */
   public get_app_settings(): Record<string, ApiJsonValue> {
     const setting = this.load_setting();
@@ -36,7 +35,7 @@ export class SettingService {
   }
 
   /**
-   * 更新应用设置白名单字段，并通过 TS 事件 hub 广播设置变化。
+   * 更新应用设置白名单字段，并通过 TS 事件 hub 广播设置变化
    */
   public async update_app_settings(
     request: Record<string, ApiJsonValue>,
@@ -60,7 +59,7 @@ export class SettingService {
   }
 
   /**
-   * 写入最近项目列表，集中去重和数量限制。
+   * 写入最近项目列表，集中去重和数量限制
    */
   public async add_recent_project(
     request: Record<string, ApiJsonValue>,
@@ -79,7 +78,7 @@ export class SettingService {
   }
 
   /**
-   * 移除最近项目，保持配置文件列表结构稳定。
+   * 移除最近项目，保持配置文件列表结构稳定
    */
   public async remove_recent_project(
     request: Record<string, ApiJsonValue>,
@@ -98,7 +97,7 @@ export class SettingService {
   }
 
   /**
-   * 读取设置文件并补齐默认值，兼容旧 userdata。
+   * 读取设置文件并补齐默认值，兼容旧 userdata
    */
   public load_setting(): Record<string, ApiJsonValue> {
     const config_path = this.paths.get_config_path();
@@ -110,7 +109,7 @@ export class SettingService {
   }
 
   /**
-   * 持久化设置对象，确保目录存在后再写入。
+   * 持久化设置对象，确保目录存在后再写入
    */
   public save_setting(setting: Record<string, ApiJsonValue>): void {
     const config_path = this.paths.get_config_path();
@@ -123,7 +122,7 @@ export class SettingService {
   }
 
   /**
-   * 构建设置响应快照，隔离 config.json 内部形状。
+   * 构建设置响应快照，隔离 config.json 内部形状
    */
   public build_setting_snapshot(
     setting: Record<string, ApiJsonValue>,
@@ -132,7 +131,7 @@ export class SettingService {
   }
 
   /**
-   * 设置广播直接接发布，后续任务读取配置文件即可看到最新值。
+   * 设置广播直接接发布，后续任务读取配置文件即可看到最新值
    */
   private publish_settings_changed(
     changed_keys: string[],
@@ -145,7 +144,7 @@ export class SettingService {
   }
 
   /**
-   * 生成本地时区时间戳，保持最近项目排序可读。
+   * 生成本地时区时间戳，保持最近项目排序可读
    */
   private build_local_iso_timestamp(): string {
     const now = new Date();

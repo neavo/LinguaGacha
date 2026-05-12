@@ -79,7 +79,7 @@ function create_editor_extensions(args: {
     keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
     EditorView.lineWrapping,
     EditorView.updateListener.of((update) => {
-      // 为什么：这是受控编辑器，外部同步 value 时不能再向上触发 on_change 形成回环。
+      // 为什么：这是受控编辑器，外部同步 value 时不能再向上触发 on_change 形成回环
       if (!update.docChanged || args.suppress_change_ref.current) {
         return;
       }

@@ -1,7 +1,7 @@
 import type { TextQualitySnapshot } from "./text-types";
 
 /**
- * 应用文本替换规则，兼容普通替换和历史正则反向引用语义。
+ * 应用文本替换规则，兼容普通替换和历史正则反向引用语义
  */
 export function apply_text_replacements(
   text: string,
@@ -33,7 +33,7 @@ export function apply_text_replacements(
 }
 
 /**
- * 正则替换兼容历史常见反向引用，同时避免 JS `$&/$1` 语义误伤字面量。
+ * 正则替换兼容历史常见反向引用，同时避免 JS `$&/$1` 语义误伤字面量
  */
 function build_regex_replacement(replacement_text: string, args: unknown[]): string {
   const groups = args.at(-1);
@@ -71,7 +71,7 @@ function build_regex_replacement(replacement_text: string, args: unknown[]): str
 }
 
 /**
- * 正则转义集中处理，避免普通替换误解释特殊字符。
+ * 正则转义集中处理，避免普通替换误解释特殊字符
  */
 function escape_regexp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");

@@ -62,14 +62,14 @@ let cached_core_metadata: CoreMetadata | null = null;
 let pending_core_api_base_url_resolution: Promise<string> | null = null;
 
 /**
- * 携带 Core API 错误码，保持渲染层错误分支可判定。
+ * 携带 Core API 错误码，保持渲染层错误分支可判定
  */
 export class DesktopApiError extends Error {
   code: string;
   status: number;
 
   /**
-   * 初始化 DesktopApiError 依赖，保持外部写入口清晰。
+   * 初始化 DesktopApiError 依赖，保持外部写入口清晰
    */
   constructor(message: string, code = "unknown_error", status = 500) {
     super(message);

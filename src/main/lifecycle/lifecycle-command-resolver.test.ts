@@ -46,7 +46,7 @@ describe("resolve_core_app_root", () => {
 });
 
 /**
- * 构造最小启动环境，测试只覆盖 appRoot 解析逻辑。
+ * 构造最小启动环境，测试只覆盖 appRoot 解析逻辑
  */
 function create_environment(overrides: Partial<CoreLaunchEnvironment> = {}): CoreLaunchEnvironment {
   return {
@@ -58,7 +58,7 @@ function create_environment(overrides: Partial<CoreLaunchEnvironment> = {}): Cor
 }
 
 /**
- * 创建带运行态资源标记的临时应用根。
+ * 创建带运行态资源标记的临时应用根
  */
 function create_app_root(): string {
   const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-root-"));

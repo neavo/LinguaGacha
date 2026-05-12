@@ -14,17 +14,14 @@ interface TaskPipelineOptions<TContext, TCommit> {
 }
 
 /**
- * Task Engine 通用流水线，负责普通队列、高优重试队列、worker pool 和批量提交。
+ * Task Engine 通用流水线，负责普通队列、高优重试队列、worker pool 和批量提交
  */
 export class TaskPipeline<TContext, TCommit> {
-  // queue 保存初次 work unit，停止时会被直接清空。
-  private readonly queue: TContext[] = [];
+  private readonly queue: TContext[] = []; // queue 保存初次 work unit，停止时会被直接清空
 
-  // retry_queue 优先级高于普通队列，保证失败拆分能尽快收敛。
-  private readonly retry_queue: TContext[] = [];
+  private readonly retry_queue: TContext[] = []; // retry_queue 优先级高于普通队列，保证失败拆分能尽快收敛
 
-  // commit_queue 聚合 worker 产物，再按固定窗口批量提交。
-  private readonly commit_queue: TCommit[] = [];
+  private readonly commit_queue: TCommit[] = []; // commit_queue 聚合 worker 产物，再按固定窗口批量提交
 
   private readonly worker_count: number;
   private readonly upstream_signal: AbortSignal;
@@ -43,7 +40,7 @@ export class TaskPipeline<TContext, TCommit> {
   private worker_error: unknown = null;
 
   /**
-   * 注入执行和提交回调，流水线本身不理解翻译、分析或重翻领域。
+   * 注入执行和提交回调，流水线本身不理解翻译、分析或重翻领域
    */
   public constructor(options: TaskPipelineOptions<TContext, TCommit>) {
     this.worker_count = Math.max(1, Math.trunc(options.worker_count));
@@ -64,7 +61,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * 执行完整流水线；所有 worker 停止后会强制冲刷最后一批提交。
+   * 执行完整流水线；所有 worker 停止后会强制冲刷最后一批提交
    */
   public async run(initial_contexts: TContext[]): Promise<void> {
     this.queue.push(...initial_contexts);
@@ -84,7 +81,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * 单个 worker 持续优先消费 retry 队列，直到队列耗尽或收到停止信号。
+   * 单个 worker 持续优先消费 retry 队列，直到队列耗尽或收到停止信号
    */
   private async run_worker(): Promise<void> {
     try {
@@ -116,14 +113,14 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * 取下一份上下文；重试队列优先，普通队列次之。
+   * 取下一份上下文；重试队列优先，普通队列次之
    */
   private next_context(): TContext | null {
     return this.retry_queue.shift() ?? this.queue.shift() ?? null;
   }
 
   /**
-   * work unit 结果进入提交队列后启动 250ms 聚合窗口。
+   * work unit 结果进入提交队列后启动 250ms 聚合窗口
    */
   private push_commit_entries(entries: TCommit[]): void {
     this.commit_queue.push(...entries);
@@ -142,7 +139,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * 冲刷提交队列；提交失败交给上层任务 catch 转成 ERROR 终态。
+   * 冲刷提交队列；提交失败交给上层任务 catch 转成 ERROR 终态
    */
   private async flush_commit_queue(): Promise<void> {
     if (this.commit_queue.length === 0) {
@@ -153,7 +150,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * 清理定时器，避免任务结束后仍有悬挂提交回调。
+   * 清理定时器，避免任务结束后仍有悬挂提交回调
    */
   private clear_commit_timer(): void {
     if (this.commit_timer === null) {
@@ -164,7 +161,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * 任一 worker 或提交失败时立即关闭入口，并阻止后续 worker 继续取新任务。
+   * 任一 worker 或提交失败时立即关闭入口，并阻止后续 worker 继续取新任务
    */
   private abort_pipeline(error?: unknown): void {
     if (error !== undefined && this.worker_error === null) {
@@ -177,7 +174,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * 清空所有未执行队列，保证失败后不会启动新的 work unit。
+   * 清空所有未执行队列，保证失败后不会启动新的 work unit
    */
   private clear_queues(): void {
     this.queue.length = 0;
@@ -185,7 +182,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * worker 结果必须等全部收束后再提取错误，避免第一处 reject 让 run 提前返回。
+   * worker 结果必须等全部收束后再提取错误，避免第一处 reject 让 run 提前返回
    */
   private capture_worker_errors(results: PromiseSettledResult<void>[]): void {
     for (const result of results) {
@@ -196,14 +193,14 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * run 结束时移除上游停止监听，避免复用测试对象时残留闭包引用。
+   * run 结束时移除上游停止监听，避免复用测试对象时残留闭包引用
    */
   private detach_upstream_abort_listener(): void {
     this.upstream_signal.removeEventListener("abort", this.upstream_abort_listener);
   }
 
   /**
-   * 定时提交发生在 worker 外侧，必须显式回传错误给 run 调用方。
+   * 定时提交发生在 worker 外侧，必须显式回传错误给 run 调用方
    */
   private throw_commit_error_if_any(): void {
     if (this.commit_error !== null) {
@@ -212,7 +209,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * worker 错误等 pending 提交处理完成后再抛，让 TaskEngine 统一发布终态。
+   * worker 错误等 pending 提交处理完成后再抛，让 TaskEngine 统一发布终态
    */
   private throw_worker_error_if_any(): void {
     if (this.worker_error !== null) {

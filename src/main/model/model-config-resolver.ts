@@ -3,7 +3,7 @@ import type { ApiJsonValue } from "../api/api-types";
 export type ModelRecord = Record<string, ApiJsonValue>;
 
 /**
- * 读取配置中的模型列表，集中保护旧配置或坏配置里混入的非对象项。
+ * 读取配置中的模型列表，集中保护旧配置或坏配置里混入的非对象项
  */
 export function read_model_records(config: Record<string, ApiJsonValue>): ModelRecord[] {
   const raw_models = config["models"];
@@ -18,7 +18,7 @@ export function read_model_records(config: Record<string, ApiJsonValue>): ModelR
 }
 
 /**
- * 复刻历史设置文件中的激活模型选择规则，避免服务端出现第二套口径。
+ * 复刻历史设置文件中的激活模型选择规则，避免服务端出现第二套口径
  */
 export function resolve_active_model(config: Record<string, ApiJsonValue>): ModelRecord | null {
   const models = read_model_records(config);
@@ -35,7 +35,7 @@ export function resolve_active_model(config: Record<string, ApiJsonValue>): Mode
 }
 
 /**
- * 返回运行时实际会采用的模型 id，供页面快照和任务预检共享。
+ * 返回运行时实际会采用的模型 id，供页面快照和任务预检共享
  */
 export function resolve_active_model_id(config: Record<string, ApiJsonValue>): string {
   return String(resolve_active_model(config)?.["id"] ?? "");

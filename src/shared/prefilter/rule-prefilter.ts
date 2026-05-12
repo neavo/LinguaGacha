@@ -1,12 +1,10 @@
 import { is_punctuation_character } from "../utils/text-tool";
 
-// 统一兼容 Windows、Unix 和旧 Mac 换行，确保多行过滤判断稳定。
-const LINE_BREAK_PATTERN = /\r\n|\r|\n/gu;
+const LINE_BREAK_PATTERN = /\r\n|\r|\n/gu; // 统一兼容 Windows、Unix 和旧 Mac 换行，确保多行过滤判断稳定
 
-// 前缀、后缀和正则清单集中描述可翻译候选预过滤口径，保持资源路径排除一致。
-export const RULE_PREFILTER_PREFIXES = ["mapdata/", "se/", "bgs", "0=", "bgm/", "ficon/"];
+export const RULE_PREFILTER_PREFIXES = ["mapdata/", "se/", "bgs", "0=", "bgm/", "ficon/"]; // 前缀、后缀和正则清单集中描述可翻译候选预过滤口径，保持资源路径排除一致
 
-// 资源文件扩展名直接排除，避免图片、音频、字体和存档名进入翻译。
+// 资源文件扩展名直接排除，避免图片、音频、字体和存档名进入翻译
 export const RULE_PREFILTER_SUFFIXES = [
   ".mp3",
   ".wav",
@@ -36,7 +34,7 @@ export const RULE_PREFILTER_SUFFIXES = [
   ".woff",
 ];
 
-// 正则规则覆盖事件编号、RenPy 默认字体和 RenPy 存档时间占位。
+// 正则规则覆盖事件编号、RenPy 默认字体和 RenPy 存档时间占位
 export const RULE_PREFILTER_PATTERNS = [
   /^EV\d+$/iu,
   // RenPy 默认字体名称
@@ -46,7 +44,7 @@ export const RULE_PREFILTER_PATTERNS = [
   /^\{#file_time\}/iu,
 ];
 
-// 对齐历史 isnumeric：跳过只包含空白、数字字符和标点的行。
+// 对齐历史 isnumeric：跳过只包含空白、数字字符和标点的行
 function is_numeric_or_punctuation_line(line: string): boolean {
   return [...line].every((char) => {
     return /\s/u.test(char) || /\p{N}/u.test(char) || is_punctuation_character(char);
@@ -54,7 +52,7 @@ function is_numeric_or_punctuation_line(line: string): boolean {
 }
 
 /**
- * 单行规则预过滤复刻历史 filter_line：空行、资源路径和纯数字标点都排除。
+ * 单行规则预过滤复刻历史 filter_line：空行、资源路径和纯数字标点都排除
  */
 function should_skip_rule_prefilter_line(raw_line: string): boolean {
   const line = raw_line.trim().toLowerCase();
@@ -81,7 +79,7 @@ function should_skip_rule_prefilter_line(raw_line: string): boolean {
   return RULE_PREFILTER_PATTERNS.some((pattern) => pattern.test(line));
 }
 
-// 返回值 true 表示需要过滤（即需要排除）。
+// 返回值 true 表示需要过滤（即需要排除）
 export function should_skip_by_rule_prefilter(text: string): boolean {
   const lines = text.split(LINE_BREAK_PATTERN);
   return lines.length > 0 && lines.every(should_skip_rule_prefilter_line);

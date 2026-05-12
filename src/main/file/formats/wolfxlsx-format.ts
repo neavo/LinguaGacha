@@ -7,18 +7,16 @@ import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, type ExportPaths } from "./file-format-shared";
 import { Item } from "../../../base/item";
 
-// WOLF XLSX 的源文和译文列号来自旧固定实现。
-const COL_SRC_TEXT = 6;
+const COL_SRC_TEXT = 6; // WOLF XLSX 的源文和译文列号来自旧固定实现
 const COL_DST_TEXT = 7;
-// 只有白色填充的源文列参与翻译，其它颜色被视为 WOLF 排除项。
-const FILL_COLOR_WHITELIST = new Set([9]);
+const FILL_COLOR_WHITELIST = new Set([9]); // 只有白色填充的源文列参与翻译，其它颜色被视为 WOLF 排除项
 
 /**
- * WOLF RPG 导出的专用 XLSX 格式，列结构和填充色过滤对齐旧实现。
+ * WOLF RPG 导出的专用 XLSX 格式，列结构和填充色过滤对齐旧实现
  */
 export class WOLFXLSXFormat {
   /**
-   * 只处理识别为 WOLF 表头的工作表，普通 XLSX 留给 XLSXFormat。
+   * 只处理识别为 WOLF 表头的工作表，普通 XLSX 留给 XLSXFormat
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const workbook = await load_wolf_xlsx_workbook(content);
@@ -60,7 +58,7 @@ export class WOLFXLSXFormat {
   }
 
   /**
-   * 写回时优先复用原始工作簿，避免破坏 WOLF 表格的其它列。
+   * 写回时优先复用原始工作簿，避免破坏 WOLF 表格的其它列
    */
   public async write_to_path(
     items: Item[],
@@ -87,7 +85,7 @@ export class WOLFXLSXFormat {
   }
 
   /**
-   * ExcelJS 没有填充色时返回 -1，与 openpyxl 未设置颜色的过滤语义一致。
+   * ExcelJS 没有填充色时返回 -1，与 openpyxl 未设置颜色的过滤语义一致
    */
   private get_fg_color_index(sheet: ExcelJS.Worksheet, row: number, column: number): number {
     const fill = sheet.getCell(row, column).fill as Partial<{ fgColor?: { indexed?: number } }>;
@@ -96,7 +94,7 @@ export class WOLFXLSXFormat {
 }
 
 /**
- * ExcelJS 的 load 签名比实际可接收类型更窄，这里把二进制载荷固定转成 Buffer。
+ * ExcelJS 的 load 签名比实际可接收类型更窄，这里把二进制载荷固定转成 Buffer
  */
 async function load_wolf_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
@@ -105,7 +103,7 @@ async function load_wolf_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Wor
 }
 
 /**
- * WOLF 官方表格通过前四列表头识别，避免普通双列表被专用解析器抢走。
+ * WOLF 官方表格通过前四列表头识别，避免普通双列表被专用解析器抢走
  */
 function is_wolf_xlsx_sheet(sheet: ExcelJS.Worksheet): boolean {
   const expected = new Map([

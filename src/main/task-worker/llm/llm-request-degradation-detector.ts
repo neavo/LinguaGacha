@@ -1,26 +1,21 @@
-// 退化阈值沿用既有 LLM 请求策略，保证任务重试语义不因迁移变松。
-const STREAM_DEGRADATION_REPEAT_THRESHOLD = 50;
+const STREAM_DEGRADATION_REPEAT_THRESHOLD = 50; // 退化阈值沿用既有 LLM 请求策略，保证任务重试语义不因迁移变松
 const STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS = 512;
 
 /**
- * 流式响应退化检测器，识别单字符、双字符和三字符周期性重复输出。
+ * 流式响应退化检测器，识别单字符、双字符和三字符周期性重复输出
  */
 export class StreamDegradationDetector {
-  // last_char 三元窗口必须跨 delta 记忆，否则流式切片会漏判边界重复。
-  private last_char: string | null = null;
+  private last_char: string | null = null; // last_char 三元窗口必须跨 delta 记忆，否则流式切片会漏判边界重复
   private second_last_char: string | null = null;
   private third_last_char: string | null = null;
-  // single_run 统计同字符连续重复，是最直接的退化形态。
-  private single_run = 0;
-  // alternating_run 统计 ABAB 周期次数，char_run 先保留字符级长度便于跨 delta 延续。
-  private alternating_run = 0;
+  private single_run = 0; // single_run 统计同字符连续重复，是最直接的退化形态
+  private alternating_run = 0; // alternating_run 统计 ABAB 周期次数，char_run 先保留字符级长度便于跨 delta 延续
   private alternating_char_run = 0;
-  // period_3_run 统计 ABCABC 周期次数，覆盖三字符循环输出。
-  private period_3_run = 0;
+  private period_3_run = 0; // period_3_run 统计 ABCABC 周期次数，覆盖三字符循环输出
   private period_3_char_run = 0;
 
   /**
-   * 喂入一段增量文本；一旦检测到退化立即返回 true。
+   * 喂入一段增量文本；一旦检测到退化立即返回 true
    */
   public feed(text: string): boolean {
     for (const ch of text) {
@@ -89,7 +84,7 @@ export class StreamDegradationDetector {
   }
 
   /**
-   * 最终兜底只看尾部窗口，避免长响应末端退化被流式切片漏过。
+   * 最终兜底只看尾部窗口，避免长响应末端退化被流式切片漏过
    */
   public static has_output_degradation(text: string): boolean {
     if (text === "") {

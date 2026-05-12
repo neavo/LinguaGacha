@@ -9,11 +9,11 @@ import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-type
 import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
 
 /**
- * 项目任务存储端口，是 TaskEngine 读写项目任务事实的唯一内部入口。
+ * 项目任务存储端口，是 TaskEngine 读写项目任务事实的唯一内部入口
  */
 export class ProjectTaskStore {
   /**
-   * ProjectTaskStore 只组合现有 TS 权威，不自行持有长期项目缓存。
+   * ProjectTaskStore 只组合现有 TS 权威，不自行持有长期项目缓存
    */
   public constructor(
     private readonly database: ProjectDatabase,
@@ -23,7 +23,7 @@ export class ProjectTaskStore {
   ) {}
 
   /**
-   * 任务启动前读取当前工程上下文，不依赖旧会话缓存。
+   * 任务启动前读取当前工程上下文，不依赖旧会话缓存
    */
   public get_project_context(_request: JsonRecord): MutableJsonRecord {
     const state = this.session_state.snapshot();
@@ -35,7 +35,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 翻译任务读取条目快照；RESET 只在任务内归零，不把重置写回数据库。
+   * 翻译任务读取条目快照；RESET 只在任务内归零，不把重置写回数据库
    */
   public get_translation_items(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -58,7 +58,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 翻译批次提交同事务写入 items 和 translation_extras，再发最小运行态 patch。
+   * 翻译批次提交同事务写入 items 和 translation_extras，再发最小运行态 patch
    */
   public commit_translation_batch(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -92,7 +92,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 翻译收尾只持久化进度 extras，避免无变更批次仍触发 item patch。
+   * 翻译收尾只持久化进度 extras，避免无变更批次仍触发 item patch
    */
   public update_translation_progress(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -107,7 +107,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 分析任务一次性读取 items、checkpoint 和 meta，供 Task Engine 构建计划。
+   * 分析任务一次性读取 items、checkpoint 和 meta，供 Task Engine 构建计划
    */
   public get_analysis_context(_request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -119,7 +119,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * NEW/RESET 分析任务清空分析派生事实，保持 ProjectTaskStore 为数据写入口。
+   * NEW/RESET 分析任务清空分析派生事实，保持 ProjectTaskStore 为数据写入口
    */
   public reset_analysis_progress(_request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -137,7 +137,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 分析进度快照只写 meta；需要时会附带当前候选数量回给 Task Engine。
+   * 分析进度快照只写 meta；需要时会附带当前候选数量回给 Task Engine
    */
   public update_analysis_progress(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -158,7 +158,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 分析批次提交 checkpoint、候选池与进度，确保分析写入口仍在 ProjectTaskStore。
+   * 分析批次提交 checkpoint、候选池与进度，确保分析写入口仍在 ProjectTaskStore
    */
   public commit_analysis_batch(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -209,7 +209,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 重翻任务读取指定条目，进入 work unit 前重置为待翻译态。
+   * 重翻任务读取指定条目，进入 work unit 前重置为待翻译态
    */
   public get_retranslate_items(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -226,7 +226,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 重翻批次提交同时推进 items 与 proofreading revision，并发布行级 patch。
+   * 重翻批次提交同时推进 items 与 proofreading revision，并发布行级 patch
    */
   public commit_retranslate_batch(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -269,7 +269,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 当前 loaded 工程是所有任务数据 API 的唯一目标。
+   * 当前 loaded 工程是所有任务数据 API 的唯一目标
    */
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
@@ -280,7 +280,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 发布 analysis patch 时统一交给 ProjectPatchAdapter 补全分析块和 revision。
+   * 发布 analysis patch 时统一交给 ProjectPatchAdapter 补全分析块和 revision
    */
   private publish_analysis_patch(source: string): void {
     this.project_patch_publisher.publish_project_patch({
@@ -291,7 +291,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 从当前 meta 构建指定 section revision 响应，供任务提交回执和日志使用。
+   * 从当前 meta 构建指定 section revision 响应，供任务提交回执和日志使用
    */
   private build_section_revisions(project_path: string, sections: string[]): MutableJsonRecord {
     const meta = this.get_all_meta(project_path);
@@ -303,7 +303,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * project_runtime_revision 仍只覆盖由 任务数据写入的运行态 section。
+   * project_runtime_revision 仍只覆盖由 任务数据写入的运行态 section
    */
   private bump_runtime_revision_operations(
     project_path: string,
@@ -320,7 +320,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 分析候选池按 src 合并，保留 服务端内部最小投票语义。
+   * 分析候选池按 src 合并，保留 服务端内部最小投票语义
    */
   private build_next_candidate_rows(
     project_path: string,
@@ -375,7 +375,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 候选数只统计可导出的候选项，和旧 AnalysisCandidateService 口径一致。
+   * 候选数只统计可导出的候选项，和旧 AnalysisCandidateService 口径一致
    */
   private count_candidate_entries(rows: MutableJsonRecord[]): number {
     let count = 0;
@@ -391,7 +391,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 同票时保留对象插入顺序，匹配历史字典遍历的稳定性。
+   * 同票时保留对象插入顺序，匹配历史字典遍历的稳定性
    */
   private pick_vote_winner(votes: Record<string, number>): string {
     let best_text = "";
@@ -406,7 +406,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 投票 map 只接受正整数票数，坏数据不会进入新候选池。
+   * 投票 map 只接受正整数票数，坏数据不会进入新候选池
    */
   private normalize_vote_map(value: ApiJsonValue | undefined): Record<string, number> {
     if (!this.is_record(value)) {
@@ -424,7 +424,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * checkpoint 成功行保持任务侧传入的状态，非法状态直接丢弃。
+   * checkpoint 成功行保持任务侧传入的状态，非法状态直接丢弃
    */
   private normalize_checkpoint_rows(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     if (!Array.isArray(value)) {
@@ -451,7 +451,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 失败 checkpoint 在 服务端补齐错误次数，避免 worker 持有旧 checkpoint 缓存。
+   * 失败 checkpoint 在 服务端补齐错误次数，避免 worker 持有旧 checkpoint 缓存
    */
   private normalize_error_checkpoint_rows(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     const project_path = this.require_loaded_project_path();
@@ -475,7 +475,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 分析提交术语只保留可进入候选池的最小字段。
+   * 分析提交术语只保留可进入候选池的最小字段
    */
   private normalize_glossary_entries(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     if (!Array.isArray(value)) {
@@ -502,7 +502,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 分析提交允许不带进度快照，null 表示只提交 checkpoint / 候选。
+   * 分析提交允许不带进度快照，null 表示只提交 checkpoint / 候选
    */
   private normalize_nullable_progress_snapshot(
     value: ApiJsonValue | undefined,
@@ -514,7 +514,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 任务进度只接受旧快照固定字段，缺失和坏值统一归零。
+   * 任务进度只接受旧快照固定字段，缺失和坏值统一归零
    */
   private normalize_progress_snapshot(value: JsonRecord): MutableJsonRecord {
     return {
@@ -531,7 +531,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 读取全部条目只经 database workflow，避免任务层直接碰 SQL。
+   * 读取全部条目只经 database workflow，避免任务层直接碰 SQL
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
@@ -543,7 +543,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 重翻按 id 批量取项，过滤非对象行保护 work unit 入口。
+   * 重翻按 id 批量取项，过滤非对象行保护 work unit 入口
    */
   private get_items_by_ids(project_path: string, item_ids: number[]): MutableJsonRecord[] {
     const value = this.database.execute(
@@ -560,7 +560,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * meta 快照统一转成普通对象，避免 undefined 泄漏到内部 JSON。
+   * meta 快照统一转成普通对象，避免 undefined 泄漏到内部 JSON
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
     return this.normalize_object(
@@ -569,7 +569,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * checkpoint 读取保持行级普通对象，分析调度再做业务状态判断。
+   * checkpoint 读取保持行级普通对象，分析调度再做业务状态判断
    */
   private get_analysis_checkpoints(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(
@@ -581,7 +581,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 候选聚合读取只服务分析提交合并，不暴露给公开 API。
+   * 候选聚合读取只服务分析提交合并，不暴露给公开 API
    */
   private get_candidate_aggregate(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(
@@ -593,7 +593,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * work unit 提交的 item payload 必须先收窄为普通对象数组。
+   * work unit 提交的 item payload 必须先收窄为普通对象数组
    */
   private normalize_items(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     return Array.isArray(value)
@@ -604,7 +604,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * patch 只需要变更 item id，去重后可避免重复 merge。
+   * patch 只需要变更 item id，去重后可避免重复 merge
    */
   private collect_item_ids(items: MutableJsonRecord[]): number[] {
     const ids: number[] = [];
@@ -620,7 +620,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 外部传入 id 列表只保留正整数，避免无效 id 打进数据库查询。
+   * 外部传入 id 列表只保留正整数，避免无效 id 打进数据库查询
    */
   private normalize_number_list(value: ApiJsonValue | undefined): number[] {
     if (!Array.isArray(value)) {
@@ -636,14 +636,14 @@ export class ProjectTaskStore {
   }
 
   /**
-   * JSON 普通对象归一集中处理，数组不能被当作 record。
+   * JSON 普通对象归一集中处理，数组不能被当作 record
    */
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
     return this.is_record(value) ? { ...value } : {};
   }
 
   /**
-   * 整数读取用于行号、token 和计数字段，坏值回退到调用方默认值。
+   * 整数读取用于行号、token 和计数字段，坏值回退到调用方默认值
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -651,7 +651,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 浮点读取用于耗时字段，避免任务时间被错误截断。
+   * 浮点读取用于耗时字段，避免任务时间被错误截断
    */
   private read_float(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -659,14 +659,14 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 类型守卫集中收窄 JSON record，减少调用点重复判断。
+   * 类型守卫集中收窄 JSON record，减少调用点重复判断
    */
   private is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
-   * database operation 统一构造，保证任务层不散落操作对象形状。
+   * database operation 统一构造，保证任务层不散落操作对象形状
    */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };

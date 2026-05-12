@@ -13,7 +13,7 @@ type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * 只适配 project.patch：普通 SSE frame 保持透传，运行态事实由 database 补全。
+ * 只适配 project.patch：普通 SSE frame 保持透传，运行态事实由 database 补全
  */
 export class ProjectPatchAdapter {
   public constructor(
@@ -22,7 +22,7 @@ export class ProjectPatchAdapter {
   ) {}
 
   /**
-   * 兼容迁移窗口内的完整 patch，同时补全最小 patch 的 item / analysis / proofreading 块。
+   * 兼容迁移窗口内的完整 patch，同时补全最小 patch 的 item / analysis / proofreading 块
    */
   public adapt_project_patch(payload: JsonRecord): JsonRecord {
     const state = this.session_state.snapshot();

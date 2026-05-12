@@ -21,7 +21,7 @@ afterEach(() => {
     try {
       db.close();
     } catch {
-      // 单个测试可能已经关闭句柄；收尾阶段只保证临时目录可清理。
+      // 单个测试可能已经关闭句柄；收尾阶段只保证临时目录可清理
     }
   }
   fs.rmSync(temp_dir, { recursive: true, force: true });

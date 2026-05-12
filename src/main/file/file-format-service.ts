@@ -22,7 +22,7 @@ import {
   type ProjectSourceFileEntry,
 } from "./formats/file-format-shared";
 
-// 支持扩展名集中在门面层，文件发现和单文件预览共享同一白名单。
+// 支持扩展名集中在门面层，文件发现和单文件预览共享同一白名单
 const SUPPORTED_EXTENSIONS = new Set([
   ".txt",
   ".md",
@@ -36,7 +36,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 ]);
 
 /**
- * Electron main 侧公开文件格式门面；具体格式逻辑按稳定格式处理器拆分。
+ * Electron main 侧公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
  */
 export class FileFormatService {
   private readonly txt: TXTFormat;
@@ -52,7 +52,7 @@ export class FileFormatService {
   private readonly epub: EPUBFormat;
 
   /**
-   * 构造时固定各格式处理器，保证一次服务实例内配置一致。
+   * 构造时固定各格式处理器，保证一次服务实例内配置一致
    */
   public constructor(private readonly config: FileFormatServiceConfig) {
     this.txt = new TXTFormat(config);
@@ -69,7 +69,7 @@ export class FileFormatService {
   }
 
   /**
-   * 判断公开文件域可接收的源文件格式。
+   * 判断公开文件域可接收的源文件格式
    */
   public is_supported_file(file_path: string): boolean {
     return SUPPORTED_EXTENSIONS.has(path.extname(file_path).toLowerCase());
@@ -80,7 +80,7 @@ export class FileFormatService {
   }
 
   /**
-   * 按扩展名分发到具体格式处理器，JSON/XLSX 保持历史优先级回退顺序。
+   * 按扩展名分发到具体格式处理器，JSON/XLSX 保持历史优先级回退顺序
    */
   public async parse_asset(rel_path: string, content: Uint8Array): Promise<Item[]> {
     const ext = path.extname(rel_path).toLowerCase();
@@ -121,7 +121,7 @@ export class FileFormatService {
   }
 
   /**
-   * 工作台替换文件预演会保留旧相对目录，只替换文件名。
+   * 工作台替换文件预演会保留旧相对目录，只替换文件名
    */
   public async parse_file_preview(
     file_path: string,
@@ -143,7 +143,7 @@ export class FileFormatService {
   }
 
   /**
-   * 收集源路径下所有支持文件，并为重复相对路径生成稳定去重名。
+   * 收集源路径下所有支持文件，并为重复相对路径生成稳定去重名
    */
   public collect_source_file_entries(source_paths: string[]): ProjectSourceFileEntry[] {
     const normalized_source_paths = this.normalize_source_paths(source_paths);
@@ -170,7 +170,7 @@ export class FileFormatService {
   }
 
   /**
-   * 对用户传入的文件/目录路径去空和去重，保持后续排序来源稳定。
+   * 对用户传入的文件/目录路径去空和去重，保持后续排序来源稳定
    */
   public normalize_source_paths(source_paths: string[]): string[] {
     const normalized_paths: string[] = [];
@@ -191,7 +191,7 @@ export class FileFormatService {
   }
 
   /**
-   * 写回时逐格式处理，同一批 items 由各格式自行筛选自己的 file_type。
+   * 写回时逐格式处理，同一批 items 由各格式自行筛选自己的 file_type
    */
   public async write_items(
     items: Item[],
@@ -212,7 +212,7 @@ export class FileFormatService {
   }
 
   /**
-   * 预览文件类型取第一个有效条目，空文件或无法识别时返回 NONE。
+   * 预览文件类型取第一个有效条目，空文件或无法识别时返回 NONE
    */
   public pick_file_type(items: Item[]): ItemFileType {
     for (const item of items) {
@@ -224,21 +224,21 @@ export class FileFormatService {
   }
 
   /**
-   * 暴露给服务层复用的目标路径构造，避免导出路径规则分叉。
+   * 暴露给服务层复用的目标路径构造，避免导出路径规则分叉
    */
   public build_target_path(base_path: string, rel_path: string): string {
     return build_target_path(this.config, base_path, rel_path);
   }
 
   /**
-   * 暴露给服务层复用的双语路径构造，保持与格式处理器一致。
+   * 暴露给服务层复用的双语路径构造，保持与格式处理器一致
    */
   public build_bilingual_path(base_path: string, rel_path: string): string {
     return build_bilingual_path(this.config, base_path, rel_path);
   }
 
   /**
-   * 递归收集目录内支持文件，保持文件输入和目录输入共用一套过滤。
+   * 递归收集目录内支持文件，保持文件输入和目录输入共用一套过滤
    */
   private collect_source_files(source_path: string): string[] {
     if (!fs.existsSync(source_path)) {
@@ -264,7 +264,7 @@ export class FileFormatService {
   }
 
   /**
-   * 工作台替换文件时沿用当前工程相对目录，只把文件名换成新选择项。
+   * 工作台替换文件时沿用当前工程相对目录，只把文件名换成新选择项
    */
   private build_replace_target_rel_path(old_rel_path: string, new_file_path: string): string {
     const parent = path.dirname(old_rel_path);
@@ -273,7 +273,7 @@ export class FileFormatService {
   }
 
   /**
-   * Windows 路径比较大小写不敏感，去重 key 必须按平台归一化。
+   * Windows 路径比较大小写不敏感，去重 key 必须按平台归一化
    */
   private build_path_identity_key(source_path: string): string {
     const resolved_path = path.resolve(source_path);
@@ -281,7 +281,7 @@ export class FileFormatService {
   }
 
   /**
-   * 目录输入保留目录内相对结构，单文件输入只使用文件名。
+   * 目录输入保留目录内相对结构，单文件输入只使用文件名
    */
   private build_source_relative_path(source_root: string, source_file: string): string {
     if (fs.existsSync(source_root) && fs.statSync(source_root).isFile()) {
@@ -291,7 +291,7 @@ export class FileFormatService {
   }
 
   /**
-   * 多个源目录产生同名相对路径时追加序号，避免覆盖工程 asset。
+   * 多个源目录产生同名相对路径时追加序号，避免覆盖工程 asset
    */
   private build_unique_relative_path(
     rel_path: string,
@@ -317,7 +317,7 @@ export class FileFormatService {
   }
 
   /**
-   * 工程内相对路径比较统一使用斜杠和小写，贴近 Windows 用户预期。
+   * 工程内相对路径比较统一使用斜杠和小写，贴近 Windows 用户预期
    */
   private relative_path_key(rel_path: string): string {
     return rel_path.replace(/\\/gu, "/").toLowerCase();

@@ -2,30 +2,24 @@ import type { ApiJsonValue } from "../../api/api-types";
 import type { JsonRecord, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
 import { is_task_idle_status, is_task_type } from "../../../shared/task";
 
-// Engine 空闲态统一用 idle 表达，避免快照泄漏任务类型细节。
-const IDLE_TASK_TYPE = "idle";
+const IDLE_TASK_TYPE = "idle"; // Engine 空闲态统一用 idle 表达，避免快照泄漏任务类型细节
 
 /**
- * API Gateway 内的任务运行态权威。
+ * API Gateway 内的任务运行态权威
  */
 export class TaskRuntimeState {
-  // status 保留 Engine 公开字符串，避免前端按钮态换语义。
-  private status = "IDLE";
+  private status = "IDLE"; // status 保留 Engine 公开字符串，避免前端按钮态换语义
 
-  // busy 是同步 mutation、reset preview 和任务按钮共享的唯一运行时互斥事实。
-  private busy = false;
+  private busy = false; // busy 是同步 mutation、reset preview 和任务按钮共享的唯一运行时互斥事实
 
-  // active_task_type 表示当前活跃任务；空闲时必须回到 idle，不能停在上一轮任务。
-  private active_task_type = IDLE_TASK_TYPE;
+  private active_task_type = IDLE_TASK_TYPE; // active_task_type 表示当前活跃任务；空闲时必须回到 idle，不能停在上一轮任务
 
-  // request_in_flight_count 只表示真实已发出的请求数，不表达队列长度。
-  private request_in_flight_count = 0;
+  private request_in_flight_count = 0; // request_in_flight_count 只表示真实已发出的请求数，不表达队列长度
 
-  // 重翻行级 spinner 依赖这份 id 集合，不能混入普通翻译任务状态。
-  private retranslating_item_ids: number[] = [];
+  private retranslating_item_ids: number[] = []; // 重翻行级 spinner 依赖这份 id 集合，不能混入普通翻译任务状态
 
   /**
-   * 返回不可变快照，调用方不能拿内部数组引用继续改写运行态。
+   * 返回不可变快照，调用方不能拿内部数组引用继续改写运行态
    */
   public snapshot(): TaskRuntimeStatePayload {
     return {
@@ -38,7 +32,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 任务命令被 TaskCommandService 受理后立即占用运行态，避免按钮等到下一帧 SSE 才变化。
+   * 任务命令被 TaskCommandService 受理后立即占用运行态，避免按钮等到下一帧 SSE 才变化
    */
   public begin_task(task_type: TaskType, item_ids: number[] = []): void {
     this.status = "REQUEST";
@@ -50,7 +44,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 停止命令只改变运行态意图，真实终态仍由 Engine 后续事件收口。
+   * 停止命令只改变运行态意图，真实终态仍由 Engine 后续事件收口
    */
   public mark_stopping(task_type: TaskType): void {
     this.status = "STOPPING";
@@ -59,7 +53,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 命令调用失败时恢复前置快照，避免乐观占用造成永久忙碌。
+   * 命令调用失败时恢复前置快照，避免乐观占用造成永久忙碌
    */
   public restore(snapshot: TaskRuntimeStatePayload): void {
     this.status = snapshot.status;
@@ -70,7 +64,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 从公开 task.status_changed 事件吸收 Engine 状态，保持事件流和快照同源。
+   * 从公开 task.status_changed 事件吸收 Engine 状态，保持事件流和快照同源
    */
   public apply_status_event(payload: JsonRecord): void {
     const task_type = this.read_task_type(payload);
@@ -87,7 +81,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 从进度事件吸收实时请求数；缺字段时不能清掉已有完整快照。
+   * 从进度事件吸收实时请求数；缺字段时不能清掉已有完整快照
    */
   public apply_progress_event(payload: JsonRecord): void {
     const task_type = this.read_task_type(payload);
@@ -100,7 +94,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * project.patch 里的 replace_task 是任务块最终口径，需要回灌到 运行态。
+   * project.patch 里的 replace_task 是任务块最终口径，需要回灌到 运行态
    */
   public apply_task_snapshot(payload: JsonRecord): void {
     const task_type = this.read_task_type(payload);
@@ -120,7 +114,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 重翻提交完成后移除已回写行，避免单批 patch 之后 spinner 残留。
+   * 重翻提交完成后移除已回写行，避免单批 patch 之后 spinner 残留
    */
   public remove_retranslating_item_ids(item_ids: number[]): void {
     const done_ids = new Set(this.normalize_item_ids(item_ids));
@@ -130,7 +124,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 构建可直接放入 project.patch 的 task 块，复用当前 runtime state。
+   * 构建可直接放入 project.patch 的 task 块，复用当前 runtime state
    */
   public build_task_block(task_type: TaskType): JsonRecord {
     const snapshot = this.snapshot();
@@ -155,7 +149,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 只接受公开三类任务名，避免未知 topic 把运行态带偏。
+   * 只接受公开三类任务名，避免未知 topic 把运行态带偏
    */
   private read_task_type(payload: JsonRecord): TaskType | null {
     const task_type = String(payload["task_type"] ?? "");
@@ -163,14 +157,14 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 布尔读取集中处理，兼容事件缺少 busy 字段的情况。
+   * 布尔读取集中处理，兼容事件缺少 busy 字段的情况
    */
   private read_boolean(value: ApiJsonValue | undefined, fallback: boolean): boolean {
     return typeof value === "boolean" ? value : fallback;
   }
 
   /**
-   * 数字字段统一截断，保护快照中不会出现 NaN 或小数请求数。
+   * 数字字段统一截断，保护快照中不会出现 NaN 或小数请求数
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -178,7 +172,7 @@ export class TaskRuntimeState {
   }
 
   /**
-   * item id 列表必须去重且为正整数，避免 renderer 行级状态被脏载荷污染。
+   * item id 列表必须去重且为正整数，避免 renderer 行级状态被脏载荷污染
    */
   private normalize_item_ids(value: ApiJsonValue | number[] | undefined): number[] {
     if (!Array.isArray(value)) {

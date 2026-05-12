@@ -45,8 +45,7 @@ export function CommandBar({
   actions,
   ...props
 }: CommandBarProps): JSX.Element {
-  // 保留隐藏标题与描述，确保动作条在辅助技术里仍有清晰语义。
-  const has_a11y_copy = title !== undefined || description !== undefined;
+  const has_a11y_copy = title !== undefined || description !== undefined; // 保留隐藏标题与描述，确保动作条在辅助技术里仍有清晰语义
 
   return (
     <Card variant="toolbar" className={cn("command-bar", className)} {...props}>
@@ -74,6 +73,6 @@ export function CommandBarSeparator({
 }
 
 export function CommandBarGroup({ className, ...props }: React.ComponentProps<"div">): JSX.Element {
-  // 统一提供零间距动作组，避免每个页面重复声明连体按钮样式。
+  // 统一提供零间距动作组，避免每个页面重复声明连体按钮样式
   return <div className={cn("command-bar__group", className)} {...props} />;
 }

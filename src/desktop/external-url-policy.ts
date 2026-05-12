@@ -1,4 +1,4 @@
-// 外链只允许交给系统浏览器处理 http / https，阻断 file 等本地协议注入。
+// 外链只允许交给系统浏览器处理 http / https，阻断 file 等本地协议注入
 export function resolve_external_url(url: string): string {
   const normalized_url = url.trim();
 

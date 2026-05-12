@@ -1,6 +1,6 @@
 import type { JsonRecord, JsonValue } from "../shared/utils/json-tool";
 
-// 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域。
+// 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域
 export const MODEL_TYPES = [
   "PRESET",
   "CUSTOM_GOOGLE",
@@ -8,11 +8,9 @@ export const MODEL_TYPES = [
   "CUSTOM_ANTHROPIC",
 ] as const;
 
-// API 格式同时影响连通性测试、LLM adapter 和请求 payload 兼容策略。
-export const MODEL_API_FORMATS = ["OpenAI", "SakuraLLM", "Google", "Anthropic"] as const;
+export const MODEL_API_FORMATS = ["OpenAI", "SakuraLLM", "Google", "Anthropic"] as const; // API 格式同时影响连通性测试、LLM adapter 和请求 payload 兼容策略
 
-// thinking 档位只在支持推理的模型上生效，但快照值域保持统一。
-export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH"] as const;
+export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH"] as const; // thinking 档位只在支持推理的模型上生效，但快照值域保持统一
 
 export type ModelType = (typeof MODEL_TYPES)[number];
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
@@ -20,39 +18,39 @@ export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
 type ModelJsonRecord = Record<string, JsonValue>;
 
 type ModelRequestConfig = {
-  extra_headers: JsonRecord; // 请求层额外 headers。
-  extra_headers_custom_enable: boolean; // 是否启用自定义 headers。
-  extra_body: JsonRecord; // 请求层额外 body。
-  extra_body_custom_enable: boolean; // 是否启用自定义 body。
+  extra_headers: JsonRecord; // 请求层额外 headers
+  extra_headers_custom_enable: boolean; // 是否启用自定义 headers
+  extra_body: JsonRecord; // 请求层额外 body
+  extra_body_custom_enable: boolean; // 是否启用自定义 body
 };
 
 type ModelThresholdConfig = {
-  input_token_limit: number; // 输入 token 限制。
-  output_token_limit: number; // 输出 token 限制。
-  rpm_limit: number; // 每分钟请求数限制，0 表示不限制。
-  concurrency_limit: number; // 并发限制，0 表示沿用全局策略。
+  input_token_limit: number; // 输入 token 限制
+  output_token_limit: number; // 输出 token 限制
+  rpm_limit: number; // 每分钟请求数限制，0 表示不限制
+  concurrency_limit: number; // 并发限制，0 表示沿用全局策略
 };
 
 type ModelThinkingConfig = {
-  level: ModelThinkingLevel; // 思考挡位。
+  level: ModelThinkingLevel; // 思考挡位
 };
 
 type ModelGenerationConfig = {
-  temperature: number; // 温度。
-  temperature_custom_enable: boolean; // 是否启用自定义温度。
-  top_p: number; // Top P。
-  top_p_custom_enable: boolean; // 是否启用自定义 Top P。
-  presence_penalty: number; // Presence penalty。
-  presence_penalty_custom_enable: boolean; // 是否启用自定义 presence penalty。
-  frequency_penalty: number; // Frequency penalty。
-  frequency_penalty_custom_enable: boolean; // 是否启用自定义 frequency penalty。
+  temperature: number; // 温度
+  temperature_custom_enable: boolean; // 是否启用自定义温度
+  top_p: number; // Top P
+  top_p_custom_enable: boolean; // 是否启用自定义 Top P
+  presence_penalty: number; // Presence penalty
+  presence_penalty_custom_enable: boolean; // 是否启用自定义 presence penalty
+  frequency_penalty: number; // Frequency penalty
+  frequency_penalty_custom_enable: boolean; // 是否启用自定义 frequency penalty
 };
 
 const MODEL_TYPE_SET = new Set<ModelType>(MODEL_TYPES);
 const MODEL_API_FORMAT_SET = new Set<ModelApiFormat>(MODEL_API_FORMATS);
 const MODEL_THINKING_LEVEL_SET = new Set<ModelThinkingLevel>(MODEL_THINKING_LEVELS);
 
-// 排序值决定设置落盘与模型页展示顺序，新增类型时必须显式补齐。
+// 排序值决定设置落盘与模型页展示顺序，新增类型时必须显式补齐
 const MODEL_TYPE_SORT_ORDER = {
   PRESET: 0,
   CUSTOM_GOOGLE: 1,
@@ -60,7 +58,7 @@ const MODEL_TYPE_SORT_ORDER = {
   CUSTOM_ANTHROPIC: 3,
 } as const satisfies Record<ModelType, number>;
 
-// 自定义模型模板文件名由模型类型唯一决定，服务层不再手写分发表。
+// 自定义模型模板文件名由模型类型唯一决定，服务层不再手写分发表
 const MODEL_TEMPLATE_FILENAME_BY_TYPE = {
   CUSTOM_GOOGLE: "preset_model_custom_google.json",
   CUSTOM_OPENAI: "preset_model_custom_openai.json",
@@ -97,20 +95,20 @@ const DEFAULT_GENERATION_CONFIG: ModelGenerationConfig = {
 };
 
 /**
- * Model 是模型页、设置文件和任务 worker 共享的模型配置实体。
+ * Model 是模型页、设置文件和任务 worker 共享的模型配置实体
  */
 export class Model {
-  public readonly id: string; // 模型 ID。
-  public readonly type: ModelType; // 模型类型。
-  public readonly name: string; // 模型名称。
-  public readonly api_format: ModelApiFormat; // API 格式。
-  public readonly api_url: string; // API 地址。
-  public readonly api_key: string; // API Key。
-  public readonly model_id: string; // 服务商模型 ID。
-  public readonly request: ModelRequestConfig; // 请求层配置快照。
-  public readonly threshold: ModelThresholdConfig; // 阈值配置快照。
-  public readonly thinking: ModelThinkingConfig; // 思考挡位配置快照。
-  public readonly generation: ModelGenerationConfig; // 生成参数配置快照。
+  public readonly id: string; // 模型 ID
+  public readonly type: ModelType; // 模型类型
+  public readonly name: string; // 模型名称
+  public readonly api_format: ModelApiFormat; // API 格式
+  public readonly api_url: string; // API 地址
+  public readonly api_key: string; // API Key
+  public readonly model_id: string; // 服务商模型 ID
+  public readonly request: ModelRequestConfig; // 请求层配置快照
+  public readonly threshold: ModelThresholdConfig; // 阈值配置快照
+  public readonly thinking: ModelThinkingConfig; // 思考挡位配置快照
+  public readonly generation: ModelGenerationConfig; // 生成参数配置快照
 
   private constructor(fields: {
     id: string;
@@ -139,7 +137,7 @@ export class Model {
   }
 
   /**
-   * 从设置文件、预设模板或页面 patch 反序列化模型，统一补齐嵌套配置默认值。
+   * 从设置文件、预设模板或页面 patch 反序列化模型，统一补齐嵌套配置默认值
    */
   public static from_json(payload: unknown, fallback_id: string): Model {
     const record = read_model_record(payload);
@@ -159,7 +157,7 @@ export class Model {
   }
 
   /**
-   * 输出模型设置 JSON，跨进程和任务 worker 都只消费普通对象。
+   * 输出模型设置 JSON，跨进程和任务 worker 都只消费普通对象
    */
   public to_json(): ModelJsonRecord {
     return {
@@ -178,56 +176,56 @@ export class Model {
   }
 
   /**
-   * 自定义模型才拥有模板文件，预设模型直接来自内置列表。
+   * 自定义模型才拥有模板文件，预设模型直接来自内置列表
    */
   public template_filename(): string | null {
     return Model.resolve_template_filename(this.type);
   }
 
   /**
-   * 自定义模型可编辑、可删除并拥有模板文件，内置预设只允许重置。
+   * 自定义模型可编辑、可删除并拥有模板文件，内置预设只允许重置
    */
   public is_custom(): boolean {
     return Model.is_custom_type(this.type);
   }
 
   /**
-   * 模型配置从磁盘和页面表单进入时先收窄到稳定类型。
+   * 模型配置从磁盘和页面表单进入时先收窄到稳定类型
    */
   public static normalize_type(value: unknown): ModelType {
     return is_model_type(value) ? value : "PRESET";
   }
 
   /**
-   * 未知 API 格式回退 OpenAI 兼容协议，这是现有自定义模型的默认路径。
+   * 未知 API 格式回退 OpenAI 兼容协议，这是现有自定义模型的默认路径
    */
   public static normalize_api_format(value: unknown): ModelApiFormat {
     return is_model_api_format(value) ? value : "OpenAI";
   }
 
   /**
-   * 旧模型配置缺失 thinking 时按关闭推理处理。
+   * 旧模型配置缺失 thinking 时按关闭推理处理
    */
   public static normalize_thinking_level(value: unknown): ModelThinkingLevel {
     return is_model_thinking_level(value) ? value : "OFF";
   }
 
   /**
-   * 未知类型排在最后，模型页排序不因脏数据抛错。
+   * 未知类型排在最后，模型页排序不因脏数据抛错
    */
   public static resolve_type_sort_order(value: unknown): number {
     return is_model_type(value) ? MODEL_TYPE_SORT_ORDER[value] : 99;
   }
 
   /**
-   * 自定义模板路径只由模型类型派生，避免调用点散落文件名。
+   * 自定义模板路径只由模型类型派生，避免调用点散落文件名
    */
   public static resolve_template_filename(value: unknown): string | null {
     return Model.is_custom_type(value) ? MODEL_TEMPLATE_FILENAME_BY_TYPE[value] : null;
   }
 
   /**
-   * 默认推理能力用于初始化设置，具体请求仍以模型配置为准。
+   * 默认推理能力用于初始化设置，具体请求仍以模型配置为准
    */
   public static api_format_supports_reasoning_by_default(api_format: ModelApiFormat): boolean {
     return api_format === "Google" || api_format === "Anthropic";
@@ -238,7 +236,7 @@ export class Model {
   }
 
   /**
-   * 服务层用这个顺序补齐每类自定义模型模板，避免枚举散落。
+   * 服务层用这个顺序补齐每类自定义模型模板，避免枚举散落
    */
   public static custom_types(): Array<Exclude<ModelType, "PRESET">> {
     return ["CUSTOM_GOOGLE", "CUSTOM_OPENAI", "CUSTOM_ANTHROPIC"];

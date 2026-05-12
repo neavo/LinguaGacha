@@ -8,8 +8,7 @@ import { create_epub_fixture } from "../../../test/epub-fixture";
 import { Item } from "../../../base/item";
 import { EPUBFormat } from "./epub-format";
 
-// 每个用例独占 EPUB 输出目录，避免门面写回断言共享文件状态。
-let temp_dir = "";
+let temp_dir = ""; // 每个用例独占 EPUB 输出目录，避免门面写回断言共享文件状态
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-epub-format-"));
@@ -20,7 +19,7 @@ afterEach(() => {
 });
 
 /**
- * 测试格式实例使用显式配置，避免依赖应用设置服务。
+ * 测试格式实例使用显式配置，避免依赖应用设置服务
  */
 function create_format(): EPUBFormat {
   return new EPUBFormat({

@@ -7,13 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NPM_INITIAL_CWD_ENV_NAME } from "./lifecycle-command-resolver";
 import { CoreLifecycleManager } from "./lifecycle-manager";
 
-// temp_dir 承载测试应用根和数据根，避免生命周期日志写入真实工作区。
-let temp_dir = "";
-// original_initial_cwd 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析。
-let original_initial_cwd: string | undefined;
+let temp_dir = ""; // temp_dir 承载测试应用根和数据根，避免生命周期日志写入真实工作区
+let original_initial_cwd: string | undefined; // original_initial_cwd 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析
 
 /**
- * 读取生命周期测试写出的日志文本，用于确认启动链路不再记录旧 database HTTP 服务。
+ * 读取生命周期测试写出的日志文本，用于确认启动链路不再记录旧 database HTTP 服务
  */
 function read_log_text(log_dir: string): string {
   if (!fs.existsSync(log_dir)) {

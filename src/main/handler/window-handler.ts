@@ -21,16 +21,12 @@ import {
 } from "../log/log-window-host";
 import { write_electron_main_error, write_electron_main_warning } from "../log/log-bridge";
 
-// 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线。
-const WINDOW_STANDARD_WIDTH = 1280;
+const WINDOW_STANDARD_WIDTH = 1280; // 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线
 const WINDOW_STANDARD_HEIGHT = 800;
-// 主窗口背景要早于 renderer 首帧生效，避免加载阶段出现默认白屏或暗色闪烁。
-const WINDOW_BACKGROUND_COLOR = "#F8FAFC";
-// 主窗口隐藏菜单栏后，开发态仍保留显式快捷键作为 DevTools 唯一稳定入口。
-const DEVTOOLS_TOGGLE_KEY = "F12";
+const WINDOW_BACKGROUND_COLOR = "#F8FAFC"; // 主窗口背景要早于 renderer 首帧生效，避免加载阶段出现默认白屏或暗色闪烁
+const DEVTOOLS_TOGGLE_KEY = "F12"; // 主窗口隐藏菜单栏后，开发态仍保留显式快捷键作为 DevTools 唯一稳定入口
 const DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY = "i";
 const DEVTOOLS_INSPECT_WITH_MODIFIER_KEY = "c";
-// Chromium 的 inspect element 能力只暴露在 DevTools 前端里，需要注入脚本间接触发。
 const DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT = `
 (() => {
   const devtools_api = window.DevToolsAPI
@@ -42,10 +38,9 @@ const DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT = `
     return false
   }
 })()
-`;
+`; // Chromium 的 inspect element 能力只暴露在 DevTools 前端里，需要注入脚本间接触发
 
-// electron-vite 在开发态通过 ELECTRON_RENDERER_URL 暴露唯一权威的 renderer dev server 地址。
-const RENDERER_DEV_SERVER_URL = process.env["ELECTRON_RENDERER_URL"] ?? null;
+const RENDERER_DEV_SERVER_URL = process.env["ELECTRON_RENDERER_URL"] ?? null; // electron-vite 在开发态通过 ELECTRON_RENDERER_URL 暴露唯一权威的 renderer dev server 地址
 
 export type MainWindowHostOptions = {
   desktopBundleDir: string;
@@ -60,7 +55,7 @@ export type LogWindowHostFactoryOptions = {
 };
 
 /**
- * 开发态暴露 Chromium 调试端口，方便 Playwright 直接附着现有 Electron 实例。
+ * 开发态暴露 Chromium 调试端口，方便 Playwright 直接附着现有 Electron 实例
  */
 export function configure_development_remote_debugging(): void {
   if (is_development_mode()) {
@@ -69,7 +64,7 @@ export function configure_development_remote_debugging(): void {
 }
 
 /**
- * 配置窗口静态资源根目录，让开发态和发布态复用同一套窗口配置。
+ * 配置窗口静态资源根目录，让开发态和发布态复用同一套窗口配置
  */
 export function configure_renderer_public_path(desktop_bundle_dir: string): void {
   process.env.VITE_PUBLIC = is_development_mode()
@@ -78,7 +73,7 @@ export function configure_renderer_public_path(desktop_bundle_dir: string): void
 }
 
 /**
- * 创建日志窗口宿主，并把窗口事件、DevTools 和日志页面 query 注入进去。
+ * 创建日志窗口宿主，并把窗口事件、DevTools 和日志页面 query 注入进去
  */
 export function create_log_window_host(options: LogWindowHostFactoryOptions): LogWindowHost {
   return new LogWindowHost({
@@ -101,7 +96,7 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
 }
 
 /**
- * 创建主工作台窗口，并把启动加载、关闭确认和运行期保护事件都挂到同一处。
+ * 创建主工作台窗口，并把启动加载、关闭确认和运行期保护事件都挂到同一处
  */
 export function create_main_window(options: MainWindowHostOptions): BrowserWindow {
   const main_window = new BrowserWindow(
@@ -114,18 +109,17 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
   });
 
   main_window.on("closed", () => {
-    // 主窗口关闭后的跨窗口联动由 index.ts 注入，避免本模块反向持有日志窗口状态。
+    // 主窗口关闭后的跨窗口联动由 index.ts 注入，避免本模块反向持有日志窗口状态
     options.onClosed();
   });
 
   main_window.once("ready-to-show", () => {
-    // 发布态等待首帧后显示，减少启动阶段的空白窗口感。
+    // 发布态等待首帧后显示，减少启动阶段的空白窗口感
     main_window.show();
   });
 
   if (is_development_mode()) {
-    // 开发态优先让窗口可见，这样就算首屏挂掉也能直接看到错误弹窗和 DevTools。
-    show_window_if_hidden(main_window);
+    show_window_if_hidden(main_window); // 开发态优先让窗口可见，这样就算首屏挂掉也能直接看到错误弹窗和 DevTools
   }
   load_renderer_entry(main_window, options.desktopBundleDir);
 
@@ -133,7 +127,7 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
 }
 
 /**
- * 同步 renderer 主题到原生标题栏；不支持 Overlay 的平台保持自己的窗口策略。
+ * 同步 renderer 主题到原生标题栏；不支持 Overlay 的平台保持自己的窗口策略
  */
 export function sync_title_bar_overlay(
   target_window: BrowserWindow | null,
@@ -150,7 +144,7 @@ export function sync_title_bar_overlay(
 }
 
 /**
- * 判断当前是否由 renderer dev server 驱动，用来收口开发态专属能力。
+ * 判断当前是否由 renderer dev server 驱动，用来收口开发态专属能力
  */
 function is_development_mode(): boolean {
   let development_mode = false;
@@ -165,21 +159,21 @@ function is_development_mode(): boolean {
 }
 
 /**
- * 桌面 bundle 根只用于定位同层 renderer 产物，不承载应用 APP_ROOT 语义。
+ * 桌面 bundle 根只用于定位同层 renderer 产物，不承载应用 APP_ROOT 语义
  */
 function resolve_desktop_bundle_root(desktop_bundle_dir: string): string {
   return path.join(desktop_bundle_dir, "..");
 }
 
 /**
- * 发布态固定加载 build/dist，开发态由 dev server 接管页面入口。
+ * 发布态固定加载 build/dist，开发态由 dev server 接管页面入口
  */
 function resolve_renderer_dist(desktop_bundle_dir: string): string {
   return path.join(resolve_desktop_bundle_root(desktop_bundle_dir), "dist");
 }
 
 /**
- * 识别打开 / 关闭 DevTools 的开发态快捷键。
+ * 识别打开 / 关闭 DevTools 的开发态快捷键
  */
 function is_devtools_shortcut(input: Electron.Input): boolean {
   const is_function_shortcut = input.type === "keyDown" && input.key === DEVTOOLS_TOGGLE_KEY;
@@ -200,7 +194,7 @@ function is_devtools_shortcut(input: Electron.Input): boolean {
 }
 
 /**
- * 识别进入元素检查模式的开发态快捷键。
+ * 识别进入元素检查模式的开发态快捷键
  */
 function is_devtools_inspect_shortcut(input: Electron.Input): boolean {
   const inspect_shortcut =
@@ -213,7 +207,7 @@ function is_devtools_inspect_shortcut(input: Electron.Input): boolean {
 }
 
 /**
- * 等待 DevTools 前端真正加载完毕，确保后续能调用 Chromium 暴露的调试 API。
+ * 等待 DevTools 前端真正加载完毕，确保后续能调用 Chromium 暴露的调试 API
  */
 async function wait_for_devtools_contents(
   target_window: BrowserWindow,
@@ -253,14 +247,14 @@ async function wait_for_devtools_contents(
 }
 
 /**
- * 打开 DevTools 并切换元素检查模式，给无菜单栏窗口补足开发期调试入口。
+ * 打开 DevTools 并切换元素检查模式，给无菜单栏窗口补足开发期调试入口
  */
 async function open_devtools_and_toggle_inspect_mode(target_window: BrowserWindow): Promise<void> {
   const devtools_contents = await wait_for_devtools_contents(target_window);
 
   if (devtools_contents !== null) {
     try {
-      // 直接调用 Chromium DevTools 前端提供的 API，复用浏览器自己的元素定位切换逻辑。
+      // 直接调用 Chromium DevTools 前端提供的 API，复用浏览器自己的元素定位切换逻辑
       const inspect_mode_enabled = await devtools_contents.executeJavaScript(
         DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT,
         true,
@@ -276,11 +270,11 @@ async function open_devtools_and_toggle_inspect_mode(target_window: BrowserWindo
 }
 
 /**
- * 只在开发态注册 DevTools 快捷键，发布态不暴露额外调试入口。
+ * 只在开发态注册 DevTools 快捷键，发布态不暴露额外调试入口
  */
 function register_development_devtools_shortcut(target_window: BrowserWindow): void {
   if (is_development_mode()) {
-    // 开发态窗口隐藏了菜单栏，需要显式补一个 DevTools 入口，避免调试能力只能靠默认菜单兜底。
+    // 开发态窗口隐藏了菜单栏，需要显式补一个 DevTools 入口，避免调试能力只能靠默认菜单兜底
     target_window.webContents.on("before-input-event", (event, input) => {
       if (is_devtools_shortcut(input)) {
         event.preventDefault();
@@ -294,7 +288,7 @@ function register_development_devtools_shortcut(target_window: BrowserWindow): v
 }
 
 /**
- * 统一把窗口带回前台，供加载失败、失去响应和关闭确认等异常路径复用。
+ * 统一把窗口带回前台，供加载失败、失去响应和关闭确认等异常路径复用
  */
 function show_window_if_hidden(target_window: BrowserWindow): void {
   if (target_window.isVisible()) {
@@ -306,14 +300,14 @@ function show_window_if_hidden(target_window: BrowserWindow): void {
 }
 
 /**
- * 注册窗口运行期保护事件，把关闭确认、加载失败和渲染进程异常都收口到主进程。
+ * 注册窗口运行期保护事件，把关闭确认、加载失败和渲染进程异常都收口到主进程
  */
 function register_window_runtime_events(
   target_window: BrowserWindow,
   options: { confirmOnClose: boolean; shouldBypassCloseConfirmation: () => boolean },
 ): void {
   target_window.on("close", (event) => {
-    // 日志窗口和退出中的应用不能进入主窗口的网页关闭确认流程。
+    // 日志窗口和退出中的应用不能进入主窗口的网页关闭确认流程
     if (!options.confirmOnClose) {
       return;
     }
@@ -324,7 +318,7 @@ function register_window_runtime_events(
       return;
     }
 
-    // 主窗口关闭由 renderer 展示确认 UI，避免原生弹窗和网页壳层出现两套体验。
+    // 主窗口关闭由 renderer 展示确认 UI，避免原生弹窗和网页壳层出现两套体验
     event.preventDefault();
     show_window_if_hidden(target_window);
     target_window.webContents.send(IPC_CHANNEL_WINDOW_CLOSE_REQUEST);
@@ -336,8 +330,7 @@ function register_window_runtime_events(
       const error_message = `加载失败 (${error_code.toString()}): ${error_description}`;
 
       if (is_main_frame) {
-        // 主框架失败意味着整个 renderer 不可用，main 只负责记录并弹出原生诊断提示。
-        write_electron_main_error("渲染层主框架加载失败", {
+        write_electron_main_error("渲染层主框架加载失败", { // 主框架失败意味着整个 renderer 不可用，main 只负责记录并弹出原生诊断提示
           context: {
             error_code,
             error_description,
@@ -350,8 +343,7 @@ function register_window_runtime_events(
           `渲染层入口没有成功加载。\n目标地址：${validated_url}\n错误信息：${error_message}`,
         );
       } else {
-        // 子框架失败不替换页面，先写入日志，避免误伤仍可交互的主应用。
-        write_electron_main_warning("渲染层子框架加载失败", {
+        write_electron_main_warning("渲染层子框架加载失败", { // 子框架失败不替换页面，先写入日志，避免误伤仍可交互的主应用
           context: {
             error_code,
             error_description,
@@ -363,29 +355,27 @@ function register_window_runtime_events(
   );
 
   target_window.webContents.on("render-process-gone", (_event, details) => {
-    // 渲染进程退出后保持窗口可见，方便用户和开发者看到当前故障状态。
-    write_electron_main_error("渲染进程已退出", {
+    write_electron_main_error("渲染进程已退出", { // 渲染进程退出后保持窗口可见，方便用户和开发者看到当前故障状态
       context: details as unknown as Record<string, unknown>,
     });
     show_window_if_hidden(target_window);
   });
 
   target_window.on("unresponsive", () => {
-    // 失去响应时不自动重载，先记录并拉前台，避免破坏用户尚未保存的页面状态。
-    write_electron_main_error("窗口失去响应");
+    write_electron_main_error("窗口失去响应"); // 失去响应时不自动重载，先记录并拉前台，避免破坏用户尚未保存的页面状态
     show_window_if_hidden(target_window);
   });
 }
 
 /**
- * 根据当前主题生成原生标题栏 Overlay 配色，保证系统按钮和网页壳层视觉一致。
+ * 根据当前主题生成原生标题栏 Overlay 配色，保证系统按钮和网页壳层视觉一致
  */
 function build_title_bar_overlay(theme_mode: ThemeMode): Electron.TitleBarOverlay {
   return resolve_title_bar_overlay_theme(theme_mode);
 }
 
 /**
- * 加载同一份 renderer 入口；日志窗口通过 query 进入独立页面模式。
+ * 加载同一份 renderer 入口；日志窗口通过 query 进入独立页面模式
  */
 function load_renderer_entry(
   target_window: BrowserWindow,
@@ -409,7 +399,7 @@ function load_renderer_entry(
 }
 
 /**
- * 创建所有窗口共享的原生能力配置，避免主窗口和日志窗口出现壳层策略分叉。
+ * 创建所有窗口共享的原生能力配置，避免主窗口和日志窗口出现壳层策略分叉
  */
 function create_window_options(
   desktop_bundle_dir: string,
@@ -431,22 +421,21 @@ function create_window_options(
       contextIsolation: true,
       nodeIntegration: false,
       additionalArguments: [build_core_api_base_url_argument(core_api_base_url)],
-      // electron-vite 产出的预加载脚本默认是 ESM，关闭 sandbox 才能让 Electron 按模块语义正确执行。
-      sandbox: false,
+      sandbox: false, // electron-vite 产出的预加载脚本默认是 ESM，关闭 sandbox 才能让 Electron 按模块语义正确执行
     },
   };
 
   if (process.platform === "darwin") {
-    // macOS 优先沿用系统原生 inset 布局，避免网页壳层再额外模拟右侧镜像留白。
+    // macOS 优先沿用系统原生 inset 布局，避免网页壳层再额外模拟右侧镜像留白
     window_options.titleBarStyle = "hiddenInset";
   } else if (uses_title_bar_overlay(process.platform as DesktopPlatform)) {
-    // Windows 和 Linux 通过 Overlay 把原生控制按钮保留下来，避免沦为纯网页外壳。
+    // Windows 和 Linux 通过 Overlay 把原生控制按钮保留下来，避免沦为纯网页外壳
     window_options.titleBarStyle = "hidden";
     window_options.titleBarOverlay = build_title_bar_overlay(
       nativeTheme.shouldUseDarkColors ? "dark" : "light",
     );
   } else {
-    // 未知平台兜底为真正无边框，至少保证自定义壳层策略仍然成立。
+    // 未知平台兜底为真正无边框，至少保证自定义壳层策略仍然成立
     window_options.frame = false;
   }
 

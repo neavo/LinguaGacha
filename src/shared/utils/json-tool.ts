@@ -1,5 +1,5 @@
 /**
- * JsonValue 是跨 main / renderer / worker 传递结构化载荷时的最小公共形状。
+ * JsonValue 是跨 main / renderer / worker 传递结构化载荷时的最小公共形状
  */
 export type JsonValue =
   | null
@@ -10,41 +10,41 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 /**
- * JsonRecord 用于边界快照，调用方必须按值复制，不能共享可变领域对象。
+ * JsonRecord 用于边界快照，调用方必须按值复制，不能共享可变领域对象
  */
 export type JsonRecord = Record<string, JsonValue>;
 
 /**
- * MutableJsonRecord 只表示当前构建中的 JSON 字典，离开构建函数后仍按普通值对象流通。
+ * MutableJsonRecord 只表示当前构建中的 JSON 字典，离开构建函数后仍按普通值对象流通
  */
 export type MutableJsonRecord = Record<string, JsonValue>;
 
 /**
- * JSON 工具可接受的文本来源，统一覆盖字符串和二进制读取结果。
+ * JSON 工具可接受的文本来源，统一覆盖字符串和二进制读取结果
  */
 export type JsonToolTextInput = string | ArrayBuffer | Uint8Array;
 
 /**
- * 控制 JSON 写出格式，避免调用方直接散落缩进魔术值。
+ * 控制 JSON 写出格式，避免调用方直接散落缩进魔术值
  */
 export interface JsonToolStringifyOptions {
   indent?: number;
 }
 
 /**
- * 控制 JSON 文件读取策略，允许调用方显式选择修复解析。
+ * 控制 JSON 文件读取策略，允许调用方显式选择修复解析
  */
 export interface JsonToolReadFileOptions {
   repair?: boolean;
 }
 
 /**
- * UTF-8 BOM 常量集中在工具内，避免各调用点重复处理文件头。
+ * UTF-8 BOM 常量集中在工具内，避免各调用点重复处理文件头
  */
 const UTF8_BOM = "\uFEFF";
 
 /**
- * 将字符串或二进制输入解码为无 BOM 文本，保持后续 JSON 解析入口纯净。
+ * 将字符串或二进制输入解码为无 BOM 文本，保持后续 JSON 解析入口纯净
  */
 function decode_text(input: JsonToolTextInput): string {
   const text =
@@ -57,7 +57,7 @@ function decode_text(input: JsonToolTextInput): string {
 }
 
 /**
- * 将 Python 标准库兼容的非有限数字令牌转成 JSON 可解析哨兵，保持损坏 JSON 仍按严格路径抛错。
+ * 将 Python 标准库兼容的非有限数字令牌转成 JSON 可解析哨兵，保持损坏 JSON 仍按严格路径抛错
  */
 function replace_non_finite_tokens(text: string): string {
   let result = "";
@@ -103,14 +103,14 @@ function replace_non_finite_tokens(text: string): string {
 }
 
 /**
- * 非有限数字只允许出现在 JSON 值边界，避免误伤字符串外的普通标识残片。
+ * 非有限数字只允许出现在 JSON 值边界，避免误伤字符串外的普通标识残片
  */
 function is_json_token_boundary(char: string | undefined): boolean {
   return char === undefined || /[\s,[\]{}:]/.test(char);
 }
 
 /**
- * 还原非有限数字哨兵对象，对齐 Python json.loads 对 NaN/Infinity 的兼容行为。
+ * 还原非有限数字哨兵对象，对齐 Python json.loads 对 NaN/Infinity 的兼容行为
  */
 function revive_non_finite_numbers(_key: string, value: unknown): unknown {
   if (
@@ -136,7 +136,7 @@ function revive_non_finite_numbers(_key: string, value: unknown): unknown {
 }
 
 /**
- * 延迟加载 fs/promises 读取 UTF-8 文本，避免 renderer 打包路径静态引入 Node 文件模块。
+ * 延迟加载 fs/promises 读取 UTF-8 文本，避免 renderer 打包路径静态引入 Node 文件模块
  */
 async function read_utf8_file(file_path: string): Promise<string> {
   const fs = await import("node:fs/promises");
@@ -144,7 +144,7 @@ async function read_utf8_file(file_path: string): Promise<string> {
 }
 
 /**
- * 延迟加载 fs/promises 写入 UTF-8 文本，保持文件写出只在具备 Node 能力的运行态发生。
+ * 延迟加载 fs/promises 写入 UTF-8 文本，保持文件写出只在具备 Node 能力的运行态发生
  */
 async function write_utf8_file(file_path: string, text: string): Promise<void> {
   const fs = await import("node:fs/promises");
@@ -152,11 +152,11 @@ async function write_utf8_file(file_path: string, text: string): Promise<void> {
 }
 
 /**
- * 集中 JSON 解析、修复和文件读写，避免调用点重复处理异常。
+ * 集中 JSON 解析、修复和文件读写，避免调用点重复处理异常
  */
 export class JsonTool {
   /**
-   * 解析 JSON，并在严格解析失败时仅兼容 Python 标准库接受的非有限数字。
+   * 解析 JSON，并在严格解析失败时仅兼容 Python 标准库接受的非有限数字
    */
   public static loads<value_type = unknown>(input: JsonToolTextInput): value_type {
     const text = decode_text(input);
@@ -172,28 +172,28 @@ export class JsonTool {
   }
 
   /**
-   * 保留既有严格入口名，实际解析规则与 loads 一致，避免调用点分裂出第二套兼容策略。
+   * 保留既有严格入口名，实际解析规则与 loads 一致，避免调用点分裂出第二套兼容策略
    */
   public static parseStrict<value_type = unknown>(input: JsonToolTextInput): value_type {
     return this.loads<value_type>(input);
   }
 
   /**
-   * 序列化为 JSON 文本，默认使用紧凑格式。
+   * 序列化为 JSON 文本，默认使用紧凑格式
    */
   public static dumps(value: unknown, options: JsonToolStringifyOptions = {}): string {
     return this.stringifyStrict(value, options);
   }
 
   /**
-   * 序列化为 UTF-8 bytes，便于调用方直接写入二进制文件。
+   * 序列化为 UTF-8 bytes，便于调用方直接写入二进制文件
    */
   public static dumpsBytes(value: unknown, options: JsonToolStringifyOptions = {}): Buffer {
     return Buffer.from(this.stringifyStrict(value, options), "utf-8");
   }
 
   /**
-   * 严格序列化 JSON，确保写盘前能暴露不可序列化值。
+   * 严格序列化 JSON，确保写盘前能暴露不可序列化值
    */
   public static stringifyStrict(value: unknown, options: JsonToolStringifyOptions = {}): string {
     const indent = options.indent ?? 0;
@@ -205,7 +205,7 @@ export class JsonTool {
   }
 
   /**
-   * 尝试修复并解析 JSON，兼容模型返回的非标准片段。
+   * 尝试修复并解析 JSON，兼容模型返回的非标准片段
    */
   public static async repairParse<value_type = unknown>(
     input: JsonToolTextInput,
@@ -219,7 +219,7 @@ export class JsonTool {
   }
 
   /**
-   * 尝试修复并解析 JSON，保留 Py 侧工具命名的对应入口。
+   * 尝试修复并解析 JSON，保留 Py 侧工具命名的对应入口
    */
   public static async repairLoads<value_type = unknown>(
     input: JsonToolTextInput,
@@ -228,7 +228,7 @@ export class JsonTool {
   }
 
   /**
-   * 读取 JSON 文件并套用默认值，统一缺失文件处理。
+   * 读取 JSON 文件并套用默认值，统一缺失文件处理
    */
   public static async readJsonFile<value_type = unknown>(
     file_path: string,
@@ -241,7 +241,7 @@ export class JsonTool {
   }
 
   /**
-   * 从文件读取 JSON，保留 Py 侧工具命名的对应入口。
+   * 从文件读取 JSON，保留 Py 侧工具命名的对应入口
    */
   public static async loadFile<value_type = unknown>(
     file_path: string,
@@ -251,20 +251,19 @@ export class JsonTool {
   }
 
   /**
-   * 写入 JSON 文件，先完成序列化再落盘，避免失败时破坏已有文件。
+   * 写入 JSON 文件，先完成序列化再落盘，避免失败时破坏已有文件
    */
   public static async writeJsonFile(
     file_path: string,
     value: unknown,
     options: JsonToolStringifyOptions = {},
   ): Promise<void> {
-    // 先完成序列化再写盘，避免不可序列化值把目标文件截断。
-    const text = this.stringifyStrict(value, options);
+    const text = this.stringifyStrict(value, options); // 先完成序列化再写盘，避免不可序列化值把目标文件截断
     await write_utf8_file(file_path, text);
   }
 
   /**
-   * 写入 JSON 文件，保留 Py 侧工具命名的对应入口。
+   * 写入 JSON 文件，保留 Py 侧工具命名的对应入口
    */
   public static async saveFile(
     file_path: string,

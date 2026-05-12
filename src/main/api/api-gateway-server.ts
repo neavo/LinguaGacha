@@ -36,62 +36,49 @@ import {
 } from "./api-gateway-connections";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
-// 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API。
-const CORE_API_HOST = "127.0.0.1";
+const CORE_API_HOST = "127.0.0.1"; // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API
 
-// 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏。
-const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500;
+const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500; // 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏
 
-// 公开 Gateway 只接受 JSON 请求头，避免 renderer 依赖额外私有请求头。
-const CORS_ALLOWED_HEADERS = "Content-Type";
+const CORS_ALLOWED_HEADERS = "Content-Type"; // 公开 Gateway 只接受 JSON 请求头，避免 renderer 依赖额外私有请求头
 
 /**
- * Gateway 启动参数由 Electron 生命周期层注入，路由层只消费不可变依赖。
+ * Gateway 启动参数由 Electron 生命周期层注入，路由层只消费不可变依赖
  */
 export interface ApiGatewayServerOptions {
-  // appRoot 决定版本、预设和用户数据路径解析，不在路由层重新猜测。
-  appRoot: string;
-  // publicPort 由生命周期端口分配器保证唯一，Gateway 只按该端口监听。
-  publicPort: number;
-  // database 由生命周期层注入，Gateway 不负责创建或关闭 .lg 物理存储。
-  database: ProjectDatabase;
-  // logManager 是日志窗口、SSE 和内部提交层的唯一汇聚点。
-  logManager: LogManager;
+  appRoot: string; // appRoot 决定版本、预设和用户数据路径解析，不在路由层重新猜测
+  publicPort: number; // publicPort 由生命周期端口分配器保证唯一，Gateway 只按该端口监听
+  database: ProjectDatabase; // database 由生命周期层注入，Gateway 不负责创建或关闭 .lg 物理存储
+  logManager: LogManager; // logManager 是日志窗口、SSE 和内部提交层的唯一汇聚点
 }
 
 /**
- * 封装 Electron 公开 API Gateway 的路由和生命周期边界。
+ * 封装 Electron 公开 API Gateway 的路由和生命周期边界
  */
 export class ApiGatewayServer {
   private readonly options: ApiGatewayServerOptions;
 
-  // 公开项目 loaded/path 由 Gateway 持有，避免 renderer 直接读取数据库状态。
-  private readonly project_session_state = new ProjectSessionState();
+  private readonly project_session_state = new ProjectSessionState(); // 公开项目 loaded/path 由 Gateway 持有，避免 renderer 直接读取数据库状态
 
-  // 任务 busy / 请求中数量 / 重翻条目由 API Gateway 维护，避免运行态分散。
-  private readonly task_runtime_state = new TaskRuntimeState();
+  private readonly task_runtime_state = new TaskRuntimeState(); // 任务 busy / 请求中数量 / 重翻条目由 API Gateway 维护，避免运行态分散
 
-  // core_event_hub 持有本地订阅者，Gateway stop 时必须显式关闭。
-  private core_event_hub: CoreEventHub | null = null;
+  private core_event_hub: CoreEventHub | null = null; // core_event_hub 持有本地订阅者，Gateway stop 时必须显式关闭
 
-  // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭。
-  private server: Server | null = null;
+  private server: Server | null = null; // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭
 
-  // task_worker_pool 持有 worker_threads，Gateway stop 时必须主动释放。
-  private task_worker_pool: TaskWorkerPool | null = null;
+  private task_worker_pool: TaskWorkerPool | null = null; // task_worker_pool 持有 worker_threads，Gateway stop 时必须主动释放
 
-  // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断。
-  private readonly server_sockets = new Set<Socket>();
+  private readonly server_sockets = new Set<Socket>(); // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断
 
   /**
-   * Gateway 只接收已组装好的运行期依赖，避免路由层自行解析全局状态。
+   * Gateway 只接收已组装好的运行期依赖，避免路由层自行解析全局状态
    */
   public constructor(options: ApiGatewayServerOptions) {
     this.options = options;
   }
 
   /**
-   * 重复 start 返回同一入口，避免公开端口在运行期漂移。
+   * 重复 start 返回同一入口，避免公开端口在运行期漂移
    */
   public async start(): Promise<ApiGatewayStartResult> {
     if (this.server !== null) {
@@ -125,7 +112,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 只释放 Gateway 自己持有的监听器，Core 与 Database 生命周期由上层编排。
+   * 只释放 Gateway 自己持有的监听器，Core 与 Database 生命周期由上层编排
    */
   public async stop(): Promise<void> {
     this.core_event_hub?.stop();
@@ -141,7 +128,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 公开 `/api/*` 协议在这里集中注册，避免 renderer 依赖内部实现端口。
+   * 公开 `/api/*` 协议在这里集中注册，避免 renderer 依赖内部实现端口
    */
   private create_app(): Hono {
     const paths = new AppPathService({ appRoot: this.options.appRoot });
@@ -448,7 +435,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 直接处理路由复用同一响应壳，避免错误码和 CORS 语义在各路由发散。
+   * 直接处理路由复用同一响应壳，避免错误码和 CORS 语义在各路由发散
    */
   private post_json(
     app: Hono,
@@ -481,7 +468,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 内部异常只映射成稳定错误壳，调用方不需要理解 main 进程实现细节。
+   * 内部异常只映射成稳定错误壳，调用方不需要理解 main 进程实现细节
    */
   private error_to_envelope(error: unknown) {
     if (error instanceof SyntaxError) {
@@ -497,7 +484,7 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 集中 CORS 头，保持健康检查、代理和预检响应一致。
+   * 集中 CORS 头，保持健康检查、代理和预检响应一致
    */
   private cors_headers(): Headers {
     return new Headers({
@@ -508,14 +495,14 @@ export class ApiGatewayServer {
   }
 
   /**
-   * renderer 只认公开 Gateway 地址，数据库内部资源不会透出到 preload 边界。
+   * renderer 只认公开 Gateway 地址，数据库内部资源不会透出到 preload 边界
    */
   private base_url(): string {
     return `http://${CORE_API_HOST}:${this.options.publicPort.toString()}`;
   }
 
   /**
-   * 公开日志流由 LogManager 直接提供，避免窗口依赖内部日志实现。
+   * 公开日志流由 LogManager 直接提供，避免窗口依赖内部日志实现
    */
   private create_log_stream_response(): Response {
     const encoder = new TextEncoder();
@@ -559,14 +546,14 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 日志 SSE frame 使用固定事件名，renderer 日志面板只需订阅 log.appended。
+   * 日志 SSE frame 使用固定事件名，renderer 日志面板只需订阅 log.appended
    */
   private build_log_sse_frame(event: LogEvent): string {
     return `event: log.appended\ndata: ${JSON.stringify(event)}\n\n`;
   }
 
   /**
-   * bootstrap 是一次性 SSE，事件在写首帧前已构建完毕，避免半截成功流。
+   * bootstrap 是一次性 SSE，事件在写首帧前已构建完毕，避免半截成功流
    */
   private create_project_bootstrap_stream_response(events: BootstrapSseEvent[]): Response {
     const encoder = new TextEncoder();
@@ -592,14 +579,14 @@ export class ApiGatewayServer {
   }
 
   /**
-   * SSE 序列化统一走严格 JSON，避免手写 data 行时出现不可解析负载。
+   * SSE 序列化统一走严格 JSON，避免手写 data 行时出现不可解析负载
    */
   private build_sse_frame(event_type: string, payload: Record<string, ApiJsonValue>): string {
     return `event: ${event_type}\ndata: ${JsonTool.stringifyStrict(payload)}\n\n`;
   }
 
   /**
-   * Gateway 自身异常统一打到 日志源，便于和其他内部日志区分。
+   * Gateway 自身异常统一打到 日志源，便于和其他内部日志区分
    */
   private log_gateway_error(
     message: string,

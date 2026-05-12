@@ -1,18 +1,18 @@
 import type { CellValue, Worksheet } from "exceljs";
 
 /**
- * ExcelJS 单元格工具，集中表格读写时的文本化、公式转义和基础样式规则。
+ * ExcelJS 单元格工具，集中表格读写时的文本化、公式转义和基础样式规则
  */
 export class SpreadsheetTool {
   /**
-   * 读取单元格并转成去除首尾空白的文本，对齐旧版 openpyxl 工具行为。
+   * 读取单元格并转成去除首尾空白的文本，对齐旧版 openpyxl 工具行为
    */
   public static getCellValue(sheet: Worksheet, row: number, column: number): string {
     return this.cellValueToText(sheet.getCell(row, column).value).trim();
   }
 
   /**
-   * 写入单元格文本并设置默认展示样式，避免 Excel 将用户文本误识别成公式。
+   * 写入单元格文本并设置默认展示样式，避免 Excel 将用户文本误识别成公式
    */
   public static setCellValue(
     sheet: Worksheet,
@@ -32,7 +32,7 @@ export class SpreadsheetTool {
   }
 
   /**
-   * ExcelJS 可能把公式、富文本和超链接包装成对象，这里统一收敛成用户可见文本。
+   * ExcelJS 可能把公式、富文本和超链接包装成对象，这里统一收敛成用户可见文本
    */
   public static cellValueToText(value: CellValue): string {
     if (value === null || value === undefined) {
@@ -57,7 +57,7 @@ export class SpreadsheetTool {
   }
 
   /**
-   * 空值按空字符串写入，以等号开头的字符串按文本写入，避免打开表格时触发公式。
+   * 空值按空字符串写入，以等号开头的字符串按文本写入，避免打开表格时触发公式
    */
   private static normalizeWritableValue(value: unknown): CellValue {
     if (value === null || value === undefined) {

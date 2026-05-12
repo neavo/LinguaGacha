@@ -153,7 +153,7 @@ function apply_glossary_sort(
     return visible_entries;
   }
 
-  // 逻辑排序只改变当前可见结果的展示顺序，真实数据顺序始终由 source_index 保底。
+  // 逻辑排序只改变当前可见结果的展示顺序，真实数据顺序始终由 source_index 保底
   return [...visible_entries].sort((left_entry, right_entry) => {
     const comparison_result = resolve_glossary_sort_comparison(
       left_entry,

@@ -1,11 +1,11 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
 
 /**
- * 模型响应解码器，宽容读取 JSONLINE 翻译结果和术语候选。
+ * 模型响应解码器，宽容读取 JSONLINE 翻译结果和术语候选
  */
 export class ResponseDecoder {
   /**
-   * 按行抽取 JSON 对象；若行式失败，再尝试整块 JSON 对象回退。
+   * 按行抽取 JSON 对象；若行式失败，再尝试整块 JSON 对象回退
    */
   public async decode(response: string): Promise<{
     translations: string[];
@@ -46,7 +46,7 @@ export class ResponseDecoder {
   }
 
   /**
-   * 单键字典视为一行翻译结果。
+   * 单键字典视为一行翻译结果
    */
   private get_translation_text(json_data: Record<string, unknown>): string | null {
     const values = Object.values(json_data);
@@ -54,7 +54,7 @@ export class ResponseDecoder {
   }
 
   /**
-   * `src/dst/type` 三字段对象归一成分析候选。
+   * `src/dst/type` 三字段对象归一成分析候选
    */
   private build_glossary_entry(json_data: Record<string, unknown>): Record<string, string> | null {
     if (Object.keys(json_data).length !== 3) {
@@ -71,7 +71,7 @@ export class ResponseDecoder {
   }
 
   /**
-   * jsonrepair 失败时返回 null，模型杂质文本直接忽略。
+   * jsonrepair 失败时返回 null，模型杂质文本直接忽略
    */
   private async repair_parse_object(text: string): Promise<Record<string, unknown> | null> {
     try {

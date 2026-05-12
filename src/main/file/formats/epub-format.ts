@@ -12,35 +12,35 @@ import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
 /**
- * EPUB 格式门面，解析和写回都收口在 Electron main 的文件域。
+ * EPUB 格式门面，解析和写回都收口在 Electron main 的文件域
  */
 export class EPUBFormat {
   /**
-   * AST 抽取器在读取时生成可回放定位信息，写回器会复用同一协议。
+   * AST 抽取器在读取时生成可回放定位信息，写回器会复用同一协议
    */
   private readonly ast = new EpubAst();
 
   /**
-   * 写回器持有格式配置，门面只负责按文件分组和目标路径分派。
+   * 写回器持有格式配置，门面只负责按文件分组和目标路径分派
    */
   private readonly writer: EpubWriter;
 
   /**
-   * 构造时绑定文件格式配置，保证译文/双语路径和去重策略在一次导出中一致。
+   * 构造时绑定文件格式配置，保证译文/双语路径和去重策略在一次导出中一致
    */
   public constructor(private readonly config: FileFormatServiceConfig) {
     this.writer = new EpubWriter(config);
   }
 
   /**
-   * EPUB 读取交给 AST 层处理，门面保留统一 FileFormat 接口形状。
+   * EPUB 读取交给 AST 层处理，门面保留统一 FileFormat 接口形状
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     return this.ast.read_from_stream(content, rel_path);
   }
 
   /**
-   * 写回时同时生成译文版和双语对照版，缺失原始 asset 时跳过该 EPUB。
+   * 写回时同时生成译文版和双语对照版，缺失原始 asset 时跳过该 EPUB
    */
   public async write_to_path(
     items: Item[],
@@ -68,7 +68,7 @@ export class EPUBFormat {
   }
 
   /**
-   * 替换源文件时只替换文件名，保留 EPUB 在工程资源目录中的相对父路径。
+   * 替换源文件时只替换文件名，保留 EPUB 在工程资源目录中的相对父路径
    */
   public build_replace_target_rel_path(old_rel_path: string, new_file_path: string): string {
     const parent = path.dirname(old_rel_path);

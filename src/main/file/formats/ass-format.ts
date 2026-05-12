@@ -12,16 +12,16 @@ import {
 import { Item } from "../../../base/item";
 
 /**
- * ASS 字幕格式按 Events/Dialogue 文本字段解析，保留整行模板用于写回。
+ * ASS 字幕格式按 Events/Dialogue 文本字段解析，保留整行模板用于写回
  */
 export class ASSFormat {
   /**
-   * 配置用于目标和双语输出路径，以及双语去重策略。
+   * 配置用于目标和双语输出路径，以及双语去重策略
    */
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 读取 Events 段 Format 列数后抽取 Dialogue 尾部文本，与旧切片逻辑一致。
+   * 读取 Events 段 Format 列数后抽取 Dialogue 尾部文本，与旧切片逻辑一致
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const lines = split_text_lines_for_items(await TextTool.decode(content)).map((line) =>
@@ -55,7 +55,7 @@ export class ASSFormat {
   }
 
   /**
-   * 写回时用 {{CONTENT}} 模板还原 ASS 行，双语输出用 \N 拼接原文和译文。
+   * 写回时用 {{CONTENT}} 模板还原 ASS 行，双语输出用 \N 拼接原文和译文
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "ASS")) {

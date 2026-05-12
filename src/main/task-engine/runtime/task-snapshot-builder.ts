@@ -13,7 +13,7 @@ import {
   type TaskType,
 } from "./task-runtime-types";
 
-// 任务进度数值字段按 TaskSnapshotPayload 固定，缺失时逐项补齐零值。
+// 任务进度数值字段按 TaskSnapshotPayload 固定，缺失时逐项补齐零值
 const TASK_PROGRESS_NUMBER_FIELDS = [
   "line",
   "total_line",
@@ -24,24 +24,20 @@ const TASK_PROGRESS_NUMBER_FIELDS = [
   "total_input_tokens",
 ] as const;
 
-// 时间字段保留浮点值，避免任务耗时在序列化后被截断。
-const TASK_PROGRESS_FLOAT_FIELDS = ["time", "start_time"] as const;
+const TASK_PROGRESS_FLOAT_FIELDS = ["time", "start_time"] as const; // 时间字段保留浮点值，避免任务耗时在序列化后被截断
 
 /**
- * 在 API Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 `TaskRuntimeState`。
+ * 在 API Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 `TaskRuntimeState`
  */
 export class TaskSnapshotBuilder {
-  // database 是持久任务进度的唯一读源。
-  private readonly database: ProjectDatabase;
+  private readonly database: ProjectDatabase; // database 是持久任务进度的唯一读源
 
-  // task_runtime_state 是实时 busy / 请求中数量的唯一读源。
-  private readonly task_runtime_state: TaskRuntimeState;
+  private readonly task_runtime_state: TaskRuntimeState; // task_runtime_state 是实时 busy / 请求中数量的唯一读源
 
-  // session_state 决定当前公开工程路径。
-  private readonly session_state: ProjectSessionState;
+  private readonly session_state: ProjectSessionState; // session_state 决定当前公开工程路径
 
   /**
-   * 注入公开快照所需的三个权威来源，便于 Gateway 和 bootstrap 共用同一口径。
+   * 注入公开快照所需的三个权威来源，便于 Gateway 和 bootstrap 共用同一口径
    */
   public constructor(
     database: ProjectDatabase,
@@ -54,7 +50,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 按请求体选择任务类型；缺失或非法时根据 Engine 与持久进度推导当前任务。
+   * 按请求体选择任务类型；缺失或非法时根据 Engine 与持久进度推导当前任务
    */
   public async build_task_snapshot(request: JsonRecord = {}): Promise<MutableJsonRecord> {
     const engine_state = this.task_runtime_state.snapshot();
@@ -67,7 +63,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 命令回执要立即覆盖用户操作意图，不能等下一帧 SSE 才改变按钮态。
+   * 命令回执要立即覆盖用户操作意图，不能等下一帧 SSE 才改变按钮态
    */
   public async build_command_ack(
     task_type: TaskType,
@@ -90,7 +86,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 真实组装任务快照，保证普通查询、命令 ack 和 bootstrap 使用同一字段集。
+   * 真实组装任务快照，保证普通查询、命令 ack 和 bootstrap 使用同一字段集
    */
   private build_task_snapshot_from_state(
     task_type: TaskType,
@@ -119,7 +115,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 任务类型优先跟随 Engine；Engine 空闲时再用持久进度选择最相关页面。
+   * 任务类型优先跟随 Engine；Engine 空闲时再用持久进度选择最相关页面
    */
   private resolve_task_type(engine_state: TaskRuntimeStatePayload, meta: JsonRecord): TaskType {
     if (is_task_type(engine_state.active_task_type)) {
@@ -139,7 +135,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 分析快照把持久 extras 与当前 checkpoint 覆盖率合并，保持既有读取口径。
+   * 分析快照把持久 extras 与当前 checkpoint 覆盖率合并，保持既有读取口径
    */
   private build_analysis_progress_snapshot(meta: JsonRecord): MutableJsonRecord {
     return this.normalize_progress_snapshot({
@@ -149,7 +145,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 当前工程未加载时不触碰数据库，直接返回空 meta。
+   * 当前工程未加载时不触碰数据库，直接返回空 meta
    */
   private get_loaded_project_meta(): MutableJsonRecord {
     const state = this.session_state.snapshot();
@@ -162,7 +158,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 分析覆盖率只依赖当前 `.lg` 中的 items 与 checkpoint。
+   * 分析覆盖率只依赖当前 `.lg` 中的 items 与 checkpoint
    */
   private build_analysis_status_summary(): MutableJsonRecord {
     const state = this.session_state.snapshot();
@@ -199,7 +195,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 进度字段坏值归零，额外字段继续透传给前端兼容窗口。
+   * 进度字段坏值归零，额外字段继续透传给前端兼容窗口
    */
   private normalize_progress_snapshot(raw_snapshot: JsonRecord): MutableJsonRecord {
     const snapshot: MutableJsonRecord = { ...raw_snapshot };
@@ -213,14 +209,14 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 重翻 revision 校验与快照构建共享 section revision 读取口径。
+   * 重翻 revision 校验与快照构建共享 section revision 读取口径
    */
   public get_runtime_section_revision(section: string): number {
     return get_runtime_section_revision(this.get_loaded_project_meta(), section);
   }
 
   /**
-   * 读取全部 item 仍只通过 ProjectDatabase workflow，保持 SQL 落点集中。
+   * 读取全部 item 仍只通过 ProjectDatabase workflow，保持 SQL 落点集中
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
@@ -232,7 +228,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * checkpoint 以 item_id 建索引，分析进度只需要三态覆盖事实。
+   * checkpoint 以 item_id 建索引，分析进度只需要三态覆盖事实
    */
   private get_analysis_checkpoints(project_path: string): Map<number, string> {
     const value = this.database.execute(
@@ -256,14 +252,14 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 普通对象才允许作为 JSON record 继续下钻。
+   * 普通对象才允许作为 JSON record 继续下钻
    */
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
     return this.is_record(value) ? { ...value } : {};
   }
 
   /**
-   * 数字进度使用整数转换语义。
+   * 数字进度使用整数转换语义
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -271,7 +267,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 时间进度保留小数，避免耗时显示抖动。
+   * 时间进度保留小数，避免耗时显示抖动
    */
   private read_float(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -279,14 +275,14 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 类型收窄集中在一个入口，减少 builder 内部重复判断。
+   * 类型收窄集中在一个入口，减少 builder 内部重复判断
    */
   private is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
-   * database operation 在任务层统一创建，避免操作名和参数形状散落。
+   * database operation 在任务层统一创建，避免操作名和参数形状散落
    */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };

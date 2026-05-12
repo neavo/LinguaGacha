@@ -41,17 +41,16 @@ interface PiAiLlmRequestClientOptions {
 }
 
 /**
- * 基于 pi-ai 的 LLM 请求客户端，只负责供应商通信和旧请求事实归一。
+ * 基于 pi-ai 的 LLM 请求客户端，只负责供应商通信和旧请求事实归一
  */
 export class PiAiLlmRequestClient implements LlmRequestClient {
   private readonly app_root: string;
   private readonly stream_fn: PiAiStreamFunction;
   private readonly now: () => number;
-  // key_rotation_offsets 只在当前 worker 进程内生效，复刻旧客户端池的本地轮换语义。
-  private readonly key_rotation_offsets = new Map<string, number>();
+  private readonly key_rotation_offsets = new Map<string, number>(); // key_rotation_offsets 只在当前 worker 进程内生效，复刻旧客户端池的本地轮换语义
 
   /**
-   * app_root 用于读取版本和资源根；stream_fn 注入点让单测不碰真实网络。
+   * app_root 用于读取版本和资源根；stream_fn 注入点让单测不碰真实网络
    */
   public constructor(options: PiAiLlmRequestClientOptions) {
     this.app_root = options.appRoot;
@@ -60,7 +59,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * 执行一次 LLM 请求；失败不会泄出供应商对象，只返回旧 worker 能理解的字段。
+   * 执行一次 LLM 请求；失败不会泄出供应商对象，只返回旧 worker 能理解的字段
    */
   public async request(body: LlmRequestBody, signal: AbortSignal): Promise<LlmRequestResult> {
     const snapshot = convert_linguagacha_model_to_pi_ai(body.model, this.app_root);
@@ -124,7 +123,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * system 消息合并进 systemPrompt，user 消息保持顺序进入 pi-ai Context。
+   * system 消息合并进 systemPrompt，user 消息保持顺序进入 pi-ai Context
    */
   private build_context(messages: LlmRequestMessage[]): Context {
     const system_texts: string[] = [];
@@ -154,7 +153,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * 传给 pi-ai 的 option 只承载传输和供应商参数，业务重试仍由 TaskEngine 持有。
+   * 传给 pi-ai 的 option 只承载传输和供应商参数，业务重试仍由 TaskEngine 持有
    */
   private build_stream_options(
     snapshot: LinguaGachaModelSnapshot,
@@ -176,7 +175,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * 同一 worker 内按模型快照的 key 列表 round-robin，空 key 保持 no_key_required。
+   * 同一 worker 内按模型快照的 key 列表 round-robin，空 key 保持 no_key_required
    */
   private select_api_key(snapshot: LinguaGachaModelSnapshot): string {
     const keys = snapshot.api_keys.length > 0 ? snapshot.api_keys : ["no_key_required"];
@@ -193,7 +192,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * pi-ai 终态归一回 LinguaGacha旧响应字段。
+   * pi-ai 终态归一回 LinguaGacha旧响应字段
    */
   private build_result(
     snapshot: LinguaGachaModelSnapshot,
@@ -231,7 +230,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * SakuraLLM 仍把逐行文本转成 JSON map，再交给既有 ResponseDecoder。
+   * SakuraLLM 仍把逐行文本转成 JSON map，再交给既有 ResponseDecoder
    */
   private convert_sakura_response(response_result: string): string {
     const rows: Record<string, string> = {};
@@ -242,7 +241,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * 超时来自任务启动快照，避免 UI 后续修改影响正在执行的请求。
+   * 超时来自任务启动快照，避免 UI 后续修改影响正在执行的请求
    */
   private read_request_timeout_ms(config_snapshot: ApiJsonValue): number {
     const record =
@@ -259,7 +258,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
   }
 
   /**
-   * 空结果集中保留默认字段，调用点只覆盖真实发生的请求事实。
+   * 空结果集中保留默认字段，调用点只覆盖真实发生的请求事实
    */
   private empty_result(overrides: Partial<LlmRequestResult> = {}): LlmRequestResult {
     return {
@@ -277,7 +276,7 @@ export class PiAiLlmRequestClient implements LlmRequestClient {
 }
 
 /**
- * 聚合 pi-ai 事件，按 contentIndex 保持 text/thinking block 的真实顺序。
+ * 聚合 pi-ai 事件，按 contentIndex 保持 text/thinking block 的真实顺序
  */
 class PiAiEventCollector {
   private readonly text_blocks = new Map<number, string>();
@@ -296,7 +295,7 @@ class PiAiEventCollector {
   }
 
   /**
-   * 消费单个事件；toolcall 被归一为错误，避免任务链路误把工具输出当译文。
+   * 消费单个事件；toolcall 被归一为错误，避免任务链路误把工具输出当译文
    */
   public consume(event: AssistantMessageEvent): void {
     if (event.type === "text_delta") {
@@ -340,14 +339,14 @@ class PiAiEventCollector {
   }
 
   /**
-   * 分块追加必须按 contentIndex 写回，避免交错事件打乱正文与思考块。
+   * 分块追加必须按 contentIndex 写回，避免交错事件打乱正文与思考块
    */
   private append_block(blocks: Map<number, string>, content_index: number, delta: string): void {
     blocks.set(content_index, `${blocks.get(content_index) ?? ""}${delta}`);
   }
 
   /**
-   * 拼接时再排序，兼容供应商事件顺序与 block index 不完全一致的情况。
+   * 拼接时再排序，兼容供应商事件顺序与 block index 不完全一致的情况
    */
   private join_blocks(blocks: Map<number, string>): string {
     return [...blocks.entries()]

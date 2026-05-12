@@ -12,14 +12,14 @@ import { ProjectSessionState } from "./project-session-state";
 let temp_dir = "";
 
 /**
- * 所有临时工程路径都落在本用例目录下，避免误碰用户项目文件。
+ * 所有临时工程路径都落在本用例目录下，避免误碰用户项目文件
  */
 function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
 
 /**
- * 为每个用例创建独立 .lg 和服务实例，避免 revision / asset 顺序互相污染。
+ * 为每个用例创建独立 .lg 和服务实例，避免 revision / asset 顺序互相污染
  */
 function create_service(): {
   database: ProjectDatabase;

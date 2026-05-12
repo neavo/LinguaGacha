@@ -9,11 +9,11 @@ import type { TextProcessingConfig, TextQualitySnapshot } from "../../../shared/
 import { TextTool } from "../../../shared/utils/text-tool";
 
 /**
- * 翻译响应行质量检查器，按模型结果决定哪些行可提交。
+ * 翻译响应行质量检查器，按模型结果决定哪些行可提交
  */
 export class ResponseChecker {
   /**
-   * 退化、解析失败、行数和逐行问题都收口为固定错误字符串。
+   * 退化、解析失败、行数和逐行问题都收口为固定错误字符串
    */
   public static check(
     srcs: string[],
@@ -40,7 +40,7 @@ export class ResponseChecker {
   }
 
   /**
-   * 逐行检查入口保留给单元测试和调用方区分“整包解析失败”与“单行空译文”。
+   * 逐行检查入口保留给单元测试和调用方区分“整包解析失败”与“单行空译文”
    */
   public static check_lines(
     srcs: string[],
@@ -55,7 +55,7 @@ export class ResponseChecker {
   }
 
   /**
-   * 单行检查顺序保持：空译文、规则过滤、语言过滤、保护段剥离、残留和相似度。
+   * 单行检查顺序保持：空译文、规则过滤、语言过滤、保护段剥离、残留和相似度
    */
   private static check_line(
     raw_src: string,
@@ -104,7 +104,7 @@ export class ResponseChecker {
   }
 
   /**
-   * 样例规则只用于剥离保护片段，保持和迁移前响应检查的宽容口径一致。
+   * 样例规则只用于剥离保护片段，保持和迁移前响应检查的宽容口径一致
    */
   private static get_sample_rule(
     text_type: string,
@@ -119,7 +119,7 @@ export class ResponseChecker {
   }
 
   /**
-   * 相似度在日/韩翻中时只对目标残留字符触发，其他语言按通用相似度判断。
+   * 相似度在日/韩翻中时只对目标残留字符触发，其他语言按通用相似度判断
    */
   private static is_similar_residue(
     src: string,

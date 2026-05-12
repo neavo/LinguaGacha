@@ -143,7 +143,7 @@ describe("ModelService 远端模型能力", () => {
 });
 
 /**
- * 构造带最小资源目录的 ModelService，避免用例读取真实预设文件。
+ * 构造带最小资源目录的 ModelService，避免用例读取真实预设文件
  */
 async function create_model_service(models: Array<Record<string, ApiJsonValue>>): Promise<{
   service: ModelService;
@@ -160,7 +160,7 @@ async function create_model_service(models: Array<Record<string, ApiJsonValue>>)
 }
 
 /**
- * 生成默认模型记录，测试只覆盖被 overrides 指定的差异字段。
+ * 生成默认模型记录，测试只覆盖被 overrides 指定的差异字段
  */
 function create_model(
   overrides: Partial<Record<string, ApiJsonValue>>,
@@ -187,7 +187,7 @@ function create_model(
 }
 
 /**
- * 写入 ModelService 初始化需要的预设文件，内容保持为空以聚焦用户配置。
+ * 写入 ModelService 初始化需要的预设文件，内容保持为空以聚焦用户配置
  */
 async function write_model_presets(app_root: string): Promise<void> {
   const preset_dir = path.join(app_root, "resource", "model", "preset");
@@ -199,7 +199,7 @@ async function write_model_presets(app_root: string): Promise<void> {
 }
 
 /**
- * 构造 fetch 可消费的 JSON Response，避免每个用例重复序列化。
+ * 构造 fetch 可消费的 JSON Response，避免每个用例重复序列化
  */
 function json_response(body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {

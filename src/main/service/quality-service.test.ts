@@ -39,8 +39,7 @@ describe("QualityService", () => {
 
   it("读取 text_preserve 内置预设时使用质量规则预设目录", () => {
     const { service, app_root } = create_service();
-    // text_preserve 复用质量规则预设目录解析，避免简繁转换页再走专用接口。
-    const preset_dir = path.join(app_root, "resource", "text_preserve", "preset");
+    const preset_dir = path.join(app_root, "resource", "text_preserve", "preset"); // text_preserve 复用质量规则预设目录解析，避免简繁转换页再走专用接口
     fs.mkdirSync(preset_dir, { recursive: true });
     fs.writeFileSync(
       path.join(preset_dir, "renpy.json"),

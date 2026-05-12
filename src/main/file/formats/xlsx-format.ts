@@ -8,11 +8,11 @@ import { group_items, type ExportPaths } from "./file-format-shared";
 import { Item } from "../../../base/item";
 
 /**
- * 通用双列表格格式，第一列原文、第二列译文。
+ * 通用双列表格格式，第一列原文、第二列译文
  */
 export class XLSXFormat {
   /**
-   * WOLF 专用表头由 WOLFXLSXFormat 处理，普通格式在这里按双列读取。
+   * WOLF 专用表头由 WOLFXLSXFormat 处理，普通格式在这里按双列读取
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const workbook = await load_xlsx_workbook(content);
@@ -47,7 +47,7 @@ export class XLSXFormat {
   }
 
   /**
-   * 写回时新建简单双列表，不复用原始工作簿中的展示样式。
+   * 写回时新建简单双列表，不复用原始工作簿中的展示样式
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "XLSX")) {
@@ -67,7 +67,7 @@ export class XLSXFormat {
 }
 
 /**
- * ExcelJS 的 load 签名比实际可接收类型更窄，这里把二进制载荷固定转成 Buffer。
+ * ExcelJS 的 load 签名比实际可接收类型更窄，这里把二进制载荷固定转成 Buffer
  */
 async function load_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
@@ -76,7 +76,7 @@ async function load_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook
 }
 
 /**
- * 普通 XLSX 解析器必须主动避开 WOLF 表头，让 WOLFXLSXFormat 保留专用列语义。
+ * 普通 XLSX 解析器必须主动避开 WOLF 表头，让 WOLFXLSXFormat 保留专用列语义
  */
 function is_wolf_xlsx_sheet(sheet: ExcelJS.Worksheet): boolean {
   const expected = new Map([

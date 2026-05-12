@@ -13,7 +13,7 @@ let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
 
 /**
- * 每个用例创建独立 .lg 数据库和服务，避免状态串扰。
+ * 每个用例创建独立 .lg 数据库和服务，避免状态串扰
  */
 function create_service(): {
   database: ProjectDatabase;
@@ -98,7 +98,7 @@ describe("ProjectResetPreviewService", () => {
 });
 
 /**
- * 写入源文件并返回绝对路径，供数据库 asset 导入操作使用。
+ * 写入源文件并返回绝对路径，供数据库 asset 导入操作使用
  */
 function write_source_file(file_name: string): string {
   const file_path = path.join(temp_dir, file_name);

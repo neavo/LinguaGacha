@@ -75,7 +75,7 @@ function create_executor_for_rule_type(
   const pool = getSharedQualityStatisticsWorkerPool();
   return {
     /**
-     * 按当前缓存状态计算下一步统计任务，避免重复调度。
+     * 按当前缓存状态计算下一步统计任务，避免重复调度
      */
     async compute(input) {
       return await pool.submit(input, {

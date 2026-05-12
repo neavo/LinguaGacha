@@ -26,16 +26,14 @@ import type {
 } from "./work-unit-types";
 
 /**
- * 翻译类 work unit runner，完整执行预处理、prompt、LLM、响应解析和后处理。
+ * 翻译类 work unit runner，完整执行预处理、prompt、LLM、响应解析和后处理
  */
 export class TranslationWorkUnitRunner {
-  // app_root 用于读取项目内提示词模板，worker 不依赖当前工作目录。
-  private readonly app_root: string;
-  // llm_client 是 LLM 请求唯一出口，runner 不直接拼供应商协议细节。
-  private readonly llm_client: LlmRequestClient;
+  private readonly app_root: string; // app_root 用于读取项目内提示词模板，worker 不依赖当前工作目录
+  private readonly llm_client: LlmRequestClient; // llm_client 是 LLM 请求唯一出口，runner 不直接拼供应商协议细节
 
   /**
-   * app_root 用于读取提示词模板，llm_client 是唯一网络请求出口。
+   * app_root 用于读取提示词模板，llm_client 是唯一网络请求出口
    */
   public constructor(app_root: string, llm_client: LlmRequestClient) {
     this.app_root = app_root;
@@ -43,7 +41,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 执行普通翻译 chunk；提交和重试仍由 TaskEngine 决定。
+   * 执行普通翻译 chunk；提交和重试仍由 TaskEngine 决定
    */
   public async execute_translation_chunk(
     request: TranslationWorkUnitRequest,
@@ -55,7 +53,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 执行单条重翻，输入形状显式为一个 item。
+   * 执行单条重翻，输入形状显式为一个 item
    */
   public async execute_retranslate_item(
     request: RetranslateWorkUnitRequest,
@@ -69,7 +67,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 单条翻译不写项目，只返回公开派生工具需要的 `{ success, status, dst }`。
+   * 单条翻译不写项目，只返回公开派生工具需要的 `{ success, status, dst }`
    */
   public async translate_single(
     request: TranslateSingleWorkUnitRequest,
@@ -91,7 +89,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 翻译共享实现，skip_response_check 只用于低频单条翻译。
+   * 翻译共享实现，skip_response_check 只用于低频单条翻译
    */
   private async execute_items(
     request:
@@ -147,7 +145,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 预处理每个 item；无可翻译行时直接把原文标为已处理。
+   * 预处理每个 item；无可翻译行时直接把原文标为已处理
    */
   private async prepare_request_data(
     request:
@@ -212,7 +210,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 解码模型响应、执行校验和后处理，最后只返回已终态的 item 快照。
+   * 解码模型响应、执行校验和后处理，最后只返回已终态的 item 快照
    */
   private async apply_response_data(
     context: {
@@ -305,7 +303,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 构造响应检查结果，超时和退化在这里映射成固定错误。
+   * 构造响应检查结果，超时和退化在这里映射成固定错误
    */
   private build_checks(
     context: {
@@ -338,7 +336,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 尽量复刻旧 TranslationTask 的 chunk 日志：统计、提示词片段、think/result、SRC/DST 对照都保留。
+   * 尽量复刻旧 TranslationTask 的 chunk 日志：统计、提示词片段、think/result、SRC/DST 对照都保留
    */
   private build_translation_logs(context: {
     checks: string[];
@@ -395,7 +393,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 拆分 / 重试信息来自 TaskEngine 传入的不可变上下文，日志里保留旧排障口径。
+   * 拆分 / 重试信息来自 TaskEngine 传入的不可变上下文，日志里保留旧排障口径
    */
   private build_task_status_info(
     request:
@@ -416,7 +414,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 错误码转成稳定中文文本，避免日志窗口只显示内部枚举。
+   * 错误码转成稳定中文文本，避免日志窗口只显示内部枚举
    */
   private build_error_reason(checks: string[]): string {
     const reasons = checks
@@ -427,7 +425,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 日志级别沿用旧口径：全失败是 error，部分行失败是 warning，全部通过是 info。
+   * 日志级别沿用旧口径：全失败是 error，部分行失败是 warning，全部通过是 info
    */
   private resolve_log_level(checks: string[]): WorkUnitLogEntry["level"] {
     if (checks.every((check) => check === "NONE")) {
@@ -440,7 +438,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 迁移前 ResponseChecker 的本地化文案在 worker 内压缩为固定中文诊断。
+   * 迁移前 ResponseChecker 的本地化文案在 worker 内压缩为固定中文诊断
    */
   private get_error_text(check: string): string {
     switch (check) {
@@ -466,7 +464,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 配置转给 PromptBuilder 时保留语言字段和 UI 语言。
+   * 配置转给 PromptBuilder 时保留语言字段和 UI 语言
    */
   private config_to_prompt_config(
     config: TextProcessingConfig,
@@ -484,7 +482,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 模型 API 格式缺失时按 OpenAI 处理。
+   * 模型 API 格式缺失时按 OpenAI 处理
    */
   private read_model_api_format(model: ApiJsonValue): string {
     return typeof model === "object" && model !== null && !Array.isArray(model)
@@ -493,7 +491,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * work unit item 数组只保留普通对象，避免跨线程带入奇怪值。
+   * work unit item 数组只保留普通对象，避免跨线程带入奇怪值
    */
   private read_item_list(value: ApiJsonValue | undefined): TextTaskItemRecord[] {
     return Array.isArray(value)
@@ -507,7 +505,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 单个 item 读取失败时返回 null，由调用方转换为空结果。
+   * 单个 item 读取失败时返回 null，由调用方转换为空结果
    */
   private read_item(value: ApiJsonValue | undefined): TextTaskItemRecord | null {
     return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -516,7 +514,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 数字字段保持整数语义，坏值回退默认值。
+   * 数字字段保持整数语义，坏值回退默认值
    */
   private read_number(value: unknown, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -524,7 +522,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 空结果保持字段完整，TaskEngine 不需要理解失败来源。
+   * 空结果保持字段完整，TaskEngine 不需要理解失败来源
    */
   private empty_result(): TranslationWorkUnitResult {
     return {

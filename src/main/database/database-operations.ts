@@ -61,25 +61,25 @@ function ensure_database_runtime_available(): void {
 }
 
 /**
- * 用独立错误类型标记可恢复的 database 冲突，避免调用方把它当成未知崩溃。
+ * 用独立错误类型标记可恢复的 database 冲突，避免调用方把它当成未知崩溃
  */
 export class DatabaseConflictError extends Error {}
 
 /**
- * Electron main 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式。
+ * Electron main 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式
  */
 export class ProjectDatabase {
   private readonly open_databases = new Map<string, DatabaseSync>();
 
   /**
-   * 初始化 ProjectDatabase 依赖，保持外部写入口清晰。
+   * 初始化 ProjectDatabase 依赖，保持外部写入口清晰
    */
   public constructor() {
     ensure_database_runtime_available();
   }
 
   /**
-   * 关闭底层资源，确保数据库句柄不会跨工程泄漏。
+   * 关闭底层资源，确保数据库句柄不会跨工程泄漏
    */
   public close(): void {
     for (const db of this.open_databases.values()) {
@@ -89,11 +89,10 @@ export class ProjectDatabase {
   }
 
   /**
-   * 执行受支持的数据库操作名，保持调用方只能走窄 workflow。
+   * 执行受支持的数据库操作名，保持调用方只能走窄 workflow
    */
   public execute(operation: DatabaseOperation): DatabaseJsonValue {
-    // 服务层只发送窄操作名，database 侧集中校验参数并保护 SQL 边界。
-    const args = this.normalize_args(operation.args);
+    const args = this.normalize_args(operation.args); // 服务层只发送窄操作名，database 侧集中校验参数并保护 SQL 边界
     switch (operation.name) {
       case "closeProject":
         this.close_project(this.require_string(args, "projectPath"));
@@ -287,19 +286,18 @@ export class ProjectDatabase {
   }
 
   /**
-   * 在单个 SQLite 事务内执行批量操作，保证跨步骤写入原子性。
+   * 在单个 SQLite 事务内执行批量操作，保证跨步骤写入原子性
    */
   public execute_transaction(operations: DatabaseOperation[]): null {
     if (operations.length === 0) {
       return null;
     }
-    // 单个事务只允许绑定一个工程文件，避免跨 .lg 写入出现半提交语义。
-    const first_args = this.normalize_args(operations[0]?.args);
+    const first_args = this.normalize_args(operations[0]?.args); // 单个事务只允许绑定一个工程文件，避免跨 .lg 写入出现半提交语义
     const project_path = this.require_string(first_args, "projectPath");
     const transaction_operations = [...operations];
     let should_remove_created_project_on_failure = false;
     if (transaction_operations[0]?.name === "createProject") {
-      // createProject 需要关闭现有句柄并重建文件，必须先完成文件级初始化，再把后续写入包进事务。
+      // createProject 需要关闭现有句柄并重建文件，必须先完成文件级初始化，再把后续写入包进事务
       this.execute(transaction_operations.shift() as DatabaseOperation);
       should_remove_created_project_on_failure = true;
       if (transaction_operations.length === 0) {
@@ -325,11 +323,10 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按 asset 路径读取解压后的内容，隐藏 .lg 内部压缩格式。
+   * 按 asset 路径读取解压后的内容，隐藏 .lg 内部压缩格式
    */
   public read_asset_content(project_path: string, asset_path: string): Buffer | null {
-    // 调用方只消费解压后的原始 bytes，Zstd 格式细节留在 main 进程。
-    const db = this.open_project(project_path);
+    const db = this.open_project(project_path); // 调用方只消费解压后的原始 bytes，Zstd 格式细节留在 main 进程
     const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(asset_path);
     if (row === undefined) {
       return null;
@@ -338,7 +335,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 把外部参数归一为对象，避免每个操作重复兜底。
+   * 把外部参数归一为对象，避免每个操作重复兜底
    */
   private normalize_args(
     args: Record<string, DatabaseJsonValue> | undefined,
@@ -347,7 +344,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 打开并迁移工程数据库，确保后续读写看到当前 schema。
+   * 打开并迁移工程数据库，确保后续读写看到当前 schema
    */
   private open_project(project_path: string): DatabaseSync {
     const normalized_path = path.resolve(project_path);
@@ -360,14 +357,14 @@ export class ProjectDatabase {
     db.exec("PRAGMA journal_mode=WAL");
     db.exec("PRAGMA synchronous=NORMAL");
     db.exec("PRAGMA busy_timeout=5000");
-    // 每次首次打开都先跑幂等迁移，兼容既有 .lg，同时让业务读到当前 schema。
+    // 每次首次打开都先跑幂等迁移，兼容既有 .lg，同时让业务读到当前 schema
     ProjectDatabaseMigrationService.migrate(db);
     this.open_databases.set(normalized_path, db);
     return db;
   }
 
   /**
-   * 关闭指定工程连接，释放 ProjectDatabase 缓存中的句柄。
+   * 关闭指定工程连接，释放 ProjectDatabase 缓存中的句柄
    */
   private close_project(project_path: string): void {
     const normalized_path = path.resolve(project_path);
@@ -380,7 +377,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 创建新 .lg 数据库并初始化 schema，作为工程落盘入口。
+   * 创建新 .lg 数据库并初始化 schema，作为工程落盘入口
    */
   private create_project(project_path: string, name: string): null {
     const normalized_path = path.resolve(project_path);
@@ -400,7 +397,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取单个 meta 值，保持调用方不直接触碰 SQL。
+   * 读取单个 meta 值，保持调用方不直接触碰 SQL
    */
   private get_meta(
     project_path: string,
@@ -413,21 +410,21 @@ export class ProjectDatabase {
   }
 
   /**
-   * 写入单个 meta 值，维持 meta 更新的统一序列化方式。
+   * 写入单个 meta 值，维持 meta 更新的统一序列化方式
    */
   private set_meta(project_path: string, key: string, value: DatabaseJsonValue): void {
     this.upsert_meta_entries(project_path, { [key]: value });
   }
 
   /**
-   * 批量写入 meta 项，减少跨边界多次 database workflow。
+   * 批量写入 meta 项，减少跨边界多次 database workflow
    */
   private upsert_meta_entries(project_path: string, meta: DatabaseRow): void {
     this.upsert_meta_entries_with_db(this.open_project(project_path), meta);
   }
 
   /**
-   * 在既有事务连接内写入 meta，避免事务中重新取句柄。
+   * 在既有事务连接内写入 meta，避免事务中重新取句柄
    */
   private upsert_meta_entries_with_db(db: DatabaseSync, meta: DatabaseRow): void {
     const statement = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
@@ -437,7 +434,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取完整 meta 快照，供运行态编码一次性构建事实。
+   * 读取完整 meta 快照，供运行态编码一次性构建事实
    */
   private get_all_meta(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
@@ -449,7 +446,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 由内部任务数据路由调用的窄 revision 推进入口；公开读取和 ack 仍由 项目域计算。
+   * 由内部任务数据路由调用的窄 revision 推进入口；公开读取和 ack 仍由 项目域计算
    */
   private bump_runtime_section_revisions(
     project_path: string,
@@ -486,7 +483,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取分析 checkpoint，保持断点续跑只依赖持久事实。
+   * 读取分析 checkpoint，保持断点续跑只依赖持久事实
    */
   private get_analysis_item_checkpoints(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
@@ -506,7 +503,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 批量保存分析 checkpoint，保证任务提交进度可恢复。
+   * 批量保存分析 checkpoint，保证任务提交进度可恢复
    */
   private upsert_analysis_item_checkpoints(
     project_path: string,
@@ -533,7 +530,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 删除指定 checkpoint，避免重置后残留分析状态。
+   * 删除指定 checkpoint，避免重置后残留分析状态
    */
   private delete_analysis_item_checkpoints(project_path: string, status: string | null): number {
     const db = this.open_project(project_path);
@@ -546,7 +543,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 归一候选聚合行，确保不同写入来源共用同一返回形状。
+   * 归一候选聚合行，确保不同写入来源共用同一返回形状
    */
   private normalize_candidate_rows(rows: DatabaseRow[]): DatabaseJsonValue {
     return rows.map((row) => ({
@@ -561,7 +558,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取分析候选聚合，供术语导入预演复用。
+   * 读取分析候选聚合，供术语导入预演复用
    */
   private get_analysis_candidate_aggregates(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
@@ -577,7 +574,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按原文批量读取候选聚合，减少分析辅助查询次数。
+   * 按原文批量读取候选聚合，减少分析辅助查询次数
    */
   private get_analysis_candidate_aggregates_by_srcs(
     project_path: string,
@@ -602,7 +599,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 批量写入候选聚合，保持分析结果提交原子化。
+   * 批量写入候选聚合，保持分析结果提交原子化
    */
   private upsert_analysis_candidate_aggregates(
     project_path: string,
@@ -635,14 +632,14 @@ export class ProjectDatabase {
   }
 
   /**
-   * 清空候选聚合，确保分析重置不混入残留候选。
+   * 清空候选聚合，确保分析重置不混入残留候选
    */
   private clear_analysis_candidate_aggregates(project_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM analysis_candidate_aggregate").run();
   }
 
   /**
-   * 计算下一个 asset 排序位，保持文件列表顺序稳定。
+   * 计算下一个 asset 排序位，保持文件列表顺序稳定
    */
   private get_next_asset_sort_order(db: DatabaseSync): number {
     const row = db
@@ -652,7 +649,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 从源文件导入 asset，统一压缩和排序字段写入。
+   * 从源文件导入 asset，统一压缩和排序字段写入
    */
   private add_asset_from_source(
     project_path: string,
@@ -672,7 +669,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 导入已压缩 asset，避免跨边界传输二进制细节。
+   * 导入已压缩 asset，避免跨边界传输二进制细节
    */
   private add_asset_compressed_base64(
     project_path: string,
@@ -691,7 +688,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 写入 asset buffer，集中处理压缩和记录插入。
+   * 写入 asset buffer，集中处理压缩和记录插入
    */
   private add_asset_buffer(
     project_path: string,
@@ -709,7 +706,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 用源文件更新 asset 内容，保持路径记录不被调用方重建。
+   * 用源文件更新 asset 内容，保持路径记录不被调用方重建
    */
   private update_asset_from_source(
     project_path: string,
@@ -731,7 +728,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 更新 asset 路径，保护路径唯一性由数据库入口维护。
+   * 更新 asset 路径，保护路径唯一性由数据库入口维护
    */
   private update_asset_path(project_path: string, old_path: string, new_path: string): void {
     const result = this.open_project(project_path)
@@ -743,7 +740,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取压缩 asset 文本，供需要原始压缩载荷的接口兼容。
+   * 读取压缩 asset 文本，供需要原始压缩载荷的接口兼容
    */
   private get_asset_compressed_base64(project_path: string, asset_path: string): DatabaseJsonValue {
     const row = this.open_project(project_path)
@@ -753,14 +750,14 @@ export class ProjectDatabase {
   }
 
   /**
-   * 删除 asset 记录，保持文件移除只走存储入口。
+   * 删除 asset 记录，保持文件移除只走存储入口
    */
   private delete_asset(project_path: string, asset_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM assets WHERE path = ?").run(asset_path);
   }
 
   /**
-   * 检查 asset 路径是否占用，供导入链路生成稳定唯一名。
+   * 检查 asset 路径是否占用，供导入链路生成稳定唯一名
    */
   private asset_path_exists(project_path: string, asset_path: string): boolean {
     const row = this.open_project(project_path)
@@ -770,7 +767,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取所有 asset 路径，供工作台文件集合重建。
+   * 读取所有 asset 路径，供工作台文件集合重建
    */
   private get_all_asset_paths(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
@@ -780,7 +777,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取 asset 记录快照，供运行态排序与导出使用。
+   * 读取 asset 记录快照，供运行态排序与导出使用
    */
   private get_all_asset_records(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
@@ -790,7 +787,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 批量更新 asset 顺序，保证文件重排一次事务完成。
+   * 批量更新 asset 顺序，保证文件重排一次事务完成
    */
   private update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
     const statement = this.open_project(project_path).prepare(
@@ -802,7 +799,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取全部条目事实，供 bootstrap 和项目快照重建。
+   * 读取全部条目事实，供 bootstrap 和项目快照重建
    */
   private get_all_items(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
@@ -812,7 +809,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按 id 读取条目，减少校对和任务提交后的回查范围。
+   * 按 id 读取条目，减少校对和任务提交后的回查范围
    */
   private get_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
     const normalized_ids = [
@@ -841,7 +838,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按文件删除条目，保证文件移除同步清理条目事实。
+   * 按文件删除条目，保证文件移除同步清理条目事实
    */
   private delete_items_by_file_path(project_path: string, file_path: string): number {
     const db = this.open_project(project_path);
@@ -854,8 +851,7 @@ export class ProjectDatabase {
       if (!(error instanceof Error) || !error.message.includes("json_extract")) {
         throw error;
       }
-      // 某些运行时可能没有 JSON1，退回逐行解析以保持删除语义可用。
-      const ids: number[] = [];
+      const ids: number[] = []; // 某些运行时可能没有 JSON1，退回逐行解析以保持删除语义可用
       for (const row of db.prepare("SELECT id, data FROM items").all()) {
         const data = this.value_record(json_parse(row["data"]));
         if (data["file_path"] === file_path) {
@@ -875,7 +871,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 写入单条条目事实，统一 item payload 序列化规则。
+   * 写入单条条目事实，统一 item payload 序列化规则
    */
   private set_item(project_path: string, item: DatabaseRow): number {
     const db = this.open_project(project_path);
@@ -896,7 +892,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 批量写入条目事实，确保导入和重置链路高效落盘。
+   * 批量写入条目事实，确保导入和重置链路高效落盘
    */
   private set_items(project_path: string, items: DatabaseJsonValue[]): number[] {
     const db = this.open_project(project_path);
@@ -920,12 +916,11 @@ export class ProjectDatabase {
   }
 
   /**
-   * 预览批量替换影响范围，避免页面直接拼 SQL 选择条目。
+   * 预览批量替换影响范围，避免页面直接拼 SQL 选择条目
    */
   private preview_replace_all_item_ids(project_path: string, items: DatabaseJsonValue[]): number[] {
     const db = this.open_project(project_path);
-    // 前端预演需要稳定 id，但不能为了预览提前改动 sqlite_sequence。
-    const sequence_row = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'items'").get();
+    const sequence_row = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'items'").get(); // 前端预演需要稳定 id，但不能为了预览提前改动 sqlite_sequence
     const max_row = db.prepare("SELECT MAX(id) AS max_id FROM items").get();
     let current_max_id = Math.max(
       sequence_row === undefined ? 0 : row_number(sequence_row, "seq"),
@@ -951,7 +946,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按受限字段批量更新条目，收口校对批量 mutation。
+   * 按受限字段批量更新条目，收口校对批量 mutation
    */
   private update_batch(
     project_path: string,
@@ -983,7 +978,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取指定规则集合，保持质量规则运行时只看数据库事实。
+   * 读取指定规则集合，保持质量规则运行时只看数据库事实
    */
   private get_rules(project_path: string, rule_type: string): DatabaseJsonValue {
     const row = this.open_project(project_path)
@@ -1001,14 +996,14 @@ export class ProjectDatabase {
   }
 
   /**
-   * 写入指定规则集合，统一 revision 与 payload 维护。
+   * 写入指定规则集合，统一 revision 与 payload 维护
    */
   private set_rules(project_path: string, rule_type: string, rules: DatabaseJsonValue[]): void {
     this.set_rules_with_db(this.open_project(project_path), rule_type, rules);
   }
 
   /**
-   * 在既有事务连接内写入规则，避免规则和 meta 分离提交。
+   * 在既有事务连接内写入规则，避免规则和 meta 分离提交
    */
   private set_rules_with_db(db: DatabaseSync, rule_type: string, rules: DatabaseJsonValue[]): void {
     db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
@@ -1019,14 +1014,14 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取提示词或规则文本，统一文本规则落点。
+   * 读取提示词或规则文本，统一文本规则落点
    */
   private get_rule_text(project_path: string, rule_type: string): string {
     return this.get_rule_text_by_name(project_path, rule_type);
   }
 
   /**
-   * 按规则名读取文本，兼容命名入口。
+   * 按规则名读取文本，兼容命名入口
    */
   private get_rule_text_by_name(project_path: string, rule_type_name: string): string {
     const row = this.open_project(project_path)
@@ -1039,7 +1034,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 保存文本规则内容，保持 prompt 与规则文本写入一致。
+   * 保存文本规则内容，保持 prompt 与规则文本写入一致
    */
   private set_rule_text(project_path: string, rule_type: string, text: string): void {
     const db = this.open_project(project_path);
@@ -1051,7 +1046,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 解析当前文本规则对象载荷。
+   * 解析当前文本规则对象载荷
    */
   private deserialize_rule_text_payload(raw_data: string): string {
     try {
@@ -1067,7 +1062,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取工程摘要，供打开预览和运行态快速判断使用。
+   * 读取工程摘要，供打开预览和运行态快速判断使用
    */
   private get_project_summary(project_path: string): DatabaseJsonValue {
     const meta = this.value_record(this.get_all_meta(project_path));
@@ -1117,7 +1112,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验必填字符串，避免脏载荷进入数据库层。
+   * 校验必填字符串，避免脏载荷进入数据库层
    */
   private require_string(args: Record<string, DatabaseJsonValue>, key: string): string {
     const value = args[key];
@@ -1128,7 +1123,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验可选字符串，统一空值和类型错误语义。
+   * 校验可选字符串，统一空值和类型错误语义
    */
   private optional_string(args: Record<string, DatabaseJsonValue>, key: string): string | null {
     const value = args[key];
@@ -1136,7 +1131,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验必填数字，避免调用点散落类型断言。
+   * 校验必填数字，避免调用点散落类型断言
    */
   private require_number(args: Record<string, DatabaseJsonValue>, key: string): number {
     const value = args[key];
@@ -1147,7 +1142,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验可选数字，统一空值和类型错误语义。
+   * 校验可选数字，统一空值和类型错误语义
    */
   private optional_number(args: Record<string, DatabaseJsonValue>, key: string): number | null {
     const value = args[key];
@@ -1155,14 +1150,14 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验必填对象，保证 workflow 参数形状稳定。
+   * 校验必填对象，保证 workflow 参数形状稳定
    */
   private require_record(args: Record<string, DatabaseJsonValue>, key: string): DatabaseRow {
     return this.value_record(args[key]);
   }
 
   /**
-   * 校验可选对象，减少调用点重复防御。
+   * 校验可选对象，减少调用点重复防御
    */
   private optional_record(
     args: Record<string, DatabaseJsonValue>,
@@ -1176,7 +1171,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验必填数组，避免数据库操作接收非数组载荷。
+   * 校验必填数组，避免数据库操作接收非数组载荷
    */
   private require_array(args: Record<string, DatabaseJsonValue>, key: string): DatabaseJsonValue[] {
     const value = args[key];
@@ -1187,7 +1182,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验可选数组，统一空载荷处理。
+   * 校验可选数组，统一空载荷处理
    */
   private optional_array(
     args: Record<string, DatabaseJsonValue>,
@@ -1198,21 +1193,21 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校验字符串数组，保护批量路径和 id 操作。
+   * 校验字符串数组，保护批量路径和 id 操作
    */
   private require_string_array(args: Record<string, DatabaseJsonValue>, key: string): string[] {
     return this.require_array(args, key).map((value) => String(value));
   }
 
   /**
-   * 校验数字数组，保护批量序号操作。
+   * 校验数字数组，保护批量序号操作
    */
   private require_number_array(args: Record<string, DatabaseJsonValue>, key: string): number[] {
     return this.require_array(args, key).map((value) => Number(value));
   }
 
   /**
-   * 把 JSON 值收窄为对象，保留数据库 payload 的类型边界。
+   * 把 JSON 值收窄为对象，保留数据库 payload 的类型边界
    */
   private value_record(value: DatabaseJsonValue | unknown): DatabaseRow {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {

@@ -286,8 +286,7 @@ export function useTranslationTaskRuntime(
         observed_translation_waveform_time_ref.current = next_now_seconds;
       }
 
-      // 为什么：运行态两帧之间没有新数据时，要保留上一跳高度，视觉上才能保持连续扫屏。
-      set_translation_waveform_history((previous_history) => {
+      set_translation_waveform_history((previous_history) => { // 为什么：运行态两帧之间没有新数据时，要保留上一跳高度，视觉上才能保持连续扫屏
         return append_workbench_waveform_sample(
           previous_history,
           current_translation_waveform_sample_ref.current,
@@ -300,8 +299,7 @@ export function useTranslationTaskRuntime(
       current_translation_waveform_sample_ref.current,
     );
 
-    // 为什么：任务结束后不再生成新峰值，只让旧波形带着衰减尾巴继续向前推进，直到视窗归零。
-    set_translation_waveform_history((previous_history) => {
+    set_translation_waveform_history((previous_history) => { // 为什么：任务结束后不再生成新峰值，只让旧波形带着衰减尾巴继续向前推进，直到视窗归零
       return append_workbench_waveform_sample(
         previous_history,
         current_translation_waveform_sample_ref.current,
@@ -664,7 +662,7 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    // 为什么：toast 只应该响应一次真实的生命周期跃迁，不能被首屏 hydration 或快照重刷重复触发。
+    // 为什么：toast 只应该响应一次真实的生命周期跃迁，不能被首屏 hydration 或快照重刷重复触发
     const feedback_message = resolve_translation_terminal_feedback_message({
       previous_status,
       next_status,
@@ -700,8 +698,7 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    // 为什么：结束态仍然要对齐最终指标，但波形采样只保留最后一跳，然后交给衰减尾巴继续前推。
-    const next_now_seconds = Date.now() / 1000;
+    const next_now_seconds = Date.now() / 1000; // 为什么：结束态仍然要对齐最终指标，但波形采样只保留最后一跳，然后交给衰减尾巴继续前推
     const next_visual_snapshot =
       translation_task_display_snapshot === null
         ? null
@@ -724,8 +721,7 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    // 为什么：运行态和收尾态都需要继续推进采样，前者保持连贯，后者负责把尾巴渐渐扫干净。
-    append_translation_waveform_sample();
+    append_translation_waveform_sample(); // 为什么：运行态和收尾态都需要继续推进采样，前者保持连贯，后者负责把尾巴渐渐扫干净
     const timer_id = window.setInterval(() => {
       append_translation_waveform_sample();
     }, WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS);

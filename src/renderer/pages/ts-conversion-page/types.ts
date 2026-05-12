@@ -15,7 +15,7 @@ export type TsConversionConvertedItem = {
   name_dst: TsConversionNameDst;
 };
 
-// 质量规则预设读取保持通用 entries 形状，页面自行收窄 text_preserve 的 src 字段。
+// 质量规则预设读取保持通用 entries 形状，页面自行收窄 text_preserve 的 src 字段
 export type TsConversionRulePresetPayload = {
   entries?: unknown[];
 };

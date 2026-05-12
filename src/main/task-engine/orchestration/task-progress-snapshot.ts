@@ -2,7 +2,7 @@ import type { ApiJsonValue } from "../../api/api-types";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { TaskProgressSnapshot } from "./task-engine-types";
 
-// 进度字段默认值集中在这里，避免 runner 新增字段时漏写归零逻辑。
+// 进度字段默认值集中在这里，避免 runner 新增字段时漏写归零逻辑
 const EMPTY_PROGRESS: TaskProgressSnapshot = {
   start_time: 0,
   time: 0,
@@ -16,18 +16,18 @@ const EMPTY_PROGRESS: TaskProgressSnapshot = {
 };
 
 /**
- * 任务进度快照工具，复刻历史 `TaskProgressSnapshot` 的数值口径。
+ * 任务进度快照工具，复刻历史 `TaskProgressSnapshot` 的数值口径
  */
 export class TaskProgressSnapshotTool {
   /**
-   * 创建新任务进度，start_time 使用秒级浮点数兼容旧前端展示。
+   * 创建新任务进度，start_time 使用秒级浮点数兼容旧前端展示
    */
   public static empty(total_line = 0, start_time = Date.now() / 1000): TaskProgressSnapshot {
     return { ...EMPTY_PROGRESS, total_line, start_time };
   }
 
   /**
-   * 从数据库 meta 或 executor payload 恢复进度，坏值统一归零。
+   * 从数据库 meta 或 executor payload 恢复进度，坏值统一归零
    */
   public static from_record(value: ApiJsonValue | undefined): TaskProgressSnapshot {
     const record = this.is_record(value) ? value : {};
@@ -45,7 +45,7 @@ export class TaskProgressSnapshotTool {
   }
 
   /**
-   * 更新耗时字段时只依赖 start_time，避免多个 runner 各自累计误差。
+   * 更新耗时字段时只依赖 start_time，避免多个 runner 各自累计误差
    */
   public static with_elapsed(snapshot: TaskProgressSnapshot): TaskProgressSnapshot {
     if (snapshot.start_time <= 0) {
@@ -55,7 +55,7 @@ export class TaskProgressSnapshotTool {
   }
 
   /**
-   * 累计 token 并同步 total_tokens，保持输入输出字段是唯一来源。
+   * 累计 token 并同步 total_tokens，保持输入输出字段是唯一来源
    */
   public static add_tokens(
     snapshot: TaskProgressSnapshot,
@@ -73,7 +73,7 @@ export class TaskProgressSnapshotTool {
   }
 
   /**
-   * 更新行数统计，并默认让 line 等于 processed + error。
+   * 更新行数统计，并默认让 line 等于 processed + error
    */
   public static with_counts(
     snapshot: TaskProgressSnapshot,
@@ -91,21 +91,21 @@ export class TaskProgressSnapshotTool {
   }
 
   /**
-   * 转成可写入 database meta 的普通 JSON 对象。
+   * 转成可写入 database meta 的普通 JSON 对象
    */
   public static to_record(snapshot: TaskProgressSnapshot): MutableJsonRecord {
     return { ...snapshot };
   }
 
   /**
-   * record 判断集中处理，避免数组被当成进度对象。
+   * record 判断集中处理，避免数组被当成进度对象
    */
   private static is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
-   * 整数字段保持历史 int 语义，非法值走 fallback。
+   * 整数字段保持历史 int 语义，非法值走 fallback
    */
   private static read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -113,7 +113,7 @@ export class TaskProgressSnapshotTool {
   }
 
   /**
-   * 时间字段允许小数，避免耗时显示被截断。
+   * 时间字段允许小数，避免耗时显示被截断
    */
   private static read_float(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);

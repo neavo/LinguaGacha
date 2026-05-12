@@ -411,8 +411,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const has_active_filters = has_active_glossary_filters(filter_state);
   const has_active_sort = sort_state.field !== null;
   const readonly = is_task_mutation_locked(task_snapshot);
-  // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用。
-  const drag_disabled = readonly || has_active_filters || has_active_sort;
+  const drag_disabled = readonly || has_active_filters || has_active_sort; // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用
   const statistics_badge_by_entry_id = useMemo<
     Record<GlossaryEntryId, GlossaryStatisticsBadgeState>
   >(() => {
@@ -464,8 +463,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, []);
 
   const clear_selection_state = useCallback((): void => {
-    // 规则导入、预设应用和重置都会重排/折叠条目，先清空选区能避免旧 id 误绑到新行。
-    set_selected_entry_ids([]);
+    set_selected_entry_ids([]); // 规则导入、预设应用和重置都会重排/折叠条目，先清空选区能避免旧 id 误绑到新行
     set_active_entry_id(null);
     set_selection_anchor_entry_id(null);
   }, []);
@@ -601,8 +599,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [apply_snapshot, apply_store_snapshot, project_snapshot.loaded, project_snapshot.path]);
 
   useEffect(() => {
-    // 筛选视图是当前页面的真实操作上下文，选中集必须与可见结果保持一致。
-    set_selected_entry_ids((previous_ids) => {
+    set_selected_entry_ids((previous_ids) => { // 筛选视图是当前页面的真实操作上下文，选中集必须与可见结果保持一致
       return previous_ids.filter((entry_id) => {
         return entry_index_by_id.has(entry_id) && visible_entry_id_set.has(entry_id);
       });
@@ -685,8 +682,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      // 统计入口要把用户带回一条可解释的筛选路径，而不是偷偷叠加更多隐式条件。
-      set_filter_state({
+      set_filter_state({ // 统计入口要把用户带回一条可解释的筛选路径，而不是偷偷叠加更多隐式条件
         keyword: target_entry.src,
         scope: "src",
         is_regex: false,
@@ -759,8 +755,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     const insert_after_entry_id = resolve_create_insert_after_entry_id();
 
-    // 新增态不再继承当前选中上下文，避免动作条删除与创建语义冲突。
-    set_selected_entry_ids([]);
+    set_selected_entry_ids([]); // 新增态不再继承当前选中上下文，避免动作条删除与创建语义冲突
     set_active_entry_id(null);
     set_selection_anchor_entry_id(null);
     set_dialog_state({

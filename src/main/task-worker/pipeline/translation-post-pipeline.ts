@@ -11,7 +11,7 @@ import type { TextProcessingConfig, TextQualitySnapshot } from "../../../shared/
 import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";
 
 /**
- * 翻译译后流程输出，包含可回写正文和可选译后姓名。
+ * 翻译译后流程输出，包含可回写正文和可选译后姓名
  */
 export interface TranslationPostPipelineResult {
   name: string | null;
@@ -19,14 +19,14 @@ export interface TranslationPostPipelineResult {
 }
 
 /**
- * 翻译译后 pipeline，负责校正模型输出并按译前上下文重建 item 文本。
+ * 翻译译后 pipeline，负责校正模型输出并按译前上下文重建 item 文本
  */
 export class TranslationPostPipeline {
   private readonly config: TextProcessingConfig;
   private readonly quality_snapshot: TextQualitySnapshot;
 
   /**
-   * 绑定配置快照和质量快照，确保译后修复与译前规则使用同一批快照。
+   * 绑定配置快照和质量快照，确保译后修复与译前规则使用同一批快照
    */
   public constructor(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
     this.config = config;
@@ -34,7 +34,7 @@ export class TranslationPostPipeline {
   }
 
   /**
-   * 按镜像顺序恢复保护段、执行修复和替换，并回写原始空白。
+   * 按镜像顺序恢复保护段、执行修复和替换，并回写原始空白
    */
   public process_item(
     context: TranslationPrePipelineContext,
@@ -69,7 +69,7 @@ export class TranslationPostPipeline {
   }
 
   /**
-   * 姓名提取只在源 item 确实带 name_src 时启用，避免误吃普通括号文本。
+   * 姓名提取只在源 item 确实带 name_src 时启用，避免误吃普通括号文本
    */
   private extract_name(
     context: TranslationPrePipelineContext,
@@ -87,7 +87,7 @@ export class TranslationPostPipeline {
   }
 
   /**
-   * 自动修复顺序必须保持：语言残留、代码、转义、数字、标点。
+   * 自动修复顺序必须保持：语言残留、代码、转义、数字、标点
    */
   private auto_fix(context: TranslationPrePipelineContext, src: string, dst: string): string {
     let result = dst;
@@ -109,7 +109,7 @@ export class TranslationPostPipeline {
   }
 
   /**
-   * 译后替换和译前替换共享同一组 regex / literal 语义。
+   * 译后替换和译前替换共享同一组 regex / literal 语义
    */
   private replace_post_translation(dst: string): string {
     if (!this.quality_snapshot.post_replacement_enable) {
@@ -119,7 +119,7 @@ export class TranslationPostPipeline {
   }
 
   /**
-   * 判断当前 item 是否带源姓名，数组字段只要存在一个非空姓名即启用提取。
+   * 判断当前 item 是否带源姓名，数组字段只要存在一个非空姓名即启用提取
    */
   private has_source_name(context: TranslationPrePipelineContext): boolean {
     const item = context.item;
@@ -136,7 +136,7 @@ export class TranslationPostPipeline {
   }
 
   /**
-   * 样例规则用于代码修复，必须和译前样例收集使用同一条规则。
+   * 样例规则用于代码修复，必须和译前样例收集使用同一条规则
    */
   private get_re_sample(context: TranslationPrePipelineContext): RegExp | null {
     return build_text_preserve_rule({
@@ -148,7 +148,7 @@ export class TranslationPostPipeline {
   }
 
   /**
-   * item 文本类型缺失时按 TXT 处理，避免代码修复读取空规则。
+   * item 文本类型缺失时按 TXT 处理，避免代码修复读取空规则
    */
   private read_text_type(context: TranslationPrePipelineContext): string {
     return String(context.item?.text_type ?? "TXT").toUpperCase();

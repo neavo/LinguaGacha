@@ -8,16 +8,16 @@ import { Item } from "../../base/item";
 type JsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * 文件解析预演服务；公开源文件草稿只由 main 进程文件域解析。
+ * 文件解析预演服务；公开源文件草稿只由 main 进程文件域解析
  */
 export class FilePreviewService {
   /**
-   * 预演服务只编排配置和 格式处理器，不直接写数据库。
+   * 预演服务只编排配置和 格式处理器，不直接写数据库
    */
   public constructor(private readonly setting_service: SettingService) {}
 
   /**
-   * 工作台单文件预解析允许部分失败，用户界面只展示成功解析的候选。
+   * 工作台单文件预解析允许部分失败，用户界面只展示成功解析的候选
    */
   public async parse_workbench_file(request: JsonRecord): Promise<JsonRecord> {
     const source_paths = this.normalize_string_list(request["source_paths"]);
@@ -30,14 +30,14 @@ export class FilePreviewService {
         const parsed = await format_service.parse_file_preview(source_path, current_rel_path);
         files.push({ source_path, ...(parsed as unknown as JsonRecord) });
       } catch {
-        // 批量预解析允许单个文件失败，调用方只消费成功项。
+        // 批量预解析允许单个文件失败，调用方只消费成功项
       }
     }
     return { files: files as unknown as ApiJsonValue };
   }
 
   /**
-   * 新建工程预览统一分配临时 item id，所有公开文件格式都走 文件域。
+   * 新建工程预览统一分配临时 item id，所有公开文件格式都走 文件域
    */
   public async build_create_preview(request: JsonRecord): Promise<JsonRecord> {
     const source_paths = this.normalize_string_list(request["source_paths"]);
@@ -81,7 +81,7 @@ export class FilePreviewService {
   }
 
   /**
-   * 每次按当前配置创建格式服务，避免设置页改动后预演仍使用旧语言。
+   * 每次按当前配置创建格式服务，避免设置页改动后预演仍使用旧语言
    */
   private create_format_service(): FileFormatService {
     const config = this.setting_service.load_setting();
@@ -97,7 +97,7 @@ export class FilePreviewService {
   }
 
   /**
-   * API 入参只接受非空字符串路径，其他值直接丢弃。
+   * API 入参只接受非空字符串路径，其他值直接丢弃
    */
   private normalize_string_list(value: ApiJsonValue | undefined): string[] {
     return Array.isArray(value)

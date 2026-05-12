@@ -13,7 +13,7 @@ import { Item } from "../../base/item";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 
-// 公开 source-files 只枚举当前文件域已经支持的格式，避免新建工程误收未知文件。
+// 公开 source-files 只枚举当前文件域已经支持的格式，避免新建工程误收未知文件
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([
   ".txt",
   ".md",
@@ -31,40 +31,26 @@ type MutableJsonRecord = Record<string, ApiJsonValue>;
 type JsonRecordLike = Record<string, ApiJsonValue | DatabaseJsonValue | undefined>;
 
 interface CreateCommitFileRecord {
-  // rel_path 是 .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代。
-  rel_path: string;
-  // source_path 只传给 database workflow 读取 bytes，项目域不理解压缩格式。
-  source_path: string;
-  // sort_index 决定工作台文件顺序，必须随 asset 一起落库。
-  sort_index: number;
+  rel_path: string; // rel_path 是 .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代
+  source_path: string; // source_path 只传给 database workflow 读取 bytes，项目域不理解压缩格式
+  sort_index: number; // sort_index 决定工作台文件顺序，必须随 asset 一起落库
 }
 
 interface QualityDefaultPresetSpec {
-  // config_key 对应用户设置里的默认预设虚拟 ID。
-  config_key: string;
-  // preset_directory 决定内置和用户预设目录。
-  preset_directory: string;
-  // rule_type 是 rules 表当前物理类型。
-  rule_type: string;
-  // meta_key 表示预设成功加载后需要同步开启的工程设置。
-  meta_key: string;
-  // meta_value 是预设启用后的工程设置值。
-  meta_value: DatabaseJsonValue;
-  // display_name 只用于日志，不进入公开协议。
-  display_name: string;
+  config_key: string; // config_key 对应用户设置里的默认预设虚拟 ID
+  preset_directory: string; // preset_directory 决定内置和用户预设目录
+  rule_type: string; // rule_type 是 rules 表当前物理类型
+  meta_key: string; // meta_key 表示预设成功加载后需要同步开启的工程设置
+  meta_value: DatabaseJsonValue; // meta_value 是预设启用后的工程设置值
+  display_name: string; // display_name 只用于日志，不进入公开协议
 }
 
 interface PromptDefaultPresetSpec {
-  // config_key 对应翻译或分析提示词默认预设。
-  config_key: string;
-  // task_type 由 AppPathService 映射到 prompt 目录。
-  task_type: "translation" | "analysis";
-  // rule_type 是 rules 表当前提示词物理类型。
-  rule_type: string;
-  // meta_key 控制提示词启用态。
-  meta_key: string;
-  // display_name 只用于日志，不进入公开协议。
-  display_name: string;
+  config_key: string; // config_key 对应翻译或分析提示词默认预设
+  task_type: "translation" | "analysis"; // task_type 由 AppPathService 映射到 prompt 目录
+  rule_type: string; // rule_type 是 rules 表当前提示词物理类型
+  meta_key: string; // meta_key 控制提示词启用态
+  display_name: string; // display_name 只用于日志，不进入公开协议
 }
 
 const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
@@ -120,29 +106,23 @@ const PROMPT_DEFAULT_PRESET_SPECS: PromptDefaultPresetSpec[] = [
 ];
 
 /**
- * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口。
+ * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
  */
 export class ProjectLifecycleService {
-  // database 是 .lg 物理事实唯一写入口，项目域只拼受限 operation。
-  private readonly database: ProjectDatabase;
+  private readonly database: ProjectDatabase; // database 是 .lg 物理事实唯一写入口，项目域只拼受限 operation
 
-  // session_state 是 renderer 可见 loaded/path 的唯一权威。
-  private readonly session_state: ProjectSessionState;
+  private readonly session_state: ProjectSessionState; // session_state 是 renderer 可见 loaded/path 的唯一权威
 
-  // setting_service 提供当前应用设置，用于打开预演与默认预设选择。
-  private readonly setting_service: SettingService;
+  private readonly setting_service: SettingService; // setting_service 提供当前应用设置，用于打开预演与默认预设选择
 
-  // paths 统一解析内置 / 用户预设目录，避免项目域拼第二套路由规则。
-  private readonly paths: AppPathService;
+  private readonly paths: AppPathService; // paths 统一解析内置 / 用户预设目录，避免项目域拼第二套路由规则
 
-  // log_manager 记录默认预设初始化结果，响应体不扩大公开协议。
-  private readonly log_manager: LogManager;
+  private readonly log_manager: LogManager; // log_manager 记录默认预设初始化结果，响应体不扩大公开协议
 
-  // compatibility_migration_service 只生成兼容写回操作，事务仍由生命周期入口持有。
-  private readonly compatibility_migration_service: ProjectCompatibilityMigrationService;
+  private readonly compatibility_migration_service: ProjectCompatibilityMigrationService; // compatibility_migration_service 只生成兼容写回操作，事务仍由生命周期入口持有
 
   /**
-   * 初始化项目生命周期依赖，保持公开路由层只负责装配。
+   * 初始化项目生命周期依赖，保持公开路由层只负责装配
    */
   public constructor(
     database: ProjectDatabase,
@@ -163,7 +143,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取当前工程快照；公开 loaded/path 只来自 会话权威。
+   * 读取当前工程快照；公开 loaded/path 只来自 会话权威
    */
   public async get_project_snapshot(): Promise<Record<string, ApiJsonValue>> {
     const state = this.session_state.snapshot();
@@ -176,7 +156,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 加载既有 .lg，并在标记 会话前完成打开期兼容迁移。
+   * 加载既有 .lg，并在标记 会话前完成打开期兼容迁移
    */
   public async load_project(
     body: Record<string, ApiJsonValue>,
@@ -197,7 +177,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 把前端预过滤后的新建工程草稿写入 .lg，并复用 load_project 进入 loaded 状态。
+   * 把前端预过滤后的新建工程草稿写入 .lg，并复用 load_project 进入 loaded 状态
    */
   public async create_project_commit(
     body: Record<string, ApiJsonValue>,
@@ -239,7 +219,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取打开工程前的设置对齐预演，不进入 loaded 状态，也不写运行态事实。
+   * 读取打开工程前的设置对齐预演，不进入 loaded 状态，也不写运行态事实
    */
   public get_open_alignment_preview(
     body: Record<string, ApiJsonValue>,
@@ -288,7 +268,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 卸载公开工程会话，并释放 database 缓存句柄。
+   * 卸载公开工程会话，并释放 database 缓存句柄
    */
   public async unload_project(): Promise<Record<string, ApiJsonValue>> {
     const state = this.session_state.snapshot();
@@ -308,7 +288,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取 .lg 摘要预览，不加载工程会话。
+   * 读取 .lg 摘要预览，不加载工程会话
    */
   public get_project_preview(body: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const project_path = this.require_body_string(body, "path");
@@ -334,7 +314,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 按用户选择顺序枚举可导入源文件，保持源路径去重和真实文件去重一致。
+   * 按用户选择顺序枚举可导入源文件，保持源路径去重和真实文件去重一致
    */
   public collect_source_files(body: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const source_paths = this.normalize_source_paths(body["source_paths"]);
@@ -354,7 +334,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建新建工程默认预设初始化操作，单个预设失败只记录日志并继续创建。
+   * 构建新建工程默认预设初始化操作，单个预设失败只记录日志并继续创建
    */
   private build_default_preset_initialization_operations(project_path: string): {
     operations: DatabaseOperation[];
@@ -429,7 +409,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取质量规则预设，并把非对象条目过滤掉。
+   * 读取质量规则预设，并把非对象条目过滤掉
    */
   private read_quality_rule_preset(
     preset_directory: string,
@@ -444,7 +424,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取提示词预设正文，统一去掉 BOM 与首尾空白。
+   * 读取提示词预设正文，统一去掉 BOM 与首尾空白
    */
   private read_prompt_preset(task_type: "translation" | "analysis", virtual_id: string): string {
     const preset_path = this.resolve_prompt_preset_path(task_type, virtual_id);
@@ -455,7 +435,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 解析质量规则预设虚拟 ID 到真实路径。
+   * 解析质量规则预设虚拟 ID 到真实路径
    */
   private resolve_quality_rule_preset_path(preset_directory: string, virtual_id: string): string {
     const { source, file_name } = this.split_virtual_id(virtual_id, ".json");
@@ -467,7 +447,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 解析提示词预设虚拟 ID 到真实路径。
+   * 解析提示词预设虚拟 ID 到真实路径
    */
   private resolve_prompt_preset_path(
     task_type: "translation" | "analysis",
@@ -482,7 +462,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 拆分虚拟 ID，集中保护 preset 文件名不能逃逸目录。
+   * 拆分虚拟 ID，集中保护 preset 文件名不能逃逸目录
    */
   private split_virtual_id(
     virtual_id: string,
@@ -502,7 +482,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 校验预设文件名，避免用户配置值被解释成任意文件路径。
+   * 校验预设文件名，避免用户配置值被解释成任意文件路径
    */
   private ensure_preset_file_name(file_name: string, extension: ".json" | ".txt"): void {
     const has_path_boundary =
@@ -518,7 +498,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 记录不阻断当前主流程的生命周期错误，保留上下文供日志窗口排查。
+   * 记录不阻断当前主流程的生命周期错误，保留上下文供日志窗口排查
    */
   private log_non_blocking_project_lifecycle_error(
     message: string,
@@ -534,7 +514,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 记录成功加载的默认预设名；为空时不写日志，避免制造噪声。
+   * 记录成功加载的默认预设名；为空时不写日志，避免制造噪声
    */
   private log_loaded_default_presets(loaded_names: string[]): void {
     if (loaded_names.length === 0) {
@@ -546,7 +526,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建 asset 写入操作，跳过缺少源文件路径的草稿记录。
+   * 构建 asset 写入操作，跳过缺少源文件路径的草稿记录
    */
   private build_asset_operations(
     project_path: string,
@@ -566,7 +546,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建工程设置镜像 meta，同时把预过滤配置补齐当前项目设置快照。
+   * 构建工程设置镜像 meta，同时把预过滤配置补齐当前项目设置快照
    */
   private build_project_settings_meta(args: {
     project_settings: MutableJsonRecord;
@@ -599,7 +579,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 从数据库事实重建打开前预过滤草稿，供 renderer 在未 loaded 时运行 planner。
+   * 从数据库事实重建打开前预过滤草稿，供 renderer 在未 loaded 时运行 planner
    */
   private build_project_draft(project_path: string, meta: MutableJsonRecord): MutableJsonRecord {
     const asset_records = this.get_asset_records(project_path);
@@ -627,7 +607,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取当前应用设置，作为打开前 settings alignment 的目标值。
+   * 读取当前应用设置，作为打开前 settings alignment 的目标值
    */
   private build_current_project_settings(): {
     source_language: string;
@@ -651,7 +631,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取项目内设置镜像，优先当前 meta，缺失时回退 prefilter_config。
+   * 读取项目内设置镜像，优先当前 meta，缺失时回退 prefilter_config
    */
   private build_stored_project_settings(
     meta: MutableJsonRecord,
@@ -678,7 +658,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 判断设置镜像是否缺失，缺字段时必须触发预过滤对齐。
+   * 判断设置镜像是否缺失，缺字段时必须触发预过滤对齐
    */
   private is_setting_mirror_missing(
     meta: MutableJsonRecord,
@@ -689,7 +669,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 新建工程名优先使用第一个源路径名称，否则使用输出文件名。
+   * 新建工程名优先使用第一个源路径名称，否则使用输出文件名
    */
   private build_project_name(source_paths: string[], project_path: string): string {
     const seed_path = source_paths[0] ?? project_path;
@@ -697,7 +677,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建 loaded 响应，保持公开项目快照形状不扩大。
+   * 构建 loaded 响应，保持公开项目快照形状不扩大
    */
   private build_loaded_project_response(project_path: string): Record<string, ApiJsonValue> {
     return {
@@ -709,7 +689,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 归一 create-commit 文件草稿，防止脏 sort_index 影响 asset 顺序。
+   * 归一 create-commit 文件草稿，防止脏 sort_index 影响 asset 顺序
    */
   private normalize_create_commit_files(value: ApiJsonValue | undefined): CreateCommitFileRecord[] {
     if (!Array.isArray(value)) {
@@ -725,7 +705,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 全量 items 写入前做最小字段归一，兼容 planner 已算出的完整 payload。
+   * 全量 items 写入前做最小字段归一，兼容 planner 已算出的完整 payload
    */
   private normalize_full_items(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     if (!Array.isArray(value)) {
@@ -737,7 +717,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 归一单条 item，保护状态和数字字段，同时保留 EPUB 等格式 extra_field。
+   * 归一单条 item，保护状态和数字字段，同时保留 EPUB 等格式 extra_field
    */
   private normalize_item_payload(item: JsonRecord): MutableJsonRecord {
     const normalized: MutableJsonRecord = {
@@ -762,7 +742,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 归一 source_paths，保持用户选择顺序和去重语义一致。
+   * 归一 source_paths，保持用户选择顺序和去重语义一致
    */
   private normalize_source_paths(value: ApiJsonValue | undefined): string[] {
     const normalized_paths: string[] = [];
@@ -779,7 +759,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 归一字符串列表，路径类 API 只接受非空字符串。
+   * 归一字符串列表，路径类 API 只接受非空字符串
    */
   private normalize_string_list(value: ApiJsonValue | undefined): string[] {
     if (!Array.isArray(value)) {
@@ -792,7 +772,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 按文件或目录收集支持格式，目录内按名称稳定排序。
+   * 按文件或目录收集支持格式，目录内按名称稳定排序
    */
   private collect_source_files_from_path(source_path: string): string[] {
     if (!fs.existsSync(source_path)) {
@@ -809,7 +789,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 递归目录时保持确定性顺序，让新建草稿和后续 asset 顺序可重复。
+   * 递归目录时保持确定性顺序，让新建草稿和后续 asset 顺序可重复
    */
   private collect_source_files_from_directory(source_path: string): string[] {
     const source_files: string[] = [];
@@ -828,14 +808,14 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 判断文件扩展名是否属于公开文件域支持集合。
+   * 判断文件扩展名是否属于公开文件域支持集合
    */
   private is_supported_file(file_path: string): boolean {
     return SUPPORTED_SOURCE_EXTENSIONS.has(path.extname(file_path).toLowerCase());
   }
 
   /**
-   * 构造跨平台路径身份 key，Windows 下按文件系统大小写不敏感处理。
+   * 构造跨平台路径身份 key，Windows 下按文件系统大小写不敏感处理
    */
   private build_path_identity_key(source_path: string): string {
     const resolved_path = path.resolve(source_path);
@@ -843,7 +823,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 校验请求体字符串字段，避免空 path 触发 SQLite 静默建库。
+   * 校验请求体字符串字段，避免空 path 触发 SQLite 静默建库
    */
   private require_body_string(body: Record<string, ApiJsonValue>, key: string): string {
     const value = body[key];
@@ -854,7 +834,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 打开既有工程前必须先确认文件存在，缺失时映射为 not_found。
+   * 打开既有工程前必须先确认文件存在，缺失时映射为 not_found
    */
   private assert_project_file_exists(project_path: string): void {
     if (!fs.existsSync(project_path)) {
@@ -865,7 +845,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取全部 meta，用于打开预演、兼容处理和 section revision。
+   * 读取全部 meta，用于打开预演、兼容处理和 section revision
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
     return this.normalize_object(
@@ -874,7 +854,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取所有 item，供打开前草稿重建。
+   * 读取所有 item，供打开前草稿重建
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
@@ -884,7 +864,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取 asset 顺序记录，隐藏 database 返回结构。
+   * 读取 asset 顺序记录，隐藏 database 返回结构
    */
   private get_asset_records(project_path: string): Array<{ path: string; sort_order: number }> {
     const value = this.database.execute(
@@ -902,7 +882,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 归一翻译进度摘要，公开 preview 不透出数据库内部额外字段。
+   * 归一翻译进度摘要，公开 preview 不透出数据库内部额外字段
    */
   private normalize_translation_stats(value: DatabaseJsonValue | ApiJsonValue | undefined) {
     const stats = this.to_record(value);
@@ -917,21 +897,21 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 把未知 JSON 值收窄为对象，避免深层读取扩散类型断言。
+   * 把未知 JSON 值收窄为对象，避免深层读取扩散类型断言
    */
   private normalize_object(value: ApiJsonValue | DatabaseJsonValue | undefined): MutableJsonRecord {
     return this.is_record(value) ? { ...value } : {};
   }
 
   /**
-   * 收窄未知 JSON 对象，保护数组和 null 不被当作 record。
+   * 收窄未知 JSON 对象，保护数组和 null 不被当作 record
    */
   private is_record(value: unknown): value is MutableJsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
-   * preview 摘要字段读取使用宽类型，兼容 database 返回值与 API 值。
+   * preview 摘要字段读取使用宽类型，兼容 database 返回值与 API 值
    */
   private to_record(value: DatabaseJsonValue | ApiJsonValue | undefined): JsonRecordLike {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -941,28 +921,28 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 从对象字段读取字符串，避免 undefined 泄漏到响应体。
+   * 从对象字段读取字符串，避免 undefined 泄漏到响应体
    */
   private string_field(record: JsonRecordLike, key: string): string {
     return this.string_value(record[key]);
   }
 
   /**
-   * 从对象字段读取数字，避免 NaN 泄漏到响应体。
+   * 从对象字段读取数字，避免 NaN 泄漏到响应体
    */
   private number_field(record: JsonRecordLike, key: string): number {
     return this.number_value(record[key], 0);
   }
 
   /**
-   * 从未知值读取字符串，保持 null / undefined 统一为空串。
+   * 从未知值读取字符串，保持 null / undefined 统一为空串
    */
   private string_value(value: ApiJsonValue | DatabaseJsonValue | undefined): string {
     return typeof value === "string" ? value : String(value ?? "");
   }
 
   /**
-   * 从未知值读取数字，非法数字回落到调用方提供的默认值。
+   * 从未知值读取数字，非法数字回落到调用方提供的默认值
    */
   private number_value(
     value: ApiJsonValue | DatabaseJsonValue | undefined,
@@ -973,14 +953,14 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 从未知值读取布尔值，使用 bool(...) 宽松转换。
+   * 从未知值读取布尔值，使用 bool(...) 宽松转换
    */
   private boolean_value(value: ApiJsonValue | DatabaseJsonValue | undefined): boolean {
     return Boolean(value ?? false);
   }
 
   /**
-   * 从未知值读取带默认值的布尔，缺失时保持项目默认语义。
+   * 从未知值读取带默认值的布尔，缺失时保持项目默认语义
    */
   private boolean_value_with_default(
     value: ApiJsonValue | DatabaseJsonValue | undefined,
@@ -990,14 +970,14 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 生成更新时间戳，复用 ISO 字符串让 服务层与 database 摘要可排序。
+   * 生成更新时间戳，复用 ISO 字符串让 服务层与 database 摘要可排序
    */
   private build_timestamp(): string {
     return new Date().toISOString();
   }
 
   /**
-   * 创建 database workflow 操作，并允许 create-commit 模板稍后补齐 projectPath。
+   * 创建 database workflow 操作，并允许 create-commit 模板稍后补齐 projectPath
    */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };

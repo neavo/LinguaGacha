@@ -12,16 +12,16 @@ import {
 import { Item } from "../../../base/item";
 
 /**
- * TXT 格式按行解析与写回，保持旧实现最朴素的一行一条规则。
+ * TXT 格式按行解析与写回，保持旧实现最朴素的一行一条规则
  */
 export class TXTFormat {
   /**
-   * 配置只用于导出路径和双语去重，不参与 TXT 解析。
+   * 配置只用于导出路径和双语去重，不参与 TXT 解析
    */
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 解析时保留原始行号，空行也作为可被排除或处理的普通条目。
+   * 解析时保留原始行号，空行也作为可被排除或处理的普通条目
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const text = await TextTool.decode(content);
@@ -37,7 +37,7 @@ export class TXTFormat {
   }
 
   /**
-   * 写出译文和双语文件，双语去重口径由共享配置控制。
+   * 写出译文和双语文件，双语去重口径由共享配置控制
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "TXT")) {

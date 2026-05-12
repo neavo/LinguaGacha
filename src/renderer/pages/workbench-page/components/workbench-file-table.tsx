@@ -106,8 +106,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
   const sorted_entries = useMemo(() => {
     return sort_workbench_entries(props.entries, sort_state);
   }, [props.entries, sort_state]);
-  // 为什么：排序视图展示的是临时顺序，不再等于工程真实文件顺序，此时继续拖拽会误导用户。
-  const drag_enabled = !props.readonly && sort_state === null;
+  const drag_enabled = !props.readonly && sort_state === null; // 为什么：排序视图展示的是临时顺序，不再等于工程真实文件顺序，此时继续拖拽会误导用户
 
   const columns = useMemo<AppTableColumn<WorkbenchFileEntry>[]>(() => {
     return [

@@ -1,5 +1,4 @@
-// 正规化规则对齐历史 Normalizer：先 NFC，再执行项目自定义兼容映射。
-const CUSTOM_NORMALIZE_RULES = new Map<string, string>();
+const CUSTOM_NORMALIZE_RULES = new Map<string, string>(); // 正规化规则对齐历史 Normalizer：先 NFC，再执行项目自定义兼容映射
 
 for (let code_point = 0xff21; code_point <= 0xff3a; code_point += 1) {
   CUSTOM_NORMALIZE_RULES.set(
@@ -88,7 +87,7 @@ for (const [source, target] of Object.entries(HALFWIDTH_KATAKANA_RULES)) {
 }
 
 /**
- * 文本处理正规化入口，保持迁移前历史 Normalizer 的可观察语义。
+ * 文本处理正规化入口，保持迁移前历史 Normalizer 的可观察语义
  */
 export function normalize_text_for_processing(text: string): string {
   return [...text.normalize("NFC")]

@@ -9,8 +9,7 @@ import { Item } from "../../../base/item";
 import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
-// 每个用例独占 EPUB 输出目录，避免 zip 写回结果互相污染。
-let temp_dir = "";
+let temp_dir = ""; // 每个用例独占 EPUB 输出目录，避免 zip 写回结果互相污染
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-epub-writer-"));
@@ -21,7 +20,7 @@ afterEach(() => {
 });
 
 /**
- * 写回器配置固定为日译中，便于断言导出后的可见正文。
+ * 写回器配置固定为日译中，便于断言导出后的可见正文
  */
 function create_writer(): EpubWriter {
   return new EpubWriter({
@@ -33,7 +32,7 @@ function create_writer(): EpubWriter {
 }
 
 /**
- * writer 测试只借 AST 生成定位 metadata，断言归属仍聚焦写回产物。
+ * writer 测试只借 AST 生成定位 metadata，断言归属仍聚焦写回产物
  */
 async function create_translated_epub_item(epub_asset: Buffer, dst: string): Promise<Item> {
   const [item] = await new EpubAst().read_from_stream(epub_asset, "book.epub");

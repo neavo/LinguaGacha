@@ -23,7 +23,7 @@ const CONSOLE_LEVEL_COLORS: Record<LogLevel, string> = {
 };
 
 /**
- * 控制台输出是给人看的诊断视图，独立于文件日志的结构化 JSON。
+ * 控制台输出是给人看的诊断视图，独立于文件日志的结构化 JSON
  */
 export function format_console_log(payload: LogAppendPayload, created_at: Date): string {
   const error_text = payload.error_message === undefined ? "" : `\n${payload.error_message}`;

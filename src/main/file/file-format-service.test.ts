@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 /**
- * 测试统一使用显式配置，避免依赖用户本机设置。
+ * 测试统一使用显式配置，避免依赖用户本机设置
  */
 function create_service(): FileFormatService {
   return new FileFormatService({

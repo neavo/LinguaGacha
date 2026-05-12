@@ -53,7 +53,7 @@ interface FileLogRecord {
 }
 
 /**
- * Electron main 侧日志权威，统一管理文件、控制台和日志窗口三类输出。
+ * Electron main 侧日志权威，统一管理文件、控制台和日志窗口三类输出
  */
 export class LogManager {
   private readonly log_dir: string;
@@ -68,7 +68,7 @@ export class LogManager {
   private shutdown_complete = false;
 
   /**
-   * 日志目标在构造时收口，调用方只选择目标开关，不直接创建输出器。
+   * 日志目标在构造时收口，调用方只选择目标开关，不直接创建输出器
    */
   public constructor(options: LogManagerOptions) {
     this.log_dir = options.logDir;
@@ -97,7 +97,7 @@ export class LogManager {
   }
 
   /**
-   * 崩溃日志入口会尽力同步刷盘，减少退出前丢尾部诊断的概率。
+   * 崩溃日志入口会尽力同步刷盘，减少退出前丢尾部诊断的概率
    */
   public fatal(message: string, payload: Omit<LogAppendPayload, "level" | "message"> = {}): void {
     this.append({ ...payload, level: "fatal", message });
@@ -105,7 +105,7 @@ export class LogManager {
   }
 
   /**
-   * 单一写入口，三类输出目标都从这里分流。
+   * 单一写入口，三类输出目标都从这里分流
    */
   public append(payload: LogAppendPayload): LogEvent | null {
     if (this.shutdown_complete) {
@@ -137,7 +137,7 @@ export class LogManager {
   }
 
   /**
-   * 订阅日志窗口事件；replay 为 true 时先回放当前进程内 ring buffer。
+   * 订阅日志窗口事件；replay 为 true 时先回放当前进程内 ring buffer
    */
   public subscribe(subscriber: LogSubscriber, options: { replay?: boolean } = {}): () => void {
     if (options.replay ?? true) {
@@ -152,14 +152,14 @@ export class LogManager {
   }
 
   /**
-   * 返回不可变快照，避免调用方拿到内部数组引用。
+   * 返回不可变快照，避免调用方拿到内部数组引用
    */
   public snapshot_events(): readonly LogEvent[] {
     return [...this.events];
   }
 
   /**
-   * 尽力 flush 文件输出，供 fatal 和退出阶段复用。
+   * 尽力 flush 文件输出，供 fatal 和退出阶段复用
    */
   public flush(): void {
     try {
@@ -174,12 +174,12 @@ export class LogManager {
         flush.call(this.file_writer);
       }
     } catch {
-      // 日志 flush 是退出阶段的尽力动作，writer 未 ready 时不应反过来阻断应用关闭。
+      // 日志 flush 是退出阶段的尽力动作，writer 未 ready 时不应反过来阻断应用关闭
     }
   }
 
   /**
-   * 退出阶段先关闭文件写入和窗口订阅，避免收尾后还有持久化副作用。
+   * 退出阶段先关闭文件写入和窗口订阅，避免收尾后还有持久化副作用
    */
   public async shutdown(): Promise<void> {
     if (this.shutdown_complete) {
@@ -293,7 +293,7 @@ class DailyLogFileWriter implements FileLogWriter {
   }
 
   public flush(): void {
-    // appendFileSync 已完成同步写入；保留 flush 方法用于统一退出阶段调用。
+    // appendFileSync 已完成同步写入；保留 flush 方法用于统一退出阶段调用
   }
 
   public flushSync(): void {
@@ -330,7 +330,7 @@ class DailyLogFileWriter implements FileLogWriter {
       try {
         fs.unlinkSync(path.join(this.log_dir, stale_file.fileName));
       } catch {
-        // 旧日志清理是尽力动作，失败不能影响当前日志写入。
+        // 旧日志清理是尽力动作，失败不能影响当前日志写入
       }
     }
   }

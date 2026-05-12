@@ -10,8 +10,7 @@ import type { SettingService } from "../service/setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileExportService } from "./file-export-service";
 
-// 每个用例独占导出目录，避免文件写回断言互相污染。
-let temp_dir = "";
+let temp_dir = ""; // 每个用例独占导出目录，避免文件写回断言互相污染
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-export-"));
@@ -23,7 +22,7 @@ afterEach(() => {
 });
 
 /**
- * 导出测试使用固定设置，便于断言目标路径和日志语言。
+ * 导出测试使用固定设置，便于断言目标路径和日志语言
  */
 function create_setting_service(): SettingService {
   return {
@@ -48,7 +47,7 @@ interface LogCollector extends Pick<LogManager, "info" | "error"> {
 }
 
 /**
- * 日志替身只记录公开日志事件，避免测试耦合到 vi mock 调用结构。
+ * 日志替身只记录公开日志事件，避免测试耦合到 vi mock 调用结构
  */
 function create_log_collector(): LogCollector {
   const entries: CollectedLogEntry[] = [];

@@ -142,7 +142,7 @@ describe("PiAiLlmRequestClient", () => {
 });
 
 /**
- * 生成最小 appRoot，避免客户端测试读取仓库真实 version.txt。
+ * 生成最小 appRoot，避免客户端测试读取仓库真实 version.txt
  */
 async function create_app_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-pi-ai-client-"));
@@ -151,7 +151,7 @@ async function create_app_root(): Promise<string> {
 }
 
 /**
- * 构造客户端请求体，默认覆盖 OpenAI-compatible 的主链路字段。
+ * 构造客户端请求体，默认覆盖 OpenAI-compatible 的主链路字段
  */
 function create_body(model_overrides: Record<string, ApiJsonValue> = {}): {
   run_id: string;
@@ -181,7 +181,7 @@ function create_body(model_overrides: Record<string, ApiJsonValue> = {}): {
 }
 
 /**
- * 用 async generator 模拟 pi-ai 事件流，避免测试触碰真实网络。
+ * 用 async generator 模拟 pi-ai 事件流，避免测试触碰真实网络
  */
 async function* create_event_stream(
   events: Array<Partial<AssistantMessageEvent> & { type: AssistantMessageEvent["type"] }>,
@@ -192,7 +192,7 @@ async function* create_event_stream(
 }
 
 /**
- * pi-ai 增量事件要求携带 partial；测试只关心 type 专属字段，所以统一补齐。
+ * pi-ai 增量事件要求携带 partial；测试只关心 type 专属字段，所以统一补齐
  */
 function with_partial(
   event: Partial<AssistantMessageEvent> & { type: AssistantMessageEvent["type"] },
@@ -204,7 +204,7 @@ function with_partial(
 }
 
 /**
- * 创建完整 AssistantMessage，确保 done/error 事件拥有 usage 与 stopReason。
+ * 创建完整 AssistantMessage，确保 done/error 事件拥有 usage 与 stopReason
  */
 function create_message(
   overrides: Partial<AssistantMessage> & { input?: number; output?: number } = {},

@@ -11,8 +11,7 @@ import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
 
 describe("ApiGatewayServer", () => {
-  // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记。
-  const cleanup_callbacks: Array<() => Promise<void> | void> = [];
+  const cleanup_callbacks: Array<() => Promise<void> | void> = []; // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记
 
   afterEach(async () => {
     while (cleanup_callbacks.length > 0) {
@@ -362,7 +361,7 @@ describe("ApiGatewayServer", () => {
   });
 
   /**
-   * 创建默认 Gateway 三件套，让常规用例不用重复布置生命周期依赖。
+   * 创建默认 Gateway 三件套，让常规用例不用重复布置生命周期依赖
    */
   async function create_gateway(): Promise<{
     appRoot: string;
@@ -376,7 +375,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * 按指定 database 构造 Gateway，方便项目写库前后共享同一实例。
+   * 按指定 database 构造 Gateway，方便项目写库前后共享同一实例
    */
   async function create_gateway_with_database(
     app_root: string,
@@ -392,7 +391,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * 临时 appRoot 提供 version 和资源根，避免测试污染真实用户目录。
+   * 临时 appRoot 提供 version 和资源根，避免测试污染真实用户目录
    */
   function create_app_root(): string {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-gateway-test-"));
@@ -402,7 +401,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * 测试使用 OS 分配的本机端口，避免随机高位端口在 Windows 上命中保留范围。
+   * 测试使用 OS 分配的本机端口，避免随机高位端口在 Windows 上命中保留范围
    */
   async function allocate_gateway_test_port(): Promise<number> {
     const server = http.createServer();
@@ -422,7 +421,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * 使用内存 writer 避免 Gateway 测试把日志落到真实用户目录。
+   * 使用内存 writer 避免 Gateway 测试把日志落到真实用户目录
    */
   function create_log_manager(app_root: string): LogManager {
     const log_manager = new LogManager({
@@ -435,7 +434,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * fake writer 只验证 LogManager 路由行为，不关心文件系统刷新细节。
+   * fake writer 只验证 LogManager 路由行为，不关心文件系统刷新细节
    */
   function create_memory_file_writer(): FileLogWriter {
     return {
@@ -449,7 +448,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * POST JSON helper 固定请求壳，让用例只表达业务路径和 payload。
+   * POST JSON helper 固定请求壳，让用例只表达业务路径和 payload
    */
   async function post_json(
     base_url: string,
@@ -465,7 +464,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * 用 Node HTTP 客户端读取公开 SSE，读到目标片段后销毁请求来模拟 renderer 断开。
+   * 用 Node HTTP 客户端读取公开 SSE，读到目标片段后销毁请求来模拟 renderer 断开
    */
   async function read_http_stream_until(
     url: string,
@@ -515,7 +514,7 @@ describe("ApiGatewayServer", () => {
   }
 
   /**
-   * Node server close 需要 promise 化，确保端口释放后再启动下一段测试。
+   * Node server close 需要 promise 化，确保端口释放后再启动下一段测试
    */
   async function close_node_server(server: http.Server): Promise<void> {
     await new Promise<void>((resolve, reject) => {

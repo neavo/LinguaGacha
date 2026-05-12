@@ -17,7 +17,7 @@ type AppTableDragIndicatorState = "enabled" | "disabled" | "dragging";
 function resolve_drag_indicator_state(
   props: AppTableDragIndicatorProps,
 ): AppTableDragIndicatorState {
-  // 为什么：拖拽中的 overlay 没有 handle，但视觉上仍然应该保持“可拖拽中”的手型语义。
+  // 为什么：拖拽中的 overlay 没有 handle，但视觉上仍然应该保持“可拖拽中”的手型语义
   if (props.dragging && props.can_drag) {
     return "dragging";
   }

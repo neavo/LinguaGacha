@@ -20,8 +20,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: ["**/node_modules/**", "**/build/**", "**/dist/**", "**/dist-electron/**"],
     clearMocks: true,
-    // 原因：渲染层测试长期跑在浏览器模拟环境里，提前打包重 UI 依赖能明显减少重复模块加载成本。
-    deps: {
+    deps: { // 原因：渲染层测试长期跑在浏览器模拟环境里，提前打包重 UI 依赖能明显减少重复模块加载成本
       optimizer: {
         client: {
           enabled: true,

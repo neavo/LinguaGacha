@@ -17,16 +17,14 @@ import type {
 } from "./work-unit-types";
 
 /**
- * 分析 work unit runner，负责 prompt、LLM 请求和候选术语归一。
+ * 分析 work unit runner，负责 prompt、LLM 请求和候选术语归一
  */
 export class AnalysisWorkUnitRunner {
-  // app_root 只用于读取分析提示词模板，runner 不依赖进程 cwd。
-  private readonly app_root: string;
-  // llm_client 是分析链路唯一外部调用口，便于取消和错误统一处理。
-  private readonly llm_client: LlmRequestClient;
+  private readonly app_root: string; // app_root 只用于读取分析提示词模板，runner 不依赖进程 cwd
+  private readonly llm_client: LlmRequestClient; // llm_client 是分析链路唯一外部调用口，便于取消和错误统一处理
 
   /**
-   * 只注入资源根和 LLM 客户端，runner 不接触数据库或事件。
+   * 只注入资源根和 LLM 客户端，runner 不接触数据库或事件
    */
   public constructor(app_root: string, llm_client: LlmRequestClient) {
     this.app_root = app_root;
@@ -34,7 +32,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 执行单个分析 chunk；checkpoint 状态由 TaskEngine 根据 success 生成。
+   * 执行单个分析 chunk；checkpoint 状态由 TaskEngine 根据 success 生成
    */
   public async execute_analysis_chunk(
     request: AnalysisWorkUnitRequest,
@@ -156,7 +154,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 尽量复刻旧 AnalysisTask 的 chunk 日志：统计、原文、think/result 与术语候选同屏输出。
+   * 尽量复刻旧 AnalysisTask 的 chunk 日志：统计、原文、think/result 与术语候选同屏输出
    */
   private build_analysis_logs(context: {
     start_time: number;
@@ -199,7 +197,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 术语展示文本统一收口，避免文件日志和控制台展示内容跑偏。
+   * 术语展示文本统一收口，避免文件日志和控制台展示内容跑偏
    */
   private build_glossary_log_lines(entries: Array<Record<string, ApiJsonValue>>): string[] {
     const rows: string[] = [];
@@ -216,7 +214,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 上游 context 是 JSON，worker 在边界处归一成只读值对象。
+   * 上游 context 是 JSON，worker 在边界处归一成只读值对象
    */
   private read_context(value: ApiJsonValue | undefined): AnalysisTaskContext {
     const record =
@@ -244,7 +242,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * PromptBuilder 只需要语言字段，缺失时使用默认值。
+   * PromptBuilder 只需要语言字段，缺失时使用默认值
    */
   private config_to_prompt_config(raw_config: ApiJsonValue): {
     app_language?: string;
@@ -265,7 +263,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 数字读取按整数兜底，避免坏 JSON 打断整个 worker。
+   * 数字读取按整数兜底，避免坏 JSON 打断整个 worker
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);

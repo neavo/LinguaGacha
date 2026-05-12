@@ -15,36 +15,31 @@ import type {
 } from "./lifecycle-types";
 
 /**
- * Electron main 持有 API Gateway、ProjectDatabase 与日志系统的启动关闭顺序。
+ * Electron main 持有 API Gateway、ProjectDatabase 与日志系统的启动关闭顺序
  */
 export class CoreLifecycleManager {
-  // state 防止启动、退出和异常收尾并发重入同一生命周期链路。
-  private state: CoreLifecycleState = "idle";
-  // options 来自 Electron 入口层，生命周期层只消费宿主注入的不可变事实。
-  private readonly options: CoreLifecycleManagerOptions;
-  // gateway_server 是公开 `/api/*` 监听器，必须先于数据库句柄关闭。
-  private gateway_server: ApiGatewayServer | null = null;
-  // database 直接承载 `.lg` 物理 workflow；运行态不再创建内部 HTTP 回环服务。
-  private readonly database = new ProjectDatabase();
-  // log_manager 先于 Gateway 创建，确保启动失败和退出阶段都有统一日志出口。
-  private log_manager: LogManager | null = null;
+  private state: CoreLifecycleState = "idle"; // state 防止启动、退出和异常收尾并发重入同一生命周期链路
+  private readonly options: CoreLifecycleManagerOptions; // options 来自 Electron 入口层，生命周期层只消费宿主注入的不可变事实
+  private gateway_server: ApiGatewayServer | null = null; // gateway_server 是公开 `/api/*` 监听器，必须先于数据库句柄关闭
+  private readonly database = new ProjectDatabase(); // database 直接承载 `.lg` 物理 workflow；运行态不再创建内部 HTTP 回环服务
+  private log_manager: LogManager | null = null; // log_manager 先于 Gateway 创建，确保启动失败和退出阶段都有统一日志出口
 
   /**
-   * 生命周期管理器只接收宿主参数，端口与运行期资源句柄都由自身拥有。
+   * 生命周期管理器只接收宿主参数，端口与运行期资源句柄都由自身拥有
    */
   public constructor(options: CoreLifecycleManagerOptions) {
     this.options = options;
   }
 
   /**
-   * Electron 退出钩子只需要终态判断，避免重复进入 stop 收尾链路。
+   * Electron 退出钩子只需要终态判断，避免重复进入 stop 收尾链路
    */
   public isStopped(): boolean {
     return this.state === "idle" || this.state === "stopped" || this.state === "failed";
   }
 
   /**
-   * 启动顺序固定为 LogManager -> ProjectDatabase -> API Gateway。
+   * 启动顺序固定为 LogManager -> ProjectDatabase -> API Gateway
    */
   public async start(): Promise<CoreLifecycleStartResult> {
     if (this.state !== "idle" && this.state !== "stopped") {
@@ -89,21 +84,21 @@ export class CoreLifecycleManager {
   }
 
   /**
-   * 退出请求统一汇入 stop，避免窗口事件和 IPC 各自清理后端服务。
+   * 退出请求统一汇入 stop，避免窗口事件和 IPC 各自清理后端服务
    */
   public async stop(): Promise<void> {
     await this.stop_services();
   }
 
   /**
-   * 保留旧异常回调字段但不触发；当前运行态没有伴生进程可意外退出。
+   * 保留旧异常回调字段但不触发；当前运行态没有伴生进程可意外退出
    */
   public notifyUnexpectedExitForTest(result: CoreProcessExitResult): void {
     this.options.onUnexpectedExit?.(result);
   }
 
   /**
-   * Gateway、ProjectDatabase 与日志必须逆序关闭，确保收尾阶段不丢日志。
+   * Gateway、ProjectDatabase 与日志必须逆序关闭，确保收尾阶段不丢日志
    */
   private async stop_services(): Promise<void> {
     if (this.state === "stopping") {

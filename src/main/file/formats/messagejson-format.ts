@@ -14,16 +14,16 @@ import {
 import { Item, read_json_record } from "../../../base/item";
 
 /**
- * message JSON 格式用于 KAG 风格 name/message 数组结构。
+ * message JSON 格式用于 KAG 风格 name/message 数组结构
  */
 export class MESSAGEJSONFormat {
   /**
-   * 配置决定人名字段写回策略。
+   * 配置决定人名字段写回策略
    */
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 只解析数组内含 message 字符串的对象，name/names 作为角色名字段保存。
+   * 只解析数组内含 message 字符串的对象，name/names 作为角色名字段保存
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const data = await this.parse_json_with_encoding(content);
@@ -57,7 +57,7 @@ export class MESSAGEJSONFormat {
   }
 
   /**
-   * 写回时按配置整理 name_dst，多数译名会被用于同名角色。
+   * 写回时按配置整理 name_dst，多数译名会被用于同名角色
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "MESSAGEJSON")) {
@@ -83,7 +83,7 @@ export class MESSAGEJSONFormat {
   }
 
   /**
-   * JSON 先按 UTF-8 严格解析，失败时再走编码探测兼容旧资源文件。
+   * JSON 先按 UTF-8 严格解析，失败时再走编码探测兼容旧资源文件
    */
   private async parse_json_with_encoding(content: Uint8Array): Promise<unknown> {
     try {

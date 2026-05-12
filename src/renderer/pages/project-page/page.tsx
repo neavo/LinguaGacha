@@ -458,8 +458,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
       className,
       ...button_props
     } = props;
-    // 让创建与打开入口保留不同图标语义，避免 props 只传不消费导致 lint 失败。
-    const Icon = icon === "source" ? FilePlus : FileInput;
+    const Icon = icon === "source" ? FilePlus : FileInput; // 让创建与打开入口保留不同图标语义，避免 props 只传不消费导致 lint 失败
 
     return (
       <button

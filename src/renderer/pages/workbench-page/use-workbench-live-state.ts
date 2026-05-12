@@ -1075,8 +1075,7 @@ export function useWorkbenchLiveState(
 
   useEffect(() => {
     if (running_workbench_task_kind !== null) {
-      // 为什么：任务一旦开始，顶部卡片就该马上切到对应语义，避免统计视角和底部状态栏互相打架。
-      set_stats_mode(running_workbench_task_kind);
+      set_stats_mode(running_workbench_task_kind); // 为什么：任务一旦开始，顶部卡片就该马上切到对应语义，避免统计视角和底部状态栏互相打架
     }
   }, [running_workbench_task_kind]);
 
@@ -1155,7 +1154,7 @@ export function useWorkbenchLiveState(
   ]);
 
   const active_workbench_task_detail = useMemo<WorkbenchTaskDetailViewModel | null>(() => {
-    // 为什么：工作台空态也要保留可点击的详情胶囊，默认沿用翻译任务模板展示基础指标。
+    // 为什么：工作台空态也要保留可点击的详情胶囊，默认沿用翻译任务模板展示基础指标
     if (display_workbench_task_kind === "translation") {
       return build_translation_task_detail_view_model({
         metrics: raw_translation_task_runtime.translation_task_metrics,

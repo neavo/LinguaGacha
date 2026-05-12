@@ -7,31 +7,25 @@ import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import { TaskSnapshotBuilder } from "../runtime/task-snapshot-builder";
 import { type JsonRecord, type MutableJsonRecord } from "../runtime/task-runtime-types";
 
-// 翻译和分析目前共享三种用户意图，但分开常量能避免未来枚举变更互相污染。
-const TRANSLATION_MODES = new Set(["NEW", "CONTINUE", "RESET"]);
+const TRANSLATION_MODES = new Set(["NEW", "CONTINUE", "RESET"]); // 翻译和分析目前共享三种用户意图，但分开常量能避免未来枚举变更互相污染
 const ANALYSIS_MODES = new Set(["NEW", "CONTINUE", "RESET"]);
 
 /**
- * 公开 `/api/tasks/*` 的任务命令服务，负责校验请求、调用 TaskEngine 并组装回执。
+ * 公开 `/api/tasks/*` 的任务命令服务，负责校验请求、调用 TaskEngine 并组装回执
  */
 export class TaskCommandService {
-  // task_engine 是后台任务生命周期、调度和停止的唯一执行权威。
-  private readonly task_engine: TaskEngine;
+  private readonly task_engine: TaskEngine; // task_engine 是后台任务生命周期、调度和停止的唯一执行权威
 
-  // snapshot_builder 是公开任务快照唯一组装口径，命令回执也复用它。
-  private readonly snapshot_builder: TaskSnapshotBuilder;
+  private readonly snapshot_builder: TaskSnapshotBuilder; // snapshot_builder 是公开任务快照唯一组装口径，命令回执也复用它
 
-  // task_runtime_state 负责命令受理后的乐观 busy 状态，避免回执等待 SSE。
-  private readonly task_runtime_state: TaskRuntimeState;
+  private readonly task_runtime_state: TaskRuntimeState; // task_runtime_state 负责命令受理后的乐观 busy 状态，避免回执等待 SSE
 
-  // session_state 决定重翻 revision 校验是否能定位当前工程。
-  private readonly session_state: ProjectSessionState;
+  private readonly session_state: ProjectSessionState; // session_state 决定重翻 revision 校验是否能定位当前工程
 
-  // setting_service 只用于单条翻译前的主动模型可用性检查。
-  private readonly setting_service: SettingService;
+  private readonly setting_service: SettingService; // setting_service 只用于单条翻译前的主动模型可用性检查
 
   /**
-   * 注入任务命令依赖，保持公开协议、运行态桥和配置读取边界可测试。
+   * 注入任务命令依赖，保持公开协议、运行态桥和配置读取边界可测试
    */
   public constructor(
     task_engine: TaskEngine,
@@ -48,7 +42,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 启动翻译任务；公开回执由 TaskCommandService 立即覆盖为 REQUEST。
+   * 启动翻译任务；公开回执由 TaskCommandService 立即覆盖为 REQUEST
    */
   public async start_translation(request: JsonRecord): Promise<MutableJsonRecord> {
     const mode = this.require_mode(request["mode"], TRANSLATION_MODES, "NEW");
@@ -72,7 +66,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 请求停止翻译任务；停止态由任务流水线异步收尾。
+   * 请求停止翻译任务；停止态由任务流水线异步收尾
    */
   public async stop_translation(_request: JsonRecord): Promise<MutableJsonRecord> {
     const previous_state = this.task_runtime_state.snapshot();
@@ -94,7 +88,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 启动分析任务；mode 校验保持公开任务枚举一致。
+   * 启动分析任务；mode 校验保持公开任务枚举一致
    */
   public async start_analysis(request: JsonRecord): Promise<MutableJsonRecord> {
     const mode = this.require_mode(request["mode"], ANALYSIS_MODES, "NEW");
@@ -118,7 +112,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 请求停止分析任务；公开层只表达 STOPPING 意图，不等待 Task Engine 终态。
+   * 请求停止分析任务；公开层只表达 STOPPING 意图，不等待 Task Engine 终态
    */
   public async stop_analysis(_request: JsonRecord): Promise<MutableJsonRecord> {
     const previous_state = this.task_runtime_state.snapshot();
@@ -140,7 +134,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 启动批量重翻任务，TaskCommandService 先完成 section revision 校验再交给 TaskEngine。
+   * 启动批量重翻任务，TaskCommandService 先完成 section revision 校验再交给 TaskEngine
    */
   public async start_retranslate(request: JsonRecord): Promise<MutableJsonRecord> {
     this.require_loaded_project_path();
@@ -169,7 +163,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 显式读取任务快照；它是按需查询，不承担订阅职责。
+   * 显式读取任务快照；它是按需查询，不承担订阅职责
    */
   public async get_task_snapshot(request: JsonRecord): Promise<MutableJsonRecord> {
     return {
@@ -178,7 +172,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 单条翻译用于页面派生工具，TaskCommandService 先处理空文本和明显无激活模型的情况。
+   * 单条翻译用于页面派生工具，TaskCommandService 先处理空文本和明显无激活模型的情况
    */
   public async translate_single(request: JsonRecord): Promise<MutableJsonRecord> {
     const text = String(request["text"] ?? "").trim();
@@ -192,7 +186,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 当前 loaded 工程是重翻 revision 校验的唯一目标。
+   * 当前 loaded 工程是重翻 revision 校验的唯一目标
    */
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
@@ -203,7 +197,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 缺失期望值时宽容跳过；给出期望值时沿用旧冲突消息。
+   * 缺失期望值时宽容跳过；给出期望值时沿用旧冲突消息
    */
   private assert_expected_section_revisions(expected: Record<string, number> | null): void {
     if (expected === null) {
@@ -226,7 +220,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 单个 section revision 比对集中在这里，避免两条错误消息分支重复转换。
+   * 单个 section revision 比对集中在这里，避免两条错误消息分支重复转换
    */
   private assert_expected_revision(
     section: string,
@@ -244,7 +238,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 请求模式只接受任务枚举值，非法值在 Gateway 边界映射为 invalid_request。
+   * 请求模式只接受任务枚举值，非法值在 Gateway 边界映射为 invalid_request
    */
   private require_mode(
     value: ApiJsonValue | undefined,
@@ -259,14 +253,14 @@ export class TaskCommandService {
   }
 
   /**
-   * 只允许对象型质量快照穿过 executor 边界，数组和 null 都按缺失处理。
+   * 只允许对象型质量快照穿过 executor 边界，数组和 null 都按缺失处理
    */
   private normalize_optional_record(value: ApiJsonValue | undefined): ApiJsonValue {
     return this.is_record(value) ? { ...value } : null;
   }
 
   /**
-   * item_ids 在公开边界去重并保留顺序，避免 Engine 收到重复重翻条目。
+   * item_ids 在公开边界去重并保留顺序，避免 Engine 收到重复重翻条目
    */
   private normalize_item_ids(value: ApiJsonValue | undefined): number[] {
     if (!Array.isArray(value)) {
@@ -286,7 +280,7 @@ export class TaskCommandService {
   }
 
   /**
-   * expected_section_revisions 必须是对象；对象内坏值直接按旧入口语义报错。
+   * expected_section_revisions 必须是对象；对象内坏值直接按旧入口语义报错
    */
   private normalize_expected_section_revisions(
     value: ApiJsonValue | undefined,
@@ -302,7 +296,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 单条翻译只做基础模型存在性判断；真实请求能力由 work-unit executor 负责。
+   * 单条翻译只做基础模型存在性判断；真实请求能力由 work-unit executor 负责
    */
   private has_active_model(): boolean {
     const config = this.setting_service.load_setting();
@@ -310,7 +304,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 严格整数转换用于 revision 字段，避免坏锁值被静默吞掉。
+   * 严格整数转换用于 revision 字段，避免坏锁值被静默吞掉
    */
   private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
@@ -321,7 +315,7 @@ export class TaskCommandService {
   }
 
   /**
-   * 模拟历史 int：数字截断，整数字符串可转，布尔值按 1/0。
+   * 模拟历史 int：数字截断，整数字符串可转，布尔值按 1/0
    */
   private parse_integer_like(value: ApiJsonValue | undefined): number | null {
     if (typeof value === "number") {
@@ -337,7 +331,7 @@ export class TaskCommandService {
   }
 
   /**
-   * JSON record 收窄集中处理，保护数组和 null 不进入业务判断。
+   * JSON record 收窄集中处理，保护数组和 null 不进入业务判断
    */
   private is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);

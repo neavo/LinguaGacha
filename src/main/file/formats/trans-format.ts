@@ -8,7 +8,7 @@ import { Item, read_json_record, type ItemStatus, type ItemTextType } from "../.
 type ApiJsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * TRANS processor.check 的返回结构，保持旧 src/dst/tag/status/skip 顺序语义。
+ * TRANS processor.check 的返回结构，保持旧 src/dst/tag/status/skip 顺序语义
  */
 interface TransCheckResult {
   src: string;
@@ -19,7 +19,7 @@ interface TransCheckResult {
 }
 
 /**
- * 写回前对 Item 做快照，避免后续补丁逻辑反复读取可变对象。
+ * 写回前对 Item 做快照，避免后续补丁逻辑反复读取可变对象
  */
 interface TransSnapshot {
   row: number;
@@ -31,7 +31,7 @@ interface TransSnapshot {
 }
 
 /**
- * patch writer 定位到原始 .trans project.files[file_key].data[row_index] 的目标。
+ * patch writer 定位到原始 .trans project.files[file_key].data[row_index] 的目标
  */
 interface PatchTarget {
   snap: TransSnapshot;
@@ -39,7 +39,7 @@ interface PatchTarget {
   row_index: number;
 }
 
-// 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用。
+// 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用
 const BLACKLIST_EXTENSIONS = [
   ".mp3",
   ".wav",
@@ -70,14 +70,14 @@ const BLACKLIST_EXTENSIONS = [
 ] as const;
 
 /**
- * red/blue 是 trans 系列处理器共同的强制排除色标。
+ * red/blue 是 trans 系列处理器共同的强制排除色标
  */
 function has_color_block_tag(tag: string[]): boolean {
   return tag.some((value) => value === "red" || value === "blue");
 }
 
 /**
- * 从未知 JSON 值读取字符串数组，非字符串元素直接忽略。
+ * 从未知 JSON 值读取字符串数组，非字符串元素直接忽略
  */
 function string_array(value: unknown): string[] {
   return Array.isArray(value)
@@ -86,7 +86,7 @@ function string_array(value: unknown): string[] {
 }
 
 /**
- * 读取参数对象数组，保持 extra_field.parameter 只含普通对象。
+ * 读取参数对象数组，保持 extra_field.parameter 只含普通对象
  */
 function record_array(value: unknown): ApiJsonRecord[] {
   return Array.isArray(value)
@@ -98,42 +98,42 @@ function record_array(value: unknown): ApiJsonRecord[] {
 }
 
 /**
- * 分区参数生成需要浅拷贝对象，避免就地污染原始 extra_field 引用。
+ * 分区参数生成需要浅拷贝对象，避免就地污染原始 extra_field 引用
  */
 function trans_record_array(value: unknown): ApiJsonRecord[] {
   return Array.isArray(value) ? value.map((item) => read_json_record(item) as ApiJsonRecord) : [];
 }
 
 /**
- * 写回原始 JSON 时需要可变对象视图，非对象统一当作空对象处理。
+ * 写回原始 JSON 时需要可变对象视图，非对象统一当作空对象处理
  */
 function to_mutable_record(value: unknown): ApiJsonRecord {
   return read_json_record(value) as ApiJsonRecord;
 }
 
 /**
- * TRANS 默认处理器，对齐旧 NONE：只按资源扩展名和颜色标签过滤。
+ * TRANS 默认处理器，对齐旧 NONE：只按资源扩展名和颜色标签过滤
  */
 class NoneTransProcessor {
   public readonly text_type: ItemTextType = "NONE";
 
   /**
-   * project 保存完整 .trans 工程对象，供子类生成过滤缓存。
+   * project 保存完整 .trans 工程对象，供子类生成过滤缓存
    */
   public constructor(protected readonly project: ApiJsonRecord) {}
 
   /**
-   * 默认处理器无需预处理；子类可构建缓存。
+   * 默认处理器无需预处理；子类可构建缓存
    */
   public pre_process(): void {}
 
   /**
-   * 默认处理器无需后处理；写回前由子类刷新缓存。
+   * 默认处理器无需后处理；写回前由子类刷新缓存
    */
   public post_process(): void {}
 
   /**
-   * 判断一行 .trans 数据的状态，并维护派生 gold 标签与 aqua 跳过语义。
+   * 判断一行 .trans 数据的状态，并维护派生 gold 标签与 aqua 跳过语义
    */
   public check(
     path_key: string,
@@ -183,7 +183,7 @@ class NoneTransProcessor {
   }
 
   /**
-   * 默认过滤只看文本资源扩展名和 red/blue 标签，context 仅决定返回分区数量。
+   * 默认过滤只看文本资源扩展名和 red/blue 标签，context 仅决定返回分区数量
    */
   public filter(src: string, _path_key: string, tag: string[], context: string[]): boolean[] {
     const length = context.length > 0 ? context.length : 1;
@@ -194,7 +194,7 @@ class NoneTransProcessor {
   }
 
   /**
-   * 混合分区时生成 contextStr/translation 参数，span schema 保持原样。
+   * 混合分区时生成 contextStr/translation 参数，span schema 保持原样
    */
   public generate_parameter(
     src: string,
@@ -238,21 +238,21 @@ class NoneTransProcessor {
 }
 
 /**
- * KAG .trans 只改变 text_type，过滤逻辑继承 NONE。
+ * KAG .trans 只改变 text_type，过滤逻辑继承 NONE
  */
 class KagTransProcessor extends NoneTransProcessor {
   public override readonly text_type: ItemTextType = "KAG";
 }
 
 /**
- * RENPY .trans 只改变 text_type，过滤逻辑继承 NONE。
+ * RENPY .trans 只改变 text_type，过滤逻辑继承 NONE
  */
 class RenPyTransProcessor extends NoneTransProcessor {
   public override readonly text_type: ItemTextType = "RENPY";
 }
 
 /**
- * RPG Maker .trans 在默认过滤上叠加路径和地址黑名单。
+ * RPG Maker .trans 在默认过滤上叠加路径和地址黑名单
  */
 class RpgMakerTransProcessor extends NoneTransProcessor {
   public override readonly text_type: ItemTextType = "RPGMAKER";
@@ -273,7 +273,7 @@ class RpgMakerTransProcessor extends NoneTransProcessor {
   private cached_path_blocked = false;
 
   /**
-   * 路径黑名单按 file_key 缓存，地址黑名单逐 context 判断。
+   * 路径黑名单按 file_key 缓存，地址黑名单逐 context 判断
    */
   public override filter(
     src: string,
@@ -310,7 +310,7 @@ class RpgMakerTransProcessor extends NoneTransProcessor {
 }
 
 /**
- * WOLF .trans 使用地址白名单/黑名单和数据库屏蔽文本集合。
+ * WOLF .trans 使用地址白名单/黑名单和数据库屏蔽文本集合
  */
 class WolfTransProcessor extends NoneTransProcessor {
   public override readonly text_type: ItemTextType = "WOLF";
@@ -339,21 +339,21 @@ class WolfTransProcessor extends NoneTransProcessor {
   private block_text = new Set<string>();
 
   /**
-   * 读取前根据整个 project 生成被数据库地址遮蔽的文本集合。
+   * 读取前根据整个 project 生成被数据库地址遮蔽的文本集合
    */
   public override pre_process(): void {
     this.block_text = this.generate_block_text(this.project);
   }
 
   /**
-   * 写回前重新生成屏蔽集合，避免原始 project 被外部修改后缓存过期。
+   * 写回前重新生成屏蔽集合，避免原始 project 被外部修改后缓存过期
    */
   public override post_process(): void {
     this.block_text = this.generate_block_text(this.project);
   }
 
   /**
-   * WOLF 先应用白名单，再应用黑名单、色标、common 路径和屏蔽文本。
+   * WOLF 先应用白名单，再应用黑名单、色标、common 路径和屏蔽文本
    */
   public override filter(
     src: string,
@@ -394,7 +394,7 @@ class WolfTransProcessor extends NoneTransProcessor {
   }
 
   /**
-   * 从 WOLF 数据库 stringArgs 非 0 项收集应屏蔽文本，对齐旧 generate_block_text。
+   * 从 WOLF 数据库 stringArgs 非 0 项收集应屏蔽文本，对齐旧 generate_block_text
    */
   private generate_block_text(project: ApiJsonRecord): Set<string> {
     const result = new Set<string>();
@@ -420,11 +420,11 @@ class WolfTransProcessor extends NoneTransProcessor {
 }
 
 /**
- * TRANS 格式处理器，负责 .trans 的读入、引擎处理器选择和最小补丁写回。
+ * TRANS 格式处理器，负责 .trans 的读入、引擎处理器选择和最小补丁写回
  */
 export class TRANSFormat {
   /**
-   * 读取 .trans project.files，以 data 行为权威并按同索引读取 tags/context/parameters。
+   * 读取 .trans project.files，以 data 行为权威并按同索引读取 tags/context/parameters
    */
   public read_from_stream(content: Uint8Array, rel_path: string): Item[] {
     const root = JsonTool.parseStrict<ApiJsonRecord>(content);
@@ -478,7 +478,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 写回优先使用 trans_ref 最小补丁；缺失定位信息时回退旧重建路径。
+   * 写回优先使用 trans_ref 最小补丁；缺失定位信息时回退旧重建路径
    */
   public async write_to_path(
     items: Item[],
@@ -539,7 +539,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 校验所有条目都能通过 trans_ref 定位原始数据行，任一失败就走 legacy fallback。
+   * 校验所有条目都能通过 trans_ref 定位原始数据行，任一失败就走 legacy fallback
    */
   private collect_patch_targets(
     snapshots: TransSnapshot[],
@@ -568,7 +568,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 对单行执行最小补丁：必要时更新 tags/parameters，PROCESSED 才写译文列。
+   * 对单行执行最小补丁：必要时更新 tags/parameters，PROCESSED 才写译文列
    */
   private patch_trans_row(
     files: ApiJsonRecord,
@@ -657,7 +657,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 兼容缺失 trans_ref 的旧条目，只重建本次 items 涉及的 file_key。
+   * 兼容缺失 trans_ref 的旧条目，只重建本次 items 涉及的 file_key
    */
   private write_legacy_fallback(
     files: ApiJsonRecord,
@@ -719,7 +719,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 根据 gameEngine 选择历史同名处理器，未知引擎退回 NONE。
+   * 根据 gameEngine 选择历史同名处理器，未知引擎退回 NONE
    */
   private get_processor(project: ApiJsonRecord): NoneTransProcessor {
     const engine = String(project["gameEngine"] ?? "").toLowerCase();
@@ -739,14 +739,14 @@ export class TRANSFormat {
   }
 
   /**
-   * indexOriginal/indexTranslation 必须是非负整数，避免 JS 与历史负索引差异。
+   * indexOriginal/indexTranslation 必须是非负整数，避免 JS 与历史负索引差异
    */
   private non_negative_index(value: unknown, fallback: number): number {
     return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
   }
 
   /**
-   * 从行级二维字段读取字符串数组，缺失行直接为空。
+   * 从行级二维字段读取字符串数组，缺失行直接为空
    */
   private read_row_string_array(value: ApiJsonValue | undefined, row_index: number): string[] {
     const rows = Array.isArray(value) ? value : [];
@@ -754,7 +754,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 从行级二维字段读取原始 JSON 值，供参数 schema 探测使用。
+   * 从行级二维字段读取原始 JSON 值，供参数 schema 探测使用
    */
   private read_row_value(
     value: ApiJsonValue | undefined,
@@ -765,7 +765,7 @@ export class TRANSFormat {
   }
 
   /**
-   * 写回可选数组字段时就地补齐字段，保持原始 JSON 对象最小变更。
+   * 写回可选数组字段时就地补齐字段，保持原始 JSON 对象最小变更
    */
   private ensure_array_field(record: ApiJsonRecord, field: string): ApiJsonValue[] {
     const value = record[field];

@@ -51,7 +51,7 @@ export function resolve_dropped_paths(data_transfer: DataTransfer): DroppedPathR
           normalized_file_paths.push(normalized_file_path);
         }
       } catch {
-        // 某些拖拽源不会暴露本地路径，这里继续回退到 text/uri-list。
+        // 某些拖拽源不会暴露本地路径，这里继续回退到 text/uri-list
       }
     }
     if (normalized_file_paths.length > 0) {

@@ -112,7 +112,7 @@ describe("llm payload adapter", () => {
 });
 
 /**
- * 构造策略测试所需的最小模型快照，让每个断言只覆盖一个供应商差异。
+ * 构造策略测试所需的最小模型快照，让每个断言只覆盖一个供应商差异
  */
 function create_snapshot(
   overrides: Partial<LinguaGachaModelSnapshot> = {},

@@ -1,12 +1,11 @@
-// 结构化思考块识别规则：翻译和分析都可能要求模型先输出 <why>...</why>。
-const WHY_TAG_PATTERN = /<why>(.*?)<\/why>/gis;
+const WHY_TAG_PATTERN = /<why>(.*?)<\/why>/gis; // 结构化思考块识别规则：翻译和分析都可能要求模型先输出 <why>...</why>
 
 /**
- * 模型响应清洗器，负责剥离 `<why>` 与压缩日志空行。
+ * 模型响应清洗器，负责剥离 `<why>` 与压缩日志空行
  */
 export class ResponseCleaner {
   /**
-   * 是否存在 why 块用于分析链路判断“无术语但有解释”的合法失败。
+   * 是否存在 why 块用于分析链路判断“无术语但有解释”的合法失败
    */
   public static has_why_block(response_result: string): boolean {
     WHY_TAG_PATTERN.lastIndex = 0;
@@ -16,7 +15,7 @@ export class ResponseCleaner {
   }
 
   /**
-   * 从模型正文中剥离 `<why>...</why>`，避免 JSONLINE 解码被污染。
+   * 从模型正文中剥离 `<why>...</why>`，避免 JSONLINE 解码被污染
    */
   public static extract_why_from_response(response_result: string): {
     cleaned_response_result: string;
@@ -41,7 +40,7 @@ export class ResponseCleaner {
   }
 
   /**
-   * 连续空行压缩成单个空行，保持日志可读。
+   * 连续空行压缩成单个空行，保持日志可读
    */
   public static normalize_blank_lines(text: string): string {
     if (text === "") {
@@ -64,7 +63,7 @@ export class ResponseCleaner {
   }
 
   /**
-   * 把两段可选文本按块拼接，调用方不用重复判断空字符串。
+   * 把两段可选文本按块拼接，调用方不用重复判断空字符串
    */
   public static merge_text_blocks(first_text: string, second_text: string): string {
     return [first_text, second_text].filter((text) => text !== "").join("\n");

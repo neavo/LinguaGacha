@@ -4,7 +4,7 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 /**
- * 模拟 EventSource 行为，隔离桌面 API 流测试对浏览器实现的依赖。
+ * 模拟 EventSource 行为，隔离桌面 API 流测试对浏览器实现的依赖
  */
 class EventSourceStub {
   static instances: EventSourceStub[] = [];
@@ -15,7 +15,7 @@ class EventSourceStub {
   onerror: ((event: Event) => void) | null = null;
 
   /**
-   * 初始化 EventSourceStub 依赖，保持外部写入口清晰。
+   * 初始化 EventSourceStub 依赖，保持外部写入口清晰
    */
   constructor(url: string) {
     this.url = url;
@@ -23,7 +23,7 @@ class EventSourceStub {
   }
 
   /**
-   * 登记测试监听器，模拟 EventSource 多事件订阅行为。
+   * 登记测试监听器，模拟 EventSource 多事件订阅行为
    */
   addEventListener(type: string, listener: EventListener): void {
     const listeners = this.listeners.get(type) ?? [];
@@ -32,7 +32,7 @@ class EventSourceStub {
   }
 
   /**
-   * 触发测试事件，帮助断言桌面 API 流解析结果。
+   * 触发测试事件，帮助断言桌面 API 流解析结果
    */
   emit(type: string, data: Record<string, unknown>): void {
     for (const listener of this.listeners.get(type) ?? []) {

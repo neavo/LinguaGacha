@@ -8,8 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Item } from "../../../base/item";
 import { XLSXFormat } from "./xlsx-format";
 
-// 每个用例独占工作簿输出目录，避免 ExcelJS 文件写回互相影响。
-let temp_dir = "";
+let temp_dir = ""; // 每个用例独占工作簿输出目录，避免 ExcelJS 文件写回互相影响
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-xlsx-format-"));

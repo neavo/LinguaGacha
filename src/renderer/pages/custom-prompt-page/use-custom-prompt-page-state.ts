@@ -348,7 +348,7 @@ export function useCustomPromptPageState(
 
     previous_app_language_ref.current = settings_snapshot.app_language;
 
-    // Why: UI 语言切换只需要刷新模板片段，不能顺手重拉快照覆盖用户尚未保存的正文草稿。
+    // 原因：UI 语言切换只需要刷新模板片段，不能顺手重拉快照覆盖用户尚未保存的正文草稿
     void refresh_template();
   }, [project_snapshot.loaded, refresh_template, settings_snapshot.app_language]);
 

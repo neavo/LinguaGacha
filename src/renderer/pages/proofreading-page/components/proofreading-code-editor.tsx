@@ -64,7 +64,7 @@ function build_highlight_decorations(highlights: ProofreadingCodeEditorHighlight
     return Decoration.none;
   }
 
-  // 为什么：RangeSetBuilder 要求装饰范围按位置递增写入，先排序才能稳定处理重复命中和交错术语。
+  // 为什么：RangeSetBuilder 要求装饰范围按位置递增写入，先排序才能稳定处理重复命中和交错术语
   const sorted_highlights = [...highlights].sort((left, right) => {
     if (left.start !== right.start) {
       return left.start - right.start;
@@ -237,7 +237,7 @@ function create_editor_extensions(
       };
     }),
     EditorView.updateListener.of((update) => {
-      // 为什么：这里是受控编辑器，外部同步 value 时不能再回调 on_change 造成回环。
+      // 为什么：这里是受控编辑器，外部同步 value 时不能再回调 on_change 造成回环
       if (!update.docChanged || suppress_change_ref.current) {
         return;
       }

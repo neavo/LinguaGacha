@@ -14,13 +14,13 @@ import {
   type TaskWorkUnitExecutor,
 } from "./task-work-unit-executor";
 
-// worker 池只关心运行环境依赖，任务语义由 body 里的 method 和 runner 决定。
+// worker 池只关心运行环境依赖，任务语义由 body 里的 method 和 runner 决定
 interface TaskWorkerPoolOptions {
   appRoot: string;
   workerCount?: number;
 }
 
-// 等待派发的 work unit，保存 resolve/reject 是为了 worker 消息回来后完成原 Promise。
+// 等待派发的 work unit，保存 resolve/reject 是为了 worker 消息回来后完成原 Promise
 interface PendingTask {
   id: string;
   method: string;
@@ -31,7 +31,7 @@ interface PendingTask {
   abort_listener: () => void;
 }
 
-// 一个 slot 对应一个 worker 线程和它当前承载的任务。
+// 一个 slot 对应一个 worker 线程和它当前承载的任务
 interface WorkerSlot {
   worker: Worker;
   busy: boolean;
@@ -39,7 +39,7 @@ interface WorkerSlot {
 }
 
 /**
- * 固定 worker_threads 池，承载所有 work unit 的确定性处理。
+ * 固定 worker_threads 池，承载所有 work unit 的确定性处理
  */
 export class TaskWorkerPool implements TaskWorkUnitExecutor {
   private readonly options: Required<TaskWorkerPoolOptions>;
@@ -49,7 +49,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   private disposed = false;
 
   /**
-   * 构造时立即创建固定数量 worker，避免任务运行中动态膨胀。
+   * 构造时立即创建固定数量 worker，避免任务运行中动态膨胀
    */
   public constructor(options: TaskWorkerPoolOptions) {
     this.options = {
@@ -69,7 +69,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * Vitest 全局环境可能把 import.meta.url 伪装成非 file URL；该场景只能回退源码 runner。
+   * Vitest 全局环境可能把 import.meta.url 伪装成非 file URL；该场景只能回退源码 runner
    */
   private should_use_direct_runner(worker_entry_url: URL): boolean {
     try {
@@ -80,7 +80,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 翻译 chunk 走 worker 执行，返回结构由 runner 保证。
+   * 翻译 chunk 走 worker 执行，返回结构由 runner 保证
    */
   public async execute_translation_chunk(
     body: Record<string, ApiJsonValue>,
@@ -94,7 +94,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 分析 chunk 走同一 worker 池，不新建并行执行体系。
+   * 分析 chunk 走同一 worker 池，不新建并行执行体系
    */
   public async execute_analysis_chunk(
     body: Record<string, ApiJsonValue>,
@@ -104,7 +104,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 重翻单条 item 复用翻译 runner，提交仍在 TaskEngine。
+   * 重翻单条 item 复用翻译 runner，提交仍在 TaskEngine
    */
   public async execute_retranslate_item(
     body: Record<string, ApiJsonValue>,
@@ -118,7 +118,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 单条翻译不占后台锁，但仍复用 worker 确定性链路。
+   * 单条翻译不占后台锁，但仍复用 worker 确定性链路
    */
   public async translate_single(
     body: Record<string, ApiJsonValue>,
@@ -137,7 +137,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * Gateway stop 时销毁 worker，避免 Electron 退出留下线程。
+   * Gateway stop 时销毁 worker，避免 Electron 退出留下线程
    */
   public async dispose(): Promise<void> {
     this.disposed = true;
@@ -151,7 +151,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 入队统一绑定 AbortSignal；任务未分配时取消直接从队列移除。
+   * 入队统一绑定 AbortSignal；任务未分配时取消直接从队列移除
    */
   private enqueue(
     method: string,
@@ -188,7 +188,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 有空闲 worker 时持续派发队列任务。
+   * 有空闲 worker 时持续派发队列任务
    */
   private drain_queue(): void {
     for (const slot of this.slots) {
@@ -206,7 +206,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 取消未开始任务时直接拒绝，已开始任务则发 cancel 消息给 worker。
+   * 取消未开始任务时直接拒绝，已开始任务则发 cancel 消息给 worker
    */
   private cancel_task(task: PendingTask): void {
     const queued_index = this.queue.findIndex((item) => item.id === task.id);
@@ -220,7 +220,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 创建 worker 并绑定消息和崩溃恢复逻辑。
+   * 创建 worker 并绑定消息和崩溃恢复逻辑
    */
   private create_slot(): WorkerSlot {
     const slot: WorkerSlot = {
@@ -250,7 +250,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * worker 返回消息后解除当前任务并继续派发队列。
+   * worker 返回消息后解除当前任务并继续派发队列
    */
   private finish_slot_message(
     slot: WorkerSlot,
@@ -272,7 +272,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * worker 崩溃时拒绝当前任务，并用新 worker 补齐固定池容量。
+   * worker 崩溃时拒绝当前任务，并用新 worker 补齐固定池容量
    */
   private fail_slot(slot: WorkerSlot, error: unknown): void {
     const task = slot.current_task;
@@ -288,7 +288,7 @@ export class TaskWorkerPool implements TaskWorkUnitExecutor {
   }
 
   /**
-   * 清理当前任务和 abort listener，避免任务结束后继续收到取消事件。
+   * 清理当前任务和 abort listener，避免任务结束后继续收到取消事件
    */
   private clear_slot_task(slot: WorkerSlot): PendingTask | null {
     const task = slot.current_task;

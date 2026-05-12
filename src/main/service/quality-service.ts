@@ -22,23 +22,19 @@ import { Prompt, type PromptKind } from "../../base/prompt";
 type JsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * 封装 质量规则与提示词 CRUD、预设 IO 和 revision 对齐。
+ * 封装 质量规则与提示词 CRUD、预设 IO 和 revision 对齐
  */
 export class QualityService {
-  // paths 统一解析内置 / 用户预设目录，服务层不在调用点拼接路径。
-  private readonly paths: AppPathService;
+  private readonly paths: AppPathService; // paths 统一解析内置 / 用户预设目录，服务层不在调用点拼接路径
 
-  // 提示词模板语言跟随应用配置，因此质量服务需要配置读取能力。
-  private readonly setting_service: SettingService;
+  private readonly setting_service: SettingService; // 提示词模板语言跟随应用配置，因此质量服务需要配置读取能力
 
-  // 质量规则和提示词工程事实只通过 ProjectDatabase workflow 读写。
-  private readonly database: ProjectDatabase;
+  private readonly database: ProjectDatabase; // 质量规则和提示词工程事实只通过 ProjectDatabase workflow 读写
 
-  // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标。
-  private readonly session_state: ProjectSessionState;
+  private readonly session_state: ProjectSessionState; // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标
 
   /**
-   * 初始化 QualityService 依赖，保持外部写入口清晰。
+   * 初始化 QualityService 依赖，保持外部写入口清晰
    */
   public constructor(
     paths: AppPathService,
@@ -53,7 +49,7 @@ export class QualityService {
   }
 
   /**
-   * 保存规则条目并返回 mutation ack，保持页面 revision 对齐。
+   * 保存规则条目并返回 mutation ack，保持页面 revision 对齐
    */
   public async save_rule_entries(request: JsonRecord): Promise<JsonRecord> {
     const rule_type = this.normalize_rule_type(request["rule_type"]);
@@ -78,7 +74,7 @@ export class QualityService {
   }
 
   /**
-   * 更新规则 meta 并返回 mutation ack，避免页面直接改工程事实。
+   * 更新规则 meta 并返回 mutation ack，避免页面直接改工程事实
    */
   public async update_rule_meta(request: JsonRecord): Promise<JsonRecord> {
     const rule_type = this.normalize_rule_type(request["rule_type"]);
@@ -105,7 +101,7 @@ export class QualityService {
   }
 
   /**
-   * 从外部文件导入规则预演结果，保持导入解析在服务内收口。
+   * 从外部文件导入规则预演结果，保持导入解析在服务内收口
    */
   public async import_rules(request: JsonRecord): Promise<JsonRecord> {
     const file_path = String(request["path"] ?? "");
@@ -113,7 +109,7 @@ export class QualityService {
   }
 
   /**
-   * 导出规则到用户选择路径，避免页面处理文件格式细节。
+   * 导出规则到用户选择路径，避免页面处理文件格式细节
    */
   public async export_rules(request: JsonRecord): Promise<JsonRecord> {
     const file_path = String(request["path"] ?? "");
@@ -124,7 +120,7 @@ export class QualityService {
   }
 
   /**
-   * 列出内置和用户规则预设，统一虚拟 id 语义。
+   * 列出内置和用户规则预设，统一虚拟 id 语义
    */
   public list_rule_presets(request: JsonRecord): JsonRecord {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
@@ -145,7 +141,7 @@ export class QualityService {
   }
 
   /**
-   * 读取规则预设内容，隐藏内置和用户目录差异。
+   * 读取规则预设内容，隐藏内置和用户目录差异
    */
   public read_rule_preset(request: JsonRecord): JsonRecord {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
@@ -161,7 +157,7 @@ export class QualityService {
   }
 
   /**
-   * 保存用户规则预设，确保文件名和目录规则一致。
+   * 保存用户规则预设，确保文件名和目录规则一致
    */
   public save_rule_preset(request: JsonRecord): JsonRecord {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
@@ -179,7 +175,7 @@ export class QualityService {
   }
 
   /**
-   * 重命名用户规则预设，保护内置预设不可变边界。
+   * 重命名用户规则预设，保护内置预设不可变边界
    */
   public rename_rule_preset(request: JsonRecord): JsonRecord {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
@@ -197,7 +193,7 @@ export class QualityService {
   }
 
   /**
-   * 删除用户规则预设，避免调用方误删内置资源。
+   * 删除用户规则预设，避免调用方误删内置资源
    */
   public delete_rule_preset(request: JsonRecord): JsonRecord {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
@@ -217,7 +213,7 @@ export class QualityService {
   }
 
   /**
-   * 读取提示词模板，保持任务类型到模板路径的映射集中。
+   * 读取提示词模板，保持任务类型到模板路径的映射集中
    */
   public get_prompt_template(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -237,7 +233,7 @@ export class QualityService {
   }
 
   /**
-   * 保存工程提示词并返回 mutation ack，保持 prompts revision 对齐。
+   * 保存工程提示词并返回 mutation ack，保持 prompts revision 对齐
    */
   public async save_prompt(request: JsonRecord): Promise<JsonRecord> {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -271,7 +267,7 @@ export class QualityService {
   }
 
   /**
-   * 读取提示词导入文本，避免 renderer 触碰文件系统。
+   * 读取提示词导入文本，避免 renderer 触碰文件系统
    */
   public read_prompt_import_text(request: JsonRecord): JsonRecord {
     const file_path = String(request["path"] ?? "");
@@ -284,7 +280,7 @@ export class QualityService {
   }
 
   /**
-   * 导出提示词文本，保持文件写出留在 Electron main。
+   * 导出提示词文本，保持文件写出留在 Electron main
    */
   public async export_prompt(request: JsonRecord): Promise<JsonRecord> {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -303,7 +299,7 @@ export class QualityService {
   }
 
   /**
-   * 列出提示词预设，统一内置和用户预设的虚拟 id。
+   * 列出提示词预设，统一内置和用户预设的虚拟 id
    */
   public list_prompt_presets(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -324,7 +320,7 @@ export class QualityService {
   }
 
   /**
-   * 读取提示词预设文本，隐藏资源目录差异。
+   * 读取提示词预设文本，隐藏资源目录差异
    */
   public read_prompt_preset(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -336,7 +332,7 @@ export class QualityService {
   }
 
   /**
-   * 保存用户提示词预设，统一命名和后缀规则。
+   * 保存用户提示词预设，统一命名和后缀规则
    */
   public save_prompt_preset(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -351,7 +347,7 @@ export class QualityService {
   }
 
   /**
-   * 重命名用户提示词预设，保护内置预设只读。
+   * 重命名用户提示词预设，保护内置预设只读
    */
   public rename_prompt_preset(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -369,7 +365,7 @@ export class QualityService {
   }
 
   /**
-   * 删除用户提示词预设，避免调用方自行判断预设来源。
+   * 删除用户提示词预设，避免调用方自行判断预设来源
    */
   public delete_prompt_preset(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
@@ -386,7 +382,7 @@ export class QualityService {
   }
 
   /**
-   * 校验工程路径，确保项目级规则写入有明确目标。
+   * 校验工程路径，确保项目级规则写入有明确目标
    */
   private async require_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
@@ -397,7 +393,7 @@ export class QualityService {
   }
 
   /**
-   * 构建 ProjectMutationAck，保持同步 mutation 响应形状一致。
+   * 构建 ProjectMutationAck，保持同步 mutation 响应形状一致
    */
   private build_project_mutation_ack(project_path: string, updated_sections: string[]): JsonRecord {
     const meta = this.normalize_object(
@@ -407,7 +403,7 @@ export class QualityService {
   }
 
   /**
-   * 读取规则 revision，隔离 meta key 组合细节。
+   * 读取规则 revision，隔离 meta key 组合细节
    */
   private get_rule_revision(project_path: string, rule_type: QualityRuleKind): number {
     return get_runtime_section_revision(
@@ -417,7 +413,7 @@ export class QualityService {
   }
 
   /**
-   * 读取提示词 revision，隔离 meta key 组合细节。
+   * 读取提示词 revision，隔离 meta key 组合细节
    */
   private get_prompt_revision(project_path: string, task_type: PromptKind): number {
     return get_runtime_section_revision(
@@ -427,7 +423,7 @@ export class QualityService {
   }
 
   /**
-   * revision 读取复用运行态服务的 meta 口径，避免 bootstrap 和 mutation ack 分叉。
+   * revision 读取复用运行态服务的 meta 口径，避免 bootstrap 和 mutation ack 分叉
    */
   private read_project_meta(project_path: string): JsonRecord {
     return this.normalize_object(
@@ -436,21 +432,21 @@ export class QualityService {
   }
 
   /**
-   * 生成规则 revision key，避免调用方拼接 meta 名称。
+   * 生成规则 revision key，避免调用方拼接 meta 名称
    */
   private build_rule_revision_key(rule_type: QualityRuleKind): string {
     return QualityRule.from_json(rule_type).revision_meta_key;
   }
 
   /**
-   * 生成提示词 revision key，避免调用方拼接 meta 名称。
+   * 生成提示词 revision key，避免调用方拼接 meta 名称
    */
   private prompt_revision_key(task_type: PromptKind): string {
     return Prompt.from_json(task_type).revision_meta_key;
   }
 
   /**
-   * 映射规则类型到 meta key，保持规则类型命名唯一。
+   * 映射规则类型到 meta key，保持规则类型命名唯一
    */
   private resolve_rule_meta_key(rule_type: QualityRuleKind, key: string): string {
     if (key === "enabled") {
@@ -460,7 +456,7 @@ export class QualityService {
   }
 
   /**
-   * 归一规则 meta 值，兼容旧项目缺失字段。
+   * 归一规则 meta 值，兼容旧项目缺失字段
    */
   private normalize_rule_meta_value(
     rule_type: QualityRuleKind,
@@ -471,7 +467,7 @@ export class QualityService {
   }
 
   /**
-   * 校验期望 revision，避免过期页面覆盖新事实。
+   * 校验期望 revision，避免过期页面覆盖新事实
    */
   private assert_revision(
     current_revision: number,
@@ -486,42 +482,42 @@ export class QualityService {
   }
 
   /**
-   * 创建 database workflow 操作对象，避免各处重复组装协议。
+   * 创建 database workflow 操作对象，避免各处重复组装协议
    */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };
   }
 
   /**
-   * 归一规则类型，保护质量规则接口只接受已知分组。
+   * 归一规则类型，保护质量规则接口只接受已知分组
    */
   private normalize_rule_type(value: ApiJsonValue | undefined): QualityRuleKind {
     return QualityRule.from_json(value).kind;
   }
 
   /**
-   * 归一提示词任务类型，保护提示词目录映射。
+   * 归一提示词任务类型，保护提示词目录映射
    */
   private normalize_prompt_kind(value: ApiJsonValue | undefined): PromptKind {
     return Prompt.from_json(value).kind;
   }
 
   /**
-   * 归一规则条目列表，确保写入数据库前字段完整。
+   * 归一规则条目列表，确保写入数据库前字段完整
    */
   private normalize_rule_entries(value: ApiJsonValue | undefined): JsonRecord[] {
     return QualityRule.normalize_entries(value) as JsonRecord[];
   }
 
   /**
-   * 归一单条规则，兼容导入和页面编辑两种来源。
+   * 归一单条规则，兼容导入和页面编辑两种来源
    */
   private normalize_rule_entry(entry: JsonRecord): JsonRecord {
     return QualityRule.normalize_entry(entry) as JsonRecord;
   }
 
   /**
-   * 按扩展名读取规则文件，保持导入格式分发集中。
+   * 按扩展名读取规则文件，保持导入格式分发集中
    */
   private async load_rules_from_file(file_path: string): Promise<JsonRecord[]> {
     if (file_path === "") {
@@ -538,7 +534,7 @@ export class QualityService {
   }
 
   /**
-   * 读取 JSON 规则文件，兼容数组和对象包装格式。
+   * 读取 JSON 规则文件，兼容数组和对象包装格式
    */
   private async load_rules_from_json(file_path: string): Promise<JsonRecord[]> {
     const data = await JsonTool.repairParse(fs.readFileSync(file_path));
@@ -618,7 +614,7 @@ export class QualityService {
   }
 
   /**
-   * 读取 Excel 规则文件，保持表格导入规则集中。
+   * 读取 Excel 规则文件，保持表格导入规则集中
    */
   private async load_rules_from_xlsx(file_path: string): Promise<JsonRecord[]> {
     const workbook = new ExcelJS.Workbook();
@@ -648,7 +644,7 @@ export class QualityService {
   }
 
   /**
-   * 按目标扩展名导出规则，隐藏 JSON 与表格写出差异。
+   * 按目标扩展名导出规则，隐藏 JSON 与表格写出差异
    */
   private async export_rules_to_files(base_path: string, entries: JsonRecord[]): Promise<void> {
     fs.mkdirSync(path.dirname(base_path), { recursive: true });
@@ -675,14 +671,14 @@ export class QualityService {
   }
 
   /**
-   * 读取 Excel 单元格文本，统一空值和字符串转换。
+   * 读取 Excel 单元格文本，统一空值和字符串转换
    */
   private read_excel_cell_text(row: Row, column_number: number): string {
     return SpreadsheetTool.cellValueToText(row.getCell(column_number).value).trim();
   }
 
   /**
-   * 遍历预设目录，生成 UI 可消费的稳定列表。
+   * 遍历预设目录，生成 UI 可消费的稳定列表
    */
   private list_preset_items(
     source: "builtin" | "user",
@@ -704,7 +700,7 @@ export class QualityService {
   }
 
   /**
-   * 构造预设列表项，集中维护虚拟 id 和显示名。
+   * 构造预设列表项，集中维护虚拟 id 和显示名
    */
   private build_preset_item(
     source: "builtin" | "user",
@@ -723,7 +719,7 @@ export class QualityService {
   }
 
   /**
-   * 解析规则预设路径，保护内置与用户预设边界。
+   * 解析规则预设路径，保护内置与用户预设边界
    */
   private resolve_rule_preset_path(preset_directory: string, virtual_id: string): string {
     const { source, file_name } = this.split_virtual_id(virtual_id, ".json");
@@ -735,7 +731,7 @@ export class QualityService {
   }
 
   /**
-   * 解析提示词预设路径，保护内置与用户预设边界。
+   * 解析提示词预设路径，保护内置与用户预设边界
    */
   private resolve_prompt_preset_path(task_type: string, virtual_id: string): string {
     const { source, file_name } = this.split_virtual_id(virtual_id, ".txt");
@@ -747,7 +743,7 @@ export class QualityService {
   }
 
   /**
-   * 拆分预设虚拟 id，避免路径来源判断散落。
+   * 拆分预设虚拟 id，避免路径来源判断散落
    */
   private split_virtual_id(
     virtual_id: string,
@@ -767,7 +763,7 @@ export class QualityService {
   }
 
   /**
-   * 校验预设文件名，防止用户输入逃逸预设目录。
+   * 校验预设文件名，防止用户输入逃逸预设目录
    */
   private ensure_preset_file_name(file_name: string, extension: ".json" | ".txt"): void {
     const has_path_boundary =
@@ -783,7 +779,7 @@ export class QualityService {
   }
 
   /**
-   * 归一预设显示名，保持文件名和 UI 文案一致。
+   * 归一预设显示名，保持文件名和 UI 文案一致
    */
   private normalize_preset_name(name: string): string {
     const normalized_name = name.trim();
@@ -794,14 +790,14 @@ export class QualityService {
   }
 
   /**
-   * 收窄未知 JSON 为对象，避免深层读取抛出隐式异常。
+   * 收窄未知 JSON 为对象，避免深层读取抛出隐式异常
    */
   private normalize_object(value: ApiJsonValue | undefined): JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
   }
 
   /**
-   * 从未知值读取数字，兼容字符串数字和缺省值。
+   * 从未知值读取数字，兼容字符串数字和缺省值
    */
   private read_number(value: ApiJsonValue | undefined): number {
     const number_value = Number(value ?? 0);
@@ -809,7 +805,7 @@ export class QualityService {
   }
 
   /**
-   * 读取文本文件，统一文件不存在和编码边界。
+   * 读取文本文件，统一文件不存在和编码边界
    */
   private read_text_file(file_path: string): string {
     return fs
@@ -819,7 +815,7 @@ export class QualityService {
   }
 
   /**
-   * 移除文件扩展名，保持预设显示名生成一致。
+   * 移除文件扩展名，保持预设显示名生成一致
    */
   private without_extension(file_path: string): string {
     const parsed = path.parse(file_path);
@@ -827,7 +823,7 @@ export class QualityService {
   }
 
   /**
-   * 补齐 txt 后缀，保持提示词预设文件格式稳定。
+   * 补齐 txt 后缀，保持提示词预设文件格式稳定
    */
   private ensure_txt_suffix(file_path: string): string {
     const parsed = path.parse(file_path);

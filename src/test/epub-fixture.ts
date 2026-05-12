@@ -3,7 +3,7 @@ import fs from "node:fs";
 import JSZip from "jszip";
 
 /**
- * 构造最小 EPUB，测试只依赖公开 zip/container/opf/spine 结构。
+ * 构造最小 EPUB，测试只依赖公开 zip/container/opf/spine 结构
  */
 export async function create_epub_fixture(chapter_text: string): Promise<Buffer> {
   const zip = new JSZip();
@@ -40,14 +40,14 @@ export async function create_epub_fixture(chapter_text: string): Promise<Buffer>
 }
 
 /**
- * 写出最小 EPUB 文件，服务层测试通过真实磁盘入口覆盖公开预演行为。
+ * 写出最小 EPUB 文件，服务层测试通过真实磁盘入口覆盖公开预演行为
  */
 export async function write_epub_fixture(file_path: string, chapter_text: string): Promise<void> {
   fs.writeFileSync(file_path, await create_epub_fixture(chapter_text));
 }
 
 /**
- * 读取 EPUB 内指定文档文本，断言写回结果时不暴露 JSZip 细节到各测试文件。
+ * 读取 EPUB 内指定文档文本，断言写回结果时不暴露 JSZip 细节到各测试文件
  */
 export async function read_epub_entry_text(
   epub_content: Buffer | Uint8Array,

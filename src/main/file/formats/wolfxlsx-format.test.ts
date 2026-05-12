@@ -8,8 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Item } from "../../../base/item";
 import { WOLFXLSXFormat } from "./wolfxlsx-format";
 
-// 每个用例独占工作簿输出目录，避免 WOLF 写回测试共享文件状态。
-let temp_dir = "";
+let temp_dir = ""; // 每个用例独占工作簿输出目录，避免 WOLF 写回测试共享文件状态
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-wolfxlsx-format-"));

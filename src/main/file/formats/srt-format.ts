@@ -12,16 +12,16 @@ import {
 import { Item } from "../../../base/item";
 
 /**
- * SRT 格式以字幕块为单位解析，序号和时间轴放入 row/extra_field。
+ * SRT 格式以字幕块为单位解析，序号和时间轴放入 row/extra_field
  */
 export class SRTFormat {
   /**
-   * 配置用于输出路径和双语去重策略。
+   * 配置用于输出路径和双语去重策略
    */
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 解析时按空行切块，只接受「序号 + 时间轴 + 正文」结构。
+   * 解析时按空行切块，只接受「序号 + 时间轴 + 正文」结构
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const items: Item[] = [];
@@ -59,7 +59,7 @@ export class SRTFormat {
   }
 
   /**
-   * 写回时重新生成 SRT 块，保持序号、时间轴和空行分隔。
+   * 写回时重新生成 SRT 块，保持序号、时间轴和空行分隔
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "SRT")) {

@@ -7,7 +7,7 @@ import type { LogAppendPayload, LogLevel } from "../../shared/log";
 let active_log_manager: LogManager | null = null;
 
 /**
- * 主进程启动链路把当前日志权威登记到这里，供 Electron 事件回调用同一实例。
+ * 主进程启动链路把当前日志权威登记到这里，供 Electron 事件回调用同一实例
  */
 export function set_electron_main_log_manager(log_manager: LogManager | null): void {
   active_log_manager = log_manager;

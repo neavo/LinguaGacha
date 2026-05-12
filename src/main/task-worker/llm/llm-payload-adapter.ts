@@ -14,7 +14,7 @@ const GEMINI_BUDGETS: Record<"LOW" | "MEDIUM" | "HIGH", number> = {
 };
 
 /**
- * 生成 pi-ai provider options；第三方库只拿供应商通信参数，不拥有 LinguaGacha 策略。
+ * 生成 pi-ai provider options；第三方库只拿供应商通信参数，不拥有 LinguaGacha 策略
  */
 export function build_pi_ai_provider_options(
   snapshot: LinguaGachaModelSnapshot,
@@ -39,7 +39,7 @@ export function build_pi_ai_provider_options(
 }
 
 /**
- * onPayload 是供应商 payload 修补入口，所有非通用字段都集中在这里。
+ * onPayload 是供应商 payload 修补入口，所有非通用字段都集中在这里
  */
 export function patch_linguagacha_payload(
   payload: unknown,
@@ -59,7 +59,7 @@ export function patch_linguagacha_payload(
 }
 
 /**
- * OpenAI-compatible 分支把 extra_body 内容展开到顶层，避免发送字面 extra_body 字段。
+ * OpenAI-compatible 分支把 extra_body 内容展开到顶层，避免发送字面 extra_body 字段
  */
 function patch_openai_payload(
   payload: Record<string, unknown>,
@@ -81,7 +81,7 @@ function patch_openai_payload(
 }
 
 /**
- * 思考挡位映射保留在 TS 边界，避免模型名规则散到任务 runner。
+ * 思考挡位映射保留在 TS 边界，避免模型名规则散到任务 runner
  */
 function build_openai_thinking_body(
   snapshot: LinguaGachaModelSnapshot,
@@ -104,7 +104,7 @@ function build_openai_thinking_body(
 }
 
 /**
- * Google payload 需要把 generation 字段放入 config，并强制保留安全阈值。
+ * Google payload 需要把 generation 字段放入 config，并强制保留安全阈值
  */
 function patch_google_payload(
   payload: Record<string, unknown>,
@@ -131,7 +131,7 @@ function patch_google_payload(
 }
 
 /**
- * pi-ai 的 Google thinking option 与原始 payload config 使用同一份挡位计算。
+ * pi-ai 的 Google thinking option 与原始 payload config 使用同一份挡位计算
  */
 function build_google_thinking_option(snapshot: LinguaGachaModelSnapshot): Record<string, unknown> {
   const config = build_google_thinking_config(snapshot);
@@ -151,7 +151,7 @@ function build_google_thinking_option(snapshot: LinguaGachaModelSnapshot): Recor
 }
 
 /**
- * Gemini 2.5 / 3 系列 thinking 字段不同，模型名判断集中在这里。
+ * Gemini 2.5 / 3 系列 thinking 字段不同，模型名判断集中在这里
  */
 function build_google_thinking_config(
   snapshot: LinguaGachaModelSnapshot,
@@ -192,7 +192,7 @@ function build_google_thinking_config(
 }
 
 /**
- * Anthropic 只接受顶层字段；thinking 开启时不能同时带 temperature / top_p。
+ * Anthropic 只接受顶层字段；thinking 开启时不能同时带 temperature / top_p
  */
 function patch_anthropic_payload(
   payload: Record<string, unknown>,
@@ -215,7 +215,7 @@ function patch_anthropic_payload(
 }
 
 /**
- * pi-ai 的 Anthropic thinking option 复用 thinking 预算，保持双入口一致。
+ * pi-ai 的 Anthropic thinking option 复用 thinking 预算，保持双入口一致
  */
 function build_anthropic_thinking_option(
   snapshot: LinguaGachaModelSnapshot,
@@ -232,7 +232,7 @@ function build_anthropic_thinking_option(
 }
 
 /**
- * Claude thinking 只覆盖支持预算字段的型号，其他型号不注入额外参数。
+ * Claude thinking 只覆盖支持预算字段的型号，其他型号不注入额外参数
  */
 function build_anthropic_thinking_payload(
   snapshot: LinguaGachaModelSnapshot,
@@ -254,7 +254,7 @@ function build_anthropic_thinking_payload(
 }
 
 /**
- * 自动 token 时只给 Anthropic 保守下限，其它供应商交给远端默认。
+ * 自动 token 时只给 Anthropic 保守下限，其它供应商交给远端默认
  */
 function resolve_max_tokens_for_request(snapshot: LinguaGachaModelSnapshot): number | null {
   if (!is_output_token_limit_auto(snapshot.output_token_limit)) {
@@ -267,14 +267,14 @@ function resolve_max_tokens_for_request(snapshot: LinguaGachaModelSnapshot): num
 }
 
 /**
- * Anthropic thinking 开启时温度由供应商规则控制，adapter 不发送温度字段。
+ * Anthropic thinking 开启时温度由供应商规则控制，adapter 不发送温度字段
  */
 function should_send_temperature(snapshot: LinguaGachaModelSnapshot): boolean {
   return snapshot.api_format !== "Anthropic" || snapshot.thinking_level === "OFF";
 }
 
 /**
- * generation 字段只有 custom_enable 为真才写入 payload。
+ * generation 字段只有 custom_enable 为真才写入 payload
  */
 function patch_generation_fields(
   payload: Record<string, unknown>,
@@ -290,7 +290,7 @@ function patch_generation_fields(
 }
 
 /**
- * 自定义数值读取失败时返回 null，让调用方保持字段缺省。
+ * 自定义数值读取失败时返回 null，让调用方保持字段缺省
  */
 function read_custom_number(generation: Record<string, ApiJsonValue>, key: string): number | null {
   if (generation[`${key}_custom_enable`] !== true) {
@@ -301,7 +301,7 @@ function read_custom_number(generation: Record<string, ApiJsonValue>, key: strin
 }
 
 /**
- * payload patch 总是操作浅拷贝对象，避免修改第三方库传入的共享引用。
+ * payload patch 总是操作浅拷贝对象，避免修改第三方库传入的共享引用
  */
 function ensure_record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)

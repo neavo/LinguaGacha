@@ -531,8 +531,7 @@ function AppContent(props: AppContentProps): JSX.Element {
       <SidebarProvider
         open={!is_sidebar_collapsed}
         onOpenChange={(is_open) => {
-          // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致。
-          set_is_sidebar_collapsed(!is_open);
+          set_is_sidebar_collapsed(!is_open); // 统一由应用根持有折叠态，这样标题栏按钮和 sidebar 语义状态始终一致
         }}
         style={
           {

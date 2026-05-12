@@ -292,8 +292,7 @@ export function useAnalysisTaskRuntime(
         observed_analysis_waveform_time_ref.current = next_now_seconds;
       }
 
-      // 为什么：运行态两帧之间没有新数据时，分析波形也要延续上一跳，才能维持连贯的监视器节奏。
-      set_analysis_waveform_history((previous_history) => {
+      set_analysis_waveform_history((previous_history) => { // 为什么：运行态两帧之间没有新数据时，分析波形也要延续上一跳，才能维持连贯的监视器节奏
         return append_workbench_waveform_sample(
           previous_history,
           current_analysis_waveform_sample_ref.current,
@@ -306,8 +305,7 @@ export function useAnalysisTaskRuntime(
       current_analysis_waveform_sample_ref.current,
     );
 
-    // 为什么：分析任务结束后只保留衰减中的尾巴继续前推，直到可见窗口完全沉到 0。
-    set_analysis_waveform_history((previous_history) => {
+    set_analysis_waveform_history((previous_history) => { // 为什么：分析任务结束后只保留衰减中的尾巴继续前推，直到可见窗口完全沉到 0
       return append_workbench_waveform_sample(
         previous_history,
         current_analysis_waveform_sample_ref.current,
@@ -784,7 +782,7 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
-    // 为什么：完成/停止提示只认真实状态跃迁，避免 hydration 和后续 refresh 把成功 toast 连续弹多次。
+    // 为什么：完成/停止提示只认真实状态跃迁，避免 hydration 和后续 refresh 把成功 toast 连续弹多次
     const feedback_message = resolve_analysis_terminal_feedback_message({
       previous_status,
       next_status,
@@ -821,8 +819,7 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
-    // 为什么：结束态继续展示最终指标，但采样只保留最后一跳，后续由衰减尾巴负责收束到 0。
-    const next_now_seconds = Date.now() / 1000;
+    const next_now_seconds = Date.now() / 1000; // 为什么：结束态继续展示最终指标，但采样只保留最后一跳，后续由衰减尾巴负责收束到 0
     const next_visual_snapshot =
       analysis_task_display_snapshot === null
         ? null
@@ -841,8 +838,7 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
-    // 为什么：运行态和衰减态都需要继续推进，前者保持上一跳，后者负责把尾巴慢慢扫成 0。
-    append_analysis_waveform_sample();
+    append_analysis_waveform_sample(); // 为什么：运行态和衰减态都需要继续推进，前者保持上一跳，后者负责把尾巴慢慢扫成 0
     const timer_id = window.setInterval(() => {
       append_analysis_waveform_sample();
     }, WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS);

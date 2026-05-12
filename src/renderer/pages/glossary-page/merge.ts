@@ -28,7 +28,7 @@ function normalize_src(src: string | undefined): string {
 
 function fold_src(src_norm: string): string {
   // 为什么不用原值直接判重：旧页会按大小写折叠后的 key 先归组，
-  // 这样大小写不敏感规则才能和历史行为保持一致。
+  // 这样大小写不敏感规则才能和历史行为保持一致
   return src_norm.toLocaleLowerCase();
 }
 

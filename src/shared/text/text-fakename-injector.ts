@@ -1,7 +1,6 @@
-// 控制码识别规则集中放在这里，避免请求构造和结果清洗各写一套。
-const CONTROL_CODE_PATTERN = /\\(?:n|N){1,2}\[\d+\]/gu;
+const CONTROL_CODE_PATTERN = /\\(?:n|N){1,2}\[\d+\]/gu; // 控制码识别规则集中放在这里，避免请求构造和结果清洗各写一套
 
-// 伪名列表只服务控制码伪装，尽量降低模型把它们误识别成术语的概率。
+// 伪名列表只服务控制码伪装，尽量降低模型把它们误识别成术语的概率
 const DEFAULT_FAKE_NAMES = [
   "蓝霁云",
   "檀秋萦",
@@ -106,18 +105,15 @@ const DEFAULT_FAKE_NAMES = [
 ];
 
 /**
- * 文本控制码伪名注入器，避免模型把控制码误识别成普通术语。
+ * 文本控制码伪名注入器，避免模型把控制码误识别成普通术语
  */
 export class TextFakenameInjector {
-  // 原控制码到伪名的映射用于 prompt 前注入，保持同一批次稳定替换。
-  private readonly source_to_fake_name = new Map<string, string>();
-  // 伪名到控制码的反向映射用于模型响应入池前还原。
-  private readonly fake_name_to_source = new Map<string, string>();
-  // 伪名正则按长度降序构造，避免短伪名抢先匹配长伪名。
-  private readonly fake_name_pattern: RegExp | null;
+  private readonly source_to_fake_name = new Map<string, string>(); // 原控制码到伪名的映射用于 prompt 前注入，保持同一批次稳定替换
+  private readonly fake_name_to_source = new Map<string, string>(); // 伪名到控制码的反向映射用于模型响应入池前还原
+  private readonly fake_name_pattern: RegExp | null; // 伪名正则按长度降序构造，避免短伪名抢先匹配长伪名
 
   /**
-   * 构造时收集整批文本控制码，保证同一批次映射稳定。
+   * 构造时收集整批文本控制码，保证同一批次映射稳定
    */
   public constructor(source_texts: readonly string[]) {
     const control_codes = this.collect_control_codes(source_texts);
@@ -136,14 +132,14 @@ export class TextFakenameInjector {
   }
 
   /**
-   * 批量替换文本中的控制码，外部上下文仍保留原始值。
+   * 批量替换文本中的控制码，外部上下文仍保留原始值
    */
   public inject_texts(source_texts: string[]): string[] {
     return source_texts.map((source_text) => this.inject_text(source_text));
   }
 
   /**
-   * 术语候选入池前还原伪名；纯控制码自映射单独放行。
+   * 术语候选入池前还原伪名；纯控制码自映射单独放行
    */
   public restore_glossary_entry(src: string, dst: string): [string, string] | null {
     const [restored_src, injected] = this.restore_text(src);
@@ -157,7 +153,7 @@ export class TextFakenameInjector {
   }
 
   /**
-   * 纯控制码自映射术语允许进入候选池。
+   * 纯控制码自映射术语允许进入候选池
    */
   public static is_control_code_self_mapping(src: string, dst: string): boolean {
     const normalized_src = src.trim();
@@ -170,7 +166,7 @@ export class TextFakenameInjector {
   }
 
   /**
-   * 判断文本是否只包含一个控制码。
+   * 判断文本是否只包含一个控制码
    */
   public static is_control_code_text(text: string): boolean {
     const normalized_text = text.trim();
@@ -184,7 +180,7 @@ export class TextFakenameInjector {
   }
 
   /**
-   * 单条文本注入伪名，未命中时原样返回。
+   * 单条文本注入伪名，未命中时原样返回
    */
   private inject_text(source_text: string): string {
     CONTROL_CODE_PATTERN.lastIndex = 0;
@@ -197,7 +193,7 @@ export class TextFakenameInjector {
   }
 
   /**
-   * 按首次出现顺序去重收集控制码。
+   * 按首次出现顺序去重收集控制码
    */
   private collect_control_codes(source_texts: readonly string[]): string[] {
     const result: string[] = [];
@@ -218,14 +214,14 @@ export class TextFakenameInjector {
   }
 
   /**
-   * 默认伪名不够时用固定编号扩展，避免回退到原控制码。
+   * 默认伪名不够时用固定编号扩展，避免回退到原控制码
    */
   private build_fake_name(index: number): string {
     return DEFAULT_FAKE_NAMES[index] ?? `伪名${String(index + 1).padStart(4, "0")}`;
   }
 
   /**
-   * 还原候选术语里的伪名，并返回是否发生替换。
+   * 还原候选术语里的伪名，并返回是否发生替换
    */
   private restore_text(text: string): [string, boolean] {
     if (this.fake_name_pattern === null || text === "") {
@@ -239,7 +235,7 @@ export class TextFakenameInjector {
   }
 
   /**
-   * 正则转义集中处理，保证伪名列表可安全拼接。
+   * 正则转义集中处理，保证伪名列表可安全拼接
    */
   private escape_regexp(text: string): string {
     return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");

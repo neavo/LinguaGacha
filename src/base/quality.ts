@@ -1,9 +1,8 @@
 import type { JsonRecord } from "../shared/utils/json-tool";
 
-// 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域。
-export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const;
+export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
 
-// QualityRule kind 是公开 quality section 的 key，不能暴露数据库旧物理命名。
+// QualityRule kind 是公开 quality section 的 key，不能暴露数据库旧物理命名
 export const QUALITY_RULE_KINDS = [
   "glossary",
   "text_preserve",
@@ -27,19 +26,19 @@ export type QualityRulePresetDirectory =
   | "post_translation_replacement";
 
 type QualityRuleModel = {
-  database_type: QualityRuleDatabaseType; // rules 表物理类型。
-  preset_directory: QualityRulePresetDirectory; // 预设目录名。
-  enabled_meta_key: string | null; // 启用开关 meta key。
-  mode_meta_key: "text_preserve_mode" | null; // 文本保护模式 meta key。
-  revision_meta_key: string; // revision meta key。
+  database_type: QualityRuleDatabaseType; // rules 表物理类型
+  preset_directory: QualityRulePresetDirectory; // 预设目录名
+  enabled_meta_key: string | null; // 启用开关 meta key
+  mode_meta_key: "text_preserve_mode" | null; // 文本保护模式 meta key
+  revision_meta_key: string; // revision meta key
   default_preset_setting_key:
     | "glossary_default_preset"
     | "text_preserve_default_preset"
     | "pre_translation_replacement_default_preset"
-    | "post_translation_replacement_default_preset"; // 默认预设 setting key。
-  store_key: QualityRuleKind; // renderer quality section 的公开 key。
-  preset_extension: ".json"; // 质量规则预设扩展名。
-  default_mode: TextPreserveMode; // 默认文本保护模式。
+    | "post_translation_replacement_default_preset"; // 默认预设 setting key
+  store_key: QualityRuleKind; // renderer quality section 的公开 key
+  preset_extension: ".json"; // 质量规则预设扩展名
+  default_mode: TextPreserveMode; // 默认文本保护模式
 };
 
 const QUALITY_RULE_MODEL = {
@@ -93,17 +92,17 @@ const TEXT_PRESERVE_MODE_SET = new Set<TextPreserveMode>(TEXT_PRESERVE_MODES);
 const QUALITY_RULE_KIND_SET = new Set<QualityRuleKind>(QUALITY_RULE_KINDS);
 
 /**
- * QualityRule 是质量规则槽位实体，统一派生数据库类型、预设目录、meta key 和 store key。
+ * QualityRule 是质量规则槽位实体，统一派生数据库类型、预设目录、meta key 和 store key
  */
 export class QualityRule {
-  public readonly kind: QualityRuleKind; // 质量规则槽位类型。
+  public readonly kind: QualityRuleKind; // 质量规则槽位类型
 
   private constructor(kind: QualityRuleKind) {
     this.kind = kind;
   }
 
   /**
-   * 反序列化公开 kind 或 rule_type 字段，拒绝未知规则防止落库形成新分组。
+   * 反序列化公开 kind 或 rule_type 字段，拒绝未知规则防止落库形成新分组
    */
   public static from_json(payload: unknown): QualityRule {
     if (is_quality_rule_kind(payload)) {
@@ -118,84 +117,84 @@ export class QualityRule {
   }
 
   /**
-   * 固定枚举所有质量规则槽位，bootstrap 和默认空态都从这里生成。
+   * 固定枚举所有质量规则槽位，bootstrap 和默认空态都从这里生成
    */
   public static all(): QualityRule[] {
     return QUALITY_RULE_KINDS.map((kind) => new QualityRule(kind));
   }
 
   /**
-   * 输出公开 kind，跨层不传 class 实例。
+   * 输出公开 kind，跨层不传 class 实例
    */
   public to_json(): JsonRecord {
     return { kind: this.kind };
   }
 
   /**
-   * rules 表物理类型只从 QualityRule 派生。
+   * rules 表物理类型只从 QualityRule 派生
    */
   public get database_type(): QualityRuleDatabaseType {
     return QUALITY_RULE_MODEL[this.kind].database_type;
   }
 
   /**
-   * 预设目录只从 QualityRule 派生，公开 API 不接收物理目录名。
+   * 预设目录只从 QualityRule 派生，公开 API 不接收物理目录名
    */
   public get preset_directory(): QualityRulePresetDirectory {
     return QUALITY_RULE_MODEL[this.kind].preset_directory;
   }
 
   /**
-   * text_preserve 没有独立启用开关，其它规则从这里读取 meta key。
+   * text_preserve 没有独立启用开关，其它规则从这里读取 meta key
    */
   public get enabled_meta_key(): string | null {
     return QUALITY_RULE_MODEL[this.kind].enabled_meta_key;
   }
 
   /**
-   * 只有 text_preserve 拥有 mode meta key。
+   * 只有 text_preserve 拥有 mode meta key
    */
   public get mode_meta_key(): string | null {
     return QUALITY_RULE_MODEL[this.kind].mode_meta_key;
   }
 
   /**
-   * revision key 进入 ProjectStore patch，必须和公开 kind 保持一一对应。
+   * revision key 进入 ProjectStore patch，必须和公开 kind 保持一一对应
    */
   public get revision_meta_key(): string {
     return QUALITY_RULE_MODEL[this.kind].revision_meta_key;
   }
 
   /**
-   * 默认预设 setting key 由规则槽位唯一决定。
+   * 默认预设 setting key 由规则槽位唯一决定
    */
   public get default_preset_setting_key(): string {
     return QUALITY_RULE_MODEL[this.kind].default_preset_setting_key;
   }
 
   /**
-   * store_key 是 renderer quality section 的公开 key。
+   * store_key 是 renderer quality section 的公开 key
    */
   public get store_key(): QualityRuleKind {
     return QUALITY_RULE_MODEL[this.kind].store_key;
   }
 
   /**
-   * 质量规则预设固定为 json 文件。
+   * 质量规则预设固定为 json 文件
    */
   public get preset_extension(): ".json" {
     return QUALITY_RULE_MODEL[this.kind].preset_extension;
   }
 
   /**
-   * 默认 mode 只用于质量规则空态和旧项目缺失值兜底。
+   * 默认 mode 只用于质量规则空态和旧项目缺失值兜底
    */
   public get default_mode(): TextPreserveMode {
     return QUALITY_RULE_MODEL[this.kind].default_mode;
   }
 
   /**
-   * 将页面、导入文件或旧工程中的规则条目归一为数据库可写形状。
+   * 将页面、导入文件或旧工程中的规则条目归一为数据库可写形状
    */
   public static normalize_entry(entry: unknown): JsonRecord {
     const record = read_record(entry);
@@ -209,7 +208,7 @@ export class QualityRule {
   }
 
   /**
-   * 规则列表写入数据库前过滤坏项和空 src，保持 CRUD 与预设导入一致。
+   * 规则列表写入数据库前过滤坏项和空 src，保持 CRUD 与预设导入一致
    */
   public static normalize_entries(value: unknown): JsonRecord[] {
     if (!Array.isArray(value)) {
@@ -229,7 +228,7 @@ export class QualityRule {
   }
 
   /**
-   * ProjectStore 消费 quality slice 时复用同一 entries / meta / revision 口径。
+   * ProjectStore 消费 quality slice 时复用同一 entries / meta / revision 口径
    */
   public normalize_slice(value: unknown): {
     entries: JsonRecord[];
@@ -253,7 +252,7 @@ export class QualityRule {
   }
 
   /**
-   * 映射页面 meta key 到工程 meta key，保持规则类型命名唯一。
+   * 映射页面 meta key 到工程 meta key，保持规则类型命名唯一
    */
   public resolve_meta_key(key: string): string {
     if (key === "enabled") {
@@ -269,7 +268,7 @@ export class QualityRule {
   }
 
   /**
-   * 归一页面 meta 值，兼容旧项目缺失字段。
+   * 归一页面 meta 值，兼容旧项目缺失字段
    */
   public normalize_meta_value(key: string, value: unknown): boolean | TextPreserveMode | unknown {
     if (key === "enabled") {
@@ -282,12 +281,12 @@ export class QualityRule {
   }
 }
 
-// 文本保护模式来自 meta 和页面状态，进入规则执行前先收窄。
+// 文本保护模式来自 meta 和页面状态，进入规则执行前先收窄
 export function is_text_preserve_mode(value: unknown): value is TextPreserveMode {
   return TEXT_PRESERVE_MODE_SET.has(value as TextPreserveMode);
 }
 
-// 旧配置可能保存大写模式名，归一化后再决定是否启用保护。
+// 旧配置可能保存大写模式名，归一化后再决定是否启用保护
 export function normalize_text_preserve_mode(value: unknown): TextPreserveMode {
   const normalized = String(value ?? "")
     .trim()

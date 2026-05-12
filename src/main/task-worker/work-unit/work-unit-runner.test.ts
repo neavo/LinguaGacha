@@ -104,7 +104,7 @@ describe("work-unit runner", () => {
 });
 
 /**
- * 构造内存版 LLM client，捕获请求体以验证 runner 没有绕过协议边界。
+ * 构造内存版 LLM client，捕获请求体以验证 runner 没有绕过协议边界
  */
 function create_llm_client(
   captured_requests: LlmRequestBody[],
@@ -129,7 +129,7 @@ function create_llm_client(
 }
 
 /**
- * 生成 work unit 使用的最小配置快照，用例通过 overrides 调整单点行为。
+ * 生成 work unit 使用的最小配置快照，用例通过 overrides 调整单点行为
  */
 function create_config_payload(
   overrides: Record<string, ApiJsonValue> = {},
@@ -148,7 +148,7 @@ function create_config_payload(
 }
 
 /**
- * 生成默认关闭质量规则的运行态 payload，避免无关规则影响 runner 断言。
+ * 生成默认关闭质量规则的运行态 payload，避免无关规则影响 runner 断言
  */
 function create_quality_payload(): Record<string, ApiJsonValue> {
   return {
@@ -166,7 +166,7 @@ function create_quality_payload(): Record<string, ApiJsonValue> {
 }
 
 /**
- * 创建临时模板根目录，保证测试不读取开发机真实资源文件。
+ * 创建临时模板根目录，保证测试不读取开发机真实资源文件
  */
 async function create_template_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-runner-"));
@@ -176,7 +176,7 @@ async function create_template_root(): Promise<string> {
 }
 
 /**
- * 写入最小模板文件集合，覆盖 PromptBuilder 的固定读取契约。
+ * 写入最小模板文件集合，覆盖 PromptBuilder 的固定读取契约
  */
 async function write_template(
   app_root: string,

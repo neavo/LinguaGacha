@@ -7,16 +7,13 @@ import { is_task_progress_status } from "../../shared/task";
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
 type ProjectDatabaseMigrationItem = Record<string, unknown>;
 
-// .lg schema 版本只在新建工程写入，打开旧工程时实际能力由幂等迁移补齐。
-export const PROJECT_DATABASE_SCHEMA_VERSION = 2;
+export const PROJECT_DATABASE_SCHEMA_VERSION = 2; // .lg schema 版本只在新建工程写入，打开旧工程时实际能力由幂等迁移补齐
 
-// 旧任务状态曾经把运行中和历史已处理态持久化到 item payload。
-const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST";
+const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST"; // 旧任务状态曾经把运行中和历史已处理态持久化到 item payload
 const LEGACY_PROCESSING = "PROCESSING";
-// 当前 item status 只允许稳定事实，不保留运行中临时态。
-const CURRENT_PROCESSED = "PROCESSED";
+const CURRENT_PROCESSED = "PROCESSED"; // 当前 item status 只允许稳定事实，不保留运行中临时态
 const CURRENT_NONE = "NONE";
-// Python 旧规则枚举是大写槽位，TS 当前物理类型统一为小写业务名。
+// Python 旧规则枚举是大写槽位，TS 当前物理类型统一为小写业务名
 const LEGACY_RULE_TYPE_TO_CURRENT_TYPE = new Map([
   ["GLOSSARY", "glossary"],
   ["TEXT_PRESERVE", "text_preserve"],
@@ -39,7 +36,7 @@ const CURRENT_RULE_TEXT_TYPES = new Set([
 ]);
 const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]);
 /**
- * SQLite 行值可能来自不同底层类型，迁移读取文本统一在这里收窄。
+ * SQLite 行值可能来自不同底层类型，迁移读取文本统一在这里收窄
  */
 function row_text(row: ProjectDatabaseMigrationRow, key: string): string {
   const value = row[key];
@@ -47,7 +44,7 @@ function row_text(row: ProjectDatabaseMigrationRow, key: string): string {
 }
 
 /**
- * SQLite INTEGER 可能以 number 或 bigint 返回，迁移写回 id 前统一转 number。
+ * SQLite INTEGER 可能以 number 或 bigint 返回，迁移写回 id 前统一转 number
  */
 function row_number(row: ProjectDatabaseMigrationRow, key: string): number {
   const value = row[key];
@@ -61,11 +58,11 @@ function row_number(row: ProjectDatabaseMigrationRow, key: string): number {
 }
 
 /**
- * 封装 .lg 打开期 schema 与旧物理格式兼容迁移。
+ * 封装 .lg 打开期 schema 与旧物理格式兼容迁移
  */
 export class ProjectDatabaseMigrationService {
   /**
-   * database 服务打开工程时的唯一迁移入口，避免 Core 承担 .lg旧物理格式。
+   * database 服务打开工程时的唯一迁移入口，避免 Core 承担 .lg旧物理格式
    */
   public static migrate(db: DatabaseSync): void {
     this.ensure_schema(db);
@@ -77,10 +74,10 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 初始化缺失表结构，让旧工程补齐当前数据库能力。
+   * 初始化缺失表结构，让旧工程补齐当前数据库能力
    */
   private static ensure_schema(db: DatabaseSync): void {
-    // 新旧工程都经过同一个 schema 入口，避免建表逻辑散回 database 操作层。
+    // 新旧工程都经过同一个 schema 入口，避免建表逻辑散回 database 操作层
     db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
@@ -125,14 +122,14 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 归一旧枚举泄露出的规则槽位名，保证运行态只读取当前物理类型。
+   * 归一旧枚举泄露出的规则槽位名，保证运行态只读取当前物理类型
    */
   private static migrate_rule_types_if_needed(db: DatabaseSync): void {
     const target_exists = db.prepare("SELECT 1 FROM rules WHERE type = ? LIMIT 1");
     const update_legacy = db.prepare("UPDATE rules SET type = ? WHERE type = ?");
     const delete_legacy = db.prepare("DELETE FROM rules WHERE type = ?");
     for (const [legacy_type, current_type] of LEGACY_RULE_TYPE_TO_CURRENT_TYPE) {
-      // 当前物理类型已存在时保留当前事实，旧槽位视为重复历史残留。
+      // 当前物理类型已存在时保留当前事实，旧槽位视为重复历史残留
       if (target_exists.get(current_type) === undefined) {
         update_legacy.run(current_type, legacy_type);
       } else {
@@ -142,7 +139,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 归一规则 payload 物理形状，让运行态只读取当前规则表格式。
+   * 归一规则 payload 物理形状，让运行态只读取当前规则表格式
    */
   private static migrate_rule_payloads_if_needed(db: DatabaseSync): void {
     const rows = db.prepare("SELECT id, type, data FROM rules ORDER BY id").all();
@@ -181,10 +178,10 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 为旧 asset 补齐排序字段，保持文件顺序可稳定回放。
+   * 为旧 asset 补齐排序字段，保持文件顺序可稳定回放
    */
   private static migrate_asset_sort_order_if_needed(db: DatabaseSync): void {
-    // 旧 .lg 没有 sort_order 时，用自增 id 顺序还原用户导入顺序。
+    // 旧 .lg 没有 sort_order 时，用自增 id 顺序还原用户导入顺序
     const columns = db
       .prepare("PRAGMA table_info(assets)")
       .all()
@@ -202,17 +199,15 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 归一旧 item 状态，防止历史运行态污染当前任务语义。
+   * 归一旧 item 状态，防止历史运行态污染当前任务语义
    */
   private static migrate_item_status_if_needed(db: DatabaseSync): void {
-    // item 状态是业务事实，打开旧工程时直接写回当前允许集合。
-    const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all();
+    const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all(); // item 状态是业务事实，打开旧工程时直接写回当前允许集合
     const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
     for (const row of rows) {
       const raw = row_text(row, "data");
       try {
-        // item JSON 可能来自更早版本，只有对象 payload 才具备可迁移状态字段。
-        const parsed = JsonTool.parseStrict<ProjectDatabaseMigrationRow>(raw);
+        const parsed = JsonTool.parseStrict<ProjectDatabaseMigrationRow>(raw); // item JSON 可能来自更早版本，只有对象 payload 才具备可迁移状态字段
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
           continue;
         }
@@ -221,13 +216,13 @@ export class ProjectDatabaseMigrationService {
           update.run(JsonTool.stringifyStrict(normalized.data), row_number(row, "id"));
         }
       } catch {
-        // 旧工程中损坏的单行 item 不阻塞打开；坏数据仍保留原样等待人工处理。
+        // 旧工程中损坏的单行 item 不阻塞打开；坏数据仍保留原样等待人工处理
       }
     }
   }
 
   /**
-   * 规范 item payload 中的状态字段，兼容旧 JSON 形状。
+   * 规范 item payload 中的状态字段，兼容旧 JSON 形状
    */
   private static normalize_item_payload(item_data: ProjectDatabaseMigrationRow): {
     data: ProjectDatabaseMigrationRow;
@@ -291,11 +286,10 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 把旧状态映射到当前有效枚举，保持前后端状态口径一致。
+   * 把旧状态映射到当前有效枚举，保持前后端状态口径一致
    */
   private static normalize_item_status_value(value: unknown): string {
-    // 未知状态宁可回到待处理，也不要把历史运行态泄露给当前任务链路。
-    const raw_value = String(value ?? "");
+    const raw_value = String(value ?? ""); // 未知状态宁可回到待处理，也不要把历史运行态泄露给当前任务链路
     if (raw_value === LEGACY_PROCESSED_IN_PAST) {
       return CURRENT_PROCESSED;
     }
@@ -309,7 +303,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * text_type 缺失或无效时写回当前文本规则语义。
+   * text_type 缺失或无效时写回当前文本规则语义
    */
   private static normalize_item_text_type_value(
     value: unknown,
@@ -324,7 +318,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 归一分析 checkpoint 状态，避免运行态继续过滤持久旧值。
+   * 归一分析 checkpoint 状态，避免运行态继续过滤持久旧值
    */
   private static migrate_analysis_checkpoint_status_if_needed(db: DatabaseSync): void {
     const rows = db.prepare("SELECT item_id, status FROM analysis_item_checkpoint").all();
@@ -339,7 +333,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * checkpoint 只保留任务进度三态。
+   * checkpoint 只保留任务进度三态
    */
   private static normalize_checkpoint_status_value(value: unknown): string {
     const raw_value = String(value ?? "");
@@ -353,7 +347,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 读取文本规则旧载荷并输出当前 { text } 形状。
+   * 读取文本规则旧载荷并输出当前 { text } 形状
    */
   private static deserialize_rule_text_rows(rows: ProjectDatabaseMigrationRow[]): string {
     for (const row of rows) {
@@ -366,7 +360,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 读取条目规则旧载荷并输出当前单行数组形状。
+   * 读取条目规则旧载荷并输出当前单行数组形状
    */
   private static deserialize_rule_entry_rows(rows: ProjectDatabaseMigrationRow[]): unknown[] {
     const first_data = this.try_parse_json(row_text(rows[0] ?? {}, "data"));
@@ -397,7 +391,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * 读取文本规则字符串或对象载荷。
+   * 读取文本规则字符串或对象载荷
    */
   private static deserialize_rule_text(raw_data: string): string {
     const data = this.try_parse_json(raw_data);
@@ -412,7 +406,7 @@ export class ProjectDatabaseMigrationService {
   }
 
   /**
-   * JSON 损坏时返回 null，让迁移保留可打开性。
+   * JSON 损坏时返回 null，让迁移保留可打开性
    */
   private static try_parse_json(raw_data: string): unknown {
     try {

@@ -296,8 +296,8 @@ export function useDesktopToast(): DesktopToastApi {
     [dismiss_toast, push_progress_toast],
   );
 
-  // Why: 页面里的 useEffect / useCallback 会把 toast API 放进依赖数组，
-  // 如果这里每次渲染都返回新函数，就会把“首次刷新”误变成持续重跑。
+  // 原因：页面里的 useEffect / useCallback 会把 toast API 放进依赖数组，
+  // 如果这里每次渲染都返回新函数，就会把“首次刷新”误变成持续重跑
   return useMemo<DesktopToastApi>(() => {
     return {
       push_toast,

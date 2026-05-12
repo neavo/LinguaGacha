@@ -176,8 +176,8 @@ export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Elemen
       previous_project_path !== project_snapshot.path ||
       should_restart_warmup
     ) {
-      // 为什么：reset/局部刷新会主动把 warmup 状态切回 warming，但工程路径本身不会变化。
-      // 这里仍要重新登记目标路径，否则后面的 ready 判定没有锚点，导航会一直卡在 warming。
+      // 为什么：reset/局部刷新会主动把 warmup 状态切回 warming，但工程路径本身不会变化
+      // 这里仍要重新登记目标路径，否则后面的 ready 判定没有锚点，导航会一直卡在 warming
       warmup_target_project_path_ref.current = project_snapshot.path;
       set_project_warmup_status("warming");
     }

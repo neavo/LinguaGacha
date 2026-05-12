@@ -11,11 +11,11 @@ type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * 承载公开 reset preview；当前服务负责预演响应和 asset 重解析。
+ * 承载公开 reset preview；当前服务负责预演响应和 asset 重解析
  */
 export class ProjectResetPreviewService {
   /**
-   * reset preview 只读数据库，不负责提交真实 reset mutation。
+   * reset preview 只读数据库，不负责提交真实 reset mutation
    */
   public constructor(
     private readonly database: ProjectDatabase,
@@ -24,7 +24,7 @@ export class ProjectResetPreviewService {
   ) {}
 
   /**
-   * 翻译 all reset 需要重新解析原始 asset，但预览 id 分配和响应壳由 当前服务持有。
+   * 翻译 all reset 需要重新解析原始 asset，但预览 id 分配和响应壳由 当前服务持有
    */
   public async preview_translation_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
@@ -53,7 +53,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 所有公开 asset 都在 文件域重解析，数据库仍是 asset bytes 的唯一读取边界。
+   * 所有公开 asset 都在 文件域重解析，数据库仍是 asset bytes 的唯一读取边界
    */
   private async parse_database_assets(
     project_path: string,
@@ -77,7 +77,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 分析 failed reset 的预演只移除 ERROR checkpoint，不触碰候选池或 item 事实。
+   * 分析 failed reset 的预演只移除 ERROR checkpoint，不触碰候选池或 item 事实
    */
   public async preview_analysis_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
@@ -113,7 +113,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * reset 预演和真实 reset 一样要求工程已加载且后台任务空闲。
+   * reset 预演和真实 reset 一样要求工程已加载且后台任务空闲
    */
   private async require_idle_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
@@ -127,7 +127,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 读取 asset 顺序用于复现 create/reset 时的文件排序。
+   * 读取 asset 顺序用于复现 create/reset 时的文件排序
    */
   private get_asset_records(project_path: string): Array<{ path: string; sort_order: number }> {
     const value = this.database.execute(
@@ -147,7 +147,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 分析预演只需要 item 当前事实，读取后复制一份避免误改数据库返回对象。
+   * 分析预演只需要 item 当前事实，读取后复制一份避免误改数据库返回对象
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
@@ -159,7 +159,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * ERROR checkpoint 会在真实 failed reset 中被删除，预演据此计算剩余进度。
+   * ERROR checkpoint 会在真实 failed reset 中被删除，预演据此计算剩余进度
    */
   private get_analysis_checkpoints(project_path: string): Map<number, string> {
     const value = this.database.execute(
@@ -183,7 +183,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 向数据库申请 replace-all 的预览 id，确保前端看到的 id 与真实 mutation 规则一致。
+   * 向数据库申请 replace-all 的预览 id，确保前端看到的 id 与真实 mutation 规则一致
    */
   private preview_replace_all_item_ids(project_path: string, items: MutableJsonRecord[]): number[] {
     const value = this.database.execute(
@@ -196,7 +196,7 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 文件解析返回字段需要收敛到公开 item payload，避免数据库预览泄漏内部结构。
+   * 文件解析返回字段需要收敛到公开 item payload，避免数据库预览泄漏内部结构
    */
   private normalize_item_payload(item: JsonRecord, fallback_file_path: string): MutableJsonRecord {
     return {
@@ -213,14 +213,14 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 重置预演只接受当前状态枚举，非法值按未处理状态兜底。
+   * 重置预演只接受当前状态枚举，非法值按未处理状态兜底
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
     return Item.normalize_status(value);
   }
 
   /**
-   * SQLite/JSON 数字统一截断为整数，避免 id 和 row 出现小数。
+   * SQLite/JSON 数字统一截断为整数，避免 id 和 row 出现小数
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
@@ -228,14 +228,14 @@ export class ProjectResetPreviewService {
   }
 
   /**
-   * 数据库 JSON 返回只允许对象继续进入业务归一化。
+   * 数据库 JSON 返回只允许对象继续进入业务归一化
    */
   private is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
-   * 数据库操作名和参数集中封装，减少调用点重复对象形状。
+   * 数据库操作名和参数集中封装，减少调用点重复对象形状
    */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };

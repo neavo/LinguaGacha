@@ -10,20 +10,19 @@ import {
 } from "./file-format-shared";
 import { Item } from "../../../base/item";
 
-// 旧实现会直接排除 Markdown 图片行，避免把资源引用送进翻译。
-const IMAGE_PATTERN = /!\[.*?\]\(.*?\)/u;
+const IMAGE_PATTERN = /!\[.*?\]\(.*?\)/u; // 旧实现会直接排除 Markdown 图片行，避免把资源引用送进翻译
 
 /**
- * Markdown 格式按行处理，并排除图片和代码块内容。
+ * Markdown 格式按行处理，并排除图片和代码块内容
  */
 export class MDFormat {
   /**
-   * 配置用于输出文件名语言后缀。
+   * 配置用于输出文件名语言后缀
    */
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 解析时用围栏状态标记代码块，维持旧实现对整行 Markdown 的处理方式。
+   * 解析时用围栏状态标记代码块，维持旧实现对整行 Markdown 的处理方式
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const items: Item[] = [];
@@ -48,7 +47,7 @@ export class MDFormat {
   }
 
   /**
-   * Markdown 只写单语译文文件，行序由解析 row 自然保持。
+   * Markdown 只写单语译文文件，行序由解析 row 自然保持
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "MD")) {

@@ -12,17 +12,15 @@ type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 /**
- * 承载校对同步写入口，把 finalized payload 直接持久化到 Electron main 数据库。
+ * 承载校对同步写入口，把 finalized payload 直接持久化到 Electron main 数据库
  */
 export class ProofreadingService {
-  // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库。
-  private readonly database: ProjectDatabase;
+  private readonly database: ProjectDatabase; // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库
 
-  // 校对同步写入口只以 公开会话状态定位当前工程。
-  private readonly session_state: ProjectSessionState;
+  private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
 
   /**
-   * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换。
+   * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换
    */
   public constructor(database: ProjectDatabase, session_state: ProjectSessionState) {
     this.database = database;
@@ -30,28 +28,28 @@ export class ProofreadingService {
   }
 
   /**
-   * 保存单条校对结果，使用 finalized payload 语义。
+   * 保存单条校对结果，使用 finalized payload 语义
    */
   public async save_item(request: JsonRecord): Promise<JsonRecord> {
     return this.persist_finalized_items(request);
   }
 
   /**
-   * 保存批量校对结果，响应形状保持稳定。
+   * 保存批量校对结果，响应形状保持稳定
    */
   public async save_all(request: JsonRecord): Promise<JsonRecord> {
     return this.persist_finalized_items(request);
   }
 
   /**
-   * 保存批量替换结果，落库语义仍然只看 finalized items 与 translation_extras。
+   * 保存批量替换结果，落库语义仍然只看 finalized items 与 translation_extras
    */
   public async replace_all(request: JsonRecord): Promise<JsonRecord> {
     return this.persist_finalized_items(request);
   }
 
   /**
-   * 校对同步 mutation 的唯一写入口：校验 revision、merge 白名单字段、推进双 revision。
+   * 校对同步 mutation 的唯一写入口：校验 revision、merge 白名单字段、推进双 revision
    */
   private async persist_finalized_items(request: JsonRecord): Promise<JsonRecord> {
     const project_path = await this.require_loaded_project_path();
@@ -91,7 +89,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 当前 loaded 工程是校对保存的唯一目标。
+   * 当前 loaded 工程是校对保存的唯一目标
    */
   private async require_loaded_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
@@ -102,7 +100,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 缺失期望值时宽容跳过；给出期望值时使用冲突消息。
+   * 缺失期望值时宽容跳过；给出期望值时使用冲突消息
    */
   private assert_expected_revisions(
     expected: Record<string, number> | null,
@@ -125,7 +123,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 按 finalized item 白名单，把 payload 合并到当前数据库事实上。
+   * 按 finalized item 白名单，把 payload 合并到当前数据库事实上
    */
   private merge_finalized_items(
     project_path: string,
@@ -161,7 +159,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 只接受校对写入口允许覆盖的字段，避免校对页顺手写入其它 item 事实。
+   * 只接受校对写入口允许覆盖的字段，避免校对页顺手写入其它 item 事实
    */
   private merge_item_payload(
     current: MutableJsonRecord,
@@ -194,7 +192,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 构建 ProjectMutationAck，固定回传 items 与 proofreading 两个 section revision。
+   * 构建 ProjectMutationAck，固定回传 items 与 proofreading 两个 section revision
    */
   private build_project_mutation_ack(project_path: string): JsonRecord {
     return build_project_mutation_ack_from_meta(this.get_all_meta(project_path), [
@@ -204,21 +202,21 @@ export class ProofreadingService {
   }
 
   /**
-   * 项目运行态 revision 的坏值和负值读取为 0。
+   * 项目运行态 revision 的坏值和负值读取为 0
    */
   private get_project_runtime_revision(meta: JsonRecord, section: string): number {
     return get_runtime_section_revision(meta, section);
   }
 
   /**
-   * 校对 revision 的坏值和负值读取为 0。
+   * 校对 revision 的坏值和负值读取为 0
    */
   private get_proofreading_revision(meta: JsonRecord): number {
     return get_runtime_section_revision(meta, "proofreading");
   }
 
   /**
-   * 归一期望 section revisions；非对象视为缺失，坏 revision 值直接报错。
+   * 归一期望 section revisions；非对象视为缺失，坏 revision 值直接报错
    */
   private normalize_expected_section_revisions(
     value: ApiJsonValue | undefined,
@@ -234,7 +232,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 读取全部 item dict，供局部 merge 使用。
+   * 读取全部 item dict，供局部 merge 使用
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
@@ -246,7 +244,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 读取完整 meta，用于 revision 判断和 ack 构造。
+   * 读取完整 meta，用于 revision 判断和 ack 构造
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
     return this.normalize_object(
@@ -255,14 +253,14 @@ export class ProofreadingService {
   }
 
   /**
-   * 校对写入口只接受当前状态域，非法值按未处理状态兜底。
+   * 校对写入口只接受当前状态域，非法值按未处理状态兜底
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
     return Item.normalize_status(value);
   }
 
   /**
-   * 写入字段和 expected revision 使用严格转换，转换失败时保持失败语义。
+   * 写入字段和 expected revision 使用严格转换，转换失败时保持失败语义
    */
   private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
@@ -273,7 +271,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 模拟 int：数字截断，整数字符串可转，布尔值按 1/0，null 和非整数字符串失败。
+   * 模拟 int：数字截断，整数字符串可转，布尔值按 1/0，null 和非整数字符串失败
    */
   private parse_integer_like(value: ApiJsonValue | undefined): number | null {
     if (typeof value === "number") {
@@ -292,21 +290,21 @@ export class ProofreadingService {
   }
 
   /**
-   * 把未知 JSON 收窄为对象，避免深层读取扩散类型断言。
+   * 把未知 JSON 收窄为对象，避免深层读取扩散类型断言
    */
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
     return this.is_record(value) ? { ...value } : {};
   }
 
   /**
-   * 收窄 JSON 对象，保护数组和 null 不被当作 record。
+   * 收窄 JSON 对象，保护数组和 null 不被当作 record
    */
   private is_record(value: unknown): value is JsonRecord {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
-   * 创建 database workflow 操作，避免业务方法重复拼协议壳。
+   * 创建 database workflow 操作，避免业务方法重复拼协议壳
    */
   private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
     return { name, args };

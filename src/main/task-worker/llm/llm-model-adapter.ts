@@ -30,7 +30,7 @@ export interface LinguaGachaModelSnapshot {
 }
 
 /**
- * 把 LinguaGacha 模型快照转换为 pi-ai 能执行的模型对象和本地策略上下文。
+ * 把 LinguaGacha 模型快照转换为 pi-ai 能执行的模型对象和本地策略上下文
  */
 export function convert_linguagacha_model_to_pi_ai(
   model: ApiJsonValue,
@@ -89,7 +89,7 @@ export function convert_linguagacha_model_to_pi_ai(
 }
 
 /**
- * 统一读取应用版本并生成旧版 LinguaGacha User-Agent。
+ * 统一读取应用版本并生成旧版 LinguaGacha User-Agent
  */
 export function build_linguagacha_user_agent(app_root: string): string {
   let version = DEFAULT_VERSION;
@@ -100,13 +100,13 @@ export function build_linguagacha_user_agent(app_root: string): string {
       version = raw_version;
     }
   } catch {
-    // version.txt 在部分测试和源码运行场景可能不存在；退回占位版本不影响请求语义。
+    // version.txt 在部分测试和源码运行场景可能不存在；退回占位版本不影响请求语义
   }
   return `${USER_AGENT_NAME}/v${version} (${REPO_URL})`;
 }
 
 /**
- * 把换行分隔 key 归一为列表，空值沿用旧无密钥占位。
+ * 把换行分隔 key 归一为列表，空值沿用旧无密钥占位
  */
 export function collect_api_keys(raw_api_key: string): string[] {
   const keys = raw_api_key
@@ -117,21 +117,21 @@ export function collect_api_keys(raw_api_key: string): string[] {
 }
 
 /**
- * 模型列表查询只取首个 key；任务请求由 pi-ai 客户端按快照 key 列表轮换。
+ * 模型列表查询只取首个 key；任务请求由 pi-ai 客户端按快照 key 列表轮换
  */
 export function get_primary_api_key(raw_api_key: string): string {
   return collect_api_keys(raw_api_key)[0] ?? "no_key_required";
 }
 
 /**
- * 判断输出 token 是否由供应商自动决定。
+ * 判断输出 token 是否由供应商自动决定
  */
 export function is_output_token_limit_auto(value: number): boolean {
   return OUTPUT_TOKEN_LIMIT_AUTO_VALUES.has(value);
 }
 
 /**
- * OpenAI-compatible 与 Sakura URL 需要去掉 chat completions 后缀。
+ * OpenAI-compatible 与 Sakura URL 需要去掉 chat completions 后缀
  */
 export function normalize_api_url(url: string, api_format: ModelApiFormat): string {
   const trimmed = url.trim().replace(/\/+$/u, "");
@@ -142,7 +142,7 @@ export function normalize_api_url(url: string, api_format: ModelApiFormat): stri
 }
 
 /**
- * 额外 header 只在用户显式开启时合并，默认始终带 LinguaGacha UA。
+ * 额外 header 只在用户显式开启时合并，默认始终带 LinguaGacha UA
  */
 function read_extra_headers(
   model: Record<string, ApiJsonValue>,
@@ -164,7 +164,7 @@ function read_extra_headers(
 }
 
 /**
- * 读取带 custom_enable 开关的对象字段，关闭时返回空对象保持旧语义。
+ * 读取带 custom_enable 开关的对象字段，关闭时返回空对象保持旧语义
  */
 function read_enabled_record(
   model: Record<string, ApiJsonValue>,
@@ -180,21 +180,21 @@ function read_enabled_record(
 }
 
 /**
- * 未识别格式按 OpenAI-compatible 兜底，避免旧配置阻断任务启动。
+ * 未识别格式按 OpenAI-compatible 兜底，避免旧配置阻断任务启动
  */
 function normalize_api_format(value: string): ModelApiFormat {
   return BaseModel.normalize_api_format(value);
 }
 
 /**
- * 思考挡位只允许四档稳定值，坏值在边界处收窄为关闭。
+ * 思考挡位只允许四档稳定值，坏值在边界处收窄为关闭
  */
 function normalize_thinking_level(value: string): ModelThinkingLevel {
   return BaseModel.normalize_thinking_level(value);
 }
 
 /**
- * 将 LinguaGacha 的供应商枚举映射到 pi-ai API 名称。
+ * 将 LinguaGacha 的供应商枚举映射到 pi-ai API 名称
  */
 function resolve_pi_api(api_format: ModelApiFormat): Api {
   if (api_format === "Google") {
@@ -207,7 +207,7 @@ function resolve_pi_api(api_format: ModelApiFormat): Api {
 }
 
 /**
- * provider 用于 pi-ai 选择默认传输实现，与 api 名称分开维护。
+ * provider 用于 pi-ai 选择默认传输实现，与 api 名称分开维护
  */
 function resolve_pi_provider(api_format: ModelApiFormat): Provider {
   if (api_format === "Google") {
@@ -220,7 +220,7 @@ function resolve_pi_provider(api_format: ModelApiFormat): Provider {
 }
 
 /**
- *旧配置的自动 token 值转为保守默认，防止请求携带 0 或 -1。
+ *旧配置的自动 token 值转为保守默认，防止请求携带 0 或 -1
  */
 function resolve_max_tokens(output_token_limit: number): number {
   if (is_output_token_limit_auto(output_token_limit)) {
@@ -230,7 +230,7 @@ function resolve_max_tokens(output_token_limit: number): number {
 }
 
 /**
- * OpenAI-compatible 模型的思考格式差异集中在 compat，调用方不再散落正则。
+ * OpenAI-compatible 模型的思考格式差异集中在 compat，调用方不再散落正则
  */
 function resolve_compat(model_id: string, api_format: ModelApiFormat): Model<Api>["compat"] {
   if (api_format !== "OpenAI" && api_format !== "SakuraLLM") {
@@ -246,7 +246,7 @@ function resolve_compat(model_id: string, api_format: ModelApiFormat): Model<Api
 }
 
 /**
- * reasoning 标记只表达模型是否可能产出思考内容，具体挡位由 payload patch 决定。
+ * reasoning 标记只表达模型是否可能产出思考内容，具体挡位由 payload patch 决定
  */
 function should_enable_pi_reasoning(model_id: string, api_format: ModelApiFormat): boolean {
   if (BaseModel.api_format_supports_reasoning_by_default(api_format)) {
@@ -256,21 +256,21 @@ function should_enable_pi_reasoning(model_id: string, api_format: ModelApiFormat
 }
 
 /**
- * 边界读取对象时复制一份，避免后续 patch 意外改动原始配置快照。
+ * 边界读取对象时复制一份，避免后续 patch 意外改动原始配置快照
  */
 function read_record(value: ApiJsonValue | undefined): Record<string, ApiJsonValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
 }
 
 /**
- * 字符串读取只做类型收窄，默认值由调用点表达业务含义。
+ * 字符串读取只做类型收窄，默认值由调用点表达业务含义
  */
 function read_string(value: ApiJsonValue | undefined, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
 
 /**
- * 数字读取在边界处取整，避免 token 与窗口字段带入浮点数。
+ * 数字读取在边界处取整，避免 token 与窗口字段带入浮点数
  */
 function read_number(value: ApiJsonValue | undefined, fallback: number): number {
   const number_value = Number(value ?? fallback);

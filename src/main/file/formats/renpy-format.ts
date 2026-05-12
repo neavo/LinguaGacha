@@ -35,7 +35,7 @@ const RESOURCE_EXTENSIONS = new Set([
 ]);
 
 /**
- * RenPy 代码行中的双引号字面量位置和值，写回和骨架匹配都依赖列号。
+ * RenPy 代码行中的双引号字面量位置和值，写回和骨架匹配都依赖列号
  */
 interface RenpyStringLiteral {
   start_col: number;
@@ -45,7 +45,7 @@ interface RenpyStringLiteral {
 }
 
 /**
- * 一个 RenPy 可翻译槽位，区分角色名、对白和 strings 块文本。
+ * 一个 RenPy 可翻译槽位，区分角色名、对白和 strings 块文本
  */
 interface RenpySlot {
   role: "DIALOGUE" | "NAME" | "STRING";
@@ -53,18 +53,18 @@ interface RenpySlot {
 }
 
 /**
- * RenPy 翻译脚本格式，按旧注释模板和目标行配对规则解析。
+ * RenPy 翻译脚本格式，按旧注释模板和目标行配对规则解析
  */
 export class RenPyFormat {
   /**
-   * 文件流入口只负责解码，实际解析拆到 parse_text 便于 golden 和单元测试复用。
+   * 文件流入口只负责解码，实际解析拆到 parse_text 便于 golden 和单元测试复用
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     return this.parse_text(rel_path, await TextTool.decode(content));
   }
 
   /**
-   * 扫描 translate 块、old/new strings 和注释模板，并把匹配到的目标行绑定到 extra_field。
+   * 扫描 translate 块、old/new strings 和注释模板，并把匹配到的目标行绑定到 extra_field
    */
   public parse_text(rel_path: string, text: string): Item[] {
     const lines = split_text_lines_for_items(text);
@@ -194,7 +194,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 写回时按 target_line 倒序替换，避免前面行数变化影响后续定位。
+   * 写回时按 target_line 倒序替换，避免前面行数变化影响后续定位
    */
   public async write_to_path(
     items: Item[],
@@ -227,7 +227,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 注释模板行去掉 `#` 后按 RenPy 语句解析，只有含可翻译槽位才生成条目。
+   * 注释模板行去掉 `#` 后按 RenPy 语句解析，只有含可翻译槽位才生成条目
    */
   private parse_commented_template(
     raw_line: string,
@@ -246,7 +246,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 从模板行之后寻找语法骨架相同的目标行，遇到下一 translate 块即停止。
+   * 从模板行之后寻找语法骨架相同的目标行，遇到下一 translate 块即停止
    */
   private find_matching_target_line(
     lines: string[],
@@ -270,7 +270,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 比较模板语句和目标语句是否同构，角色 token 允许在安全场景下归一化。
+   * 比较模板语句和目标语句是否同构，角色 token 允许在安全场景下归一化
    */
   private statements_equal(template_code: string, target_code: string): boolean {
     const template_signature = this.build_statement_signature(template_code);
@@ -298,7 +298,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 生成语句骨架签名，用字符串数量和去文本后的骨架避免误配目标行。
+   * 生成语句骨架签名，用字符串数量和去文本后的骨架避免误配目标行
    */
   private build_statement_signature(code: string): {
     string_count: number;
@@ -318,7 +318,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 只取对白相关片段参与匹配，避免后续参数里的字符串干扰语句骨架。
+   * 只取对白相关片段参与匹配，避免后续参数里的字符串干扰语句骨架
    */
   private find_dialogue_match_end_col(code: string, literals: RenpyStringLiteral[]): number {
     if (literals.length === 0) {
@@ -342,7 +342,7 @@ export class RenPyFormat {
   }
 
   /**
-   * speaker token 不兼容时禁止宽松骨架匹配，避免把不同角色对白错配。
+   * speaker token 不兼容时禁止宽松骨架匹配，避免把不同角色对白错配
    */
   private speakers_are_compatible(template_code: string, target_code: string): boolean {
     const template_speaker = this.get_statement_speaker_token(template_code);
@@ -354,7 +354,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 提取语句开头的 RenPy speaker 变量，裸字符串和 Character 调用视为无 speaker。
+   * 提取语句开头的 RenPy speaker 变量，裸字符串和 Character 调用视为无 speaker
    */
   private get_statement_speaker_token(code: string): string | null {
     const stripped = code.trimStart();
@@ -365,7 +365,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 宽松匹配时把 speaker 变量归一成占位符，减少翻译目标行角色变量差异影响。
+   * 宽松匹配时把 speaker 变量归一成占位符，减少翻译目标行角色变量差异影响
    */
   private normalize_speaker_token(code: string): string {
     const stripped = code.trimStart();
@@ -376,14 +376,14 @@ export class RenPyFormat {
   }
 
   /**
-   * 当一侧骨架已经归一化 speaker 时，去掉占位符再做兼容比较。
+   * 当一侧骨架已经归一化 speaker 时，去掉占位符再做兼容比较
    */
   private drop_normalized_speaker(key: string): string {
     return key.startsWith("<SPEAKER> ") ? key.slice("<SPEAKER> ".length) : key;
   }
 
   /**
-   * 从语句字面量中选出可翻译的角色名和对白槽位。
+   * 从语句字面量中选出可翻译的角色名和对白槽位
    */
   private select_label_slots(code: string, literals: RenpyStringLiteral[]): RenpySlot[] {
     if (literals.length === 0) {
@@ -433,7 +433,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 连续字符串字面量视为同一对白组，用于 `"名" "对白"` 这种 RenPy 写法。
+   * 连续字符串字面量视为同一对白组，用于 `"名" "对白"` 这种 RenPy 写法
    */
   private find_dialogue_group(
     code: string,
@@ -460,7 +460,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 在跳过字符串字面量的前提下匹配括号，避免 Character(")") 误关括号。
+   * 在跳过字符串字面量的前提下匹配括号，避免 Character(")") 误关括号
    */
   private find_matching_paren(
     code: string,
@@ -495,7 +495,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 扫描双引号字面量并保留原始转义内容，供解析和写回复用。
+   * 扫描双引号字面量并保留原始转义内容，供解析和写回复用
    */
   private scan_literals(code: string): RenpyStringLiteral[] {
     const literals: RenpyStringLiteral[] = [];
@@ -534,7 +534,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 资源路径字面量不进入翻译，避免图片、音频和字体文件名被误处理。
+   * 资源路径字面量不进入翻译，避免图片、音频和字体文件名被误处理
    */
   private looks_like_resource_path(text: string): boolean {
     const trimmed = text.trim();
@@ -545,7 +545,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 排除空文本、纯变量占位和纯样式标记，保留含 `{#...}` 的可见文本。
+   * 排除空文本、纯变量占位和纯样式标记，保留含 `{#...}` 的可见文本
    */
   private is_translatable_text(text: string): boolean {
     const trimmed = text.trim();
@@ -560,7 +560,7 @@ export class RenPyFormat {
   }
 
   /**
-   * extra_field 保存 RenPy 定位、槽位和摘要，写回和未来迁移都依赖这份结构。
+   * extra_field 保存 RenPy 定位、槽位和摘要，写回和未来迁移都依赖这份结构
    */
   private build_extra_field(payload: {
     lang: string;
@@ -598,7 +598,7 @@ export class RenPyFormat {
   }
 
   /**
-   * 字符串内容替换为占位符后的骨架用于跨语言目标行配对。
+   * 字符串内容替换为占位符后的骨架用于跨语言目标行配对
    */
   private build_skeleton(code: string): string {
     return code
@@ -608,28 +608,28 @@ export class RenPyFormat {
   }
 
   /**
-   * 目标行字符串数量是防误配的快速校验。
+   * 目标行字符串数量是防误配的快速校验
    */
   private count_strings(code: string): number {
     return [...code.matchAll(/"((?:\\.|[^"\\])*)"/gu)].length;
   }
 
   /**
-   * RenPy 翻译文件只需要处理旧实现覆盖的基础转义。
+   * RenPy 翻译文件只需要处理旧实现覆盖的基础转义
    */
   private unescape_string(value: string): string {
     return value.replace(/\\"/gu, '"').replace(/\\n/gu, "\n");
   }
 
   /**
-   * 写回时反向恢复双引号、反斜杠和换行转义。
+   * 写回时反向恢复双引号、反斜杠和换行转义
    */
   private escape_string(value: string): string {
     return value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"').replace(/\n/gu, "\\n");
   }
 
   /**
-   * 摘要使用 SHA1 仅用于稳定定位与诊断，不参与安全校验。
+   * 摘要使用 SHA1 仅用于稳定定位与诊断，不参与安全校验
    */
   private sha1_hex(text: string): string {
     return createHash("sha1").update(text, "utf-8").digest("hex");

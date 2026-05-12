@@ -11,31 +11,31 @@ import type { FileFormatServiceConfig } from "./file-format-shared";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 /**
- * 导出写回会移除竖排样式。
+ * 导出写回会移除竖排样式
  */
 const CSS_VERTICAL_WRITING_PATTERN = /[^;\s]*writing-mode\s*:\s*vertical-rl;*/giu;
 
 /**
- * 顺序写回只处理这些块级标签，避免在内联节点中错位替换。
+ * 顺序写回只处理这些块级标签，避免在内联节点中错位替换
  */
 const EPUB_LEGACY_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td"]);
 
 /**
- * EPUB 写回器，优先使用 AST 定位，缺少 parts 时回退顺序写回。
+ * EPUB 写回器，优先使用 AST 定位，缺少 parts 时回退顺序写回
  */
 export class EpubWriter {
   /**
-   * AST 工具集中提供路径、slot、解析和清洗能力，写回器不重复实现 DOM 细节。
+   * AST 工具集中提供路径、slot、解析和清洗能力，写回器不重复实现 DOM 细节
    */
   private readonly ast = new EpubAst();
 
   /**
-   * 写回策略依赖导出配置，尤其是双语去重和目标语言路径规则。
+   * 写回策略依赖导出配置，尤其是双语去重和目标语言路径规则
    */
   public constructor(private readonly config: FileFormatServiceConfig) {}
 
   /**
-   * 只有带 parts 定位的条目才能走 AST 写回，缺少定位时走顺序兼容写回。
+   * 只有带 parts 定位的条目才能走 AST 写回，缺少定位时走顺序兼容写回
    */
   public has_epub_ast_metadata(item: Item): boolean {
     const epub = read_epub_extra(item);
@@ -44,7 +44,7 @@ export class EpubWriter {
   }
 
   /**
-   * 根据条目元数据选择 AST 或顺序写回路径，保证项目能导出。
+   * 根据条目元数据选择 AST 或顺序写回路径，保证项目能导出
    */
   public async build_epub(
     original_epub_bytes: Uint8Array,
@@ -62,7 +62,7 @@ export class EpubWriter {
   }
 
   /**
-   * AST 写回按 EPUB 内文档聚合条目，逐文件应用 slot 级替换并保留其它资源。
+   * AST 写回按 EPUB 内文档聚合条目，逐文件应用 slot 级替换并保留其它资源
    */
   private async build_epub_ast(
     original_epub_bytes: Uint8Array,
@@ -135,7 +135,7 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 标题成功写回后同步 XHTML title，避免书名与页面标题不一致。
+   * OPF 标题成功写回后同步 XHTML title，避免书名与页面标题不一致
    */
   private async resolve_opf_title_sync_pair(
     source_zip: JSZip,
@@ -161,14 +161,14 @@ export class EpubWriter {
           return candidate;
         }
       } catch {
-        // 预检查失败只表示不触发 XHTML 标题同步，不影响正文写回。
+        // 预检查失败只表示不触发 XHTML 标题同步，不影响正文写回
       }
     }
     return null;
   }
 
   /**
-   * 从 OPF 元数据条目提取单行标题替换对，只有真实译文才参与同步。
+   * 从 OPF 元数据条目提取单行标题替换对，只有真实译文才参与同步
    */
   private extract_opf_title_sync_pair(by_doc: Map<string, Item[]>): [string, string] | null {
     for (const [doc_path, doc_items] of by_doc.entries()) {
@@ -196,7 +196,7 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 写回失败时回退原文加清洗，元数据文件不能阻塞正文导出。
+   * OPF 写回失败时回退原文加清洗，元数据文件不能阻塞正文导出
    */
   private async write_opf_doc(
     output_zip: JSZip,
@@ -225,7 +225,7 @@ export class EpubWriter {
   }
 
   /**
-   * XHTML/NCX 写回在 AST 定位失败时保留原始文档，避免损坏 EPUB 包。
+   * XHTML/NCX 写回在 AST 定位失败时保留原始文档，避免损坏 EPUB 包
    */
   private async write_ast_content_doc(
     output_zip: JSZip,
@@ -257,7 +257,7 @@ export class EpubWriter {
   }
 
   /**
-   * 将译文应用到 DOM slot，并在双语模式下收集需要插入的原文块克隆。
+   * 将译文应用到 DOM slot，并在双语模式下收集需要插入的原文块克隆
    */
   private apply_items_to_tree(
     root: Element,
@@ -394,7 +394,7 @@ export class EpubWriter {
   }
 
   /**
-   * ruby 清洗候选用于处理带注音的文本块，slot 数量变化时仍能按块安全写回。
+   * ruby 清洗候选用于处理带注音的文本块，slot 数量变化时仍能按块安全写回
    */
   private apply_ruby_clean_candidate_to_block(
     root: Element,
@@ -439,7 +439,7 @@ export class EpubWriter {
   }
 
   /**
-   * 双语插入按 block_path 去重，避免同一原文块被多个 slot 重复克隆。
+   * 双语插入按 block_path 去重，避免同一原文块被多个 slot 重复克隆
    */
   private collect_bilingual_block_ref(
     root: Element,
@@ -460,7 +460,7 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 书名变更时同步 XHTML head/title，只改完全匹配原标题的节点。
+   * OPF 书名变更时同步 XHTML head/title，只改完全匹配原标题的节点
    */
   private sync_xhtml_title(root: Element, src_title: string, dst_title: string): boolean {
     let changed = false;
@@ -481,7 +481,7 @@ export class EpubWriter {
   }
 
   /**
-   * 顺序写回使用顺序替换策略，服务缺少 AST 元数据的项目。
+   * 顺序写回使用顺序替换策略，服务缺少 AST 元数据的项目
    */
   private async build_epub_legacy(
     original_epub_bytes: Uint8Array,
@@ -526,7 +526,7 @@ export class EpubWriter {
   }
 
   /**
-   * NCX 顺序写回按 text 节点顺序消费条目。
+   * NCX 顺序写回按 text 节点顺序消费条目
    */
   private process_legacy_ncx(raw: Uint8Array, target_items: Item[]): string {
     const root = this.ast.parse_ncx_xml(raw);
@@ -545,7 +545,7 @@ export class EpubWriter {
   }
 
   /**
-   * HTML legacy 写回按块级标签顺序替换，并在双语模式插入原文克隆。
+   * HTML legacy 写回按块级标签顺序替换，并在双语模式插入原文克隆
    */
   private process_legacy_html(raw: Uint8Array, target_items: Item[], bilingual: boolean): string {
     const root = this.ast.parse_xhtml_or_html(raw);
@@ -594,7 +594,7 @@ export class EpubWriter {
   }
 
   /**
-   * 导出统一移除竖排 class/style，避免翻译后横排文本仍受原排版约束。
+   * 导出统一移除竖排 class/style，避免翻译后横排文本仍受原排版约束
    */
   private remove_vertical_style(dom: Element): void {
     const class_attr = dom.attribs["class"];
@@ -618,7 +618,7 @@ export class EpubWriter {
   }
 
   /**
-   * 顺序写回块不能包含另一个候选块，否则替换会同时命中父子节点。
+   * 顺序写回块不能包含另一个候选块，否则替换会同时命中父子节点
    */
   private has_legacy_tag_descendant(dom: Element): boolean {
     return this.ast
@@ -628,7 +628,7 @@ export class EpubWriter {
   }
 
   /**
-   * 递归收集元素可见文本，供空文本过滤和字符串替换判断使用。
+   * 递归收集元素可见文本，供空文本过滤和字符串替换判断使用
    */
   private collect_text_content(elem: Element): string {
     const parts: string[] = [];
@@ -643,7 +643,7 @@ export class EpubWriter {
   }
 
   /**
-   * 用解析后的替换片段接管原节点位置，保持父级 children 链接关系稳定。
+   * 用解析后的替换片段接管原节点位置，保持父级 children 链接关系稳定
    */
   private replace_element(target: Element, replacement: Element): void {
     const parent = target.parent;
@@ -659,21 +659,21 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 清洗去掉翻页方向属性。
+   * OPF 清洗去掉翻页方向属性
    */
   private sanitize_opf(text: string): string {
     return text.replace('page-progression-direction="rtl"', "");
   }
 
   /**
-   * CSS 清洗移除竖排样式。
+   * CSS 清洗移除竖排样式
    */
   private sanitize_css(text: string): string {
     return text.replace(CSS_VERTICAL_WRITING_PATTERN, "");
   }
 
   /**
-   * 整文档序列化按根节点判断 XML/HTML 模式，避免纯 HTML 被强加 XML 声明。
+   * 整文档序列化按根节点判断 XML/HTML 模式，避免纯 HTML 被强加 XML 声明
    */
   private serialize_doc(root: Element): string {
     const is_plain_html = root.name.toLowerCase() === "html" && !root.name.includes(":");
@@ -688,7 +688,7 @@ export class EpubWriter {
   }
 
   /**
-   * 片段序列化固定使用 HTML 模式，供 legacy 字符串替换后的重解析使用。
+   * 片段序列化固定使用 HTML 模式，供 legacy 字符串替换后的重解析使用
    */
   private serialize_fragment(root: Element): string {
     return render(root, {
@@ -701,7 +701,7 @@ export class EpubWriter {
   }
 
   /**
-   * EPUB 输出沿用 STORE 压缩，避免重压缩带来不必要的二进制差异。
+   * EPUB 输出沿用 STORE 压缩，避免重压缩带来不必要的二进制差异
    */
   private async write_zip_file(zip_file: JSZip, out_path: string): Promise<void> {
     const content = await zip_file.generateAsync({ compression: "STORE", type: "nodebuffer" });

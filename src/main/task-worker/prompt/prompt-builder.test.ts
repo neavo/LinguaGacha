@@ -44,7 +44,7 @@ describe("PromptBuilder", () => {
 });
 
 /**
- * 构造包含中英文提示词模板的临时 appRoot，避免测试依赖真实资源目录。
+ * 构造包含中英文提示词模板的临时 appRoot，避免测试依赖真实资源目录
  */
 async function create_template_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-prompt-"));
@@ -76,7 +76,7 @@ async function create_template_root(): Promise<string> {
 }
 
 /**
- * 写入单个任务语言模板，保持 PromptBuilder 读取路径与运行态一致。
+ * 写入单个任务语言模板，保持 PromptBuilder 读取路径与运行态一致
  */
 async function write_template(
   app_root: string,
@@ -92,7 +92,7 @@ async function write_template(
 }
 
 /**
- * 生成默认关闭高级质量规则的快照，用例只覆盖自己关心的开关。
+ * 生成默认关闭高级质量规则的快照，用例只覆盖自己关心的开关
  */
 function create_quality_snapshot(
   overrides: Partial<TextQualitySnapshot> = {},

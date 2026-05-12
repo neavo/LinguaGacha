@@ -86,7 +86,7 @@ describe("LLM 模型工具函数", () => {
 });
 
 /**
- * 创建只含 version.txt 的最小 appRoot，确保 User-Agent 断言稳定。
+ * 创建只含 version.txt 的最小 appRoot，确保 User-Agent 断言稳定
  */
 async function create_app_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-model-convert-"));
