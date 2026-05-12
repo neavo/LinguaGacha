@@ -60,7 +60,11 @@ export function resolve_text_preserve_patterns(args: {
     return [];
   }
   if (mode === "custom") {
-    return args.entries.map((entry) => String(entry["src"] ?? "").trim()).filter(Boolean);
+    return args.entries
+      .map((entry) => entry["src"])
+      .filter((src): src is string => typeof src === "string")
+      .map((src) => src.trim())
+      .filter(Boolean);
   }
   const text_type = args.text_type.toUpperCase();
   const key = (
@@ -93,4 +97,31 @@ export function build_text_preserve_rule(args: {
     return new RegExp(`^(?:${body})+`, "giu");
   }
   return new RegExp(`(?:${body})+$`, "giu");
+}
+
+const BLANK_PATTERN = /\s+/gu;
+
+/**
+ * 统一提取并归一化非空保护段，供响应检查和迁移对拍复用
+ */
+export function collect_non_blank_text_preserve_segments(text: string, rule: RegExp): string[] {
+  rule.lastIndex = 0;
+  const segments: string[] = [];
+  for (const match of text.matchAll(rule)) {
+    const segment = (match[0] ?? "").replace(BLANK_PATTERN, "");
+    if (segment !== "") {
+      segments.push(segment);
+    }
+  }
+  rule.lastIndex = 0;
+  return segments;
+}
+
+/**
+ * 按保护段序列比较源文和译文，避免保护段位置移动造成误判
+ */
+export function are_text_preserve_segments_equal(src: string, dst: string, rule: RegExp): boolean {
+  const src_segments = collect_non_blank_text_preserve_segments(src, rule);
+  const dst_segments = collect_non_blank_text_preserve_segments(dst, rule);
+  return src_segments.join("\u0000") === dst_segments.join("\u0000");
 }

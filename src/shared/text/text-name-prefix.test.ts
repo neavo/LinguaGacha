@@ -10,8 +10,18 @@ describe("text-name-prefix", () => {
     expect(srcs).toEqual(["こんにちは"]);
   });
 
+  it("没有姓名或没有源行时保持原内容", () => {
+    expect(inject_text_name_prefix(["こんにちは"], null)).toEqual(["こんにちは"]);
+    expect(inject_text_name_prefix(["こんにちは"], "")).toEqual(["こんにちは"]);
+    expect(inject_text_name_prefix([], "Alice")).toEqual([]);
+  });
+
   it("提取全角和半角姓名前缀", () => {
     expect(extract_text_name_prefix("【爱丽丝】你好")).toEqual({ name: "爱丽丝", text: "你好" });
     expect(extract_text_name_prefix("[爱丽丝] 你好")).toEqual({ name: "爱丽丝", text: "你好" });
+  });
+
+  it("没有姓名前缀时保持原译文", () => {
+    expect(extract_text_name_prefix("你好")).toEqual({ name: null, text: "你好" });
   });
 });
