@@ -36,4 +36,9 @@ describe("TextRubyCleaner", () => {
   it("EPUB 块级 ruby 候选在关闭清理时保留原文", () => {
     expect(TextRubyCleaner.clean_item_src({ src: "宝條\n直希" }, false)).toBe("宝條\n直希");
   });
+
+  it("启用 ruby 清理但缺少 EPUB 候选时回退原文", () => {
+    expect(TextRubyCleaner.clean_item_src({ src: "宝條\n直希" }, true)).toBe("宝條\n直希");
+    expect(TextRubyCleaner.clean_item_src({ src: "宝條", extra_field: [] }, true)).toBe("宝條");
+  });
 });

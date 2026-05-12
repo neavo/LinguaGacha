@@ -263,6 +263,42 @@ describe("翻译文本 pipeline", () => {
     expect(partially_preserved.suffix_codes_by_line).toEqual(new Map());
   });
 
+  it("关闭自动前后缀保护时只跳过混合文本里的完全保护行", () => {
+    const pipeline = create_pipeline_pair(
+      create_config({ auto_process_prefix_suffix_preserved_text: false }),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>" }],
+      }),
+    );
+
+    const context = pipeline.pre.process_item({
+      src: "<b></b>\nhello\n<i></i>",
+      text_type: "TXT",
+    });
+
+    expect(context.srcs).toEqual(["hello"]);
+    expect(context.valid_line_indexes).toEqual(new Set([1]));
+  });
+
+  it("保护模式关闭时即使自动前后缀保护关闭也不会跳过整行代码", () => {
+    const pipeline = create_pipeline_pair(
+      create_config({ auto_process_prefix_suffix_preserved_text: false }),
+      create_quality_snapshot({
+        text_preserve_mode: "OFF",
+        text_preserve_entries: [{ src: "<[^>]+>" }],
+      }),
+    );
+
+    const context = pipeline.pre.process_item({
+      src: "<b></b>",
+      text_type: "TXT",
+    });
+
+    expect(context.srcs).toEqual(["<b></b>"]);
+    expect(context.valid_line_indexes).toEqual(new Set([0]));
+  });
+
   it("译后保留空行、纯空白行和未进入模型的行", () => {
     const pipeline = create_pipeline_pair(create_config(), create_quality_snapshot());
     const context = pipeline.pre.process_item({
@@ -289,6 +325,92 @@ describe("翻译文本 pipeline", () => {
     const result = pipeline.post.process_item(context, ["  ok  "]);
 
     expect(result.dst).toBe("  ok  ");
+  });
+
+  it("译前译后处理混合多行、姓名和前后缀保护", () => {
+    const pipeline = create_pipeline_pair(
+      create_config(),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>" }],
+      }),
+    );
+
+    const context = pipeline.pre.process_item({
+      src: "  <b>one</b>  \n\n  two  ",
+      name_src: "Alice",
+      text_type: "TXT",
+    });
+    const result = pipeline.post.process_item(context, ["【Alicia】uno", "dos"]);
+
+    expect(context.srcs).toEqual(["【Alice】one", "two"]);
+    expect(context.valid_line_indexes).toEqual(new Set([0, 2]));
+    expect(context.prefix_codes_by_line).toEqual(
+      new Map([
+        [0, ["<b>"]],
+        [2, []],
+      ]),
+    );
+    expect(context.suffix_codes_by_line).toEqual(
+      new Map([
+        [0, ["</b>"]],
+        [2, []],
+      ]),
+    );
+    expect(result).toEqual({
+      name: "Alicia",
+      dst: "  <b>uno</b>  \n\n  dos  ",
+    });
+  });
+
+  it("译前和译后替换在 pipeline 中按快照开关执行", () => {
+    const pipeline = create_pipeline_pair(
+      create_config(),
+      create_quality_snapshot({
+        text_preserve_mode: "OFF",
+        pre_replacement_enable: true,
+        pre_replacement_entries: [
+          {
+            src: "foo",
+            dst: "f1",
+            regex: false,
+            case_sensitive: false,
+          },
+        ],
+        post_replacement_enable: true,
+        post_replacement_entries: [
+          {
+            src: "u",
+            dst: "U",
+            regex: false,
+            case_sensitive: true,
+          },
+        ],
+      }),
+    );
+
+    const context = pipeline.pre.process_item({
+      src: "  foo  \nbar",
+      text_type: "TXT",
+    });
+    const result = pipeline.post.process_item(context, ["a u", "b u"]);
+
+    expect(context.srcs).toEqual(["f1", "bar"]);
+    expect(context.valid_line_indexes).toEqual(new Set([0, 1]));
+    expect(result.dst).toBe("  a U  \nb U");
+  });
+
+  it("带姓名的 item 译后没有姓名前缀时保留译文并不产生 name", () => {
+    const pipeline = create_pipeline_pair(create_config(), create_quality_snapshot());
+    const context = pipeline.pre.process_item({
+      src: "hello",
+      name_src: "Alice",
+      text_type: "TXT",
+    });
+
+    const result = pipeline.post.process_item(context, ["hi"]);
+
+    expect(result).toEqual({ name: null, dst: "hi" });
   });
 
   it("自动修复在日语源语言下按语言、代码、转义、数字、标点顺序执行", () => {

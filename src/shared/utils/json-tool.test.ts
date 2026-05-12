@@ -112,4 +112,15 @@ describe("JsonTool", () => {
     expect(fs.readFileSync(file_path)).toEqual(Buffer.from('{\n    "text": "\\ud800"\n}'));
     await expect(JsonTool.loadFile(file_path)).resolves.toEqual({ text: "\uD800" });
   });
+
+  it("文件助手按紧凑格式写入时保留孤立代理的转义字节", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-json-tool-test-"));
+    cleanup_paths.push(directory);
+    const file_path = path.join(directory, "compact.json");
+
+    await JsonTool.saveFile(file_path, { text: "\uD800" }, { indent: 0 });
+
+    expect(fs.readFileSync(file_path)).toEqual(Buffer.from('{"text":"\\ud800"}'));
+    await expect(JsonTool.loadFile(file_path)).resolves.toEqual({ text: "\uD800" });
+  });
 });

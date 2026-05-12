@@ -188,6 +188,22 @@ describe("响应检查器逐行规则", () => {
       }),
     ).toEqual(["LINE_ERROR_KANA"]);
   });
+
+  it("保护规则关闭时不会比较保护片段差异", () => {
+    expect(
+      check_lines(["[A]"], ["[B]"], {
+        config: create_config({
+          source_language: "ZH",
+          target_language: "EN",
+          check_similarity: false,
+        }),
+        quality_snapshot: create_quality_snapshot({
+          text_preserve_mode: "off",
+          text_preserve_entries: [{ src: "\\[[^\\]]+\\]" }],
+        }),
+      }),
+    ).toEqual(["NONE"]);
+  });
 });
 
 describe("响应检查器任意源语言", () => {

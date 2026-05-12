@@ -81,6 +81,6 @@ function should_skip_rule_prefilter_line(raw_line: string): boolean {
 
 // 返回值 true 表示需要过滤（即需要排除）
 export function should_skip_by_rule_prefilter(text: string): boolean {
-  const lines = text.split(LINE_BREAK_PATTERN);
+  const lines = text === "" ? [] : text.split(LINE_BREAK_PATTERN);
   return lines.length > 0 && lines.every(should_skip_rule_prefilter_line);
 }
