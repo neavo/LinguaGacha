@@ -7,133 +7,189 @@ interface TaskLimiterOptions {
   now?: () => number;
 }
 
+export interface TaskLimiterLease {
+  release: () => void; // release 只释放本次 lease，占用方异常重入时保持幂等
+  acquired_at: number; // acquired_at 记录资格发放时刻，供测试和未来诊断读取
+  queued_ms: number; // queued_ms 表达请求在 limiter 内等待了多久，不进入任务运行态
+}
+
+// PendingRequest 是 FIFO 队列中的唯一等待形态，并发等待和 RPM 等待都收敛到这里
+interface PendingRequest {
+  resolve: (lease: TaskLimiterLease) => void;
+  reject: (error: Error) => void;
+  signal: AbortSignal;
+  abort_listener: () => void;
+  queued_at: number;
+  settled: boolean;
+}
+
 /**
- * Task Engine 限流器，统一持有并发槽和每分钟请求数节奏
+ * Task Engine 限流器，统一发放 LLM work unit 请求资格并保护外部模型服务节奏。
  */
 export class TaskLimiter {
   public readonly max_concurrency: number; // max_concurrency 是 worker 同时执行 work unit 的上限
 
   private readonly rpm_limit: number; // rpm_limit 只表示每分钟请求数，不参与反推并发
 
+  private readonly permit_interval_ms: number; // permit_interval_ms 是平滑发放相邻请求资格的最小间隔
+
   private readonly now_provider: () => number; // now_provider 让限流测试可以注入虚拟时钟
 
-  private in_use = 0; // in_use 记录已占用并发槽的请求数量
+  private in_use = 0; // in_use 记录已发放但尚未释放的请求资格数量
 
-  private request_timestamps: number[] = []; // request_timestamps 记录最近一分钟内真正放行的请求
+  private next_permit_at: number | null = null; // next_permit_at 记录下一次 RPM 资格最早可发放时间
 
-  private waiters: Array<() => void> = []; // waiters 在 release 时被唤醒，避免无槽时忙等
+  private readonly pending_queue: PendingRequest[] = []; // pending_queue 是所有等待请求的 FIFO 权威队列
+
+  private rate_timer: ReturnType<typeof setTimeout> | null = null; // rate_timer 是唯一 RPM 唤醒定时器
 
   /**
-   * 初始化限流参数；显式并发必须大于 0，否则固定回退 8
+   * 初始化限流参数；显式并发必须大于 0，否则固定回退 8。
    */
   public constructor(options: TaskLimiterOptions = {}) {
     const raw_concurrency = Math.trunc(Number(options.concurrency_limit ?? 0));
     this.max_concurrency = raw_concurrency > 0 ? raw_concurrency : DEFAULT_CONCURRENCY_LIMIT;
     this.rpm_limit = Math.max(0, Math.trunc(Number(options.rpm_limit ?? 0)));
+    this.permit_interval_ms = this.rpm_limit > 0 ? ONE_MINUTE_MS / this.rpm_limit : 0;
     this.now_provider = options.now ?? (() => Date.now());
   }
 
   /**
-   * 申请一次请求资格；调用方必须在 work unit 返回后执行 release
+   * 申请一次请求资格；调用方必须在 work unit 返回后释放 lease。
    */
-  public async acquire(signal: AbortSignal): Promise<() => void> {
-    for (;;) {
-      this.throw_if_aborted(signal);
-      this.compact_request_timestamps();
-      const rpm_delay_ms = this.get_rpm_delay_ms();
-      if (this.in_use < this.max_concurrency && rpm_delay_ms <= 0) {
-        this.in_use += 1;
-        this.request_timestamps.push(this.now_provider());
-        return () => this.release();
+  public async acquire(signal: AbortSignal): Promise<TaskLimiterLease> {
+    if (signal.aborted) {
+      throw this.create_abort_error();
+    }
+    return await new Promise<TaskLimiterLease>((resolve, reject) => {
+      const request: PendingRequest = {
+        resolve,
+        reject,
+        signal,
+        abort_listener: () => this.cancel_pending_request(request),
+        queued_at: this.now_provider(),
+        settled: false,
+      };
+      signal.addEventListener("abort", request.abort_listener, { once: true });
+      this.pending_queue.push(request);
+      this.drain_queue();
+    });
+  }
+
+  /**
+   * 从 FIFO 队列发放可用资格；并发槽和 RPM 节奏都在同一出口判断。
+   */
+  private drain_queue(): void {
+    this.clear_rate_timer_if_idle();
+    while (this.pending_queue.length > 0 && this.in_use < this.max_concurrency) {
+      const permit_delay_ms = this.get_paced_permit_delay_ms();
+      if (permit_delay_ms > 0) {
+        this.schedule_rate_timer(permit_delay_ms);
+        return;
       }
-      if (this.in_use >= this.max_concurrency) {
-        await this.wait_for_release(signal);
-      } else {
-        await this.delay(rpm_delay_ms, signal);
+      const request = this.pending_queue.shift();
+      if (request === undefined) {
+        return;
       }
+      this.grant_request(request);
     }
   }
 
   /**
-   * 释放并发槽并唤醒一个等待者，保持后续队列继续推进
+   * 发放队首请求资格，同时推进下一次 RPM 许可时间。
+   */
+  private grant_request(request: PendingRequest): void {
+    if (request.settled) {
+      return;
+    }
+    request.settled = true;
+    request.signal.removeEventListener("abort", request.abort_listener);
+    this.in_use += 1;
+    const acquired_at = this.now_provider();
+    if (this.rpm_limit > 0) {
+      this.next_permit_at = acquired_at + this.permit_interval_ms;
+    }
+    let released = false;
+    request.resolve({
+      acquired_at,
+      queued_ms: Math.max(0, acquired_at - request.queued_at),
+      release: () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        this.release();
+      },
+    });
+  }
+
+  /**
+   * 释放并发槽后继续 drain，保证取消、限速和并发释放都走同一推进路径。
    */
   private release(): void {
     this.in_use = Math.max(0, this.in_use - 1);
-    const waiter = this.waiters.shift();
-    waiter?.();
+    this.drain_queue();
   }
 
   /**
-   * 清理一分钟窗口外的请求时间戳，保证 RPM 判断只看当前窗口
+   * 取消仍在队列中的请求，清理 abort listener 并让后续队列重新判断。
    */
-  private compact_request_timestamps(): void {
-    if (this.rpm_limit <= 0) {
-      this.request_timestamps = [];
+  private cancel_pending_request(request: PendingRequest): void {
+    if (request.settled) {
       return;
     }
-    const cutoff = this.now_provider() - ONE_MINUTE_MS;
-    this.request_timestamps = this.request_timestamps.filter((timestamp) => timestamp > cutoff);
+    request.settled = true;
+    request.signal.removeEventListener("abort", request.abort_listener);
+    const index = this.pending_queue.indexOf(request);
+    if (index >= 0) {
+      this.pending_queue.splice(index, 1);
+    }
+    request.reject(this.create_abort_error());
+    this.clear_rate_timer_if_idle();
+    this.drain_queue();
   }
 
   /**
-   * 返回下一次可发请求还需等待多久；0 表示已有 RPM 令牌
+   * 返回下一次可发请求还需等待多久；0 表示已有 RPM 资格。
    */
-  private get_rpm_delay_ms(): number {
-    if (this.rpm_limit <= 0 || this.request_timestamps.length < this.rpm_limit) {
+  private get_paced_permit_delay_ms(): number {
+    if (this.rpm_limit <= 0 || this.next_permit_at === null) {
       return 0;
     }
-    const oldest_timestamp = this.request_timestamps[0] ?? this.now_provider();
-    return Math.max(0, oldest_timestamp + ONE_MINUTE_MS - this.now_provider());
+    return Math.max(0, this.next_permit_at - this.now_provider());
   }
 
   /**
-   * 等待任意并发槽释放；停止时要立刻退出等待
+   * 安排唯一 RPM 定时器，到点后回到 drain_queue 继续发放 FIFO 队首。
    */
-  private async wait_for_release(signal: AbortSignal): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      const on_abort = (): void => {
-        this.waiters = this.waiters.filter((waiter) => waiter !== resolve);
-        reject(new Error("任务已停止。"));
-      };
-      if (signal.aborted) {
-        reject(new Error("任务已停止。"));
-        return;
-      }
-      signal.addEventListener("abort", on_abort, { once: true });
-      this.waiters.push(() => {
-        signal.removeEventListener("abort", on_abort);
-        resolve();
-      });
-    });
-  }
-
-  /**
-   * RPM 等待使用可取消定时器，停止命令不需要等完整窗口
-   */
-  private async delay(ms: number, signal: AbortSignal): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      if (signal.aborted) {
-        reject(new Error("任务已停止。"));
-        return;
-      }
-      const timer = setTimeout(resolve, Math.max(0, ms));
-      signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timer);
-          reject(new Error("任务已停止。"));
-        },
-        { once: true },
-      );
-    });
-  }
-
-  /**
-   * 所有等待点都先检查 abort，避免停止后继续发新 work unit
-   */
-  private throw_if_aborted(signal: AbortSignal): void {
-    if (signal.aborted) {
-      throw new Error("任务已停止。");
+  private schedule_rate_timer(delay_ms: number): void {
+    if (this.rate_timer !== null) {
+      return;
     }
+    this.rate_timer = setTimeout(
+      () => {
+        this.rate_timer = null;
+        this.drain_queue();
+      },
+      Math.max(0, Math.ceil(delay_ms)),
+    );
+  }
+
+  /**
+   * 没有 pending 请求时清掉 RPM timer，避免任务停止后残留无意义回调。
+   */
+  private clear_rate_timer_if_idle(): void {
+    if (this.pending_queue.length > 0 || this.rate_timer === null) {
+      return;
+    }
+    clearTimeout(this.rate_timer);
+    this.rate_timer = null;
+  }
+
+  /**
+   * 停止错误统一创建，避免各等待分支产生不同错误文本。
+   */
+  private create_abort_error(): Error {
+    return new Error("任务已停止。");
   }
 }

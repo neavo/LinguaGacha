@@ -111,6 +111,7 @@ export class TaskEngine {
   private readonly setting_service: SettingService;
   private readonly log_manager: LogManager;
   private readonly run_lock = new TaskRunLock(); // run_lock 是整场任务互斥与停止信号的唯一权威
+  private shared_limiter: { key: string; limiter: TaskLimiter } | null = null; // shared_limiter 让后台任务和单条翻译共用同一模型节奏入口
   private request_in_flight_count = 0; // request_in_flight_count 只表达实时网络压力，不落库也不参与恢复
 
   /**
@@ -163,26 +164,33 @@ export class TaskEngine {
   }
 
   /**
-   * 单条翻译不占后台全局锁，只走 work-unit executor 并保持公开响应形状
+   * 单条翻译不占后台全局锁，但仍必须获取模型请求资格后再调用 executor
    */
   public async translate_single(text: string): Promise<MutableJsonRecord> {
     const runtime = this.resolve_runtime_snapshot();
+    const limiter = this.resolve_task_limiter(runtime.model);
+    const controller = new AbortController();
+    const lease = await limiter.acquire(controller.signal);
     const run_id = crypto.randomUUID();
-    const response = await this.executor_client.translate_single(
-      {
-        run_id,
-        work_unit_id: "single",
-        task_type: "translate-single",
-        model: runtime.model as unknown as ApiJsonValue,
-        config_snapshot: runtime.config_snapshot as unknown as ApiJsonValue,
-        quality_snapshot: null,
-        text,
-      },
-      new AbortController().signal,
-    );
-    this.emit_work_unit_logs(response.logs);
-    const { logs: _logs, ...public_response } = response;
-    return public_response;
+    try {
+      const response = await this.executor_client.translate_single(
+        {
+          run_id,
+          work_unit_id: "single",
+          task_type: "translate-single",
+          model: runtime.model as unknown as ApiJsonValue,
+          config_snapshot: runtime.config_snapshot as unknown as ApiJsonValue,
+          quality_snapshot: null,
+          text,
+        },
+        controller.signal,
+      );
+      this.emit_work_unit_logs(response.logs);
+      const { logs: _logs, ...public_response } = response;
+      return public_response;
+    } finally {
+      lease.release();
+    }
   }
 
   /**
@@ -219,7 +227,7 @@ export class TaskEngine {
       );
       let progress = this.build_translation_progress(mode, all_items, meta);
       this.emit_progress(handle.task_type, progress);
-      const limiter = this.build_limiter(runtime.model);
+      const limiter = this.resolve_task_limiter(runtime.model);
       const pipeline = new TaskPipeline<TranslationContext, TranslationCommitEntry>({
         worker_count: limiter.max_concurrency,
         signal: handle.signal,
@@ -273,7 +281,7 @@ export class TaskEngine {
       const contexts = this.build_analysis_contexts(all_items, checkpoints, runtime.model);
       let progress = this.build_analysis_progress(mode, all_items, checkpoints, meta);
       this.emit_progress(handle.task_type, progress);
-      const limiter = this.build_limiter(runtime.model);
+      const limiter = this.resolve_task_limiter(runtime.model);
       const pipeline = new TaskPipeline<AnalysisContext, AnalysisCommitEntry>({
         worker_count: limiter.max_concurrency,
         signal: handle.signal,
@@ -324,7 +332,7 @@ export class TaskEngine {
       const meta = this.normalize_record(payload["meta"]);
       let progress = this.build_retranslate_progress(items, meta);
       this.emit_progress(handle.task_type, progress);
-      const limiter = this.build_limiter(runtime.model);
+      const limiter = this.resolve_task_limiter(runtime.model);
       const contexts = items.map((item) => this.build_retranslate_context(item));
       const pipeline = new TaskPipeline<TranslationContext, TranslationCommitEntry>({
         worker_count: limiter.max_concurrency,
@@ -503,13 +511,13 @@ export class TaskEngine {
     signal: AbortSignal,
     callback: () => Promise<T>,
   ): Promise<T> {
-    const release = await limiter.acquire(signal);
+    const lease = await limiter.acquire(signal);
     this.change_request_in_flight_count(handle.task_type, 1);
     try {
       return await callback();
     } finally {
       this.change_request_in_flight_count(handle.task_type, -1);
-      release();
+      lease.release();
     }
   }
 
@@ -1106,11 +1114,30 @@ export class TaskEngine {
   }
 
   /**
-   * 从模型阈值构建限流器；并发缺省固定为 8，RPM 只控制每分钟节奏
+   * 解析任务限流器；同一模型配置下后台任务与单条翻译共享并发和 RPM 节奏
    */
-  private build_limiter(model: MutableJsonRecord): TaskLimiter {
+  private resolve_task_limiter(model: MutableJsonRecord): TaskLimiter {
     const threshold = this.normalize_record(model["threshold"]);
-    return new TaskLimiter({
+    const limiter_key = this.build_task_limiter_key(model, threshold);
+    if (this.shared_limiter?.key === limiter_key) {
+      return this.shared_limiter.limiter;
+    }
+    const limiter = new TaskLimiter({
+      concurrency_limit: this.read_number(threshold["concurrency_limit"], 0),
+      rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
+    });
+    this.shared_limiter = { key: limiter_key, limiter };
+    return limiter;
+  }
+
+  /**
+   * 限流器 key 只取影响外部模型资源池的稳定字段，配置变化时自然切换新 limiter
+   */
+  private build_task_limiter_key(model: MutableJsonRecord, threshold: MutableJsonRecord): string {
+    return JSON.stringify({
+      id: String(model["id"] ?? ""),
+      api_url: String(model["api_url"] ?? ""),
+      model_id: String(model["model_id"] ?? ""),
       concurrency_limit: this.read_number(threshold["concurrency_limit"], 0),
       rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
     });

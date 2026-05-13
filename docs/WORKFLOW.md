@@ -29,7 +29,7 @@
 | --- | --- | --- |
 | 纯长期文档 | `npm run lint` 可选；必须检查链接和目标文档形态 | 涉及 README / 脚本提示时跑相关脚本或全文检索 |
 | TypeScript 非视觉逻辑 | `npm test -- <相关 test 文件>` 或 `npm test` | `npm run lint` |
-| 后端 API / database / task | 相关 `src/main/**/*.test.ts` | `npm test`，必要时 `npm run build` |
+| 后端 API / database / task | 相关 `src/main/**/*.test.ts` | `npm test` |
 | renderer 状态 / 页面逻辑 | 相关 `src/renderer/**/*.test.ts(x)` | `npm run lint` |
 | 前端视觉 / CSS / 组件外观 | 相关组件或页面测试，`npm run renderer:audit` | Electron 真机检查；需要时接 9222 DevTools |
 | 跨前后端运行态 | 后端相关测试 + renderer runtime/store 测试 | `npm test`，必要时启动 `npm run dev` 真机走主链路 |

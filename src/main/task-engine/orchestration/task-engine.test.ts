@@ -11,6 +11,43 @@ import { WorkUnitExecutorTransportError } from "../../task-worker/task-work-unit
 import { TaskEngine } from "./task-engine";
 
 describe("TaskEngine", () => {
+  it("公开单条翻译也通过共享 limiter 排队", async () => {
+    const first_response = create_deferred<MutableJsonRecord>();
+    let executor_call_count = 0;
+    const task_engine = new TaskEngine({
+      taskStore: {
+        build_quality_snapshot: () => null,
+      } as unknown as ProjectTaskStore,
+      coreEventHub: {
+        publish: () => undefined,
+      } as unknown as CoreEventHub,
+      executorClient: {
+        translate_single: async () => {
+          executor_call_count += 1;
+          if (executor_call_count === 1) {
+            return await first_response.promise;
+          }
+          return { text: "第二条" };
+        },
+      } as unknown as TaskWorkUnitExecutor,
+      SettingService: create_setting_service(1),
+      logManager: create_log_manager(),
+    });
+
+    const first = task_engine.translate_single("第一条");
+    await wait_until(() => executor_call_count === 1);
+    const second = task_engine.translate_single("第二条");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(executor_call_count).toBe(1);
+
+    first_response.resolve({ text: "第一条", logs: [] });
+    await expect(first).resolves.toEqual({ text: "第一条" });
+    await expect(second).resolves.toEqual({ text: "第二条" });
+    expect(executor_call_count).toBe(2);
+  });
+
   it("翻译单条重试超限后把强制 ERROR 条目提交落库", async () => {
     const committed_batches: MutableJsonRecord[] = [];
     const done = create_status_waiter("translation", "DONE");
@@ -158,6 +195,27 @@ describe("TaskEngine", () => {
         }
       },
     };
+  }
+
+  function create_deferred<T>(): {
+    promise: Promise<T>;
+    resolve: (value: T) => void;
+  } {
+    let resolve_deferred: (value: T) => void = () => undefined;
+    const promise = new Promise<T>((resolve) => {
+      resolve_deferred = resolve;
+    });
+    return { promise, resolve: resolve_deferred };
+  }
+
+  async function wait_until(predicate: () => boolean): Promise<void> {
+    for (let index = 0; index < 10; index += 1) {
+      if (predicate()) {
+        return;
+      }
+      await Promise.resolve();
+    }
+    expect(predicate()).toBe(true);
   }
 
   function create_setting_service(concurrency_limit = 1): SettingService {

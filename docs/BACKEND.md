@@ -72,7 +72,7 @@ flowchart LR
 | events | 公开运行期事件广播、SSE 订阅和 keepalive | `CoreEventHub` |
 | task-engine/command | 任务命令、请求校验、命令回执 | `TaskCommandService` |
 | task-engine/runtime | 任务快照、运行时 busy、请求中数量、重翻行级状态、事件投影 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimeProjector` |
-| task-engine/orchestration | 任务锁、流水线、限流、worker 调度、进度提交 | `TaskEngine` |
+| task-engine/orchestration | 任务锁、流水线、LLM 请求资格限流、worker 调度、进度提交；后台 work unit 与公开单条翻译都必须先取得 limiter lease | `TaskEngine` |
 | task-engine/store | 任务输入读取、任务质量快照构建、任务结果提交、项目数据变更发布 | `ProjectTaskStore` |
 | task-worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `TaskWorkerPool`、`task-worker-entry`、各 work unit runner |
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
