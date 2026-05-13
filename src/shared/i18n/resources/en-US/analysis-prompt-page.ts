@@ -1,5 +1,5 @@
-import { zh_cn_analysis_prompt_page } from "@/i18n/resources/zh-CN/analysis-prompt-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_analysis_prompt_page } from "../zh-CN/analysis-prompt-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_analysis_prompt_page = {
   title: "Analysis Prompts",

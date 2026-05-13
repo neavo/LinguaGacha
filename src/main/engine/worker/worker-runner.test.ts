@@ -98,7 +98,9 @@ describe("work-unit runner", () => {
       new AbortController().signal,
     );
 
-    expect(result.logs[0]?.message).toContain("用时 2.50s");
+    expect(result.logs[0]?.message).toContain(
+      "任务耗时 2.50 秒，文本行数 1 行，输入消耗 4 Tokens，输出消耗 5 Tokens",
+    );
   });
 
   it("分析 runner 归一模型术语候选", async () => {

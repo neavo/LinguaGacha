@@ -1,4 +1,4 @@
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { GlossaryConfirmState } from "@/pages/glossary-page/types";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 

@@ -5,6 +5,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
 import { ProjectCompatibilityMigrationService } from "../migration/project-compatibility-migration-service";
 import type { SettingService } from "../service/setting-service";
 import type { AppPathService } from "../service/path-service";
@@ -371,10 +372,14 @@ export class ProjectLifecycleService {
         );
         loaded_names.push(spec.display_name);
       } catch (error) {
-        this.log_non_blocking_project_lifecycle_error("默认质量规则预设加载失败", error, {
-          preset_directory: spec.preset_directory,
-          virtual_id,
-        });
+        this.log_non_blocking_project_lifecycle_warning(
+          t_main_log("app.log.default_preset_quality_rule_load_failed"),
+          error,
+          {
+            preset_directory: spec.preset_directory,
+            virtual_id,
+          },
+        );
       }
     }
 
@@ -398,10 +403,14 @@ export class ProjectLifecycleService {
         );
         loaded_names.push(spec.display_name);
       } catch (error) {
-        this.log_non_blocking_project_lifecycle_error("默认提示词预设加载失败", error, {
-          task_type: spec.task_type,
-          virtual_id,
-        });
+        this.log_non_blocking_project_lifecycle_warning(
+          t_main_log("app.log.default_preset_prompt_load_failed"),
+          error,
+          {
+            task_type: spec.task_type,
+            virtual_id,
+          },
+        );
       }
     }
 
@@ -500,12 +509,12 @@ export class ProjectLifecycleService {
   /**
    * 记录不阻断当前主流程的生命周期错误，保留上下文供日志窗口排查
    */
-  private log_non_blocking_project_lifecycle_error(
+  private log_non_blocking_project_lifecycle_warning(
     message: string,
     error: unknown,
     context: Record<string, unknown>,
   ): void {
-    this.log_manager.error(message, {
+    this.log_manager.warning(message, {
       source: "project-lifecycle",
       context,
       error_message: error instanceof Error ? error.message : String(error),
@@ -520,9 +529,12 @@ export class ProjectLifecycleService {
     if (loaded_names.length === 0) {
       return;
     }
-    this.log_manager.info(`已自动加载默认预设：${loaded_names.join(" | ")} …`, {
-      source: "project-lifecycle",
-    });
+    this.log_manager.info(
+      t_main_log("app.log.default_preset_loaded", { NAMES: loaded_names.join(" | ") }),
+      {
+        source: "project-lifecycle",
+      },
+    );
   }
 
   /**

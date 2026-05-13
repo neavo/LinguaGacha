@@ -3,7 +3,7 @@ import { FileInput, FilePlus2, SquarePower, Trash2, type LucideIcon } from "luci
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { AnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
 import type { TranslationTaskRuntime } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { AnalysisTaskActionKind } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import type { TranslationTaskActionKind } from "@/pages/workbench-page/task-runtime/translation-task-model";
 import type {

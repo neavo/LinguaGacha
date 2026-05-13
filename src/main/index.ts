@@ -12,6 +12,7 @@ import {
 import { CoreLifecycleManager } from "./lifecycle/lifecycle-manager";
 import { type LogWindowHost } from "./log/log-window-host";
 import { write_electron_main_error } from "./log/log-bridge";
+import { t_main_log } from "./log/log-text";
 
 const desktop_bundle_dir = path.dirname(fileURLToPath(import.meta.url)); // Electron ESM 入口没有 CommonJS 的 __dirname，这里只用于定位已构建的前端资源
 
@@ -135,7 +136,7 @@ app.whenReady().then(async () => {
     register_runtime_ipc_handlers();
     create_main_window_for_runtime();
   } catch (error) {
-    write_electron_main_error("LinguaGacha 启动失败", { error });
+    write_electron_main_error(t_main_log("app.log.app_start_failed"), { error });
     const message = error instanceof Error ? error.message : "后端服务启动失败。";
     dialog.showErrorBox("LinguaGacha 启动失败", message);
     app.exit(1);

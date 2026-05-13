@@ -20,7 +20,7 @@ import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import {
   build_glossary_filter_result,
   has_active_glossary_filters,

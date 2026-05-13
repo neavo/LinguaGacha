@@ -27,7 +27,7 @@ import {
 } from "@/app/ui-runtime/toast/use-desktop-toast";
 import "@/app/shell/app-shell.css";
 import type { AppearanceMenuActionId, BottomActionId, RouteId } from "@/app/navigation/types";
-import { LocaleProvider, useI18n } from "@/i18n";
+import { LocaleProvider, useI18n } from "@/app/locale/locale-provider";
 import { SidebarInset, SidebarProvider } from "@/shadcn/sidebar";
 import { Toaster } from "@/shadcn/sonner";
 import { TooltipProvider } from "@/shadcn/tooltip";

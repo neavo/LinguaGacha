@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
+import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../service/path-service";
 import { SettingService } from "../service/setting-service";
 import { LLMClient } from "../engine/worker/llm/llm-client";
@@ -14,6 +15,7 @@ import {
   resolve_active_model_id,
   type ModelRecord,
 } from "./model-config-resolver";
+import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 
 // 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
@@ -41,13 +43,19 @@ const BROWSER_USER_AGENT =
 export class ModelService {
   private readonly paths: AppPathService;
   private readonly setting_service: SettingService;
+  private readonly log_manager?: Pick<LogManager, "info" | "warning">;
 
   /**
    * 初始化 ModelService 依赖，保持外部写入口清晰
    */
-  public constructor(paths: AppPathService, setting_service: SettingService) {
+  public constructor(
+    paths: AppPathService,
+    setting_service: SettingService,
+    log_manager?: Pick<LogManager, "info" | "warning">,
+  ) {
     this.paths = paths;
     this.setting_service = setting_service;
+    this.log_manager = log_manager;
   }
 
   /**
@@ -216,8 +224,12 @@ export class ModelService {
     const keys = LLMClientPolicy.collect_api_keys(String(model["api_key"] ?? ""));
     const client = new LLMClient({ appRoot: this.paths.get_app_root() });
     const key_results: Array<Record<string, ApiJsonValue>> = [];
+    const app_language = config["app_language"];
+    const messages = this.build_model_test_messages(String(model["api_format"] ?? "OpenAI"));
     for (const api_key of keys) {
       const model_for_test = { ...model, api_key };
+      const masked_key = this.mask_api_key(api_key);
+      this.log_model_test_key_start(app_language, masked_key, messages);
       const started_at = Date.now();
       const result = await client.request(
         {
@@ -225,14 +237,19 @@ export class ModelService {
           work_unit_id: "model-test",
           model: model_for_test as unknown as ApiJsonValue,
           config_snapshot: config as unknown as ApiJsonValue,
-          messages: this.build_model_test_messages(String(model["api_format"] ?? "OpenAI")),
+          messages,
         },
         new AbortController().signal,
       );
       const response_time_ms = Math.max(0, Date.now() - started_at);
       const error_reason = this.build_model_test_error_reason(result, config);
+      if (error_reason === "") {
+        this.log_model_test_success(app_language, result, response_time_ms);
+      } else {
+        this.log_model_test_failure(app_language, error_reason);
+      }
       key_results.push({
-        masked_key: this.mask_api_key(api_key),
+        masked_key,
         success: error_reason === "",
         input_tokens: result.input_tokens,
         output_tokens: result.output_tokens,
@@ -242,9 +259,15 @@ export class ModelService {
     }
     const success_count = key_results.filter((item) => item["success"] === true).length;
     const failure_count = key_results.length - success_count;
+    const result_msg = this.t(app_language, "app.log.api_test_result", {
+      COUNT: key_results.length.toString(),
+      FAILURE: failure_count.toString(),
+      SUCCESS: success_count.toString(),
+    });
+    this.log_model_test_summary(app_language, result_msg, key_results);
     return {
       success: failure_count === 0,
-      result_msg: `模型测试完成：总计 ${key_results.length.toString()}，成功 ${success_count.toString()}，失败 ${failure_count.toString()}`,
+      result_msg,
       total_count: key_results.length,
       success_count,
       failure_count,
@@ -412,12 +435,103 @@ export class ModelService {
       return "请求已取消。";
     }
     if (result.timeout) {
-      return `请求超时（${String(config["request_timeout"] ?? 120)} 秒）。`;
+      return this.t(config["app_language"], "app.log.api_test_timeout", {
+        SECONDS: String(config["request_timeout"] ?? 120),
+      });
     }
     if (result.degraded) {
-      return "流式响应退化。";
+      return this.t(config["app_language"], "app.log.response_checker_fail_degradation");
     }
     return result.error;
+  }
+
+  private log_model_test_key_start(
+    app_language: unknown,
+    masked_key: string,
+    messages: LLMMessage[],
+  ): void {
+    this.log_manager?.info("", { source: "model" });
+    this.log_manager?.info(`${this.t(app_language, "app.log.api_test_key")}\n${masked_key}`, {
+      source: "model",
+    });
+    this.log_manager?.info(
+      `${this.t(app_language, "app.log.api_test_messages")}\n${this.format_model_test_messages_for_log(messages)}`,
+      { source: "model" },
+    );
+  }
+
+  private log_model_test_success(
+    app_language: unknown,
+    result: LLMRequestResult,
+    response_time_ms: number,
+  ): void {
+    if (result.response_think === "") {
+      this.log_manager?.info(
+        `${this.t(app_language, "app.log.engine_task_response_result")}\n${result.response_result}`,
+        { source: "model" },
+      );
+    } else {
+      this.log_manager?.info(
+        `${this.t(app_language, "app.log.engine_task_response_think")}\n${result.response_think}`,
+        { source: "model" },
+      );
+      this.log_manager?.info(
+        `${this.t(app_language, "app.log.engine_task_response_result")}\n${result.response_result}`,
+        { source: "model" },
+      );
+    }
+    this.log_manager?.info(
+      this.t(app_language, "app.log.api_test_token_info", {
+        CT: result.output_tokens.toString(),
+        PT: result.input_tokens.toString(),
+        TIME: (response_time_ms / 1000).toFixed(2),
+      }),
+      { source: "model" },
+    );
+  }
+
+  private log_model_test_failure(app_language: unknown, reason: string): void {
+    this.log_manager?.warning(this.t(app_language, "app.log.api_test_fail", { REASON: reason }), {
+      source: "model",
+      error_message: reason,
+    });
+  }
+
+  private log_model_test_summary(
+    app_language: unknown,
+    result_msg: string,
+    key_results: Array<Record<string, ApiJsonValue>>,
+  ): void {
+    this.log_manager?.info("", { source: "model" });
+    this.log_manager?.info(result_msg, { source: "model" });
+    const failed_keys = key_results
+      .filter((item) => item["success"] !== true)
+      .map((item) => String(item["masked_key"] ?? ""))
+      .filter(Boolean);
+    if (failed_keys.length > 0) {
+      this.log_manager?.warning(
+        `${this.t(app_language, "app.log.api_test_result_failure")}\n${failed_keys.join("\n")}`,
+        { source: "model" },
+      );
+    }
+  }
+
+  private format_model_test_messages_for_log(messages: LLMMessage[]): string {
+    const rows = messages.map(
+      (message) =>
+        `{'role': '${this.escape_python_repr(message.role)}', 'content': '${this.escape_python_repr(
+          message.content,
+        )}'}`,
+    );
+    return `[${rows.join(", ")}]`;
+  }
+
+  private escape_python_repr(value: string): string {
+    return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+  }
+
+  private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
+    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }
 
   /**

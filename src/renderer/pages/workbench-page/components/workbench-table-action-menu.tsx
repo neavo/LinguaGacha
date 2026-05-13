@@ -13,7 +13,7 @@ import {
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
 } from "@/widgets/app-dropdown-menu/app-dropdown-menu";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 
 type WorkbenchTableActionMenuProps = {
   disabled: boolean;

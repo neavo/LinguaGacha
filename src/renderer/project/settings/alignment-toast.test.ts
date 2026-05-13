@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { format_project_settings_aligned_toast } from "@/project/settings/alignment-toast";
-import type { LocaleKey } from "@/i18n";
+import type { LocaleKey } from "@/app/locale/locale-provider";
 
 const TEXT_BY_KEY: Partial<Record<LocaleKey, string>> = {
   "app.feedback.project_settings_aligned": "已按当前设置更新项目设置 …",

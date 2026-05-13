@@ -14,7 +14,7 @@ const { basic_settings_state_fixture, push_toast_mock } = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
 import { Spinner } from "@/shadcn/spinner";
 import { AppTable } from "@/widgets/app-table/app-table";

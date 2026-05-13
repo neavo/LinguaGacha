@@ -10,6 +10,7 @@ import type {
   LogSubscriber,
   LogTargets,
 } from "../../shared/log";
+import { t_main_log } from "./log-text";
 
 const DEFAULT_RING_BUFFER_SIZE = 1000;
 const MAX_LOG_FILE_COUNT = 3;
@@ -110,7 +111,7 @@ export class LogManager {
   public append(payload: LogAppendPayload): LogEvent | null {
     if (this.shutdown_complete) {
       default_console_writer(
-        `日志系统已关闭，丢弃新日志：${payload.message}`,
+        t_main_log("app.log.system_closed_dropped", { MESSAGE: payload.message }),
         payload.level === "fatal" ? "fatal" : "error",
       );
       return null;

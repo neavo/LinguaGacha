@@ -10,7 +10,7 @@ import {
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { merge_glossary_entries } from "@/pages/glossary-page/merge";
 import type { GlossaryEntry } from "@/pages/glossary-page/types";
 import {

@@ -22,7 +22,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/shadcn/sidebar";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { cn } from "@/lib/utils";
 import {
   AppDropdownMenu,

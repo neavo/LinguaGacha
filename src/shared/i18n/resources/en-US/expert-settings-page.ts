@@ -1,5 +1,5 @@
-import { zh_cn_expert_settings_page } from "@/i18n/resources/zh-CN/expert-settings-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_expert_settings_page } from "../zh-CN/expert-settings-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_expert_settings_page = {
   title: "Expert Settings",

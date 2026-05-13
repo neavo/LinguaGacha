@@ -1,5 +1,5 @@
-import { zh_cn_laboratory_page } from "@/i18n/resources/zh-CN/laboratory-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_laboratory_page } from "../zh-CN/laboratory-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_laboratory_page = {
   title: "Laboratory",

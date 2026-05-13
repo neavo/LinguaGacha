@@ -7,7 +7,7 @@ import { WorkbenchCommandBar } from "./workbench-command-bar";
 
 const task_runtime_summary_mock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,

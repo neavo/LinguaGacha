@@ -35,6 +35,24 @@ export function write_electron_main_warning(
   });
 }
 
+export function write_electron_main_debug(
+  message: string,
+  payload: { error?: unknown; context?: Record<string, unknown> } = {},
+): void {
+  const log_manager = get_electron_main_log_manager();
+  const normalized = normalize_error_payload(payload.error);
+  if (log_manager === null) {
+    write_fallback_console_log("debug", message, normalized);
+    return;
+  }
+  log_manager.debug(message, {
+    source: "electron-main",
+    context: payload.context,
+    error_message: normalized.error_message,
+    stack: normalized.stack,
+  });
+}
+
 export function write_electron_main_error(
   message: string,
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
@@ -72,7 +90,7 @@ function normalize_error_payload(error: unknown): {
 }
 
 function write_fallback_console_log(
-  level: Extract<LogLevel, "warning" | "error">,
+  level: Extract<LogLevel, "debug" | "warning" | "error">,
   message: string,
   normalized: { error_message?: string; stack?: string },
 ): void {

@@ -85,7 +85,7 @@ const I18N_TEXT_BY_KEY: Record<string, string> = {
   "workbench_page.stats.translation_skipped": "无需翻译",
 };
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
       t: (key: string) => I18N_TEXT_BY_KEY[key] ?? key,

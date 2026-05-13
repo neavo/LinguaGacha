@@ -1,6 +1,6 @@
 import { GripVertical } from "lucide-react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import type { AppTableDragHandle } from "@/widgets/app-table/app-table-types";
 

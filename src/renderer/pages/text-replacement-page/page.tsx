@@ -1,7 +1,7 @@
 import "@/pages/text-replacement-page/text-replacement-page.css";
 import type { ScreenComponentProps } from "@/app/navigation/types";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { TextReplacementVariant } from "@/pages/text-replacement-page/config";
 import { TextReplacementCommandBar } from "@/pages/text-replacement-page/components/text-replacement-command-bar";
 import { TextReplacementConfirmDialog } from "@/pages/text-replacement-page/components/text-replacement-confirm-dialog";

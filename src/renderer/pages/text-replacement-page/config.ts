@@ -1,4 +1,4 @@
-import type { LocaleKey } from "@/i18n";
+import type { LocaleKey } from "@/app/locale/locale-provider";
 
 export type TextReplacementVariant = "pre" | "post";
 

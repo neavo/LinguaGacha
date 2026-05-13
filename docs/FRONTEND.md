@@ -30,6 +30,7 @@ flowchart LR
 - `DesktopRuntimeProvider` 启动时并行读取 settings、project、task snapshot；这一步不能通过卸载工程来“重置”Core 会话。
 - 工程 loaded 且 path 非空时，前端先通过 `/api/project/manifest` 获取项目数据索引与 revision，再通过 `/api/project/read-sections` 初始化 `ProjectStore`。
 - 工程未加载时 `ProjectStore` 回到空态，页面局部状态可以保留自己的选择或弹窗，但不能伪造项目事实。
+- `src/renderer/app/locale` 只承接 renderer 的 React Provider 和富文本渲染适配；国际化资源、key 类型和查表函数的唯一权威在 `src/shared/i18n`。
 
 ## 3. ProjectStore 与任务运行态
 

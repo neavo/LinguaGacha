@@ -59,7 +59,12 @@ describe("CoreLifecycleManager", () => {
       });
 
       const log_text = read_log_text(path.join(temp_dir, "log"));
-      expect(log_text).toContain("ProjectDatabase 已就绪");
+      expect(log_text).toContain("LinguaGacha v9.8.7 …");
+      expect(log_text.indexOf("LinguaGacha v9.8.7 …")).toBeLessThan(
+        log_text.indexOf("API Gateway 已启动"),
+      );
+      expect(log_text).toContain("API Gateway 已启动");
+      expect(log_text).not.toContain("ProjectDatabase 已就绪");
       expect(log_text).not.toContain("Database Service 已启动");
     } finally {
       await manager.stop();

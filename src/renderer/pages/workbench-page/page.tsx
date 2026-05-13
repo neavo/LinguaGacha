@@ -1,5 +1,5 @@
 import { useCachedWorkbenchLiveState } from "@/app/page-runtime/project-pages-context";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { UseWorkbenchLiveStateResult } from "@/pages/workbench-page/use-workbench-live-state";
 import { WorkbenchCommandBar } from "@/pages/workbench-page/components/workbench-command-bar";
 import { WorkbenchDialogs } from "@/pages/workbench-page/components/workbench-dialogs";

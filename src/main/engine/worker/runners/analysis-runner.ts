@@ -12,6 +12,7 @@ import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort } from "../llm/llm-types";
 import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
+import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 
 interface AnalysisWorkUnitRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -133,11 +134,12 @@ export class AnalysisWorkUnitRunner {
       };
     }
     if (llm_result.timeout || llm_result.degraded || llm_result.error !== "") {
+      const app_language = this.read_app_language(request.config_snapshot);
       const status_text = llm_result.timeout
-        ? "请求超时"
+        ? this.t(app_language, "app.log.response_checker_fail_timeout")
         : llm_result.degraded
-          ? "流式响应退化"
-          : `请求失败：${llm_result.error}`;
+          ? this.t(app_language, "app.log.response_checker_fail_degradation")
+          : this.t(app_language, "app.log.engine_task_exception");
       return {
         success: false,
         stopped: false,
@@ -153,6 +155,7 @@ export class AnalysisWorkUnitRunner {
           response_think: llm_result.response_think,
           response_result: llm_result.response_result,
           status_text,
+          app_language,
           level: "warning",
         }),
       };
@@ -184,7 +187,11 @@ export class AnalysisWorkUnitRunner {
           glossary_entries: [],
           response_think: normalized_think,
           response_result: cleaner_result.cleaned_response_result,
-          status_text: "响应数据无效",
+          status_text: this.t(
+            this.read_app_language(request.config_snapshot),
+            "app.log.response_checker_fail_data",
+          ),
+          app_language: this.read_app_language(request.config_snapshot),
           level: "warning",
         }),
       };
@@ -204,6 +211,7 @@ export class AnalysisWorkUnitRunner {
         response_think: normalized_think,
         response_result: cleaner_result.cleaned_response_result,
         status_text: "",
+        app_language: this.read_app_language(request.config_snapshot),
         level: "info",
       }),
     };
@@ -221,11 +229,17 @@ export class AnalysisWorkUnitRunner {
     response_think: string;
     response_result: string;
     status_text: string;
+    app_language: unknown;
     level: WorkUnitLogEntry["level"];
   }): WorkUnitLogEntry[] {
     const elapsed_seconds = ((Date.now() - context.start_time) / 1000).toFixed(2);
     const rows = [
-      `任务请求成功，用时 ${elapsed_seconds}s，行数 ${context.srcs.length}，输入 tokens ${context.input_tokens}，输出 tokens ${context.output_tokens}`,
+      this.t(context.app_language, "app.log.engine_task_success", {
+        CT: context.output_tokens.toString(),
+        LINES: context.srcs.length.toString(),
+        PT: context.input_tokens.toString(),
+        TIME: elapsed_seconds,
+      }),
     ];
     if (context.status_text !== "") {
       rows.push(context.status_text);
@@ -233,10 +247,14 @@ export class AnalysisWorkUnitRunner {
     const response_think_log = ResponseCleaner.normalize_blank_lines(context.response_think).trim();
     const response_result_log = context.response_result.trim();
     if (response_think_log !== "") {
-      rows.push(`模型思考：\n${response_think_log}`);
+      rows.push(
+        `${this.t(context.app_language, "app.log.engine_task_response_think")}\n${response_think_log}`,
+      );
     }
     if (response_result_log !== "") {
-      rows.push(`模型响应：\n${response_result_log}`);
+      rows.push(
+        `${this.t(context.app_language, "app.log.engine_task_response_result")}\n${response_result_log}`,
+      );
     }
 
     const source_lines = context.srcs
@@ -244,11 +262,19 @@ export class AnalysisWorkUnitRunner {
       .filter(Boolean)
       .map((text) => `SRC: ${text}`);
     if (source_lines.length > 0) {
-      rows.push(`分析原文：\n${source_lines.join("\n")}`);
+      rows.push(
+        `${this.t(context.app_language, "app.log.analysis_task_source_texts")}\n${source_lines.join("\n")}`,
+      );
     }
 
     const term_lines = this.build_glossary_log_lines(context.glossary_entries);
-    rows.push(`提取术语：\n${term_lines.length > 0 ? term_lines.join("\n") : "未提取到术语"}`);
+    rows.push(
+      `${this.t(context.app_language, "app.log.analysis_task_extracted_terms")}\n${
+        term_lines.length > 0
+          ? term_lines.join("\n")
+          : this.t(context.app_language, "app.log.analysis_task_no_terms")
+      }`,
+    );
     return [{ level: context.level, message: `\n${rows.filter(Boolean).join("\n\n")}\n` }];
   }
 
@@ -267,6 +293,18 @@ export class AnalysisWorkUnitRunner {
       rows.push(info === "" ? `TERM: ${src} -> ${dst}` : `TERM: ${src} -> ${dst} #${info}`);
     }
     return rows;
+  }
+
+  private read_app_language(config_snapshot: ApiJsonValue): unknown {
+    const config =
+      typeof config_snapshot === "object" && config_snapshot !== null && !Array.isArray(config_snapshot)
+        ? (config_snapshot as Record<string, ApiJsonValue>)
+        : {};
+    return config["app_language"];
+  }
+
+  private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
+    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }
 
   /**

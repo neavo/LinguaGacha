@@ -1,5 +1,5 @@
-import { zh_cn_name_field_extraction_page } from "@/i18n/resources/zh-CN/name-field-extraction-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_name_field_extraction_page } from "../zh-CN/name-field-extraction-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_name_field_extraction_page = {
   title: "Name-Field Extraction",

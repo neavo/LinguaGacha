@@ -1,5 +1,6 @@
 import type { LogManager } from "../../log/log-manager";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
+import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../shared/i18n";
 
 export type ReplayLogEntry = {
   level: "info" | "warning" | "error";
@@ -18,27 +19,39 @@ export class TaskLogReplay {
   /**
    * 任务启动日志输出“API 名称 / 地址 / 模型”三行诊断
    */
-  public task_run_start(task_label: string, model: MutableJsonRecord): void {
+  public task_run_start(model: MutableJsonRecord, app_language: unknown): void {
+    this.append("info", "", "engine");
     this.append(
       "info",
-      `${task_label}启动\nAPI 名称 - ${String(model["name"] ?? "")}\nAPI 地址 - ${String(
-        model["api_url"] ?? "",
-      )}\n模型 - ${String(model["model_id"] ?? "")}`,
+      `${this.t(app_language, "app.log.engine_api_name")} - ${String(model["name"] ?? "")}`,
       "engine",
     );
+    this.append(
+      "info",
+      `${this.t(app_language, "app.log.engine_api_url")} - ${String(model["api_url"] ?? "")}`,
+      "engine",
+    );
+    this.append(
+      "info",
+      `${this.t(app_language, "app.log.engine_api_model")} - ${String(model["model_id"] ?? "")}`,
+      "engine",
+    );
+    this.append("info", "", "engine");
   }
 
   /**
    * 任务终态日志和公开 task snapshot 分开写，避免只看日志时丢失收尾信息
    */
-  public task_run_finish(task_label: string, status: "idle" | "done" | "error"): void {
+  public task_run_finish(status: "idle" | "done" | "error", app_language: unknown): void {
     const message =
       status === "done"
-        ? `${task_label}完成。`
+        ? this.t(app_language, "app.log.engine_task_done")
         : status === "idle"
-          ? `${task_label}已停止。`
-          : `${task_label}失败。`;
+          ? this.t(app_language, "app.log.engine_task_stop")
+          : this.t(app_language, "app.log.engine_task_fail");
+    this.append("info", "", "engine");
     this.append(status === "error" ? "warning" : "info", message, "engine");
+    this.append("info", "", "engine");
   }
 
   /**
@@ -70,5 +83,9 @@ export class TaskLogReplay {
   private append(level: ReplayLogEntry["level"], message: string, source: string): void {
     const log_manager = this.log_manager as Partial<Pick<LogManager, "info" | "warning" | "error">>;
     log_manager[level]?.(message, { source });
+  }
+
+  private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
+    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }
 }

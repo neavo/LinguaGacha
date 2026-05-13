@@ -22,7 +22,7 @@ import {
 } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
   create_replace_all_plan,

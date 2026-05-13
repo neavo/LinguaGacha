@@ -24,6 +24,15 @@ export function write_lifecycle_log(message: string): void {
   log_manager.info(message, { source: "main-lifecycle" });
 }
 
+export function write_lifecycle_error(message: string): void {
+  const log_manager = get_electron_main_log_manager();
+  if (log_manager === null) {
+    process.stderr.write(`${format_lifecycle_log(message)}\n`);
+    return;
+  }
+  log_manager.error(message, { source: "main-lifecycle" });
+}
+
 export function format_lifecycle_error(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

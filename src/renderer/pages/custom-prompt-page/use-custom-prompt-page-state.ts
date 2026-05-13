@@ -13,7 +13,7 @@ import {
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import {
   CUSTOM_PROMPT_VARIANT_CONFIG,
   type CustomPromptVariant,

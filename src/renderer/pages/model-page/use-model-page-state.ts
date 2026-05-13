@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type {
   ModelCategorySnapshot,
   ModelConfirmState,

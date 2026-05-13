@@ -1,7 +1,7 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { ModelEntrySnapshot, ModelThinkingLevel } from "@/pages/model-page/types";
 import { AppButton } from "@/widgets/app-button/app-button";
 import { Input } from "@/shadcn/input";

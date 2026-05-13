@@ -1,42 +1,33 @@
-import { zh_cn_glossary_page } from "@/i18n/resources/zh-CN/glossary-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_text_replacement_page } from "../zh-CN/text-replacement-page";
+import type { LocaleMessageSchema } from "../../types";
 
-export const en_us_glossary_page = {
-  title: "Glossary",
+export const en_us_text_replacement_page = {
+  title: "Text Replacement",
   action: {
-    create: "Create",
-    import: "Import",
-    export: "Export",
-    statistics: "Statistics",
-    preset: "Presets",
+    create: "Add",
     edit: "Edit",
     delete: "Delete",
     save: "Save",
     cancel: "Cancel",
+    import: "Import",
+    export: "Export",
+    statistics: "Statistics",
+    preset: "Preset",
+    query: "Query",
   },
   toggle: {
     status: "{TITLE} - {STATE}",
-    tooltip:
-      "Build a glossary into prompts to guide translation, keep terminology consistent, and correct character attributes.",
   },
   fields: {
     drag: "Drag",
     source: "Source",
-    translation: "Translation",
-    description: "Description",
+    replacement: "Replacement",
     rule: "Rule",
     statistics: "Hits",
   },
-  statistics: {
-    hit_count: "Matched item count: {COUNT}",
-    subset_relations: "Contains subset relations:",
-    action: {
-      query_source: "Query source",
-      search_relation: "Query subset relations",
-    },
-  },
   rule: {
-    case_sensitive: "Case-sensitive",
+    regex: "Regular Expression",
+    case_sensitive: "Case Sensitive",
   },
   filter: {
     placeholder: "Query …",
@@ -45,11 +36,10 @@ export const en_us_glossary_page = {
     regex_tooltip_label: "Regex Mode",
     scope: {
       label: "Scope",
-      tooltip_label: "Search Scope",
+      tooltip_label: "Search scope",
       all: "All",
       source: "Source",
-      translation: "Translation",
-      description: "Notes",
+      replacement: "Replacement",
     },
   },
   sort: {
@@ -58,8 +48,8 @@ export const en_us_glossary_page = {
     clear: "Clear",
   },
   dialog: {
-    create_title: "Create glossary entry",
-    edit_title: "Edit glossary entry",
+    create_title: "Create Replacement Rule",
+    edit_title: "Edit Replacement Rule",
   },
   preset: {
     save: "Save Preset",
@@ -74,6 +64,15 @@ export const en_us_glossary_page = {
       rename_title: "Rename Preset",
       rename_confirm: "Rename",
       name_placeholder: "Enter a preset name …",
+    },
+  },
+  statistics: {
+    hit_count: "Matched item count: {COUNT}",
+    subset_relations: "Subset relations:",
+    relation_line: "{CHILD} -> {PARENT}",
+    running: "Running",
+    action: {
+      search_relation: "Search relation",
     },
   },
   confirm: {
@@ -91,12 +90,12 @@ export const en_us_glossary_page = {
     },
   },
   feedback: {
-    save_failed: "Failed to save the glossary.",
-    import_failed: "Failed to import the glossary.",
+    save_failed: "Failed to save replacement page.",
+    import_failed: "Failed to import replacement rules.",
     import_success: "Data imported …",
-    export_failed: "Failed to export the glossary.",
+    export_failed: "Failed to export replacement rules.",
     export_success: "Data exported …",
-    preset_failed: "Failed to load glossary presets.",
+    preset_failed: "Failed to load replacement presets.",
     preset_saved: "Preset saved …",
     preset_renamed: "Preset renamed …",
     preset_deleted: "Preset deleted …",
@@ -104,9 +103,10 @@ export const en_us_glossary_page = {
     preset_exists: "File already exists …",
     default_preset_set: "Default preset set …",
     default_preset_cleared: "Default preset cancelled …",
-    query_failed: "Failed to query proofreading.",
+    query_failed: "Failed to query replacement rule.",
     source_required: "Source text is required.",
-    merge_warning: "Merged duplicate entries …",
-    reset_success: "Reseted …",
+    regex_invalid: "Invalid regular expression",
+    merge_warning: "Duplicate entries were merged …",
+    reset_success: "Reset complete …",
   },
-} satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;
+} satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

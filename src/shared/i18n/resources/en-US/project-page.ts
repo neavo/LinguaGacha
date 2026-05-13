@@ -1,5 +1,5 @@
-import { zh_cn_project_page } from "@/i18n/resources/zh-CN/project-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_project_page } from "../zh-CN/project-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_project_page = {
   title: "Project Home",

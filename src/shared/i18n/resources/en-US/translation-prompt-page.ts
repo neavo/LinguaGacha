@@ -1,5 +1,5 @@
-import { zh_cn_translation_prompt_page } from "@/i18n/resources/zh-CN/translation-prompt-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_translation_prompt_page } from "../zh-CN/translation-prompt-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_translation_prompt_page = {
   title: "Translation Prompts",

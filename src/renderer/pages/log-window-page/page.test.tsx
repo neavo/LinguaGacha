@@ -100,7 +100,7 @@ vi.mock("next-themes", () => {
   };
 });
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,

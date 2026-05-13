@@ -1,5 +1,5 @@
-import { zh_cn_model_page } from "@/i18n/resources/zh-CN/model-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_model_page } from "../zh-CN/model-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_model_page = {
   title: "Model Management",

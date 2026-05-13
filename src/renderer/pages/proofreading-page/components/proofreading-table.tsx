@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,

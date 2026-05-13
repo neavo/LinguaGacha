@@ -1,4 +1,4 @@
-import type { LocaleKey } from "@/i18n";
+import type { LocaleKey } from "@/app/locale/locale-provider";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType } from "react";
 

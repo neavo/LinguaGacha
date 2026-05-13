@@ -19,6 +19,7 @@ import { SettingService } from "../service/setting-service";
 import { FileExportService } from "../file/file-export-service";
 import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
 import type { LogEvent } from "../../shared/log";
 import { CoreEventHub } from "../events/core-event-hub";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
@@ -148,7 +149,7 @@ export class ApiGatewayServer {
     this.core_event_hub = core_event_hub;
     core_event_hub.start();
     const setting_service = new SettingService(paths, core_event_hub);
-    const model_service = new ModelService(paths, setting_service);
+    const model_service = new ModelService(paths, setting_service, this.options.logManager);
     const project_lifecycle_service = new ProjectLifecycleService(
       this.options.database,
       this.project_session_state,
@@ -359,9 +360,7 @@ export class ApiGatewayServer {
     );
     this.post_json(app, "/api/tasks/start", (body) => task_service.start_task(body));
     this.post_json(app, "/api/tasks/stop", (body) => task_service.stop_task(body));
-    this.post_json(app, "/api/tasks/snapshot", (body) =>
-      task_service.get_task_snapshot(body),
-    );
+    this.post_json(app, "/api/tasks/snapshot", (body) => task_service.get_task_snapshot(body));
     this.post_json(app, "/api/tasks/translate-single", (body) =>
       task_service.translate_single(body),
     );
@@ -451,7 +450,9 @@ export class ApiGatewayServer {
               ? 400
               : 500;
         if (status >= 500) {
-          this.log_gateway_error("API Gateway 直接路由处理失败", error, { path: path_name });
+          this.log_gateway_error(t_main_log("app.log.api_gateway_direct_route_failed"), error, {
+            path: path_name,
+          });
         }
         return context.json(envelope, status);
       }

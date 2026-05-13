@@ -1,6 +1,6 @@
 import "@/pages/name-field-extraction-page/name-field-extraction-page.css";
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { NameFieldExtractionCommandBar } from "@/pages/name-field-extraction-page/components/name-field-extraction-command-bar";
 import { NameFieldExtractionConfirmDialog } from "@/pages/name-field-extraction-page/components/name-field-extraction-confirm-dialog";
 import { NameFieldExtractionEditDialog } from "@/pages/name-field-extraction-page/components/name-field-extraction-edit-dialog";

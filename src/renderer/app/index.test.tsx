@@ -82,7 +82,7 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     LocaleProvider: (props: { children: ReactNode }) => <>{props.children}</>,
     useI18n: () => ({

@@ -1,7 +1,7 @@
 import { CircleEllipsis } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import {
   WorkbenchTableActionMenu,
   WorkbenchTableContextMenuContent,

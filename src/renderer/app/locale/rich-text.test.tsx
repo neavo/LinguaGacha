@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { render_rich_text } from "@/i18n";
+import { render_rich_text } from "@/app/locale/rich-text";
 
 describe("render_rich_text", () => {
   let container: HTMLDivElement | null = null;

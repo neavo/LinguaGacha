@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { TextPreserveMode, TextPreservePresetItem } from "@/pages/text-preserve-page/types";
 import { AppButton } from "@/widgets/app-button/app-button";
 import {

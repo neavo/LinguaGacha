@@ -36,7 +36,7 @@ import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
 } from "@/app/desktop/desktop-runtime-context";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { normalize_source_paths } from "@/lib/source-paths";
 import type {

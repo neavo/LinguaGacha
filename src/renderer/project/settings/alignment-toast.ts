@@ -1,5 +1,5 @@
 import type { ProjectPrefilterRunnerSettings } from "@/project/prefilter/prefilter-runner";
-import type { LocaleKey } from "@/i18n";
+import type { LocaleKey } from "@/app/locale/locale-provider";
 
 type Translate = (key: LocaleKey) => string;
 

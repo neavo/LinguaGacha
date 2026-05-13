@@ -1,5 +1,5 @@
 import type { SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
-import type { LocaleKey } from "@/i18n";
+import type { LocaleKey } from "@/app/locale/locale-provider";
 import {
   ALL_LANGUAGE_CODE,
   PROJECT_SAVE_MODES,

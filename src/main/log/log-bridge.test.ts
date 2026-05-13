@@ -9,6 +9,8 @@ import {
 } from "./log-bridge";
 
 describe("log-bridge", () => {
+  const time_prefix = "\x1b[2m\x1b[36m[12:12:12]\x1b[39m\x1b[22m";
+
   beforeEach(() => {
     set_electron_main_log_manager(null);
     vi.useFakeTimers();
@@ -28,7 +30,7 @@ describe("log-bridge", () => {
     write_electron_main_warning("启动早期警告");
 
     expect(stdout_write).toHaveBeenCalledWith(
-      "\x1b[2;36m[12:12:12]\x1b[0m  \x1b[33mWARNING\x1b[0m  启动早期警告\n",
+      `${time_prefix}  \x1b[33mWARNING\x1b[39m  启动早期警告\n`,
     );
     expect(stderr_write).not.toHaveBeenCalled();
   });
@@ -40,7 +42,7 @@ describe("log-bridge", () => {
     write_electron_main_error("启动早期错误", { error: "boom" });
 
     expect(stderr_write).toHaveBeenCalledWith(
-      "\x1b[2;36m[12:12:12]\x1b[0m  \x1b[31mERROR  \x1b[0m  启动早期错误\nboom\n",
+      `${time_prefix}  \x1b[31mERROR  \x1b[39m  启动早期错误\n                     boom\n`,
     );
     expect(stdout_write).not.toHaveBeenCalled();
   });

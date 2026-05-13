@@ -1,6 +1,6 @@
 import "@/pages/custom-prompt-page/custom-prompt-page.css";
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { CustomPromptCommandBar } from "@/pages/custom-prompt-page/components/custom-prompt-command-bar";
 import { CustomPromptConfirmDialog } from "@/pages/custom-prompt-page/components/custom-prompt-confirm-dialog";
 import { CustomPromptPresetInputDialog } from "@/pages/custom-prompt-page/components/custom-prompt-preset-input-dialog";

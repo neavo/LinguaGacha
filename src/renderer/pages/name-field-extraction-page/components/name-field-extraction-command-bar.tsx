@@ -1,7 +1,7 @@
 import { FileDown, Fingerprint, ScanText, Trash2 } from "lucide-react";
 
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { NameFieldRunState } from "@/pages/name-field-extraction-page/types";
 import { Badge } from "@/shadcn/badge";
 import { AppButton } from "@/widgets/app-button/app-button";

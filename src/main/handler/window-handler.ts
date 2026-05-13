@@ -19,7 +19,11 @@ import {
   LOG_WINDOW_QUERY_VALUE,
   LogWindowHost,
 } from "../log/log-window-host";
-import { write_electron_main_error, write_electron_main_warning } from "../log/log-bridge";
+import {
+  write_electron_main_error,
+  write_electron_main_warning,
+} from "../log/log-bridge";
+import { t_main_log } from "../log/log-text";
 
 const WINDOW_STANDARD_WIDTH = 1280; // 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线
 const WINDOW_STANDARD_HEIGHT = 800;
@@ -255,16 +259,9 @@ async function open_devtools_and_toggle_inspect_mode(target_window: BrowserWindo
   if (devtools_contents !== null) {
     try {
       // 直接调用 Chromium DevTools 前端提供的 API，复用浏览器自己的元素定位切换逻辑
-      const inspect_mode_enabled = await devtools_contents.executeJavaScript(
-        DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT,
-        true,
-      );
-
-      if (!inspect_mode_enabled) {
-        write_electron_main_warning("DevToolsAPI.enterInspectElementMode 不可用");
-      }
+      await devtools_contents.executeJavaScript(DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT, true);
     } catch (error) {
-      write_electron_main_warning("切换 DevTools 元素检查模式失败", { error });
+      void error;
     }
   }
 }
@@ -330,7 +327,8 @@ function register_window_runtime_events(
       const error_message = `加载失败 (${error_code.toString()}): ${error_description}`;
 
       if (is_main_frame) {
-        write_electron_main_error("渲染层主框架加载失败", { // 主框架失败意味着整个 renderer 不可用，main 只负责记录并弹出原生诊断提示
+        write_electron_main_error(t_main_log("app.log.renderer_main_frame_load_failed"), {
+          // 主框架失败意味着整个 renderer 不可用，main 只负责记录并弹出原生诊断提示
           context: {
             error_code,
             error_description,
@@ -343,7 +341,8 @@ function register_window_runtime_events(
           `渲染层入口没有成功加载。\n目标地址：${validated_url}\n错误信息：${error_message}`,
         );
       } else {
-        write_electron_main_warning("渲染层子框架加载失败", { // 子框架失败不替换页面，先写入日志，避免误伤仍可交互的主应用
+        write_electron_main_warning(t_main_log("app.log.renderer_subframe_load_failed"), {
+          // 子框架失败不替换页面，先写入日志，避免误伤仍可交互的主应用
           context: {
             error_code,
             error_description,
@@ -355,14 +354,15 @@ function register_window_runtime_events(
   );
 
   target_window.webContents.on("render-process-gone", (_event, details) => {
-    write_electron_main_error("渲染进程已退出", { // 渲染进程退出后保持窗口可见，方便用户和开发者看到当前故障状态
+    write_electron_main_error(t_main_log("app.log.renderer_process_exited"), {
+      // 渲染进程退出后保持窗口可见，方便用户和开发者看到当前故障状态
       context: details as unknown as Record<string, unknown>,
     });
     show_window_if_hidden(target_window);
   });
 
   target_window.on("unresponsive", () => {
-    write_electron_main_error("窗口失去响应"); // 失去响应时不自动重载，先记录并拉前台，避免破坏用户尚未保存的页面状态
+    write_electron_main_error(t_main_log("app.log.window_unresponsive")); // 失去响应时不自动重载，先记录并拉前台，避免破坏用户尚未保存的页面状态
     show_window_if_hidden(target_window);
   });
 }

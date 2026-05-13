@@ -1,7 +1,7 @@
 import { Play } from "lucide-react";
 
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import "@/pages/ts-conversion-page/ts-conversion-page.css";
 import type { TsConversionDirection } from "@/pages/ts-conversion-page/types";
 import { useTsConversionPageState } from "@/pages/ts-conversion-page/use-ts-conversion-page-state";

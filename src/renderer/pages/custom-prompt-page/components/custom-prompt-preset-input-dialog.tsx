@@ -1,4 +1,4 @@
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { CustomPromptPresetInputState } from "@/pages/custom-prompt-page/types";
 import { AppButton } from "@/widgets/app-button/app-button";

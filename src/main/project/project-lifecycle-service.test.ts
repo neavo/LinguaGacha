@@ -361,7 +361,7 @@ describe("ProjectLifecycleService", () => {
     });
 
     expect(transaction_calls[0]?.map((operation) => operation.name)).toContain("createProject");
-    expect(log_manager.error).toHaveBeenCalledWith(
+    expect(log_manager.warning).toHaveBeenCalledWith(
       "默认质量规则预设加载失败",
       expect.objectContaining({
         context: { preset_directory: "glossary", virtual_id: "builtin:missing.json" },
@@ -604,9 +604,11 @@ describe("ProjectLifecycleService", () => {
     return {
       info: vi.fn(),
       error: vi.fn(),
+      warning: vi.fn(),
     } as unknown as LogManager & {
       info: ReturnType<typeof vi.fn>;
       error: ReturnType<typeof vi.fn>;
+      warning: ReturnType<typeof vi.fn>;
     };
   }
 });

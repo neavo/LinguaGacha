@@ -5,6 +5,7 @@ import { JsonTool } from "../../../../shared/utils/json-tool";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared/text/text-types";
 import type { LLMMessage } from "../llm/llm-types";
 import { Prompt } from "../../../../base/prompt";
+import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 
 const SOURCE_PLACEHOLDER_ZH = "原文"; // 中文提示词模板使用“原文”占位，英文模板使用“Source”占位，避免字符串散落在构造逻辑里
 const SOURCE_PLACEHOLDER_EN = "Source"; // 英文模板占位符单独保留，避免后续模板本地化时误改中文占位
@@ -251,9 +252,7 @@ export class PromptBuilder {
         .trim()
         .replaceAll("\n", "\\n"),
     );
-    return this.is_prompt_ui_zh()
-      ? `参考上文：\n${lines.join("\n")}`
-      : `Preceding Context:\n${lines.join("\n")}`;
+    return `${this.t("app.prompt.builder_preceding_context")}\n${lines.join("\n")}`;
   }
 
   /**
@@ -264,9 +263,7 @@ export class PromptBuilder {
     if (result.length === 0) {
       return "";
     }
-    return this.is_prompt_ui_zh()
-      ? `术语表 <术语原文> -> <术语译文> #<术语信息>:\n${result.join("\n")}`
-      : `Glossary <Original Term> -> <Translated Term> #<Term Information>:\n${result.join("\n")}`;
+    return `${this.t("app.prompt.builder_glossary_header")}\n${result.join("\n")}`;
   }
 
   /**
@@ -295,9 +292,7 @@ export class PromptBuilder {
     ) {
       return "";
     }
-    return this.is_prompt_ui_zh()
-      ? `控制字符示例：\n${unique_samples.join(", ")}`
-      : `Control Characters Samples:\n${unique_samples.join(", ")}`;
+    return `${this.t("app.prompt.builder_control_character_samples")}\n${unique_samples.join(", ")}`;
   }
 
   /**
@@ -307,9 +302,7 @@ export class PromptBuilder {
     const inputs = srcs
       .map((line, index) => JsonTool.stringifyStrict({ [String(index)]: line }))
       .join("\n");
-    return this.is_prompt_ui_zh()
-      ? `输入：\n\`\`\`jsonline\n${inputs}\n\`\`\``
-      : `Input:\n\`\`\`jsonline\n${inputs}\n\`\`\``;
+    return `${this.t("app.prompt.builder_input")}\n\`\`\`jsonline\n${inputs}\n\`\`\``;
   }
 
   /**
@@ -319,7 +312,7 @@ export class PromptBuilder {
     if (srcs.length === 0) {
       return "";
     }
-    return this.is_prompt_ui_zh() ? `输入：\n${srcs.join("\n")}` : `Input:\n${srcs.join("\n")}`;
+    return `${this.t("app.prompt.builder_input")}\n${srcs.join("\n")}`;
   }
 
   /**
@@ -351,6 +344,10 @@ export class PromptBuilder {
    */
   private is_prompt_ui_zh(): boolean {
     return this.get_prompt_ui_language() === "zh";
+  }
+
+  private t(key: LocaleKey, params: Record<string, string> = {}): string {
+    return format_i18n_message(resolve_i18n_locale(this.config.app_language), key, params);
   }
 
   /**

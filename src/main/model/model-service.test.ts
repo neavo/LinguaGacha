@@ -25,6 +25,11 @@ type ModelServiceFixture = {
   setting_service: SettingService;
 };
 
+type LogEntry = {
+  level: "info" | "warning";
+  message: string;
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -442,13 +447,14 @@ describe("ModelService 远端模型能力", () => {
   });
 
   it("模型连通性测试复用 LLM request client 并按 key 汇总结果", async () => {
+    const log_entries: LogEntry[] = [];
     const { service } = await create_model_service([
       create_model({
         api_format: "OpenAI",
         api_key: "1234567890abcdefXYZ\nbad-key",
         id: "test-1",
       }),
-    ]);
+    ], {}, log_entries);
     const request_mock = vi
       .spyOn(LLMClient.prototype, "request")
       .mockResolvedValueOnce({
@@ -471,6 +477,11 @@ describe("ModelService 远端模型能力", () => {
         response_think: "",
         timeout: true,
       });
+    vi.spyOn(Date, "now")
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1250)
+      .mockReturnValueOnce(2000)
+      .mockReturnValueOnce(2250);
 
     const result = await service.test_model({ model_id: "test-1" });
 
@@ -489,10 +500,30 @@ describe("ModelService 远端模型能力", () => {
         success: true,
       }),
       expect.objectContaining({
-        error_reason: "请求超时（120 秒）。",
+        error_reason: "请求超时（120 秒）",
         masked_key: "bad-key",
         success: false,
       }),
+    ]);
+    expect(log_entries.map((entry) => [entry.level, entry.message])).toEqual([
+      ["info", ""],
+      ["info", "正在测试密钥：\n12345678***bcdefXYZ"],
+      [
+        "info",
+        "任务提示词：\n[{'role': 'system', 'content': '任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。'}, {'role': 'user', 'content': '{\"0\":\"魔導具師ダリヤはうつむかない\"}'}]",
+      ],
+      ["info", "模型回复内容：\n{\"0\":\"成功\"}"],
+      ["info", "任务耗时 0.25 秒，输入消耗 2 Tokens，输出消耗 3 Tokens"],
+      ["info", ""],
+      ["info", "正在测试密钥：\nbad-key"],
+      [
+        "info",
+        "任务提示词：\n[{'role': 'system', 'content': '任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。'}, {'role': 'user', 'content': '{\"0\":\"魔導具師ダリヤはうつむかない\"}'}]",
+      ],
+      ["warning", "接口测试失败 …\n原因：请求超时（120 秒）"],
+      ["info", ""],
+      ["info", "共测试 2 个接口，成功 1 个，失败 1 个 …"],
+      ["warning", "失败的密钥：\nbad-key"],
     ]);
   });
 });
@@ -503,6 +534,7 @@ describe("ModelService 远端模型能力", () => {
 async function create_model_service(
   models: Array<Record<string, ApiJsonValue>>,
   presets: ModelPresetFiles = {},
+  log_entries?: LogEntry[],
 ): Promise<ModelServiceFixture> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-model-service-"));
   await write_model_presets(app_root, presets);
@@ -512,7 +544,23 @@ async function create_model_service(
     activate_model_id: models[0]?.["id"] ?? "",
     models: models as unknown as ApiJsonValue,
   });
-  return { app_root, paths, service: new ModelService(paths, setting_service), setting_service };
+  const log_manager =
+    log_entries === undefined
+      ? undefined
+      : {
+          info(message: string): void {
+            log_entries.push({ level: "info", message });
+          },
+          warning(message: string): void {
+            log_entries.push({ level: "warning", message });
+          },
+        };
+  return {
+    app_root,
+    paths,
+    service: new ModelService(paths, setting_service, log_manager),
+    setting_service,
+  };
 }
 
 /**

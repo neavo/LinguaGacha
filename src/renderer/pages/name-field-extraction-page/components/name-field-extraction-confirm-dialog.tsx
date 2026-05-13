@@ -1,5 +1,5 @@
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { NameFieldConfirmState } from "@/pages/name-field-extraction-page/types";
 
 type NameFieldExtractionConfirmDialogProps = {

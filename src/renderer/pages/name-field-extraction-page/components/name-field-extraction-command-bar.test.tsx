@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/shadcn/tooltip";
 import { NameFieldExtractionCommandBar } from "./name-field-extraction-command-bar";
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
       t: (key: string) => key,

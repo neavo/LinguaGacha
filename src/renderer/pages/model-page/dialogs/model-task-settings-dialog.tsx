@@ -1,4 +1,4 @@
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
 import { Input } from "@/shadcn/input";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";

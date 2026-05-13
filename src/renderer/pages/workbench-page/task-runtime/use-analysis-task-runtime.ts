@@ -17,7 +17,7 @@ import type {
 } from "@/app/page-runtime/project-pages-barrier";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import {
   append_workbench_waveform_sample,
@@ -419,17 +419,14 @@ export function useAnalysisTaskRuntime(
     const current_project_state = project_store.getState();
 
     try {
-      const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-        "/api/tasks/start",
-        {
-          task_type: "analysis",
-          mode: should_continue ? "continue" : "new",
-          expected_section_revisions: {
-            quality: current_project_state.revisions.sections.quality ?? 0,
-            prompts: current_project_state.revisions.sections.prompts ?? 0,
-          },
+      const task_payload = await api_fetch<AnalysisTaskCommandPayload>("/api/tasks/start", {
+        task_type: "analysis",
+        mode: should_continue ? "continue" : "new",
+        expected_section_revisions: {
+          quality: current_project_state.revisions.sections.quality ?? 0,
+          prompts: current_project_state.revisions.sections.prompts ?? 0,
         },
-      );
+      });
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
       apply_analysis_task_snapshot(next_snapshot);
       sync_runtime_task_snapshot(next_snapshot);
@@ -587,10 +584,9 @@ export function useAnalysisTaskRuntime(
       }
 
       if (analysis_confirm_state.kind === "stop-analysis") {
-        const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-          "/api/tasks/stop",
-          { task_type: "analysis" },
-        );
+        const task_payload = await api_fetch<AnalysisTaskCommandPayload>("/api/tasks/stop", {
+          task_type: "analysis",
+        });
         const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
         apply_analysis_task_snapshot(next_snapshot);
         sync_runtime_task_snapshot(next_snapshot);

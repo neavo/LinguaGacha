@@ -1,5 +1,5 @@
-import { zh_cn_basic_settings_page } from "@/i18n/resources/zh-CN/basic-settings-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_basic_settings_page } from "../zh-CN/basic-settings-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_basic_settings_page = {
   title: "Basic Settings",

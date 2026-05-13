@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { cn } from "@/lib/utils";
 import { TextPreserveContextMenuContent } from "@/pages/text-preserve-page/components/text-preserve-context-menu";
 import type {

@@ -1,4 +1,4 @@
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { WorkbenchStats, WorkbenchStatsMode } from "@/pages/workbench-page/types";
 import { WorkbenchStatCard } from "@/pages/workbench-page/components/workbench-stat-card";
 

@@ -88,7 +88,7 @@ vi.mock("@/project/prefilter/prefilter-worker-client", () => {
   };
 });
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {

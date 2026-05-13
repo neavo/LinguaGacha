@@ -18,6 +18,7 @@ import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
+import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 
 interface WorkUnitBaseRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -399,13 +400,19 @@ export class TranslationWorkUnitRunner {
     response_result: string;
     request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest;
   }): WorkUnitLogEntry[] {
+    const app_language = this.read_app_language(context.request.config_snapshot);
     const elapsed_seconds = ((Date.now() - context.start_time) / 1000).toFixed(2);
-    const stats_info = `任务请求成功，用时 ${elapsed_seconds}s，行数 ${context.srcs.length}，输入 tokens ${context.input_tokens}，输出 tokens ${context.output_tokens}`;
-    const reason = this.build_error_reason(context.checks);
-    const status_info = this.build_task_status_info(context.request);
+    const stats_info = this.t(app_language, "app.log.engine_task_success", {
+      CT: context.output_tokens.toString(),
+      LINES: context.srcs.length.toString(),
+      PT: context.input_tokens.toString(),
+      TIME: elapsed_seconds,
+    });
+    const log_decision = this.resolve_translation_log_decision(context.checks, app_language);
+    const status_info = this.build_task_status_info(context.request, app_language);
     const rows = [stats_info];
-    if (reason !== "") {
-      rows.push(`响应检查失败：${reason}`);
+    if (log_decision.message !== stats_info) {
+      rows.push(log_decision.message);
     }
     if (status_info !== "") {
       rows.push(status_info);
@@ -414,10 +421,12 @@ export class TranslationWorkUnitRunner {
     const response_think_log = context.response_think.trim();
     const response_result_log = context.response_result.trim();
     if (response_think_log !== "") {
-      rows.push(`模型思考：\n${response_think_log}`);
+      rows.push(`${this.t(app_language, "app.log.engine_task_response_think")}\n${response_think_log}`);
     }
     if (response_result_log !== "") {
-      rows.push(`模型响应：\n${response_result_log}`);
+      rows.push(
+        `${this.t(app_language, "app.log.engine_task_response_result")}\n${response_result_log}`,
+      );
     }
 
     const pair_lines: string[] = [];
@@ -432,7 +441,7 @@ export class TranslationWorkUnitRunner {
     }
     return [
       {
-        level: this.resolve_log_level(context.checks),
+        level: log_decision.level,
         message: `\n${rows.filter(Boolean).join("\n\n")}\n`,
       },
     ];
@@ -443,6 +452,7 @@ export class TranslationWorkUnitRunner {
    */
   private build_task_status_info(
     request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest,
+    app_language: unknown,
   ): string {
     const split_count = this.read_number("split_count" in request ? request.split_count : 0, 0);
     const retry_count = this.read_number("retry_count" in request ? request.retry_count : 0, 0);
@@ -450,60 +460,111 @@ export class TranslationWorkUnitRunner {
       "token_threshold" in request ? request.token_threshold : 0,
       0,
     );
-    if (split_count === 0 && retry_count === 0 && token_threshold === 0) {
+    const is_initial = Boolean("is_initial" in request ? request.is_initial : true);
+    if (is_initial) {
       return "";
     }
-    return `任务状态：拆分 ${split_count}，重试 ${retry_count}，阈值 ${token_threshold}`;
+    return this.t(app_language, "app.log.translation_task_status_info", {
+      RETRY: retry_count.toString(),
+      SPLIT: split_count.toString(),
+      THRESHOLD: token_threshold.toString(),
+    });
   }
 
   /**
    * 错误码转成稳定中文文本，避免日志窗口只显示内部枚举
    */
-  private build_error_reason(checks: string[]): string {
+  private build_error_reason(checks: string[], app_language: unknown): string {
     const reasons = checks
       .filter((check) => check !== "NONE")
-      .map((check) => this.get_error_text(check))
+      .map((check) => this.get_error_text(check, app_language))
       .filter(Boolean);
     return [...new Set(reasons)].join("、");
   }
 
   /**
-   * 日志级别沿用旧口径：全失败是 error，部分行失败是 warning，全部通过是 info
+   * 日志消息与级别沿用旧版 TranslationTask 的分支顺序
    */
-  private resolve_log_level(checks: string[]): WorkUnitLogEntry["level"] {
-    if (checks.every((check) => check === "NONE")) {
-      return "info";
+  private resolve_translation_log_decision(
+    checks: string[],
+    app_language: unknown,
+  ): { level: WorkUnitLogEntry["level"]; message: string } {
+    const reason = this.build_error_reason(checks, app_language);
+    const fail = (key: LocaleKey): string =>
+      this.t(app_language, key, {
+        REASON: reason,
+      });
+    if (checks.every((check) => check === "FAIL_TIMEOUT")) {
+      return {
+        level: "error",
+        message: this.t(app_language, "app.log.translation_response_check_fail_all", {
+          REASON: this.t(app_language, "app.log.response_checker_fail_timeout"),
+        }),
+      };
     }
-    if (checks.some((check) => check === "NONE")) {
-      return "warning";
+    if (checks.every((check) => check === "FAIL_DEGRADATION")) {
+      return { level: "error", message: fail("app.log.translation_response_check_fail_all") };
     }
-    return "error";
+    if (checks.every((check) => check === "FAIL_DATA")) {
+      return { level: "error", message: fail("app.log.translation_response_check_fail") };
+    }
+    if (checks.every((check) => check === "FAIL_LINE_COUNT")) {
+      return { level: "error", message: fail("app.log.translation_response_check_fail") };
+    }
+    if (checks.every((check) => this.is_line_error(check))) {
+      return { level: "error", message: fail("app.log.translation_response_check_fail_all") };
+    }
+    if (checks.some((check) => this.is_line_error(check))) {
+      return { level: "warning", message: fail("app.log.translation_response_check_fail_part") };
+    }
+    return { level: "info", message: "" };
   }
 
   /**
    * 迁移前 ResponseChecker 的本地化文案在 worker 内压缩为固定中文诊断
    */
-  private get_error_text(check: string): string {
+  private get_error_text(check: string, app_language: unknown): string {
     switch (check) {
       case "FAIL_DATA":
-        return "响应数据无效";
+        return this.t(app_language, "app.log.response_checker_fail_data");
       case "FAIL_LINE_COUNT":
-        return "响应行数不匹配";
+        return this.t(app_language, "app.log.response_checker_fail_line_count");
       case "FAIL_TIMEOUT":
-        return "请求超时";
+        return this.t(app_language, "app.log.response_checker_fail_timeout");
       case "LINE_ERROR_KANA":
-        return "译文残留假名";
+        return this.t(app_language, "app.log.response_checker_line_error_kana");
       case "LINE_ERROR_HANGEUL":
-        return "译文残留谚文";
+        return this.t(app_language, "app.log.response_checker_line_error_hangeul");
       case "LINE_ERROR_EMPTY_LINE":
-        return "译文空行";
+        return this.t(app_language, "app.log.response_checker_line_error_empty_line");
       case "LINE_ERROR_SIMILARITY":
-        return "译文与原文过于相似";
+        return this.t(app_language, "app.log.response_checker_line_error_similarity");
       case "FAIL_DEGRADATION":
-        return "流式响应退化";
+        return this.t(app_language, "app.log.response_checker_fail_degradation");
       default:
         return check;
     }
+  }
+
+  private is_line_error(check: string): boolean {
+    return (
+      check === "LINE_ERROR_KANA" ||
+      check === "LINE_ERROR_HANGEUL" ||
+      check === "LINE_ERROR_EMPTY_LINE" ||
+      check === "LINE_ERROR_SIMILARITY"
+    );
+  }
+
+  private read_app_language(config_snapshot: ApiJsonValue): unknown {
+    const config =
+      typeof config_snapshot === "object" && config_snapshot !== null && !Array.isArray(config_snapshot)
+        ? (config_snapshot as Record<string, ApiJsonValue>)
+        : {};
+    return config["app_language"];
+  }
+
+  private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
+    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }
 
   /**

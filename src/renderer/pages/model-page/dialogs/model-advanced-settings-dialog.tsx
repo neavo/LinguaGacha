@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
 import { Card, CardContent, CardDescription, CardTitle } from "@/shadcn/card";
 import { Input } from "@/shadcn/input";

@@ -1,6 +1,6 @@
 import { CaseSensitive, Regex } from "lucide-react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type {
   TextReplacementDialogMode,

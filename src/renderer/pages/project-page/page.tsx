@@ -40,7 +40,7 @@ import {
 } from "@/widgets/app-context-menu/app-context-menu";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
-import { type LocaleKey, useI18n } from "@/i18n";
+import { type LocaleKey, useI18n } from "@/app/locale/locale-provider";
 import { has_path_drop_payload, resolve_dropped_path } from "@/lib/file-drop";
 import { normalize_source_paths } from "@/lib/source-paths";
 import { cn } from "@/lib/utils";

@@ -1,7 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
 import { Input } from "@/shadcn/input";
 import { ScrollArea } from "@/shadcn/scroll-area";

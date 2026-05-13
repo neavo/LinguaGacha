@@ -1,5 +1,5 @@
 import { resolve_core_app_root } from "./lifecycle-command-resolver";
-import { write_lifecycle_log } from "./lifecycle-log";
+import { write_lifecycle_error, write_lifecycle_log } from "./lifecycle-log";
 import { allocate_core_api_port } from "./lifecycle-port-allocator";
 import { ProjectDatabase } from "../database/database-operations";
 import { ApiGatewayServer } from "../api/api-gateway-server";
@@ -7,6 +7,7 @@ import { UserDataMigrationService } from "../migration/user-data-migration-servi
 import { AppPathService } from "../service/path-service";
 import { LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
+import { set_main_log_text_paths, t_main_log } from "../log/log-text";
 import type {
   CoreLifecycleManagerOptions,
   CoreLifecycleStartResult,
@@ -55,13 +56,14 @@ export class CoreLifecycleManager {
     };
     const app_root = resolve_core_app_root(launch_environment);
     const paths = new AppPathService({ appRoot: app_root });
+    set_main_log_text_paths(paths);
     const log_manager = new LogManager({ logDir: paths.get_log_dir() });
     this.log_manager = log_manager;
     set_electron_main_log_manager(log_manager);
 
     try {
+      write_lifecycle_log(t_main_log("app.log.app_version", { VERSION: paths.read_version() }));
       new UserDataMigrationService(paths, log_manager).run_startup_migrations();
-      write_lifecycle_log("ProjectDatabase 已就绪");
       const gateway_server = new ApiGatewayServer({
         appRoot: app_root,
         publicPort: public_port,
@@ -70,12 +72,16 @@ export class CoreLifecycleManager {
       });
       const gateway_start_result = await gateway_server.start();
       this.gateway_server = gateway_server;
-      write_lifecycle_log(`API Gateway 已启动 - ${gateway_start_result.baseUrl}`);
+      write_lifecycle_log(
+        t_main_log("app.log.api_gateway_started", { BASE_URL: gateway_start_result.baseUrl }),
+      );
       this.state = "ready";
       return gateway_start_result;
     } catch (error) {
-      write_lifecycle_log(
-        `Core / Gateway 启动失败 - ${error instanceof Error ? error.message : String(error)}`,
+      write_lifecycle_error(
+        t_main_log("app.log.core_gateway_start_failed", {
+          ERROR: error instanceof Error ? error.message : String(error),
+        }),
       );
       this.state = "failed";
       await this.stop_services();

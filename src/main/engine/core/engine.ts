@@ -181,14 +181,16 @@ export class TaskEngine {
     command: Extract<StartTaskCommand, { task_type: "translation" }>,
   ): Promise<void> {
     let final_status: "done" | "idle" | "error" = "done";
+    let app_language: unknown = "ZH";
     const legacy_mode = this.to_legacy_mode(command.mode);
     const translation_scope = command.scope;
     const retranslate = translation_scope.kind === "items";
     try {
       await this.emit_status(handle.task_type, "running", true);
       const runtime = this.resolve_runtime_snapshot();
+      app_language = runtime.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
-      this.log_replay.task_run_start(retranslate ? "重翻任务" : "翻译任务", runtime.model);
+      this.log_replay.task_run_start(runtime.model, app_language);
       const payload =
         translation_scope.kind === "items"
           ? this.task_store.get_translation_items_by_scope({
@@ -239,7 +241,7 @@ export class TaskEngine {
         );
       }
     } finally {
-      this.log_replay.task_run_finish(retranslate ? "重翻任务" : "翻译任务", final_status);
+      this.log_replay.task_run_finish(final_status, app_language);
       await this.finish_run(handle, final_status);
     }
   }
@@ -249,12 +251,14 @@ export class TaskEngine {
    */
   private async run_analysis(handle: TaskRunHandle, mode: string): Promise<void> {
     let final_status: "done" | "idle" | "error" = "done";
+    let app_language: unknown = "ZH";
     const legacy_mode = this.to_legacy_mode(mode);
     try {
       await this.emit_status(handle.task_type, "running", true);
       const runtime = this.resolve_runtime_snapshot();
+      app_language = runtime.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
-      this.log_replay.task_run_start("分析任务", runtime.model);
+      this.log_replay.task_run_start(runtime.model, app_language);
       if (legacy_mode === "NEW" || legacy_mode === "RESET") {
         this.task_store.reset_analysis_progress({});
       }
@@ -295,7 +299,7 @@ export class TaskEngine {
         this.log_replay.task_error("分析任务执行失败。", error);
       }
     } finally {
-      this.log_replay.task_run_finish("分析任务", final_status);
+      this.log_replay.task_run_finish(final_status, app_language);
       await this.finish_run(handle, final_status);
     }
   }

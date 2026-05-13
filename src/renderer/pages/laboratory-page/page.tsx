@@ -1,5 +1,5 @@
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import "@/pages/laboratory-page/laboratory-page.css";
 import { useLaboratoryPageState } from "@/pages/laboratory-page/use-laboratory-page-state";
 import { SettingHelpButton } from "@/widgets/setting-help-button/setting-help-button";

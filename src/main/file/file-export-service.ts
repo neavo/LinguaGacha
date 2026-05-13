@@ -8,6 +8,7 @@ import { SettingService } from "../service/setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import { Item, type ItemStatus } from "../../base/item";
+import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
 
 /**
  * API 入参和返回值在文件域内按 JSON 对象处理，避免暴露内部类实例
@@ -28,24 +29,6 @@ type FileExportLogManager = Pick<LogManager, "info" | "error">;
  * 文件导出日志使用固定 source，便于日志侧区分文件域输出
  */
 const FILE_EXPORT_LOG_SOURCE = "file-export";
-
-/**
- * 文案表固定文件导出日志口径
- */
-const EXPORT_LOG_TEXT = {
-  ZH: {
-    start: "生成译文中 …",
-    done: (output_path: string): string => `译文已保存至 ${output_path} …`,
-    failed: "译文生成失败 …",
-    write_failed: "文件写入失败 …",
-  },
-  EN: {
-    start: "Generating translation …",
-    done: (output_path: string): string => `Translation files saved to ${output_path} …`,
-    failed: "Failed to generate translation files …",
-    write_failed: "File writing failed …",
-  },
-};
 
 /**
  * 文件导出服务承载全部公开文件格式写回和导出目录语义
@@ -271,26 +254,32 @@ export class FileExportService {
   /**
    * 导出日志文案跟随应用语言，保持文件写回路径和既有导出提示一致
    */
-  private export_log_text(config: SettingRecord): (typeof EXPORT_LOG_TEXT)["ZH"] {
-    return String(config["app_language"] ?? "ZH").toUpperCase() === "EN"
-      ? EXPORT_LOG_TEXT.EN
-      : EXPORT_LOG_TEXT.ZH;
+  private export_log_text(
+    config: SettingRecord,
+    key: LocaleKey,
+    params: Record<string, string> = {},
+  ): string {
+    return format_i18n_message(resolve_i18n_locale(config["app_language"]), key, params);
   }
 
   /**
    * 开始日志在真实文件写回前输出，便于日志窗口定位用户触发的导出动作
    */
   private log_export_start(config: SettingRecord): void {
-    this.log_manager?.info(this.export_log_text(config).start, { source: FILE_EXPORT_LOG_SOURCE });
+    this.log_manager?.info(this.export_log_text(config, "app.log.export_translation_start"), {
+      source: FILE_EXPORT_LOG_SOURCE,
+    });
   }
 
   /**
    * 完成日志输出前后空行，避免连续任务日志挤在一起
    */
   private log_export_done(config: SettingRecord, output_path: string): void {
-    const log_text = this.export_log_text(config);
     this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
-    this.log_manager?.info(log_text.done(output_path), { source: FILE_EXPORT_LOG_SOURCE });
+    this.log_manager?.info(
+      this.export_log_text(config, "app.log.export_translation_done", { PATH: output_path }),
+      { source: FILE_EXPORT_LOG_SOURCE },
+    );
     this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
   }
 
@@ -298,7 +287,7 @@ export class FileExportService {
    * 底层写文件失败时先记录文件写入错误，再让公开导出入口记录导出失败
    */
   private log_write_failed(config: SettingRecord, error: unknown): void {
-    this.log_manager?.error(this.export_log_text(config).write_failed, {
+    this.log_manager?.error(this.export_log_text(config, "app.log.export_write_file_fail"), {
       source: FILE_EXPORT_LOG_SOURCE,
       ...this.error_log_payload(error),
     });
@@ -308,7 +297,7 @@ export class FileExportService {
    * 导出失败日志输出终态提示，同时保留异常详情给日志文件
    */
   private log_export_failed(config: SettingRecord, error: unknown): void {
-    this.log_manager?.error(this.export_log_text(config).failed, {
+    this.log_manager?.error(this.export_log_text(config, "app.log.export_translation_failed"), {
       source: FILE_EXPORT_LOG_SOURCE,
       ...this.error_log_payload(error),
     });

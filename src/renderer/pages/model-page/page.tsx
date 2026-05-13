@@ -8,7 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import "@/pages/model-page/model-page.css";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { ModelCategoryCard } from "@/pages/model-page/components/model-category-card";

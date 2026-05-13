@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
 import type { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
 import type { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 
@@ -136,7 +137,12 @@ export class UserDataMigrationService {
         "utf-8",
       );
     } catch (error) {
-      this.log_warning(`归一化默认预设配置失败：${config_path}`, error);
+      this.log_warning(
+        t_main_log("app.log.default_preset_config_normalize_failed", {
+          CONFIG_PATH: config_path,
+        }),
+        error,
+      );
     }
   }
 
@@ -186,7 +192,13 @@ export class UserDataMigrationService {
 
     const file_name = path.basename(value);
     if (!file_name.toLowerCase().endsWith(QUALITY_RULE_PRESET_EXTENSION)) {
-      this.log_warning(`归一化默认预设值失败：${preset_directory} -> ${value}`, undefined);
+      this.log_warning(
+        t_main_log("app.log.default_preset_value_normalize_failed", {
+          PRESET_DIRECTORY: preset_directory,
+          VALUE: value,
+        }),
+        undefined,
+      );
       return "";
     }
 
@@ -196,7 +208,13 @@ export class UserDataMigrationService {
       path.dirname(value),
     );
     if (resolved_source === null) {
-      this.log_warning(`归一化默认预设值失败：${preset_directory} -> ${value}`, undefined);
+      this.log_warning(
+        t_main_log("app.log.default_preset_value_normalize_failed", {
+          PRESET_DIRECTORY: preset_directory,
+          VALUE: value,
+        }),
+        undefined,
+      );
       return "";
     }
 
@@ -318,7 +336,13 @@ export class UserDataMigrationService {
         fs.renameSync(source_path, destination_path);
       }
     } catch (error) {
-      this.log_warning(`迁移路径失败：${source_path} -> ${destination_path}`, error);
+      this.log_warning(
+        t_main_log("app.log.migration_path_failed", {
+          SOURCE_PATH: source_path,
+          DESTINATION_PATH: destination_path,
+        }),
+        error,
+      );
     }
   }
 

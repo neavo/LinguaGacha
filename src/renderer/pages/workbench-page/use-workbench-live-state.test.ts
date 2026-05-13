@@ -151,7 +151,7 @@ vi.mock("@/pages/workbench-page/task-runtime/use-analysis-task-runtime", () => {
   };
 });
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {

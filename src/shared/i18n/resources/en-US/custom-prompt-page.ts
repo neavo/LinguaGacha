@@ -1,5 +1,5 @@
-import { zh_cn_custom_prompt_page } from "@/i18n/resources/zh-CN/custom-prompt-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_custom_prompt_page } from "../zh-CN/custom-prompt-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_custom_prompt_page = {
   title: "Custom Prompts",

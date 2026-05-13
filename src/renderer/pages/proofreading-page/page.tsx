@@ -10,7 +10,7 @@ import { ProofreadingFilterDialog } from "@/pages/proofreading-page/components/p
 import { ProofreadingTable } from "@/pages/proofreading-page/components/proofreading-table";
 import type { ProofreadingSearchScope } from "@/pages/proofreading-page/types";
 import { AppButton } from "@/widgets/app-button/app-button";
-import { useI18n, type LocaleKey } from "@/i18n";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
 
 const PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE = {

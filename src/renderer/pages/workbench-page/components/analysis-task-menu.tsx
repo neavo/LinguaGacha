@@ -1,7 +1,7 @@
 import { BrushCleaning, FileDown, Paintbrush, Play, Radar } from "lucide-react";
 
 import "@/pages/workbench-page/components/task-runtime/task-runtime.css";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import {
   type AnalysisTaskActionKind,
   type AnalysisTaskMetrics,

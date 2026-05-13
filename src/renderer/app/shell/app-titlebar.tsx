@@ -2,7 +2,7 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { startTransition } from "react";
 
 import { useSidebar } from "@/shadcn/sidebar";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import "@/app/shell/app-titlebar.css";
 
 type AppTitlebarProps = {

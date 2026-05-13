@@ -1,5 +1,5 @@
-import { zh_cn_proofreading_page } from "@/i18n/resources/zh-CN/proofreading-page";
-import type { LocaleMessageSchema } from "@/i18n/types";
+import { zh_cn_proofreading_page } from "../zh-CN/proofreading-page";
+import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_proofreading_page = {
   title: "Proofreading",

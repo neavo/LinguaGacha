@@ -24,7 +24,10 @@ type RuntimeFixture = {
   task_snapshot: {
     busy: boolean;
     task_type?: string;
-    extras?: { kind: "translation"; scope: { kind: "all" } | { kind: "items"; item_ids: number[] } };
+    extras?: {
+      kind: "translation";
+      scope: { kind: "all" } | { kind: "items"; item_ids: number[] };
+    };
   };
   set_task_snapshot: ReturnType<typeof vi.fn>;
   proofreading_change_signal: {
@@ -107,7 +110,7 @@ vi.mock("@/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {

@@ -3,7 +3,7 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "re
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/app/locale/locale-provider";
 import {
   build_ts_conversion_converted_items,
   build_ts_conversion_custom_rules,

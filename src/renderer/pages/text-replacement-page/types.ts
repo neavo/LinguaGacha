@@ -1,7 +1,7 @@
 import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
-import type { LocaleKey } from "@/i18n";
+import type { LocaleKey } from "@/app/locale/locale-provider";
 
 export type TextReplacementEntry = {
   entry_id?: string;

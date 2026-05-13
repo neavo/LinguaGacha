@@ -6,7 +6,7 @@ import { ProofreadingStatusCell } from "@/pages/proofreading-page/components/pro
 import type { ProofreadingItem } from "@/pages/proofreading-page/types";
 import { TooltipProvider } from "@/shadcn/tooltip";
 
-vi.mock("@/i18n", () => {
+vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {
