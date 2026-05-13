@@ -6,8 +6,7 @@ import {
   create_analysis_reset_failed_plan,
 } from "@/project/reset/analysis-reset-plan";
 import { create_analysis_glossary_import_plan } from "@/project/glossary-import/analysis-glossary-import-plan";
-import { createProjectStoreReplaceSectionPatch } from "@/project/store/project-store";
-import { serializeQualityRuntimeSnapshot } from "@/project/quality/quality-runtime";
+import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
@@ -191,7 +190,7 @@ export function useAnalysisTaskRuntime(
     workbench_change_signal,
     set_task_snapshot,
     task_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
   } = useDesktopRuntime();
@@ -292,7 +291,8 @@ export function useAnalysisTaskRuntime(
         observed_analysis_waveform_time_ref.current = next_now_seconds;
       }
 
-      set_analysis_waveform_history((previous_history) => { // 为什么：运行态两帧之间没有新数据时，分析波形也要延续上一跳，才能维持连贯的监视器节奏
+      set_analysis_waveform_history((previous_history) => {
+        // 为什么：运行态两帧之间没有新数据时，分析波形也要延续上一跳，才能维持连贯的监视器节奏
         return append_workbench_waveform_sample(
           previous_history,
           current_analysis_waveform_sample_ref.current,
@@ -305,7 +305,8 @@ export function useAnalysisTaskRuntime(
       current_analysis_waveform_sample_ref.current,
     );
 
-    set_analysis_waveform_history((previous_history) => { // 为什么：分析任务结束后只保留衰减中的尾巴继续前推，直到可见窗口完全沉到 0
+    set_analysis_waveform_history((previous_history) => {
+      // 为什么：分析任务结束后只保留衰减中的尾巴继续前推，直到可见窗口完全沉到 0
       return append_workbench_waveform_sample(
         previous_history,
         current_analysis_waveform_sample_ref.current,
@@ -420,13 +421,17 @@ export function useAnalysisTaskRuntime(
     }
 
     const should_continue = has_analysis_task_progress(analysis_task_display_snapshot);
+    const current_project_state = project_store.getState();
 
     try {
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
         "/api/tasks/start-analysis",
         {
           mode: should_continue ? "CONTINUE" : "NEW",
-          quality_snapshot: serializeQualityRuntimeSnapshot(project_store.getState()),
+          expected_section_revisions: {
+            quality: current_project_state.revisions.sections.quality ?? 0,
+            prompts: current_project_state.revisions.sections.prompts ?? 0,
+          },
         },
       );
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
@@ -494,27 +499,28 @@ export function useAnalysisTaskRuntime(
       await run_modal_progress_toast({
         message: t("workbench_page.analysis_task.feedback.import_loading_toast"),
         task: async () => {
-          const import_plan = await create_analysis_glossary_import_plan(project_store.getState());
+          const import_plan = await create_analysis_glossary_import_plan(project_store.getState(), {
+            task_snapshot,
+          });
           if (import_plan === null) {
             return;
           }
 
-          const local_commit = commit_local_project_patch({
+          const local_commit = commit_local_project_change({
             source: "analysis_import_glossary",
-            updatedSections: ["quality", "analysis", "task"],
-            patch: [
-              createProjectStoreReplaceSectionPatch("quality", import_plan.next_quality_state),
-              createProjectStoreReplaceSectionPatch("analysis", import_plan.next_analysis_state),
-              createProjectStoreReplaceSectionPatch("task", import_plan.next_task_snapshot),
+            updatedSections: ["quality", "analysis"],
+            operations: [
+              createProjectStoreReplaceSectionChange("quality", import_plan.next_quality_state),
+              createProjectStoreReplaceSectionChange("analysis", import_plan.next_analysis_state),
             ],
           });
 
           try {
-            apply_analysis_task_snapshot(
-              normalize_analysis_task_snapshot_payload({
-                task: import_plan.next_task_snapshot,
-              }),
-            );
+            const next_snapshot = normalize_analysis_task_snapshot_payload({
+              task: import_plan.next_task_snapshot,
+            });
+            apply_analysis_task_snapshot(next_snapshot);
+            sync_runtime_task_snapshot(next_snapshot);
             const mutation_ack = normalize_project_mutation_ack(
               await api_fetch<ProjectMutationAckPayload>(
                 "/api/project/analysis/import-glossary",
@@ -549,13 +555,14 @@ export function useAnalysisTaskRuntime(
     align_project_runtime_ack,
     analysis_task_metrics.candidate_count,
     apply_analysis_task_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     options,
     project_snapshot.loaded,
     project_store,
     push_toast,
     refresh_project_runtime,
     run_modal_progress_toast,
+    task_snapshot,
     task_snapshot.busy,
     t,
   ]);
@@ -599,9 +606,11 @@ export function useAnalysisTaskRuntime(
         analysis_confirm_state.kind === "reset-all"
           ? create_analysis_reset_all_plan({
               state: project_store.getState(),
+              task_snapshot,
             })
           : await create_analysis_reset_failed_plan({
               state: project_store.getState(),
+              task_snapshot,
               request_preview: async () => {
                 return await api_fetch<{
                   status_summary?: Record<string, unknown>;
@@ -610,21 +619,21 @@ export function useAnalysisTaskRuntime(
                 });
               },
             });
-      const local_commit = commit_local_project_patch({
+      const local_commit = commit_local_project_change({
         source:
           analysis_confirm_state.kind === "reset-all"
             ? "analysis_reset_all"
             : "analysis_reset_failed",
         updatedSections: reset_plan.updatedSections,
-        patch: reset_plan.patch,
+        operations: reset_plan.operations,
       });
 
       try {
-        apply_analysis_task_snapshot(
-          normalize_analysis_task_snapshot_payload({
-            task: reset_plan.next_task_snapshot,
-          }),
-        );
+        const next_snapshot = normalize_analysis_task_snapshot_payload({
+          task: reset_plan.next_task_snapshot,
+        });
+        apply_analysis_task_snapshot(next_snapshot);
+        sync_runtime_task_snapshot(next_snapshot);
         const mutation_ack = normalize_project_mutation_ack(
           await api_fetch<ProjectMutationAckPayload>(
             "/api/project/analysis/reset",
@@ -665,12 +674,13 @@ export function useAnalysisTaskRuntime(
     analysis_confirm_state,
     align_project_runtime_ack,
     apply_analysis_task_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     execute_analysis_glossary_import,
     project_store,
     push_toast,
     refresh_project_runtime,
     sync_runtime_task_snapshot,
+    task_snapshot,
     t,
   ]);
 

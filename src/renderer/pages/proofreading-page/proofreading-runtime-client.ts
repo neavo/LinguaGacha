@@ -61,7 +61,7 @@ type ProofreadingRuntimeWorkerRequest =
       id: number;
       type: "dispose_project";
       input: {
-        project_id?: string;
+        projectId?: string;
       };
     };
 
@@ -184,7 +184,7 @@ export function createProofreadingRuntimeClient() {
         input,
       });
     },
-    async dispose_project(project_id?: string): Promise<void> {
+    async dispose_project(projectId?: string): Promise<void> {
       if (worker === null) {
         return;
       }
@@ -192,7 +192,7 @@ export function createProofreadingRuntimeClient() {
       await post_request<void>({
         type: "dispose_project",
         input: {
-          project_id,
+          projectId,
         },
       });
     },

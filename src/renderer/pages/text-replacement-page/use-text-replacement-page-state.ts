@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import { createProjectStoreReplaceSectionPatch } from "@/project/store/project-store";
+import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
@@ -236,7 +236,7 @@ export function useTextReplacementPageState(
     project_store,
     settings_snapshot,
     set_settings_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
     task_snapshot,
@@ -437,10 +437,10 @@ export function useTextReplacementPageState(
           revision: current_replacement_slice.revision + 1,
         },
       );
-      const local_commit = commit_local_project_patch({
+      const local_commit = commit_local_project_change({
         source: "quality_rule_save_entries",
         updatedSections: ["quality"],
-        patch: [createProjectStoreReplaceSectionPatch("quality", next_quality_state)],
+        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
       });
 
       try {
@@ -466,7 +466,7 @@ export function useTextReplacementPageState(
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       config.rule_type,
       project_store,
       push_toast,
@@ -637,10 +637,10 @@ export function useTextReplacementPageState(
           revision: current_replacement_slice.revision + 1,
         },
       );
-      const local_commit = commit_local_project_patch({
+      const local_commit = commit_local_project_change({
         source: "quality_rule_meta",
         updatedSections: ["quality"],
-        patch: [createProjectStoreReplaceSectionPatch("quality", next_quality_state)],
+        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
       });
 
       try {
@@ -666,7 +666,7 @@ export function useTextReplacementPageState(
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       config.rule_type,
       project_store,
       push_toast,

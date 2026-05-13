@@ -71,7 +71,6 @@ const EMPTY_PROJECT_STATE: ProjectStoreState = {
   proofreading: {
     revision: 0,
   },
-  task: {},
   revisions: {
     projectRevision: 0,
     sections: {},
@@ -80,6 +79,7 @@ const EMPTY_PROJECT_STATE: ProjectStoreState = {
 
 export async function run_project_prefilter(args: {
   state: ProjectStoreState;
+  task_snapshot?: Record<string, unknown>;
   settings: ProjectPrefilterRunnerSettings;
   executor?: ProjectPrefilterRunnerExecutor;
 }): Promise<ProjectPrefilterMutationOutput> {
@@ -87,6 +87,7 @@ export async function run_project_prefilter(args: {
     args.executor ?? ((input) => Promise.resolve(compute_project_prefilter_mutation(input)));
   return await executor({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     source_language: args.settings.source_language,
     target_language: args.settings.target_language,
     mtool_optimizer_enable: args.settings.mtool_optimizer_enable,

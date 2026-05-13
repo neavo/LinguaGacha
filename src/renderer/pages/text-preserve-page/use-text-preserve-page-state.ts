@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import { createProjectStoreReplaceSectionPatch } from "@/project/store/project-store";
+import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import {
@@ -250,7 +250,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     project_store,
     settings_snapshot,
     set_settings_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
     task_snapshot,
@@ -468,10 +468,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           revision: current_preserve_slice.revision + 1,
         },
       );
-      const local_commit = commit_local_project_patch({
+      const local_commit = commit_local_project_change({
         source: "quality_rule_save_entries",
         updatedSections: ["quality"],
-        patch: [createProjectStoreReplaceSectionPatch("quality", next_quality_state)],
+        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
       });
 
       try {
@@ -493,7 +493,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       project_store,
       push_action_error_toast,
       refresh_project_runtime,
@@ -671,10 +671,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
                 revision: current_preserve_slice.revision + 1,
               },
             );
-            const local_commit = commit_local_project_patch({
+            const local_commit = commit_local_project_change({
               source: "quality_rule_meta",
               updatedSections: ["quality"],
-              patch: [createProjectStoreReplaceSectionPatch("quality", next_quality_state)],
+              operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
             });
 
             snapshot_committed = true;
@@ -722,7 +722,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       create_barrier_checkpoint,
       project_store,
       push_toast,

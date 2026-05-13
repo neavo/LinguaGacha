@@ -306,6 +306,9 @@ async function filter_import_candidates(args: {
 
 export async function create_analysis_glossary_import_plan(
   state: ProjectStoreState,
+  options: {
+    task_snapshot?: Record<string, unknown>;
+  } = {},
 ): Promise<AnalysisGlossaryImportPlan | null> {
   const existing_glossary_entries = getQualityRuleSlice(state.quality, "glossary").entries.flatMap(
     (entry) => {
@@ -342,6 +345,7 @@ export async function create_analysis_glossary_import_plan(
     0,
     Number(state.analysis.candidate_count ?? 0) - filter_result.imported_count,
   );
+  const task_snapshot = options.task_snapshot ?? {};
 
   return {
     imported_count: filter_result.imported_count,
@@ -351,7 +355,7 @@ export async function create_analysis_glossary_import_plan(
       candidate_count: next_candidate_count,
     },
     next_task_snapshot: {
-      ...state.task,
+      ...task_snapshot,
       analysis_candidate_count: next_candidate_count,
     },
     request_body: {

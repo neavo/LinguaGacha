@@ -69,17 +69,6 @@ function create_test_state(): ProjectStoreState {
     proofreading: {
       revision: 0,
     },
-    task: {
-      task_type: "translation",
-      status: "IDLE",
-      busy: false,
-      request_in_flight_count: 0,
-      line: 2,
-      total_line: 2,
-      processed_line: 1,
-      error_line: 1,
-      analysis_candidate_count: 4,
-    },
     revisions: {
       projectRevision: 9,
       sections: {
@@ -96,22 +85,25 @@ describe("translation reset planners", () => {
       state: create_test_state(),
     });
 
-    expect(plan.updatedSections).toEqual(["items", "task"]);
-    expect(plan.patch[0]).toEqual({
-      op: "merge_items",
-      items: [
-        {
-          item_id: 1,
-          file_path: "script/a.txt",
-          row_number: 1,
-          src: "失败条目",
-          dst: "",
-          name_dst: null,
-          status: "NONE",
-          text_type: "NONE",
-          retry_count: 0,
+    expect(plan.updatedSections).toEqual(["items"]);
+    expect(plan.operations[0]).toEqual({
+      items: {
+        payloadMode: "canonical-delta",
+        changedIds: [1],
+        upsert: {
+          "1": {
+            item_id: 1,
+            file_path: "script/a.txt",
+            row_number: 1,
+            src: "失败条目",
+            dst: "",
+            name_dst: null,
+            status: "NONE",
+            text_type: "NONE",
+            retry_count: 0,
+          },
         },
-      ],
+      },
     });
     expect(plan.requestBody).toMatchObject({
       mode: "failed",
@@ -172,7 +164,7 @@ describe("translation reset planners", () => {
       },
     });
 
-    expect(plan.updatedSections).toEqual(["items", "analysis", "task"]);
+    expect(plan.updatedSections).toEqual(["items", "analysis"]);
     expect(plan.requestBody).toMatchObject({
       mode: "all",
       expected_section_revisions: {

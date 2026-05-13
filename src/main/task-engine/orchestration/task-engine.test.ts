@@ -4,8 +4,6 @@ import type { ApiJsonValue } from "../../api/api-types";
 import type { CoreEventHub } from "../../events/core-event-hub";
 import type { LogManager } from "../../log/log-manager";
 import type { SettingService } from "../../service/setting-service";
-import type { ProjectPatchPublisher } from "../../project/project-patch-publisher";
-import type { TaskSnapshotBuilder } from "../runtime/task-snapshot-builder";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { ProjectTaskStore } from "../store/project-task-store";
 import type { TaskWorkUnitExecutor } from "../../task-worker/task-work-unit-executor";
@@ -27,13 +25,11 @@ describe("TaskEngine", () => {
           return { accepted: true };
         },
         update_translation_progress: () => ({ accepted: true }),
+        build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
       coreEventHub: {
         publish: done.publish,
       } as unknown as CoreEventHub,
-      projectPatchPublisher: {
-        publish_project_patch: () => undefined,
-      } as unknown as ProjectPatchPublisher,
       executorClient: {
         execute_translation_chunk: async () => ({
           items: [create_pending_item()],
@@ -44,13 +40,10 @@ describe("TaskEngine", () => {
         }),
       } as unknown as TaskWorkUnitExecutor,
       SettingService: create_setting_service(),
-      snapshotBuilder: {
-        build_task_snapshot: async () => ({ task_type: "translation", status: "DONE" }),
-      } as unknown as TaskSnapshotBuilder,
       logManager: create_log_manager(),
     });
 
-    await task_engine.start_translation("NEW", null);
+    await task_engine.start_translation("NEW");
     await done.promise;
 
     expect(committed_batches).toHaveLength(1);
@@ -94,13 +87,11 @@ describe("TaskEngine", () => {
           return { accepted: true };
         },
         update_translation_progress: () => ({ accepted: true }),
+        build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
       coreEventHub: {
         publish: done.publish,
       } as unknown as CoreEventHub,
-      projectPatchPublisher: {
-        publish_project_patch: () => undefined,
-      } as unknown as ProjectPatchPublisher,
       executorClient: {
         execute_translation_chunk: async (body: MutableJsonRecord) => {
           const items = (Array.isArray(body["items"]) ? body["items"] : []) as MutableJsonRecord[];
@@ -123,13 +114,10 @@ describe("TaskEngine", () => {
         },
       } as unknown as TaskWorkUnitExecutor,
       SettingService: create_setting_service(2),
-      snapshotBuilder: {
-        build_task_snapshot: async () => ({ task_type: "translation", status: "DONE" }),
-      } as unknown as TaskSnapshotBuilder,
       logManager: create_log_manager(),
     });
 
-    await task_engine.start_translation("NEW", null);
+    await task_engine.start_translation("NEW");
     await done.promise;
 
     expect(committed_items).toHaveLength(2);

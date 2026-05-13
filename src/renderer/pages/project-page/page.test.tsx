@@ -23,8 +23,8 @@ const {
         create_barrier_checkpoint: vi.fn(() => {
           return {
             projectPath: "",
-            workbenchLastLoadedAt: null,
-            proofreadingLastLoadedAt: null,
+            workbenchConsumedRevisions: {},
+            proofreadingConsumedRevisions: {},
           };
         }),
         wait_for_barrier: vi.fn(async () => {}),

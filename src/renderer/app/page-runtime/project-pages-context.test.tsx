@@ -6,6 +6,22 @@ import {
   ProjectPagesProvider,
   useProjectPagesBarrier,
 } from "@/app/page-runtime/project-pages-context";
+import {
+  createProjectStore,
+  createProjectStoreReplaceSectionChange,
+  type ProjectDataSection,
+  type ProjectDataSectionRevisions,
+} from "@/project/store/project-store";
+
+const REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
+const CURRENT_REVISIONS: ProjectDataSectionRevisions = {
+  project: 1,
+  files: 1,
+  items: 1,
+  analysis: 1,
+  quality: 1,
+  proofreading: 1,
+};
 
 type RuntimeFixture = {
   project_snapshot: {
@@ -14,20 +30,21 @@ type RuntimeFixture = {
   };
   project_warmup_status: "idle" | "warming" | "ready";
   set_project_warmup_status: ReturnType<typeof vi.fn>;
+  project_store: ReturnType<typeof createProjectStore>;
 };
 
 type ProofreadingFixture = {
-  cache_stale: boolean;
+  consumed_revisions: ProjectDataSectionRevisions;
   is_refreshing: boolean;
-  last_loaded_at: number | null;
+  required_sections: ProjectDataSection[];
   settled_project_path: string;
 };
 
 type WorkbenchFixture = {
-  cache_stale: boolean;
+  consumed_revisions: ProjectDataSectionRevisions;
   file_op_running: boolean;
   is_refreshing: boolean;
-  last_loaded_at: number | null;
+  required_sections: ProjectDataSection[];
   settled_project_path: string;
 };
 
@@ -59,6 +76,24 @@ vi.mock("@/app/navigation/screen-registry", () => {
 });
 
 function create_runtime_fixture(): RuntimeFixture {
+  const project_store = createProjectStore();
+  project_store.applyProjectChange(
+    {
+      source: "project_read_sections",
+      projectRevision: 1,
+      updatedSections: ["project"],
+      sectionRevisions: CURRENT_REVISIONS,
+      operations: [
+        createProjectStoreReplaceSectionChange("project", {
+          loaded: true,
+          path: "E:/demo/sample.lg",
+        }),
+      ],
+    },
+    {
+      revisionMode: "exact",
+    },
+  );
   return {
     project_snapshot: {
       loaded: true,
@@ -66,24 +101,25 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     project_warmup_status: "ready",
     set_project_warmup_status: vi.fn(),
+    project_store,
   };
 }
 
 function create_proofreading_fixture(): ProofreadingFixture {
   return {
-    cache_stale: false,
+    consumed_revisions: CURRENT_REVISIONS,
     is_refreshing: false,
-    last_loaded_at: 1,
+    required_sections: ["project", "items", "quality", "proofreading"],
     settled_project_path: "E:/demo/sample.lg",
   };
 }
 
 function create_workbench_fixture(): WorkbenchFixture {
   return {
-    cache_stale: false,
+    consumed_revisions: CURRENT_REVISIONS,
     file_op_running: false,
     is_refreshing: false,
-    last_loaded_at: 1,
+    required_sections: REQUIRED_SECTIONS,
     settled_project_path: "E:/demo/sample.lg",
   };
 }
@@ -186,7 +222,6 @@ describe("ProjectPagesProvider", () => {
       ...workbench_fixture.current,
       is_refreshing: false,
       settled_project_path: "E:/demo/sample.lg",
-      last_loaded_at: 2,
     };
 
     await render_provider();
@@ -202,6 +237,7 @@ describe("ProjectPagesProvider", () => {
       },
       project_warmup_status: "idle",
       set_project_warmup_status: vi.fn(),
+      project_store: createProjectStore(),
     };
     proofreading_fixture.current = {
       ...create_proofreading_fixture(),
@@ -236,11 +272,20 @@ describe("ProjectPagesProvider", () => {
     expect(resolved).toBe(true);
   });
 
-  it("project_warmup barrier 会等待工作台 last_loaded_at 超过 checkpoint", async () => {
+  it("project_warmup barrier 会等待工作台覆盖当前 revision", async () => {
     await render_provider();
 
     const checkpoint = latest_barrier_api?.create_barrier_checkpoint();
     expect(checkpoint).not.toBeNull();
+    await act(async () => {
+      runtime_fixture.current.project_store.alignRevisions({
+        projectRevision: 2,
+        sectionRevisions: {
+          analysis: 2,
+        },
+      });
+    });
+    await render_provider();
 
     let resolved = false;
     const wait_task = latest_barrier_api?.wait_for_barrier("project_warmup", {
@@ -258,7 +303,10 @@ describe("ProjectPagesProvider", () => {
 
     workbench_fixture.current = {
       ...workbench_fixture.current,
-      last_loaded_at: 2,
+      consumed_revisions: {
+        ...workbench_fixture.current.consumed_revisions,
+        analysis: 2,
+      },
     };
 
     await render_provider();

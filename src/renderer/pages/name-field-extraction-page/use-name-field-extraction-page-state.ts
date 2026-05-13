@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import { createProjectStoreReplaceSectionPatch } from "@/project/store/project-store";
+import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import { getQualityRuleSlice, replaceQualityRuleSlice } from "@/project/quality/quality-runtime";
 import {
   normalize_project_mutation_ack,
@@ -125,7 +125,7 @@ export function useNameFieldExtractionPageState() {
   const {
     project_snapshot,
     project_store,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
     task_snapshot,
@@ -528,10 +528,10 @@ export function useNameFieldExtractionPageState() {
         revision: current_glossary_slice.revision + 1,
       },
     );
-    const local_commit = commit_local_project_patch({
+    const local_commit = commit_local_project_change({
       source: "name_field_extraction_import_glossary",
       updatedSections: ["quality"],
-      patch: [createProjectStoreReplaceSectionPatch("quality", next_quality_state)],
+      operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
     });
 
     try {
@@ -555,7 +555,7 @@ export function useNameFieldExtractionPageState() {
     }
   }, [
     align_project_runtime_ack,
-    commit_local_project_patch,
+    commit_local_project_change,
     glossary_import_locked,
     is_running,
     project_store,

@@ -2,9 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
+import type { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
 
@@ -20,6 +21,7 @@ function create_service(): {
   service: ProofreadingService;
   session_state: ProjectSessionState;
   lg_path: string;
+  publisher: { publish_project_change: ReturnType<typeof vi.fn> };
 } {
   const database = new ProjectDatabase();
   cleanup_databases.push(database);
@@ -30,11 +32,17 @@ function create_service(): {
     args: { projectPath: lg_path, name: "proofreading" },
   });
   session_state.mark_loaded(lg_path);
+  const publisher = { publish_project_change: vi.fn() };
   return {
     database,
-    service: new ProofreadingService(database, session_state),
+    service: new ProofreadingService(
+      database,
+      session_state,
+      publisher as unknown as ProjectChangePublisher,
+    ),
     session_state,
     lg_path,
+    publisher,
   };
 }
 
@@ -51,7 +59,7 @@ afterEach(() => {
 
 describe("ProofreadingService", () => {
   it("保存单条校对结果时只合并白名单字段并同步 revision", async () => {
-    const { database, service, lg_path } = create_service();
+    const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
       args: {
@@ -124,6 +132,17 @@ describe("ProofreadingService", () => {
         args: { projectPath: lg_path, key: "translation_extras", default: {} },
       }),
     ).toEqual({ line: 9 });
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      source: "proofreading_save_items",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "canonical-delta",
+        changedIds: [1],
+      },
+      sections: {
+        proofreading: { payloadMode: "canonical-delta" },
+      },
+    });
   });
 
   it("空 items 或不存在的 item 只写 translation_extras 但仍推进双 revision", async () => {
@@ -158,7 +177,7 @@ describe("ProofreadingService", () => {
   });
 
   it("items revision 冲突时拒绝写库且不触发 runtime sync", async () => {
-    const { database, service, lg_path } = create_service();
+    const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
       args: { projectPath: lg_path, items: [{ id: 1, dst: "旧译文" }] },
@@ -179,10 +198,11 @@ describe("ProofreadingService", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, dst: "旧译文" },
     ]);
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
   it("proofreading revision 冲突时拒绝写库且保留旧 meta", async () => {
-    const { database, service, lg_path } = create_service();
+    const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setMeta",
       args: { projectPath: lg_path, key: "proofreading_revision.proofreading", value: 4 },
@@ -202,6 +222,7 @@ describe("ProofreadingService", () => {
         args: { projectPath: lg_path, key: "translation_extras", default: null },
       }),
     ).toBeNull();
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
   it("坏值和负数 revision 按 0 读取并在成功后 bump 到 1", async () => {

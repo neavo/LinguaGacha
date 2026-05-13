@@ -73,20 +73,6 @@ function create_test_state(): ProjectStoreState {
     proofreading: {
       revision: 0,
     },
-    task: {
-      task_type: "analysis",
-      status: "IDLE",
-      busy: false,
-      request_in_flight_count: 0,
-      line: 4,
-      total_line: 5,
-      processed_line: 3,
-      error_line: 1,
-      total_tokens: 18,
-      total_input_tokens: 10,
-      total_output_tokens: 8,
-      analysis_candidate_count: 6,
-    },
     revisions: {
       projectRevision: 9,
       sections: {
@@ -102,7 +88,7 @@ describe("analysis reset planners", () => {
       state: create_test_state(),
     });
 
-    expect(plan.updatedSections).toEqual(["analysis", "task"]);
+    expect(plan.updatedSections).toEqual(["analysis"]);
     expect(plan.requestBody).toEqual({
       mode: "all",
       analysis_extras: {
@@ -138,7 +124,7 @@ describe("analysis reset planners", () => {
       },
     });
 
-    expect(plan.updatedSections).toEqual(["analysis", "task"]);
+    expect(plan.updatedSections).toEqual(["analysis"]);
     expect(plan.requestBody).toEqual({
       mode: "failed",
       analysis_extras: {

@@ -11,9 +11,11 @@ flowchart LR
   A --> B
   B --> C["DesktopRuntimeProvider"]
   C --> D["ProjectStore"]
-  C --> E["settings / project / task snapshot"]
+  C --> E["TaskRuntimeStore"]
+  C --> H["settings / project snapshot"]
   D --> F["项目页面 runtime adapter"]
   E --> F
+  H --> F
   F --> G["pages 与 widgets"]
 ```
 
@@ -26,43 +28,46 @@ flowchart LR
 ## 2. 运行态初始化
 
 - `DesktopRuntimeProvider` 启动时并行读取 settings、project、task snapshot；这一步不能通过卸载工程来“重置”Core 会话。
-- 工程 loaded 且 path 非空时，前端通过 `/api/project/bootstrap/stream` 初始化 `ProjectStore`。
-- bootstrap stage 只能由 `ProjectStore.applyBootstrapStage()` 合并；页面不直接解析后端 stage payload。
+- 工程 loaded 且 path 非空时，前端先通过 `/api/project/manifest` 获取项目数据索引与 revision，再通过 `/api/project/read-sections` 初始化 `ProjectStore`。
 - 工程未加载时 `ProjectStore` 回到空态，页面局部状态可以保留自己的选择或弹窗，但不能伪造项目事实。
 
-## 3. ProjectStore 消费边界
+## 3. ProjectStore 与任务运行态
 
-`ProjectStore` 的固定 section 是：
+`ProjectStore` 的项目数据 section 是：
 
 ```text
-project, files, items, quality, prompts, analysis, proofreading, task
+project, files, items, quality, prompts, analysis, proofreading
 ```
 
 - `ProjectStore` 是 renderer 内共享项目事实的唯一缓存，不是后端事实源。
-- 共享项目事实只能来自 bootstrap、`project.patch`、同步 mutation ack 后的 revision 对齐，以及明确的本地乐观 patch。
-- `project.patch` 不能消费时，运行时可以触发完整 bootstrap 刷新；页面不应自己调用多个 snapshot 拼接替代。
-- 本地乐观 patch 必须通过 `commit_local_project_patch()`，并提供可回滚的 section 快照。
-- `ProjectStore` patch revision 默认合并，乐观 patch 使用 exact revision；新增 patch operation 必须同步 store、runtime context 和测试。
-- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并、分析导入预演和任务快照序列化复用 `src/shared/quality`；Electron 桌面宿主契约从 `src/desktop` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
+- `task` 属于任务运行态，只能由 `TaskRuntimeStore` 作为前端任务镜像；项目数据读取和 `project.data_changed` 都不能把 task 写入 `ProjectStore` 或项目派生缓存依赖。
+- 共享项目事实只能来自项目读取接口、`project.data_changed`、同步 mutation ack 后的 revision 对齐，以及明确的本地乐观 change。
+- `section-invalidated` 不能只推进 revision；运行时必须先用 `/api/project/read-sections` 补读失效 section，再以 exact revision 合并，避免旧实体冒充新事实。
+- 本地乐观 change 必须通过 `commit_local_project_change()`，并提供可回滚的 section 快照。
+- `ProjectStore` change revision 默认合并，乐观 change 使用 exact revision；项目数据派生缓存只能消费 `ProjectDataRevisionCheckpoint` 和声明的 required sections，不得用 `task` 或时间戳作为 freshness 主依据。
+- `delete_items` / `delete_files` 是显式 tombstone 语义；无法精确表达删除时必须使用对应 section 的 full replace，让派生缓存重建。
+- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并和分析导入预演复用 `src/shared/quality`；Electron 桌面宿主契约从 `src/desktop` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
 - `ProjectStore` 只消费 `Prompt` 和 `QualityRule` 派生出的公开 key 与切片归一化结果；页面发起质量规则预设请求时传 `rule_type`，不传物理预设目录名。
 
 ## 4. 事件流与页面刷新
 
 | 事件 | 前端处理 | 页面影响 |
 | --- | --- | --- |
-| `project.changed` | 更新项目 snapshot、刷新 task | 触发工程 bootstrap 或清空 store |
+| `project.changed` | 更新项目 snapshot、刷新 task | 触发项目读取或清空 store |
 | `settings.changed` | 应用 settings payload 或重新拉取 settings | 影响语言、默认预设和应用设置 |
 | `task.status_changed` | 立即合并任务状态 | 按钮 busy、任务菜单、停止态 |
 | `task.progress_changed` | 通过 `LiveRefreshScheduler` 批量合并 | 进度、请求中数量、统计 |
-| `project.patch` | 可消费则合并到 `ProjectStore`，不可消费则 bootstrap | 工作台、校对、质量、任务块增量刷新 |
+| `project.data_changed` | canonical delta 直接合并，ids-only 或 invalidated 按需补读 | 工作台、校对、质量、分析、校对数据刷新 |
 
 `LiveRefreshScheduler` 只用于降低高频事件刷新压力，不改变事实归属。需要强一致的事件必须先 flush 再应用。
 
 ## 5. 导航与项目页 runtime
 
 - `SCREEN_REGISTRY` 是页面注册和标题 key 的唯一入口。
-- `ProjectPagesProvider` 持有工作台与校对页 runtime adapter，并用 barrier 协调项目 warmup、缓存刷新、文件操作和页面跳转。
-- 工作台与校对页可维护页面级缓存，但缓存失效信号必须来自 `ProjectStore`、事件流或明确 mutation 结果。
+- `ProjectPagesProvider` 持有工作台与校对页 runtime adapter，并用 revision checkpoint barrier 协调项目 warmup、缓存刷新、文件操作和页面跳转。
+- 工作台与校对页可维护页面级缓存，但 ready 判定必须覆盖当前 `ProjectStore.revisions.sections` 中声明依赖的 sections；页面 runtime adapter 不暴露时间戳或 stale boolean 作为缓存新旧依据。
+- 校对 worker 的缓存身份必须同时覆盖 project path、source language、items / quality / proofreading revisions；items tombstone 必须从 worker 原始行、评估行、计数索引和列表缓存中同步删除。
+- Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；Quality statistics 与校对 worker 的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。
 - 新增页面若依赖项目事实，应接入 `ProjectPagesProvider` 或现有 runtime adapter；不要在页面里建立第二套全局项目缓存。
 
 ## 6. 样式和设计消费边界
@@ -79,8 +84,8 @@ project, files, items, quality, prompts, analysis, proofreading, task
 
 - preload 暴露能力、`window.desktopApp` 类型或 Core API 接入方式变化。
 - `src/desktop` 的桥接 API、IPC、标题栏壳层、Core API 地址注入或外链策略变化。
-- `desktop-api.ts` 的响应壳、错误、SSE、bootstrap 或外部网络调用语义变化。
-- `ProjectStore` section、patch operation、revision 对齐、本地乐观 patch 或 bootstrap 消费方式变化。
+- `desktop-api.ts` 的响应壳、错误、SSE、项目读取或外部网络调用语义变化。
+- `ProjectStore` section、项目变更 payload、revision 对齐、本地乐观 change 或项目读取消费方式变化。
 - 改 renderer 消费的跨层基础值域、合法值集合、normalize 或派生判断。
 - 导航注册、项目页 runtime adapter、barrier 或页面共享缓存策略变化。
 - 样式 token、设计系统审查脚本或前端视觉边界变化。

@@ -56,7 +56,7 @@ type ProofreadingRuntimeWorkerRequest =
       id: number;
       type: "dispose_project";
       input: {
-        project_id?: string;
+        projectId?: string;
       };
     };
 
@@ -96,7 +96,7 @@ runtime_scope.addEventListener(
     } else if (request.type === "build_filter_panel") {
       result = runtime_engine.build_filter_panel(request.input);
     } else {
-      runtime_engine.dispose_project(request.input.project_id);
+      runtime_engine.dispose_project(request.input.projectId);
     }
 
     const response: ProofreadingRuntimeWorkerResponse = {

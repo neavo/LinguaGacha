@@ -1,10 +1,8 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import { ProjectDatabase } from "../../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
-import { get_runtime_section_revision } from "../../project/project-section-revision";
+import { ProjectRuntimeProjectionService } from "../../project/project-runtime-projection-service";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "./task-runtime-state";
-import { is_task_skipped_item_status } from "../../../shared/task";
 import {
   is_task_type,
   type JsonRecord,
@@ -30,23 +28,24 @@ const TASK_PROGRESS_FLOAT_FIELDS = ["time", "start_time"] as const; // 时间字
  * 在 API Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 `TaskRuntimeState`
  */
 export class TaskSnapshotBuilder {
-  private readonly database: ProjectDatabase; // database 是持久任务进度的唯一读源
-
   private readonly task_runtime_state: TaskRuntimeState; // task_runtime_state 是实时 busy / 请求中数量的唯一读源
 
   private readonly session_state: ProjectSessionState; // session_state 决定当前公开工程路径
 
+  private readonly projection_service: ProjectRuntimeProjectionService; // 分析覆盖率和 meta 读取复用项目投影口径
+
   /**
-   * 注入公开快照所需的三个权威来源，便于 Gateway 和 bootstrap 共用同一口径
+   * 注入公开快照所需的三个权威来源，便于 Gateway 和任务命令共用同一口径
    */
   public constructor(
     database: ProjectDatabase,
     task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
+    projection_service = new ProjectRuntimeProjectionService(database),
   ) {
-    this.database = database;
     this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
+    this.projection_service = projection_service;
   }
 
   /**
@@ -86,7 +85,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 真实组装任务快照，保证普通查询、命令 ack 和 bootstrap 使用同一字段集
+   * 真实组装任务快照，保证普通查询和命令 ack 使用同一字段集
    */
   private build_task_snapshot_from_state(
     task_type: TaskType,
@@ -152,9 +151,7 @@ export class TaskSnapshotBuilder {
     if (!state.loaded || state.projectPath === "") {
       return {};
     }
-    return this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: state.projectPath })),
-    );
+    return this.projection_service.get_all_meta(state.projectPath);
   }
 
   /**
@@ -165,33 +162,7 @@ export class TaskSnapshotBuilder {
     if (!state.loaded || state.projectPath === "") {
       return { total_line: 0, processed_line: 0, error_line: 0, line: 0 };
     }
-    const checkpoints = this.get_analysis_checkpoints(state.projectPath);
-    let total_line = 0;
-    let processed_line = 0;
-    let error_line = 0;
-    for (const item of this.get_all_items(state.projectPath)) {
-      const status = String(item["status"] ?? "NONE");
-      if (is_task_skipped_item_status(status)) {
-        continue;
-      }
-      const item_id = this.read_number(item["id"], 0);
-      if (item_id <= 0 || String(item["src"] ?? "").trim() === "") {
-        continue;
-      }
-      total_line += 1;
-      const checkpoint_status = checkpoints.get(item_id) ?? "NONE";
-      if (checkpoint_status === "PROCESSED") {
-        processed_line += 1;
-      } else if (checkpoint_status === "ERROR") {
-        error_line += 1;
-      }
-    }
-    return {
-      total_line,
-      processed_line,
-      error_line,
-      line: processed_line + error_line,
-    };
+    return this.projection_service.build_analysis_status_summary(state.projectPath);
   }
 
   /**
@@ -212,50 +183,17 @@ export class TaskSnapshotBuilder {
    * 重翻 revision 校验与快照构建共享 section revision 读取口径
    */
   public get_runtime_section_revision(section: string): number {
-    return get_runtime_section_revision(this.get_loaded_project_meta(), section);
-  }
-
-  /**
-   * 读取全部 item 仍只通过 ProjectDatabase workflow，保持 SQL 落点集中
-   */
-  private get_all_items(project_path: string): MutableJsonRecord[] {
-    const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
-    return Array.isArray(value)
-      ? value
-          .filter((item): item is JsonRecord => this.is_record(item))
-          .map((item) => ({ ...item }))
-      : [];
-  }
-
-  /**
-   * checkpoint 以 item_id 建索引，分析进度只需要三态覆盖事实
-   */
-  private get_analysis_checkpoints(project_path: string): Map<number, string> {
-    const value = this.database.execute(
-      this.op("getAnalysisItemCheckpoints", { projectPath: project_path }),
+    return this.projection_service.get_runtime_section_revision(
+      this.get_loaded_project_meta(),
+      section,
     );
-    const checkpoints = new Map<number, string>();
-    if (!Array.isArray(value)) {
-      return checkpoints;
-    }
-    for (const row of value) {
-      if (!this.is_record(row)) {
-        continue;
-      }
-      const item_id = this.read_number(row["item_id"], 0);
-      const status = String(row["status"] ?? "");
-      if (item_id > 0) {
-        checkpoints.set(item_id, status);
-      }
-    }
-    return checkpoints;
   }
 
   /**
    * 普通对象才允许作为 JSON record 继续下钻
    */
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
-    return this.is_record(value) ? { ...value } : {};
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
   }
 
   /**
@@ -272,19 +210,5 @@ export class TaskSnapshotBuilder {
   private read_float(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? number_value : fallback;
-  }
-
-  /**
-   * 类型收窄集中在一个入口，减少 builder 内部重复判断
-   */
-  private is_record(value: unknown): value is JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  /**
-   * database operation 在任务层统一创建，避免操作名和参数形状散落
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
   }
 }

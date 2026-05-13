@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -43,13 +44,22 @@ type ProjectPagesContextValue = {
 const ProjectPagesContext = createContext<ProjectPagesContextValue | null>(null);
 
 export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Element {
-  const { project_snapshot, project_warmup_status, set_project_warmup_status } =
+  const { project_snapshot, project_warmup_status, set_project_warmup_status, project_store } =
     useDesktopRuntime();
+  const project_store_state = useSyncExternalStore(
+    project_store.subscribe,
+    project_store.getState,
+    project_store.getState,
+  );
+  const project_revision_checkpoint = useMemo(
+    () => project_store.getRevisionCheckpoint(),
+    [project_store, project_store_state],
+  );
   const create_barrier_checkpoint_ref = useRef<() => ProjectPagesBarrierCheckpoint>(() => {
     return createProjectPagesBarrierCheckpoint({
       projectPath: "",
-      workbenchLastLoadedAt: null,
-      proofreadingLastLoadedAt: null,
+      workbenchConsumedRevisions: {},
+      proofreadingConsumedRevisions: {},
     });
   });
   const wait_for_barrier_ref = useRef<
@@ -79,28 +89,30 @@ export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Elemen
     return {
       projectLoaded: project_snapshot.loaded,
       projectPath: project_snapshot.path,
+      projectSectionRevisions: project_revision_checkpoint.sections,
       projectWarmupReady: workbench_warmup_ready,
       workbenchFileOpRunning: workbench_live_state.file_op_running,
-      workbenchCacheStale: workbench_live_state.cache_stale,
       workbenchIsRefreshing: workbench_live_state.is_refreshing,
-      workbenchLastLoadedAt: workbench_live_state.last_loaded_at,
+      workbenchConsumedRevisions: workbench_live_state.consumed_revisions,
+      workbenchRequiredSections: workbench_live_state.required_sections,
       workbenchSettledProjectPath: workbench_live_state.settled_project_path,
-      proofreadingCacheStale: proofreading_page_state.cache_stale,
       proofreadingIsRefreshing: proofreading_page_state.is_refreshing,
-      proofreadingLastLoadedAt: proofreading_page_state.last_loaded_at,
+      proofreadingConsumedRevisions: proofreading_page_state.consumed_revisions,
+      proofreadingRequiredSections: proofreading_page_state.required_sections,
       proofreadingSettledProjectPath: proofreading_page_state.settled_project_path,
     };
   }, [
-    proofreading_page_state.cache_stale,
+    proofreading_page_state.consumed_revisions,
     proofreading_page_state.is_refreshing,
-    proofreading_page_state.last_loaded_at,
+    proofreading_page_state.required_sections,
     proofreading_page_state.settled_project_path,
+    project_revision_checkpoint.sections,
     project_snapshot.loaded,
     project_snapshot.path,
-    workbench_live_state.cache_stale,
+    workbench_live_state.consumed_revisions,
     workbench_live_state.file_op_running,
     workbench_live_state.is_refreshing,
-    workbench_live_state.last_loaded_at,
+    workbench_live_state.required_sections,
     workbench_live_state.settled_project_path,
     workbench_warmup_ready,
   ]);
@@ -111,8 +123,8 @@ export function ProjectPagesProvider(props: { children: ReactNode }): JSX.Elemen
     const current_barrier_state = barrier_state_ref.current;
     return createProjectPagesBarrierCheckpoint({
       projectPath: current_barrier_state.projectPath,
-      workbenchLastLoadedAt: current_barrier_state.workbenchLastLoadedAt,
-      proofreadingLastLoadedAt: current_barrier_state.proofreadingLastLoadedAt,
+      workbenchConsumedRevisions: current_barrier_state.workbenchConsumedRevisions,
+      proofreadingConsumedRevisions: current_barrier_state.proofreadingConsumedRevisions,
     });
   }, []);
 

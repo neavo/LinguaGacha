@@ -26,7 +26,7 @@ type RuntimeFixture = {
   };
   set_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
-  commit_local_project_patch: ReturnType<typeof vi.fn>;
+  commit_local_project_change: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   align_project_runtime_ack: ReturnType<typeof vi.fn>;
 };
@@ -161,7 +161,7 @@ function create_runtime_fixture(
     },
     set_task_snapshot: vi.fn(),
     task_snapshot,
-    commit_local_project_patch: vi.fn(() => ({
+    commit_local_project_change: vi.fn(() => ({
       rollback,
     })),
     refresh_project_runtime: vi.fn(async () => {}),
@@ -495,7 +495,7 @@ describe("useTranslationTaskRuntime", () => {
     expect(latest_state?.task_confirm_state).toBeNull();
   });
 
-  it("translation reset all 成功时走本地 patch + apply + ack", async () => {
+  it("translation reset all 成功时走本地 change + apply + ack", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         line: 9,
@@ -564,32 +564,30 @@ describe("useTranslationTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.commit_local_project_patch).toHaveBeenCalledTimes(1);
-    expect(runtime_fixture.current.commit_local_project_patch.mock.calls[0]?.[0]).toMatchObject({
+    expect(runtime_fixture.current.commit_local_project_change).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.commit_local_project_change.mock.calls[0]?.[0]).toMatchObject({
       source: "translation_reset_all",
-      updatedSections: ["items", "analysis", "task"],
-      patch: expect.arrayContaining([
-        expect.objectContaining({
-          op: "replace_task",
-          task: expect.objectContaining({
-            task_type: "translation",
-            status: "IDLE",
-            busy: false,
-            request_in_flight_count: 0,
-            line: 0,
-            total_line: 1,
-            processed_line: 0,
-            error_line: 0,
-            total_tokens: 0,
-            total_output_tokens: 0,
-            total_input_tokens: 0,
-            time: 0,
-            start_time: 0,
-            analysis_candidate_count: 0,
-          }),
-        }),
-      ]),
+      updatedSections: ["items", "analysis"],
     });
+    expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_type: "translation",
+        status: "IDLE",
+        busy: false,
+        request_in_flight_count: 0,
+        line: 0,
+        total_line: 1,
+        processed_line: 0,
+        error_line: 0,
+        total_tokens: 0,
+        total_output_tokens: 0,
+        total_input_tokens: 0,
+        time: 0,
+        start_time: 0,
+        analysis_candidate_count: 0,
+        retranslating_item_ids: [],
+      }),
+    );
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/project/translation/reset",
       expect.objectContaining({
@@ -663,27 +661,25 @@ describe("useTranslationTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.commit_local_project_patch).toHaveBeenCalledTimes(1);
-    expect(runtime_fixture.current.commit_local_project_patch.mock.calls[0]?.[0]).toMatchObject({
+    expect(runtime_fixture.current.commit_local_project_change).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.commit_local_project_change.mock.calls[0]?.[0]).toMatchObject({
       source: "translation_reset_failed",
-      updatedSections: ["items", "task"],
-      patch: expect.arrayContaining([
-        expect.objectContaining({
-          op: "replace_task",
-          task: expect.objectContaining({
-            line: 0,
-            total_line: 1,
-            processed_line: 0,
-            error_line: 0,
-            total_tokens: 90,
-            total_output_tokens: 50,
-            total_input_tokens: 40,
-            time: 12,
-            start_time: 20,
-          }),
-        }),
-      ]),
+      updatedSections: ["items"],
     });
+    expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line: 0,
+        total_line: 1,
+        processed_line: 0,
+        error_line: 0,
+        total_tokens: 90,
+        total_output_tokens: 50,
+        total_input_tokens: 40,
+        time: 12,
+        start_time: 20,
+        retranslating_item_ids: [],
+      }),
+    );
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/project/translation/reset",
       expect.objectContaining({
@@ -730,7 +726,7 @@ describe("useTranslationTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    const rollback = runtime_fixture.current.commit_local_project_patch.mock.results[0]?.value
+    const rollback = runtime_fixture.current.commit_local_project_change.mock.results[0]?.value
       .rollback as ReturnType<typeof vi.fn>;
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);

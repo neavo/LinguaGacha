@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import { serializeQualityRuntimeSnapshot } from "@/project/quality/quality-runtime";
 import {
   create_translation_reset_all_plan,
   create_translation_reset_failed_plan,
@@ -184,7 +183,7 @@ export function useTranslationTaskRuntime(
     settings_snapshot,
     set_task_snapshot,
     task_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
   } = useDesktopRuntime();
@@ -286,7 +285,8 @@ export function useTranslationTaskRuntime(
         observed_translation_waveform_time_ref.current = next_now_seconds;
       }
 
-      set_translation_waveform_history((previous_history) => { // 为什么：运行态两帧之间没有新数据时，要保留上一跳高度，视觉上才能保持连续扫屏
+      set_translation_waveform_history((previous_history) => {
+        // 为什么：运行态两帧之间没有新数据时，要保留上一跳高度，视觉上才能保持连续扫屏
         return append_workbench_waveform_sample(
           previous_history,
           current_translation_waveform_sample_ref.current,
@@ -299,7 +299,8 @@ export function useTranslationTaskRuntime(
       current_translation_waveform_sample_ref.current,
     );
 
-    set_translation_waveform_history((previous_history) => { // 为什么：任务结束后不再生成新峰值，只让旧波形带着衰减尾巴继续向前推进，直到视窗归零
+    set_translation_waveform_history((previous_history) => {
+      // 为什么：任务结束后不再生成新峰值，只让旧波形带着衰减尾巴继续向前推进，直到视窗归零
       return append_workbench_waveform_sample(
         previous_history,
         current_translation_waveform_sample_ref.current,
@@ -412,13 +413,17 @@ export function useTranslationTaskRuntime(
     }
 
     const should_continue = has_translation_task_progress(translation_task_display_snapshot);
+    const current_project_state = project_store.getState();
 
     try {
       const task_payload = await api_fetch<TranslationTaskCommandPayload>(
         "/api/tasks/start-translation",
         {
           mode: should_continue ? "CONTINUE" : "NEW",
-          quality_snapshot: serializeQualityRuntimeSnapshot(project_store.getState()),
+          expected_section_revisions: {
+            quality: current_project_state.revisions.sections.quality ?? 0,
+            prompts: current_project_state.revisions.sections.prompts ?? 0,
+          },
         },
       );
       const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
@@ -503,6 +508,7 @@ export function useTranslationTaskRuntime(
           task_confirm_state.kind === "reset-all"
             ? await create_translation_reset_all_plan({
                 state: project_store.getState(),
+                task_snapshot,
                 source_language: String(settings_snapshot.source_language ?? "ALL"),
                 mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
                 skip_duplicate_source_text_enable: Boolean(
@@ -518,22 +524,23 @@ export function useTranslationTaskRuntime(
               })
             : create_translation_reset_failed_plan({
                 state: project_store.getState(),
+                task_snapshot,
               });
-        const local_commit = commit_local_project_patch({
+        const local_commit = commit_local_project_change({
           source:
             task_confirm_state.kind === "reset-all"
               ? "translation_reset_all"
               : "translation_reset_failed",
           updatedSections: reset_plan.updatedSections,
-          patch: reset_plan.patch,
+          operations: reset_plan.operations,
         });
 
         try {
-          apply_translation_task_snapshot(
-            normalize_translation_task_snapshot_payload({
-              task: reset_plan.next_task_snapshot,
-            }),
-          );
+          const next_snapshot = normalize_translation_task_snapshot_payload({
+            task: reset_plan.next_task_snapshot,
+          });
+          apply_translation_task_snapshot(next_snapshot);
+          sync_runtime_task_snapshot(next_snapshot);
           const mutation_ack = normalize_project_mutation_ack(
             await api_fetch<ProjectMutationAckPayload>(
               "/api/project/translation/reset",
@@ -580,7 +587,7 @@ export function useTranslationTaskRuntime(
   }, [
     apply_translation_task_snapshot,
     align_project_runtime_ack,
-    commit_local_project_patch,
+    commit_local_project_change,
     options,
     project_store,
     refresh_project_runtime,
@@ -590,6 +597,7 @@ export function useTranslationTaskRuntime(
     sync_runtime_task_snapshot,
     t,
     task_confirm_state,
+    task_snapshot,
   ]);
 
   useEffect(() => {

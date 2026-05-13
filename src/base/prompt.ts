@@ -83,7 +83,7 @@ export class Prompt {
   }
 
   /**
-   * 固定枚举所有提示词槽位，bootstrap 和默认空态都从这里生成
+   * 固定枚举所有提示词槽位，项目数据读取和默认空态都从这里生成
    */
   public static all(): Prompt[] {
     return PROMPT_KINDS.map((kind) => new Prompt(kind));
@@ -118,7 +118,7 @@ export class Prompt {
   }
 
   /**
-   * revision key 进入 ProjectStore patch，必须保持集中生成
+   * revision key 进入 ProjectStore change，必须保持集中生成
    */
   public get revision_meta_key(): string {
     return PROMPT_MODEL[this.kind].revision_meta_key;

@@ -33,7 +33,7 @@ export interface RetranslateWorkUnitRequest extends WorkUnitBaseRequest {
 }
 
 /**
- * 低频单条翻译请求，不写数据库也不发 project.patch
+ * 低频单条翻译请求，不写数据库也不发项目数据变更事件
  */
 export interface TranslateSingleWorkUnitRequest extends WorkUnitBaseRequest {
   text: ApiJsonValue; // text 来自公开派生工具调用，不关联任何项目条目

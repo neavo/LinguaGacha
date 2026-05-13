@@ -5,9 +5,7 @@ import { resolve_active_model } from "../../model/model-config-resolver";
 import type { SettingService } from "../../service/setting-service";
 import type { ApiJsonValue } from "../../api/api-types";
 import { CoreEventHub } from "../../events/core-event-hub";
-import { ProjectPatchPublisher } from "../../project/project-patch-publisher";
 import type { JsonRecord, MutableJsonRecord, TaskType } from "../runtime/task-runtime-types";
-import { TaskSnapshotBuilder } from "../runtime/task-snapshot-builder";
 import { ProjectTaskStore } from "../store/project-task-store";
 import {
   WorkUnitExecutorTransportError,
@@ -40,10 +38,8 @@ const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…",
 interface TaskEngineOptions {
   taskStore: ProjectTaskStore; // taskStore 是任务编排器读写项目任务事实的唯一端口
   coreEventHub: CoreEventHub; // coreEventHub 只承接 task.status_changed / task.progress_changed 等公开事件广播
-  projectPatchPublisher: ProjectPatchPublisher; // projectPatchPublisher 负责发布需要补齐数据库事实的 project.patch
   executorClient: TaskWorkUnitExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
   SettingService: SettingService; // SettingService 在每次任务启动时提供设置与模型快照
-  snapshotBuilder: TaskSnapshotBuilder; // snapshotBuilder 生成公开 task snapshot，供终态 project patch 复用
   logManager: LogManager; // logManager 统一收敛任务引擎和 worker 回放日志
 }
 
@@ -111,10 +107,8 @@ interface AnalysisCommitEntry {
 export class TaskEngine {
   private readonly task_store: ProjectTaskStore; // task_store 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
   private readonly core_event_hub: CoreEventHub; // core_event_hub 只发布公开任务事件，运行态吸收由 TaskRuntimeProjector 完成
-  private readonly project_patch_publisher: ProjectPatchPublisher; // project_patch_publisher 负责把最小 project patch 补齐后送入公开事件流
   private readonly executor_client: TaskWorkUnitExecutor; // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果
   private readonly setting_service: SettingService;
-  private readonly snapshot_builder: TaskSnapshotBuilder;
   private readonly log_manager: LogManager;
   private readonly run_lock = new TaskRunLock(); // run_lock 是整场任务互斥与停止信号的唯一权威
   private request_in_flight_count = 0; // request_in_flight_count 只表达实时网络压力，不落库也不参与恢复
@@ -125,19 +119,17 @@ export class TaskEngine {
   public constructor(options: TaskEngineOptions) {
     this.task_store = options.taskStore;
     this.core_event_hub = options.coreEventHub;
-    this.project_patch_publisher = options.projectPatchPublisher;
     this.executor_client = options.executorClient;
     this.setting_service = options.SettingService;
-    this.snapshot_builder = options.snapshotBuilder;
     this.log_manager = options.logManager;
   }
 
   /**
    * 启动翻译后台任务；方法只完成排队受理，真实执行在后台 promise 中收尾
    */
-  public async start_translation(mode: string, quality_snapshot: ApiJsonValue): Promise<void> {
+  public async start_translation(mode: string): Promise<void> {
     const handle = this.run_lock.begin("translation");
-    void this.run_translation(handle, mode, quality_snapshot);
+    void this.run_translation(handle, mode);
   }
 
   /**
@@ -150,9 +142,9 @@ export class TaskEngine {
   /**
    * 启动分析后台任务，当前服务负责 reset / checkpoint / commit 全链路
    */
-  public async start_analysis(mode: string, quality_snapshot: ApiJsonValue): Promise<void> {
+  public async start_analysis(mode: string): Promise<void> {
     const handle = this.run_lock.begin("analysis");
-    void this.run_analysis(handle, mode, quality_snapshot);
+    void this.run_analysis(handle, mode);
   }
 
   /**
@@ -163,14 +155,11 @@ export class TaskEngine {
   }
 
   /**
-   * 启动批量重翻任务，当前服务持有 item 队列、提交和行级 busy patch
+   * 启动批量重翻任务，当前服务持有 item 队列、提交和行级 busy 事件
    */
-  public async start_retranslate(
-    item_ids: number[],
-    quality_snapshot: ApiJsonValue,
-  ): Promise<void> {
+  public async start_retranslate(item_ids: number[]): Promise<void> {
     const handle = this.run_lock.begin("retranslate");
-    void this.run_retranslate(handle, item_ids, quality_snapshot);
+    void this.run_retranslate(handle, item_ids);
   }
 
   /**
@@ -211,17 +200,14 @@ export class TaskEngine {
   }
 
   /**
-   * 翻译主流程：取数据、切块、限流执行、批量提交并发布最终 task patch
+   * 翻译主流程：取数据、切块、限流执行、批量提交并发布最终任务事件
    */
-  private async run_translation(
-    handle: TaskRunHandle,
-    mode: string,
-    quality_snapshot: ApiJsonValue,
-  ): Promise<void> {
+  private async run_translation(handle: TaskRunHandle, mode: string): Promise<void> {
     let final_status = "DONE";
     try {
       this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
+      const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start("翻译任务", runtime.model);
       const payload = this.task_store.get_translation_items({ mode });
       const all_items = this.normalize_record_list(payload["items"]);
@@ -270,15 +256,12 @@ export class TaskEngine {
   /**
    * 分析主流程：Task Engine 解释 checkpoint，work unit 只负责单个 chunk 请求
    */
-  private async run_analysis(
-    handle: TaskRunHandle,
-    mode: string,
-    quality_snapshot: ApiJsonValue,
-  ): Promise<void> {
+  private async run_analysis(handle: TaskRunHandle, mode: string): Promise<void> {
     let final_status = "DONE";
     try {
       this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
+      const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start("分析任务", runtime.model);
       if (mode === "NEW" || mode === "RESET") {
         this.task_store.reset_analysis_progress({});
@@ -327,15 +310,12 @@ export class TaskEngine {
   /**
    * 重翻主流程：每个 item 是一个 work unit，提交后由 ProjectTaskStore 推进 proofreading patch
    */
-  private async run_retranslate(
-    handle: TaskRunHandle,
-    item_ids: number[],
-    quality_snapshot: ApiJsonValue,
-  ): Promise<void> {
+  private async run_retranslate(handle: TaskRunHandle, item_ids: number[]): Promise<void> {
     let final_status = "DONE";
     try {
       this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
+      const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start("重翻任务", runtime.model);
       const payload = this.task_store.get_retranslate_items({
         item_ids: item_ids as unknown as ApiJsonValue,
@@ -700,7 +680,7 @@ export class TaskEngine {
   }
 
   /**
-   * 提交重翻结果，ProjectTaskStore 会同步推进 items、proofreading 和 task patch
+   * 提交重翻结果，ProjectTaskStore 会同步推进 items/proofreading，并回传行级 busy 快照
    */
   private async commit_retranslate_entries(
     handle: TaskRunHandle,
@@ -725,13 +705,15 @@ export class TaskEngine {
       );
     }
     next_progress = TaskProgressSnapshotTool.with_elapsed(next_progress);
-    this.task_store.commit_retranslate_batch({
+    const commit_result = this.task_store.commit_retranslate_batch({
       items: items as unknown as ApiJsonValue,
       translation_extras: TaskProgressSnapshotTool.to_record(
         next_progress,
       ) as unknown as ApiJsonValue,
     });
-    this.emit_progress(handle.task_type, next_progress);
+    this.emit_progress(handle.task_type, next_progress, {
+      retranslating_item_ids: commit_result["retranslating_item_ids"],
+    });
     return next_progress;
   }
 
@@ -850,7 +832,7 @@ export class TaskEngine {
   }
 
   /**
-   * 重翻每个 item 独立执行，保持行级 busy patch 能逐条收敛
+   * 重翻每个 item 独立执行，保持行级 busy 状态能逐条收敛
    */
   private build_retranslate_context(item: TaskItemRecord): TranslationContext {
     return {
@@ -1036,7 +1018,7 @@ export class TaskEngine {
   }
 
   /**
-   * 运行结束后发布终态，并补一帧 replace_task patch 给 ProjectStore
+   * 运行结束后只发布任务终态；项目数据变更由 ProjectTaskStore 的项目事件承担
    */
   private async finish_run(handle: TaskRunHandle, status: string): Promise<void> {
     const still_current = this.run_lock.is_current(handle.run_id);
@@ -1044,7 +1026,6 @@ export class TaskEngine {
     if (still_current) {
       this.emit_status(handle.task_type, status, false);
       this.run_lock.finish(handle.run_id);
-      await this.publish_task_patch(handle.task_type);
     }
   }
 
@@ -1088,11 +1069,16 @@ export class TaskEngine {
   /**
    * 发布 task.progress_changed，只携带真实出现的进度字段和请求中数量
    */
-  private emit_progress(task_type: TaskType, progress: TaskProgressSnapshot): void {
+  private emit_progress(
+    task_type: TaskType,
+    progress: TaskProgressSnapshot,
+    overrides: JsonRecord = {},
+  ): void {
     this.core_event_hub.publish("task.progress_changed", {
       task_type,
       ...TaskProgressSnapshotTool.to_record(TaskProgressSnapshotTool.with_elapsed(progress)),
       request_in_flight_count: this.request_in_flight_count,
+      ...overrides,
     });
   }
 
@@ -1104,18 +1090,6 @@ export class TaskEngine {
     this.core_event_hub.publish("task.progress_changed", {
       task_type,
       request_in_flight_count: this.request_in_flight_count,
-    });
-  }
-
-  /**
-   * 终态 task patch 复用公开 snapshot builder，避免手写进度字段漏同步
-   */
-  private async publish_task_patch(task_type: TaskType): Promise<void> {
-    const task = await this.snapshot_builder.build_task_snapshot({ task_type });
-    this.project_patch_publisher.publish_project_patch({
-      source: "task_engine",
-      updatedSections: ["task"],
-      patch: [{ op: "replace_task", task: task as unknown as ApiJsonValue }],
     });
   }
 
@@ -1273,7 +1247,7 @@ export class TaskEngine {
   }
 
   /**
-   * item id 同时兼容数据库内部 id 和公开 RowBlock 的 item_id
+   * item id 同时兼容数据库内部 id 和公开 item_id
    */
   private read_item_id(item: TaskItemRecord): number {
     return this.read_number(item["id"] ?? item["item_id"], 0);

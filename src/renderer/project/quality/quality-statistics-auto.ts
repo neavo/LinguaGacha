@@ -131,8 +131,19 @@ function build_snapshot_rules(
   return rules;
 }
 
+/**
+ * 文本签名按顺序滚动哈希每条文本，避免规划阶段反复 stringify 全量文本数组
+ */
 function build_text_signature(texts: string[]): string {
-  return JsonTool.stringifyStrict(texts);
+  let hash = 2166136261;
+  for (const [index, text] of texts.entries()) {
+    const framed_text = `${index.toString()}:${text.length.toString()}:${text}`;
+    for (let char_index = 0; char_index < framed_text.length; char_index += 1) {
+      hash ^= framed_text.charCodeAt(char_index);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+  }
+  return `${texts.length.toString()}:${hash.toString(36)}`;
 }
 
 function build_dependency_signature(

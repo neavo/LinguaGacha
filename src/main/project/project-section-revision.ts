@@ -1,26 +1,16 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { QualityRule } from "../../base/quality";
 import { Prompt } from "../../base/prompt";
+import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/project-change-event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-// section 集合必须和 bootstrap stage 保持一致，避免 ack 与首包 revision 口径分裂
-export const RUNTIME_SECTIONS = [
-  "project",
-  "files",
-  "items",
-  "quality",
-  "prompts",
-  "analysis",
-  "proofreading",
-  "task",
-] as const;
-
-export type RuntimeSection = (typeof RUNTIME_SECTIONS)[number];
+export { PROJECT_DATA_SECTIONS };
+export type { ProjectDataSection };
 
 /**
- * 统一读取项目运行态 section revision，供 bootstrap 和同步 mutation ack 共享口径
+ * 统一读取项目运行态 section revision，供读取接口和同步 mutation ack 共享口径
  */
 export function get_runtime_section_revision(meta: JsonRecord, section: string): number {
   if (section.startsWith("quality:")) {
@@ -52,11 +42,11 @@ export function get_runtime_section_revision(meta: JsonRecord, section: string):
 
 export function build_section_revisions_from_meta(
   meta: JsonRecord,
-): Record<RuntimeSection, number> {
-  // completed 事件需要全量 section revision，不能只回传本次变更过的 section
+): Record<ProjectDataSection, number> {
+  // manifest 与变更事件都需要全量项目数据 section revision，任务运行态必须走 task snapshot
   return Object.fromEntries(
-    RUNTIME_SECTIONS.map((section) => [section, get_runtime_section_revision(meta, section)]),
-  ) as Record<RuntimeSection, number>;
+    PROJECT_DATA_SECTIONS.map((section) => [section, get_runtime_section_revision(meta, section)]),
+  ) as Record<ProjectDataSection, number>;
 }
 
 export function build_project_mutation_ack_from_meta(

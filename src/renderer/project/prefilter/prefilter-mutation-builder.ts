@@ -3,6 +3,7 @@ import {
   build_analysis_status_summary,
   build_translation_task_and_project_state,
   clone_runtime_project_item_record,
+  create_empty_translation_task_snapshot,
   normalize_runtime_project_item_record,
   type RuntimeProjectItemRecord,
 } from "@/project/reset/reset-state-builders";
@@ -42,6 +43,7 @@ export type ProjectPrefilterMutationOutput = {
 
 export type ProjectPrefilterMutationInput = {
   state: ProjectStoreState;
+  task_snapshot?: Record<string, unknown>;
   source_language: string;
   target_language?: string;
   mtool_optimizer_enable: boolean;
@@ -176,7 +178,7 @@ export function compute_project_prefilter_mutation(
   }
 
   const derived_task_state = build_translation_task_and_project_state({
-    task_snapshot: input.state.task,
+    task_snapshot: input.task_snapshot ?? create_empty_translation_task_snapshot(),
     items: item_index,
     analysis_candidate_count: 0,
   });

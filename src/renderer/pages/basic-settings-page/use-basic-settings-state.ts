@@ -58,7 +58,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     project_snapshot,
     project_store,
     set_settings_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
     refresh_settings,
@@ -214,6 +214,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
 
       await apply_project_prefilter_mutation({
         state: project_store.getState(),
+        task_snapshot,
         source_language: next_settings_snapshot.source_language,
         target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
@@ -221,17 +222,18 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         compute_prefilter: (input) => {
           return project_prefilter_client_ref.current.compute(input);
         },
-        commit_local_project_patch,
+        commit_local_project_change,
         align_project_runtime_ack,
         refresh_project_runtime,
       });
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       project_snapshot.loaded,
       project_store,
       refresh_project_runtime,
+      task_snapshot,
     ],
   );
 

@@ -10,7 +10,8 @@ import { ProjectLifecycleService } from "../project/project-lifecycle-service";
 import { ProjectSyncMutationService } from "../project/project-sync-mutation-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectResetPreviewService } from "../project/project-reset-preview-service";
-import { ProjectPatchAdapter } from "../project/project-patch-adapter";
+import { ProjectChangeEventAdapter } from "../project/project-change-event-adapter";
+import { ProjectRuntimeProjectionService } from "../project/project-runtime-projection-service";
 import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
 import { AppPathService } from "../service/path-service";
@@ -20,8 +21,7 @@ import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
 import type { LogEvent } from "../../shared/log";
 import { CoreEventHub } from "../events/core-event-hub";
-import { ProjectRuntimeEncoder, type BootstrapSseEvent } from "../project/project-runtime-encoder";
-import { ProjectPatchPublisher } from "../project/project-patch-publisher";
+import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { TaskCommandService } from "../task-engine/command/task-command-service";
 import { TaskEngine } from "../task-engine/orchestration/task-engine";
 import { TaskRuntimeProjector } from "../task-engine/runtime/task-runtime-projector";
@@ -29,7 +29,7 @@ import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
 import { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
 import { ProjectTaskStore } from "../task-engine/store/project-task-store";
 import { TaskWorkerPool } from "../task-worker/task-worker-pool";
-import { JsonTool } from "../../shared/utils/json-tool";
+import { normalizeProjectDataSections } from "../../shared/project-change-event";
 import {
   close_api_gateway_with_connections,
   track_api_gateway_connections,
@@ -132,16 +132,20 @@ export class ApiGatewayServer {
    */
   private create_app(): Hono {
     const paths = new AppPathService({ appRoot: this.options.appRoot });
-    const project_patch_adapter = new ProjectPatchAdapter(
+    const project_runtime_projection_service = new ProjectRuntimeProjectionService(
+      this.options.database,
+    );
+    const project_change_adapter = new ProjectChangeEventAdapter(
       this.options.database,
       this.project_session_state,
+      project_runtime_projection_service,
     );
     const task_runtime_projector = new TaskRuntimeProjector(this.task_runtime_state);
     const core_event_hub = new CoreEventHub({
       projectors: [task_runtime_projector],
     });
-    const project_patch_publisher = new ProjectPatchPublisher(
-      project_patch_adapter,
+    const project_change_publisher = new ProjectChangePublisher(
+      project_change_adapter,
       core_event_hub,
     );
     this.core_event_hub = core_event_hub;
@@ -159,26 +163,24 @@ export class ApiGatewayServer {
       this.options.database,
       this.task_runtime_state,
       this.project_session_state,
+      project_change_publisher,
     );
     const proofreading_service = new ProofreadingService(
       this.options.database,
       this.project_session_state,
+      project_change_publisher,
     );
     const task_snapshot_builder = new TaskSnapshotBuilder(
       this.options.database,
       this.task_runtime_state,
       this.project_session_state,
-    );
-    const project_runtime_service = new ProjectRuntimeEncoder(
-      this.options.database,
-      task_snapshot_builder,
-      this.project_session_state,
+      project_runtime_projection_service,
     );
     const project_task_store = new ProjectTaskStore(
       this.options.database,
       this.project_session_state,
       this.task_runtime_state,
-      project_patch_publisher,
+      project_change_publisher,
     );
     const executor_client = new TaskWorkerPool({
       appRoot: this.options.appRoot,
@@ -187,10 +189,8 @@ export class ApiGatewayServer {
     const task_engine = new TaskEngine({
       taskStore: project_task_store,
       coreEventHub: core_event_hub,
-      projectPatchPublisher: project_patch_publisher,
       executorClient: executor_client,
       SettingService: setting_service,
-      snapshotBuilder: task_snapshot_builder,
       logManager: this.options.logManager,
     });
     const task_command_service = new TaskCommandService(
@@ -217,6 +217,7 @@ export class ApiGatewayServer {
       setting_service,
       this.options.database,
       this.project_session_state,
+      project_change_publisher,
     );
     const app = new Hono();
 
@@ -246,20 +247,21 @@ export class ApiGatewayServer {
     app.get("/api/events/stream", () => {
       return core_event_hub.create_stream_response();
     });
-    app.get("/api/project/bootstrap/stream", async (context) => {
-      try {
-        const events = await project_runtime_service.build_bootstrap_events();
-        return this.create_project_bootstrap_stream_response(events);
-      } catch (error) {
-        const envelope = this.error_to_envelope(error);
-        if (envelope.error.code === "internal_error") {
-          this.log_gateway_error("API Gateway bootstrap 处理失败", error, {
-            path: "/api/project/bootstrap/stream",
-          });
-        }
-        return context.json(envelope, envelope.error.code === "invalid_request" ? 400 : 500);
-      }
-    });
+    this.post_json(app, "/api/project/manifest", () =>
+      project_runtime_projection_service.build_manifest(this.project_session_state.snapshot()),
+    );
+    this.post_json(app, "/api/project/read-sections", (body) =>
+      project_runtime_projection_service.build_section_payloads({
+        projectState: this.project_session_state.snapshot(),
+        sections: normalizeProjectDataSections(body["sections"]),
+      }),
+    );
+    this.post_json(app, "/api/project/items/read-by-ids", (body) =>
+      project_runtime_projection_service.build_item_record_map_by_ids(
+        this.require_loaded_project_path(),
+        this.normalize_positive_integer_list(body["itemIds"] ?? body["item_ids"]),
+      ),
+    );
     this.post_json(app, "/api/settings/app", () => setting_service.get_app_settings());
     this.post_json(app, "/api/settings/update", (body) =>
       setting_service.update_app_settings(body),
@@ -468,6 +470,33 @@ export class ApiGatewayServer {
   }
 
   /**
+   * 项目数据局部读取必须绑定当前 loaded 工程，避免 renderer 指定任意 .lg 路径
+   */
+  private require_loaded_project_path(): string {
+    const state = this.project_session_state.snapshot();
+    if (!state.loaded || state.projectPath === "") {
+      throw new Error("工程未加载");
+    }
+    return state.projectPath;
+  }
+
+  /**
+   * item id 查询只接受正整数列表，坏值在读取入口直接丢弃
+   */
+  private normalize_positive_integer_list(value: ApiJsonValue | undefined): number[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return [
+      ...new Set(
+        value
+          .map((item) => Number(item))
+          .filter((item): item is number => Number.isInteger(item) && item > 0),
+      ),
+    ];
+  }
+
+  /**
    * 内部异常只映射成稳定错误壳，调用方不需要理解 main 进程实现细节
    */
   private error_to_envelope(error: unknown) {
@@ -550,39 +579,6 @@ export class ApiGatewayServer {
    */
   private build_log_sse_frame(event: LogEvent): string {
     return `event: log.appended\ndata: ${JSON.stringify(event)}\n\n`;
-  }
-
-  /**
-   * bootstrap 是一次性 SSE，事件在写首帧前已构建完毕，避免半截成功流
-   */
-  private create_project_bootstrap_stream_response(events: BootstrapSseEvent[]): Response {
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start: (controller) => {
-        for (const event of events) {
-          controller.enqueue(encoder.encode(this.build_sse_frame(event.event, event.data)));
-        }
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: {
-        "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "Content-Type": "text/event-stream; charset=utf-8",
-      },
-      status: 200,
-    });
-  }
-
-  /**
-   * SSE 序列化统一走严格 JSON，避免手写 data 行时出现不可解析负载
-   */
-  private build_sse_frame(event_type: string, payload: Record<string, ApiJsonValue>): string {
-    return `event: ${event_type}\ndata: ${JsonTool.stringifyStrict(payload)}\n\n`;
   }
 
   /**

@@ -130,7 +130,6 @@ function create_test_state(): ProjectStoreState {
     proofreading: {
       revision: 0,
     },
-    task: {},
     revisions: {
       projectRevision: 1,
       sections: {

@@ -4,6 +4,11 @@ import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
 } from "@/app/page-runtime/project-pages-barrier";
+import {
+  readProjectDataSectionRevisions,
+  type ProjectDataSection,
+  type ProjectDataSectionRevisions,
+} from "@/project/store/project-store";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_stopping } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -16,8 +21,7 @@ import {
   type WorkbenchProjectMutationPlan,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 import {
-  applyWorkbenchItemsDeltaToCache,
-  createWorkbenchViewCache,
+  getWorkbenchViewCache,
   type WorkbenchViewCache,
 } from "@/pages/workbench-page/workbench-view";
 import {
@@ -77,6 +81,8 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   analysis_stats: EMPTY_WORKBENCH_STATS,
   entries: [],
 };
+
+const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
 
 function clamp_workbench_count(value: number, min_value: number, max_value: number): number {
   if (!Number.isFinite(value)) {
@@ -725,9 +731,8 @@ function build_analysis_task_confirm_dialog_view_model(
 
 export type UseWorkbenchLiveStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
-  cache_stale: boolean;
-  last_loaded_at: number | null;
-  refresh_request_id: number;
+  consumed_revisions: ProjectDataSectionRevisions;
+  required_sections: ProjectDataSection[];
   settled_project_path: string;
   is_refreshing: boolean;
   file_op_running: boolean;
@@ -792,7 +797,7 @@ export function useWorkbenchLiveState(
   });
   const {
     align_project_runtime_ack,
-    commit_local_project_patch,
+    commit_local_project_change,
     project_snapshot,
     project_store,
     refresh_project_runtime,
@@ -800,6 +805,7 @@ export function useWorkbenchLiveState(
     refresh_task,
     settings_snapshot,
     set_project_snapshot,
+    set_task_snapshot,
     task_snapshot,
   } = useDesktopRuntime();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
@@ -807,9 +813,7 @@ export function useWorkbenchLiveState(
   const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(
     "idle",
   );
-  const [cache_stale, set_cache_stale] = useState(false);
-  const [last_loaded_at, set_last_loaded_at] = useState<number | null>(null);
-  const [refresh_request_id, set_refresh_request_id] = useState(0);
+  const [consumed_revisions, set_consumed_revisions] = useState<ProjectDataSectionRevisions>({});
   const [settled_project_path, set_settled_project_path] = useState("");
   const [is_refreshing, set_is_refreshing] = useState(false);
   const [file_op_running, set_file_op_running] = useState(false);
@@ -826,7 +830,7 @@ export function useWorkbenchLiveState(
   const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
-  const refresh_request_id_ref = useRef(0);
+  const refresh_generation_ref = useRef(0);
   const snapshot_ref = useRef(snapshot);
   const workbench_view_cache_ref = useRef<WorkbenchViewCache | null>(null);
   const entries_ref = useRef<WorkbenchFileEntry[]>(entries);
@@ -877,8 +881,7 @@ export function useWorkbenchLiveState(
   }, [current_selection_state]);
 
   const clear_workbench_snapshot_state = useCallback((): void => {
-    refresh_request_id_ref.current = 0;
-    set_refresh_request_id(0);
+    refresh_generation_ref.current = 0;
     snapshot_ref.current = EMPTY_SNAPSHOT;
     workbench_view_cache_ref.current = null;
     set_snapshot(EMPTY_SNAPSHOT);
@@ -888,8 +891,7 @@ export function useWorkbenchLiveState(
     set_dialog_state(close_dialog_state());
     set_pending_add_files_request(null);
     set_is_refreshing(false);
-    set_cache_stale(false);
-    set_last_loaded_at(null);
+    set_consumed_revisions({});
     set_settled_project_path("");
   }, [apply_selection_state]);
 
@@ -920,17 +922,19 @@ export function useWorkbenchLiveState(
         return EMPTY_SNAPSHOT;
       }
 
-      const request_id = refresh_request_id_ref.current + 1;
-      refresh_request_id_ref.current = request_id;
-      set_refresh_request_id(request_id);
+      const request_id = refresh_generation_ref.current + 1;
+      refresh_generation_ref.current = request_id;
       set_is_refreshing(true);
       set_cache_status("refreshing");
 
       try {
-        const next_cache = createWorkbenchViewCache(project_store.getState());
+        const next_cache = getWorkbenchViewCache({
+          state: project_store.getState(),
+          previousCache: workbench_view_cache_ref.current,
+        });
         const next_snapshot = next_cache.snapshot;
 
-        if (request_id !== refresh_request_id_ref.current) {
+        if (request_id !== refresh_generation_ref.current) {
           return next_snapshot;
         }
 
@@ -940,24 +944,22 @@ export function useWorkbenchLiveState(
         apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
         set_file_op_running(false);
         set_cache_status("ready");
-        set_cache_stale(false);
-        set_last_loaded_at(Date.now());
+        set_consumed_revisions(readProjectDataSectionRevisions(project_store));
         set_settled_project_path(project_snapshot.path);
         return next_snapshot;
       } catch (error) {
-        if (request_id !== refresh_request_id_ref.current) {
+        if (request_id !== refresh_generation_ref.current) {
           return EMPTY_SNAPSHOT;
         }
 
         const message = resolve_error_message(error, t("workbench_page.feedback.refresh_failed"));
         set_cache_status("error");
-        set_cache_stale(true);
         set_file_op_running(false);
         set_settled_project_path(project_snapshot.path);
         push_toast("error", message);
         return snapshot_ref.current;
       } finally {
-        if (request_id === refresh_request_id_ref.current) {
+        if (request_id === refresh_generation_ref.current) {
           set_is_refreshing(false);
         }
       }
@@ -979,14 +981,11 @@ export function useWorkbenchLiveState(
         return false;
       }
 
-      const next_cache = applyWorkbenchItemsDeltaToCache({
-        cache: workbench_view_cache_ref.current,
+      const next_cache = getWorkbenchViewCache({
         state: project_store.getState(),
-        item_ids,
+        previousCache: workbench_view_cache_ref.current,
+        itemDeltaIds: item_ids,
       });
-      if (next_cache === null) {
-        return false;
-      }
 
       const next_snapshot = next_cache.snapshot;
       workbench_view_cache_ref.current = next_cache;
@@ -995,8 +994,7 @@ export function useWorkbenchLiveState(
       apply_refreshed_entries(next_snapshot, null);
       set_file_op_running(false);
       set_cache_status("ready");
-      set_cache_stale(false);
-      set_last_loaded_at(Date.now());
+      set_consumed_revisions(readProjectDataSectionRevisions(project_store));
       set_settled_project_path(project_snapshot.path);
       return true;
     },
@@ -1035,7 +1033,6 @@ export function useWorkbenchLiveState(
     }
 
     if (previous_seq !== workbench_change_signal.seq) {
-      set_cache_stale(true);
       if (
         workbench_change_signal.mode === "items_delta" &&
         apply_items_delta_snapshot(workbench_change_signal.item_ids)
@@ -1255,11 +1252,15 @@ export function useWorkbenchLiveState(
     ): Promise<void> => {
       set_is_mutation_running(true);
       set_file_op_running(true);
-      const local_commit = commit_local_project_patch({
+      const previous_task_snapshot = task_snapshot;
+      const local_commit = commit_local_project_change({
         source: "workbench_mutation",
         updatedSections: plan.updatedSections,
-        patch: plan.patch,
+        operations: plan.operations,
       });
+      if (plan.next_task_snapshot !== undefined) {
+        set_task_snapshot({ ...task_snapshot, ...plan.next_task_snapshot } as typeof task_snapshot);
+      }
 
       try {
         const mutation_ack = normalize_project_mutation_ack(await request(plan.requestBody));
@@ -1271,6 +1272,9 @@ export function useWorkbenchLiveState(
         }
       } catch (error) {
         set_file_op_running(false);
+        if (plan.next_task_snapshot !== undefined) {
+          set_task_snapshot(previous_task_snapshot);
+        }
         local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         throw error;
@@ -1278,7 +1282,14 @@ export function useWorkbenchLiveState(
         set_is_mutation_running(false);
       }
     },
-    [align_project_runtime_ack, commit_local_project_patch, options, refresh_project_runtime],
+    [
+      align_project_runtime_ack,
+      commit_local_project_change,
+      options,
+      refresh_project_runtime,
+      set_task_snapshot,
+      task_snapshot,
+    ],
   );
 
   const execute_add_file_request = useCallback(
@@ -1288,6 +1299,7 @@ export function useWorkbenchLiveState(
     ): Promise<void> => {
       const add_plan = create_workbench_add_files_plan({
         state: project_store.getState(),
+        task_snapshot,
         parsed_files: pending_request.parsed_files,
         settings: {
           source_language: settings_snapshot.source_language,
@@ -1315,6 +1327,7 @@ export function useWorkbenchLiveState(
       settings_snapshot.mtool_optimizer_enable,
       settings_snapshot.skip_duplicate_source_text_enable,
       settings_snapshot.source_language,
+      task_snapshot,
     ],
   );
 
@@ -1586,6 +1599,7 @@ export function useWorkbenchLiveState(
 
         const reset_plan = create_workbench_reset_file_plan({
           state: project_store.getState(),
+          task_snapshot,
           rel_path: target_rel_path,
           settings: {
             source_language: settings_snapshot.source_language,
@@ -1615,6 +1629,7 @@ export function useWorkbenchLiveState(
 
         const delete_plan = create_workbench_delete_files_plan({
           state: project_store.getState(),
+          task_snapshot,
           rel_paths: current_dialog_state.target_rel_paths,
           settings: {
             source_language: settings_snapshot.source_language,
@@ -1743,9 +1758,8 @@ export function useWorkbenchLiveState(
 
   return {
     cache_status,
-    cache_stale,
-    last_loaded_at,
-    refresh_request_id,
+    consumed_revisions,
+    required_sections: WORKBENCH_REQUIRED_SECTIONS,
     settled_project_path,
     is_refreshing,
     file_op_running,

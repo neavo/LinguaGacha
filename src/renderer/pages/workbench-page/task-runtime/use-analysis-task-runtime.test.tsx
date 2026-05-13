@@ -31,7 +31,7 @@ type RuntimeFixture = {
   };
   set_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
-  commit_local_project_patch: ReturnType<typeof vi.fn>;
+  commit_local_project_change: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   align_project_runtime_ack: ReturnType<typeof vi.fn>;
 };
@@ -212,7 +212,7 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
     },
     set_task_snapshot: vi.fn(),
     task_snapshot,
-    commit_local_project_patch: vi.fn(() => ({
+    commit_local_project_change: vi.fn(() => ({
       rollback,
     })),
     refresh_project_runtime: vi.fn(async () => {}),
@@ -409,7 +409,7 @@ describe("useAnalysisTaskRuntime", () => {
     );
   });
 
-  it("analysis reset all 成功时走本地 patch + apply + ack", async () => {
+  it("analysis reset all 成功时走本地 change + apply + ack", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
@@ -444,11 +444,19 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.commit_local_project_patch).toHaveBeenCalledTimes(1);
-    expect(runtime_fixture.current.commit_local_project_patch.mock.calls[0]?.[0]).toMatchObject({
+    expect(runtime_fixture.current.commit_local_project_change).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.commit_local_project_change.mock.calls[0]?.[0]).toMatchObject({
       source: "analysis_reset_all",
-      updatedSections: ["analysis", "task"],
+      updatedSections: ["analysis"],
     });
+    expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_type: "analysis",
+        status: "IDLE",
+        busy: false,
+        analysis_candidate_count: 0,
+      }),
+    );
     expect(runtime_fixture.current.align_project_runtime_ack).toHaveBeenCalledWith({
       accepted: true,
       projectRevision: 11,
@@ -498,7 +506,7 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    const rollback = runtime_fixture.current.commit_local_project_patch.mock.results[0]?.value
+    const rollback = runtime_fixture.current.commit_local_project_change.mock.results[0]?.value
       .rollback as ReturnType<typeof vi.fn>;
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);

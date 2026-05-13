@@ -209,8 +209,14 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       refresh_project_runtime: vi.fn(async () => {}),
       align_project_runtime_ack: vi.fn(),
       task_snapshot,
-      commit_local_project_patch: (input: {
-        patch: Array<{ op: string; quality?: typeof runtime_state.quality }>;
+      commit_local_project_change: (input: {
+        operations: Array<{
+          sections?: {
+            quality?: {
+              data?: typeof runtime_state.quality;
+            };
+          };
+        }>;
       }) => {
         const previous_quality = {
           ...runtime_state.quality,
@@ -219,11 +225,14 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
             entries: runtime_state.quality.text_preserve.entries.map((entry) => ({ ...entry })),
           },
         };
-        const quality_patch = input.patch.find((operation) => operation.op === "replace_quality");
-        if (quality_patch?.quality !== undefined) {
+        const quality_patch = input.operations.find(
+          (operation) => operation.sections?.quality?.data !== undefined,
+        );
+        const next_quality = quality_patch?.sections?.quality?.data;
+        if (next_quality !== undefined) {
           runtime_state = {
             ...runtime_state,
-            quality: quality_patch.quality,
+            quality: next_quality,
           };
           notify_project_store();
         }
@@ -294,8 +303,8 @@ describe("useTextPreservePageState", () => {
     };
     create_barrier_checkpoint_mock.mockReturnValue({
       projectPath: "E:/demo/sample.lg",
-      proofreadingLastLoadedAt: 1,
-      workbenchLastLoadedAt: 1,
+      proofreadingConsumedRevisions: {},
+      workbenchConsumedRevisions: {},
     });
     runtime_state = {
       ...runtime_state,

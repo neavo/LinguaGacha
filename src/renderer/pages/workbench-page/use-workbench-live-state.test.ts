@@ -10,7 +10,7 @@ import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-moc
 
 type RuntimeFixture = {
   align_project_runtime_ack: ReturnType<typeof vi.fn>;
-  commit_local_project_patch: ReturnType<typeof vi.fn>;
+  commit_local_project_change: ReturnType<typeof vi.fn>;
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -29,6 +29,7 @@ type RuntimeFixture = {
   refresh_task: ReturnType<typeof vi.fn>;
   settings_snapshot: Record<string, unknown>;
   set_project_snapshot: ReturnType<typeof vi.fn>;
+  set_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: {
     busy: boolean;
     task_type: string;
@@ -169,7 +170,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
 function create_runtime_fixture(): RuntimeFixture {
   return {
     align_project_runtime_ack: vi.fn(),
-    commit_local_project_patch: vi.fn(() => {
+    commit_local_project_change: vi.fn(() => {
       return {
         rollback: vi.fn(),
       };
@@ -193,6 +194,7 @@ function create_runtime_fixture(): RuntimeFixture {
     refresh_task: vi.fn(async () => {}),
     settings_snapshot: {},
     set_project_snapshot: vi.fn(),
+    set_task_snapshot: vi.fn(),
     task_snapshot: {
       busy: false,
       task_type: "",
@@ -393,10 +395,9 @@ describe("useWorkbenchLiveState", () => {
     expect(latest_state?.cache_status).toBe("refreshing");
     expect(latest_state?.settled_project_path).toBe("");
     expect(latest_state?.entries).toEqual([]);
-    expect(latest_state?.last_loaded_at).toBeNull();
   });
 
-  it("收到本次 bootstrap 对应的工作台信号后才会落到 ready", async () => {
+  it("收到本次项目读取对应的工作台信号后才会落到 ready", async () => {
     await render_hook();
 
     runtime_fixture.current = {
@@ -728,6 +729,7 @@ describe("useWorkbenchLiveState", () => {
     await render_hook();
 
     let item_status = "NONE";
+    let items_revision = 1;
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -745,6 +747,13 @@ describe("useWorkbenchLiveState", () => {
                 item_id: 1,
                 file_path: "chapter01.txt",
                 status: item_status,
+              },
+            },
+            revisions: {
+              sections: {
+                files: 1,
+                items: items_revision,
+                analysis: 1,
               },
             },
           };
@@ -767,6 +776,7 @@ describe("useWorkbenchLiveState", () => {
     });
 
     item_status = "PROCESSED";
+    items_revision = 2;
     runtime_fixture.current = {
       ...runtime_fixture.current,
       workbench_change_signal: {
@@ -968,6 +978,7 @@ describe("useWorkbenchLiveState", () => {
     await act(async () => {
       await latest_state?.request_add_file();
     });
+    await render_hook();
     await act(async () => {
       await latest_state?.cancel_dialog();
     });
@@ -1027,9 +1038,11 @@ describe("useWorkbenchLiveState", () => {
     await act(async () => {
       await latest_state?.request_add_file();
     });
+    await render_hook();
     await act(async () => {
       await latest_state?.confirm_dialog();
     });
+    await render_hook();
 
     expect(latest_state?.dialog_state.kind).toBeNull();
     expect(api_fetch).toHaveBeenLastCalledWith(

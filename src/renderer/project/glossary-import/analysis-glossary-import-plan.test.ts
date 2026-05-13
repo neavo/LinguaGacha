@@ -88,12 +88,6 @@ function create_test_state(): ProjectStoreState {
     proofreading: {
       revision: 0,
     },
-    task: {
-      task_type: "analysis",
-      status: "DONE",
-      busy: false,
-      analysis_candidate_count: 1,
-    },
     revisions: {
       projectRevision: 7,
       sections: {

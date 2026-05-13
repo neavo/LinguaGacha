@@ -13,7 +13,7 @@ const px_first_scope_directories = [
   path.join(project_root, "src/renderer/widgets"),
 ];
 
-// 为什么：这组规则对应根目录 DESIGN.md 的“全局 token 与主题”，负责拦截可以稳定自动判定的硬违规。
+// 为什么：这组规则对应根目录 DESIGN.md 的“全局 token 与主题”，负责拦截可以稳定自动判定的硬违规
 const FILE_RULE_GROUPS = [
   {
     name: "渲染层尺寸字面量",
@@ -40,7 +40,7 @@ const FILE_RULE_GROUPS = [
   },
 ];
 
-// 为什么：这组规则对应根目录 DESIGN.md 的“页面层边界”，负责拦截已接入命名空间的基础视觉越权。
+// 为什么：这组规则对应根目录 DESIGN.md 的“页面层边界”，负责拦截已接入命名空间的基础视觉越权
 const CSS_SELECTOR_RULE_GROUPS = [
   {
     name: "页面容器缩进契约",
@@ -261,13 +261,13 @@ const errors = [];
 const all_renderer_files = collect_files(path.join(project_root, "src/renderer"));
 const css_files = all_renderer_files.filter((file_path) => path.extname(file_path) === ".css");
 
-// 为什么：先跑文件级硬规则，集中处理 token 与主题这类可以直接扫源码的违规。
+// 为什么：先跑文件级硬规则，集中处理 token 与主题这类可以直接扫源码的违规
 for (const file_path of all_renderer_files) {
   const content = readFileSync(file_path, "utf8");
   errors.push(...audit_file_rule_groups(file_path, content));
 }
 
-// 为什么：再跑页面命名空间级规则，只拦截已经明确接入门闩的 Card / Button / Table 基础视觉越权。
+// 为什么：再跑页面命名空间级规则，只拦截已经明确接入门闩的 Card / Button / Table 基础视觉越权
 for (const file_path of css_files) {
   const content = readFileSync(file_path, "utf8");
   const blocks = parse_css_blocks(content);

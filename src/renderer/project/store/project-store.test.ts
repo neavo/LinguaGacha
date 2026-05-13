@@ -1,55 +1,107 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createProjectStore, createProjectStoreReplaceSectionPatch } from "./project-store";
+import {
+  createProjectStore,
+  createProjectStoreFilesDeltaChange,
+  createProjectStoreItemsDeltaChange,
+  createProjectStoreReplaceSectionChange,
+  type ProjectStoreSectionStateMap,
+  type ProjectStoreStage,
+} from "./project-store";
+
+function apply_store_sections(
+  store: ReturnType<typeof createProjectStore>,
+  args: {
+    projectRevision: number;
+    sectionRevisions?: Partial<Record<ProjectStoreStage, number>>;
+    sections: Partial<ProjectStoreSectionStateMap>;
+  },
+): void {
+  const updated_sections = Object.keys(args.sections).filter(
+    (section): section is ProjectStoreStage =>
+      ["project", "files", "items", "quality", "prompts", "analysis", "proofreading"].includes(
+        section,
+      ),
+  );
+
+  store.applyProjectChange(
+    {
+      source: "project_read_sections",
+      projectRevision: args.projectRevision,
+      updatedSections: updated_sections,
+      sectionRevisions: args.sectionRevisions,
+      operations: updated_sections.map((section) =>
+        createProjectStoreReplaceSectionChange(
+          section,
+          args.sections[section] as ProjectStoreSectionStateMap[typeof section],
+        ),
+      ),
+    },
+    {
+      revisionMode: "exact",
+    },
+  );
+}
 
 describe("createProjectStore", () => {
-  it("按 section 独立写入 bootstrap 阶段数据", () => {
+  it("按 section 独立写入读取到的项目数据", () => {
     const store = createProjectStore();
 
-    store.applyBootstrapStage("project", {
-      project: { path: "E:/demo/demo.lg", loaded: true },
-      revisions: { projectRevision: 1, sections: { project: 1 } },
-    });
-    store.applyBootstrapStage("items", {
-      items: { total: 2 },
-      revisions: { sections: { items: 3 } },
+    apply_store_sections(store, {
+      projectRevision: 1,
+      sectionRevisions: {
+        project: 1,
+        items: 3,
+      },
+      sections: {
+        project: { path: "E:/demo/demo.lg", loaded: true },
+        items: {
+          1: {
+            item_id: 1,
+            file_path: "chapter01.txt",
+          },
+          2: {
+            item_id: 2,
+            file_path: "chapter02.txt",
+          },
+        },
+      },
     });
 
     expect(store.getState().project.path).toBe("E:/demo/demo.lg");
-    expect(store.getState().items.total).toBe(2);
+    expect(Object.keys(store.getState().items)).toEqual(["1", "2"]);
     expect(store.getState().revisions.projectRevision).toBe(1);
     expect(store.getState().revisions.sections.items).toBe(3);
   });
 
-  it("合并 project.patch 并推进受影响 section revision", () => {
+  it("合并项目变更只推进项目数据 section", () => {
     const store = createProjectStore();
 
-    store.applyBootstrapStage("items", {
-      items: {
-        1: {
-          item_id: 1,
-          file_path: "chapter01.txt",
-          src: "原文",
-          dst: "旧译文",
-          status: "PENDING",
-        },
+    apply_store_sections(store, {
+      projectRevision: 2,
+      sectionRevisions: {
+        items: 2,
       },
-      revisions: {
-        projectRevision: 2,
-        sections: {
-          items: 2,
+      sections: {
+        items: {
+          1: {
+            item_id: 1,
+            file_path: "chapter01.txt",
+            src: "原文",
+            dst: "旧译文",
+            status: "PENDING",
+          },
         },
       },
     });
 
-    store.applyProjectPatch({
+    store.applyProjectChange({
       source: "task",
       projectRevision: 3,
-      updatedSections: ["items", "task"],
-      patch: [
-        {
-          op: "merge_items",
-          items: [
+      updatedSections: ["items"],
+      operations: [
+        createProjectStoreItemsDeltaChange({
+          upsertItems: [
             {
               item_id: 1,
               file_path: "chapter01.txt",
@@ -58,15 +110,7 @@ describe("createProjectStore", () => {
               status: "DONE",
             },
           ],
-        },
-        {
-          op: "replace_task",
-          task: {
-            task_type: "translation",
-            status: "DONE",
-            busy: false,
-          },
-        },
+        }),
       ],
     });
 
@@ -77,30 +121,23 @@ describe("createProjectStore", () => {
       dst: "新译文",
       status: "DONE",
     });
-    expect(store.getState().task).toEqual({
-      task_type: "translation",
-      status: "DONE",
-      busy: false,
-    });
     expect(store.getState().revisions.projectRevision).toBe(3);
     expect(store.getState().revisions.sections.items).toBe(3);
-    expect(store.getState().revisions.sections.task).toBe(1);
   });
 
-  it("批量应用 project.patch 时保持顺序且只通知一次 listener", () => {
+  it("批量应用项目变更时保持顺序且只通知一次 listener", () => {
     const store = createProjectStore();
     const listener = vi.fn();
 
     store.subscribe(listener);
-    store.applyProjectPatchBatch([
+    store.applyProjectChangeBatch([
       {
         source: "translation_batch",
         projectRevision: 2,
         updatedSections: ["items"],
-        patch: [
-          {
-            op: "merge_items",
-            items: [
+        operations: [
+          createProjectStoreItemsDeltaChange({
+            upsertItems: [
               {
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -108,17 +145,16 @@ describe("createProjectStore", () => {
                 status: "NONE",
               },
             ],
-          },
+          }),
         ],
       },
       {
         source: "translation_batch",
         projectRevision: 3,
         updatedSections: ["items"],
-        patch: [
-          {
-            op: "merge_items",
-            items: [
+        operations: [
+          createProjectStoreItemsDeltaChange({
+            upsertItems: [
               {
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -126,7 +162,7 @@ describe("createProjectStore", () => {
                 status: "PROCESSED",
               },
             ],
-          },
+          }),
         ],
       },
     ]);
@@ -140,35 +176,34 @@ describe("createProjectStore", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it("对缺省 projectRevision 的 project.patch 保留已有 revision", () => {
+  it("对缺省 projectRevision 的项目变更保留已有 revision", () => {
     const store = createProjectStore();
 
-    store.applyBootstrapStage("items", {
-      items: {
-        1: {
-          item_id: 1,
-          file_path: "chapter01.txt",
-          src: "原文",
-          dst: "旧译文",
-          status: "PENDING",
-        },
+    apply_store_sections(store, {
+      projectRevision: 5,
+      sectionRevisions: {
+        items: 2,
       },
-      revisions: {
-        projectRevision: 5,
-        sections: {
-          items: 2,
+      sections: {
+        items: {
+          1: {
+            item_id: 1,
+            file_path: "chapter01.txt",
+            src: "原文",
+            dst: "旧译文",
+            status: "PENDING",
+          },
         },
       },
     });
 
-    store.applyProjectPatch({
+    store.applyProjectChange({
       source: "translation_batch_update",
       projectRevision: 0,
       updatedSections: ["items"],
-      patch: [
-        {
-          op: "merge_items",
-          items: [
+      operations: [
+        createProjectStoreItemsDeltaChange({
+          upsertItems: [
             {
               item_id: 1,
               file_path: "chapter01.txt",
@@ -177,7 +212,7 @@ describe("createProjectStore", () => {
               status: "DONE",
             },
           ],
-        },
+        }),
       ],
     });
 
@@ -192,9 +227,71 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.items).toBe(3);
   });
 
+  it("显式删除 items/files 并返回变更摘要", () => {
+    const store = createProjectStore();
+
+    apply_store_sections(store, {
+      projectRevision: 4,
+      sectionRevisions: {
+        items: 4,
+        files: 2,
+      },
+      sections: {
+        project: { path: "E:/demo/demo.lg", loaded: true },
+        files: {
+          "a.txt": { rel_path: "a.txt" },
+          "b.txt": { rel_path: "b.txt" },
+        },
+        items: {
+          1: { item_id: 1, file_path: "a.txt" },
+          2: { item_id: 2, file_path: "b.txt" },
+        },
+      },
+    });
+
+    const result = store.applyProjectChange({
+      source: "workbench_delete_file",
+      projectRevision: 6,
+      updatedSections: ["files", "items"],
+      sectionRevisions: {
+        files: 3,
+        items: 5,
+      },
+      operations: [
+        createProjectStoreFilesDeltaChange({ deletePaths: ["a.txt"] }),
+        createProjectStoreItemsDeltaChange({ deleteIds: [1] }),
+      ],
+    });
+
+    expect(store.getState().files).toEqual({
+      "b.txt": { rel_path: "b.txt" },
+    });
+    expect(store.getState().items).toEqual({
+      2: { item_id: 2, file_path: "b.txt" },
+    });
+    expect(result.fileDelta).toEqual({
+      upsertFilePaths: [],
+      deleteFilePaths: ["a.txt"],
+      fullReplace: false,
+    });
+    expect(result.itemDelta).toEqual({
+      upsertItemIds: [],
+      deleteItemIds: [1],
+      fullReplace: false,
+    });
+    expect(store.getRevisionCheckpoint()).toEqual({
+      projectPath: "E:/demo/demo.lg",
+      sections: {
+        project: 1,
+        files: 3,
+        items: 5,
+      },
+    });
+  });
+
   it("从 prompts 快照的 meta.enabled 归一化提示词启用态", () => {
     const store = createProjectStore();
-    const bootstrap_prompts = {
+    const initial_prompts = {
       translation: {
         revision: 10,
         meta: {
@@ -227,26 +324,21 @@ describe("createProjectStore", () => {
       },
     } as unknown as ReturnType<typeof store.getState>["prompts"];
 
-    store.applyBootstrapStage("prompts", {
-      prompts: bootstrap_prompts,
-      revisions: {
-        projectRevision: 7,
-        sections: {
-          prompts: 4,
-        },
+    apply_store_sections(store, {
+      projectRevision: 7,
+      sectionRevisions: {
+        prompts: 4,
+      },
+      sections: {
+        prompts: initial_prompts,
       },
     });
 
-    store.applyProjectPatch({
+    store.applyProjectChange({
       source: "quality_prompt_save",
       projectRevision: 8,
       updatedSections: ["prompts"],
-      patch: [
-        {
-          op: "replace_prompts",
-          prompts: patched_prompts,
-        },
-      ],
+      operations: [createProjectStoreReplaceSectionChange("prompts", patched_prompts)],
     });
 
     expect(store.getState().prompts.translation).toEqual({
@@ -258,9 +350,9 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.prompts).toBe(5);
   });
 
-  it("精确 revision 模式允许本地 patch 回滚到旧 revision", () => {
+  it("精确 revision 模式允许本地 change 回滚到旧 revision", () => {
     const store = createProjectStore();
-    const bootstrap_quality = {
+    const initial_quality = {
       glossary: {
         entries: [],
         enabled: true,
@@ -287,13 +379,13 @@ describe("createProjectStore", () => {
       },
     };
 
-    store.applyBootstrapStage("quality", {
-      quality: bootstrap_quality,
-      revisions: {
-        projectRevision: 4,
-        sections: {
-          quality: 2,
-        },
+    apply_store_sections(store, {
+      projectRevision: 4,
+      sectionRevisions: {
+        quality: 2,
+      },
+      sections: {
+        quality: initial_quality,
       },
     });
 
@@ -312,7 +404,7 @@ describe("createProjectStore", () => {
       },
     };
 
-    store.applyProjectPatch(
+    store.applyProjectChange(
       {
         source: "quality_rule_save_entries",
         projectRevision: 5,
@@ -320,7 +412,7 @@ describe("createProjectStore", () => {
         sectionRevisions: {
           quality: 3,
         },
-        patch: [createProjectStoreReplaceSectionPatch("quality", optimistic_quality)],
+        operations: [createProjectStoreReplaceSectionChange("quality", optimistic_quality)],
       },
       {
         revisionMode: "exact",
@@ -331,7 +423,7 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.projectRevision).toBe(5);
     expect(store.getState().revisions.sections.quality).toBe(3);
 
-    store.applyProjectPatch(
+    store.applyProjectChange(
       {
         source: "quality_rule_save_entries_rollback",
         projectRevision: 4,
@@ -339,7 +431,7 @@ describe("createProjectStore", () => {
         sectionRevisions: {
           quality: 2,
         },
-        patch: [createProjectStoreReplaceSectionPatch("quality", bootstrap_quality)],
+        operations: [createProjectStoreReplaceSectionChange("quality", initial_quality)],
       },
       {
         revisionMode: "exact",
@@ -352,40 +444,40 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.quality).toBe(2);
   });
 
-  it("服务器 patch 不会把本地合成 revision 压回去", () => {
+  it("服务器项目变更不会把本地合成 revision 压回去", () => {
     const store = createProjectStore();
 
-    store.applyBootstrapStage("quality", {
-      quality: {
-        glossary: {
-          entries: [],
-          enabled: true,
-          mode: "off",
-          revision: 2,
-        },
-        pre_replacement: {
-          entries: [],
-          enabled: false,
-          mode: "off",
-          revision: 0,
-        },
-        post_replacement: {
-          entries: [],
-          enabled: false,
-          mode: "off",
-          revision: 0,
-        },
-        text_preserve: {
-          entries: [],
-          enabled: false,
-          mode: "off",
-          revision: 0,
-        },
+    apply_store_sections(store, {
+      projectRevision: 4,
+      sectionRevisions: {
+        quality: 2,
       },
-      revisions: {
-        projectRevision: 4,
-        sections: {
-          quality: 2,
+      sections: {
+        quality: {
+          glossary: {
+            entries: [],
+            enabled: true,
+            mode: "off",
+            revision: 2,
+          },
+          pre_replacement: {
+            entries: [],
+            enabled: false,
+            mode: "off",
+            revision: 0,
+          },
+          post_replacement: {
+            entries: [],
+            enabled: false,
+            mode: "off",
+            revision: 0,
+          },
+          text_preserve: {
+            entries: [],
+            enabled: false,
+            mode: "off",
+            revision: 0,
+          },
         },
       },
     });
@@ -398,7 +490,7 @@ describe("createProjectStore", () => {
       },
     };
 
-    store.applyProjectPatch(
+    store.applyProjectChange(
       {
         source: "quality_rule_save_entries",
         projectRevision: 5,
@@ -406,7 +498,7 @@ describe("createProjectStore", () => {
         sectionRevisions: {
           quality: 3,
         },
-        patch: [createProjectStoreReplaceSectionPatch("quality", optimistic_quality)],
+        operations: [createProjectStoreReplaceSectionChange("quality", optimistic_quality)],
       },
       {
         revisionMode: "exact",
@@ -427,14 +519,14 @@ describe("createProjectStore", () => {
       },
     };
 
-    store.applyProjectPatch({
+    store.applyProjectChange({
       source: "quality_rule_save_entries_confirmed",
       projectRevision: 4,
       updatedSections: ["quality"],
       sectionRevisions: {
         quality: 2,
       },
-      patch: [createProjectStoreReplaceSectionPatch("quality", server_quality)],
+      operations: [createProjectStoreReplaceSectionChange("quality", server_quality)],
     });
 
     expect(store.getState().quality.glossary.entries).toEqual([
@@ -448,25 +540,25 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.quality).toBe(3);
   });
 
-  it("revision 对齐后下一次本地 patch 会从对齐值继续递增", () => {
+  it("revision 对齐后下一次本地 change 会从对齐值继续递增", () => {
     const store = createProjectStore();
 
-    store.applyBootstrapStage("analysis", {
-      analysis: {
-        extras: {},
-        candidate_count: 2,
-        candidate_aggregate: {},
-        status_summary: {
-          total_line: 3,
-          processed_line: 1,
-          error_line: 1,
-          line: 2,
-        },
+    apply_store_sections(store, {
+      projectRevision: 6,
+      sectionRevisions: {
+        analysis: 4,
       },
-      revisions: {
-        projectRevision: 6,
-        sections: {
-          analysis: 4,
+      sections: {
+        analysis: {
+          extras: {},
+          candidate_count: 2,
+          candidate_aggregate: {},
+          status_summary: {
+            total_line: 3,
+            processed_line: 1,
+            error_line: 1,
+            line: 2,
+          },
         },
       },
     });
@@ -478,13 +570,13 @@ describe("createProjectStore", () => {
       },
     });
 
-    store.applyProjectPatch(
+    store.applyProjectChange(
       {
         source: "analysis_reset_failed",
         projectRevision: 11,
         updatedSections: ["analysis"],
-        patch: [
-          createProjectStoreReplaceSectionPatch("analysis", {
+        operations: [
+          createProjectStoreReplaceSectionChange("analysis", {
             extras: {
               start_time: 12,
               time: 6,

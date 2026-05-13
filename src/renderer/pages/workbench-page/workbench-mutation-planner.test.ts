@@ -36,7 +36,6 @@ function create_state(items: Record<string, unknown>): ProjectStoreState {
     proofreading: {
       revision: 0,
     },
-    task: {},
     revisions: {
       projectRevision: 1,
       sections: {
@@ -228,8 +227,11 @@ describe("workbench file mutation payload planner", () => {
 
     expect(plan.requestBody).toMatchObject({
       rel_paths: ["old.txt"],
+      translation_extras: expect.any(Object),
+      prefilter_config: expect.any(Object),
     });
     expect(plan.requestBody).not.toHaveProperty("rel_path");
+    expect(plan.requestBody).not.toHaveProperty("derived_meta");
   });
 
   it("删除文件使用统一 rel_paths 数组载荷", () => {
@@ -243,7 +245,10 @@ describe("workbench file mutation payload planner", () => {
 
     expect(plan.requestBody).toMatchObject({
       rel_paths: ["old.txt"],
+      translation_extras: expect.any(Object),
+      prefilter_config: expect.any(Object),
     });
     expect(plan.requestBody).not.toHaveProperty("rel_path");
+    expect(plan.requestBody).not.toHaveProperty("derived_meta");
   });
 });

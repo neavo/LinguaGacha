@@ -208,6 +208,8 @@ export class ProjectDatabase {
         return this.get_all_asset_paths(this.require_string(args, "projectPath"));
       case "getAllAssetRecords":
         return this.get_all_asset_records(this.require_string(args, "projectPath"));
+      case "getAssetCount":
+        return this.get_asset_count(this.require_string(args, "projectPath"));
       case "updateAssetSortOrders":
         this.update_asset_sort_orders(
           this.require_string(args, "projectPath"),
@@ -216,6 +218,8 @@ export class ProjectDatabase {
         return null;
       case "getAllItems":
         return this.get_all_items(this.require_string(args, "projectPath"));
+      case "getItemCount":
+        return this.get_item_count(this.require_string(args, "projectPath"));
       case "getItemsByIds":
         return this.get_items_by_ids(
           this.require_string(args, "projectPath"),
@@ -787,6 +791,16 @@ export class ProjectDatabase {
   }
 
   /**
+   * 文件数量直接由 SQL 聚合读取，manifest 不为计数预热 files section
+   */
+  private get_asset_count(project_path: string): number {
+    const row = this.open_project(project_path)
+      .prepare("SELECT COUNT(*) AS count FROM assets")
+      .get();
+    return row === undefined ? 0 : row_number(row, "count");
+  }
+
+  /**
    * 批量更新 asset 顺序，保证文件重排一次事务完成
    */
   private update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
@@ -799,13 +813,23 @@ export class ProjectDatabase {
   }
 
   /**
-   * 读取全部条目事实，供 bootstrap 和项目快照重建
+   * 读取全部条目事实，供项目数据读取和任务快照重建
    */
   private get_all_items(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
       .prepare("SELECT id, data FROM items ORDER BY id")
       .all()
       .map((row) => ({ ...this.value_record(json_parse(row["data"])), id: row_number(row, "id") }));
+  }
+
+  /**
+   * 条目数量直接由 SQL 聚合读取，manifest 不为计数扫描完整 item payload
+   */
+  private get_item_count(project_path: string): number {
+    const row = this.open_project(project_path)
+      .prepare("SELECT COUNT(*) AS count FROM items")
+      .get();
+    return row === undefined ? 0 : row_number(row, "count");
   }
 
   /**

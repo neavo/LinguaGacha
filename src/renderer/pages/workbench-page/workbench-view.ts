@@ -8,12 +8,28 @@ import type {
 import { is_task_skipped_item_status } from "@shared/task";
 
 type BuildWorkbenchViewArgs = {
+  project?: { path?: unknown };
   files: Record<string, unknown>;
   items: Record<string, unknown>;
   analysis?: Record<string, unknown>;
+  revisions?: {
+    sections?: {
+      files?: number;
+      items?: number;
+      analysis?: number;
+    };
+  };
+};
+
+export type WorkbenchViewCacheIdentity = {
+  project_path: string;
+  files_revision: number;
+  items_revision: number;
+  analysis_revision: number;
 };
 
 export type WorkbenchViewCache = {
+  identity: WorkbenchViewCacheIdentity;
   snapshot: WorkbenchSnapshot;
   files: WorkbenchSelectorFileRecord[];
   items_by_id: Map<string, WorkbenchSelectorItemRecord>;
@@ -25,6 +41,29 @@ export type WorkbenchViewCache = {
     skipped_count: number;
   };
 };
+
+/**
+ * section revision 只接受非负整数，避免脏 payload 影响缓存身份比较
+ */
+function read_revision(value: unknown): number {
+  const revision = Number(value ?? 0);
+  return Number.isFinite(revision) ? Math.max(0, Math.trunc(revision)) : 0;
+}
+
+/**
+ * 工作台缓存身份只取项目路径和实际依赖 section revision，避免把 task 等运行态混入派生缓存
+ */
+function build_workbench_view_cache_identity(
+  state: BuildWorkbenchViewArgs,
+): WorkbenchViewCacheIdentity {
+  const sections = state.revisions?.sections ?? {};
+  return {
+    project_path: String(state.project?.path ?? ""),
+    files_revision: read_revision(sections.files),
+    items_revision: read_revision(sections.items),
+    analysis_revision: read_revision(sections.analysis),
+  };
+}
 
 function normalizeWorkbenchFileRecord(value: unknown): WorkbenchSelectorFileRecord | null {
   if (typeof value !== "object" || value === null) {
@@ -161,6 +200,9 @@ function apply_translation_count_delta(
   counts.skipped_count += delta;
 }
 
+/**
+ * 文件 item 计数在增删条目时同步维护，计数归零即删除索引项
+ */
 function apply_file_item_count_delta(
   item_count_by_file_path: Map<string, number>,
   file_path: string,
@@ -217,7 +259,11 @@ function build_snapshot_from_cache(
   };
 }
 
+/**
+ * 从 ProjectStore 当前快照构建完整工作台派生视图，是所有重建路径的唯一入口
+ */
 export function createWorkbenchViewCache(args: BuildWorkbenchViewArgs): WorkbenchViewCache {
+  const identity = build_workbench_view_cache_identity(args);
   const item_values = Object.values(args.items)
     .map((item) => normalizeWorkbenchItemRecord(item))
     .filter((item): item is WorkbenchSelectorItemRecord => item !== null);
@@ -279,6 +325,7 @@ export function createWorkbenchViewCache(args: BuildWorkbenchViewArgs): Workbenc
   };
 
   return {
+    identity,
     snapshot,
     files: file_values,
     items_by_id,
@@ -287,12 +334,16 @@ export function createWorkbenchViewCache(args: BuildWorkbenchViewArgs): Workbenc
   };
 }
 
+/**
+ * 精确 item delta 只触碰变更条目和相关统计；无法刷新 analysis summary 时返回 null 让调用方重建
+ */
 export function applyWorkbenchItemsDeltaToCache(args: {
   cache: WorkbenchViewCache;
   state: BuildWorkbenchViewArgs;
   item_ids: Array<number | string>;
 }): WorkbenchViewCache | null {
   const cache: WorkbenchViewCache = {
+    identity: build_workbench_view_cache_identity(args.state),
     snapshot: args.cache.snapshot,
     files: args.cache.files,
     items_by_id: new Map(args.cache.items_by_id),
@@ -324,6 +375,82 @@ export function applyWorkbenchItemsDeltaToCache(args: {
 
   return {
     ...cache,
+    snapshot,
+  };
+}
+
+function are_workbench_cache_identities_equal(
+  left_identity: WorkbenchViewCacheIdentity,
+  right_identity: WorkbenchViewCacheIdentity,
+): boolean {
+  return (
+    left_identity.project_path === right_identity.project_path &&
+    left_identity.files_revision === right_identity.files_revision &&
+    left_identity.items_revision === right_identity.items_revision &&
+    left_identity.analysis_revision === right_identity.analysis_revision
+  );
+}
+
+/**
+ * files revision 未变时，items delta 或 analysis summary 更新可以复用文件顺序索引
+ */
+function can_reuse_workbench_cache_files(
+  previous_identity: WorkbenchViewCacheIdentity,
+  next_identity: WorkbenchViewCacheIdentity,
+): boolean {
+  return (
+    previous_identity.project_path === next_identity.project_path &&
+    previous_identity.files_revision === next_identity.files_revision
+  );
+}
+
+/**
+ * 统一工作台派生缓存选择：revision 身份命中则复用，精确 item delta 可增量，否则回到全量重建
+ */
+export function getWorkbenchViewCache(args: {
+  state: BuildWorkbenchViewArgs;
+  previousCache: WorkbenchViewCache | null;
+  itemDeltaIds?: Array<number | string>;
+}): WorkbenchViewCache {
+  const next_identity = build_workbench_view_cache_identity(args.state);
+  const previous_cache = args.previousCache;
+  if (previous_cache === null) {
+    return createWorkbenchViewCache(args.state);
+  }
+
+  if (are_workbench_cache_identities_equal(previous_cache.identity, next_identity)) {
+    return previous_cache;
+  }
+
+  if (!can_reuse_workbench_cache_files(previous_cache.identity, next_identity)) {
+    return createWorkbenchViewCache(args.state);
+  }
+
+  const items_changed = previous_cache.identity.items_revision !== next_identity.items_revision;
+  if (items_changed) {
+    const item_delta_ids = args.itemDeltaIds ?? [];
+    if (item_delta_ids.length === 0) {
+      return createWorkbenchViewCache(args.state);
+    }
+    const delta_cache = applyWorkbenchItemsDeltaToCache({
+      cache: previous_cache,
+      state: args.state,
+      item_ids: item_delta_ids,
+    });
+    if (delta_cache !== null) {
+      return delta_cache;
+    }
+    return createWorkbenchViewCache(args.state);
+  }
+
+  const snapshot = build_snapshot_from_cache(previous_cache, args.state.analysis);
+  if (snapshot === null) {
+    return createWorkbenchViewCache(args.state);
+  }
+
+  return {
+    ...previous_cache,
+    identity: next_identity,
     snapshot,
   };
 }

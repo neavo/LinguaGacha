@@ -6,6 +6,14 @@ import { PROOFREADING_STATUS_ORDER, PROOFREADING_WARNING_CODES } from "./types";
 const ALL_STATUS_FILTERS = [...PROOFREADING_STATUS_ORDER];
 const DEFAULT_STATUS_FILTERS = ["NONE", "PROCESSED", "ERROR"];
 
+function create_runtime_revisions(proofreading: number, quality = proofreading) {
+  return {
+    items: proofreading,
+    quality,
+    proofreading,
+  };
+}
+
 function create_quality_state() {
   return {
     glossary: {
@@ -41,7 +49,7 @@ function create_quality_state() {
 }
 
 function create_runtime_item(
-  overrides: Partial<ReturnType<typeof create_hydration_input>["items"][number]>,
+  overrides: Partial<ReturnType<typeof create_hydration_input>["upsertItems"][number]>,
 ) {
   return {
     item_id: 100,
@@ -58,12 +66,12 @@ function create_runtime_item(
 
 function create_hydration_input() {
   return {
-    project_id: "demo",
-    revision: 3,
+    projectId: "demo",
+    revisions: create_runtime_revisions(3),
     total_item_count: 2,
     quality: create_quality_state(),
-    source_language: "JA",
-    items: [
+    sourceLanguage: "JA",
+    upsertItems: [
       {
         item_id: 1,
         file_path: "a.txt",
@@ -90,12 +98,12 @@ function create_hydration_input() {
 
 function create_skipped_status_hydration_input() {
   return {
-    project_id: "demo",
-    revision: 4,
+    projectId: "demo",
+    revisions: create_runtime_revisions(4),
     total_item_count: 6,
     quality: create_quality_state(),
-    source_language: "JA",
-    items: [
+    sourceLanguage: "JA",
+    upsertItems: [
       create_runtime_item({
         item_id: 3,
         file_path: "c.txt",
@@ -154,9 +162,9 @@ describe("createProofreadingRuntimeEngine", () => {
 
     const sync_state = engine.hydrate_full(create_hydration_input());
     expect(sync_state).toMatchObject({
-      revision: 3,
-      project_id: "demo",
-      default_filters: {
+      projectId: "demo",
+      revisions: create_runtime_revisions(3),
+      defaultFilters: {
         warning_types: [...PROOFREADING_WARNING_CODES],
         statuses: DEFAULT_STATUS_FILTERS,
         file_paths: ["a.txt", "b.txt"],
@@ -165,22 +173,22 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
       sort_state: null,
     });
     expect(list_view).toMatchObject({
-      revision: 3,
-      project_id: "demo",
+      projectId: "demo",
+      revisions: create_runtime_revisions(3),
       row_count: 2,
     });
     expect(list_view.window_rows.map((item) => item.row_id)).toEqual(["1", "2"]);
     expect(list_view.window_rows[0]?.item.failed_glossary_terms).toEqual([["foo", "baz"]]);
 
     const filter_panel = engine.build_filter_panel({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
     });
     expect(filter_panel.available_warning_types).toEqual([...PROOFREADING_WARNING_CODES]);
     expect(filter_panel.status_count_by_code).toMatchObject({
@@ -209,10 +217,10 @@ describe("createProofreadingRuntimeEngine", () => {
     const sync_state = engine.hydrate_full(create_hydration_input());
 
     const delta_state = engine.apply_item_delta({
-      project_id: "demo",
-      revision: 4,
+      projectId: "demo",
+      revisions: create_runtime_revisions(4, 3),
       total_item_count: 2,
-      items: [
+      upsertItems: [
         {
           item_id: 1,
           file_path: "a.txt",
@@ -224,12 +232,13 @@ describe("createProofreadingRuntimeEngine", () => {
           retry_count: 0,
         },
       ],
+      deleteItemIds: [],
     });
 
     expect(delta_state).toMatchObject({
-      revision: 4,
-      project_id: "demo",
-      default_filters: {
+      projectId: "demo",
+      revisions: create_runtime_revisions(4, 3),
+      defaultFilters: {
         warning_types: [...PROOFREADING_WARNING_CODES],
         statuses: DEFAULT_STATUS_FILTERS,
         file_paths: ["a.txt", "b.txt"],
@@ -238,7 +247,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -250,7 +259,7 @@ describe("createProofreadingRuntimeEngine", () => {
     expect(list_view.window_rows[1]?.item.dst).toBe("beta");
 
     const filter_panel = engine.build_filter_panel({
-      filters: delta_state.default_filters,
+      filters: delta_state.defaultFilters,
     });
     expect(filter_panel.warning_count_by_code).toMatchObject({
       NO_WARNING: 2,
@@ -266,14 +275,61 @@ describe("createProofreadingRuntimeEngine", () => {
     expect(filter_panel.without_glossary_miss_count).toBe(2);
   });
 
+  it("apply_item_delta 支持 tombstone 删除并刷新列表缓存身份", () => {
+    const engine = createProofreadingRuntimeEngine();
+    const sync_state = engine.hydrate_full({
+      ...create_hydration_input(),
+      revisions: {
+        items: 3,
+        quality: 1,
+        proofreading: 3,
+      },
+    });
+    const old_list_view = engine.build_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+
+    const delta_state = engine.apply_item_delta({
+      projectId: "demo",
+      revisions: {
+        items: 4,
+        quality: 1,
+        proofreading: 4,
+      },
+      total_item_count: 1,
+      upsertItems: [],
+      deleteItemIds: [1],
+    });
+
+    const next_list_view = engine.build_list_view({
+      filters: delta_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(next_list_view.view_id).not.toBe(old_list_view.view_id);
+    expect(next_list_view.window_rows.map((row) => row.row_id)).toEqual(["2"]);
+
+    const filter_panel = engine.build_filter_panel({
+      filters: delta_state.defaultFilters,
+    });
+    expect(filter_panel.file_count_by_path).toEqual({ "b.txt": 1 });
+    expect(filter_panel.glossary_term_entries).toEqual([]);
+  });
+
   it("跳过 warning 的状态仍进入筛选源并计为无警告", () => {
     const engine = createProofreadingRuntimeEngine();
 
     const sync_state = engine.hydrate_full(create_skipped_status_hydration_input());
-    expect(sync_state.default_filters.statuses).toEqual(DEFAULT_STATUS_FILTERS);
+    expect(sync_state.defaultFilters.statuses).toEqual(DEFAULT_STATUS_FILTERS);
 
     const filter_panel = engine.build_filter_panel({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
     });
     expect(filter_panel.available_statuses).toEqual(ALL_STATUS_FILTERS);
     expect(filter_panel.status_count_by_code).toMatchObject({
@@ -290,7 +346,7 @@ describe("createProofreadingRuntimeEngine", () => {
 
     const all_status_filter_panel = engine.build_filter_panel({
       filters: {
-        ...sync_state.default_filters,
+        ...sync_state.defaultFilters,
         statuses: ALL_STATUS_FILTERS,
       },
     });
@@ -299,7 +355,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -309,7 +365,7 @@ describe("createProofreadingRuntimeEngine", () => {
 
     const all_status_list_view = engine.build_list_view({
       filters: {
-        ...sync_state.default_filters,
+        ...sync_state.defaultFilters,
         statuses: ALL_STATUS_FILTERS,
       },
       keyword: "",
@@ -330,12 +386,12 @@ describe("createProofreadingRuntimeEngine", () => {
   it("假名残留只在日文源语言检查，并排除 TextBase 中的假名符号例外", () => {
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full({
-      project_id: "demo",
-      revision: 5,
+      projectId: "demo",
+      revisions: create_runtime_revisions(5),
       total_item_count: 3,
       quality: create_quality_state(),
-      source_language: "JA",
-      items: [
+      sourceLanguage: "JA",
+      upsertItems: [
         create_runtime_item({
           item_id: 9,
           dst: "゛゜・ー･",
@@ -352,7 +408,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -375,12 +431,12 @@ describe("createProofreadingRuntimeEngine", () => {
 
     const english_engine = createProofreadingRuntimeEngine();
     const english_sync_state = english_engine.hydrate_full({
-      project_id: "demo",
-      revision: 6,
+      projectId: "demo",
+      revisions: create_runtime_revisions(6),
       total_item_count: 1,
       quality: create_quality_state(),
-      source_language: "EN",
-      items: [
+      sourceLanguage: "EN",
+      upsertItems: [
         create_runtime_item({
           item_id: 12,
           dst: "かな",
@@ -388,7 +444,7 @@ describe("createProofreadingRuntimeEngine", () => {
       ],
     });
     const english_list_view = english_engine.build_list_view({
-      filters: english_sync_state.default_filters,
+      filters: english_sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -401,12 +457,12 @@ describe("createProofreadingRuntimeEngine", () => {
   it("谚文残留只在韩文源语言检查", () => {
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full({
-      project_id: "demo",
-      revision: 7,
+      projectId: "demo",
+      revisions: create_runtime_revisions(7),
       total_item_count: 1,
       quality: create_quality_state(),
-      source_language: "KO",
-      items: [
+      sourceLanguage: "KO",
+      upsertItems: [
         create_runtime_item({
           item_id: 13,
           dst: "번역",
@@ -415,7 +471,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -442,12 +498,12 @@ describe("createProofreadingRuntimeEngine", () => {
     };
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full({
-      project_id: "demo",
-      revision: 8,
+      projectId: "demo",
+      revisions: create_runtime_revisions(8),
       total_item_count: 3,
       quality,
-      source_language: "EN",
-      items: [
+      sourceLanguage: "EN",
+      upsertItems: [
         create_runtime_item({
           item_id: 14,
           src: "Hello {name}",
@@ -467,7 +523,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -499,12 +555,12 @@ describe("createProofreadingRuntimeEngine", () => {
     };
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full({
-      project_id: "demo",
-      revision: 9,
+      projectId: "demo",
+      revisions: create_runtime_revisions(9),
       total_item_count: 3,
       quality,
-      source_language: "EN",
-      items: [
+      sourceLanguage: "EN",
+      upsertItems: [
         create_runtime_item({
           item_id: 17,
           src: "<tag>",
@@ -524,7 +580,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -538,12 +594,12 @@ describe("createProofreadingRuntimeEngine", () => {
   it("重试次数达到 2 次时才产生阈值警告", () => {
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full({
-      project_id: "demo",
-      revision: 10,
+      projectId: "demo",
+      revisions: create_runtime_revisions(10),
       total_item_count: 2,
       quality: create_quality_state(),
-      source_language: "EN",
-      items: [
+      sourceLanguage: "EN",
+      upsertItems: [
         create_runtime_item({
           item_id: 20,
           retry_count: 1,
@@ -556,7 +612,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,
@@ -609,12 +665,12 @@ describe("createProofreadingRuntimeEngine", () => {
     };
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full({
-      project_id: "demo",
-      revision: 11,
+      projectId: "demo",
+      revisions: create_runtime_revisions(11),
       total_item_count: 4,
       quality,
-      source_language: "EN",
-      items: [
+      sourceLanguage: "EN",
+      upsertItems: [
         create_runtime_item({
           item_id: 22,
           src: "token",
@@ -639,7 +695,7 @@ describe("createProofreadingRuntimeEngine", () => {
     });
 
     const list_view = engine.build_list_view({
-      filters: sync_state.default_filters,
+      filters: sync_state.defaultFilters,
       keyword: "",
       scope: "all",
       is_regex: false,

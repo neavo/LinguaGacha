@@ -253,14 +253,17 @@ describe("ApiGatewayServer", () => {
     expect(text).toContain('"message":"启动完成"');
   });
 
-  it("由 API Gateway 直接提供 bootstrap 流", async () => {
+  it("由 API Gateway 直接提供项目数据读取接口", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "bootstrap-direct.lg");
+    const lg_path = path.join(app_root, "project-read-direct.lg");
     const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "bootstrap" } });
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "project-read" },
+    });
     database.execute_transaction([
       {
         name: "setItems",
@@ -281,16 +284,37 @@ describe("ApiGatewayServer", () => {
 
     const started = await gateway.start();
     await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
-    const response = await fetch(`${started.baseUrl}/api/project/bootstrap/stream`);
-    const text = await response.text();
+    const manifest_response = await post_json(started.baseUrl, "/api/project/manifest", {});
+    const manifest_body = (await manifest_response.json()) as {
+      ok?: boolean;
+      data?: {
+        projectRevision?: number;
+        sectionRevisions?: Record<string, number>;
+      };
+    };
+    const sections_response = await post_json(started.baseUrl, "/api/project/read-sections", {
+      sections: ["project", "items", "prompts"],
+    });
+    const sections_body = (await sections_response.json()) as {
+      ok?: boolean;
+      data?: {
+        sections?: {
+          items?: Record<string, { src?: string }>;
+          prompts?: { translation?: { text?: string } };
+        };
+      };
+    };
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(text).toContain("event: stage_started");
-    expect(text).toContain('"stage":"project"');
-    expect(text).toContain("event: completed");
-    expect(text).toContain('"sectionRevisions"');
-    expect(text).toContain("\\ud800");
+    expect(manifest_body.ok).toBe(true);
+    expect(manifest_body.data?.projectRevision).toBeGreaterThanOrEqual(1);
+    expect(manifest_body.data?.sectionRevisions).toMatchObject({
+      prompts: 1,
+    });
+    expect(sections_body.ok).toBe(true);
+    expect(sections_body.data?.sections?.items?.["1"]).toMatchObject({
+      src: "原文",
+    });
+    expect(sections_body.data?.sections?.prompts?.translation?.text).toBe("\uD800");
   });
 
   it("公开任务路由由 API Gateway 直处理", async () => {
@@ -301,6 +325,7 @@ describe("ApiGatewayServer", () => {
     const started = await gateway.start();
     const response = await post_json(started.baseUrl, "/api/tasks/start-translation", {
       mode: "NEW",
+      expected_section_revisions: { quality: 0, prompts: 0 },
     });
     const body = (await response.json()) as {
       ok?: boolean;

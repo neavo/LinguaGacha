@@ -5,29 +5,30 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
 import type { RouteId } from "@/app/navigation/types";
+import { api_fetch, open_event_stream } from "@/app/desktop/desktop-api";
 import {
-  api_fetch,
-  open_event_stream,
-  open_project_bootstrap_stream,
-} from "@/app/desktop/desktop-api";
-import {
-  createProjectStoreReplaceSectionPatch,
+  createProjectStoreReplaceSectionChange,
   createProjectStore,
   isProjectStoreStage,
-  type ProjectStorePatchEvent,
-  type ProjectStorePatchOperation,
-  type ProjectStorePatchRevisionMode,
+  type ProjectStoreChangeEvent,
+  type ProjectStoreChangeOperation,
+  type ProjectStoreChangeRevisionMode,
   type ProjectStoreSectionStateMap,
   type ProjectStoreStage,
   type ProjectStoreState,
   type ProjectStoreSectionRevisions,
   snapshotProjectStoreSections,
 } from "@/project/store/project-store";
-import { createProjectBootstrapLoader } from "@/project/lifecycle/bootstrap-loader";
+import {
+  createTaskRuntimeStore,
+  normalize_task_snapshot,
+  type TaskSnapshot,
+} from "@/app/desktop/task-runtime-store";
 import {
   normalize_section_array,
   normalize_section_revisions,
@@ -40,6 +41,13 @@ import {
   type AppLanguage,
   type ProjectSaveMode,
 } from "@base/setting";
+import {
+  PROJECT_CHANGE_EVENT_TOPIC,
+  PROJECT_DATA_SECTIONS,
+  normalizeProjectChangePayloadMode,
+  type ProjectChangePayloadMode,
+  type ProjectChangeJsonRecord,
+} from "@shared/project-change-event";
 
 type RecentProjectEntry = {
   path: string;
@@ -76,24 +84,6 @@ export type SettingsSnapshot = {
 export type ProjectSnapshot = {
   path: string;
   loaded: boolean;
-};
-
-type TaskSnapshot = {
-  task_type: string;
-  status: string;
-  busy: boolean;
-  request_in_flight_count: number;
-  line: number;
-  total_line: number;
-  processed_line: number;
-  error_line: number;
-  total_tokens: number;
-  total_output_tokens: number;
-  total_input_tokens: number;
-  time: number;
-  start_time: number;
-  analysis_candidate_count: number;
-  retranslating_item_ids: number[];
 };
 
 type ProofreadingChangeMode = "full" | "delta" | "noop";
@@ -138,7 +128,7 @@ type DesktopRuntimeContextValue = {
   set_project_warmup_status: (status: ProjectWarmupStatus) => void;
   set_pending_target_route: (route_id: RouteId | null) => void;
   project_store: ReturnType<typeof createProjectStore>;
-  commit_local_project_patch: (input: LocalProjectPatchInput) => LocalProjectPatchCommit;
+  commit_local_project_change: (input: LocalProjectChangeInput) => LocalProjectChangeCommit;
   refresh_project_runtime: () => Promise<void>;
   align_project_runtime_ack: (ack: ProjectMutationAck) => void;
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
@@ -167,11 +157,25 @@ type SettingsChangedEventPayload = {
   };
 };
 
-type ProjectPatchEventPayload = {
+type ProjectChangeEventPayload = {
   source?: unknown;
   projectRevision?: unknown;
   updatedSections?: unknown;
-  patch?: unknown;
+  items?: unknown;
+  files?: unknown;
+  sections?: unknown;
+  sectionRevisions?: unknown;
+};
+
+type ProjectManifestPayload = {
+  project?: Partial<ProjectSnapshot>;
+  projectRevision?: unknown;
+  sectionRevisions?: unknown;
+};
+
+type ProjectReadSectionsPayload = {
+  sections?: unknown;
+  projectRevision?: unknown;
   sectionRevisions?: unknown;
 };
 
@@ -187,14 +191,20 @@ export type ProjectMutationAck = {
   sectionRevisions: ProjectStoreSectionRevisions;
 };
 
-export type LocalProjectPatchInput = {
+/**
+ * 本地乐观变更只描述 ProjectStore 操作，不承载后端 mutation 请求体
+ */
+export type LocalProjectChangeInput = {
   source: string;
   updatedSections: ProjectStoreStage[];
-  patch: ProjectStorePatchOperation[];
-  rollbackPatch?: ProjectStorePatchOperation[];
+  operations: ProjectStoreChangeOperation[];
+  rollbackOperations?: ProjectStoreChangeOperation[];
 };
 
-export type LocalProjectPatchCommit = {
+/**
+ * 提交结果保留回滚所需的旧 revision 和旧 section，避免页面自行读取 store 历史
+ */
+export type LocalProjectChangeCommit = {
   previousProjectRevision: number;
   previousSectionRevisions: ProjectStoreSectionRevisions;
   previousSections: Partial<ProjectStoreSectionStateMap>;
@@ -233,24 +243,6 @@ const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
   loaded: false,
 };
 
-const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
-  task_type: "translation",
-  status: "IDLE",
-  busy: false,
-  request_in_flight_count: 0,
-  line: 0,
-  total_line: 0,
-  processed_line: 0,
-  error_line: 0,
-  total_tokens: 0,
-  total_output_tokens: 0,
-  total_input_tokens: 0,
-  time: 0,
-  start_time: 0,
-  analysis_candidate_count: 0,
-  retranslating_item_ids: [],
-};
-
 const DEFAULT_PROOFREADING_CHANGE_SIGNAL: ProofreadingChangeSignal = {
   seq: 0,
   reason: "",
@@ -270,8 +262,8 @@ const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
 
 type RuntimeLiveRefreshPayload =
   | {
-      kind: "project_patch";
-      event: ProjectStorePatchEvent;
+      kind: "project_change";
+      event: ProjectStoreChangeEvent;
     }
   | {
       kind: "task_progress";
@@ -365,110 +357,6 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   };
 }
 
-function normalize_task_snapshot(payload: TaskSnapshotPayload): TaskSnapshot {
-  const snapshot = payload.task ?? {};
-  return {
-    task_type: String(snapshot.task_type ?? DEFAULT_TASK_SNAPSHOT.task_type),
-    status: String(snapshot.status ?? DEFAULT_TASK_SNAPSHOT.status),
-    busy: Boolean(snapshot.busy),
-    request_in_flight_count: Number(snapshot.request_in_flight_count ?? 0),
-    line: Number(snapshot.line ?? 0),
-    total_line: Number(snapshot.total_line ?? 0),
-    processed_line: Number(snapshot.processed_line ?? 0),
-    error_line: Number(snapshot.error_line ?? 0),
-    total_tokens: Number(snapshot.total_tokens ?? 0),
-    total_output_tokens: Number(snapshot.total_output_tokens ?? 0),
-    total_input_tokens: Number(snapshot.total_input_tokens ?? 0),
-    time: Number(snapshot.time ?? 0),
-    start_time: Number(snapshot.start_time ?? 0),
-    analysis_candidate_count: Number(snapshot.analysis_candidate_count ?? 0),
-    retranslating_item_ids: normalize_task_item_ids(snapshot.retranslating_item_ids),
-  };
-}
-
-function normalize_task_item_ids(value: unknown): number[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const item_ids: number[] = [];
-  const seen_ids = new Set<number>();
-  value.forEach((raw_item_id) => {
-    const item_id = Number(raw_item_id);
-    if (!Number.isInteger(item_id) || seen_ids.has(item_id)) {
-      return;
-    }
-
-    seen_ids.add(item_id);
-    item_ids.push(item_id);
-  });
-  return item_ids;
-}
-
-function merge_task_status_update(
-  previous_snapshot: TaskSnapshot,
-  payload: Partial<TaskSnapshot>,
-): TaskSnapshot {
-  return {
-    ...previous_snapshot,
-    task_type:
-      payload.task_type === undefined ? previous_snapshot.task_type : String(payload.task_type),
-    status: payload.status === undefined ? previous_snapshot.status : String(payload.status),
-    busy: payload.busy === undefined ? previous_snapshot.busy : Boolean(payload.busy),
-    retranslating_item_ids:
-      payload.retranslating_item_ids === undefined
-        ? previous_snapshot.retranslating_item_ids
-        : normalize_task_item_ids(payload.retranslating_item_ids),
-  };
-}
-
-function merge_task_progress_update(
-  previous_snapshot: TaskSnapshot,
-  payload: Partial<TaskSnapshot>,
-): TaskSnapshot {
-  return {
-    ...previous_snapshot,
-    task_type:
-      payload.task_type === undefined ? previous_snapshot.task_type : String(payload.task_type),
-    request_in_flight_count:
-      payload.request_in_flight_count === undefined
-        ? previous_snapshot.request_in_flight_count
-        : Number(payload.request_in_flight_count),
-    line: payload.line === undefined ? previous_snapshot.line : Number(payload.line),
-    total_line:
-      payload.total_line === undefined ? previous_snapshot.total_line : Number(payload.total_line),
-    processed_line:
-      payload.processed_line === undefined
-        ? previous_snapshot.processed_line
-        : Number(payload.processed_line),
-    error_line:
-      payload.error_line === undefined ? previous_snapshot.error_line : Number(payload.error_line),
-    total_tokens:
-      payload.total_tokens === undefined
-        ? previous_snapshot.total_tokens
-        : Number(payload.total_tokens),
-    total_output_tokens:
-      payload.total_output_tokens === undefined
-        ? previous_snapshot.total_output_tokens
-        : Number(payload.total_output_tokens),
-    total_input_tokens:
-      payload.total_input_tokens === undefined
-        ? previous_snapshot.total_input_tokens
-        : Number(payload.total_input_tokens),
-    time: payload.time === undefined ? previous_snapshot.time : Number(payload.time),
-    start_time:
-      payload.start_time === undefined ? previous_snapshot.start_time : Number(payload.start_time),
-    analysis_candidate_count:
-      payload.analysis_candidate_count === undefined
-        ? previous_snapshot.analysis_candidate_count
-        : Number(payload.analysis_candidate_count),
-    retranslating_item_ids:
-      payload.retranslating_item_ids === undefined
-        ? previous_snapshot.retranslating_item_ids
-        : normalize_task_item_ids(payload.retranslating_item_ids),
-  };
-}
-
 function merge_task_progress_payloads(
   payloads: readonly Partial<TaskSnapshot>[],
 ): Partial<TaskSnapshot> | undefined {
@@ -494,37 +382,44 @@ export function normalize_project_mutation_ack(
   };
 }
 
-function collect_operation_records(value: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(value)) {
-    return value.filter((record): record is Record<string, unknown> => {
-      return typeof record === "object" && record !== null;
-    });
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return [];
-  }
-
-  return Object.values(value).filter((record): record is Record<string, unknown> => {
-    return typeof record === "object" && record !== null;
-  });
+function is_record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function is_project_store_patch_operation(value: unknown): value is ProjectStorePatchOperation {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { op?: unknown }).op === "string"
+function normalize_record_map(value: unknown): Record<string, ProjectChangeJsonRecord> {
+  if (!is_record(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter((entry): entry is [string, Record<string, unknown>] => is_record(entry[1]))
+      .map(([key, record]) => [key, { ...record } as ProjectChangeJsonRecord]),
   );
 }
 
-function normalize_project_patch_event(
-  payload: ProjectPatchEventPayload,
-): ProjectStorePatchEvent | null {
-  if (!Array.isArray(payload.patch)) {
-    return null;
+function normalize_number_array(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
   }
+  return [
+    ...new Set(
+      value
+        .map((item) => Number(item))
+        .filter((item): item is number => Number.isInteger(item) && item > 0),
+    ),
+  ];
+}
 
+function normalize_string_array(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [...new Set(value.map((item) => String(item ?? "").trim()).filter((item) => item !== ""))];
+}
+
+function normalize_project_change_event(
+  payload: ProjectChangeEventPayload,
+): ProjectStoreChangeEvent | null {
   const updated_sections = normalize_section_array(payload.updatedSections).filter(
     isProjectStoreStage,
   );
@@ -532,40 +427,96 @@ function normalize_project_patch_event(
     return null;
   }
 
-  const patch = payload.patch.filter(is_project_store_patch_operation);
+  const items = is_record(payload.items)
+    ? {
+        payloadMode: normalizeProjectChangePayloadMode(payload.items.payloadMode),
+        upsert: normalize_record_map(payload.items.upsert),
+        changedIds: normalize_number_array(payload.items.changedIds),
+        deleteIds: normalize_number_array(payload.items.deleteIds),
+      }
+    : undefined;
+  const files = is_record(payload.files)
+    ? {
+        payloadMode: normalizeProjectChangePayloadMode(payload.files.payloadMode),
+        upsert: normalize_record_map(payload.files.upsert),
+        changedPaths: normalize_string_array(payload.files.changedPaths),
+        deletePaths: normalize_string_array(payload.files.deletePaths),
+      }
+    : undefined;
+  const sections = is_record(payload.sections)
+    ? Object.fromEntries(
+        Object.entries(payload.sections).flatMap(([section, raw_payload]) => {
+          if (!isProjectStoreStage(section) || !is_record(raw_payload)) {
+            return [];
+          }
+          const payload_mode: ProjectChangePayloadMode = normalizeProjectChangePayloadMode(
+            raw_payload.payloadMode,
+          );
+          return [[section, { payloadMode: payload_mode, data: raw_payload.data }]];
+        }),
+      )
+    : {};
 
   return {
-    source: String(payload.source ?? "task"),
+    source: String(payload.source ?? "project_change"),
     projectRevision: Number(payload.projectRevision ?? 0),
     updatedSections: updated_sections,
-    patch,
+    operations: [
+      {
+        ...(items === undefined ? {} : { items }),
+        ...(files === undefined ? {} : { files }),
+        sections,
+      },
+    ],
     sectionRevisions: normalize_section_revisions(payload.sectionRevisions),
   };
 }
 
-function collect_project_patch_item_ids(event: ProjectStorePatchEvent): Array<number | string> {
-  const item_ids: Array<number | string> = [];
-
-  for (const operation of event.patch) {
-    if (operation.op !== "merge_items" && operation.op !== "replace_items") {
-      continue;
-    }
-
-    for (const item of collect_operation_records(operation.items)) {
-      const raw_item_id = item.item_id ?? item.id;
-      if (raw_item_id === undefined || raw_item_id === null) {
-        continue;
+function normalize_project_read_sections_event(
+  payload: ProjectReadSectionsPayload,
+): ProjectStoreChangeEvent | null {
+  const raw_sections = is_record(payload.sections) ? payload.sections : {};
+  const sections = Object.fromEntries(
+    Object.entries(raw_sections).flatMap(([section, data]) => {
+      if (!isProjectStoreStage(section)) {
+        return [];
       }
+      return [[section, { payloadMode: "canonical-delta", data }]];
+    }),
+  );
+  const updated_sections = Object.keys(sections).filter(isProjectStoreStage);
+  if (updated_sections.length === 0) {
+    return null;
+  }
 
-      const normalized_item_id =
-        typeof raw_item_id === "number" && Number.isInteger(raw_item_id)
-          ? raw_item_id
-          : String(raw_item_id).trim();
-      if (
-        (typeof normalized_item_id === "number" && Number.isInteger(normalized_item_id)) ||
-        (typeof normalized_item_id === "string" && normalized_item_id !== "")
-      ) {
-        item_ids.push(normalized_item_id);
+  return {
+    source: "project_read_sections",
+    projectRevision: Number(payload.projectRevision ?? 0),
+    updatedSections: updated_sections,
+    operations: [{ sections }],
+    sectionRevisions: normalize_section_revisions(payload.sectionRevisions),
+  };
+}
+
+// item id 在事件里可能来自 upsert key 或 changedIds，进入页面信号前统一成数字
+function normalize_project_change_item_id(value: number | string): number | null {
+  const item_id = Number(value);
+  return Number.isInteger(item_id) && item_id > 0 ? item_id : null;
+}
+
+// 页面级 delta 信号只需要稳定去重后的 item id 列表
+function collect_project_change_item_ids(event: ProjectStoreChangeEvent): number[] {
+  const item_ids: number[] = [];
+
+  for (const operation of event.operations) {
+    for (const raw_item_id of [
+      ...Object.keys(operation.items?.upsert ?? {}),
+      ...(operation.items?.changedIds ?? []),
+      ...(operation.items?.deleteIds ?? []),
+    ]) {
+      const item_id = normalize_project_change_item_id(raw_item_id);
+      if (item_id !== null) {
+        item_ids.push(item_id);
       }
     }
   }
@@ -573,17 +524,19 @@ function collect_project_patch_item_ids(event: ProjectStorePatchEvent): Array<nu
   return [...new Set(item_ids)];
 }
 
-function patch_event_includes_operation(
-  event: ProjectStorePatchEvent,
-  operation_names: ProjectStorePatchOperation["op"][],
+function project_change_event_has_full_section(
+  event: ProjectStoreChangeEvent,
+  sections: ProjectStoreStage[],
 ): boolean {
-  return event.patch.some((operation) => operation_names.includes(operation.op));
+  return event.operations.some((operation) =>
+    sections.some((section) => operation.sections?.[section] !== undefined),
+  );
 }
 
 function resolve_proofreading_change_signal(args: {
   reason: string;
   updated_sections: ProjectStoreStage[];
-  patch_event: ProjectStorePatchEvent | null;
+  change_event: ProjectStoreChangeEvent | null;
 }): {
   reason: string;
   mode: ProofreadingChangeMode;
@@ -598,10 +551,10 @@ function resolve_proofreading_change_signal(args: {
   const has_full_input_section = updated_sections.some((section) =>
     ["project", "items", "quality"].includes(section),
   );
-  const has_task_only_section = updated_sections.some((section) =>
-    ["proofreading", "task"].includes(section),
+  const has_proofreading_only_section = updated_sections.some(
+    (section) => section === "proofreading",
   );
-  if (args.patch_event === null) {
+  if (args.change_event === null) {
     if (has_full_input_section) {
       return {
         reason: args.reason,
@@ -611,7 +564,7 @@ function resolve_proofreading_change_signal(args: {
       };
     }
 
-    if (has_task_only_section) {
+    if (has_proofreading_only_section) {
       return {
         reason: args.reason,
         mode: "noop",
@@ -623,15 +576,11 @@ function resolve_proofreading_change_signal(args: {
     return null;
   }
 
-  const patch_event = args.patch_event;
+  const change_event = args.change_event;
   if (
     updated_sections.includes("project") ||
     updated_sections.includes("quality") ||
-    patch_event_includes_operation(patch_event, [
-      "replace_project",
-      "replace_quality",
-      "replace_items",
-    ])
+    project_change_event_has_full_section(change_event, ["project", "quality", "items"])
   ) {
     return {
       reason: args.reason,
@@ -641,7 +590,7 @@ function resolve_proofreading_change_signal(args: {
     };
   }
 
-  if (updated_sections.every((section) => ["proofreading", "task"].includes(section))) {
+  if (updated_sections.every((section) => section === "proofreading")) {
     return {
       reason: args.reason,
       mode: "noop",
@@ -650,15 +599,12 @@ function resolve_proofreading_change_signal(args: {
     };
   }
 
-  const item_ids = collect_project_patch_item_ids(patch_event);
+  const item_ids = collect_project_change_item_ids(change_event);
   const contains_items = updated_sections.includes("items");
   const delta_sections_only = updated_sections.every((section) =>
-    ["items", "proofreading", "task"].includes(section),
+    ["items", "proofreading"].includes(section),
   );
-  const delta_operations_only = patch_event.patch.every((operation) =>
-    ["merge_items", "replace_proofreading", "replace_task"].includes(operation.op),
-  );
-  if (contains_items && item_ids.length > 0 && delta_sections_only && delta_operations_only) {
+  if (contains_items && item_ids.length > 0 && delta_sections_only) {
     return {
       reason: args.reason,
       mode: "delta",
@@ -667,7 +613,7 @@ function resolve_proofreading_change_signal(args: {
     };
   }
 
-  if (contains_items || has_task_only_section) {
+  if (contains_items || has_proofreading_only_section) {
     return {
       reason: args.reason,
       mode: "full",
@@ -679,32 +625,21 @@ function resolve_proofreading_change_signal(args: {
   return null;
 }
 
-function has_project_patch_rel_paths(event: ProjectStorePatchEvent): boolean {
+function has_project_change_rel_paths(event: ProjectStoreChangeEvent): boolean {
   function has_rel_path(value: unknown): boolean {
     const rel_path = String(value ?? "").trim();
     return rel_path !== "";
   }
 
-  for (const operation of event.patch) {
-    if (
-      (operation.op === "merge_items" || operation.op === "replace_items") &&
-      operation.items !== undefined
-    ) {
-      for (const item of collect_operation_records(operation.items)) {
-        if (has_rel_path(item.file_path)) {
-          return true;
-        }
+  for (const operation of event.operations) {
+    for (const item of Object.values(operation.items?.upsert ?? {})) {
+      if (has_rel_path(item.file_path)) {
+        return true;
       }
     }
-
-    if (
-      (operation.op === "merge_files" || operation.op === "replace_files") &&
-      operation.files !== undefined
-    ) {
-      for (const file of collect_operation_records(operation.files)) {
-        if (has_rel_path(file.rel_path ?? file.file_path)) {
-          return true;
-        }
+    for (const file of Object.values(operation.files?.upsert ?? {})) {
+      if (has_rel_path(file.rel_path ?? file.file_path)) {
+        return true;
       }
     }
   }
@@ -712,8 +647,8 @@ function has_project_patch_rel_paths(event: ProjectStorePatchEvent): boolean {
   return false;
 }
 
-function collect_project_patch_updated_sections(
-  events: readonly ProjectStorePatchEvent[],
+function collect_project_change_updated_sections(
+  events: readonly ProjectStoreChangeEvent[],
 ): ProjectStoreStage[] {
   const sections = new Set<ProjectStoreStage>();
 
@@ -726,33 +661,31 @@ function collect_project_patch_updated_sections(
   return [...sections];
 }
 
-function collect_project_patch_sources(events: readonly ProjectStorePatchEvent[]): string {
+function collect_project_change_sources(events: readonly ProjectStoreChangeEvent[]): string {
   const sources = [
     ...new Set(events.map((event) => event.source).filter((source) => source !== "")),
   ];
-  return sources.length === 0 ? "project_patch" : sources.join("+");
+  return sources.length === 0 ? "project_change" : sources.join("+");
 }
 
-function is_project_patch_workbench_delta(event: ProjectStorePatchEvent): boolean {
+function is_project_change_workbench_delta(event: ProjectStoreChangeEvent): boolean {
   if (!event.updatedSections.includes("items")) {
     return false;
   }
 
-  if (
-    !event.updatedSections.every((section) => ["items", "proofreading", "task"].includes(section))
-  ) {
+  if (!event.updatedSections.every((section) => ["items", "proofreading"].includes(section))) {
     return false;
   }
 
-  return event.patch.every((operation) => {
-    return ["merge_items", "replace_proofreading", "replace_task"].includes(operation.op);
-  });
+  return event.operations.every(
+    (operation) => operation.items !== undefined || operation.sections?.proofreading !== undefined,
+  );
 }
 
 function resolve_workbench_change_signal(args: {
   reason: string;
   updated_sections: ProjectStoreStage[];
-  events: readonly ProjectStorePatchEvent[];
+  events: readonly ProjectStoreChangeEvent[];
 }): {
   reason: string;
   scope: WorkbenchChangeScope;
@@ -765,14 +698,14 @@ function resolve_workbench_change_signal(args: {
   }
 
   const item_ids = [
-    ...new Set(args.events.flatMap((event) => collect_project_patch_item_ids(event))),
+    ...new Set(args.events.flatMap((event) => collect_project_change_item_ids(event))),
   ];
   const can_apply_items_delta =
-    item_ids.length > 0 && args.events.every(is_project_patch_workbench_delta);
+    item_ids.length > 0 && args.events.every(is_project_change_workbench_delta);
 
   return {
     reason: args.reason,
-    scope: args.events.some(has_project_patch_rel_paths) ? "file" : "global",
+    scope: args.events.some(has_project_change_rel_paths) ? "file" : "global",
     mode: can_apply_items_delta ? "items_delta" : "full",
     updated_sections: args.updated_sections,
     item_ids,
@@ -782,7 +715,7 @@ function resolve_workbench_change_signal(args: {
 function resolve_batched_proofreading_change_signal(args: {
   reason: string;
   updated_sections: ProjectStoreStage[];
-  events: readonly ProjectStorePatchEvent[];
+  events: readonly ProjectStoreChangeEvent[];
 }): {
   reason: string;
   mode: ProofreadingChangeMode;
@@ -796,7 +729,7 @@ function resolve_batched_proofreading_change_signal(args: {
     const signal = resolve_proofreading_change_signal({
       reason: event.source,
       updated_sections: event.updatedSections,
-      patch_event: event,
+      change_event: event,
     });
     if (signal === null) {
       continue;
@@ -842,36 +775,41 @@ function resolve_batched_proofreading_change_signal(args: {
   return null;
 }
 
-function resolve_project_patch_task_payload(
-  event: ProjectStorePatchEvent,
-): Partial<TaskSnapshot> | null {
-  for (const operation of event.patch) {
-    if (
-      operation.op !== "replace_task" ||
-      typeof operation.task !== "object" ||
-      operation.task === null
-    ) {
-      continue;
-    }
-
-    return operation.task as Partial<TaskSnapshot>;
-  }
-
-  return null;
-}
-
-function is_terminal_task_status(status: unknown): boolean {
-  return ["DONE", "FAILED", "ERROR", "CANCELLED", "CANCELED"].includes(
-    String(status ?? "").toUpperCase(),
+function should_apply_project_change_immediately(event: ProjectStoreChangeEvent): boolean {
+  return event.operations.some(
+    (operation) =>
+      operation.items?.payloadMode === "section-invalidated" ||
+      operation.files?.payloadMode === "section-invalidated" ||
+      Object.values(operation.sections ?? {}).some(
+        (section) => section?.payloadMode === "section-invalidated",
+      ),
   );
 }
 
-function should_apply_project_patch_immediately(event: ProjectStorePatchEvent): boolean {
-  const task_payload = resolve_project_patch_task_payload(event);
-  return task_payload !== null && is_terminal_task_status(task_payload.status);
+/**
+ * 大 section 失效事件必须转成补读清单，避免只推进 revision 却复用旧实体
+ */
+function collect_project_change_invalidated_sections(
+  event: ProjectStoreChangeEvent,
+): ProjectStoreStage[] {
+  const sections = new Set<ProjectStoreStage>();
+  for (const operation of event.operations) {
+    if (operation.items?.payloadMode === "section-invalidated") {
+      sections.add("items");
+    }
+    if (operation.files?.payloadMode === "section-invalidated") {
+      sections.add("files");
+    }
+    for (const [section, payload] of Object.entries(operation.sections ?? {})) {
+      if (isProjectStoreStage(section) && payload?.payloadMode === "section-invalidated") {
+        sections.add(section);
+      }
+    }
+  }
+  return [...sections];
 }
 
-function build_local_project_patch_revisions(
+function build_local_project_change_revisions(
   current_revisions: ProjectStoreState["revisions"],
   updated_sections: ProjectStoreStage[],
 ): {
@@ -907,17 +845,17 @@ function collect_previous_section_revisions(
   return previous_section_revisions;
 }
 
-function build_local_project_patch_rollback_patch(args: {
+function build_local_project_change_rollback_change(args: {
   updatedSections: ProjectStoreStage[];
   previousSections: Partial<ProjectStoreSectionStateMap>;
-}): ProjectStorePatchOperation[] {
+}): ProjectStoreChangeOperation[] {
   return args.updatedSections.map((section) => {
     const previous_section = args.previousSections[section];
     if (previous_section === undefined) {
       throw new Error(`缺少 ${section} 的回滚快照。`);
     }
 
-    return createProjectStoreReplaceSectionPatch(section, previous_section);
+    return createProjectStoreReplaceSectionChange(section, previous_section);
   });
 }
 
@@ -928,7 +866,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     useState<SettingsSnapshot>(DEFAULT_SETTINGS_SNAPSHOT);
   const [project_snapshot, set_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
-  const [task_snapshot, set_task_snapshot] = useState<TaskSnapshot>(DEFAULT_TASK_SNAPSHOT);
+  const task_runtime_store_ref = useRef(createTaskRuntimeStore());
+  const task_snapshot = useSyncExternalStore(
+    task_runtime_store_ref.current.subscribe,
+    task_runtime_store_ref.current.getSnapshot,
+  );
+  const set_task_snapshot = useCallback((snapshot: TaskSnapshot): void => {
+    task_runtime_store_ref.current.applySnapshot(snapshot);
+  }, []);
   const [proofreading_change_signal, set_proofreading_change_signal] =
     useState<ProofreadingChangeSignal>(DEFAULT_PROOFREADING_CHANGE_SIGNAL);
   const [workbench_change_signal, set_workbench_change_signal] = useState<WorkbenchChangeSignal>(
@@ -939,12 +884,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null);
   const [is_app_language_updating, set_is_app_language_updating] = useState(false);
   const project_store_ref = useRef(createProjectStore());
-  const project_runtime = useMemo(() => {
-    return createProjectBootstrapLoader({
-      store: project_store_ref.current,
-      openBootstrapStream: open_project_bootstrap_stream,
-    });
-  }, []);
 
   const apply_settings_snapshot = useCallback(
     (payload: SettingsSnapshotPayload): SettingsSnapshot => {
@@ -965,7 +904,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     const next_snapshot = normalize_task_snapshot(payload);
     set_task_snapshot(next_snapshot);
     return next_snapshot;
-  }, []);
+  }, [set_task_snapshot]);
 
   const update_app_language = useCallback(
     async (language: AppLanguage): Promise<SettingsSnapshot> => {
@@ -1024,50 +963,35 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [],
   );
 
-  const apply_runtime_project_patches = useCallback(
+  const apply_runtime_project_changes = useCallback(
     (
-      patch_events: readonly ProjectStorePatchEvent[],
-      revision_mode: ProjectStorePatchRevisionMode = "merge",
+      change_events: readonly ProjectStoreChangeEvent[],
+      revision_mode: ProjectStoreChangeRevisionMode = "merge",
     ): void => {
-      if (patch_events.length === 0) {
+      if (change_events.length === 0) {
         return;
       }
 
-      if (patch_events.length === 1) {
-        const patch_event = patch_events[0];
-        if (patch_event === undefined) {
+      if (change_events.length === 1) {
+        const change_event = change_events[0];
+        if (change_event === undefined) {
           return;
         }
-        project_store_ref.current.applyProjectPatch(patch_event, {
+        project_store_ref.current.applyProjectChange(change_event, {
           revisionMode: revision_mode,
         });
       } else {
-        project_store_ref.current.applyProjectPatchBatch(patch_events, {
+        project_store_ref.current.applyProjectChangeBatch(change_events, {
           revisionMode: revision_mode,
         });
       }
 
-      const task_payloads = patch_events.flatMap((patch_event) => {
-        const task_payload = resolve_project_patch_task_payload(patch_event);
-        return task_payload === null ? [] : [task_payload];
-      });
-      if (task_payloads.length > 0) {
-        set_task_snapshot((previous_snapshot) => {
-          return task_payloads.reduce<TaskSnapshot>((next_snapshot, task_payload) => {
-            return merge_task_progress_update(
-              merge_task_status_update(next_snapshot, task_payload),
-              task_payload,
-            );
-          }, previous_snapshot);
-        });
-      }
-
-      const updated_sections = collect_project_patch_updated_sections(patch_events);
-      const reason = collect_project_patch_sources(patch_events);
+      const updated_sections = collect_project_change_updated_sections(change_events);
+      const reason = collect_project_change_sources(change_events);
       const workbench_change_signal = resolve_workbench_change_signal({
         reason,
         updated_sections,
-        events: patch_events,
+        events: change_events,
       });
       if (workbench_change_signal !== null) {
         bump_workbench_runtime_signal(workbench_change_signal);
@@ -1076,15 +1000,15 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       const proofreading_change_signal = resolve_proofreading_change_signal({
         reason,
         updated_sections,
-        patch_event: patch_events.length === 1 ? (patch_events[0] ?? null) : null,
+        change_event: change_events.length === 1 ? (change_events[0] ?? null) : null,
       });
       const batched_proofreading_change_signal =
-        patch_events.length === 1
+        change_events.length === 1
           ? proofreading_change_signal
           : resolve_batched_proofreading_change_signal({
               reason,
               updated_sections,
-              events: patch_events,
+              events: change_events,
             });
       if (batched_proofreading_change_signal !== null) {
         bump_proofreading_runtime_signal(batched_proofreading_change_signal);
@@ -1093,14 +1017,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
   );
 
-  const apply_runtime_project_patch = useCallback(
+  const apply_runtime_project_change = useCallback(
     (
-      patch_event: ProjectStorePatchEvent,
-      revision_mode: ProjectStorePatchRevisionMode = "merge",
+      change_event: ProjectStoreChangeEvent,
+      revision_mode: ProjectStoreChangeRevisionMode = "merge",
     ): void => {
-      apply_runtime_project_patches([patch_event], revision_mode);
+      apply_runtime_project_changes([change_event], revision_mode);
     },
-    [apply_runtime_project_patches],
+    [apply_runtime_project_changes],
   );
 
   const refresh_project_runtime = useCallback(async (): Promise<void> => {
@@ -1113,28 +1037,30 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     set_project_warmup_status("warming");
     set_project_warmup_stage(null);
     project_store_ref.current.reset();
-    await project_runtime.bootstrap(project_snapshot.path, {
-      onStageStarted: (stage) => {
-        set_project_warmup_stage(stage);
+    const manifest = await api_fetch<ProjectManifestPayload>("/api/project/manifest", {});
+    const next_project_snapshot = normalize_project_snapshot({ project: manifest.project });
+    if (next_project_snapshot.loaded) {
+      set_project_snapshot(next_project_snapshot);
+    }
+    project_store_ref.current.alignRevisions({
+      projectRevision: Number(manifest.projectRevision ?? 0),
+      sectionRevisions: normalize_section_revisions(manifest.sectionRevisions) ?? {},
+    });
+    const read_sections_payload = await api_fetch<ProjectReadSectionsPayload>(
+      "/api/project/read-sections",
+      {
+        sections: [...PROJECT_DATA_SECTIONS],
       },
-    });
-    bump_workbench_runtime_signal({
-      reason: "project_bootstrap",
-      scope: "global",
-    });
-    bump_proofreading_runtime_signal({
-      reason: "project_bootstrap",
-      mode: "full",
-      updated_sections: ["project", "items", "quality"],
-      item_ids: [],
-    });
+    );
+    const read_sections_event = normalize_project_read_sections_event(read_sections_payload);
+    if (read_sections_event !== null) {
+      apply_runtime_project_change(read_sections_event, "exact");
+    }
   }, [
-    bump_proofreading_runtime_signal,
-    bump_workbench_runtime_signal,
     project_snapshot.loaded,
     project_snapshot.path,
     set_project_warmup_status,
-    project_runtime,
+    apply_runtime_project_change,
   ]);
 
   const align_project_runtime_ack = useCallback((ack: ProjectMutationAck): void => {
@@ -1148,10 +1074,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     });
   }, []);
 
-  const commit_local_project_patch = useCallback(
-    (input: LocalProjectPatchInput): LocalProjectPatchCommit => {
+  const commit_local_project_change = useCallback(
+    (input: LocalProjectChangeInput): LocalProjectChangeCommit => {
       if (input.updatedSections.length === 0) {
-        throw new Error("本地 project patch 至少需要一个 updated section。");
+        throw new Error("本地 project change 至少需要一个 updated section。");
       }
 
       const current_state = project_store_ref.current.getState();
@@ -1161,17 +1087,17 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         current_state.revisions,
         input.updatedSections,
       );
-      const next_revisions = build_local_project_patch_revisions(
+      const next_revisions = build_local_project_change_revisions(
         current_state.revisions,
         input.updatedSections,
       );
 
-      apply_runtime_project_patch(
+      apply_runtime_project_change(
         {
           source: input.source,
           projectRevision: next_revisions.projectRevision,
           updatedSections: input.updatedSections,
-          patch: input.patch,
+          operations: input.operations,
           sectionRevisions: next_revisions.sectionRevisions,
         },
         "exact",
@@ -1188,14 +1114,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           }
 
           rolled_back = true;
-          apply_runtime_project_patch(
+          apply_runtime_project_change(
             {
               source,
               projectRevision: previous_project_revision,
               updatedSections: input.updatedSections,
-              patch:
-                input.rollbackPatch ??
-                build_local_project_patch_rollback_patch({
+              operations:
+                input.rollbackOperations ??
+                build_local_project_change_rollback_change({
                   updatedSections: input.updatedSections,
                   previousSections: previous_sections,
                 }),
@@ -1206,7 +1132,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         },
       };
     },
-    [apply_runtime_project_patch],
+    [apply_runtime_project_change],
   );
 
   useEffect(() => {
@@ -1256,7 +1182,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     let cancelled = false;
 
-    async function bootstrap_project_runtime(): Promise<void> {
+    async function refresh_loaded_project_runtime(): Promise<void> {
       try {
         await refresh_project_runtime();
       } catch {
@@ -1268,7 +1194,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       }
     }
 
-    void bootstrap_project_runtime();
+    void refresh_loaded_project_runtime();
 
     return () => {
       cancelled = true;
@@ -1284,11 +1210,13 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   useEffect(() => {
     const live_refresh_scheduler = new LiveRefreshScheduler<string, RuntimeLiveRefreshPayload>({
       onFlush: (batches) => {
-        const project_patch_events = (batches.get("project.patch") ?? []).flatMap((payload) => {
-          return payload.kind === "project_patch" ? [payload.event] : [];
-        });
-        if (project_patch_events.length > 0) {
-          apply_runtime_project_patches(project_patch_events);
+        const project_change_events = (batches.get(PROJECT_CHANGE_EVENT_TOPIC) ?? []).flatMap(
+          (payload) => {
+            return payload.kind === "project_change" ? [payload.event] : [];
+          },
+        );
+        if (project_change_events.length > 0) {
+          apply_runtime_project_changes(project_change_events);
         }
 
         const task_progress_payload = merge_task_progress_payloads(
@@ -1297,9 +1225,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           }),
         );
         if (task_progress_payload !== undefined) {
-          set_task_snapshot((previous_snapshot) =>
-            merge_task_progress_update(previous_snapshot, task_progress_payload),
-          );
+          task_runtime_store_ref.current.applyProgressEvent(task_progress_payload);
         }
       },
     });
@@ -1319,9 +1245,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     function handle_task_status_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
       live_refresh_scheduler.flush();
-      set_task_snapshot((previous_snapshot) =>
-        merge_task_status_update(previous_snapshot, payload),
-      );
+      task_runtime_store_ref.current.applyStatusEvent(payload);
     }
 
     function handle_task_progress_changed(event: MessageEvent<string>): void {
@@ -1344,15 +1268,15 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       }
     }
 
-    async function handle_project_patch(event: MessageEvent<string>): Promise<void> {
-      const payload = parse_event_payload(event) as ProjectPatchEventPayload;
-      const patch_event = normalize_project_patch_event(payload);
+    async function handle_project_data_changed(event: MessageEvent<string>): Promise<void> {
+      const payload = parse_event_payload(event) as ProjectChangeEventPayload;
+      const change_event = normalize_project_change_event(payload);
       const updated_sections = normalize_section_array(payload.updatedSections).filter(
         isProjectStoreStage,
       );
-      const reason = String(payload.source ?? "project_patch");
+      const reason = String(payload.source ?? "project_change");
 
-      if (patch_event === null) {
+      if (change_event === null) {
         if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
           return;
         }
@@ -1378,7 +1302,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         const proofreading_change_signal = resolve_proofreading_change_signal({
           reason,
           updated_sections,
-          patch_event: null,
+          change_event: null,
         });
         if (proofreading_change_signal !== null) {
           bump_proofreading_runtime_signal(proofreading_change_signal);
@@ -1391,15 +1315,44 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return;
       }
 
-      if (should_apply_project_patch_immediately(patch_event)) {
+      const invalidated_sections = collect_project_change_invalidated_sections(change_event);
+      if (invalidated_sections.length > 0) {
+        if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
+          return;
+        }
+
         live_refresh_scheduler.flush();
-        apply_runtime_project_patch(patch_event);
+        const read_sections_payload = await api_fetch<ProjectReadSectionsPayload>(
+          "/api/project/read-sections",
+          {
+            sections: invalidated_sections,
+          },
+        );
+        if (cancelled) {
+          return;
+        }
+        const read_sections_event = normalize_project_read_sections_event(read_sections_payload);
+        if (read_sections_event !== null) {
+          apply_runtime_project_change(
+            {
+              ...read_sections_event,
+              source: reason,
+            },
+            "exact",
+          );
+        }
         return;
       }
 
-      live_refresh_scheduler.enqueue("project.patch", {
-        kind: "project_patch",
-        event: patch_event,
+      if (should_apply_project_change_immediately(change_event)) {
+        live_refresh_scheduler.flush();
+        apply_runtime_project_change(change_event);
+        return;
+      }
+
+      live_refresh_scheduler.enqueue(PROJECT_CHANGE_EVENT_TOPIC, {
+        kind: "project_change",
+        event: change_event,
       });
     }
 
@@ -1422,8 +1375,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           handle_task_progress_changed as EventListener,
         );
         event_source.addEventListener("settings.changed", handle_settings_changed as EventListener);
-        event_source.addEventListener("project.patch", ((event: MessageEvent<string>) => {
-          void handle_project_patch(event);
+        event_source.addEventListener(PROJECT_CHANGE_EVENT_TOPIC, ((
+          event: MessageEvent<string>,
+        ) => {
+          void handle_project_data_changed(event);
         }) as EventListener);
       } catch {
         return;
@@ -1439,8 +1394,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     };
   }, [
     apply_settings_snapshot,
-    apply_runtime_project_patch,
-    apply_runtime_project_patches,
+    apply_runtime_project_change,
+    apply_runtime_project_changes,
     bump_proofreading_runtime_signal,
     bump_workbench_runtime_signal,
     project_snapshot.loaded,
@@ -1469,7 +1424,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       set_project_warmup_status,
       set_pending_target_route,
       project_store: project_store_ref.current,
-      commit_local_project_patch,
+      commit_local_project_change,
       refresh_project_runtime,
       align_project_runtime_ack,
       update_app_language,
@@ -1489,7 +1444,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     pending_target_route,
     is_app_language_updating,
     align_project_runtime_ack,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     refresh_settings,
     refresh_task,

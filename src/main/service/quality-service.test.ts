@@ -3,9 +3,10 @@ import os from "node:os";
 import path from "node:path";
 
 import ExcelJS from "exceljs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ProjectDatabase } from "../database/database-operations";
+import { ProjectDatabase } from "../database/database-operations";
+import type { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { AppPathService } from "./path-service";
 import { SettingService } from "./setting-service";
@@ -13,8 +14,12 @@ import { QualityService } from "./quality-service";
 
 describe("QualityService", () => {
   const cleanup_paths: string[] = [];
+  const cleanup_databases: ProjectDatabase[] = [];
 
   afterEach(() => {
+    while (cleanup_databases.length > 0) {
+      cleanup_databases.pop()?.close();
+    }
     while (cleanup_paths.length > 0) {
       const target_path = cleanup_paths.pop();
       if (target_path !== undefined) {
@@ -223,6 +228,43 @@ describe("QualityService", () => {
     expect(sheet?.getCell(2, 1).alignment.horizontal).toBe("left");
   });
 
+  it("保存质量规则后发布 project.data_changed，失败时不发布", async () => {
+    const database = new ProjectDatabase();
+    cleanup_databases.push(database);
+    const { service, lg_path, publisher } = create_project_service(database);
+
+    await expect(
+      service.save_rule_entries({
+        rule_type: "glossary",
+        expected_revision: 0,
+        entries: [{ src: "HP", dst: "生命值" }],
+      }),
+    ).resolves.toMatchObject({
+      accepted: true,
+      sectionRevisions: { quality: 1 },
+    });
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      source: "quality_rule_save_entries",
+      updatedSections: ["quality"],
+      sections: {
+        quality: { payloadMode: "canonical-delta" },
+      },
+    });
+
+    publisher.publish_project_change.mockClear();
+    await expect(
+      service.save_rule_entries({
+        rule_type: "glossary",
+        expected_revision: 0,
+        entries: [],
+      }),
+    ).rejects.toThrow("质量规则 revision 冲突");
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
+    expect(
+      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
+    ).toEqual([{ src: "HP", dst: "生命值", info: "", regex: false, case_sensitive: false }]);
+  });
+
   function create_service(): { service: QualityService; app_root: string } {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-quality-test-"));
     cleanup_paths.push(app_root);
@@ -239,5 +281,38 @@ describe("QualityService", () => {
       new ProjectSessionState(),
     );
     return { service, app_root };
+  }
+
+  function create_project_service(database: ProjectDatabase): {
+    service: QualityService;
+    lg_path: string;
+    publisher: { publish_project_change: ReturnType<typeof vi.fn> };
+  } {
+    const { app_root } = create_service();
+    const paths = new AppPathService({
+      appRoot: app_root,
+      env: {},
+      platform: process.platform,
+    });
+    const setting_service = new SettingService(paths);
+    const session_state = new ProjectSessionState();
+    const lg_path = path.join(app_root, "quality.lg");
+    const publisher = { publish_project_change: vi.fn() };
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "quality" },
+    });
+    session_state.mark_loaded(lg_path);
+    return {
+      service: new QualityService(
+        paths,
+        setting_service,
+        database,
+        session_state,
+        publisher as unknown as ProjectChangePublisher,
+      ),
+      lg_path,
+      publisher,
+    };
   }
 });

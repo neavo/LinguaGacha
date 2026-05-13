@@ -117,7 +117,7 @@ export class QualityRule {
   }
 
   /**
-   * 固定枚举所有质量规则槽位，bootstrap 和默认空态都从这里生成
+   * 固定枚举所有质量规则槽位，项目数据读取和默认空态都从这里生成
    */
   public static all(): QualityRule[] {
     return QUALITY_RULE_KINDS.map((kind) => new QualityRule(kind));
@@ -159,7 +159,7 @@ export class QualityRule {
   }
 
   /**
-   * revision key 进入 ProjectStore patch，必须和公开 kind 保持一一对应
+   * revision key 进入 ProjectStore change，必须和公开 kind 保持一一对应
    */
   public get revision_meta_key(): string {
     return QUALITY_RULE_MODEL[this.kind].revision_meta_key;

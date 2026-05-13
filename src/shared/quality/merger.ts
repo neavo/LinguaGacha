@@ -1,9 +1,9 @@
 import type { JsonRecord } from "../utils/json-tool";
 
-// 合并模式来自 Py 侧 QualityRuleMerger，显式入口覆盖，隐式入口只补空。
+// 合并模式来自 Py 侧 QualityRuleMerger，显式入口覆盖，隐式入口只补空
 export const QUALITY_RULE_MERGE_MODES = ["OVERWRITE", "FILL_EMPTY"] as const;
 
-// 规则类型值保持与旧数据库 RuleType 语义一致，调用方负责从公开 kind 映射到这里。
+// 规则类型值保持与旧数据库 RuleType 语义一致，调用方负责从公开 kind 映射到这里
 export const QUALITY_RULE_MERGE_RULE_TYPES = [
   "GLOSSARY",
   "PRE_REPLACEMENT",
@@ -74,22 +74,22 @@ export const QualityRuleMergeRuleTypeValue = {
 } as const satisfies Record<QualityRuleMergeRuleType, QualityRuleMergeRuleType>;
 
 /**
- * 标准化判重源文本；非字符串视为空，避免坏数据落入规则 key。
+ * 标准化判重源文本；非字符串视为空，避免坏数据落入规则 key
  */
 export function normalize_quality_rule_merge_src(src: unknown): string {
   return typeof src === "string" ? src.trim() : "";
 }
 
 /**
- * 构建大小写折叠 key；合并判重统一走这里，避免页面和任务导入各自实现。
+ * 构建大小写折叠 key；合并判重统一走这里，避免页面和任务导入各自实现
  */
 export function fold_quality_rule_merge_src(src_norm: string): string {
-  // JavaScript 没有 Python str.casefold，显式补齐常见大小写折叠差异，避免规则 key 因 ß 变体分裂。
+  // JavaScript 没有 Python str.casefold，显式补齐常见大小写折叠差异，避免规则 key 因 ß 变体分裂
   return src_norm.replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLocaleLowerCase();
 }
 
 /**
- * 补齐合并所需核心字段，同时保留 entry_id 等页面字段。
+ * 补齐合并所需核心字段，同时保留 entry_id 等页面字段
  */
 export function normalize_quality_rule_merge_entry(entry: JsonRecord): JsonRecord {
   return {
@@ -103,7 +103,7 @@ export function normalize_quality_rule_merge_entry(entry: JsonRecord): JsonRecor
 }
 
 /**
- * 合并 existing 与 incoming，并返回可直接写回的条目列表和统计报告。
+ * 合并 existing 与 incoming，并返回可直接写回的条目列表和统计报告
  */
 export function merge_quality_rule_entries(args: {
   rule_type: QualityRuleMergeRuleType;
@@ -119,7 +119,7 @@ export function merge_quality_rule_entries(args: {
 }
 
 /**
- * 合并预演会额外保留 incoming 下标，供分析导入过滤候选时一次删干净。
+ * 合并预演会额外保留 incoming 下标，供分析导入过滤候选时一次删干净
  */
 export function preview_quality_rule_merge(args: {
   rule_type: QualityRuleMergeRuleType;
@@ -175,7 +175,7 @@ export function preview_quality_rule_merge(args: {
 
   const existing_keys = new Set<string>();
   for (const [src_fold, items] of grouped_items) {
-    // key 策略只与规则类型及 case_sensitive 语义有关，regex 不参与判重。
+    // key 策略只与规则类型及 case_sensitive 语义有关，regex 不参与判重
     const fold_only =
       args.rule_type === "TEXT_PRESERVE" || items.some((item) => !item.case_sensitive);
     if (fold_only) {
@@ -215,7 +215,7 @@ export function preview_quality_rule_merge(args: {
     let filled_changed = false;
 
     if (merge_mode === "OVERWRITE") {
-      // OVERWRITE 用于手动保存/导入，incoming 允许覆盖为空。
+      // OVERWRITE 用于手动保存/导入，incoming 允许覆盖为空
       const other_src = normalize_quality_rule_merge_src(other["src"]);
       if (other_src !== "" && base["src"] !== other_src) {
         base["src"] = other_src;
@@ -264,7 +264,7 @@ export function preview_quality_rule_merge(args: {
       return { overwrite_changed, filled_changed: false };
     }
 
-    // FILL_EMPTY 用于自动术语表写回，只补文本空值，不改变 regex/case_sensitive 等行为开关。
+    // FILL_EMPTY 用于自动术语表写回，只补文本空值，不改变 regex/case_sensitive 等行为开关
     const fill_fields =
       args.rule_type === "TEXT_PRESERVE"
         ? (["info"] as const)

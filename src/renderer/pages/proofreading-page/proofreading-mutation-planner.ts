@@ -1,6 +1,7 @@
 import {
-  createProjectStoreReplaceSectionPatch,
-  type ProjectStorePatchOperation,
+  createProjectStoreItemsDeltaChange,
+  createProjectStoreReplaceSectionChange,
+  type ProjectStoreChangeOperation,
   type ProjectStoreProofreadingState,
   type ProjectStoreSectionRevisions,
   type ProjectStoreState,
@@ -34,9 +35,12 @@ type ProofreadingDerivedState = {
   task_snapshot: Record<string, unknown>;
 };
 
+type ProofreadingPlannerTaskSnapshot = Record<string, unknown>;
+
 export type ProofreadingMutationPlan = {
   changed_item_ids: number[];
-  patch: ProjectStorePatchOperation[];
+  operations: ProjectStoreChangeOperation[];
+  next_task_snapshot: Record<string, unknown>;
   request_body: {
     items: ProofreadingFinalizedItemPayload[];
     translation_extras: Record<string, unknown>;
@@ -154,6 +158,7 @@ function build_translation_extras_from_task(
 
 function build_derived_state(args: {
   state: ProjectStoreState;
+  task_snapshot?: ProofreadingPlannerTaskSnapshot;
   next_item_index: Map<number, ProofreadingStoreItem>;
 }): ProofreadingDerivedState {
   let processed_line = 0;
@@ -172,7 +177,8 @@ function build_derived_state(args: {
     }
   }
 
-  const translation_extras = build_translation_extras_from_task(args.state.task);
+  const base_task_snapshot = args.task_snapshot ?? {};
+  const translation_extras = build_translation_extras_from_task(base_task_snapshot);
   translation_extras.processed_line = processed_line;
   translation_extras.error_line = error_line;
   translation_extras.total_line = total_line;
@@ -181,7 +187,7 @@ function build_derived_state(args: {
   return {
     translation_extras,
     task_snapshot: {
-      ...args.state.task,
+      ...base_task_snapshot,
       ...translation_extras,
     },
   };
@@ -204,6 +210,7 @@ function build_finalized_item_payload(
 
 function build_mutation_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: ProofreadingPlannerTaskSnapshot;
   changed_items: ProofreadingStoreItem[];
   next_item_index: Map<number, ProofreadingStoreItem>;
 }): ProofreadingMutationPlan | null {
@@ -214,6 +221,7 @@ function build_mutation_plan(args: {
   const changed_item_ids = args.changed_items.map((item) => item.item_id);
   const derived_state = build_derived_state({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     next_item_index: args.next_item_index,
   });
   const proofreading_revision = Number(args.state.proofreading.revision ?? 0) + 1;
@@ -223,10 +231,9 @@ function build_mutation_plan(args: {
 
   return {
     changed_item_ids,
-    patch: [
-      {
-        op: "merge_items",
-        items: args.changed_items.map((item) => {
+    operations: [
+      createProjectStoreItemsDeltaChange({
+        upsertItems: args.changed_items.map((item) => {
           return {
             item_id: item.item_id,
             file_path: item.file_path,
@@ -238,10 +245,10 @@ function build_mutation_plan(args: {
             retry_count: item.retry_count,
           };
         }),
-      },
-      createProjectStoreReplaceSectionPatch("proofreading", next_proofreading_state),
-      createProjectStoreReplaceSectionPatch("task", derived_state.task_snapshot),
+      }),
+      createProjectStoreReplaceSectionChange("proofreading", next_proofreading_state),
     ],
+    next_task_snapshot: derived_state.task_snapshot,
     request_body: {
       items: args.changed_items.map((item) => build_finalized_item_payload(item)),
       translation_extras: derived_state.translation_extras,
@@ -255,6 +262,7 @@ function build_mutation_plan(args: {
 
 export function create_save_item_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: ProofreadingPlannerTaskSnapshot;
   item_id: number;
   next_dst: string;
 }): ProofreadingMutationPlan | null {
@@ -274,6 +282,7 @@ export function create_save_item_plan(args: {
   item_index.set(next_item.item_id, next_item);
   return build_mutation_plan({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     changed_items: [next_item],
     next_item_index: item_index,
   });
@@ -281,6 +290,7 @@ export function create_save_item_plan(args: {
 
 export function create_replace_all_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: ProofreadingPlannerTaskSnapshot;
   item_ids: number[];
   search_text: string;
   replace_text: string;
@@ -314,6 +324,7 @@ export function create_replace_all_plan(args: {
 
   return build_mutation_plan({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     changed_items,
     next_item_index: item_index,
   });
@@ -321,6 +332,7 @@ export function create_replace_all_plan(args: {
 
 export function create_reset_items_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: ProofreadingPlannerTaskSnapshot;
   item_ids: number[];
 }): ProofreadingMutationPlan | null {
   const item_index = build_store_item_index(args.state);
@@ -345,6 +357,7 @@ export function create_reset_items_plan(args: {
 
   return build_mutation_plan({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     changed_items,
     next_item_index: item_index,
   });

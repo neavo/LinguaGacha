@@ -34,7 +34,6 @@ function create_state(items: Record<string, Record<string, unknown>>): ProjectSt
     proofreading: {
       revision: 0,
     },
-    task: {},
     revisions: {
       projectRevision: 0,
       sections: {},

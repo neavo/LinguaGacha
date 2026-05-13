@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import { createProjectStoreReplaceSectionPatch } from "@/project/store/project-store";
+import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
 import {
   buildProofreadingLookupQuery,
@@ -303,7 +303,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     project_store,
     settings_snapshot,
     set_settings_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
     task_snapshot,
@@ -501,10 +501,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           revision: current_glossary_slice.revision + 1,
         },
       );
-      const local_commit = commit_local_project_patch({
+      const local_commit = commit_local_project_change({
         source: "quality_rule_save_entries",
         updatedSections: ["quality"],
-        patch: [createProjectStoreReplaceSectionPatch("quality", next_quality_state)],
+        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
       });
 
       try {
@@ -530,7 +530,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       project_store,
       push_toast,
       refresh_project_runtime,
@@ -599,7 +599,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [apply_snapshot, apply_store_snapshot, project_snapshot.loaded, project_snapshot.path]);
 
   useEffect(() => {
-    set_selected_entry_ids((previous_ids) => { // 筛选视图是当前页面的真实操作上下文，选中集必须与可见结果保持一致
+    set_selected_entry_ids((previous_ids) => {
+      // 筛选视图是当前页面的真实操作上下文，选中集必须与可见结果保持一致
       return previous_ids.filter((entry_id) => {
         return entry_index_by_id.has(entry_id) && visible_entry_id_set.has(entry_id);
       });
@@ -682,7 +683,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      set_filter_state({ // 统计入口要把用户带回一条可解释的筛选路径，而不是偷偷叠加更多隐式条件
+      set_filter_state({
+        // 统计入口要把用户带回一条可解释的筛选路径，而不是偷偷叠加更多隐式条件
         keyword: target_entry.src,
         scope: "src",
         is_regex: false,
@@ -710,10 +712,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           revision: current_glossary_slice.revision + 1,
         },
       );
-      const local_commit = commit_local_project_patch({
+      const local_commit = commit_local_project_change({
         source: "quality_rule_meta",
         updatedSections: ["quality"],
-        patch: [createProjectStoreReplaceSectionPatch("quality", next_quality_state)],
+        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
       });
 
       try {
@@ -739,7 +741,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       project_store,
       push_toast,
       refresh_project_runtime,

@@ -14,13 +14,15 @@ describe("TaskCommandService", () => {
     session_state.mark_loaded("E:/Project/demo.lg");
     const service = new TaskCommandService(
       {
-        start_retranslate: async (item_ids: number[], quality_snapshot: unknown) => {
-          calls.push({ item_ids, quality_snapshot });
+        start_retranslate: async (item_ids: number[]) => {
+          calls.push({ item_ids });
         },
       } as unknown as TaskEngine,
       create_snapshot_builder({
         items: 7,
         proofreading: 2,
+        quality: 3,
+        prompts: 4,
       }),
       new TaskRuntimeState(),
       session_state,
@@ -29,28 +31,12 @@ describe("TaskCommandService", () => {
 
     const result = await service.start_retranslate({
       item_ids: [2, "1", 2],
-      expected_section_revisions: { items: 7, proofreading: 2 },
-      quality_snapshot: {
-        quality: {
-          glossary: {
-            enabled: true,
-            entries: [{ src: "勇者", dst: "Hero" }],
-          },
-        },
-      },
+      expected_section_revisions: { items: 7, proofreading: 2, quality: 3, prompts: 4 },
     });
 
     expect(calls).toEqual([
       {
         item_ids: [2, 1],
-        quality_snapshot: {
-          quality: {
-            glossary: {
-              enabled: true,
-              entries: [{ src: "勇者", dst: "Hero" }],
-            },
-          },
-        },
       },
     ]);
     expect(result).toEqual({
@@ -111,7 +97,7 @@ describe("TaskCommandService", () => {
     session_state.mark_loaded("E:/Project/demo.lg");
     const service = new TaskCommandService(
       {} as unknown as TaskEngine,
-      create_snapshot_builder({ items: 8, proofreading: 2 }),
+      create_snapshot_builder({ items: 8, proofreading: 2, quality: 1, prompts: 1 }),
       new TaskRuntimeState(),
       session_state,
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
@@ -120,9 +106,37 @@ describe("TaskCommandService", () => {
     await expect(
       service.start_retranslate({
         item_ids: [1],
-        expected_section_revisions: { items: 7 },
+        expected_section_revisions: { items: 7, proofreading: 2, quality: 1, prompts: 1 },
       }),
     ).rejects.toThrow("运行态 revision 冲突");
+  });
+
+  it("任务启动缺少 expected_section_revisions 或必需 section 时拒绝执行", async () => {
+    const calls: string[] = [];
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded("E:/Project/demo.lg");
+    const service = new TaskCommandService(
+      {
+        start_translation: async () => {
+          calls.push("start_translation");
+        },
+      } as unknown as TaskEngine,
+      create_snapshot_builder({ quality: 1, prompts: 2 }),
+      new TaskRuntimeState(),
+      session_state,
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+    );
+
+    await expect(service.start_translation({ mode: "NEW" })).rejects.toThrow(
+      "任务启动缺少 expected_section_revisions",
+    );
+    await expect(
+      service.start_translation({
+        mode: "NEW",
+        expected_section_revisions: { quality: 1 },
+      }),
+    ).rejects.toThrow("任务启动缺少 prompts revision");
+    expect(calls).toEqual([]);
   });
 
   function create_snapshot_builder(revisions: Record<string, number>): TaskSnapshotBuilder {

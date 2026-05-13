@@ -20,7 +20,7 @@ type RuntimeFixture = {
     getState: () => Record<string, unknown>;
   };
   set_settings_snapshot: ReturnType<typeof vi.fn>;
-  commit_local_project_patch: ReturnType<typeof vi.fn>;
+  commit_local_project_change: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   align_project_runtime_ack: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
@@ -158,7 +158,7 @@ function create_runtime_fixture(): RuntimeFixture {
         settings_snapshot: next_settings_snapshot,
       };
     }),
-    commit_local_project_patch: vi.fn(() => {
+    commit_local_project_change: vi.fn(() => {
       return {
         rollback: vi.fn(),
       };

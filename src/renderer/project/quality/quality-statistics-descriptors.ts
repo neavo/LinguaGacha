@@ -5,6 +5,7 @@ import {
   type QualityStatisticsAutoContext,
   type QualityStatisticsAutoRuleDescriptor,
 } from "@/project/quality/quality-statistics-auto";
+import { buildQualityRuleDependencyParts } from "@/project/quality/quality-runtime-context";
 import type { QualityStatisticsRuleType } from "@/project/quality/quality-statistics-store";
 
 type QualityStatisticsPreparedRuleContext = {
@@ -36,7 +37,7 @@ function build_glossary_rule_descriptors(
 
     return {
       key: entry_id,
-      dependency_parts: [src, case_sensitive],
+      dependency_parts: buildQualityRuleDependencyParts({ ruleType: "glossary", entry }),
       relation_label: src,
       rule: {
         key: entry_id,
@@ -60,7 +61,7 @@ function build_text_replacement_rule_descriptors(args: {
 
     return {
       key: entry_id,
-      dependency_parts: [src, regex, case_sensitive],
+      dependency_parts: buildQualityRuleDependencyParts({ ruleType: args.rule_type, entry }),
       relation_label: src,
       rule: {
         key: entry_id,
@@ -86,7 +87,7 @@ function build_text_preserve_rule_descriptors(
     return [
       {
         key: entry_id,
-        dependency_parts: [src],
+        dependency_parts: buildQualityRuleDependencyParts({ ruleType: "text_preserve", entry }),
         relation_label: src,
         rule: {
           key: entry_id,

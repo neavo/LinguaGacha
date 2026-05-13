@@ -13,7 +13,7 @@
 | 你要判断的问题 | 唯一归宿 |
 | --- | --- |
 | 系统分层、跨层边界、运行时主链路、模块关系 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| 后端公开协议、HTTP / SSE、bootstrap、topic、错误码、mutation 契约 | [`docs/BACKEND.md`](docs/BACKEND.md) |
+| 后端公开协议、HTTP / SSE、项目读取、topic、错误码、mutation 契约 | [`docs/BACKEND.md`](docs/BACKEND.md) |
 | 后端领域边界、状态拥有者、唯一写入口、数据库和 `.lg` 物理存储落点 | [`docs/BACKEND.md`](docs/BACKEND.md) |
 | Electron、preload、renderer、`ProjectStore`、导航和样式消费边界 | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
 | 起手式、阅读路径、验证矩阵、文档同步、交付自检 | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) |
@@ -45,6 +45,7 @@
 - 只有预期且无害的场景才允许静默忽略异常，静默忽略必须说明为何无害，包装异常必须保留原始上下文。
 - 注释只解释跨层约束、兼容理由、事务/互斥原因或非显然取舍，不复述代码表面行为，字段使用同行尾部注释。
 - 新增或改变边界规则时，优先补行为测试，无法测试时在交付中说明原因和风险。
+- 以 **全局最优而非最小改动** 为原则，勇于重构和删减，避免补丁式修改，未经用户确认不得引入兼容层。
 
 TypeScript / React / CSS：
 

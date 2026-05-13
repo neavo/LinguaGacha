@@ -1,3 +1,8 @@
+import type {
+  ProjectDataSection,
+  ProjectDataSectionRevisions,
+} from "@/project/store/project-store";
+
 export type ProjectPagesBarrierKind =
   | "project_warmup"
   | "workbench_file_mutation"
@@ -6,8 +11,8 @@ export type ProjectPagesBarrierKind =
 
 export type ProjectPagesBarrierCheckpoint = {
   projectPath: string;
-  workbenchLastLoadedAt: number | null;
-  proofreadingLastLoadedAt: number | null;
+  workbenchConsumedRevisions: ProjectDataSectionRevisions;
+  proofreadingConsumedRevisions: ProjectDataSectionRevisions;
 };
 
 export type ProjectPagesBarrierOptions = {
@@ -18,35 +23,36 @@ export type ProjectPagesBarrierOptions = {
 export type ProjectPagesBarrierState = {
   projectLoaded: boolean;
   projectPath: string;
+  projectSectionRevisions: ProjectDataSectionRevisions;
   projectWarmupReady: boolean;
   workbenchFileOpRunning: boolean;
-  workbenchCacheStale: boolean;
   workbenchIsRefreshing: boolean;
-  workbenchLastLoadedAt: number | null;
+  workbenchConsumedRevisions: ProjectDataSectionRevisions;
+  workbenchRequiredSections: ProjectDataSection[];
   workbenchSettledProjectPath: string;
-  proofreadingCacheStale: boolean;
   proofreadingIsRefreshing: boolean;
-  proofreadingLastLoadedAt: number | null;
+  proofreadingConsumedRevisions: ProjectDataSectionRevisions;
+  proofreadingRequiredSections: ProjectDataSection[];
   proofreadingSettledProjectPath: string;
 };
 
 type CacheBarrierState = {
-  cacheStale: boolean;
   isRefreshing: boolean;
-  lastLoadedAt: number | null;
+  consumedRevisions: ProjectDataSectionRevisions;
+  requiredSections: ProjectDataSection[];
   settledProjectPath: string;
 };
 
 export function createProjectPagesBarrierCheckpoint(
   args: Pick<
     ProjectPagesBarrierState,
-    "projectPath" | "workbenchLastLoadedAt" | "proofreadingLastLoadedAt"
+    "projectPath" | "workbenchConsumedRevisions" | "proofreadingConsumedRevisions"
   >,
 ): ProjectPagesBarrierCheckpoint {
   return {
     projectPath: args.projectPath,
-    workbenchLastLoadedAt: args.workbenchLastLoadedAt,
-    proofreadingLastLoadedAt: args.proofreadingLastLoadedAt,
+    workbenchConsumedRevisions: { ...args.workbenchConsumedRevisions },
+    proofreadingConsumedRevisions: { ...args.proofreadingConsumedRevisions },
   };
 }
 
@@ -67,39 +73,23 @@ function resolveTargetProjectPath(
   return state.projectPath;
 }
 
-function hasLastLoadedAdvanced(
-  currentLastLoadedAt: number | null,
-  previousLastLoadedAt: number | null,
-): boolean {
-  if (currentLastLoadedAt === null) {
-    return false;
-  }
-
-  if (previousLastLoadedAt === null) {
-    return true;
-  }
-
-  return currentLastLoadedAt > previousLastLoadedAt;
-}
-
-function hasWorkbenchMutationCacheAdvanced(
-  state: ProjectPagesBarrierState,
-  checkpoint: ProjectPagesBarrierCheckpoint | null | undefined,
-): boolean {
-  if (checkpoint === null || checkpoint === undefined) {
-    return true;
-  }
-
-  return (
-    hasLastLoadedAdvanced(state.workbenchLastLoadedAt, checkpoint.workbenchLastLoadedAt) ||
-    hasLastLoadedAdvanced(state.proofreadingLastLoadedAt, checkpoint.proofreadingLastLoadedAt)
-  );
+/**
+ * 派生缓存只在声明依赖的 section revision 全部覆盖当前 ProjectStore 时才算 ready
+ */
+function coversProjectDataRevisions(args: {
+  consumedRevisions: ProjectDataSectionRevisions;
+  currentRevisions: ProjectDataSectionRevisions;
+  requiredSections: ProjectDataSection[];
+}): boolean {
+  return args.requiredSections.every((section) => {
+    return (args.consumedRevisions[section] ?? 0) >= (args.currentRevisions[section] ?? 0);
+  });
 }
 
 function isProjectWarmupReady(
   state: ProjectPagesBarrierState,
   targetProjectPath: string,
-  checkpoint: ProjectPagesBarrierCheckpoint | null | undefined,
+  _checkpoint: ProjectPagesBarrierCheckpoint | null | undefined,
 ): boolean {
   if (
     !state.projectLoaded ||
@@ -111,17 +101,17 @@ function isProjectWarmupReady(
     return false;
   }
 
-  return hasLastLoadedAdvanced(
-    state.workbenchLastLoadedAt,
-    checkpoint?.workbenchLastLoadedAt ?? null,
-  );
+  return coversProjectDataRevisions({
+    consumedRevisions: state.workbenchConsumedRevisions,
+    currentRevisions: state.projectSectionRevisions,
+    requiredSections: state.workbenchRequiredSections,
+  });
 }
 
 function isCacheBarrierReady(args: {
   state: ProjectPagesBarrierState;
   cacheState: CacheBarrierState;
   targetProjectPath: string;
-  previousLastLoadedAt: number | null;
 }): boolean {
   if (!args.state.projectLoaded) {
     return true;
@@ -135,11 +125,15 @@ function isCacheBarrierReady(args: {
     return false;
   }
 
-  if (args.cacheState.cacheStale || args.cacheState.isRefreshing) {
+  if (args.cacheState.isRefreshing) {
     return false;
   }
 
-  return hasLastLoadedAdvanced(args.cacheState.lastLoadedAt, args.previousLastLoadedAt);
+  return coversProjectDataRevisions({
+    consumedRevisions: args.cacheState.consumedRevisions,
+    currentRevisions: args.state.projectSectionRevisions,
+    requiredSections: args.cacheState.requiredSections,
+  });
 }
 
 export function isProjectPagesBarrierReady(
@@ -167,28 +161,25 @@ export function isProjectPagesBarrierReady(
     }
 
     return (
-      hasWorkbenchMutationCacheAdvanced(state, options.checkpoint) &&
       isCacheBarrierReady({
         state,
         cacheState: {
-          cacheStale: state.workbenchCacheStale,
           isRefreshing: state.workbenchIsRefreshing,
-          lastLoadedAt: state.workbenchLastLoadedAt,
+          consumedRevisions: state.workbenchConsumedRevisions,
+          requiredSections: state.workbenchRequiredSections,
           settledProjectPath: state.workbenchSettledProjectPath,
         },
         targetProjectPath,
-        previousLastLoadedAt: null,
       }) &&
       isCacheBarrierReady({
         state,
         cacheState: {
-          cacheStale: state.proofreadingCacheStale,
           isRefreshing: state.proofreadingIsRefreshing,
-          lastLoadedAt: state.proofreadingLastLoadedAt,
+          consumedRevisions: state.proofreadingConsumedRevisions,
+          requiredSections: state.proofreadingRequiredSections,
           settledProjectPath: state.proofreadingSettledProjectPath,
         },
         targetProjectPath,
-        previousLastLoadedAt: null,
       })
     );
   }
@@ -197,25 +188,23 @@ export function isProjectPagesBarrierReady(
     return isCacheBarrierReady({
       state,
       cacheState: {
-        cacheStale: state.workbenchCacheStale,
         isRefreshing: state.workbenchIsRefreshing,
-        lastLoadedAt: state.workbenchLastLoadedAt,
+        consumedRevisions: state.workbenchConsumedRevisions,
+        requiredSections: state.workbenchRequiredSections,
         settledProjectPath: state.workbenchSettledProjectPath,
       },
       targetProjectPath,
-      previousLastLoadedAt: options.checkpoint?.workbenchLastLoadedAt ?? null,
     });
   }
 
   return isCacheBarrierReady({
     state,
     cacheState: {
-      cacheStale: state.proofreadingCacheStale,
       isRefreshing: state.proofreadingIsRefreshing,
-      lastLoadedAt: state.proofreadingLastLoadedAt,
+      consumedRevisions: state.proofreadingConsumedRevisions,
+      requiredSections: state.proofreadingRequiredSections,
       settledProjectPath: state.proofreadingSettledProjectPath,
     },
     targetProjectPath,
-    previousLastLoadedAt: options.checkpoint?.proofreadingLastLoadedAt ?? null,
   });
 }

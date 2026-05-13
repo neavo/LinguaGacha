@@ -13,7 +13,9 @@
 | 路径 | 语义 | 维护边界 |
 | --- | --- | --- |
 | `GET /api/health` | Core 可用性与版本探测 | `desktop-api.ts` 用它校验 base URL |
-| `GET /api/project/bootstrap/stream` | 一次性项目运行态 bootstrap | 事件顺序是前后端契约 |
+| `POST /api/project/manifest` | 项目数据索引、工程快照和 section revision | renderer 初始化项目数据的主入口 |
+| `POST /api/project/read-sections` | 按 section 读取项目公开投影 | 只能读取 `ProjectDataSection` 项目数据，不承载 task |
+| `POST /api/project/items/read-by-ids` | 按 item id 读取公开 item map | 供 ids-only 事件和页面缓存补读 |
 | `GET /api/events/stream` | 项目、任务、设置的运行期增量事件 | 页面运行态主事件源 |
 | `GET /api/logs/stream` | 日志窗口增量事件 | 只暴露 `log.appended` |
 | `POST /api/settings/*` | 应用设置和最近项目 | 由 `SettingService` 写入并发 `settings.changed` |
@@ -22,26 +24,21 @@
 | `POST /api/tasks/*` | 翻译、分析、重翻、停止、任务快照和导出 | 由 `TaskCommandService`、`TaskEngine`、导出服务承接 |
 | `POST /api/quality/*` | 质量规则与提示词 | 由 `QualityService` 持有写入口 |
 
-## 2. Bootstrap 契约
+## 2. 项目读取契约
 
-`/api/project/bootstrap/stream` 是一次性 SSE。Gateway 会先完整构建所有事件，再开始写流，避免半截成功流。
-
-固定 stage 顺序：
+项目数据 section 固定为：
 
 ```text
-project -> files -> items -> quality -> prompts -> analysis -> proofreading -> task
+project -> files -> items -> quality -> prompts -> analysis -> proofreading
 ```
 
-每个 stage 依次发送：
+`/api/project/manifest` 只返回项目快照、项目 revision、section revision 和轻量索引，不预热大 section。`/api/project/read-sections` 按需返回与 `ProjectStore` 同口径的 section payload；读取 `quality`、`prompts`、`project`、`proofreading` 不能隐式扫描完整 items。`/api/project/items/read-by-ids` 只返回指定 item id 的公开行。
 
-```text
-stage_started -> stage_payload -> stage_completed
-```
+新增、删除或重排项目数据 section 时，必须同时更新：
 
-最后发送 `completed`，携带 `projectRevision` 与 `sectionRevisions`。新增、删除或重排 stage 时，必须同时更新：
-
-- `ProjectRuntimeEncoder` 的 stage 定义。
-- renderer `ProjectStoreStage`、bootstrap loader 和相关测试。
+- `src/shared/project-change-event.ts` 的 `PROJECT_DATA_SECTIONS`。
+- `ProjectRuntimeProjectionService` 的 manifest、section payload 和按 id 补读口径。
+- renderer `ProjectStoreStage`、项目读取合并逻辑和相关测试。
 - 本文与前端文档中的运行态消费说明。
 
 ## 3. 公开事件与 mutation
@@ -50,29 +47,33 @@ stage_started -> stage_payload -> stage_completed
 flowchart LR
   A["HTTP 同步 mutation"] --> B["领域服务写 ProjectDatabase"]
   B --> C["ProjectMutationAck<br/>revision 对齐"]
-  B --> D["ProjectPatchPublisher.publish_project_patch"]
-  D --> E["ProjectPatchAdapter<br/>补全数据库事实与 section revision"]
+  B --> D["ProjectChangePublisher.publish_project_change"]
+  D --> E["ProjectChangeEventAdapter<br/>补齐 section revision 与 canonical delta"]
   E --> F["CoreEventHub.publish"]
-  F --> G["/api/events/stream: project.patch"]
+  F --> G["/api/events/stream: project.data_changed"]
   G --> H["renderer ProjectStore"]
 ```
 
-- `project.patch` 是项目运行态增量事实的唯一公开事件；同步 mutation 的 HTTP ack 不替代 patch。
+- `project.data_changed` 是项目数据增量事实的唯一公开事件；同步 mutation 的 HTTP ack 不替代项目变更事件。
 - `ProjectMutationAck` 只表达接受状态和 revision 对齐信息，不承载页面最终事实。
-- `CoreEventHub` 是公开运行期事件总线；`TaskRuntimeProjector` 从 `task.*` 和 `project.patch` 投影 `TaskRuntimeState`，任务状态变更和 project patch 不能绕过各自发布入口。
-- `ProjectPatchAdapter` 只适配 `project.patch`，负责把最小 patch 补成 renderer 可消费的项目事实，并补齐 section revision。
-- 事件 topic 变化、patch operation 变化或 ack 语义变化，都必须同步 `src/renderer/app/desktop/desktop-runtime-context.tsx` 与相关测试。
+- 同步 mutation 在 `.lg` 事务提交成功后必须通过 `ProjectChangePublisher` 发布项目数据变更；调用方只声明变更 section、payload mode 和可选 ids。
+- `ProjectChangeEventAdapter` 负责把变更草稿转换为公开 `ProjectChangeEvent`，并通过 `ProjectRuntimeProjectionService` 补齐 canonical delta 与本次更新 section revision。
+- `ProjectChangeEvent` 的 payload mode 只有 `canonical-delta`、`ids-only`、`section-invalidated`；`items` / `files` 支持行级 upsert 和 tombstone，其它 section 在 canonical-delta 下返回完整 section data。
+- `project` section 只表达工程加载态和路径；项目设置 meta 不进入 `ProjectStore.project`，settings-only 对齐只写 meta 和返回 ack，不发布不可消费的 project data 事件。
+- `CoreEventHub` 是公开运行期事件总线；`TaskRuntimeProjector` 只从 `task.*` 投影 `TaskRuntimeState`，任务运行态不能借项目数据事件回灌。
+- `ProjectRuntimeProjectionService` 是 manifest、read-sections、项目变更事件和任务输入快照共享的无状态项目数据投影归宿，只从 `.lg` 与 meta 生成公开 block，不持有长期缓存。
+- 事件 topic、payload mode、section 集合或 ack 语义变化，都必须同步 `src/renderer/app/desktop/desktop-runtime-context.tsx` 与相关测试。
 
 ## 4. 后端领域边界
 
 | 领域 | 权威职责 | 写入口 |
 | --- | --- | --- |
-| project | 工程加载态、bootstrap 编码、工作台文件 mutation、reset、分析导入、project patch 适配 | `ProjectLifecycleService`、`ProjectSyncMutationService`、`ProjectRuntimeEncoder`、`ProjectPatchAdapter` |
+| project | 工程加载态、项目读取、项目数据投影、工作台文件 mutation、reset、分析导入、项目数据变更适配 | `ProjectLifecycleService`、`ProjectSyncMutationService`、`ProjectRuntimeProjectionService`、`ProjectChangeEventAdapter` |
 | events | 公开运行期事件广播、SSE 订阅和 keepalive | `CoreEventHub` |
 | task-engine/command | 任务命令、请求校验、命令回执 | `TaskCommandService` |
 | task-engine/runtime | 任务快照、运行时 busy、请求中数量、重翻行级状态、事件投影 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimeProjector` |
 | task-engine/orchestration | 任务锁、流水线、限流、worker 调度、进度提交 | `TaskEngine` |
-| task-engine/store | 任务输入读取、任务结果提交、任务 project patch | `ProjectTaskStore` |
+| task-engine/store | 任务输入读取、任务质量快照构建、任务结果提交、项目数据变更发布 | `ProjectTaskStore` |
 | task-worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `TaskWorkerPool`、`task-worker-entry`、各 work unit runner |
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |
@@ -86,12 +87,15 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 | 状态事实 | 权威拥有者 | 规则 |
 | --- | --- | --- |
 | 当前工程是否 loaded、工程路径 | `ProjectSessionState` | 只由工程加载/创建/卸载成功后更新，返回不可变快照 |
-| 任务 busy、status、active task、请求中数量、重翻 item ids | `TaskRuntimeState` | 任务命令受理、任务事件和 `replace_task` patch 回灌共同维护 |
+| 任务 busy、status、active task、请求中数量、重翻 item ids | `TaskRuntimeState` | 任务命令受理、任务事件和任务快照共同维护 |
 | 项目持久事实、meta、runtime section revision | `ProjectDatabase` | 只通过 database operation 和事务写入 |
-| 前端项目运行态 | renderer `ProjectStore` | 只消费 bootstrap、`project.patch` 和本地乐观 patch |
+| 项目公开投影 block、分析覆盖率摘要 | `ProjectRuntimeProjectionService` | manifest、read-sections、项目变更事件和任务输入快照复用同一读取口径，不另建缓存 |
+| 前端项目运行态 | renderer `ProjectStore` | 只消费项目读取接口、`project.data_changed` 和本地乐观 change |
 | 页面局部筛选、弹窗、选择、临时预览 | 页面 hook 或组件本地状态 | 不写回共享运行态，除非通过领域 mutation |
 
 跨线程、跨模块、跨前后端只传 `id`、值对象或不可变快照，禁止共享可变对象引用。新增状态前必须先判断它属于上表哪一层；没有固定拥有者的状态不能进入长期运行态。
+
+任务启动命令必须携带 `expected_section_revisions` 作为并发校验；翻译、分析至少校验 `quality`、`prompts`，重翻至少校验 `items`、`proofreading`、`quality`、`prompts`。任务执行所需的质量规则与提示词快照由后端从 `.lg` 当前事实构建，再作为稳定 work unit 输入传给 worker。
 
 ## 6. 数据库与 `.lg` 物理存储
 
@@ -101,7 +105,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 - `ProjectDatabase.execute()` 是上层服务使用的窄 workflow；新增 operation 必须集中校验参数，避免 SQL 语义散落到 service。
 - `execute_transaction()` 单个事务只允许绑定一个工程文件，避免跨 `.lg` 半提交。
 - asset 内容以 Zstd 压缩 blob 存储在 `.lg` 内；调用方读取时消费解压 bytes，不理解压缩格式。
-- 运行态不保留独立 database gateway 或旧 DTO bridge；历史格式兼容只在 migration、runtime encoder 或 patch adapter 的明确边界内处理。
+- 运行态不保留独立 database gateway、full bootstrap stream 或旧 DTO bridge；历史格式兼容只在 migration 或 project change adapter 的明确边界内处理。
 - 跨 API、数据库 payload、任务运行态和 worker 的实体和值对象从 `src/base` 导入；`Item`、`Setting`、`Model`、`Prompt`、`QualityRule` 负责 JSON 反序列化、序列化、合法值集合和贴身派生判断，后端领域服务只在 IO、数据库、路径、网络和事件边界处理副作用。
 - 跨运行时复用的 task、quality、language、log 和 JSON 工具从 `src/shared` 导入；质量规则合并、预演和任务快照归一只复用 `src/shared/quality`，运行态不得为这些共享规则另建并行词表或局部兜底。
 - 质量规则预设接口以公开 `rule_type` 为入参，物理预设目录只由 `QualityRule` 派生；提示词目录、rules 表物理类型、meta key 和默认预设 setting key 只由 `Prompt` 派生。
@@ -111,7 +115,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 必须同步更新本文的改动：
 
 - 新增、删除、重命名或改变 `/api/*` 路由语义。
-- 改响应壳、错误码、SSE topic、bootstrap stage、`project.patch` 或 mutation ack。
+- 改响应壳、错误码、SSE topic、项目读取接口、`project.data_changed` 或 mutation ack。
 - 新增后端状态拥有者、写入口、任务事件来源或跨层载荷规则。
 - 改 database operation、事务语义、`.lg` schema、asset 压缩、migration 或文件格式存储落点。
 - 改任务引擎与 worker 的事实回流方式。

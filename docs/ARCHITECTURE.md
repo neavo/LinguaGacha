@@ -9,7 +9,7 @@
 | 改系统分层、跨进程链路、模块归属 | 本文 | [`docs/BACKEND.md`](BACKEND.md) 或 [`docs/FRONTEND.md`](FRONTEND.md) |
 | 改 Electron main / preload / renderer 共享的桌面宿主契约 | 本文 | [`docs/FRONTEND.md`](FRONTEND.md) |
 | 改跨 main / renderer / worker 的基础值域、纯算法、normalize 或派生判断 | 本文 | [`docs/BACKEND.md`](BACKEND.md)、[`docs/FRONTEND.md`](FRONTEND.md) |
-| 改 HTTP / SSE / bootstrap / mutation / 错误码 | [`docs/BACKEND.md`](BACKEND.md) | 相关 service 与测试 |
+| 改 HTTP / SSE / 项目读取 / mutation / 错误码 | [`docs/BACKEND.md`](BACKEND.md) | 相关 service 与测试 |
 | 改数据库、`.lg` 存储、迁移、任务运行态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/project/`、`src/main/task-engine/` |
 | 改 Electron preload、renderer、`ProjectStore`、导航、页面状态 | [`docs/FRONTEND.md`](FRONTEND.md) | 相关页面和组件测试 |
 | 判断要跑哪些检查、是否同步文档 | [`docs/WORKFLOW.md`](WORKFLOW.md) | 本文与对应专题文档 |
@@ -36,7 +36,7 @@ flowchart LR
   F --> M["CoreEventHub / events"]
   I["preload: window.desktopApp"] --> J["renderer desktop-api.ts"]
   J --> C
-  J --> K["DesktopRuntimeProvider + ProjectStore"]
+  J --> K["DesktopRuntimeProvider + ProjectStore / TaskRuntimeStore"]
   K --> L["页面、组件、项目页缓存"]
 ```
 
@@ -78,22 +78,25 @@ sequenceDiagram
 sequenceDiagram
   participant UI as Renderer
   participant API as API Gateway
-  participant Enc as ProjectRuntimeEncoder
+  participant Proj as ProjectRuntimeProjectionService
   participant Hub as CoreEventHub
   participant Store as ProjectStore
+  participant Task as TaskRuntimeStore
 
-  UI->>API: /api/project/bootstrap/stream
-  API->>Enc: 构建一次性 stage 事件
-  Enc-->>UI: stage_started / stage_payload / stage_completed / completed
-  UI->>Store: 按 stage 合并 ProjectStore
+  UI->>API: /api/project/manifest
+  API->>Proj: 构建项目数据索引与 section revision
+  UI->>API: /api/project/read-sections
+  Proj-->>UI: project / files / items / quality / prompts / analysis / proofreading
+  UI->>Store: exact 合并项目数据 section
   UI->>API: /api/events/stream
-  Hub-->>UI: project.patch / task.* / settings.*
-  UI->>Store: 应用 patch 或触发 bootstrap 刷新
+  Hub-->>UI: project.data_changed / task.* / settings.*
+  UI->>Store: 应用 canonical delta 或按需补读 section
+  UI->>Task: 合并 task snapshot / task event
 ```
 
-- `bootstrap` 是项目运行态初始化主链路，事件顺序由后端编码器和前端 store 共同承诺。
-- `/api/events/stream` 是运行期增量事件主链路；页面不应通过整页快照轮询替代 `project.patch`。
-- 同步 mutation 的 HTTP ack 只用于 revision 对齐；真实页面事实仍以 bootstrap 和 `project.patch` 进入 `ProjectStore`。
+- `/api/project/manifest` 与 `/api/project/read-sections` 是项目数据初始化主链路；运行态不再保留 full bootstrap stream。
+- `/api/events/stream` 是运行期增量事件主链路；项目数据通过 `project.data_changed` 更新，任务运行态通过 `task.*` 与 `/api/tasks/snapshot` 更新。
+- 同步 mutation 的 HTTP ack 只用于 revision 对齐；页面最终事实仍以项目读取接口、`project.data_changed`、任务事件和明确的本地乐观 change 进入各自 store。
 
 ## 4. 模块关系边界
 
@@ -104,10 +107,10 @@ sequenceDiagram
 | `src/desktop/` | Electron main / preload / renderer 的桌面宿主契约：桥接 API、IPC、标题栏壳层、Core API 地址注入、外链策略 | Core 业务实现、数据库 workflow、renderer 页面状态 |
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
-| `src/main/project/` | 项目会话、bootstrap 编码、project patch、同步 mutation | Electron preload、页面局部状态 |
+| `src/main/project/` | 项目会话、项目数据投影、项目数据变更事件、同步 mutation | Electron preload、页面局部状态 |
 | `src/main/task-engine/` | 任务命令、运行态、快照、编排、项目任务事实读写 | worker 内提示词、LLM 请求、响应清洗解码 |
 | `src/main/task-worker/` | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | 数据库写入、全局任务状态、任务进度提交 |
-| `src/main/events/` | Core 公开运行期事件总线与 SSE 连接管理 | 任务编排、项目 patch 补全、领域状态规则 |
+| `src/main/events/` | Core 公开运行期事件总线与 SSE 连接管理 | 任务编排、项目变更事件适配、领域状态规则 |
 | `src/main/database/` | SQL、事务、`.lg` asset 压缩读写、database operation | HTTP 协议和页面 DTO |
 | `src/preload/` | 窄宿主桥接、原生对话框和 Core base URL 暴露 | Core 业务实现、Node 能力泛开放 |
 | `src/renderer/app/` | 桌面运行时、导航、shell、页面 runtime provider | 后端协议权威或数据库规则 |

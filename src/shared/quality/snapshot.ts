@@ -27,7 +27,7 @@ export const QUALITY_PROMPT_REVISION_META_KEY_PREFIX = "quality_prompt_revision"
 
 export class QualityRuleSnapshotTool {
   /**
-   * 统一复制有效规则项，避免不同规则各写一套筛选逻辑。
+   * 统一复制有效规则项，避免不同规则各写一套筛选逻辑
    */
   public static copy_non_empty_entries(raw_entries: unknown): JsonRecord[] {
     return this.normalize_entries(raw_entries).flatMap((entry) => {
@@ -36,7 +36,7 @@ export class QualityRuleSnapshotTool {
   }
 
   /**
-   * 只保留普通对象项，数组、null 和标量不能进入快照。
+   * 只保留普通对象项，数组、null 和标量不能进入快照
    */
   public static normalize_entries(raw_entries: unknown): JsonRecord[] {
     if (!Array.isArray(raw_entries)) {
@@ -72,7 +72,7 @@ export class QualityRuleSnapshotTool {
   }
 
   /**
-   * 从嵌套 quality/prompts payload 恢复任务用快照；缺失字段按旧 Py 侧默认值兜底。
+   * 从嵌套 quality/prompts payload 恢复任务用快照；缺失字段按旧 Py 侧默认值兜底
    */
   public static from_json(data: unknown): QualityRuleSnapshot {
     const root = read_record(data);
@@ -109,7 +109,7 @@ export class QualityRuleSnapshotTool {
   }
 
   /**
-   * 输出嵌套快照形状，供 renderer 发起任务、worker 解析与测试对拍共用。
+   * 输出嵌套快照形状，供 renderer 发起任务、worker 解析与测试对拍共用
    */
   public static to_json(snapshot: QualityRuleSnapshot): JsonRecord {
     return {
@@ -151,7 +151,7 @@ export class QualityRuleSnapshotTool {
   }
 
   /**
-   * 返回术语表条目的不可变副本，避免任务执行期被 UI 后续编辑影响。
+   * 返回术语表条目的不可变副本，避免任务执行期被 UI 后续编辑影响
    */
   public static get_glossary_entries(snapshot: QualityRuleSnapshot): JsonRecord[] {
     return snapshot.glossary_entries.map((entry) => ({ ...entry }));

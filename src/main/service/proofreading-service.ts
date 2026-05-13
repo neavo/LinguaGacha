@@ -5,6 +5,7 @@ import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
 } from "../project/project-section-revision";
+import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { Item } from "../../base/item";
 
@@ -19,12 +20,19 @@ export class ProofreadingService {
 
   private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
 
+  private readonly project_change_publisher: ProjectChangePublisher | null; // 校对写库成功后用统一项目事件回流到 ProjectStore
+
   /**
    * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换
    */
-  public constructor(database: ProjectDatabase, session_state: ProjectSessionState) {
+  public constructor(
+    database: ProjectDatabase,
+    session_state: ProjectSessionState,
+    project_change_publisher: ProjectChangePublisher | null = null,
+  ) {
     this.database = database;
     this.session_state = session_state;
+    this.project_change_publisher = project_change_publisher;
   }
 
   /**
@@ -85,7 +93,25 @@ export class ProofreadingService {
         value: current_proofreading_revision + 1,
       }),
     ]);
+    this.publish_project_data_change(this.collect_item_ids(finalized_items));
     return this.build_project_mutation_ack(project_path);
+  }
+
+  /**
+   * 校对保存同时影响 item 行和 proofreading revision；item 为空时仍发布 section 变更供读侧对齐
+   */
+  private publish_project_data_change(changed_item_ids: number[]): void {
+    this.project_change_publisher?.publish_project_change({
+      source: "proofreading_save_items",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "canonical-delta",
+        changedIds: changed_item_ids as unknown as ApiJsonValue,
+      },
+      sections: {
+        proofreading: { payloadMode: "canonical-delta" },
+      },
+    });
   }
 
   /**
@@ -156,6 +182,23 @@ export class ProofreadingService {
       merged_items.push(this.merge_item_payload(current, raw_item, item_id));
     }
     return merged_items;
+  }
+
+  /**
+   * 只从最终实际写入的 item 中收集变更 id，避免不存在的提交触发行级补读
+   */
+  private collect_item_ids(items: MutableJsonRecord[]): number[] {
+    const item_ids: number[] = [];
+    const seen_item_ids = new Set<number>();
+    for (const item of items) {
+      const item_id = this.parse_integer_like(item["id"]);
+      if (item_id === null || item_id <= 0 || seen_item_ids.has(item_id)) {
+        continue;
+      }
+      seen_item_ids.add(item_id);
+      item_ids.push(item_id);
+    }
+    return item_ids;
   }
 
   /**

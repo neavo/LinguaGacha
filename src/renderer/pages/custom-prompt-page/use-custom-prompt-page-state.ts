@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectStorePromptSlice } from "@/project/store/project-store";
-import { createProjectStoreReplaceSectionPatch } from "@/project/store/project-store";
+import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import { getPromptSlice, replacePromptSlice } from "@/project/quality/quality-runtime";
 import {
   normalize_project_mutation_ack,
@@ -165,7 +165,7 @@ export function useCustomPromptPageState(
     project_store,
     settings_snapshot,
     set_settings_snapshot,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
     task_snapshot,
@@ -249,10 +249,10 @@ export function useCustomPromptPageState(
         config.task_type,
         next_prompt_slice,
       );
-      const local_commit = commit_local_project_patch({
+      const local_commit = commit_local_project_change({
         source: "quality_prompt_save",
         updatedSections: ["prompts"],
-        patch: [createProjectStoreReplaceSectionPatch("prompts", next_prompts_state)],
+        operations: [createProjectStoreReplaceSectionChange("prompts", next_prompts_state)],
       });
 
       try {
@@ -275,7 +275,7 @@ export function useCustomPromptPageState(
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       config.task_type,
       project_store,
       push_toast,

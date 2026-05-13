@@ -383,13 +383,6 @@ async function* open_json_event_source_stream(args: {
   }
 }
 
-export function open_project_bootstrap_stream(): AsyncIterable<EventSourceJsonEvent> {
-  return open_json_event_source_stream({
-    path: "/api/project/bootstrap/stream",
-    event_types: ["stage_started", "stage_payload", "stage_completed", "completed", "failed"],
-  });
-}
-
 function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {
   if (typeof payload.id !== "string") {
     return null;

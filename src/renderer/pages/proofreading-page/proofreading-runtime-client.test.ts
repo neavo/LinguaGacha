@@ -95,10 +95,14 @@ class MockWorker {
 
 function create_hydration_input() {
   return {
-    project_id: "demo",
-    revision: 1,
+    projectId: "demo",
+    revisions: {
+      items: 1,
+      quality: 1,
+      proofreading: 1,
+    },
     total_item_count: 0,
-    items: [],
+    upsertItems: [],
     quality: {
       glossary: {
         enabled: false,
@@ -125,7 +129,7 @@ function create_hydration_input() {
         entries: [],
       },
     },
-    source_language: "JA",
+    sourceLanguage: "JA",
   };
 }
 
@@ -209,14 +213,17 @@ describe("createProofreadingRuntimeClient", () => {
     });
 
     worker?.dispatch_message(hydrate_request?.id ?? 0, {
-      revision: 1,
-      project_id: "demo",
-      default_filters: create_list_query().filters,
+      projectId: "demo",
+      revisions: {
+        items: 1,
+        quality: 1,
+        proofreading: 1,
+      },
+      defaultFilters: create_list_query().filters,
     });
 
     await expect(hydrate_promise).resolves.toMatchObject({
-      revision: 1,
-      project_id: "demo",
+      projectId: "demo",
     });
 
     const list_view_promise = client.build_list_view(create_list_query());
@@ -226,8 +233,12 @@ describe("createProofreadingRuntimeClient", () => {
     });
 
     worker?.dispatch_message(list_view_request?.id ?? 0, {
-      revision: 1,
-      project_id: "demo",
+      projectId: "demo",
+      revisions: {
+        items: 1,
+        quality: 1,
+        proofreading: 1,
+      },
       view_id: "demo-view",
       row_count: 0,
       window_start: 0,
@@ -236,8 +247,7 @@ describe("createProofreadingRuntimeClient", () => {
     });
 
     await expect(list_view_promise).resolves.toMatchObject({
-      revision: 1,
-      project_id: "demo",
+      projectId: "demo",
       window_rows: [],
     });
 
@@ -268,7 +278,7 @@ describe("createProofreadingRuntimeClient", () => {
     expect(dispose_request).toMatchObject({
       type: "dispose_project",
       input: {
-        project_id: "demo",
+        projectId: "demo",
       },
     });
     worker?.dispatch_message(dispose_request?.id ?? 0, null);

@@ -199,7 +199,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       project_store,
       settings_snapshot: {},
       set_settings_snapshot: vi.fn(),
-      commit_local_project_patch: vi.fn(() => ({
+      commit_local_project_change: vi.fn(() => ({
         rollback: vi.fn(),
       })),
       refresh_project_runtime: vi.fn(),

@@ -15,6 +15,7 @@ import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
 } from "../project/project-section-revision";
+import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt, type PromptKind } from "../../base/prompt";
@@ -33,6 +34,8 @@ export class QualityService {
 
   private readonly session_state: ProjectSessionState; // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标
 
+  private readonly project_change_publisher: ProjectChangePublisher | null; // 写库成功后统一发布 project.data_changed，HTTP ack 不承载最终项目事实
+
   /**
    * 初始化 QualityService 依赖，保持外部写入口清晰
    */
@@ -41,11 +44,13 @@ export class QualityService {
     setting_service: SettingService,
     database: ProjectDatabase,
     session_state: ProjectSessionState,
+    project_change_publisher: ProjectChangePublisher | null = null,
   ) {
     this.paths = paths;
     this.setting_service = setting_service;
     this.database = database;
     this.session_state = session_state;
+    this.project_change_publisher = project_change_publisher;
   }
 
   /**
@@ -70,6 +75,7 @@ export class QualityService {
         value: current_revision + 1,
       }),
     ]);
+    this.publish_project_data_change("quality_rule_save_entries", ["quality"]);
     return this.build_project_mutation_ack(project_path, ["quality"]);
   }
 
@@ -96,6 +102,9 @@ export class QualityService {
         }),
       ]);
       expected_revision = current_revision;
+    }
+    if (Object.keys(meta).length > 0) {
+      this.publish_project_data_change("quality_rule_update_meta", ["quality"]);
     }
     return this.build_project_mutation_ack(project_path, ["quality"]);
   }
@@ -263,6 +272,7 @@ export class QualityService {
       );
     }
     this.database.execute_transaction(operations);
+    this.publish_project_data_change("quality_prompt_save", ["prompts"]);
     return this.build_project_mutation_ack(project_path, ["prompts"]);
   }
 
@@ -403,6 +413,22 @@ export class QualityService {
   }
 
   /**
+   * 项目事实写入成功后只经 ProjectChangePublisher 回流，避免页面把 ack 当数据源
+   */
+  private publish_project_data_change(
+    source: string,
+    updated_sections: Array<"quality" | "prompts">,
+  ): void {
+    this.project_change_publisher?.publish_project_change({
+      source,
+      updatedSections: updated_sections,
+      sections: Object.fromEntries(
+        updated_sections.map((section) => [section, { payloadMode: "canonical-delta" }]),
+      ) as unknown as ApiJsonValue,
+    });
+  }
+
+  /**
    * 读取规则 revision，隔离 meta key 组合细节
    */
   private get_rule_revision(project_path: string, rule_type: QualityRuleKind): number {
@@ -423,7 +449,7 @@ export class QualityService {
   }
 
   /**
-   * revision 读取复用运行态服务的 meta 口径，避免 bootstrap 和 mutation ack 分叉
+   * revision 读取复用运行态服务的 meta 口径，避免读取接口和 mutation ack 分叉
    */
   private read_project_meta(project_path: string): JsonRecord {
     return this.normalize_object(
@@ -446,12 +472,9 @@ export class QualityService {
   }
 
   /**
-   * 映射规则类型到 meta key，保持规则类型命名唯一
+   * 规则 meta key 由领域对象解析，避免服务层保留旧字符串映射表
    */
   private resolve_rule_meta_key(rule_type: QualityRuleKind, key: string): string {
-    if (key === "enabled") {
-      return QualityRule.from_json(rule_type).resolve_meta_key(key);
-    }
     return QualityRule.from_json(rule_type).resolve_meta_key(key);
   }
 
@@ -493,13 +516,6 @@ export class QualityService {
    */
   private normalize_rule_type(value: ApiJsonValue | undefined): QualityRuleKind {
     return QualityRule.from_json(value).kind;
-  }
-
-  /**
-   * 归一提示词任务类型，保护提示词目录映射
-   */
-  private normalize_prompt_kind(value: ApiJsonValue | undefined): PromptKind {
-    return Prompt.from_json(value).kind;
   }
 
   /**

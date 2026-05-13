@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyWorkbenchItemsDeltaToCache,
   createWorkbenchViewCache,
+  getWorkbenchViewCache,
 } from "@/pages/workbench-page/workbench-view";
 
 describe("createWorkbenchViewCache", () => {
@@ -128,7 +129,7 @@ describe("createWorkbenchViewCache", () => {
     });
   });
 
-  it("merge_items 增量缓存会只更新变更条目的文件计数和翻译统计", () => {
+  it("items 增量缓存会只更新变更条目的文件计数和翻译统计", () => {
     const base_state = {
       files: {
         "chapter01.txt": {
@@ -234,5 +235,78 @@ describe("createWorkbenchViewCache", () => {
         item_ids: [1],
       }),
     ).toBeNull();
+  });
+
+  it("selector 会按项目路径与 section revision 决定复用、增量或重建", () => {
+    const base_state = {
+      project: { path: "demo.lg" },
+      files: {
+        "chapter01.txt": {
+          rel_path: "chapter01.txt",
+          file_type: "TXT",
+          sort_index: 1,
+        },
+      },
+      items: {
+        "1": {
+          item_id: 1,
+          file_path: "chapter01.txt",
+          src: "a",
+          status: "NONE",
+        },
+      },
+      analysis: {
+        status_summary: {
+          total_line: 1,
+          processed_line: 0,
+          error_line: 0,
+        },
+      },
+      revisions: { sections: { files: 1, items: 1, analysis: 1 } },
+    };
+    const base_cache = getWorkbenchViewCache({
+      state: base_state,
+      previousCache: null,
+    });
+    const reused_cache = getWorkbenchViewCache({
+      state: base_state,
+      previousCache: base_cache,
+    });
+    const delta_cache = getWorkbenchViewCache({
+      state: {
+        ...base_state,
+        items: {
+          ...base_state.items,
+          "1": {
+            item_id: 1,
+            file_path: "chapter01.txt",
+            src: "a",
+            status: "PROCESSED",
+          },
+        },
+        revisions: { sections: { files: 1, items: 2, analysis: 1 } },
+      },
+      previousCache: base_cache,
+      itemDeltaIds: [1],
+    });
+    const rebuilt_cache = getWorkbenchViewCache({
+      state: {
+        ...base_state,
+        revisions: { sections: { files: 2, items: 2, analysis: 1 } },
+      },
+      previousCache: delta_cache,
+      itemDeltaIds: [1],
+    });
+
+    expect(reused_cache).toBe(base_cache);
+    expect(delta_cache.identity).toEqual({
+      project_path: "demo.lg",
+      files_revision: 1,
+      items_revision: 2,
+      analysis_revision: 1,
+    });
+    expect(delta_cache.snapshot.translation_stats.completed_count).toBe(1);
+    expect(rebuilt_cache).not.toBe(delta_cache);
+    expect(rebuilt_cache.identity.files_revision).toBe(2);
   });
 });

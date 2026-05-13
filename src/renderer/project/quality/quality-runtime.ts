@@ -3,11 +3,9 @@ import type {
   ProjectStorePromptsState,
   ProjectStoreQualityRuleSlice,
   ProjectStoreQualityState,
-  ProjectStoreState,
 } from "@/project/store/project-store";
 import type { PromptKind } from "@base/prompt";
 import type { QualityRuleKind } from "@base/quality";
-import { QualityRuleSnapshotTool } from "@shared/quality/snapshot";
 
 type QualityRuntimeRuleType = QualityRuleKind;
 
@@ -102,23 +100,6 @@ export function replacePromptSlice(
     analysis:
       task_type === "analysis" ? clonePromptSlice(next_slice) : clonePromptSlice(prompts.analysis),
   };
-}
-
-export function serializeQualityRuntimeSnapshot(state: ProjectStoreState): Record<string, unknown> {
-  return QualityRuleSnapshotTool.to_json(
-    QualityRuleSnapshotTool.from_json({
-      quality: {
-        glossary: getQualityRuleSlice(state.quality, "glossary"),
-        pre_replacement: getQualityRuleSlice(state.quality, "pre_replacement"),
-        post_replacement: getQualityRuleSlice(state.quality, "post_replacement"),
-        text_preserve: getQualityRuleSlice(state.quality, "text_preserve"),
-      },
-      prompts: {
-        translation: getPromptSlice(state.prompts, "translation"),
-        analysis: getPromptSlice(state.prompts, "analysis"),
-      },
-    }),
-  );
 }
 
 export function buildProofreadingLookupQuery(args: {

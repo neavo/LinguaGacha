@@ -2,11 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
 import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
 import { ProjectSyncMutationService } from "./project-sync-mutation-service";
+import type { ProjectChangePublisher } from "./project-change-publisher";
 import { ProjectSessionState } from "./project-session-state";
 
 let temp_dir = "";
@@ -21,7 +22,7 @@ function project_path(name: string): string {
 /**
  * 为每个用例创建独立 .lg 和服务实例，避免 revision / asset 顺序互相污染
  */
-function create_service(): {
+function create_service(project_change_publisher: ProjectChangePublisher | null = null): {
   database: ProjectDatabase;
   service: ProjectSyncMutationService;
   task_runtime_state: TaskRuntimeState;
@@ -38,7 +39,12 @@ function create_service(): {
   session_state.mark_loaded(lg_path);
   return {
     database,
-    service: new ProjectSyncMutationService(database, task_runtime_state, session_state),
+    service: new ProjectSyncMutationService(
+      database,
+      task_runtime_state,
+      session_state,
+      project_change_publisher,
+    ),
     task_runtime_state,
     lg_path,
   };
@@ -54,7 +60,10 @@ afterEach(() => {
 
 describe("ProjectSyncMutationService", () => {
   it("写入 settings-only 对齐结果且不 bump 运行态 section", async () => {
-    const { database, service, lg_path } = create_service();
+    const publish_project_change = vi.fn();
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
 
     const ack = await service.apply_settings_alignment({
       mode: "settings_only",
@@ -67,6 +76,7 @@ describe("ProjectSyncMutationService", () => {
     });
 
     expect(ack).toEqual({ accepted: true, projectRevision: 0, sectionRevisions: {} });
+    expect(publish_project_change).not.toHaveBeenCalled();
     expect(
       database.execute({
         name: "getMeta",
@@ -147,6 +157,35 @@ describe("ProjectSyncMutationService", () => {
     database.close();
   });
 
+  it("同步 mutation 写库成功后发布后端权威项目变更事件", async () => {
+    const publish_project_change = vi.fn();
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [{ id: 1, src: "旧", dst: "old", status: "PROCESSED" }],
+      },
+    });
+
+    await service.apply_translation_reset({
+      mode: "failed",
+      items: [{ id: 1, src: "旧", dst: "", status: "NONE" }],
+      translation_extras: { line: 0 },
+      expected_section_revisions: { items: 0 },
+    });
+
+    expect(publish_project_change).toHaveBeenCalledWith({
+      source: "translation_reset",
+      updatedSections: ["items"],
+      sections: {},
+      items: { payloadMode: "section-invalidated" },
+    });
+    database.close();
+  });
+
   it("按完整文件集合重排 assets 并只 bump files section", async () => {
     const { database, service, lg_path } = create_service();
     const first_source = project_path("a.txt");
@@ -181,7 +220,7 @@ describe("ProjectSyncMutationService", () => {
     database.close();
   });
 
-  it("工作台 reset-file 兼容 derived_meta 并只写白名单 meta", async () => {
+  it("工作台 reset-file 只写顶层派生 meta 白名单", async () => {
     const { database, service, lg_path } = create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
@@ -200,10 +239,8 @@ describe("ProjectSyncMutationService", () => {
     await service.reset_workbench_file({
       rel_paths: ["a.txt"],
       items: [{ id: 1, dst: "", status: "NONE" }],
-      derived_meta: {
-        translation_extras: { line: 3 },
-        prefilter_config: { source_language: "JA" },
-      },
+      translation_extras: { line: 3 },
+      prefilter_config: { source_language: "JA" },
       expected_section_revisions: { items: 0, analysis: 0 },
     });
 
@@ -219,12 +256,6 @@ describe("ProjectSyncMutationService", () => {
         args: { projectPath: lg_path, key: "prefilter_config", default: {} },
       }),
     ).toEqual({ source_language: "JA" });
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "derived_meta", default: null },
-      }),
-    ).toBeNull();
     database.close();
   });
 

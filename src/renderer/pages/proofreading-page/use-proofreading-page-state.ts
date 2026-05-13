@@ -10,7 +10,12 @@ import {
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import type { ProjectStoreState } from "@/project/store/project-store";
+import {
+  readProjectDataSectionRevisions,
+  type ProjectDataSection,
+  type ProjectDataSectionRevisions,
+  type ProjectStoreState,
+} from "@/project/store/project-store";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
@@ -19,7 +24,6 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
 import { is_worker_client_error } from "@/lib/worker-client-error";
-import { serializeQualityRuntimeSnapshot } from "@/project/quality/quality-runtime";
 import {
   create_replace_all_plan,
   create_reset_items_plan,
@@ -55,12 +59,17 @@ import {
 } from "@/pages/proofreading-page/types";
 
 const PROOFREADING_WINDOW_FETCH_COUNT = 160;
+const PROOFREADING_REQUIRED_SECTIONS: ProjectDataSection[] = [
+  "project",
+  "items",
+  "quality",
+  "proofreading",
+];
 
 export type UseProofreadingPageStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
-  cache_stale: boolean;
-  last_loaded_at: number | null;
-  refresh_request_id: number;
+  consumed_revisions: ProjectDataSectionRevisions;
+  required_sections: ProjectDataSection[];
   settled_project_path: string;
   is_refreshing: boolean;
   is_mutating: boolean;
@@ -389,18 +398,24 @@ function normalize_runtime_item_from_state(record: unknown): ProofreadingRuntime
 
 function collect_full_sync_input(args: {
   state: ProjectStoreState;
-  source_language: string;
+  sourceLanguage: string;
 }): ProofreadingRuntimeHydrationInput {
+  const sections = args.state.revisions.sections;
+  const revisions = {
+    items: sections.items ?? 0,
+    quality: sections.quality ?? 0,
+    proofreading: sections.proofreading ?? Number(args.state.proofreading.revision ?? 0),
+  };
   return {
-    project_id: args.state.project.path,
-    revision: Number(args.state.proofreading.revision ?? 0),
+    projectId: args.state.project.path,
+    revisions,
     total_item_count: Object.keys(args.state.items).length,
-    items: Object.values(args.state.items).flatMap((record) => {
+    upsertItems: Object.values(args.state.items).flatMap((record) => {
       const normalized_item = normalize_runtime_item_from_state(record);
       return normalized_item === null ? [] : [normalized_item];
     }),
     quality: args.state.quality,
-    source_language: args.source_language,
+    sourceLanguage: args.sourceLanguage,
   };
 }
 
@@ -408,6 +423,7 @@ function collect_delta_sync_input(args: {
   state: ProjectStoreState;
   item_ids: Array<number | string>;
 }): ProofreadingRuntimeDeltaInput {
+  const sections = args.state.revisions.sections;
   const items = args.item_ids.flatMap((item_id) => {
     const item_record = args.state.items[String(item_id)];
     const normalized_item = normalize_runtime_item_from_state(item_record);
@@ -415,15 +431,28 @@ function collect_delta_sync_input(args: {
   });
 
   return {
-    project_id: args.state.project.path,
-    revision: Number(args.state.proofreading.revision ?? 0),
+    projectId: args.state.project.path,
+    revisions: {
+      items: sections.items ?? 0,
+      quality: sections.quality ?? 0,
+      proofreading: sections.proofreading ?? Number(args.state.proofreading.revision ?? 0),
+    },
     total_item_count: Object.keys(args.state.items).length,
-    items,
+    upsertItems: items,
+    deleteItemIds: args.item_ids
+      .map((item_id) => Number(item_id))
+      .filter(
+        (item_id) => Number.isInteger(item_id) && args.state.items[String(item_id)] === undefined,
+      ),
   };
 }
 
 function build_list_query_signature(args: {
-  revision: number;
+  revisions: {
+    items: number;
+    quality: number;
+    proofreading: number;
+  };
   filters: ProofreadingFilterOptions;
   keyword: string;
   scope: ProofreadingSearchScope;
@@ -431,7 +460,7 @@ function build_list_query_signature(args: {
   sort_state: AppTableSortState | null;
 }): string {
   return JsonTool.stringifyStrict({
-    revision: args.revision,
+    revisions: args.revisions,
     filters: build_filter_signature(args.filters),
     keyword: args.keyword,
     scope: args.scope,
@@ -441,11 +470,15 @@ function build_list_query_signature(args: {
 }
 
 function build_filter_panel_signature(args: {
-  revision: number;
+  revisions: {
+    items: number;
+    quality: number;
+    proofreading: number;
+  };
   filters: ProofreadingFilterOptions;
 }): string {
   return JsonTool.stringifyStrict({
-    revision: args.revision,
+    revisions: args.revisions,
     filters: build_filter_signature(args.filters),
   });
 }
@@ -454,13 +487,24 @@ function resolve_requested_sync_mode(args: {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   runtime_sync_state: ProofreadingRuntimeSyncState | null;
   project_path: string;
+  current_state: ProjectStoreState;
+  sourceLanguage: string;
   signal_mode: "full" | "delta" | "noop";
 }): "full" | "delta" | "noop" {
   if (
     args.cache_status === "error" ||
     args.runtime_sync_state === null ||
-    args.runtime_sync_state.project_id !== args.project_path
+    args.runtime_sync_state.projectId !== args.project_path
   ) {
+    return "full";
+  }
+
+  const current_quality_revision = args.current_state.revisions.sections.quality ?? 0;
+  if (args.runtime_sync_state.revisions.quality !== current_quality_revision) {
+    return "full";
+  }
+
+  if (args.runtime_sync_state.sourceLanguage !== args.sourceLanguage) {
     return "full";
   }
 
@@ -478,7 +522,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     task_snapshot,
     set_task_snapshot,
     proofreading_change_signal,
-    commit_local_project_patch,
+    commit_local_project_change,
     refresh_project_runtime,
     align_project_runtime_ack,
   } = useDesktopRuntime();
@@ -499,9 +543,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(
     "idle",
   );
-  const [cache_stale, set_cache_stale] = useState(false);
-  const [last_loaded_at, set_last_loaded_at] = useState<number | null>(null);
-  const [refresh_request_id, set_refresh_request_id] = useState(0);
+  const [consumed_revisions, set_consumed_revisions] = useState<ProjectDataSectionRevisions>({});
   const [settled_project_path, set_settled_project_path] = useState("");
   const [is_mutating, set_is_mutating] = useState(false);
   const [search_keyword, set_search_keyword] = useState("");
@@ -523,14 +565,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const deferred_search_scope = useDeferredValue(search_scope);
   const deferred_is_regex = useDeferredValue(is_regex);
   const deferred_sort_state = useDeferredValue(sort_state);
-  const refresh_request_id_ref = useRef(0);
+  const refresh_generation_ref = useRef(0);
   const list_view_request_id_ref = useRef(0);
   const list_window_request_id_ref = useRef(0);
   const filter_panel_request_id_ref = useRef(0);
   const current_filters_ref = useRef(current_filters);
   const filter_dialog_filters_ref = useRef(filter_dialog_filters);
   const runtime_sync_state_ref = useRef<ProofreadingRuntimeSyncState | null>(null);
-  const default_filters_ref = useRef(create_empty_filter_options());
+  const defaultFiltersRef = useRef(create_empty_filter_options());
   const proofreading_runtime_client_ref = useRef(createProofreadingRuntimeClient());
   const preferred_row_id_ref = useRef<string | null>(null);
   const should_select_first_visible_ref = useRef(false);
@@ -647,9 +689,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_filter_dialog_filters(create_empty_filter_options());
     set_filter_panel(create_empty_proofreading_filter_panel_state());
     set_filter_panel_loading(false);
-    set_cache_stale(false);
-    set_last_loaded_at(null);
-    set_refresh_request_id(0);
+    set_consumed_revisions({});
     set_settled_project_path("");
     set_search_keyword("");
     set_replace_text("");
@@ -674,9 +714,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, []);
 
   const clear_cache_state = useCallback((): void => {
-    const current_project_id = runtime_sync_state_ref.current?.project_id;
+    const currentProjectId = runtime_sync_state_ref.current?.projectId;
     runtime_sync_state_ref.current = null;
-    default_filters_ref.current = create_empty_filter_options();
+    defaultFiltersRef.current = create_empty_filter_options();
     set_list_view(create_empty_proofreading_list_view());
     set_filter_panel(create_empty_proofreading_filter_panel_state());
     set_filter_panel_loading(false);
@@ -684,8 +724,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_cache_status("idle");
     set_is_mutating(false);
     last_visible_range_signature_ref.current = "";
-    if (current_project_id !== undefined) {
-      void proofreading_runtime_client_ref.current.dispose_project(current_project_id);
+    if (currentProjectId !== undefined) {
+      void proofreading_runtime_client_ref.current.dispose_project(currentProjectId);
     }
   }, []);
 
@@ -708,7 +748,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       }
 
       const query_signature = build_list_query_signature({
-        revision: runtime_sync_state.revision,
+        revisions: runtime_sync_state.revisions,
         filters: args.filters,
         keyword: args.keyword,
         scope: args.scope,
@@ -757,7 +797,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       }
 
       const query_signature = build_filter_panel_signature({
-        revision: runtime_sync_state.revision,
+        revisions: runtime_sync_state.revisions,
         filters,
       });
       if (!options?.force && query_signature === last_filter_panel_signature_ref.current) {
@@ -928,9 +968,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    const request_id = refresh_request_id_ref.current + 1;
-    refresh_request_id_ref.current = request_id;
-    set_refresh_request_id(request_id);
+    const request_id = refresh_generation_ref.current + 1;
+    refresh_generation_ref.current = request_id;
     set_is_refreshing(true);
     set_cache_status("refreshing");
 
@@ -940,18 +979,19 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         cache_status,
         runtime_sync_state: runtime_sync_state_ref.current,
         project_path: project_snapshot.path,
+        current_state,
+        sourceLanguage: settings_snapshot.source_language,
         signal_mode: proofreading_change_signal.mode,
       });
       let runtime_sync_state = runtime_sync_state_ref.current;
       if (sync_mode === "noop") {
-        if (request_id !== refresh_request_id_ref.current || runtime_sync_state === null) {
+        if (request_id !== refresh_generation_ref.current || runtime_sync_state === null) {
           return;
         }
 
         set_cache_status("ready");
-        set_cache_stale(false);
         set_is_refreshing(false);
-        set_last_loaded_at(Date.now());
+        set_consumed_revisions(readProjectDataSectionRevisions(project_store));
         set_settled_project_path(project_snapshot.path);
         return;
       }
@@ -960,7 +1000,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         runtime_sync_state = await proofreading_runtime_client_ref.current.hydrate_full(
           collect_full_sync_input({
             state: current_state,
-            source_language: settings_snapshot.source_language,
+            sourceLanguage: settings_snapshot.source_language,
           }),
         );
       } else if (sync_mode === "delta") {
@@ -972,23 +1012,23 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         );
       }
 
-      if (request_id !== refresh_request_id_ref.current || runtime_sync_state === null) {
+      if (request_id !== refresh_generation_ref.current || runtime_sync_state === null) {
         return;
       }
 
-      const next_default_filters = clone_proofreading_filter_options(
-        runtime_sync_state.default_filters,
+      const nextDefaultFilters = clone_proofreading_filter_options(
+        runtime_sync_state.defaultFilters,
       );
       const next_current_filters = pending_reset_filters_ref.current
-        ? clone_proofreading_filter_options(next_default_filters)
+        ? clone_proofreading_filter_options(nextDefaultFilters)
         : reconcile_proofreading_filter_options({
             previous_applied: current_filters_ref.current,
-            previous_default: default_filters_ref.current,
-            next_default: next_default_filters,
+            previous_default: defaultFiltersRef.current,
+            next_default: nextDefaultFilters,
           });
 
       runtime_sync_state_ref.current = runtime_sync_state;
-      default_filters_ref.current = clone_proofreading_filter_options(next_default_filters);
+      defaultFiltersRef.current = clone_proofreading_filter_options(nextDefaultFilters);
       set_current_filters(clone_proofreading_filter_options(next_current_filters));
       set_filter_dialog_filters(clone_proofreading_filter_options(next_current_filters));
 
@@ -1000,17 +1040,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         sort_state: sort_state_ref.current,
         force: true,
       });
-      if (!settled || request_id !== refresh_request_id_ref.current) {
+      if (!settled || request_id !== refresh_generation_ref.current) {
         return;
       }
 
       preferred_row_id_ref.current = active_row_id_ref.current;
       set_cache_status("ready");
-      set_cache_stale(false);
-      set_last_loaded_at(Date.now());
+      set_consumed_revisions(readProjectDataSectionRevisions(project_store));
       set_settled_project_path(project_snapshot.path);
     } catch (error) {
-      if (request_id !== refresh_request_id_ref.current) {
+      if (request_id !== refresh_generation_ref.current) {
         return;
       }
 
@@ -1019,12 +1058,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         ? fallback_message
         : resolve_error_message(error, fallback_message);
       set_cache_status("error");
-      set_cache_stale(true);
       set_settled_project_path(project_snapshot.path);
       push_toast("error", message);
     } finally {
       pending_reset_filters_ref.current = false;
-      if (request_id === refresh_request_id_ref.current) {
+      if (request_id === refresh_generation_ref.current) {
         set_is_refreshing(false);
       }
     }
@@ -1071,11 +1109,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
 
       set_is_mutating(true);
-      const local_commit = commit_local_project_patch({
+      const previous_task_snapshot = task_snapshot;
+      const local_commit = commit_local_project_change({
         source: args.source,
-        updatedSections: ["items", "proofreading", "task"],
-        patch: args.plan.patch,
+        updatedSections: ["items", "proofreading"],
+        operations: args.plan.operations,
       });
+      set_task_snapshot({
+        ...task_snapshot,
+        ...args.plan.next_task_snapshot,
+      } as typeof task_snapshot);
 
       try {
         const mutation_ack = normalize_project_mutation_ack(
@@ -1092,6 +1135,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           set_dialog_item_snapshot(null);
         }
       } catch (error) {
+        set_task_snapshot(previous_task_snapshot);
         local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         handle_api_error(error, t(args.fallback_error_key));
@@ -1101,10 +1145,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     },
     [
       align_project_runtime_ack,
-      commit_local_project_patch,
+      commit_local_project_change,
       handle_api_error,
       push_toast,
       refresh_project_runtime,
+      set_task_snapshot,
+      task_snapshot,
       t,
     ],
   );
@@ -1336,6 +1382,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         source: "proofreading_save_item",
         plan: create_save_item_plan({
           state: project_store.getState(),
+          task_snapshot,
           item_id: Number(target_item.item_id),
           next_dst: dialog_state.draft_dst,
         }),
@@ -1356,7 +1403,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         };
       });
     }
-  }, [dialog_state, project_store, push_toast, read_items_by_row_ids, run_ack_only_mutation, t]);
+  }, [
+    dialog_state,
+    project_store,
+    push_toast,
+    read_items_by_row_ids,
+    run_ack_only_mutation,
+    task_snapshot,
+    t,
+  ]);
 
   const replace_next_visible_match = useCallback(async (): Promise<void> => {
     if (readonly || is_refreshing || is_mutating) {
@@ -1427,6 +1482,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       source: "proofreading_save_item",
       plan: create_save_item_plan({
         state: project_store.getState(),
+        task_snapshot,
         item_id: Number(target_item.item_id),
         next_dst: replaced_result.text,
       }),
@@ -1444,6 +1500,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     replace_text,
     run_ack_only_mutation,
     search_keyword,
+    task_snapshot,
     t,
     list_view.view_id,
   ]);
@@ -1482,6 +1539,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     const replace_plan = create_replace_all_plan({
       state: project_store.getState(),
+      task_snapshot,
       item_ids: target_items.map((item) => Number(item.item_id)),
       search_text: trimmed_keyword,
       replace_text,
@@ -1514,6 +1572,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     replace_text,
     run_ack_only_mutation,
     search_keyword,
+    task_snapshot,
     t,
     list_view.row_count,
     read_current_view_row_ids,
@@ -1578,9 +1637,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           item_ids,
           expected_section_revisions: {
             items: current_project_state.revisions.sections.items ?? 0,
-            proofreading: list_view.revision,
+            proofreading: list_view.revisions.proofreading,
+            quality: current_project_state.revisions.sections.quality ?? 0,
+            prompts: current_project_state.revisions.sections.prompts ?? 0,
           },
-          quality_snapshot: serializeQualityRuntimeSnapshot(current_project_state),
         });
         const task = ack.task ?? {};
         const retranslating_item_ids = normalize_numeric_item_ids(task.retranslating_item_ids);
@@ -1620,6 +1680,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       source: "proofreading_save_all",
       plan: create_reset_items_plan({
         state: project_store.getState(),
+        task_snapshot,
         item_ids: target_items.map((item) => Number(item.item_id)),
       }),
       fallback_error_key: "proofreading_page.feedback.reset_failed",
@@ -1633,7 +1694,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [
     dialog_state.open,
     handle_api_error,
-    list_view.revision,
+    list_view.revisions.proofreading,
     pending_mutation,
     project_store,
     read_items_by_row_ids,
@@ -1679,7 +1740,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     if (previous_seq !== proofreading_change_signal.seq) {
-      set_cache_stale(true);
       void refresh_snapshot();
     }
   }, [project_snapshot.loaded, proofreading_change_signal.seq, refresh_snapshot]);
@@ -1772,7 +1832,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [
     current_filter_signature,
     is_regex,
-    list_view.revision,
+    list_view.revisions.proofreading,
     search_keyword,
     search_scope,
     sort_signature,
@@ -1805,9 +1865,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   return useMemo<UseProofreadingPageStateResult>(() => {
     return {
       cache_status,
-      cache_stale,
-      last_loaded_at,
-      refresh_request_id,
+      consumed_revisions,
+      required_sections: PROOFREADING_REQUIRED_SECTIONS,
       settled_project_path,
       is_refreshing,
       is_mutating,
@@ -1865,8 +1924,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     anchor_row_id,
     apply_table_selection,
     apply_table_sort_state,
-    cache_stale,
     cache_status,
+    consumed_revisions,
     close_filter_dialog,
     close_pending_mutation,
     confirm_filter_dialog_filters,
@@ -1885,13 +1944,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     is_mutating,
     is_refreshing,
     is_regex,
-    last_loaded_at,
     open_edit_dialog,
     open_filter_dialog,
     pending_mutation,
     readonly,
     retranslating_row_ids,
-    refresh_request_id,
     refresh_snapshot,
     read_visible_range,
     resolve_visible_row_ids_range,

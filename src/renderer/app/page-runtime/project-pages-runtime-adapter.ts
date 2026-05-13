@@ -2,6 +2,10 @@ import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
 } from "@/app/page-runtime/project-pages-barrier";
+import type {
+  ProjectDataSection,
+  ProjectDataSectionRevisions,
+} from "@/project/store/project-store";
 
 export type ProjectPagesRuntimeAdapterOptions = {
   createProjectPagesBarrierCheckpoint: () => ProjectPagesBarrierCheckpoint;
@@ -13,16 +17,16 @@ export type ProjectPagesRuntimeAdapterOptions = {
 
 export type WorkbenchPageRuntimeAdapter = {
   file_op_running: boolean;
-  cache_stale: boolean;
   is_refreshing: boolean;
-  last_loaded_at: number | null;
+  consumed_revisions: ProjectDataSectionRevisions;
+  required_sections: ProjectDataSection[];
   settled_project_path: string;
 };
 
 export type ProofreadingPageRuntimeAdapter = {
-  cache_stale: boolean;
   is_refreshing: boolean;
-  last_loaded_at: number | null;
+  consumed_revisions: ProjectDataSectionRevisions;
+  required_sections: ProjectDataSection[];
   settled_project_path: string;
 };
 

@@ -10,6 +10,8 @@ import {
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 import { Item } from "../../base/item";
+import type { ProjectChangePublisher } from "./project-change-publisher";
+import type { ProjectDataSection } from "../../shared/project-change-event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -24,6 +26,8 @@ export class ProjectSyncMutationService {
 
   private readonly session_state: ProjectSessionState; // 当前公开工程路径由 API Gateway 会话状态提供，避免同步 mutation 回读旧缓存
 
+  private readonly project_change_publisher: ProjectChangePublisher | null; // 同步 mutation 写库成功后通过发布器进入权威项目变更事件流
+
   private file_operation_running = false; // 工作台文件 mutation 在 服务端内部串行化，避免同一工程文件集合并发写入
 
   /**
@@ -33,10 +37,12 @@ export class ProjectSyncMutationService {
     database: ProjectDatabase,
     task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
+    project_change_publisher: ProjectChangePublisher | null = null,
   ) {
     this.database = database;
     this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
+    this.project_change_publisher = project_change_publisher;
   }
 
   /**
@@ -108,7 +114,7 @@ export class ProjectSyncMutationService {
         ...this.bump_section_revision_operations(project_path, ["files", "items", "analysis"]),
       );
       this.database.execute_transaction(operations);
-      await this.sync_project_data(["files", "items", "analysis"]);
+      this.publish_project_data_change("workbench_add_file", ["files", "items", "analysis"]);
       return this.build_project_mutation_ack(project_path, ["files", "items", "analysis"]);
     });
   }
@@ -135,7 +141,7 @@ export class ProjectSyncMutationService {
         this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
         ...this.bump_section_revision_operations(project_path, ["items", "analysis"]),
       ]);
-      await this.sync_project_data(["items", "analysis"]);
+      this.publish_project_data_change("workbench_reset_file", ["items", "analysis"]);
       return this.build_project_mutation_ack(project_path, ["items", "analysis"]);
     });
   }
@@ -169,7 +175,7 @@ export class ProjectSyncMutationService {
         ...this.bump_section_revision_operations(project_path, ["files", "items", "analysis"]),
       );
       this.database.execute_transaction(operations);
-      await this.sync_project_data(["files", "items", "analysis"]);
+      this.publish_project_data_change("workbench_delete_file", ["files", "items", "analysis"]);
       return this.build_project_mutation_ack(project_path, ["files", "items", "analysis"]);
     });
   }
@@ -194,7 +200,7 @@ export class ProjectSyncMutationService {
         }),
         ...this.bump_section_revision_operations(project_path, ["files"]),
       ]);
-      await this.sync_project_data(["files"]);
+      this.publish_project_data_change("workbench_reorder_files", ["files"]);
       return this.build_project_mutation_ack(project_path, ["files"]);
     });
   }
@@ -210,9 +216,6 @@ export class ProjectSyncMutationService {
       this.database.execute_transaction([
         this.op("upsertMetaEntries", { projectPath: project_path, meta: settings_meta }),
       ]);
-      if (String(request["path"] ?? "").trim() === "") {
-        await this.sync_project_data(["project"]);
-      }
       return this.build_project_mutation_ack(project_path, []);
     }
     if (mode !== "prefiltered_items") {
@@ -236,7 +239,7 @@ export class ProjectSyncMutationService {
       this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
       ...this.bump_section_revision_operations(project_path, ["items", "analysis"]),
     ]);
-    await this.sync_project_data(["items", "analysis"]);
+    this.publish_project_data_change("settings_alignment", ["items", "analysis"]);
     return this.build_project_mutation_ack(project_path, ["items", "analysis"]);
   }
 
@@ -264,7 +267,7 @@ export class ProjectSyncMutationService {
         this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
         ...this.bump_section_revision_operations(project_path, ["items", "analysis"]),
       ]);
-      await this.sync_project_data(["items", "analysis"]);
+      this.publish_project_data_change("translation_reset", ["items", "analysis"]);
       return this.build_project_mutation_ack(project_path, ["items", "analysis"]);
     }
     if (mode === "failed") {
@@ -279,7 +282,7 @@ export class ProjectSyncMutationService {
         }),
         ...this.bump_section_revision_operations(project_path, ["items"]),
       ]);
-      await this.sync_project_data(["items"]);
+      this.publish_project_data_change("translation_reset", ["items"]);
       return this.build_project_mutation_ack(project_path, ["items"]);
     }
     throw new Error("translation reset 仅支持 mode=all 或 mode=failed");
@@ -321,7 +324,7 @@ export class ProjectSyncMutationService {
     }
     operations.push(...this.bump_section_revision_operations(project_path, ["analysis"]));
     this.database.execute_transaction(operations);
-    await this.sync_project_data(["analysis"]);
+    this.publish_project_data_change("analysis_reset", ["analysis"]);
     return this.build_project_mutation_ack(project_path, ["analysis"]);
   }
 
@@ -362,7 +365,7 @@ export class ProjectSyncMutationService {
       }),
       ...this.bump_section_revision_operations(project_path, ["analysis"]),
     ]);
-    await this.sync_project_data(["quality", "analysis"]);
+    this.publish_project_data_change("analysis_glossary_import", ["quality", "analysis"]);
     return this.build_project_mutation_ack(project_path, ["quality", "analysis"]);
   }
 
@@ -461,7 +464,7 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * bump 运行态 section revision，确保 ack 和后续 bootstrap 都看到新版本
+   * bump 运行态 section revision，确保 ack 和后续读取都看到新版本
    */
   private bump_section_revision_operations(
     project_path: string,
@@ -478,10 +481,28 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 任务读侧直接从 ProjectTaskStore 取库；同步 mutation 不再通知旧缓存清理
+   * 同步 mutation 的 DB commit 成功后发布权威项目变更，HTTP ack 只保留 revision 对齐职责
    */
-  private async sync_project_data(sections: string[]): Promise<void> {
-    void sections;
+  private publish_project_data_change(source: string, sections: ProjectDataSection[]): void {
+    if (this.project_change_publisher === null || sections.length === 0) {
+      return;
+    }
+
+    this.project_change_publisher.publish_project_change({
+      source,
+      updatedSections: sections as unknown as ApiJsonValue,
+      sections: Object.fromEntries(
+        sections
+          .filter((section) => section !== "items" && section !== "files")
+          .map((section) => [section, { payloadMode: "section-invalidated" }]),
+      ) as unknown as ApiJsonValue,
+      ...(sections.includes("items")
+        ? { items: { payloadMode: "section-invalidated" } as unknown as ApiJsonValue }
+        : {}),
+      ...(sections.includes("files")
+        ? { files: { payloadMode: "section-invalidated" } as unknown as ApiJsonValue }
+        : {}),
+    });
   }
 
   /**
@@ -513,14 +534,10 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 兼容 workbench planner 仍放在 derived_meta 内的派生 meta，不扩大落库白名单
+   * 派生 meta 必须显式位于请求顶层，避免继续接受旧包装层
    */
   private read_request_meta_object(request: JsonRecord, key: string): MutableJsonRecord {
-    if (request[key] !== undefined) {
-      return this.normalize_object(request[key]);
-    }
-    const derived_meta = this.normalize_object(request["derived_meta"]);
-    return this.normalize_object(derived_meta[key]);
+    return this.normalize_object(request[key]);
   }
 
   /**

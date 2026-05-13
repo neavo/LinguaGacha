@@ -1,9 +1,12 @@
 import { compute_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-builder";
 import {
-  createProjectStoreReplaceSectionPatch,
-  type ProjectStorePatchOperation,
+  createProjectStoreFilesDeltaChange,
+  createProjectStoreItemsDeltaChange,
+  createProjectStoreReplaceSectionChange,
+  type ProjectStoreChangeOperation,
   type ProjectStoreState,
 } from "@/project/store/project-store";
+import { create_empty_translation_task_snapshot } from "@/project/reset/reset-state-builders";
 import { is_task_skipped_item_status } from "@shared/task";
 
 type WorkbenchPlannerSettings = {
@@ -11,6 +14,8 @@ type WorkbenchPlannerSettings = {
   mtool_optimizer_enable: boolean;
   skip_duplicate_source_text_enable: boolean;
 };
+
+type WorkbenchPlannerTaskSnapshot = Record<string, unknown>;
 
 type WorkbenchPlannerFileRecord = {
   rel_path: string;
@@ -32,7 +37,10 @@ type WorkbenchPlannerItemRecord = {
 
 type WorkbenchTranslationInheritanceMode = "none" | "inherit";
 
-type WorkbenchDerivedMeta = {
+/**
+ * 工作台 mutation 派生出的任务 meta 直接进入请求顶层，不再包旧 derived_meta
+ */
+type WorkbenchMutationMeta = {
   translation_extras: Record<string, unknown>;
   prefilter_config: {
     source_language: string;
@@ -41,10 +49,14 @@ type WorkbenchDerivedMeta = {
   };
 };
 
+/**
+ * planner 同时产出本地 ProjectStore 操作、后端请求和任务快照，保证三者同源
+ */
 export type WorkbenchProjectMutationPlan = {
-  updatedSections: Array<"files" | "items" | "analysis" | "task">;
-  patch: ProjectStorePatchOperation[];
+  updatedSections: Array<"files" | "items" | "analysis">;
+  operations: ProjectStoreChangeOperation[];
   requestBody: Record<string, unknown>;
+  next_task_snapshot?: Record<string, unknown>;
 };
 
 function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | null {
@@ -173,8 +185,12 @@ function build_expected_revisions(
   return expected_section_revisions;
 }
 
-function build_derived_meta(args: {
+/**
+ * 文件集合 mutation 会重算 items、analysis 和任务进度，避免页面只改局部事实
+ */
+function build_workbench_mutation_state(args: {
   state: ProjectStoreState;
+  task_snapshot?: WorkbenchPlannerTaskSnapshot;
   files: Record<string, Record<string, unknown>>;
   items: Record<string, Record<string, unknown>>;
   settings: WorkbenchPlannerSettings;
@@ -182,14 +198,16 @@ function build_derived_meta(args: {
   items: Record<string, Record<string, unknown>>;
   analysis: Record<string, unknown>;
   task_snapshot: Record<string, unknown>;
-  derived_meta: WorkbenchDerivedMeta;
+  mutation_meta: WorkbenchMutationMeta;
 } {
+  const base_task_snapshot = args.task_snapshot ?? create_empty_translation_task_snapshot();
   const mutation_output = compute_project_prefilter_mutation({
     state: {
       ...args.state,
       files: args.files,
       items: args.items,
     },
+    task_snapshot: base_task_snapshot,
     source_language: args.settings.source_language,
     mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
     skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
@@ -199,7 +217,7 @@ function build_derived_meta(args: {
     items: mutation_output.items,
     analysis: mutation_output.analysis,
     task_snapshot: mutation_output.task_snapshot,
-    derived_meta: {
+    mutation_meta: {
       translation_extras: mutation_output.translation_extras,
       prefilter_config: mutation_output.prefilter_config,
     },
@@ -250,7 +268,7 @@ export function create_workbench_reorder_plan(args: {
   const next_files = build_file_section(next_file_map);
   return {
     updatedSections: ["files"],
-    patch: [createProjectStoreReplaceSectionPatch("files", next_files)],
+    operations: [createProjectStoreReplaceSectionChange("files", next_files)],
     requestBody: {
       ordered_rel_paths: ordered_rel_paths,
       expected_section_revisions: build_expected_revisions(args.state, ["files"]),
@@ -260,6 +278,7 @@ export function create_workbench_reorder_plan(args: {
 
 export function create_workbench_reset_file_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: WorkbenchPlannerTaskSnapshot;
   rel_path: string;
   settings: WorkbenchPlannerSettings;
 }): WorkbenchProjectMutationPlan {
@@ -290,40 +309,40 @@ export function create_workbench_reset_file_plan(args: {
   }
 
   const next_items = build_item_section(item_map);
-  const derived_state = build_derived_meta({
+  const mutation_state = build_workbench_mutation_state({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     files: args.state.files as Record<string, Record<string, unknown>>,
     items: next_items,
     settings: args.settings,
   });
 
-  const changed_items = Object.values(derived_state.items)
+  const changed_items = Object.values(mutation_state.items)
     .filter((item) => String(item.file_path ?? "") === target_rel_path)
     .sort((left_item, right_item) => {
       return Number(left_item.item_id ?? 0) - Number(right_item.item_id ?? 0);
     });
 
   return {
-    updatedSections: ["items", "analysis", "task"],
-    patch: [
-      {
-        op: "merge_items",
-        items: changed_items,
-      },
-      createProjectStoreReplaceSectionPatch("analysis", derived_state.analysis),
-      createProjectStoreReplaceSectionPatch("task", derived_state.task_snapshot),
+    updatedSections: ["items", "analysis"],
+    operations: [
+      createProjectStoreItemsDeltaChange({ upsertItems: changed_items }),
+      createProjectStoreReplaceSectionChange("analysis", mutation_state.analysis),
     ],
     requestBody: {
       rel_paths: [target_rel_path],
       items: serialize_workbench_item_payloads(changed_items),
-      derived_meta: derived_state.derived_meta,
+      translation_extras: mutation_state.mutation_meta.translation_extras,
+      prefilter_config: mutation_state.mutation_meta.prefilter_config,
       expected_section_revisions: build_expected_revisions(args.state, ["items", "analysis"]),
     },
+    next_task_snapshot: mutation_state.task_snapshot,
   };
 }
 
 export function create_workbench_delete_files_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: WorkbenchPlannerTaskSnapshot;
   rel_paths: string[];
   settings: WorkbenchPlannerSettings;
 }): WorkbenchProjectMutationPlan {
@@ -351,31 +370,36 @@ export function create_workbench_delete_files_plan(args: {
   }
 
   const next_files = build_file_section(file_map);
+  const deleted_item_ids = [...item_map.values()]
+    .filter((item) => target_rel_path_set.has(item.file_path))
+    .map((item) => item.item_id);
   const next_items = build_item_section(next_item_map);
-  const derived_state = build_derived_meta({
+  const mutation_state = build_workbench_mutation_state({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     files: next_files,
     items: next_items,
     settings: args.settings,
   });
 
   return {
-    updatedSections: ["files", "items", "analysis", "task"],
-    patch: [
-      createProjectStoreReplaceSectionPatch("files", next_files),
-      createProjectStoreReplaceSectionPatch("items", derived_state.items),
-      createProjectStoreReplaceSectionPatch("analysis", derived_state.analysis),
-      createProjectStoreReplaceSectionPatch("task", derived_state.task_snapshot),
+    updatedSections: ["files", "items", "analysis"],
+    operations: [
+      createProjectStoreFilesDeltaChange({ deletePaths: target_rel_paths }),
+      createProjectStoreItemsDeltaChange({ deleteIds: deleted_item_ids }),
+      createProjectStoreReplaceSectionChange("analysis", mutation_state.analysis),
     ],
     requestBody: {
       rel_paths: target_rel_paths,
-      derived_meta: derived_state.derived_meta,
+      translation_extras: mutation_state.mutation_meta.translation_extras,
+      prefilter_config: mutation_state.mutation_meta.prefilter_config,
       expected_section_revisions: build_expected_revisions(args.state, [
         "files",
         "items",
         "analysis",
       ]),
     },
+    next_task_snapshot: mutation_state.task_snapshot,
   };
 }
 
@@ -627,6 +651,7 @@ function ensure_target_path_not_conflict(args: {
 
 function create_file_mutation_runtime_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: WorkbenchPlannerTaskSnapshot;
   file_map: Map<string, WorkbenchPlannerFileRecord>;
   next_file_map: Map<string, WorkbenchPlannerFileRecord>;
   next_item_map: Map<number, WorkbenchPlannerItemRecord>;
@@ -635,35 +660,38 @@ function create_file_mutation_runtime_plan(args: {
 }): WorkbenchProjectMutationPlan {
   const next_files = build_file_section(args.next_file_map);
   const next_items = build_item_section(args.next_item_map);
-  const derived_state = build_derived_meta({
+  const mutation_state = build_workbench_mutation_state({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     files: next_files,
     items: next_items,
     settings: args.settings,
   });
 
   return {
-    updatedSections: ["files", "items", "analysis", "task"],
-    patch: [
-      createProjectStoreReplaceSectionPatch("files", next_files),
-      createProjectStoreReplaceSectionPatch("items", derived_state.items),
-      createProjectStoreReplaceSectionPatch("analysis", derived_state.analysis),
-      createProjectStoreReplaceSectionPatch("task", derived_state.task_snapshot),
+    updatedSections: ["files", "items", "analysis"],
+    operations: [
+      createProjectStoreReplaceSectionChange("files", next_files),
+      createProjectStoreReplaceSectionChange("items", mutation_state.items),
+      createProjectStoreReplaceSectionChange("analysis", mutation_state.analysis),
     ],
     requestBody: {
       ...args.request_body,
-      derived_meta: derived_state.derived_meta,
+      translation_extras: mutation_state.mutation_meta.translation_extras,
+      prefilter_config: mutation_state.mutation_meta.prefilter_config,
       expected_section_revisions: build_expected_revisions(args.state, [
         "files",
         "items",
         "analysis",
       ]),
     },
+    next_task_snapshot: mutation_state.task_snapshot,
   };
 }
 
 export function create_workbench_add_files_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: WorkbenchPlannerTaskSnapshot;
   parsed_files: WorkbenchFileParsePreview[];
   settings: WorkbenchPlannerSettings;
   inheritance_mode?: WorkbenchTranslationInheritanceMode;
@@ -739,6 +767,7 @@ export function create_workbench_add_files_plan(args: {
 
   return create_file_mutation_runtime_plan({
     state: args.state,
+    task_snapshot: args.task_snapshot,
     file_map,
     next_file_map,
     next_item_map,

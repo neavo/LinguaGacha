@@ -46,11 +46,14 @@ export class TaskCommandService {
    */
   public async start_translation(request: JsonRecord): Promise<MutableJsonRecord> {
     const mode = this.require_mode(request["mode"], TRANSLATION_MODES, "NEW");
-    const quality_snapshot = this.normalize_optional_record(request["quality_snapshot"]);
+    this.assert_expected_section_revisions(
+      this.normalize_expected_section_revisions(request["expected_section_revisions"]),
+      ["quality", "prompts"],
+    );
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.begin_task("translation");
     try {
-      await this.task_engine.start_translation(mode, quality_snapshot);
+      await this.task_engine.start_translation(mode);
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -92,11 +95,14 @@ export class TaskCommandService {
    */
   public async start_analysis(request: JsonRecord): Promise<MutableJsonRecord> {
     const mode = this.require_mode(request["mode"], ANALYSIS_MODES, "NEW");
-    const quality_snapshot = this.normalize_optional_record(request["quality_snapshot"]);
+    this.assert_expected_section_revisions(
+      this.normalize_expected_section_revisions(request["expected_section_revisions"]),
+      ["quality", "prompts"],
+    );
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.begin_task("analysis");
     try {
-      await this.task_engine.start_analysis(mode, quality_snapshot);
+      await this.task_engine.start_analysis(mode);
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -139,17 +145,17 @@ export class TaskCommandService {
   public async start_retranslate(request: JsonRecord): Promise<MutableJsonRecord> {
     this.require_loaded_project_path();
     const item_ids = this.normalize_item_ids(request["item_ids"]);
-    const quality_snapshot = this.normalize_optional_record(request["quality_snapshot"]);
     if (item_ids.length === 0) {
       throw new Error("请选择要重新翻译的条目。");
     }
     this.assert_expected_section_revisions(
       this.normalize_expected_section_revisions(request["expected_section_revisions"]),
+      ["items", "proofreading", "quality", "prompts"],
     );
     const previous_state = this.task_runtime_state.snapshot();
     this.task_runtime_state.begin_task("retranslate", item_ids);
     try {
-      await this.task_engine.start_retranslate(item_ids, quality_snapshot);
+      await this.task_engine.start_retranslate(item_ids);
     } catch (error) {
       this.task_runtime_state.restore(previous_state);
       throw error;
@@ -197,30 +203,31 @@ export class TaskCommandService {
   }
 
   /**
-   * 缺失期望值时宽容跳过；给出期望值时沿用旧冲突消息
+   * 任务启动必须声明所有被读取 section 的 revision，避免后台任务基于过期输入运行
    */
-  private assert_expected_section_revisions(expected: Record<string, number> | null): void {
+  private assert_expected_section_revisions(
+    expected: Record<string, number> | null,
+    sections: string[],
+  ): void {
     if (expected === null) {
-      return;
+      throw new Error("任务启动缺少 expected_section_revisions。");
     }
-    this.assert_expected_revision(
-      "items",
-      expected,
-      this.snapshot_builder.get_runtime_section_revision("items"),
-      (current, expected_revision) =>
-        `运行态 revision 冲突：section=items 当前=${current.toString()} 期望=${expected_revision.toString()}`,
-    );
-    this.assert_expected_revision(
-      "proofreading",
-      expected,
-      this.snapshot_builder.get_runtime_section_revision("proofreading"),
-      (current, expected_revision) =>
-        `校对 revision 冲突：当前=${current.toString()}，期望=${expected_revision.toString()}`,
-    );
+    for (const section of sections) {
+      if (!(section in expected)) {
+        throw new Error(`任务启动缺少 ${section} revision。`);
+      }
+      this.assert_expected_revision(
+        section,
+        expected,
+        this.snapshot_builder.get_runtime_section_revision(section),
+        (current, expected_revision) =>
+          this.build_revision_conflict_message(section, current, expected_revision),
+      );
+    }
   }
 
   /**
-   * 单个 section revision 比对集中在这里，避免两条错误消息分支重复转换
+   * 单个 section revision 比对集中在这里，避免错误消息分支重复转换
    */
   private assert_expected_revision(
     section: string,
@@ -228,13 +235,27 @@ export class TaskCommandService {
     current_revision: number,
     build_message: (current: number, expected_revision: number) => string,
   ): void {
-    if (!(section in expected)) {
-      return;
-    }
     const expected_revision = expected[section] ?? 0;
     if (current_revision !== expected_revision) {
       throw new Error(build_message(current_revision, expected_revision));
     }
+  }
+
+  /**
+   * 旧 items / proofreading 错误关键字保持不变，新增质量输入 revision 统一同一口径
+   */
+  private build_revision_conflict_message(
+    section: string,
+    current: number,
+    expected_revision: number,
+  ): string {
+    if (section === "items") {
+      return `运行态 revision 冲突：section=items 当前=${current.toString()} 期望=${expected_revision.toString()}`;
+    }
+    if (section === "proofreading") {
+      return `校对 revision 冲突：当前=${current.toString()}，期望=${expected_revision.toString()}`;
+    }
+    return `${section} revision 冲突：当前=${current.toString()}，期望=${expected_revision.toString()}`;
   }
 
   /**
@@ -253,13 +274,6 @@ export class TaskCommandService {
   }
 
   /**
-   * 只允许对象型质量快照穿过 executor 边界，数组和 null 都按缺失处理
-   */
-  private normalize_optional_record(value: ApiJsonValue | undefined): ApiJsonValue {
-    return this.is_record(value) ? { ...value } : null;
-  }
-
-  /**
    * item_ids 在公开边界去重并保留顺序，避免 Engine 收到重复重翻条目
    */
   private normalize_item_ids(value: ApiJsonValue | undefined): number[] {
@@ -270,7 +284,7 @@ export class TaskCommandService {
     const seen_ids = new Set<number>();
     for (const raw_item_id of value) {
       const item_id = this.parse_integer_like(raw_item_id);
-      if (item_id === null || seen_ids.has(item_id)) {
+      if (item_id === null || item_id <= 0 || seen_ids.has(item_id)) {
         continue;
       }
       seen_ids.add(item_id);

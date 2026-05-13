@@ -5,8 +5,8 @@ import {
   normalize_runtime_project_item_record,
 } from "@/project/reset/reset-state-builders";
 import {
-  createProjectStoreReplaceSectionPatch,
-  type ProjectStorePatchOperation,
+  createProjectStoreReplaceSectionChange,
+  type ProjectStoreChangeOperation,
   type ProjectStoreState,
 } from "@/project/store/project-store";
 
@@ -15,8 +15,8 @@ type AnalysisResetPreviewPayload = {
 };
 
 export type AnalysisResetPlan = {
-  updatedSections: Array<"analysis" | "task">;
-  patch: ProjectStorePatchOperation[];
+  updatedSections: Array<"analysis">;
+  operations: ProjectStoreChangeOperation[];
   requestBody: Record<string, unknown>;
   next_task_snapshot: Record<string, unknown>;
 };
@@ -70,7 +70,9 @@ function build_next_task_snapshot(args: {
 
 export function create_analysis_reset_all_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: Record<string, unknown>;
 }): AnalysisResetPlan {
+  const task_snapshot = args.task_snapshot ?? {};
   const status_summary = build_analysis_status_summary(build_runtime_items(args.state));
   const empty_analysis_extras: Record<string, unknown> = {};
   const analysis_extras = build_analysis_progress_snapshot({
@@ -85,17 +87,14 @@ export function create_analysis_reset_all_plan(args: {
     status_summary,
   };
   const next_task_snapshot = build_next_task_snapshot({
-    task_snapshot: args.state.task,
+    task_snapshot,
     analysis_extras,
     analysis_candidate_count: 0,
   });
 
   return {
-    updatedSections: ["analysis", "task"],
-    patch: [
-      createProjectStoreReplaceSectionPatch("analysis", next_analysis_state),
-      createProjectStoreReplaceSectionPatch("task", next_task_snapshot),
-    ],
+    updatedSections: ["analysis"],
+    operations: [createProjectStoreReplaceSectionChange("analysis", next_analysis_state)],
     requestBody: {
       mode: "all",
       analysis_extras: analysis_extras,
@@ -109,8 +108,10 @@ export function create_analysis_reset_all_plan(args: {
 
 export async function create_analysis_reset_failed_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: Record<string, unknown>;
   request_preview: () => Promise<AnalysisResetPreviewPayload>;
 }): Promise<AnalysisResetPlan> {
+  const task_snapshot = args.task_snapshot ?? {};
   const preview_payload = await args.request_preview();
   const status_summary = normalize_status_summary(preview_payload.status_summary);
   const current_analysis_extras = normalize_record(args.state.analysis.extras);
@@ -121,7 +122,7 @@ export async function create_analysis_reset_failed_plan(args: {
     status_summary,
   });
   const analysis_candidate_count = Number(
-    args.state.analysis.candidate_count ?? args.state.task.analysis_candidate_count ?? 0,
+    args.state.analysis.candidate_count ?? task_snapshot.analysis_candidate_count ?? 0,
   );
   const next_analysis_state = {
     ...args.state.analysis,
@@ -129,17 +130,14 @@ export async function create_analysis_reset_failed_plan(args: {
     status_summary,
   };
   const next_task_snapshot = build_next_task_snapshot({
-    task_snapshot: args.state.task,
+    task_snapshot,
     analysis_extras,
     analysis_candidate_count,
   });
 
   return {
-    updatedSections: ["analysis", "task"],
-    patch: [
-      createProjectStoreReplaceSectionPatch("analysis", next_analysis_state),
-      createProjectStoreReplaceSectionPatch("task", next_task_snapshot),
-    ],
+    updatedSections: ["analysis"],
+    operations: [createProjectStoreReplaceSectionChange("analysis", next_analysis_state)],
     requestBody: {
       mode: "failed",
       analysis_extras: analysis_extras,

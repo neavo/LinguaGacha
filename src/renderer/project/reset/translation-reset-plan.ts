@@ -7,8 +7,9 @@ import {
   type RuntimeProjectItemRecord,
 } from "@/project/reset/reset-state-builders";
 import {
-  createProjectStoreReplaceSectionPatch,
-  type ProjectStorePatchOperation,
+  createProjectStoreItemsDeltaChange,
+  createProjectStoreReplaceSectionChange,
+  type ProjectStoreChangeOperation,
   type ProjectStoreState,
 } from "@/project/store/project-store";
 
@@ -33,8 +34,8 @@ type TranslationResetPreviewPayload = {
 };
 
 export type TranslationResetPlan = {
-  updatedSections: Array<"items" | "analysis" | "task"> | Array<"items" | "task">;
-  patch: ProjectStorePatchOperation[];
+  updatedSections: Array<"items" | "analysis"> | Array<"items">;
+  operations: ProjectStoreChangeOperation[];
   requestBody: Record<string, unknown>;
   next_task_snapshot: Record<string, unknown>;
 };
@@ -147,7 +148,9 @@ function merge_full_items_with_runtime_state(args: {
 
 export function create_translation_reset_failed_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: Record<string, unknown>;
 }): TranslationResetPlan {
+  const task_snapshot = args.task_snapshot ?? create_empty_translation_task_snapshot();
   const item_map = build_runtime_item_map(args.state);
   const changed_items: RuntimeProjectItemRecord[] = [];
 
@@ -165,22 +168,16 @@ export function create_translation_reset_failed_plan(args: {
   changed_items.sort((left_item, right_item) => left_item.item_id - right_item.item_id);
 
   const derived_task_state = build_translation_task_and_project_state({
-    task_snapshot: args.state.task,
+    task_snapshot,
     items: item_map,
     analysis_candidate_count: Number(
-      args.state.analysis.candidate_count ?? args.state.task.analysis_candidate_count ?? 0,
+      args.state.analysis.candidate_count ?? task_snapshot.analysis_candidate_count ?? 0,
     ),
   });
 
   return {
-    updatedSections: ["items", "task"],
-    patch: [
-      {
-        op: "merge_items",
-        items: changed_items,
-      },
-      createProjectStoreReplaceSectionPatch("task", derived_task_state.task_snapshot),
-    ],
+    updatedSections: ["items"],
+    operations: [createProjectStoreItemsDeltaChange({ upsertItems: changed_items })],
     requestBody: {
       mode: "failed",
       items: serialize_partial_items(changed_items),
@@ -195,6 +192,7 @@ export function create_translation_reset_failed_plan(args: {
 
 export async function create_translation_reset_all_plan(args: {
   state: ProjectStoreState;
+  task_snapshot?: Record<string, unknown>;
   source_language: string;
   mtool_optimizer_enable: boolean;
   skip_duplicate_source_text_enable: boolean;
@@ -230,6 +228,7 @@ export async function create_translation_reset_all_plan(args: {
       ...args.state,
       items: preview_runtime_items,
     },
+    task_snapshot: create_empty_translation_task_snapshot(),
     source_language: args.source_language,
     mtool_optimizer_enable: args.mtool_optimizer_enable,
     skip_duplicate_source_text_enable: args.skip_duplicate_source_text_enable,
@@ -249,11 +248,10 @@ export async function create_translation_reset_all_plan(args: {
   });
 
   return {
-    updatedSections: ["items", "analysis", "task"],
-    patch: [
-      createProjectStoreReplaceSectionPatch("items", mutation_output.items),
-      createProjectStoreReplaceSectionPatch("analysis", mutation_output.analysis),
-      createProjectStoreReplaceSectionPatch("task", reset_task_state.task_snapshot),
+    updatedSections: ["items", "analysis"],
+    operations: [
+      createProjectStoreReplaceSectionChange("items", mutation_output.items),
+      createProjectStoreReplaceSectionChange("analysis", mutation_output.analysis),
     ],
     requestBody: {
       mode: "all",

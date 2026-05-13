@@ -94,26 +94,6 @@ export class TaskRuntimeState {
   }
 
   /**
-   * project.patch 里的 replace_task 是任务块最终口径，需要回灌到 运行态
-   */
-  public apply_task_snapshot(payload: JsonRecord): void {
-    const task_type = this.read_task_type(payload);
-    this.status = typeof payload["status"] === "string" ? payload["status"] : this.status;
-    this.busy = this.read_boolean(payload["busy"], !is_task_idle_status(this.status));
-    this.request_in_flight_count = this.read_number(
-      payload["request_in_flight_count"],
-      this.request_in_flight_count,
-    );
-    this.active_task_type = this.busy && task_type !== null ? task_type : IDLE_TASK_TYPE;
-    if (task_type === "retranslate" || Array.isArray(payload["retranslating_item_ids"])) {
-      this.retranslating_item_ids = this.normalize_item_ids(payload["retranslating_item_ids"]);
-    }
-    if (!this.busy && task_type === "retranslate") {
-      this.retranslating_item_ids = [];
-    }
-  }
-
-  /**
    * 重翻提交完成后移除已回写行，避免单批 patch 之后 spinner 残留
    */
   public remove_retranslating_item_ids(item_ids: number[]): void {
@@ -121,31 +101,6 @@ export class TaskRuntimeState {
     this.retranslating_item_ids = this.retranslating_item_ids.filter(
       (item_id) => !done_ids.has(item_id),
     );
-  }
-
-  /**
-   * 构建可直接放入 project.patch 的 task 块，复用当前 runtime state
-   */
-  public build_task_block(task_type: TaskType): JsonRecord {
-    const snapshot = this.snapshot();
-    return {
-      task_type,
-      status: snapshot.status,
-      busy: snapshot.busy,
-      request_in_flight_count: snapshot.request_in_flight_count,
-      line: 0,
-      total_line: 0,
-      processed_line: 0,
-      error_line: 0,
-      total_tokens: 0,
-      total_output_tokens: 0,
-      total_input_tokens: 0,
-      time: 0,
-      start_time: 0,
-      ...(task_type === "retranslate"
-        ? { retranslating_item_ids: snapshot.retranslating_item_ids as unknown as ApiJsonValue }
-        : {}),
-    };
   }
 
   /**

@@ -1,11 +1,13 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
-import { ProjectPatchPublisher } from "../../project/project-patch-publisher";
+import { ProjectChangePublisher } from "../../project/project-change-publisher";
+import { ProjectRuntimeProjectionService } from "../../project/project-runtime-projection-service";
 import { get_runtime_section_revision } from "../../project/project-section-revision";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
+import { QualityRuleSnapshotTool } from "../../../shared/quality/snapshot";
 import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
 
 /**
@@ -19,7 +21,7 @@ export class ProjectTaskStore {
     private readonly database: ProjectDatabase,
     private readonly session_state: ProjectSessionState,
     private readonly task_runtime_state: TaskRuntimeState,
-    private readonly project_patch_publisher: ProjectPatchPublisher,
+    private readonly project_change_publisher: ProjectChangePublisher,
   ) {}
 
   /**
@@ -32,6 +34,28 @@ export class ProjectTaskStore {
       project_path: state.projectPath,
       meta: state.loaded ? this.get_all_meta(state.projectPath) : {},
     };
+  }
+
+  /**
+   * 任务启动时从 `.lg` 读取质量规则和提示词快照，renderer 缓存不再作为后端任务输入
+   */
+  public build_quality_snapshot(): ApiJsonValue {
+    const state = this.session_state.snapshot();
+    if (!state.loaded || state.projectPath === "") {
+      return QualityRuleSnapshotTool.to_json(QualityRuleSnapshotTool.from_json({}));
+    }
+    const projection_service = new ProjectRuntimeProjectionService(this.database);
+    const payload = projection_service.build_section_payloads({
+      projectState: state,
+      sections: ["quality", "prompts"],
+    });
+    const sections = this.normalize_object(payload["sections"]);
+    return QualityRuleSnapshotTool.to_json(
+      QualityRuleSnapshotTool.from_json({
+        quality: sections["quality"],
+        prompts: sections["prompts"],
+      }),
+    ) as unknown as ApiJsonValue;
   }
 
   /**
@@ -74,15 +98,13 @@ export class ProjectTaskStore {
     ]);
     const changed_item_ids = this.collect_item_ids(finalized_items);
     if (changed_item_ids.length > 0) {
-      this.project_patch_publisher.publish_project_patch({
+      this.project_change_publisher.publish_project_change({
         source: "translation_batch_update",
         updatedSections: ["items"],
-        patch: [
-          {
-            op: "merge_items",
-            item_ids: changed_item_ids as unknown as ApiJsonValue,
-          },
-        ],
+        items: {
+          payloadMode: "canonical-delta",
+          changedIds: changed_item_ids as unknown as ApiJsonValue,
+        },
       });
     }
     return {
@@ -226,7 +248,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 重翻批次提交同时推进 items 与 proofreading revision，并发布行级 patch
+   * 重翻批次提交同时推进 items 与 proofreading revision，并发布行级项目变更
    */
   public commit_retranslate_batch(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -247,23 +269,21 @@ export class ProjectTaskStore {
     ]);
     const changed_item_ids = this.collect_item_ids(finalized_items);
     this.task_runtime_state.remove_retranslating_item_ids(changed_item_ids);
-    this.project_patch_publisher.publish_project_patch({
+    this.project_change_publisher.publish_project_change({
       source: "retranslate_items",
-      updatedSections: ["items", "proofreading", "task"],
-      patch: [
-        {
-          op: "merge_items",
-          item_ids: changed_item_ids as unknown as ApiJsonValue,
-        },
-        { op: "replace_proofreading" },
-        {
-          op: "replace_task",
-          task: this.task_runtime_state.build_task_block("retranslate"),
-        },
-      ],
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "canonical-delta",
+        changedIds: changed_item_ids as unknown as ApiJsonValue,
+      },
+      sections: {
+        proofreading: { payloadMode: "canonical-delta" },
+      },
     });
     return {
       changed_item_ids: changed_item_ids as unknown as ApiJsonValue,
+      retranslating_item_ids: this.task_runtime_state.snapshot()
+        .retranslating_item_ids as unknown as ApiJsonValue,
       section_revisions: this.build_section_revisions(project_path, ["items", "proofreading"]),
     };
   }
@@ -280,13 +300,15 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 发布 analysis patch 时统一交给 ProjectPatchAdapter 补全分析块和 revision
+   * 发布 analysis 变更时统一交给 ProjectChangeEventAdapter 补全分析块和 revision
    */
   private publish_analysis_patch(source: string): void {
-    this.project_patch_publisher.publish_project_patch({
+    this.project_change_publisher.publish_project_change({
       source,
       updatedSections: ["analysis"],
-      patch: [{ op: "replace_analysis" }],
+      sections: {
+        analysis: { payloadMode: "canonical-delta" },
+      },
     });
   }
 

@@ -33,7 +33,7 @@ type RuntimeFixture = {
     item_ids: Array<number | string>;
     updated_sections: string[];
   };
-  commit_local_project_patch: ReturnType<typeof vi.fn>;
+  commit_local_project_change: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   align_project_runtime_ack: ReturnType<typeof vi.fn>;
 };
@@ -129,7 +129,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
-function create_expected_quality_snapshot(): Record<string, unknown> {
+function create_quality_store_payload(): Record<string, unknown> {
   return {
     quality: {
       glossary: {
@@ -179,7 +179,7 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     project_store: {
       getState: () => {
-        const quality_snapshot = create_expected_quality_snapshot();
+        const quality_payload = create_quality_store_payload();
         return {
           project: {
             path: "E:/demo/sample.lg",
@@ -187,8 +187,8 @@ function create_runtime_fixture(): RuntimeFixture {
           proofreading: {
             revision: 1,
           },
-          quality: quality_snapshot.quality,
-          prompts: quality_snapshot.prompts,
+          quality: quality_payload.quality,
+          prompts: quality_payload.prompts,
           revisions: {
             sections: {
               items: 7,
@@ -226,7 +226,7 @@ function create_runtime_fixture(): RuntimeFixture {
       item_ids: [],
       updated_sections: [],
     },
-    commit_local_project_patch: vi.fn(() => {
+    commit_local_project_change: vi.fn(() => {
       return {
         rollback: vi.fn(),
       };
@@ -245,9 +245,14 @@ function create_navigation_fixture(): NavigationFixture {
 
 function create_sync_state() {
   return {
-    revision: 1,
-    project_id: "E:/demo/sample.lg",
-    default_filters: {
+    projectId: "E:/demo/sample.lg",
+    sourceLanguage: "JA",
+    revisions: {
+      items: 7,
+      quality: 0,
+      proofreading: 1,
+    },
+    defaultFilters: {
       warning_types: ["NO_WARNING"],
       statuses: ["NONE"],
       file_paths: ["chapter01.txt"],
@@ -292,8 +297,12 @@ function create_client_item(item_id: number | string) {
 function create_list_view() {
   return {
     ...create_empty_proofreading_list_view(),
-    revision: 1,
-    project_id: "E:/demo/sample.lg",
+    projectId: "E:/demo/sample.lg",
+    revisions: {
+      items: 7,
+      quality: 0,
+      proofreading: 1,
+    },
     view_id: "view-1",
     row_count: 1,
     window_start: 0,
@@ -414,7 +423,6 @@ describe("useProofreadingPageState", () => {
     expect(proofreading_runtime_client_fixture.current.apply_item_delta).not.toHaveBeenCalled();
     expect(latest_state?.cache_status).toBe("refreshing");
     expect(latest_state?.settled_project_path).toBe("");
-    expect(latest_state?.last_loaded_at).toBeNull();
   });
 
   it("缓存 ready 后再次收到 delta 信号时会走增量路径而不是全量 hydrate", async () => {
@@ -716,8 +724,9 @@ describe("useProofreadingPageState", () => {
       expected_section_revisions: {
         items: 7,
         proofreading: 1,
+        quality: 0,
+        prompts: 0,
       },
-      quality_snapshot: create_expected_quality_snapshot(),
     });
     expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -792,8 +801,9 @@ describe("useProofreadingPageState", () => {
       expected_section_revisions: {
         items: 7,
         proofreading: 1,
+        quality: 0,
+        prompts: 0,
       },
-      quality_snapshot: create_expected_quality_snapshot(),
     });
     expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
   });

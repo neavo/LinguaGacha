@@ -4,7 +4,7 @@
   appId: "me.neavo.linguagacha",
   asar: true,
   productName: "LinguaGacha",
-  // 复用 npm install 阶段已下载的 Electron，避免打包阶段再次下载同版本运行时。
+  // 复用 npm install 阶段已下载的 Electron，避免打包阶段再次下载同版本运行时
   electronDist: "node_modules/electron/dist",
   directories: {
     buildResources: "public",

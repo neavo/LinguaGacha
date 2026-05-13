@@ -15,8 +15,8 @@ describe("LiveRefreshScheduler", () => {
       onFlush: on_flush,
     });
 
-    scheduler.enqueue("project.patch", { id: 1 });
-    scheduler.enqueue("project.patch", { id: 2 });
+    scheduler.enqueue("project.data_changed", { id: 1 });
+    scheduler.enqueue("project.data_changed", { id: 2 });
     scheduler.enqueue("task.progress", { line: 3 });
 
     vi.advanceTimersByTime(249);
@@ -26,7 +26,7 @@ describe("LiveRefreshScheduler", () => {
 
     expect(on_flush).toHaveBeenCalledTimes(1);
     const batches = on_flush.mock.calls[0]?.[0] as ReadonlyMap<string, readonly unknown[]>;
-    expect(batches.get("project.patch")).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(batches.get("project.data_changed")).toEqual([{ id: 1 }, { id: 2 }]);
     expect(batches.get("task.progress")).toEqual([{ line: 3 }]);
   });
 

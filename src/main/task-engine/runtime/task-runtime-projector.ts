@@ -1,7 +1,5 @@
-import type { ApiJsonValue } from "../../api/api-types";
 import type { CoreEventPayload, CoreEventProjector } from "../../events/core-event-hub";
 import { TaskRuntimeState } from "./task-runtime-state";
-import type { JsonRecord } from "./task-runtime-types";
 
 /**
  * 将公开 Core 事件投影到任务运行态，保证 SSE 与 task snapshot 使用同源事实
@@ -28,33 +26,5 @@ export class TaskRuntimeProjector implements CoreEventProjector {
       this.task_runtime_state.apply_progress_event(payload);
       return;
     }
-    if (event_type === "project.patch") {
-      this.apply_project_patch(payload);
-    }
-  }
-
-  /**
-   * 从 project.patch 的 replace_task 操作回灌任务块，避免 snapshot 反查其它入口
-   */
-  private apply_project_patch(payload: CoreEventPayload): void {
-    const patch = payload["patch"];
-    if (!Array.isArray(patch)) {
-      return;
-    }
-    for (const raw_operation of patch) {
-      if (!this.is_record(raw_operation)) {
-        continue;
-      }
-      if (raw_operation["op"] === "replace_task" && this.is_record(raw_operation["task"])) {
-        this.task_runtime_state.apply_task_snapshot(raw_operation["task"]);
-      }
-    }
-  }
-
-  /**
-   * 普通对象判断集中处理，避免数组被当作 patch operation 或 task 块
-   */
-  private is_record(value: ApiJsonValue | undefined): value is JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 }

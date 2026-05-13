@@ -85,8 +85,12 @@ export type ProofreadingVisibleItem = {
 };
 
 export type ProofreadingListView = {
-  revision: number;
-  project_id: string;
+  projectId: string;
+  revisions: {
+    items: number;
+    quality: number;
+    proofreading: number;
+  };
   view_id: string;
   row_count: number;
   window_start: number;
@@ -293,8 +297,12 @@ export function normalize_proofreading_filter_options(
 
 export function create_empty_proofreading_list_view(): ProofreadingListView {
   return {
-    revision: 0,
-    project_id: "",
+    projectId: "",
+    revisions: {
+      items: 0,
+      quality: 0,
+      proofreading: 0,
+    },
     view_id: "",
     row_count: 0,
     window_start: 0,
