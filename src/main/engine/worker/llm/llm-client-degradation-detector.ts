@@ -2,9 +2,9 @@ const STREAM_DEGRADATION_REPEAT_THRESHOLD = 50; // 退化阈值沿用既有 LLM 
 const STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS = 512;
 
 /**
- * 流式响应退化检测器，识别单字符、双字符和三字符周期性重复输出
+ * 请求客户端响应退化检测器，识别单字符、双字符和三字符周期性重复输出。
  */
-export class StreamDegradationDetector {
+export class LLMClientDegradationDetector {
   private last_char: string | null = null; // last_char 三元窗口必须跨 delta 记忆，否则流式切片会漏判边界重复
   private second_last_char: string | null = null;
   private third_last_char: string | null = null;
@@ -90,7 +90,7 @@ export class StreamDegradationDetector {
     if (text === "") {
       return false;
     }
-    const detector = new StreamDegradationDetector();
+    const detector = new LLMClientDegradationDetector();
     return detector.feed(text.slice(-STREAM_DEGRADATION_FALLBACK_WINDOW_CHARS));
   }
 }

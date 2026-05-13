@@ -20,6 +20,7 @@ import type {
   TaskEngineOptions,
 } from "./engine-options";
 import { LimiterPool, TaskLimiter } from "./limiter-pool";
+import { ModelKeyLeasePool } from "./model-key-lease-pool";
 import { TaskPipeline } from "./pipeline-runner";
 import { TaskProgressSnapshotTool } from "./progress-accumulator";
 import { RunCoordinator } from "./run-coordinator";
@@ -106,6 +107,7 @@ export class TaskEngine {
   private readonly run_coordinator: RunCoordinator; // run_coordinator 是整场任务互斥、停止和终态发布的唯一权威
   private readonly log_replay: TaskLogReplay; // log_replay 统一处理任务生命周期日志和 worker 日志回放
   private readonly limiter_pool = new LimiterPool(); // limiter_pool 让后台任务和单条翻译共用同一模型节奏入口
+  private readonly model_key_lease_pool = new ModelKeyLeasePool(); // model_key_lease_pool 在主线程维护任务级全局 Key 轮换
   private request_in_flight_count = 0; // request_in_flight_count 只表达实时网络压力，不落库也不参与恢复
 
   /**
@@ -150,12 +152,13 @@ export class TaskEngine {
     const lease = await limiter.acquire(controller.signal);
     const run_id = crypto.randomUUID();
     try {
+      const leased_model = this.model_key_lease_pool.lease_model(runtime.model);
       const response = await this.executor_client.translate_single(
         {
           run_id,
           work_unit_id: "single",
           task_type: "translate-single",
-          model: runtime.model as unknown as ApiJsonValue,
+          model: leased_model as unknown as ApiJsonValue,
           config_snapshot: runtime.config_snapshot as unknown as ApiJsonValue,
           quality_snapshot: null,
           text,
@@ -186,11 +189,12 @@ export class TaskEngine {
       const runtime = this.resolve_runtime_snapshot();
       const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_replay.task_run_start(retranslate ? "重翻任务" : "翻译任务", runtime.model);
-      const payload = translation_scope.kind === "items"
-        ? this.task_store.get_translation_items_by_scope({
-            item_ids: translation_scope.item_ids as unknown as ApiJsonValue,
-          })
-        : this.task_store.get_translation_items({ mode: legacy_mode });
+      const payload =
+        translation_scope.kind === "items"
+          ? this.task_store.get_translation_items_by_scope({
+              item_ids: translation_scope.item_ids as unknown as ApiJsonValue,
+            })
+          : this.task_store.get_translation_items({ mode: legacy_mode });
       const all_items = this.normalize_record_list(payload["items"]);
       const meta = this.normalize_record(payload["meta"]);
       const contexts = retranslate
@@ -229,7 +233,10 @@ export class TaskEngine {
     } catch (error) {
       final_status = handle.signal.aborted ? "idle" : "error";
       if (!handle.signal.aborted) {
-        this.log_replay.task_error(retranslate ? "重翻任务执行失败。" : "翻译任务执行失败。", error);
+        this.log_replay.task_error(
+          retranslate ? "重翻任务执行失败。" : "翻译任务执行失败。",
+          error,
+        );
       }
     } finally {
       this.log_replay.task_run_finish(retranslate ? "重翻任务" : "翻译任务", final_status);
@@ -310,27 +317,31 @@ export class TaskEngine {
       signal,
       limiter,
       () =>
-        this.executor_client.execute_unit(
-          {
-            run_id: handle.run_id,
-            unit_id: context.work_unit_id,
-            kind: "translation",
-            model: runtime.model as unknown as ApiJsonValue,
-            config_snapshot: runtime.config_snapshot as unknown as ApiJsonValue,
-            quality_snapshot,
-            payload: {
-              items: context.items as unknown as ApiJsonValue,
-              precedings: context.precedings as unknown as ApiJsonValue,
+        this.executor_client
+          .execute_unit(
+            {
+              run_id: handle.run_id,
+              unit_id: context.work_unit_id,
+              kind: "translation",
+              model: this.model_key_lease_pool.lease_model(
+                runtime.model,
+              ) as unknown as ApiJsonValue,
+              config_snapshot: runtime.config_snapshot as unknown as ApiJsonValue,
+              quality_snapshot,
+              payload: {
+                items: context.items as unknown as ApiJsonValue,
+                precedings: context.precedings as unknown as ApiJsonValue,
+              },
+              diagnostics: {
+                split_count: context.split_count,
+                retry_count: context.retry_count,
+                token_threshold: context.token_threshold,
+                is_initial: context.is_initial,
+              },
             },
-            diagnostics: {
-              split_count: context.split_count,
-              retry_count: context.retry_count,
-              token_threshold: context.token_threshold,
-              is_initial: context.is_initial,
-            },
-          },
-          signal,
-        ).then((unit_result) => this.to_translation_work_unit_result(unit_result)),
+            signal,
+          )
+          .then((unit_result) => this.to_translation_work_unit_result(unit_result)),
     );
     this.log_replay.work_unit_logs(result.logs);
     return this.build_translation_worker_result(context, result);
@@ -348,24 +359,26 @@ export class TaskEngine {
     signal: AbortSignal,
   ) {
     const result = await this.call_with_limiter(handle, limiter, signal, () =>
-      this.executor_client.execute_unit(
-        {
-          run_id: handle.run_id,
-          unit_id: context.work_unit_id,
-          kind: "analysis",
-          model: runtime.model as unknown as ApiJsonValue,
-          config_snapshot: runtime.config_snapshot as unknown as ApiJsonValue,
-          quality_snapshot,
-          payload: {
-            file_path: context.file_path,
-            items: context.items as unknown as ApiJsonValue,
+      this.executor_client
+        .execute_unit(
+          {
+            run_id: handle.run_id,
+            unit_id: context.work_unit_id,
+            kind: "analysis",
+            model: this.model_key_lease_pool.lease_model(runtime.model) as unknown as ApiJsonValue,
+            config_snapshot: runtime.config_snapshot as unknown as ApiJsonValue,
+            quality_snapshot,
+            payload: {
+              file_path: context.file_path,
+              items: context.items as unknown as ApiJsonValue,
+            },
+            diagnostics: {
+              retry_count: context.retry_count,
+            },
           },
-          diagnostics: {
-            retry_count: context.retry_count,
-          },
-        },
-        signal,
-      ).then((unit_result) => this.to_analysis_work_unit_result(unit_result)),
+          signal,
+        )
+        .then((unit_result) => this.to_analysis_work_unit_result(unit_result)),
     );
     this.log_replay.work_unit_logs(result.logs);
     return this.build_analysis_worker_result(context, result);
@@ -419,7 +432,9 @@ export class TaskEngine {
   /**
    * WorkerExecutionResult 转回当前翻译解释器输入，过渡期只在 Engine 边界做一次形状窄化
    */
-  private to_translation_work_unit_result(result: WorkerExecutionResult): TranslationWorkUnitResult {
+  private to_translation_work_unit_result(
+    result: WorkerExecutionResult,
+  ): TranslationWorkUnitResult {
     if (result.kind !== "translation" || result.output.kind !== "translation") {
       throw new Error("worker 返回了非翻译结果。");
     }
@@ -1022,9 +1037,7 @@ export class TaskEngine {
   /**
    * 任务进度已提交后发布完整 snapshot；进度字段由 `.lg` meta 读取
    */
-  private emit_progress(
-    task_type: TaskType,
-  ): Promise<void> {
+  private emit_progress(task_type: TaskType): Promise<void> {
     return this.task_runtime_publisher.publish_progress_committed(task_type);
   }
 
@@ -1239,5 +1252,4 @@ export class TaskEngine {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
-
 }

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../service/path-service";
 import { SettingService } from "../service/setting-service";
-import { PiAiLlmRequestClient } from "../engine/worker/llm/llm-request-client";
+import { LLMClient } from "../engine/worker/llm/llm-client";
 import { ModelService } from "./model-service";
 
 type ModelPresetFiles = {
@@ -441,7 +441,7 @@ describe("ModelService 远端模型能力", () => {
     });
   });
 
-  it("模型连通性测试复用 LLM adapter 并按 key 汇总结果", async () => {
+  it("模型连通性测试复用 LLM request client 并按 key 汇总结果", async () => {
     const { service } = await create_model_service([
       create_model({
         api_format: "OpenAI",
@@ -450,7 +450,7 @@ describe("ModelService 远端模型能力", () => {
       }),
     ]);
     const request_mock = vi
-      .spyOn(PiAiLlmRequestClient.prototype, "request")
+      .spyOn(LLMClient.prototype, "request")
       .mockResolvedValueOnce({
         cancelled: false,
         degraded: false,

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PiAiLlmRequestClient } from "./llm/llm-request-client";
+import { LLMClient } from "./llm/llm-client";
 import { WorkerPool } from "./worker-pool";
 
 describe("WorkerPool", () => {
@@ -13,7 +13,7 @@ describe("WorkerPool", () => {
   });
 
   it("源码测试环境回退 direct runner 后仍执行完整翻译 work unit", async () => {
-    vi.spyOn(PiAiLlmRequestClient.prototype, "request").mockResolvedValue({
+    vi.spyOn(LLMClient.prototype, "request").mockResolvedValue({
       response_think: "",
       response_result: '{"0":"你好"}',
       input_tokens: 1,
@@ -25,6 +25,7 @@ describe("WorkerPool", () => {
     });
     const pool = new WorkerPool({
       appRoot: await create_template_root(),
+      useDirectRunner: true,
       workerCount: 2,
     });
 
@@ -71,7 +72,86 @@ describe("WorkerPool", () => {
     }
     expect(result.output.row_count).toBe(1);
   });
+
+  it("direct runner 测试路径遵守 maxInFlight 上限并持续派发队列", async () => {
+    let current = 0;
+    let peak = 0;
+    const run_mock = vi.spyOn(LLMClient.prototype, "request").mockImplementation(async () => {
+      current += 1;
+      peak = Math.max(peak, current);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      current -= 1;
+      return {
+        response_think: "",
+        response_result: '{"0":"你好"}',
+        input_tokens: 1,
+        output_tokens: 2,
+        cancelled: false,
+        timeout: false,
+        degraded: false,
+        error: "",
+      };
+    });
+    const pool = new WorkerPool({
+      appRoot: await create_template_root(),
+      maxInFlight: 2,
+      useDirectRunner: true,
+      workerCount: 1,
+    });
+
+    await Promise.all(
+      Array.from({ length: 5 }, (_value, index) =>
+        pool.execute_unit(
+          create_translation_unit(`unit-${index.toString()}`),
+          new AbortController().signal,
+        ),
+      ),
+    );
+    await pool.dispose();
+
+    expect(run_mock).toHaveBeenCalledTimes(5);
+    expect(peak).toBe(2);
+  });
 });
+
+/**
+ * 构造最小翻译 unit，用于 multiplex direct runner 路径测试。
+ */
+function create_translation_unit(unit_id: string) {
+  return {
+    run_id: "run-1",
+    unit_id,
+    kind: "translation" as const,
+    model: {},
+    config_snapshot: {
+      app_language: "ZH",
+      source_language: "JA",
+      target_language: "ZH",
+    },
+    quality_snapshot: {
+      quality: {
+        glossary: { enabled: false, entries: [] },
+        text_preserve: { mode: "OFF", entries: [] },
+        pre_replacement: { enabled: false, entries: [] },
+        post_replacement: { enabled: false, entries: [] },
+      },
+      prompts: {
+        translation: { enabled: false, text: "" },
+        analysis: { enabled: false, text: "" },
+      },
+    },
+    payload: {
+      items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
+      precedings: [],
+    },
+    diagnostics: {
+      token_threshold: 512,
+      split_count: 0,
+      retry_count: 0,
+      is_initial: true,
+    },
+  };
+}
 
 /**
  * direct runner 回退测试需要真实模板目录，用临时 appRoot 隔离资源读取

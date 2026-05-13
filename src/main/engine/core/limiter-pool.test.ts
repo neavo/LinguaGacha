@@ -1,11 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { TaskLimiter } from "./limiter-pool";
+import { TaskLimiter, resolve_effective_concurrency_limit } from "./limiter-pool";
 
 describe("TaskLimiter", () => {
-  it("未显式设置并发时固定使用默认并发 8", () => {
-    expect(new TaskLimiter({ concurrency_limit: 0, rpm_limit: 1 }).max_concurrency).toBe(8);
-    expect(new TaskLimiter({ concurrency_limit: 3 }).max_concurrency).toBe(3);
+  it("按显式并发、RPM、一致默认值推导最终并发", () => {
+    expect(resolve_effective_concurrency_limit({ concurrency_limit: 16, rpm_limit: 1000 })).toBe(
+      16,
+    );
+    expect(resolve_effective_concurrency_limit({ concurrency_limit: 0, rpm_limit: 1 })).toBe(1);
+    expect(resolve_effective_concurrency_limit({ concurrency_limit: 0, rpm_limit: 60 })).toBe(60);
+    expect(resolve_effective_concurrency_limit({ concurrency_limit: 0, rpm_limit: 1000 })).toBe(
+      1000,
+    );
+    expect(resolve_effective_concurrency_limit({ concurrency_limit: 0, rpm_limit: 0 })).toBe(8);
+  });
+
+  it("TaskLimiter 只接收最终并发值", () => {
+    expect(new TaskLimiter({ max_concurrency: 1, rpm_limit: 60 }).max_concurrency).toBe(1);
+    expect(new TaskLimiter({ max_concurrency: 3 }).max_concurrency).toBe(3);
   });
 
   it("rpm_limit 小于等于 0 时只保留并发限制", async () => {

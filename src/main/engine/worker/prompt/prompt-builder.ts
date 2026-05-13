@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import { JsonTool } from "../../../../shared/utils/json-tool";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared/text/text-types";
-import type { LlmRequestMessage } from "../llm/llm-types";
+import type { LLMMessage } from "../llm/llm-types";
 import { Prompt } from "../../../../base/prompt";
 
 const SOURCE_PLACEHOLDER_ZH = "原文"; // 中文提示词模板使用“原文”占位，英文模板使用“Source”占位，避免字符串散落在构造逻辑里
@@ -64,7 +64,7 @@ export interface PromptBuilderConfig {
  * PromptBuilder 输出给 LLM adapter 的消息和本地日志展示文本
  */
 export interface PromptBuildResult {
-  messages: LlmRequestMessage[];
+  messages: LLMMessage[];
   console_log: string[];
 }
 
@@ -106,7 +106,7 @@ export class PromptBuilder {
     samples: string[],
     precedings: TextTaskItemRecord[],
   ): Promise<PromptBuildResult> {
-    const messages: LlmRequestMessage[] = [];
+    const messages: LLMMessage[] = [];
     const console_log: string[] = [];
     const instruction_text = await this.build_main();
     const user_parts: string[] = [];
@@ -145,7 +145,7 @@ export class PromptBuilder {
    * 生成 SakuraLLM 固定提示词，保持旧模型专用语义
    */
   public generate_prompt_sakura(srcs: string[]): PromptBuildResult {
-    const messages: LlmRequestMessage[] = [
+    const messages: LLMMessage[] = [
       {
         role: "system",
         content:

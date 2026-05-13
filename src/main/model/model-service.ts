@@ -5,13 +5,9 @@ import path from "node:path";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../service/path-service";
 import { SettingService } from "../service/setting-service";
-import { PiAiLlmRequestClient } from "../engine/worker/llm/llm-request-client";
-import type { LlmRequestMessage, LlmRequestResult } from "../engine/worker/llm/llm-types";
-import {
-  collect_api_keys,
-  get_primary_api_key,
-  normalize_api_url,
-} from "../engine/worker/llm/llm-model-adapter";
+import { LLMClient } from "../engine/worker/llm/llm-client";
+import type { LLMMessage, LLMRequestResult } from "../engine/worker/llm/llm-types";
+import { LLMClientPolicy } from "../engine/worker/llm/llm-client-policy";
 import { Model, type ModelApiFormat } from "../../base/model";
 import {
   read_model_records,
@@ -198,7 +194,7 @@ export class ModelService {
   }
 
   /**
-   * 查询远端实时模型列表；pi-ai registry 只做内置参考，不替代用户 endpoint
+   * 查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
    */
   public async list_available_models(
     request: Record<string, ApiJsonValue>,
@@ -210,15 +206,15 @@ export class ModelService {
   }
 
   /**
-   * 模型连通性测试复用同一 LLM adapter，确保模型页和任务请求走同一策略
+   * 模型连通性测试复用同一 LLM request client，确保模型页和任务请求走同一策略。
    */
   public async test_model(
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
-    const keys = collect_api_keys(String(model["api_key"] ?? ""));
-    const client = new PiAiLlmRequestClient({ appRoot: this.paths.get_app_root() });
+    const keys = LLMClientPolicy.collect_api_keys(String(model["api_key"] ?? ""));
+    const client = new LLMClient({ appRoot: this.paths.get_app_root() });
     const key_results: Array<Record<string, ApiJsonValue>> = [];
     for (const api_key of keys) {
       const model_for_test = { ...model, api_key };
@@ -298,9 +294,9 @@ export class ModelService {
     model: ModelRecord,
     api_format: ModelApiFormat,
   ): Promise<string[]> {
-    const api_url = normalize_api_url(String(model["api_url"] ?? ""), api_format);
+    const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), api_format);
     const data = await this.fetch_json(`${api_url}/models`, {
-      Authorization: `Bearer ${get_primary_api_key(String(model["api_key"] ?? ""))}`,
+      Authorization: `Bearer ${LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? ""))}`,
       ...this.build_browser_headers(model),
     });
     return this.read_model_id_array(data, "data", "id");
@@ -310,10 +306,13 @@ export class ModelService {
    * Google list 接口要求 key 放在 query，baseUrl 可携带 v1/v1beta
    */
   private async fetch_google_available_models(model: ModelRecord): Promise<string[]> {
-    const api_url = normalize_api_url(String(model["api_url"] ?? ""), "Google");
+    const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), "Google");
     const base_url = api_url === "" ? "https://generativelanguage.googleapis.com/v1beta" : api_url;
     const target_url = new URL(`${base_url}/models`);
-    target_url.searchParams.set("key", get_primary_api_key(String(model["api_key"] ?? "")));
+    target_url.searchParams.set(
+      "key",
+      LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
+    );
     const data = await this.fetch_json(target_url.toString(), this.build_browser_headers(model));
     return this.read_model_id_array(data, "models", "name");
   }
@@ -322,11 +321,11 @@ export class ModelService {
    * Anthropic models.list 使用 `/v1/models` 与 x-api-key header
    */
   private async fetch_anthropic_available_models(model: ModelRecord): Promise<string[]> {
-    const api_url = normalize_api_url(String(model["api_url"] ?? ""), "Anthropic");
+    const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), "Anthropic");
     const base_url = api_url === "" ? "https://api.anthropic.com" : api_url;
     const data = await this.fetch_json(`${base_url}/v1/models`, {
       "anthropic-version": "2023-06-01",
-      "x-api-key": get_primary_api_key(String(model["api_key"] ?? "")),
+      "x-api-key": LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
       ...this.build_browser_headers(model),
     });
     return this.read_model_id_array(data, "data", "id");
@@ -376,7 +375,7 @@ export class ModelService {
   /**
    * 模型测试提示词保持旧入口语义，Sakura 继续走纯文本翻译请求
    */
-  private build_model_test_messages(api_format: string): LlmRequestMessage[] {
+  private build_model_test_messages(api_format: string): LLMMessage[] {
     if (api_format === "SakuraLLM") {
       return [
         {
@@ -406,7 +405,7 @@ export class ModelService {
    * 把 LLM 原始请求事实转换为模型页测试失败原因
    */
   private build_model_test_error_reason(
-    result: LlmRequestResult,
+    result: LLMRequestResult,
     config: Record<string, ApiJsonValue>,
   ): string {
     if (result.cancelled) {

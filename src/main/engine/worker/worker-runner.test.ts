@@ -2,18 +2,22 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import type { LlmRequestBody, LlmRequestClient, LlmRequestResult } from "./llm/llm-types";
+import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm/llm-types";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 import { WorkUnitRunner } from "./worker-runner";
 
 describe("work-unit runner", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("翻译 runner 执行预处理、LLM 调用、响应解码和 item 回写", async () => {
     const app_root = await create_template_root();
-    const captured_requests: LlmRequestBody[] = [];
+    const captured_requests: LLMRequestBody[] = [];
     const runner = new TranslationWorkUnitRunner(
       app_root,
       create_llm_client(captured_requests, {
@@ -50,6 +54,51 @@ describe("work-unit runner", () => {
     }
     expect(result.output.row_count).toBe(1);
     expect(captured_requests[0]?.messages[1]?.content).toContain("こんにちは");
+  });
+
+  it("翻译日志的请求用时覆盖 LLM 等待时间", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1000));
+    const app_root = await create_template_root();
+    const runner = new TranslationWorkUnitRunner(app_root, {
+      request: async () => {
+        vi.setSystemTime(new Date(3500));
+        return {
+          response_think: "",
+          response_result: '{"0":"你好"}',
+          input_tokens: 4,
+          output_tokens: 5,
+          cancelled: false,
+          timeout: false,
+          degraded: false,
+          error: "",
+        };
+      },
+    });
+
+    const result = await runner.execute_unit(
+      {
+        run_id: "run-1",
+        unit_id: "unit-1",
+        kind: "translation",
+        model: { api_format: "OpenAI" },
+        config_snapshot: create_config_payload(),
+        quality_snapshot: create_quality_payload(),
+        payload: {
+          items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
+          precedings: [],
+        },
+        diagnostics: {
+          token_threshold: 512,
+          split_count: 0,
+          retry_count: 0,
+          is_initial: true,
+        },
+      },
+      new AbortController().signal,
+    );
+
+    expect(result.logs[0]?.message).toContain("用时 2.50s");
   });
 
   it("分析 runner 归一模型术语候选", async () => {
@@ -135,11 +184,11 @@ describe("work-unit runner", () => {
  * 构造内存版 LLM client，捕获请求体以验证 runner 没有绕过协议边界
  */
 function create_llm_client(
-  captured_requests: LlmRequestBody[],
-  overrides: Partial<LlmRequestResult>,
-): LlmRequestClient {
+  captured_requests: LLMRequestBody[],
+  overrides: Partial<LLMRequestResult>,
+): LLMClientPort {
   return {
-    request: async (body: LlmRequestBody) => {
+    request: async (body: LLMRequestBody) => {
       captured_requests.push(body);
       return {
         response_think: "",

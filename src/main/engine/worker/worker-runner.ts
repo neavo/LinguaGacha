@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkerExecutionResult } from "../protocol/worker-result";
-import { PiAiLlmRequestClient } from "./llm/llm-request-client";
+import { LLMClient } from "./llm/llm-client";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import {
   TranslationWorkUnitRunner,
@@ -26,7 +26,7 @@ export class WorkUnitRunner {
    * 每个 worker 持有自己的 runner 和 LLM client，避免跨线程共享可变对象
    */
   public constructor(options: WorkUnitRunnerOptions) {
-    const llm_client = new PiAiLlmRequestClient({ appRoot: options.appRoot });
+    const llm_client = new LLMClient({ appRoot: options.appRoot });
     this.translation_runner = new TranslationWorkUnitRunner(options.appRoot, llm_client);
     this.analysis_runner = new AnalysisWorkUnitRunner(options.appRoot, llm_client);
   }

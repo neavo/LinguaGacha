@@ -76,10 +76,10 @@ flowchart LR
 | service/task-service | 统一任务命令、请求校验、命令回执 | `TaskService` |
 | engine/protocol | TaskType、TaskRunStatus、TaskCommand、TaskSnapshot、WorkUnit、WorkerExecutionResult、TaskArtifact | `src/main/engine/protocol/` |
 | engine/runtime | 任务快照、运行时 busy、请求中数量、translation extras 行级状态、完整 snapshot 发布 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimePublisher` |
-| engine/core | 任务锁、流水线、LLM 请求资格限流、worker 调度、进度提交；后台 work unit 与公开单条翻译都必须先取得 limiter lease | `TaskEngine` |
+| engine/core | 任务锁、流水线、LLM 请求资格限流、任务级 Key 租约、worker 调度、进度提交；后台 work unit 与公开单条翻译都必须先取得 limiter lease | `TaskEngine`、`ModelKeyLeasePool` |
 | engine/definitions | 任务差异解释边界；新增任务类型应新增 definition，不改 Engine 主流程 | `TaskDefinitionRegistry`、`TaskDefinition` |
 | engine/store | 任务输入读取、任务质量快照构建、artifact 提交、项目数据变更发布 | `ProjectTaskStore`、`TaskArtifactCommitter` |
-| engine/worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `WorkerPool`、`worker-entry`、各 runner |
+| engine/worker | work unit 执行、提示词构建、request policy、official SDK direct transport、ProviderClientPool、响应清洗解码 | `WorkerPool`、`worker-entry`、各 runner、`LLMRequestClient` |
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |
 | service | 设置、路径、质量规则、提示词、校对保存 | `SettingService`、`QualityService`、`ProofreadingService` |
@@ -102,6 +102,12 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 
 任务启动命令统一走 `/api/tasks/start`，必须携带 `expected_section_revisions` 作为并发校验；翻译、分析至少校验 `quality`、`prompts`，translation 的 `scope.kind === "items"` 表示重翻并至少校验 `items`、`proofreading`、`quality`、`prompts`。任务执行所需的质量规则与提示词快照由后端从 `.lg` 当前事实构建，再作为稳定 work unit 输入传给 worker。Engine 到 worker 只传 `WorkUnit`，worker 返回 `WorkerExecutionResult`，项目事实只经 `TaskArtifactCommitter` / `ProjectTaskStore` 写入。
 
+LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_limit > 0` 时使用显式并发，否则 `rpm_limit > 0` 时用 RPM 一比一作为自动并发，两者都没有时为 8。`TaskLimiter` 只接收最终并发并继续用 RPM pacer 控制发起节奏；`request_in_flight_count` 只统计已取得 limiter lease 并真实进入执行中的 LLM work unit，不统计等待队列。`WorkerPool` 是 multiplexed pool，少量 worker_threads 可承载多个 in-flight work unit，worker_threads 数量不等于用户并发。
+
+任务级多 Key 轮换由 `ModelKeyLeasePool` 在 work unit 即将进入 in-flight 前按 `api_format / api_url / model_id / normalized key list` 做全局 round-robin；重试重新获取 Key，worker 内不做本地轮换。模型连通性测试遍历所有 Key，模型列表查询只使用 primary Key。
+
+worker 内 LLM 请求链路固定为 `LLMRequestClient -> ProviderRequestPolicy -> ProviderClientPool -> official SDK transport -> RequestResult`。OpenAI-compatible 与 SakuraLLM 使用 `openai`，Google / Gemini 使用 `@google/genai`，Anthropic / Claude 使用 `@anthropic-ai/sdk`；核心请求链路不保留 pi-ai fallback。`ProviderRequestPolicy` 是模型族 thinking、generation、extra body/header 和 provider 强制删字段规则的唯一归宿；transport 只从 `ProviderClientPool` 取 SDK client、发送最终 payload、读取 stream 并归一响应。
+
 ## 6. 数据库与 `.lg` 物理存储
 
 - SQL、事务、SQLite 句柄缓存和 `.lg` asset 读写只允许落在 `src/main/database/`。
@@ -123,5 +129,5 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 - 改响应壳、错误码、SSE topic、项目读取接口、`project.data_changed` 或 mutation ack。
 - 新增后端状态拥有者、写入口、任务事件来源或跨层载荷规则。
 - 改 database operation、事务语义、`.lg` schema、asset 压缩、migration 或文件格式存储落点。
-- 改任务引擎与 worker 的事实回流方式。
+- 改任务引擎与 worker 的事实回流方式、LLM request policy、official SDK transport、ProviderClientPool、ModelKeyLeasePool 或并发推导语义。
 - 改跨后端领域共享的实体值对象、共享规则、合法值集合、normalize 或派生判断。

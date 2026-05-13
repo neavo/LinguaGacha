@@ -1,10 +1,11 @@
-const DEFAULT_CONCURRENCY_LIMIT = 8; // 默认并发与实施计划一致，未显式设置时不再按 RPM 反推 worker 数
+const DEFAULT_CONCURRENCY_LIMIT = 8; // 用户未设置并发且未设置 RPM 时，默认同时执行 8 个 LLM work unit
 const ONE_MINUTE_MS = 60_000;
 type LimiterModelRecord = Record<string, unknown>;
 
 interface TaskLimiterOptions {
   concurrency_limit?: number;
   rpm_limit?: number;
+  max_concurrency?: number;
   now?: () => number;
 }
 
@@ -28,9 +29,9 @@ interface PendingRequest {
  * Task Engine 限流器，统一发放 LLM work unit 请求资格并保护外部模型服务节奏。
  */
 export class TaskLimiter {
-  public readonly max_concurrency: number; // max_concurrency 是 worker 同时执行 work unit 的上限
+  public readonly max_concurrency: number; // max_concurrency 是实际 in-flight LLM work unit 的上限
 
-  private readonly rpm_limit: number; // rpm_limit 只表示每分钟请求数，不参与反推并发
+  private readonly rpm_limit: number; // rpm_limit 仍只控制发起节奏，并发值由外部一次性解析后传入
 
   private readonly permit_interval_ms: number; // permit_interval_ms 是平滑发放相邻请求资格的最小间隔
 
@@ -45,10 +46,12 @@ export class TaskLimiter {
   private rate_timer: ReturnType<typeof setTimeout> | null = null; // rate_timer 是唯一 RPM 唤醒定时器
 
   /**
-   * 初始化限流参数；显式并发必须大于 0，否则固定回退 8。
+   * 初始化限流参数；TaskLimiter 只接收最终并发值，不再解释 concurrency_limit == 0。
    */
   public constructor(options: TaskLimiterOptions = {}) {
-    const raw_concurrency = Math.trunc(Number(options.concurrency_limit ?? 0));
+    const raw_concurrency = Math.trunc(
+      Number(options.max_concurrency ?? options.concurrency_limit ?? DEFAULT_CONCURRENCY_LIMIT),
+    );
     this.max_concurrency = raw_concurrency > 0 ? raw_concurrency : DEFAULT_CONCURRENCY_LIMIT;
     this.rpm_limit = Math.max(0, Math.trunc(Number(options.rpm_limit ?? 0)));
     this.permit_interval_ms = this.rpm_limit > 0 ? ONE_MINUTE_MS / this.rpm_limit : 0;
@@ -211,7 +214,10 @@ export class LimiterPool {
       return this.shared_limiter.limiter;
     }
     const limiter = new TaskLimiter({
-      concurrency_limit: this.read_number(threshold["concurrency_limit"], 0),
+      max_concurrency: resolve_effective_concurrency_limit({
+        concurrency_limit: this.read_number(threshold["concurrency_limit"], 0),
+        rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
+      }),
       rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
     });
     this.shared_limiter = { key, limiter };
@@ -235,7 +241,9 @@ export class LimiterPool {
    * threshold 必须是普通对象，数组和 null 都按空配置处理
    */
   private normalize_record(value: unknown): LimiterModelRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as LimiterModelRecord : {};
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as LimiterModelRecord)
+      : {};
   }
 
   /**
@@ -245,4 +253,25 @@ export class LimiterPool {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
+}
+
+/**
+ * 并发推导规则保持固定顺序：显式并发优先；否则 RPM 一比一作为自动并发；两者都没有时回退 8。
+ */
+export function resolve_effective_concurrency_limit(options: {
+  concurrency_limit?: number;
+  rpm_limit?: number;
+}): number {
+  const concurrency_limit = Math.trunc(Number(options.concurrency_limit ?? 0));
+  if (concurrency_limit > 0) {
+    return concurrency_limit;
+  }
+
+  // rpm_limit 仍由 pacer 控制发起速率；并发等于 RPM 不代表突破每分钟请求数。
+  const rpm_limit = Math.trunc(Number(options.rpm_limit ?? 0));
+  if (rpm_limit > 0) {
+    return rpm_limit;
+  }
+
+  return DEFAULT_CONCURRENCY_LIMIT;
 }

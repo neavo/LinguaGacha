@@ -15,7 +15,7 @@ import { PromptBuilder } from "../prompt/prompt-builder";
 import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LlmRequestClient, LlmRequestResult } from "../llm/llm-types";
+import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
 
@@ -61,12 +61,12 @@ interface TranslateSingleWorkUnitResult {
  */
 export class TranslationWorkUnitRunner {
   private readonly app_root: string; // app_root 用于读取项目内提示词模板，worker 不依赖当前工作目录
-  private readonly llm_client: LlmRequestClient; // llm_client 是 LLM 请求唯一出口，runner 不直接拼供应商协议细节
+  private readonly llm_client: LLMClientPort; // llm_client 是 LLM 请求唯一出口，runner 不直接拼供应商协议细节
 
   /**
    * app_root 用于读取提示词模板，llm_client 是唯一网络请求出口
    */
-  public constructor(app_root: string, llm_client: LlmRequestClient) {
+  public constructor(app_root: string, llm_client: LLMClientPort) {
     this.app_root = app_root;
     this.llm_client = llm_client;
   }
@@ -149,9 +149,7 @@ export class TranslationWorkUnitRunner {
    * 翻译共享实现，skip_response_check 只用于低频单条翻译
    */
   private async execute_items(
-    request:
-      | TranslationWorkUnitRequest
-      | TranslateSingleWorkUnitRequest,
+    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest,
     items: TextTaskItemRecord[],
     precedings: TextTaskItemRecord[],
     skip_response_check: boolean,
@@ -169,6 +167,7 @@ export class TranslationWorkUnitRunner {
     if (prepared.done) {
       return prepared.result;
     }
+    const start_time = Date.now();
     const response = await this.llm_client.request(
       {
         run_id: request.run_id,
@@ -187,7 +186,7 @@ export class TranslationWorkUnitRunner {
         config,
         quality_snapshot,
         request,
-        start_time: Date.now(),
+        start_time,
         console_log: prepared.console_log,
         srcs: prepared.srcs,
         pipeline_contexts: prepared.pipeline_contexts,
@@ -204,9 +203,7 @@ export class TranslationWorkUnitRunner {
    * 预处理每个 item；无可翻译行时直接把原文标为已处理
    */
   private async prepare_request_data(
-    request:
-      | TranslationWorkUnitRequest
-      | TranslateSingleWorkUnitRequest,
+    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest,
     config: TextProcessingConfig,
     quality_snapshot: TextQualitySnapshot,
     items: TextTaskItemRecord[],
@@ -271,9 +268,7 @@ export class TranslationWorkUnitRunner {
     context: {
       config: TextProcessingConfig;
       quality_snapshot: TextQualitySnapshot;
-      request:
-        | TranslationWorkUnitRequest
-        | TranslateSingleWorkUnitRequest;
+      request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest;
       start_time: number;
       console_log: string[];
       srcs: string[];
@@ -283,7 +278,7 @@ export class TranslationWorkUnitRunner {
       stream_degraded: boolean;
       request_timeout: boolean;
     },
-    response: LlmRequestResult,
+    response: LLMRequestResult,
   ): Promise<TranslationWorkUnitResult> {
     const cleaner_result = ResponseCleaner.extract_why_from_response(response.response_result);
     const normalized_think = ResponseCleaner.merge_text_blocks(
@@ -402,9 +397,7 @@ export class TranslationWorkUnitRunner {
     console_log: string[];
     response_think: string;
     response_result: string;
-    request:
-      | TranslationWorkUnitRequest
-      | TranslateSingleWorkUnitRequest;
+    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest;
   }): WorkUnitLogEntry[] {
     const elapsed_seconds = ((Date.now() - context.start_time) / 1000).toFixed(2);
     const stats_info = `任务请求成功，用时 ${elapsed_seconds}s，行数 ${context.srcs.length}，输入 tokens ${context.input_tokens}，输出 tokens ${context.output_tokens}`;
@@ -449,9 +442,7 @@ export class TranslationWorkUnitRunner {
    * 拆分 / 重试信息来自 TaskEngine 传入的不可变上下文，日志里保留旧排障口径
    */
   private build_task_status_info(
-    request:
-      | TranslationWorkUnitRequest
-      | TranslateSingleWorkUnitRequest,
+    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest,
   ): string {
     const split_count = this.read_number("split_count" in request ? request.split_count : 0, 0);
     const retry_count = this.read_number("retry_count" in request ? request.retry_count : 0, 0);

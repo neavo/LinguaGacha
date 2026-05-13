@@ -9,7 +9,7 @@ import {
 import { PromptBuilder } from "../prompt/prompt-builder";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LlmRequestClient } from "../llm/llm-types";
+import type { LLMClientPort } from "../llm/llm-types";
 import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
 
@@ -37,12 +37,12 @@ interface AnalysisWorkUnitResult {
  */
 export class AnalysisWorkUnitRunner {
   private readonly app_root: string; // app_root 只用于读取分析提示词模板，runner 不依赖进程 cwd
-  private readonly llm_client: LlmRequestClient; // llm_client 是分析链路唯一外部调用口，便于取消和错误统一处理
+  private readonly llm_client: LLMClientPort; // llm_client 是分析链路唯一外部调用口，便于取消和错误统一处理
 
   /**
    * 只注入资源根和 LLM 客户端，runner 不接触数据库或事件
    */
-  public constructor(app_root: string, llm_client: LlmRequestClient) {
+  public constructor(app_root: string, llm_client: LLMClientPort) {
     this.app_root = app_root;
     this.llm_client = llm_client;
   }
