@@ -36,7 +36,7 @@ project -> files -> items -> quality -> prompts -> analysis -> proofreading
 
 新增、删除或重排项目数据 section 时，必须同时更新：
 
-- `src/shared/project-change-event.ts` 的 `PROJECT_DATA_SECTIONS`。
+- `src/shared/project/event.ts` 的 `PROJECT_DATA_SECTIONS`。
 - `ProjectRuntimeProjectionService` 的 manifest、section payload 和按 id 补读口径。
 - renderer `ProjectStoreStage`、项目读取合并逻辑和相关测试。
 - 本文与前端文档中的运行态消费说明。
@@ -60,7 +60,9 @@ flowchart LR
 - `ProjectChangeEventAdapter` 负责把变更草稿转换为公开 `ProjectChangeEvent`，并通过 `ProjectRuntimeProjectionService` 补齐 canonical delta 与本次更新 section revision。
 - `ProjectChangeEvent` 的 payload mode 只有 `canonical-delta`、`ids-only`、`section-invalidated`；`items` / `files` 支持行级 upsert 和 tombstone，其它 section 在 canonical-delta 下返回完整 section data。
 - `project` section 只表达工程加载态和路径；项目设置 meta 不进入 `ProjectStore.project`，settings-only 对齐只写 meta 和返回 ack，不发布不可消费的 project data 事件。
-- `CoreEventHub` 是公开运行期事件总线；`TaskRuntimeProjector` 只从 `task.*` 投影 `TaskRuntimeState`，任务运行态不能借项目数据事件回灌。
+- `CoreEventHub` 是公开运行期事件总线，只广播领域层已经写好的公开事件，不再把 SSE topic 反向投影为内部状态。
+- `TaskRuntimePublisher` 是任务运行态公开事件唯一出口；它先写 `TaskRuntimeState`，再构建完整 `TaskSnapshot` 并发布 `task.snapshot_changed`。
+- 任务生命周期状态和进度提交必须立即发布完整 snapshot；任务启动时也必须先把本轮初始进度写入 `.lg` meta，再发布首个进度 snapshot。仅 `request_in_flight_count` 这类请求压力展示允许在后端按 250ms 窗口合并，终态 snapshot 发布前必须先冲刷 pending 请求压力。
 - `ProjectRuntimeProjectionService` 是 manifest、read-sections、项目变更事件和任务输入快照共享的无状态项目数据投影归宿，只从 `.lg` 与 meta 生成公开 block，不持有长期缓存。
 - 事件 topic、payload mode、section 集合或 ack 语义变化，都必须同步 `src/renderer/app/desktop/desktop-runtime-context.tsx` 与相关测试。
 
@@ -71,7 +73,7 @@ flowchart LR
 | project | 工程加载态、项目读取、项目数据投影、工作台文件 mutation、reset、分析导入、项目数据变更适配 | `ProjectLifecycleService`、`ProjectSyncMutationService`、`ProjectRuntimeProjectionService`、`ProjectChangeEventAdapter` |
 | events | 公开运行期事件广播、SSE 订阅和 keepalive | `CoreEventHub` |
 | task-engine/command | 任务命令、请求校验、命令回执 | `TaskCommandService` |
-| task-engine/runtime | 任务快照、运行时 busy、请求中数量、重翻行级状态、事件投影 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimeProjector` |
+| task-engine/runtime | 任务快照、运行时 busy、请求中数量、重翻行级状态、完整 snapshot 发布 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimePublisher` |
 | task-engine/orchestration | 任务锁、流水线、LLM 请求资格限流、worker 调度、进度提交；后台 work unit 与公开单条翻译都必须先取得 limiter lease | `TaskEngine` |
 | task-engine/store | 任务输入读取、任务质量快照构建、任务结果提交、项目数据变更发布 | `ProjectTaskStore` |
 | task-worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `TaskWorkerPool`、`task-worker-entry`、各 work unit runner |
@@ -87,7 +89,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 | 状态事实 | 权威拥有者 | 规则 |
 | --- | --- | --- |
 | 当前工程是否 loaded、工程路径 | `ProjectSessionState` | 只由工程加载/创建/卸载成功后更新，返回不可变快照 |
-| 任务 busy、status、active task、请求中数量、重翻 item ids | `TaskRuntimeState` | 任务命令受理、任务事件和任务快照共同维护 |
+| 任务 busy、status、active task、请求中数量、重翻 item ids | `TaskRuntimeState` | 只由任务命令、任务引擎和 `TaskRuntimePublisher` 维护 |
 | 项目持久事实、meta、runtime section revision | `ProjectDatabase` | 只通过 database operation 和事务写入 |
 | 项目公开投影 block、分析覆盖率摘要 | `ProjectRuntimeProjectionService` | manifest、read-sections、项目变更事件和任务输入快照复用同一读取口径，不另建缓存 |
 | 前端项目运行态 | renderer `ProjectStore` | 只消费项目读取接口、`project.data_changed` 和本地乐观 change |

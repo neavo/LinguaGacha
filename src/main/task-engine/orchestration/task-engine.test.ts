@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import type { CoreEventHub } from "../../events/core-event-hub";
 import type { LogManager } from "../../log/log-manager";
 import type { SettingService } from "../../service/setting-service";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
+import type { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { ProjectTaskStore } from "../store/project-task-store";
 import type { TaskWorkUnitExecutor } from "../../task-worker/task-work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../../task-worker/task-work-unit-executor";
@@ -18,9 +18,7 @@ describe("TaskEngine", () => {
       taskStore: {
         build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
-      coreEventHub: {
-        publish: () => undefined,
-      } as unknown as CoreEventHub,
+      taskRuntimePublisher: create_task_runtime_publisher(),
       executorClient: {
         translate_single: async () => {
           executor_call_count += 1;
@@ -64,9 +62,7 @@ describe("TaskEngine", () => {
         update_translation_progress: () => ({ accepted: true }),
         build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
-      coreEventHub: {
-        publish: done.publish,
-      } as unknown as CoreEventHub,
+      taskRuntimePublisher: create_task_runtime_publisher(done.publish),
       executorClient: {
         execute_translation_chunk: async () => ({
           items: [create_pending_item()],
@@ -103,6 +99,52 @@ describe("TaskEngine", () => {
     });
   });
 
+  it("翻译启动后首次进度快照使用本轮初始进度而不是旧 meta", async () => {
+    let translation_extras: MutableJsonRecord = {
+      line: 8,
+      total_line: 8,
+      processed_line: 8,
+      total_tokens: 40,
+    };
+    const progress_snapshots: MutableJsonRecord[] = [];
+    const done = create_status_waiter("translation", "DONE");
+    const task_engine = new TaskEngine({
+      taskStore: {
+        get_translation_items: () => ({
+          items: [] as unknown as ApiJsonValue,
+          meta: {
+            translation_extras,
+          },
+        }),
+        update_translation_progress: (request: MutableJsonRecord) => {
+          translation_extras = { ...(request["translation_extras"] as MutableJsonRecord) };
+          return { accepted: true };
+        },
+        build_quality_snapshot: () => null,
+      } as unknown as ProjectTaskStore,
+      taskRuntimePublisher: create_task_runtime_publisher(done.publish, (task_type) => {
+        progress_snapshots.push({
+          task_type,
+          ...translation_extras,
+        });
+      }),
+      executorClient: {} as unknown as TaskWorkUnitExecutor,
+      SettingService: create_setting_service(),
+      logManager: create_log_manager(),
+    });
+
+    await task_engine.start_translation("NEW");
+    await done.promise;
+
+    expect(progress_snapshots[0]).toMatchObject({
+      task_type: "translation",
+      line: 0,
+      total_line: 0,
+      processed_line: 0,
+      total_tokens: 0,
+    });
+  });
+
   it("executor 传输失败时只重试当前翻译 chunk 并继续提交成功结果", async () => {
     const committed_items: MutableJsonRecord[] = [];
     const done = create_status_waiter("translation", "DONE");
@@ -126,9 +168,7 @@ describe("TaskEngine", () => {
         update_translation_progress: () => ({ accepted: true }),
         build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
-      coreEventHub: {
-        publish: done.publish,
-      } as unknown as CoreEventHub,
+      taskRuntimePublisher: create_task_runtime_publisher(done.publish),
       executorClient: {
         execute_translation_chunk: async (body: MutableJsonRecord) => {
           const items = (Array.isArray(body["items"]) ? body["items"] : []) as MutableJsonRecord[];
@@ -186,15 +226,34 @@ describe("TaskEngine", () => {
     return {
       promise,
       publish: (event_type, payload) => {
-        if (
-          event_type === "task.status_changed" &&
-          payload["task_type"] === task_type &&
-          payload["status"] === status
-        ) {
+        if (event_type === "task.snapshot_changed") {
+          const task = payload["task"] as MutableJsonRecord | undefined;
+          if (task?.["task_type"] === task_type && task["status"] === status) {
+            resolve_waiter();
+          }
+        } else if (payload["task_type"] === task_type && payload["status"] === status) {
           resolve_waiter();
         }
       },
     };
+  }
+
+  function create_task_runtime_publisher(
+    on_publish: (event_type: string, payload: MutableJsonRecord) => void = () => undefined,
+    on_progress_committed: (task_type: string) => void = () => undefined,
+  ): TaskRuntimePublisher {
+    return {
+      publish_status: async (task_type: string, status: string, busy: boolean) => {
+        on_publish("task.snapshot_changed", {
+          task: { task_type, status, busy } as unknown as ApiJsonValue,
+        });
+      },
+      publish_progress_committed: async (task_type: string) => {
+        on_progress_committed(task_type);
+      },
+      publish_request_pressure: () => undefined,
+      flush_request_pressure: async () => undefined,
+    } as unknown as TaskRuntimePublisher;
   }
 
   function create_deferred<T>(): {

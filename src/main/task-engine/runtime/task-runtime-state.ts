@@ -1,6 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type { JsonRecord, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
-import { is_task_idle_status, is_task_type } from "../../../shared/task";
+import type { TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
 
 const IDLE_TASK_TYPE = "idle"; // Engine 空闲态统一用 idle 表达，避免快照泄漏任务类型细节
 
@@ -64,14 +63,12 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 从公开 task.status_changed 事件吸收 Engine 状态，保持事件流和快照同源
+   * 写入任务生命周期状态；调用方必须已经完成任务类型收窄
    */
-  public apply_status_event(payload: JsonRecord): void {
-    const task_type = this.read_task_type(payload);
-    const status = typeof payload["status"] === "string" ? payload["status"] : this.status;
+  public set_status(task_type: TaskType, status: string, busy: boolean): void {
     this.status = status;
-    this.busy = this.read_boolean(payload["busy"], !is_task_idle_status(status));
-    this.active_task_type = this.busy && task_type !== null ? task_type : IDLE_TASK_TYPE;
+    this.busy = busy;
+    this.active_task_type = this.busy ? task_type : IDLE_TASK_TYPE;
     if (!this.busy) {
       this.request_in_flight_count = 0;
       if (task_type === "retranslate" || this.active_task_type === IDLE_TASK_TYPE) {
@@ -81,16 +78,22 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 从进度事件吸收实时请求数；缺字段时不能清掉已有完整快照
+   * 任务提交进度后保持活跃任务类型，进度数值本身由 `.lg` meta 作为快照来源
    */
-  public apply_progress_event(payload: JsonRecord): void {
-    const task_type = this.read_task_type(payload);
-    if (task_type !== null && this.busy) {
+  public mark_progress_committed(task_type: TaskType): void {
+    if (this.busy) {
       this.active_task_type = task_type;
     }
-    if ("request_in_flight_count" in payload) {
-      this.request_in_flight_count = this.read_number(payload["request_in_flight_count"], 0);
+  }
+
+  /**
+   * 请求压力只写真实已发请求数，发布节奏由 TaskRuntimePublisher 决定
+   */
+  public set_request_in_flight_count(task_type: TaskType, value: number): void {
+    if (this.busy) {
+      this.active_task_type = task_type;
     }
+    this.request_in_flight_count = Math.max(0, this.read_number(value, 0));
   }
 
   /**
@@ -101,21 +104,6 @@ export class TaskRuntimeState {
     this.retranslating_item_ids = this.retranslating_item_ids.filter(
       (item_id) => !done_ids.has(item_id),
     );
-  }
-
-  /**
-   * 只接受公开三类任务名，避免未知 topic 把运行态带偏
-   */
-  private read_task_type(payload: JsonRecord): TaskType | null {
-    const task_type = String(payload["task_type"] ?? "");
-    return is_task_type(task_type) ? task_type : null;
-  }
-
-  /**
-   * 布尔读取集中处理，兼容事件缺少 busy 字段的情况
-   */
-  private read_boolean(value: ApiJsonValue | undefined, fallback: boolean): boolean {
-    return typeof value === "boolean" ? value : fallback;
   }
 
   /**

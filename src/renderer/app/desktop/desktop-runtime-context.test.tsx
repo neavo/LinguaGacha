@@ -460,8 +460,7 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("StrictMode 双 effect 后任务进度合帧仍会持续刷新", async () => {
-    vi.useFakeTimers();
+  it("StrictMode 双 effect 后完整任务快照仍会持续刷新", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
@@ -528,19 +527,22 @@ describe("DesktopRuntimeProvider", () => {
     await wait_for_condition(() => {
       return (
         event_stream.event_source.addEventListener as unknown as ReturnType<typeof vi.fn>
-      ).mock.calls.some((call) => call[0] === "task.progress_changed");
+      ).mock.calls.some((call) => call[0] === "task.snapshot_changed");
     });
 
     await act(async () => {
-      event_stream.emit("task.progress_changed", {
-        task_type: "translation",
-        line: 2,
-        total_line: 5,
-        processed_line: 2,
+      event_stream.emit("task.snapshot_changed", {
+        task: {
+          task_type: "translation",
+          status: "RUN",
+          busy: true,
+          line: 2,
+          total_line: 5,
+          processed_line: 2,
+        },
       });
       await Promise.resolve();
       await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(250);
     });
 
     await wait_for_condition(() => {
@@ -548,20 +550,20 @@ describe("DesktopRuntimeProvider", () => {
     });
 
     await act(async () => {
-      event_stream.emit("task.progress_changed", {
-        task_type: "translation",
-        line: 4,
-        total_line: 5,
-        processed_line: 4,
-        total_output_tokens: 12,
-      });
-      event_stream.emit("task.progress_changed", {
-        task_type: "translation",
-        request_in_flight_count: 3,
+      event_stream.emit("task.snapshot_changed", {
+        task: {
+          task_type: "translation",
+          status: "RUN",
+          busy: true,
+          line: 4,
+          total_line: 5,
+          processed_line: 4,
+          total_output_tokens: 12,
+          request_in_flight_count: 3,
+        },
       });
       await Promise.resolve();
       await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(250);
     });
 
     await wait_for_condition(() => {
@@ -818,10 +820,13 @@ describe("DesktopRuntimeProvider", () => {
           },
         },
       });
-      event_stream.emit("task.status_changed", {
-        task_type: "analysis",
-        status: "DONE",
-        busy: false,
+      event_stream.emit("task.snapshot_changed", {
+        task: {
+          task_type: "analysis",
+          status: "DONE",
+          busy: false,
+          analysis_candidate_count: 1,
+        },
       });
       await Promise.resolve();
     });
@@ -971,7 +976,7 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("items canonical-delta 会把校对页信号标成 delta 并携带 item_ids", async () => {
+  it("items canonical-delta 会立即把校对页信号标成 delta 并携带 item_ids", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1089,19 +1094,18 @@ describe("DesktopRuntimeProvider", () => {
         },
       });
       await Promise.resolve();
-      vi.advanceTimersByTime(250);
     });
 
     await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 2;
+      return snapshots.at(-1)?.proofreadingSeq === 3;
     });
 
     expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 2,
+      proofreadingSeq: 3,
       proofreadingReason: "proofreading_save_item",
       proofreadingMode: "delta",
       proofreadingUpdatedSections: ["items", "proofreading"],
-      proofreadingItemIds: [1, 2],
+      proofreadingItemIds: [2],
       itemKeys: ["1", "2"],
     });
   });
@@ -1270,13 +1274,14 @@ describe("DesktopRuntimeProvider", () => {
           },
         },
       });
-      event_stream.emit("task.status_changed", {
-        task_type: "translation",
-        status: "RUNNING",
-        busy: true,
+      event_stream.emit("task.snapshot_changed", {
+        task: {
+          task_type: "translation",
+          status: "RUNNING",
+          busy: true,
+        },
       });
       await Promise.resolve();
-      vi.advanceTimersByTime(250);
     });
 
     await wait_for_condition(() => {

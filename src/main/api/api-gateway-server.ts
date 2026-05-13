@@ -24,12 +24,12 @@ import { CoreEventHub } from "../events/core-event-hub";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { TaskCommandService } from "../task-engine/command/task-command-service";
 import { TaskEngine } from "../task-engine/orchestration/task-engine";
-import { TaskRuntimeProjector } from "../task-engine/runtime/task-runtime-projector";
+import { TaskRuntimePublisher } from "../task-engine/runtime/task-runtime-publisher";
 import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
 import { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
 import { ProjectTaskStore } from "../task-engine/store/project-task-store";
 import { TaskWorkerPool } from "../task-worker/task-worker-pool";
-import { normalizeProjectDataSections } from "../../shared/project-change-event";
+import { normalizeProjectDataSections } from "../../shared/project/event";
 import {
   close_api_gateway_with_connections,
   track_api_gateway_connections,
@@ -140,10 +140,7 @@ export class ApiGatewayServer {
       this.project_session_state,
       project_runtime_projection_service,
     );
-    const task_runtime_projector = new TaskRuntimeProjector(this.task_runtime_state);
-    const core_event_hub = new CoreEventHub({
-      projectors: [task_runtime_projector],
-    });
+    const core_event_hub = new CoreEventHub();
     const project_change_publisher = new ProjectChangePublisher(
       project_change_adapter,
       core_event_hub,
@@ -176,6 +173,11 @@ export class ApiGatewayServer {
       this.project_session_state,
       project_runtime_projection_service,
     );
+    const task_runtime_publisher = new TaskRuntimePublisher(
+      core_event_hub,
+      this.task_runtime_state,
+      task_snapshot_builder,
+    );
     const project_task_store = new ProjectTaskStore(
       this.options.database,
       this.project_session_state,
@@ -188,7 +190,7 @@ export class ApiGatewayServer {
     this.task_worker_pool = executor_client;
     const task_engine = new TaskEngine({
       taskStore: project_task_store,
-      coreEventHub: core_event_hub,
+      taskRuntimePublisher: task_runtime_publisher,
       executorClient: executor_client,
       SettingService: setting_service,
       logManager: this.options.logManager,
@@ -196,7 +198,7 @@ export class ApiGatewayServer {
     const task_command_service = new TaskCommandService(
       task_engine,
       task_snapshot_builder,
-      this.task_runtime_state,
+      task_runtime_publisher,
       this.project_session_state,
       setting_service,
     );

@@ -392,7 +392,7 @@ describe("useTranslationTaskRuntime", () => {
     );
   });
 
-  it("重翻任务结束后会刷新翻译任务快照", async () => {
+  it("重翻任务结束后不再重复刷新翻译任务快照", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         task_type: "retranslate",
@@ -436,15 +436,8 @@ describe("useTranslationTaskRuntime", () => {
     await render_probe();
     await flush_microtasks();
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/tasks/snapshot", {
+    expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/tasks/snapshot", {
       task_type: "translation",
-    });
-    expect(latest_state?.translation_task_display_snapshot).toMatchObject({
-      task_type: "translation",
-      line: 2,
-      total_line: 2,
-      processed_line: 1,
-      error_line: 1,
     });
   });
 

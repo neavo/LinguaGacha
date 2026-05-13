@@ -9,7 +9,7 @@ import {
   get_runtime_section_revision,
   type ProjectDataSection,
 } from "./project-section-revision";
-import { isProjectDataSection } from "../../shared/project-change-event";
+import { isProjectDataSection } from "../../shared/project/event";
 
 export type ProjectRuntimeProjectionJsonRecord = Record<string, ApiJsonValue>;
 export type ProjectRuntimeProjectionMutableRecord = Record<string, ApiJsonValue>;

@@ -1,7 +1,7 @@
 import { CoreEventHub } from "../events/core-event-hub";
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectChangeEventAdapter } from "./project-change-event-adapter";
-import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-change-event";
+import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project/event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 

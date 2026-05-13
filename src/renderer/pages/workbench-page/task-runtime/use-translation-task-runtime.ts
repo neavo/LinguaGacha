@@ -13,18 +13,15 @@ import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
 } from "@/app/desktop/desktop-runtime-context";
-import { WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS } from "@/pages/workbench-page/task-runtime/workbench-progress-constants";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
-import {
-  is_task_snapshot_for_runtime,
-  should_defer_runtime_snapshot_refresh,
-} from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
+import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import {
   append_workbench_waveform_sample,
   decay_workbench_waveform_sample,
   has_unsettled_workbench_waveform_tail,
+  WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS,
 } from "@/pages/workbench-page/task-runtime/workbench-waveform";
 import {
   clone_translation_task_snapshot,
@@ -208,8 +205,6 @@ export function useTranslationTaskRuntime(
   );
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
-  const previous_task_busy_ref = useRef(task_snapshot.busy);
-  const previous_task_type_ref = useRef(String(task_snapshot.task_type ?? ""));
   const previous_translation_status_ref = useRef(create_empty_translation_task_snapshot().status);
   const observed_translation_waveform_snapshot_ref = useRef<TranslationTaskSnapshot | null>(null);
   const observed_translation_waveform_time_ref = useRef<number | null>(null);
@@ -624,32 +619,6 @@ export function useTranslationTaskRuntime(
   ]);
 
   useEffect(() => {
-    const previous_task_busy = previous_task_busy_ref.current;
-    const previous_task_type = previous_task_type_ref.current;
-    const current_task_type = String(task_snapshot.task_type ?? "");
-    previous_task_busy_ref.current = task_snapshot.busy;
-    previous_task_type_ref.current = current_task_type;
-
-    if (!project_snapshot.loaded) {
-      return;
-    }
-
-    if (
-      previous_task_busy &&
-      !task_snapshot.busy &&
-      is_task_snapshot_for_runtime(task_snapshot, "translation")
-    ) {
-      void refresh_translation_task_snapshot();
-    } else if (
-      previous_task_busy &&
-      !task_snapshot.busy &&
-      (previous_task_type === "retranslate" || current_task_type === "retranslate")
-    ) {
-      void refresh_translation_task_snapshot();
-    }
-  }, [project_snapshot.loaded, refresh_translation_task_snapshot, task_snapshot]);
-
-  useEffect(() => {
     if (task_snapshot.task_type !== "translation") {
       return;
     }
@@ -732,7 +701,7 @@ export function useTranslationTaskRuntime(
     append_translation_waveform_sample(); // 为什么：运行态和收尾态都需要继续推进采样，前者保持连贯，后者负责把尾巴渐渐扫干净
     const timer_id = window.setInterval(() => {
       append_translation_waveform_sample();
-    }, WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS);
+    }, WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS);
 
     return () => {
       window.clearInterval(timer_id);

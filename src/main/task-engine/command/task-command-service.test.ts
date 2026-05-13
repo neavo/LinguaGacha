@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SettingService } from "../../service/setting-service";
 import type { TaskEngine } from "../orchestration/task-engine";
 import { ProjectSessionState } from "../../project/project-session-state";
-import { TaskRuntimeState } from "../runtime/task-runtime-state";
+import type { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { TaskSnapshotBuilder } from "../runtime/task-snapshot-builder";
 import { TaskCommandService } from "./task-command-service";
 
@@ -24,7 +24,7 @@ describe("TaskCommandService", () => {
         quality: 3,
         prompts: 4,
       }),
-      new TaskRuntimeState(),
+      create_task_runtime_publisher(),
       session_state,
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -60,7 +60,7 @@ describe("TaskCommandService", () => {
         },
       } as unknown as TaskEngine,
       create_snapshot_builder({}),
-      new TaskRuntimeState(),
+      create_task_runtime_publisher(),
       new ProjectSessionState(),
       create_setting_service({ activate_model_id: "", models: [] }),
     );
@@ -81,7 +81,7 @@ describe("TaskCommandService", () => {
         },
       } as unknown as TaskEngine,
       create_snapshot_builder({}),
-      new TaskRuntimeState(),
+      create_task_runtime_publisher(),
       new ProjectSessionState(),
       create_setting_service({ activate_model_id: "missing", models: [{ id: "model-1" }] }),
     );
@@ -98,7 +98,7 @@ describe("TaskCommandService", () => {
     const service = new TaskCommandService(
       {} as unknown as TaskEngine,
       create_snapshot_builder({ items: 8, proofreading: 2, quality: 1, prompts: 1 }),
-      new TaskRuntimeState(),
+      create_task_runtime_publisher(),
       session_state,
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -122,7 +122,7 @@ describe("TaskCommandService", () => {
         },
       } as unknown as TaskEngine,
       create_snapshot_builder({ quality: 1, prompts: 2 }),
-      new TaskRuntimeState(),
+      create_task_runtime_publisher(),
       session_state,
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -154,6 +154,21 @@ describe("TaskCommandService", () => {
       }),
       get_runtime_section_revision: (section: string) => revisions[section] ?? 0,
     } as unknown as TaskSnapshotBuilder;
+  }
+
+  function create_task_runtime_publisher(): TaskRuntimePublisher {
+    return {
+      begin_task: async () => undefined,
+      mark_stopping: async () => undefined,
+      restore: async () => undefined,
+      snapshot_state: () => ({
+        active_task_type: "idle",
+        busy: false,
+        request_in_flight_count: 0,
+        retranslating_item_ids: [],
+        status: "IDLE",
+      }),
+    } as unknown as TaskRuntimePublisher;
   }
 
   function create_setting_service(config: Record<string, unknown>): SettingService {

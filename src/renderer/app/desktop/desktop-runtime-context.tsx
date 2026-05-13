@@ -34,7 +34,6 @@ import {
   normalize_section_revisions,
   parse_event_payload,
 } from "@/app/desktop/desktop-runtime-event-payload";
-import { LiveRefreshScheduler } from "@/app/ui-runtime/live-refresh-scheduler";
 import {
   normalize_app_language,
   normalize_project_save_mode,
@@ -47,7 +46,7 @@ import {
   normalizeProjectChangePayloadMode,
   type ProjectChangePayloadMode,
   type ProjectChangeJsonRecord,
-} from "@shared/project-change-event";
+} from "@shared/project/event";
 
 type RecentProjectEntry = {
   path: string;
@@ -260,16 +259,6 @@ const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
   item_ids: [],
 };
 
-type RuntimeLiveRefreshPayload =
-  | {
-      kind: "project_change";
-      event: ProjectStoreChangeEvent;
-    }
-  | {
-      kind: "task_progress";
-      payload: Partial<TaskSnapshot>;
-    };
-
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null);
 
 function normalize_recent_projects(
@@ -355,21 +344,6 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
     path: String(snapshot.path ?? ""),
     loaded: Boolean(snapshot.loaded),
   };
-}
-
-function merge_task_progress_payloads(
-  payloads: readonly Partial<TaskSnapshot>[],
-): Partial<TaskSnapshot> | undefined {
-  if (payloads.length === 0) {
-    return undefined;
-  }
-
-  return payloads.reduce<Partial<TaskSnapshot>>((merged_payload, payload) => {
-    return {
-      ...merged_payload,
-      ...payload,
-    };
-  }, {});
 }
 
 export function normalize_project_mutation_ack(
@@ -647,27 +621,6 @@ function has_project_change_rel_paths(event: ProjectStoreChangeEvent): boolean {
   return false;
 }
 
-function collect_project_change_updated_sections(
-  events: readonly ProjectStoreChangeEvent[],
-): ProjectStoreStage[] {
-  const sections = new Set<ProjectStoreStage>();
-
-  for (const event of events) {
-    for (const section of event.updatedSections) {
-      sections.add(section);
-    }
-  }
-
-  return [...sections];
-}
-
-function collect_project_change_sources(events: readonly ProjectStoreChangeEvent[]): string {
-  const sources = [
-    ...new Set(events.map((event) => event.source).filter((source) => source !== "")),
-  ];
-  return sources.length === 0 ? "project_change" : sources.join("+");
-}
-
 function is_project_change_workbench_delta(event: ProjectStoreChangeEvent): boolean {
   if (!event.updatedSections.includes("items")) {
     return false;
@@ -685,7 +638,7 @@ function is_project_change_workbench_delta(event: ProjectStoreChangeEvent): bool
 function resolve_workbench_change_signal(args: {
   reason: string;
   updated_sections: ProjectStoreStage[];
-  events: readonly ProjectStoreChangeEvent[];
+  change_event: ProjectStoreChangeEvent;
 }): {
   reason: string;
   scope: WorkbenchChangeScope;
@@ -697,93 +650,17 @@ function resolve_workbench_change_signal(args: {
     return null;
   }
 
-  const item_ids = [
-    ...new Set(args.events.flatMap((event) => collect_project_change_item_ids(event))),
-  ];
+  const item_ids = [...new Set(collect_project_change_item_ids(args.change_event))];
   const can_apply_items_delta =
-    item_ids.length > 0 && args.events.every(is_project_change_workbench_delta);
+    item_ids.length > 0 && is_project_change_workbench_delta(args.change_event);
 
   return {
     reason: args.reason,
-    scope: args.events.some(has_project_change_rel_paths) ? "file" : "global",
+    scope: has_project_change_rel_paths(args.change_event) ? "file" : "global",
     mode: can_apply_items_delta ? "items_delta" : "full",
     updated_sections: args.updated_sections,
     item_ids,
   };
-}
-
-function resolve_batched_proofreading_change_signal(args: {
-  reason: string;
-  updated_sections: ProjectStoreStage[];
-  events: readonly ProjectStoreChangeEvent[];
-}): {
-  reason: string;
-  mode: ProofreadingChangeMode;
-  updated_sections: ProjectStoreStage[];
-  item_ids: Array<number | string>;
-} | null {
-  let has_noop = false;
-  const delta_item_ids = new Set<number | string>();
-
-  for (const event of args.events) {
-    const signal = resolve_proofreading_change_signal({
-      reason: event.source,
-      updated_sections: event.updatedSections,
-      change_event: event,
-    });
-    if (signal === null) {
-      continue;
-    }
-
-    if (signal.mode === "full") {
-      return {
-        reason: args.reason,
-        mode: "full",
-        updated_sections: args.updated_sections,
-        item_ids: [],
-      };
-    }
-
-    if (signal.mode === "noop") {
-      has_noop = true;
-      continue;
-    }
-
-    for (const item_id of signal.item_ids) {
-      delta_item_ids.add(item_id);
-    }
-  }
-
-  if (delta_item_ids.size > 0) {
-    return {
-      reason: args.reason,
-      mode: "delta",
-      updated_sections: args.updated_sections,
-      item_ids: [...delta_item_ids],
-    };
-  }
-
-  if (has_noop) {
-    return {
-      reason: args.reason,
-      mode: "noop",
-      updated_sections: args.updated_sections,
-      item_ids: [],
-    };
-  }
-
-  return null;
-}
-
-function should_apply_project_change_immediately(event: ProjectStoreChangeEvent): boolean {
-  return event.operations.some(
-    (operation) =>
-      operation.items?.payloadMode === "section-invalidated" ||
-      operation.files?.payloadMode === "section-invalidated" ||
-      Object.values(operation.sections ?? {}).some(
-        (section) => section?.payloadMode === "section-invalidated",
-      ),
-  );
 }
 
 /**
@@ -963,35 +840,21 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [],
   );
 
-  const apply_runtime_project_changes = useCallback(
+  const apply_runtime_project_change = useCallback(
     (
-      change_events: readonly ProjectStoreChangeEvent[],
+      change_event: ProjectStoreChangeEvent,
       revision_mode: ProjectStoreChangeRevisionMode = "merge",
     ): void => {
-      if (change_events.length === 0) {
-        return;
-      }
+      project_store_ref.current.applyProjectChange(change_event, {
+        revisionMode: revision_mode,
+      });
 
-      if (change_events.length === 1) {
-        const change_event = change_events[0];
-        if (change_event === undefined) {
-          return;
-        }
-        project_store_ref.current.applyProjectChange(change_event, {
-          revisionMode: revision_mode,
-        });
-      } else {
-        project_store_ref.current.applyProjectChangeBatch(change_events, {
-          revisionMode: revision_mode,
-        });
-      }
-
-      const updated_sections = collect_project_change_updated_sections(change_events);
-      const reason = collect_project_change_sources(change_events);
+      const updated_sections = change_event.updatedSections;
+      const reason = change_event.source || "project_change";
       const workbench_change_signal = resolve_workbench_change_signal({
         reason,
         updated_sections,
-        events: change_events,
+        change_event,
       });
       if (workbench_change_signal !== null) {
         bump_workbench_runtime_signal(workbench_change_signal);
@@ -1000,31 +863,13 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       const proofreading_change_signal = resolve_proofreading_change_signal({
         reason,
         updated_sections,
-        change_event: change_events.length === 1 ? (change_events[0] ?? null) : null,
+        change_event,
       });
-      const batched_proofreading_change_signal =
-        change_events.length === 1
-          ? proofreading_change_signal
-          : resolve_batched_proofreading_change_signal({
-              reason,
-              updated_sections,
-              events: change_events,
-            });
-      if (batched_proofreading_change_signal !== null) {
-        bump_proofreading_runtime_signal(batched_proofreading_change_signal);
+      if (proofreading_change_signal !== null) {
+        bump_proofreading_runtime_signal(proofreading_change_signal);
       }
     },
     [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
-  );
-
-  const apply_runtime_project_change = useCallback(
-    (
-      change_event: ProjectStoreChangeEvent,
-      revision_mode: ProjectStoreChangeRevisionMode = "merge",
-    ): void => {
-      apply_runtime_project_changes([change_event], revision_mode);
-    },
-    [apply_runtime_project_changes],
   );
 
   const refresh_project_runtime = useCallback(async (): Promise<void> => {
@@ -1208,33 +1053,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   }, [project_warmup_status]);
 
   useEffect(() => {
-    const live_refresh_scheduler = new LiveRefreshScheduler<string, RuntimeLiveRefreshPayload>({
-      onFlush: (batches) => {
-        const project_change_events = (batches.get(PROJECT_CHANGE_EVENT_TOPIC) ?? []).flatMap(
-          (payload) => {
-            return payload.kind === "project_change" ? [payload.event] : [];
-          },
-        );
-        if (project_change_events.length > 0) {
-          apply_runtime_project_changes(project_change_events);
-        }
-
-        const task_progress_payload = merge_task_progress_payloads(
-          (batches.get("task.progress") ?? []).flatMap((payload) => {
-            return payload.kind === "task_progress" ? [payload.payload] : [];
-          }),
-        );
-        if (task_progress_payload !== undefined) {
-          task_runtime_store_ref.current.applyProgressEvent(task_progress_payload);
-        }
-      },
-    });
     let event_source: EventSource | null = null;
     let cancelled = false;
 
     function handle_project_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
-      live_refresh_scheduler.flush();
       set_project_snapshot({
         path: String(payload.path ?? ""),
         loaded: Boolean(payload.loaded),
@@ -1242,18 +1065,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       void refresh_task();
     }
 
-    function handle_task_status_changed(event: MessageEvent<string>): void {
+    function handle_task_snapshot_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
-      live_refresh_scheduler.flush();
-      task_runtime_store_ref.current.applyStatusEvent(payload);
-    }
-
-    function handle_task_progress_changed(event: MessageEvent<string>): void {
-      const payload = parse_event_payload(event);
-      live_refresh_scheduler.enqueue("task.progress", {
-        kind: "task_progress",
-        payload,
-      });
+      task_runtime_store_ref.current.applySnapshot(normalize_task_snapshot(payload));
     }
 
     function handle_settings_changed(event: MessageEvent<string>): void {
@@ -1281,7 +1095,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           return;
         }
 
-        live_refresh_scheduler.flush();
         try {
           await refresh_project_runtime();
         } catch {
@@ -1321,7 +1134,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           return;
         }
 
-        live_refresh_scheduler.flush();
         const read_sections_payload = await api_fetch<ProjectReadSectionsPayload>(
           "/api/project/read-sections",
           {
@@ -1344,16 +1156,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return;
       }
 
-      if (should_apply_project_change_immediately(change_event)) {
-        live_refresh_scheduler.flush();
-        apply_runtime_project_change(change_event);
-        return;
-      }
-
-      live_refresh_scheduler.enqueue(PROJECT_CHANGE_EVENT_TOPIC, {
-        kind: "project_change",
-        event: change_event,
-      });
+      apply_runtime_project_change(change_event);
     }
 
     async function attach_event_stream(): Promise<void> {
@@ -1367,12 +1170,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         event_source = next_event_source;
         event_source.addEventListener("project.changed", handle_project_changed as EventListener);
         event_source.addEventListener(
-          "task.status_changed",
-          handle_task_status_changed as EventListener,
-        );
-        event_source.addEventListener(
-          "task.progress_changed",
-          handle_task_progress_changed as EventListener,
+          "task.snapshot_changed",
+          handle_task_snapshot_changed as EventListener,
         );
         event_source.addEventListener("settings.changed", handle_settings_changed as EventListener);
         event_source.addEventListener(PROJECT_CHANGE_EVENT_TOPIC, ((
@@ -1389,13 +1188,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     return () => {
       cancelled = true;
-      live_refresh_scheduler.dispose();
       event_source?.close();
     };
   }, [
     apply_settings_snapshot,
     apply_runtime_project_change,
-    apply_runtime_project_changes,
     bump_proofreading_runtime_signal,
     bump_workbench_runtime_signal,
     project_snapshot.loaded,

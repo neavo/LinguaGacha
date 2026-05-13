@@ -15,18 +15,15 @@ import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
 } from "@/app/page-runtime/project-pages-barrier";
-import { WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS } from "@/pages/workbench-page/task-runtime/workbench-progress-constants";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/i18n";
-import {
-  is_task_snapshot_for_runtime,
-  should_defer_runtime_snapshot_refresh,
-} from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
+import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import {
   append_workbench_waveform_sample,
   decay_workbench_waveform_sample,
   has_unsettled_workbench_waveform_tail,
+  WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS,
 } from "@/pages/workbench-page/task-runtime/workbench-waveform";
 import {
   clone_analysis_task_snapshot,
@@ -187,7 +184,6 @@ export function useAnalysisTaskRuntime(
   const {
     project_store,
     project_snapshot,
-    workbench_change_signal,
     set_task_snapshot,
     task_snapshot,
     commit_local_project_change,
@@ -214,8 +210,6 @@ export function useAnalysisTaskRuntime(
   const [analysis_importing, set_analysis_importing] = useState(false);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
-  const previous_task_busy_ref = useRef(task_snapshot.busy);
-  const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq);
   const previous_analysis_status_ref = useRef(create_empty_analysis_task_snapshot().status);
   const observed_analysis_waveform_snapshot_ref = useRef<AnalysisTaskSnapshot | null>(null);
   const observed_analysis_waveform_time_ref = useRef<number | null>(null);
@@ -734,44 +728,6 @@ export function useAnalysisTaskRuntime(
   ]);
 
   useEffect(() => {
-    const previous_task_busy = previous_task_busy_ref.current;
-    previous_task_busy_ref.current = task_snapshot.busy;
-
-    if (!project_snapshot.loaded) {
-      return;
-    }
-
-    if (
-      previous_task_busy &&
-      !task_snapshot.busy &&
-      is_task_snapshot_for_runtime(task_snapshot, "analysis")
-    ) {
-      void refresh_analysis_task_snapshot();
-    }
-  }, [project_snapshot.loaded, refresh_analysis_task_snapshot, task_snapshot]);
-
-  useEffect(() => {
-    const previous_seq = previous_workbench_change_seq_ref.current;
-    previous_workbench_change_seq_ref.current = workbench_change_signal.seq;
-
-    if (!project_snapshot.loaded) {
-      return;
-    }
-
-    if (
-      previous_seq !== workbench_change_signal.seq &&
-      !should_defer_runtime_snapshot_refresh(task_snapshot, "analysis")
-    ) {
-      void refresh_analysis_task_snapshot();
-    }
-  }, [
-    project_snapshot.loaded,
-    refresh_analysis_task_snapshot,
-    task_snapshot,
-    workbench_change_signal.seq,
-  ]);
-
-  useEffect(() => {
     if (task_snapshot.task_type !== "analysis") {
       return;
     }
@@ -851,7 +807,7 @@ export function useAnalysisTaskRuntime(
     append_analysis_waveform_sample(); // 为什么：运行态和衰减态都需要继续推进，前者保持上一跳，后者负责把尾巴慢慢扫成 0
     const timer_id = window.setInterval(() => {
       append_analysis_waveform_sample();
-    }, WORKBENCH_PROGRESS_UI_REFRESH_INTERVAL_MS);
+    }, WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS);
 
     return () => {
       window.clearInterval(timer_id);

@@ -48,7 +48,7 @@ flowchart LR
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 句柄缓存的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
 - `task-engine` 是任务域主控包：`command` 受理 `/api/tasks/*`，`runtime` 持有公开运行态和快照，`orchestration` 编排任务，`store` 读写项目任务事实。
-- `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `TaskWorkerPool` 执行 work unit；任务事件经 `CoreEventHub` 广播，并由 `TaskRuntimeProjector` 投影回 `TaskRuntimeState`。
+- `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `TaskWorkerPool` 执行 work unit；任务运行态只经 `TaskRuntimePublisher` 写入 `TaskRuntimeState` 并广播完整 `task.snapshot_changed`。
 - renderer 只通过 preload 暴露的 `window.desktopApp` 获得宿主能力和 Core API base URL，再由 `desktop-api.ts` 发起 HTTP / SSE。
 
 ## 3. 主链路
@@ -89,13 +89,13 @@ sequenceDiagram
   Proj-->>UI: project / files / items / quality / prompts / analysis / proofreading
   UI->>Store: exact 合并项目数据 section
   UI->>API: /api/events/stream
-  Hub-->>UI: project.data_changed / task.* / settings.*
+  Hub-->>UI: project.data_changed / task.snapshot_changed / settings.*
   UI->>Store: 应用 canonical delta 或按需补读 section
   UI->>Task: 合并 task snapshot / task event
 ```
 
 - `/api/project/manifest` 与 `/api/project/read-sections` 是项目数据初始化主链路；运行态不再保留 full bootstrap stream。
-- `/api/events/stream` 是运行期增量事件主链路；项目数据通过 `project.data_changed` 更新，任务运行态通过 `task.*` 与 `/api/tasks/snapshot` 更新。
+- `/api/events/stream` 是运行期增量事件主链路；项目数据通过 `project.data_changed` 更新，任务运行态通过 `task.snapshot_changed` 更新，页面初始化或项目切换时可按需读取 `/api/tasks/snapshot`。
 - 同步 mutation 的 HTTP ack 只用于 revision 对齐；页面最终事实仍以项目读取接口、`project.data_changed`、任务事件和明确的本地乐观 change 进入各自 store。
 
 ## 4. 模块关系边界

@@ -1,3 +1,4 @@
+export const WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS = 250; // Workbench 波形只做视觉采样，不参与任务事实同步
 export const WORKBENCH_WAVEFORM_VISIBLE_POINTS = 96;
 const WORKBENCH_WAVEFORM_MAX_POINTS = 256;
 

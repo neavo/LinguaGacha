@@ -1,6 +1,6 @@
 import type { TaskPipelineWorkerResult } from "./task-engine-types";
 
-const DEFAULT_COMMIT_INTERVAL_MS = 250;
+export const TASK_PIPELINE_COMMIT_INTERVAL_MS = 250; // worker 结果提交窗口固定为每秒 4 次，避免高频写库
 
 interface TaskPipelineOptions<TContext, TCommit> {
   worker_count: number;
@@ -49,7 +49,7 @@ export class TaskPipeline<TContext, TCommit> {
     this.signal = this.abort_controller.signal;
     this.execute = options.execute;
     this.commit = options.commit;
-    this.commit_interval_ms = options.commit_interval_ms ?? DEFAULT_COMMIT_INTERVAL_MS;
+    this.commit_interval_ms = options.commit_interval_ms ?? TASK_PIPELINE_COMMIT_INTERVAL_MS;
     this.upstream_abort_listener = () => {
       this.abort_pipeline();
     };

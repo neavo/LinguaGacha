@@ -3,7 +3,7 @@ import { SettingService } from "../../service/setting-service";
 import { resolve_active_model } from "../../model/model-config-resolver";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskEngine } from "../orchestration/task-engine";
-import { TaskRuntimeState } from "../runtime/task-runtime-state";
+import { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import { TaskSnapshotBuilder } from "../runtime/task-snapshot-builder";
 import { type JsonRecord, type MutableJsonRecord } from "../runtime/task-runtime-types";
 
@@ -18,7 +18,7 @@ export class TaskCommandService {
 
   private readonly snapshot_builder: TaskSnapshotBuilder; // snapshot_builder 是公开任务快照唯一组装口径，命令回执也复用它
 
-  private readonly task_runtime_state: TaskRuntimeState; // task_runtime_state 负责命令受理后的乐观 busy 状态，避免回执等待 SSE
+  private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 是命令受理后发布完整快照的唯一出口
 
   private readonly session_state: ProjectSessionState; // session_state 决定重翻 revision 校验是否能定位当前工程
 
@@ -30,13 +30,13 @@ export class TaskCommandService {
   public constructor(
     task_engine: TaskEngine,
     snapshot_builder: TaskSnapshotBuilder,
-    task_runtime_state: TaskRuntimeState,
+    task_runtime_publisher: TaskRuntimePublisher,
     session_state: ProjectSessionState,
     setting_service: SettingService,
   ) {
     this.task_engine = task_engine;
     this.snapshot_builder = snapshot_builder;
-    this.task_runtime_state = task_runtime_state;
+    this.task_runtime_publisher = task_runtime_publisher;
     this.session_state = session_state;
     this.setting_service = setting_service;
   }
@@ -50,12 +50,12 @@ export class TaskCommandService {
       this.normalize_expected_section_revisions(request["expected_section_revisions"]),
       ["quality", "prompts"],
     );
-    const previous_state = this.task_runtime_state.snapshot();
-    this.task_runtime_state.begin_task("translation");
+    const previous_state = this.task_runtime_publisher.snapshot_state();
+    await this.task_runtime_publisher.begin_task("translation");
     try {
       await this.task_engine.start_translation(mode);
     } catch (error) {
-      this.task_runtime_state.restore(previous_state);
+      await this.task_runtime_publisher.restore(previous_state);
       throw error;
     }
     return {
@@ -72,12 +72,12 @@ export class TaskCommandService {
    * 请求停止翻译任务；停止态由任务流水线异步收尾
    */
   public async stop_translation(_request: JsonRecord): Promise<MutableJsonRecord> {
-    const previous_state = this.task_runtime_state.snapshot();
-    this.task_runtime_state.mark_stopping("translation");
+    const previous_state = this.task_runtime_publisher.snapshot_state();
+    await this.task_runtime_publisher.mark_stopping("translation");
     try {
       await this.task_engine.stop_translation();
     } catch (error) {
-      this.task_runtime_state.restore(previous_state);
+      await this.task_runtime_publisher.restore(previous_state);
       throw error;
     }
     return {
@@ -99,12 +99,12 @@ export class TaskCommandService {
       this.normalize_expected_section_revisions(request["expected_section_revisions"]),
       ["quality", "prompts"],
     );
-    const previous_state = this.task_runtime_state.snapshot();
-    this.task_runtime_state.begin_task("analysis");
+    const previous_state = this.task_runtime_publisher.snapshot_state();
+    await this.task_runtime_publisher.begin_task("analysis");
     try {
       await this.task_engine.start_analysis(mode);
     } catch (error) {
-      this.task_runtime_state.restore(previous_state);
+      await this.task_runtime_publisher.restore(previous_state);
       throw error;
     }
     return {
@@ -121,12 +121,12 @@ export class TaskCommandService {
    * 请求停止分析任务；公开层只表达 STOPPING 意图，不等待 Task Engine 终态
    */
   public async stop_analysis(_request: JsonRecord): Promise<MutableJsonRecord> {
-    const previous_state = this.task_runtime_state.snapshot();
-    this.task_runtime_state.mark_stopping("analysis");
+    const previous_state = this.task_runtime_publisher.snapshot_state();
+    await this.task_runtime_publisher.mark_stopping("analysis");
     try {
       await this.task_engine.stop_analysis();
     } catch (error) {
-      this.task_runtime_state.restore(previous_state);
+      await this.task_runtime_publisher.restore(previous_state);
       throw error;
     }
     return {
@@ -152,12 +152,12 @@ export class TaskCommandService {
       this.normalize_expected_section_revisions(request["expected_section_revisions"]),
       ["items", "proofreading", "quality", "prompts"],
     );
-    const previous_state = this.task_runtime_state.snapshot();
-    this.task_runtime_state.begin_task("retranslate", item_ids);
+    const previous_state = this.task_runtime_publisher.snapshot_state();
+    await this.task_runtime_publisher.begin_task("retranslate", item_ids);
     try {
       await this.task_engine.start_retranslate(item_ids);
     } catch (error) {
-      this.task_runtime_state.restore(previous_state);
+      await this.task_runtime_publisher.restore(previous_state);
       throw error;
     }
     return {

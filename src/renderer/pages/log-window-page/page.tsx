@@ -3,7 +3,6 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { open_log_stream, type LogEvent } from "@/app/desktop/desktop-api";
-import { LiveRefreshScheduler } from "@/app/ui-runtime/live-refresh-scheduler";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -15,6 +14,7 @@ import {
   sort_log_events_latest_first,
   type LogLevelFilter,
 } from "@/pages/log-window-page/logic";
+import { LogAppendBuffer } from "@/pages/log-window-page/log-append-buffer";
 import { AppButton } from "@/widgets/app-button/app-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
@@ -75,9 +75,8 @@ export function LogWindowPage(): JSX.Element {
   }, [resolvedTheme]);
 
   useEffect(() => {
-    const scheduler = new LiveRefreshScheduler<"logs", LogEvent>({
-      onFlush: (batches) => {
-        const next_events = batches.get("logs") ?? [];
+    const log_append_buffer = new LogAppendBuffer<LogEvent>({
+      onFlush: (next_events) => {
         if (next_events.length === 0) {
           return;
         }
@@ -98,7 +97,7 @@ export function LogWindowPage(): JSX.Element {
           if (disposed) {
             return;
           }
-          scheduler.enqueue("logs", next_event.value);
+          log_append_buffer.append(next_event.value);
         }
       } catch {
         if (!disposed) {
@@ -111,7 +110,7 @@ export function LogWindowPage(): JSX.Element {
 
     return () => {
       disposed = true;
-      scheduler.dispose();
+      log_append_buffer.dispose();
       void iterator.return?.();
     };
   }, [push_toast, t]);

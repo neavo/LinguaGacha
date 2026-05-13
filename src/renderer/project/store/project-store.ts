@@ -9,7 +9,7 @@ import {
   type ProjectChangePayloadMode,
   type ProjectDataSection,
   type ProjectDataSectionRevisions,
-} from "@shared/project-change-event";
+} from "@shared/project/event";
 
 export type { ProjectDataSection, ProjectDataSectionRevisions };
 

@@ -53,13 +53,12 @@ project, files, items, quality, prompts, analysis, proofreading
 
 | 事件 | 前端处理 | 页面影响 |
 | --- | --- | --- |
-| `project.changed` | 更新项目 snapshot、刷新 task | 触发项目读取或清空 store |
+| `project.changed` | 更新项目 snapshot，并在项目加载或切换链路读取 task snapshot | 触发项目读取或清空 store |
 | `settings.changed` | 应用 settings payload 或重新拉取 settings | 影响语言、默认预设和应用设置 |
-| `task.status_changed` | 立即合并任务状态 | 按钮 busy、任务菜单、停止态 |
-| `task.progress_changed` | 通过 `LiveRefreshScheduler` 批量合并 | 进度、请求中数量、统计 |
-| `project.data_changed` | canonical delta 直接合并，ids-only 或 invalidated 按需补读 | 工作台、校对、质量、分析、校对数据刷新 |
+| `task.snapshot_changed` | 立即用完整 task snapshot 覆盖 `TaskRuntimeStore` | 按钮 busy、任务菜单、进度、请求压力、停止态 |
+| `project.data_changed` | canonical delta 立即合并；ids-only 或 section-invalidated 先补读 canonical 数据再合并 | 工作台、校对、质量、分析、校对数据刷新 |
 
-`LiveRefreshScheduler` 只用于降低高频事件刷新压力，不改变事实归属。需要强一致的事件必须先 flush 再应用。
+任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；项目首次加载、项目切换或页面显式 hydration 时仍可读取一次任务快照。日志窗口的 250ms append batch 和 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
 
 ## 5. 导航与项目页 runtime
 

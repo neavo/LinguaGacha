@@ -4,7 +4,7 @@ import type { LogManager } from "../../log/log-manager";
 import { resolve_active_model } from "../../model/model-config-resolver";
 import type { SettingService } from "../../service/setting-service";
 import type { ApiJsonValue } from "../../api/api-types";
-import { CoreEventHub } from "../../events/core-event-hub";
+import { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { JsonRecord, MutableJsonRecord, TaskType } from "../runtime/task-runtime-types";
 import { ProjectTaskStore } from "../store/project-task-store";
 import {
@@ -37,7 +37,7 @@ const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…",
 // TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实
 interface TaskEngineOptions {
   taskStore: ProjectTaskStore; // taskStore 是任务编排器读写项目任务事实的唯一端口
-  coreEventHub: CoreEventHub; // coreEventHub 只承接 task.status_changed / task.progress_changed 等公开事件广播
+  taskRuntimePublisher: TaskRuntimePublisher; // taskRuntimePublisher 是完整 task snapshot 的唯一公开出口
   executorClient: TaskWorkUnitExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
   SettingService: SettingService; // SettingService 在每次任务启动时提供设置与模型快照
   logManager: LogManager; // logManager 统一收敛任务引擎和 worker 回放日志
@@ -106,7 +106,7 @@ interface AnalysisCommitEntry {
  */
 export class TaskEngine {
   private readonly task_store: ProjectTaskStore; // task_store 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
-  private readonly core_event_hub: CoreEventHub; // core_event_hub 只发布公开任务事件，运行态吸收由 TaskRuntimeProjector 完成
+  private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 同步写运行态并发布完整 snapshot
   private readonly executor_client: TaskWorkUnitExecutor; // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果
   private readonly setting_service: SettingService;
   private readonly log_manager: LogManager;
@@ -119,7 +119,7 @@ export class TaskEngine {
    */
   public constructor(options: TaskEngineOptions) {
     this.task_store = options.taskStore;
-    this.core_event_hub = options.coreEventHub;
+    this.task_runtime_publisher = options.taskRuntimePublisher;
     this.executor_client = options.executorClient;
     this.setting_service = options.SettingService;
     this.log_manager = options.logManager;
@@ -137,7 +137,7 @@ export class TaskEngine {
    * 请求停止翻译任务；停止事件由 本地发布并向 work unit 传播 abort
    */
   public async stop_translation(): Promise<void> {
-    this.request_stop("translation");
+    await this.request_stop("translation");
   }
 
   /**
@@ -152,7 +152,7 @@ export class TaskEngine {
    * 请求停止分析任务；已发 work unit 超时或返回后由 run_id 隔离
    */
   public async stop_analysis(): Promise<void> {
-    this.request_stop("analysis");
+    await this.request_stop("analysis");
   }
 
   /**
@@ -196,15 +196,11 @@ export class TaskEngine {
   /**
    * 统一处理停止请求，保证 runtime state 和公开事件流同步进入 STOPPING
    */
-  private request_stop(task_type: TaskType): void {
+  private async request_stop(task_type: TaskType): Promise<void> {
     if (!this.run_lock.request_stop(task_type)) {
       return;
     }
-    this.core_event_hub.publish("task.status_changed", {
-      task_type,
-      status: "STOPPING",
-      busy: true,
-    });
+    await this.task_runtime_publisher.publish_status(task_type, "STOPPING", true);
   }
 
   /**
@@ -213,7 +209,7 @@ export class TaskEngine {
   private async run_translation(handle: TaskRunHandle, mode: string): Promise<void> {
     let final_status = "DONE";
     try {
-      this.emit_status(handle.task_type, "RUN", true);
+      await this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
       const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start("翻译任务", runtime.model);
@@ -226,7 +222,8 @@ export class TaskEngine {
         runtime.model,
       );
       let progress = this.build_translation_progress(mode, all_items, meta);
-      this.emit_progress(handle.task_type, progress);
+      await this.update_translation_progress_if_current(handle, progress);
+      await this.emit_progress(handle.task_type);
       const limiter = this.resolve_task_limiter(runtime.model);
       const pipeline = new TaskPipeline<TranslationContext, TranslationCommitEntry>({
         worker_count: limiter.max_concurrency,
@@ -267,7 +264,7 @@ export class TaskEngine {
   private async run_analysis(handle: TaskRunHandle, mode: string): Promise<void> {
     let final_status = "DONE";
     try {
-      this.emit_status(handle.task_type, "RUN", true);
+      await this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
       const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start("分析任务", runtime.model);
@@ -280,7 +277,8 @@ export class TaskEngine {
       const meta = this.normalize_record(payload["meta"]);
       const contexts = this.build_analysis_contexts(all_items, checkpoints, runtime.model);
       let progress = this.build_analysis_progress(mode, all_items, checkpoints, meta);
-      this.emit_progress(handle.task_type, progress);
+      await this.update_analysis_progress_if_current(handle, progress);
+      await this.emit_progress(handle.task_type);
       const limiter = this.resolve_task_limiter(runtime.model);
       const pipeline = new TaskPipeline<AnalysisContext, AnalysisCommitEntry>({
         worker_count: limiter.max_concurrency,
@@ -321,7 +319,7 @@ export class TaskEngine {
   private async run_retranslate(handle: TaskRunHandle, item_ids: number[]): Promise<void> {
     let final_status = "DONE";
     try {
-      this.emit_status(handle.task_type, "RUN", true);
+      await this.emit_status(handle.task_type, "RUN", true);
       const runtime = this.resolve_runtime_snapshot();
       const quality_snapshot = this.task_store.build_quality_snapshot();
       this.log_task_run_start("重翻任务", runtime.model);
@@ -331,7 +329,8 @@ export class TaskEngine {
       const items = this.normalize_record_list(payload["items"]);
       const meta = this.normalize_record(payload["meta"]);
       let progress = this.build_retranslate_progress(items, meta);
-      this.emit_progress(handle.task_type, progress);
+      await this.update_translation_progress_if_current(handle, progress);
+      await this.emit_progress(handle.task_type);
       const limiter = this.resolve_task_limiter(runtime.model);
       const contexts = items.map((item) => this.build_retranslate_context(item));
       const pipeline = new TaskPipeline<TranslationContext, TranslationCommitEntry>({
@@ -512,11 +511,11 @@ export class TaskEngine {
     callback: () => Promise<T>,
   ): Promise<T> {
     const lease = await limiter.acquire(signal);
-    this.change_request_in_flight_count(handle.task_type, 1);
+    await this.change_request_in_flight_count(handle.task_type, 1);
     try {
       return await callback();
     } finally {
-      this.change_request_in_flight_count(handle.task_type, -1);
+      await this.change_request_in_flight_count(handle.task_type, -1);
       lease.release();
     }
   }
@@ -641,7 +640,7 @@ export class TaskEngine {
         next_progress,
       ) as unknown as ApiJsonValue,
     });
-    this.emit_progress(handle.task_type, next_progress);
+    await this.emit_progress(handle.task_type);
     return next_progress;
   }
 
@@ -683,7 +682,7 @@ export class TaskEngine {
         next_progress,
       ) as unknown as ApiJsonValue,
     });
-    this.emit_progress(handle.task_type, next_progress);
+    await this.emit_progress(handle.task_type);
     return next_progress;
   }
 
@@ -713,15 +712,13 @@ export class TaskEngine {
       );
     }
     next_progress = TaskProgressSnapshotTool.with_elapsed(next_progress);
-    const commit_result = this.task_store.commit_retranslate_batch({
+    this.task_store.commit_retranslate_batch({
       items: items as unknown as ApiJsonValue,
       translation_extras: TaskProgressSnapshotTool.to_record(
         next_progress,
       ) as unknown as ApiJsonValue,
     });
-    this.emit_progress(handle.task_type, next_progress, {
-      retranslating_item_ids: commit_result["retranslating_item_ids"],
-    });
+    await this.emit_progress(handle.task_type);
     return next_progress;
   }
 
@@ -1032,7 +1029,7 @@ export class TaskEngine {
     const still_current = this.run_lock.is_current(handle.run_id);
     this.request_in_flight_count = 0;
     if (still_current) {
-      this.emit_status(handle.task_type, status, false);
+      await this.emit_status(handle.task_type, status, false);
       this.run_lock.finish(handle.run_id);
     }
   }
@@ -1068,37 +1065,27 @@ export class TaskEngine {
   }
 
   /**
-   * 发布 task.status_changed，TaskRuntimeState 会在事件 hub 内同步吸收
+   * 发布完整 task.snapshot_changed，生命周期状态先写入运行态
    */
-  private emit_status(task_type: TaskType, status: string, busy: boolean): void {
-    this.core_event_hub.publish("task.status_changed", { task_type, status, busy });
+  private async emit_status(task_type: TaskType, status: string, busy: boolean): Promise<void> {
+    await this.task_runtime_publisher.publish_status(task_type, status, busy);
   }
 
   /**
-   * 发布 task.progress_changed，只携带真实出现的进度字段和请求中数量
+   * 任务进度已提交后发布完整 snapshot；进度字段由 `.lg` meta 读取
    */
   private emit_progress(
     task_type: TaskType,
-    progress: TaskProgressSnapshot,
-    overrides: JsonRecord = {},
-  ): void {
-    this.core_event_hub.publish("task.progress_changed", {
-      task_type,
-      ...TaskProgressSnapshotTool.to_record(TaskProgressSnapshotTool.with_elapsed(progress)),
-      request_in_flight_count: this.request_in_flight_count,
-      ...overrides,
-    });
+  ): Promise<void> {
+    return this.task_runtime_publisher.publish_progress_committed(task_type);
   }
 
   /**
-   * 请求数变化立即广播，保证前端看到的 in-flight 是真实发出请求数
+   * 请求数变化只更新运行态，公开 snapshot 由后端 250ms 窗口合并发布
    */
-  private change_request_in_flight_count(task_type: TaskType, delta: number): void {
+  private async change_request_in_flight_count(task_type: TaskType, delta: number): Promise<void> {
     this.request_in_flight_count = Math.max(0, this.request_in_flight_count + delta);
-    this.core_event_hub.publish("task.progress_changed", {
-      task_type,
-      request_in_flight_count: this.request_in_flight_count,
-    });
+    this.task_runtime_publisher.publish_request_pressure(task_type, this.request_in_flight_count);
   }
 
   /**
@@ -1344,7 +1331,7 @@ export class TaskEngine {
   }
 
   /**
-   * 任务终态日志和公开 task.status_changed 分开写，避免只看日志时丢失收尾信息
+   * 任务终态日志和公开 task snapshot 分开写，避免只看日志时丢失收尾信息
    */
   private log_task_run_finish(task_label: string, status: string): void {
     const message =

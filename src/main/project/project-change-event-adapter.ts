@@ -9,7 +9,7 @@ import {
   type ProjectChangeJsonRecord,
   type ProjectChangeSectionPayload,
   type ProjectDataSection,
-} from "../../shared/project-change-event";
+} from "../../shared/project/event";
 import { ProjectRuntimeProjectionService } from "./project-runtime-projection-service";
 import type {
   ProjectRuntimeProjectionJsonRecord,

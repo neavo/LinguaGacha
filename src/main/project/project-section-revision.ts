@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { QualityRule } from "../../base/quality";
 import { Prompt } from "../../base/prompt";
-import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/project-change-event";
+import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/project/event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;

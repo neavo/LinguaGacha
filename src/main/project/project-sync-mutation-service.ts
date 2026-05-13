@@ -11,7 +11,7 @@ import {
 import { ProjectSessionState } from "./project-session-state";
 import { Item } from "../../base/item";
 import type { ProjectChangePublisher } from "./project-change-publisher";
-import type { ProjectDataSection } from "../../shared/project-change-event";
+import type { ProjectDataSection } from "../../shared/project/event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;

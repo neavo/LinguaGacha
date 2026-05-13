@@ -25,10 +25,7 @@ describe("TaskSnapshotBuilder", () => {
     seed_project(database, project_path);
     const task_runtime_state = new TaskRuntimeState();
     task_runtime_state.begin_task("retranslate", [101]);
-    task_runtime_state.apply_progress_event({
-      task_type: "retranslate",
-      request_in_flight_count: 2,
-    });
+    task_runtime_state.set_request_in_flight_count("retranslate", 2);
     const builder = new TaskSnapshotBuilder(database, task_runtime_state, session_state);
 
     const translation = await builder.build_task_snapshot({ task_type: "translation" });
