@@ -180,7 +180,6 @@ export function compute_project_prefilter_mutation(
   const derived_task_state = build_translation_task_and_project_state({
     task_snapshot: input.task_snapshot ?? create_empty_translation_task_snapshot(),
     items: item_index,
-    analysis_candidate_count: 0,
   });
 
   return {

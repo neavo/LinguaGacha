@@ -39,7 +39,7 @@ type RuntimeFixture = {
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(
     create_task_snapshot({
-      status: "RUN",
+      status: "running",
       busy: true,
     }),
   ),
@@ -85,7 +85,7 @@ function create_task_snapshot(
 ): Record<string, unknown> {
   return {
     task_type: "analysis",
-    status: "IDLE",
+    status: "idle",
     busy: false,
     request_in_flight_count: 0,
     line: 0,
@@ -97,7 +97,7 @@ function create_task_snapshot(
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
-    analysis_candidate_count: 0,
+    candidate_count: 0,
     ...overrides,
   };
 }
@@ -256,7 +256,7 @@ describe("useAnalysisTaskRuntime", () => {
     latest_state = null;
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "RUN",
+        status: "running",
         busy: true,
       }),
     );
@@ -301,11 +301,11 @@ describe("useAnalysisTaskRuntime", () => {
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "DONE",
+        status: "done",
         busy: false,
         line: 10,
         processed_line: 10,
-        analysis_candidate_count: 2,
+        extras: { kind: "analysis", candidate_count: 2 },
       }),
     );
 
@@ -326,7 +326,7 @@ describe("useAnalysisTaskRuntime", () => {
   it("分析停止完成时只弹一次停止提示", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "STOPPING",
+        status: "stopping",
         busy: true,
         line: 1,
         total_line: 2,
@@ -347,7 +347,7 @@ describe("useAnalysisTaskRuntime", () => {
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "IDLE",
+        status: "idle",
         busy: false,
         line: 1,
         total_line: 2,
@@ -368,7 +368,7 @@ describe("useAnalysisTaskRuntime", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         task_type: "translation",
-        status: "STOPPING",
+        status: "stopping",
         busy: true,
         line: 1,
         total_line: 2,
@@ -390,7 +390,7 @@ describe("useAnalysisTaskRuntime", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         task_type: "translation",
-        status: "IDLE",
+        status: "idle",
         busy: false,
         line: 1,
         total_line: 2,
@@ -452,9 +452,9 @@ describe("useAnalysisTaskRuntime", () => {
     expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         task_type: "analysis",
-        status: "IDLE",
+        status: "idle",
         busy: false,
-        analysis_candidate_count: 0,
+        extras: { kind: "analysis", candidate_count: 0 },
       }),
     );
     expect(runtime_fixture.current.align_project_runtime_ack).toHaveBeenCalledWith({

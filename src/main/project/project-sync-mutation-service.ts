@@ -3,7 +3,7 @@ import fs from "node:fs";
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
+import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,

@@ -47,6 +47,10 @@ export function clone_runtime_project_item_record(
 }
 
 function build_translation_extras(task_snapshot: Record<string, unknown>): Record<string, unknown> {
+  const progress = task_snapshot.progress;
+  if (typeof progress === "object" && progress !== null && !Array.isArray(progress)) {
+    return { ...(progress as Record<string, unknown>) };
+  }
   const translation_extras: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(task_snapshot)) {
     if (
@@ -54,7 +58,9 @@ function build_translation_extras(task_snapshot: Record<string, unknown>): Recor
       key === "status" ||
       key === "busy" ||
       key === "request_in_flight_count" ||
-      key === "analysis_candidate_count"
+      key === "analysis_candidate_count" ||
+      key === "extras" ||
+      key === "progress"
     ) {
       continue;
     }
@@ -66,26 +72,27 @@ function build_translation_extras(task_snapshot: Record<string, unknown>): Recor
 export function create_empty_translation_task_snapshot(): Record<string, unknown> {
   return {
     task_type: "translation",
-    status: "IDLE",
+    status: "idle",
     busy: false,
     request_in_flight_count: 0,
-    line: 0,
-    total_line: 0,
-    processed_line: 0,
-    error_line: 0,
-    total_tokens: 0,
-    total_output_tokens: 0,
-    total_input_tokens: 0,
-    time: 0,
-    start_time: 0,
-    analysis_candidate_count: 0,
+    progress: {
+      line: 0,
+      total_line: 0,
+      processed_line: 0,
+      error_line: 0,
+      total_tokens: 0,
+      total_output_tokens: 0,
+      total_input_tokens: 0,
+      time: 0,
+      start_time: 0,
+    },
+    extras: { kind: "translation", scope: { kind: "all" } },
   };
 }
 
 export function build_translation_task_and_project_state(args: {
   task_snapshot: Record<string, unknown>;
   items: Map<number, RuntimeProjectItemRecord>;
-  analysis_candidate_count?: number;
 }): {
   translation_extras: Record<string, unknown>;
   task_snapshot: Record<string, unknown>;
@@ -116,9 +123,9 @@ export function build_translation_task_and_project_state(args: {
     translation_extras,
     task_snapshot: {
       ...args.task_snapshot,
-      ...translation_extras,
-      analysis_candidate_count:
-        args.analysis_candidate_count ?? Number(args.task_snapshot.analysis_candidate_count ?? 0),
+      status: "idle",
+      progress: translation_extras,
+      extras: { kind: "translation", scope: { kind: "all" } },
     },
   };
 }

@@ -87,9 +87,10 @@ let runtime_state = {
   },
   task: {
     task_type: null,
-    status: "IDLE",
+    status: "idle",
     busy: false,
-    analysis_candidate_count: 0,
+    progress: {},
+    extras: { kind: "analysis", candidate_count: 0 },
   },
   revisions: {
     projectRevision: 1,
@@ -299,7 +300,7 @@ describe("useTextPreservePageState", () => {
     current_statistics_cache = create_statistics_cache({});
     task_snapshot = {
       busy: false,
-      status: "IDLE",
+      status: "idle",
     };
     create_barrier_checkpoint_mock.mockReturnValue({
       projectPath: "E:/demo/sample.lg",

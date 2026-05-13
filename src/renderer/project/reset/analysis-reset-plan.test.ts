@@ -106,7 +106,10 @@ describe("analysis reset planners", () => {
         analysis: 4,
       },
     });
-    expect(plan.next_task_snapshot.analysis_candidate_count).toBe(0);
+    expect(plan.next_task_snapshot.extras).toMatchObject({
+      kind: "analysis",
+      candidate_count: 0,
+    });
   });
 
   it("reset failed 保留时间与 token 字段，只替换 summary", async () => {
@@ -142,6 +145,9 @@ describe("analysis reset planners", () => {
         analysis: 4,
       },
     });
-    expect(plan.next_task_snapshot.analysis_candidate_count).toBe(6);
+    expect(plan.next_task_snapshot.extras).toMatchObject({
+      kind: "analysis",
+      candidate_count: 6,
+    });
   });
 });

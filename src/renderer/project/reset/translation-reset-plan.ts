@@ -170,9 +170,6 @@ export function create_translation_reset_failed_plan(args: {
   const derived_task_state = build_translation_task_and_project_state({
     task_snapshot,
     items: item_map,
-    analysis_candidate_count: Number(
-      args.state.analysis.candidate_count ?? task_snapshot.analysis_candidate_count ?? 0,
-    ),
   });
 
   return {
@@ -244,7 +241,6 @@ export async function create_translation_reset_all_plan(args: {
   const reset_task_state = build_translation_task_and_project_state({
     task_snapshot: create_empty_translation_task_snapshot(),
     items: reset_item_map,
-    analysis_candidate_count: 0,
   });
 
   return {

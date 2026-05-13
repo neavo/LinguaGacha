@@ -20,11 +20,16 @@ export type AnalysisTaskSnapshot = {
   total_input_tokens: number;
   time: number;
   start_time: number;
-  analysis_candidate_count: number;
+  candidate_count: number;
 };
 
 export type AnalysisTaskPayload = {
-  task?: Partial<AnalysisTaskSnapshot>;
+  task?: Partial<AnalysisTaskSnapshot> & {
+    progress?: Partial<
+      Omit<AnalysisTaskSnapshot, "task_type" | "status" | "busy" | "request_in_flight_count" | "candidate_count">
+    >;
+    extras?: { kind?: string; candidate_count?: number };
+  };
   imported_count?: number;
 };
 
@@ -52,7 +57,7 @@ export type AnalysisTaskMetrics = {
 export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
   return {
     task_type: "analysis",
-    status: "IDLE",
+    status: "idle",
     busy: false,
     request_in_flight_count: 0,
     line: 0,
@@ -64,7 +69,7 @@ export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
-    analysis_candidate_count: 0,
+    candidate_count: 0,
   };
 }
 
@@ -83,7 +88,7 @@ export function clone_analysis_task_snapshot(snapshot: AnalysisTaskSnapshot): An
     total_input_tokens: snapshot.total_input_tokens,
     time: snapshot.time,
     start_time: snapshot.start_time,
-    analysis_candidate_count: snapshot.analysis_candidate_count,
+    candidate_count: snapshot.candidate_count,
   };
 }
 
@@ -91,21 +96,23 @@ export function normalize_analysis_task_snapshot_payload(
   payload: AnalysisTaskPayload,
 ): AnalysisTaskSnapshot {
   const snapshot = payload.task ?? {};
+  const progress = snapshot.progress ?? snapshot;
+  const extras = snapshot.extras ?? {};
   return {
     task_type: String(snapshot.task_type ?? "analysis"),
-    status: String(snapshot.status ?? "IDLE"),
+    status: String(snapshot.status ?? "idle").toLowerCase(),
     busy: Boolean(snapshot.busy),
     request_in_flight_count: Number(snapshot.request_in_flight_count ?? 0),
-    line: Number(snapshot.line ?? 0),
-    total_line: Number(snapshot.total_line ?? 0),
-    processed_line: Number(snapshot.processed_line ?? 0),
-    error_line: Number(snapshot.error_line ?? 0),
-    total_tokens: Number(snapshot.total_tokens ?? 0),
-    total_output_tokens: Number(snapshot.total_output_tokens ?? 0),
-    total_input_tokens: Number(snapshot.total_input_tokens ?? 0),
-    time: Number(snapshot.time ?? 0),
-    start_time: Number(snapshot.start_time ?? 0),
-    analysis_candidate_count: Number(snapshot.analysis_candidate_count ?? 0),
+    line: Number(progress.line ?? 0),
+    total_line: Number(progress.total_line ?? 0),
+    processed_line: Number(progress.processed_line ?? 0),
+    error_line: Number(progress.error_line ?? 0),
+    total_tokens: Number(progress.total_tokens ?? 0),
+    total_output_tokens: Number(progress.total_output_tokens ?? 0),
+    total_input_tokens: Number(progress.total_input_tokens ?? 0),
+    time: Number(progress.time ?? 0),
+    start_time: Number(progress.start_time ?? 0),
+    candidate_count: Number(extras.candidate_count ?? 0),
   };
 }
 
@@ -135,7 +142,7 @@ export function has_analysis_task_display_state(snapshot: AnalysisTaskSnapshot |
     return false;
   }
 
-  return has_analysis_task_progress(snapshot) || snapshot.analysis_candidate_count > 0;
+  return has_analysis_task_progress(snapshot) || snapshot.candidate_count > 0;
 }
 
 export function resolve_analysis_task_display_snapshot(args: {
@@ -179,7 +186,7 @@ export function resolve_analysis_task_metrics(args: {
   }
 
   const active = is_active_analysis_task_status(args.snapshot.status);
-  const stopping = args.snapshot.status === "STOPPING";
+  const stopping = args.snapshot.status === "stopping";
   const processed_count =
     args.snapshot.processed_line > 0 ? args.snapshot.processed_line : args.snapshot.line;
   const failed_count = Math.max(0, args.snapshot.error_line);
@@ -219,6 +226,6 @@ export function resolve_analysis_task_metrics(args: {
     input_tokens,
     output_tokens,
     request_in_flight_count: Math.max(0, args.snapshot.request_in_flight_count),
-    candidate_count: Math.max(0, args.snapshot.analysis_candidate_count),
+    candidate_count: Math.max(0, args.snapshot.candidate_count),
   };
 }

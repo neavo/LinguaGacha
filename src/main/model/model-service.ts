@@ -5,13 +5,13 @@ import path from "node:path";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../service/path-service";
 import { SettingService } from "../service/setting-service";
-import { PiAiLlmRequestClient } from "../task-worker/llm/llm-request-client";
-import type { LlmRequestMessage, LlmRequestResult } from "../task-worker/llm/llm-types";
+import { PiAiLlmRequestClient } from "../engine/worker/llm/llm-request-client";
+import type { LlmRequestMessage, LlmRequestResult } from "../engine/worker/llm/llm-types";
 import {
   collect_api_keys,
   get_primary_api_key,
   normalize_api_url,
-} from "../task-worker/llm/llm-model-adapter";
+} from "../engine/worker/llm/llm-model-adapter";
 import { Model, type ModelApiFormat } from "../../base/model";
 import {
   read_model_records,

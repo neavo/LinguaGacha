@@ -80,9 +80,10 @@ const runtime_state = {
   },
   task: {
     task_type: null,
-    status: "IDLE",
+    status: "idle",
     busy: false,
-    analysis_candidate_count: 0,
+    progress: {},
+    extras: { kind: "analysis", candidate_count: 0 },
   },
   revisions: {
     projectRevision: 1,
@@ -227,7 +228,7 @@ describe("useTextReplacementPageState", () => {
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
     runtime_state.task.busy = false;
-    runtime_state.task.status = "IDLE";
+    runtime_state.task.status = "idle";
     current_statistics_cache = create_statistics_cache({});
   });
 
@@ -323,7 +324,7 @@ describe("useTextReplacementPageState", () => {
 
   it("任务运行中锁定替换规则 mutation，但保留筛选可用", async () => {
     runtime_state.task.busy = true;
-    runtime_state.task.status = "RUNNING";
+    runtime_state.task.status = "running";
     await mount_probe();
 
     expect(latest_state?.readonly).toBe(true);

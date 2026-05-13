@@ -22,13 +22,13 @@ import { LogManager } from "../log/log-manager";
 import type { LogEvent } from "../../shared/log";
 import { CoreEventHub } from "../events/core-event-hub";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
-import { TaskCommandService } from "../task-engine/command/task-command-service";
-import { TaskEngine } from "../task-engine/orchestration/task-engine";
-import { TaskRuntimePublisher } from "../task-engine/runtime/task-runtime-publisher";
-import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
-import { TaskSnapshotBuilder } from "../task-engine/runtime/task-snapshot-builder";
-import { ProjectTaskStore } from "../task-engine/store/project-task-store";
-import { TaskWorkerPool } from "../task-worker/task-worker-pool";
+import { TaskService } from "../service/task-service";
+import { TaskEngine } from "../engine/core/engine";
+import { TaskRuntimePublisher } from "../engine/runtime/task-runtime-publisher";
+import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
+import { TaskSnapshotBuilder } from "../engine/runtime/task-snapshot-builder";
+import { ProjectTaskStore } from "../engine/store/project-task-store";
+import { WorkerPool } from "../engine/worker/worker-pool";
 import { normalizeProjectDataSections } from "../../shared/project/event";
 import {
   close_api_gateway_with_connections,
@@ -66,7 +66,7 @@ export class ApiGatewayServer {
 
   private server: Server | null = null; // server 只代表公开 Gateway 监听器，Core 与 Database 生命周期不归这里关闭
 
-  private task_worker_pool: TaskWorkerPool | null = null; // task_worker_pool 持有 worker_threads，Gateway stop 时必须主动释放
+  private task_worker_pool: WorkerPool | null = null; // task_worker_pool 持有 worker_threads，Gateway stop 时必须主动释放
 
   private readonly server_sockets = new Set<Socket>(); // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断
 
@@ -184,7 +184,7 @@ export class ApiGatewayServer {
       this.task_runtime_state,
       project_change_publisher,
     );
-    const executor_client = new TaskWorkerPool({
+    const executor_client = new WorkerPool({
       appRoot: this.options.appRoot,
     });
     this.task_worker_pool = executor_client;
@@ -195,7 +195,7 @@ export class ApiGatewayServer {
       SettingService: setting_service,
       logManager: this.options.logManager,
     });
-    const task_command_service = new TaskCommandService(
+    const task_service = new TaskService(
       task_engine,
       task_snapshot_builder,
       task_runtime_publisher,
@@ -357,26 +357,13 @@ export class ApiGatewayServer {
     this.post_json(app, "/api/project/export-converted-translation", (body) =>
       file_export_service.export_converted_translation(body),
     );
-    this.post_json(app, "/api/tasks/start-translation", (body) =>
-      task_command_service.start_translation(body),
-    );
-    this.post_json(app, "/api/tasks/stop-translation", (body) =>
-      task_command_service.stop_translation(body),
-    );
-    this.post_json(app, "/api/tasks/start-analysis", (body) =>
-      task_command_service.start_analysis(body),
-    );
-    this.post_json(app, "/api/tasks/stop-analysis", (body) =>
-      task_command_service.stop_analysis(body),
-    );
-    this.post_json(app, "/api/tasks/start-retranslate", (body) =>
-      task_command_service.start_retranslate(body),
-    );
+    this.post_json(app, "/api/tasks/start", (body) => task_service.start_task(body));
+    this.post_json(app, "/api/tasks/stop", (body) => task_service.stop_task(body));
     this.post_json(app, "/api/tasks/snapshot", (body) =>
-      task_command_service.get_task_snapshot(body),
+      task_service.get_task_snapshot(body),
     );
     this.post_json(app, "/api/tasks/translate-single", (body) =>
-      task_command_service.translate_single(body),
+      task_service.translate_single(body),
     );
     this.post_json(app, "/api/tasks/export-translation", () =>
       file_export_service.export_translation(),

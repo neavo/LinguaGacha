@@ -78,9 +78,9 @@ function RuntimeProbe(props: {
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: Object.keys(runtime.project_store.getState().items),
       taskStatus: runtime.task_snapshot.status,
-      taskLine: runtime.task_snapshot.line,
-      taskProcessedLine: runtime.task_snapshot.processed_line,
-      taskOutputTokens: runtime.task_snapshot.total_output_tokens,
+      taskLine: runtime.task_snapshot.progress.line,
+      taskProcessedLine: runtime.task_snapshot.progress.processed_line,
+      taskOutputTokens: runtime.task_snapshot.progress.total_output_tokens,
       taskRequestInFlightCount: runtime.task_snapshot.request_in_flight_count,
       sourceLanguage: runtime.settings_snapshot.source_language,
     });
@@ -90,11 +90,11 @@ function RuntimeProbe(props: {
     runtime.proofreading_change_signal.mode,
     runtime.proofreading_change_signal.seq,
     runtime.settings_snapshot.source_language,
-    runtime.task_snapshot.line,
-    runtime.task_snapshot.processed_line,
+    runtime.task_snapshot.progress.line,
+    runtime.task_snapshot.progress.processed_line,
     runtime.task_snapshot.request_in_flight_count,
     runtime.task_snapshot.status,
-    runtime.task_snapshot.total_output_tokens,
+    runtime.task_snapshot.progress.total_output_tokens,
     runtime.project_store,
     runtime.workbench_change_signal.reason,
     runtime.workbench_change_signal.seq,
@@ -307,7 +307,7 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "translation",
-            status: "IDLE",
+            status: "idle",
             busy: false,
           },
         };
@@ -398,7 +398,7 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "translation",
-            status: "IDLE",
+            status: "idle",
             busy: false,
           },
         };
@@ -486,10 +486,13 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "translation",
-            status: "RUN",
+            status: "running",
             busy: true,
-            line: 0,
-            total_line: 5,
+            progress: {
+              line: 0,
+              total_line: 5,
+            },
+            extras: { kind: "translation", scope: { kind: "all" } },
           },
         };
       }
@@ -522,7 +525,7 @@ describe("DesktopRuntimeProvider", () => {
     });
 
     await wait_for_condition(() => {
-      return snapshots.at(-1)?.taskStatus === "RUN";
+      return snapshots.at(-1)?.taskStatus === "running";
     });
     await wait_for_condition(() => {
       return (
@@ -534,11 +537,14 @@ describe("DesktopRuntimeProvider", () => {
       event_stream.emit("task.snapshot_changed", {
         task: {
           task_type: "translation",
-          status: "RUN",
+          status: "running",
           busy: true,
-          line: 2,
-          total_line: 5,
-          processed_line: 2,
+          progress: {
+            line: 2,
+            total_line: 5,
+            processed_line: 2,
+          },
+          extras: { kind: "translation", scope: { kind: "all" } },
         },
       });
       await Promise.resolve();
@@ -553,13 +559,16 @@ describe("DesktopRuntimeProvider", () => {
       event_stream.emit("task.snapshot_changed", {
         task: {
           task_type: "translation",
-          status: "RUN",
+          status: "running",
           busy: true,
-          line: 4,
-          total_line: 5,
-          processed_line: 4,
-          total_output_tokens: 12,
+          progress: {
+            line: 4,
+            total_line: 5,
+            processed_line: 4,
+            total_output_tokens: 12,
+          },
           request_in_flight_count: 3,
+          extras: { kind: "translation", scope: { kind: "all" } },
         },
       });
       await Promise.resolve();
@@ -572,7 +581,7 @@ describe("DesktopRuntimeProvider", () => {
     });
 
     expect(snapshots.at(-1)).toMatchObject({
-      taskStatus: "RUN",
+      taskStatus: "running",
       taskLine: 4,
       taskProcessedLine: 4,
       taskOutputTokens: 12,
@@ -607,7 +616,7 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "translation",
-            status: "IDLE",
+            status: "idle",
             busy: false,
           },
         };
@@ -713,7 +722,7 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingSeq: 2,
       proofreadingReason: "quality_rule_save_entries",
       proofreadingMode: "full",
-      taskStatus: "IDLE",
+      taskStatus: "idle",
     });
 
     await act(async () => {
@@ -723,7 +732,7 @@ describe("DesktopRuntimeProvider", () => {
 
     await wait_for_condition(() => {
       const latest_snapshot = snapshots.at(-1);
-      return latest_snapshot?.proofreadingSeq === 3 && latest_snapshot.taskStatus === "IDLE";
+      return latest_snapshot?.proofreadingSeq === 3 && latest_snapshot.taskStatus === "idle";
     });
 
     expect(
@@ -736,7 +745,7 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingSeq: 3,
       proofreadingReason: "quality_rule_save_entries_rollback",
       proofreadingMode: "full",
-      taskStatus: "IDLE",
+      taskStatus: "idle",
     });
   });
 
@@ -766,7 +775,7 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "analysis",
-            status: "IDLE",
+            status: "idle",
             busy: false,
           },
         };
@@ -823,9 +832,10 @@ describe("DesktopRuntimeProvider", () => {
       event_stream.emit("task.snapshot_changed", {
         task: {
           task_type: "analysis",
-          status: "DONE",
+          status: "done",
           busy: false,
-          analysis_candidate_count: 1,
+          progress: {},
+          extras: { kind: "analysis", candidate_count: 1 },
         },
       });
       await Promise.resolve();
@@ -838,7 +848,7 @@ describe("DesktopRuntimeProvider", () => {
     expect(snapshots.at(-1)).toMatchObject({
       workbenchSeq: 2,
       workbenchReason: "analysis_task_done",
-      taskStatus: "DONE",
+      taskStatus: "done",
     });
   });
 
@@ -869,7 +879,7 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "analysis",
-            status: "IDLE",
+            status: "idle",
             busy: false,
           },
         };
@@ -1003,7 +1013,7 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "translation",
-            status: "IDLE",
+            status: "idle",
             busy: false,
           },
         };
@@ -1122,7 +1132,7 @@ describe("DesktopRuntimeProvider", () => {
         return { project: { path: "E:/demo/demo.lg", loaded: true } };
       }
       if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "IDLE", busy: false } };
+        return { task: { task_type: "translation", status: "idle", busy: false } };
       }
       if (
         path === "/api/project/read-sections" &&
@@ -1225,7 +1235,7 @@ describe("DesktopRuntimeProvider", () => {
         return {
           task: {
             task_type: "translation",
-            status: "IDLE",
+            status: "idle",
             busy: false,
           },
         };
@@ -1277,7 +1287,7 @@ describe("DesktopRuntimeProvider", () => {
       event_stream.emit("task.snapshot_changed", {
         task: {
           task_type: "translation",
-          status: "RUNNING",
+          status: "running",
           busy: true,
         },
       });
@@ -1294,7 +1304,7 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingMode: "noop",
       proofreadingUpdatedSections: ["proofreading"],
       proofreadingItemIds: [],
-      taskStatus: "RUNNING",
+      taskStatus: "running",
     });
   });
 });

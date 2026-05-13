@@ -10,7 +10,7 @@
 | 改 Electron main / preload / renderer 共享的桌面宿主契约 | 本文 | [`docs/FRONTEND.md`](FRONTEND.md) |
 | 改跨 main / renderer / worker 的基础值域、纯算法、normalize 或派生判断 | 本文 | [`docs/BACKEND.md`](BACKEND.md)、[`docs/FRONTEND.md`](FRONTEND.md) |
 | 改 HTTP / SSE / 项目读取 / mutation / 错误码 | [`docs/BACKEND.md`](BACKEND.md) | 相关 service 与测试 |
-| 改数据库、`.lg` 存储、迁移、任务运行态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/project/`、`src/main/task-engine/` |
+| 改数据库、`.lg` 存储、迁移、任务运行态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/project/`、`src/main/engine/` |
 | 改 Electron preload、renderer、`ProjectStore`、导航、页面状态 | [`docs/FRONTEND.md`](FRONTEND.md) | 相关页面和组件测试 |
 | 判断要跑哪些检查、是否同步文档 | [`docs/WORKFLOW.md`](WORKFLOW.md) | 本文与对应专题文档 |
 
@@ -30,8 +30,8 @@ flowchart LR
   B --> C["ApiGatewayServer<br/>本机 HTTP / SSE 边界"]
   C --> D["Project / TaskEngine / Service 领域服务"]
   D --> E["ProjectDatabase workflow<br/>SQL、事务、.lg asset"]
-  D --> F["task-engine<br/>command/runtime/orchestration/store"]
-  F --> G["TaskWorkerPool / task-worker"]
+  D --> F["engine<br/>protocol/runtime/core/definitions/store"]
+  F --> G["engine/worker<br/>WorkerPool / runner"]
   G --> H["pi-ai 与提示词/响应处理"]
   F --> M["CoreEventHub / events"]
   I["preload: window.desktopApp"] --> J["renderer desktop-api.ts"]
@@ -47,8 +47,8 @@ flowchart LR
 - `CoreLifecycleManager` 按 `LogManager -> ProjectDatabase -> ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 仍持有数据库或日志句柄。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 句柄缓存的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
-- `task-engine` 是任务域主控包：`command` 受理 `/api/tasks/*`，`runtime` 持有公开运行态和快照，`orchestration` 编排任务，`store` 读写项目任务事实。
-- `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `TaskWorkerPool` 执行 work unit；任务运行态只经 `TaskRuntimePublisher` 写入 `TaskRuntimeState` 并广播完整 `task.snapshot_changed`。
+- `src/main/engine` 是任务域主控包：`command` 受理统一 `/api/tasks/start|stop|snapshot`，`protocol` 持有任务词表与跨 worker 协议，`runtime` 持有公开运行态和快照，`core` 编排任务，`definitions` 承接任务差异，`store` 通过 artifact 写入项目任务事实。
+- `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `WorkerExecutor` / `WorkerPool` 执行统一 `WorkUnit`；任务运行态只经 `TaskRuntimePublisher` 写入 `TaskRuntimeState` 并广播完整 `task.snapshot_changed`。
 - renderer 只通过 preload 暴露的 `window.desktopApp` 获得宿主能力和 Core API base URL，再由 `desktop-api.ts` 发起 HTTP / SSE。
 
 ## 3. 主链路
@@ -108,8 +108,8 @@ sequenceDiagram
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
 | `src/main/project/` | 项目会话、项目数据投影、项目数据变更事件、同步 mutation | Electron preload、页面局部状态 |
-| `src/main/task-engine/` | 任务命令、运行态、快照、编排、项目任务事实读写 | worker 内提示词、LLM 请求、响应清洗解码 |
-| `src/main/task-worker/` | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | 数据库写入、全局任务状态、任务进度提交 |
+| `src/main/engine/{command,protocol,runtime,core,definitions,store}` | 任务命令、协议词表、运行态、快照、编排、任务差异解释、artifact 提交和项目任务事实读写 | worker 内提示词、LLM 请求、响应清洗解码 |
+| `src/main/engine/worker/` | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | 数据库写入、全局任务状态、任务进度提交 |
 | `src/main/events/` | Core 公开运行期事件总线与 SSE 连接管理 | 任务编排、项目变更事件适配、领域状态规则 |
 | `src/main/database/` | SQL、事务、`.lg` asset 压缩读写、database operation | HTTP 协议和页面 DTO |
 | `src/preload/` | 窄宿主桥接、原生对话框和 Core base URL 暴露 | Core 业务实现、Node 能力泛开放 |

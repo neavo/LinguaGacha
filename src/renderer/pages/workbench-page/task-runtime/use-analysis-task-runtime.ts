@@ -139,18 +139,18 @@ function resolve_analysis_terminal_feedback_message(args: {
   has_result: boolean;
   t: ReturnType<typeof useI18n>["t"];
 }): string | null {
-  if (args.previous_status === "STOPPING" && args.next_status !== "STOPPING") {
+  if (args.previous_status === "stopping" && args.next_status !== "stopping") {
     return args.t("workbench_page.analysis_task.feedback.stopped");
   }
 
   if (
     !is_active_analysis_task_status(args.previous_status) ||
-    args.previous_status === "STOPPING"
+    args.previous_status === "stopping"
   ) {
     return null;
   }
 
-  if (args.next_status === "DONE" || (args.next_status === "IDLE" && args.has_result)) {
+  if (args.next_status === "done" || (args.next_status === "idle" && args.has_result)) {
     return args.t("workbench_page.analysis_task.feedback.done");
   }
 
@@ -167,13 +167,13 @@ function should_prompt_analysis_glossary_import_confirmation(args: {
   }
 
   if (
-    args.previous_status === "STOPPING" ||
+    args.previous_status === "stopping" ||
     !is_active_analysis_task_status(args.previous_status)
   ) {
     return false;
   }
 
-  return args.next_status === "DONE" || args.next_status === "IDLE";
+  return args.next_status === "done" || args.next_status === "idle";
 }
 
 export function useAnalysisTaskRuntime(
@@ -353,17 +353,18 @@ export function useAnalysisTaskRuntime(
         status: next_snapshot.status,
         busy: next_snapshot.busy,
         request_in_flight_count: next_snapshot.request_in_flight_count,
-        line: next_snapshot.line,
-        total_line: next_snapshot.total_line,
-        processed_line: next_snapshot.processed_line,
-        error_line: next_snapshot.error_line,
-        total_tokens: next_snapshot.total_tokens,
-        total_output_tokens: next_snapshot.total_output_tokens,
-        total_input_tokens: next_snapshot.total_input_tokens,
-        time: next_snapshot.time,
-        start_time: next_snapshot.start_time,
-        analysis_candidate_count: next_snapshot.analysis_candidate_count,
-        retranslating_item_ids: [],
+        progress: {
+          line: next_snapshot.line,
+          total_line: next_snapshot.total_line,
+          processed_line: next_snapshot.processed_line,
+          error_line: next_snapshot.error_line,
+          total_tokens: next_snapshot.total_tokens,
+          total_output_tokens: next_snapshot.total_output_tokens,
+          total_input_tokens: next_snapshot.total_input_tokens,
+          time: next_snapshot.time,
+          start_time: next_snapshot.start_time,
+        },
+        extras: { kind: "analysis", candidate_count: next_snapshot.candidate_count },
       });
     },
     [set_task_snapshot],
@@ -419,9 +420,10 @@ export function useAnalysisTaskRuntime(
 
     try {
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-        "/api/tasks/start-analysis",
+        "/api/tasks/start",
         {
-          mode: should_continue ? "CONTINUE" : "NEW",
+          task_type: "analysis",
+          mode: should_continue ? "continue" : "new",
           expected_section_revisions: {
             quality: current_project_state.revisions.sections.quality ?? 0,
             prompts: current_project_state.revisions.sections.prompts ?? 0,
@@ -586,8 +588,8 @@ export function useAnalysisTaskRuntime(
 
       if (analysis_confirm_state.kind === "stop-analysis") {
         const task_payload = await api_fetch<AnalysisTaskCommandPayload>(
-          "/api/tasks/stop-analysis",
-          {},
+          "/api/tasks/stop",
+          { task_type: "analysis" },
         );
         const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
         apply_analysis_task_snapshot(next_snapshot);
@@ -765,14 +767,14 @@ export function useAnalysisTaskRuntime(
       should_prompt_analysis_glossary_import_confirmation({
         previous_status,
         next_status,
-        candidate_count: analysis_task_snapshot.analysis_candidate_count,
+        candidate_count: analysis_task_snapshot.candidate_count,
       })
     ) {
       set_analysis_confirm_state(create_task_confirm_state("import-glossary"));
     }
   }, [
     analysis_confirm_state,
-    analysis_task_snapshot.analysis_candidate_count,
+    analysis_task_snapshot.candidate_count,
     analysis_task_display_snapshot,
     analysis_task_snapshot.status,
     project_snapshot.loaded,

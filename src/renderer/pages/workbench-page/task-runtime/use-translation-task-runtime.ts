@@ -132,18 +132,18 @@ function resolve_translation_terminal_feedback_message(args: {
   has_result: boolean;
   t: ReturnType<typeof useI18n>["t"];
 }): string | null {
-  if (args.previous_status === "STOPPING" && args.next_status !== "STOPPING") {
+  if (args.previous_status === "stopping" && args.next_status !== "stopping") {
     return args.t("workbench_page.translation_task.feedback.stopped");
   }
 
   if (
     !is_active_translation_task_status(args.previous_status) ||
-    args.previous_status === "STOPPING"
+    args.previous_status === "stopping"
   ) {
     return null;
   }
 
-  if (args.next_status === "DONE" || (args.next_status === "IDLE" && args.has_result)) {
+  if (args.next_status === "done" || (args.next_status === "idle" && args.has_result)) {
     return args.t("workbench_page.translation_task.feedback.done");
   }
 
@@ -156,17 +156,17 @@ function should_prompt_translation_export_confirmation(args: {
   has_result: boolean;
 }): boolean {
   if (
-    args.previous_status === "STOPPING" ||
+    args.previous_status === "stopping" ||
     !is_active_translation_task_status(args.previous_status)
   ) {
     return false;
   }
 
-  if (args.next_status === "DONE") {
+  if (args.next_status === "done") {
     return true;
   }
 
-  return args.next_status === "IDLE" && args.has_result;
+  return args.next_status === "idle" && args.has_result;
 }
 
 export function useTranslationTaskRuntime(
@@ -346,17 +346,18 @@ export function useTranslationTaskRuntime(
         status: next_snapshot.status,
         busy: next_snapshot.busy,
         request_in_flight_count: next_snapshot.request_in_flight_count,
-        line: next_snapshot.line,
-        total_line: next_snapshot.total_line,
-        processed_line: next_snapshot.processed_line,
-        error_line: next_snapshot.error_line,
-        total_tokens: next_snapshot.total_tokens,
-        total_output_tokens: next_snapshot.total_output_tokens,
-        total_input_tokens: next_snapshot.total_input_tokens,
-        time: next_snapshot.time,
-        start_time: next_snapshot.start_time,
-        analysis_candidate_count: 0,
-        retranslating_item_ids: [],
+        progress: {
+          line: next_snapshot.line,
+          total_line: next_snapshot.total_line,
+          processed_line: next_snapshot.processed_line,
+          error_line: next_snapshot.error_line,
+          total_tokens: next_snapshot.total_tokens,
+          total_output_tokens: next_snapshot.total_output_tokens,
+          total_input_tokens: next_snapshot.total_input_tokens,
+          time: next_snapshot.time,
+          start_time: next_snapshot.start_time,
+        },
+        extras: { kind: "translation", scope: { kind: "all" } },
       });
     },
     [set_task_snapshot],
@@ -412,9 +413,11 @@ export function useTranslationTaskRuntime(
 
     try {
       const task_payload = await api_fetch<TranslationTaskCommandPayload>(
-        "/api/tasks/start-translation",
+        "/api/tasks/start",
         {
-          mode: should_continue ? "CONTINUE" : "NEW",
+          task_type: "translation",
+          mode: should_continue ? "continue" : "new",
+          scope: { kind: "all" },
           expected_section_revisions: {
             quality: current_project_state.revisions.sections.quality ?? 0,
             prompts: current_project_state.revisions.sections.prompts ?? 0,
@@ -488,8 +491,8 @@ export function useTranslationTaskRuntime(
     try {
       if (task_confirm_state.kind === "stop-translation") {
         const task_payload = await api_fetch<TranslationTaskCommandPayload>(
-          "/api/tasks/stop-translation",
-          {},
+          "/api/tasks/stop",
+          { task_type: "translation" },
         );
         const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
         apply_translation_task_snapshot(next_snapshot);

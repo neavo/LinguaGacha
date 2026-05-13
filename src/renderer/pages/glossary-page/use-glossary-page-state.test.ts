@@ -85,9 +85,10 @@ const runtime_state = {
   },
   task: {
     task_type: null,
-    status: "IDLE",
+    status: "idle",
     busy: false,
-    analysis_candidate_count: 0,
+    progress: {},
+    extras: { kind: "analysis", candidate_count: 0 },
   },
   revisions: {
     projectRevision: 1,
@@ -289,7 +290,7 @@ describe("useGlossaryPageState", () => {
     current_statistics_cache = create_statistics_cache({});
     task_snapshot = {
       busy: false,
-      status: "IDLE",
+      status: "idle",
     };
     render_version = 0;
   });
@@ -543,7 +544,7 @@ describe("useGlossaryPageState", () => {
   it("任务运行中锁定术语表 mutation，但保留筛选可用", async () => {
     task_snapshot = {
       busy: true,
-      status: "RUNNING",
+      status: "running",
     };
     await mount_probe();
 

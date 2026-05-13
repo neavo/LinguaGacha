@@ -323,8 +323,10 @@ describe("ApiGatewayServer", () => {
     cleanup_callbacks.push(() => database.close());
 
     const started = await gateway.start();
-    const response = await post_json(started.baseUrl, "/api/tasks/start-translation", {
-      mode: "NEW",
+    const response = await post_json(started.baseUrl, "/api/tasks/start", {
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
       expected_section_revisions: { quality: 0, prompts: 0 },
     });
     const body = (await response.json()) as {
@@ -336,7 +338,7 @@ describe("ApiGatewayServer", () => {
     expect(body.data?.accepted).toBe(true);
     expect(body.data?.task).toMatchObject({
       task_type: "translation",
-      status: "REQUEST",
+      status: "requested",
       busy: true,
     });
   });

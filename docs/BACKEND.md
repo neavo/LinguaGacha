@@ -21,7 +21,8 @@
 | `POST /api/settings/*` | 应用设置和最近项目 | 由 `SettingService` 写入并发 `settings.changed` |
 | `POST /api/models/*` | 模型配置、激活、测试 | 由 `ModelService` 和配置服务持有 |
 | `POST /api/project/*` | 工程生命周期、工作台、reset、导出、校对 mutation | 按领域服务分发，不能在路由层写数据库 |
-| `POST /api/tasks/*` | 翻译、分析、重翻、停止、任务快照和导出 | 由 `TaskCommandService`、`TaskEngine`、导出服务承接 |
+| `POST /api/tasks/start`、`/stop`、`/snapshot`、`/translate-single` | 统一任务命令、任务快照和单条翻译工具调用 | 由 `TaskService`、`TaskEngine` 承接；重翻是 translation 的 items scope |
+| `POST /api/tasks/export-translation` | 翻译导出 | 由导出服务承接 |
 | `POST /api/quality/*` | 质量规则与提示词 | 由 `QualityService` 持有写入口 |
 
 ## 2. 项目读取契约
@@ -72,11 +73,13 @@ flowchart LR
 | --- | --- | --- |
 | project | 工程加载态、项目读取、项目数据投影、工作台文件 mutation、reset、分析导入、项目数据变更适配 | `ProjectLifecycleService`、`ProjectSyncMutationService`、`ProjectRuntimeProjectionService`、`ProjectChangeEventAdapter` |
 | events | 公开运行期事件广播、SSE 订阅和 keepalive | `CoreEventHub` |
-| task-engine/command | 任务命令、请求校验、命令回执 | `TaskCommandService` |
-| task-engine/runtime | 任务快照、运行时 busy、请求中数量、重翻行级状态、完整 snapshot 发布 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimePublisher` |
-| task-engine/orchestration | 任务锁、流水线、LLM 请求资格限流、worker 调度、进度提交；后台 work unit 与公开单条翻译都必须先取得 limiter lease | `TaskEngine` |
-| task-engine/store | 任务输入读取、任务质量快照构建、任务结果提交、项目数据变更发布 | `ProjectTaskStore` |
-| task-worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `TaskWorkerPool`、`task-worker-entry`、各 work unit runner |
+| service/task-service | 统一任务命令、请求校验、命令回执 | `TaskService` |
+| engine/protocol | TaskType、TaskRunStatus、TaskCommand、TaskSnapshot、WorkUnit、WorkerExecutionResult、TaskArtifact | `src/main/engine/protocol/` |
+| engine/runtime | 任务快照、运行时 busy、请求中数量、translation extras 行级状态、完整 snapshot 发布 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimePublisher` |
+| engine/core | 任务锁、流水线、LLM 请求资格限流、worker 调度、进度提交；后台 work unit 与公开单条翻译都必须先取得 limiter lease | `TaskEngine` |
+| engine/definitions | 任务差异解释边界；新增任务类型应新增 definition，不改 Engine 主流程 | `TaskDefinitionRegistry`、`TaskDefinition` |
+| engine/store | 任务输入读取、任务质量快照构建、artifact 提交、项目数据变更发布 | `ProjectTaskStore`、`TaskArtifactCommitter` |
+| engine/worker | work unit 执行、提示词构建、pi-ai 请求、响应清洗解码 | `WorkerPool`、`worker-entry`、各 runner |
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |
 | service | 设置、路径、质量规则、提示词、校对保存 | `SettingService`、`QualityService`、`ProofreadingService` |
@@ -89,7 +92,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 | 状态事实 | 权威拥有者 | 规则 |
 | --- | --- | --- |
 | 当前工程是否 loaded、工程路径 | `ProjectSessionState` | 只由工程加载/创建/卸载成功后更新，返回不可变快照 |
-| 任务 busy、status、active task、请求中数量、重翻 item ids | `TaskRuntimeState` | 只由任务命令、任务引擎和 `TaskRuntimePublisher` 维护 |
+| 任务 busy、status、active task、请求中数量、translation scope | `TaskRuntimeState` | 只由任务命令、任务引擎和 `TaskRuntimePublisher` 维护；`retranslate` 不作为 TaskType |
 | 项目持久事实、meta、runtime section revision | `ProjectDatabase` | 只通过 database operation 和事务写入 |
 | 项目公开投影 block、分析覆盖率摘要 | `ProjectRuntimeProjectionService` | manifest、read-sections、项目变更事件和任务输入快照复用同一读取口径，不另建缓存 |
 | 前端项目运行态 | renderer `ProjectStore` | 只消费项目读取接口、`project.data_changed` 和本地乐观 change |
@@ -97,7 +100,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 
 跨线程、跨模块、跨前后端只传 `id`、值对象或不可变快照，禁止共享可变对象引用。新增状态前必须先判断它属于上表哪一层；没有固定拥有者的状态不能进入长期运行态。
 
-任务启动命令必须携带 `expected_section_revisions` 作为并发校验；翻译、分析至少校验 `quality`、`prompts`，重翻至少校验 `items`、`proofreading`、`quality`、`prompts`。任务执行所需的质量规则与提示词快照由后端从 `.lg` 当前事实构建，再作为稳定 work unit 输入传给 worker。
+任务启动命令统一走 `/api/tasks/start`，必须携带 `expected_section_revisions` 作为并发校验；翻译、分析至少校验 `quality`、`prompts`，translation 的 `scope.kind === "items"` 表示重翻并至少校验 `items`、`proofreading`、`quality`、`prompts`。任务执行所需的质量规则与提示词快照由后端从 `.lg` 当前事实构建，再作为稳定 work unit 输入传给 worker。Engine 到 worker 只传 `WorkUnit`，worker 返回 `WorkerExecutionResult`，项目事实只经 `TaskArtifactCommitter` / `ProjectTaskStore` 写入。
 
 ## 6. 数据库与 `.lg` 物理存储
 

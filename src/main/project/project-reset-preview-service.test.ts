@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
-import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
+import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { ProjectResetPreviewService } from "./project-reset-preview-service";
 import { ProjectSessionState } from "./project-session-state";
 

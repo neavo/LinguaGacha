@@ -241,8 +241,8 @@ type RetranslateTaskAck = {
     total_input_tokens?: unknown;
     time?: unknown;
     start_time?: unknown;
-    analysis_candidate_count?: unknown;
-    retranslating_item_ids?: unknown;
+    progress?: unknown;
+    extras?: unknown;
   };
 };
 
@@ -651,14 +651,18 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       : (visible_item_by_id.get(dialog_state.target_row_id) ?? dialog_item_snapshot);
   const readonly = task_snapshot.busy;
   const retranslating_row_ids = useMemo(() => {
-    if (task_snapshot.task_type !== "retranslate") {
+    if (
+      task_snapshot.task_type !== "translation" ||
+      task_snapshot.extras.kind !== "translation" ||
+      task_snapshot.extras.scope.kind !== "items"
+    ) {
       return [];
     }
 
-    return task_snapshot.retranslating_item_ids.map((item_id) => {
+    return task_snapshot.extras.scope.item_ids.map((item_id) => {
       return build_proofreading_row_id(item_id);
     });
-  }, [task_snapshot.retranslating_item_ids, task_snapshot.task_type]);
+  }, [task_snapshot.extras, task_snapshot.task_type]);
   const invalid_regex_message =
     list_view.invalid_regex_message === null
       ? null
@@ -1633,8 +1637,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_is_mutating(true);
       try {
         const current_project_state = project_store.getState();
-        const ack = await api_fetch<RetranslateTaskAck>("/api/tasks/start-retranslate", {
-          item_ids,
+        const ack = await api_fetch<RetranslateTaskAck>("/api/tasks/start", {
+          task_type: "translation",
+          mode: "new",
+          scope: { kind: "items", item_ids },
           expected_section_revisions: {
             items: current_project_state.revisions.sections.items ?? 0,
             proofreading: list_view.revisions.proofreading,
@@ -1643,25 +1649,53 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           },
         });
         const task = ack.task ?? {};
-        const retranslating_item_ids = normalize_numeric_item_ids(task.retranslating_item_ids);
+        const task_record =
+          typeof task === "object" && task !== null && !Array.isArray(task) ? task : {};
+        const task_payload_record = task_record as Record<string, unknown>;
+        const progress =
+          typeof task_payload_record["progress"] === "object" &&
+          task_payload_record["progress"] !== null &&
+          !Array.isArray(task_payload_record["progress"])
+            ? (task_payload_record["progress"] as Record<string, unknown>)
+            : {};
+        const extras =
+          typeof task_payload_record["extras"] === "object" &&
+          task_payload_record["extras"] !== null &&
+          !Array.isArray(task_payload_record["extras"])
+            ? (task_payload_record["extras"] as Record<string, unknown>)
+            : {};
+        const scope =
+          typeof extras["scope"] === "object" &&
+          extras["scope"] !== null &&
+          !Array.isArray(extras["scope"])
+            ? (extras["scope"] as Record<string, unknown>)
+            : {};
+        const translation_item_ids = normalize_numeric_item_ids(scope["item_ids"]);
         set_task_snapshot({
           ...task_snapshot,
-          task_type: String(task.task_type ?? "retranslate"),
-          status: String(task.status ?? "REQUEST"),
-          busy: task.busy === undefined ? true : Boolean(task.busy),
-          request_in_flight_count: Number(task.request_in_flight_count ?? 0),
-          line: Number(task.line ?? 0),
-          total_line: Number(task.total_line ?? 0),
-          processed_line: Number(task.processed_line ?? 0),
-          error_line: Number(task.error_line ?? 0),
-          total_tokens: Number(task.total_tokens ?? 0),
-          total_output_tokens: Number(task.total_output_tokens ?? 0),
-          total_input_tokens: Number(task.total_input_tokens ?? 0),
-          time: Number(task.time ?? 0),
-          start_time: Number(task.start_time ?? 0),
-          analysis_candidate_count: Number(task.analysis_candidate_count ?? 0),
-          retranslating_item_ids:
-            retranslating_item_ids.length > 0 ? retranslating_item_ids : item_ids,
+          task_type: String(task_payload_record["task_type"] ?? "translation"),
+          status: String(task_payload_record["status"] ?? "requested"),
+          busy:
+            task_payload_record["busy"] === undefined ? true : Boolean(task_payload_record["busy"]),
+          request_in_flight_count: Number(task_payload_record["request_in_flight_count"] ?? 0),
+          progress: {
+            line: Number(progress["line"] ?? 0),
+            total_line: Number(progress["total_line"] ?? 0),
+            processed_line: Number(progress["processed_line"] ?? 0),
+            error_line: Number(progress["error_line"] ?? 0),
+            total_tokens: Number(progress["total_tokens"] ?? 0),
+            total_output_tokens: Number(progress["total_output_tokens"] ?? 0),
+            total_input_tokens: Number(progress["total_input_tokens"] ?? 0),
+            time: Number(progress["time"] ?? 0),
+            start_time: Number(progress["start_time"] ?? 0),
+          },
+          extras: {
+            kind: "translation",
+            scope: {
+              kind: "items",
+              item_ids: translation_item_ids.length > 0 ? translation_item_ids : item_ids,
+            },
+          },
         });
         if (dialog_state.open) {
           set_dialog_state(create_empty_dialog_state());

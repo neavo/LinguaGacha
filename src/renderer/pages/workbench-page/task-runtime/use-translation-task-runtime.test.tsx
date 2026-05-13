@@ -68,7 +68,7 @@ function create_task_snapshot(
 ): Record<string, unknown> {
   return {
     task_type: "translation",
-    status: "IDLE",
+    status: "idle",
     busy: false,
     request_in_flight_count: 0,
     line: 0,
@@ -80,7 +80,7 @@ function create_task_snapshot(
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
-    analysis_candidate_count: 2,
+    candidate_count: 2,
     ...overrides,
   };
 }
@@ -229,7 +229,7 @@ describe("useTranslationTaskRuntime", () => {
   it("翻译完成后自动弹出生成译文确认框", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "RUN",
+        status: "running",
         busy: true,
         total_line: 2,
       }),
@@ -251,7 +251,7 @@ describe("useTranslationTaskRuntime", () => {
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "DONE",
+        status: "done",
         busy: false,
         line: 2,
         total_line: 2,
@@ -278,7 +278,7 @@ describe("useTranslationTaskRuntime", () => {
   it("首屏加载已完成翻译快照时不自动弹生成译文确认框", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "DONE",
+        status: "done",
         busy: false,
         line: 2,
         total_line: 2,
@@ -309,7 +309,7 @@ describe("useTranslationTaskRuntime", () => {
   it("翻译停止完成时只弹一次停止提示", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "STOPPING",
+        status: "stopping",
         busy: true,
         line: 1,
         total_line: 2,
@@ -330,7 +330,7 @@ describe("useTranslationTaskRuntime", () => {
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "IDLE",
+        status: "idle",
         busy: false,
         line: 1,
         total_line: 2,
@@ -351,7 +351,7 @@ describe("useTranslationTaskRuntime", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         task_type: "analysis",
-        status: "STOPPING",
+        status: "stopping",
         busy: true,
         line: 1,
         total_line: 2,
@@ -373,7 +373,7 @@ describe("useTranslationTaskRuntime", () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
         task_type: "analysis",
-        status: "IDLE",
+        status: "idle",
         busy: false,
         line: 1,
         total_line: 2,
@@ -392,12 +392,13 @@ describe("useTranslationTaskRuntime", () => {
     );
   });
 
-  it("重翻任务结束后不再重复刷新翻译任务快照", async () => {
+  it("重翻任务按翻译任务刷新且结束后不再重复刷新", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        task_type: "retranslate",
-        status: "RUN",
+        task_type: "translation",
+        status: "running",
         busy: true,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [1] } },
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -405,7 +406,7 @@ describe("useTranslationTaskRuntime", () => {
         return {
           task: create_task_snapshot({
             task_type: "translation",
-            status: "IDLE",
+            status: "idle",
             busy: false,
             line: 2,
             total_line: 2,
@@ -421,30 +422,30 @@ describe("useTranslationTaskRuntime", () => {
     await render_probe();
     await flush_microtasks();
 
-    expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/tasks/snapshot", {
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/tasks/snapshot", {
       task_type: "translation",
     });
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        task_type: "retranslate",
-        status: "DONE",
+        task_type: "translation",
+        status: "done",
         busy: false,
+        extras: { kind: "translation", scope: { kind: "all" } },
       }),
     );
 
     await render_probe();
     await flush_microtasks();
 
-    expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/tasks/snapshot", {
-      task_type: "translation",
-    });
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
   });
 
   it("确认生成译文时调用导出接口", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "RUN",
+        status: "running",
         busy: true,
         total_line: 1,
       }),
@@ -467,7 +468,7 @@ describe("useTranslationTaskRuntime", () => {
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "DONE",
+        status: "done",
         busy: false,
         line: 1,
         total_line: 1,
@@ -500,7 +501,7 @@ describe("useTranslationTaskRuntime", () => {
         total_input_tokens: 120,
         time: 45,
         start_time: 100,
-        analysis_candidate_count: 2,
+        candidate_count: 2,
       }),
     );
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -565,20 +566,21 @@ describe("useTranslationTaskRuntime", () => {
     expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         task_type: "translation",
-        status: "IDLE",
+        status: "idle",
         busy: false,
         request_in_flight_count: 0,
-        line: 0,
-        total_line: 1,
-        processed_line: 0,
-        error_line: 0,
-        total_tokens: 0,
-        total_output_tokens: 0,
-        total_input_tokens: 0,
-        time: 0,
-        start_time: 0,
-        analysis_candidate_count: 0,
-        retranslating_item_ids: [],
+        progress: expect.objectContaining({
+          line: 0,
+          total_line: 1,
+          processed_line: 0,
+          error_line: 0,
+          total_tokens: 0,
+          total_output_tokens: 0,
+          total_input_tokens: 0,
+          time: 0,
+          start_time: 0,
+        }),
+        extras: { kind: "translation", scope: { kind: "all" } },
       }),
     );
     expect(api_fetch_mock).toHaveBeenCalledWith(
@@ -661,16 +663,18 @@ describe("useTranslationTaskRuntime", () => {
     });
     expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
-        line: 0,
-        total_line: 1,
-        processed_line: 0,
-        error_line: 0,
-        total_tokens: 90,
-        total_output_tokens: 50,
-        total_input_tokens: 40,
-        time: 12,
-        start_time: 20,
-        retranslating_item_ids: [],
+        progress: expect.objectContaining({
+          line: 0,
+          total_line: 1,
+          processed_line: 0,
+          error_line: 0,
+          total_tokens: 90,
+          total_output_tokens: 50,
+          total_input_tokens: 40,
+          time: 12,
+          start_time: 20,
+        }),
+        extras: { kind: "translation", scope: { kind: "all" } },
       }),
     );
     expect(api_fetch_mock).toHaveBeenCalledWith(

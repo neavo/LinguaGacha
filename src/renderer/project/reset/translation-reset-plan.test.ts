@@ -117,7 +117,10 @@ describe("translation reset planners", () => {
         items: 4,
       },
     });
-    expect(plan.next_task_snapshot.analysis_candidate_count).toBe(4);
+    expect(plan.next_task_snapshot.extras).toMatchObject({
+      kind: "translation",
+      scope: { kind: "all" },
+    });
   });
 
   it("reset all 先吃 preview 再输出最终 full item payload", async () => {
@@ -210,6 +213,9 @@ describe("translation reset planners", () => {
         retry_count: 0,
       },
     ]);
-    expect(plan.next_task_snapshot.analysis_candidate_count).toBe(0);
+    expect(plan.next_task_snapshot.extras).toMatchObject({
+      kind: "translation",
+      scope: { kind: "all" },
+    });
   });
 });

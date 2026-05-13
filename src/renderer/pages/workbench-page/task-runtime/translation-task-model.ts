@@ -23,7 +23,9 @@ export type TranslationTaskSnapshot = {
 };
 
 export type TranslationTaskPayload = {
-  task?: Partial<TranslationTaskSnapshot>;
+  task?: Partial<TranslationTaskSnapshot> & {
+    progress?: Partial<Omit<TranslationTaskSnapshot, "task_type" | "status" | "busy" | "request_in_flight_count">>;
+  };
 };
 
 export type TranslationTaskConfirmState = {
@@ -49,7 +51,7 @@ export type TranslationTaskMetrics = {
 export function create_empty_translation_task_snapshot(): TranslationTaskSnapshot {
   return {
     task_type: "translation",
-    status: "IDLE",
+    status: "idle",
     busy: false,
     request_in_flight_count: 0,
     line: 0,
@@ -88,20 +90,21 @@ export function normalize_translation_task_snapshot_payload(
   payload: TranslationTaskPayload,
 ): TranslationTaskSnapshot {
   const snapshot = payload.task ?? {};
+  const progress = snapshot.progress ?? snapshot;
   return {
     task_type: String(snapshot.task_type ?? "translation"),
-    status: String(snapshot.status ?? "IDLE"),
+    status: String(snapshot.status ?? "idle").toLowerCase(),
     busy: Boolean(snapshot.busy),
     request_in_flight_count: Number(snapshot.request_in_flight_count ?? 0),
-    line: Number(snapshot.line ?? 0),
-    total_line: Number(snapshot.total_line ?? 0),
-    processed_line: Number(snapshot.processed_line ?? 0),
-    error_line: Number(snapshot.error_line ?? 0),
-    total_tokens: Number(snapshot.total_tokens ?? 0),
-    total_output_tokens: Number(snapshot.total_output_tokens ?? 0),
-    total_input_tokens: Number(snapshot.total_input_tokens ?? 0),
-    time: Number(snapshot.time ?? 0),
-    start_time: Number(snapshot.start_time ?? 0),
+    line: Number(progress.line ?? 0),
+    total_line: Number(progress.total_line ?? 0),
+    processed_line: Number(progress.processed_line ?? 0),
+    error_line: Number(progress.error_line ?? 0),
+    total_tokens: Number(progress.total_tokens ?? 0),
+    total_output_tokens: Number(progress.total_output_tokens ?? 0),
+    total_input_tokens: Number(progress.total_input_tokens ?? 0),
+    time: Number(progress.time ?? 0),
+    start_time: Number(progress.start_time ?? 0),
   };
 }
 
@@ -167,7 +170,7 @@ export function resolve_translation_task_metrics(args: {
   }
 
   const active = is_active_translation_task_status(args.snapshot.status);
-  const stopping = args.snapshot.status === "STOPPING";
+  const stopping = args.snapshot.status === "stopping";
   const processed_count =
     args.snapshot.processed_line > 0 ? args.snapshot.processed_line : args.snapshot.line;
   const failed_count = Math.max(0, args.snapshot.error_line);

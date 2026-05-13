@@ -4,7 +4,7 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-
 import { FileFormatService } from "../file/file-format-service";
 import { Item } from "../../base/item";
 import { is_task_skipped_item_status } from "../../shared/task";
-import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
+import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { ProjectSessionState } from "./project-session-state";
 
 type JsonRecord = Record<string, ApiJsonValue>;

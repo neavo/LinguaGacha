@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
-import { TaskRuntimeState } from "../task-engine/runtime/task-runtime-state";
+import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { ProjectSyncMutationService } from "./project-sync-mutation-service";
 import type { ProjectChangePublisher } from "./project-change-publisher";
 import { ProjectSessionState } from "./project-session-state";

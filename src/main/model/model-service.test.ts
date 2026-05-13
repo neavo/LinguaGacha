@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../service/path-service";
 import { SettingService } from "../service/setting-service";
-import { PiAiLlmRequestClient } from "../task-worker/llm/llm-request-client";
+import { PiAiLlmRequestClient } from "../engine/worker/llm/llm-request-client";
 import { ModelService } from "./model-service";
 
 type ModelPresetFiles = {

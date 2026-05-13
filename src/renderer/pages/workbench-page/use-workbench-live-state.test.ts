@@ -198,7 +198,7 @@ function create_runtime_fixture(): RuntimeFixture {
     task_snapshot: {
       busy: false,
       task_type: "",
-      status: "IDLE",
+      status: "idle",
     },
   };
 }
@@ -323,7 +323,7 @@ function create_analysis_task_snapshot(
 ): AnalysisTaskSnapshot {
   return {
     task_type: "analysis",
-    status: "RUNNING",
+    status: "running",
     busy: true,
     request_in_flight_count: 1,
     line: 0,
@@ -335,7 +335,7 @@ function create_analysis_task_snapshot(
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
-    analysis_candidate_count: 0,
+    candidate_count: 0,
     ...overrides,
   };
 }
@@ -567,7 +567,7 @@ describe("useWorkbenchLiveState", () => {
       task_snapshot: {
         busy: true,
         task_type: "analysis",
-        status: "RUNNING",
+        status: "running",
       },
       project_store: {
         getState: () => {
@@ -661,7 +661,7 @@ describe("useWorkbenchLiveState", () => {
       task_snapshot: {
         busy: true,
         task_type: "analysis",
-        status: "RUNNING",
+        status: "running",
       },
       project_store: {
         getState: () => {
@@ -1064,7 +1064,7 @@ describe("useWorkbenchLiveState", () => {
       task_snapshot: {
         busy: true,
         task_type: "translation",
-        status: "RUNNING",
+        status: "running",
       },
     };
     await render_hook();
@@ -1085,7 +1085,7 @@ describe("useWorkbenchLiveState", () => {
       task_snapshot: {
         busy: true,
         task_type: "translation",
-        status: "STOPPING",
+        status: "stopping",
       },
     };
     await render_hook();

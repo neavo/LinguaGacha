@@ -1,20 +1,19 @@
-export const TASK_TYPES = ["translation", "analysis", "retranslate"] as const; // 任务类型；公开值用小写业务名
+export const TASK_TYPES = ["translation", "analysis"] as const; // 任务类型；重翻只作为 translation scope
 
 export const TASK_MODES = ["full", "selected", "resume"] as const; // 翻译/分析模式（用户意图）
 
-export const TASK_STATUSES = ["IDLE", "RUNNING", "DONE", "ERROR", "STOPPING"] as const; // 任务状态；公开快照只暴露跨层稳定状态
+export const TASK_STATUSES = ["idle", "requested", "running", "stopping", "done", "error"] as const; // 任务状态；公开快照只暴露跨层稳定状态
 
 // 翻译 - 任务生命周期事件（发起/运行/结束）
 export const TRANSLATION_TASK_ACTIVE_STATUSES = [
-  "REQUEST",
-  "RUN",
-  "TRANSLATING",
-  "STOPPING",
+  "requested",
+  "running",
+  "stopping",
 ] as const;
 
-export const ANALYSIS_TASK_ACTIVE_STATUSES = ["REQUEST", "RUN", "ANALYZING", "STOPPING"] as const; // 分析 - 任务生命周期事件（发起/运行/结束）
+export const ANALYSIS_TASK_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const; // 分析 - 任务生命周期事件（发起/运行/结束）
 
-export const TASK_IDLE_STATUSES = ["DONE", "ERROR", "IDLE"] as const; // 空闲状态集合用于任务启动互斥和页面按钮可用性判断
+export const TASK_IDLE_STATUSES = ["done", "error", "idle"] as const; // 空闲状态集合用于任务启动互斥和页面按钮可用性判断
 
 export const TASK_PROGRESS_STATUSES = ["NONE", "PROCESSED", "ERROR"] as const; // 进度状态是 item 统计口径，不等同于任务生命周期状态
 

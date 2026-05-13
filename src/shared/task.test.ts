@@ -15,12 +15,12 @@ describe("task 基础模型", () => {
     expect(is_task_type("legacy")).toBe(false);
     expect(normalize_task_type("analysis")).toBe("analysis");
     expect(normalize_task_type("legacy")).toBe("translation");
-    expect(is_task_idle_status("DONE")).toBe(true);
+    expect(is_task_idle_status("done")).toBe(true);
   });
 
   it("集中维护运行态派生判断", () => {
-    expect(is_active_translation_task_status("TRANSLATING")).toBe(true);
-    expect(is_active_analysis_task_status("ANALYZING")).toBe(true);
+    expect(is_active_translation_task_status("running")).toBe(true);
+    expect(is_active_analysis_task_status("running")).toBe(true);
     expect(is_task_skipped_item_status("RULE_SKIPPED")).toBe(true);
   });
 });

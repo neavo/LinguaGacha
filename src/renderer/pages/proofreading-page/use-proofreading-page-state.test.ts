@@ -24,7 +24,7 @@ type RuntimeFixture = {
   task_snapshot: {
     busy: boolean;
     task_type?: string;
-    retranslating_item_ids?: number[];
+    extras?: { kind: "translation"; scope: { kind: "all" } | { kind: "items"; item_ids: number[] } };
   };
   set_task_snapshot: ReturnType<typeof vi.fn>;
   proofreading_change_signal: {
@@ -212,7 +212,7 @@ function create_runtime_fixture(): RuntimeFixture {
     task_snapshot: {
       busy: false,
       task_type: "idle",
-      retranslating_item_ids: [],
+      extras: { kind: "translation", scope: { kind: "all" } },
     },
     set_task_snapshot: vi.fn((snapshot) => {
       runtime_fixture.current = {
@@ -689,7 +689,7 @@ describe("useProofreadingPageState", () => {
         task_type: string;
         status: string;
         busy: boolean;
-        retranslating_item_ids: Array<number | string>;
+        extras: { kind: "translation"; scope: { kind: "items"; item_ids: Array<number | string> } };
       };
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
@@ -710,17 +710,19 @@ describe("useProofreadingPageState", () => {
       retranslate_deferred.resolve({
         accepted: true,
         task: {
-          task_type: "retranslate",
-          status: "REQUEST",
+          task_type: "translation",
+          status: "requested",
           busy: true,
-          retranslating_item_ids: [1],
+          extras: { kind: "translation", scope: { kind: "items", item_ids: [1] } },
         },
       });
       await confirm_promise;
     });
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start-retranslate", {
-      item_ids: [1],
+    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "items", item_ids: [1] },
       expected_section_revisions: {
         items: 7,
         proofreading: 1,
@@ -730,10 +732,10 @@ describe("useProofreadingPageState", () => {
     });
     expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
-        task_type: "retranslate",
-        status: "REQUEST",
+        task_type: "translation",
+        status: "requested",
         busy: true,
-        retranslating_item_ids: [1],
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [1] } },
       }),
     );
     expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
@@ -768,6 +770,7 @@ describe("useProofreadingPageState", () => {
         task_type: string;
         status: string;
         busy: boolean;
+        extras: { kind: "translation"; scope: { kind: "items"; item_ids: Array<number | string> } };
       };
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
@@ -788,16 +791,19 @@ describe("useProofreadingPageState", () => {
       retranslate_deferred.resolve({
         accepted: true,
         task: {
-          task_type: "retranslate",
-          status: "REQUEST",
+          task_type: "translation",
+          status: "requested",
           busy: true,
+          extras: { kind: "translation", scope: { kind: "items", item_ids: [2, 1] } },
         },
       });
       await confirm_promise;
     });
 
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start-retranslate", {
-      item_ids: [2, 1],
+    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "items", item_ids: [2, 1] },
       expected_section_revisions: {
         items: 7,
         proofreading: 1,

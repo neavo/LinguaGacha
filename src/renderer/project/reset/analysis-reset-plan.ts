@@ -59,12 +59,13 @@ function pick_preserved_analysis_extras(extras: Record<string, unknown>): Record
 function build_next_task_snapshot(args: {
   task_snapshot: Record<string, unknown>;
   analysis_extras: Record<string, unknown>;
-  analysis_candidate_count: number;
+  candidate_count: number;
 }): Record<string, unknown> {
   return {
     ...args.task_snapshot,
-    ...args.analysis_extras,
-    analysis_candidate_count: args.analysis_candidate_count,
+    status: "idle",
+    progress: args.analysis_extras,
+    extras: { kind: "analysis", candidate_count: args.candidate_count },
   };
 }
 
@@ -89,7 +90,7 @@ export function create_analysis_reset_all_plan(args: {
   const next_task_snapshot = build_next_task_snapshot({
     task_snapshot,
     analysis_extras,
-    analysis_candidate_count: 0,
+    candidate_count: 0,
   });
 
   return {
@@ -121,8 +122,10 @@ export async function create_analysis_reset_failed_plan(args: {
     ),
     status_summary,
   });
-  const analysis_candidate_count = Number(
-    args.state.analysis.candidate_count ?? task_snapshot.analysis_candidate_count ?? 0,
+  const candidate_count = Number(
+    args.state.analysis.candidate_count ??
+      normalize_record(task_snapshot.extras)["candidate_count"] ??
+      0,
   );
   const next_analysis_state = {
     ...args.state.analysis,
@@ -132,7 +135,7 @@ export async function create_analysis_reset_failed_plan(args: {
   const next_task_snapshot = build_next_task_snapshot({
     task_snapshot,
     analysis_extras,
-    analysis_candidate_count,
+    candidate_count,
   });
 
   return {

@@ -8,5 +8,5 @@ export function is_task_mutation_locked(task_snapshot: Pick<TaskLockSnapshot, "b
 }
 
 export function is_task_stopping(task_snapshot: Pick<TaskLockSnapshot, "status">): boolean {
-  return task_snapshot.status === "STOPPING";
+  return task_snapshot.status === "stopping";
 }
