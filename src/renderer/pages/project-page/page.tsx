@@ -783,10 +783,15 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     });
 
     try {
-      const payload = await api_fetch<ProjectPreviewPayload>("/api/project/preview", {
-        path: project_path,
+      await run_project_loading_modal({
+        initial_message: t("project_page.open.preview_loading_toast"),
+        task: async () => {
+          const payload = await api_fetch<ProjectPreviewPayload>("/api/project/preview", {
+            path: project_path,
+          });
+          set_selected_project(normalize_project_preview(project_path, fallback_name, payload));
+        },
       });
-      set_selected_project(normalize_project_preview(project_path, fallback_name, payload));
     } catch (error) {
       if (
         recent_project_name !== undefined &&

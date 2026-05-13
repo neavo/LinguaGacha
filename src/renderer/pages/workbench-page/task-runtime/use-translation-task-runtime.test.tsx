@@ -347,6 +347,71 @@ describe("useTranslationTaskRuntime", () => {
     );
   });
 
+  it("停止回包晚于终态时不会把翻译运行态写回停止中", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "stopping",
+        busy: true,
+        line: 1,
+        total_line: 2,
+      }),
+    );
+    const initial_fixture = runtime_fixture.current;
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/tasks/stop") {
+        runtime_fixture.current = create_runtime_fixture(
+          create_task_snapshot({
+            status: "idle",
+            busy: false,
+            line: 1,
+            total_line: 2,
+          }),
+        );
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    await act(async () => {
+      latest_state?.request_task_action_confirmation("stop-translation");
+    });
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.confirm_task_action();
+    });
+    await flush_microtasks();
+
+    expect(initial_fixture.set_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_type: "translation",
+        status: "idle",
+        busy: false,
+      }),
+    );
+    expect(initial_fixture.set_task_snapshot).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "stopping",
+        busy: true,
+      }),
+    );
+    expect(latest_state?.translation_task_metrics).toMatchObject({
+      active: false,
+      stopping: false,
+    });
+  });
+
   it("分析任务停止完成时不会刷新翻译快照或弹翻译停止提示", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({

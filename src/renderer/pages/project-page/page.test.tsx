@@ -65,6 +65,7 @@ const I18N_TEXT_BY_KEY: Record<string, string> = {
   "project_page.open.action": "打开工程",
   "project_page.open.drop_title": "点击或拖拽 .lg 文件",
   "project_page.open.empty": "暂无最近打开的工程",
+  "project_page.open.preview_loading_toast": "正在读取工程预览 …",
   "project_page.open.recent_title": "最近打开",
   "project_page.open.subtitle": "加载现有的 .lg 工程文件以继承翻译进度、翻译规则继续工作。",
   "project_page.open.title": "打开工程",
@@ -546,5 +547,46 @@ describe("ProjectPage", () => {
       "无需翻译 - 1 / 翻译失败 - 1 / 翻译成功 - 3 / 等待翻译 - 3 / 总计 - 8",
     );
     expect(container?.querySelectorAll(".segmented-progress__segment")).toHaveLength(4);
+  });
+
+  it("选中最近工程读取预览时展示不定模态进度通知", async () => {
+    desktop_runtime_fixture.current = create_desktop_runtime_fixture({
+      recent_projects: [{ path: "E:\\Projects\\heavy.lg", name: "heavy" }],
+    });
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/project/preview") {
+        return {
+          preview: {
+            path: "E:\\Projects\\heavy.lg",
+            name: "heavy",
+            file_count: 1,
+            created_at: "2026-05-13T16:50:42",
+            updated_at: "2026-05-13T18:35:42",
+            translation_stats: {
+              total_items: 1,
+              completed_count: 0,
+              failed_count: 0,
+              pending_count: 1,
+              skipped_count: 0,
+              completion_percent: 0,
+            },
+          },
+        };
+      }
+
+      return {};
+    });
+    await mount_page();
+
+    await act(async () => {
+      get_button_by_text(container as HTMLElement, "heavy").click();
+      await flush_async_updates();
+    });
+
+    expect(push_progress_toast_mock).toHaveBeenCalledWith({
+      message: "正在读取工程预览 …",
+      presentation: "modal",
+    });
+    expect(dismiss_toast_mock).toHaveBeenCalledWith("project-loading-toast");
   });
 });

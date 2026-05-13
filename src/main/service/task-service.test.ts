@@ -75,6 +75,39 @@ describe("TaskService", () => {
     expect(called).toBe(false);
   });
 
+  it("停止回包晚于终态时返回当前真实快照", async () => {
+    let snapshot_status = "stopping";
+    let snapshot_busy = true;
+    const service = new TaskService(
+      {
+        stop: async () => {
+          snapshot_status = "idle";
+          snapshot_busy = false;
+          return true;
+        },
+      } as unknown as TaskEngine,
+      create_snapshot_builder({}, () => ({
+        task_type: "translation",
+        status: snapshot_status,
+        busy: snapshot_busy,
+      })),
+      create_task_runtime_publisher(),
+      new ProjectSessionState(),
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+    );
+
+    const result = await service.stop_task({ task_type: "translation" });
+
+    expect(result).toEqual({
+      accepted: true,
+      task: {
+        task_type: "translation",
+        status: "idle",
+        busy: false,
+      },
+    });
+  });
+
   it("单条翻译在激活模型失效但仍有模型时沿用首个模型", async () => {
     const calls: Array<Record<string, unknown>> = [];
     const service = new TaskService(
@@ -146,7 +179,14 @@ describe("TaskService", () => {
     expect(calls).toEqual([]);
   });
 
-  function create_snapshot_builder(revisions: Record<string, number>): TaskSnapshotBuilder {
+  function create_snapshot_builder(
+    revisions: Record<string, number>,
+    build_task_snapshot: () => Record<string, unknown> = () => ({
+      task_type: "translation",
+      status: "idle",
+      busy: false,
+    }),
+  ): TaskSnapshotBuilder {
     return {
       build_command_ack: async (
         task_type: string,
@@ -159,6 +199,7 @@ describe("TaskService", () => {
         busy,
         ...overrides,
       }),
+      build_task_snapshot: async () => build_task_snapshot(),
       get_runtime_section_revision: (section: string) => revisions[section] ?? 0,
     } as unknown as TaskSnapshotBuilder;
   }
@@ -166,7 +207,6 @@ describe("TaskService", () => {
   function create_task_runtime_publisher(): TaskRuntimePublisher {
     return {
       begin_task: async () => undefined,
-      mark_stopping: async () => undefined,
       restore: async () => undefined,
       snapshot_state: () => ({
         active_task_type: "idle",

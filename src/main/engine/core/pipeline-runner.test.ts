@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TaskPipeline } from "./pipeline-runner";
+import { TaskPipeline, TASK_PIPELINE_COMMIT_INTERVAL_MS } from "./pipeline-runner";
 
 describe("TaskPipeline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("优先执行重试队列并按批次提交结果", async () => {
     const executed: number[] = [];
     const committed: number[][] = [];
@@ -107,5 +111,41 @@ describe("TaskPipeline", () => {
     expect(second_worker_saw_abort).toBe(true);
     expect(executed).toEqual([1, 2]);
     expect(committed).toEqual([]);
+  });
+
+  it("默认按 500ms 窗口批量提交 worker 结果", async () => {
+    vi.useFakeTimers();
+    const committed: number[][] = [];
+    let release_second_context: () => void = () => {};
+    const pipeline = new TaskPipeline<number, number>({
+      worker_count: 1,
+      signal: new AbortController().signal,
+      execute: async (context) => {
+        if (context === 2) {
+          await new Promise<void>((resolve) => {
+            release_second_context = resolve;
+          });
+        }
+        return { commit_entries: [context], retry_contexts: [] };
+      },
+      commit: async (entries) => {
+        committed.push([...entries]);
+      },
+    });
+
+    const run_promise = pipeline.run([1, 2]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(TASK_PIPELINE_COMMIT_INTERVAL_MS - 1);
+    expect(committed).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(committed).toEqual([[1]]);
+
+    release_second_context();
+    await run_promise;
+
+    expect(committed).toEqual([[1], [2]]);
   });
 });

@@ -136,10 +136,10 @@ export class TaskEngine {
   }
 
   /**
-   * 请求停止后台任务；停止事件由本地发布并向 work unit 传播 abort
+   * 请求停止后台任务；返回值表示命令是否命中当前 run
    */
-  public async stop(command: StopTaskCommand): Promise<void> {
-    await this.run_coordinator.request_stop(command.task_type);
+  public async stop(command: StopTaskCommand): Promise<boolean> {
+    return await this.run_coordinator.request_stop(command.task_type);
   }
 
   /**
@@ -1042,7 +1042,7 @@ export class TaskEngine {
   }
 
   /**
-   * 请求数变化只更新运行态，公开 snapshot 由后端 250ms 窗口合并发布
+   * 请求数变化只更新运行态，公开 snapshot 由后端 500ms 窗口合并发布
    */
   private async change_request_in_flight_count(task_type: TaskType, delta: number): Promise<void> {
     this.request_in_flight_count = Math.max(0, this.request_in_flight_count + delta);

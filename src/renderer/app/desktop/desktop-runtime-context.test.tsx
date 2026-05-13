@@ -7,6 +7,7 @@ import {
   type ProjectStoreQualityState,
 } from "@/project/store/project-store";
 import { DesktopRuntimeProvider } from "@/app/desktop/desktop-runtime-context";
+import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@/app/desktop/desktop-runtime-refresh-scheduler";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 
 const { api_fetch_mock, open_event_stream_mock } = vi.hoisted(() => {
@@ -127,6 +128,13 @@ async function wait_for_condition(predicate: () => boolean, attempts = 20): Prom
   }
 
   throw new Error("等待运行时状态收敛失败。");
+}
+
+async function flush_runtime_refresh_window(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
+    await Promise.resolve();
+  });
 }
 
 function create_event_source_stub(): {
@@ -460,7 +468,8 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("StrictMode 双 effect 后完整任务快照仍会持续刷新", async () => {
+  it("StrictMode 双 effect 后完整任务快照仍会按刷新窗口持续刷新", async () => {
+    vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
@@ -551,6 +560,8 @@ describe("DesktopRuntimeProvider", () => {
       await Promise.resolve();
     });
 
+    await flush_runtime_refresh_window();
+
     await wait_for_condition(() => {
       return snapshots.at(-1)?.taskLine === 2;
     });
@@ -574,6 +585,8 @@ describe("DesktopRuntimeProvider", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+
+    await flush_runtime_refresh_window();
 
     await wait_for_condition(() => {
       const latest_snapshot = snapshots.at(-1);
@@ -986,7 +999,7 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("items canonical-delta 会立即把校对页信号标成 delta 并携带 item_ids", async () => {
+  it("items canonical-delta 会合帧刷新校对页 delta 信号并合并 item_ids", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1106,17 +1119,213 @@ describe("DesktopRuntimeProvider", () => {
       await Promise.resolve();
     });
 
+    await flush_runtime_refresh_window();
+
     await wait_for_condition(() => {
-      return snapshots.at(-1)?.proofreadingSeq === 3;
+      return snapshots.at(-1)?.proofreadingSeq === 2;
     });
 
     expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 3,
+      proofreadingSeq: 2,
       proofreadingReason: "proofreading_save_item",
       proofreadingMode: "delta",
       proofreadingUpdatedSections: ["items", "proofreading"],
-      proofreadingItemIds: [2],
+      proofreadingItemIds: [1, 2],
       itemKeys: ["1", "2"],
+    });
+  });
+
+  it("items ids-only 会在刷新窗口内合并补读后推进 ProjectStore", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH" } };
+      }
+      if (path === "/api/project/snapshot") {
+        return { project: { path: "E:/demo/demo.lg", loaded: true } };
+      }
+      if (path === "/api/tasks/snapshot") {
+        return { task: { task_type: "translation", status: "idle", busy: false } };
+      }
+      if (path === "/api/project/items/read-by-ids") {
+        expect(body).toEqual({ itemIds: [3, 4] });
+        return {
+          items: {
+            "3": {
+              item_id: 3,
+              file_path: "chapter03.txt",
+              src: "foo",
+              dst: "bar",
+              status: "PROCESSED",
+            },
+            "4": {
+              item_id: 4,
+              file_path: "chapter04.txt",
+              src: "hello",
+              dst: "world",
+              status: "PROCESSED",
+            },
+          },
+          missingIds: [],
+          projectRevision: 5,
+          sectionRevisions: { items: 5 },
+          itemRevision: 5,
+        };
+      }
+
+      const project_read_response = create_project_read_response(path);
+      if (project_read_response !== null) {
+        return project_read_response;
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
+
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        source: "translation_commit",
+        projectRevision: 4,
+        updatedSections: ["items"],
+        items: {
+          payloadMode: "ids-only",
+          changedIds: [3],
+        },
+      });
+      event_stream.emit("project.data_changed", {
+        source: "translation_commit",
+        projectRevision: 5,
+        updatedSections: ["items"],
+        items: {
+          payloadMode: "ids-only",
+          changedIds: [4],
+        },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await flush_runtime_refresh_window();
+
+    await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("4") === true);
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/items/read-by-ids", {
+      itemIds: [3, 4],
+    });
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingReason: "translation_commit",
+      proofreadingMode: "delta",
+      proofreadingItemIds: [3, 4],
+      itemKeys: ["1", "3", "4"],
+    });
+  });
+
+  it("items ids-only 旧补读响应不会回退当前 ProjectStore", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH" } };
+      }
+      if (path === "/api/project/snapshot") {
+        return { project: { path: "E:/demo/demo.lg", loaded: true } };
+      }
+      if (path === "/api/tasks/snapshot") {
+        return { task: { task_type: "translation", status: "idle", busy: false } };
+      }
+      if (path === "/api/project/items/read-by-ids") {
+        expect(body).toEqual({ itemIds: [3] });
+        return {
+          items: {
+            "3": {
+              item_id: 3,
+              file_path: "chapter03.txt",
+              src: "old",
+              dst: "old",
+              status: "PROCESSED",
+            },
+          },
+          missingIds: [],
+          projectRevision: 4,
+          sectionRevisions: { items: 4 },
+          itemRevision: 4,
+        };
+      }
+
+      const project_read_response = create_project_read_response(path, {
+        projectRevision: 5,
+        sectionRevisions: { items: 5 },
+      });
+      if (project_read_response !== null) {
+        return project_read_response;
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
+
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        source: "translation_commit",
+        projectRevision: 4,
+        updatedSections: ["items"],
+        items: {
+          payloadMode: "ids-only",
+          changedIds: [3],
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await flush_runtime_refresh_window();
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/items/read-by-ids", {
+      itemIds: [3],
+    });
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingSeq: 1,
+      itemKeys: ["1"],
     });
   });
 
@@ -1293,6 +1502,8 @@ describe("DesktopRuntimeProvider", () => {
       });
       await Promise.resolve();
     });
+
+    await flush_runtime_refresh_window();
 
     await wait_for_condition(() => {
       return snapshots.at(-1)?.proofreadingSeq === 2;

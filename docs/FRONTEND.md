@@ -42,6 +42,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `ProjectStore` 是 renderer 内共享项目事实的唯一缓存，不是后端事实源。
 - `task` 属于任务运行态，只能由 `TaskRuntimeStore` 作为前端任务镜像；项目数据读取和 `project.data_changed` 都不能把 task 写入 `ProjectStore` 或项目派生缓存依赖。
 - `TaskRuntimeStore` 消费的 `TaskSnapshot` 固定为 `base + progress + extras`：通用状态只在 base，进度只在 `progress`，分析候选数只在 `extras.kind === "analysis"`，重翻行级状态只在 `extras.kind === "translation" && scope.kind === "items"`。
+- 停止命令 HTTP ack 只能携带后端当前完整 `TaskSnapshot`；页面可以同步写入该 snapshot，但不能在页面层追加“终态优先于 stopping”的第二套排序规则。
 - 共享项目事实只能来自项目读取接口、`project.data_changed`、同步 mutation ack 后的 revision 对齐，以及明确的本地乐观 change。
 - `section-invalidated` 不能只推进 revision；运行时必须先用 `/api/project/read-sections` 补读失效 section，再以 exact revision 合并，避免旧实体冒充新事实。
 - 本地乐观 change 必须通过 `commit_local_project_change()`，并提供可回滚的 section 快照。
@@ -56,10 +57,10 @@ project, files, items, quality, prompts, analysis, proofreading
 | --- | --- | --- |
 | `project.changed` | 更新项目 snapshot，并在项目加载或切换链路读取 task snapshot | 触发项目读取或清空 store |
 | `settings.changed` | 应用 settings payload 或重新拉取 settings | 影响语言、默认预设和应用设置 |
-| `task.snapshot_changed` | 立即用完整 task snapshot 覆盖 `TaskRuntimeStore` | 按钮 busy、任务菜单、进度、请求压力、停止态 |
-| `project.data_changed` | canonical delta 立即合并；ids-only 或 section-invalidated 先补读 canonical 数据再合并 | 工作台、校对、质量、分析、校对数据刷新 |
+| `task.snapshot_changed` | 运行中 snapshot 进入 renderer 500ms 刷新窗口并只保留最新一份；终态或 `busy=false` 事件先冲刷窗口再立即覆盖 `TaskRuntimeStore` | 按钮 busy、任务菜单、进度、请求压力、停止态 |
+| `project.data_changed` | canonical delta 进入同一 500ms 刷新窗口并按到达顺序批量合并；ids-only 进入同一窗口合并 item id 后按 `/api/project/items/read-by-ids` 补读，响应 revision 落后当前 `ProjectStore` 时丢弃；section-invalidated 或无法规范化事件先冲刷窗口，再补读 canonical 数据或全量刷新 | 工作台、校对、质量、分析、校对数据刷新 |
 
-任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；项目首次加载、项目切换或页面显式 hydration 时仍可读取一次任务快照。日志窗口的 250ms append batch 和 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
+同一 renderer 刷新窗口内，`ProjectStore` 只通知一次，工作台与校对页派生信号按批次合并后最多各 bump 一次。工程切换、设置变更、项目刷新、本地乐观 change、失效 section 补读和任务终态不被普通窗口延迟。任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；项目首次加载、项目切换或页面显式 hydration 时仍可读取一次任务快照。日志窗口的 250ms append batch 和 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
 
 ## 5. 导航与项目页 runtime
 

@@ -51,15 +51,6 @@ export class TaskRuntimeState {
   }
 
   /**
-   * 停止命令只改变运行态意图，真实终态仍由 Engine 后续事件收口
-   */
-  public mark_stopping(task_type: TaskType): void {
-    this.status = "stopping";
-    this.busy = true;
-    this.active_task_type = task_type;
-  }
-
-  /**
    * 命令调用失败时恢复前置快照，避免乐观占用造成永久忙碌
    */
   public restore(snapshot: TaskRuntimeStatePayload): void {

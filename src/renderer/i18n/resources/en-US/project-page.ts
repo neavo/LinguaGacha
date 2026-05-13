@@ -30,6 +30,7 @@ export const en_us_project_page = {
     recent_title: "Recent Projects",
     empty: "No recent projects",
     ready_status: "Project Ready",
+    preview_loading_toast: "Reading project preview …",
     loading_toast: "Loading project …",
     preview_unavailable: "Failed to read project preview: {ERROR}",
     preview_unavailable_generic: "Failed to read project preview",

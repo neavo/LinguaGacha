@@ -30,6 +30,10 @@ import {
   type TaskSnapshot,
 } from "@/app/desktop/task-runtime-store";
 import {
+  DesktopRuntimeRefreshScheduler,
+  type DesktopRuntimeProjectItemsReadRequest,
+} from "@/app/desktop/desktop-runtime-refresh-scheduler";
+import {
   normalize_section_array,
   normalize_section_revisions,
   parse_event_payload,
@@ -96,6 +100,8 @@ type ProofreadingChangeSignal = {
   item_ids: Array<number | string>;
 };
 
+type ProofreadingChangeSignalInput = Omit<ProofreadingChangeSignal, "seq">;
+
 type WorkbenchChangeSignal = {
   seq: number;
   reason: string;
@@ -104,6 +110,8 @@ type WorkbenchChangeSignal = {
   updated_sections: ProjectStoreStage[];
   item_ids: Array<number | string>;
 };
+
+type WorkbenchChangeSignalInput = Omit<WorkbenchChangeSignal, "seq">;
 
 const WORKBENCH_REFRESH_SECTIONS = ["project", "files", "items", "analysis"];
 
@@ -176,6 +184,14 @@ type ProjectReadSectionsPayload = {
   sections?: unknown;
   projectRevision?: unknown;
   sectionRevisions?: unknown;
+};
+
+type ProjectReadItemsByIdsPayload = {
+  items?: unknown;
+  missingIds?: unknown;
+  projectRevision?: unknown;
+  sectionRevisions?: unknown;
+  itemRevision?: unknown;
 };
 
 export type ProjectMutationAckPayload = {
@@ -472,6 +488,39 @@ function normalize_project_read_sections_event(
   };
 }
 
+// ids-only 补读结果只替换对应 item 行，并用 missingIds 表达 tombstone
+function normalize_project_read_items_by_ids_event(args: {
+  source: string;
+  projectRevision: number;
+  itemIds: number[];
+  payload: ProjectReadItemsByIdsPayload;
+}): ProjectStoreChangeEvent | null {
+  const upsert = normalize_record_map(args.payload.items);
+  const delete_ids = normalize_number_array(args.payload.missingIds);
+  if (Object.keys(upsert).length === 0 && delete_ids.length === 0) {
+    return null;
+  }
+
+  return {
+    source: args.source,
+    projectRevision: Number(args.payload.projectRevision ?? args.projectRevision),
+    updatedSections: ["items"],
+    operations: [
+      {
+        items: {
+          payloadMode: "canonical-delta",
+          upsert,
+          changedIds: args.itemIds,
+          deleteIds: delete_ids,
+        },
+      },
+    ],
+    sectionRevisions: normalize_section_revisions(args.payload.sectionRevisions) ?? {
+      items: Number(args.payload.itemRevision ?? args.projectRevision),
+    },
+  };
+}
+
 // item id 在事件里可能来自 upsert key 或 changedIds，进入页面信号前统一成数字
 function normalize_project_change_item_id(value: number | string): number | null {
   const item_id = Number(value);
@@ -498,6 +547,23 @@ function collect_project_change_item_ids(event: ProjectStoreChangeEvent): number
   return [...new Set(item_ids)];
 }
 
+// ids-only 只给 item id，renderer 必须按 id 补读公开行后再写 ProjectStore
+function collect_project_change_ids_only_item_ids(event: ProjectStoreChangeEvent): number[] {
+  const item_ids: number[] = [];
+  for (const operation of event.operations) {
+    if (operation.items?.payloadMode !== "ids-only") {
+      continue;
+    }
+    for (const raw_item_id of operation.items.changedIds ?? []) {
+      const item_id = normalize_project_change_item_id(raw_item_id);
+      if (item_id !== null) {
+        item_ids.push(item_id);
+      }
+    }
+  }
+  return [...new Set(item_ids)];
+}
+
 function project_change_event_has_full_section(
   event: ProjectStoreChangeEvent,
   sections: ProjectStoreStage[],
@@ -511,12 +577,7 @@ function resolve_proofreading_change_signal(args: {
   reason: string;
   updated_sections: ProjectStoreStage[];
   change_event: ProjectStoreChangeEvent | null;
-}): {
-  reason: string;
-  mode: ProofreadingChangeMode;
-  updated_sections: ProjectStoreStage[];
-  item_ids: Array<number | string>;
-} | null {
+}): ProofreadingChangeSignalInput | null {
   const updated_sections = args.updated_sections;
   if (updated_sections.length === 0) {
     return null;
@@ -639,13 +700,7 @@ function resolve_workbench_change_signal(args: {
   reason: string;
   updated_sections: ProjectStoreStage[];
   change_event: ProjectStoreChangeEvent;
-}): {
-  reason: string;
-  scope: WorkbenchChangeScope;
-  mode: "full" | "items_delta";
-  updated_sections: ProjectStoreStage[];
-  item_ids: Array<number | string>;
-} | null {
+}): WorkbenchChangeSignalInput | null {
   if (!args.updated_sections.some((section) => WORKBENCH_REFRESH_SECTIONS.includes(section))) {
     return null;
   }
@@ -661,6 +716,88 @@ function resolve_workbench_change_signal(args: {
     updated_sections: args.updated_sections,
     item_ids,
   };
+}
+
+// 批量派生信号需要稳定 section 顺序，避免同一窗口内重复唤醒页面缓存
+function collect_unique_updated_sections(
+  events: readonly ProjectStoreChangeEvent[],
+): ProjectStoreStage[] {
+  return [...new Set(events.flatMap((event) => event.updatedSections))];
+}
+
+// 多来源合帧时统一使用批次原因，避免把某一条事件来源误认为整批语义
+function resolve_project_change_batch_reason(events: readonly ProjectStoreChangeEvent[]): string {
+  const reasons = [...new Set(events.map((event) => event.source || "project_change"))];
+  return reasons.length === 1 ? reasons[0] ?? "project_change" : "project_change_batch";
+}
+
+// 工作台信号按同一刷新窗口合并，任一 full 或 file 影响都会提升整批刷新级别
+function resolve_workbench_change_signal_batch(
+  events: readonly ProjectStoreChangeEvent[],
+): WorkbenchChangeSignalInput | null {
+  const reason = resolve_project_change_batch_reason(events);
+  const signals = events
+    .map((event) =>
+      resolve_workbench_change_signal({
+        reason,
+        updated_sections: event.updatedSections,
+        change_event: event,
+      }),
+    )
+    .filter((signal): signal is WorkbenchChangeSignalInput => signal !== null);
+  if (signals.length === 0) {
+    return null;
+  }
+
+  const has_full_refresh = signals.some((signal) => signal.mode === "full");
+  return {
+    reason,
+    scope: signals.some((signal) => signal.scope === "file") ? "file" : "global",
+    mode: has_full_refresh ? "full" : "items_delta",
+    updated_sections: collect_unique_updated_sections(events),
+    item_ids: has_full_refresh ? [] : [...new Set(signals.flatMap((signal) => signal.item_ids))],
+  };
+}
+
+// 校对页信号按 full > delta > noop 合并，delta item ids 在窗口内稳定去重
+function resolve_proofreading_change_signal_batch(
+  events: readonly ProjectStoreChangeEvent[],
+): ProofreadingChangeSignalInput | null {
+  const reason = resolve_project_change_batch_reason(events);
+  const signals = events
+    .map((event) =>
+      resolve_proofreading_change_signal({
+        reason,
+        updated_sections: event.updatedSections,
+        change_event: event,
+      }),
+    )
+    .filter((signal): signal is ProofreadingChangeSignalInput => signal !== null);
+  if (signals.length === 0) {
+    return null;
+  }
+
+  const mode: ProofreadingChangeMode = signals.some((signal) => signal.mode === "full")
+    ? "full"
+    : signals.some((signal) => signal.mode === "delta")
+      ? "delta"
+      : "noop";
+  return {
+    reason,
+    mode,
+    updated_sections: collect_unique_updated_sections(events),
+    item_ids: mode === "delta" ? [...new Set(signals.flatMap((signal) => signal.item_ids))] : [],
+  };
+}
+
+// 终态快照必须解除交互等待，不能被普通 500ms 合帧窗口延迟
+function should_apply_task_snapshot_immediately(snapshot: TaskSnapshot): boolean {
+  return (
+    !snapshot.busy ||
+    snapshot.status === "idle" ||
+    snapshot.status === "done" ||
+    snapshot.status === "error"
+  );
 }
 
 /**
@@ -761,6 +898,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null);
   const [is_app_language_updating, set_is_app_language_updating] = useState(false);
   const project_store_ref = useRef(createProjectStore());
+  const runtime_refresh_scheduler_ref = useRef<DesktopRuntimeRefreshScheduler | null>(null); // 本地操作和项目刷新通过 ref 先冲刷 SSE pending 队列
 
   const apply_settings_snapshot = useCallback(
     (payload: SettingsSnapshotPayload): SettingsSnapshot => {
@@ -775,6 +913,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/app", {});
     return apply_settings_snapshot(payload);
   }, [apply_settings_snapshot]);
+
+  const flush_runtime_refresh_scheduler = useCallback((): void => {
+    runtime_refresh_scheduler_ref.current?.flush();
+  }, []);
 
   const refresh_task = useCallback(async (): Promise<TaskSnapshot> => {
     const payload = await api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {});
@@ -803,32 +945,21 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   );
 
   const bump_workbench_runtime_signal = useCallback(
-    (args: {
-      reason: string;
-      scope: WorkbenchChangeScope;
-      mode?: "full" | "items_delta";
-      updated_sections?: ProjectStoreStage[];
-      item_ids?: Array<number | string>;
-    }): void => {
+    (args: WorkbenchChangeSignalInput): void => {
       set_workbench_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: args.reason,
         scope: args.scope,
-        mode: args.mode ?? "full",
-        updated_sections: [...(args.updated_sections ?? [])],
-        item_ids: [...(args.item_ids ?? [])],
+        mode: args.mode,
+        updated_sections: [...args.updated_sections],
+        item_ids: [...args.item_ids],
       }));
     },
     [],
   );
 
   const bump_proofreading_runtime_signal = useCallback(
-    (args: {
-      reason: string;
-      mode: ProofreadingChangeMode;
-      updated_sections: ProjectStoreStage[];
-      item_ids: Array<number | string>;
-    }): void => {
+    (args: ProofreadingChangeSignalInput): void => {
       set_proofreading_change_signal((previous_signal) => ({
         seq: previous_signal.seq + 1,
         reason: args.reason,
@@ -872,7 +1003,79 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
   );
 
+  const apply_runtime_project_change_batch = useCallback(
+    (change_events: readonly ProjectStoreChangeEvent[]): void => {
+      if (change_events.length === 0) {
+        return;
+      }
+
+      // 同一刷新窗口内 project 事实只写一次 store，再合并页面级派生信号
+      project_store_ref.current.applyProjectChangeBatch(change_events);
+
+      const workbench_change_signal = resolve_workbench_change_signal_batch(change_events);
+      if (workbench_change_signal !== null) {
+        bump_workbench_runtime_signal(workbench_change_signal);
+      }
+
+      const proofreading_change_signal = resolve_proofreading_change_signal_batch(change_events);
+      if (proofreading_change_signal !== null) {
+        bump_proofreading_runtime_signal(proofreading_change_signal);
+      }
+    },
+    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
+  );
+
+  const should_apply_runtime_project_change = useCallback(
+    (change_event: ProjectStoreChangeEvent): boolean => {
+      const current_revisions = project_store_ref.current.getState().revisions;
+      const next_project_revision = Number(change_event.projectRevision);
+      if (
+        Number.isFinite(next_project_revision) &&
+        next_project_revision > 0 &&
+        next_project_revision < current_revisions.projectRevision
+      ) {
+        return false;
+      }
+
+      for (const section of change_event.updatedSections) {
+        const next_section_revision = change_event.sectionRevisions?.[section];
+        const current_section_revision = current_revisions.sections[section] ?? 0;
+        if (
+          next_section_revision !== undefined &&
+          next_section_revision < current_section_revision
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [],
+  );
+
+  const read_project_items_by_ids = useCallback(
+    async (
+      request: DesktopRuntimeProjectItemsReadRequest,
+    ): Promise<ProjectStoreChangeEvent | null> => {
+      const read_items_payload = await api_fetch<ProjectReadItemsByIdsPayload>(
+        "/api/project/items/read-by-ids",
+        {
+          itemIds: request.itemIds,
+        },
+      );
+      return normalize_project_read_items_by_ids_event({
+        source: request.source,
+        projectRevision: request.projectRevision,
+        itemIds: request.itemIds,
+        payload: read_items_payload,
+      });
+    },
+    [],
+  );
+
   const refresh_project_runtime = useCallback(async (): Promise<void> => {
+    flush_runtime_refresh_scheduler();
+
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
       project_store_ref.current.reset();
       set_project_warmup_stage(null);
@@ -904,6 +1107,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   }, [
     project_snapshot.loaded,
     project_snapshot.path,
+    flush_runtime_refresh_scheduler,
     set_project_warmup_status,
     apply_runtime_project_change,
   ]);
@@ -925,6 +1129,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         throw new Error("本地 project change 至少需要一个 updated section。");
       }
 
+      flush_runtime_refresh_scheduler();
       const current_state = project_store_ref.current.getState();
       const previous_sections = snapshotProjectStoreSections(current_state, input.updatedSections);
       const previous_project_revision = current_state.revisions.projectRevision;
@@ -977,7 +1182,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         },
       };
     },
-    [apply_runtime_project_change],
+    [apply_runtime_project_change, flush_runtime_refresh_scheduler],
   );
 
   useEffect(() => {
@@ -1055,8 +1260,18 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   useEffect(() => {
     let event_source: EventSource | null = null;
     let cancelled = false;
+    const runtime_refresh_scheduler = new DesktopRuntimeRefreshScheduler({
+      applyTaskSnapshot: (snapshot) => {
+        task_runtime_store_ref.current.applySnapshot(snapshot);
+      },
+      applyProjectChangeBatch: apply_runtime_project_change_batch,
+      readProjectItemsByIds: read_project_items_by_ids,
+      shouldApplyProjectChange: should_apply_runtime_project_change,
+    });
+    runtime_refresh_scheduler_ref.current = runtime_refresh_scheduler;
 
     function handle_project_changed(event: MessageEvent<string>): void {
+      runtime_refresh_scheduler.flush();
       const payload = parse_event_payload(event);
       set_project_snapshot({
         path: String(payload.path ?? ""),
@@ -1067,7 +1282,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     function handle_task_snapshot_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
-      task_runtime_store_ref.current.applySnapshot(normalize_task_snapshot(payload));
+      const task_snapshot = normalize_task_snapshot(payload);
+      if (should_apply_task_snapshot_immediately(task_snapshot)) {
+        runtime_refresh_scheduler.flush();
+        task_runtime_store_ref.current.applySnapshot(task_snapshot);
+        return;
+      }
+
+      runtime_refresh_scheduler.enqueue_task_snapshot(task_snapshot);
     }
 
     function handle_settings_changed(event: MessageEvent<string>): void {
@@ -1091,6 +1313,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       const reason = String(payload.source ?? "project_change");
 
       if (change_event === null) {
+        runtime_refresh_scheduler.flush();
         if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
           return;
         }
@@ -1109,6 +1332,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
           bump_workbench_runtime_signal({
             reason,
             scope: "global",
+            mode: "full",
+            updated_sections,
+            item_ids: [],
           });
         }
 
@@ -1130,6 +1356,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
       const invalidated_sections = collect_project_change_invalidated_sections(change_event);
       if (invalidated_sections.length > 0) {
+        runtime_refresh_scheduler.flush();
         if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
           return;
         }
@@ -1156,7 +1383,21 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return;
       }
 
-      apply_runtime_project_change(change_event);
+      const ids_only_item_ids = collect_project_change_ids_only_item_ids(change_event);
+      if (ids_only_item_ids.length > 0) {
+        if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
+          return;
+        }
+
+        runtime_refresh_scheduler.enqueue_project_items_read({
+          source: reason,
+          projectRevision: change_event.projectRevision,
+          itemIds: ids_only_item_ids,
+        });
+        return;
+      }
+
+      runtime_refresh_scheduler.enqueue_project_change(change_event);
     }
 
     async function attach_event_stream(): Promise<void> {
@@ -1188,18 +1429,25 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     return () => {
       cancelled = true;
+      if (runtime_refresh_scheduler_ref.current === runtime_refresh_scheduler) {
+        runtime_refresh_scheduler_ref.current = null;
+      }
+      runtime_refresh_scheduler.dispose();
       event_source?.close();
     };
   }, [
     apply_settings_snapshot,
+    apply_runtime_project_change_batch,
     apply_runtime_project_change,
     bump_proofreading_runtime_signal,
     bump_workbench_runtime_signal,
     project_snapshot.loaded,
     project_snapshot.path,
+    read_project_items_by_ids,
     refresh_settings,
     refresh_project_runtime,
     refresh_task,
+    should_apply_runtime_project_change,
   ]);
 
   const context_value = useMemo<DesktopRuntimeContextValue>(() => {

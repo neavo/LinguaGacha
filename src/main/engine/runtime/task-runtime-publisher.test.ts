@@ -37,7 +37,7 @@ describe("TaskRuntimePublisher", () => {
     ]);
   });
 
-  it("request_in_flight_count-only 变化最多按 250ms 发布一次", async () => {
+  it("request_in_flight_count-only 变化最多按 500ms 发布一次", async () => {
     vi.useFakeTimers();
     const published_events: Array<{ event_type: string; payload: MutableJsonRecord }> = [];
     const runtime_state = new TaskRuntimeState();

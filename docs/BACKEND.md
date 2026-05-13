@@ -33,7 +33,7 @@
 project -> files -> items -> quality -> prompts -> analysis -> proofreading
 ```
 
-`/api/project/manifest` 只返回项目快照、项目 revision、section revision 和轻量索引，不预热大 section。`/api/project/read-sections` 按需返回与 `ProjectStore` 同口径的 section payload；读取 `quality`、`prompts`、`project`、`proofreading` 不能隐式扫描完整 items。`/api/project/items/read-by-ids` 只返回指定 item id 的公开行。
+`/api/project/manifest` 只返回项目快照、项目 revision、section revision 和轻量索引，不预热大 section。`/api/project/read-sections` 按需返回与 `ProjectStore` 同口径的 section payload；读取 `quality`、`prompts`、`project`、`proofreading` 不能隐式扫描完整 items。`/api/project/items/read-by-ids` 只读取指定 item id 的公开行，并随响应返回当前 `projectRevision` 与 `sectionRevisions`，供 renderer 丢弃过期补读结果。
 
 新增、删除或重排项目数据 section 时，必须同时更新：
 
@@ -63,7 +63,8 @@ flowchart LR
 - `project` section 只表达工程加载态和路径；项目设置 meta 不进入 `ProjectStore.project`，settings-only 对齐只写 meta 和返回 ack，不发布不可消费的 project data 事件。
 - `CoreEventHub` 是公开运行期事件总线，只广播领域层已经写好的公开事件，不再把 SSE topic 反向投影为内部状态。
 - `TaskRuntimePublisher` 是任务运行态公开事件唯一出口；它先写 `TaskRuntimeState`，再构建完整 `TaskSnapshot` 并发布 `task.snapshot_changed`。
-- 任务生命周期状态和进度提交必须立即发布完整 snapshot；任务启动时也必须先把本轮初始进度写入 `.lg` meta，再发布首个进度 snapshot。仅 `request_in_flight_count` 这类请求压力展示允许在后端按 250ms 窗口合并，终态 snapshot 发布前必须先冲刷 pending 请求压力。
+- `/api/tasks/stop` 命中当前 run 时由 Engine 写入并发布 `stopping`；HTTP ack 只返回 `TaskRuntimeState` 当前完整 snapshot，不强制旧停止意图覆盖已发布终态。
+- 任务生命周期状态必须立即发布完整 snapshot；worker 结果经 `TaskPipeline` 的 500ms 提交窗口写入项目事实，提交完成后立即发布进度 snapshot。任务启动时也必须先把本轮初始进度写入 `.lg` meta，再发布首个进度 snapshot。仅 `request_in_flight_count` 这类请求压力展示允许在后端按 500ms 窗口合并，终态 snapshot 发布前必须先冲刷 pending 请求压力。
 - `ProjectRuntimeProjectionService` 是 manifest、read-sections、项目变更事件和任务输入快照共享的无状态项目数据投影归宿，只从 `.lg` 与 meta 生成公开 block，不持有长期缓存。
 - 事件 topic、payload mode、section 集合或 ack 语义变化，都必须同步 `src/renderer/app/desktop/desktop-runtime-context.tsx` 与相关测试。
 

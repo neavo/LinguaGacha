@@ -193,6 +193,8 @@ export class ProjectRuntimeProjectionService {
     project_path: string,
     item_ids: number[],
   ): ProjectRuntimeProjectionMutableRecord {
+    const meta = this.get_all_meta(project_path);
+    const section_revisions = this.build_section_revisions(meta);
     const upsert: ProjectRuntimeProjectionMutableRecord = {};
     const found_ids = new Set<number>();
     for (const record of this.build_item_records_by_ids(project_path, item_ids)) {
@@ -206,7 +208,9 @@ export class ProjectRuntimeProjectionService {
     return {
       items: upsert,
       missingIds: item_ids.filter((item_id) => !found_ids.has(item_id)) as unknown as ApiJsonValue,
-      itemRevision: this.get_runtime_section_revision(this.get_all_meta(project_path), "items"),
+      projectRevision: Math.max(...Object.values(section_revisions), 0),
+      sectionRevisions: section_revisions as unknown as ApiJsonValue,
+      itemRevision: section_revisions.items,
     };
   }
 

@@ -27,6 +27,7 @@ export const zh_cn_project_page = {
     recent_title: "最近打开",
     empty: "暂无最近打开的工程",
     ready_status: "项目已就绪",
+    preview_loading_toast: "正在读取工程预览 …",
     loading_toast: "正在加载工程 …",
     preview_unavailable: "读取工程预览失败：{ERROR}",
     preview_unavailable_generic: "读取工程预览失败",

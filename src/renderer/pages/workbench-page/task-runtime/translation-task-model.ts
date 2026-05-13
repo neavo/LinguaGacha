@@ -138,12 +138,16 @@ export function resolve_translation_task_display_snapshot(args: {
     return args.current_snapshot;
   }
 
-  if (has_translation_task_progress(args.last_snapshot)) {
-    return args.last_snapshot;
-  }
-
   if (has_translation_task_progress(args.current_snapshot)) {
     return args.current_snapshot;
+  }
+
+  if (
+    args.last_snapshot !== null &&
+    !is_active_translation_task_status(args.last_snapshot.status) &&
+    has_translation_task_progress(args.last_snapshot)
+  ) {
+    return args.last_snapshot;
   }
 
   return null;

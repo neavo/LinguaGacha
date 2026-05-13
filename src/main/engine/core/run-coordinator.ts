@@ -22,13 +22,14 @@ export class RunCoordinator {
   }
 
   /**
-   * 停止请求先切断 run signal，再同步公开运行态为 stopping
+   * 停止请求先切断 run signal，再同步公开运行态为 stopping；返回 false 表示未命中当前 run
    */
-  public async request_stop(task_type: TaskType): Promise<void> {
+  public async request_stop(task_type: TaskType): Promise<boolean> {
     if (!this.run_lock.request_stop(task_type)) {
-      return;
+      return false;
     }
     await this.runtime_publisher.publish_status(task_type, "stopping", true);
+    return true;
   }
 
   /**

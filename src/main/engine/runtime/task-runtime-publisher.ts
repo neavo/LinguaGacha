@@ -5,7 +5,7 @@ import { TaskSnapshotBuilder } from "./task-snapshot-builder";
 import type { TaskRunStatus, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
 import type { TranslationScope } from "../protocol/task-types";
 
-export const TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 250; // 请求压力展示保持每秒 4 帧，任务事实仍立即发布
+export const TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500; // 请求压力展示保持每秒 2 帧，任务事实仍立即发布
 
 /**
  * 任务运行态公开事件唯一出口，负责写状态、构建完整快照并发布 SSE
@@ -17,7 +17,7 @@ export class TaskRuntimePublisher {
 
   private readonly snapshot_builder: TaskSnapshotBuilder; // snapshot_builder 统一从运行态和 `.lg` 事实构建公开 task
 
-  private request_pressure_timer: ReturnType<typeof setTimeout> | null = null; // 仅请求压力允许后端 250ms 合并
+  private request_pressure_timer: ReturnType<typeof setTimeout> | null = null; // 仅请求压力允许后端 500ms 合并
 
   private pending_request_pressure_task_type: TaskType | null = null; // pending task_type 决定合并窗口最终发布哪类 snapshot
 
@@ -55,14 +55,6 @@ export class TaskRuntimePublisher {
   }
 
   /**
-   * 停止命令立即进入 stopping，并发布完整快照
-   */
-  public async mark_stopping(task_type: TaskType): Promise<void> {
-    this.runtime_state.mark_stopping(task_type);
-    await this.publish_snapshot(task_type);
-  }
-
-  /**
    * 命令失败时恢复前置快照，并用完整快照覆盖已发布的乐观态
    */
   public async restore(snapshot: TaskRuntimeStatePayload): Promise<void> {
@@ -95,7 +87,7 @@ export class TaskRuntimePublisher {
   }
 
   /**
-   * request_in_flight_count-only 变化只做 250ms 合并发布
+   * request_in_flight_count-only 变化只做 500ms 合并发布
    */
   public publish_request_pressure(task_type: TaskType, count: number): void {
     this.runtime_state.set_request_in_flight_count(task_type, count);

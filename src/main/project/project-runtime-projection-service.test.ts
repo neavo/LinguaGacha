@@ -68,6 +68,57 @@ describe("ProjectRuntimeProjectionService", () => {
     });
   });
 
+  it("按 id 读取 item 时返回项目和 section revision", () => {
+    const execute = vi.fn((operation: DatabaseOperation) => {
+      if (operation.name === "getAllMeta") {
+        return {
+          "project_runtime_revision.items": 7,
+          "project_runtime_revision.files": 3,
+          "proofreading_revision.proofreading": 5,
+        };
+      }
+      if (operation.name === "getItemsByIds") {
+        return [
+          {
+            id: 2,
+            file_path: "chapter02.txt",
+            row: 1,
+            src: "foo",
+            dst: "bar",
+          },
+        ];
+      }
+      if (operation.name === "getAllItems") {
+        throw new Error("不应读取完整 items");
+      }
+      return null;
+    });
+    const service = new ProjectRuntimeProjectionService(create_database_stub(execute));
+
+    const payload = service.build_item_record_map_by_ids("E:/demo/demo.lg", [2, 3]);
+
+    expect(payload).toMatchObject({
+      items: {
+        "2": {
+          item_id: 2,
+          file_path: "chapter02.txt",
+        },
+      },
+      missingIds: [3],
+      projectRevision: 7,
+      sectionRevisions: {
+        items: 7,
+        files: 3,
+        proofreading: 5,
+      },
+      itemRevision: 7,
+    });
+    expect(execute).toHaveBeenCalledWith({
+      name: "getItemsByIds",
+      args: { projectPath: "E:/demo/demo.lg", itemIds: [2, 3] },
+    });
+  });
+
   function create_database_stub(
     execute: (operation: DatabaseOperation) => unknown,
   ): ProjectDatabase {

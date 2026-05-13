@@ -1,6 +1,6 @@
 import type { TaskPipelineWorkerResult } from "./engine-options";
 
-export const TASK_PIPELINE_COMMIT_INTERVAL_MS = 250; // worker 结果提交窗口固定为每秒 4 次，避免高频写库
+export const TASK_PIPELINE_COMMIT_INTERVAL_MS = 500; // worker 结果提交窗口固定为每秒 2 次，避免高频写库
 
 interface TaskPipelineOptions<TContext, TCommit> {
   worker_count: number;
@@ -120,7 +120,7 @@ export class TaskPipeline<TContext, TCommit> {
   }
 
   /**
-   * work unit 结果进入提交队列后启动 250ms 聚合窗口
+   * work unit 结果进入提交队列后启动 500ms 聚合窗口
    */
   private push_commit_entries(entries: TCommit[]): void {
     this.commit_queue.push(...entries);

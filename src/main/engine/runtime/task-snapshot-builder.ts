@@ -64,7 +64,7 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 命令回执要立即覆盖用户操作意图，不能等下一帧 SSE 才改变按钮态
+   * 启动命令回执要立即覆盖用户操作意图，不能等下一帧 SSE 才改变按钮态
    */
   public async build_command_ack(
     task_type: TaskType,

@@ -24,9 +24,9 @@ import {
 export class TaskService {
   private readonly task_engine: TaskEngine; // task_engine 是后台任务生命周期、调度和停止的唯一执行权威
 
-  private readonly snapshot_builder: TaskSnapshotBuilder; // snapshot_builder 是公开任务快照唯一组装口径，命令回执也复用它
+  private readonly snapshot_builder: TaskSnapshotBuilder; // snapshot_builder 是公开任务快照唯一组装口径，启动回执也复用它
 
-  private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 是命令受理后发布完整快照的唯一出口
+  private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 是启动乐观态与失败回滚的唯一出口
 
   private readonly session_state: ProjectSessionState; // session_state 决定重翻 revision 校验是否能定位当前工程
 
@@ -80,12 +80,11 @@ export class TaskService {
   }
 
   /**
-   * 停止任务；公开层只表达 stopping 意图，不等待 Engine 终态
+   * 停止任务；回包必须读取当前真实 snapshot，避免 HTTP 晚于终态 SSE 时回写旧 stopping
    */
   public async stop_task(request: JsonRecord): Promise<MutableJsonRecord> {
     const command = this.normalize_stop_command(request);
     const previous_state = this.task_runtime_publisher.snapshot_state();
-    await this.task_runtime_publisher.mark_stopping(command.task_type);
     try {
       await this.task_engine.stop(command);
     } catch (error) {
@@ -94,11 +93,9 @@ export class TaskService {
     }
     return {
       accepted: true,
-      task: (await this.snapshot_builder.build_command_ack(
-        command.task_type,
-        "stopping",
-        true,
-      )) as unknown as ApiJsonValue,
+      task: (await this.snapshot_builder.build_task_snapshot({
+        task_type: command.task_type,
+      })) as unknown as ApiJsonValue,
     };
   }
 
