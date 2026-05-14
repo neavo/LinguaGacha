@@ -196,7 +196,7 @@ describe("ModelService 配置管理", () => {
   it("未知模型类型不能新增自定义模型", async () => {
     const { service } = await create_model_service([]);
 
-    await expect(service.add_model({ model_type: "PRESET" })).rejects.toThrow("unknown model type");
+    await expect(service.add_model({ model_type: "PRESET" })).rejects.toThrow("模型类型无效");
   });
 
   it("删除激活模型时优先回退到同类型模型", async () => {
@@ -272,9 +272,9 @@ describe("ModelService 配置管理", () => {
     ]);
 
     await expect(service.delete_model({ model_id: "preset" })).rejects.toThrow(
-      "preset model cannot be deleted",
+      "内置预设模型不能删除",
     );
-    await expect(service.delete_model({ model_id: "missing" })).rejects.toThrow("model not found");
+    await expect(service.delete_model({ model_id: "missing" })).rejects.toThrow("模型配置不存在");
   });
 
   it("更新模型只应用白名单字段并重建快照", async () => {
@@ -312,10 +312,10 @@ describe("ModelService 配置管理", () => {
 
     await expect(
       service.update_model({ model_id: "missing", patch: { name: "updated-name" } }),
-    ).rejects.toThrow("model not found");
+    ).rejects.toThrow("模型配置不存在");
     await expect(
       service.update_model({ model_id: "custom", patch: { forbidden: "value" } }),
-    ).rejects.toThrow("forbidden model patch key");
+    ).rejects.toThrow("模型配置包含不允许的字段");
   });
 
   it("重置预设模型时从内置预设重新读取目标条目", async () => {
@@ -349,10 +349,10 @@ describe("ModelService 配置管理", () => {
     ]);
 
     await expect(service.reset_preset_model({ model_id: "custom" })).rejects.toThrow(
-      "model is not preset",
+      "该模型不是内置预设",
     );
     await expect(service.reset_preset_model({ model_id: "preset" })).rejects.toThrow(
-      "preset model not found",
+      "模型配置不存在",
     );
   });
 
@@ -383,13 +383,13 @@ describe("ModelService 配置管理", () => {
     ]);
 
     await expect(service.reorder_model({ ordered_model_ids: [] })).rejects.toThrow(
-      "ordered_model_ids is empty",
+      "模型排序列表不能为空",
     );
     await expect(service.reorder_model({ ordered_model_ids: ["missing", "b"] })).rejects.toThrow(
-      "model not found",
+      "模型配置不存在",
     );
     await expect(service.reorder_model({ ordered_model_ids: ["b", "a"] })).rejects.toThrow(
-      "ordered_model_ids must match one model group exactly",
+      "模型排序必须完整覆盖同一分组",
     );
   });
 });
@@ -579,7 +579,7 @@ describe("ModelService 远端模型能力", () => {
       }),
       expect.objectContaining({
         error_reason: "请求超时（120 秒）",
-        masked_key: "bad-key",
+        masked_key: "*******",
         success: false,
       }),
     ]);
@@ -593,7 +593,7 @@ describe("ModelService 远端模型能力", () => {
       ["info", '模型回复内容：\n{"0":"成功"}'],
       ["info", "任务耗时 0.25 秒，输入消耗 2 Tokens，输出消耗 3 Tokens"],
       ["info", ""],
-      ["info", "正在测试密钥：\nbad-key"],
+      ["info", "正在测试密钥：\n*******"],
       [
         "info",
         "任务提示词：\n[{'role': 'system', 'content': '任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。'}, {'role': 'user', 'content': '{\"0\":\"魔導具師ダリヤはうつむかない\"}'}]",
@@ -601,7 +601,7 @@ describe("ModelService 远端模型能力", () => {
       ["warning", "接口测试失败 …\n原因：请求超时（120 秒）"],
       ["info", ""],
       ["info", "共测试 2 个接口，成功 1 个，失败 1 个 …"],
-      ["warning", "失败的密钥：\nbad-key"],
+      ["warning", "失败的密钥：\n*******"],
     ]);
   });
 });

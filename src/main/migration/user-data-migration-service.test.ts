@@ -121,7 +121,7 @@ describe("UserDataMigrationService", () => {
       ),
     ).toBe("");
     expect(log_manager.warning_messages).toEqual([
-      "归一化默认预设值失败：glossary -> resource/not_glossary/demo.json",
+      "归一化默认预设值失败：glossary -> resource/not_glossary/demo.json …",
     ]);
     expect(log_manager.warning_payloads).toEqual([
       expect.objectContaining({ source: "migration" }),

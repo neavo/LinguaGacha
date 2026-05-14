@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import { app_error } from "../../api/app-error";
 import type { TaskType } from "../runtime/task-runtime-types";
 import type { TaskRunHandle } from "./engine-options";
 
@@ -20,7 +21,7 @@ export class TaskRunLock {
    */
   public begin(task_type: TaskType): TaskRunHandle {
     if (this.active_run !== null) {
-      throw new Error("已有后台任务正在运行。");
+      throw app_error("task_busy");
     }
     const abort_controller = new AbortController();
     const run_id = crypto.randomUUID();

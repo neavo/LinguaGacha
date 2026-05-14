@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { app_error } from "../api/app-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -71,7 +72,7 @@ export class FileExportService {
     const config = this.setting_service.load_setting();
     const suffix = String(request["suffix"] ?? "");
     if (suffix !== "_S2T" && suffix !== "_T2S") {
-      throw new Error("导出后缀无效。");
+      throw app_error("validation_failed", "导出后缀无效。");
     }
     const converted_items = Array.isArray(request["items"])
       ? request["items"].filter(
@@ -80,7 +81,7 @@ export class FileExportService {
         )
       : [];
     if (converted_items.length === 0) {
-      throw new Error("没有可导出的数据。");
+      throw app_error("validation_failed", "没有可导出的数据。");
     }
     const converted_by_id = new Map<number, JsonRecord>();
     for (const item of converted_items) {
@@ -235,7 +236,7 @@ export class FileExportService {
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载。");
+      throw app_error("project_not_loaded");
     }
     return state.projectPath;
   }
@@ -287,20 +288,26 @@ export class FileExportService {
    * 底层写文件失败时先记录文件写入错误，再让公开导出入口记录导出失败
    */
   private log_write_failed(config: SettingRecord, error: unknown): void {
-    this.log_manager?.error(this.export_log_text(config, "app.log.export_write_file_fail"), {
-      source: FILE_EXPORT_LOG_SOURCE,
-      ...this.error_log_payload(error),
-    });
+    this.log_manager?.error(
+      this.export_log_text(config, "app.diagnostic.file_export.write_file_failed"),
+      {
+        source: FILE_EXPORT_LOG_SOURCE,
+        ...this.error_log_payload(error),
+      },
+    );
   }
 
   /**
    * 导出失败日志输出终态提示，同时保留异常详情给日志文件
    */
   private log_export_failed(config: SettingRecord, error: unknown): void {
-    this.log_manager?.error(this.export_log_text(config, "app.log.export_translation_failed"), {
-      source: FILE_EXPORT_LOG_SOURCE,
-      ...this.error_log_payload(error),
-    });
+    this.log_manager?.error(
+      this.export_log_text(config, "app.diagnostic.file_export.translation_failed"),
+      {
+        source: FILE_EXPORT_LOG_SOURCE,
+        ...this.error_log_payload(error),
+      },
+    );
   }
 
   /**

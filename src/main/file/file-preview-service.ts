@@ -1,5 +1,7 @@
 import fs from "node:fs";
+import path from "node:path";
 
+import { app_error, is_app_error, type AppError } from "../api/app-error";
 import type { ApiJsonValue } from "../api/api-types";
 import { SettingService } from "../service/setting-service";
 import { FileFormatService } from "./file-format-service";
@@ -17,7 +19,7 @@ export class FilePreviewService {
   public constructor(private readonly setting_service: SettingService) {}
 
   /**
-   * 工作台单文件预解析允许部分失败，用户界面只展示成功解析的候选
+   * 工作台单文件预解析返回成功与失败清单，避免批量输入失败被静默吞掉
    */
   public async parse_workbench_file(request: JsonRecord): Promise<JsonRecord> {
     const source_paths = this.normalize_string_list(request["source_paths"]);
@@ -25,15 +27,25 @@ export class FilePreviewService {
       typeof request["current_rel_path"] === "string" ? request["current_rel_path"] : undefined;
     const format_service = this.create_format_service();
     const files: JsonRecord[] = [];
+    const failed_files: JsonRecord[] = [];
     for (const source_path of source_paths) {
       try {
         const parsed = await format_service.parse_file_preview(source_path, current_rel_path);
         files.push({ source_path, ...(parsed as unknown as JsonRecord) });
-      } catch {
-        // 批量预解析允许单个文件失败，调用方只消费成功项
+      } catch (error) {
+        const preview_error = this.normalize_preview_error(error);
+        failed_files.push({
+          source_path,
+          filename: path.basename(source_path),
+          code: preview_error.code,
+          safe_message: preview_error.safe_message,
+        });
       }
     }
-    return { files: files as unknown as ApiJsonValue };
+    return {
+      files: files as unknown as ApiJsonValue,
+      failed_files: failed_files as unknown as ApiJsonValue,
+    };
   }
 
   /**
@@ -103,5 +115,18 @@ export class FilePreviewService {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
       : [];
+  }
+
+  /**
+   * 单文件失败只暴露稳定 code 和安全文案，原始异常留给 Gateway 日志
+   */
+  private normalize_preview_error(error: unknown): AppError {
+    if (is_app_error(error)) {
+      return error;
+    }
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+      return app_error("file_not_found", undefined, undefined, error);
+    }
+    return app_error("file_io_failed", undefined, undefined, error);
   }
 }

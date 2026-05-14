@@ -6,8 +6,10 @@
 
 - `src/main/api/api-gateway-server.ts` 是 Electron 运行态公开 `/api/*` 协议的唯一注册点。
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
-- 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message } }`。
-- 稳定错误码只包含 `not_found`、`invalid_request`、`internal_error`；新增错误码必须同步前端错误分支和本文。
+- 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message, safe_message, message_key, request_id, details?, action? } }`。
+- `src/main/api/app-error.ts` 是公开错误 code、HTTP status、默认安全文案、日志分级和安全 details 的唯一模型；Gateway 只把 `AppError` 映射为预期 4xx / 409 / 423 / 502，裸异常统一归入 `internal_invariant` 或按边界规则收窄。
+- 稳定错误码按维护语义分组：请求与路由为 `validation_failed`、`route_not_found`；项目和文件为 `project_not_loaded`、`project_not_found`、`file_not_found`、`unsupported_file_format`、`file_io_failed`；并发和数据一致性为 `revision_conflict`、`task_busy`、`database_conflict`；模型、worker 和运行时能力为 `model_not_found`、`model_provider_failed`、`worker_failed`、`runtime_capability_missing`、`internal_invariant`。
+- `safe_message` 和 `message_key` 只表达可展示文案；`details` 只允许安全 JSON 字段，内部 stack、完整敏感路径、API key、Authorization header、provider 原始响应和 cause 只能进入日志。
 - 公开 SSE frame 必须使用严格 JSON 序列化，不能手写拼接多行 `data` 负载。
 
 | 路径 | 语义 | 维护边界 |

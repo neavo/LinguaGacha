@@ -138,7 +138,7 @@ export class UserDataMigrationService {
       );
     } catch (error) {
       this.log_warning(
-        t_main_log("app.log.default_preset_config_normalize_failed", {
+        t_main_log("app.diagnostic.default_preset.config_normalize_failed", {
           CONFIG_PATH: config_path,
         }),
         error,
@@ -193,7 +193,7 @@ export class UserDataMigrationService {
     const file_name = path.basename(value);
     if (!file_name.toLowerCase().endsWith(QUALITY_RULE_PRESET_EXTENSION)) {
       this.log_warning(
-        t_main_log("app.log.default_preset_value_normalize_failed", {
+        t_main_log("app.diagnostic.default_preset.value_normalize_failed", {
           PRESET_DIRECTORY: preset_directory,
           VALUE: value,
         }),
@@ -209,7 +209,7 @@ export class UserDataMigrationService {
     );
     if (resolved_source === null) {
       this.log_warning(
-        t_main_log("app.log.default_preset_value_normalize_failed", {
+        t_main_log("app.diagnostic.default_preset.value_normalize_failed", {
           PRESET_DIRECTORY: preset_directory,
           VALUE: value,
         }),
@@ -337,7 +337,7 @@ export class UserDataMigrationService {
       }
     } catch (error) {
       this.log_warning(
-        t_main_log("app.log.migration_path_failed", {
+        t_main_log("app.diagnostic.migration.path_failed", {
           SOURCE_PATH: source_path,
           DESTINATION_PATH: destination_path,
         }),

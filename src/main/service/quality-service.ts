@@ -4,6 +4,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import type { Row } from "exceljs";
 
+import { app_error } from "../api/app-error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
@@ -160,7 +161,9 @@ export class QualityService {
     );
     const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
     if (!Array.isArray(data)) {
-      throw new Error(`invalid quality preset payload: ${preset_path}`);
+      throw app_error("validation_failed", "质量规则预设载荷无效。", {
+        filename: path.basename(preset_path),
+      });
     }
     return { entries: data as unknown as ApiJsonValue };
   }
@@ -193,7 +196,7 @@ export class QualityService {
       ".json",
     );
     if (source !== "user") {
-      throw new Error("builtin preset cannot be renamed");
+      throw app_error("validation_failed", "内置预设不能重命名。");
     }
     const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     const new_file_name = `${this.normalize_preset_name(String(request["new_name"] ?? ""))}.json`;
@@ -211,7 +214,7 @@ export class QualityService {
       ".json",
     );
     if (source !== "user") {
-      throw new Error("builtin preset cannot be deleted");
+      throw app_error("validation_failed", "内置预设不能删除。");
     }
     const file_path = path.join(
       this.paths.get_quality_rule_user_preset_dir(preset_directory),
@@ -366,7 +369,7 @@ export class QualityService {
       ".txt",
     );
     if (source !== "user") {
-      throw new Error("builtin preset cannot be renamed");
+      throw app_error("validation_failed", "内置预设不能重命名。");
     }
     const directory = this.paths.get_prompt_user_preset_dir(task_type);
     const new_file_name = `${this.normalize_preset_name(String(request["new_name"] ?? ""))}.txt`;
@@ -384,7 +387,7 @@ export class QualityService {
       ".txt",
     );
     if (source !== "user") {
-      throw new Error("builtin preset cannot be deleted");
+      throw app_error("validation_failed", "内置预设不能删除。");
     }
     const file_path = path.join(this.paths.get_prompt_user_preset_dir(task_type), file_name);
     fs.rmSync(file_path);
@@ -397,7 +400,7 @@ export class QualityService {
   private async require_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载");
+      throw app_error("project_not_loaded");
     }
     return state.projectPath;
   }
@@ -498,9 +501,10 @@ export class QualityService {
     label: string,
   ): void {
     if (current_revision !== expected_revision) {
-      throw new Error(
-        `${label}：当前=${current_revision.toString()}，期望=${expected_revision.toString()}`,
-      );
+      throw app_error("revision_conflict", `${label}。`, {
+        current_revision,
+        expected_revision,
+      });
     }
   }
 
@@ -767,12 +771,12 @@ export class QualityService {
   ): { source: "builtin" | "user"; file_name: string } {
     const parts = virtual_id.split(":");
     if (parts.length !== 2 && !(extension === ".json" && parts.length === 3)) {
-      throw new Error(`invalid virtual preset id: ${virtual_id}`);
+      throw app_error("validation_failed", "预设 ID 无效。");
     }
     const source = parts[0];
     const file_name = parts.at(-1) ?? "";
     if (source !== "builtin" && source !== "user") {
-      throw new Error(`invalid virtual preset id: ${virtual_id}`);
+      throw app_error("validation_failed", "预设 ID 无效。");
     }
     this.ensure_preset_file_name(file_name, extension);
     return { source, file_name };
@@ -790,7 +794,7 @@ export class QualityService {
       path.win32.isAbsolute(file_name) ||
       path.posix.isAbsolute(file_name);
     if (file_name === "" || has_path_boundary || !file_name.toLowerCase().endsWith(extension)) {
-      throw new Error(`invalid virtual preset id: ${file_name}`);
+      throw app_error("validation_failed", "预设文件名无效。");
     }
   }
 
@@ -800,7 +804,7 @@ export class QualityService {
   private normalize_preset_name(name: string): string {
     const normalized_name = name.trim();
     if (normalized_name === "") {
-      throw new Error("preset name is empty");
+      throw app_error("validation_failed", "预设名称不能为空。");
     }
     return normalized_name;
   }

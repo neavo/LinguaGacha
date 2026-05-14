@@ -385,7 +385,7 @@ describe("ProjectSyncMutationService", () => {
         translation_extras: {},
         expected_section_revisions: { items: 1 },
       }),
-    ).rejects.toThrow("items section revision 冲突");
+    ).rejects.toThrow("数据版本已变化，请刷新后重试");
     database.close();
   });
 });

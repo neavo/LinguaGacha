@@ -79,7 +79,7 @@ export class CoreLifecycleManager {
       return gateway_start_result;
     } catch (error) {
       write_lifecycle_error(
-        t_main_log("app.log.core_gateway_start_failed", {
+        t_main_log("app.diagnostic.lifecycle.core_gateway_start_failed", {
           ERROR: error instanceof Error ? error.message : String(error),
         }),
       );

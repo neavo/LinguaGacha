@@ -131,6 +131,41 @@ describe("PromptBuilder", () => {
     expect(result).not.toContain("Hungrarian");
   });
 
+  it("中文提示词中西班牙文复用共享语言名称", async () => {
+    const app_root = await create_template_root();
+    const builder = new PromptBuilder(
+      app_root,
+      {
+        app_language: "ZH",
+        source_language: "ES",
+        target_language: "ZH",
+      },
+      create_quality_snapshot(),
+    );
+
+    const result = await builder.build_main();
+
+    expect(result).toContain("请从 西班牙文 翻译到 中文");
+    expect(result).not.toContain("请从 西班牙 翻译到 中文");
+  });
+
+  it("源语言无效时回退为提示词语言的源文本占位", async () => {
+    const app_root = await create_template_root();
+    const builder = new PromptBuilder(
+      app_root,
+      {
+        app_language: "EN",
+        source_language: "INVALID",
+        target_language: "ZH",
+      },
+      create_quality_snapshot(),
+    );
+
+    const result = await builder.build_main();
+
+    expect(result).toContain("Translate from Source to Chinese.");
+  });
+
   it("启用自定义翻译提示词时仍拼接前后缀和 thinking 段", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(

@@ -1,5 +1,6 @@
 import type { ProjectPrefilterRunnerSettings } from "@/project/prefilter/prefilter-runner";
 import type { LocaleKey } from "@/app/locale/locale-provider";
+import { get_language_label_key, normalize_language_code } from "@base/setting";
 
 type Translate = (key: LocaleKey) => string;
 
@@ -10,32 +11,14 @@ export type ProjectSettingsAlignmentChangedFields = Partial<{
   skip_duplicate_source_text_enable: boolean;
 }>;
 
-const LANGUAGE_LABEL_KEY_BY_LANGUAGE: Record<string, LocaleKey> = {
-  ALL: "app.project_settings_alignment.language.ALL",
-  ZH: "app.project_settings_alignment.language.ZH",
-  EN: "app.project_settings_alignment.language.EN",
-  JA: "app.project_settings_alignment.language.JA",
-  KO: "app.project_settings_alignment.language.KO",
-  RU: "app.project_settings_alignment.language.RU",
-  AR: "app.project_settings_alignment.language.AR",
-  DE: "app.project_settings_alignment.language.DE",
-  FR: "app.project_settings_alignment.language.FR",
-  PL: "app.project_settings_alignment.language.PL",
-  ES: "app.project_settings_alignment.language.ES",
-  IT: "app.project_settings_alignment.language.IT",
-  PT: "app.project_settings_alignment.language.PT",
-  HU: "app.project_settings_alignment.language.HU",
-  TR: "app.project_settings_alignment.language.TR",
-  TH: "app.project_settings_alignment.language.TH",
-  ID: "app.project_settings_alignment.language.ID",
-  VI: "app.project_settings_alignment.language.VI",
-};
-
 function format_language_label(language: string, t: Translate): string {
   const normalized_language = language.trim().toUpperCase();
-  const language_key =
-    LANGUAGE_LABEL_KEY_BY_LANGUAGE[normalized_language] ??
-    (`app.language.${normalized_language}` as LocaleKey);
+  const language_code = normalize_language_code(normalized_language);
+  if (language_code === null) {
+    return normalized_language;
+  }
+
+  const language_key = get_language_label_key(language_code);
   const language_label = t(language_key);
   if (language_label === language_key) {
     return normalized_language;

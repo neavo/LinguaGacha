@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import { app_error } from "../api/app-error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
@@ -29,7 +30,7 @@ export class ProjectResetPreviewService {
   public async preview_translation_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
     if (mode !== "all") {
-      throw new Error("translation reset preview 仅支持 mode=all");
+      throw app_error("validation_failed", "translation reset preview 仅支持 mode=all。");
     }
     const project_path = await this.require_idle_project_path();
     const asset_records = this.get_asset_records(project_path);
@@ -82,7 +83,7 @@ export class ProjectResetPreviewService {
   public async preview_analysis_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
     if (mode !== "failed") {
-      throw new Error("analysis reset preview 仅支持 mode=failed");
+      throw app_error("validation_failed", "analysis reset preview 仅支持 mode=failed。");
     }
     const project_path = await this.require_idle_project_path();
     const checkpoints = this.get_analysis_checkpoints(project_path);
@@ -118,10 +119,10 @@ export class ProjectResetPreviewService {
   private async require_idle_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载");
+      throw app_error("project_not_loaded");
     }
     if (this.task_runtime_state.snapshot().busy) {
-      throw new Error("任务正在执行中 …");
+      throw app_error("task_busy");
     }
     return state.projectPath;
   }

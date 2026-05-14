@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { app_error } from "../api/app-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
@@ -373,7 +374,7 @@ export class ProjectLifecycleService {
         loaded_names.push(spec.display_name);
       } catch (error) {
         this.log_non_blocking_project_lifecycle_warning(
-          t_main_log("app.log.default_preset_quality_rule_load_failed"),
+          t_main_log("app.diagnostic.default_preset.quality_rule_load_failed"),
           error,
           {
             preset_directory: spec.preset_directory,
@@ -404,7 +405,7 @@ export class ProjectLifecycleService {
         loaded_names.push(spec.display_name);
       } catch (error) {
         this.log_non_blocking_project_lifecycle_warning(
-          t_main_log("app.log.default_preset_prompt_load_failed"),
+          t_main_log("app.diagnostic.default_preset.prompt_load_failed"),
           error,
           {
             task_type: spec.task_type,
@@ -427,7 +428,9 @@ export class ProjectLifecycleService {
     const preset_path = this.resolve_quality_rule_preset_path(preset_directory, virtual_id);
     const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
     if (!Array.isArray(data)) {
-      throw new Error(`质量规则预设载荷无效：${preset_path}`);
+      throw app_error("validation_failed", "质量规则预设载荷无效。", {
+        filename: path.basename(preset_path),
+      });
     }
     return data.filter((entry): entry is MutableJsonRecord => this.is_record(entry));
   }
@@ -479,12 +482,12 @@ export class ProjectLifecycleService {
   ): { source: "builtin" | "user"; file_name: string } {
     const parts = virtual_id.split(":");
     if (parts.length !== 2 && !(extension === ".json" && parts.length === 3)) {
-      throw new Error(`预设虚拟 ID 无效：${virtual_id}`);
+      throw app_error("validation_failed", "预设 ID 无效。");
     }
     const source = parts[0];
     const file_name = parts.at(-1) ?? "";
     if (source !== "builtin" && source !== "user") {
-      throw new Error(`预设来源无效：${virtual_id}`);
+      throw app_error("validation_failed", "预设来源无效。");
     }
     this.ensure_preset_file_name(file_name, extension);
     return { source, file_name };
@@ -502,7 +505,7 @@ export class ProjectLifecycleService {
       path.win32.isAbsolute(file_name) ||
       path.posix.isAbsolute(file_name);
     if (file_name === "" || has_path_boundary || !file_name.toLowerCase().endsWith(extension)) {
-      throw new Error(`预设文件名无效：${file_name}`);
+      throw app_error("validation_failed", "预设文件名无效。");
     }
   }
 
@@ -840,19 +843,17 @@ export class ProjectLifecycleService {
   private require_body_string(body: Record<string, ApiJsonValue>, key: string): string {
     const value = body[key];
     if (typeof value !== "string" || value.trim() === "") {
-      throw new Error(`请求字段 ${key} 必须是非空字符串。`);
+      throw app_error("validation_failed", `请求字段 ${key} 必须是非空字符串。`);
     }
     return value;
   }
 
   /**
-   * 打开既有工程前必须先确认文件存在，缺失时映射为 not_found
+   * 打开既有工程前必须先确认文件存在，缺失时映射为 project_not_found
    */
   private assert_project_file_exists(project_path: string): void {
     if (!fs.existsSync(project_path)) {
-      const error = new Error(`工程文件不存在：${project_path}`) as Error & { code: string };
-      error.code = "ENOENT";
-      throw error;
+      throw app_error("project_not_found", undefined, { filename: path.basename(project_path) });
     }
   }
 

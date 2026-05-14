@@ -94,10 +94,10 @@ describe("useDesktopToast", () => {
   it("普通通知会保留消息里的显式换行", async () => {
     await render_probe();
 
-    read_toast_api().push_toast("info", "已按当前设置更新项目设置 …\n输入语言 - 日语");
+    read_toast_api().push_toast("info", "已按当前设置更新项目设置 …\n输入语言 - 日文");
 
     expect(sonner_mock.toast.info).toHaveBeenCalledWith(
-      "已按当前设置更新项目设置 …\n输入语言 - 日语",
+      "已按当前设置更新项目设置 …\n输入语言 - 日文",
     );
   });
 

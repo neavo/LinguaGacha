@@ -4,8 +4,13 @@ import {
   ALL_LANGUAGE_CODE,
   CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE,
   LANGUAGE_DEFINITIONS,
+  LANGUAGE_DISPLAY_NAMES,
   SOURCE_TARGET_LANGUAGE_CODES,
   all_language_characters,
+  get_language_display_name,
+  get_language_label_key,
+  get_prompt_source_language_name,
+  get_prompt_target_language_name,
   has_language_character,
   has_any_hangul_character,
   has_any_hiragana_character,
@@ -28,6 +33,25 @@ describe("languages", () => {
     expect(Object.keys(LANGUAGE_DEFINITIONS).sort()).toEqual(
       [ALL_LANGUAGE_CODE, ...SOURCE_TARGET_LANGUAGE_CODES].sort(),
     );
+    expect(Object.keys(LANGUAGE_DISPLAY_NAMES).sort()).toEqual(
+      [ALL_LANGUAGE_CODE, ...SOURCE_TARGET_LANGUAGE_CODES].sort(),
+    );
+  });
+
+  it("集中维护统一语言名称与 i18n key", () => {
+    expect(get_language_display_name("ZH", "zh")).toBe("中文");
+    expect(get_language_display_name("JA", "zh")).toBe("日文");
+    expect(get_language_display_name("ES", "zh")).toBe("西班牙文");
+    expect(get_language_display_name("ZH", "en")).toBe("Chinese");
+    expect(get_language_label_key("JA")).toBe("app.language.JA");
+  });
+
+  it("提示词语言名对 ALL 和非法目标语言执行专用规则", () => {
+    expect(get_prompt_source_language_name("ALL", "zh")).toBe("原文");
+    expect(get_prompt_source_language_name(null, "en")).toBe("Source");
+    expect(get_prompt_target_language_name("ZH", "zh")).toBe("中文");
+    expect(() => get_prompt_target_language_name("ALL", "zh")).toThrow("target_language");
+    expect(() => get_prompt_target_language_name(null, "zh")).toThrow("invalid target_language");
   });
 
   it("按历史语言规则口径归一化语言代码", () => {

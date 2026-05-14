@@ -31,7 +31,7 @@ function create_setting_service(): SettingService {
 }
 
 describe("FilePreviewService", () => {
-  it("工作台预解析只返回成功解析的文件", async () => {
+  it("工作台预解析返回成功文件和结构化失败文件", async () => {
     const source_file = path.join(temp_dir, "script.txt");
     fs.writeFileSync(source_file, "原文", "utf-8");
     const service = new FilePreviewService(create_setting_service());
@@ -47,6 +47,14 @@ describe("FilePreviewService", () => {
           file_type: "TXT",
           target_rel_path: "script.txt",
         }),
+      ],
+      failed_files: [
+        {
+          source_path: path.join(temp_dir, "missing.bin"),
+          filename: "missing.bin",
+          code: "unsupported_file_format",
+          safe_message: "不支持的文件格式。",
+        },
       ],
     });
   });
@@ -76,6 +84,7 @@ describe("FilePreviewService", () => {
           ],
         },
       ],
+      failed_files: [],
     });
   });
 

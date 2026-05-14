@@ -796,7 +796,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       if (
         recent_project_name !== undefined &&
         error instanceof DesktopApiError &&
-        error.code === "not_found"
+        error.code === "project_not_found"
       ) {
         set_missing_recent_project({
           path: project_path,

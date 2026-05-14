@@ -31,6 +31,8 @@ export const SOURCE_TARGET_LANGUAGE_CODES = [
 export type SourceTargetLanguageCode = (typeof SOURCE_TARGET_LANGUAGE_CODES)[number];
 // LanguageCode 额外包含 ALL，用于表示关闭语言限制的配置值
 export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceTargetLanguageCode;
+export type LanguageDisplayLocale = "zh" | "en";
+export type LanguageLabelKey = `app.language.${LanguageCode}`;
 
 // 语言定义集中携带 CJK 标记和字符 matcher，调用方不直接读取范围常量
 export type LanguageDefinition = {
@@ -38,6 +40,125 @@ export type LanguageDefinition = {
   cjk: boolean;
   matches_character: CharacterMatcher | null;
 };
+
+// 语言名称与语言码同源维护，UI、提示词和日志都复用这一套“中文/日文”口径
+export const LANGUAGE_DISPLAY_NAMES: Record<
+  LanguageCode,
+  Readonly<Record<LanguageDisplayLocale, string>>
+> = {
+  ALL: {
+    zh: "全部",
+    en: "All",
+  },
+  ZH: {
+    zh: "中文",
+    en: "Chinese",
+  },
+  EN: {
+    zh: "英文",
+    en: "English",
+  },
+  JA: {
+    zh: "日文",
+    en: "Japanese",
+  },
+  KO: {
+    zh: "韩文",
+    en: "Korean",
+  },
+  RU: {
+    zh: "俄文",
+    en: "Russian",
+  },
+  AR: {
+    zh: "阿拉伯文",
+    en: "Arabic",
+  },
+  DE: {
+    zh: "德文",
+    en: "German",
+  },
+  FR: {
+    zh: "法文",
+    en: "French",
+  },
+  PL: {
+    zh: "波兰文",
+    en: "Polish",
+  },
+  ES: {
+    zh: "西班牙文",
+    en: "Spanish",
+  },
+  IT: {
+    zh: "意大利文",
+    en: "Italian",
+  },
+  PT: {
+    zh: "葡萄牙文",
+    en: "Portuguese",
+  },
+  HU: {
+    zh: "匈牙利文",
+    en: "Hungarian",
+  },
+  TR: {
+    zh: "土耳其文",
+    en: "Turkish",
+  },
+  TH: {
+    zh: "泰文",
+    en: "Thai",
+  },
+  ID: {
+    zh: "印尼文",
+    en: "Indonesian",
+  },
+  VI: {
+    zh: "越南文",
+    en: "Vietnamese",
+  },
+};
+
+export function get_language_label_key(language_code: LanguageCode): LanguageLabelKey {
+  return `app.language.${language_code}`;
+}
+
+export function get_language_display_locale(app_language: unknown): LanguageDisplayLocale {
+  return String(app_language).trim().toUpperCase() === "EN" ? "en" : "zh";
+}
+
+export function get_language_display_name(
+  language_code: LanguageCode,
+  locale: LanguageDisplayLocale,
+): string {
+  return LANGUAGE_DISPLAY_NAMES[language_code][locale];
+}
+
+export function get_prompt_source_language_name(
+  language_code: LanguageCode | null,
+  locale: LanguageDisplayLocale,
+): string {
+  if (language_code === null || language_code === ALL_LANGUAGE_CODE) {
+    return locale === "zh" ? "原文" : "Source";
+  }
+
+  return get_language_display_name(language_code, locale);
+}
+
+export function get_prompt_target_language_name(
+  language_code: LanguageCode | null,
+  locale: LanguageDisplayLocale,
+): string {
+  if (language_code === ALL_LANGUAGE_CODE) {
+    throw new Error("target_language does not support ALL");
+  }
+  if (language_code === null) {
+    throw new Error("invalid target_language");
+  }
+
+  return get_language_display_name(language_code, locale);
+}
 
 // 这些字符范围对齐历史 TextBase，用于前端预过滤，不替代后端完整文本处理
 const CJK_CHARACTER_RANGES: readonly CodePointRange[] = [

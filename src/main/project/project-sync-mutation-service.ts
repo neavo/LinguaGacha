@@ -1,5 +1,6 @@
 import fs from "node:fs";
 
+import { app_error } from "../api/app-error";
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
@@ -57,7 +58,7 @@ export class ProjectSyncMutationService {
       this.assert_expected_revisions(project_path, expected, ["files", "items", "analysis"]);
       const files = this.normalize_add_file_entries(request["files"]);
       if (files.length === 0) {
-        throw new Error("没有可添加的工作台文件");
+        throw app_error("validation_failed", "没有可添加的工作台文件。");
       }
 
       const asset_records = this.get_asset_records(project_path); // 先在内存中完成路径唯一性校验，避免事务写到一半才发现冲突
@@ -66,12 +67,14 @@ export class ProjectSyncMutationService {
       const normalized_files = files.map((file, index) => {
         const target_key = file.target_rel_path.toLowerCase();
         if (existing_paths.has(target_key) || incoming_paths.has(target_key)) {
-          throw new Error("工作台文件已存在");
+          throw app_error("database_conflict", "工作台文件已存在。", {
+            rel_path: file.target_rel_path,
+          });
         }
         incoming_paths.add(target_key);
         const record_rel_path = String(file.file_record["rel_path"] ?? "");
         if (record_rel_path !== "" && record_rel_path !== file.target_rel_path) {
-          throw new Error("工作台文件记录无效");
+          throw app_error("validation_failed", "工作台文件记录无效。");
         }
         return {
           ...file,
@@ -219,7 +222,7 @@ export class ProjectSyncMutationService {
       return this.build_project_mutation_ack(project_path, []);
     }
     if (mode !== "prefiltered_items") {
-      throw new Error("项目设置对齐模式无效");
+      throw app_error("validation_failed", "项目设置对齐模式无效。");
     }
     const expected = this.normalize_expected_section_revisions(
       request["expected_section_revisions"],
@@ -285,7 +288,7 @@ export class ProjectSyncMutationService {
       this.publish_project_data_change("translation_reset", ["items"]);
       return this.build_project_mutation_ack(project_path, ["items"]);
     }
-    throw new Error("translation reset 仅支持 mode=all 或 mode=failed");
+    throw app_error("validation_failed", "translation reset 仅支持 mode=all 或 mode=failed。");
   }
 
   /**
@@ -320,7 +323,7 @@ export class ProjectSyncMutationService {
         }),
       );
     } else {
-      throw new Error("analysis reset 仅支持 mode=all 或 mode=failed");
+      throw app_error("validation_failed", "analysis reset 仅支持 mode=all 或 mode=failed。");
     }
     operations.push(...this.bump_section_revision_operations(project_path, ["analysis"]));
     this.database.execute_transaction(operations);
@@ -343,9 +346,11 @@ export class ProjectSyncMutationService {
     );
     const expected_glossary_revision = this.read_number(request["expected_glossary_revision"], 0);
     if (current_glossary_revision !== expected_glossary_revision) {
-      throw new Error(
-        `术语表 revision 冲突：当前=${current_glossary_revision.toString()}，期望=${expected_glossary_revision.toString()}`,
-      );
+      throw app_error("revision_conflict", "术语表数据版本已变化，请刷新后重试。", {
+        current_revision: current_glossary_revision,
+        expected_revision: expected_glossary_revision,
+        section: "glossary",
+      });
     }
     this.database.execute_transaction([
       this.op("setRules", {
@@ -375,7 +380,7 @@ export class ProjectSyncMutationService {
   private async require_loaded_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载");
+      throw app_error("project_not_loaded");
     }
     return state.projectPath;
   }
@@ -386,10 +391,10 @@ export class ProjectSyncMutationService {
   private async require_idle_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载");
+      throw app_error("project_not_loaded");
     }
     if (this.task_runtime_state.snapshot().busy) {
-      throw new Error("任务正在执行中 …");
+      throw app_error("task_busy");
     }
     return state.projectPath;
   }
@@ -399,7 +404,7 @@ export class ProjectSyncMutationService {
    */
   private async run_with_file_operation_guard<T>(operation: () => Promise<T>): Promise<T> {
     if (this.task_runtime_state.snapshot().busy || this.file_operation_running) {
-      throw new Error("任务正在执行中 …");
+      throw app_error("task_busy");
     }
     this.file_operation_running = true;
     try {
@@ -426,7 +431,9 @@ export class ProjectSyncMutationService {
    */
   private assert_explicit_project_file_exists(project_path: string): void {
     if (!fs.existsSync(project_path)) {
-      throw new Error(`工程文件不存在：${project_path}`);
+      throw app_error("project_not_found", undefined, {
+        filename: project_path.split(/[\\/]/u).at(-1) ?? "",
+      });
     }
   }
 
@@ -449,9 +456,11 @@ export class ProjectSyncMutationService {
       const current = get_runtime_section_revision(meta, section);
       const wanted = expected[section] ?? 0;
       if (current !== wanted) {
-        throw new Error(
-          `${section} section revision 冲突：当前=${current.toString()}，期望=${wanted.toString()}`,
-        );
+        throw app_error("revision_conflict", undefined, {
+          current_revision: current,
+          expected_revision: wanted,
+          section,
+        });
       }
     }
   }
@@ -660,7 +669,7 @@ export class ProjectSyncMutationService {
         const source_path = String(item["source_path"] ?? "");
         const target_rel_path = String(item["target_rel_path"] ?? "");
         if (source_path === "" || target_rel_path === "") {
-          throw new Error("工作台文件记录无效");
+          throw app_error("validation_failed", "工作台文件记录无效。");
         }
         const parsed_items = Array.isArray(item["parsed_items"])
           ? item["parsed_items"].filter((entry): entry is JsonRecord => this.is_record(entry))
@@ -698,12 +707,12 @@ export class ProjectSyncMutationService {
    */
   private assert_rel_paths_exist(project_path: string, rel_paths: string[]): void {
     if (rel_paths.length === 0) {
-      throw new Error("工作台文件路径为空");
+      throw app_error("validation_failed", "工作台文件路径为空。");
     }
     const existing = new Set(this.get_asset_records(project_path).map((record) => record.path));
     for (const rel_path of rel_paths) {
       if (!existing.has(rel_path)) {
-        throw new Error("工作台文件不存在");
+        throw app_error("file_not_found", "工作台文件不存在。", { rel_path });
       }
     }
   }
@@ -713,16 +722,16 @@ export class ProjectSyncMutationService {
    */
   private assert_complete_path_order(current_paths: string[], ordered_paths: string[]): void {
     if (current_paths.length !== ordered_paths.length) {
-      throw new Error("工作台文件顺序必须完整覆盖当前文件集合");
+      throw app_error("validation_failed", "工作台文件顺序必须完整覆盖当前文件集合。");
     }
     const current = new Set(current_paths);
     const ordered = new Set(ordered_paths);
     if (current.size !== ordered.size) {
-      throw new Error("工作台文件顺序存在重复路径");
+      throw app_error("validation_failed", "工作台文件顺序存在重复路径。");
     }
     for (const rel_path of current) {
       if (!ordered.has(rel_path)) {
-        throw new Error("工作台文件顺序必须完整覆盖当前文件集合");
+        throw app_error("validation_failed", "工作台文件顺序必须完整覆盖当前文件集合。");
       }
     }
   }
