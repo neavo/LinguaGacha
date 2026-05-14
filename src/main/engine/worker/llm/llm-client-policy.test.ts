@@ -74,6 +74,28 @@ describe("LLMClientPolicy", () => {
     });
   });
 
+  it("Mimo v2 系列 thinking 等级映射为 OpenAI-compatible thinking.type", async () => {
+    const policy = new LLMClientPolicy(await create_app_root());
+
+    const off_resolved = policy.resolve(
+      create_body({
+        api_format: "OpenAI",
+        model_id: "mimo-v2-flash",
+        thinking: { level: "OFF" },
+      }),
+    );
+    const high_resolved = policy.resolve(
+      create_body({
+        api_format: "OpenAI",
+        model_id: "mimo-v2.5-pro",
+        thinking: { level: "HIGH" },
+      }),
+    );
+
+    expect(off_resolved.payload["thinking"]).toEqual({ type: "disabled" });
+    expect(high_resolved.payload["thinking"]).toEqual({ type: "enabled" });
+  });
+
   it("Gemini thinking 等级按官方能力映射到预算和等级字段", () => {
     expect(
       build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "OFF" }),
