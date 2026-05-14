@@ -1,0 +1,110 @@
+import type { ScreenComponentProps } from "@/app/navigation/types";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
+import "@/pages/laboratory-page/laboratory-page.css";
+import { useLaboratoryPageState } from "@/pages/laboratory-page/use-laboratory-page-state";
+import { SettingHelpButton } from "@/widgets/setting-help-button/setting-help-button";
+import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
+import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
+
+type LaboratoryHelpField = "mtool_optimizer_enable";
+
+const HELP_URL_BY_FIELD = {
+  "zh-CN": {
+    mtool_optimizer_enable: "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer",
+  },
+  "en-US": {
+    mtool_optimizer_enable: "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN",
+  },
+} as const satisfies Record<"zh-CN" | "en-US", Record<LaboratoryHelpField, string>>;
+
+const HELP_LABEL_KEY_BY_FIELD: Record<LaboratoryHelpField, LocaleKey> = {
+  mtool_optimizer_enable: "laboratory_page.fields.mtool_optimizer_enable.help_label",
+};
+
+export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
+  const { locale, t } = useI18n();
+  const laboratory_page_state = useLaboratoryPageState();
+  const boolean_segmented_options = [
+    {
+      value: "disabled",
+      label: t("app.toggle.disabled"),
+    },
+    {
+      value: "enabled",
+      label: t("app.toggle.enabled"),
+    },
+  ] as const;
+
+  function render_help_button(field: LaboratoryHelpField): JSX.Element {
+    const help_url = HELP_URL_BY_FIELD[locale][field];
+    const help_label_key = HELP_LABEL_KEY_BY_FIELD[field];
+
+    return (
+      <SettingHelpButton
+        url={help_url}
+        aria_label={t(help_label_key)}
+        className="laboratory-page__help-button"
+      />
+    );
+  }
+
+  function render_boolean_toggle(options: {
+    title_key:
+      | "laboratory_page.fields.mtool_optimizer_enable.title"
+      | "laboratory_page.fields.skip_duplicate_source_text_enable.title";
+    value: boolean;
+    disabled: boolean;
+    on_value_change: (next_value: boolean) => void;
+  }): JSX.Element {
+    return (
+      <SegmentedToggle
+        aria_label={t(options.title_key)}
+        size="sm"
+        value={options.value ? "enabled" : "disabled"}
+        options={boolean_segmented_options}
+        stretch
+        disabled={options.disabled}
+        on_value_change={(next_value) => {
+          options.on_value_change(next_value === "enabled");
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="laboratory-page page-shell page-shell--full">
+      <section className="laboratory-page__list" aria-label={t("laboratory_page.title")}>
+        <SettingCardRow
+          title={t("laboratory_page.fields.mtool_optimizer_enable.title")}
+          title_suffix={render_help_button("mtool_optimizer_enable")}
+          description={t("laboratory_page.fields.mtool_optimizer_enable.description")}
+          action={render_boolean_toggle({
+            title_key: "laboratory_page.fields.mtool_optimizer_enable.title",
+            value: laboratory_page_state.snapshot.mtool_optimizer_enable,
+            disabled:
+              laboratory_page_state.is_task_busy ||
+              laboratory_page_state.pending_state.mtool_optimizer_enable,
+            on_value_change: (next_value) => {
+              void laboratory_page_state.update_mtool_optimizer_enable(next_value);
+            },
+          })}
+        />
+
+        <SettingCardRow
+          title={t("laboratory_page.fields.skip_duplicate_source_text_enable.title")}
+          description={t("laboratory_page.fields.skip_duplicate_source_text_enable.description")}
+          action={render_boolean_toggle({
+            title_key: "laboratory_page.fields.skip_duplicate_source_text_enable.title",
+            value: laboratory_page_state.snapshot.skip_duplicate_source_text_enable,
+            disabled:
+              laboratory_page_state.is_task_busy ||
+              laboratory_page_state.pending_state.skip_duplicate_source_text_enable,
+            on_value_change: (next_value) => {
+              void laboratory_page_state.update_skip_duplicate_source_text_enable(next_value);
+            },
+          })}
+        />
+      </section>
+    </div>
+  );
+}

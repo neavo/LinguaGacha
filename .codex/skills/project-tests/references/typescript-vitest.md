@@ -156,13 +156,12 @@ fake timers 用完必须恢复。
 ## 常用验证
 
 ```powershell
-npm --prefix frontend run test
-npm --prefix frontend run test -- src/path/to/session-store.test.ts
-npm --prefix frontend run lint
-npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit
+npm run test
+npm run test -- src/path/to/session-store.test.ts
+npm run lint
+npm exec -- tsc -p tsconfig.json --noEmit
 ```
 
 注意：
-- 从仓库根目录跑前端定向 Vitest 时，使用 `npm --prefix frontend run test -- <相对 frontend 的测试路径>`。
-- 不要在仓库根目录使用 `npm --prefix frontend exec -- vitest run <路径>` 作为定向测试命令；这种跑法的进程当前目录仍是仓库根，Vitest 不会自动读取 `frontend/vitest.config.ts`，容易丢失 `@/` 别名与测试环境配置。
-- 若必须直接调用 `vitest`，先切到 `frontend/` 目录，再执行 `npm run test -- <测试路径>`。
+- 从仓库根目录跑定向 Vitest 时，优先使用 `npm run test -- <相对仓库根目录的测试路径>`。
+- 若必须绕过 npm 脚本直接调用 Vitest，也从仓库根目录执行 `npm exec -- vitest run <测试路径>`，确保读取根目录 `vitest.config.ts`。

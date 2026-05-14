@@ -24,7 +24,7 @@
 - 每个请求模拟抖动（默认 2~20 秒，可通过 --min-jitter/--max-jitter 调整）；
   流式场景会把总抖动拆分到多段 SSE 消息上。
 
-一键启动示例（推荐用 uv）
+一键启动示例（独立本地调试）
 1) 启动（本机回环，端口 8000）
    uv run python buildtools/mock_llm_api_server.py --host 127.0.0.1 --port 8000
 
@@ -408,7 +408,7 @@ def resolve_translation_response_keys(request_text: str) -> list[str]:
         if non_empty_lines:
             keys = [str(i) for i in range(len(non_empty_lines))]
         else:
-            # 兜底：没有解析到输入 JSONLINE 时，仍然返回 1 行，避免调用方卡死。
+            # 兜底：没有解析到输入 JSONLINE 时，仍然返回 1 行，避免调用方卡死
             keys = ["0"]
 
     return keys
@@ -463,7 +463,7 @@ def build_analysis_response_content(request_text: str, rng: random.Random) -> st
 
 
 def estimate_tokens(text: str) -> int:
-    # 近似估算：对压测/统计够用；避免引入第三方 tokenizer。
+    # 近似估算：对压测/统计够用；避免引入第三方 tokenizer
     stripped = text.strip()
     if not stripped:
         return 0
@@ -645,7 +645,7 @@ def split_total_delay(
     if total_delay_s <= 0:
         return [0.0] * parts
 
-    # 采用简单的 Dirichlet-like 方案，把总延迟拆成若干段。
+    # 采用简单的 Dirichlet-like 方案，把总延迟拆成若干段
     weights = [rng.random() for _ in range(parts)]
     denom = sum(weights) or 1.0
     return [total_delay_s * (w / denom) for w in weights]
@@ -1095,7 +1095,7 @@ async def handle_connection(
         raise HttpError(404, f"Not found: {path}")
 
     except ClientDisconnected:
-        # 客户端在服务端写回数据时断开；这在流式/压测/取消请求时非常常见。
+        # 客户端在服务端写回数据时断开；这在流式/压测/取消请求时非常常见
         return
 
     except HttpError as e:

@@ -45,12 +45,6 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v8.1.0
-        with:
-          python-version: "3.14"
-          enable-cache: true
-
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -60,39 +54,23 @@ jobs:
         shell: bash
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          uv version "$version" --frozen
-          npm --prefix frontend version "$version" --no-git-tag-version --allow-same-version
+          npm version "$version" --no-git-tag-version --allow-same-version
 
-      - name: Sync Python Dependencies
+      - name: Install Dependencies
         shell: bash
         run: |
-          uv sync --extra build
-
-      - name: Build Core
-        shell: bash
-        run: |
-          uv run python ./buildtools/core_build.py
-
-      - name: Stage Core For Electron
-        shell: bash
-        run: |
-          uv run python ./buildtools/core_stage.py
-
-      - name: Install Frontend Dependencies
-        shell: bash
-        run: |
-          npm --prefix frontend install
+          npm install
 
       - name: Build Electron Unpacked Package
         shell: bash
         run: |
-          npm --prefix frontend run build -- --win --x64 --dir --publish never
+          npm run build -- --win --x64 --dir --publish never
 
       - name: Create Windows Zip Package
         shell: pwsh
         run: |
           $version = "${{ needs.prepare.outputs.version }}"
-          $releaseDir = Join-Path "frontend/release" $version
+          $releaseDir = Join-Path "build/release" $version
           $unpackedDir = Join-Path $releaseDir "win-unpacked"
           $zipPath = Join-Path $releaseDir "LinguaGacha_v${version}_Windows_x64.zip"
 
@@ -107,7 +85,7 @@ jobs:
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_x64
           path: |
-            frontend/release/${{ needs.prepare.outputs.version }}/*.zip
+            build/release/${{ needs.prepare.outputs.version }}/*.zip
 
   build-macos:
     needs: prepare
@@ -129,12 +107,6 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v8.1.0
-        with:
-          python-version: "3.14"
-          enable-cache: true
-
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -144,42 +116,26 @@ jobs:
         shell: bash
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          uv version "$version" --frozen
-          npm --prefix frontend version "$version" --no-git-tag-version --allow-same-version
+          npm version "$version" --no-git-tag-version --allow-same-version
 
-      - name: Sync Python Dependencies
+      - name: Install Dependencies
         shell: bash
         run: |
-          uv sync --extra build
-
-      - name: Build Core
-        shell: bash
-        run: |
-          uv run python ./buildtools/core_build.py
-
-      - name: Stage Core For Electron
-        shell: bash
-        run: |
-          uv run python ./buildtools/core_stage.py
-
-      - name: Install Frontend Dependencies
-        shell: bash
-        run: |
-          npm --prefix frontend install
+          npm install
 
       - name: Build Electron DMG Package
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
-          npm --prefix frontend run build -- --mac --${{ matrix.arch }} --publish never
+          npm run build -- --mac --${{ matrix.arch }} --publish never
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}
           path: |
-            frontend/release/${{ needs.prepare.outputs.version }}/*.dmg
+            build/release/${{ needs.prepare.outputs.version }}/*.dmg
 
   build-linux:
     needs: prepare
@@ -193,12 +149,6 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v8.1.0
-        with:
-          python-version: "3.14"
-          enable-cache: true
-
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -208,40 +158,24 @@ jobs:
         shell: bash
         run: |
           version="${{ needs.prepare.outputs.version }}"
-          uv version "$version" --frozen
-          npm --prefix frontend version "$version" --no-git-tag-version --allow-same-version
+          npm version "$version" --no-git-tag-version --allow-same-version
 
-      - name: Sync Python Dependencies
+      - name: Install Dependencies
         shell: bash
         run: |
-          uv sync --extra build
-
-      - name: Build Core
-        shell: bash
-        run: |
-          uv run python ./buildtools/core_build.py
-
-      - name: Stage Core For Electron
-        shell: bash
-        run: |
-          uv run python ./buildtools/core_stage.py
-
-      - name: Install Frontend Dependencies
-        shell: bash
-        run: |
-          npm --prefix frontend install
+          npm install
 
       - name: Build Electron AppImage Package
         shell: bash
         run: |
-          npm --prefix frontend run build -- --linux --x64 --publish never
+          npm run build -- --linux --x64 --publish never
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64
           path: |
-            frontend/release/${{ needs.prepare.outputs.version }}/*.AppImage
+            build/release/${{ needs.prepare.outputs.version }}/*.AppImage
 
   create-release:
     needs: [prepare, build-windows, build-macos, build-linux]

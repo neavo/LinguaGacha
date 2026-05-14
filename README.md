@@ -88,7 +88,7 @@
   - 优化与改进 #535 #536 #539 #541
 
 - 20260428 v0.99.3
-  - Optimizations and Improvements #535 #536 #539 #541
+  - 优化与改进 #535 #536 #539 #541
 
 - 20260428 v0.99.2
   - 优化与改进 #531 #533
@@ -102,10 +102,9 @@
   - 暂时移除了 `CLI` 模式
 
 ## 开发指南 🛠️
-- 本项目由 `Python Core` 与 `Electron` 前端组成，推荐准备 [**uv**](https://github.com/astral-sh/uv) 与 [`Node.js 24`](https://nodejs.org/)
-- 安装依赖 `uv sync -U --extra test` `npm --prefix frontend install`
-- 更新依赖 `uv sync -U --extra test` `npm --prefix frontend update`
-- 运行应用 `npm --prefix frontend run dev`
+- 先安装 [`Node.js 24`](https://nodejs.org/)，然后初始化 `npm install`
+- 更新依赖 `npm update`
+- 运行应用 `npm run dev`
 - 提交 PR 前请根据改动范围执行 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) 中的对应验证
 - 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
 
