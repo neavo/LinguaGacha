@@ -52,9 +52,9 @@ TypeScript / React / CSS：
 - TypeScript 代码优先保持显式类型，只有第三方类型确实缺失时才局部使用 `any` 兜底。
 - React Hook 必须维护真实依赖数组，禁止用 eslint 禁用注释掩盖依赖问题。
 - renderer 只能通过 `window.desktopApp` 与 `desktop-api.ts` 接入宿主和 Core API。
+- 用户可见文本必须通过 `src/shared/i18n` 国际化入口提供，禁止在组件、状态、错误提示、空状态或通知中直接写死展示文案。
 - 页面不得重定义组件基础视觉或全局 token，前端样式边界按 `docs/FRONTEND.md` 与 `DESIGN.md` 执行。
 - 渲染层视觉尺寸字面量优先使用 `px`，`line-height` 使用无单位数值，`letter-spacing` 仅允许 `em`，`clamp()` 仅允许 `px + vw + px` 组合。
-
 
 ## 5. 文档治理硬约束
 
