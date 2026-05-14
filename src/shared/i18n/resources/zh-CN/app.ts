@@ -13,6 +13,8 @@ export const zh_cn_app = {
     close: "关闭",
     reset: "重置",
     retry: "重试",
+    skip: "跳过",
+    overwrite: "覆盖",
     loading: "加载中",
     select_file: "选择文件",
     select_folder: "选择文件夹",
@@ -33,6 +35,9 @@ export const zh_cn_app = {
   },
   close_confirm: {
     description: "是否确认退出应用 …?",
+  },
+  quality_rule_import: {
+    duplicate_description: "检测到 {COUNT} 条重复规则，请选择处理方式 …?",
   },
   update: {
     toast: "发现新版本，点击左下角更新入口下载新版本 …",

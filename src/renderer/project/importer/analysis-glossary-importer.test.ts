@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectStoreState } from "@/project/store/project-store";
-import { create_analysis_glossary_import_plan } from "@/project/glossary-import/analysis-glossary-import-plan";
+import { prepare_analysis_glossary_import } from "@/project/importer/analysis-glossary-importer";
 
 const { quality_statistics_submit_mock } = vi.hoisted(() => {
   return {
@@ -98,7 +98,7 @@ function create_test_state(): ProjectStoreState {
   };
 }
 
-describe("create_analysis_glossary_import_plan", () => {
+describe("prepare_analysis_glossary_import", () => {
   beforeEach(() => {
     quality_statistics_submit_mock.mockReset();
     quality_statistics_submit_mock.mockResolvedValue({
@@ -112,12 +112,12 @@ describe("create_analysis_glossary_import_plan", () => {
   });
 
   it("保留只出现一次的候选术语", async () => {
-    const import_plan = await create_analysis_glossary_import_plan(create_test_state());
+    const prepared_import = await prepare_analysis_glossary_import(create_test_state());
 
-    expect(import_plan).not.toBeNull();
+    expect(prepared_import).not.toBeNull();
     expect(quality_statistics_submit_mock).toHaveBeenCalledTimes(1);
-    expect(import_plan?.imported_count).toBe(1);
-    expect(import_plan?.request_body.entries).toEqual([
+    expect(prepared_import?.imported_count).toBe(1);
+    expect(prepared_import?.request_body.entries).toEqual([
       {
         src: "艾琳",
         dst: "Erin",
@@ -126,9 +126,9 @@ describe("create_analysis_glossary_import_plan", () => {
         case_sensitive: true,
       },
     ]);
-    expect(import_plan?.request_body.analysis_candidate_count).toBe(0);
-    expect(import_plan?.request_body.expected_glossary_revision).toBe(2);
-    expect(import_plan?.request_body.expected_section_revisions).toEqual({
+    expect(prepared_import?.request_body.analysis_candidate_count).toBe(0);
+    expect(prepared_import?.request_body.expected_glossary_revision).toBe(2);
+    expect(prepared_import?.request_body.expected_section_revisions).toEqual({
       quality: 12,
       analysis: 3,
     });
@@ -137,7 +137,7 @@ describe("create_analysis_glossary_import_plan", () => {
         relationTargetCandidates: [{ key: "艾琳|1", src: "艾琳" }],
       }),
       {
-        stale_key: "quality-statistics:analysis-glossary-import",
+        stale_key: "quality-statistics:analysis-glossary-importer",
       },
     );
   });

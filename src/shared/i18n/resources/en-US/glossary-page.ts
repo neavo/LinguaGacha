@@ -106,7 +106,6 @@ export const en_us_glossary_page = {
     default_preset_cleared: "Default preset cancelled …",
     query_failed: "Failed to query proofreading.",
     source_required: "Source text is required.",
-    merge_warning: "Merged duplicate entries …",
     reset_success: "Reseted …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

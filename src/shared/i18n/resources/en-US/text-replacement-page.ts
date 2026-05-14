@@ -106,7 +106,6 @@ export const en_us_text_replacement_page = {
     query_failed: "Failed to query replacement rule.",
     source_required: "Source text is required.",
     regex_invalid: "Invalid regular expression",
-    merge_warning: "Duplicate entries were merged …",
     reset_success: "Reset complete …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_text_replacement_page>;

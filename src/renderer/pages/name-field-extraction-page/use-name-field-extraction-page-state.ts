@@ -11,8 +11,8 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/app/locale/locale-provider";
-import { merge_glossary_entries } from "@/pages/glossary-page/merge";
 import type { GlossaryEntry } from "@/pages/glossary-page/types";
+import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
 import {
   build_name_field_glossary_entries,
   count_name_field_rows,
@@ -40,6 +40,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
+import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
 
 type TranslateSinglePayload = {
   success?: boolean;
@@ -153,6 +154,7 @@ export function useNameFieldExtractionPageState() {
   const [confirm_state, set_confirm_state] = useState<NameFieldConfirmState>(() => {
     return create_empty_confirm_state();
   });
+  // 姓名字段导入术语表也走共享计划，避免绕过术语表页面的重复处理语义
   const [run_state, set_run_state] = useState<NameFieldRunState>(() => {
     return create_empty_run_state();
   });
@@ -499,6 +501,93 @@ export function useNameFieldExtractionPageState() {
     }
   }, [confirm_state.submitting]);
 
+  const apply_glossary_import_entries = useCallback(
+    async (next_entries: GlossaryEntry[]): Promise<boolean> => {
+      const current_glossary_slice = getQualityRuleSlice(
+        project_store.getState().quality,
+        "glossary",
+      );
+      const normalized_entries = next_entries.map(normalize_glossary_entry);
+      const next_quality_state = replaceQualityRuleSlice(
+        project_store.getState().quality,
+        "glossary",
+        {
+          ...current_glossary_slice,
+          entries: normalized_entries,
+          revision: current_glossary_slice.revision + 1,
+        },
+      );
+      const local_commit = commit_local_project_change({
+        source: "name_field_extraction_import_glossary",
+        updatedSections: ["quality"],
+        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
+      });
+
+      try {
+        const mutation_ack = normalize_project_mutation_ack(
+          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
+            rule_type: "glossary",
+            expected_revision: current_glossary_slice.revision,
+            entries: normalized_entries,
+          }),
+        );
+        align_project_runtime_ack(mutation_ack);
+        push_toast("success", t("name_field_extraction_page.feedback.import_success"));
+        return true;
+      } catch (error) {
+        local_commit.rollback();
+        void refresh_project_runtime().catch(() => {});
+        if (error instanceof Error) {
+          push_toast("error", error.message);
+        } else {
+          push_toast("error", t("name_field_extraction_page.feedback.import_failed"));
+        }
+        return false;
+      }
+    },
+    [
+      align_project_runtime_ack,
+      commit_local_project_change,
+      project_store,
+      push_toast,
+      refresh_project_runtime,
+      t,
+    ],
+  );
+
+  const get_import_existing_entries = useCallback((): GlossaryEntry[] => {
+    const current_glossary_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      "glossary",
+    );
+    return current_glossary_slice.entries as GlossaryEntry[];
+  }, [project_store]);
+  const apply_import_entries = useCallback(
+    async (next_entries: GlossaryEntry[]): Promise<boolean> => {
+      if (is_running || glossary_import_locked) {
+        return false;
+      }
+      return await apply_glossary_import_entries(next_entries);
+    },
+    [apply_glossary_import_entries, glossary_import_locked, is_running],
+  );
+  const {
+    import_confirm_state,
+    persist_import_entries,
+    import_duplicate_skip,
+    import_duplicate_overwrite,
+    close_import_duplicate_confirm,
+    reset_import_confirmation,
+  } = useQualityRuleImportConfirmation<GlossaryEntry>({
+    rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
+    get_existing_entries: get_import_existing_entries,
+    apply_entries: apply_import_entries,
+  });
+
+  useEffect(() => {
+    reset_import_confirmation();
+  }, [project_snapshot.loaded, project_snapshot.path, reset_import_confirmation]);
+
   const import_to_glossary = useCallback(async (): Promise<void> => {
     if (is_running || glossary_import_locked) {
       return;
@@ -510,60 +599,8 @@ export function useNameFieldExtractionPageState() {
       return;
     }
 
-    const current_glossary_slice = getQualityRuleSlice(
-      project_store.getState().quality,
-      "glossary",
-    );
-    const { merged_entries } = merge_glossary_entries(
-      current_glossary_slice.entries as GlossaryEntry[],
-      incoming_entries,
-    );
-    const normalized_entries = merged_entries.map(normalize_glossary_entry);
-    const next_quality_state = replaceQualityRuleSlice(
-      project_store.getState().quality,
-      "glossary",
-      {
-        ...current_glossary_slice,
-        entries: normalized_entries,
-        revision: current_glossary_slice.revision + 1,
-      },
-    );
-    const local_commit = commit_local_project_change({
-      source: "name_field_extraction_import_glossary",
-      updatedSections: ["quality"],
-      operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-    });
-
-    try {
-      const mutation_ack = normalize_project_mutation_ack(
-        await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
-          rule_type: "glossary",
-          expected_revision: current_glossary_slice.revision,
-          entries: normalized_entries,
-        }),
-      );
-      align_project_runtime_ack(mutation_ack);
-      push_toast("success", t("name_field_extraction_page.feedback.import_success"));
-    } catch (error) {
-      local_commit.rollback();
-      void refresh_project_runtime().catch(() => {});
-      if (error instanceof Error) {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("name_field_extraction_page.feedback.import_failed"));
-      }
-    }
-  }, [
-    align_project_runtime_ack,
-    commit_local_project_change,
-    glossary_import_locked,
-    is_running,
-    project_store,
-    push_toast,
-    refresh_project_runtime,
-    rows,
-    t,
-  ]);
+    await persist_import_entries(incoming_entries, { close_preset_menu: false });
+  }, [glossary_import_locked, is_running, persist_import_entries, push_toast, rows, t]);
 
   const confirm_pending_action = useCallback(async (): Promise<void> => {
     if (!confirm_state.open || confirm_state.kind === null) {
@@ -610,6 +647,7 @@ export function useNameFieldExtractionPageState() {
     selection_anchor_row_id,
     dialog_state,
     confirm_state,
+    import_confirm_state,
     invalid_filter_message,
     update_filter_keyword,
     update_filter_scope,
@@ -629,5 +667,8 @@ export function useNameFieldExtractionPageState() {
     glossary_import_locked,
     confirm_pending_action,
     close_confirm_dialog,
+    import_duplicate_skip,
+    import_duplicate_overwrite,
+    close_import_duplicate_confirm,
   };
 }

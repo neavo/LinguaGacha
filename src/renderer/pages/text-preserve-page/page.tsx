@@ -8,6 +8,7 @@ import { TextPreserveEditDialog } from "@/pages/text-preserve-page/components/te
 import { TextPreservePresetInputDialog } from "@/pages/text-preserve-page/components/text-preserve-preset-input-dialog";
 import { TextPreserveTable } from "@/pages/text-preserve-page/components/text-preserve-table";
 import type { TextPreserveFilterScope } from "@/pages/text-preserve-page/types";
+import { QualityRuleImportConfirmDialog } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 import { useTextPreservePageState } from "@/pages/text-preserve-page/use-text-preserve-page-state";
 import { FileDropZone } from "@/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
@@ -147,6 +148,12 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
           void page_state.confirm_pending_action();
         }}
         on_close={page_state.close_confirm_dialog}
+      />
+      <QualityRuleImportConfirmDialog
+        state={page_state.import_confirm_state}
+        on_skip={page_state.import_duplicate_skip}
+        on_overwrite={page_state.import_duplicate_overwrite}
+        on_close={page_state.close_import_duplicate_confirm}
       />
       <TextPreservePresetInputDialog
         state={page_state.preset_input_state}

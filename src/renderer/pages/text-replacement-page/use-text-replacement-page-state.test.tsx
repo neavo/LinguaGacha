@@ -322,6 +322,107 @@ describe("useTextReplacementPageState", () => {
     expect(latest_state?.dialog_state.open).toBe(false);
   });
 
+  it("导入重复替换规则时跳过只保存非重复规则", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "hero",
+            dst: "英雄",
+            regex: false,
+            case_sensitive: false,
+          },
+          {
+            src: "mage",
+            dst: "法师",
+            regex: false,
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 3,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/replacement.json");
+    });
+
+    expect(latest_state?.import_confirm_state.open).toBe(true);
+    expect(latest_state?.import_confirm_state.duplicate_count).toBe(1);
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await latest_state?.import_duplicate_skip();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "pre_replacement",
+      expected_revision: 2,
+      entries: [
+        {
+          src: "hero",
+          dst: "勇者",
+          regex: false,
+          case_sensitive: false,
+        },
+        {
+          src: "mage",
+          dst: "法师",
+          regex: false,
+          case_sensitive: false,
+        },
+      ],
+    });
+  });
+
+  it("预设重复替换规则选择覆盖时会保存新规则", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "hero",
+            dst: "",
+            regex: true,
+            case_sensitive: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 3,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.apply_preset("builtin:demo.json");
+    });
+    await act(async () => {
+      await latest_state?.import_duplicate_overwrite();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "pre_replacement",
+      expected_revision: 2,
+      entries: [
+        {
+          src: "hero",
+          dst: "",
+          regex: true,
+          case_sensitive: true,
+        },
+      ],
+    });
+  });
+
   it("任务运行中锁定替换规则 mutation，但保留筛选可用", async () => {
     runtime_state.task.busy = true;
     runtime_state.task.status = "running";

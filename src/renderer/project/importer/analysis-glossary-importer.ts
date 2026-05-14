@@ -7,10 +7,9 @@ import type {
 import { getSharedQualityStatisticsWorkerPool } from "@/project/quality/quality-statistics-worker-pool";
 import { getQualityRuleSlice, replaceQualityRuleSlice } from "@/project/quality/quality-runtime";
 import {
-  QualityRuleMergeModeValue,
-  QualityRuleMergeRuleTypeValue,
-  preview_quality_rule_merge,
-} from "@shared/quality/merger";
+  QualityRuleImportRuleTypeValue,
+  preview_quality_rule_fill_empty_import,
+} from "@shared/quality/importer";
 
 type CandidateAggregateEntry = {
   src: string;
@@ -26,22 +25,22 @@ type GlossaryEntry = {
   case_sensitive: boolean;
 };
 
-type MergePreviewEntry = {
+type FillEmptyPreviewEntry = {
   entry: GlossaryEntry;
   is_new: boolean;
   incoming_indexes: number[];
 };
 
-type MergePreview = {
+type FillEmptyPreview = {
   merged_entries: GlossaryEntry[];
-  entries: MergePreviewEntry[];
+  entries: FillEmptyPreviewEntry[];
   report: {
     added: number;
     filled: number;
   };
 };
 
-type AnalysisGlossaryImportPlan = {
+type PreparedAnalysisGlossaryImport = {
   imported_count: number;
   next_quality_state: ProjectStoreQualityState;
   next_analysis_state: Record<string, unknown>;
@@ -169,19 +168,18 @@ function normalize_glossary_entry(entry: Record<string, unknown>): GlossaryEntry
   };
 }
 
-function merge_fill_empty(
+function preview_glossary_fill_empty_import(
   existing_entries: GlossaryEntry[],
   incoming_entries: GlossaryEntry[],
-): MergePreview {
-  const preview = preview_quality_rule_merge({
-    rule_type: QualityRuleMergeRuleTypeValue.GLOSSARY,
+): FillEmptyPreview {
+  const preview = preview_quality_rule_fill_empty_import({
+    rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
     existing: existing_entries,
     incoming: incoming_entries,
-    merge_mode: QualityRuleMergeModeValue.FILL_EMPTY,
   });
 
   return {
-    merged_entries: preview.merged as GlossaryEntry[],
+    merged_entries: preview.merged_entries as GlossaryEntry[],
     entries: preview.entries.map((entry) => {
       return {
         entry: entry.entry as GlossaryEntry,
@@ -208,7 +206,7 @@ async function filter_import_candidates(args: {
   filtered_entries: GlossaryEntry[];
   imported_count: number;
 }> {
-  const preview = merge_fill_empty(args.existing_entries, args.incoming_entries);
+  const preview = preview_glossary_fill_empty_import(args.existing_entries, args.incoming_entries);
   if (preview.entries.length === 0) {
     return {
       filtered_entries: [],
@@ -250,7 +248,7 @@ async function filter_import_candidates(args: {
       relationTargetCandidates: relation_target_candidates,
     },
     {
-      stale_key: "quality-statistics:analysis-glossary-import",
+      stale_key: "quality-statistics:analysis-glossary-importer",
     },
   );
   const key_by_src = new Map<string, string>();
@@ -297,19 +295,22 @@ async function filter_import_candidates(args: {
     };
   }
 
-  const filtered_preview = merge_fill_empty(args.existing_entries, filtered_entries);
+  const filtered_preview = preview_glossary_fill_empty_import(
+    args.existing_entries,
+    filtered_entries,
+  );
   return {
     filtered_entries,
     imported_count: filtered_preview.report.added + filtered_preview.report.filled,
   };
 }
 
-export async function create_analysis_glossary_import_plan(
+export async function prepare_analysis_glossary_import(
   state: ProjectStoreState,
   options: {
     task_snapshot?: Record<string, unknown>;
   } = {},
-): Promise<AnalysisGlossaryImportPlan | null> {
+): Promise<PreparedAnalysisGlossaryImport | null> {
   const existing_glossary_entries = getQualityRuleSlice(state.quality, "glossary").entries.flatMap(
     (entry) => {
       const normalized_entry = normalize_glossary_entry(entry);
@@ -332,7 +333,7 @@ export async function create_analysis_glossary_import_plan(
     return null;
   }
 
-  const merged_preview = merge_fill_empty(
+  const merged_preview = preview_glossary_fill_empty_import(
     existing_glossary_entries,
     filter_result.filtered_entries,
   );

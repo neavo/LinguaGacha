@@ -6,6 +6,7 @@ import { NameFieldExtractionConfirmDialog } from "@/pages/name-field-extraction-
 import { NameFieldExtractionEditDialog } from "@/pages/name-field-extraction-page/components/name-field-extraction-edit-dialog";
 import { NameFieldExtractionTable } from "@/pages/name-field-extraction-page/components/name-field-extraction-table";
 import type { NameFieldFilterScope } from "@/pages/name-field-extraction-page/types";
+import { QualityRuleImportConfirmDialog } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 import { useNameFieldExtractionPageState } from "@/pages/name-field-extraction-page/use-name-field-extraction-page-state";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
 
@@ -105,6 +106,12 @@ export function NameFieldExtractionPage(_props: ScreenComponentProps): JSX.Eleme
           void page_state.confirm_pending_action();
         }}
         on_close={page_state.close_confirm_dialog}
+      />
+      <QualityRuleImportConfirmDialog
+        state={page_state.import_confirm_state}
+        on_skip={page_state.import_duplicate_skip}
+        on_overwrite={page_state.import_duplicate_overwrite}
+        on_close={page_state.close_import_duplicate_confirm}
       />
     </div>
   );

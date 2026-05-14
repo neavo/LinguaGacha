@@ -108,7 +108,6 @@ export const zh_cn_text_preserve_page = {
     default_preset_cleared: "已取消默认预设 …",
     unknown_error: "当前操作失败，请稍后重试。",
     regex_invalid: "正则表达式无效",
-    merge_warning: "已合并重复条目 …",
     reset_success: "已重置 …",
     mode_refresh_pending: "文本保护模式已切换，校对缓存仍在刷新，请稍后再看结果。",
   },

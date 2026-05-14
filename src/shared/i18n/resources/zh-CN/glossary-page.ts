@@ -102,7 +102,6 @@ export const zh_cn_glossary_page = {
     default_preset_cleared: "已取消默认预设 …",
     query_failed: "术语表查询失败",
     source_required: "原文不能为空",
-    merge_warning: "已合并重复条目 …",
     reset_success: "已重置 …",
   },
 } as const;

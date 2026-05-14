@@ -26,7 +26,8 @@ import {
   has_active_glossary_filters,
   resolve_glossary_statistics_badge_kind,
 } from "@/pages/glossary-page/filtering";
-import { merge_glossary_entries } from "@/pages/glossary-page/merge";
+import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
+import type { QualityRuleImportConfirmState } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import {
   are_glossary_entry_ids_equal,
   build_glossary_entry_id,
@@ -51,6 +52,7 @@ import type {
   GlossaryStatisticsState,
   GlossaryVisibleEntry,
 } from "@/pages/glossary-page/types";
+import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
 
 type GlossarySnapshot = {
   revision: number;
@@ -256,6 +258,7 @@ type UseGlossaryPageStateResult = {
   preset_menu_open: boolean;
   dialog_state: GlossaryDialogState;
   confirm_state: GlossaryConfirmState;
+  import_confirm_state: QualityRuleImportConfirmState;
   preset_input_state: GlossaryPresetInputState;
   update_filter_keyword: (next_keyword: string) => void;
   update_filter_scope: (next_scope: GlossaryFilterScope) => void;
@@ -289,6 +292,9 @@ type UseGlossaryPageStateResult = {
   request_close_dialog: () => Promise<void>;
   confirm_pending_action: () => Promise<void>;
   close_confirm_dialog: () => void;
+  import_duplicate_skip: () => Promise<void>;
+  import_duplicate_overwrite: () => Promise<void>;
+  close_import_duplicate_confirm: () => void;
   update_preset_input_value: (next_value: string) => void;
   submit_preset_input: () => Promise<void>;
   close_preset_input_dialog: () => void;
@@ -539,15 +545,14 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     ],
   );
 
-  const persist_merged_entries = useCallback(
+  const apply_import_entries = useCallback(
     async (
-      incoming_entries: GlossaryEntry[],
+      next_entries: GlossaryEntry[],
       options: {
         close_preset_menu: boolean;
       },
     ): Promise<boolean> => {
-      const { merged_entries, report } = merge_glossary_entries(entries, incoming_entries);
-      const saved = await save_entries_snapshot(merged_entries);
+      const saved = await save_entries_snapshot(next_entries);
       if (!saved) {
         return false;
       }
@@ -555,18 +560,34 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       clear_selection_state();
       push_toast("success", t("glossary_page.feedback.import_success"));
 
-      if (report.updated > 0 || report.deduped > 0) {
-        push_toast("warning", t("glossary_page.feedback.merge_warning"));
-      }
-
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
       }
 
       return true;
     },
-    [clear_selection_state, entries, push_toast, save_entries_snapshot, t],
+    [clear_selection_state, push_toast, save_entries_snapshot, t],
   );
+
+  const get_import_existing_entries = useCallback((): GlossaryEntry[] => {
+    const current_glossary_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      "glossary",
+    );
+    return current_glossary_slice.entries as GlossaryEntry[];
+  }, [project_store]);
+  const import_confirmation = useQualityRuleImportConfirmation<GlossaryEntry>({
+    rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
+    get_existing_entries: get_import_existing_entries,
+    apply_entries: apply_import_entries,
+  });
+  const {
+    import_confirm_state,
+    persist_import_entries,
+    import_duplicate_skip,
+    import_duplicate_overwrite,
+    close_import_duplicate_confirm,
+  } = import_confirmation;
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<GlossaryPresetPayload>("/api/quality/rules/presets", {
@@ -1038,7 +1059,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           return;
         }
 
-        await persist_merged_entries(imported_entries, { close_preset_menu: false });
+        await persist_import_entries(imported_entries, { close_preset_menu: false });
       } catch (error) {
         if (error instanceof Error) {
           push_toast("error", error.message);
@@ -1047,7 +1068,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         }
       }
     },
-    [persist_merged_entries, push_toast, readonly, t],
+    [persist_import_entries, push_toast, readonly, t],
   );
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
@@ -1117,7 +1138,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             virtual_id,
           },
         );
-        await persist_merged_entries(payload.entries, { close_preset_menu: true });
+        await persist_import_entries(payload.entries, { close_preset_menu: true });
       } catch (error) {
         if (error instanceof Error) {
           push_toast("error", error.message);
@@ -1126,7 +1147,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         }
       }
     },
-    [persist_merged_entries, push_toast, readonly, t],
+    [persist_import_entries, push_toast, readonly, t],
   );
 
   const request_reset_entries = useCallback((): void => {
@@ -1520,6 +1541,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       preset_menu_open,
       dialog_state,
       confirm_state,
+      import_confirm_state,
       preset_input_state,
       update_filter_keyword,
       update_filter_scope,
@@ -1550,6 +1572,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       request_close_dialog,
       confirm_pending_action,
       close_confirm_dialog,
+      import_duplicate_skip,
+      import_duplicate_overwrite,
+      close_import_duplicate_confirm,
       update_preset_input_value,
       submit_preset_input,
       close_preset_input_dialog,
@@ -1562,6 +1587,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     apply_preset,
     cancel_default_preset,
     close_confirm_dialog,
+    close_import_duplicate_confirm,
     close_preset_input_dialog,
     confirm_pending_action,
     confirm_state,
@@ -1574,6 +1600,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     filtered_entries,
     import_entries_from_path,
     import_entries_from_picker,
+    import_confirm_state,
+    import_duplicate_overwrite,
+    import_duplicate_skip,
     invalid_regex_message,
     open_create_dialog,
     open_edit_dialog,

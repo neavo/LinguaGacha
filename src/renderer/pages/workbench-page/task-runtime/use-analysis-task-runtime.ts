@@ -5,7 +5,7 @@ import {
   create_analysis_reset_all_plan,
   create_analysis_reset_failed_plan,
 } from "@/project/reset/analysis-reset-plan";
-import { create_analysis_glossary_import_plan } from "@/project/glossary-import/analysis-glossary-import-plan";
+import { prepare_analysis_glossary_import } from "@/project/importer/analysis-glossary-importer";
 import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import {
   normalize_project_mutation_ack,
@@ -492,10 +492,10 @@ export function useAnalysisTaskRuntime(
       await run_modal_progress_toast({
         message: t("workbench_page.analysis_task.feedback.import_loading_toast"),
         task: async () => {
-          const import_plan = await create_analysis_glossary_import_plan(project_store.getState(), {
+          const prepared_import = await prepare_analysis_glossary_import(project_store.getState(), {
             task_snapshot,
           });
-          if (import_plan === null) {
+          if (prepared_import === null) {
             return;
           }
 
@@ -503,21 +503,24 @@ export function useAnalysisTaskRuntime(
             source: "analysis_import_glossary",
             updatedSections: ["quality", "analysis"],
             operations: [
-              createProjectStoreReplaceSectionChange("quality", import_plan.next_quality_state),
-              createProjectStoreReplaceSectionChange("analysis", import_plan.next_analysis_state),
+              createProjectStoreReplaceSectionChange("quality", prepared_import.next_quality_state),
+              createProjectStoreReplaceSectionChange(
+                "analysis",
+                prepared_import.next_analysis_state,
+              ),
             ],
           });
 
           try {
             const next_snapshot = normalize_analysis_task_snapshot_payload({
-              task: import_plan.next_task_snapshot,
+              task: prepared_import.next_task_snapshot,
             });
             apply_analysis_task_snapshot(next_snapshot);
             sync_runtime_task_snapshot(next_snapshot);
             const mutation_ack = normalize_project_mutation_ack(
               await api_fetch<ProjectMutationAckPayload>(
                 "/api/project/analysis/import-glossary",
-                import_plan.request_body,
+                prepared_import.request_body,
               ),
             );
             align_project_runtime_ack(mutation_ack);
@@ -536,7 +539,7 @@ export function useAnalysisTaskRuntime(
             "success",
             t("workbench_page.analysis_task.feedback.import_success").replace(
               "{COUNT}",
-              String(import_plan.imported_count),
+              String(prepared_import.imported_count),
             ),
           );
         },

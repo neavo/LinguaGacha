@@ -8,6 +8,7 @@ import { GlossaryEditDialog } from "@/pages/glossary-page/components/glossary-ed
 import { GlossaryPresetInputDialog } from "@/pages/glossary-page/components/glossary-preset-input-dialog";
 import type { GlossaryFilterScope } from "@/pages/glossary-page/types";
 import { GlossaryTable } from "@/pages/glossary-page/components/glossary-table";
+import { QualityRuleImportConfirmDialog } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 import { useGlossaryPageState } from "@/pages/glossary-page/use-glossary-page-state";
 import { FileDropZone } from "@/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
@@ -144,6 +145,12 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
           void glossary_page_state.confirm_pending_action();
         }}
         on_close={glossary_page_state.close_confirm_dialog}
+      />
+      <QualityRuleImportConfirmDialog
+        state={glossary_page_state.import_confirm_state}
+        on_skip={glossary_page_state.import_duplicate_skip}
+        on_overwrite={glossary_page_state.import_duplicate_overwrite}
+        on_close={glossary_page_state.close_import_duplicate_confirm}
       />
       <GlossaryPresetInputDialog
         state={glossary_page_state.preset_input_state}

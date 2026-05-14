@@ -15,6 +15,8 @@ export const en_us_app = {
     close: "Close",
     reset: "Reset",
     retry: "Retry",
+    skip: "Skip",
+    overwrite: "Overwrite",
     loading: "Loading",
     select_file: "Select File",
     select_folder: "Select Folder",
@@ -35,6 +37,9 @@ export const en_us_app = {
   },
   close_confirm: {
     description: "Confirm exiting the app …?",
+  },
+  quality_rule_import: {
+    duplicate_description: "{COUNT} duplicate rules were detected. Choose how to handle them …?",
   },
   update: {
     toast: "New version is available, click the bottom-left update entry to download it …",

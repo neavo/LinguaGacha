@@ -497,4 +497,93 @@ describe("useTextPreservePageState", () => {
 
     expect(latest_state?.dialog_state.open).toBe(false);
   });
+
+  it("导入重复文本保护规则时先确认，跳过只保存非重复规则", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "foo",
+            info: "new",
+          },
+          {
+            src: "baz",
+            info: "keep",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 2,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
+    });
+
+    expect(latest_state?.import_confirm_state.open).toBe(true);
+    expect(latest_state?.import_confirm_state.duplicate_count).toBe(1);
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await latest_state?.import_duplicate_skip();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "text_preserve",
+      expected_revision: 1,
+      entries: [
+        {
+          src: "foo",
+          info: "bar",
+        },
+        {
+          src: "baz",
+          info: "keep",
+        },
+      ],
+    });
+  });
+
+  it("预设重复文本保护规则选择覆盖时会保存新备注", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "foo",
+            info: "",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 2,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.apply_preset("builtin:demo.json");
+    });
+    await act(async () => {
+      await latest_state?.import_duplicate_overwrite();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "text_preserve",
+      expected_revision: 1,
+      entries: [
+        {
+          src: "foo",
+          info: "",
+        },
+      ],
+    });
+  });
 });
