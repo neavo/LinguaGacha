@@ -39,6 +39,13 @@ export class ProjectTaskStore {
   }
 
   /**
+   * 后台任务长流程显式保留当前工程连接，结束后释放让 .lg 回到单文件稳定态
+   */
+  public acquire_project_lease(owner: string): () => void {
+    return this.database.acquire_project_lease(this.require_loaded_project_path(), owner);
+  }
+
+  /**
    * 任务启动时从 `.lg` 读取质量规则和提示词快照，renderer 缓存不再作为后端任务输入
    */
   public build_quality_snapshot(): ApiJsonValue {
@@ -345,7 +352,8 @@ export class ProjectTaskStore {
     });
     return {
       changed_item_ids: changed_item_ids as unknown as ApiJsonValue,
-      translation_scope: this.task_runtime_state.snapshot().translation_scope as unknown as ApiJsonValue,
+      translation_scope: this.task_runtime_state.snapshot()
+        .translation_scope as unknown as ApiJsonValue,
       section_revisions: this.build_section_revisions(project_path, ["items", "proofreading"]),
     };
   }
@@ -709,12 +717,16 @@ export class ProjectTaskStore {
       } else if (raw_artifact["kind"] === "analysis_checkpoints") {
         artifacts.push({
           kind: "analysis_checkpoints",
-          checkpoints: this.normalize_checkpoint_rows(raw_artifact["checkpoints"]) as unknown as ApiJsonValue,
+          checkpoints: this.normalize_checkpoint_rows(
+            raw_artifact["checkpoints"],
+          ) as unknown as ApiJsonValue,
         });
       } else if (raw_artifact["kind"] === "analysis_candidates") {
         artifacts.push({
           kind: "analysis_candidates",
-          entries: this.normalize_glossary_entries(raw_artifact["entries"]) as unknown as ApiJsonValue,
+          entries: this.normalize_glossary_entries(
+            raw_artifact["entries"],
+          ) as unknown as ApiJsonValue,
         });
       }
     }
