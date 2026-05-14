@@ -5,9 +5,12 @@ import { Model, type ModelApiFormat } from "../../../../base/model";
 import { JsonTool } from "../../../../shared/utils/json-tool";
 import type { ApiJsonValue } from "../../../api/api-types";
 import { build_anthropic_payload } from "./policy/anthropic-policy";
-import { build_google_payload } from "./policy/google-policy";
-import { build_openai_compatible_payload } from "./policy/openai-compatible-policy";
-import { build_sakura_payload } from "./policy/sakura-policy";
+import { build_google_payload, normalize_google_sdk_base_url } from "./policy/google-policy";
+import {
+  build_openai_compatible_payload,
+  normalize_openai_compatible_sdk_base_url,
+} from "./policy/openai-compatible-policy";
+import { build_sakura_payload, normalize_sakura_sdk_base_url } from "./policy/sakura-policy";
 import type {
   ModelRequestSnapshot,
   ResolvedRequestPolicy,
@@ -78,14 +81,19 @@ export class LLMClientPolicy {
   }
 
   /**
-   * OpenAI-compatible 与 Sakura URL 需要去掉 chat completions 后缀，避免 SDK 重复拼接路径。
+   * URL 归一化只按 provider 分发，供应商细则放在各自 policy 模块。
    */
   public static normalize_api_url(url: string, api_format: ModelApiFormat): string {
-    const trimmed = url.trim().replace(/\/+$/u, "");
-    if (api_format === "OpenAI" || api_format === "SakuraLLM") {
-      return trimmed.replace(/\/chat\/completions$/iu, "");
+    if (api_format === "Google") {
+      return normalize_google_sdk_base_url(url);
     }
-    return trimmed;
+    if (api_format === "SakuraLLM") {
+      return normalize_sakura_sdk_base_url(url);
+    }
+    if (api_format === "OpenAI") {
+      return normalize_openai_compatible_sdk_base_url(url);
+    }
+    return url.trim().replace(/\/+$/u, "");
   }
 
   /**

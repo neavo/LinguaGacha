@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ApiJsonValue } from "../../../api/api-types";
 import { LLMClientPolicy } from "./llm-client-policy";
+import { build_google_thinking_config } from "./policy/google-policy";
 
 describe("LLMClientPolicy", () => {
   it("自定义 OpenAI-compatible endpoint 使用最终 payload 并写入 GPT-5 thinking 规则", async () => {
@@ -73,6 +74,64 @@ describe("LLMClientPolicy", () => {
     });
   });
 
+  it("Gemini thinking 等级按官方能力映射到预算和等级字段", () => {
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "OFF" }),
+    ).toEqual({ thinkingLevel: "LOW", includeThoughts: false });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "MEDIUM" }),
+    ).toEqual({ thinkingLevel: "MEDIUM", includeThoughts: true });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3-flash-preview", thinking_level: "OFF" }),
+    ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-2.5-pro", thinking_level: "OFF" }),
+    ).toEqual({ thinkingBudget: 128, includeThoughts: false });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-2.5-flash-lite", thinking_level: "LOW" }),
+    ).toEqual({ thinkingBudget: 512, includeThoughts: true });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "MEDIUM" }),
+    ).toEqual({ thinkingBudget: 768, includeThoughts: true });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "HIGH" }),
+    ).toEqual({ thinkingBudget: 1024, includeThoughts: true });
+  });
+
+  it("Google SDK baseUrl 会移除末尾版本段且不影响其它 provider", () => {
+    expect(LLMClientPolicy.normalize_api_url("", "Google")).toBe("");
+    expect(
+      LLMClientPolicy.normalize_api_url("https://generativelanguage.googleapis.com", "Google"),
+    ).toBe("https://generativelanguage.googleapis.com");
+    expect(
+      LLMClientPolicy.normalize_api_url("https://generativelanguage.googleapis.com/v1", "Google"),
+    ).toBe("https://generativelanguage.googleapis.com");
+    expect(
+      LLMClientPolicy.normalize_api_url(
+        "https://generativelanguage.googleapis.com/v1beta/",
+        "Google",
+      ),
+    ).toBe("https://generativelanguage.googleapis.com");
+    expect(
+      LLMClientPolicy.normalize_api_url(
+        "https://generativelanguage.googleapis.com/v1alpha",
+        "Google",
+      ),
+    ).toBe("https://generativelanguage.googleapis.com");
+    expect(LLMClientPolicy.normalize_api_url("https://proxy.example/google/v1beta", "Google")).toBe(
+      "https://proxy.example/google",
+    );
+    expect(LLMClientPolicy.normalize_api_url("https://api.example/v1", "OpenAI")).toBe(
+      "https://api.example/v1",
+    );
+    expect(
+      LLMClientPolicy.normalize_api_url("https://sakura.example/v1/chat/completions/", "SakuraLLM"),
+    ).toBe("https://sakura.example/v1");
+    expect(LLMClientPolicy.normalize_api_url("https://api.anthropic.com/", "Anthropic")).toBe(
+      "https://api.anthropic.com",
+    );
+  });
+
   it("Claude thinking 开启时移除 temperature 和 top_p", async () => {
     const policy = new LLMClientPolicy(await create_app_root());
 
@@ -93,7 +152,7 @@ describe("LLMClientPolicy", () => {
     expect(resolved.provider).toBe("anthropic");
     expect(resolved.payload["temperature"]).toBeUndefined();
     expect(resolved.payload["top_p"]).toBeUndefined();
-    expect(resolved.payload["thinking"]).toEqual({ type: "enabled", budget_tokens: 1024 });
+    expect(resolved.payload["thinking"]).toEqual({ type: "enabled", budget_tokens: 2048 });
   });
 });
 

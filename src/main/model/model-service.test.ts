@@ -11,6 +11,23 @@ import { SettingService } from "../service/setting-service";
 import { LLMClient } from "../engine/worker/llm/llm-client";
 import { ModelService } from "./model-service";
 
+// Google SDK mock 记录构造参数，避免测试真实网络和 SDK 内部分页实现。
+const google_genai_mock = vi.hoisted(() => ({
+  constructor_options: [] as unknown[],
+  list: vi.fn(),
+}));
+
+vi.mock("@google/genai", () => ({
+  GoogleGenAI: vi.fn(function GoogleGenAI(options: unknown) {
+    google_genai_mock.constructor_options.push(options);
+    return {
+      models: {
+        list: google_genai_mock.list,
+      },
+    };
+  }),
+}));
+
 type ModelPresetFiles = {
   builtin_models?: Array<Record<string, ApiJsonValue>>;
   templates?: Partial<
@@ -31,6 +48,8 @@ type LogEntry = {
 };
 
 afterEach(() => {
+  google_genai_mock.constructor_options.length = 0;
+  google_genai_mock.list.mockReset();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -408,7 +427,53 @@ describe("ModelService 远端模型能力", () => {
     );
   });
 
-  it("Google 与 Anthropic list-available 使用各自实时列表协议", async () => {
+  it("Google list-available 使用 SDK 与归一化后的 baseUrl", async () => {
+    google_genai_mock.list.mockResolvedValue(
+      create_google_model_pager([
+        { name: "models/gemini-2.5-flash" },
+        { name: "" },
+        { displayName: "missing-name" },
+        { name: "models/gemini-2.5-pro" },
+      ]),
+    );
+    const { service } = await create_model_service([
+      create_model({
+        api_format: "Google",
+        api_key: "google-key-a\ngoogle-key-b",
+        api_url: "https://generativelanguage.googleapis.com/v1beta",
+        id: "google-1",
+        request: {
+          extra_headers: { "X-Trace": "trace-google" },
+          extra_headers_custom_enable: true,
+        },
+      }),
+    ]);
+    const fetch_mock = vi.fn();
+    vi.stubGlobal("fetch", fetch_mock);
+
+    const result = await service.list_available_models({ model_id: "google-1" });
+
+    expect(result["models"]).toEqual(["models/gemini-2.5-flash", "models/gemini-2.5-pro"]);
+    expect(fetch_mock).not.toHaveBeenCalled();
+    expect(google_genai_mock.list).toHaveBeenCalledWith();
+    expect(google_genai_mock.constructor_options).toEqual([
+      expect.objectContaining({
+        apiKey: "google-key-a",
+        httpOptions: expect.objectContaining({
+          baseUrl: "https://generativelanguage.googleapis.com",
+          headers: expect.objectContaining({
+            "User-Agent": expect.stringContaining("Chrome/133"),
+            "X-Trace": "trace-google",
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it("Google list-available 空 URL 交给 SDK 默认 baseUrl", async () => {
+    google_genai_mock.list.mockResolvedValue(
+      create_google_model_pager([{ name: "models/gemini-2.5-flash" }]),
+    );
     const { service } = await create_model_service([
       create_model({
         api_format: "Google",
@@ -416,6 +481,21 @@ describe("ModelService 远端模型能力", () => {
         api_url: "",
         id: "google-1",
       }),
+    ]);
+
+    const result = await service.list_available_models({ model_id: "google-1" });
+
+    expect(result["models"]).toEqual(["models/gemini-2.5-flash"]);
+    expect(google_genai_mock.constructor_options).toEqual([
+      expect.objectContaining({
+        apiKey: "google-key",
+        httpOptions: expect.objectContaining({ baseUrl: undefined }),
+      }),
+    ]);
+  });
+
+  it("Anthropic list-available 保持既有实时列表协议", async () => {
+    const { service } = await create_model_service([
       create_model({
         api_format: "Anthropic",
         api_key: "anthropic-key",
@@ -425,20 +505,14 @@ describe("ModelService 远端模型能力", () => {
     ]);
     const fetch_mock = vi
       .fn()
-      .mockResolvedValueOnce(json_response({ models: [{ name: "models/gemini-2.5-flash" }] }))
       .mockResolvedValueOnce(json_response({ data: [{ id: "claude-sonnet-4-5" }] }));
     vi.stubGlobal("fetch", fetch_mock);
 
-    const google_result = await service.list_available_models({ model_id: "google-1" });
     const anthropic_result = await service.list_available_models({ model_id: "anthropic-1" });
 
-    expect(google_result["models"]).toEqual(["models/gemini-2.5-flash"]);
     expect(anthropic_result["models"]).toEqual(["claude-sonnet-4-5"]);
-    expect(fetch_mock.mock.calls[0]?.[0]).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models?key=google-key",
-    );
-    expect(fetch_mock.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/models");
-    expect(fetch_mock.mock.calls[1]?.[1]).toMatchObject({
+    expect(fetch_mock.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/models");
+    expect(fetch_mock.mock.calls[0]?.[1]).toMatchObject({
       headers: expect.objectContaining({
         "anthropic-version": "2023-06-01",
         "x-api-key": "anthropic-key",
@@ -448,13 +522,17 @@ describe("ModelService 远端模型能力", () => {
 
   it("模型连通性测试复用 LLM request client 并按 key 汇总结果", async () => {
     const log_entries: LogEntry[] = [];
-    const { service } = await create_model_service([
-      create_model({
-        api_format: "OpenAI",
-        api_key: "1234567890abcdefXYZ\nbad-key",
-        id: "test-1",
-      }),
-    ], {}, log_entries);
+    const { service } = await create_model_service(
+      [
+        create_model({
+          api_format: "OpenAI",
+          api_key: "1234567890abcdefXYZ\nbad-key",
+          id: "test-1",
+        }),
+      ],
+      {},
+      log_entries,
+    );
     const request_mock = vi
       .spyOn(LLMClient.prototype, "request")
       .mockResolvedValueOnce({
@@ -512,7 +590,7 @@ describe("ModelService 远端模型能力", () => {
         "info",
         "任务提示词：\n[{'role': 'system', 'content': '任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。'}, {'role': 'user', 'content': '{\"0\":\"魔導具師ダリヤはうつむかない\"}'}]",
       ],
-      ["info", "模型回复内容：\n{\"0\":\"成功\"}"],
+      ["info", '模型回复内容：\n{"0":"成功"}'],
       ["info", "任务耗时 0.25 秒，输入消耗 2 Tokens，输出消耗 3 Tokens"],
       ["info", ""],
       ["info", "正在测试密钥：\nbad-key"],
@@ -626,6 +704,17 @@ function json_response(body: Record<string, unknown>): Response {
     headers: { "Content-Type": "application/json" },
     status: 200,
   });
+}
+
+/**
+ * 模拟 Google SDK pager 的 async iterable 形态，测试只关心 ModelService 的读取边界。
+ */
+async function* create_google_model_pager(
+  models: Array<Record<string, unknown>>,
+): AsyncGenerator<Record<string, unknown>> {
+  for (const model of models) {
+    yield model;
+  }
 }
 
 function create_template(name: string, api_format: string): Record<string, ApiJsonValue> {

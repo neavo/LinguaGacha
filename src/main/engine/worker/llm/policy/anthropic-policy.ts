@@ -5,7 +5,6 @@ import {
 } from "../llm-client-policy";
 import type { ModelRequestSnapshot } from "./policy-types";
 import type { LLMMessage } from "../llm-types";
-import { normalize_chat_messages } from "./openai-compatible-policy";
 
 /**
  * Anthropic 规则：system 独立于 messages；thinking 开启时强制删除 temperature/top_p。
@@ -21,7 +20,9 @@ export function build_anthropic_payload(
     .join("\n\n");
   const payload: Record<string, unknown> = {
     model: snapshot.model_id,
-    messages: normalize_chat_messages(messages.filter((message) => message.role !== "system")),
+    messages: normalize_anthropic_chat_messages(
+      messages.filter((message) => message.role !== "system"),
+    ),
     stream: true,
     max_tokens: resolve_max_tokens_for_request(snapshot, { auto_value: 8192 }) ?? 8192,
   };
@@ -45,6 +46,21 @@ export function build_anthropic_payload(
 }
 
 /**
+ * Anthropic messages 不包含 system role，并在自身边界去空白与阻断空请求。
+ */
+function normalize_anthropic_chat_messages(
+  messages: LLMMessage[],
+): Array<{ role: string; content: string }> {
+  const result = messages
+    .map((message) => ({ role: message.role, content: message.content.trim() }))
+    .filter((message) => message.content !== "");
+  if (result.length === 0) {
+    throw new Error("LLM 请求 messages 为空。");
+  }
+  return result;
+}
+
+/**
  * Claude thinking 开启时删除 temperature/top_p，因为 provider 不允许组合。
  */
 export function build_anthropic_thinking_payload(
@@ -61,9 +77,9 @@ export function build_anthropic_thinking_payload(
     return { type: "disabled" };
   }
   const budgets: Record<"LOW" | "MEDIUM" | "HIGH", number> = {
-    LOW: 384,
-    MEDIUM: 768,
-    HIGH: 1024,
+    LOW: 1024,
+    MEDIUM: 1536,
+    HIGH: 2048,
   };
   return { type: "enabled", budget_tokens: budgets[snapshot.thinking_level] };
 }
