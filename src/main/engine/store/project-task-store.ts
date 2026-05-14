@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
+import { app_error } from "../../api/app-error";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import { ProjectChangePublisher } from "../../project/project-change-publisher";
@@ -364,7 +365,7 @@ export class ProjectTaskStore {
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载");
+      throw app_error("project_not_loaded");
     }
     return state.projectPath;
   }

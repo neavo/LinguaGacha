@@ -7,6 +7,7 @@ import {
   PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
   ProjectDatabaseMigrationService,
 } from "../migration/project-database-migration-service";
+import { app_error } from "../api/app-error";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
@@ -65,17 +66,33 @@ function bytes_from_blob(value: unknown): Buffer {
 
 function ensure_database_runtime_available(): void {
   if (typeof DatabaseSync !== "function") {
-    throw new Error("当前 Electron / Node runtime 缺少 node:sqlite DatabaseSync。");
+    throw app_error(
+      "runtime_capability_missing",
+      "当前 Electron / Node runtime 缺少 node:sqlite DatabaseSync。",
+    );
   }
   if (!ZstdTool.isRuntimeAvailable()) {
-    throw new Error("当前 Electron / Node runtime 缺少 node:zlib Zstd API。");
+    throw app_error(
+      "runtime_capability_missing",
+      "当前 Electron / Node runtime 缺少 node:zlib Zstd API。",
+    );
   }
 }
 
 /**
  * 用独立错误类型标记可恢复的 database 冲突，避免调用方把它当成未知崩溃
  */
-export class DatabaseConflictError extends Error {}
+export class DatabaseConflictError extends Error {
+  public readonly code = "database_conflict";
+
+  /**
+   * 保留独立 name，Gateway 可在无直接依赖数据库层时稳定识别冲突
+   */
+  public constructor(message: string) {
+    super(message);
+    this.name = "DatabaseConflictError";
+  }
+}
 
 /**
  * Electron main 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式
@@ -321,7 +338,7 @@ export class ProjectDatabase {
       case "getProjectSummary":
         return this.get_project_summary(this.require_string(args, "projectPath"));
       default:
-        throw new Error(`未知 database 操作：${operation.name}`);
+        throw app_error("internal_invariant", `未知 database 操作：${operation.name}`);
     }
   }
 
@@ -478,12 +495,12 @@ export class ProjectDatabase {
     const normalized_path = path.resolve(project_path);
     for (const operation of operations) {
       if (operation.name === "createProject" || operation.name === "closeProject") {
-        throw new Error("database 事务内不能执行工程连接生命周期操作。");
+        throw app_error("internal_invariant", "database 事务内不能执行工程连接生命周期操作。");
       }
       const args = this.normalize_args(operation.args);
       const operation_path = path.resolve(this.require_string(args, "projectPath"));
       if (operation_path !== normalized_path) {
-        throw new Error("database 事务只能绑定单个工程文件。");
+        throw app_error("internal_invariant", "database 事务只能绑定单个工程文件。");
       }
     }
   }
@@ -1289,7 +1306,7 @@ export class ProjectDatabase {
   private require_string(args: Record<string, DatabaseJsonValue>, key: string): string {
     const value = args[key];
     if (typeof value !== "string" || value === "") {
-      throw new Error(`database 参数 ${key} 必须是非空字符串。`);
+      throw app_error("validation_failed", `database 参数 ${key} 必须是非空字符串。`);
     }
     return value;
   }
@@ -1308,7 +1325,7 @@ export class ProjectDatabase {
   private require_number(args: Record<string, DatabaseJsonValue>, key: string): number {
     const value = args[key];
     if (typeof value !== "number") {
-      throw new Error(`database 参数 ${key} 必须是数字。`);
+      throw app_error("validation_failed", `database 参数 ${key} 必须是数字。`);
     }
     return value;
   }
@@ -1348,7 +1365,7 @@ export class ProjectDatabase {
   private require_array(args: Record<string, DatabaseJsonValue>, key: string): DatabaseJsonValue[] {
     const value = args[key];
     if (!Array.isArray(value)) {
-      throw new Error(`database 参数 ${key} 必须是数组。`);
+      throw app_error("validation_failed", `database 参数 ${key} 必须是数组。`);
     }
     return value;
   }

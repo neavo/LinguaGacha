@@ -36,7 +36,7 @@ import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
 } from "@/app/desktop/desktop-runtime-context";
-import { useI18n } from "@/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { normalize_source_paths } from "@/lib/source-paths";
 import type {
@@ -84,12 +84,32 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
 
 const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
 
+type WorkbenchParseFailedFile = {
+  filename: string;
+  code: string;
+  safe_message: string;
+};
+
 function clamp_workbench_count(value: number, min_value: number, max_value: number): number {
   if (!Number.isFinite(value)) {
     return min_value;
   }
 
   return Math.min(max_value, Math.max(min_value, Math.floor(value)));
+}
+
+function normalize_parse_failed_file(value: unknown): WorkbenchParseFailedFile | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const filename = String(record["filename"] ?? "").trim();
+  const code = String(record["code"] ?? "").trim();
+  const safe_message = String(record["safe_message"] ?? "").trim();
+  if (filename === "" || code === "") {
+    return null;
+  }
+  return { filename, code, safe_message };
 }
 
 function complete_workbench_stats(args: {
@@ -1420,6 +1440,26 @@ export function useWorkbenchLiveState(
             },
           );
           const preview_files = Array.isArray(payload.files) ? payload.files : [];
+          const raw_failed_files = (payload as { failed_files?: unknown }).failed_files;
+          const failed_files = Array.isArray(raw_failed_files)
+            ? raw_failed_files
+                .map((item) => normalize_parse_failed_file(item))
+                .filter((item): item is WorkbenchParseFailedFile => item !== null)
+            : [];
+          if (failed_files.length > 0) {
+            const failed_file = failed_files[0];
+            if (failed_file !== undefined) {
+              const error_key = `app.error.${failed_file.code}` as LocaleKey;
+              const reason = t(error_key) === error_key ? failed_file.safe_message : t(error_key);
+              push_toast(
+                "warning",
+                t("workbench_page.feedback.file_parse_failed", {
+                  FILENAME: failed_file.filename,
+                  REASON: reason,
+                }),
+              );
+            }
+          }
 
           for (const preview_file of preview_files) {
             if (typeof preview_file !== "object" || preview_file === null) {

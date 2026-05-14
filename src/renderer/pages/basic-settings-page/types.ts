@@ -5,7 +5,6 @@ import {
   PROJECT_SAVE_MODES,
   SOURCE_TARGET_LANGUAGE_CODES,
   type ProjectSaveMode,
-  type SourceTargetLanguageCode,
 } from "@base/setting";
 
 export type { ProjectSaveMode };
@@ -16,8 +15,6 @@ export const LANGUAGE_CODES = SOURCE_TARGET_LANGUAGE_CODES;
 
 export const REQUEST_TIMEOUT_MIN = 0;
 export const REQUEST_TIMEOUT_MAX = 9_999_999;
-
-type LanguageCode = SourceTargetLanguageCode;
 
 export type BasicSettingsPendingField =
   | "source_language"
@@ -37,29 +34,6 @@ export type BasicSettingsSnapshot = Pick<
   | "output_folder_open_on_finish"
   | "request_timeout"
 >;
-
-export const LANGUAGE_LABEL_KEYS: Readonly<
-  Record<LanguageCode | typeof ALL_LANGUAGE_VALUE, LocaleKey>
-> = {
-  ALL: "app.language.ALL",
-  ZH: "app.language.ZH",
-  EN: "app.language.EN",
-  JA: "app.language.JA",
-  KO: "app.language.KO",
-  RU: "app.language.RU",
-  AR: "app.language.AR",
-  DE: "app.language.DE",
-  FR: "app.language.FR",
-  PL: "app.language.PL",
-  ES: "app.language.ES",
-  IT: "app.language.IT",
-  PT: "app.language.PT",
-  HU: "app.language.HU",
-  TR: "app.language.TR",
-  TH: "app.language.TH",
-  ID: "app.language.ID",
-  VI: "app.language.VI",
-};
 
 export const PROJECT_SAVE_MODE_LABEL_KEYS: Readonly<Record<ProjectSaveMode, LocaleKey>> = {
   MANUAL: "basic_settings_page.fields.project_save_mode.options.manual",

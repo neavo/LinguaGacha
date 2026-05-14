@@ -413,14 +413,14 @@ describe("翻译文本 pipeline", () => {
     expect(result).toEqual({ name: null, dst: "hi" });
   });
 
-  it("自动修复在日语源语言下按语言、代码、转义、数字、标点顺序执行", () => {
+  it("自动修复在日文源语言下按语言、代码、转义、数字、标点顺序执行", () => {
     const calls: string[] = [];
     vi.spyOn(KanaFixer, "fix").mockImplementation((dst) => {
       calls.push("kana");
       return `${dst}-k`;
     });
     vi.spyOn(HangeulFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用韩语修复：${dst}`);
+      throw new Error(`不应调用韩文修复：${dst}`);
     });
     vi.spyOn(CodeFixer, "fix").mockImplementation((src, dst) => {
       calls.push("code");
@@ -459,9 +459,9 @@ describe("翻译文本 pipeline", () => {
     expect(calls).toEqual(["kana", "code", "escape", "number", "punctuation"]);
   });
 
-  it("自动修复在韩语源语言下使用谚文修复路径", () => {
+  it("自动修复在韩文源语言下使用谚文修复路径", () => {
     vi.spyOn(KanaFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用日语修复：${dst}`);
+      throw new Error(`不应调用日文修复：${dst}`);
     });
     vi.spyOn(HangeulFixer, "fix").mockImplementation((dst) => `${dst}-h`);
     vi.spyOn(CodeFixer, "fix").mockImplementation((_src, dst) => dst);
@@ -481,10 +481,10 @@ describe("翻译文本 pipeline", () => {
 
   it("自动修复在其它源语言下跳过语言残留专用修复", () => {
     vi.spyOn(KanaFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用日语修复：${dst}`);
+      throw new Error(`不应调用日文修复：${dst}`);
     });
     vi.spyOn(HangeulFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用韩语修复：${dst}`);
+      throw new Error(`不应调用韩文修复：${dst}`);
     });
     vi.spyOn(CodeFixer, "fix").mockImplementation((_src, dst) => `${dst}-c`);
     vi.spyOn(EscapeFixer, "fix").mockImplementation((_src, dst) => `${dst}-e`);

@@ -6,13 +6,13 @@ import "@/pages/basic-settings-page/basic-settings-page.css";
 import {
   ALL_LANGUAGE_VALUE,
   LANGUAGE_CODES,
-  LANGUAGE_LABEL_KEYS,
   PROJECT_SAVE_MODE_LABEL_KEYS,
   PROJECT_SAVE_MODE_OPTIONS,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
   is_project_save_mode,
 } from "@/pages/basic-settings-page/types";
+import { get_language_label_key } from "@base/setting";
 import { useBasicSettingsState } from "@/pages/basic-settings-page/use-basic-settings-state";
 import { Input } from "@/shadcn/input";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
@@ -83,12 +83,12 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     return [
       {
         value: ALL_LANGUAGE_VALUE,
-        label: t(LANGUAGE_LABEL_KEYS.ALL),
+        label: t(get_language_label_key(ALL_LANGUAGE_VALUE)),
       },
       ...LANGUAGE_CODES.map((language_code) => {
         return {
           value: language_code,
-          label: t(LANGUAGE_LABEL_KEYS[language_code]),
+          label: t(get_language_label_key(language_code)),
         };
       }),
     ];
@@ -98,7 +98,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     return LANGUAGE_CODES.map((language_code) => {
       return {
         value: language_code,
-        label: t(LANGUAGE_LABEL_KEYS[language_code]),
+        label: t(get_language_label_key(language_code)),
       };
     });
   }, [t]);

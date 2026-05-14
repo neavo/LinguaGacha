@@ -6,51 +6,12 @@ import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared
 import type { LLMMessage } from "../llm/llm-types";
 import { Prompt } from "../../../../base/prompt";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
-
-const SOURCE_PLACEHOLDER_ZH = "原文"; // 中文提示词模板使用“原文”占位，英文模板使用“Source”占位，避免字符串散落在构造逻辑里
-const SOURCE_PLACEHOLDER_EN = "Source"; // 英文模板占位符单独保留，避免后续模板本地化时误改中文占位
-
-// 中文 UI 下展示的语言名，直接写入模型提示词
-const LANGUAGE_NAME_ZH: Record<string, string> = {
-  ZH: "中文",
-  EN: "英文",
-  JA: "日文",
-  KO: "韩文",
-  RU: "俄文",
-  AR: "阿拉伯文",
-  DE: "德文",
-  FR: "法文",
-  PL: "波兰文",
-  ES: "西班牙",
-  IT: "意大利文",
-  PT: "葡萄牙文",
-  HU: "匈牙利文",
-  TR: "土耳其文",
-  TH: "泰文",
-  ID: "印尼文",
-  VI: "越南文",
-};
-
-// 非中文 UI 下展示的语言名，保持和资源模板英文语境一致
-const LANGUAGE_NAME_EN: Record<string, string> = {
-  ZH: "Chinese",
-  EN: "English",
-  JA: "Japanese",
-  KO: "Korean",
-  RU: "Russian",
-  AR: "Arabic",
-  DE: "German",
-  FR: "French",
-  PL: "Polish",
-  ES: "Spanish",
-  IT: "Italian",
-  PT: "Portuguese",
-  HU: "Hungarian",
-  TR: "Turkish",
-  TH: "Thai",
-  ID: "Indonesian",
-  VI: "Vietnamese",
-};
+import {
+  get_language_display_locale,
+  get_prompt_source_language_name,
+  get_prompt_target_language_name,
+  normalize_language_code,
+} from "../../../../shared/language";
 
 /**
  * 提示词构造所需的最小配置快照，worker 只读取语言与界面语言
@@ -359,21 +320,13 @@ export class PromptBuilder {
     target_language: string;
   } {
     const prompt_language = this.get_prompt_ui_language();
-    const source_code = String(this.config.source_language ?? "ALL").toUpperCase();
-    const target_code = String(this.config.target_language ?? "ZH").toUpperCase();
-    const names = prompt_language === "zh" ? LANGUAGE_NAME_ZH : LANGUAGE_NAME_EN;
-    const source_placeholder =
-      prompt_language === "zh" ? SOURCE_PLACEHOLDER_ZH : SOURCE_PLACEHOLDER_EN;
-    if (target_code === "ALL") {
-      throw new Error("target_language does not support ALL");
-    }
-    if (!(target_code in names)) {
-      throw new Error(`invalid target_language: ${target_code}`);
-    }
+    const display_locale = get_language_display_locale(this.config.app_language);
+    const source_code = normalize_language_code(String(this.config.source_language ?? "ALL"));
+    const target_code = normalize_language_code(String(this.config.target_language ?? "ZH"));
     return {
       prompt_language,
-      source_language: names[source_code] ?? source_placeholder,
-      target_language: names[target_code] ?? "",
+      source_language: get_prompt_source_language_name(source_code, display_locale),
+      target_language: get_prompt_target_language_name(target_code, display_locale),
     };
   }
 

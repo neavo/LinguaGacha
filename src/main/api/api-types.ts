@@ -1,3 +1,5 @@
+import type { AppErrorCode, AppErrorDetails } from "./app-error";
+
 export type ApiJsonValue =
   | null
   | boolean
@@ -14,8 +16,13 @@ export interface ApiSuccessEnvelope {
 export interface ApiErrorEnvelope {
   ok: false;
   error: {
-    code: "not_found" | "invalid_request" | "internal_error";
+    code: AppErrorCode;
     message: string;
+    safe_message: string;
+    message_key: `app.error.${AppErrorCode}`;
+    details?: AppErrorDetails;
+    action?: string;
+    request_id: string;
   };
 }
 
@@ -29,9 +36,6 @@ export function ok(data: ApiJsonValue): ApiSuccessEnvelope {
   return { ok: true, data };
 }
 
-export function api_error(
-  code: ApiErrorEnvelope["error"]["code"],
-  message: string,
-): ApiErrorEnvelope {
-  return { ok: false, error: { code, message } };
+export function api_error(args: ApiErrorEnvelope["error"]): ApiErrorEnvelope {
+  return { ok: false, error: args };
 }

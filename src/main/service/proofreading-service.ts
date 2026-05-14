@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import { app_error } from "../api/app-error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import {
@@ -120,7 +121,7 @@ export class ProofreadingService {
   private async require_loaded_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载");
+      throw app_error("project_not_loaded");
     }
     return state.projectPath;
   }
@@ -137,14 +138,18 @@ export class ProofreadingService {
       return;
     }
     if ("items" in expected && expected["items"] !== current_items_revision) {
-      throw new Error(
-        `运行态 revision 冲突：section=items 当前=${current_items_revision.toString()} 期望=${expected["items"].toString()}`,
-      );
+      throw app_error("revision_conflict", undefined, {
+        current_revision: current_items_revision,
+        expected_revision: expected["items"] ?? 0,
+        section: "items",
+      });
     }
     if ("proofreading" in expected && expected["proofreading"] !== current_proofreading_revision) {
-      throw new Error(
-        `校对 revision 冲突：当前=${current_proofreading_revision.toString()}，期望=${expected["proofreading"].toString()}`,
-      );
+      throw app_error("revision_conflict", undefined, {
+        current_revision: current_proofreading_revision,
+        expected_revision: expected["proofreading"] ?? 0,
+        section: "proofreading",
+      });
     }
   }
 
@@ -308,7 +313,7 @@ export class ProofreadingService {
   private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
     if (parsed === null) {
-      throw new Error(`整数值无效：${String(value)}`);
+      throw app_error("validation_failed", `整数值无效：${String(value)}`);
     }
     return parsed;
   }

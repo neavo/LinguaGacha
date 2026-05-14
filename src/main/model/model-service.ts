@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
 
+import { app_error } from "../api/app-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../service/path-service";
@@ -77,12 +78,12 @@ export class ModelService {
     const model_id = String(request["model_id"] ?? "");
     const patch_value = request["patch"];
     if (typeof patch_value !== "object" || patch_value === null || Array.isArray(patch_value)) {
-      throw new Error("model patch must be a dict");
+      throw app_error("validation_failed", "模型配置补丁必须是对象。");
     }
     const patch = patch_value as ModelRecord;
     for (const key of Object.keys(patch)) {
       if (!PATCH_ALLOWED_KEYS.has(key)) {
-        throw new Error(`forbidden model patch key: ${key}`);
+        throw app_error("validation_failed", "模型配置包含不允许的字段。", { field: key });
       }
     }
     const config = this.load_setting_with_models(false);
@@ -115,7 +116,7 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     const model_type = String(request["model_type"] ?? "");
     if (Model.resolve_template_filename(model_type) === null) {
-      throw new Error(`unknown model type: ${model_type}`);
+      throw app_error("validation_failed", "模型类型无效。", { model_type });
     }
     const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
@@ -136,7 +137,7 @@ export class ModelService {
     const index = this.find_model_index_or_raise(models, model_id);
     const target_model = models[index] ?? {};
     if (String(target_model["type"] ?? "PRESET") === "PRESET") {
-      throw new Error("preset model cannot be deleted");
+      throw app_error("validation_failed", "内置预设模型不能删除。");
     }
     models.splice(index, 1);
     if (String(config["activate_model_id"] ?? "") === model_id) {
@@ -158,11 +159,11 @@ export class ModelService {
     const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     if (String(models[index]?.["type"] ?? "") !== "PRESET") {
-      throw new Error("model is not preset");
+      throw app_error("validation_failed", "该模型不是内置预设。");
     }
     const preset = this.load_preset_models().find((item) => String(item["id"] ?? "") === model_id);
     if (preset === undefined) {
-      throw new Error("preset model not found");
+      throw app_error("model_not_found");
     }
     models[index] = this.normalize_model(preset);
     config["models"] = models as unknown as ApiJsonValue;
@@ -177,11 +178,11 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     const ordered_ids_raw = request["ordered_model_ids"];
     if (!Array.isArray(ordered_ids_raw)) {
-      throw new Error("ordered_model_ids must be a list");
+      throw app_error("validation_failed", "模型排序列表无效。");
     }
     const ordered_ids = ordered_ids_raw.map((value) => String(value).trim()).filter(Boolean);
     if (ordered_ids.length === 0) {
-      throw new Error("ordered_model_ids is empty");
+      throw app_error("validation_failed", "模型排序列表不能为空。");
     }
     const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
@@ -196,7 +197,7 @@ export class ModelService {
       expected_ids.length !== ordered_ids.length ||
       expected_ids.some((model_id) => !ordered_id_set.has(model_id))
     ) {
-      throw new Error("ordered_model_ids must match one model group exactly");
+      throw app_error("validation_failed", "模型排序必须完整覆盖同一分组。");
     }
     const reordered = this.reorder_group(models, model_type, ordered_ids);
     config["models"] = reordered as unknown as ApiJsonValue;
@@ -308,7 +309,7 @@ export class ModelService {
       }
       return await this.fetch_openai_available_models(model, api_format);
     } catch (error) {
-      throw new Error("获取模型列表失败，请检查接口配置。", { cause: error });
+      throw app_error("model_provider_failed", undefined, undefined, error);
     }
   }
 
@@ -362,7 +363,7 @@ export class ModelService {
   private async fetch_json(url: string, headers: Record<string, string>): Promise<ApiJsonValue> {
     const response = await fetch(url, { headers, method: "GET" });
     if (!response.ok) {
-      throw new Error(`模型列表 HTTP ${response.status.toString()}`);
+      throw app_error("model_provider_failed", undefined, { status: response.status }, response);
     }
     return (await response.json()) as ApiJsonValue;
   }
@@ -562,8 +563,14 @@ export class ModelService {
    */
   private mask_api_key(key: string): string {
     const normalized_key = key.trim();
+    if (normalized_key === "") {
+      return "";
+    }
+    if (normalized_key.length <= 8) {
+      return "*".repeat(Math.max(4, normalized_key.length));
+    }
     if (normalized_key.length <= 16) {
-      return normalized_key;
+      return `${normalized_key.slice(0, 2)}${"*".repeat(normalized_key.length - 4)}${normalized_key.slice(-2)}`;
     }
     return `${normalized_key.slice(0, 8)}${"*".repeat(normalized_key.length - 16)}${normalized_key.slice(-8)}`;
   }
@@ -680,7 +687,7 @@ export class ModelService {
     for (const [key, value] of Object.entries(patch)) {
       if (PATCH_OBJECT_KEYS.has(key)) {
         if (typeof value !== "object" || value === null || Array.isArray(value)) {
-          throw new Error(`model patch field must be a dict: ${key}`);
+          throw app_error("validation_failed", "模型嵌套配置必须是对象。", { field: key });
         }
         result[key] = {
           ...this.normalize_object(result[key]),
@@ -708,7 +715,7 @@ export class ModelService {
   private find_model_index_or_raise(models: ModelRecord[], model_id: string): number {
     const index = models.findIndex((model) => String(model["id"] ?? "") === model_id);
     if (index < 0) {
-      throw new Error("model not found");
+      throw app_error("model_not_found");
     }
     return index;
   }

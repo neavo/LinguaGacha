@@ -235,4 +235,57 @@ describe("desktop-api", () => {
 
     await expect(check_github_release_update("1.2.3")).resolves.toBeNull();
   });
+
+  it("api_fetch 保留 Core 错误 code、details 和 request_id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/health")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              ok: true,
+              data: {
+                status: "ok",
+                service: "linguagacha-core",
+                version: "9.9.9",
+              },
+            }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({
+            ok: false,
+            error: {
+              code: "revision_conflict",
+              message: "数据版本已变化，请刷新后重试。",
+              safe_message: "数据版本已变化，请刷新后重试。",
+              message_key: "app.error.revision_conflict",
+              details: { section: "items" },
+              action: "请刷新当前数据后再次提交。",
+              request_id: "request-1",
+            },
+          }),
+        } as Response;
+      }),
+    );
+    install_desktop_api_host("http://127.0.0.1:38191/");
+
+    const { DesktopApiError, api_fetch } = await import("./desktop-api");
+    const promise = api_fetch("/api/project/workbench/add-file", {});
+
+    await expect(promise).rejects.toMatchObject({
+      action: "请刷新当前数据后再次提交。",
+      code: "revision_conflict",
+      details: { section: "items" },
+      message: "数据版本已变化，请刷新后重试。",
+      message_key: "app.error.revision_conflict",
+      request_id: "request-1",
+      status: 409,
+    });
+    await expect(promise).rejects.toBeInstanceOf(DesktopApiError);
+  });
 });

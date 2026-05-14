@@ -193,7 +193,7 @@ describe("ProofreadingService", () => {
         translation_extras: {},
         expected_section_revisions: { items: 1 },
       }),
-    ).rejects.toThrow("运行态 revision 冲突：section=items 当前=2 期望=1");
+    ).rejects.toThrow("数据版本已变化，请刷新后重试");
 
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, dst: "旧译文" },
@@ -214,7 +214,7 @@ describe("ProofreadingService", () => {
         translation_extras: { line: 1 },
         expected_section_revisions: { proofreading: 3 },
       }),
-    ).rejects.toThrow("校对 revision 冲突：当前=4，期望=3");
+    ).rejects.toThrow("数据版本已变化，请刷新后重试");
 
     expect(
       database.execute({

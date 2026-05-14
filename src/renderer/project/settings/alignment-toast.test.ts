@@ -9,8 +9,8 @@ const TEXT_BY_KEY: Partial<Record<LocaleKey, string>> = {
   "app.project_settings_alignment.field.target_language": "输出语言",
   "app.project_settings_alignment.field.mtool_optimizer_enable": "MTool 优化器",
   "app.project_settings_alignment.field.skip_duplicate_source_text_enable": "跳过重复原文",
-  "app.project_settings_alignment.language.JA": "日语",
-  "app.project_settings_alignment.language.ZH": "简体中文",
+  "app.language.JA": "日文",
+  "app.language.ZH": "中文",
   "app.toggle.enabled": "启用",
 };
 
@@ -34,7 +34,7 @@ describe("format_project_settings_aligned_toast", () => {
       t,
     });
 
-    expect(text).toBe("已按当前设置更新项目设置 …\n输入语言 - 日语\n输出语言 - 简体中文");
+    expect(text).toBe("已按当前设置更新项目设置 …\n输入语言 - 日文\n输出语言 - 中文");
   });
 
   it("MTool 未变动时不会列出 MTool 行", () => {

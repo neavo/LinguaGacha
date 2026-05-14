@@ -136,7 +136,7 @@ app.whenReady().then(async () => {
     register_runtime_ipc_handlers();
     create_main_window_for_runtime();
   } catch (error) {
-    write_electron_main_error(t_main_log("app.log.app_start_failed"), { error });
+    write_electron_main_error(t_main_log("app.diagnostic.lifecycle.app_start_failed"), { error });
     const message = error instanceof Error ? error.message : "后端服务启动失败。";
     dialog.showErrorBox("LinguaGacha 启动失败", message);
     app.exit(1);

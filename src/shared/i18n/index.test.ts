@@ -26,6 +26,6 @@ describe("shared i18n", () => {
   it("未知 app_language 回退中文界面", () => {
     const t = create_text_resolver(resolve_i18n_locale("bad"));
 
-    expect(t("app.log.app_start_failed")).toBe("LinguaGacha 启动失败");
+    expect(t("app.diagnostic.lifecycle.app_start_failed")).toBe("LinguaGacha 启动失败 …");
   });
 });

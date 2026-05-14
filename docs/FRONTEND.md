@@ -24,6 +24,8 @@ flowchart LR
 - `src/preload/index.ts` 是宿主桥接唯一暴露点，只实现 `src/desktop` 契约并负责 Core API base URL、原生对话框、外链、窗口关闭、日志窗口和标题栏主题的窄桥接。
 - `src/renderer/app/desktop/desktop-api.ts` 是 renderer 访问 Core API 的唯一封装，负责 `/api/health` 探测、POST 响应壳解析、SSE 连接和错误类型。
 - 页面代码不得绕过 `desktop-api.ts` 拼接 Core API URL；新增 Core 调用应先在该层收口。
+- `DesktopApiError` 是 renderer 消费 Core 失败的唯一错误类型，必须保留 `status`、稳定 `code`、`message_key`、安全 `message`、`details`、`action` 和 `request_id`；页面只能按 code/status 决定刷新、重试、禁用或跳转，不读取后端原始异常文本。
+- 普通页面只展示 `message_key` 对应本地化文案或后端提供的安全短文案；日志窗口可以展示脱敏后的诊断信息，但不能显示 stack、API key、Authorization header、provider 原始响应或内部绝对路径。
 
 ## 2. 运行态初始化
 

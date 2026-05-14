@@ -1,5 +1,7 @@
+import crypto from "node:crypto";
 import type { Server } from "node:http";
 import type { Socket } from "node:net";
+import path from "node:path";
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -35,6 +37,7 @@ import {
   close_api_gateway_with_connections,
   track_api_gateway_connections,
 } from "./api-gateway-connections";
+import { app_error, is_app_error, type AppError, type AppErrorDetails } from "./app-error";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
 const CORE_API_HOST = "127.0.0.1"; // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API
@@ -418,7 +421,8 @@ export class ApiGatewayServer {
     );
 
     app.all("*", (context) => {
-      return context.json(api_error("not_found", "API 路由不存在。"), 404);
+      const error = app_error("route_not_found", undefined, { path: context.req.path });
+      return context.json(this.app_error_to_envelope(error, crypto.randomUUID()), error.status);
     });
 
     return app;
@@ -435,26 +439,30 @@ export class ApiGatewayServer {
     ) => Record<string, ApiJsonValue> | Promise<Record<string, ApiJsonValue>>,
   ): void {
     app.post(path_name, async (context) => {
+      const request_id = crypto.randomUUID();
       try {
         const body = (await context.req.json().catch((error: unknown) => {
-          throw new SyntaxError(error instanceof Error ? error.message : "JSON 无效。");
+          throw app_error("validation_failed", "请求 JSON 无效。", undefined, error);
         })) as Record<string, ApiJsonValue>;
         const data = await handler(body);
         return context.json(ok(data));
       } catch (error) {
-        const envelope = this.error_to_envelope(error);
-        const status =
-          envelope.error.code === "not_found"
-            ? 404
-            : envelope.error.code === "invalid_request"
-              ? 400
-              : 500;
-        if (status >= 500) {
-          this.log_gateway_error(t_main_log("app.log.api_gateway_direct_route_failed"), error, {
-            path: path_name,
-          });
+        const app_error_payload = this.normalize_error_to_app_error(error);
+        const envelope = this.app_error_to_envelope(app_error_payload, request_id);
+        if (app_error_payload.status >= 500 || app_error_payload.severity !== "expected") {
+          this.log_gateway_error(
+            t_main_log("app.diagnostic.api_gateway.direct_route_failed"),
+            error,
+            {
+              code: app_error_payload.code,
+              details: app_error_payload.details,
+              path: path_name,
+              request_id,
+              status: app_error_payload.status,
+            },
+          );
         }
-        return context.json(envelope, status);
+        return context.json(envelope, app_error_payload.status);
       }
     });
   }
@@ -465,7 +473,7 @@ export class ApiGatewayServer {
   private require_loaded_project_path(): string {
     const state = this.project_session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw new Error("工程未加载");
+      throw app_error("project_not_loaded");
     }
     return state.projectPath;
   }
@@ -489,17 +497,141 @@ export class ApiGatewayServer {
   /**
    * 内部异常只映射成稳定错误壳，调用方不需要理解 main 进程实现细节
    */
-  private error_to_envelope(error: unknown) {
+  private normalize_error_to_app_error(error: unknown): AppError {
+    if (is_app_error(error)) {
+      return error;
+    }
     if (error instanceof SyntaxError) {
-      return api_error("invalid_request", "请求 JSON 无效。");
+      return app_error("validation_failed", "请求 JSON 无效。", undefined, error);
+    }
+    const node_code = this.read_node_error_code(error);
+    if (node_code === "ENOENT") {
+      return app_error("file_not_found", undefined, this.safe_path_detail(error), error);
     }
     if (error instanceof Error) {
-      if ("code" in error && error.code === "ENOENT") {
-        return api_error("not_found", error.message);
-      }
-      return api_error("invalid_request", error.message);
+      return this.classify_bare_error(error);
     }
-    return api_error("internal_error", "Gateway 内部错误。");
+    return app_error("internal_invariant", undefined, undefined, error);
+  }
+
+  /**
+   * 裸 Error 在 Gateway 统一收窄为稳定 code，避免内部文本直接成为公开协议
+   */
+  private classify_bare_error(error: Error): AppError {
+    const message = error.message.trim();
+    if (error.name === "DatabaseConflictError") {
+      return app_error("database_conflict", undefined, undefined, error);
+    }
+    if (error.name === "WorkUnitExecutorTransportError") {
+      return app_error("worker_failed", undefined, undefined, error);
+    }
+    if (message.includes("工程未加载")) {
+      return app_error("project_not_loaded", undefined, undefined, error);
+    }
+    if (message.includes("工程文件不存在")) {
+      return app_error(
+        "project_not_found",
+        undefined,
+        this.extract_path_basename_detail(message),
+        error,
+      );
+    }
+    if (message.includes("任务正在执行") || message.includes("已有后台任务正在运行")) {
+      return app_error("task_busy", undefined, undefined, error);
+    }
+    if (message.includes("revision 冲突")) {
+      return app_error(
+        "revision_conflict",
+        undefined,
+        this.extract_revision_detail(message),
+        error,
+      );
+    }
+    if (message.includes("不支持的文件格式")) {
+      return app_error("unsupported_file_format", undefined, undefined, error);
+    }
+    if (message.includes("获取模型列表失败") || message.includes("模型列表 HTTP")) {
+      return app_error("model_provider_failed", undefined, undefined, error);
+    }
+    if (message.includes("model not found") || message.includes("模型配置不存在")) {
+      return app_error("model_not_found", undefined, undefined, error);
+    }
+    if (message.includes("缺少 node:") || message.includes("缺少必要能力")) {
+      return app_error("runtime_capability_missing", undefined, undefined, error);
+    }
+    if (this.looks_like_validation_error(message)) {
+      return app_error(
+        "validation_failed",
+        this.safe_validation_message(message),
+        undefined,
+        error,
+      );
+    }
+    return app_error("internal_invariant", undefined, undefined, error);
+  }
+
+  /**
+   * 响应壳只包含安全字段，request_id 用于 UI 和日志对齐诊断
+   */
+  private app_error_to_envelope(error: AppError, request_id: string) {
+    return api_error({
+      code: error.code,
+      message: error.safe_message,
+      safe_message: error.safe_message,
+      message_key: error.message_key,
+      ...(Object.keys(error.details).length > 0 ? { details: error.details } : {}),
+      ...(error.action === undefined ? {} : { action: error.action }),
+      request_id,
+    });
+  }
+
+  private read_node_error_code(error: unknown): string {
+    return typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      typeof error.code === "string"
+      ? error.code
+      : "";
+  }
+
+  private safe_path_detail(error: unknown): AppErrorDetails {
+    const candidate =
+      typeof error === "object" && error !== null && "path" in error
+        ? String(error.path ?? "")
+        : "";
+    return candidate === "" ? {} : { filename: path.basename(candidate) };
+  }
+
+  private extract_path_basename_detail(message: string): AppErrorDetails {
+    const raw_path = message.split("：").at(-1)?.trim() ?? "";
+    return raw_path === "" ? {} : { filename: path.basename(raw_path) };
+  }
+
+  private extract_revision_detail(message: string): AppErrorDetails {
+    const section = /section=([^\s，]+)/u.exec(message)?.[1];
+    return section === undefined ? {} : { section };
+  }
+
+  private looks_like_validation_error(message: string): boolean {
+    return (
+      message.includes("无效") ||
+      message.includes("不能为空") ||
+      message.includes("缺少") ||
+      message.includes("必须") ||
+      message.includes("不能") ||
+      message.includes("不存在") ||
+      message.includes("not found") ||
+      message.includes("must be") ||
+      message.includes("invalid") ||
+      message.includes("unknown") ||
+      message.includes("forbidden")
+    );
+  }
+
+  private safe_validation_message(message: string): string {
+    return message === "" || /[A-Z]:\\|\/Users\/|api[_-]?key|Authorization/iu.test(message)
+      ? "请求参数无效。"
+      : message;
   }
 
   /**

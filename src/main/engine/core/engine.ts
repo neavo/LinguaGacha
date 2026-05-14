@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import { app_error } from "../../api/app-error";
 import { resolve_active_model } from "../../model/model-config-resolver";
 import type { ApiJsonValue } from "../../api/api-types";
 import { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
@@ -450,7 +451,7 @@ export class TaskEngine {
     result: WorkerExecutionResult,
   ): TranslationWorkUnitResult {
     if (result.kind !== "translation" || result.output.kind !== "translation") {
-      throw new Error("worker 返回了非翻译结果。");
+      throw app_error("worker_failed", "worker 返回了非翻译结果。");
     }
     return {
       items: this.normalize_record_list(result.output.items),
@@ -467,7 +468,7 @@ export class TaskEngine {
    */
   private to_analysis_work_unit_result(result: WorkerExecutionResult): AnalysisWorkUnitResult {
     if (result.kind !== "analysis" || result.output.kind !== "analysis") {
-      throw new Error("worker 返回了非分析结果。");
+      throw app_error("worker_failed", "worker 返回了非分析结果。");
     }
     return {
       success: result.outcome === "success",
@@ -1070,7 +1071,7 @@ export class TaskEngine {
     const config_snapshot = this.setting_service.load_setting();
     const model = resolve_active_model(config_snapshot);
     if (model === null) {
-      throw new Error("没有可用的激活模型。");
+      throw app_error("model_not_found", "没有可用的激活模型。");
     }
     return { config_snapshot, model };
   }

@@ -8,8 +8,13 @@ type ApiEnvelope<data_type> = {
   ok: boolean;
   data?: data_type;
   error?: {
-    code?: string;
+    code?: CoreApiErrorCode;
     message?: string;
+    safe_message?: string;
+    message_key?: string;
+    details?: Record<string, unknown>;
+    action?: string;
+    request_id?: string;
   };
 };
 
@@ -52,6 +57,28 @@ type SemanticVersion = {
   patch: number;
 };
 
+export type CoreApiErrorCode =
+  | "validation_failed"
+  | "route_not_found"
+  | "project_not_loaded"
+  | "project_not_found"
+  | "file_not_found"
+  | "revision_conflict"
+  | "task_busy"
+  | "unsupported_file_format"
+  | "file_io_failed"
+  | "database_conflict"
+  | "model_not_found"
+  | "model_provider_failed"
+  | "worker_failed"
+  | "runtime_capability_missing"
+  | "internal_invariant"
+  | "missing_core_api_base_url"
+  | "core_api_unavailable"
+  | "core_metadata_unavailable"
+  | "event_stream_failed"
+  | "http_error";
+
 const CORE_API_HEALTH_PATH = "/api/health";
 const CORE_API_SERVICE_NAME = "linguagacha-core";
 const CORE_API_PROBE_TIMEOUT_MS = 300;
@@ -65,25 +92,89 @@ let pending_core_api_base_url_resolution: Promise<string> | null = null;
  * 携带 Core API 错误码，保持渲染层错误分支可判定
  */
 export class DesktopApiError extends Error {
-  code: string;
+  code: CoreApiErrorCode;
   status: number;
+  details: Record<string, unknown>;
+  action: string | null;
+  message_key: string | null;
+  request_id: string | null;
 
   /**
-   * 初始化 DesktopApiError 依赖，保持外部写入口清晰
+   * 初始化 DesktopApiError 依赖，保留 renderer 可判定的错误元数据
    */
-  constructor(message: string, code = "unknown_error", status = 500) {
-    super(message);
+  constructor(args: {
+    message: string;
+    code: CoreApiErrorCode;
+    status: number;
+    details?: Record<string, unknown>;
+    action?: string;
+    message_key?: string;
+    request_id?: string;
+  }) {
+    super(args.message);
     this.name = "DesktopApiError";
-    this.code = code;
-    this.status = status;
+    this.code = args.code;
+    this.status = args.status;
+    this.details = args.details ?? {};
+    this.action = args.action ?? null;
+    this.message_key = args.message_key ?? null;
+    this.request_id = args.request_id ?? null;
   }
+
+  /**
+   * 本地 renderer 错误使用同一类，避免页面判断 Error.message
+   */
+  public static local(
+    message: string,
+    code: CoreApiErrorCode = "internal_invariant",
+    status = 500,
+  ): DesktopApiError {
+    return new DesktopApiError({ code, message, status });
+  }
+}
+
+function build_desktop_api_error<data_type>(
+  path: string,
+  response: Response,
+  payload: ApiEnvelope<data_type> | null,
+): DesktopApiError {
+  const error = payload?.error;
+  return new DesktopApiError({
+    message: error?.safe_message ?? error?.message ?? `请求失败：${path}`,
+    code: error?.code ?? "http_error",
+    status: response.status,
+    details: error?.details,
+    action: error?.action,
+    message_key: error?.message_key,
+    request_id: error?.request_id,
+  });
+}
+
+async function read_api_envelope<data_type>(
+  response: Response,
+): Promise<ApiEnvelope<data_type> | null> {
+  try {
+    return (await response.json()) as ApiEnvelope<data_type>;
+  } catch {
+    return null;
+  }
+}
+
+function create_network_error(path: string, cause: unknown): DesktopApiError {
+  const prefix =
+    cause instanceof Error && cause.name === "AbortError" ? "请求超时：" : "网络请求失败：";
+  return new DesktopApiError({
+    message: `${prefix}${path}`,
+    code: "http_error",
+    status: 503,
+  });
 }
 
 function read_core_api_base_url(): string {
   const base_url = normalize_core_api_base_url(window.desktopApp.coreApi.baseUrl);
 
   if (base_url === "") {
-    throw new DesktopApiError("Core API 地址未配置。", "missing_core_api_base_url", 500);
+    throw DesktopApiError.local("Core API 地址未配置。", "missing_core_api_base_url", 500);
   }
 
   return base_url;
@@ -219,7 +310,7 @@ async function resolve_core_api_base_url(): Promise<string> {
       return base_url;
     }
 
-    throw new DesktopApiError("Core API 不可用。", "core_api_unavailable", 503);
+    throw DesktopApiError.local("Core API 不可用。", "core_api_unavailable", 503);
   })();
 
   try {
@@ -232,7 +323,7 @@ async function resolve_core_api_base_url(): Promise<string> {
 export async function get_core_metadata(): Promise<CoreMetadata> {
   await resolve_core_api_base_url();
   if (cached_core_metadata === null) {
-    throw new DesktopApiError("Core 元信息不可用。", "core_metadata_unavailable", 503);
+    throw DesktopApiError.local("Core 元信息不可用。", "core_metadata_unavailable", 503);
   }
 
   return cached_core_metadata;
@@ -264,19 +355,22 @@ export async function api_fetch<data_type>(
   body: Record<string, unknown> = {},
 ): Promise<data_type> {
   const base_url = await resolve_core_api_base_url();
-  const response = await fetch(build_api_url(base_url, path), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JsonTool.stringifyStrict(body),
-  });
-  const payload = (await response.json()) as ApiEnvelope<data_type>;
+  let response: Response;
+  try {
+    response = await fetch(build_api_url(base_url, path), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JsonTool.stringifyStrict(body),
+    });
+  } catch (error) {
+    throw create_network_error(path, error);
+  }
+  const payload = await read_api_envelope<data_type>(response);
 
-  if (!response.ok || payload.ok !== true || payload.data === undefined) {
-    const message = payload.error?.message ?? `请求失败：${path}`;
-    const code = payload.error?.code ?? "http_error";
-    throw new DesktopApiError(message, code, response.status);
+  if (!response.ok || payload?.ok !== true || payload.data === undefined) {
+    throw build_desktop_api_error(path, response, payload);
   }
 
   return payload.data;
@@ -327,7 +421,7 @@ async function* open_json_event_source_stream(args: {
   }
 
   function fail_stream(): void {
-    stream_error = new DesktopApiError("事件流连接失败。", "event_stream_failed", 503);
+    stream_error = DesktopApiError.local("事件流连接失败。", "event_stream_failed", 503);
     close_stream();
   }
 

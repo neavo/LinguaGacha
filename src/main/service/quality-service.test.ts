@@ -68,19 +68,19 @@ describe("QualityService", () => {
         rule_type: "glossary",
         virtual_id: "builtin:../demo.json",
       }),
-    ).toThrow("invalid virtual preset id");
+    ).toThrow("预设文件名无效");
     expect(() =>
       service.read_rule_preset({
         rule_type: "glossary",
         virtual_id: "builtin:folder/demo.json",
       }),
-    ).toThrow("invalid virtual preset id");
+    ).toThrow("预设文件名无效");
     expect(() =>
       service.read_rule_preset({
         rule_type: "glossary",
         virtual_id: "builtin:folder\\demo.json",
       }),
-    ).toThrow("invalid virtual preset id");
+    ).toThrow("预设文件名无效");
   });
 
   it("导入外部 JSON 规则时显式修复可恢复的非标 JSON", async () => {

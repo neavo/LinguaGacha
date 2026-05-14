@@ -172,6 +172,14 @@ describe("BasicSettingsPage", () => {
     expect(get_current_basic_settings_state().update_request_timeout).toHaveBeenCalledWith(1234);
   });
 
+  it("语言选项使用共享语言 label key", async () => {
+    await mount_page();
+
+    expect(container?.querySelector('[data-value="ALL"]')?.textContent).toBe("app.language.ALL");
+    expect(container?.querySelector('[data-value="JA"]')?.textContent).toBe("app.language.JA");
+    expect(container?.querySelector('[data-value="ZH"]')?.textContent).toBe("app.language.ZH");
+  });
+
   it("提交非法请求超时时间时标记红框并弹 toast", async () => {
     await mount_page();
     const input = get_request_timeout_input();

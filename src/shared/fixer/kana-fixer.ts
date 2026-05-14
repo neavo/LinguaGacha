@@ -16,7 +16,7 @@ const RULE_ONOMATOPOEIA = new Set([
 ]);
 
 /**
- * 日语拟声小假名修复器，移除模型误带出的孤立假名残留
+ * 日文拟声小假名修复器，移除模型误带出的孤立假名残留
  */
 export class KanaFixer {
   /**

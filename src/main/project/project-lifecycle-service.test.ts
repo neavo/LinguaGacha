@@ -362,7 +362,7 @@ describe("ProjectLifecycleService", () => {
 
     expect(transaction_calls[0]?.map((operation) => operation.name)).toContain("createProject");
     expect(log_manager.warning).toHaveBeenCalledWith(
-      "默认质量规则预设加载失败",
+      "默认质量规则预设加载失败 …",
       expect.objectContaining({
         context: { preset_directory: "glossary", virtual_id: "builtin:missing.json" },
         source: "project-lifecycle",

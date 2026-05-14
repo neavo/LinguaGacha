@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { app_error } from "../api/app-error";
 import { Item, type ItemFileType } from "../../base/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
@@ -128,7 +129,7 @@ export class FileFormatService {
     current_rel_path?: string,
   ): Promise<ParsedFilePreview> {
     if (!this.is_supported_file(file_path)) {
-      throw new Error("不支持的文件格式。");
+      throw app_error("unsupported_file_format");
     }
     const target_rel_path =
       current_rel_path === undefined || current_rel_path === ""

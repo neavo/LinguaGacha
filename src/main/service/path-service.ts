@@ -2,6 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { app_error } from "../api/app-error";
+
 export interface AppPathServiceOptions {
   appRoot: string;
   platform?: NodeJS.Platform;
@@ -125,7 +127,7 @@ export class AppPathService {
    */
   public get_prompt_task_dir_name(task_type: string): string {
     if (task_type !== "translation" && task_type !== "analysis") {
-      throw new Error(`未知提示词任务类型：${task_type}`);
+      throw app_error("internal_invariant", `未知提示词任务类型：${task_type}`);
     }
     return `${task_type}_prompt`;
   }
