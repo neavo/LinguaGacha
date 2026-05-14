@@ -62,6 +62,7 @@ export class CoreLifecycleManager {
     set_electron_main_log_manager(log_manager);
 
     try {
+      write_lifecycle_log("");
       write_lifecycle_log(t_main_log("app.log.app_version", { VERSION: paths.read_version() }));
       new UserDataMigrationService(paths, log_manager).run_startup_migrations();
       const gateway_server = new ApiGatewayServer({

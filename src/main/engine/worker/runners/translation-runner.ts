@@ -281,11 +281,10 @@ export class TranslationWorkUnitRunner {
     },
     response: LLMRequestResult,
   ): Promise<TranslationWorkUnitResult> {
-    const cleaner_result = ResponseCleaner.extract_why_from_response(response.response_result);
-    const normalized_think = ResponseCleaner.merge_text_blocks(
-      ResponseCleaner.normalize_blank_lines(response.response_think).trim(),
-      cleaner_result.why_text,
+    const cleaner_result = ResponseCleaner.extract_rule_analysis_from_response(
+      response.response_result,
     );
+    const normalized_think = ResponseCleaner.normalize_blank_lines(response.response_think).trim();
     const decoded = await new ResponseDecoder().decode(cleaner_result.cleaned_response_result);
     const dsts = context.stream_degraded || context.request_timeout ? [] : decoded.translations;
     const checks = this.build_checks(context, dsts);
@@ -298,6 +297,7 @@ export class TranslationWorkUnitRunner {
       dsts,
       console_log: context.console_log,
       response_think: normalized_think,
+      rule_analysis: cleaner_result.rule_analysis_text,
       response_result: cleaner_result.cleaned_response_result,
       request: context.request,
     });
@@ -386,7 +386,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 尽量复刻旧 TranslationTask 的 chunk 日志：统计、提示词片段、think/result、SRC/DST 对照都保留
+   * 翻译日志固定按思考过程、规则分析、翻译结果和 SRC/DST 对照分段
    */
   private build_translation_logs(context: {
     checks: string[];
@@ -397,6 +397,7 @@ export class TranslationWorkUnitRunner {
     dsts: string[];
     console_log: string[];
     response_think: string;
+    rule_analysis: string;
     response_result: string;
     request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest;
   }): WorkUnitLogEntry[] {
@@ -419,13 +420,21 @@ export class TranslationWorkUnitRunner {
     }
     rows.push(...context.console_log.map((text) => text.trim()).filter(Boolean));
     const response_think_log = context.response_think.trim();
+    const rule_analysis_log = ResponseCleaner.normalize_blank_lines(context.rule_analysis).trim();
     const response_result_log = context.response_result.trim();
     if (response_think_log !== "") {
-      rows.push(`${this.t(app_language, "app.log.engine_task_response_think")}\n${response_think_log}`);
+      rows.push(
+        `${this.t(app_language, "app.log.engine_task_thinking_process")}\n${response_think_log}`,
+      );
+    }
+    if (rule_analysis_log !== "") {
+      rows.push(
+        `${this.t(app_language, "app.log.engine_task_rule_analysis")}\n${rule_analysis_log}`,
+      );
     }
     if (response_result_log !== "") {
       rows.push(
-        `${this.t(app_language, "app.log.engine_task_response_result")}\n${response_result_log}`,
+        `${this.t(app_language, "app.log.translation_task_result")}\n${response_result_log}`,
       );
     }
 
@@ -442,7 +451,7 @@ export class TranslationWorkUnitRunner {
     return [
       {
         level: log_decision.level,
-        message: `\n${rows.filter(Boolean).join("\n\n")}\n`,
+        message: `${rows.filter(Boolean).join("\n\n")}\n`,
       },
     ];
   }

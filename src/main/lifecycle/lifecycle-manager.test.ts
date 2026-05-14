@@ -59,6 +59,9 @@ describe("CoreLifecycleManager", () => {
       });
 
       const log_text = read_log_text(path.join(temp_dir, "log"));
+      expect(log_text.indexOf('"message":""')).toBeLessThan(
+        log_text.indexOf("LinguaGacha v9.8.7 …"),
+      );
       expect(log_text).toContain("LinguaGacha v9.8.7 …");
       expect(log_text.indexOf("LinguaGacha v9.8.7 …")).toBeLessThan(
         log_text.indexOf("API Gateway 已启动"),

@@ -483,16 +483,16 @@ export class ModelService {
   ): void {
     if (result.response_think === "") {
       this.log_manager?.info(
-        `${this.t(app_language, "app.log.engine_task_response_result")}\n${result.response_result}`,
+        `${this.t(app_language, "app.log.api_test_response_result")}\n${result.response_result}`,
         { source: "model" },
       );
     } else {
       this.log_manager?.info(
-        `${this.t(app_language, "app.log.engine_task_response_think")}\n${result.response_think}`,
+        `${this.t(app_language, "app.log.engine_task_thinking_process")}\n${result.response_think}`,
         { source: "model" },
       );
       this.log_manager?.info(
-        `${this.t(app_language, "app.log.engine_task_response_result")}\n${result.response_result}`,
+        `${this.t(app_language, "app.log.api_test_response_result")}\n${result.response_result}`,
         { source: "model" },
       );
     }

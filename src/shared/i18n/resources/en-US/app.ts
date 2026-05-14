@@ -122,8 +122,8 @@ export const en_us_app = {
     },
   },
   log: {
-    analysis_task_extracted_terms: "Extracted Terms:",
     analysis_task_no_terms: "No terms extracted",
+    analysis_task_result: "Analysis Result:",
     analysis_task_source_texts: "Analysis Input:",
     api_gateway_started: "API Gateway started - {BASE_URL}",
     api_test_fail: "API test failed …\nReason: {REASON}",
@@ -131,6 +131,7 @@ export const en_us_app = {
     api_test_messages: "Task Prompts:",
     api_test_result: "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …",
     api_test_result_failure: "Failed Keys:",
+    api_test_response_result: "Model Response:",
     api_test_timeout: "Request timed out ({SECONDS}s)",
     api_test_token_info: "Task time {TIME} seconds, input tokens {PT}, output tokens {CT}",
     app_version: "LinguaGacha v{VERSION} …",
@@ -142,8 +143,8 @@ export const en_us_app = {
     engine_task_exception: "Task failed …",
     engine_task_fail:
       "Task failed to complete, some data remains unprocessed. Please check the results …",
-    engine_task_response_result: "Model Response:",
-    engine_task_response_think: "Model Thinking:",
+    engine_task_rule_analysis: "Rule Analysis:",
+    engine_task_thinking_process: "Thinking Process:",
     engine_task_stop: "Task stopped …",
     engine_task_success:
       "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}",
@@ -166,6 +167,7 @@ export const en_us_app = {
     translation_response_check_fail_part:
       "Partial translated text quality check failed, will automatically split and retry, Reason: {REASON}",
     translation_task_force_accept_info: " | Forced Accept: {REASON}",
+    translation_task_result: "Translation Result:",
     translation_task_status_info:
       "Split: {SPLIT} | Retry: {RETRY} | Task Length Threshold: {THRESHOLD}",
     translation_unknown_reason: "Unknown Reason",

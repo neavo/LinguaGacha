@@ -103,6 +103,46 @@ describe("work-unit runner", () => {
     );
   });
 
+  it("翻译日志分离模型思考过程、规则分析和翻译结果", async () => {
+    const app_root = await create_template_root();
+    const runner = new TranslationWorkUnitRunner(
+      app_root,
+      create_llm_client([], {
+        response_think: "真实思考链",
+        response_result: '<why>[核心约束]：保持行数</why>\n{"0":"你好"}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      {
+        run_id: "run-1",
+        unit_id: "unit-1",
+        kind: "translation",
+        model: { api_format: "OpenAI" },
+        config_snapshot: create_config_payload(),
+        quality_snapshot: create_quality_payload(),
+        payload: {
+          items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
+          precedings: [],
+        },
+        diagnostics: {
+          token_threshold: 512,
+          split_count: 0,
+          retry_count: 0,
+          is_initial: true,
+        },
+      },
+      new AbortController().signal,
+    );
+
+    const message = String(result.logs[0]?.message ?? "");
+    expect(message.startsWith("\n")).toBe(false);
+    expect(message).toContain("思考过程：\n真实思考链");
+    expect(message).toContain("规则分析：\n[核心约束]：保持行数");
+    expect(message).toContain('翻译结果：\n{"0":"你好"}');
+    expect(message).not.toContain("模型思考内容");
+  });
+
   it("分析 runner 归一模型术语候选", async () => {
     const app_root = await create_template_root();
     const runner = new AnalysisWorkUnitRunner(
@@ -158,6 +198,54 @@ describe("work-unit runner", () => {
         case_sensitive: false,
       },
     ]);
+  });
+
+  it("分析日志按思考过程、规则分析、分析输入和分析结果分段", async () => {
+    const app_root = await create_template_root();
+    const runner = new AnalysisWorkUnitRunner(
+      app_root,
+      create_llm_client([], {
+        response_think: "分析思考链",
+        response_result:
+          '<why>[难点处理]：Alice -> 女性人名</why>\n{"src":"Alice","dst":"爱丽丝","type":"女性人名"}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      {
+        run_id: "run-1",
+        unit_id: "unit-1",
+        kind: "analysis",
+        model: {},
+        config_snapshot: create_config_payload({ source_language: "EN" }),
+        quality_snapshot: create_quality_payload(),
+        payload: {
+          file_path: "demo.txt",
+          items: [
+            {
+              item_id: 1,
+              file_path: "demo.txt",
+              src_text: "Alice",
+              first_name_src: null,
+            },
+          ],
+        },
+        diagnostics: {
+          retry_count: 0,
+        },
+      },
+      new AbortController().signal,
+    );
+
+    const message = String(result.logs[0]?.message ?? "");
+    expect(message.startsWith("\n")).toBe(false);
+    expect(message.indexOf("思考过程：")).toBeLessThan(message.indexOf("规则分析："));
+    expect(message.indexOf("规则分析：")).toBeLessThan(message.indexOf("分析输入："));
+    expect(message.indexOf("分析输入：")).toBeLessThan(message.indexOf("分析结果："));
+    expect(message).toContain("规则分析：\n[难点处理]：Alice -> 女性人名");
+    expect(message).toContain("分析输入：\nSRC: Alice");
+    expect(message).toContain("分析结果：\nTERM: Alice -> 爱丽丝 #女性人名");
+    expect(message).not.toContain("模型回复内容");
   });
 
   it("统一分发器执行单条翻译工具调用", async () => {
