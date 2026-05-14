@@ -7,7 +7,11 @@ import { is_task_progress_status } from "../../shared/task";
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
 type ProjectDatabaseMigrationItem = Record<string, unknown>;
 
-export const PROJECT_DATABASE_SCHEMA_VERSION = 2; // .lg schema 版本只在新建工程写入，打开旧工程时实际能力由幂等迁移补齐
+export const PROJECT_DATABASE_SCHEMA_VERSION = 2; // schema_version 只表达当前表结构能力，不作为业务数据写回标记
+export const PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION = 1; // 写回型迁移独立标记，避免旧工程因 schema_version 跳过数据归一
+
+const SCHEMA_VERSION_META_KEY = "schema_version";
+const WRITEBACK_MIGRATION_VERSION_META_KEY = "writeback_migration_version";
 
 const LEGACY_PROCESSED_IN_PAST = "PROCESSED_IN_PAST"; // 旧任务状态曾经把运行中和历史已处理态持久化到 item payload
 const LEGACY_PROCESSING = "PROCESSING";
@@ -66,11 +70,23 @@ export class ProjectDatabaseMigrationService {
    */
   public static migrate(db: DatabaseSync): void {
     this.ensure_schema(db);
+    this.write_meta_version(db, SCHEMA_VERSION_META_KEY, PROJECT_DATABASE_SCHEMA_VERSION);
+    if (
+      this.read_meta_version(db, WRITEBACK_MIGRATION_VERSION_META_KEY) >=
+        PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION
+    ) {
+      return;
+    }
     this.migrate_rule_types_if_needed(db);
     this.migrate_rule_payloads_if_needed(db);
     this.migrate_asset_sort_order_if_needed(db);
     this.migrate_item_status_if_needed(db);
     this.migrate_analysis_checkpoint_status_if_needed(db);
+    this.write_meta_version(
+      db,
+      WRITEBACK_MIGRATION_VERSION_META_KEY,
+      PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
+    );
   }
 
   /**
@@ -119,6 +135,33 @@ export class ProjectDatabaseMigrationService {
       CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type);
       CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status);
     `);
+  }
+
+  /**
+   * meta 版本值统一用严格 JSON 存储，损坏时回退为未执行
+   */
+  private static read_meta_version(db: DatabaseSync, key: string): number {
+    const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
+    if (row === undefined) {
+      return 0;
+    }
+    try {
+      const value = JsonTool.parseStrict<unknown>(row_text(row, "value"));
+      const version = Number(value ?? 0);
+      return Number.isFinite(version) ? Math.trunc(version) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * 版本写入集中到 meta，避免结构版本和数据写回版本混用
+   */
+  private static write_meta_version(db: DatabaseSync, key: string, version: number): void {
+    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
+      key,
+      JsonTool.stringifyStrict(version),
+    );
   }
 
   /**

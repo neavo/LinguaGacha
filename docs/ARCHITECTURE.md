@@ -46,7 +46,7 @@ flowchart LR
 - `src/desktop` 承载 Electron main / preload / renderer 共同遵守的桌面宿主契约，包括 `window.desktopApp`、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略。
 - `CoreLifecycleManager` 按 `LogManager -> ProjectDatabase -> ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 仍持有数据库或日志句柄。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
-- `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 句柄缓存的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
+- `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 连接生命周期的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
 - `src/main/engine` 是任务域主控包：`command` 受理统一 `/api/tasks/start|stop|snapshot`，`protocol` 持有任务词表与跨 worker 协议，`runtime` 持有公开运行态和快照，`core` 编排任务，`definitions` 承接任务差异，`store` 通过 artifact 写入项目任务事实。
 - `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `ModelKeyLeasePool`、`WorkerExecutor` / `WorkerPool` 执行统一 `WorkUnit`；任务运行态只经 `TaskRuntimePublisher` 写入 `TaskRuntimeState` 并广播完整 `task.snapshot_changed`。
 - renderer 只通过 preload 暴露的 `window.desktopApp` 获得宿主能力和 Core API base URL，再由 `desktop-api.ts` 发起 HTTP / SSE。

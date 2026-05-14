@@ -55,6 +55,7 @@ describe("TaskEngine", () => {
           items: [create_pending_item()] as unknown as ApiJsonValue,
           meta: {},
         }),
+        acquire_project_lease: () => () => undefined,
         commit_artifacts: (request: MutableJsonRecord) => {
           const artifacts = Array.isArray(request["artifacts"])
             ? (request["artifacts"] as MutableJsonRecord[])
@@ -79,7 +80,12 @@ describe("TaskEngine", () => {
       logManager: create_log_manager(),
     });
 
-    await task_engine.start({ task_type: "translation", mode: "new", scope: { kind: "all" }, expected_section_revisions: {} });
+    await task_engine.start({
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+      expected_section_revisions: {},
+    });
     await done.promise;
 
     expect(committed_batches).toHaveLength(1);
@@ -109,10 +115,14 @@ describe("TaskEngine", () => {
       processed_line: 8,
       total_tokens: 40,
     };
+    let lease_release_count = 0;
     const progress_snapshots: MutableJsonRecord[] = [];
     const done = create_status_waiter("translation", "done");
     const task_engine = new TaskEngine({
       taskStore: {
+        acquire_project_lease: () => () => {
+          lease_release_count += 1;
+        },
         get_translation_items: () => ({
           items: [] as unknown as ApiJsonValue,
           meta: {
@@ -136,8 +146,14 @@ describe("TaskEngine", () => {
       logManager: create_log_manager(),
     });
 
-    await task_engine.start({ task_type: "translation", mode: "new", scope: { kind: "all" }, expected_section_revisions: {} });
+    await task_engine.start({
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+      expected_section_revisions: {},
+    });
     await done.promise;
+    await wait_until(() => lease_release_count === 1);
 
     expect(progress_snapshots[0]).toMatchObject({
       task_type: "translation",
@@ -161,6 +177,7 @@ describe("TaskEngine", () => {
           ] as unknown as ApiJsonValue,
           meta: {},
         }),
+        acquire_project_lease: () => () => undefined,
         commit_artifacts: (request: MutableJsonRecord) => {
           const artifacts = Array.isArray(request["artifacts"])
             ? (request["artifacts"] as MutableJsonRecord[])
@@ -181,7 +198,9 @@ describe("TaskEngine", () => {
             typeof unit["payload"] === "object" && unit["payload"] !== null
               ? (unit["payload"] as MutableJsonRecord)
               : {};
-          const items = (Array.isArray(payload["items"]) ? payload["items"] : []) as MutableJsonRecord[];
+          const items = (
+            Array.isArray(payload["items"]) ? payload["items"] : []
+          ) as MutableJsonRecord[];
           const item_id = Number(items[0]?.["id"] ?? 0);
           if (item_id === 1 && !failed_once_ids.has(item_id)) {
             failed_once_ids.add(item_id);
@@ -203,7 +222,12 @@ describe("TaskEngine", () => {
       logManager: create_log_manager(),
     });
 
-    await task_engine.start({ task_type: "translation", mode: "new", scope: { kind: "all" }, expected_section_revisions: {} });
+    await task_engine.start({
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+      expected_section_revisions: {},
+    });
     await done.promise;
 
     expect(committed_items).toHaveLength(2);

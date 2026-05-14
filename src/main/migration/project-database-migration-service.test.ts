@@ -6,18 +6,22 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { JsonTool } from "../../shared/utils/json-tool";
-import { ProjectDatabaseMigrationService } from "./project-database-migration-service";
+import {
+  PROJECT_DATABASE_SCHEMA_VERSION,
+  PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
+  ProjectDatabaseMigrationService,
+} from "./project-database-migration-service";
 
 let temp_dir = "";
-let open_databases: DatabaseSync[] = [];
+let migration_test_databases: DatabaseSync[] = [];
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-db-migration-"));
-  open_databases = [];
+  migration_test_databases = [];
 });
 
 afterEach(() => {
-  for (const db of open_databases) {
+  for (const db of migration_test_databases) {
     try {
       db.close();
     } catch {
@@ -50,6 +54,39 @@ describe("ProjectDatabaseMigrationService", () => {
       "sqlite_autoindex_assets_1",
       "sqlite_autoindex_meta_1",
     ]);
+    expect(read_meta_number(db, "schema_version")).toBe(PROJECT_DATABASE_SCHEMA_VERSION);
+    expect(read_meta_number(db, "writeback_migration_version")).toBe(
+      PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
+    );
+  });
+
+  it("既有 schema_version 不会跳过未标记的写回迁移", () => {
+    const db = open_database("schema-version-with-legacy-data.lg");
+    db.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        data TEXT NOT NULL
+      );
+    `);
+    db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(
+      "schema_version",
+      JsonTool.stringifyStrict(PROJECT_DATABASE_SCHEMA_VERSION),
+    );
+    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
+      "GLOSSARY",
+      JsonTool.stringifyStrict([{ src: "旧术语", dst: "Legacy" }]),
+    );
+
+    ProjectDatabaseMigrationService.migrate(db);
+
+    expect(read_rule_rows(db)).toEqual([
+      { type: "glossary", data: [{ src: "旧术语", dst: "Legacy" }] },
+    ]);
+    expect(read_meta_number(db, "writeback_migration_version")).toBe(
+      PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
+    );
   });
 
   it("旧 assets 缺少 sort_order 时按 id 顺序补齐稳定文件顺序", () => {
@@ -197,7 +234,7 @@ describe("ProjectDatabaseMigrationService", () => {
 
 function open_database(name: string): DatabaseSync {
   const db = new DatabaseSync(path.join(temp_dir, name));
-  open_databases.push(db);
+  migration_test_databases.push(db);
   return db;
 }
 
@@ -213,6 +250,14 @@ function read_index_names(db: DatabaseSync): string[] {
     .prepare("SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name")
     .all()
     .map((row) => String(row["name"]));
+}
+
+function read_meta_number(db: DatabaseSync, key: string): number {
+  const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
+  if (row === undefined) {
+    return 0;
+  }
+  return Number(JsonTool.parseStrict(String(row["value"])));
 }
 
 function read_asset_order(db: DatabaseSync): Array<{ path: string; sort_order: number }> {

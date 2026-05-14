@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   PROJECT_DATABASE_SCHEMA_VERSION,
+  PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
   ProjectDatabaseMigrationService,
 } from "../migration/project-database-migration-service";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
@@ -11,6 +12,17 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
 
 type DatabaseRow = Record<string, unknown>;
+
+/**
+ * 单个 .lg 当前打开连接的生命周期记录，只表达 scoped 使用和显式租约
+ */
+interface ProjectDatabaseConnectionRecord {
+  readonly normalized_path: string; // normalized_path 是连接表的唯一键，避免同一 .lg 因相对路径重复打开
+  readonly db: DatabaseSync;
+  lease_count: number; // lease_count 表示任务等长流程正在显式保留连接
+  scoped_use_count: number; // scoped_use_count 表示当前同步 workflow 正在使用连接，归零后才能收尾
+  closed: boolean; // closed 隔离已关闭记录，保证迟到租约释放不会二次操作 SQLite 句柄
+}
 
 const CURRENT_NONE = "NONE";
 
@@ -69,7 +81,7 @@ export class DatabaseConflictError extends Error {}
  * Electron main 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式
  */
 export class ProjectDatabase {
-  private readonly open_databases = new Map<string, DatabaseSync>();
+  private readonly connection_records = new Map<string, ProjectDatabaseConnectionRecord>(); // connection_records 只保存当前活跃连接，不再表达永久缓存
 
   /**
    * 初始化 ProjectDatabase 依赖，保持外部写入口清晰
@@ -82,10 +94,9 @@ export class ProjectDatabase {
    * 关闭底层资源，确保数据库句柄不会跨工程泄漏
    */
   public close(): void {
-    for (const db of this.open_databases.values()) {
-      db.close();
+    for (const record of this.connection_records.values()) {
+      this.close_connection_record(record);
     }
-    this.open_databases.clear();
   }
 
   /**
@@ -93,6 +104,31 @@ export class ProjectDatabase {
    */
   public execute(operation: DatabaseOperation): DatabaseJsonValue {
     const args = this.normalize_args(operation.args); // 服务层只发送窄操作名，database 侧集中校验参数并保护 SQL 边界
+    if (operation.name === "closeProject") {
+      this.close_project(this.require_string(args, "projectPath"));
+      return null;
+    }
+    if (operation.name === "createProject") {
+      const project_path = this.require_string(args, "projectPath");
+      try {
+        return this.create_project(project_path, this.require_string(args, "name"));
+      } finally {
+        this.close_connection_if_idle_path(project_path);
+      }
+    }
+    const project_path = this.require_string(args, "projectPath");
+    return this.with_project_connection(project_path, () =>
+      this.execute_operation(operation, args),
+    );
+  }
+
+  /**
+   * 操作分发只处理业务语义；连接生命周期由 execute / execute_transaction 外层持有
+   */
+  private execute_operation(
+    operation: DatabaseOperation,
+    args: Record<string, DatabaseJsonValue>,
+  ): DatabaseJsonValue {
     switch (operation.name) {
       case "closeProject":
         this.close_project(this.require_string(args, "projectPath"));
@@ -308,34 +344,58 @@ export class ProjectDatabase {
         return null;
       }
     }
-    const db = this.open_project(project_path);
-    db.exec("BEGIN IMMEDIATE");
+    this.validate_transaction_project_paths(project_path, transaction_operations);
     try {
-      for (const operation of transaction_operations) {
-        this.execute(operation);
-      }
-      db.exec("COMMIT");
+      return this.with_project_connection(project_path, (db) => {
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          for (const operation of transaction_operations) {
+            this.execute_operation(operation, this.normalize_args(operation.args));
+          }
+          db.exec("COMMIT");
+        } catch (error) {
+          db.exec("ROLLBACK");
+          throw error;
+        }
+        return null;
+      });
     } catch (error) {
-      db.exec("ROLLBACK");
       if (should_remove_created_project_on_failure) {
         this.close_project(project_path);
         fs.rmSync(project_path, { force: true });
       }
       throw error;
     }
-    return null;
   }
 
   /**
    * 按 asset 路径读取解压后的内容，隐藏 .lg 内部压缩格式
    */
   public read_asset_content(project_path: string, asset_path: string): Buffer | null {
-    const db = this.open_project(project_path); // 调用方只消费解压后的原始 bytes，Zstd 格式细节留在 main 进程
-    const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(asset_path);
-    if (row === undefined) {
-      return null;
-    }
-    return ZstdTool.decompress(bytes_from_blob(row["data"]));
+    return this.with_project_connection(project_path, (db) => {
+      const row = db.prepare("SELECT data FROM assets WHERE path = ?").get(asset_path); // 调用方只消费解压后的原始 bytes，Zstd 格式细节留在 main 进程
+      if (row === undefined) {
+        return null;
+      }
+      return ZstdTool.decompress(bytes_from_blob(row["data"]));
+    });
+  }
+
+  /**
+   * 为任务等可预见长流程保留 SQLite 连接，释放函数幂等且不暴露 SQL 句柄
+   */
+  public acquire_project_lease(project_path: string, _owner: string): () => void {
+    const record = this.open_project_record(path.resolve(project_path));
+    record.lease_count += 1;
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      record.lease_count = Math.max(0, record.lease_count - 1);
+      this.close_connection_if_idle(record);
+    };
   }
 
   /**
@@ -351,8 +411,14 @@ export class ProjectDatabase {
    * 打开并迁移工程数据库，确保后续读写看到当前 schema
    */
   private open_project(project_path: string): DatabaseSync {
-    const normalized_path = path.resolve(project_path);
-    const cached = this.open_databases.get(normalized_path);
+    return this.open_project_record(path.resolve(project_path)).db;
+  }
+
+  /**
+   * 取得连接记录；默认 operation 由外层 scoped 使用计数决定何时关闭
+   */
+  private open_project_record(normalized_path: string): ProjectDatabaseConnectionRecord {
+    const cached = this.connection_records.get(normalized_path);
     if (cached !== undefined) {
       return cached;
     }
@@ -363,21 +429,102 @@ export class ProjectDatabase {
     db.exec("PRAGMA busy_timeout=5000");
     // 每次首次打开都先跑幂等迁移，兼容既有 .lg，同时让业务读到当前 schema
     ProjectDatabaseMigrationService.migrate(db);
-    this.open_databases.set(normalized_path, db);
-    return db;
+    const record: ProjectDatabaseConnectionRecord = {
+      normalized_path,
+      db,
+      lease_count: 0,
+      scoped_use_count: 0,
+      closed: false,
+    };
+    this.connection_records.set(normalized_path, record);
+    return record;
   }
 
   /**
-   * 关闭指定工程连接，释放 ProjectDatabase 缓存中的句柄
+   * 关闭指定工程连接并清空租约计数，用于工程卸载和文件重建收尾
    */
   private close_project(project_path: string): void {
     const normalized_path = path.resolve(project_path);
-    const db = this.open_databases.get(normalized_path);
-    if (db === undefined) {
+    const record = this.connection_records.get(normalized_path);
+    if (record === undefined) {
       return;
     }
-    db.close();
-    this.open_databases.delete(normalized_path);
+    record.lease_count = 0;
+    record.scoped_use_count = 0;
+    this.close_connection_record(record);
+  }
+
+  /**
+   * 默认数据库 workflow 使用 scoped connection，完成后在无租约时立即 checkpoint/close
+   */
+  private with_project_connection<T>(project_path: string, callback: (db: DatabaseSync) => T): T {
+    const record = this.open_project_record(path.resolve(project_path));
+    record.scoped_use_count += 1;
+    try {
+      return callback(record.db);
+    } finally {
+      record.scoped_use_count -= 1;
+      this.close_connection_if_idle(record);
+    }
+  }
+
+  /**
+   * 事务只能覆盖一个工程文件，防止不同 .lg 在同一批操作内出现半提交
+   */
+  private validate_transaction_project_paths(
+    project_path: string,
+    operations: DatabaseOperation[],
+  ): void {
+    const normalized_path = path.resolve(project_path);
+    for (const operation of operations) {
+      if (operation.name === "createProject" || operation.name === "closeProject") {
+        throw new Error("database 事务内不能执行工程连接生命周期操作。");
+      }
+      const args = this.normalize_args(operation.args);
+      const operation_path = path.resolve(this.require_string(args, "projectPath"));
+      if (operation_path !== normalized_path) {
+        throw new Error("database 事务只能绑定单个工程文件。");
+      }
+    }
+  }
+
+  /**
+   * 无长租约且无 scoped workflow 时收尾连接，让稳定态回到单个 .lg 文件
+   */
+  private close_connection_if_idle(record: ProjectDatabaseConnectionRecord): void {
+    if (record.closed) {
+      return;
+    }
+    if (record.lease_count > 0 || record.scoped_use_count > 0) {
+      return;
+    }
+    this.close_connection_record(record);
+  }
+
+  /**
+   * 按路径查找连接记录并尝试空闲收尾，供 createProject 特例使用
+   */
+  private close_connection_if_idle_path(project_path: string): void {
+    const record = this.connection_records.get(path.resolve(project_path));
+    if (record !== undefined) {
+      this.close_connection_if_idle(record);
+    }
+  }
+
+  /**
+   * SQLite 正常 checkpoint 后关闭连接；不手动删除 -wal / -shm 副文件
+   */
+  private close_connection_record(record: ProjectDatabaseConnectionRecord): void {
+    if (record.closed) {
+      return;
+    }
+    record.closed = true;
+    try {
+      record.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } finally {
+      record.db.close();
+      this.connection_records.delete(record.normalized_path);
+    }
   }
 
   /**
@@ -393,6 +540,7 @@ export class ProjectDatabase {
     const now = new Date().toISOString();
     this.upsert_meta_entries_with_db(db, {
       schema_version: PROJECT_DATABASE_SCHEMA_VERSION,
+      writeback_migration_version: PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
       name,
       created_at: now,
       updated_at: now,

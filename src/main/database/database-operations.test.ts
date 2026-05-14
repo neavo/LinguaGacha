@@ -14,6 +14,14 @@ function project_path(name: string): string {
   return path.join(temp_dir, name);
 }
 
+function project_sidecar_paths(lg_path: string): string[] {
+  return [`${lg_path}-wal`, `${lg_path}-shm`];
+}
+
+function has_project_sidecar(lg_path: string): boolean {
+  return project_sidecar_paths(lg_path).some((sidecar_path) => fs.existsSync(sidecar_path));
+}
+
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-database-"));
 });
@@ -42,6 +50,80 @@ describe("ProjectDatabase", () => {
         args: { projectPath: lg_path, key: "source_language", default: "" },
       }),
     ).toBe("JA");
+    expect(
+      database.execute({
+        name: "getMeta",
+        args: { projectPath: lg_path, key: "writeback_migration_version", default: 0 },
+      }),
+    ).toBe(1);
+    expect(has_project_sidecar(lg_path)).toBe(false);
+    database.close();
+  });
+
+  it("普通 scoped 操作结束后不常驻 WAL 副文件", () => {
+    const database = new ProjectDatabase();
+    const lg_path = project_path("scoped.lg");
+
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "scoped" },
+    });
+    database.execute({
+      name: "setMeta",
+      args: { projectPath: lg_path, key: "target_language", value: "ZH" },
+    });
+    database.execute({
+      name: "getMeta",
+      args: { projectPath: lg_path, key: "target_language", default: "" },
+    });
+
+    expect(has_project_sidecar(lg_path)).toBe(false);
+    database.close();
+  });
+
+  it("关闭工程后迟到的租约释放不会二次关闭连接", () => {
+    const database = new ProjectDatabase();
+    const lg_path = project_path("lease-close.lg");
+
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "lease-close" },
+    });
+    const release = database.acquire_project_lease(lg_path, "test");
+    database.execute({
+      name: "setMeta",
+      args: { projectPath: lg_path, key: "source_language", value: "JA" },
+    });
+
+    database.execute({
+      name: "closeProject",
+      args: { projectPath: lg_path },
+    });
+
+    expect(() => release()).not.toThrow();
+    expect(has_project_sidecar(lg_path)).toBe(false);
+    database.close();
+  });
+
+  it("显式租约期间保留连接，释放后清理 WAL 副文件", () => {
+    const database = new ProjectDatabase();
+    const lg_path = project_path("lease.lg");
+
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "lease" },
+    });
+    const release = database.acquire_project_lease(lg_path, "test");
+    database.execute({
+      name: "setMeta",
+      args: { projectPath: lg_path, key: "source_language", value: "JA" },
+    });
+
+    expect(has_project_sidecar(lg_path)).toBe(true);
+    release();
+    release();
+
+    expect(has_project_sidecar(lg_path)).toBe(false);
     database.close();
   });
 
@@ -96,6 +178,32 @@ describe("ProjectDatabase", () => {
         args: { projectPath: lg_path, key: "target_language", default: "missing" },
       }),
     ).toBe("missing");
+    database.close();
+  });
+
+  it("创建工程事务失败时先结束 scoped 连接再删除新文件", () => {
+    const database = new ProjectDatabase();
+    const lg_path = project_path("create-rollback.lg");
+
+    expect(() =>
+      database.execute_transaction([
+        {
+          name: "createProject",
+          args: { projectPath: lg_path, name: "create-rollback" },
+        },
+        {
+          name: "setMeta",
+          args: { projectPath: lg_path, key: "target_language", value: "ZH" },
+        },
+        {
+          name: "missingOperation",
+          args: { projectPath: lg_path },
+        },
+      ]),
+    ).toThrow("未知 database 操作");
+
+    expect(fs.existsSync(lg_path)).toBe(false);
+    expect(has_project_sidecar(lg_path)).toBe(false);
     database.close();
   });
 
