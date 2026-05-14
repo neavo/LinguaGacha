@@ -79,7 +79,7 @@ function build_openai_model_family_body(
   if (/doubao-seed-(?:1-6|1-8|2-0)/iu.test(model_id)) {
     return { reasoning_effort: level === "OFF" ? "minimal" : level.toLowerCase() };
   }
-  if (/deepseek|kimi|glm/iu.test(model_id)) {
+  if (/deepseek|kimi|glm|mimo-v2/iu.test(model_id)) {
     return { thinking: { type: level === "OFF" ? "disabled" : "enabled" } };
   }
   return {};
