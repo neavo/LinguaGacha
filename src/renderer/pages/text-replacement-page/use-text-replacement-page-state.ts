@@ -31,7 +31,7 @@ import {
   resolve_text_replacement_statistics_badge_kind,
   sort_text_replacement_entries,
 } from "@/pages/text-replacement-page/filtering";
-import { merge_text_replacement_entries } from "@/pages/text-replacement-page/merge";
+import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
 import {
   are_text_replacement_entry_ids_equal,
   build_text_replacement_entry_id,
@@ -55,6 +55,10 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
+import {
+  QualityRuleImportRuleTypeValue,
+  type QualityRuleImportRuleType,
+} from "@shared/quality/importer";
 
 type TextReplacementSnapshot = {
   revision: number;
@@ -68,6 +72,11 @@ type TextReplacementPresetPayload = {
   builtin_presets: TextReplacementPresetItem[];
   user_presets: TextReplacementPresetItem[];
 };
+
+const IMPORT_RULE_TYPE_BY_PUBLIC_RULE_TYPE = {
+  pre_replacement: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
+  post_replacement: QualityRuleImportRuleTypeValue.POST_REPLACEMENT,
+} as const satisfies Record<TextReplacementVariantConfig["rule_type"], QualityRuleImportRuleType>;
 
 const EMPTY_ENTRY: TextReplacementEntry = {
   src: "",
@@ -476,9 +485,9 @@ export function useTextReplacementPageState(
     ],
   );
 
-  const persist_merged_entries = useCallback(
+  const apply_import_entries = useCallback(
     async (
-      incoming_entries: TextReplacementEntry[],
+      next_entries: TextReplacementEntry[],
       options: {
         close_preset_menu: boolean;
       },
@@ -487,8 +496,7 @@ export function useTextReplacementPageState(
         return false;
       }
 
-      const { merged_entries, report } = merge_text_replacement_entries(entries, incoming_entries);
-      const saved = await save_entries_snapshot(merged_entries);
+      const saved = await save_entries_snapshot(next_entries);
       if (!saved) {
         return false;
       }
@@ -496,18 +504,34 @@ export function useTextReplacementPageState(
       clear_selection_state();
       push_toast("success", t("text_replacement_page.feedback.import_success"));
 
-      if (report.updated > 0 || report.deduped > 0) {
-        push_toast("warning", t("text_replacement_page.feedback.merge_warning"));
-      }
-
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
       }
 
       return true;
     },
-    [clear_selection_state, entries, push_toast, readonly, save_entries_snapshot, t],
+    [clear_selection_state, push_toast, readonly, save_entries_snapshot, t],
   );
+
+  const get_import_existing_entries = useCallback((): TextReplacementEntry[] => {
+    const current_replacement_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      config.rule_type,
+    );
+    return current_replacement_slice.entries as TextReplacementEntry[];
+  }, [config.rule_type, project_store]);
+  const import_confirmation = useQualityRuleImportConfirmation<TextReplacementEntry>({
+    rule_type: IMPORT_RULE_TYPE_BY_PUBLIC_RULE_TYPE[config.rule_type],
+    get_existing_entries: get_import_existing_entries,
+    apply_entries: apply_import_entries,
+  });
+  const {
+    import_confirm_state,
+    persist_import_entries,
+    import_duplicate_skip,
+    import_duplicate_overwrite,
+    close_import_duplicate_confirm,
+  } = import_confirmation;
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<TextReplacementPresetPayload>(
@@ -955,7 +979,7 @@ export function useTextReplacementPageState(
           return;
         }
 
-        await persist_merged_entries(imported_entries, { close_preset_menu: false });
+        await persist_import_entries(imported_entries, { close_preset_menu: false });
       } catch (error) {
         if (error instanceof Error) {
           push_toast("error", error.message);
@@ -964,7 +988,7 @@ export function useTextReplacementPageState(
         }
       }
     },
-    [config.rule_type, persist_merged_entries, push_toast, readonly, t],
+    [config.rule_type, persist_import_entries, push_toast, readonly, t],
   );
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
@@ -1034,7 +1058,7 @@ export function useTextReplacementPageState(
             virtual_id,
           },
         );
-        await persist_merged_entries(payload.entries, { close_preset_menu: true });
+        await persist_import_entries(payload.entries, { close_preset_menu: true });
       } catch (error) {
         if (error instanceof Error) {
           push_toast("error", error.message);
@@ -1043,7 +1067,7 @@ export function useTextReplacementPageState(
         }
       }
     },
-    [config.rule_type, persist_merged_entries, push_toast, readonly, t],
+    [config.rule_type, persist_import_entries, push_toast, readonly, t],
   );
 
   const request_reset_entries = useCallback((): void => {
@@ -1544,6 +1568,7 @@ export function useTextReplacementPageState(
     preset_menu_open,
     dialog_state,
     confirm_state,
+    import_confirm_state,
     preset_input_state,
     update_filter_keyword,
     update_filter_scope,
@@ -1575,6 +1600,9 @@ export function useTextReplacementPageState(
     request_close_dialog,
     confirm_pending_action,
     close_confirm_dialog,
+    import_duplicate_skip,
+    import_duplicate_overwrite,
+    close_import_duplicate_confirm,
     update_preset_input_value,
     submit_preset_input,
     close_preset_input_dialog,

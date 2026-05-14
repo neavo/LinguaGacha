@@ -25,6 +25,8 @@ type AppAlertDialogProps = {
   size?: AppAlertDialogSize;
   confirmLabel?: string;
   cancelLabel?: string;
+  secondaryLabel?: string;
+  onSecondary?: () => void | Promise<void>;
   confirmVariant?: "default" | "destructive" | "secondary" | "outline" | "ghost" | "link";
   contentClassName?: string;
   descriptionClassName?: string;
@@ -79,6 +81,19 @@ export function AppAlertDialog(props: AppAlertDialogProps): JSX.Element {
           >
             {props.cancelLabel ?? t("app.action.cancel")}
           </AlertDialogCancel>
+          {props.onSecondary !== undefined ? (
+            <AlertDialogAction
+              size="sm"
+              variant="outline"
+              disabled={submitting}
+              onClick={(event) => {
+                event.preventDefault();
+                void props.onSecondary?.();
+              }}
+            >
+              {props.secondaryLabel ?? t("app.action.confirm")}
+            </AlertDialogAction>
+          ) : null}
           <AlertDialogAction
             size="sm"
             variant={props.confirmVariant ?? "default"}

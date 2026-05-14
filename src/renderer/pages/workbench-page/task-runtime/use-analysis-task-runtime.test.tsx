@@ -51,9 +51,9 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@/project/glossary-import/analysis-glossary-import-plan", () => {
+vi.mock("@/project/importer/analysis-glossary-importer", () => {
   return {
-    create_analysis_glossary_import_plan: vi.fn(async () => null),
+    prepare_analysis_glossary_import: vi.fn(async () => null),
   };
 });
 

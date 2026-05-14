@@ -541,6 +541,214 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
   });
 
+  it("导入遇到重复术语时先确认，跳过只保存非重复条目", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "苹果",
+            dst: "Malus",
+            info: "新说明",
+            case_sensitive: false,
+          },
+          {
+            src: "香蕉",
+            dst: "Banana",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 2,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+    });
+
+    expect(latest_state?.import_confirm_state.open).toBe(true);
+    expect(latest_state?.import_confirm_state.duplicate_count).toBe(1);
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await latest_state?.import_duplicate_skip();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "glossary",
+      expected_revision: 1,
+      entries: [
+        {
+          src: "苹果",
+          dst: "Apple",
+          info: "水果",
+          case_sensitive: false,
+        },
+        {
+          src: "香蕉",
+          dst: "Banana",
+          info: "水果",
+          case_sensitive: false,
+        },
+      ],
+    });
+    expect(latest_state?.import_confirm_state.open).toBe(false);
+  });
+
+  it("导入重复术语确认时基于最新术语表快照重算写入内容", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "苹果",
+            dst: "Malus",
+            info: "新说明",
+            case_sensitive: false,
+          },
+          {
+            src: "香蕉",
+            dst: "Banana",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 3,
+        sectionRevisions: {
+          quality: 3,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+    });
+
+    expect(latest_state?.import_confirm_state.open).toBe(true);
+
+    runtime_state.quality.glossary.entries = [
+      {
+        src: "苹果",
+        dst: "Apple",
+        info: "水果",
+        case_sensitive: false,
+      },
+      {
+        src: "梨",
+        dst: "Pear",
+        info: "水果",
+        case_sensitive: false,
+      },
+    ];
+    runtime_state.quality.glossary.revision = 2;
+    runtime_state.revisions.sections.quality = 2;
+    await rerender_probe();
+
+    await act(async () => {
+      await latest_state?.import_duplicate_skip();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "glossary",
+      expected_revision: 2,
+      entries: [
+        {
+          src: "苹果",
+          dst: "Apple",
+          info: "水果",
+          case_sensitive: false,
+        },
+        {
+          src: "梨",
+          dst: "Pear",
+          info: "水果",
+          case_sensitive: false,
+        },
+        {
+          src: "香蕉",
+          dst: "Banana",
+          info: "水果",
+          case_sensitive: false,
+        },
+      ],
+    });
+    expect(latest_state?.import_confirm_state.open).toBe(false);
+  });
+
+  it("导入遇到重复术语时覆盖可用新规则改写旧值", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "苹果",
+            dst: "",
+            info: "",
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 2,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+    });
+    await act(async () => {
+      await latest_state?.import_duplicate_overwrite();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "glossary",
+      expected_revision: 1,
+      entries: [
+        {
+          src: "苹果",
+          dst: "",
+          info: "",
+          case_sensitive: false,
+        },
+      ],
+    });
+  });
+
+  it("导入重复术语时取消不会写入", async () => {
+    await mount_probe();
+    api_fetch_mock.mockResolvedValueOnce({
+      entries: [
+        {
+          src: "苹果",
+          dst: "Malus",
+          info: "新说明",
+          case_sensitive: false,
+        },
+      ],
+    });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+    });
+    await act(async () => {
+      latest_state?.close_import_duplicate_confirm();
+    });
+
+    expect(latest_state?.import_confirm_state.open).toBe(false);
+    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+  });
+
   it("任务运行中锁定术语表 mutation，但保留筛选可用", async () => {
     task_snapshot = {
       busy: true,

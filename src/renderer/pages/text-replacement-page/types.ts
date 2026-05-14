@@ -1,4 +1,5 @@
 import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
+import type { QualityRuleImportConfirmState } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@/app/locale/locale-provider";
@@ -122,6 +123,7 @@ export type UseTextReplacementPageStateResult = {
   preset_menu_open: boolean;
   dialog_state: TextReplacementDialogState;
   confirm_state: TextReplacementConfirmState;
+  import_confirm_state: QualityRuleImportConfirmState;
   preset_input_state: TextReplacementPresetInputState;
   update_filter_keyword: (next_keyword: string) => void;
   update_filter_scope: (next_scope: TextReplacementFilterScope) => void;
@@ -158,6 +160,9 @@ export type UseTextReplacementPageStateResult = {
   request_close_dialog: () => Promise<void>;
   confirm_pending_action: () => Promise<void>;
   close_confirm_dialog: () => void;
+  import_duplicate_skip: () => Promise<void>;
+  import_duplicate_overwrite: () => Promise<void>;
+  close_import_duplicate_confirm: () => void;
   update_preset_input_value: (next_value: string) => void;
   submit_preset_input: () => Promise<void>;
   close_preset_input_dialog: () => void;

@@ -9,6 +9,7 @@ import { TextReplacementEditDialog } from "@/pages/text-replacement-page/compone
 import { TextReplacementPresetInputDialog } from "@/pages/text-replacement-page/components/text-replacement-preset-input-dialog";
 import type { TextReplacementFilterScope } from "@/pages/text-replacement-page/types";
 import { TextReplacementTable } from "@/pages/text-replacement-page/components/text-replacement-table";
+import { QualityRuleImportConfirmDialog } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 import { useTextReplacementPageState } from "@/pages/text-replacement-page/use-text-replacement-page-state";
 import { FileDropZone } from "@/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
@@ -153,6 +154,12 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
           void page_state.confirm_pending_action();
         }}
         on_close={page_state.close_confirm_dialog}
+      />
+      <QualityRuleImportConfirmDialog
+        state={page_state.import_confirm_state}
+        on_skip={page_state.import_duplicate_skip}
+        on_overwrite={page_state.import_duplicate_overwrite}
+        on_close={page_state.close_import_duplicate_confirm}
       />
       <TextReplacementPresetInputDialog
         state={page_state.preset_input_state}

@@ -111,7 +111,6 @@ export const en_us_text_preserve_page = {
     default_preset_cleared: "Default preset cleared …",
     unknown_error: "The operation failed. Please try again later.",
     regex_invalid: "Invalid regular expression",
-    merge_warning: "Duplicate entries were merged …",
     reset_success: "Reset completed …",
     mode_refresh_pending:
       "The text preserve mode was updated, and the proofreading cache is still refreshing. Please check again shortly.",

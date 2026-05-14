@@ -103,7 +103,6 @@ export const zh_cn_text_replacement_page = {
     query_failed: "替换页查询失败",
     source_required: "原文不能为空",
     regex_invalid: "正则表达式无效",
-    merge_warning: "已合并重复条目 …",
     reset_success: "已重置 …",
   },
 } as const;

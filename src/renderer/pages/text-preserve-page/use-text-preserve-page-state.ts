@@ -27,7 +27,7 @@ import {
   resolve_text_preserve_statistics_badge_kind,
   sort_text_preserve_entries,
 } from "@/pages/text-preserve-page/filtering";
-import { merge_text_preserve_entries } from "@/pages/text-preserve-page/merge";
+import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
 import {
   are_text_preserve_entry_ids_equal,
   build_text_preserve_entry_id,
@@ -53,6 +53,7 @@ import type {
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
 import { normalize_text_preserve_mode } from "@base/quality";
+import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
 
 type TextPreserveSnapshot = {
   revision: number;
@@ -501,15 +502,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
-  const persist_merged_entries = useCallback(
+  const apply_import_entries = useCallback(
     async (
-      incoming_entries: TextPreserveEntry[],
+      next_entries: TextPreserveEntry[],
       options: {
         close_preset_menu: boolean;
       },
     ): Promise<boolean> => {
-      const { merged_entries, report } = merge_text_preserve_entries(entries, incoming_entries);
-      const saved = await save_entries_snapshot(merged_entries);
+      const saved = await save_entries_snapshot(next_entries);
       if (!saved) {
         return false;
       }
@@ -517,18 +517,34 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       clear_selection_state();
       push_toast("success", t("text_preserve_page.feedback.import_success"));
 
-      if (report.updated > 0 || report.deduped > 0) {
-        push_toast("warning", t("text_preserve_page.feedback.merge_warning"));
-      }
-
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
       }
 
       return true;
     },
-    [clear_selection_state, entries, push_toast, save_entries_snapshot, t],
+    [clear_selection_state, push_toast, save_entries_snapshot, t],
   );
+
+  const get_import_existing_entries = useCallback((): TextPreserveEntry[] => {
+    const current_preserve_slice = getQualityRuleSlice(
+      project_store.getState().quality,
+      TEXT_PRESERVE_RULE_TYPE,
+    );
+    return current_preserve_slice.entries as TextPreserveEntry[];
+  }, [project_store]);
+  const import_confirmation = useQualityRuleImportConfirmation<TextPreserveEntry>({
+    rule_type: QualityRuleImportRuleTypeValue.TEXT_PRESERVE,
+    get_existing_entries: get_import_existing_entries,
+    apply_entries: apply_import_entries,
+  });
+  const {
+    import_confirm_state,
+    persist_import_entries,
+    import_duplicate_skip,
+    import_duplicate_overwrite,
+    close_import_duplicate_confirm,
+  } = import_confirmation;
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<TextPreservePresetPayload>(
@@ -952,12 +968,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           return;
         }
 
-        await persist_merged_entries(imported_entries, { close_preset_menu: false });
+        await persist_import_entries(imported_entries, { close_preset_menu: false });
       } catch (error) {
         push_action_error_toast(error);
       }
     },
-    [persist_merged_entries, push_action_error_toast, push_toast, readonly, t],
+    [persist_import_entries, push_action_error_toast, push_toast, readonly, t],
   );
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
@@ -1021,7 +1037,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             virtual_id,
           },
         );
-        await persist_merged_entries(
+        await persist_import_entries(
           payload.entries.map((entry) => {
             return normalize_imported_entry(entry);
           }),
@@ -1031,7 +1047,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         push_action_error_toast(error);
       }
     },
-    [persist_merged_entries, push_action_error_toast, readonly],
+    [persist_import_entries, push_action_error_toast, readonly],
   );
 
   const request_reset_entries = useCallback((): void => {
@@ -1523,6 +1539,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     preset_menu_open,
     dialog_state,
     confirm_state,
+    import_confirm_state,
     preset_input_state,
     update_filter_keyword,
     update_filter_scope,
@@ -1552,6 +1569,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     request_close_dialog,
     confirm_pending_action,
     close_confirm_dialog,
+    import_duplicate_skip,
+    import_duplicate_overwrite,
+    close_import_duplicate_confirm,
     update_preset_input_value,
     submit_preset_input,
     close_preset_input_dialog,
