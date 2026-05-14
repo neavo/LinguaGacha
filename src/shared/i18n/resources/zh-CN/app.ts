@@ -118,8 +118,8 @@ export const zh_cn_app = {
     },
   },
   log: {
-    analysis_task_extracted_terms: "提取术语：",
     analysis_task_no_terms: "未提取到术语",
+    analysis_task_result: "分析结果：",
     analysis_task_source_texts: "分析输入：",
     api_gateway_started: "API Gateway 已启动 - {BASE_URL}",
     api_test_fail: "接口测试失败 …\n原因：{REASON}",
@@ -127,6 +127,7 @@ export const zh_cn_app = {
     api_test_messages: "任务提示词：",
     api_test_result: "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …",
     api_test_result_failure: "失败的密钥：",
+    api_test_response_result: "模型回复内容：",
     api_test_timeout: "请求超时（{SECONDS} 秒）",
     api_test_token_info: "任务耗时 {TIME} 秒，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens",
     app_version: "LinguaGacha v{VERSION} …",
@@ -137,8 +138,8 @@ export const zh_cn_app = {
     engine_task_done: "任务已完成 …",
     engine_task_exception: "任务执行失败 …",
     engine_task_fail: "任务未能全部完成，仍有部分数据未处理，请检查处理结果 …",
-    engine_task_response_result: "模型回复内容：",
-    engine_task_response_think: "模型思考内容：",
+    engine_task_rule_analysis: "规则分析：",
+    engine_task_thinking_process: "思考过程：",
     engine_task_stop: "任务已停止 …",
     engine_task_success:
       "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens",
@@ -159,6 +160,7 @@ export const zh_cn_app = {
     translation_response_check_fail_force: "译文校验未通过",
     translation_response_check_fail_part: "部分译文质量校验失败，将自动切分重试，原因：{REASON}",
     translation_task_force_accept_info: " | 已强制放行：{REASON}",
+    translation_task_result: "翻译结果：",
     translation_task_status_info:
       "拆分次数：{SPLIT} | 单条重试次数：{RETRY} | 任务长度阈值：{THRESHOLD}",
     translation_unknown_reason: "未知原因",

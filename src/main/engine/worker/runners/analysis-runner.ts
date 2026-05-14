@@ -153,25 +153,24 @@ export class AnalysisWorkUnitRunner {
           srcs: prepared.prompt_srcs,
           glossary_entries: [],
           response_think: llm_result.response_think,
-          response_result: llm_result.response_result,
+          rule_analysis: "",
           status_text,
           app_language,
           level: "warning",
         }),
       };
     }
-    const cleaner_result = ResponseCleaner.extract_why_from_response(llm_result.response_result);
-    const normalized_think = ResponseCleaner.merge_text_blocks(
-      ResponseCleaner.normalize_blank_lines(llm_result.response_think).trim(),
-      cleaner_result.why_text,
+    const cleaner_result = ResponseCleaner.extract_rule_analysis_from_response(
+      llm_result.response_result,
     );
+    const normalized_think = ResponseCleaner.normalize_blank_lines(llm_result.response_think).trim();
     const decoded = await new ResponseDecoder().decode(cleaner_result.cleaned_response_result);
     const normalized_entries = new AnalysisPostPipeline(
       prepared.fake_name_injector,
     ).normalize_glossary_entries(decoded.glossary_entries);
     if (
       normalized_entries.length === 0 &&
-      !ResponseCleaner.has_why_block(llm_result.response_result)
+      !ResponseCleaner.has_rule_analysis_block(llm_result.response_result)
     ) {
       return {
         success: false,
@@ -186,7 +185,7 @@ export class AnalysisWorkUnitRunner {
           srcs: prepared.prompt_srcs,
           glossary_entries: [],
           response_think: normalized_think,
-          response_result: cleaner_result.cleaned_response_result,
+          rule_analysis: cleaner_result.rule_analysis_text,
           status_text: this.t(
             this.read_app_language(request.config_snapshot),
             "app.log.response_checker_fail_data",
@@ -209,7 +208,7 @@ export class AnalysisWorkUnitRunner {
         srcs: prepared.prompt_srcs,
         glossary_entries: normalized_entries,
         response_think: normalized_think,
-        response_result: cleaner_result.cleaned_response_result,
+        rule_analysis: cleaner_result.rule_analysis_text,
         status_text: "",
         app_language: this.read_app_language(request.config_snapshot),
         level: "info",
@@ -218,7 +217,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 尽量复刻旧 AnalysisTask 的 chunk 日志：统计、原文、think/result 与术语候选同屏输出
+   * 分析日志固定按思考过程、规则分析、分析输入和分析结果分段
    */
   private build_analysis_logs(context: {
     start_time: number;
@@ -227,7 +226,7 @@ export class AnalysisWorkUnitRunner {
     srcs: string[];
     glossary_entries: Array<Record<string, ApiJsonValue>>;
     response_think: string;
-    response_result: string;
+    rule_analysis: string;
     status_text: string;
     app_language: unknown;
     level: WorkUnitLogEntry["level"];
@@ -245,15 +244,15 @@ export class AnalysisWorkUnitRunner {
       rows.push(context.status_text);
     }
     const response_think_log = ResponseCleaner.normalize_blank_lines(context.response_think).trim();
-    const response_result_log = context.response_result.trim();
+    const rule_analysis_log = ResponseCleaner.normalize_blank_lines(context.rule_analysis).trim();
     if (response_think_log !== "") {
       rows.push(
-        `${this.t(context.app_language, "app.log.engine_task_response_think")}\n${response_think_log}`,
+        `${this.t(context.app_language, "app.log.engine_task_thinking_process")}\n${response_think_log}`,
       );
     }
-    if (response_result_log !== "") {
+    if (rule_analysis_log !== "") {
       rows.push(
-        `${this.t(context.app_language, "app.log.engine_task_response_result")}\n${response_result_log}`,
+        `${this.t(context.app_language, "app.log.engine_task_rule_analysis")}\n${rule_analysis_log}`,
       );
     }
 
@@ -269,13 +268,13 @@ export class AnalysisWorkUnitRunner {
 
     const term_lines = this.build_glossary_log_lines(context.glossary_entries);
     rows.push(
-      `${this.t(context.app_language, "app.log.analysis_task_extracted_terms")}\n${
+      `${this.t(context.app_language, "app.log.analysis_task_result")}\n${
         term_lines.length > 0
           ? term_lines.join("\n")
           : this.t(context.app_language, "app.log.analysis_task_no_terms")
       }`,
     );
-    return [{ level: context.level, message: `\n${rows.filter(Boolean).join("\n\n")}\n` }];
+    return [{ level: context.level, message: `${rows.filter(Boolean).join("\n\n")}\n` }];
   }
 
   /**
