@@ -750,7 +750,7 @@ export class TaskEngine {
           forced_error_items: [],
         };
       }
-      this.force_accept_translation_item(item);
+      this.mark_translation_item_error(item);
       return { retry_contexts: [], forced_error_items: [item] };
     }
     const next_threshold = Math.max(
@@ -1113,12 +1113,9 @@ export class TaskEngine {
   }
 
   /**
-   * 重试超限后强制接受为 ERROR，保证失败条目最终有可提交终态
+   * 重试超限后只标记 ERROR，译文字段继续只承载真实译文
    */
-  private force_accept_translation_item(item: TaskItemRecord): void {
-    if (String(item["dst"] ?? "") === "") {
-      item["dst"] = String(item["src"] ?? "");
-    }
+  private mark_translation_item_error(item: TaskItemRecord): void {
     item["status"] = "ERROR";
   }
 

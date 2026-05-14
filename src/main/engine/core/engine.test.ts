@@ -46,7 +46,7 @@ describe("TaskEngine", () => {
     expect(executor_call_count).toBe(2);
   });
 
-  it("翻译单条重试超限后把强制 ERROR 条目提交落库", async () => {
+  it("翻译单条重试超限后提交 ERROR 且不回填原文", async () => {
     const committed_batches: MutableJsonRecord[] = [];
     const done = create_status_waiter("translation", "done");
     const task_engine = new TaskEngine({
@@ -93,7 +93,7 @@ describe("TaskEngine", () => {
       {
         id: 1,
         src: "原文",
-        dst: "原文",
+        dst: "",
         status: "ERROR",
         file_path: "demo.txt",
       },
