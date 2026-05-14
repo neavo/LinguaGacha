@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noUncheckedSideEffectImports": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2023",
+    "tsBuildInfoFile": "./build/tsconfig.node.tsbuildinfo",
+    "verbatimModuleSyntax": true,
+    "types": ["electron-vite/node"]
+  },
+  "include": [
+    "buildtools/vite/electron.vite.config.ts",
+    "src/electron-env.d.ts",
+    "src/base",
+    "src/desktop",
+    "src/main",
+    "src/preload",
+    "src/shared",
+    "src/test"
+  ]
+}

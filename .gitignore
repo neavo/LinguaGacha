@@ -1,11 +1,29 @@
-/.venv
-/uv.lock
-.coverage
-__pycache__
+# Node / Electron 构建产物
+/build
+/node_modules
+/dist
+/dist-electron
+/release
+/dist-ssr
+*.local
+*.tsbuildinfo
+/package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-/core
-/core.exe
-/_internal
+# 编辑器与系统文件
+/.vscode/*
+!/.vscode/extensions.json
+/.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 /*log*
 /*input*
@@ -15,3 +33,5 @@ __pycache__
 *.lg
 /*.xlsx
 /*.json
+
+!/tsconfig*.json

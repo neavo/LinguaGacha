@@ -1,1 +1,0 @@
-export const APP_LIVE_REFRESH_INTERVAL_MS = 250;

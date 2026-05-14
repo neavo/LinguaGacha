@@ -129,7 +129,7 @@ it("点击保存后提交当前表单值", async () => {
 ## 常用验证
 
 ```powershell
-npm --prefix frontend run test -- src/path/to/session-runtime-provider.test.tsx
-npm --prefix frontend run test
-npm --prefix frontend exec -- tsc -p frontend/tsconfig.json --noEmit
+npm run test -- src/path/to/session-runtime-provider.test.tsx
+npm run test
+npm exec -- tsc -p tsconfig.json --noEmit
 ```

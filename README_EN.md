@@ -100,10 +100,9 @@
   - Temporarily removed `CLI` mode
 
 ## Development Guide 🛠️
-- This project consists of `Python Core` and an `Electron` frontend. We recommend preparing [**uv**](https://github.com/astral-sh/uv) and [`Node.js 24`](https://nodejs.org/)
-- Install dependencies `uv sync -U --extra test` `npm --prefix frontend install`
-- Update dependencies `uv sync -U --extra test` `npm --prefix frontend update`
-- Run the application `npm --prefix frontend run dev`
+- First install [`Node.js 24`](https://nodejs.org/), then initialize with `npm install`
+- Update dependencies `npm update`
+- Run the application `npm run dev`
 - Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
 - For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)
 

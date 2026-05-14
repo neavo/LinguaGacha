@@ -1,0 +1,254 @@
+import { describe, expect, it } from "vitest";
+
+import type { ProjectStoreState } from "@/project/store/project-store";
+import {
+  create_workbench_add_files_plan,
+  create_workbench_delete_files_plan,
+  create_workbench_reset_file_plan,
+  type WorkbenchFileParsePreview,
+} from "@/pages/workbench-page/workbench-mutation-planner";
+
+function create_state(items: Record<string, unknown>): ProjectStoreState {
+  return {
+    project: {
+      path: "E:/demo/sample.lg",
+      loaded: true,
+    },
+    files: {
+      "old.txt": {
+        rel_path: "old.txt",
+        file_type: "TXT",
+        sort_index: 0,
+      },
+    },
+    items,
+    quality: {
+      glossary: { entries: [], enabled: true, mode: "default", revision: 0 },
+      pre_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
+      post_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
+      text_preserve: { entries: [], enabled: true, mode: "default", revision: 0 },
+    },
+    prompts: {
+      translation: { text: "", enabled: true, revision: 0 },
+      analysis: { text: "", enabled: true, revision: 0 },
+    },
+    analysis: {},
+    proofreading: {
+      revision: 0,
+    },
+    revisions: {
+      projectRevision: 1,
+      sections: {
+        files: 1,
+        items: 2,
+        analysis: 3,
+      },
+    },
+  };
+}
+
+function create_item(args: {
+  item_id: number;
+  src: string;
+  dst: string;
+  status?: string;
+  name_dst?: unknown;
+  retry_count?: number;
+}): Record<string, unknown> {
+  return {
+    item_id: args.item_id,
+    file_path: "old.txt",
+    row_number: args.item_id,
+    src: args.src,
+    dst: args.dst,
+    name_dst: args.name_dst ?? null,
+    status: args.status ?? "PROCESSED",
+    text_type: "NONE",
+    retry_count: args.retry_count ?? 0,
+  };
+}
+
+function create_parsed_file(
+  parsed_items: Array<Record<string, unknown>>,
+): WorkbenchFileParsePreview {
+  return {
+    source_path: "E:/demo/new.txt",
+    target_rel_path: "new.txt",
+    file_type: "TXT",
+    parsed_items,
+  };
+}
+
+function create_single_file_add_plan(args: {
+  state: ProjectStoreState;
+  parsed_file: WorkbenchFileParsePreview;
+  inheritance_mode: "none" | "inherit";
+}) {
+  return create_workbench_add_files_plan({
+    state: args.state,
+    parsed_files: [args.parsed_file],
+    settings: SETTINGS,
+    inheritance_mode: args.inheritance_mode,
+  });
+}
+
+function get_payload_items(plan: ReturnType<typeof create_workbench_add_files_plan>) {
+  const files = plan.requestBody.files as Array<Record<string, unknown>>;
+  return files[0]?.parsed_items as Array<Record<string, unknown>>;
+}
+
+function get_payload_files(plan: ReturnType<typeof create_workbench_add_files_plan>) {
+  return plan.requestBody.files as Array<Record<string, unknown>>;
+}
+
+const SETTINGS = {
+  source_language: "JA",
+  mtool_optimizer_enable: false,
+  skip_duplicate_source_text_enable: true,
+};
+
+describe("workbench add-file translation inheritance planner", () => {
+  it("不继承时保留解析结果", () => {
+    const plan = create_single_file_add_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+      }),
+      parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
+      inheritance_mode: "none",
+    });
+
+    expect(get_payload_items(plan)[0]?.dst).toBe("");
+    expect(get_payload_items(plan)[0]?.status).toBe("NONE");
+  });
+
+  it("唯一已完成译文会自动继承", () => {
+    const plan = create_single_file_add_plan({
+      state: create_state({
+        "1": create_item({
+          item_id: 1,
+          src: "hello",
+          dst: "你好",
+          name_dst: "名字",
+          retry_count: 2,
+        }),
+      }),
+      parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
+      inheritance_mode: "inherit",
+    });
+
+    expect(get_payload_items(plan)[0]).toMatchObject({
+      dst: "你好",
+      name_dst: "名字",
+      status: "PROCESSED",
+      retry_count: 2,
+    });
+  });
+
+  it("多候选时自动选择出现次数最多且并列取最早出现的译文", () => {
+    const plan = create_single_file_add_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "hello", dst: "甲" }),
+        "2": create_item({ item_id: 2, src: "hello", dst: "乙" }),
+        "3": create_item({ item_id: 3, src: "hello", dst: "甲" }),
+        "4": create_item({ item_id: 4, src: "tie", dst: "先" }),
+        "5": create_item({ item_id: 5, src: "tie", dst: "后" }),
+      }),
+      parsed_file: create_parsed_file([
+        { src: "hello", dst: "", row: 1 },
+        { src: "tie", dst: "", row: 2 },
+      ]),
+      inheritance_mode: "inherit",
+    });
+
+    expect(get_payload_items(plan)).toEqual([
+      expect.objectContaining({ src: "hello", dst: "甲" }),
+      expect.objectContaining({ src: "tie", dst: "先" }),
+    ]);
+  });
+
+  it("结构性状态不会被继承状态覆盖", () => {
+    const plan = create_single_file_add_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+      }),
+      parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1, status: "EXCLUDED" }]),
+      inheritance_mode: "inherit",
+    });
+
+    expect(get_payload_items(plan)[0]).toMatchObject({
+      dst: "你好",
+      status: "EXCLUDED",
+    });
+  });
+
+  it("批量新增会连续分配文件顺序与条目 ID，并让继承模式作用于整批", () => {
+    const plan = create_workbench_add_files_plan({
+      state: create_state({
+        "7": create_item({ item_id: 7, src: "hello", dst: "你好" }),
+      }),
+      parsed_files: [
+        create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
+        {
+          source_path: "E:/demo/next.txt",
+          target_rel_path: "next.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "hello", dst: "", row: 1 }],
+        },
+      ],
+      settings: SETTINGS,
+      inheritance_mode: "inherit",
+    });
+
+    const files = get_payload_files(plan);
+    expect(files).toEqual([
+      expect.objectContaining({
+        target_rel_path: "new.txt",
+        file_record: expect.objectContaining({ sort_index: 1 }),
+        parsed_items: [expect.objectContaining({ id: 8, dst: "你好" })],
+      }),
+      expect.objectContaining({
+        target_rel_path: "next.txt",
+        file_record: expect.objectContaining({ sort_index: 2 }),
+        parsed_items: [expect.objectContaining({ id: 9, dst: "你好" })],
+      }),
+    ]);
+  });
+});
+
+describe("workbench file mutation payload planner", () => {
+  it("重置单文件也使用 rel_paths 数组载荷", () => {
+    const plan = create_workbench_reset_file_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+      }),
+      rel_path: "old.txt",
+      settings: SETTINGS,
+    });
+
+    expect(plan.requestBody).toMatchObject({
+      rel_paths: ["old.txt"],
+      translation_extras: expect.any(Object),
+      prefilter_config: expect.any(Object),
+    });
+    expect(plan.requestBody).not.toHaveProperty("rel_path");
+    expect(plan.requestBody).not.toHaveProperty("derived_meta");
+  });
+
+  it("删除文件使用统一 rel_paths 数组载荷", () => {
+    const plan = create_workbench_delete_files_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+      }),
+      rel_paths: ["old.txt"],
+      settings: SETTINGS,
+    });
+
+    expect(plan.requestBody).toMatchObject({
+      rel_paths: ["old.txt"],
+      translation_extras: expect.any(Object),
+      prefilter_config: expect.any(Object),
+    });
+    expect(plan.requestBody).not.toHaveProperty("rel_path");
+    expect(plan.requestBody).not.toHaveProperty("derived_meta");
+  });
+});

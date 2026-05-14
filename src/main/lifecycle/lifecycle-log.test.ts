@@ -1,0 +1,23 @@
+import { describe, expect, it } from "vitest";
+
+import { format_lifecycle_error, format_lifecycle_log } from "./lifecycle-log";
+
+describe("format_lifecycle_log", () => {
+  it("使用 Rich 风格的主进程日志列", () => {
+    const date = new Date(2026, 3, 26, 12, 12, 12);
+
+    expect(format_lifecycle_log("后端服务正在启动 …", date)).toBe(
+      "[12:12:12] MAIN     后端服务正在启动 …",
+    );
+  });
+});
+
+describe("format_lifecycle_error", () => {
+  it("优先输出 Error message", () => {
+    expect(format_lifecycle_error(new Error("启动失败"))).toBe("启动失败");
+  });
+
+  it("兼容非 Error 抛出值", () => {
+    expect(format_lifecycle_error("失败")).toBe("失败");
+  });
+});
