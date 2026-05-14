@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
+
 import type { ApiJsonValue } from "../api/api-types";
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../service/path-service";
@@ -326,18 +328,18 @@ export class ModelService {
   }
 
   /**
-   * Google list 接口要求 key 放在 query，baseUrl 可携带 v1/v1beta
+   * Google 模型列表走 @google/genai，让 SDK 统一拼接 apiVersion 与 list 路径。
    */
   private async fetch_google_available_models(model: ModelRecord): Promise<string[]> {
     const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), "Google");
-    const base_url = api_url === "" ? "https://generativelanguage.googleapis.com/v1beta" : api_url;
-    const target_url = new URL(`${base_url}/models`);
-    target_url.searchParams.set(
-      "key",
-      LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
-    );
-    const data = await this.fetch_json(target_url.toString(), this.build_browser_headers(model));
-    return this.read_model_id_array(data, "models", "name");
+    const client = new GoogleGenAI({
+      apiKey: LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
+      httpOptions: {
+        baseUrl: api_url === "" ? undefined : api_url,
+        headers: this.build_browser_headers(model),
+      },
+    } as ConstructorParameters<typeof GoogleGenAI>[0]);
+    return await this.read_google_model_names(await client.models.list());
   }
 
   /**
@@ -366,7 +368,7 @@ export class ModelService {
   }
 
   /**
-   * 读取 SDK list 常见数组结构，坏项直接跳过
+   * 读取 HTTP 模型列表数组结构，坏项直接跳过。
    */
   private read_model_id_array(data: ApiJsonValue, array_key: string, id_key: string): string[] {
     const record = this.normalize_object(data);
@@ -377,6 +379,19 @@ export class ModelService {
     return items
       .map((item) => this.normalize_object(item)[id_key])
       .filter((value): value is string => typeof value === "string" && value.trim() !== "");
+  }
+
+  /**
+   * Google SDK pager 会自动跨页，模型名缺失的条目不进入页面候选列表。
+   */
+  private async read_google_model_names(pager: AsyncIterable<GoogleSdkModel>): Promise<string[]> {
+    const names: string[] = [];
+    for await (const item of pager) {
+      if (typeof item.name === "string" && item.name.trim() !== "") {
+        names.push(item.name);
+      }
+    }
+    return names;
   }
 
   /**

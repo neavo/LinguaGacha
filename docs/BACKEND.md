@@ -107,7 +107,7 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 
 任务级多 Key 轮换由 `ModelKeyLeasePool` 在 work unit 即将进入 in-flight 前按 `api_format / api_url / model_id / normalized key list` 做全局 round-robin；重试重新获取 Key，worker 内不做本地轮换。模型连通性测试遍历所有 Key，模型列表查询只使用 primary Key。
 
-worker 内 LLM 请求链路固定为 `LLMRequestClient -> ProviderRequestPolicy -> ProviderClientPool -> official SDK transport -> RequestResult`。OpenAI-compatible 与 SakuraLLM 使用 `openai`，Google / Gemini 使用 `@google/genai`，Anthropic / Claude 使用 `@anthropic-ai/sdk`；核心请求链路不保留 pi-ai fallback。`ProviderRequestPolicy` 是模型族 thinking、generation、extra body/header 和 provider 强制删字段规则的唯一归宿；transport 只从 `ProviderClientPool` 取 SDK client、发送最终 payload、读取 stream 并归一响应。
+worker 内 LLM 请求链路固定为 `LLMRequestClient -> LLMClientPolicy -> ProviderClientPool -> official SDK transport -> RequestResult`。OpenAI-compatible 与 SakuraLLM 使用 `openai`，Google / Gemini 使用 `@google/genai`，Anthropic / Claude 使用 `@anthropic-ai/sdk`；核心请求链路不保留 pi-ai fallback。Google 的 `api_url` 在 `LLMClientPolicy` 归一为 `@google/genai` SDK base URL，末尾 `/v1`、`/v1beta`、`/v1alpha` 版本段由 SDK `apiVersion` 负责拼接，任务请求和 Google 模型列表共用同一规则。`LLMClientPolicy` 是模型族 thinking、generation、extra body/header 和 provider 强制删字段规则的唯一归宿；transport 只从 `ProviderClientPool` 取 SDK client、发送最终 payload、读取 stream 并归一响应。
 
 ## 6. 数据库与 `.lg` 物理存储
 

@@ -6,6 +6,29 @@ import {
 import type { ModelRequestSnapshot } from "./policy-types";
 import type { LLMMessage } from "../llm-types";
 
+// Google SDK 会自行拼接版本段；这里只识别用户配置末尾的显式版本。
+const GOOGLE_SDK_VERSION_SEGMENT_PATTERN = /\/v1(?:beta|alpha)?$/iu;
+const GOOGLE_25_PRO_MIN_THINKING_BUDGET = 128;
+
+const GOOGLE_25_THINKING_BUDGET_BY_LEVEL = {
+  LOW: 384,
+  MEDIUM: 768,
+  HIGH: 1024,
+} as const satisfies Record<"LOW" | "MEDIUM" | "HIGH", number>;
+
+const GOOGLE_25_FLASH_LITE_THINKING_BUDGET_BY_LEVEL = {
+  LOW: 512,
+  MEDIUM: 768,
+  HIGH: 1024,
+} as const satisfies Record<"LOW" | "MEDIUM" | "HIGH", number>;
+
+/**
+ * Google SDK 会按 apiVersion 拼路径，base URL 末尾不能再携带 v1/v1beta/v1alpha。
+ */
+export function normalize_google_sdk_base_url(url: string): string {
+  return url.trim().replace(/\/+$/u, "").replace(GOOGLE_SDK_VERSION_SEGMENT_PATTERN, "");
+}
+
 /**
  * Google / Gemini 规则：官方 SDK 消费 contents + config，安全阈值始终显式写入 config。
  */
@@ -70,36 +93,46 @@ function build_google_contents(
 }
 
 /**
- * Gemini thinking 字段由模型族决定：2.5 用预算，3 系用 level。
+ * Gemini thinking 字段由模型族决定：2.5 用预算，3 系用等级。
  */
 export function build_google_thinking_config(
   snapshot: Pick<ModelRequestSnapshot, "model_id" | "thinking_level">,
 ): Record<string, unknown> | null {
   const model_id = snapshot.model_id;
   const level = snapshot.thinking_level;
-  const budgets: Record<"LOW" | "MEDIUM" | "HIGH", number> = {
-    LOW: 384,
-    MEDIUM: 768,
-    HIGH: 1024,
-  };
-  if (/gemini-3-pro/iu.test(model_id)) {
-    return { thinkingLevel: level === "HIGH" ? "HIGH" : "LOW", includeThoughts: true };
-  }
   if (/gemini-3\.1-pro/iu.test(model_id)) {
     return {
       thinkingLevel: level === "HIGH" ? "HIGH" : level === "MEDIUM" ? "MEDIUM" : "LOW",
-      includeThoughts: true,
+      includeThoughts: level !== "OFF",
     };
   }
+  if (/gemini-3(?:\.\d+)?-pro/iu.test(model_id)) {
+    return { thinkingLevel: level === "HIGH" ? "HIGH" : "LOW", includeThoughts: level !== "OFF" };
+  }
   if (/gemini-3(?:\.1)?-flash/iu.test(model_id)) {
-    return { thinkingLevel: level === "OFF" ? "MINIMAL" : level, includeThoughts: true };
+    return {
+      thinkingLevel: level === "OFF" ? "MINIMAL" : level,
+      includeThoughts: level !== "OFF",
+    };
   }
   if (/gemini-2\.5-pro/iu.test(model_id)) {
-    return { thinkingBudget: level === "OFF" ? 128 : budgets[level], includeThoughts: true };
+    return {
+      thinkingBudget:
+        level === "OFF"
+          ? GOOGLE_25_PRO_MIN_THINKING_BUDGET
+          : GOOGLE_25_THINKING_BUDGET_BY_LEVEL[level],
+      includeThoughts: level !== "OFF",
+    };
+  }
+  if (/gemini-2\.5-flash-lite/iu.test(model_id)) {
+    return {
+      thinkingBudget: level === "OFF" ? 0 : GOOGLE_25_FLASH_LITE_THINKING_BUDGET_BY_LEVEL[level],
+      includeThoughts: level !== "OFF",
+    };
   }
   if (/gemini-2\.5-flash/iu.test(model_id)) {
     return {
-      thinkingBudget: level === "OFF" ? 0 : budgets[level],
+      thinkingBudget: level === "OFF" ? 0 : GOOGLE_25_THINKING_BUDGET_BY_LEVEL[level],
       includeThoughts: level !== "OFF",
     };
   }

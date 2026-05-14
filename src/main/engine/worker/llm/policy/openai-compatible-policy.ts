@@ -8,6 +8,15 @@ import type { ApiJsonValue } from "../../../../api/api-types";
 import type { ModelRequestSnapshot } from "./policy-types";
 import type { LLMMessage } from "../llm-types";
 
+const OPENAI_CHAT_COMPLETIONS_SUFFIX_PATTERN = /\/chat\/completions$/iu;
+
+/**
+ * OpenAI SDK 会拼接 chat completions 路径，base URL 只保留接口根路径。
+ */
+export function normalize_openai_compatible_sdk_base_url(url: string): string {
+  return url.trim().replace(/\/+$/u, "").replace(OPENAI_CHAT_COMPLETIONS_SUFFIX_PATTERN, "");
+}
+
 /**
  * OpenAI-compatible 族规则：用户 extra_body 最后合并，模型族强制字段在其前写入。
  */
