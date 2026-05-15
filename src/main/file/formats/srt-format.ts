@@ -1,4 +1,4 @@
-import { TextTool } from "../../../shared/utils/text-tool";
+import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   build_bilingual_path,
@@ -41,7 +41,7 @@ export class SRTFormat {
         }),
       );
     };
-    for (const line of split_text_lines_for_items(await TextTool.decode(content))) {
+    for (const line of split_text_lines_for_items(await decode_text_content(content))) {
       const stripped = line.trim();
       if (stripped === "") {
         if (chunk.length > 0) {

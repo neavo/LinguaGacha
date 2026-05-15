@@ -2,7 +2,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import { TextTool } from "../../../shared/utils/text-tool";
+import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   group_items,
@@ -60,7 +60,7 @@ export class RenPyFormat {
    * 文件流入口只负责解码，实际解析拆到 parse_text 便于 golden 和单元测试复用
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    return this.parse_text(rel_path, await TextTool.decode(content));
+    return this.parse_text(rel_path, await decode_text_content(content));
   }
 
   /**
@@ -206,7 +206,7 @@ export class RenPyFormat {
       if (original === null) {
         continue;
       }
-      const lines = split_text_lines_for_items(await TextTool.decode(original));
+      const lines = split_text_lines_for_items(await decode_text_content(original));
       for (const item of group.sort((left, right) => right.row - left.row)) {
         const extra = read_json_record(item.extra_field);
         const renpy = read_json_record(extra["renpy"]);

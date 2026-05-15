@@ -1,4 +1,0 @@
-interface:
-  display_name: Project Reivew
-  short_description: 项目变更审查
-  default_prompt: 使用 $project-reivew 审查当前变更

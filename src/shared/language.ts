@@ -1,8 +1,7 @@
-// 语言字符范围全部按闭区间记录，方便同时生成判断函数和正则字符类
-type CodePointRange = readonly [number, number];
+import { InvalidTargetLanguageError, UnsupportedAllTargetLanguageError } from "./error";
 
-// 单字符 matcher 是 LANGUAGE_DEFINITIONS 的最小能力，调用方不需要知道具体范围表
 type CharacterMatcher = (char: string) => boolean;
+type TextMatcher = (text: string) => boolean;
 
 export const ALL_LANGUAGE_CODE = "ALL"; // 特殊值：表示“任意原文语言”（关闭语言过滤）
 
@@ -34,11 +33,12 @@ export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceTargetLanguageCode;
 export type LanguageDisplayLocale = "zh" | "en";
 export type LanguageLabelKey = `app.language.${LanguageCode}`;
 
-// 语言定义集中携带 CJK 标记和字符 matcher，调用方不直接读取范围常量
+// 语言定义集中携带 CJK 标记和正文 matcher，调用方不直接拼 Unicode 规则
 export type LanguageDefinition = {
   code: LanguageCode;
   cjk: boolean;
   matches_character: CharacterMatcher | null;
+  matches_text: TextMatcher | null;
 };
 
 // 语言名称与语言码同源维护，UI、提示词和日志都复用这一套“中文/日文”口径
@@ -120,14 +120,17 @@ export const LANGUAGE_DISPLAY_NAMES: Record<
   },
 };
 
+// 语言标签 key 从语言码派生，避免 UI 手写 i18n key
 export function get_language_label_key(language_code: LanguageCode): LanguageLabelKey {
   return `app.language.${language_code}`;
 }
 
+// 应用语言只影响语言显示名本地化，未知值默认回中文
 export function get_language_display_locale(app_language: unknown): LanguageDisplayLocale {
   return String(app_language).trim().toUpperCase() === "EN" ? "en" : "zh";
 }
 
+// 展示名统一从语言定义表读取，不在调用点重复维护语言名称
 export function get_language_display_name(
   language_code: LanguageCode,
   locale: LanguageDisplayLocale,
@@ -135,6 +138,7 @@ export function get_language_display_name(
   return LANGUAGE_DISPLAY_NAMES[language_code][locale];
 }
 
+// 源语言允许 ALL 和空值，提示词里表达为泛化的“原文”
 export function get_prompt_source_language_name(
   language_code: LanguageCode | null,
   locale: LanguageDisplayLocale,
@@ -146,6 +150,7 @@ export function get_prompt_source_language_name(
   return get_language_display_name(language_code, locale);
 }
 
+// 目标语言不能是 ALL 或空值，调用方配置损坏时必须显式报错
 export function get_prompt_target_language_name(
   language_code: LanguageCode | null,
   locale: LanguageDisplayLocale,
@@ -160,225 +165,47 @@ export function get_prompt_target_language_name(
   return get_language_display_name(language_code, locale);
 }
 
-// 这些字符范围对齐历史 TextBase，用于前端预过滤，不替代后端完整文本处理
-const CJK_CHARACTER_RANGES: readonly CodePointRange[] = [
-  [0x4e00, 0x9fff],
-  [0x3400, 0x4dbf],
-  [0x20000, 0x2a6df],
-  [0x2a700, 0x2b73f],
-  [0x2b740, 0x2b81f],
-  [0x2b820, 0x2ceaf],
-];
+const NON_BODY_LANGUAGE_CHARACTER_PATTERN = /[\s\p{N}\p{P}\p{S}\p{M}]/u; // 正文字符先排除空白、数字、标点、符号和组合标记
+const NON_STANDALONE_LANGUAGE_MARK_PATTERN = /\p{M}/u; // Unicode Mark 单独存在时只表达附着标记，不构成正文
 
-// Latin 范围服务非 CJK 语言预过滤，只覆盖基础拉丁与扩展拉丁字母
-const LATIN_CHARACTER_RANGES: readonly CodePointRange[] = [
-  [0x0041, 0x005a],
-  [0x0061, 0x007a],
-  [0x00c0, 0x00ff],
-  [0x0100, 0x017f],
-  [0x0180, 0x024f],
-];
+const HAN_CHARACTER_PATTERN = /\p{Script=Han}/u; // Han Script 单字符正文规则，覆盖汉字扩展区和兼容汉字
+const HIRAGANA_CHARACTER_PATTERN = /\p{Script=Hiragana}/u; // Hiragana Script 单字符规则，用于平假名残留和剥离
+const KATAKANA_CHARACTER_PATTERN = /\p{Script=Katakana}/u; // Katakana Script 单字符规则，包含全角和半角片假名
+const HANGUL_CHARACTER_PATTERN = /\p{Script=Hangul}/u; // Hangul Script 单字符规则，用于韩文正文和残留检测
+const CYRILLIC_CHARACTER_PATTERN = /\p{Script=Cyrillic}/u; // Cyrillic Script 单字符规则，避免误收 Glagolitic
+const ARABIC_CHARACTER_PATTERN = /\p{Script=Arabic}/u; // Arabic Script 单字符规则，数字和符号由正文排除规则剔除
+const THAI_CHARACTER_PATTERN = /\p{Script=Thai}/u; // Thai Script 单字符规则，泰文数字不作为正文
+const LATIN_CHARACTER_PATTERN = /\p{Script=Latin}/u; // Latin Script 单字符规则，拉丁语系共享粗过滤
 
-// 韩文范围包含 Jamo、扩展 Jamo、兼容 Jamo 与完整谚文音节
-const HANGUL_CHARACTER_RANGES: readonly CodePointRange[] = [
-  [0x1100, 0x11ff],
-  [0xa960, 0xa97f],
-  [0xd7b0, 0xd7ff],
-  [0xac00, 0xd7af],
-  [0x3130, 0x318f],
-];
+const HAN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Han}/u; // Han Script 整段命中规则，不带 g 避免 lastIndex 泄漏
+const HIRAGANA_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Hiragana}/u; // Hiragana Script 整段命中规则
+const KATAKANA_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Katakana}/u; // Katakana Script 整段命中规则
+const HANGUL_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Hangul}/u; // Hangul Script 整段命中规则
+const CYRILLIC_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Cyrillic}/u; // Cyrillic Script 整段命中规则
+const ARABIC_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Arabic}/u; // Arabic Script 整段命中规则
+const THAI_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Thai}/u; // Thai Script 整段命中规则
+const LATIN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Latin}/u; // Latin Script 整段命中规则，非自然语言识别
+const JAPANESE_TEXT_PATTERN =
+  /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))(?:\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana})/u; // 日文整段规则：Han + Hiragana + Katakana
+const KOREAN_TEXT_PATTERN =
+  /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))(?:\p{Script=Han}|\p{Script=Hangul})/u; // 韩文整段规则：Han + Hangul
 
-const HIRAGANA_CHARACTER_RANGES: readonly CodePointRange[] = [[0x3040, 0x309f]]; // 平假名范围需排除浊点/半浊点符号，保持残留检测不误报标记符
-const HIRAGANA_EXCLUDED_CODE_POINTS = new Set([0x309b, 0x309c]); // 浊点/半浊点是组合标记，过滤时不能当作残留假名
-
-// 片假名范围含半角片假名，但排除中点和长音符等非文字控制符
-const KATAKANA_CHARACTER_RANGES: readonly CodePointRange[] = [
-  [0x30a0, 0x30ff],
-  [0x31f0, 0x31ff],
-  [0xff65, 0xff9f],
-];
-const KATAKANA_EXCLUDED_CODE_POINTS = new Set([0xff65, 0x30fb, 0x30fc]); // 半角中点和长音符常作为控制/分隔符出现，残留检测不把它们当作假名文字
-
-// 正则字符类不能表达“范围减去集合”，因此这里把平假名范围按例外点拆开
-const HIRAGANA_REGEX_RANGES: readonly CodePointRange[] = [
-  [0x3040, 0x309a],
-  [0x309d, 0x309f],
-];
-
-// 片假名正则范围同样按例外点拆分，保证和 is_katakana_character 一致
-const KATAKANA_REGEX_RANGES: readonly CodePointRange[] = [
-  [0x30a0, 0x30fa],
-  [0x30fd, 0x30ff],
-  [0x31f0, 0x31ff],
-  [0xff66, 0xff9f],
-];
-
-// 需要构造正则字符串的调用点引用这里，正则范围必须和上面的字符判断例外点保持一致
-export const CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE = [
-  ...CJK_CHARACTER_RANGES,
-  ...HIRAGANA_REGEX_RANGES,
-  ...KATAKANA_REGEX_RANGES,
-  ...HANGUL_CHARACTER_RANGES,
-]
-  .map(
-    ([start, end]) => `${format_code_point_for_regex(start)}-${format_code_point_for_regex(end)}`,
-  )
-  .join("");
-
-// 俄文使用西里尔基础与扩展区间，覆盖常见游戏文本中的旧字母
-const RU_CHARACTER_RANGES: readonly CodePointRange[] = [
-  [0x0410, 0x044f],
-  [0x0500, 0x052f],
-  [0x2c00, 0x2c5f],
-  [0xa640, 0xa69f],
-  [0x1c80, 0x1c8f],
-  [0x2de0, 0x2dff],
-];
-
-// 阿拉伯文覆盖基础、补充、扩展和展示形区域，满足轻量语言过滤
-const AR_CHARACTER_RANGES: readonly CodePointRange[] = [
-  [0x0600, 0x06ff],
-  [0x0750, 0x077f],
-  [0x08a0, 0x08ff],
-  [0xfb50, 0xfdff],
-  [0xfe70, 0xfeff],
-];
-
-// 泰文范围保留数字段，避免纯泰文数字行被误判为非目标语言
-const TH_CHARACTER_RANGES: readonly CodePointRange[] = [
-  [0x0e00, 0x0e7f],
-  [0x0e50, 0x0e59],
-];
-
-const VI_CHARACTER_RANGES: readonly CodePointRange[] = [[0x1ea0, 0x1ef9]]; // 越南语额外字符只覆盖越南语专用扩展，普通拉丁字母由 LATIN 范围负责
-
-// Python unicodedata.east_asian_width 把 A/W/F 都按全角计，显示长度估算需保留这批常见 A/W 段
-const PYTHON_WIDE_OR_AMBIGUOUS_WIDTH_RANGES: readonly CodePointRange[] = [
-  [0x00a1, 0x00ff],
-  [0x0100, 0x017f],
-  [0x0250, 0x02ff],
-  [0x0370, 0x03ff],
-  [0x2010, 0x2027],
-  [0x2030, 0x205e],
-  [0x2103, 0x2103],
-  [0x2116, 0x2116],
-  [0x2160, 0x216f],
-  [0x2190, 0x21ff],
-  [0x2200, 0x22ff],
-  [0x2460, 0x24ff],
-  [0x2500, 0x257f],
-  [0x25a0, 0x25ff],
-  [0x2600, 0x27bf],
-  [0xfe00, 0xfe0f],
-  [0x1f000, 0x1faff],
-];
-
-const DE_EXTRA_CHARACTERS = new Set(["Ä", "Ö", "Ü", "ä", "ö", "ü", "ß"]); // 各欧洲语言额外字符只补足拉丁范围无法表达的语言特征
-// 法语额外字符包含合字和常见重音字母，补足拉丁范围外的语言特征
-const FR_EXTRA_CHARACTERS = new Set([
-  "à",
-  "á",
-  "â",
-  "ä",
-  "ç",
-  "é",
-  "è",
-  "ê",
-  "ë",
-  "î",
-  "ï",
-  "ô",
-  "ö",
-  "ù",
-  "û",
-  "ü",
-  "ÿ",
-  "œ",
-  "Œ",
+const NON_STANDALONE_LANGUAGE_CHARACTERS = new Set([
+  "ー", // 长音符不能独立表达正文，规则预过滤会单独消费
+  "・", // 全角中点不能独立表达正文
+  "･", // 半角中点不能独立表达正文
+  "ﾞ", // 半角浊点不能独立表达正文
+  "ﾟ", // 半角半浊点不能独立表达正文
 ]);
-// 波兰语额外字符覆盖带尾音和锐音的大小写形式
-const PL_EXTRA_CHARACTERS = new Set([
-  "ą",
-  "ć",
-  "ę",
-  "ł",
-  "ń",
-  "ó",
-  "ś",
-  "ź",
-  "ż",
-  "Ą",
-  "Ć",
-  "Ę",
-  "Ł",
-  "Ń",
-  "Ó",
-  "Ś",
-  "Ź",
-  "Ż",
-]);
-const ES_EXTRA_CHARACTERS = new Set(["ñ", "á", "é", "í", "ó", "ú", "ü"]); // 西葡意匈土的额外字符较短，分别用显式集合表达，避免宽泛 Unicode 属性误判
-const IT_EXTRA_CHARACTERS = new Set(["à", "è", "é", "ì", "ò", "ù"]); // 意大利语额外字符主要是重音元音，基础拉丁字母已由 LATIN 范围覆盖
-const PT_EXTRA_CHARACTERS = new Set(["á", "é", "í", "ó", "ú", "ã", "õ", "à", "â", "ê", "ô", "ç"]); // 葡萄牙语额外字符覆盖鼻化元音和 ç，避免与西语规则混用
-const HU_EXTRA_CHARACTERS = new Set(["á", "é", "í", "ó", "ö", "ő", "ú", "ü", "ű"]); // 匈牙利语额外字符包含长双锐音，不能只依赖基础 Latin 扩展命中
-const TR_EXTRA_CHARACTERS = new Set(["Ç", "ç", "Ğ", "ğ", "İ", "ı", "Ö", "ö", "Ş", "ş", "Ü", "ü"]); // 土耳其语 I/İ/ı 与大小写规则特殊，显式列出更稳定
 
-// 单字符转 code point 的入口统一处理空字符串，调用方无需重复防御
-function code_point(char: string): number | null {
-  return char.codePointAt(0) ?? null;
-}
-
-// 正则字符类需要根据 BMP / 非 BMP 选择不同转义形式
-function format_code_point_for_regex(value: number): string {
-  return value <= 0xffff
-    ? `\\u${value.toString(16).padStart(4, "0")}`
-    : `\\u{${value.toString(16)}}`;
-}
-
-// 范围判断按 code point 执行，避免代理对字符被 UTF-16 下标拆开
-function is_code_point_in_ranges(char: string, ranges: readonly CodePointRange[]): boolean {
-  const value = code_point(char);
-  if (value === null) {
-    return false;
-  }
-
-  return ranges.some(([start, end]) => value >= start && value <= end);
-}
-
-// 数值版范围判断供显示宽度估算复用
-function is_numeric_code_point_in_ranges(
-  code_point: number,
-  ranges: readonly CodePointRange[],
-): boolean {
-  return ranges.some(([start, end]) => code_point >= start && code_point <= end);
-}
-
-// 例外点判断用于“范围减集合”的假名残留规则
-function is_code_point_excluded(char: string, excluded_code_points: ReadonlySet<number>): boolean {
-  const value = code_point(char);
-  return value !== null && excluded_code_points.has(value);
-}
-
-// 任意文本命中一个语言字符即可视为包含该语言，保持过滤器轻量
-function has_matching_character(text: string, matches_character: CharacterMatcher): boolean {
-  for (const char of text) {
-    if (matches_character(char)) {
-      return true;
-    }
-  }
-
-  return false;
+// 单字符正文判断统一收口排除项和 Script 检查，避免各语言分支自行组合
+function is_language_body_character(char: string, script_pattern: RegExp): boolean {
+  return !NON_BODY_LANGUAGE_CHARACTER_PATTERN.test(char) && script_pattern.test(char);
 }
 
 // 全量匹配沿用 Python all 的空字符串真值语义
 function all_matching_characters(text: string, matches_character: CharacterMatcher): boolean {
-  for (const char of text) {
-    if (!matches_character(char)) {
-      return false;
-    }
-  }
-
-  return true;
+  return [...text].every((char) => matches_character(char));
 }
 
 // 首尾剥离只移除边缘非目标字符，中间内容必须原样保留
@@ -398,35 +225,44 @@ function strip_non_matching_characters(text: string, matches_character: Characte
   return start > end ? "" : chars.slice(start, end + 1).join("");
 }
 
-// 中文字符判断只覆盖汉字范围，假名和谚文由各自语言函数补充
-function is_cjk_character(char: string): boolean {
-  return is_code_point_in_ranges(char, CJK_CHARACTER_RANGES);
+// 汉字正文判断覆盖 Unicode 当前运行时支持的 Han Script，包括扩展区和兼容汉字
+function is_han_character(char: string): boolean {
+  return is_language_body_character(char, HAN_CHARACTER_PATTERN);
 }
 
-// 拉丁基础判断供多种欧洲语言复用，额外字符由语言定义层补充
+// 拉丁语系共享 Latin Script 粗过滤，不区分具体自然语言
 function is_latin_character(char: string): boolean {
-  return is_code_point_in_ranges(char, LATIN_CHARACTER_RANGES);
+  return is_language_body_character(char, LATIN_CHARACTER_PATTERN);
 }
 
-// 韩文判断直接引用共享范围，供残留检查和语言过滤共同使用
+// 俄文按 Cyrillic Script 判断，避免误收 Glagolitic 等旧手写范围偏差
+function is_cyrillic_character(char: string): boolean {
+  return is_language_body_character(char, CYRILLIC_CHARACTER_PATTERN);
+}
+
+// 阿拉伯文按 Arabic Script 判断，数字和符号由正文排除规则统一剔除
+function is_arabic_character(char: string): boolean {
+  return is_language_body_character(char, ARABIC_CHARACTER_PATTERN);
+}
+
+// 泰文按 Thai Script 判断，泰文数字不再被当作正文字符
+function is_thai_character(char: string): boolean {
+  return is_language_body_character(char, THAI_CHARACTER_PATTERN);
+}
+
+// 谚文正文判断供韩文语言过滤、残留检查和 fixer 共用
 export function is_hangul_character(char: string): boolean {
-  return is_code_point_in_ranges(char, HANGUL_CHARACTER_RANGES);
+  return is_language_body_character(char, HANGUL_CHARACTER_PATTERN);
 }
 
-// 平假名判断与正则范围保持同一例外集合，避免残留检查和保护规则分歧
+// 平假名正文判断排除不能独立成文的日文标记
 export function is_hiragana_character(char: string): boolean {
-  return (
-    is_code_point_in_ranges(char, HIRAGANA_CHARACTER_RANGES) &&
-    !is_code_point_excluded(char, HIRAGANA_EXCLUDED_CODE_POINTS)
-  );
+  return is_language_body_character(char, HIRAGANA_CHARACTER_PATTERN);
 }
 
-// 片假名判断排除常见分隔符，减少游戏控制文本误报
+// 片假名正文判断支持全角和半角片假名，但不把长音与中点当作正文
 export function is_katakana_character(char: string): boolean {
-  return (
-    is_code_point_in_ranges(char, KATAKANA_CHARACTER_RANGES) &&
-    !is_code_point_excluded(char, KATAKANA_EXCLUDED_CODE_POINTS)
-  );
+  return is_language_body_character(char, KATAKANA_CHARACTER_PATTERN);
 }
 
 // 假名聚合入口供校对和 fixer 复用，不让调用方重复拼平假名/片假名判断
@@ -434,144 +270,96 @@ export function is_kana_character(char: string): boolean {
   return is_hiragana_character(char) || is_katakana_character(char);
 }
 
-// 平假名文本入口对齐历史 JA.any_hiragana
-export function has_any_hiragana_character(text: string): boolean {
-  return has_matching_character(text, is_hiragana_character);
+// 非独立语言字符只服务“无正文价值”判断，不能单独触发语言正文命中
+export function is_non_standalone_language_character(char: string): boolean {
+  return NON_STANDALONE_LANGUAGE_MARK_PATTERN.test(char) || NON_STANDALONE_LANGUAGE_CHARACTERS.has(char);
 }
 
-// 平假名全量入口对齐历史 JA.all_hiragana
+// 中日韩正文字符判断供文本保护等下游语义过滤复用，不暴露正则拼接细节
+export function is_cjk_language_character(char: string): boolean {
+  return is_han_character(char) || is_kana_character(char) || is_hangul_character(char);
+}
+
+// 中日韩正文任意命中入口用于下游排除含自然语言正文的控制段候选
+export function has_cjk_language_character(text: string): boolean {
+  return JAPANESE_TEXT_PATTERN.test(text) || HANGUL_TEXT_PATTERN.test(text);
+}
+
+// 平假名任意命中入口供旧 JA.any_hiragana 语义复用
+export function has_any_hiragana_character(text: string): boolean {
+  return HIRAGANA_TEXT_PATTERN.test(text);
+}
+
+// 平假名全量入口供旧 JA.all_hiragana 语义复用
 export function has_only_hiragana_characters(text: string): boolean {
   return all_matching_characters(text, is_hiragana_character);
 }
 
-// 片假名文本入口对齐历史 JA.any_katakana
+// 片假名任意命中入口供旧 JA.any_katakana 语义复用
 export function has_any_katakana_character(text: string): boolean {
-  return has_matching_character(text, is_katakana_character);
+  return KATAKANA_TEXT_PATTERN.test(text);
 }
 
-// 片假名全量入口对齐历史 JA.all_katakana
+// 片假名全量入口供旧 JA.all_katakana 语义复用
 export function has_only_katakana_characters(text: string): boolean {
   return all_matching_characters(text, is_katakana_character);
 }
 
-// 谚文文本入口对齐历史 KO.any_hangeul
+// 谚文任意命中入口供旧 KO.any_hangeul 语义复用
 export function has_any_hangul_character(text: string): boolean {
-  return has_matching_character(text, is_hangul_character);
+  return HANGUL_TEXT_PATTERN.test(text);
 }
 
-// 谚文全量入口对齐历史 KO.all_hangeul
+// 谚文全量入口供旧 KO.all_hangeul 语义复用
 export function has_only_hangul_characters(text: string): boolean {
   return all_matching_characters(text, is_hangul_character);
 }
 
 // 日文允许汉字或假名命中，符合原文混排的常见场景
 function is_ja_character(char: string): boolean {
-  return is_cjk_character(char) || is_kana_character(char);
+  return is_han_character(char) || is_kana_character(char);
 }
 
 // 韩文允许汉字或谚文命中，兼容含汉字词的韩文本地化文本
 function is_ko_character(char: string): boolean {
-  return is_cjk_character(char) || is_hangul_character(char);
+  return is_han_character(char) || is_hangul_character(char);
 }
 
-// 欧洲语言先走拉丁范围，再补充该语言特有字符集合
-function is_latin_or_extra_character(char: string, extra_characters: ReadonlySet<string>): boolean {
-  return is_latin_character(char) || extra_characters.has(char);
+// 定义表构造器保证单字符判断和整段命中规则成对登记
+function build_definition(
+  code: LanguageCode,
+  cjk: boolean,
+  matches_character: CharacterMatcher | null,
+  text_pattern: RegExp | null,
+): LanguageDefinition {
+  return {
+    code,
+    cjk,
+    matches_character,
+    matches_text: text_pattern === null ? null : (text) => text_pattern.test(text),
+  };
 }
 
-// 语言定义是运行态唯一 matcher 表，新增语言必须在这里补齐 CJK 标记和字符规则
+// 语言定义是运行态唯一正文规则表；拉丁语系只做 Latin Script 粗过滤，不做自然语言识别
 export const LANGUAGE_DEFINITIONS: Record<LanguageCode, LanguageDefinition> = {
-  ALL: {
-    code: "ALL",
-    cjk: false,
-    matches_character: null,
-  },
-  ZH: {
-    code: "ZH",
-    cjk: true,
-    matches_character: is_cjk_character,
-  },
-  EN: {
-    code: "EN",
-    cjk: false,
-    matches_character: is_latin_character,
-  },
-  JA: {
-    code: "JA",
-    cjk: true,
-    matches_character: is_ja_character,
-  },
-  KO: {
-    code: "KO",
-    cjk: true,
-    matches_character: is_ko_character,
-  },
-  RU: {
-    code: "RU",
-    cjk: false,
-    matches_character: (char) => is_code_point_in_ranges(char, RU_CHARACTER_RANGES),
-  },
-  AR: {
-    code: "AR",
-    cjk: false,
-    matches_character: (char) => is_code_point_in_ranges(char, AR_CHARACTER_RANGES),
-  },
-  DE: {
-    code: "DE",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, DE_EXTRA_CHARACTERS),
-  },
-  FR: {
-    code: "FR",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, FR_EXTRA_CHARACTERS),
-  },
-  PL: {
-    code: "PL",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, PL_EXTRA_CHARACTERS),
-  },
-  ES: {
-    code: "ES",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, ES_EXTRA_CHARACTERS),
-  },
-  IT: {
-    code: "IT",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, IT_EXTRA_CHARACTERS),
-  },
-  PT: {
-    code: "PT",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, PT_EXTRA_CHARACTERS),
-  },
-  HU: {
-    code: "HU",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, HU_EXTRA_CHARACTERS),
-  },
-  TR: {
-    code: "TR",
-    cjk: false,
-    matches_character: (char) => is_latin_or_extra_character(char, TR_EXTRA_CHARACTERS),
-  },
-  TH: {
-    code: "TH",
-    cjk: false,
-    matches_character: (char) => is_code_point_in_ranges(char, TH_CHARACTER_RANGES),
-  },
-  ID: {
-    code: "ID",
-    cjk: false,
-    matches_character: is_latin_character,
-  },
-  VI: {
-    code: "VI",
-    cjk: false,
-    matches_character: (char) =>
-      is_latin_character(char) || is_code_point_in_ranges(char, VI_CHARACTER_RANGES),
-  },
+  ALL: build_definition("ALL", false, null, null), // ALL 关闭语言过滤
+  ZH: build_definition("ZH", true, is_han_character, HAN_TEXT_PATTERN), // 中文只以 Han Script 正文命中
+  EN: build_definition("EN", false, is_latin_character, LATIN_TEXT_PATTERN), // 英文走 Latin Script 粗过滤
+  JA: build_definition("JA", true, is_ja_character, JAPANESE_TEXT_PATTERN), // 日文允许 Han + Kana 混排
+  KO: build_definition("KO", true, is_ko_character, KOREAN_TEXT_PATTERN), // 韩文允许 Han + Hangul 混排
+  RU: build_definition("RU", false, is_cyrillic_character, CYRILLIC_TEXT_PATTERN), // 俄文走 Cyrillic Script
+  AR: build_definition("AR", false, is_arabic_character, ARABIC_TEXT_PATTERN), // 阿拉伯文走 Arabic Script
+  DE: build_definition("DE", false, is_latin_character, LATIN_TEXT_PATTERN), // 德文走 Latin Script 粗过滤
+  FR: build_definition("FR", false, is_latin_character, LATIN_TEXT_PATTERN), // 法文走 Latin Script 粗过滤
+  PL: build_definition("PL", false, is_latin_character, LATIN_TEXT_PATTERN), // 波兰文走 Latin Script 粗过滤
+  ES: build_definition("ES", false, is_latin_character, LATIN_TEXT_PATTERN), // 西班牙文走 Latin Script 粗过滤
+  IT: build_definition("IT", false, is_latin_character, LATIN_TEXT_PATTERN), // 意大利文走 Latin Script 粗过滤
+  PT: build_definition("PT", false, is_latin_character, LATIN_TEXT_PATTERN), // 葡萄牙文走 Latin Script 粗过滤
+  HU: build_definition("HU", false, is_latin_character, LATIN_TEXT_PATTERN), // 匈牙利文走 Latin Script 粗过滤
+  TR: build_definition("TR", false, is_latin_character, LATIN_TEXT_PATTERN), // 土耳其文走 Latin Script 粗过滤
+  TH: build_definition("TH", false, is_thai_character, THAI_TEXT_PATTERN), // 泰文走 Thai Script，泰文数字不算正文
+  ID: build_definition("ID", false, is_latin_character, LATIN_TEXT_PATTERN), // 印尼文走 Latin Script 粗过滤
+  VI: build_definition("VI", false, is_latin_character, LATIN_TEXT_PATTERN), // 越南文走 Latin Script 粗过滤
 };
 
 export const CJK_LANGUAGE_CODES = new Set<LanguageCode>(["ZH", "JA", "KO"]); // CJK 语言集合供 UI 和规则分支快速判断，不重复解释字符范围
@@ -594,12 +382,12 @@ export function is_cjk_language_code(value: string): boolean {
 
 // 文本语言命中入口，ALL 语言永远返回 true 表示不过滤
 export function has_language_character(text: string, language_code: LanguageCode): boolean {
-  const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
-  if (matches_character === null) {
+  const matches_text = LANGUAGE_DEFINITIONS[language_code].matches_text;
+  if (matches_text === null) {
     return true;
   }
 
-  return has_matching_character(text, matches_character);
+  return matches_text(text);
 }
 
 // 单字符语言判断入口对齐历史 TextBase.char
@@ -631,25 +419,3 @@ export function strip_non_language_characters(text: string, language_code: Langu
 
   return strip_non_matching_characters(text, matches_character);
 }
-
-/**
- * 东亚全角显示宽度判断，用于 UI/日志长度估算，不参与语言过滤
- */
-export function is_fullwidth_code_point(code_point: number): boolean {
-  return (
-    is_numeric_code_point_in_ranges(code_point, PYTHON_WIDE_OR_AMBIGUOUS_WIDTH_RANGES) ||
-    (code_point >= 0x1100 &&
-      (code_point <= 0x115f ||
-        code_point === 0x2329 ||
-        code_point === 0x232a ||
-        (code_point >= 0x2e80 && code_point <= 0xa4cf && code_point !== 0x303f) ||
-        (code_point >= 0xac00 && code_point <= 0xd7a3) ||
-        (code_point >= 0xf900 && code_point <= 0xfaff) ||
-        (code_point >= 0xfe10 && code_point <= 0xfe19) ||
-        (code_point >= 0xfe30 && code_point <= 0xfe6f) ||
-        (code_point >= 0xff00 && code_point <= 0xff60) ||
-        (code_point >= 0xffe0 && code_point <= 0xffe6) ||
-        (code_point >= 0x20000 && code_point <= 0x3fffd)))
-  );
-}
-import { InvalidTargetLanguageError, UnsupportedAllTargetLanguageError } from "./error";

@@ -21,7 +21,7 @@
 | 任务命令、运行态、引擎、worker、事件 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/engine/`、`src/main/events/` |
 | renderer、ProjectStore、导航 | [`docs/FRONTEND.md`](FRONTEND.md) | `src/renderer/app/`、相关页面 |
 | 前端视觉和交互 | [`docs/FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、相关 CSS 和组件 |
-| 长期文档治理 | `.codex/skills/project-docs/SKILL.md` | `AGENTS.md` 与 `docs/` 目标形态 |
+| 长期文档治理 | `.codex/skills/project-doc/SKILL.md` | `AGENTS.md` 与 `docs/` 目标形态 |
 
 ## 3. 验证矩阵
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALL_LANGUAGE_CODE,
-  CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE,
   LANGUAGE_DEFINITIONS,
   LANGUAGE_DISPLAY_NAMES,
   SOURCE_TARGET_LANGUAGE_CODES,
@@ -11,6 +10,7 @@ import {
   get_language_label_key,
   get_prompt_source_language_name,
   get_prompt_target_language_name,
+  has_cjk_language_character,
   has_language_character,
   has_any_hangul_character,
   has_any_hiragana_character,
@@ -18,12 +18,14 @@ import {
   has_only_hangul_characters,
   has_only_hiragana_characters,
   has_only_katakana_characters,
+  is_cjk_language_character,
   is_cjk_language_code,
   is_hangul_character,
   is_hiragana_character,
   is_katakana_character,
   is_language_character,
   is_kana_character,
+  is_non_standalone_language_character,
   normalize_language_code,
   strip_non_language_characters,
 } from "./language";
@@ -81,12 +83,24 @@ describe("languages", () => {
     expect(has_language_character("plain english line", "ZH")).toBe(false);
   });
 
-  it("识别非 CJK 语言的特征字符", () => {
+  it("基于 Unicode Script 识别正文字符并排除数字和符号", () => {
+    expect(has_language_character("𰀀", "ZH")).toBe(true);
+    expect(has_language_character("﨎", "ZH")).toBe(true);
     expect(has_language_character("Привет", "RU")).toBe(true);
+    expect(has_language_character("Ёжик", "RU")).toBe(true);
+    expect(has_language_character("Ⰰ", "RU")).toBe(false);
     expect(has_language_character("مرحبا", "AR")).toBe(true);
+    expect(has_language_character("ࡰ", "AR")).toBe(true);
+    expect(has_language_character("\u064e", "AR")).toBe(false);
+    expect(has_language_character("٣", "AR")).toBe(false);
     expect(has_language_character("ภาษาไทย", "TH")).toBe(true);
+    expect(has_language_character("\u0e48", "TH")).toBe(false);
+    expect(has_language_character("๕", "TH")).toBe(false);
     expect(has_language_character("français", "FR")).toBe(true);
+    expect(has_language_character("e\u0301", "FR")).toBe(true);
+    expect(has_language_character("\u0301", "FR")).toBe(false);
     expect(has_language_character("plain english line", "VI")).toBe(true);
+    expect(has_language_character("×÷", "EN")).toBe(false);
   });
 
   it("导出的假名和谚文判断复用统一例外口径", () => {
@@ -94,19 +108,33 @@ describe("languages", () => {
     expect(is_kana_character("カ")).toBe(true);
     expect(is_kana_character("ー")).toBe(false);
     expect(is_kana_character("・")).toBe(false);
+    expect(is_kana_character("･")).toBe(false);
+    expect(is_kana_character("゙")).toBe(false);
+    expect(is_kana_character("゚")).toBe(false);
+    expect(is_kana_character("ﾞ")).toBe(false);
+    expect(is_kana_character("ﾟ")).toBe(false);
+    expect(is_non_standalone_language_character("ー")).toBe(true);
+    expect(is_non_standalone_language_character("゙")).toBe(true);
+    expect(is_non_standalone_language_character("\u064e")).toBe(true);
+    expect(is_non_standalone_language_character("\u0e48")).toBe(true);
+    expect(is_non_standalone_language_character("カ")).toBe(false);
     expect(is_hangul_character("한")).toBe(true);
     expect(is_hangul_character("A")).toBe(false);
   });
 
-  it("正则字符源与项目假名例外口径一致", () => {
-    const pattern = new RegExp(`[${CJK_LANGUAGE_CHARACTER_PATTERN_SOURCE}]`, "u");
-    expect(pattern.test("漢")).toBe(true);
-    expect(pattern.test("か")).toBe(true);
-    expect(pattern.test("カ")).toBe(true);
-    expect(pattern.test("한")).toBe(true);
-    expect(pattern.test("ー")).toBe(false);
-    expect(pattern.test("・")).toBe(false);
-    expect(pattern.test("･")).toBe(false);
+  it("提供中日韩正文语义判断而不暴露正则源码", () => {
+    expect(is_cjk_language_character("漢")).toBe(true);
+    expect(is_cjk_language_character("か")).toBe(true);
+    expect(is_cjk_language_character("カ")).toBe(true);
+    expect(is_cjk_language_character("ｶ")).toBe(true);
+    expect(is_cjk_language_character("한")).toBe(true);
+    expect(is_cjk_language_character("ー")).toBe(false);
+    expect(is_cjk_language_character("・")).toBe(false);
+    expect(is_cjk_language_character("･")).toBe(false);
+    expect(is_cjk_language_character("゙")).toBe(false);
+    expect(is_cjk_language_character("ﾞ")).toBe(false);
+    expect(has_cjk_language_character("{名前}")).toBe(true);
+    expect(has_cjk_language_character("{player_name}")).toBe(false);
   });
 
   it("按语言字符规则判断任意、全部和首尾剥离", () => {
@@ -138,10 +166,13 @@ describe("languages", () => {
     expect(is_language_character("你", "JA")).toBe(true);
     expect(is_language_character("あ", "JA")).toBe(true);
     expect(is_language_character("カ", "JA")).toBe(true);
+    expect(has_language_character("カーテン", "JA")).toBe(true);
+    expect(has_language_character("ーーー", "JA")).toBe(false);
   });
 
   it("平假名判断只命中平假名文本", () => {
     expect(is_hiragana_character("あ")).toBe(true);
+    expect(is_hiragana_character("゙")).toBe(false);
     expect(has_any_hiragana_character("abcあ")).toBe(true);
     expect(has_any_hiragana_character("ABC")).toBe(false);
     expect(has_only_hiragana_characters("あい")).toBe(true);
@@ -150,6 +181,7 @@ describe("languages", () => {
 
   it("片假名判断排除长音符", () => {
     expect(is_katakana_character("カ")).toBe(true);
+    expect(is_katakana_character("ｶ")).toBe(true);
     expect(is_katakana_character("ー")).toBe(false);
     expect(has_any_katakana_character("abcカ")).toBe(true);
     expect(has_any_katakana_character("abc")).toBe(false);

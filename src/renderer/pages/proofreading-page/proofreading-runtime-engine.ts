@@ -3,7 +3,7 @@ import {
   applyQualityRuntimeReplacements,
   buildQualityRuntimeContext,
   collectNonBlankQualityPreservedSegments,
-  createQualityTextPreserveRegex,
+  createQualityTextPreserveRule,
   partitionQualityRuntimeGlossaryTerms,
   stripQualityPreservedSegments,
   type QualityRuntimeContext,
@@ -32,6 +32,7 @@ import {
   type ProofreadingWarningFragmentsByCode,
 } from "@/pages/proofreading-page/types";
 import { is_hangul_character, is_kana_character } from "@shared/language";
+import type { TextPreserveRule } from "@shared/text/text-preserve-rules";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
 const PROOFREADING_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值沿用任务侧轻量 Jaccard 口径，避免校对页给出另一套警告标准
@@ -143,7 +144,7 @@ type ProofreadingRuntimeState = {
   quality: ProjectStoreQualityState;
   sourceLanguage: string;
   quality_context: QualityRuntimeContext;
-  sample_regex_cache: Map<string, RegExp | null>;
+  sample_rule_cache: Map<string, TextPreserveRule | null>;
   raw_item_by_id: Map<string, ProofreadingRuntimeItemRecord>;
   natural_item_ids: string[];
   evaluated_item_by_id: Map<string, ProofreadingClientItem>;
@@ -452,10 +453,10 @@ function collect_hangeul_residue_fragments(text: string): string[] {
 function has_similarity_error(args: {
   src_replaced: string;
   dst_replaced: string;
-  sample_regex: RegExp | null;
+  sample_rule: TextPreserveRule | null;
 }): boolean {
-  const src = stripQualityPreservedSegments(args.src_replaced, args.sample_regex).trim();
-  const dst = stripQualityPreservedSegments(args.dst_replaced, args.sample_regex).trim();
+  const src = stripQualityPreservedSegments(args.src_replaced, args.sample_rule).trim();
+  const dst = stripQualityPreservedSegments(args.dst_replaced, args.sample_rule).trim();
   if (src === "" || dst === "") {
     return false;
   }
@@ -520,21 +521,21 @@ function evaluate_proofreading_item(args: {
   quality_context: QualityRuntimeContext;
   quality: ProjectStoreQualityState;
   sourceLanguage: string;
-  sample_regex_cache: Map<string, RegExp | null>;
+  sample_rule_cache: Map<string, TextPreserveRule | null>;
 }): ProofreadingClientItem | null {
   const warnings: string[] = [];
   const warning_fragments_by_code: ProofreadingWarningFragmentsByCode = {};
   const failed_terms: ProofreadingGlossaryTerm[] = [];
   const applied_terms: ProofreadingGlossaryTerm[] = [];
-  const sample_regex_cache_key = `${args.item.text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;
-  let sample_regex = args.sample_regex_cache.get(sample_regex_cache_key);
-  if (sample_regex === undefined) {
-    sample_regex = createQualityTextPreserveRegex({
+  const sample_rule_cache_key = `${args.item.text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;
+  let sample_rule = args.sample_rule_cache.get(sample_rule_cache_key);
+  if (sample_rule === undefined) {
+    sample_rule = createQualityTextPreserveRule({
       mode: args.quality.text_preserve.mode,
       text_type: args.item.text_type,
       entries: args.quality.text_preserve.entries,
     });
-    args.sample_regex_cache.set(sample_regex_cache_key, sample_regex);
+    args.sample_rule_cache.set(sample_rule_cache_key, sample_rule);
   }
 
   if (PROOFREADING_SKIPPED_WARNING_STATUSES.has(args.item.status) || args.item.dst === "") {
@@ -551,7 +552,7 @@ function evaluate_proofreading_item(args: {
     args.item,
     args.quality_context,
   );
-  const normalized_dst = stripQualityPreservedSegments(args.item.dst, sample_regex);
+  const normalized_dst = stripQualityPreservedSegments(args.item.dst, sample_rule);
   const kana_fragments =
     args.sourceLanguage === "JA" ? collect_kana_residue_fragments(normalized_dst) : [];
   if (kana_fragments.length > 0) {
@@ -568,11 +569,11 @@ function evaluate_proofreading_item(args: {
 
   const source_preserved_segments = collectNonBlankQualityPreservedSegments(
     src_replaced,
-    sample_regex,
+    sample_rule,
   );
   const translation_preserved_segments = collectNonBlankQualityPreservedSegments(
     dst_replaced,
-    sample_regex,
+    sample_rule,
   );
   if (source_preserved_segments.join("\u0000") !== translation_preserved_segments.join("\u0000")) {
     warnings.push("TEXT_PRESERVE");
@@ -586,7 +587,7 @@ function evaluate_proofreading_item(args: {
     has_similarity_error({
       src_replaced,
       dst_replaced,
-      sample_regex,
+      sample_rule,
     })
   ) {
     warnings.push("SIMILARITY");
@@ -1110,7 +1111,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
   const file_count_by_path = new Map<string, number>();
   const glossary_term_count_map = new Map<string, ProofreadingFilterPanelTermEntry>();
   const quality_context = buildQualityRuntimeContext(input.quality);
-  const sample_regex_cache = new Map<string, RegExp | null>();
+  const sample_rule_cache = new Map<string, TextPreserveRule | null>();
 
   const state: ProofreadingRuntimeState = {
     projectId: input.projectId,
@@ -1119,7 +1120,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
     quality: input.quality,
     sourceLanguage: input.sourceLanguage,
     quality_context,
-    sample_regex_cache,
+    sample_rule_cache,
     raw_item_by_id,
     natural_item_ids: [],
     evaluated_item_by_id,
@@ -1143,7 +1144,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
       quality_context,
       quality: input.quality,
       sourceLanguage: input.sourceLanguage,
-      sample_regex_cache,
+      sample_rule_cache,
     });
     if (evaluated_item === null) {
       return;
@@ -1260,7 +1261,7 @@ export function createProofreadingRuntimeEngine() {
           quality_context: current_state.quality_context,
           quality: current_state.quality,
           sourceLanguage: current_state.sourceLanguage,
-          sample_regex_cache: current_state.sample_regex_cache,
+          sample_rule_cache: current_state.sample_rule_cache,
         });
         if (next_evaluated_item === null) {
           return;

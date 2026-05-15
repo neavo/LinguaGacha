@@ -1,7 +1,10 @@
 import { TextRubyCleaner } from "../../../../shared/text/text-ruby-cleaner";
 import { normalize_text_for_processing } from "../../../../shared/text/text-normalizer";
 import { inject_text_name_prefix } from "../../../../shared/text/text-name-prefix";
-import { build_text_preserve_rule } from "../../../../shared/text/text-preserve-rules";
+import {
+  build_text_preserve_rule,
+  type TextPreserveRule,
+} from "../../../../shared/text/text-preserve-rules";
 import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
 import type {
   TextProcessingConfig,
@@ -152,10 +155,7 @@ export class TranslationPrePipeline {
     if (rule === null) {
       return false;
     }
-    rule.lastIndex = 0;
-    const match = src.match(rule)?.[0] ?? "";
-    rule.lastIndex = 0;
-    return match === src;
+    return rule.matches_entire_text(src);
   }
 
   /**
@@ -178,8 +178,7 @@ export class TranslationPrePipeline {
   ): void {
     const sample_rule = this.get_re_sample(text_type);
     if (sample_rule !== null) {
-      sample_rule.lastIndex = 0;
-      context.samples.push(...[...src.matchAll(sample_rule)].map((match) => match[0] ?? ""));
+      context.samples.push(...sample_rule.collect(src));
     }
     if (text_type === "MD") {
       context.samples.push("Markdown Code");
@@ -189,14 +188,12 @@ export class TranslationPrePipeline {
   /**
    * 抽取匹配段并返回剩余正文，供前后缀保护逻辑复用
    */
-  private extract(rule: RegExp, line: string): { line: string; codes: string[] } {
+  private extract(rule: TextPreserveRule, line: string): { line: string; codes: string[] } {
     const codes: string[] = [];
-    rule.lastIndex = 0;
-    const replaced = line.replace(rule, (match) => {
+    const replaced = rule.replace(line, (match) => {
       codes.push(match);
       return "";
     });
-    rule.lastIndex = 0;
     return { line: replaced, codes };
   }
 
@@ -206,7 +203,7 @@ export class TranslationPrePipeline {
   private build_preserve_rule(
     kind: "check" | "sample" | "prefix" | "suffix",
     text_type: string,
-  ): RegExp | null {
+  ): TextPreserveRule | null {
     return build_text_preserve_rule({
       mode: this.quality_snapshot.text_preserve_mode,
       text_type,
@@ -218,28 +215,28 @@ export class TranslationPrePipeline {
   /**
    * 检查规则入口独立命名，便于和 CHECK 规则对齐
    */
-  private get_re_check(text_type: string): RegExp | null {
+  private get_re_check(text_type: string): TextPreserveRule | null {
     return this.build_preserve_rule("check", text_type);
   }
 
   /**
    * 样例规则用于控制字符示例和响应校验
    */
-  private get_re_sample(text_type: string): RegExp | null {
+  private get_re_sample(text_type: string): TextPreserveRule | null {
     return this.build_preserve_rule("sample", text_type);
   }
 
   /**
    * 前缀保护规则只允许从行首抽取
    */
-  private get_re_prefix(text_type: string): RegExp | null {
+  private get_re_prefix(text_type: string): TextPreserveRule | null {
     return this.build_preserve_rule("prefix", text_type);
   }
 
   /**
    * 后缀保护规则只允许从行尾抽取
    */
-  private get_re_suffix(text_type: string): RegExp | null {
+  private get_re_suffix(text_type: string): TextPreserveRule | null {
     return this.build_preserve_rule("suffix", text_type);
   }
 

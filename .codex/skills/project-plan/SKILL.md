@@ -1,9 +1,9 @@
 ---
-name: project-plans
+name: project-plan
 description: 只在用户显式调用时触发
 ---
 
-# Project Plans
+# Project Plan
 
 ## 核心判断
 

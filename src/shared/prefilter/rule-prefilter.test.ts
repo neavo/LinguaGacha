@@ -13,8 +13,18 @@ describe("rule-prefilter", () => {
     expect(should_skip_by_rule_prefilter("12345")).toBe(true);
     expect(should_skip_by_rule_prefilter("...!!!")).toBe(true);
     expect(should_skip_by_rule_prefilter("123, 456.")).toBe(true);
+    expect(should_skip_by_rule_prefilter("♥￥×÷")).toBe(true);
     expect(should_skip_by_rule_prefilter("Hello World")).toBe(false);
     expect(should_skip_by_rule_prefilter("你好世界")).toBe(false);
+  });
+
+  it("仅含非独立语言字符的文本会过滤，真实正文不会被标点拖下水", () => {
+    expect(should_skip_by_rule_prefilter("ーーー")).toBe(true);
+    expect(should_skip_by_rule_prefilter("・･ー")).toBe(true);
+    expect(should_skip_by_rule_prefilter("゙゚ﾞﾟ")).toBe(true);
+    expect(should_skip_by_rule_prefilter("カーテン")).toBe(false);
+    expect(should_skip_by_rule_prefilter("你好！！")).toBe(false);
+    expect(should_skip_by_rule_prefilter("hello!")).toBe(false);
   });
 
   it("按规则前缀、后缀和正则判断跳过", () => {

@@ -4,7 +4,6 @@ import {
   are_text_preserve_segments_equal,
   build_text_preserve_rule,
   collect_non_blank_text_preserve_segments,
-  resolve_text_preserve_patterns,
 } from "./text-preserve-rules";
 
 describe("text-preserve-rules", () => {
@@ -19,21 +18,45 @@ describe("text-preserve-rules", () => {
     ).toBeNull();
   });
 
-  it("custom 模式只保留非空 src 字段", () => {
+  it("custom 模式只保留非空且可编译的 src 字段", () => {
+    const rule = build_text_preserve_rule({
+      mode: "CUSTOM",
+      text_type: "NONE",
+      entries: [
+        { src: "  <A>  " },
+        { src: "" },
+        { src: "   " },
+        { src: 123 },
+        { dst: "missing" },
+        { src: "[" },
+        { src: "<B>" },
+      ],
+      kind: "sample",
+    });
+
+    expect(rule?.collect("x<A>y<B>z")).toEqual(["<A>", "<B>"]);
+  });
+
+  it("custom 模式没有可编译规则时返回 null", () => {
     expect(
-      resolve_text_preserve_patterns({
+      build_text_preserve_rule({
         mode: "CUSTOM",
         text_type: "NONE",
-        entries: [
-          { src: "  [A]  " },
-          { src: "" },
-          { src: "   " },
-          { src: 123 },
-          { dst: "missing" },
-          { src: "[B]" },
-        ],
+        entries: [{ src: "[" }],
+        kind: "sample",
       }),
-    ).toEqual(["[A]", "[B]"]);
+    ).toBeNull();
+  });
+
+  it("custom 模式统一支持 Python 大码位写法", () => {
+    const rule = build_text_preserve_rule({
+      mode: "CUSTOM",
+      text_type: "NONE",
+      entries: [{ src: "\\U0001F600" }],
+      kind: "sample",
+    });
+
+    expect(rule?.collect("😀 ok")).toEqual(["😀"]);
   });
 
   it("prefix 和 suffix 规则只匹配行首或行尾保护段", () => {
@@ -67,17 +90,49 @@ describe("text-preserve-rules", () => {
     expect(rule?.test("@12こんにちは")).toBe(true);
   });
 
-  it("收集保护段时会忽略只包含空白的命中", () => {
-    const rule = /\s+|\[[^\]]+\]/giu;
+  it("RenPy 智能保护段会用共享 CJK Script 规则排除正文", () => {
+    const rule = build_text_preserve_rule({
+      mode: "smart",
+      text_type: "RENPY",
+      entries: [],
+      kind: "sample",
+    });
 
-    expect(collect_non_blank_text_preserve_segments(" \t[A]\n ", rule)).toEqual(["[A]"]);
+    expect(rule?.test("{player_name}")).toBe(true);
+    expect(rule?.test("{名前}")).toBe(false);
+  });
+
+  it("收集保护段时会忽略只包含空白的命中", () => {
+    const rule = build_text_preserve_rule({
+      mode: "CUSTOM",
+      text_type: "NONE",
+      entries: [{ src: "\\s+" }, { src: "\\[[^\\]]+\\]" }],
+      kind: "sample",
+    });
+
+    expect(rule).not.toBeNull();
+    expect(
+      rule === null ? [] : collect_non_blank_text_preserve_segments(" \t[A]\n ", rule),
+    ).toEqual(["[A]"]);
   });
 
   it("比较保护段时忽略命中内部空白并按序列判断", () => {
-    const rule = /\[[^\]]+\]/giu;
+    const rule = build_text_preserve_rule({
+      mode: "CUSTOM",
+      text_type: "NONE",
+      entries: [{ src: "\\[[^\\]]+\\]" }],
+      kind: "sample",
+    });
 
-    expect(are_text_preserve_segments_equal("[a b] text", "[ab] text", rule)).toBe(true);
-    expect(are_text_preserve_segments_equal("[A] body", "[B] body", rule)).toBe(false);
-    expect(are_text_preserve_segments_equal("x[A]y[B]", "[A][B]xy", rule)).toBe(true);
+    expect(rule).not.toBeNull();
+    expect(
+      rule === null ? false : are_text_preserve_segments_equal("[a b] text", "[ab] text", rule),
+    ).toBe(true);
+    expect(
+      rule === null ? false : are_text_preserve_segments_equal("[A] body", "[B] body", rule),
+    ).toBe(false);
+    expect(
+      rule === null ? false : are_text_preserve_segments_equal("x[A]y[B]", "[A][B]xy", rule),
+    ).toBe(true);
   });
 });

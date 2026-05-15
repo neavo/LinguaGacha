@@ -1,3 +1,5 @@
+import type { TextPreserveRule } from "../text/text-preserve-rules";
+
 /**
  * 代码保护段修复器，删除译文中相对源文多出来的保护段
  */
@@ -5,7 +7,7 @@ export class CodeFixer {
   /**
    * 只有源文保护段是译文保护段的有序子集时才删除多余项
    */
-  public static fix(src: string, dst: string, rule: RegExp | null): string {
+  public static fix(src: string, dst: string, rule: TextPreserveRule | null): string {
     if (rule === null) {
       return dst;
     }
@@ -22,7 +24,7 @@ export class CodeFixer {
       return dst;
     }
     let index = 0;
-    return dst.replace(rule, (match) => {
+    return rule.replace(dst, (match) => {
       if (match.trim() === "") {
         return match;
       }
@@ -31,19 +33,10 @@ export class CodeFixer {
   }
 
   /**
-   * 正则必须重新设置 lastIndex，保证 global 规则多次使用不串状态
+   * 保护规则对象内部负责候选过滤，修复器只消费非空保护段序列
    */
-  private static collect_codes(text: string, rule: RegExp): string[] {
-    rule.lastIndex = 0;
-    const result: string[] = [];
-    for (const match of text.matchAll(rule)) {
-      const value = match[0] ?? "";
-      if (value.trim() !== "") {
-        result.push(value);
-      }
-    }
-    rule.lastIndex = 0;
-    return result;
+  private static collect_codes(text: string, rule: TextPreserveRule): string[] {
+    return rule.collect(text).filter((value) => value.trim() !== "");
   }
 
   /**

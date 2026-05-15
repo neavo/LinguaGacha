@@ -1,4 +1,0 @@
-interface:
-  display_name: Project Docs
-  short_description: 治理 LinguaGacha 长期文档权威边界与阅读路径
-  default_prompt: 以“全局最优”而非“最小改动”原则，使用 $project-docs 检查并优化 LinguaGacha 长期文档的权威归宿、阅读路径和验证边界

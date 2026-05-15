@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { TextTool } from "../../../shared/utils/text-tool";
+import { decode_text_content } from "../../../shared/utils/text-tool";
 import type { ApiJsonValue } from "../../api/api-types";
 import {
   effective_export_text,
@@ -89,7 +89,7 @@ export class MESSAGEJSONFormat {
     try {
       return JsonTool.parseStrict(content);
     } catch {
-      return JsonTool.parseStrict(await TextTool.decode(content));
+      return JsonTool.parseStrict(await decode_text_content(content));
     }
   }
 }

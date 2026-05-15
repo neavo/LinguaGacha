@@ -1,5 +1,10 @@
 import type { ProjectStoreQualityState } from "@/project/store/project-store";
-import { TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE } from "@shared/text/text-preserve-rules";
+import {
+  build_text_preserve_rule,
+  collect_non_blank_text_preserve_segments,
+  type TextPreserveRule,
+} from "@shared/text/text-preserve-rules";
+import type { TextJsonRecord } from "@shared/text/text-types";
 
 export type QualityRuntimeGlossaryEntry = {
   src: string;
@@ -31,23 +36,14 @@ export type QualityRuntimeRuleType =
   | "text_preserve";
 
 /**
- * 把后端/配置里常见的 \UXXXXXXXX 写法转换成 JavaScript 正则可识别格式
+ * 校对页只消费文本保护规则的 src 字段，转换后交给共享规则入口解析
  */
-function normalize_regex_pattern_for_javascript(pattern: string): string {
-  return pattern.replace(/\\U([0-9a-fA-F]{8})/gu, (_match, hex: string) => {
-    return `\\u{${hex.replace(/^0+/, "") || "0"}}`;
+function normalize_text_preserve_entries(
+  entries: Array<Record<string, unknown>>,
+): TextJsonRecord[] {
+  return entries.map((entry) => {
+    return { src: String(entry.src ?? "") };
   });
-}
-
-/**
- * 所有质量运行时正则都从这里创建，非法规则返回 null 交给调用方跳过
- */
-function create_global_regex(pattern: string): RegExp | null {
-  try {
-    return new RegExp(normalize_regex_pattern_for_javascript(pattern), "giu");
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -68,52 +64,33 @@ export function buildQualityRuleDependencyParts(args: {
 }
 
 /**
- * 根据文本保护模式构建检查正则，custom 和 smart 在同一入口转换成 JS 可执行模式
+ * 根据文本保护模式构建样例保护规则，renderer 不再自行解释保护正则
  */
-export function createQualityTextPreserveRegex(args: {
+export function createQualityTextPreserveRule(args: {
   mode: string;
   text_type: string;
   entries: Array<Record<string, unknown>>;
-}): RegExp | null {
-  if (args.mode === "off") {
-    return null;
-  }
-
-  const raw_patterns =
-    args.mode === "custom"
-      ? args.entries.flatMap((entry) => {
-          const pattern = String(entry.src ?? "").trim();
-          return pattern === "" ? [] : [pattern];
-        })
-      : [
-          ...(TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE[
-            (args.text_type in TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE
-              ? args.text_type
-              : "NONE") as keyof typeof TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE
-          ] ?? TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE.NONE),
-        ];
-
-  const valid_patterns = raw_patterns.flatMap((pattern) => {
-    return create_global_regex(pattern) === null
-      ? []
-      : [`(?:${normalize_regex_pattern_for_javascript(pattern)})`];
+}): TextPreserveRule | null {
+  return build_text_preserve_rule({
+    mode: args.mode,
+    text_type: args.text_type,
+    entries: normalize_text_preserve_entries(args.entries),
+    kind: "sample",
   });
-  if (valid_patterns.length === 0) {
-    return null;
-  }
-
-  return create_global_regex(valid_patterns.join("|"));
 }
 
 /**
  * 相似度比较前剥离保护段，保证占位符差异不会支配文本距离
  */
-export function stripQualityPreservedSegments(text: string, sample_regex: RegExp | null): string {
-  if (sample_regex === null) {
+export function stripQualityPreservedSegments(
+  text: string,
+  sample_rule: TextPreserveRule | null,
+): string {
+  if (sample_rule === null) {
     return text;
   }
 
-  return text.replace(sample_regex, "");
+  return sample_rule.replace(text, "");
 }
 
 /**
@@ -121,20 +98,13 @@ export function stripQualityPreservedSegments(text: string, sample_regex: RegExp
  */
 export function collectNonBlankQualityPreservedSegments(
   text: string,
-  sample_regex: RegExp | null,
+  sample_rule: TextPreserveRule | null,
 ): string[] {
-  if (sample_regex === null) {
+  if (sample_rule === null) {
     return [];
   }
 
-  const segments: string[] = [];
-  for (const match of text.matchAll(sample_regex)) {
-    const segment = match[0]?.replace(/\s+/gu, "") ?? "";
-    if (segment !== "") {
-      segments.push(segment);
-    }
-  }
-  return [...new Set(segments)];
+  return collect_non_blank_text_preserve_segments(text, sample_rule);
 }
 
 /**

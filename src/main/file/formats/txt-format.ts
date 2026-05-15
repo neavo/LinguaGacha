@@ -1,4 +1,4 @@
-import { TextTool } from "../../../shared/utils/text-tool";
+import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   build_bilingual_path,
@@ -24,7 +24,7 @@ export class TXTFormat {
    * 解析时保留原始行号，空行也作为可被排除或处理的普通条目
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    const text = await TextTool.decode(content);
+    const text = await decode_text_content(content);
     return split_text_lines_for_items(text).map((line, index) =>
       Item.from_json({
         src: line,

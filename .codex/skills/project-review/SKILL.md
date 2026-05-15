@@ -1,9 +1,9 @@
 ---
-name: project-reivew
+name: project-review
 description: 只在用户显式调用时触发
 ---
 
-# Project Reivew
+# Project Review
 
 ## 核心流程
 
@@ -12,7 +12,7 @@ description: 只在用户显式调用时触发
 3. 用户选择范围后，读取 `references/review_prompt.md`。
 4. 将 `references/review_prompt.md` 的完整内容作为主审查指令原文使用，不要改写、翻译、摘要、删减或重排。
 5. 在主审查指令之外，根据用户选择补充最小必要的目标说明与代码定位命令。
-6. 执行审查时只输出符合主审查指令要求的结果；若主审查指令要求 JSON，则最终审查结果只输出 JSON。
+6. 执行审查时只输出符合主审查指令要求的结果。
 
 ## 目标范围询问
 

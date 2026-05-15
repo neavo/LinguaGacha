@@ -5,8 +5,10 @@ import {
   applyQualityRuntimeReplacements,
   buildQualityRuleDependencyParts,
   buildQualityRuntimeContext,
-  createQualityTextPreserveRegex,
+  collectNonBlankQualityPreservedSegments,
+  createQualityTextPreserveRule,
   partitionQualityRuntimeGlossaryTerms,
+  stripQualityPreservedSegments,
 } from "@/project/quality/quality-runtime-context";
 
 function create_quality_state(): ProjectStoreQualityState {
@@ -47,7 +49,7 @@ describe("quality-runtime-context", () => {
       src_replaced: replaced.src_replaced,
       dst_replaced: replaced.dst_replaced,
     });
-    const text_preserve_regex = createQualityTextPreserveRegex({
+    const text_preserve_rule = createQualityTextPreserveRule({
       mode: "custom",
       text_type: "NONE",
       entries: [{ src: "\\d+" }],
@@ -55,7 +57,31 @@ describe("quality-runtime-context", () => {
 
     expect(replaced).toEqual({ src_replaced: "A魔法", dst_replaced: "Magic" });
     expect(glossary_result.applied_terms).toEqual([["魔法", "Magic"]]);
-    expect(text_preserve_regex?.test("编号 123")).toBe(true);
+    expect(text_preserve_rule?.test("编号 123")).toBe(true);
+  });
+
+  it("校对页复用共享智能保护语义排除含中日韩正文的 RenPy 段", () => {
+    const text_preserve_rule = createQualityTextPreserveRule({
+      mode: "smart",
+      text_type: "RENPY",
+      entries: [],
+    });
+
+    expect(stripQualityPreservedSegments("{player_name}你好", text_preserve_rule)).toBe("你好");
+    expect(stripQualityPreservedSegments("{名前}你好", text_preserve_rule)).toBe("{名前}你好");
+    expect(collectNonBlankQualityPreservedSegments("{player_name}{名前}", text_preserve_rule)).toEqual([
+      "{player_name}",
+    ]);
+  });
+
+  it("自定义保护规则由共享规则统一处理 Python 大码位写法", () => {
+    const text_preserve_rule = createQualityTextPreserveRule({
+      mode: "custom",
+      text_type: "NONE",
+      entries: [{ src: "\\U0001F600" }],
+    });
+
+    expect(text_preserve_rule?.collect("😀 ok")).toEqual(["😀"]);
   });
 
   it("规则依赖 parts 只覆盖影响匹配结果的字段", () => {

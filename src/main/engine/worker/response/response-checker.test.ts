@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
-import { TextTool } from "../../../../shared/utils/text-tool";
+import * as text_tool from "../../../../shared/utils/text-tool";
 import { ResponseChecker } from "./response-checker";
 
 describe("响应检查器整体检查", () => {
@@ -81,6 +81,19 @@ describe("响应检查器逐行规则", () => {
     ).toEqual(["LINE_ERROR_KANA"]);
   });
 
+  it("日文非独立字符不会单独触发假名残留", () => {
+    expect(
+      check_lines(["こんにちは"], ["ーー・･゙゚ﾞﾟ"], {
+        config: create_config({
+          source_language: "JA",
+          target_language: "ZH",
+          check_kana_residue: true,
+          check_similarity: false,
+        }),
+      }),
+    ).toEqual(["NONE"]);
+  });
+
   it("检测韩文源语言的谚文残留", () => {
     expect(
       check_lines(["안녕하세요"], ["테스트"], {
@@ -111,7 +124,7 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("日翻中相似检查要求译文包含假名", () => {
-    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
 
     expect(
       check_lines(["こんにちは"], ["你好世界"], {
@@ -125,7 +138,7 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("日翻中相似且译文包含假名时返回相似错误", () => {
-    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
 
     expect(
       check_lines(["こんにちは"], ["あいうえお"], {
@@ -139,7 +152,7 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("韩翻中相似且译文包含谚文时返回相似错误", () => {
-    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
 
     expect(
       check_lines(["안녕하세요"], ["테스트"], {
@@ -153,7 +166,7 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("韩翻中相似但译文不含谚文时返回无错误", () => {
-    vi.spyOn(TextTool, "check_similarity_by_jaccard").mockReturnValue(0.95);
+    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
 
     expect(
       check_lines(["안녕하세요"], ["你好世界"], {
