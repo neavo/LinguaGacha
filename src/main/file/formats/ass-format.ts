@@ -1,4 +1,4 @@
-import { TextTool } from "../../../shared/utils/text-tool";
+import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   build_bilingual_path,
@@ -24,7 +24,7 @@ export class ASSFormat {
    * 读取 Events 段 Format 列数后抽取 Dialogue 尾部文本，与旧切片逻辑一致
    */
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
-    const lines = split_text_lines_for_items(await TextTool.decode(content)).map((line) =>
+    const lines = split_text_lines_for_items(await decode_text_content(content)).map((line) =>
       line.trim(),
     );
     let in_event = false;

@@ -30,8 +30,10 @@ describe("language-prefilter", () => {
   it("中文源语言包含 CJK 字符则不过滤，否则过滤", () => {
     expect(should_skip_by_language_prefilter("你好世界", "ZH")).toBe(false);
     expect(should_skip_by_language_prefilter("Hello 你好", "ZH")).toBe(false);
+    expect(should_skip_by_language_prefilter("你好！！", "ZH")).toBe(false);
     expect(should_skip_by_language_prefilter("Hello World", "ZH")).toBe(true);
     expect(should_skip_by_language_prefilter("12345", "ZH")).toBe(true);
+    expect(should_skip_by_language_prefilter("！！！", "ZH")).toBe(true);
   });
 
   it("英文源语言包含拉丁字符则不过滤，否则过滤", () => {
@@ -43,6 +45,7 @@ describe("language-prefilter", () => {
 
   it.each([
     ["JA", "こんにちは"],
+    ["JA", "カーテン"],
     ["KO", "안녕하세요"],
     ["RU", "Привет"],
     ["AR", "مرحبا"],
@@ -63,9 +66,13 @@ describe("language-prefilter", () => {
 
   it.each([
     ["JA", "12345"],
+    ["JA", "ーーー"],
+    ["JA", "・･゙゚ﾞﾟ"],
     ["KO", "12345"],
     ["RU", "12345"],
     ["AR", "12345"],
+    ["EN", "×÷"],
+    ["TH", "๕"],
   ] as const)("没有目标文字时过滤动态语言 %s", (source_language, text) => {
     expect(should_skip_by_language_prefilter(text, source_language)).toBe(true);
   });

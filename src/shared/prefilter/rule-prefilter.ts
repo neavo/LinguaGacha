@@ -1,3 +1,4 @@
+import { is_non_standalone_language_character } from "../language";
 import { is_punctuation_character } from "../utils/text-tool";
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/gu; // 统一兼容 Windows、Unix 和旧 Mac 换行，确保多行过滤判断稳定
@@ -44,10 +45,15 @@ export const RULE_PREFILTER_PATTERNS = [
   /^\{#file_time\}/iu,
 ];
 
-// 对齐历史 isnumeric：跳过只包含空白、数字字符和标点的行
-function is_numeric_or_punctuation_line(line: string): boolean {
+// 无正文价值行只允许由空白、数字、标点/符号和非独立语言字符组成
+function is_non_translatable_content_line(line: string): boolean {
   return [...line].every((char) => {
-    return /\s/u.test(char) || /\p{N}/u.test(char) || is_punctuation_character(char);
+    return (
+      /\s/u.test(char) ||
+      /\p{N}/u.test(char) ||
+      is_punctuation_character(char) ||
+      is_non_standalone_language_character(char)
+    );
   });
 }
 
@@ -61,7 +67,7 @@ function should_skip_rule_prefilter_line(raw_line: string): boolean {
     return true;
   }
 
-  if (is_numeric_or_punctuation_line(line)) {
+  if (is_non_translatable_content_line(line)) {
     return true;
   }
 

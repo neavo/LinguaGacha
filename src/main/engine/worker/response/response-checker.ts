@@ -4,9 +4,10 @@ import { should_skip_by_rule_prefilter } from "../../../../shared/prefilter/rule
 import {
   build_text_preserve_rule,
   normalize_text_preserve_mode,
+  type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
-import { TextTool } from "../../../../shared/utils/text-tool";
+import * as text_tool from "../../../../shared/utils/text-tool";
 
 /**
  * 翻译响应行质量检查器，按模型结果决定哪些行可提交
@@ -80,8 +81,8 @@ export class ResponseChecker {
         ? null
         : this.get_sample_rule(text_type, quality_snapshot);
     if (preserve_rule !== null) {
-      src = src.replace(preserve_rule, "");
-      dst = dst.replace(preserve_rule, "");
+      src = preserve_rule.replace(src, "");
+      dst = preserve_rule.replace(dst, "");
     }
     if (
       config.check_kana_residue &&
@@ -109,7 +110,7 @@ export class ResponseChecker {
   private static get_sample_rule(
     text_type: string,
     quality_snapshot: TextQualitySnapshot,
-  ): RegExp | null {
+  ): TextPreserveRule | null {
     return build_text_preserve_rule({
       mode: quality_snapshot.text_preserve_mode,
       text_type,
@@ -129,7 +130,7 @@ export class ResponseChecker {
     const similar =
       src.includes(dst) ||
       dst.includes(src) ||
-      TextTool.check_similarity_by_jaccard(src, dst) > 0.8;
+      text_tool.check_similarity_by_jaccard(src, dst) > 0.8;
     if (!similar) {
       return false;
     }

@@ -1,0 +1,4 @@
+interface:
+  display_name: Project Review
+  short_description: 项目变更审查
+  x_sample_prompt: 使用 $project-review 审查当前变更

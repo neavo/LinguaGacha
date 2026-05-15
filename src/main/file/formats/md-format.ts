@@ -1,4 +1,4 @@
-import { TextTool } from "../../../shared/utils/text-tool";
+import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
   effective_export_text,
   build_target_path,
@@ -27,7 +27,7 @@ export class MDFormat {
   public async read_from_stream(content: Uint8Array, rel_path: string): Promise<Item[]> {
     const items: Item[] = [];
     let in_code_block = false;
-    for (const line of split_text_lines_for_items(await TextTool.decode(content))) {
+    for (const line of split_text_lines_for_items(await decode_text_content(content))) {
       if (line.trim().startsWith("```")) {
         in_code_block = !in_code_block;
       }

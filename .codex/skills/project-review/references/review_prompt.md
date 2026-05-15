@@ -47,7 +47,7 @@ The comments will be presented in the code review as inline comments. You should
 
 At the beginning of the finding title, tag the bug with priority level. For example "[P1] Un-padding slices along wrong tensor dimensions". [P0] – Drop everything to fix.  Blocking release, operations, or major usage. Only use for universal issues that do not depend on any assumptions about the inputs. · [P1] – Urgent. Should be addressed in the next cycle · [P2] – Normal. To be fixed eventually · [P3] – Low. Nice to have.
 
-Additionally, include a numeric priority field in the JSON output for each finding: set "priority" to 0 for P0, 1 for P1, 2 for P2, or 3 for P3. If a priority cannot be determined, omit the field or use null.
+Represent priority with the title tag only; do not add a separate numeric priority field.
 
 At the end of your findings, output an "overall correctness" verdict of whether or not the patch should be considered "correct".
 Correct implies that existing code and tests will not break, and the patch is free of bugs and other blocking issues.
@@ -58,29 +58,21 @@ The finding description should be one paragraph.
 
 OUTPUT FORMAT:
 
-## Output schema  — MUST MATCH *exactly*
+Use a plain Markdown ordered list for findings, followed by a separate overall correctness block.
 
-```json
-{
-  "findings": [
-    {
-      "title": "<≤ 80 chars, imperative>",
-      "body": "<valid Markdown explaining *why* this is a problem; cite files/lines/functions>",
-      "confidence_score": <float 0.0-1.0>,
-      "priority": <int 0-3, optional>,
-      "code_location": {
-        "absolute_file_path": "<file path>",
-        "line_range": {"start": <int>, "end": <int>}
-      }
-    }
-  ],
-  "overall_correctness": "patch is correct" | "patch is incorrect",
-  "overall_explanation": "<1-3 sentence explanation justifying the overall_correctness verdict>",
-  "overall_confidence_score": <float 0.0-1.0>
-}
-```
+For each finding, add one ordered-list item in this format:
 
-* The code_location field is required and must include absolute_file_path and line_range.
-* Line ranges must be as short as possible for interpreting the issue (avoid ranges over 5–10 lines; pick the most suitable subrange).
-* The code_location should overlap with the diff.
-* Do not generate a PR fix.
+1. **<priority tag and title, ≤ 80 chars>**
+   Location: `<absolute file path>:<start line>-<end line>`
+   Confidence: `<float 0.0-1.0>`
+   Comment: <valid Markdown explaining why this is a problem; cite files/lines/functions>
+
+After all findings, add a separate block in this format:
+
+**Overall correctness:** `patch is correct` | `patch is incorrect`
+**Confidence:** `<float 0.0-1.0>`
+**Explanation:** <1-3 sentence explanation justifying the overall correctness verdict>
+
+If there are no findings, output only the separate overall correctness block.
+
+The location is required for every finding and must include absolute_file_path and line_range. Line ranges must be as short as possible for interpreting the issue (avoid ranges over 5–10 lines; pick the most suitable subrange). The location should overlap with the diff. Do not generate a PR fix.

@@ -5,7 +5,10 @@ import { KanaFixer } from "../../../../shared/fixer/kana-fixer";
 import { NumberFixer } from "../../../../shared/fixer/number-fixer";
 import { PunctuationFixer } from "../../../../shared/fixer/punctuation-fixer";
 import { extract_text_name_prefix } from "../../../../shared/text/text-name-prefix";
-import { build_text_preserve_rule } from "../../../../shared/text/text-preserve-rules";
+import {
+  build_text_preserve_rule,
+  type TextPreserveRule,
+} from "../../../../shared/text/text-preserve-rules";
 import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
 import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";
@@ -138,7 +141,7 @@ export class TranslationPostPipeline {
   /**
    * 样例规则用于代码修复，必须和译前样例收集使用同一条规则
    */
-  private get_re_sample(context: TranslationPrePipelineContext): RegExp | null {
+  private get_re_sample(context: TranslationPrePipelineContext): TextPreserveRule | null {
     return build_text_preserve_rule({
       mode: this.quality_snapshot.text_preserve_mode,
       text_type: this.read_text_type(context),

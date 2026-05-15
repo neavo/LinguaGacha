@@ -1,5 +1,5 @@
 ---
-name: project-docs
+name: project-doc
 description: 使用此技能维护 LinguaGacha 项目级长期文档
 ---
 

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { build_text_preserve_rule, type TextPreserveRule } from "../text/text-preserve-rules";
 import { CodeFixer } from "./code-fixer";
 
 describe("CodeFixer", () => {
-  const code_rule = /<[^>]+>/gu;
+  const code_rule = create_rule(["<[^>]+>"]);
 
   it("删除译文中夹在源文保护段之间的多余代码段", () => {
     const src = "A<1>B<2>C";
@@ -48,7 +49,7 @@ describe("CodeFixer", () => {
   });
 
   it("规则命中空白时保留空白并只删除多余非空保护段", () => {
-    const whitespace_rule = /\s+|<[^>]+>/gu;
+    const whitespace_rule = create_rule(["\\s+", "<[^>]+>"]);
     const src = "A<1> B<2> C";
     const dst = "A<1>  B<x><2> C";
 
@@ -69,3 +70,18 @@ describe("CodeFixer", () => {
     expect(CodeFixer.fix(src, dst, code_rule)).toBe(dst);
   });
 });
+
+function create_rule(sources: string[]): TextPreserveRule {
+  const rule = build_text_preserve_rule({
+    mode: "CUSTOM",
+    text_type: "NONE",
+    entries: sources.map((src) => {
+      return { src };
+    }),
+    kind: "sample",
+  });
+  if (rule === null) {
+    throw new Error("测试保护规则构造失败。");
+  }
+  return rule;
+}

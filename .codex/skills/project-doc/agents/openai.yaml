@@ -1,0 +1,4 @@
+interface:
+  display_name: Project Doc
+  short_description: 项目长期文档
+  x_sample_prompt: 以“全局最优”而非“最小改动”原则，使用 $project-doc 检查并优化 LinguaGacha 长期文档的权威归宿、阅读路径和验证边界

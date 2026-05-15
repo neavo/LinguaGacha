@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../../api/api-types";
-import { TextTool } from "../../../../shared/utils/text-tool";
+import { split_by_punctuation } from "../../../../shared/utils/text-tool";
 import { TextFakenameInjector } from "../../../../shared/text/text-fakename-injector";
 
 /**
@@ -54,8 +54,8 @@ export class AnalysisPostPipeline {
    * 复合术语按标点和空格拆分，源译分段数量不同时保留原整项
    */
   private split_glossary_entry_pairs(src: string, dst: string): Array<[string, string]> {
-    const src_parts = TextTool.split_by_punctuation(src, true);
-    const dst_parts = TextTool.split_by_punctuation(dst, true);
+    const src_parts = split_by_punctuation(src, true);
+    const dst_parts = split_by_punctuation(dst, true);
     if (src_parts.length !== dst_parts.length) {
       return [[src, dst]];
     }
