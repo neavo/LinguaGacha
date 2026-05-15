@@ -369,8 +369,8 @@ export class ApiGatewayServer {
     this.post_json(app, "/api/tasks/translate-single", (body) =>
       task_service.translate_single(body),
     );
-    this.post_json(app, "/api/tasks/export-translation", () =>
-      file_export_service.export_translation(),
+    this.post_json(app, "/api/tasks/generate-translation", () =>
+      file_export_service.generate_translation(),
     );
 
     this.post_json(app, "/api/quality/rules/save-entries", (body) =>

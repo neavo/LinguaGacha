@@ -4,7 +4,7 @@ export type TranslationTaskActionKind =
   | "reset-all"
   | "reset-failed"
   | "stop-translation"
-  | "export-translation";
+  | "generate-translation";
 
 export type TranslationTaskSnapshot = {
   task_type: string;
@@ -24,7 +24,9 @@ export type TranslationTaskSnapshot = {
 
 export type TranslationTaskPayload = {
   task?: Partial<TranslationTaskSnapshot> & {
-    progress?: Partial<Omit<TranslationTaskSnapshot, "task_type" | "status" | "busy" | "request_in_flight_count">>;
+    progress?: Partial<
+      Omit<TranslationTaskSnapshot, "task_type" | "status" | "busy" | "request_in_flight_count">
+    >;
   };
 };
 

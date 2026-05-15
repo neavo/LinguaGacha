@@ -17,6 +17,7 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
+import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
 import {
   append_workbench_waveform_sample,
   decay_workbench_waveform_sample,
@@ -150,7 +151,7 @@ function resolve_translation_terminal_feedback_message(args: {
   return null;
 }
 
-function should_prompt_translation_export_confirmation(args: {
+function should_prompt_translation_generate_confirmation(args: {
   previous_status: string;
   next_status: string;
   has_result: boolean;
@@ -167,6 +168,16 @@ function should_prompt_translation_export_confirmation(args: {
   }
 
   return args.next_status === "idle" && args.has_result;
+}
+
+function is_translation_terminal_prompt_boundary(args: {
+  previous_status: string;
+  next_status: string;
+}): boolean {
+  return (
+    is_active_translation_task_status(args.previous_status) &&
+    !is_active_translation_task_status(args.next_status)
+  );
 }
 
 export function useTranslationTaskRuntime(
@@ -209,6 +220,11 @@ export function useTranslationTaskRuntime(
   const observed_translation_waveform_snapshot_ref = useRef<TranslationTaskSnapshot | null>(null);
   const observed_translation_waveform_time_ref = useRef<number | null>(null);
   const current_translation_waveform_sample_ref = useRef(0);
+  const {
+    clear_terminal_prompt_suppression,
+    consume_terminal_prompt_suppression,
+    suppress_next_terminal_prompt,
+  } = useTerminalPromptSuppression();
 
   const translation_task_display_snapshot = useMemo(() => {
     return resolve_translation_task_display_snapshot({
@@ -304,6 +320,7 @@ export function useTranslationTaskRuntime(
   });
 
   const clear_translation_task_state = useCallback((): void => {
+    clear_terminal_prompt_suppression();
     set_translation_task_snapshot(create_empty_translation_task_snapshot());
     set_last_translation_task_snapshot(null);
     set_translation_task_metrics(
@@ -316,7 +333,7 @@ export function useTranslationTaskRuntime(
     set_translation_waveform_history([]);
     set_translation_detail_sheet_open(false);
     set_task_confirm_state(null);
-  }, [clear_translation_waveform_sampling]);
+  }, [clear_terminal_prompt_suppression, clear_translation_waveform_sampling]);
 
   const apply_translation_task_snapshot = useCallback(
     (next_snapshot: TranslationTaskSnapshot): void => {
@@ -410,6 +427,7 @@ export function useTranslationTaskRuntime(
 
     const should_continue = has_translation_task_progress(translation_task_display_snapshot);
     const current_project_state = project_store.getState();
+    clear_terminal_prompt_suppression();
 
     try {
       const task_payload = await api_fetch<TranslationTaskCommandPayload>("/api/tasks/start", {
@@ -438,6 +456,7 @@ export function useTranslationTaskRuntime(
     }
   }, [
     apply_translation_task_snapshot,
+    clear_terminal_prompt_suppression,
     project_store,
     project_snapshot.loaded,
     push_toast,
@@ -491,11 +510,12 @@ export function useTranslationTaskRuntime(
           task_type: "translation",
         });
         const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
+        suppress_next_terminal_prompt("manual-stop");
         apply_translation_task_snapshot(next_snapshot);
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
-      } else if (task_confirm_state.kind === "export-translation") {
-        await api_fetch("/api/tasks/export-translation", {});
+      } else if (task_confirm_state.kind === "generate-translation") {
+        await api_fetch("/api/tasks/generate-translation", {});
         set_task_confirm_state(null);
       } else {
         const reset_plan =
@@ -562,8 +582,8 @@ export function useTranslationTaskRuntime(
         fallback_message = t("workbench_page.translation_task.feedback.reset_all_failed");
       } else if (task_confirm_state.kind === "reset-failed") {
         fallback_message = t("workbench_page.translation_task.feedback.reset_failed_failed");
-      } else if (task_confirm_state.kind === "export-translation") {
-        fallback_message = t("workbench_page.translation_task.feedback.export_failed");
+      } else if (task_confirm_state.kind === "generate-translation") {
+        fallback_message = t("workbench_page.translation_task.feedback.generate_failed");
       }
 
       push_toast("error", resolve_error_message(error, fallback_message));
@@ -588,6 +608,7 @@ export function useTranslationTaskRuntime(
     push_toast,
     settings_snapshot.mtool_optimizer_enable,
     settings_snapshot.source_language,
+    suppress_next_terminal_prompt,
     sync_runtime_task_snapshot,
     t,
     task_confirm_state,
@@ -650,18 +671,24 @@ export function useTranslationTaskRuntime(
       push_toast("success", feedback_message);
     }
 
+    const terminal_prompt_suppressed =
+      is_translation_terminal_prompt_boundary({ previous_status, next_status }) &&
+      consume_terminal_prompt_suppression();
+
     if (
       task_confirm_state === null &&
-      should_prompt_translation_export_confirmation({
+      !terminal_prompt_suppressed &&
+      should_prompt_translation_generate_confirmation({
         previous_status,
         next_status,
         has_result: has_translation_task_progress(translation_task_display_snapshot),
       })
     ) {
-      set_task_confirm_state(create_task_confirm_state("export-translation"));
+      set_task_confirm_state(create_task_confirm_state("generate-translation"));
     }
   }, [
     project_snapshot.loaded,
+    consume_terminal_prompt_suppression,
     push_toast,
     t,
     task_confirm_state,

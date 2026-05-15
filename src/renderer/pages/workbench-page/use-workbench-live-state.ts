@@ -695,10 +695,10 @@ function build_translation_task_confirm_dialog_view_model(
     };
   }
 
-  if (state.kind === "export-translation") {
+  if (state.kind === "generate-translation") {
     return {
       open: state.open,
-      description: t("workbench_page.translation_task.confirm.export_description"),
+      description: t("workbench_page.translation_task.confirm.generate_description"),
       submitting: state.submitting,
     };
   }
@@ -774,7 +774,7 @@ export type UseWorkbenchLiveStateResult = {
   readonly: boolean;
   can_edit_files: boolean;
   can_delete_selected_files: boolean;
-  can_export_translation: boolean;
+  can_generate_translation: boolean;
   can_close_project: boolean;
   dialog_state: WorkbenchDialogState;
   refresh_snapshot: () => Promise<WorkbenchSnapshot>;
@@ -785,7 +785,7 @@ export type UseWorkbenchLiveStateResult = {
   request_add_file_from_path: (source_path: string) => Promise<void>;
   request_add_files_from_paths: (source_paths: string[]) => Promise<void>;
   notify_add_file_drop_issue: (issue: WorkbenchAddFileDropIssue) => void;
-  request_export_translation: () => void;
+  request_generate_translation: () => void;
   request_close_project: () => void;
   request_reset_file: (entry_id: string) => void;
   request_delete_selected_files: () => void;
@@ -1253,13 +1253,14 @@ export function useWorkbenchLiveState(
     can_edit_files &&
     selected_delete_target_rel_paths.length > 0 &&
     selected_delete_target_rel_paths.length < entries.length;
-  const export_translation_submitting =
-    dialog_state.kind === "export-translation" && dialog_state.submitting;
-  const can_export_translation =
+  const generate_translation_submitting =
+    dialog_state.kind === "generate-translation" && dialog_state.submitting;
+  // 为什么：生成当前可用译文允许翻译运行中触发，但停止收尾和提交中必须保持单入口
+  const can_generate_translation =
     project_snapshot.loaded &&
     !file_op_running &&
     !is_mutation_running &&
-    !export_translation_submitting &&
+    !generate_translation_submitting &&
     !is_task_stopping(task_snapshot);
   const can_close_project = project_snapshot.loaded && !task_snapshot.busy && !is_mutation_running;
 
@@ -1556,13 +1557,13 @@ export function useWorkbenchLiveState(
     );
   }
 
-  function request_export_translation(): void {
-    if (!can_export_translation) {
+  function request_generate_translation(): void {
+    if (!can_generate_translation) {
       return;
     }
 
     set_dialog_state({
-      kind: "export-translation",
+      kind: "generate-translation",
       target_rel_paths: [],
       pending_path: null,
       submitting: false,
@@ -1708,13 +1709,13 @@ export function useWorkbenchLiveState(
         return;
       }
 
-      if (current_dialog_state.kind === "export-translation") {
-        if (!can_export_translation) {
+      if (current_dialog_state.kind === "generate-translation") {
+        if (!can_generate_translation) {
           set_dialog_submitting(false);
           return;
         }
 
-        await api_fetch("/api/tasks/export-translation", {});
+        await api_fetch("/api/tasks/generate-translation", {});
         set_dialog_state(close_dialog_state());
         return;
       }
@@ -1742,8 +1743,8 @@ export function useWorkbenchLiveState(
       }
     } catch (error) {
       const fallback_message =
-        current_dialog_state.kind === "export-translation"
-          ? t("workbench_page.feedback.export_failed")
+        current_dialog_state.kind === "generate-translation"
+          ? t("workbench_page.feedback.generate_translation_failed")
           : current_dialog_state.kind === "close-project"
             ? t("workbench_page.feedback.close_project_failed")
             : t("workbench_page.feedback.file_action_failed");
@@ -1837,7 +1838,7 @@ export function useWorkbenchLiveState(
     readonly,
     can_edit_files,
     can_delete_selected_files,
-    can_export_translation,
+    can_generate_translation,
     can_close_project,
     dialog_state,
     refresh_snapshot,
@@ -1848,7 +1849,7 @@ export function useWorkbenchLiveState(
     request_add_file_from_path,
     request_add_files_from_paths,
     notify_add_file_drop_issue,
-    request_export_translation,
+    request_generate_translation,
     request_close_project,
     request_reset_file,
     request_delete_selected_files,

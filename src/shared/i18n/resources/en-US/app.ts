@@ -154,9 +154,9 @@ export const en_us_app = {
     engine_task_stop: "Task stopped …",
     engine_task_success:
       "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}",
-    export_translation_done: "Translation files saved to {PATH} …",
-    export_translation_start: "Generating translation …",
-    export_translation_success: "Translation files generated …",
+    generate_translation_done: "Translation files saved to {PATH} …",
+    generate_translation_start: "Generating translation files …",
+    generate_translation_success: "Translation files generated …",
     response_checker_fail_data: "Data Structure Error",
     response_checker_fail_degradation: "Degradation Occurred",
     response_checker_fail_line_count: "Line Count Mismatch",

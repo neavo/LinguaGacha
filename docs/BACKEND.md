@@ -24,7 +24,7 @@
 | `POST /api/models/*` | 模型配置、激活、测试 | 由 `ModelService` 和配置服务持有 |
 | `POST /api/project/*` | 工程生命周期、工作台、reset、导出、校对 mutation | 按领域服务分发，不能在路由层写数据库 |
 | `POST /api/tasks/start`、`/stop`、`/snapshot`、`/translate-single` | 统一任务命令、任务快照和单条翻译工具调用 | 由 `TaskService`、`TaskEngine` 承接；重翻是 translation 的 items scope |
-| `POST /api/tasks/export-translation` | 翻译导出 | 由导出服务承接 |
+| `POST /api/tasks/generate-translation` | 生成译文文件 | 由文件导出服务承接 |
 | `POST /api/quality/*` | 质量规则与提示词 | 由 `QualityService` 持有写入口 |
 
 ## 2. 项目读取契约

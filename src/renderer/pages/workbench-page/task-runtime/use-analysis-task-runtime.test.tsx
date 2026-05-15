@@ -429,6 +429,123 @@ describe("useAnalysisTaskRuntime", () => {
     });
   });
 
+  it("手动停止回包直接进入 idle 且存在候选术语时不自动弹导入确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "running",
+        busy: true,
+        line: 4,
+        total_line: 5,
+        extras: { kind: "analysis", candidate_count: 3 },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/tasks/stop") {
+        runtime_fixture.current = create_runtime_fixture(
+          create_task_snapshot({
+            status: "idle",
+            busy: false,
+            line: 4,
+            total_line: 5,
+            extras: { kind: "analysis", candidate_count: 3 },
+          }),
+        );
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    await act(async () => {
+      latest_state?.request_analysis_task_action_confirmation("stop-analysis");
+    });
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.confirm_analysis_task_action();
+    });
+    await flush_microtasks();
+
+    expect(latest_state?.analysis_confirm_state).toBeNull();
+  });
+
+  it("手动停止请求失败后分析自然完成时仍自动弹导入确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "running",
+        busy: true,
+        line: 4,
+        total_line: 5,
+        extras: { kind: "analysis", candidate_count: 3 },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/tasks/stop") {
+        throw new Error("analysis stop boom");
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    await act(async () => {
+      latest_state?.request_analysis_task_action_confirmation("stop-analysis");
+    });
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.confirm_analysis_task_action();
+    });
+    await flush_microtasks();
+
+    expect(push_toast_mock).toHaveBeenCalledWith("error", "analysis stop boom");
+    expect(latest_state?.analysis_confirm_state).toMatchObject({
+      kind: "stop-analysis",
+      submitting: false,
+    });
+
+    await act(async () => {
+      latest_state?.close_analysis_task_action_confirmation();
+    });
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "done",
+        busy: false,
+        line: 5,
+        processed_line: 5,
+        extras: { kind: "analysis", candidate_count: 3 },
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.analysis_confirm_state).toMatchObject({
+      kind: "import-glossary",
+      open: true,
+      submitting: false,
+    });
+  });
+
   it("翻译任务停止完成时不会刷新分析快照或弹分析停止提示", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({

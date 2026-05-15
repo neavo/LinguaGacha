@@ -27,8 +27,8 @@ const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState["kind"]>, Dia
   "delete-file": {
     description_key: "workbench_page.dialog.delete.description",
   },
-  "export-translation": {
-    description_key: "workbench_page.dialog.export.description",
+  "generate-translation": {
+    description_key: "workbench_page.dialog.generate_translation.description",
   },
   "close-project": {
     description_key: "workbench_page.dialog.close_project.description",

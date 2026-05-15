@@ -149,9 +149,9 @@ export const zh_cn_app = {
     engine_task_stop: "任务已停止 …",
     engine_task_success:
       "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens",
-    export_translation_done: "译文已保存至 {PATH} …",
-    export_translation_start: "生成译文中 …",
-    export_translation_success: "译文生成完成 …",
+    generate_translation_done: "译文已保存至 {PATH} …",
+    generate_translation_start: "生成译文中 …",
+    generate_translation_success: "译文生成完成 …",
     response_checker_fail_data: "数据结构错误",
     response_checker_fail_degradation: "发生退化现象",
     response_checker_fail_line_count: "行数不一致",

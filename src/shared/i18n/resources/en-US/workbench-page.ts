@@ -42,13 +42,14 @@ export const en_us_workbench_page = {
     no_valid_file: "No valid files can be added.",
     file_parse_failed: "{FILENAME}: {REASON}",
     file_action_failed: "File operation failed. Please try again later.",
-    export_failed: "Failed to export available translations. Please try again later.",
+    generate_translation_failed:
+      "Failed to generate available translation files. Please try again later.",
     close_project_failed: "Failed to close the project. Please try again later.",
   },
   action: {
     add_file: "Add",
     delete_file: "Delete",
-    export_translation: "Generate Translation",
+    generate_translation: "Generate Translation",
     close_project: "Close",
     reset: "Reset Translation",
     delete: "Delete",
@@ -133,7 +134,7 @@ export const en_us_workbench_page = {
     confirm: {
       reset_all_description: "Confirm resetting the translation progress for the entire project …?",
       reset_failed_description: "Confirm resetting failed translation entries …?",
-      export_description: "Confirm exporting currently available translations …?",
+      generate_description: "Confirm generating currently available translation files …?",
       stop_description: "Confirm stopping the current translation task …?",
     },
     feedback: {
@@ -144,7 +145,7 @@ export const en_us_workbench_page = {
       stopped: "Stopped …",
       reset_all_failed: "Failed to reset all translation progress.",
       reset_failed_failed: "Failed to reset failed translation entries.",
-      export_failed: "Failed to export available translations.",
+      generate_failed: "Failed to generate available translation files.",
     },
   },
   command: {
@@ -165,8 +166,8 @@ export const en_us_workbench_page = {
     delete: {
       description: "Confirm deleting the selected file and all of its translation entries …?",
     },
-    export: {
-      description: "Confirm exporting currently available translations …?",
+    generate_translation: {
+      description: "Confirm generating currently available translation files …?",
     },
     close_project: {
       description: "Confirm closing the current project …?",

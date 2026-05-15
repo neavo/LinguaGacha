@@ -2,7 +2,7 @@ type WorkbenchActionKind =
   | "inherit-add-file"
   | "reset-file"
   | "delete-file"
-  | "export-translation"
+  | "generate-translation"
   | "close-project";
 
 export type WorkbenchSnapshotEntry = {

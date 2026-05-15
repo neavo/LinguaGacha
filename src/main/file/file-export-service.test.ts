@@ -105,7 +105,7 @@ describe("FileExportService", () => {
       log_collector,
     );
 
-    await expect(service.export_translation()).resolves.toEqual({
+    await expect(service.generate_translation()).resolves.toEqual({
       accepted: true,
       output_path: path.join(temp_dir, "demo_译文"),
     });
@@ -148,7 +148,7 @@ describe("FileExportService", () => {
       create_log_collector(),
     );
 
-    await expect(service.export_translation()).resolves.toEqual({
+    await expect(service.generate_translation()).resolves.toEqual({
       accepted: true,
       output_path: path.join(temp_dir, "demo_译文"),
     });
@@ -187,7 +187,7 @@ describe("FileExportService", () => {
       log_collector,
     );
 
-    await expect(service.export_translation()).resolves.toEqual({
+    await expect(service.generate_translation()).resolves.toEqual({
       accepted: true,
       output_path: path.join(temp_dir, "demo_译文"),
     });
@@ -231,7 +231,7 @@ describe("FileExportService", () => {
       log_collector,
     );
 
-    await expect(service.export_translation()).rejects.toThrow("boom");
+    await expect(service.generate_translation()).rejects.toThrow("boom");
 
     const error_entries = log_collector.entries.filter((entry) => entry.level === "error");
     expect(error_entries.map(({ message }) => message)).toEqual([

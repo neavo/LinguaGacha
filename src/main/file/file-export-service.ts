@@ -49,9 +49,9 @@ export class FileExportService {
   ) {}
 
   /**
-   * 普通导出读取项目全部条目，并先补齐重复条目的译文
+   * 生成译文读取项目全部条目，并先补齐重复条目的译文
    */
-  public async export_translation(): Promise<JsonRecord> {
+  public async generate_translation(): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
     const config = this.setting_service.load_setting();
     this.log_export_start(config);
@@ -285,7 +285,7 @@ export class FileExportService {
    * 开始日志在真实文件写回前输出，便于日志窗口定位用户触发的导出动作
    */
   private log_export_start(config: SettingRecord): void {
-    this.log_manager?.info(this.export_log_text(config, "app.log.export_translation_start"), {
+    this.log_manager?.info(this.export_log_text(config, "app.log.generate_translation_start"), {
       source: FILE_EXPORT_LOG_SOURCE,
     });
   }
@@ -296,7 +296,7 @@ export class FileExportService {
   private log_export_done(config: SettingRecord, output_path: string): void {
     this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });
     this.log_manager?.info(
-      this.export_log_text(config, "app.log.export_translation_done", { PATH: output_path }),
+      this.export_log_text(config, "app.log.generate_translation_done", { PATH: output_path }),
       { source: FILE_EXPORT_LOG_SOURCE },
     );
     this.log_manager?.info("", { source: FILE_EXPORT_LOG_SOURCE });

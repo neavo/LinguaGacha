@@ -7,6 +7,7 @@
   "type": "module",
   "main": "build/dist-electron/index.js",
   "scripts": {
+    "postinstall": "node ./node_modules/electron/install.js",
     "dev": "electron-vite dev --config buildtools/vite/electron.vite.config.ts",
     "build": "tsc -b --noEmit && electron-vite build --config buildtools/vite/electron.vite.config.ts && electron-builder --config buildtools/electron-builder/electron-builder.json5",
     "format": "node ./buildtools/format-related-files.mjs",

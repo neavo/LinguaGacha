@@ -19,6 +19,7 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
+import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
 import {
   append_workbench_waveform_sample,
   decay_workbench_waveform_sample,
@@ -176,6 +177,16 @@ function should_prompt_analysis_glossary_import_confirmation(args: {
   return args.next_status === "done" || args.next_status === "idle";
 }
 
+function is_analysis_terminal_prompt_boundary(args: {
+  previous_status: string;
+  next_status: string;
+}): boolean {
+  return (
+    is_active_analysis_task_status(args.previous_status) &&
+    !is_active_analysis_task_status(args.next_status)
+  );
+}
+
 export function useAnalysisTaskRuntime(
   options: AnalysisTaskRuntimeOptions = {},
 ): AnalysisTaskRuntime {
@@ -214,6 +225,11 @@ export function useAnalysisTaskRuntime(
   const observed_analysis_waveform_snapshot_ref = useRef<AnalysisTaskSnapshot | null>(null);
   const observed_analysis_waveform_time_ref = useRef<number | null>(null);
   const current_analysis_waveform_sample_ref = useRef(0);
+  const {
+    clear_terminal_prompt_suppression,
+    consume_terminal_prompt_suppression,
+    suppress_next_terminal_prompt,
+  } = useTerminalPromptSuppression();
 
   const analysis_task_display_snapshot = useMemo(() => {
     return resolve_analysis_task_display_snapshot({
@@ -309,6 +325,7 @@ export function useAnalysisTaskRuntime(
   });
 
   const clear_analysis_task_state = useCallback((): void => {
+    clear_terminal_prompt_suppression();
     set_analysis_task_snapshot(create_empty_analysis_task_snapshot());
     set_last_analysis_task_snapshot(null);
     set_analysis_task_metrics(
@@ -322,7 +339,7 @@ export function useAnalysisTaskRuntime(
     set_analysis_detail_sheet_open(false);
     set_analysis_confirm_state(null);
     set_analysis_importing(false);
-  }, [clear_analysis_waveform_sampling]);
+  }, [clear_analysis_waveform_sampling, clear_terminal_prompt_suppression]);
 
   const apply_analysis_task_snapshot = useCallback(
     (next_snapshot: AnalysisTaskSnapshot): void => {
@@ -417,6 +434,7 @@ export function useAnalysisTaskRuntime(
 
     const should_continue = has_analysis_task_progress(analysis_task_display_snapshot);
     const current_project_state = project_store.getState();
+    clear_terminal_prompt_suppression();
 
     try {
       const task_payload = await api_fetch<AnalysisTaskCommandPayload>("/api/tasks/start", {
@@ -446,6 +464,7 @@ export function useAnalysisTaskRuntime(
     analysis_task_display_snapshot,
     analysis_task_menu_busy,
     apply_analysis_task_snapshot,
+    clear_terminal_prompt_suppression,
     project_store,
     project_snapshot.loaded,
     push_toast,
@@ -591,6 +610,7 @@ export function useAnalysisTaskRuntime(
           task_type: "analysis",
         });
         const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
+        suppress_next_terminal_prompt("manual-stop");
         apply_analysis_task_snapshot(next_snapshot);
         sync_runtime_task_snapshot(next_snapshot);
         set_analysis_confirm_state(null);
@@ -674,6 +694,7 @@ export function useAnalysisTaskRuntime(
     project_store,
     push_toast,
     refresh_project_runtime,
+    suppress_next_terminal_prompt,
     sync_runtime_task_snapshot,
     task_snapshot,
     t,
@@ -761,8 +782,13 @@ export function useAnalysisTaskRuntime(
       push_toast("success", feedback_message);
     }
 
+    const terminal_prompt_suppressed =
+      is_analysis_terminal_prompt_boundary({ previous_status, next_status }) &&
+      consume_terminal_prompt_suppression();
+
     if (
       analysis_confirm_state === null &&
+      !terminal_prompt_suppressed &&
       should_prompt_analysis_glossary_import_confirmation({
         previous_status,
         next_status,
@@ -776,6 +802,7 @@ export function useAnalysisTaskRuntime(
     analysis_task_snapshot.candidate_count,
     analysis_task_display_snapshot,
     analysis_task_snapshot.status,
+    consume_terminal_prompt_suppression,
     project_snapshot.loaded,
     push_toast,
     t,

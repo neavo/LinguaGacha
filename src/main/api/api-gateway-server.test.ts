@@ -365,6 +365,62 @@ describe("ApiGatewayServer", () => {
     });
   });
 
+  it("生成译文路由使用 generate-translation 且旧路由不保留兼容入口", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "generate-route.lg");
+    const gateway = await create_gateway_with_database(app_root, database);
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "generate-route" },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          {
+            id: 1,
+            src: "原文",
+            dst: "译文",
+            status: "PROCESSED",
+            file_type: "TXT",
+            file_path: "script.txt",
+            row: 0,
+          },
+        ],
+      },
+    });
+
+    const started = await gateway.start();
+    await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
+    const generate_response = await post_json(
+      started.baseUrl,
+      "/api/tasks/generate-translation",
+      {},
+    );
+    const legacy_response = await post_json(started.baseUrl, "/api/tasks/export-translation", {});
+    const generate_body = (await generate_response.json()) as {
+      ok?: boolean;
+      data?: { accepted?: boolean; output_path?: string };
+    };
+    const legacy_body = (await legacy_response.json()) as {
+      ok?: boolean;
+      error?: { code?: string };
+    };
+
+    expect(generate_body.ok).toBe(true);
+    expect(generate_body.data).toEqual({
+      accepted: true,
+      output_path: path.join(app_root, "generate-route_译文"),
+    });
+    expect(fs.existsSync(path.join(app_root, "generate-route_译文", "script.zh.txt"))).toBe(true);
+    expect(legacy_response.status).toBe(404);
+    expect(legacy_body.error?.code).toBe("route_not_found");
+  });
+
   it("长期事件流由 事件 hub 提供 keepalive 并在退出时关闭", async () => {
     const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => database.close());
