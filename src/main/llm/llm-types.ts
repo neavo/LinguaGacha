@@ -1,4 +1,4 @@
-import type { ApiJsonValue } from "../../../api/api-types";
+import type { ApiJsonValue } from "../api/api-types";
 
 /**
  * 请求消息保持标准 chat 形状，policy 再转换为各官方 SDK 的最终 payload。
@@ -9,7 +9,7 @@ export interface LLMMessage {
 }
 
 /**
- * worker 调 LLM 请求端口的唯一请求壳。
+ * 调用方发送 LLM 请求时使用的唯一请求壳。
  */
 export interface LLMRequestBody {
   run_id: string; // run_id / work_unit_id 只用于诊断与迟到结果隔离，不代表 client 持有任务状态
@@ -25,7 +25,7 @@ export interface LLMRequestBody {
  */
 export interface LLMRequestResult {
   response_think: string; // response_think 只用于日志展示和分析，不参与译文解析
-  response_result: string; // response_result 是 worker 后处理的唯一模型正文输入
+  response_result: string; // response_result 是调用方后处理的唯一模型正文输入
   input_tokens: number; // token 计数用于任务统计，缺失时由客户端归零
   output_tokens: number;
   cancelled: boolean; // 以下布尔标记保留请求事实，TaskEngine 决定如何重试或降级

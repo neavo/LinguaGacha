@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkerExecutionResult } from "../protocol/worker-result";
-import { LLMClient } from "./llm/llm-client";
+import { LLMClient } from "../../llm/llm-client";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import {
   TranslationWorkUnitRunner,

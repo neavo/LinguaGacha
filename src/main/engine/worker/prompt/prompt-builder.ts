@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import { JsonTool } from "../../../../shared/utils/json-tool";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared/text/text-types";
-import type { LLMMessage } from "../llm/llm-types";
+import type { LLMMessage } from "../../../llm/llm-types";
 import { Prompt } from "../../../../base/prompt";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import {

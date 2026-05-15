@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { app_error } from "../../api/app-error";
+import { app_error } from "../../api/api-error";
 import type { TaskType } from "../runtime/task-runtime-types";
 import type { TaskRunHandle } from "./engine-options";
 

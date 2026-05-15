@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 
-import type { ApiJsonValue } from "../../../api/api-types";
+import type { ApiJsonValue } from "../api/api-types";
 import { LLMClientPolicy } from "./llm-client-policy";
 import { build_google_thinking_config } from "./policy/google-policy";
 

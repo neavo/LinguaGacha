@@ -1,4 +1,4 @@
-import { JsonTool } from "../../../../../shared/utils/json-tool";
+import { JsonTool } from "../../../shared/utils/json-tool";
 import type { ResolvedRequestPolicy } from "../policy/policy-types";
 import type { LLMRequestResult } from "../llm-types";
 import { OpenAICompatibleTransport } from "./openai-compatible-transport";

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { app_error } from "../../api/app-error";
+import { app_error } from "../../api/api-error";
 import { resolve_active_model } from "../../model/model-config-resolver";
 import type { ApiJsonValue } from "../../api/api-types";
 import { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";

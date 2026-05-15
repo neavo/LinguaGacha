@@ -7,7 +7,7 @@ import {
   PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
   ProjectDatabaseMigrationService,
 } from "../migration/project-database-migration-service";
-import { app_error } from "../api/app-error";
+import { app_error } from "../api/api-error";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";

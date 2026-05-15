@@ -4,14 +4,14 @@ import path from "node:path";
 
 import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
 
-import { app_error } from "../api/app-error";
+import { app_error } from "../api/api-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../service/path-service";
 import { SettingService } from "../service/setting-service";
-import { LLMClient } from "../engine/worker/llm/llm-client";
-import type { LLMMessage, LLMRequestResult } from "../engine/worker/llm/llm-types";
-import { LLMClientPolicy } from "../engine/worker/llm/llm-client-policy";
+import { LLMClient } from "../llm/llm-client";
+import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
+import { LLMClientPolicy } from "../llm/llm-client-policy";
 import { Model, type ModelApiFormat } from "../../base/model";
 import {
   read_model_records,

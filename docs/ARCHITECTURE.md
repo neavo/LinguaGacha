@@ -31,8 +31,10 @@ flowchart LR
   C --> D["Project / TaskEngine / Service 领域服务"]
   D --> E["ProjectDatabase workflow<br/>SQL、事务、.lg asset"]
   D --> F["engine<br/>protocol/runtime/core/definitions/store"]
+  D --> Q["main/llm<br/>request policy / official SDK transport"]
   F --> G["engine/worker<br/>WorkerPool / runner"]
-  G --> H["request policy / official SDK transport<br/>提示词与响应处理"]
+  G --> H["提示词、pipeline、响应处理"]
+  G --> Q
   F --> M["CoreEventHub / events"]
   I["preload: window.desktopApp"] --> J["renderer desktop-api.ts"]
   J --> C
@@ -48,6 +50,7 @@ flowchart LR
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 连接生命周期的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
 - `src/main/engine` 是任务域主控包：`command` 受理统一 `/api/tasks/start|stop|snapshot`，`protocol` 持有任务词表与跨 worker 协议，`runtime` 持有公开运行态和快照，`core` 编排任务，`definitions` 承接任务差异，`store` 通过 artifact 写入项目任务事实。
+- `src/main/llm` 是 main 进程 LLM 能力层，承接 provider policy、request policy、official SDK transport、ProviderClientPool 和请求结果归一；`model`、`engine/core`、`engine/worker` 只能消费它，不能反向成为它的依赖。
 - `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `ModelKeyLeasePool`、`WorkerExecutor` / `WorkerPool` 执行统一 `WorkUnit`；任务运行态只经 `TaskRuntimePublisher` 写入 `TaskRuntimeState` 并广播完整 `task.snapshot_changed`。
 - renderer 只通过 preload 暴露的 `window.desktopApp` 获得宿主能力和 Core API base URL，再由 `desktop-api.ts` 发起 HTTP / SSE。
 
@@ -108,8 +111,9 @@ sequenceDiagram
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
 | `src/main/project/` | 项目会话、项目数据投影、项目数据变更事件、同步 mutation | Electron preload、页面局部状态 |
-| `src/main/engine/{command,protocol,runtime,core,definitions,store}` | 任务命令、协议词表、运行态、快照、编排、任务差异解释、artifact 提交和项目任务事实读写 | worker 内提示词、LLM 请求、响应清洗解码 |
-| `src/main/engine/worker/` | work unit 执行、提示词构建、request policy、official SDK direct transport、ProviderClientPool、响应清洗解码 | 数据库写入、全局任务状态、任务进度提交、任务级 Key 轮换 |
+| `src/main/engine/{command,protocol,runtime,core,definitions,store}` | 任务命令、协议词表、运行态、快照、编排、任务差异解释、artifact 提交和项目任务事实读写 | worker 内提示词、provider 请求策略、响应清洗解码 |
+| `src/main/llm/` | main 进程 LLM provider policy、request policy、official SDK transport、ProviderClientPool、请求结果归一 | 任务编排、项目事实读取、数据库写入、worker 提示词和响应业务解析 |
+| `src/main/engine/worker/` | work unit 执行、提示词构建、runner、pipeline、响应清洗解码、worker_threads 边界 | 数据库写入、全局任务状态、任务进度提交、任务级 Key 轮换、provider policy 与 SDK transport |
 | `src/main/events/` | Core 公开运行期事件总线与 SSE 连接管理 | 任务编排、项目变更事件适配、领域状态规则 |
 | `src/main/database/` | SQL、事务、`.lg` asset 压缩读写、database operation | HTTP 协议和页面 DTO |
 | `src/preload/` | 窄宿主桥接、原生对话框和 Core base URL 暴露 | Core 业务实现、Node 能力泛开放 |

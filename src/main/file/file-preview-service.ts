@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { app_error, is_app_error, type AppError } from "../api/app-error";
+import { app_error, is_app_error, type AppError } from "../api/api-error";
 import type { ApiJsonValue } from "../api/api-types";
 import { SettingService } from "../service/setting-service";
 import { FileFormatService } from "./file-format-service";
