@@ -391,6 +391,7 @@ async function* open_json_event_source_stream(args: {
 }): AsyncIterable<EventSourceJsonEvent> {
   const event_source = await open_event_source_at_path(args.path);
   const queue: EventSourceJsonEvent[] = [];
+  let queue_read_index = 0;
   let pending_resolve: ((value: EventSourceJsonEvent | null) => void) | null = null;
   let stream_error: Error | null = null;
   let closed = false;
@@ -444,8 +445,14 @@ async function* open_json_event_source_stream(args: {
 
   try {
     while (true) {
-      if (queue.length > 0) {
-        const next_event = queue.shift();
+      // EventSource 短时积压时用游标读取，避免 shift 反复搬移数组
+      if (queue_read_index < queue.length) {
+        const next_event = queue[queue_read_index];
+        queue_read_index += 1;
+        if (queue_read_index >= queue.length) {
+          queue.length = 0;
+          queue_read_index = 0;
+        }
         if (next_event !== undefined) {
           yield next_event;
           continue;

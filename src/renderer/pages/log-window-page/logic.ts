@@ -1,7 +1,7 @@
 import type { LogEvent, LogLevel } from "@/app/desktop/desktop-api";
+import { LOG_WINDOW_EVENT_CAPACITY } from "@shared/log";
 
 export type LogLevelFilter = "all" | LogLevel;
-const LOG_WINDOW_EVENT_LIMIT = 1000;
 
 function normalize_log_event_message(event: LogEvent): LogEvent {
   return {
@@ -10,36 +10,37 @@ function normalize_log_event_message(event: LogEvent): LogEvent {
   };
 }
 
-export function append_log_event(events: LogEvent[], event: LogEvent): LogEvent[] {
-  const normalized_event = normalize_log_event_message(event);
-
-  if (events.some((previous_event) => previous_event.id === normalized_event.id)) {
-    return events;
-  }
-
-  const last_event = events.at(-1);
-  if (normalized_event.message === "" && last_event?.message === "") {
-    return [...events.slice(0, -1), normalized_event];
-  }
-
-  return [...events, normalized_event];
-}
-
+/**
+ * 批量合并日志窗口事件，保持 trim、去重、连续空日志折叠和容量裁剪在同一条线性路径内完成
+ */
 export function append_log_events(
   events: LogEvent[],
   next_events: readonly LogEvent[],
 ): LogEvent[] {
-  let appended_events = events;
+  const appended_events = events.slice();
+  const existing_ids = new Set(appended_events.map((event) => event.id));
 
   for (const event of next_events) {
-    appended_events = append_log_event(appended_events, event);
+    const normalized_event = normalize_log_event_message(event);
+    if (existing_ids.has(normalized_event.id)) {
+      continue;
+    }
+
+    const last_event = appended_events.at(-1);
+    if (normalized_event.message === "" && last_event?.message === "") {
+      appended_events[appended_events.length - 1] = normalized_event;
+      existing_ids.delete(last_event.id);
+    } else {
+      appended_events.push(normalized_event);
+    }
+    existing_ids.add(normalized_event.id);
   }
 
-  if (appended_events.length <= LOG_WINDOW_EVENT_LIMIT) {
+  if (appended_events.length <= LOG_WINDOW_EVENT_CAPACITY) {
     return appended_events;
   }
 
-  return appended_events.slice(appended_events.length - LOG_WINDOW_EVENT_LIMIT);
+  return appended_events.slice(appended_events.length - LOG_WINDOW_EVENT_CAPACITY);
 }
 
 export function sort_log_events_latest_first(events: LogEvent[]): LogEvent[] {

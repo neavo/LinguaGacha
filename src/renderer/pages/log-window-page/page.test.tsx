@@ -295,7 +295,7 @@ describe("LogWindowPage", () => {
     await act(async () => {
       get_active_stream().emit(build_log_event("严格模式日志"));
       await Promise.resolve();
-      vi.advanceTimersByTime(250);
+      vi.advanceTimersByTime(500);
     });
 
     expect(container?.textContent).toContain("严格模式日志");
@@ -309,7 +309,7 @@ describe("LogWindowPage", () => {
       get_active_stream().emit(build_log_event("较早日志", { id: "log-1", sequence: 1 }));
       get_active_stream().emit(build_log_event("较新日志", { id: "log-2", sequence: 2 }));
       await Promise.resolve();
-      vi.advanceTimersByTime(250);
+      vi.advanceTimersByTime(500);
     });
 
     const page_text = container?.textContent ?? "";
@@ -327,7 +327,7 @@ describe("LogWindowPage", () => {
         }),
       );
       await Promise.resolve();
-      vi.advanceTimersByTime(250);
+      vi.advanceTimersByTime(500);
     });
 
     expect(container?.textContent).toContain("[log_window_page.level.warning]");
@@ -341,7 +341,7 @@ describe("LogWindowPage", () => {
     await act(async () => {
       get_active_stream().emit(build_log_event("可放大日志"));
       await Promise.resolve();
-      vi.advanceTimersByTime(250);
+      vi.advanceTimersByTime(500);
     });
 
     expect(container?.querySelector(".log-window-page__content--detail-expanded")).toBeNull();

@@ -1,4 +1,4 @@
-export const LOG_APPEND_BATCH_INTERVAL_MS = 250; // 日志渲染 append batch 固定为每秒 4 帧
+export const LOG_APPEND_BATCH_INTERVAL_MS = 500; // 日志渲染 append batch 对齐 renderer 运行态 2Hz
 
 type LogAppendBufferOptions<TEvent> = {
   intervalMs?: number;
@@ -18,7 +18,7 @@ export class LogAppendBuffer<TEvent> {
   private timer: ReturnType<typeof setTimeout> | null = null; // timer 只在存在待刷日志时存活
 
   /**
-   * 注入日志批处理窗口，默认保持每秒 4 帧
+   * 注入日志批处理窗口，默认保持 500ms 刷新节奏
    */
   public constructor(options: LogAppendBufferOptions<TEvent>) {
     this.interval_ms = options.intervalMs ?? LOG_APPEND_BATCH_INTERVAL_MS;

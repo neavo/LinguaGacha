@@ -2,6 +2,8 @@ export const LOG_LEVELS = ["debug", "info", "warning", "error", "fatal"] as cons
 
 export const TASK_VISIBLE_LOG_LEVELS = ["info", "warning", "error"] as const; // worker 回放到用户可见任务日志时只允许这三个等级
 
+export const LOG_WINDOW_EVENT_CAPACITY = 2048; // main replay 与 renderer 日志窗口共享同一保留上限
+
 export type LogLevel = (typeof LOG_LEVELS)[number];
 export type TaskVisibleLogLevel = (typeof TASK_VISIBLE_LOG_LEVELS)[number];
 

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { LOG_WINDOW_EVENT_CAPACITY } from "../../shared/log";
 import { format_log_date_key, type FileLogWriter, LogManager } from "./log-manager";
 
 describe("LogManager", () => {
@@ -115,7 +116,7 @@ describe("LogManager", () => {
 
   function create_log_manager(
     console_lines: string[] = [],
-    ring_buffer_size = 1000,
+    ring_buffer_size = LOG_WINDOW_EVENT_CAPACITY,
     now?: () => Date,
   ): LogManager {
     const log_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-log-test-"));
