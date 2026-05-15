@@ -22,6 +22,7 @@ import { FileExportService } from "../file/file-export-service";
 import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
+import { record_app_error } from "../log/app-error-reporter";
 import type { LogEvent } from "../../shared/log";
 import { CoreEventHub } from "../events/core-event-hub";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
@@ -37,8 +38,20 @@ import {
   close_api_gateway_with_connections,
   track_api_gateway_connections,
 } from "./api-gateway-connections";
-import { app_error, is_app_error, type AppError, type AppErrorDetails } from "./api-error";
+import {
+  FileNotFoundError,
+  InternalInvariantError,
+  InvalidJsonError,
+  ProjectNotLoadedError,
+  RouteNotFoundError,
+  is_app_error,
+  resolve_app_error_http_status,
+  to_api_error_payload,
+  type AppError,
+  type AppErrorPublicDetails,
+} from "../../shared/error";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
+import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
 
 const CORE_API_HOST = "127.0.0.1"; // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API
 
@@ -74,6 +87,8 @@ export class ApiGatewayServer {
   private task_worker_pool: WorkerPool | null = null; // task_worker_pool 持有 worker_threads，Gateway stop 时必须主动释放
 
   private readonly server_sockets = new Set<Socket>(); // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断
+
+  private resolve_api_text: () => TextResolver = () => create_text_resolver("zh-CN");
 
   /**
    * Gateway 只接收已组装好的运行期依赖，避免路由层自行解析全局状态
@@ -153,6 +168,11 @@ export class ApiGatewayServer {
     this.core_event_hub = core_event_hub;
     core_event_hub.start();
     const setting_service = new SettingService(paths, core_event_hub);
+    this.resolve_api_text = () => {
+      return create_text_resolver(
+        resolve_i18n_locale(setting_service.load_setting()["app_language"]),
+      );
+    };
     const model_service = new ModelService(paths, setting_service, this.options.logManager);
     const project_lifecycle_service = new ProjectLifecycleService(
       this.options.database,
@@ -423,8 +443,11 @@ export class ApiGatewayServer {
     );
 
     app.all("*", (context) => {
-      const error = app_error("route_not_found", undefined, { path: context.req.path });
-      return context.json(this.app_error_to_envelope(error, crypto.randomUUID()), error.status);
+      const error = new RouteNotFoundError(context.req.path);
+      return context.json(
+        this.error_to_envelope(error, crypto.randomUUID()),
+        resolve_app_error_http_status(error),
+      );
     });
 
     return app;
@@ -444,27 +467,29 @@ export class ApiGatewayServer {
       const request_id = crypto.randomUUID();
       try {
         const body = (await context.req.json().catch((error: unknown) => {
-          throw app_error("validation_failed", "请求 JSON 无效。", undefined, error);
+          throw new InvalidJsonError(error);
         })) as Record<string, ApiJsonValue>;
         const data = await handler(body);
         return context.json(ok(data));
       } catch (error) {
-        const app_error_payload = this.normalize_error_to_app_error(error);
-        const envelope = this.app_error_to_envelope(app_error_payload, request_id);
-        if (app_error_payload.status >= 500 || app_error_payload.severity !== "expected") {
-          this.log_gateway_error(
-            t_main_log("app.diagnostic.api_gateway.direct_route_failed"),
-            error,
-            {
-              code: app_error_payload.code,
-              details: app_error_payload.details,
+        const normalized_error = this.normalize_error_to_app_error(error);
+        const envelope = this.error_to_envelope(normalized_error, request_id);
+        const status = resolve_app_error_http_status(normalized_error);
+        if (status >= 500 || normalized_error.severity !== "expected") {
+          record_app_error(normalized_error, {
+            logManager: this.options.logManager,
+            message: t_main_log("app.diagnostic.api_gateway.direct_route_failed"),
+            source: "api-gateway",
+            context: {
+              code: normalized_error.code,
+              details: normalized_error.public_details,
               path: path_name,
               request_id,
-              status: app_error_payload.status,
+              status,
             },
-          );
+          });
         }
-        return context.json(envelope, app_error_payload.status);
+        return context.json(envelope, status);
       }
     });
   }
@@ -475,7 +500,7 @@ export class ApiGatewayServer {
   private require_loaded_project_path(): string {
     const state = this.project_session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw app_error("project_not_loaded");
+      throw new ProjectNotLoadedError();
     }
     return state.projectPath;
   }
@@ -504,87 +529,23 @@ export class ApiGatewayServer {
       return error;
     }
     if (error instanceof SyntaxError) {
-      return app_error("validation_failed", "请求 JSON 无效。", undefined, error);
+      return new InvalidJsonError(error);
     }
     const node_code = this.read_node_error_code(error);
     if (node_code === "ENOENT") {
-      return app_error("file_not_found", undefined, this.safe_path_detail(error), error);
+      return new FileNotFoundError({
+        public_details: this.safe_path_detail(error),
+        cause: error,
+      });
     }
-    if (error instanceof Error) {
-      return this.classify_bare_error(error);
-    }
-    return app_error("internal_invariant", undefined, undefined, error);
-  }
-
-  /**
-   * 裸 Error 在 Gateway 统一收窄为稳定 code，避免内部文本直接成为公开协议
-   */
-  private classify_bare_error(error: Error): AppError {
-    const message = error.message.trim();
-    if (error.name === "DatabaseConflictError") {
-      return app_error("database_conflict", undefined, undefined, error);
-    }
-    if (error.name === "WorkUnitExecutorTransportError") {
-      return app_error("worker_failed", undefined, undefined, error);
-    }
-    if (message.includes("工程未加载")) {
-      return app_error("project_not_loaded", undefined, undefined, error);
-    }
-    if (message.includes("工程文件不存在")) {
-      return app_error(
-        "project_not_found",
-        undefined,
-        this.extract_path_basename_detail(message),
-        error,
-      );
-    }
-    if (message.includes("任务正在执行") || message.includes("已有后台任务正在运行")) {
-      return app_error("task_busy", undefined, undefined, error);
-    }
-    if (message.includes("revision 冲突")) {
-      return app_error(
-        "revision_conflict",
-        undefined,
-        this.extract_revision_detail(message),
-        error,
-      );
-    }
-    if (message.includes("不支持的文件格式")) {
-      return app_error("unsupported_file_format", undefined, undefined, error);
-    }
-    if (message.includes("获取模型列表失败") || message.includes("模型列表 HTTP")) {
-      return app_error("model_provider_failed", undefined, undefined, error);
-    }
-    if (message.includes("model not found") || message.includes("模型配置不存在")) {
-      return app_error("model_not_found", undefined, undefined, error);
-    }
-    if (message.includes("缺少 node:") || message.includes("缺少必要能力")) {
-      return app_error("runtime_capability_missing", undefined, undefined, error);
-    }
-    if (this.looks_like_validation_error(message)) {
-      return app_error(
-        "validation_failed",
-        this.safe_validation_message(message),
-        undefined,
-        error,
-      );
-    }
-    return app_error("internal_invariant", undefined, undefined, error);
+    return InternalInvariantError.from_unknown(error);
   }
 
   /**
    * 响应壳只包含安全字段，request_id 用于 UI 和日志对齐诊断
    */
-  private app_error_to_envelope(error: AppError, request_id: string) {
-    return api_error({
-      code: error.code,
-      message: error.safe_message,
-      safe_message: error.safe_message,
-      message_key: error.message_key,
-      ...(Object.keys(error.details).length > 0 ? { details: error.details } : {}),
-      ...(error.action === undefined ? {} : { action: error.action }),
-      request_id,
-    });
+  private error_to_envelope(error: AppError, request_id: string) {
+    return api_error(to_api_error_payload(error, request_id, this.resolve_api_text()));
   }
 
   private read_node_error_code(error: unknown): string {
@@ -596,44 +557,12 @@ export class ApiGatewayServer {
       : "";
   }
 
-  private safe_path_detail(error: unknown): AppErrorDetails {
+  private safe_path_detail(error: unknown): AppErrorPublicDetails {
     const candidate =
       typeof error === "object" && error !== null && "path" in error
         ? String(error.path ?? "")
         : "";
     return candidate === "" ? {} : { filename: path.basename(candidate) };
-  }
-
-  private extract_path_basename_detail(message: string): AppErrorDetails {
-    const raw_path = message.split("：").at(-1)?.trim() ?? "";
-    return raw_path === "" ? {} : { filename: path.basename(raw_path) };
-  }
-
-  private extract_revision_detail(message: string): AppErrorDetails {
-    const section = /section=([^\s，]+)/u.exec(message)?.[1];
-    return section === undefined ? {} : { section };
-  }
-
-  private looks_like_validation_error(message: string): boolean {
-    return (
-      message.includes("无效") ||
-      message.includes("不能为空") ||
-      message.includes("缺少") ||
-      message.includes("必须") ||
-      message.includes("不能") ||
-      message.includes("不存在") ||
-      message.includes("not found") ||
-      message.includes("must be") ||
-      message.includes("invalid") ||
-      message.includes("unknown") ||
-      message.includes("forbidden")
-    );
-  }
-
-  private safe_validation_message(message: string): string {
-    return message === "" || /[A-Z]:\\|\/Users\/|api[_-]?key|Authorization/iu.test(message)
-      ? "请求参数无效。"
-      : message;
   }
 
   /**
@@ -703,21 +632,5 @@ export class ApiGatewayServer {
    */
   private build_log_sse_frame(event: LogEvent): string {
     return `event: log.appended\ndata: ${JSON.stringify(event)}\n\n`;
-  }
-
-  /**
-   * Gateway 自身异常统一打到 日志源，便于和其他内部日志区分
-   */
-  private log_gateway_error(
-    message: string,
-    error: unknown,
-    context: Record<string, unknown>,
-  ): void {
-    this.options.logManager.error(message, {
-      source: "api-gateway",
-      context,
-      error_message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
   }
 }

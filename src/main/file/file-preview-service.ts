@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { app_error, is_app_error, type AppError } from "../api/api-error";
 import type { ApiJsonValue } from "../api/api-types";
 import { SettingService } from "../service/setting-service";
 import { FileFormatService } from "./file-format-service";
 import { Item } from "../../base/item";
+import * as AppErrors from "../../shared/error";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -38,7 +38,7 @@ export class FilePreviewService {
           source_path,
           filename: path.basename(source_path),
           code: preview_error.code,
-          safe_message: preview_error.safe_message,
+          message_key: preview_error.message_key,
         });
       }
     }
@@ -118,15 +118,15 @@ export class FilePreviewService {
   }
 
   /**
-   * 单文件失败只暴露稳定 code 和安全文案，原始异常留给 Gateway 日志
+   * 单文件失败只暴露稳定 code 和 message_key，原始异常留给 Gateway 日志
    */
-  private normalize_preview_error(error: unknown): AppError {
-    if (is_app_error(error)) {
+  private normalize_preview_error(error: unknown): AppErrors.AppError {
+    if (AppErrors.is_app_error(error)) {
       return error;
     }
     if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-      return app_error("file_not_found", undefined, undefined, error);
+      return new AppErrors.FileNotFoundError({ cause: error });
     }
-    return app_error("file_io_failed", undefined, undefined, error);
+    return new AppErrors.FileIoFailedError({ cause: error });
   }
 }

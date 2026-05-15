@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import type {
   ModelCategorySnapshot,
@@ -427,7 +428,7 @@ export function useModelPageState(): UseModelPageStateResult {
     } catch (error) {
       push_toast(
         "error",
-        error instanceof Error ? error.message : t("model_page.feedback.refresh_failed"),
+        resolve_visible_error_message(error, t, t("model_page.feedback.refresh_failed")),
       );
     }
   }, [push_toast, t]);
@@ -481,11 +482,10 @@ export function useModelPageState(): UseModelPageStateResult {
         }
       } catch (error) {
         if (latest_patch_request_id_by_model_ref.current[model_id] === request_id) {
-          if (error instanceof Error) {
-            push_toast("error", error.message);
-          } else {
-            push_toast("error", t("model_page.feedback.update_failed"));
-          }
+          push_toast(
+            "error",
+            resolve_visible_error_message(error, t, t("model_page.feedback.update_failed")),
+          );
           void refresh_snapshot();
         }
       }
@@ -507,11 +507,10 @@ export function useModelPageState(): UseModelPageStateResult {
         });
         set_snapshot(normalize_model_page_snapshot(payload));
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("model_page.feedback.add_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("model_page.feedback.add_failed")),
+        );
       } finally {
         set_is_action_running(false);
       }
@@ -536,11 +535,10 @@ export function useModelPageState(): UseModelPageStateResult {
         });
         set_snapshot(normalize_model_page_snapshot(payload));
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("model_page.feedback.update_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("model_page.feedback.update_failed")),
+        );
       } finally {
         set_is_action_running(false);
       }
@@ -644,11 +642,10 @@ export function useModelPageState(): UseModelPageStateResult {
           );
         }
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("model_page.feedback.test_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("model_page.feedback.test_failed")),
+        );
       } finally {
         set_is_action_running(false);
       }
@@ -697,11 +694,10 @@ export function useModelPageState(): UseModelPageStateResult {
         push_toast("success", t("model_page.feedback.reset_success"));
       }
     } catch (error) {
-      if (error instanceof Error) {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("model_page.feedback.update_failed"));
-      }
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("model_page.feedback.update_failed")),
+      );
     } finally {
       set_is_action_running(false);
     }
@@ -775,11 +771,10 @@ export function useModelPageState(): UseModelPageStateResult {
             is_loading: false,
           };
         });
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("model_page.feedback.selector_load_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("model_page.feedback.selector_load_failed")),
+        );
       }
     },
     [push_toast, t],

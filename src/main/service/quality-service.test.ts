@@ -68,19 +68,19 @@ describe("QualityService", () => {
         rule_type: "glossary",
         virtual_id: "builtin:../demo.json",
       }),
-    ).toThrow("预设文件名无效");
+    ).toThrow("request.validation_failed");
     expect(() =>
       service.read_rule_preset({
         rule_type: "glossary",
         virtual_id: "builtin:folder/demo.json",
       }),
-    ).toThrow("预设文件名无效");
+    ).toThrow("request.validation_failed");
     expect(() =>
       service.read_rule_preset({
         rule_type: "glossary",
         virtual_id: "builtin:folder\\demo.json",
       }),
-    ).toThrow("预设文件名无效");
+    ).toThrow("request.validation_failed");
   });
 
   it("导入外部 JSON 规则时显式修复可恢复的非标 JSON", async () => {
@@ -258,7 +258,7 @@ describe("QualityService", () => {
         expected_revision: 0,
         entries: [],
       }),
-    ).rejects.toThrow("质量规则 revision 冲突");
+    ).rejects.toThrow("data.revision_conflict");
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
     expect(
       database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),

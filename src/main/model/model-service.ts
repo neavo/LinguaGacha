@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
 
-import { app_error } from "../api/api-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../service/path-service";
@@ -20,6 +19,7 @@ import {
 } from "./model-config-resolver";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
+import * as AppErrors from "../../shared/error";
 
 // 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
 const PATCH_ALLOWED_KEYS = new Set([
@@ -78,12 +78,14 @@ export class ModelService {
     const model_id = String(request["model_id"] ?? "");
     const patch_value = request["patch"];
     if (typeof patch_value !== "object" || patch_value === null || Array.isArray(patch_value)) {
-      throw app_error("validation_failed", "模型配置补丁必须是对象。");
+      throw new AppErrors.RequestValidationError();
     }
     const patch = patch_value as ModelRecord;
     for (const key of Object.keys(patch)) {
       if (!PATCH_ALLOWED_KEYS.has(key)) {
-        throw app_error("validation_failed", "模型配置包含不允许的字段。", { field: key });
+        throw new AppErrors.RequestValidationError({
+          public_details: { field: key },
+        });
       }
     }
     const config = this.load_setting_with_models(false);
@@ -116,7 +118,9 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     const model_type = String(request["model_type"] ?? "");
     if (Model.resolve_template_filename(model_type) === null) {
-      throw app_error("validation_failed", "模型类型无效。", { model_type });
+      throw new AppErrors.RequestValidationError({
+        public_details: { model_type },
+      });
     }
     const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
@@ -137,7 +141,7 @@ export class ModelService {
     const index = this.find_model_index_or_raise(models, model_id);
     const target_model = models[index] ?? {};
     if (String(target_model["type"] ?? "PRESET") === "PRESET") {
-      throw app_error("validation_failed", "内置预设模型不能删除。");
+      throw new AppErrors.RequestValidationError();
     }
     models.splice(index, 1);
     if (String(config["activate_model_id"] ?? "") === model_id) {
@@ -159,11 +163,11 @@ export class ModelService {
     const models = read_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     if (String(models[index]?.["type"] ?? "") !== "PRESET") {
-      throw app_error("validation_failed", "该模型不是内置预设。");
+      throw new AppErrors.RequestValidationError();
     }
     const preset = this.load_preset_models().find((item) => String(item["id"] ?? "") === model_id);
     if (preset === undefined) {
-      throw app_error("model_not_found");
+      throw new AppErrors.ModelNotFoundError();
     }
     models[index] = this.normalize_model(preset);
     config["models"] = models as unknown as ApiJsonValue;
@@ -178,11 +182,11 @@ export class ModelService {
   ): Promise<Record<string, ApiJsonValue>> {
     const ordered_ids_raw = request["ordered_model_ids"];
     if (!Array.isArray(ordered_ids_raw)) {
-      throw app_error("validation_failed", "模型排序列表无效。");
+      throw new AppErrors.RequestValidationError();
     }
     const ordered_ids = ordered_ids_raw.map((value) => String(value).trim()).filter(Boolean);
     if (ordered_ids.length === 0) {
-      throw app_error("validation_failed", "模型排序列表不能为空。");
+      throw new AppErrors.RequestValidationError();
     }
     const config = this.load_setting_with_models(false);
     const models = read_model_records(config);
@@ -197,7 +201,7 @@ export class ModelService {
       expected_ids.length !== ordered_ids.length ||
       expected_ids.some((model_id) => !ordered_id_set.has(model_id))
     ) {
-      throw app_error("validation_failed", "模型排序必须完整覆盖同一分组。");
+      throw new AppErrors.RequestValidationError();
     }
     const reordered = this.reorder_group(models, model_type, ordered_ids);
     config["models"] = reordered as unknown as ApiJsonValue;
@@ -309,7 +313,7 @@ export class ModelService {
       }
       return await this.fetch_openai_available_models(model, api_format);
     } catch (error) {
-      throw app_error("model_provider_failed", undefined, undefined, error);
+      throw new AppErrors.ModelProviderFailedError({ cause: error });
     }
   }
 
@@ -363,7 +367,10 @@ export class ModelService {
   private async fetch_json(url: string, headers: Record<string, string>): Promise<ApiJsonValue> {
     const response = await fetch(url, { headers, method: "GET" });
     if (!response.ok) {
-      throw app_error("model_provider_failed", undefined, { status: response.status }, response);
+      throw new AppErrors.ModelProviderFailedError({
+        public_details: { status: response.status },
+        cause: response,
+      });
     }
     return (await response.json()) as ApiJsonValue;
   }
@@ -687,7 +694,9 @@ export class ModelService {
     for (const [key, value] of Object.entries(patch)) {
       if (PATCH_OBJECT_KEYS.has(key)) {
         if (typeof value !== "object" || value === null || Array.isArray(value)) {
-          throw app_error("validation_failed", "模型嵌套配置必须是对象。", { field: key });
+          throw new AppErrors.RequestValidationError({
+            public_details: { field: key },
+          });
         }
         result[key] = {
           ...this.normalize_object(result[key]),
@@ -715,7 +724,7 @@ export class ModelService {
   private find_model_index_or_raise(models: ModelRecord[], model_id: string): number {
     const index = models.findIndex((model) => String(model["id"] ?? "") === model_id);
     if (index < 0) {
-      throw app_error("model_not_found");
+      throw new AppErrors.ModelNotFoundError();
     }
     return index;
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { is_app_error } from "../shared/error";
 import { QualityRule, normalize_text_preserve_mode } from "./quality";
 
 describe("quality 基础模型", () => {
@@ -24,6 +25,12 @@ describe("quality 基础模型", () => {
     expect(normalize_text_preserve_mode("CUSTOM")).toBe("custom");
     expect(normalize_text_preserve_mode("bad")).toBe("off");
     expect(QualityRule.from_json("glossary").kind).toBe("glossary");
-    expect(() => QualityRule.from_json("legacy").kind).toThrow("未知的质量规则类型");
+    let code: string | null = null;
+    try {
+      QualityRule.from_json("legacy");
+    } catch (error) {
+      code = is_app_error(error) ? error.code : null;
+    }
+    expect(code).toBe("quality.unknown_rule_type");
   });
 });

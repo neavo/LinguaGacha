@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 
-import { app_error } from "../../api/api-error";
 import { resolve_active_model } from "../../model/model-config-resolver";
 import type { ApiJsonValue } from "../../api/api-types";
 import { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
@@ -27,6 +26,7 @@ import { TaskProgressSnapshotTool } from "./progress-accumulator";
 import { RunCoordinator } from "./run-coordinator";
 import { TaskLogReplay } from "./log-replay";
 import { is_task_skipped_item_status } from "../../../shared/task";
+import * as AppErrors from "../../../shared/error";
 
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
 
@@ -451,7 +451,7 @@ export class TaskEngine {
     result: WorkerExecutionResult,
   ): TranslationWorkUnitResult {
     if (result.kind !== "translation" || result.output.kind !== "translation") {
-      throw app_error("worker_failed", "worker 返回了非翻译结果。");
+      throw new AppErrors.WorkerFailedError();
     }
     return {
       items: this.normalize_record_list(result.output.items),
@@ -468,7 +468,7 @@ export class TaskEngine {
    */
   private to_analysis_work_unit_result(result: WorkerExecutionResult): AnalysisWorkUnitResult {
     if (result.kind !== "analysis" || result.output.kind !== "analysis") {
-      throw app_error("worker_failed", "worker 返回了非分析结果。");
+      throw new AppErrors.WorkerFailedError();
     }
     return {
       success: result.outcome === "success",
@@ -1071,7 +1071,7 @@ export class TaskEngine {
     const config_snapshot = this.setting_service.load_setting();
     const model = resolve_active_model(config_snapshot);
     if (model === null) {
-      throw app_error("model_not_found", "没有可用的激活模型。");
+      throw new AppErrors.ModelNotFoundError();
     }
     return { config_snapshot, model };
   }

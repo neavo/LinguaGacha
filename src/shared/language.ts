@@ -151,10 +151,10 @@ export function get_prompt_target_language_name(
   locale: LanguageDisplayLocale,
 ): string {
   if (language_code === ALL_LANGUAGE_CODE) {
-    throw new Error("target_language does not support ALL");
+    throw new UnsupportedAllTargetLanguageError();
   }
   if (language_code === null) {
-    throw new Error("invalid target_language");
+    throw new InvalidTargetLanguageError();
   }
 
   return get_language_display_name(language_code, locale);
@@ -652,3 +652,4 @@ export function is_fullwidth_code_point(code_point: number): boolean {
         (code_point >= 0x20000 && code_point <= 0x3fffd)))
   );
 }
+import { InvalidTargetLanguageError, UnsupportedAllTargetLanguageError } from "./error";

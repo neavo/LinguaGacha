@@ -27,6 +27,7 @@ import {
   normalize_language_code,
   strip_non_language_characters,
 } from "./language";
+import { is_app_error } from "./error";
 
 describe("languages", () => {
   it("以语言定义表作为前端语言代码清单事实源", () => {
@@ -50,8 +51,20 @@ describe("languages", () => {
     expect(get_prompt_source_language_name("ALL", "zh")).toBe("原文");
     expect(get_prompt_source_language_name(null, "en")).toBe("Source");
     expect(get_prompt_target_language_name("ZH", "zh")).toBe("中文");
-    expect(() => get_prompt_target_language_name("ALL", "zh")).toThrow("target_language");
-    expect(() => get_prompt_target_language_name(null, "zh")).toThrow("invalid target_language");
+    let all_code: string | null = null;
+    try {
+      get_prompt_target_language_name("ALL", "zh");
+    } catch (error) {
+      all_code = is_app_error(error) ? error.code : null;
+    }
+    expect(all_code).toBe("language.unsupported_all_target_language");
+    let invalid_code: string | null = null;
+    try {
+      get_prompt_target_language_name(null, "zh");
+    } catch (error) {
+      invalid_code = is_app_error(error) ? error.code : null;
+    }
+    expect(invalid_code).toBe("language.invalid_target_language");
   });
 
   it("按历史语言规则口径归一化语言代码", () => {

@@ -1,5 +1,4 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { app_error } from "../api/api-error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import {
@@ -9,6 +8,7 @@ import {
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { Item } from "../../base/item";
+import * as AppErrors from "../../shared/error";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -121,7 +121,7 @@ export class ProofreadingService {
   private async require_loaded_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw app_error("project_not_loaded");
+      throw new AppErrors.ProjectNotLoadedError();
     }
     return state.projectPath;
   }
@@ -138,17 +138,21 @@ export class ProofreadingService {
       return;
     }
     if ("items" in expected && expected["items"] !== current_items_revision) {
-      throw app_error("revision_conflict", undefined, {
-        current_revision: current_items_revision,
-        expected_revision: expected["items"] ?? 0,
-        section: "items",
+      throw new AppErrors.RevisionConflictError({
+        public_details: {
+          current_revision: current_items_revision,
+          expected_revision: expected["items"] ?? 0,
+          section: "items",
+        },
       });
     }
     if ("proofreading" in expected && expected["proofreading"] !== current_proofreading_revision) {
-      throw app_error("revision_conflict", undefined, {
-        current_revision: current_proofreading_revision,
-        expected_revision: expected["proofreading"] ?? 0,
-        section: "proofreading",
+      throw new AppErrors.RevisionConflictError({
+        public_details: {
+          current_revision: current_proofreading_revision,
+          expected_revision: expected["proofreading"] ?? 0,
+          section: "proofreading",
+        },
       });
     }
   }
@@ -313,7 +317,7 @@ export class ProofreadingService {
   private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
     if (parsed === null) {
-      throw app_error("validation_failed", `整数值无效：${String(value)}`);
+      throw new AppErrors.RequestValidationError();
     }
     return parsed;
   }

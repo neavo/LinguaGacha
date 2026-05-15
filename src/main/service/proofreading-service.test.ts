@@ -193,7 +193,7 @@ describe("ProofreadingService", () => {
         translation_extras: {},
         expected_section_revisions: { items: 1 },
       }),
-    ).rejects.toThrow("数据版本已变化，请刷新后重试");
+    ).rejects.toThrow("data.revision_conflict");
 
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, dst: "旧译文" },
@@ -214,7 +214,7 @@ describe("ProofreadingService", () => {
         translation_extras: { line: 1 },
         expected_section_revisions: { proofreading: 3 },
       }),
-    ).rejects.toThrow("数据版本已变化，请刷新后重试");
+    ).rejects.toThrow("data.revision_conflict");
 
     expect(
       database.execute({
@@ -258,7 +258,7 @@ describe("ProofreadingService", () => {
         items: [],
         expected_section_revisions: { items: "not-a-number" },
       }),
-    ).rejects.toThrow("整数值无效");
+    ).rejects.toThrow("request.validation_failed");
 
     expect(
       database.execute({
@@ -294,10 +294,10 @@ describe("ProofreadingService", () => {
     ]);
   });
 
-  it("工程未加载时拒绝校对保存", async () => {
+  it("project.not_loaded时拒绝校对保存", async () => {
     const { service, session_state } = create_service();
     session_state.clear();
 
-    await expect(service.save_item({ items: [] })).rejects.toThrow("工程未加载");
+    await expect(service.save_item({ items: [] })).rejects.toThrow("project.not_loaded");
   });
 });

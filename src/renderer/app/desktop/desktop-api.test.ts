@@ -314,12 +314,12 @@ describe("desktop-api", () => {
           json: async () => ({
             ok: false,
             error: {
-              code: "revision_conflict",
-              message: "数据版本已变化，请刷新后重试。",
-              safe_message: "数据版本已变化，请刷新后重试。",
-              message_key: "app.error.revision_conflict",
+              code: "data.revision_conflict",
+              message: "数据版本已变化，请刷新后重试 …",
+              message_key: "app.error.data.revision_conflict.message",
               details: { section: "items" },
-              action: "请刷新当前数据后再次提交。",
+              action: "请刷新当前数据后再次提交 …",
+              action_key: "app.error.data.revision_conflict.action",
               request_id: "request-1",
             },
           }),
@@ -332,11 +332,11 @@ describe("desktop-api", () => {
     const promise = api_fetch("/api/project/workbench/add-file", {});
 
     await expect(promise).rejects.toMatchObject({
-      action: "请刷新当前数据后再次提交。",
-      code: "revision_conflict",
+      action: "请刷新当前数据后再次提交 …",
+      code: "data.revision_conflict",
       details: { section: "items" },
-      message: "数据版本已变化，请刷新后重试。",
-      message_key: "app.error.revision_conflict",
+      message: "数据版本已变化，请刷新后重试 …",
+      message_key: "app.error.data.revision_conflict.message",
       request_id: "request-1",
       status: 409,
     });

@@ -25,6 +25,7 @@ import {
   DesktopProgressToastModalLayer,
   useDesktopToast,
 } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import "@/app/shell/app-shell.css";
 import type { AppearanceMenuActionId, BottomActionId, RouteId } from "@/app/navigation/types";
 import { LocaleProvider, useI18n } from "@/app/locale/locale-provider";
@@ -464,11 +465,10 @@ function AppContent(props: AppContentProps): JSX.Element {
     if (action_id === "logs") {
       set_log_badge_visible(false);
       void window.desktopApp.openLogWindow().catch((error: unknown) => {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("app.feedback.update_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
+        );
       });
       return;
     }
@@ -479,11 +479,10 @@ function AppContent(props: AppContentProps): JSX.Element {
 
     void update_app_language(resolve_toggled_app_language(settings_snapshot.app_language)).catch(
       (error: unknown) => {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("app.feedback.update_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
+        );
       },
     );
   }
@@ -504,11 +503,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     const target_url = update_release_url ?? GITHUB_REPOSITORY_URL;
 
     void open_external_url(target_url).catch((error: unknown) => {
-      if (error instanceof Error) {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("app.feedback.update_failed"));
-      }
+      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
     });
   }
 
@@ -518,11 +513,7 @@ function AppContent(props: AppContentProps): JSX.Element {
       await window.desktopApp.quitApp();
     } catch (error) {
       set_close_confirm_submitting(false);
-      if (error instanceof Error) {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("app.feedback.update_failed"));
-      }
+      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
     }
   }
 

@@ -38,7 +38,7 @@ describe("ApiGatewayServer", () => {
     expect(Object.keys(body.data ?? {})).not.toContain("instance" + "Token");
   });
 
-  it("未知 JSON 路由不再代理并返回稳定 route_not_found", async () => {
+  it("未知 JSON 路由不再代理并返回稳定 request.route_not_found", async () => {
     const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
@@ -53,10 +53,10 @@ describe("ApiGatewayServer", () => {
 
     expect(response.status).toBe(404);
     expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe("route_not_found");
+    expect(body.error?.code).toBe("request.route_not_found");
   });
 
-  it("JSON 解析失败返回稳定 validation_failed 和 request_id", async () => {
+  it("JSON 解析失败返回稳定 request.invalid_json 和 request_id", async () => {
     const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
@@ -74,7 +74,7 @@ describe("ApiGatewayServer", () => {
 
     expect(response.status).toBe(400);
     expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe("validation_failed");
+    expect(body.error?.code).toBe("request.invalid_json");
     expect(body.error?.request_id).toMatch(/[0-9a-f-]{36}/u);
   });
 
@@ -191,7 +191,7 @@ describe("ApiGatewayServer", () => {
     expect(create_commit_body.ok).toBe(true);
   });
 
-  it("项目 preview 缺失文件时映射为 project_not_found", async () => {
+  it("项目 preview 缺失文件时映射为 project.not_found", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const gateway = await create_gateway_with_database(app_root, database);
@@ -206,7 +206,7 @@ describe("ApiGatewayServer", () => {
 
     expect(response.status).toBe(404);
     expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe("project_not_found");
+    expect(body.error?.code).toBe("project.not_found");
   });
 
   it("校对同步 mutation 由 API Gateway 直接写库", async () => {
@@ -418,7 +418,7 @@ describe("ApiGatewayServer", () => {
     });
     expect(fs.existsSync(path.join(app_root, "generate-route_译文", "script.zh.txt"))).toBe(true);
     expect(legacy_response.status).toBe(404);
-    expect(legacy_body.error?.code).toBe("route_not_found");
+    expect(legacy_body.error?.code).toBe("request.route_not_found");
   });
 
   it("长期事件流由 事件 hub 提供 keepalive 并在退出时关闭", async () => {

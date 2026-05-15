@@ -170,7 +170,7 @@ describe("ProjectDatabase", () => {
           args: { projectPath: lg_path },
         },
       ]),
-    ).toThrow("未知 database 操作");
+    ).toThrow("runtime.internal_invariant");
 
     expect(
       database.execute({
@@ -200,7 +200,7 @@ describe("ProjectDatabase", () => {
           args: { projectPath: lg_path },
         },
       ]),
-    ).toThrow("未知 database 操作");
+    ).toThrow("runtime.internal_invariant");
 
     expect(fs.existsSync(lg_path)).toBe(false);
     expect(has_project_sidecar(lg_path)).toBe(false);

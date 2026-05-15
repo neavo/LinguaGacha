@@ -1,5 +1,4 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { app_error } from "../api/api-error";
 import { SettingService } from "./setting-service";
 import { resolve_active_model } from "../model/model-config-resolver";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -11,6 +10,7 @@ import type { StartTaskCommand, StopTaskCommand } from "../engine/protocol/task-
 import { AnalysisTaskDefinition } from "../engine/definitions/analysis/analysis-task-definition";
 import { TaskDefinitionRegistry } from "../engine/definitions/registry";
 import { TranslationTaskDefinition } from "../engine/definitions/translation/translation-task-definition";
+import * as AppErrors from "../../shared/error";
 import {
   is_task_start_mode,
   is_task_type,
@@ -115,7 +115,7 @@ export class TaskService {
   public async translate_single(request: JsonRecord): Promise<MutableJsonRecord> {
     const text = String(request["text"] ?? "").trim();
     if (text === "") {
-      throw app_error("validation_failed", "待翻译文本不能为空。");
+      throw new AppErrors.RequestValidationError();
     }
     if (!this.has_active_model()) {
       return { success: false, status: "NO_ACTIVE_MODEL", dst: "" };
@@ -129,7 +129,7 @@ export class TaskService {
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw app_error("project_not_loaded");
+      throw new AppErrors.ProjectNotLoadedError();
     }
     return state.projectPath;
   }
@@ -142,18 +142,18 @@ export class TaskService {
     sections: string[],
   ): void {
     if (expected === null) {
-      throw app_error("validation_failed", "任务启动缺少 expected_section_revisions。");
+      throw new AppErrors.RequestValidationError();
     }
     for (const section of sections) {
       if (!(section in expected)) {
-        throw app_error("validation_failed", `任务启动缺少 ${section} revision。`, { section });
+        throw new AppErrors.RequestValidationError({
+          public_details: { section },
+        });
       }
       this.assert_expected_revision(
         section,
         expected,
         this.snapshot_builder.get_runtime_section_revision(section),
-        (current, expected_revision) =>
-          this.build_revision_conflict_message(section, current, expected_revision),
       );
     }
   }
@@ -165,33 +165,17 @@ export class TaskService {
     section: string,
     expected: Record<string, number>,
     current_revision: number,
-    build_message: (current: number, expected_revision: number) => string,
   ): void {
     const expected_revision = expected[section] ?? 0;
     if (current_revision !== expected_revision) {
-      throw app_error("revision_conflict", build_message(current_revision, expected_revision), {
-        current_revision,
-        expected_revision,
-        section,
+      throw new AppErrors.RevisionConflictError({
+        public_details: {
+          current_revision,
+          expected_revision,
+          section,
+        },
       });
     }
-  }
-
-  /**
-   * 旧 items / proofreading 错误关键字保持不变，新增质量输入 revision 统一同一口径
-   */
-  private build_revision_conflict_message(
-    section: string,
-    current: number,
-    expected_revision: number,
-  ): string {
-    if (section === "items") {
-      return `运行态 revision 冲突：section=items 当前=${current.toString()} 期望=${expected_revision.toString()}`;
-    }
-    if (section === "proofreading") {
-      return `校对 revision 冲突：当前=${current.toString()}，期望=${expected_revision.toString()}`;
-    }
-    return `${section} revision 冲突：当前=${current.toString()}，期望=${expected_revision.toString()}`;
   }
 
   /**
@@ -244,7 +228,7 @@ export class TaskService {
   private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
     if (parsed === null) {
-      throw app_error("validation_failed", `整数值无效：${String(value)}`);
+      throw new AppErrors.RequestValidationError();
     }
     return parsed;
   }
@@ -326,7 +310,7 @@ export class TaskService {
     if (is_task_type(value)) {
       return value;
     }
-    throw app_error("validation_failed", `任务类型无效：${String(value)}`);
+    throw new AppErrors.RequestValidationError();
   }
 
   /**
@@ -335,7 +319,7 @@ export class TaskService {
   private normalize_mode(value: ApiJsonValue | undefined): TaskStartMode {
     const mode = String(value ?? "new").toLowerCase();
     if (!is_task_start_mode(mode)) {
-      throw app_error("validation_failed", `任务模式无效：${String(value)}`);
+      throw new AppErrors.RequestValidationError();
     }
     return mode;
   }
@@ -350,11 +334,11 @@ export class TaskService {
       return { kind: "all" };
     }
     if (scope_kind !== "items") {
-      throw app_error("validation_failed", `翻译任务范围无效：${scope_kind}`);
+      throw new AppErrors.RequestValidationError();
     }
     const item_ids = this.normalize_item_ids(scope["item_ids"] ?? request["item_ids"]);
     if (item_ids.length === 0) {
-      throw app_error("validation_failed", "请选择要重新翻译的条目。");
+      throw new AppErrors.RequestValidationError();
     }
     return { kind: "items", item_ids };
   }

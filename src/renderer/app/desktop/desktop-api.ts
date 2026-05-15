@@ -1,21 +1,14 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { normalize_core_api_base_url } from "@desktop/core-api-endpoint";
 import { normalize_log_level, type LogLevel } from "@shared/log";
+import type { ApiErrorPayload, AppErrorCode } from "@shared/error";
 
 export type { LogLevel };
 
 type ApiEnvelope<data_type> = {
   ok: boolean;
   data?: data_type;
-  error?: {
-    code?: CoreApiErrorCode;
-    message?: string;
-    safe_message?: string;
-    message_key?: string;
-    details?: Record<string, unknown>;
-    action?: string;
-    request_id?: string;
-  };
+  error?: Partial<ApiErrorPayload>;
 };
 
 type HealthPayload = {
@@ -57,27 +50,17 @@ type SemanticVersion = {
   patch: number;
 };
 
-export type CoreApiErrorCode =
-  | "validation_failed"
-  | "route_not_found"
-  | "project_not_loaded"
-  | "project_not_found"
-  | "file_not_found"
-  | "revision_conflict"
-  | "task_busy"
-  | "unsupported_file_format"
-  | "file_io_failed"
-  | "database_conflict"
-  | "model_not_found"
-  | "model_provider_failed"
-  | "worker_failed"
-  | "runtime_capability_missing"
-  | "internal_invariant"
+export type DesktopLocalErrorCode =
   | "missing_core_api_base_url"
   | "core_api_unavailable"
   | "core_metadata_unavailable"
   | "event_stream_failed"
-  | "http_error";
+  | "http_error"
+  | "network_failed"
+  | "timeout";
+
+export type DesktopApiErrorCode = AppErrorCode | DesktopLocalErrorCode;
+export type DesktopLocalErrorMessageKey = `app.error.desktop.${DesktopLocalErrorCode}.message`;
 
 const CORE_API_HEALTH_PATH = "/api/health";
 const CORE_API_SERVICE_NAME = "linguagacha-core";
@@ -92,7 +75,7 @@ let pending_core_api_base_url_resolution: Promise<string> | null = null;
  * 携带 Core API 错误码，保持渲染层错误分支可判定
  */
 export class DesktopApiError extends Error {
-  code: CoreApiErrorCode;
+  code: DesktopApiErrorCode;
   status: number;
   details: Record<string, unknown>;
   action: string | null;
@@ -104,7 +87,7 @@ export class DesktopApiError extends Error {
    */
   constructor(args: {
     message: string;
-    code: CoreApiErrorCode;
+    code: DesktopApiErrorCode;
     status: number;
     details?: Record<string, unknown>;
     action?: string;
@@ -125,12 +108,19 @@ export class DesktopApiError extends Error {
    * 本地 renderer 错误使用同一类，避免页面判断 Error.message
    */
   public static local(
-    message: string,
-    code: CoreApiErrorCode = "internal_invariant",
+    code: DesktopLocalErrorCode,
     status = 500,
+    details: Record<string, unknown> = {},
   ): DesktopApiError {
-    return new DesktopApiError({ code, message, status });
+    const message_key = build_desktop_local_error_message_key(code);
+    return new DesktopApiError({ code, details, message: message_key, message_key, status });
   }
+}
+
+function build_desktop_local_error_message_key(
+  code: DesktopLocalErrorCode,
+): DesktopLocalErrorMessageKey {
+  return `app.error.desktop.${code}.message`;
 }
 
 function build_desktop_api_error<data_type>(
@@ -139,13 +129,14 @@ function build_desktop_api_error<data_type>(
   payload: ApiEnvelope<data_type> | null,
 ): DesktopApiError {
   const error = payload?.error;
+  const fallback_message_key = build_desktop_local_error_message_key("http_error");
   return new DesktopApiError({
-    message: error?.safe_message ?? error?.message ?? `请求失败：${path}`,
+    message: error?.message ?? fallback_message_key,
     code: error?.code ?? "http_error",
     status: response.status,
-    details: error?.details,
+    details: error?.details ?? { path },
     action: error?.action,
-    message_key: error?.message_key,
+    message_key: error?.message_key ?? fallback_message_key,
     request_id: error?.request_id,
   });
 }
@@ -161,11 +152,14 @@ async function read_api_envelope<data_type>(
 }
 
 function create_network_error(path: string, cause: unknown): DesktopApiError {
-  const prefix =
-    cause instanceof Error && cause.name === "AbortError" ? "请求超时：" : "网络请求失败：";
+  const code: DesktopLocalErrorCode =
+    cause instanceof Error && cause.name === "AbortError" ? "timeout" : "network_failed";
+  const message_key = build_desktop_local_error_message_key(code);
   return new DesktopApiError({
-    message: `${prefix}${path}`,
-    code: "http_error",
+    message: message_key,
+    code,
+    details: { path },
+    message_key,
     status: 503,
   });
 }
@@ -174,7 +168,7 @@ function read_core_api_base_url(): string {
   const base_url = normalize_core_api_base_url(window.desktopApp.coreApi.baseUrl);
 
   if (base_url === "") {
-    throw DesktopApiError.local("Core API 地址未配置。", "missing_core_api_base_url", 500);
+    throw DesktopApiError.local("missing_core_api_base_url", 500);
   }
 
   return base_url;
@@ -310,7 +304,7 @@ async function resolve_core_api_base_url(): Promise<string> {
       return base_url;
     }
 
-    throw DesktopApiError.local("Core API 不可用。", "core_api_unavailable", 503);
+    throw DesktopApiError.local("core_api_unavailable", 503);
   })();
 
   try {
@@ -323,7 +317,7 @@ async function resolve_core_api_base_url(): Promise<string> {
 export async function get_core_metadata(): Promise<CoreMetadata> {
   await resolve_core_api_base_url();
   if (cached_core_metadata === null) {
-    throw DesktopApiError.local("Core 元信息不可用。", "core_metadata_unavailable", 503);
+    throw DesktopApiError.local("core_metadata_unavailable", 503);
   }
 
   return cached_core_metadata;
@@ -422,7 +416,7 @@ async function* open_json_event_source_stream(args: {
   }
 
   function fail_stream(): void {
-    stream_error = DesktopApiError.local("事件流连接失败。", "event_stream_failed", 503);
+    stream_error = DesktopApiError.local("event_stream_failed", 503);
     close_stream();
   }
 

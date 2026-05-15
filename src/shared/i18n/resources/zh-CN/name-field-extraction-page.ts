@@ -58,6 +58,7 @@ export const zh_cn_name_field_extraction_page = {
     extract_success: "已提取 {COUNT} 个姓名字段。",
     extract_empty: "没有可提取的姓名字段。",
     no_pending_translation: "没有需要翻译的姓名。",
+    translate_failed: "姓名翻译失败。",
     no_importable_entries: "没有可导入术语表的姓名条目。",
     import_success: "已导入到术语表。",
     import_failed: "导入术语表失败。",

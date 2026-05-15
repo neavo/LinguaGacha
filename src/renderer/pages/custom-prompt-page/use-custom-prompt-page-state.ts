@@ -13,6 +13,7 @@ import {
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
   CUSTOM_PROMPT_VARIANT_CONFIG,
@@ -146,14 +147,6 @@ function build_default_preset_update_payload(
   };
 }
 
-function resolve_error_message(error: unknown, fallback_message: string): string {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
-  return fallback_message;
-}
-
 export function useCustomPromptPageState(
   variant: CustomPromptVariant,
 ): UseCustomPromptPageStateResult {
@@ -269,7 +262,7 @@ export function useCustomPromptPageState(
       } catch (error) {
         local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
-        push_toast("error", resolve_error_message(error, args.failureMessage));
+        push_toast("error", resolve_visible_error_message(error, t, args.failureMessage));
         return false;
       }
     },
@@ -291,7 +284,7 @@ export function useCustomPromptPageState(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("custom_prompt_page.feedback.load_failed")),
+        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.load_failed")),
       );
     }
   }, [fetch_prompt_template, push_toast, t]);
@@ -314,7 +307,7 @@ export function useCustomPromptPageState(
         } catch (error) {
           push_toast(
             "error",
-            resolve_error_message(error, t("custom_prompt_page.feedback.load_failed")),
+            resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.load_failed")),
           );
         }
       })();
@@ -459,7 +452,7 @@ export function useCustomPromptPageState(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("custom_prompt_page.feedback.import_failed")),
+        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.import_failed")),
       );
     }
   }, [commit_prompt_text, config.task_type, push_toast, readonly, t]);
@@ -480,7 +473,7 @@ export function useCustomPromptPageState(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("custom_prompt_page.feedback.export_failed")),
+        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.export_failed")),
       );
     }
   }, [config.task_type, push_toast, t]);
@@ -491,7 +484,7 @@ export function useCustomPromptPageState(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
+        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
       );
     }
   }, [push_toast, refresh_preset_menu, t]);
@@ -517,7 +510,7 @@ export function useCustomPromptPageState(
       } catch (error) {
         push_toast(
           "error",
-          resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
+          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
         );
       }
     },
@@ -612,7 +605,7 @@ export function useCustomPromptPageState(
       } catch (error) {
         push_toast(
           "error",
-          resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
+          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
         );
         return false;
       }
@@ -655,7 +648,7 @@ export function useCustomPromptPageState(
       } catch (error) {
         push_toast(
           "error",
-          resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
+          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
         );
         return false;
       }
@@ -680,7 +673,7 @@ export function useCustomPromptPageState(
       } catch (error) {
         push_toast(
           "error",
-          resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
+          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
         );
       }
     },
@@ -703,7 +696,7 @@ export function useCustomPromptPageState(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
+        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
       );
     }
   }, [config, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t]);
@@ -836,7 +829,7 @@ export function useCustomPromptPageState(
       } catch (error) {
         push_toast(
           "error",
-          resolve_error_message(error, t("custom_prompt_page.feedback.preset_failed")),
+          resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
         );
       }
     } else {

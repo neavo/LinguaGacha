@@ -1,5 +1,4 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import { app_error } from "../../api/api-error";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import { ProjectChangePublisher } from "../../project/project-change-publisher";
@@ -12,6 +11,7 @@ import type { TaskArtifact } from "../protocol/artifact";
 import type { TaskType } from "../protocol/task-types";
 import { QualityRuleSnapshotTool } from "../../../shared/quality/snapshot";
 import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
+import * as AppErrors from "../../../shared/error";
 
 /**
  * 项目任务存储端口，是 TaskEngine 读写项目任务事实的唯一内部入口
@@ -365,7 +365,7 @@ export class ProjectTaskStore {
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw app_error("project_not_loaded");
+      throw new AppErrors.ProjectNotLoadedError();
     }
     return state.projectPath;
   }

@@ -38,6 +38,7 @@ import {
 } from "@/app/desktop/desktop-runtime-context";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { api_fetch } from "@/app/desktop/desktop-api";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { normalize_source_paths } from "@/lib/source-paths";
 import type {
   AnalysisTaskConfirmState,
@@ -87,7 +88,7 @@ const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "
 type WorkbenchParseFailedFile = {
   filename: string;
   code: string;
-  safe_message: string;
+  message_key: LocaleKey;
 };
 
 function clamp_workbench_count(value: number, min_value: number, max_value: number): number {
@@ -105,11 +106,11 @@ function normalize_parse_failed_file(value: unknown): WorkbenchParseFailedFile |
   const record = value as Record<string, unknown>;
   const filename = String(record["filename"] ?? "").trim();
   const code = String(record["code"] ?? "").trim();
-  const safe_message = String(record["safe_message"] ?? "").trim();
+  const message_key = String(record["message_key"] ?? `app.error.${code}.message`).trim();
   if (filename === "" || code === "") {
     return null;
   }
-  return { filename, code, safe_message };
+  return { filename, code, message_key: message_key as LocaleKey };
 }
 
 function complete_workbench_stats(args: {
@@ -173,14 +174,6 @@ type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
 
 function normalize_path_key(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
-}
-
-function resolve_error_message(error: unknown, fallback_message: string): string {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
-  return fallback_message;
 }
 
 function close_dialog_state(): WorkbenchDialogState {
@@ -973,7 +966,11 @@ export function useWorkbenchLiveState(
           return EMPTY_SNAPSHOT;
         }
 
-        const message = resolve_error_message(error, t("workbench_page.feedback.refresh_failed"));
+        const message = resolve_visible_error_message(
+          error,
+          t,
+          t("workbench_page.feedback.refresh_failed"),
+        );
         set_cache_status("error");
         set_file_op_running(false);
         set_settled_project_path(project_snapshot.path);
@@ -1466,8 +1463,7 @@ export function useWorkbenchLiveState(
           if (failed_files.length > 0) {
             const failed_file = failed_files[0];
             if (failed_file !== undefined) {
-              const error_key = `app.error.${failed_file.code}` as LocaleKey;
-              const reason = t(error_key) === error_key ? failed_file.safe_message : t(error_key);
+              const reason = t(failed_file.message_key);
               push_toast(
                 "warning",
                 t("workbench_page.feedback.file_parse_failed", {
@@ -1749,7 +1745,7 @@ export function useWorkbenchLiveState(
             ? t("workbench_page.feedback.close_project_failed")
             : t("workbench_page.feedback.file_action_failed");
 
-      push_toast("error", resolve_error_message(error, fallback_message));
+      push_toast("error", resolve_visible_error_message(error, t, fallback_message));
       set_dialog_submitting(false);
     }
   }
@@ -1776,7 +1772,7 @@ export function useWorkbenchLiveState(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("workbench_page.feedback.file_action_failed")),
+        resolve_visible_error_message(error, t, t("workbench_page.feedback.file_action_failed")),
       );
       set_dialog_submitting(false);
     }

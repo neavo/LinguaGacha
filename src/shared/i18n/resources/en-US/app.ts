@@ -81,21 +81,128 @@ export const en_us_app = {
     builder_preceding_context: "Preceding Context:",
   },
   error: {
-    validation_failed: "The request parameters are invalid …",
-    route_not_found: "The API route does not exist …",
-    project_not_loaded: "No project is loaded …",
-    project_not_found: "The project file does not exist …",
-    file_not_found: "The file does not exist …",
-    revision_conflict: "The data version changed. Please refresh and try again …",
-    task_busy: "A background task is running. Please try again later …",
-    unsupported_file_format: "This file format is not supported …",
-    file_io_failed: "File read or write failed …",
-    database_conflict: "Database write conflict. Please refresh and try again …",
-    model_not_found: "The model configuration does not exist …",
-    model_provider_failed: "The model service request failed. Please check the API settings …",
-    worker_failed: "The background execution channel failed …",
-    runtime_capability_missing: "The current runtime is missing a required capability …",
-    internal_invariant: "Internal state error …",
+    request: {
+      validation_failed: {
+        message: "The request parameters are invalid …",
+      },
+      invalid_json: {
+        message: "The request JSON is invalid …",
+      },
+      route_not_found: {
+        message: "The API route does not exist …",
+      },
+    },
+    project: {
+      not_loaded: {
+        message: "No project is loaded …",
+        action: "Open or create a project first …",
+      },
+      not_found: {
+        message: "The project file does not exist …",
+        action: "Make sure the project file is still in its original location …",
+      },
+    },
+    file: {
+      not_found: {
+        message: "The file does not exist …",
+        action: "Make sure the file is still in its original location …",
+      },
+      unsupported_format: {
+        message: "This file format is not supported …",
+        action: "Choose a source file supported by LinguaGacha …",
+      },
+      io_failed: {
+        message: "File read or write failed …",
+      },
+    },
+    database: {
+      conflict: {
+        message: "Database write conflict. Please refresh and try again …",
+        action: "Refresh the current data and submit again …",
+      },
+    },
+    data: {
+      revision_conflict: {
+        message: "The data version changed. Please refresh and try again …",
+        action: "Refresh the current data and submit again …",
+      },
+    },
+    task: {
+      busy: {
+        message: "A background task is running. Please try again later …",
+        action: "Wait for the current task to finish or stop it first …",
+      },
+    },
+    model: {
+      not_found: {
+        message: "The model configuration does not exist …",
+        action: "Select a model configuration again …",
+      },
+      provider_failed: {
+        message: "The model service request failed. Please check the API settings …",
+        action: "Check the model URL, API key, and provider status …",
+      },
+    },
+    worker: {
+      failed: {
+        message: "The background execution channel failed …",
+      },
+    },
+    runtime: {
+      capability_missing: {
+        message: "The current runtime is missing a required capability …",
+      },
+      internal_invariant: {
+        message: "Internal state error …",
+      },
+    },
+    language: {
+      invalid_target_language: {
+        message: "The target language is invalid …",
+      },
+      unsupported_all_target_language: {
+        message: "The target language cannot be All …",
+      },
+      unknown_source_language_code: {
+        message: "The source language code is invalid …",
+      },
+    },
+    quality: {
+      unknown_rule_type: {
+        message: "The quality rule type is invalid …",
+      },
+      unsupported_rule_meta: {
+        message: "The quality rule setting is invalid …",
+      },
+    },
+    prompt: {
+      unknown_prompt_type: {
+        message: "The prompt type is invalid …",
+      },
+    },
+    desktop: {
+      missing_core_api_base_url: {
+        message: "Core API URL is not configured …",
+      },
+      core_api_unavailable: {
+        message: "Core API is unavailable …",
+      },
+      core_metadata_unavailable: {
+        message: "Core metadata is unavailable …",
+      },
+      event_stream_failed: {
+        message: "Event stream connection failed …",
+      },
+      http_error: {
+        message: "Request failed: {PATH} …",
+      },
+      network_failed: {
+        message: "Network request failed: {PATH} …",
+      },
+      timeout: {
+        message: "Request timed out: {PATH} …",
+      },
+    },
   },
   diagnostic: {
     api_gateway: {
@@ -116,6 +223,7 @@ export const en_us_app = {
     lifecycle: {
       app_start_failed: "LinguaGacha failed to start …",
       core_gateway_start_failed: "Core / Gateway startup failed - {ERROR} …",
+      main_fatal_uncaught: "Electron main caught an unhandled fatal exception …",
     },
     migration: {
       path_failed: "Failed to migrate path: {SOURCE_PATH} -> {DESTINATION_PATH} …",

@@ -255,6 +255,6 @@ describe("FileExportService", () => {
 
     await expect(
       service.export_converted_translation({ suffix: "_BAD", items: [{ id: 1, dst: "译文" }] }),
-    ).rejects.toThrow("导出后缀无效。");
+    ).rejects.toThrow("request.validation_failed");
   });
 });

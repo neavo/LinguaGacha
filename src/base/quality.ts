@@ -1,4 +1,5 @@
 import type { JsonRecord } from "../shared/utils/json-tool";
+import { UnknownQualityRuleTypeError, UnsupportedQualityRuleMetaError } from "../shared/error";
 
 export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
 
@@ -113,7 +114,7 @@ export class QualityRule {
     if (is_quality_rule_kind(value)) {
       return new QualityRule(value);
     }
-    throw new Error(`未知的质量规则类型：${String(value)}`);
+    throw new UnknownQualityRuleTypeError(value);
   }
 
   /**
@@ -262,14 +263,14 @@ export class QualityRule {
   public resolve_meta_key(key: string): string {
     if (key === "enabled") {
       if (this.enabled_meta_key === null) {
-        throw new Error(`当前规则类型不支持布尔启用切换：${this.kind}`);
+        throw new UnsupportedQualityRuleMetaError(this.kind, key);
       }
       return this.enabled_meta_key;
     }
     if (key === "mode" && this.mode_meta_key !== null) {
       return this.mode_meta_key;
     }
-    throw new Error(`当前规则类型不支持该 meta 写入：${this.kind} -> ${key}`);
+    throw new UnsupportedQualityRuleMetaError(this.kind, key);
   }
 
   /**

@@ -77,7 +77,9 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    await expect(builder.build_main()).rejects.toThrow("target_language");
+    await expect(builder.build_main()).rejects.toMatchObject({
+      code: "language.unsupported_all_target_language",
+    });
   });
 
   it("目标语言无效时拒绝构造提示词", async () => {
@@ -92,7 +94,9 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    await expect(builder.build_main()).rejects.toThrow("invalid target_language");
+    await expect(builder.build_main()).rejects.toMatchObject({
+      code: "language.invalid_target_language",
+    });
   });
 
   it("提示词模板语言跟随 UI 语言而不是目标语言", async () => {

@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 
-import { app_error } from "../../api/api-error";
 import type { TaskType } from "../runtime/task-runtime-types";
 import type { TaskRunHandle } from "./engine-options";
+import * as AppErrors from "../../../shared/error";
 
 interface ActiveRun {
   run_id: string; // run_id 是当前任务的唯一身份，异步收尾必须凭它判断是否仍然有效
@@ -21,7 +21,7 @@ export class TaskRunLock {
    */
   public begin(task_type: TaskType): TaskRunHandle {
     if (this.active_run !== null) {
-      throw app_error("task_busy");
+      throw new AppErrors.TaskBusyError();
     }
     const abort_controller = new AbortController();
     const run_id = crypto.randomUUID();

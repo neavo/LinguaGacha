@@ -17,6 +17,7 @@ import type {
 } from "@/app/page-runtime/project-pages-barrier";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
@@ -73,14 +74,6 @@ export type AnalysisTaskRuntime = {
   request_import_analysis_glossary: () => Promise<void>;
   refresh_analysis_task_snapshot: () => Promise<void>;
 };
-
-function resolve_error_message(error: unknown, fallback_message: string): string {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
-  return fallback_message;
-}
 
 function create_task_confirm_state(kind: AnalysisTaskActionKind): AnalysisTaskConfirmState {
   return {
@@ -405,7 +398,11 @@ export function useAnalysisTaskRuntime(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("workbench_page.analysis_task.feedback.refresh_failed")),
+        resolve_visible_error_message(
+          error,
+          t,
+          t("workbench_page.analysis_task.feedback.refresh_failed"),
+        ),
       );
     }
   }, [
@@ -457,7 +454,11 @@ export function useAnalysisTaskRuntime(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("workbench_page.analysis_task.feedback.start_failed")),
+        resolve_visible_error_message(
+          error,
+          t,
+          t("workbench_page.analysis_task.feedback.start_failed"),
+        ),
       );
     }
   }, [
@@ -673,7 +674,7 @@ export function useAnalysisTaskRuntime(
         fallback_message = t("workbench_page.analysis_task.feedback.import_failed");
       }
 
-      push_toast("error", resolve_error_message(error, fallback_message));
+      push_toast("error", resolve_visible_error_message(error, t, fallback_message));
       set_analysis_confirm_state((previous_state) => {
         if (previous_state === null) {
           return null;
@@ -713,7 +714,11 @@ export function useAnalysisTaskRuntime(
     } catch (error) {
       push_toast(
         "error",
-        resolve_error_message(error, t("workbench_page.analysis_task.feedback.import_failed")),
+        resolve_visible_error_message(
+          error,
+          t,
+          t("workbench_page.analysis_task.feedback.import_failed"),
+        ),
       );
     }
   }, [

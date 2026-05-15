@@ -6,10 +6,11 @@
 
 - `src/main/api/api-gateway-server.ts` 是 Electron 运行态公开 `/api/*` 协议的唯一注册点。
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
-- 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message, safe_message, message_key, request_id, details?, action? } }`。
-- `src/main/api/api-error.ts` 是公开错误 code、HTTP status、默认安全文案、日志分级和安全 details 的唯一模型；Gateway 只把 `AppError` 映射为预期 4xx / 409 / 423 / 502，裸异常统一归入 `internal_invariant` 或按边界规则收窄。
-- 稳定错误码按维护语义分组：请求与路由为 `validation_failed`、`route_not_found`；项目和文件为 `project_not_loaded`、`project_not_found`、`file_not_found`、`unsupported_file_format`、`file_io_failed`；并发和数据一致性为 `revision_conflict`、`task_busy`、`database_conflict`；模型、worker 和运行时能力为 `model_not_found`、`model_provider_failed`、`worker_failed`、`runtime_capability_missing`、`internal_invariant`。
-- `safe_message` 和 `message_key` 只表达可展示文案；`details` 只允许安全 JSON 字段，内部 stack、完整敏感路径、API key、Authorization header、provider 原始响应和 cause 只能进入日志。
+- 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message, message_key, request_id, details?, action?, action_key? } }`。
+- `src/shared/error` 是公开错误 code、HTTP status、日志分级、API envelope 投影和日志投影的唯一模型；用户可见错误文案只从 `src/shared/i18n` 的 `message_key` / `action_key` 解析，错误类和定义表不得承载自然语言文案。
+- 稳定错误码使用点分语义码：请求与路由归 `request.*`，项目归 `project.*`，文件归 `file.*`，数据一致性归 `data.*` / `database.*`，任务归 `task.*`，模型归 `model.*`，worker 归 `worker.*`，运行时归 `runtime.*`。业务代码需要抛错时使用 `src/shared/error` 的语义化 `AppError` 子类，不再通过 API 层手拼 code/message/details。
+- `message` 和 `action` 是 Gateway 按当前应用语言解析出的安全展示文本；`message_key` 和 `action_key` 是 renderer 可复用的稳定 i18n key；`details` 只允许安全 JSON 字段，内部 stack、完整敏感路径、API key、Authorization header、provider 原始响应和 cause 只能进入日志。
+- `AppError` 构造不写日志；Gateway、任务和 Electron main 需要记录错误时通过日志投影写入 `LogManager`，日志窗口仍只暴露安全摘要，文件和控制台保留结构化诊断上下文与 cause 链。
 - 公开 SSE frame 必须使用严格 JSON 序列化，不能手写拼接多行 `data` 负载。
 
 | 路径 | 语义 | 维护边界 |
@@ -87,7 +88,7 @@ flowchart LR
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |
 | service | 设置、路径、质量规则、提示词、校对保存 | `SettingService`、`QualityService`、`ProofreadingService` |
-| log | 内部日志聚合、日志窗口和日志 SSE | `LogManager`、`LogWindowHost` |
+| log | 内部日志聚合、`AppError` 日志投影、fatal 兜底、日志窗口和日志 SSE | `LogManager`、`record_app_error`、`LogWindowHost` |
 
 API 层只分发到领域服务和包装协议语义，不直接操作 database workflow，不持有 SQLite 句柄，不把内部服务对象暴露给 renderer。
 

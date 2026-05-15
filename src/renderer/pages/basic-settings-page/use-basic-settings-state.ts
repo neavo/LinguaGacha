@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { DesktopApiError, api_fetch } from "@/app/desktop/desktop-api";
+import { api_fetch } from "@/app/desktop/desktop-api";
 import { createProjectPrefilterClient } from "@/project/prefilter/prefilter-worker-client";
 import { apply_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-committer";
 import { format_project_settings_aligned_toast } from "@/project/settings/alignment-toast";
@@ -12,6 +12,7 @@ import {
 import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
@@ -112,7 +113,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     } catch (error) {
       push_toast(
         "error",
-        error instanceof Error ? error.message : t("basic_settings_page.feedback.refresh_failed"),
+        resolve_visible_error_message(error, t, t("basic_settings_page.feedback.refresh_failed")),
       );
     }
   }, [push_toast, refresh_settings, t]);
@@ -173,11 +174,10 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
           return reverted_snapshot;
         });
 
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("basic_settings_page.feedback.update_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("basic_settings_page.feedback.update_failed")),
+        );
         return null;
       } finally {
         set_pending(field, false);
@@ -256,11 +256,10 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       try {
         await apply_project_settings_only_alignment(previous_settings_snapshot);
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("basic_settings_page.feedback.update_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("basic_settings_page.feedback.update_failed")),
+        );
         return;
       }
 
@@ -429,11 +428,14 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
             },
           );
         } catch (error) {
-          if (error instanceof DesktopApiError) {
-            push_toast("error", error.message);
-          } else {
-            push_toast("error", t("basic_settings_page.feedback.pick_directory_failed"));
-          }
+          push_toast(
+            "error",
+            resolve_visible_error_message(
+              error,
+              t,
+              t("basic_settings_page.feedback.pick_directory_failed"),
+            ),
+          );
         }
       } else {
         await commit_update(

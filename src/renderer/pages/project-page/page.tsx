@@ -22,6 +22,7 @@ import {
 import { type ProjectSnapshot, type SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
 import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { AppButton } from "@/widgets/app-button/app-button";
 import {
@@ -280,8 +281,9 @@ function format_project_error_message(args: {
   template: string;
   generic_text: string;
   error: unknown;
+  t: ReturnType<typeof useI18n>["t"];
 }): string {
-  const error_detail = args.error instanceof Error ? args.error.message.trim() : "";
+  const error_detail = resolve_visible_error_message(args.error, args.t, "").trim();
 
   if (error_detail === "") {
     return args.generic_text;
@@ -796,7 +798,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       if (
         recent_project_name !== undefined &&
         error instanceof DesktopApiError &&
-        error.code === "project_not_found"
+        error.code === "project.not_found"
       ) {
         set_missing_recent_project({
           path: project_path,
@@ -808,6 +810,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             template: t("project_page.open.preview_unavailable"),
             generic_text: t("project_page.open.preview_unavailable_generic"),
             error,
+            t,
           }),
         );
       }
@@ -1068,6 +1071,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           template: t("project_page.create.failed"),
           generic_text: t("project_page.create.failed_generic"),
           error,
+          t,
         }),
       );
       return;
@@ -1175,6 +1179,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           template: t("project_page.open.failed"),
           generic_text: t("project_page.open.failed_generic"),
           error,
+          t,
         }),
       );
       return;
@@ -1199,7 +1204,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     } catch (error) {
       push_toast(
         "error",
-        error instanceof Error ? error.message : t("project_page.open.remove_unavailable"),
+        resolve_visible_error_message(error, t, t("project_page.open.remove_unavailable")),
       );
     }
   }

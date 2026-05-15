@@ -52,8 +52,8 @@ describe("FilePreviewService", () => {
         {
           source_path: path.join(temp_dir, "missing.bin"),
           filename: "missing.bin",
-          code: "unsupported_file_format",
-          safe_message: "不支持的文件格式。",
+          code: "file.unsupported_format",
+          message_key: "app.error.file.unsupported_format.message",
         },
       ],
     });

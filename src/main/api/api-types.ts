@@ -1,29 +1,10 @@
-import type { AppErrorCode, AppErrorDetails } from "./api-error";
+import type { ApiErrorPayload, ApiJsonValue, ApiSuccessEnvelope } from "../../shared/error";
 
-export type ApiJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | ApiJsonValue[]
-  | { [key: string]: ApiJsonValue };
-
-export interface ApiSuccessEnvelope {
-  ok: true;
-  data: ApiJsonValue;
-}
+export type { ApiJsonValue, ApiSuccessEnvelope } from "../../shared/error";
 
 export interface ApiErrorEnvelope {
   ok: false;
-  error: {
-    code: AppErrorCode;
-    message: string;
-    safe_message: string;
-    message_key: `app.error.${AppErrorCode}`;
-    details?: AppErrorDetails;
-    action?: string;
-    request_id: string;
-  };
+  error: ApiErrorPayload;
 }
 
 export type ApiEnvelope = ApiSuccessEnvelope | ApiErrorEnvelope;

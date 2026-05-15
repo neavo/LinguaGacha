@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { app_error } from "../api/api-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -10,6 +9,7 @@ import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import { Item, type ItemStatus } from "../../base/item";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
+import * as AppErrors from "../../shared/error";
 
 /**
  * API 入参和返回值在文件域内按 JSON 对象处理，避免暴露内部类实例
@@ -75,7 +75,7 @@ export class FileExportService {
     const config = this.setting_service.load_setting();
     const suffix = String(request["suffix"] ?? "");
     if (suffix !== "_S2T" && suffix !== "_T2S") {
-      throw app_error("validation_failed", "导出后缀无效。");
+      throw new AppErrors.RequestValidationError();
     }
     const converted_items = Array.isArray(request["items"])
       ? request["items"].filter(
@@ -84,7 +84,7 @@ export class FileExportService {
         )
       : [];
     if (converted_items.length === 0) {
-      throw app_error("validation_failed", "没有可导出的数据。");
+      throw new AppErrors.RequestValidationError();
     }
     const converted_by_id = new Map<number, JsonRecord>();
     for (const item of converted_items) {
@@ -254,7 +254,7 @@ export class FileExportService {
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw app_error("project_not_loaded");
+      throw new AppErrors.ProjectNotLoadedError();
     }
     return state.projectPath;
   }

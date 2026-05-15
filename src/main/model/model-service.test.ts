@@ -196,7 +196,9 @@ describe("ModelService 配置管理", () => {
   it("未知模型类型不能新增自定义模型", async () => {
     const { service } = await create_model_service([]);
 
-    await expect(service.add_model({ model_type: "PRESET" })).rejects.toThrow("模型类型无效");
+    await expect(service.add_model({ model_type: "PRESET" })).rejects.toThrow(
+      "request.validation_failed",
+    );
   });
 
   it("删除激活模型时优先回退到同类型模型", async () => {
@@ -272,9 +274,9 @@ describe("ModelService 配置管理", () => {
     ]);
 
     await expect(service.delete_model({ model_id: "preset" })).rejects.toThrow(
-      "内置预设模型不能删除",
+      "request.validation_failed",
     );
-    await expect(service.delete_model({ model_id: "missing" })).rejects.toThrow("模型配置不存在");
+    await expect(service.delete_model({ model_id: "missing" })).rejects.toThrow("model.not_found");
   });
 
   it("更新模型只应用白名单字段并重建快照", async () => {
@@ -312,10 +314,10 @@ describe("ModelService 配置管理", () => {
 
     await expect(
       service.update_model({ model_id: "missing", patch: { name: "updated-name" } }),
-    ).rejects.toThrow("模型配置不存在");
+    ).rejects.toThrow("model.not_found");
     await expect(
       service.update_model({ model_id: "custom", patch: { forbidden: "value" } }),
-    ).rejects.toThrow("模型配置包含不允许的字段");
+    ).rejects.toThrow("request.validation_failed");
   });
 
   it("重置预设模型时从内置预设重新读取目标条目", async () => {
@@ -349,10 +351,10 @@ describe("ModelService 配置管理", () => {
     ]);
 
     await expect(service.reset_preset_model({ model_id: "custom" })).rejects.toThrow(
-      "该模型不是内置预设",
+      "request.validation_failed",
     );
     await expect(service.reset_preset_model({ model_id: "preset" })).rejects.toThrow(
-      "模型配置不存在",
+      "model.not_found",
     );
   });
 
@@ -383,13 +385,13 @@ describe("ModelService 配置管理", () => {
     ]);
 
     await expect(service.reorder_model({ ordered_model_ids: [] })).rejects.toThrow(
-      "模型排序列表不能为空",
+      "request.validation_failed",
     );
     await expect(service.reorder_model({ ordered_model_ids: ["missing", "b"] })).rejects.toThrow(
-      "模型配置不存在",
+      "model.not_found",
     );
     await expect(service.reorder_model({ ordered_model_ids: ["b", "a"] })).rejects.toThrow(
-      "模型排序必须完整覆盖同一分组",
+      "request.validation_failed",
     );
   });
 });

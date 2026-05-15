@@ -1,4 +1,5 @@
 import { ALL_LANGUAGE_CODE, has_language_character, normalize_language_code } from "../language";
+import { UnknownSourceLanguageCodeError } from "../error";
 
 // 语言预过滤只依赖基础语言值域，未知语言显式报错以暴露损坏配置
 export function has_prefilter_language_character(text: string, source_language: string): boolean {
@@ -9,7 +10,7 @@ export function has_prefilter_language_character(text: string, source_language: 
   }
 
   if (language_code === null) {
-    throw new Error(`未知源语言代码：${source_language}`);
+    throw new UnknownSourceLanguageCodeError(source_language);
   }
 
   return has_language_character(text, language_code);

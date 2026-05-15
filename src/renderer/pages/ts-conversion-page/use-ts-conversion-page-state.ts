@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "re
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
   build_ts_conversion_converted_items,
@@ -194,11 +195,10 @@ export function useTsConversionPageState() {
       push_toast("success", t("ts_conversion_page.feedback.task_success"));
     } catch (error) {
       dismiss_toast(progress_toast_id);
-      if (error instanceof Error && error.message.trim() !== "") {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("ts_conversion_page.feedback.task_failed"));
-      }
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("ts_conversion_page.feedback.task_failed")),
+      );
     } finally {
       run_active_ref.current = false;
       set_is_running(false);

@@ -439,12 +439,12 @@ describe("ProjectLifecycleService", () => {
     });
   });
 
-  it("preview 在工程文件不存在时抛出 ENOENT", () => {
+  it("preview 在project.not_found时抛出 ENOENT", () => {
     const service = create_service({ database: create_database() });
 
     expect(() =>
       service.get_project_preview({ path: path.join(create_temp_dir(), "missing.lg") }),
-    ).toThrow("工程文件不存在");
+    ).toThrow("project.not_found");
   });
 
   it("unload 清理 会话并释放旧工程 database 缓存", async () => {

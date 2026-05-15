@@ -7,7 +7,7 @@ describe("TaskRunLock", () => {
     const lock = new TaskRunLock();
     const first = lock.begin("translation");
 
-    expect(() => lock.begin("analysis")).toThrow("后台任务正在执行中");
+    expect(() => lock.begin("analysis")).toThrow("task.busy");
     expect(lock.is_current(first.run_id)).toBe(true);
 
     lock.finish(first.run_id);

@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { app_error } from "../api/api-error";
 import { Item, type ItemFileType } from "../../base/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
@@ -14,6 +13,7 @@ import { TXTFormat } from "./formats/txt-format";
 import { WOLFXLSXFormat } from "./formats/wolfxlsx-format";
 import { XLSXFormat } from "./formats/xlsx-format";
 import { EPUBFormat } from "./formats/epub-format";
+import * as AppErrors from "../../shared/error";
 import {
   build_bilingual_path,
   build_target_path,
@@ -129,7 +129,7 @@ export class FileFormatService {
     current_rel_path?: string,
   ): Promise<ParsedFilePreview> {
     if (!this.is_supported_file(file_path)) {
-      throw app_error("unsupported_file_format");
+      throw new AppErrors.UnsupportedFileFormatError();
     }
     const target_rel_path =
       current_rel_path === undefined || current_rel_path === ""

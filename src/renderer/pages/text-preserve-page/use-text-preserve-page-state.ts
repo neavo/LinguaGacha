@@ -20,6 +20,7 @@ import { useQualityStatistics } from "@/project/quality/quality-statistics-conte
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import {
   build_text_preserve_filter_result,
@@ -230,14 +231,6 @@ function build_default_preset_update_payload(value: string): Record<string, stri
   return {
     [TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY]: value,
   };
-}
-
-function resolve_text_preserve_error_message(error: unknown, fallback_message: string): string {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
-  return fallback_message;
 }
 
 function is_modal_progress_timeout_error(error: unknown): boolean {
@@ -512,7 +505,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const push_action_error_toast = useCallback(
     (error: unknown): void => {
-      push_toast("error", resolve_text_preserve_error_message(error, unknown_error_message));
+      push_toast("error", resolve_visible_error_message(error, t, unknown_error_message));
     },
     [push_toast, unknown_error_message],
   );

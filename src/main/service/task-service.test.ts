@@ -147,10 +147,10 @@ describe("TaskService", () => {
         scope: { kind: "items", item_ids: [1] },
         expected_section_revisions: { items: 7, proofreading: 2, quality: 1, prompts: 1 },
       }),
-    ).rejects.toThrow("运行态 revision 冲突");
+    ).rejects.toThrow("data.revision_conflict");
   });
 
-  it("任务启动缺少 expected_section_revisions 或必需 section 时拒绝执行", async () => {
+  it("request.validation_failed 或必需 section 时拒绝执行", async () => {
     const calls: string[] = [];
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
@@ -167,7 +167,7 @@ describe("TaskService", () => {
     );
 
     await expect(service.start_task({ task_type: "translation", mode: "new" })).rejects.toThrow(
-      "任务启动缺少 expected_section_revisions",
+      "request.validation_failed",
     );
     await expect(
       service.start_task({
@@ -175,7 +175,7 @@ describe("TaskService", () => {
         mode: "new",
         expected_section_revisions: { quality: 1 },
       }),
-    ).rejects.toThrow("任务启动缺少 prompts revision");
+    ).rejects.toThrow("request.validation_failed");
     expect(calls).toEqual([]);
   });
 

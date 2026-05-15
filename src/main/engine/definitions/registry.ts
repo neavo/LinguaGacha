@@ -1,7 +1,7 @@
 import type { StartTaskCommand } from "../protocol/task-command";
 import type { TaskType } from "../protocol/task-types";
-import { app_error } from "../../api/api-error";
 import type { TaskDefinition } from "./task-definition";
+import * as AppErrors from "../../../shared/error";
 
 /**
  * Definition 注册表是任务类型到业务差异解释器的唯一映射
@@ -22,7 +22,7 @@ export class TaskDefinitionRegistry {
   public get(command: StartTaskCommand): TaskDefinition {
     const definition = this.definitions.get(command.task_type);
     if (definition === undefined) {
-      throw app_error("internal_invariant", `未注册任务定义：${command.task_type}`);
+      throw new AppErrors.InternalInvariantError();
     }
     return definition;
   }

@@ -62,6 +62,7 @@ export const en_us_name_field_extraction_page = {
     extract_success: "Extracted {COUNT} name fields.",
     extract_empty: "No name fields can be extracted.",
     no_pending_translation: "No names need translation.",
+    translate_failed: "Failed to translate name.",
     no_importable_entries: "No name entries can be imported to the glossary.",
     import_success: "Imported to glossary.",
     import_failed: "Failed to import to glossary.",

@@ -10,9 +10,11 @@ import {
   create_main_window,
 } from "./handler/window-handler";
 import { CoreLifecycleManager } from "./lifecycle/lifecycle-manager";
+import { install_main_fatal_error_handler } from "./lifecycle/main-fatal-error-handler";
 import { type LogWindowHost } from "./log/log-window-host";
 import { write_electron_main_error } from "./log/log-bridge";
 import { t_main_log } from "./log/log-text";
+import * as AppErrors from "../shared/error";
 
 const desktop_bundle_dir = path.dirname(fileURLToPath(import.meta.url)); // Electron ESM 入口没有 CommonJS 的 __dirname，这里只用于定位已构建的前端资源
 
@@ -40,13 +42,20 @@ const core_lifecycle_manager = new CoreLifecycleManager({
   },
 });
 
+install_main_fatal_error_handler({
+  isAppShutdownInProgress: () => is_app_shutdown_in_progress,
+  quitAfterCoreShutdown: quit_app_after_core_shutdown,
+});
+
 /**
  * 输出目录只由导出成功链路触发，Electron shell 返回非空错误文本时转为异常交给文件域记录
  */
 async function open_output_folder(output_path: string): Promise<void> {
   const error_message = await shell.openPath(output_path);
   if (error_message !== "") {
-    throw new Error(error_message);
+    throw new AppErrors.FileIoFailedError({
+      diagnostic_context: { output_path, reason: error_message },
+    });
   }
 }
 
@@ -72,7 +81,9 @@ function create_main_window_for_runtime(): void {
  */
 function require_core_api_base_url(): string {
   if (core_api_base_url === null) {
-    throw new Error("Core API 地址尚未就绪。");
+    throw new AppErrors.InternalInvariantError({
+      diagnostic_context: { reason: "core_api_base_url_not_ready" },
+    });
   }
 
   return core_api_base_url;

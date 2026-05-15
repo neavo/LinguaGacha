@@ -10,6 +10,7 @@ import {
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import type { GlossaryEntry } from "@/pages/glossary-page/types";
 import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
@@ -547,9 +548,14 @@ export function useNameFieldExtractionPageState() {
                 : current_row;
             });
           });
-          if (error instanceof Error) {
-            push_toast("error", error.message);
-          }
+          push_toast(
+            "error",
+            resolve_visible_error_message(
+              error,
+              t,
+              t("name_field_extraction_page.feedback.translate_failed"),
+            ),
+          );
         }
       }
     } finally {
@@ -633,11 +639,14 @@ export function useNameFieldExtractionPageState() {
       } catch (error) {
         local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("name_field_extraction_page.feedback.import_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(
+            error,
+            t,
+            t("name_field_extraction_page.feedback.import_failed"),
+          ),
+        );
         return false;
       }
     },

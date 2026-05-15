@@ -4,7 +4,6 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import type { Row } from "exceljs";
 
-import { app_error } from "../api/api-error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
@@ -20,6 +19,7 @@ import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt, type PromptKind } from "../../base/prompt";
+import * as AppErrors from "../../shared/error";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -63,7 +63,7 @@ export class QualityService {
     const entries = this.normalize_rule_entries(request["entries"]);
     const project_path = await this.require_project_path();
     const current_revision = this.get_rule_revision(project_path, rule_type);
-    this.assert_revision(current_revision, expected_revision, "质量规则 revision 冲突");
+    this.assert_revision(current_revision, expected_revision);
     this.database.execute_transaction([
       this.op("setRules", {
         projectPath: project_path,
@@ -90,7 +90,7 @@ export class QualityService {
     let expected_revision = Number(request["expected_revision"] ?? 0);
     const meta = this.normalize_object(request["meta"]);
     for (const [key, value] of Object.entries(meta)) {
-      this.assert_revision(current_revision, expected_revision, "质量规则 revision 冲突");
+      this.assert_revision(current_revision, expected_revision);
       const meta_key = this.resolve_rule_meta_key(rule_type, key);
       const meta_value = this.normalize_rule_meta_value(rule_type, key, value);
       current_revision += 1;
@@ -161,8 +161,10 @@ export class QualityService {
     );
     const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
     if (!Array.isArray(data)) {
-      throw app_error("validation_failed", "质量规则预设载荷无效。", {
-        filename: path.basename(preset_path),
+      throw new AppErrors.RequestValidationError({
+        public_details: {
+          filename: path.basename(preset_path),
+        },
       });
     }
     return { entries: data as unknown as ApiJsonValue };
@@ -196,7 +198,7 @@ export class QualityService {
       ".json",
     );
     if (source !== "user") {
-      throw app_error("validation_failed", "内置预设不能重命名。");
+      throw new AppErrors.RequestValidationError();
     }
     const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     const new_file_name = `${this.normalize_preset_name(String(request["new_name"] ?? ""))}.json`;
@@ -214,7 +216,7 @@ export class QualityService {
       ".json",
     );
     if (source !== "user") {
-      throw app_error("validation_failed", "内置预设不能删除。");
+      throw new AppErrors.RequestValidationError();
     }
     const file_path = path.join(
       this.paths.get_quality_rule_user_preset_dir(preset_directory),
@@ -252,7 +254,7 @@ export class QualityService {
     const expected_revision = Number(request["expected_revision"] ?? 0);
     const project_path = await this.require_project_path();
     const current_revision = this.get_prompt_revision(project_path, task_type);
-    this.assert_revision(current_revision, expected_revision, "提示词 revision 冲突");
+    this.assert_revision(current_revision, expected_revision);
     const operations: DatabaseOperation[] = [
       this.op("setRuleText", {
         projectPath: project_path,
@@ -369,7 +371,7 @@ export class QualityService {
       ".txt",
     );
     if (source !== "user") {
-      throw app_error("validation_failed", "内置预设不能重命名。");
+      throw new AppErrors.RequestValidationError();
     }
     const directory = this.paths.get_prompt_user_preset_dir(task_type);
     const new_file_name = `${this.normalize_preset_name(String(request["new_name"] ?? ""))}.txt`;
@@ -387,7 +389,7 @@ export class QualityService {
       ".txt",
     );
     if (source !== "user") {
-      throw app_error("validation_failed", "内置预设不能删除。");
+      throw new AppErrors.RequestValidationError();
     }
     const file_path = path.join(this.paths.get_prompt_user_preset_dir(task_type), file_name);
     fs.rmSync(file_path);
@@ -400,7 +402,7 @@ export class QualityService {
   private async require_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw app_error("project_not_loaded");
+      throw new AppErrors.ProjectNotLoadedError();
     }
     return state.projectPath;
   }
@@ -495,15 +497,13 @@ export class QualityService {
   /**
    * 校验期望 revision，避免过期页面覆盖新事实
    */
-  private assert_revision(
-    current_revision: number,
-    expected_revision: number,
-    label: string,
-  ): void {
+  private assert_revision(current_revision: number, expected_revision: number): void {
     if (current_revision !== expected_revision) {
-      throw app_error("revision_conflict", `${label}。`, {
-        current_revision,
-        expected_revision,
+      throw new AppErrors.RevisionConflictError({
+        public_details: {
+          current_revision,
+          expected_revision,
+        },
       });
     }
   }
@@ -771,12 +771,12 @@ export class QualityService {
   ): { source: "builtin" | "user"; file_name: string } {
     const parts = virtual_id.split(":");
     if (parts.length !== 2 && !(extension === ".json" && parts.length === 3)) {
-      throw app_error("validation_failed", "预设 ID 无效。");
+      throw new AppErrors.RequestValidationError();
     }
     const source = parts[0];
     const file_name = parts.at(-1) ?? "";
     if (source !== "builtin" && source !== "user") {
-      throw app_error("validation_failed", "预设 ID 无效。");
+      throw new AppErrors.RequestValidationError();
     }
     this.ensure_preset_file_name(file_name, extension);
     return { source, file_name };
@@ -794,7 +794,7 @@ export class QualityService {
       path.win32.isAbsolute(file_name) ||
       path.posix.isAbsolute(file_name);
     if (file_name === "" || has_path_boundary || !file_name.toLowerCase().endsWith(extension)) {
-      throw app_error("validation_failed", "预设文件名无效。");
+      throw new AppErrors.RequestValidationError();
     }
   }
 
@@ -804,7 +804,7 @@ export class QualityService {
   private normalize_preset_name(name: string): string {
     const normalized_name = name.trim();
     if (normalized_name === "") {
-      throw app_error("validation_failed", "预设名称不能为空。");
+      throw new AppErrors.RequestValidationError();
     }
     return normalized_name;
   }

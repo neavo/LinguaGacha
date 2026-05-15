@@ -8,6 +8,7 @@ import {
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
   PRECEDING_LINES_THRESHOLD_MAX,
@@ -99,7 +100,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     } catch (error) {
       push_toast(
         "error",
-        error instanceof Error ? error.message : t("expert_settings_page.feedback.refresh_failed"),
+        resolve_visible_error_message(error, t, t("expert_settings_page.feedback.refresh_failed")),
       );
     }
   }, [push_toast, refresh_settings, t]);
@@ -165,11 +166,10 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
           return reverted_snapshot;
         });
 
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("expert_settings_page.feedback.update_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("expert_settings_page.feedback.update_failed")),
+        );
       } finally {
         set_pending(field, false);
       }

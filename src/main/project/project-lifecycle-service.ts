@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { app_error } from "../api/api-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
@@ -14,6 +13,7 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { Item } from "../../base/item";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
+import * as AppErrors from "../../shared/error";
 
 // 公开 source-files 只枚举当前文件域已经支持的格式，避免新建工程误收未知文件
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([
@@ -428,8 +428,10 @@ export class ProjectLifecycleService {
     const preset_path = this.resolve_quality_rule_preset_path(preset_directory, virtual_id);
     const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
     if (!Array.isArray(data)) {
-      throw app_error("validation_failed", "质量规则预设载荷无效。", {
-        filename: path.basename(preset_path),
+      throw new AppErrors.RequestValidationError({
+        public_details: {
+          filename: path.basename(preset_path),
+        },
       });
     }
     return data.filter((entry): entry is MutableJsonRecord => this.is_record(entry));
@@ -482,12 +484,12 @@ export class ProjectLifecycleService {
   ): { source: "builtin" | "user"; file_name: string } {
     const parts = virtual_id.split(":");
     if (parts.length !== 2 && !(extension === ".json" && parts.length === 3)) {
-      throw app_error("validation_failed", "预设 ID 无效。");
+      throw new AppErrors.RequestValidationError();
     }
     const source = parts[0];
     const file_name = parts.at(-1) ?? "";
     if (source !== "builtin" && source !== "user") {
-      throw app_error("validation_failed", "预设来源无效。");
+      throw new AppErrors.RequestValidationError();
     }
     this.ensure_preset_file_name(file_name, extension);
     return { source, file_name };
@@ -505,7 +507,7 @@ export class ProjectLifecycleService {
       path.win32.isAbsolute(file_name) ||
       path.posix.isAbsolute(file_name);
     if (file_name === "" || has_path_boundary || !file_name.toLowerCase().endsWith(extension)) {
-      throw app_error("validation_failed", "预设文件名无效。");
+      throw new AppErrors.RequestValidationError();
     }
   }
 
@@ -843,17 +845,19 @@ export class ProjectLifecycleService {
   private require_body_string(body: Record<string, ApiJsonValue>, key: string): string {
     const value = body[key];
     if (typeof value !== "string" || value.trim() === "") {
-      throw app_error("validation_failed", `请求字段 ${key} 必须是非空字符串。`);
+      throw new AppErrors.RequestValidationError();
     }
     return value;
   }
 
   /**
-   * 打开既有工程前必须先确认文件存在，缺失时映射为 project_not_found
+   * 打开既有工程前必须先确认文件存在，缺失时映射为 project.not_found
    */
   private assert_project_file_exists(project_path: string): void {
     if (!fs.existsSync(project_path)) {
-      throw app_error("project_not_found", undefined, { filename: path.basename(project_path) });
+      throw new AppErrors.ProjectNotFoundError({
+        public_details: { filename: path.basename(project_path) },
+      });
     }
   }
 

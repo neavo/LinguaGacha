@@ -1,0 +1,31 @@
+import { AppError, type AppErrorPublicDetails } from "../app-error";
+
+/**
+ * RevisionConflictError 是跨 API mutation 的版本冲突语义。
+ */
+export class RevisionConflictError extends AppError {
+  /**
+   * section/current/expected 等安全字段放入 public_details 供页面重试提示使用。
+   */
+  public constructor(args: { public_details?: AppErrorPublicDetails; cause?: unknown } = {}) {
+    super({ code: "data.revision_conflict", ...args });
+  }
+}
+
+/**
+ * DatabaseConflictError 表示可恢复的数据库写入冲突。
+ */
+export class DatabaseConflictError extends AppError {
+  /**
+   * 数据库层只给出安全 details，底层 SQLite 细节只作为 cause。
+   */
+  public constructor(
+    args: {
+      public_details?: AppErrorPublicDetails;
+      diagnostic_context?: Record<string, unknown>;
+      cause?: unknown;
+    } = {},
+  ) {
+    super({ code: "database.conflict", ...args });
+  }
+}

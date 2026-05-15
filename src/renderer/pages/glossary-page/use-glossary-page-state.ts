@@ -20,6 +20,7 @@ import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import {
   build_glossary_filter_result,
@@ -609,11 +610,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       } catch (error) {
         local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.save_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.save_failed")),
+        );
         return false;
       }
     },
@@ -854,11 +854,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       } catch (error) {
         local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.save_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.save_failed")),
+        );
       }
     },
     [
@@ -1132,11 +1131,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
         navigate_to_route("proofreading");
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.query_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.query_failed")),
+        );
       }
     },
     [entries, entry_index_by_id, navigate_to_route, push_proofreading_lookup_intent, push_toast, t],
@@ -1165,11 +1163,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
         await persist_import_entries(imported_entries, { close_preset_menu: false });
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.import_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.import_failed")),
+        );
       }
     },
     [persist_import_entries, push_toast, readonly, t],
@@ -1206,11 +1203,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       });
       push_toast("success", t("glossary_page.feedback.export_success"));
     } catch (error) {
-      if (error instanceof Error) {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("glossary_page.feedback.export_failed"));
-      }
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("glossary_page.feedback.export_failed")),
+      );
     }
   }, [entries, push_toast, t]);
 
@@ -1220,11 +1216,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       set_preset_menu_open(true);
     } catch (error) {
       set_preset_menu_open(false);
-      if (error instanceof Error) {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("glossary_page.feedback.preset_failed"));
-      }
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
+      );
     }
   }, [push_toast, refresh_preset_menu, t]);
 
@@ -1244,11 +1239,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
         await persist_import_entries(payload.entries, { close_preset_menu: true });
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.preset_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
+        );
       }
     },
     [persist_import_entries, push_toast, readonly, t],
@@ -1346,11 +1340,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast("success", t("glossary_page.feedback.preset_saved"));
         return true;
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.preset_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
+        );
         return false;
       }
     },
@@ -1392,11 +1385,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         push_toast("success", t("glossary_page.feedback.preset_renamed"));
         return true;
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.preset_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
+        );
         return false;
       }
     },
@@ -1417,11 +1409,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         await refresh_preset_menu();
         push_toast("success", t("glossary_page.feedback.default_preset_set"));
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.preset_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
+        );
       }
     },
     [push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
@@ -1440,11 +1431,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       await refresh_preset_menu();
       push_toast("success", t("glossary_page.feedback.default_preset_cleared"));
     } catch (error) {
-      if (error instanceof Error) {
-        push_toast("error", error.message);
-      } else {
-        push_toast("error", t("glossary_page.feedback.preset_failed"));
-      }
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
+      );
     }
   }, [push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t]);
 
@@ -1590,11 +1580,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           succeeded = true;
         }
       } catch (error) {
-        if (error instanceof Error) {
-          push_toast("error", error.message);
-        } else {
-          push_toast("error", t("glossary_page.feedback.preset_failed"));
-        }
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
+        );
       }
     } else if (confirm_state.kind === "overwrite-preset") {
       succeeded = await save_preset(confirm_state.preset_input_value);

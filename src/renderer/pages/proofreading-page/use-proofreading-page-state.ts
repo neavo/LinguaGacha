@@ -14,6 +14,7 @@ import {
 } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
@@ -136,14 +137,6 @@ function create_empty_dialog_state(): ProofreadingDialogState {
 
 function escape_regular_expression(source_text: string): string {
   return source_text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-function resolve_error_message(error: unknown, fallback_message: string): string {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
-  return fallback_message;
 }
 
 function serialize_glossary_terms(glossary_terms: ProofreadingGlossaryTerm[]): string[][] {
@@ -669,7 +662,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const handle_api_error = useCallback(
     (error: unknown, fallback_message: string): void => {
-      const message = resolve_error_message(error, fallback_message);
+      const message = resolve_visible_error_message(error, t, fallback_message);
       push_toast("error", message);
     },
     [push_toast],
@@ -1073,7 +1066,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           const fallback_message = t("proofreading_page.feedback.refresh_failed");
           const message = is_worker_client_error(error)
             ? fallback_message
-            : resolve_error_message(error, fallback_message);
+            : resolve_visible_error_message(error, t, fallback_message);
           push_toast("error", message);
         });
       }
@@ -1090,7 +1083,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const fallback_message = t("proofreading_page.feedback.refresh_failed");
       const message = is_worker_client_error(error)
         ? fallback_message
-        : resolve_error_message(error, fallback_message);
+        : resolve_visible_error_message(error, t, fallback_message);
       set_cache_status("error");
       set_settled_project_path(project_snapshot.path);
       push_toast("error", message);
@@ -1316,7 +1309,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         const fallback_message = t("proofreading_page.feedback.refresh_failed");
         const message = is_worker_client_error(error)
           ? fallback_message
-          : resolve_error_message(error, fallback_message);
+          : resolve_visible_error_message(error, t, fallback_message);
         push_toast("error", message);
       });
     },
@@ -1335,7 +1328,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const fallback_message = t("proofreading_page.feedback.selection_failed");
       const message = is_worker_client_error(error)
         ? fallback_message
-        : resolve_error_message(error, fallback_message);
+        : resolve_visible_error_message(error, t, fallback_message);
       push_toast("error", message);
     },
     [push_toast, t],
@@ -1389,7 +1382,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       const fallback_message = t("proofreading_page.feedback.refresh_failed");
       const message = is_worker_client_error(error)
         ? fallback_message
-        : resolve_error_message(error, fallback_message);
+        : resolve_visible_error_message(error, t, fallback_message);
       push_toast("error", message);
     }
   }, [
@@ -1514,7 +1507,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     } catch (error) {
       push_toast(
         "error",
-        `${t("proofreading_page.feedback.regex_invalid")}: ${resolve_error_message(error, "")}`,
+        `${t("proofreading_page.feedback.regex_invalid")}: ${resolve_visible_error_message(error, t, "")}`,
       );
       return;
     }
@@ -1606,7 +1599,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     } catch (error) {
       push_toast(
         "error",
-        `${t("proofreading_page.feedback.regex_invalid")}: ${resolve_error_message(error, "")}`,
+        `${t("proofreading_page.feedback.regex_invalid")}: ${resolve_visible_error_message(error, t, "")}`,
       );
       return;
     }
@@ -1874,7 +1867,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         const fallback_message = t("proofreading_page.feedback.refresh_failed");
         const message = is_worker_client_error(error)
           ? fallback_message
-          : resolve_error_message(error, fallback_message);
+          : resolve_visible_error_message(error, t, fallback_message);
         push_toast("error", message);
       });
     }, 160);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { is_app_error } from "../shared/error";
 import { Prompt } from "./prompt";
 
 describe("prompt 基础模型", () => {
@@ -12,6 +13,12 @@ describe("prompt 基础模型", () => {
 
   it("拒绝未知提示词任务类型", () => {
     expect(Prompt.from_json("translation").kind).toBe("translation");
-    expect(() => Prompt.from_json("retranslate").kind).toThrow("未知提示词类型");
+    let code: string | null = null;
+    try {
+      Prompt.from_json("retranslate");
+    } catch (error) {
+      code = is_app_error(error) ? error.code : null;
+    }
+    expect(code).toBe("prompt.unknown_prompt_type");
   });
 });

@@ -78,21 +78,128 @@ export const zh_cn_app = {
     builder_preceding_context: "参考上文：",
   },
   error: {
-    validation_failed: "请求参数无效 …",
-    route_not_found: "API 路由不存在 …",
-    project_not_loaded: "工程未加载 …",
-    project_not_found: "工程文件不存在 …",
-    file_not_found: "文件不存在 …",
-    revision_conflict: "数据版本已变化，请刷新后重试 …",
-    task_busy: "后台任务正在执行中，请稍后再试 …",
-    unsupported_file_format: "不支持的文件格式 …",
-    file_io_failed: "文件读写失败 …",
-    database_conflict: "数据库写入冲突，请刷新后重试 …",
-    model_not_found: "模型配置不存在 …",
-    model_provider_failed: "模型服务请求失败，请检查接口配置 …",
-    worker_failed: "后台执行通道失败 …",
-    runtime_capability_missing: "当前运行环境缺少必要能力 …",
-    internal_invariant: "内部状态异常 …",
+    request: {
+      validation_failed: {
+        message: "请求参数无效 …",
+      },
+      invalid_json: {
+        message: "请求 JSON 无效 …",
+      },
+      route_not_found: {
+        message: "API 路由不存在 …",
+      },
+    },
+    project: {
+      not_loaded: {
+        message: "工程未加载 …",
+        action: "请先打开或创建工程 …",
+      },
+      not_found: {
+        message: "工程文件不存在 …",
+        action: "请确认工程文件仍在原位置 …",
+      },
+    },
+    file: {
+      not_found: {
+        message: "文件不存在 …",
+        action: "请确认文件仍在原位置 …",
+      },
+      unsupported_format: {
+        message: "不支持的文件格式 …",
+        action: "请选择 LinguaGacha 支持的源文件 …",
+      },
+      io_failed: {
+        message: "文件读写失败 …",
+      },
+    },
+    database: {
+      conflict: {
+        message: "数据库写入冲突，请刷新后重试 …",
+        action: "请刷新当前数据后再次提交 …",
+      },
+    },
+    data: {
+      revision_conflict: {
+        message: "数据版本已变化，请刷新后重试 …",
+        action: "请刷新当前数据后再次提交 …",
+      },
+    },
+    task: {
+      busy: {
+        message: "后台任务正在执行中，请稍后再试 …",
+        action: "请等待当前任务结束或先停止任务 …",
+      },
+    },
+    model: {
+      not_found: {
+        message: "模型配置不存在 …",
+        action: "请重新选择模型配置 …",
+      },
+      provider_failed: {
+        message: "模型服务请求失败，请检查接口配置 …",
+        action: "请检查模型地址、密钥和服务商状态 …",
+      },
+    },
+    worker: {
+      failed: {
+        message: "后台执行通道失败 …",
+      },
+    },
+    runtime: {
+      capability_missing: {
+        message: "当前运行环境缺少必要能力 …",
+      },
+      internal_invariant: {
+        message: "内部状态异常 …",
+      },
+    },
+    language: {
+      invalid_target_language: {
+        message: "目标语言无效 …",
+      },
+      unsupported_all_target_language: {
+        message: "目标语言不支持全部语言 …",
+      },
+      unknown_source_language_code: {
+        message: "源语言代码无效 …",
+      },
+    },
+    quality: {
+      unknown_rule_type: {
+        message: "质量规则类型无效 …",
+      },
+      unsupported_rule_meta: {
+        message: "质量规则配置项无效 …",
+      },
+    },
+    prompt: {
+      unknown_prompt_type: {
+        message: "提示词类型无效 …",
+      },
+    },
+    desktop: {
+      missing_core_api_base_url: {
+        message: "Core API 地址未配置 …",
+      },
+      core_api_unavailable: {
+        message: "Core API 不可用 …",
+      },
+      core_metadata_unavailable: {
+        message: "Core 元信息不可用 …",
+      },
+      event_stream_failed: {
+        message: "事件流连接失败 …",
+      },
+      http_error: {
+        message: "请求失败：{PATH} …",
+      },
+      network_failed: {
+        message: "网络请求失败：{PATH} …",
+      },
+      timeout: {
+        message: "请求超时：{PATH} …",
+      },
+    },
   },
   diagnostic: {
     api_gateway: {
@@ -112,6 +219,7 @@ export const zh_cn_app = {
     lifecycle: {
       app_start_failed: "LinguaGacha 启动失败 …",
       core_gateway_start_failed: "Core / Gateway 启动失败 - {ERROR} …",
+      main_fatal_uncaught: "Electron main 捕获到未处理致命异常 …",
     },
     migration: {
       path_failed: "迁移路径失败：{SOURCE_PATH} -> {DESTINATION_PATH} …",

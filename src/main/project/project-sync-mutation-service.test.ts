@@ -99,7 +99,7 @@ describe("ProjectSyncMutationService", () => {
           target_language: "ZH",
         },
       }),
-    ).rejects.toThrow("工程文件不存在");
+    ).rejects.toThrow("project.not_found");
 
     expect(fs.existsSync(missing_path)).toBe(false);
     database.close();
@@ -276,7 +276,7 @@ describe("ProjectSyncMutationService", () => {
         items: [{ id: 1, src: "新", dst: "", status: "NONE" }],
         expected_section_revisions: { items: 0, analysis: 0 },
       }),
-    ).rejects.toThrow("任务正在执行中");
+    ).rejects.toThrow("task.busy");
 
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       { id: 1, src: "旧", dst: "old", status: "PROCESSED" },
@@ -294,7 +294,7 @@ describe("ProjectSyncMutationService", () => {
         analysis_extras: { line: 1 },
         expected_section_revisions: { analysis: 0 },
       }),
-    ).rejects.toThrow("任务正在执行中");
+    ).rejects.toThrow("task.busy");
 
     expect(
       database.execute({
@@ -326,7 +326,7 @@ describe("ProjectSyncMutationService", () => {
         ordered_rel_paths: ["b.txt", "a.txt"],
         expected_section_revisions: { files: 0 },
       }),
-    ).rejects.toThrow("任务正在执行中");
+    ).rejects.toThrow("task.busy");
 
     expect(
       database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
@@ -385,7 +385,7 @@ describe("ProjectSyncMutationService", () => {
         translation_extras: {},
         expected_section_revisions: { items: 1 },
       }),
-    ).rejects.toThrow("数据版本已变化，请刷新后重试");
+    ).rejects.toThrow("data.revision_conflict");
     database.close();
   });
 });

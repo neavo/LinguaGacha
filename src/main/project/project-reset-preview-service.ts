@@ -1,5 +1,4 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { app_error } from "../api/api-error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
@@ -7,6 +6,7 @@ import { Item } from "../../base/item";
 import { is_task_skipped_item_status } from "../../shared/task";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { ProjectSessionState } from "./project-session-state";
+import * as AppErrors from "../../shared/error";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -30,7 +30,7 @@ export class ProjectResetPreviewService {
   public async preview_translation_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
     if (mode !== "all") {
-      throw app_error("validation_failed", "translation reset preview 仅支持 mode=all。");
+      throw new AppErrors.RequestValidationError();
     }
     const project_path = await this.require_idle_project_path();
     const asset_records = this.get_asset_records(project_path);
@@ -83,7 +83,7 @@ export class ProjectResetPreviewService {
   public async preview_analysis_reset(request: JsonRecord): Promise<JsonRecord> {
     const mode = String(request["mode"] ?? "").toLowerCase();
     if (mode !== "failed") {
-      throw app_error("validation_failed", "analysis reset preview 仅支持 mode=failed。");
+      throw new AppErrors.RequestValidationError();
     }
     const project_path = await this.require_idle_project_path();
     const checkpoints = this.get_analysis_checkpoints(project_path);
@@ -119,10 +119,10 @@ export class ProjectResetPreviewService {
   private async require_idle_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {
-      throw app_error("project_not_loaded");
+      throw new AppErrors.ProjectNotLoadedError();
     }
     if (this.task_runtime_state.snapshot().busy) {
-      throw app_error("task_busy");
+      throw new AppErrors.TaskBusyError();
     }
     return state.projectPath;
   }
