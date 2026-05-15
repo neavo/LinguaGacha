@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm/llm-types";
+import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "../../llm/llm-types";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 import { WorkUnitRunner } from "./worker-runner";

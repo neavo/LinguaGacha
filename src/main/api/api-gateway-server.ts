@@ -37,7 +37,7 @@ import {
   close_api_gateway_with_connections,
   track_api_gateway_connections,
 } from "./api-gateway-connections";
-import { app_error, is_app_error, type AppError, type AppErrorDetails } from "./app-error";
+import { app_error, is_app_error, type AppError, type AppErrorDetails } from "./api-error";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 
 const CORE_API_HOST = "127.0.0.1"; // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API

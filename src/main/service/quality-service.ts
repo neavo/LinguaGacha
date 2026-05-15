@@ -4,7 +4,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import type { Row } from "exceljs";
 
-import { app_error } from "../api/app-error";
+import { app_error } from "../api/api-error";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";

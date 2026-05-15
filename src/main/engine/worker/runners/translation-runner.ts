@@ -15,7 +15,7 @@ import { PromptBuilder } from "../prompt/prompt-builder";
 import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LLMClientPort, LLMRequestResult } from "../llm/llm-types";
+import type { LLMClientPort, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";

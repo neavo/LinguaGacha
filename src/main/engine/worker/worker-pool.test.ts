@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LLMClient } from "./llm/llm-client";
+import { LLMClient } from "../../llm/llm-client";
 import { WorkerPool } from "./worker-pool";
 
 describe("WorkerPool", () => {

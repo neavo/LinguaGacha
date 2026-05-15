@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { Model, type ModelApiFormat } from "../../../../base/model";
-import { JsonTool } from "../../../../shared/utils/json-tool";
-import type { ApiJsonValue } from "../../../api/api-types";
+import { Model, type ModelApiFormat } from "../../base/model";
+import { JsonTool } from "../../shared/utils/json-tool";
+import type { ApiJsonValue } from "../api/api-types";
 import { build_anthropic_payload } from "./policy/anthropic-policy";
 import { build_google_payload, normalize_google_sdk_base_url } from "./policy/google-policy";
 import {

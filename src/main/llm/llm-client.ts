@@ -1,4 +1,4 @@
-import { JsonTool } from "../../../../shared/utils/json-tool";
+import { JsonTool } from "../../shared/utils/json-tool";
 import { LLMClientPolicy } from "./llm-client-policy";
 import type { RequestProvider } from "./policy/policy-types";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
@@ -18,20 +18,20 @@ import type {
 
 interface LLMClientOptions {
   appRoot: string;
-  policy?: LLMClientPolicy;
-  clientPool?: ProviderClientResolver;
-  transports?: Partial<Record<RequestProvider, RequestTransport>>;
+  policy?: LLMClientPolicy; // policy 注入点只供测试替换请求策略，不改变生产归属
+  clientPool?: ProviderClientResolver; // clientPool 注入点用于验证 SDK client 复用和凭据隔离
+  transports?: Partial<Record<RequestProvider, RequestTransport>>; // transports 只允许按 provider 替换边界实现
 }
 
 /**
- * LLMClient 是 worker 的 official SDK direct transport 入口，负责 policy、超时、取消和错误归一。
+ * LLMClient 是 main 进程 LLM 请求入口，负责 policy、超时、取消和错误归一。
  */
 export class LLMClient implements LLMClientPort {
-  private readonly policy: LLMClientPolicy;
-  private readonly transports: Record<RequestProvider, RequestTransport>;
+  private readonly policy: LLMClientPolicy; // policy 是请求快照到最终 provider payload 的唯一入口
+  private readonly transports: Record<RequestProvider, RequestTransport>; // transports 按 provider 分发表层请求，不再改写模型策略
 
   /**
-   * 构造 worker 内唯一 LLM 请求客户端；测试可注入 fake policy、pool 或 transport。
+   * 构造 main 进程 LLM 请求客户端；测试可注入 fake policy、pool 或 transport。
    */
   public constructor(options: LLMClientOptions) {
     const client_pool = options.clientPool ?? new ProviderClientPool();

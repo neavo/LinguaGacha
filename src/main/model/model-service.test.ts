@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../service/path-service";
 import { SettingService } from "../service/setting-service";
-import { LLMClient } from "../engine/worker/llm/llm-client";
+import { LLMClient } from "../llm/llm-client";
 import { ModelService } from "./model-service";
 
 // Google SDK mock 记录构造参数，避免测试真实网络和 SDK 内部分页实现。

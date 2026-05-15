@@ -1,4 +1,4 @@
-import type { AppErrorCode, AppErrorDetails } from "./app-error";
+import type { AppErrorCode, AppErrorDetails } from "./api-error";
 
 export type ApiJsonValue =
   | null

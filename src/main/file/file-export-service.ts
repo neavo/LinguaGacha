@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { app_error } from "../api/app-error";
+import { app_error } from "../api/api-error";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";

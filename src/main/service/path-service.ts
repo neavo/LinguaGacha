@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { app_error } from "../api/app-error";
+import { app_error } from "../api/api-error";
 
 export interface AppPathServiceOptions {
   appRoot: string;

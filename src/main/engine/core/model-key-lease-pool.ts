@@ -1,6 +1,6 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { LLMClientPolicy } from "../worker/llm/llm-client-policy";
+import { LLMClientPolicy } from "../../llm/llm-client-policy";
 
 type ModelKeyLeaseRecord = Record<string, ApiJsonValue>;
 

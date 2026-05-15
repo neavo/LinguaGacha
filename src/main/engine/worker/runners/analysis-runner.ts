@@ -9,7 +9,7 @@ import {
 import { PromptBuilder } from "../prompt/prompt-builder";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LLMClientPort } from "../llm/llm-types";
+import type { LLMClientPort } from "../../../llm/llm-types";
 import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";

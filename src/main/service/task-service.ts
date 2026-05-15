@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { app_error } from "../api/app-error";
+import { app_error } from "../api/api-error";
 import { SettingService } from "./setting-service";
 import { resolve_active_model } from "../model/model-config-resolver";
 import { ProjectSessionState } from "../project/project-session-state";
