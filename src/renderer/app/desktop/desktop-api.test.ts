@@ -151,6 +151,60 @@ describe("desktop-api", () => {
     await iterator.return?.();
   });
 
+  it("open_log_stream 按到达顺序消费积压日志事件", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            data: {
+              status: "ok",
+              service: "linguagacha-core",
+              version: "9.9.9",
+            },
+          }),
+        } as Response;
+      }),
+    );
+
+    install_desktop_api_host("http://127.0.0.1:38191/");
+    vi.stubGlobal("EventSource", EventSourceStub);
+
+    const { open_log_stream } = await import("./desktop-api");
+    const iterator = open_log_stream()[Symbol.asyncIterator]();
+    const first_read = iterator.next();
+    await vi.waitFor(() => {
+      expect(EventSourceStub.instances).toHaveLength(1);
+    });
+    EventSourceStub.instances[0]?.emit("log.appended", {
+      id: "log-1",
+      sequence: 1,
+      created_at: "2026-04-26T00:00:00.000+00:00",
+      level: "info",
+      message: "第一条",
+    });
+    EventSourceStub.instances[0]?.emit("log.appended", {
+      id: "log-2",
+      sequence: 2,
+      created_at: "2026-04-26T00:00:01.000+00:00",
+      level: "error",
+      message: "第二条",
+    });
+
+    await expect(first_read).resolves.toMatchObject({
+      done: false,
+      value: { id: "log-1", sequence: 1, message: "第一条" },
+    });
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: { id: "log-2", sequence: 2, message: "第二条" },
+    });
+    await iterator.return?.();
+  });
+
   it("check_github_release_update 识别带前缀的新版 release tag", async () => {
     const fetch_mock = vi.fn(async () => {
       return {

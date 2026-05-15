@@ -3,16 +3,16 @@ import path from "node:path";
 import process from "node:process";
 
 import { format_console_log } from "./log-console-formatter";
-import type {
-  LogAppendPayload,
-  LogEvent,
-  LogLevel,
-  LogSubscriber,
-  LogTargets,
+import {
+  LOG_WINDOW_EVENT_CAPACITY,
+  type LogAppendPayload,
+  type LogEvent,
+  type LogLevel,
+  type LogSubscriber,
+  type LogTargets,
 } from "../../shared/log";
 import { t_main_log } from "./log-text";
 
-const DEFAULT_RING_BUFFER_SIZE = 1000;
 const MAX_LOG_FILE_COUNT = 3;
 const LOG_FILE_PREFIX = "app";
 const LOG_FILE_EXTENSION = ".log";
@@ -74,7 +74,7 @@ export class LogManager {
   public constructor(options: LogManagerOptions) {
     this.log_dir = options.logDir;
     this.default_targets = { ...DEFAULT_LOG_TARGETS, ...options.targets };
-    this.ring_buffer_size = options.ringBufferSize ?? DEFAULT_RING_BUFFER_SIZE;
+    this.ring_buffer_size = options.ringBufferSize ?? LOG_WINDOW_EVENT_CAPACITY;
     this.now = options.now ?? (() => new Date());
     this.console_writer = options.consoleWriter ?? default_console_writer;
     fs.mkdirSync(this.log_dir, { recursive: true });
