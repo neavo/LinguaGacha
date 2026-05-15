@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -28,6 +28,7 @@ let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主
 // 后端生命周期必须先于 renderer 启动，保证桌面 API 暴露时公开 Gateway 已可用
 const core_lifecycle_manager = new CoreLifecycleManager({
   appRoot: app.isPackaged ? path.dirname(process.execPath) : process.cwd(),
+  openOutputFolder: open_output_folder,
   onUnexpectedExit: (result) => {
     const exit_code_text = result.exitCode === null ? "null" : result.exitCode.toString(); // 兼容迁移窗口的异常回调；触发时仍直接走同一条退出清理路径
     const signal_text = result.signal === null ? "null" : result.signal;
@@ -38,6 +39,16 @@ const core_lifecycle_manager = new CoreLifecycleManager({
     void quit_app_after_core_shutdown(1);
   },
 });
+
+/**
+ * 输出目录只由导出成功链路触发，Electron shell 返回非空错误文本时转为异常交给文件域记录
+ */
+async function open_output_folder(output_path: string): Promise<void> {
+  const error_message = await shell.openPath(output_path);
+  if (error_message !== "") {
+    throw new Error(error_message);
+  }
+}
 
 /**
  * 创建主工作台窗口，并把窗口关闭后的跨宿主联动留在入口层

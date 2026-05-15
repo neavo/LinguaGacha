@@ -31,6 +31,8 @@ type FileExportLogManager = Pick<LogManager, "info" | "error">;
  */
 const FILE_EXPORT_LOG_SOURCE = "file-export";
 
+export type OutputFolderOpener = (output_path: string) => Promise<void>;
+
 /**
  * 文件导出服务承载全部公开文件格式写回和导出目录语义
  */
@@ -42,6 +44,7 @@ export class FileExportService {
     private readonly database: ProjectDatabase,
     private readonly setting_service: SettingService,
     private readonly session_state: ProjectSessionState,
+    private readonly output_folder_opener: OutputFolderOpener,
     private readonly log_manager?: FileExportLogManager,
   ) {}
 
@@ -56,7 +59,7 @@ export class FileExportService {
       const items = this.read_project_items(project_path);
       this.fill_duplicated_translations(items);
       const output_path = await this.write_export(project_path, items, "", config);
-      this.log_export_done(config, output_path);
+      await this.complete_export_success(config, output_path);
       return { accepted: true, output_path };
     } catch (error) {
       this.log_export_failed(config, error);
@@ -105,7 +108,7 @@ export class FileExportService {
     this.log_export_start(config);
     try {
       const output_path = await this.write_export(project_path, export_items, suffix, config);
-      this.log_export_done(config, output_path);
+      await this.complete_export_success(config, output_path);
       return { accepted: true, output_path };
     } catch (error) {
       this.log_export_failed(config, error);
@@ -145,6 +148,21 @@ export class FileExportService {
       throw error;
     }
     return paths.translated_path;
+  }
+
+  /**
+   * 导出成功后的宿主附加动作不能推翻译文已经写出的事实
+   */
+  private async complete_export_success(config: SettingRecord, output_path: string): Promise<void> {
+    this.log_export_done(config, output_path);
+    if (config["output_folder_open_on_finish"] !== true) {
+      return;
+    }
+    try {
+      await this.output_folder_opener(output_path);
+    } catch (error) {
+      this.log_open_output_folder_failed(config, error);
+    }
   }
 
   /**
@@ -290,6 +308,19 @@ export class FileExportService {
   private log_write_failed(config: SettingRecord, error: unknown): void {
     this.log_manager?.error(
       this.export_log_text(config, "app.diagnostic.file_export.write_file_failed"),
+      {
+        source: FILE_EXPORT_LOG_SOURCE,
+        ...this.error_log_payload(error),
+      },
+    );
+  }
+
+  /**
+   * 打开输出目录失败只影响宿主体验，不改变导出成功结果
+   */
+  private log_open_output_folder_failed(config: SettingRecord, error: unknown): void {
+    this.log_manager?.error(
+      this.export_log_text(config, "app.diagnostic.file_export.open_output_folder_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
         ...this.error_log_payload(error),

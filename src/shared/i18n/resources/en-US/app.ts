@@ -109,6 +109,7 @@ export const en_us_app = {
         "Failed to normalize default preset value: {PRESET_DIRECTORY} -> {VALUE} …",
     },
     file_export: {
+      open_output_folder_failed: "Failed to open the output folder …",
       translation_failed: "Failed to generate translation files …",
       write_file_failed: "File writing failed …",
     },

@@ -70,6 +70,7 @@ export class CoreLifecycleManager {
         publicPort: public_port,
         database: this.database,
         logManager: log_manager,
+        openOutputFolder: this.options.openOutputFolder,
       });
       const gateway_start_result = await gateway_server.start();
       this.gateway_server = gateway_server;

@@ -402,6 +402,7 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
+      openOutputFolder: noop_output_folder,
       publicPort: address.port,
     });
 
@@ -435,9 +436,12 @@ describe("ApiGatewayServer", () => {
       appRoot: app_root,
       database,
       logManager: log_manager,
+      openOutputFolder: noop_output_folder,
       publicPort: await allocate_gateway_test_port(),
     });
   }
+
+  async function noop_output_folder(_output_path: string): Promise<void> {}
 
   /**
    * 临时 appRoot 提供 version 和资源根，避免测试污染真实用户目录

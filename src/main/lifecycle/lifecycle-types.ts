@@ -17,5 +17,6 @@ export interface CoreLifecycleStartResult {
 
 export interface CoreLifecycleManagerOptions {
   appRoot: string;
+  openOutputFolder: (outputPath: string) => Promise<void>;
   onUnexpectedExit?: (result: CoreProcessExitResult) => void;
 }

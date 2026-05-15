@@ -43,7 +43,10 @@ afterEach(() => {
 
 describe("CoreLifecycleManager", () => {
   it("直接注入 ProjectDatabase 并只启动公开 API Gateway", async () => {
-    const manager = new CoreLifecycleManager({ appRoot: temp_dir });
+    const manager = new CoreLifecycleManager({
+      appRoot: temp_dir,
+      openOutputFolder: noop_output_folder,
+    });
 
     const start_result = await manager.start();
     try {
@@ -77,3 +80,5 @@ describe("CoreLifecycleManager", () => {
     }
   });
 });
+
+async function noop_output_folder(_output_path: string): Promise<void> {}

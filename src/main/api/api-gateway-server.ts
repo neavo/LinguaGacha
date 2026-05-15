@@ -54,6 +54,7 @@ export interface ApiGatewayServerOptions {
   publicPort: number; // publicPort 由生命周期端口分配器保证唯一，Gateway 只按该端口监听
   database: ProjectDatabase; // database 由生命周期层注入，Gateway 不负责创建或关闭 .lg 物理存储
   logManager: LogManager; // logManager 是日志窗口、SSE 和内部提交层的唯一汇聚点
+  openOutputFolder: (outputPath: string) => Promise<void>; // 输出目录打开能力由 Electron 宿主专用注入，避免 renderer 暴露通用文件系统入口
 }
 
 /**
@@ -216,6 +217,7 @@ export class ApiGatewayServer {
       this.options.database,
       setting_service,
       this.project_session_state,
+      this.options.openOutputFolder,
       this.options.logManager,
     );
     const quality_service = new QualityService(

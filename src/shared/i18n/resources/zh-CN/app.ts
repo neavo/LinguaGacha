@@ -105,6 +105,7 @@ export const zh_cn_app = {
       value_normalize_failed: "归一化默认预设值失败：{PRESET_DIRECTORY} -> {VALUE} …",
     },
     file_export: {
+      open_output_folder_failed: "打开输出文件夹失败 …",
       translation_failed: "译文生成失败 …",
       write_file_failed: "文件写入失败 …",
     },
