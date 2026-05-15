@@ -81,6 +81,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260515 v0.99.5
+  - 优化与改进 #559 #563 #564 #565 #566 #567
+  - 现在本项目是一个纯 `TypeScript` 项目了 ( •̀ ω •́ )✧
+
 - 20260505 v0.99.4
   - 优化与改进 #545 #546 #549 #550 #551 #552
 
