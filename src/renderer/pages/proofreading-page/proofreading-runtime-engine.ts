@@ -123,6 +123,7 @@ export type ProofreadingItemsByRowIdsQuery = {
 export type ProofreadingListWindow = {
   view_id: string;
   start: number;
+  row_count: number;
   rows: ProofreadingVisibleItem[];
 };
 
@@ -157,7 +158,6 @@ type ProofreadingRuntimeState = {
 type ProofreadingRuntimeListViewCache = {
   view_id: string;
   projectId: string;
-  revision_signature: string;
   ordered_item_ids: string[];
 };
 
@@ -988,9 +988,7 @@ function apply_counter_delta(args: {
 /**
  * 默认筛选从当前可见事实派生，进入页面时只展示最常用的有效范围
  */
-function buildDefaultFiltersFromState(
-  state: ProofreadingRuntimeState,
-): ProofreadingFilterOptions {
+function buildDefaultFiltersFromState(state: ProofreadingRuntimeState): ProofreadingFilterOptions {
   const available_statuses = [...state.status_count_by_code.keys()].sort(
     (left_status, right_status) => {
       const left_rank = resolve_proofreading_status_sort_rank(left_status);
@@ -1281,7 +1279,17 @@ export function createProofreadingRuntimeEngine() {
       }
 
       current_state.defaultFilters = buildDefaultFiltersFromState(current_state);
-      list_view_cache = null;
+      if (list_view_cache !== null && list_view_cache.projectId === current_state.projectId) {
+        const deleted_id_set = new Set(input.deleteItemIds.map((item_id) => String(item_id)));
+        if (deleted_id_set.size > 0) {
+          list_view_cache = {
+            ...list_view_cache,
+            ordered_item_ids: list_view_cache.ordered_item_ids.filter((item_id) => {
+              return !deleted_id_set.has(item_id);
+            }),
+          };
+        }
+      }
       return build_runtime_sync_state(current_state);
     },
     /**
@@ -1332,7 +1340,6 @@ export function createProofreadingRuntimeEngine() {
       list_view_cache = {
         view_id,
         projectId: state.projectId,
-        revision_signature,
         ordered_item_ids,
       };
       const window_bounds = normalize_window_bounds({
@@ -1364,12 +1371,12 @@ export function createProofreadingRuntimeEngine() {
         state === null ||
         list_view_cache === null ||
         list_view_cache.view_id !== query.view_id ||
-        list_view_cache.projectId !== state.projectId ||
-        list_view_cache.revision_signature !== build_revision_signature(state.revisions)
+        list_view_cache.projectId !== state.projectId
       ) {
         return {
           view_id: query.view_id,
           start: 0,
+          row_count: 0,
           rows: [],
         };
       }
@@ -1382,6 +1389,7 @@ export function createProofreadingRuntimeEngine() {
       return {
         view_id: list_view_cache.view_id,
         start: window_bounds.start,
+        row_count: list_view_cache.ordered_item_ids.length,
         rows: build_window_rows({
           state,
           ordered_item_ids: list_view_cache.ordered_item_ids,
@@ -1398,8 +1406,7 @@ export function createProofreadingRuntimeEngine() {
         state === null ||
         list_view_cache === null ||
         list_view_cache.view_id !== query.view_id ||
-        list_view_cache.projectId !== state.projectId ||
-        list_view_cache.revision_signature !== build_revision_signature(state.revisions)
+        list_view_cache.projectId !== state.projectId
       ) {
         return [];
       }

@@ -350,6 +350,7 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
       return {
         view_id: "view-1",
         start: 0,
+        row_count: 1,
         rows: create_list_view().window_rows,
       };
     }),
@@ -460,6 +461,8 @@ describe("useProofreadingPageState", () => {
 
     expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
     expect(proofreading_runtime_client_fixture.current.apply_item_delta).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
+    expect(proofreading_runtime_client_fixture.current.read_list_window).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.visible_items).toHaveLength(1);
   });
@@ -566,6 +569,7 @@ describe("useProofreadingPageState", () => {
       return {
         view_id: "view-1",
         start: 1,
+        row_count: 3,
         rows: [
           {
             row_id: "2",

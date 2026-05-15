@@ -265,6 +265,31 @@ describe("QualityService", () => {
     ).toEqual([{ src: "HP", dst: "生命值", info: "", regex: false, case_sensitive: false }]);
   });
 
+  it("保存质量规则时保留稳定 entry_id", async () => {
+    const database = new ProjectDatabase();
+    cleanup_databases.push(database);
+    const { service, lg_path } = create_project_service(database);
+
+    await service.save_rule_entries({
+      rule_type: "glossary",
+      expected_revision: 0,
+      entries: [{ entry_id: "rule-1", src: "HP", dst: "生命值" }],
+    });
+
+    expect(
+      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
+    ).toEqual([
+      {
+        entry_id: "rule-1",
+        src: "HP",
+        dst: "生命值",
+        info: "",
+        regex: false,
+        case_sensitive: false,
+      },
+    ]);
+  });
+
   function create_service(): { service: QualityService; app_root: string } {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-quality-test-"));
     cleanup_paths.push(app_root);

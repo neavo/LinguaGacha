@@ -76,6 +76,7 @@ export class CoreLifecycleManager {
       write_lifecycle_log(
         t_main_log("app.log.api_gateway_started", { BASE_URL: gateway_start_result.baseUrl }),
       );
+      write_lifecycle_log("");
       this.state = "ready";
       return gateway_start_result;
     } catch (error) {

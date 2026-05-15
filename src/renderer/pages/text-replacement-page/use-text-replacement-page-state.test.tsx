@@ -36,6 +36,7 @@ const runtime_state = {
     pre_replacement: {
       entries: [
         {
+          entry_id: "hero::0",
           src: "hero",
           dst: "勇者",
           regex: false,
@@ -366,12 +367,14 @@ describe("useTextReplacementPageState", () => {
       expected_revision: 2,
       entries: [
         {
+          entry_id: "hero::0",
           src: "hero",
           dst: "勇者",
           regex: false,
           case_sensitive: false,
         },
         {
+          entry_id: "mage::1",
           src: "mage",
           dst: "法师",
           regex: false,
@@ -414,6 +417,7 @@ describe("useTextReplacementPageState", () => {
       expected_revision: 2,
       entries: [
         {
+          entry_id: "hero::0",
           src: "hero",
           dst: "",
           regex: true,

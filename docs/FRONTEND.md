@@ -71,6 +71,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `ProjectPagesProvider` 持有工作台与校对页 runtime adapter，并用 revision checkpoint barrier 协调项目 warmup、缓存刷新、文件操作和页面跳转。
 - 工作台与校对页可维护页面级缓存，但 ready 判定必须覆盖当前 `ProjectStore.revisions.sections` 中声明依赖的 sections；页面 runtime adapter 不暴露时间戳或 stale boolean 作为缓存新旧依据。
 - 校对 worker 的缓存身份必须同时覆盖 project path、source language、items / quality / proofreading revisions；items tombstone 必须从 worker 原始行、评估行、计数索引和列表缓存中同步删除。
+- 校对、质量规则和姓名字段等结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成有序稳定 id；项目事实刷新只回读最新行内容、状态、警告和统计徽标，不自动改变当前成员与顺序；实体删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照，不按位置把旧 id 映射到新实体。
 - Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；Quality statistics 与校对 worker 的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。
 - 新增页面若依赖项目事实，应接入 `ProjectPagesProvider` 或现有 runtime adapter；不要在页面里建立第二套全局项目缓存。
 
