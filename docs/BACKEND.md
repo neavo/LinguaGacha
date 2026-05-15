@@ -106,7 +106,7 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 
 任务启动命令统一走 `/api/tasks/start`，必须携带 `expected_section_revisions` 作为并发校验；翻译、分析至少校验 `quality`、`prompts`，translation 的 `scope.kind === "items"` 表示重翻并至少校验 `items`、`proofreading`、`quality`、`prompts`。任务执行所需的质量规则与提示词快照由后端从 `.lg` 当前事实构建，再作为稳定 work unit 输入传给 worker。Engine 到 worker 只传 `WorkUnit`，worker 返回 `WorkerExecutionResult`，项目事实只经 `TaskArtifactCommitter` / `ProjectTaskStore` 写入。
 
-LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_limit > 0` 时使用显式并发，否则 `rpm_limit > 0` 时用 RPM 一比一作为自动并发，两者都没有时为 8。`TaskLimiter` 只接收最终并发并继续用 RPM pacer 控制发起节奏；`request_in_flight_count` 只统计已取得 limiter lease 并真实进入执行中的 LLM work unit，不统计等待队列。`WorkerPool` 是 multiplexed pool，少量 worker_threads 可承载多个 in-flight work unit，worker_threads 数量不等于用户并发。
+LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_limit > 0` 时使用显式并发，否则 `rpm_limit > 0` 时用 RPM 一比一作为自动并发，两者都没有时为 8。`TaskLimiter` 只接收最终并发；有 RPM 时只用 RPM pacer 控制请求启动节奏，无 RPM 时按最终并发值作为隐藏 RPS 平滑补充启动资格。`request_in_flight_count` 只统计已取得 limiter lease 并真实进入执行中的 LLM work unit，不统计等待队列。`WorkerPool` 是 multiplexed pool，少量 worker_threads 可承载多个 in-flight work unit，worker_threads 数量不等于用户并发。
 
 任务级多 Key 轮换由 `ModelKeyLeasePool` 在 work unit 即将进入 in-flight 前按 `api_format / api_url / model_id / normalized key list` 做全局 round-robin；它复用 `LLMClientPolicy.collect_api_keys` 的 key 归一规则，但不把任务级轮换下放到 worker。重试重新获取 Key，worker 内不做本地轮换。模型连通性测试遍历所有 Key，模型列表查询只使用 primary Key。
 
