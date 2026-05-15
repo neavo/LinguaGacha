@@ -31,6 +31,7 @@ import {
   create_result_view_snapshot,
   materialize_result_view_snapshot,
   prune_result_view_snapshot,
+  type ResultViewSourceUpdatePolicy,
   type ResultViewSnapshot,
 } from "@/pages/result-view-snapshot";
 import {
@@ -568,7 +569,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [apply_snapshot, project_store_state.quality]);
 
   const save_entries_snapshot = useCallback(
-    async (next_entries: GlossaryEntry[]): Promise<boolean> => {
+    async (
+      next_entries: GlossaryEntry[],
+      result_view_update: ResultViewSourceUpdatePolicy = "preserve",
+    ): Promise<boolean> => {
       if (readonly) {
         return false;
       }
@@ -591,11 +595,15 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           revision: current_glossary_slice.revision + 1,
         },
       );
+      const previous_result_view_snapshot = result_view_snapshot;
       const local_commit = commit_local_project_change({
         source: "quality_rule_save_entries",
         updatedSections: ["quality"],
         operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
       });
+      if (result_view_update === "rebuild") {
+        set_result_view_snapshot(null);
+      }
 
       try {
         const mutation_ack = normalize_project_mutation_ack(
@@ -609,6 +617,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return true;
       } catch (error) {
         local_commit.rollback();
+        if (result_view_update === "rebuild") {
+          set_result_view_snapshot(previous_result_view_snapshot);
+        }
         void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
@@ -623,6 +634,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       project_store,
       push_toast,
       refresh_project_runtime,
+      result_view_snapshot,
       readonly,
       t,
     ],
@@ -635,7 +647,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         close_preset_menu: boolean;
       },
     ): Promise<boolean> => {
-      const saved = await save_entries_snapshot(next_entries);
+      const saved = await save_entries_snapshot(next_entries, "rebuild");
       if (!saved) {
         return false;
       }
@@ -1526,7 +1538,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       return false;
     }
 
-    const saved = await save_entries_snapshot([]);
+    const saved = await save_entries_snapshot([], "rebuild");
     if (!saved) {
       return false;
     }

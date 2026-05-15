@@ -100,11 +100,22 @@ const runtime_state = {
 };
 
 const project_store = {
-  subscribe: vi.fn(() => {
-    return () => {};
-  }),
+  subscribe: (listener: () => void) => {
+    project_store_listeners.add(listener);
+    return () => {
+      project_store_listeners.delete(listener);
+    };
+  },
   getState: () => runtime_state,
 };
+
+const project_store_listeners = new Set<() => void>();
+
+function notify_project_store(): void {
+  for (const listener of project_store_listeners) {
+    listener();
+  }
+}
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
@@ -200,9 +211,38 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       project_store,
       settings_snapshot: {},
       set_settings_snapshot: vi.fn(),
-      commit_local_project_change: vi.fn(() => ({
-        rollback: vi.fn(),
-      })),
+      commit_local_project_change: (input: {
+        operations: Array<{
+          sections?: {
+            quality?: {
+              data?: typeof runtime_state.quality;
+            };
+          };
+        }>;
+      }) => {
+        const previous_quality = {
+          ...runtime_state.quality,
+          glossary: {
+            ...runtime_state.quality.glossary,
+            entries: runtime_state.quality.glossary.entries.map((entry) => ({ ...entry })),
+          },
+        };
+        const quality_patch = input.operations.find((operation) => {
+          return operation.sections?.quality?.data !== undefined;
+        });
+        const next_quality = quality_patch?.sections?.quality?.data;
+        if (next_quality !== undefined) {
+          runtime_state.quality = next_quality;
+          notify_project_store();
+        }
+
+        return {
+          rollback: () => {
+            runtime_state.quality = previous_quality;
+            notify_project_store();
+          },
+        };
+      },
       refresh_project_runtime: vi.fn(),
       align_project_runtime_ack: vi.fn(),
       task_snapshot,
@@ -283,6 +323,7 @@ describe("useGlossaryPageState", () => {
   let render_version = 0;
 
   beforeEach(() => {
+    project_store_listeners.clear();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
     runtime_state.quality.glossary.entries = create_default_glossary_entries();
@@ -602,6 +643,79 @@ describe("useGlossaryPageState", () => {
       ],
     });
     expect(latest_state?.import_confirm_state.open).toBe(false);
+  });
+
+  it("导入非重复术语后立即用最新规则重建表格", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "香蕉",
+            dst: "Banana",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 2,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "苹果",
+      "香蕉",
+    ]);
+  });
+
+  it("导入保存失败时恢复原来的冻结结果成员", async () => {
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.update_filter_keyword("苹果");
+    });
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+
+    runtime_state.quality.glossary.entries = [
+      ...create_default_glossary_entries(),
+      {
+        src: "苹果派",
+        dst: "Apple pie",
+        info: "甜点",
+        case_sensitive: false,
+      },
+    ];
+    runtime_state.quality.glossary.revision = 2;
+    runtime_state.revisions.sections.quality = 2;
+    await rerender_probe();
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "香蕉",
+            dst: "Banana",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("保存失败"));
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
   });
 
   it("导入重复术语确认时基于最新术语表快照重算写入内容", async () => {

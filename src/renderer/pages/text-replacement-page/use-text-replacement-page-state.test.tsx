@@ -96,11 +96,22 @@ const runtime_state = {
 };
 
 const project_store = {
-  subscribe: vi.fn(() => {
-    return () => {};
-  }),
+  subscribe: (listener: () => void) => {
+    project_store_listeners.add(listener);
+    return () => {
+      project_store_listeners.delete(listener);
+    };
+  },
   getState: () => runtime_state,
 };
+
+const project_store_listeners = new Set<() => void>();
+
+function notify_project_store(): void {
+  for (const listener of project_store_listeners) {
+    listener();
+  }
+}
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
 
@@ -176,9 +187,38 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       project_store,
       settings_snapshot: {},
       set_settings_snapshot: vi.fn(),
-      commit_local_project_change: vi.fn(() => ({
-        rollback: vi.fn(),
-      })),
+      commit_local_project_change: (input: {
+        operations: Array<{
+          sections?: {
+            quality?: {
+              data?: typeof runtime_state.quality;
+            };
+          };
+        }>;
+      }) => {
+        const previous_quality = {
+          ...runtime_state.quality,
+          pre_replacement: {
+            ...runtime_state.quality.pre_replacement,
+            entries: runtime_state.quality.pre_replacement.entries.map((entry) => ({ ...entry })),
+          },
+        };
+        const quality_patch = input.operations.find((operation) => {
+          return operation.sections?.quality?.data !== undefined;
+        });
+        const next_quality = quality_patch?.sections?.quality?.data;
+        if (next_quality !== undefined) {
+          runtime_state.quality = next_quality;
+          notify_project_store();
+        }
+
+        return {
+          rollback: () => {
+            runtime_state.quality = previous_quality;
+            notify_project_store();
+          },
+        };
+      },
       refresh_project_runtime: vi.fn(),
       align_project_runtime_ack: vi.fn(),
       task_snapshot: runtime_state.task,
@@ -226,10 +266,25 @@ describe("useTextReplacementPageState", () => {
   let latest_state: ReturnType<typeof useTextReplacementPageState> | null = null;
 
   beforeEach(() => {
+    project_store_listeners.clear();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
     runtime_state.task.busy = false;
     runtime_state.task.status = "idle";
+    runtime_state.quality.pre_replacement = {
+      entries: [
+        {
+          entry_id: "hero::0",
+          src: "hero",
+          dst: "勇者",
+          regex: false,
+          case_sensitive: false,
+        },
+      ],
+      enabled: true,
+      mode: "custom",
+      revision: 2,
+    };
     current_statistics_cache = create_statistics_cache({});
   });
 
@@ -251,6 +306,10 @@ describe("useTextReplacementPageState", () => {
     document.body.append(container);
     root = createRoot(container);
 
+    await rerender_probe();
+  }
+
+  async function rerender_probe(): Promise<void> {
     await act(async () => {
       root?.render(
         <Probe
@@ -382,6 +441,86 @@ describe("useTextReplacementPageState", () => {
         },
       ],
     });
+  });
+
+  it("导入非重复替换规则后立即用最新规则重建表格", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "mage",
+            dst: "法师",
+            regex: false,
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 3,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/replacement.json");
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "hero",
+      "mage",
+    ]);
+  });
+
+  it("导入保存失败时恢复原来的冻结结果成员", async () => {
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.update_filter_keyword("hero");
+    });
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
+
+    runtime_state.quality.pre_replacement.entries = [
+      {
+        entry_id: "hero::0",
+        src: "hero",
+        dst: "勇者",
+        regex: false,
+        case_sensitive: false,
+      },
+      {
+        entry_id: "heroine::1",
+        src: "heroine",
+        dst: "女主角",
+        regex: false,
+        case_sensitive: false,
+      },
+    ];
+    runtime_state.quality.pre_replacement.revision = 3;
+    runtime_state.revisions.sections.quality = 3;
+    await rerender_probe();
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
+
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "mage",
+            dst: "法师",
+            regex: false,
+            case_sensitive: false,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("保存失败"));
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/replacement.json");
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
   });
 
   it("预设重复替换规则选择覆盖时会保存新规则", async () => {

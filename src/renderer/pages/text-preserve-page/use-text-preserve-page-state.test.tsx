@@ -350,6 +350,10 @@ describe("useTextPreservePageState", () => {
     document.body.append(container);
     root = createRoot(container);
 
+    await rerender_probe();
+  }
+
+  async function rerender_probe(): Promise<void> {
     await act(async () => {
       root?.render(
         <Probe
@@ -549,6 +553,91 @@ describe("useTextPreservePageState", () => {
         },
       ],
     });
+  });
+
+  it("导入非重复文本保护规则后立即用最新规则重建表格", async () => {
+    await mount_probe();
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "baz",
+            info: "keep",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        projectRevision: 2,
+        sectionRevisions: {
+          quality: 2,
+        },
+      });
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "foo",
+      "baz",
+    ]);
+  });
+
+  it("导入保存失败时恢复原来的冻结结果成员", async () => {
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.update_filter_keyword("foo");
+    });
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
+
+    runtime_state = {
+      ...runtime_state,
+      quality: {
+        ...runtime_state.quality,
+        text_preserve: {
+          ...runtime_state.quality.text_preserve,
+          entries: [
+            {
+              src: "foo",
+              info: "bar",
+            },
+            {
+              src: "foobar",
+              info: "hidden",
+            },
+          ],
+          revision: 2,
+        },
+      },
+      revisions: {
+        ...runtime_state.revisions,
+        sections: {
+          ...runtime_state.revisions.sections,
+          quality: 2,
+        },
+      },
+    };
+    await rerender_probe();
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
+
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        entries: [
+          {
+            src: "baz",
+            info: "keep",
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("保存失败"));
+
+    await act(async () => {
+      await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
   });
 
   it("预设重复文本保护规则选择覆盖时会保存新备注", async () => {

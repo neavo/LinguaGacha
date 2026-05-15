@@ -5,6 +5,8 @@ export type ResultViewSnapshot<Query, Id extends string> = {
   invalid_message: string | null;
 };
 
+export type ResultViewSourceUpdatePolicy = "preserve" | "rebuild";
+
 // 用户显式触发查询类 action 时创建新快照，避免后续事实刷新偷偷改变结果成员
 export function create_result_view_snapshot<Query, Id extends string>(args: {
   applied_query: Query;
