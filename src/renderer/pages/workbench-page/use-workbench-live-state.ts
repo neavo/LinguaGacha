@@ -773,6 +773,7 @@ export type UseWorkbenchLiveStateResult = {
   anchor_entry_id: string | null;
   readonly: boolean;
   can_edit_files: boolean;
+  can_delete_selected_files: boolean;
   can_export_translation: boolean;
   can_close_project: boolean;
   dialog_state: WorkbenchDialogState;
@@ -1241,6 +1242,17 @@ export function useWorkbenchLiveState(
   const readonly =
     !project_snapshot.loaded || task_snapshot.busy || file_op_running || is_mutation_running;
   const can_edit_files = !readonly;
+  // 删除权限以当前可见工作台文件为准，避免全选或陈旧选择绕过最后文件保护
+  const selected_delete_target_rel_paths = useMemo(() => {
+    const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path));
+    return dedupe_workbench_entry_ids(selected_entry_ids).filter((entry_id) => {
+      return visible_entry_id_set.has(entry_id);
+    });
+  }, [entries, selected_entry_ids]);
+  const can_delete_selected_files =
+    can_edit_files &&
+    selected_delete_target_rel_paths.length > 0 &&
+    selected_delete_target_rel_paths.length < entries.length;
   const export_translation_submitting =
     dialog_state.kind === "export-translation" && dialog_state.submitting;
   const can_export_translation =
@@ -1385,12 +1397,16 @@ export function useWorkbenchLiveState(
 
   const request_delete_entries = useCallback(
     (entry_ids: string[]): void => {
+      if (!can_edit_files) {
+        return;
+      }
+
       const visible_entry_id_set = new Set(entries.map((entry) => entry.rel_path));
       const target_rel_paths = dedupe_workbench_entry_ids(entry_ids).filter((entry_id) => {
         return visible_entry_id_set.has(entry_id);
       });
 
-      if (target_rel_paths.length === 0) {
+      if (target_rel_paths.length === 0 || target_rel_paths.length >= entries.length) {
         return;
       }
 
@@ -1401,7 +1417,7 @@ export function useWorkbenchLiveState(
         submitting: false,
       });
     },
-    [entries],
+    [can_edit_files, entries],
   );
 
   const request_add_files_from_paths = useCallback(
@@ -1820,6 +1836,7 @@ export function useWorkbenchLiveState(
     anchor_entry_id,
     readonly,
     can_edit_files,
+    can_delete_selected_files,
     can_export_translation,
     can_close_project,
     dialog_state,

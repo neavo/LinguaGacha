@@ -111,7 +111,7 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
     translation_stats: stats,
     analysis_stats: stats,
     can_edit_files: true,
-    selected_entry_count: 1,
+    can_delete_selected_files: true,
     can_export_translation: true,
     can_close_project: true,
     on_add_file: () => {},
@@ -177,5 +177,20 @@ describe("WorkbenchCommandBar", () => {
         auto_open_key: null,
       }),
     );
+  });
+
+  it("删除按钮只消费上游删除权限", () => {
+    const html = renderToStaticMarkup(
+      <TooltipProvider>
+        <WorkbenchCommandBar
+          {...create_workbench_command_bar_props()}
+          can_edit_files={true}
+          can_delete_selected_files={false}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(html).toContain("workbench_page.action.delete_file");
+    expect(html).toContain("disabled");
   });
 });

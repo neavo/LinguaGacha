@@ -30,7 +30,7 @@ type WorkbenchCommandBarProps = {
   translation_stats: WorkbenchStats;
   analysis_stats: WorkbenchStats;
   can_edit_files: boolean;
-  selected_entry_count: number;
+  can_delete_selected_files: boolean;
   can_export_translation: boolean;
   can_close_project: boolean;
   on_add_file: () => void;
@@ -66,7 +66,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       ? props.active_workbench_task_view.task_kind
       : null;
   const add_file_disabled = !props.can_edit_files;
-  const delete_file_disabled = !props.can_edit_files || props.selected_entry_count === 0;
+  const delete_file_disabled = !props.can_delete_selected_files;
   const actions: CommandAction[] = [
     {
       id: "add-file",

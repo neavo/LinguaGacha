@@ -102,9 +102,14 @@ function get_payload_files(plan: ReturnType<typeof create_workbench_add_files_pl
 }
 
 const SETTINGS = {
-  source_language: "JA",
+  source_language: "ALL",
   mtool_optimizer_enable: false,
   skip_duplicate_source_text_enable: true,
+};
+
+const JA_SETTINGS = {
+  ...SETTINGS,
+  source_language: "JA",
 };
 
 describe("workbench add-file translation inheritance planner", () => {
@@ -176,9 +181,69 @@ describe("workbench add-file translation inheritance planner", () => {
     });
 
     expect(get_payload_items(plan)[0]).toMatchObject({
-      dst: "你好",
+      dst: "",
       status: "EXCLUDED",
     });
+  });
+
+  it("预过滤结果会进入 add-file payload，重复原文只在同文件内去重", () => {
+    const plan = create_workbench_add_files_plan({
+      state: create_state({}),
+      parsed_files: [
+        create_parsed_file([
+          { src: "bgm/theme.ogg", dst: "", row: 1 },
+          { src: "plain english line", dst: "", row: 2 },
+          { src: "こんにちは", dst: "", row: 3 },
+          { src: "こんにちは", dst: "", row: 4 },
+        ]),
+        {
+          source_path: "E:/demo/next.txt",
+          target_rel_path: "next.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
+        },
+      ],
+      settings: JA_SETTINGS,
+      inheritance_mode: "none",
+    });
+
+    const files = get_payload_files(plan);
+    expect(files[0]?.parsed_items).toEqual([
+      expect.objectContaining({ src: "bgm/theme.ogg", status: "RULE_SKIPPED" }),
+      expect.objectContaining({ src: "plain english line", status: "LANGUAGE_SKIPPED" }),
+      expect.objectContaining({ src: "こんにちは", status: "NONE" }),
+      expect.objectContaining({ src: "こんにちは", status: "DUPLICATED" }),
+    ]);
+    expect(files[1]?.parsed_items).toEqual([
+      expect.objectContaining({ src: "こんにちは", status: "NONE" }),
+    ]);
+  });
+
+  it("预过滤优先于继承，只有仍待处理的新增项继承旧译文", () => {
+    const plan = create_workbench_add_files_plan({
+      state: create_state({
+        "1": create_item({ item_id: 1, src: "bgm/theme.ogg", dst: "旧资源" }),
+        "2": create_item({ item_id: 2, src: "plain english line", dst: "旧英文" }),
+        "3": create_item({ item_id: 3, src: "こんにちは", dst: "你好" }),
+      }),
+      parsed_files: [
+        create_parsed_file([
+          { src: "bgm/theme.ogg", dst: "", row: 1 },
+          { src: "plain english line", dst: "", row: 2 },
+          { src: "こんにちは", dst: "", row: 3 },
+          { src: "こんばんは", dst: "", row: 4 },
+        ]),
+      ],
+      settings: JA_SETTINGS,
+      inheritance_mode: "inherit",
+    });
+
+    expect(get_payload_items(plan)).toEqual([
+      expect.objectContaining({ src: "bgm/theme.ogg", dst: "", status: "RULE_SKIPPED" }),
+      expect.objectContaining({ src: "plain english line", dst: "", status: "LANGUAGE_SKIPPED" }),
+      expect.objectContaining({ src: "こんにちは", dst: "你好", status: "PROCESSED" }),
+      expect.objectContaining({ src: "こんばんは", dst: "", status: "NONE" }),
+    ]);
   });
 
   it("批量新增会连续分配文件顺序与条目 ID，并让继承模式作用于整批", () => {

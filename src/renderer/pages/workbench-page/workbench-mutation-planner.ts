@@ -7,7 +7,6 @@ import {
   type ProjectStoreState,
 } from "@/project/store/project-store";
 import { create_empty_translation_task_snapshot } from "@/project/reset/reset-state-builders";
-import { is_task_skipped_item_status } from "@shared/task";
 
 type WorkbenchPlannerSettings = {
   source_language: string;
@@ -57,6 +56,13 @@ export type WorkbenchProjectMutationPlan = {
   operations: ProjectStoreChangeOperation[];
   requestBody: Record<string, unknown>;
   next_task_snapshot?: Record<string, unknown>;
+};
+
+type WorkbenchMutationRuntimeState = {
+  items: Record<string, Record<string, unknown>>;
+  analysis: Record<string, unknown>;
+  task_snapshot: Record<string, unknown>;
+  mutation_meta: WorkbenchMutationMeta;
 };
 
 function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | null {
@@ -194,12 +200,7 @@ function build_workbench_mutation_state(args: {
   files: Record<string, Record<string, unknown>>;
   items: Record<string, Record<string, unknown>>;
   settings: WorkbenchPlannerSettings;
-}): {
-  items: Record<string, Record<string, unknown>>;
-  analysis: Record<string, unknown>;
-  task_snapshot: Record<string, unknown>;
-  mutation_meta: WorkbenchMutationMeta;
-} {
+}): WorkbenchMutationRuntimeState {
   const base_task_snapshot = args.task_snapshot ?? create_empty_translation_task_snapshot();
   const mutation_output = compute_project_prefilter_mutation({
     state: {
@@ -238,6 +239,31 @@ function serialize_workbench_item_payloads(
       status: String(item.status ?? "NONE"),
       text_type: String(item.text_type ?? "NONE"),
       retry_count: Number(item.retry_count ?? 0),
+    };
+  });
+}
+
+// add-file payload 以最终运行态覆盖解析草稿，同时保留解析器提供的展示辅助字段
+function serialize_add_file_payload_items(args: {
+  parsed_items: WorkbenchParsedItemRecord[];
+  final_items: Record<string, Record<string, unknown>>;
+}): Array<Record<string, unknown>> {
+  return args.parsed_items.map((parsed_item) => {
+    const final_item = args.final_items[String(parsed_item.id)] ?? {};
+    return {
+      id: parsed_item.id,
+      src: String(final_item.src ?? parsed_item.src),
+      dst: String(final_item.dst ?? parsed_item.dst),
+      name_src: parsed_item.name_src,
+      name_dst: final_item.name_dst ?? parsed_item.name_dst ?? null,
+      extra_field: parsed_item.extra_field,
+      tag: parsed_item.tag,
+      row: Number(final_item.row_number ?? final_item.row ?? parsed_item.row),
+      file_type: parsed_item.file_type,
+      file_path: String(final_item.file_path ?? parsed_item.file_path),
+      text_type: String(final_item.text_type ?? parsed_item.text_type),
+      status: String(final_item.status ?? parsed_item.status),
+      retry_count: Number(final_item.retry_count ?? parsed_item.retry_count),
     };
   });
 }
@@ -426,6 +452,13 @@ type WorkbenchParsedItemRecord = {
   retry_count: number;
 };
 
+type WorkbenchAddFilePayloadDraft = {
+  source_path: string;
+  target_rel_path: string;
+  file_record: WorkbenchPlannerFileRecord;
+  parsed_items: WorkbenchParsedItemRecord[];
+};
+
 function normalize_casefold_path(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
 }
@@ -479,28 +512,6 @@ function clone_parsed_item_record(item: WorkbenchParsedItemRecord): WorkbenchPar
   return {
     ...item,
   };
-}
-
-function serialize_full_parsed_item_payloads(
-  parsed_items: WorkbenchParsedItemRecord[],
-): Array<Record<string, unknown>> {
-  return parsed_items.map((item) => {
-    return {
-      id: item.id,
-      src: item.src,
-      dst: item.dst,
-      name_src: item.name_src,
-      name_dst: item.name_dst,
-      extra_field: item.extra_field,
-      tag: item.tag,
-      row: item.row,
-      file_type: item.file_type,
-      file_path: item.file_path,
-      text_type: item.text_type,
-      status: item.status,
-      retry_count: item.retry_count,
-    };
-  });
 }
 
 function convert_parsed_item_to_runtime_record(
@@ -607,12 +618,16 @@ function create_normalized_add_parsed_items(
 
 function inherit_completed_translations(args: {
   old_items: WorkbenchPlannerItemRecord[];
-  next_items: WorkbenchParsedItemRecord[];
+  next_items: Array<Record<string, unknown>>;
 }): void {
   const candidate_map = build_translation_inheritance_candidates(args.old_items);
 
   for (const item of args.next_items) {
-    const candidates = candidate_map.get(item.src);
+    if (normalize_status_value(item.status) !== "NONE") {
+      continue;
+    }
+
+    const candidates = candidate_map.get(String(item.src ?? ""));
     if (candidates === undefined || candidates.length === 0) {
       continue;
     }
@@ -622,9 +637,7 @@ function inherit_completed_translations(args: {
     item.dst = candidate.dst;
     item.name_dst = candidate.name_dst ?? null;
     item.retry_count = candidate.retry_count;
-    if (!is_task_skipped_item_status(normalize_status_value(item.status))) {
-      item.status = candidate.status;
-    }
+    item.status = candidate.status;
   }
 }
 
@@ -649,43 +662,30 @@ function ensure_target_path_not_conflict(args: {
   }
 }
 
-function create_file_mutation_runtime_plan(args: {
+function create_file_mutation_runtime_plan_from_state(args: {
   state: ProjectStoreState;
-  task_snapshot?: WorkbenchPlannerTaskSnapshot;
-  file_map: Map<string, WorkbenchPlannerFileRecord>;
-  next_file_map: Map<string, WorkbenchPlannerFileRecord>;
-  next_item_map: Map<number, WorkbenchPlannerItemRecord>;
-  settings: WorkbenchPlannerSettings;
+  next_files: Record<string, Record<string, unknown>>;
+  mutation_state: WorkbenchMutationRuntimeState;
   request_body: Record<string, unknown>;
 }): WorkbenchProjectMutationPlan {
-  const next_files = build_file_section(args.next_file_map);
-  const next_items = build_item_section(args.next_item_map);
-  const mutation_state = build_workbench_mutation_state({
-    state: args.state,
-    task_snapshot: args.task_snapshot,
-    files: next_files,
-    items: next_items,
-    settings: args.settings,
-  });
-
   return {
     updatedSections: ["files", "items", "analysis"],
     operations: [
-      createProjectStoreReplaceSectionChange("files", next_files),
-      createProjectStoreReplaceSectionChange("items", mutation_state.items),
-      createProjectStoreReplaceSectionChange("analysis", mutation_state.analysis),
+      createProjectStoreReplaceSectionChange("files", args.next_files),
+      createProjectStoreReplaceSectionChange("items", args.mutation_state.items),
+      createProjectStoreReplaceSectionChange("analysis", args.mutation_state.analysis),
     ],
     requestBody: {
       ...args.request_body,
-      translation_extras: mutation_state.mutation_meta.translation_extras,
-      prefilter_config: mutation_state.mutation_meta.prefilter_config,
+      translation_extras: args.mutation_state.mutation_meta.translation_extras,
+      prefilter_config: args.mutation_state.mutation_meta.prefilter_config,
       expected_section_revisions: build_expected_revisions(args.state, [
         "files",
         "items",
         "analysis",
       ]),
     },
-    next_task_snapshot: mutation_state.task_snapshot,
+    next_task_snapshot: args.mutation_state.task_snapshot,
   };
 }
 
@@ -704,7 +704,8 @@ export function create_workbench_add_files_plan(args: {
   const next_file_map = new Map(file_map);
   const next_item_map = build_item_map(args.state);
   const old_items = [...next_item_map.values()];
-  const files_payload: Array<Record<string, unknown>> = [];
+  const add_file_payload_drafts: WorkbenchAddFilePayloadDraft[] = [];
+  const added_item_ids: number[] = [];
   const batch_target_path_set = new Set<string>();
   let next_item_id_seed = build_next_item_id_seed(args.state) + 1;
   let next_sort_index = build_next_sort_index(file_map);
@@ -734,44 +735,78 @@ export function create_workbench_add_files_plan(args: {
       }),
     });
     next_item_id_seed += normalized_parsed_items.length;
-    if (args.inheritance_mode === "inherit") {
-      inherit_completed_translations({
-        old_items,
-        next_items: normalized_parsed_items,
-      });
-    }
 
     for (const item of normalized_parsed_items) {
       const runtime_item = convert_parsed_item_to_runtime_record(item);
       next_item_map.set(runtime_item.item_id, runtime_item);
+      added_item_ids.push(runtime_item.item_id);
     }
 
-    next_file_map.set(target_rel_path, {
+    const file_record = {
       rel_path: target_rel_path,
       file_type: parsed_file.file_type,
       sort_index: next_sort_index,
-    });
+    };
+    next_file_map.set(target_rel_path, file_record);
 
-    files_payload.push({
+    add_file_payload_drafts.push({
       source_path: parsed_file.source_path,
       target_rel_path,
-      file_record: {
-        rel_path: target_rel_path,
-        file_type: parsed_file.file_type,
-        sort_index: next_sort_index,
-      },
-      parsed_items: serialize_full_parsed_item_payloads(normalized_parsed_items),
+      file_record,
+      parsed_items: normalized_parsed_items,
     });
     next_sort_index += 1;
   }
 
-  return create_file_mutation_runtime_plan({
+  const next_files = build_file_section(next_file_map);
+  const next_items = build_item_section(next_item_map);
+  let mutation_state = build_workbench_mutation_state({
     state: args.state,
     task_snapshot: args.task_snapshot,
-    file_map,
-    next_file_map,
-    next_item_map,
+    files: next_files,
+    items: next_items,
     settings: args.settings,
+  });
+
+  if (args.inheritance_mode === "inherit") {
+    // 继承必须发生在预过滤之后，只让仍待处理的新增条目吸收旧译文
+    const inherited_items = Object.fromEntries(
+      Object.entries(mutation_state.items).map(([item_id, item]) => {
+        return [item_id, { ...item }];
+      }),
+    );
+    inherit_completed_translations({
+      old_items,
+      next_items: added_item_ids.flatMap((item_id) => {
+        const item = inherited_items[String(item_id)];
+        return item === undefined ? [] : [item];
+      }),
+    });
+    mutation_state = build_workbench_mutation_state({
+      state: args.state,
+      task_snapshot: args.task_snapshot,
+      files: next_files,
+      items: inherited_items,
+      settings: args.settings,
+    });
+  }
+
+  const files_payload = add_file_payload_drafts.map((draft) => {
+    return {
+      source_path: draft.source_path,
+      target_rel_path: draft.target_rel_path,
+      file_record: draft.file_record,
+      parsed_items: serialize_add_file_payload_items({
+        parsed_items: draft.parsed_items,
+        final_items: mutation_state.items,
+      }),
+    };
+  });
+
+  return create_file_mutation_runtime_plan_from_state({
+    state: args.state,
+    next_files,
+    mutation_state,
     request_body: {
       files: files_payload,
     },

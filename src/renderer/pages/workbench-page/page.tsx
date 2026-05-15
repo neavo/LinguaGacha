@@ -59,7 +59,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         translation_stats={workbench_state.translation_stats}
         analysis_stats={workbench_state.analysis_stats}
         can_edit_files={workbench_state.can_edit_files}
-        selected_entry_count={workbench_state.selected_entry_ids.length}
+        can_delete_selected_files={workbench_state.can_delete_selected_files}
         can_export_translation={workbench_state.can_export_translation}
         can_close_project={workbench_state.can_close_project}
         on_add_file={() => {

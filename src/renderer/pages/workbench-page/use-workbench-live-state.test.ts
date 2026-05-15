@@ -440,6 +440,52 @@ describe("useWorkbenchLiveState", () => {
     expect(latest_state?.entries.map((entry) => entry.rel_path)).toEqual(["chapter01.txt"]);
   });
 
+  it("全选全部文件时关闭删除权限且删除入口保持安静", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => {
+          return {
+            files: {
+              "chapter01.txt": {
+                rel_path: "chapter01.txt",
+                file_type: "TXT",
+                sort_index: 1,
+              },
+              "chapter02.txt": {
+                rel_path: "chapter02.txt",
+                file_type: "TXT",
+                sort_index: 2,
+              },
+            },
+            items: {},
+          };
+        },
+      },
+      workbench_change_signal: {
+        seq: 1,
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["chapter01.txt", "chapter02.txt"],
+        active_row_id: "chapter02.txt",
+        anchor_row_id: "chapter01.txt",
+      });
+    });
+
+    expect(latest_state?.can_delete_selected_files).toBe(false);
+
+    act(() => {
+      latest_state?.request_delete_selected_files();
+    });
+
+    expect(latest_state?.dialog_state.kind).toBeNull();
+    expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
+  });
+
   it("运行中翻译统计仍只按 ProjectStore.items.status 派生", async () => {
     translation_runtime_fixture.current = {
       ...translation_runtime_fixture.current,
@@ -856,13 +902,13 @@ describe("useWorkbenchLiveState", () => {
             source_path: "E:/demo/new.txt",
             target_rel_path: "new.txt",
             file_type: "TXT",
-            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
           },
           {
             source_path: "E:/demo/old-copy.txt",
             target_rel_path: "old.txt",
             file_type: "TXT",
-            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
           },
         ],
       };
@@ -953,7 +999,7 @@ describe("useWorkbenchLiveState", () => {
             source_path: "E:/demo/new.txt",
             target_rel_path: "new.txt",
             file_type: "TXT",
-            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
           },
         ],
       })
@@ -1008,7 +1054,7 @@ describe("useWorkbenchLiveState", () => {
             source_path: "E:/demo/new.txt",
             target_rel_path: "new.txt",
             file_type: "TXT",
-            parsed_items: [{ src: "hello", dst: "", row: 1 }],
+            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
           },
         ],
       })
@@ -1022,9 +1068,9 @@ describe("useWorkbenchLiveState", () => {
       project_store: {
         getState: () =>
           create_project_store_state({
-            "1": create_project_item({ item_id: 1, src: "hello", dst: "甲" }),
-            "2": create_project_item({ item_id: 2, src: "hello", dst: "乙" }),
-            "3": create_project_item({ item_id: 3, src: "hello", dst: "甲" }),
+            "1": create_project_item({ item_id: 1, src: "こんにちは", dst: "甲" }),
+            "2": create_project_item({ item_id: 2, src: "こんにちは", dst: "乙" }),
+            "3": create_project_item({ item_id: 3, src: "こんにちは", dst: "甲" }),
           }),
       },
       settings_snapshot: {
@@ -1051,7 +1097,7 @@ describe("useWorkbenchLiveState", () => {
         files: [
           expect.objectContaining({
             target_rel_path: "new.txt",
-            parsed_items: [expect.objectContaining({ src: "hello", dst: "甲" })],
+            parsed_items: [expect.objectContaining({ src: "こんにちは", dst: "甲" })],
           }),
         ],
       }),
