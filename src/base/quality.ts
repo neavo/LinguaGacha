@@ -198,13 +198,18 @@ export class QualityRule {
    */
   public static normalize_entry(entry: unknown): JsonRecord {
     const record = read_record(entry);
-    return {
+    const normalized_entry: JsonRecord = {
       src: String(record["src"] ?? "").trim(),
       dst: String(record["dst"] ?? "").trim(),
       info: String(record["info"] ?? "").trim(),
       regex: Boolean(record["regex"] ?? false),
       case_sensitive: Boolean(record["case_sensitive"] ?? false),
     };
+    const entry_id = String(record["entry_id"] ?? "").trim();
+    if (entry_id !== "") {
+      normalized_entry["entry_id"] = entry_id;
+    }
+    return normalized_entry;
   }
 
   /**

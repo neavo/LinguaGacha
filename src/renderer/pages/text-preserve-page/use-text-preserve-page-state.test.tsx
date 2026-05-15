@@ -538,10 +538,12 @@ describe("useTextPreservePageState", () => {
       expected_revision: 1,
       entries: [
         {
+          entry_id: "foo::0",
           src: "foo",
           info: "bar",
         },
         {
+          entry_id: "baz::1",
           src: "baz",
           info: "keep",
         },
@@ -580,6 +582,7 @@ describe("useTextPreservePageState", () => {
       expected_revision: 1,
       entries: [
         {
+          entry_id: "foo::0",
           src: "foo",
           info: "",
         },

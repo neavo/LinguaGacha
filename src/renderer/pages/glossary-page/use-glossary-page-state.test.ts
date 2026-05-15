@@ -530,6 +530,7 @@ describe("useGlossaryPageState", () => {
       expected_revision: 1,
       entries: [
         {
+          entry_id: "苹果::0",
           src: "苹果",
           dst: "Malus",
           info: "新的说明",
@@ -585,12 +586,14 @@ describe("useGlossaryPageState", () => {
       expected_revision: 1,
       entries: [
         {
+          entry_id: "苹果::0",
           src: "苹果",
           dst: "Apple",
           info: "水果",
           case_sensitive: false,
         },
         {
+          entry_id: "香蕉::1",
           src: "香蕉",
           dst: "Banana",
           info: "水果",
@@ -661,18 +664,21 @@ describe("useGlossaryPageState", () => {
       expected_revision: 2,
       entries: [
         {
+          entry_id: "苹果::0",
           src: "苹果",
           dst: "Apple",
           info: "水果",
           case_sensitive: false,
         },
         {
+          entry_id: "梨::1",
           src: "梨",
           dst: "Pear",
           info: "水果",
           case_sensitive: false,
         },
         {
+          entry_id: "香蕉::2",
           src: "香蕉",
           dst: "Banana",
           info: "水果",
@@ -716,6 +722,7 @@ describe("useGlossaryPageState", () => {
       expected_revision: 1,
       entries: [
         {
+          entry_id: "苹果::0",
           src: "苹果",
           dst: "",
           info: "",
@@ -747,6 +754,55 @@ describe("useGlossaryPageState", () => {
 
     expect(latest_state?.import_confirm_state.open).toBe(false);
     expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+  });
+
+  it("同长度结构性替换不会把旧筛选快照映射到新实体", async () => {
+    runtime_state.quality.glossary.entries = [
+      {
+        src: "苹果",
+        dst: "Apple",
+        info: "",
+        case_sensitive: false,
+      },
+      {
+        src: "香蕉",
+        dst: "Banana",
+        info: "",
+        case_sensitive: false,
+      },
+    ];
+    await mount_probe();
+
+    act(() => {
+      latest_state?.update_filter_keyword("苹果");
+    });
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+
+    runtime_state.quality = {
+      ...runtime_state.quality,
+      glossary: {
+        ...runtime_state.quality.glossary,
+        entries: [
+          {
+            src: "香蕉",
+            dst: "Banana",
+            info: "",
+            case_sensitive: false,
+          },
+          {
+            src: "梨",
+            dst: "Pear",
+            info: "",
+            case_sensitive: false,
+          },
+        ],
+        revision: 2,
+      },
+    };
+    await rerender_probe();
+
+    expect(latest_state?.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.filtered_entries).toEqual([]);
   });
 
   it("任务运行中锁定术语表 mutation，但保留筛选可用", async () => {

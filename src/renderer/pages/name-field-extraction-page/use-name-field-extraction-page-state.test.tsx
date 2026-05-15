@@ -33,6 +33,7 @@ let runtime_state = {
     glossary: {
       entries: [
         {
+          entry_id: "Alice::0",
           src: "Alice",
           dst: "爱丽丝",
           info: "",
@@ -164,6 +165,7 @@ describe("useNameFieldExtractionPageState", () => {
         glossary: {
           entries: [
             {
+              entry_id: "Alice::0",
               src: "Alice",
               dst: "爱丽丝",
               info: "",
@@ -237,12 +239,14 @@ describe("useNameFieldExtractionPageState", () => {
       expected_revision: 4,
       entries: [
         {
+          entry_id: "Alice::0",
           src: "Alice",
           dst: "爱丽丝",
           info: "",
           case_sensitive: false,
         },
         {
+          entry_id: "Bob::1",
           src: "Bob",
           dst: "",
           info: "",

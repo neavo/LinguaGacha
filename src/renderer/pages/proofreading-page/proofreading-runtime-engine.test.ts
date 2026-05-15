@@ -215,6 +215,14 @@ describe("createProofreadingRuntimeEngine", () => {
   it("apply_item_delta 只更新变更条目与相关计数，不回退整页重建结果", () => {
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full(create_hydration_input());
+    const old_list_view = engine.build_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "foo",
+      scope: "src",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(old_list_view.window_rows.map((row) => row.row_id)).toEqual(["1"]);
 
     const delta_state = engine.apply_item_delta({
       projectId: "demo",
@@ -246,6 +254,15 @@ describe("createProofreadingRuntimeEngine", () => {
       },
     });
 
+    const old_window = engine.read_list_window({
+      view_id: old_list_view.view_id,
+      start: 0,
+      count: 10,
+    });
+    expect(old_window.row_count).toBe(1);
+    expect(old_window.rows[0]?.row_id).toBe("1");
+    expect(old_window.rows[0]?.item.dst).toBe("baz");
+
     const list_view = engine.build_list_view({
       filters: sync_state.defaultFilters,
       keyword: "",
@@ -275,7 +292,7 @@ describe("createProofreadingRuntimeEngine", () => {
     expect(filter_panel.without_glossary_miss_count).toBe(2);
   });
 
-  it("apply_item_delta 支持 tombstone 删除并刷新列表缓存身份", () => {
+  it("apply_item_delta 支持 tombstone 删除并从当前列表快照剪除对应 id", () => {
     const engine = createProofreadingRuntimeEngine();
     const sync_state = engine.hydrate_full({
       ...create_hydration_input(),
@@ -304,6 +321,13 @@ describe("createProofreadingRuntimeEngine", () => {
       upsertItems: [],
       deleteItemIds: [1],
     });
+    const old_window = engine.read_list_window({
+      view_id: old_list_view.view_id,
+      start: 0,
+      count: 10,
+    });
+    expect(old_window.row_count).toBe(1);
+    expect(old_window.rows.map((row) => row.row_id)).toEqual(["2"]);
 
     const next_list_view = engine.build_list_view({
       filters: delta_state.defaultFilters,

@@ -41,10 +41,22 @@ import type {
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
 import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
+import {
+  create_result_view_snapshot,
+  materialize_result_view_snapshot,
+  prune_result_view_snapshot,
+  type ResultViewSnapshot,
+} from "@/pages/result-view-snapshot";
+import { ensure_quality_rule_entry_ids } from "@/project/quality/quality-rule-entry-id";
 
 type TranslateSinglePayload = {
   success?: boolean;
   dst?: string;
+};
+
+type NameFieldResultViewQuery = {
+  filter_state: NameFieldFilterState;
+  sort_state: NameFieldSortState;
 };
 
 const EMPTY_ROW: NameFieldRow = {
@@ -143,6 +155,10 @@ export function useNameFieldExtractionPageState() {
   const [sort_state, set_sort_state] = useState<NameFieldSortState>(() => {
     return create_empty_sort_state();
   });
+  const [result_view_snapshot, set_result_view_snapshot] = useState<ResultViewSnapshot<
+    NameFieldResultViewQuery,
+    NameFieldRowId
+  > | null>(null);
   const [selected_row_ids, set_selected_row_ids] = useState<NameFieldRowId[]>([]);
   const [active_row_id, set_active_row_id] = useState<NameFieldRowId | null>(null);
   const [selection_anchor_row_id, set_selection_anchor_row_id] = useState<NameFieldRowId | null>(
@@ -171,6 +187,7 @@ export function useNameFieldExtractionPageState() {
     set_rows([]);
     set_filter_state(create_empty_filter_state());
     set_sort_state(create_empty_sort_state());
+    set_result_view_snapshot(null);
     clear_selection_state();
     set_dialog_state(create_empty_dialog_state());
     set_confirm_state(create_empty_confirm_state());
@@ -182,17 +199,65 @@ export function useNameFieldExtractionPageState() {
     clear_local_state();
   }, [clear_local_state, project_snapshot.loaded, project_snapshot.path]);
 
-  const invalid_filter_message = useMemo(() => {
-    return get_name_field_filter_error(filter_state);
-  }, [filter_state]);
+  const build_result_view_snapshot = useCallback(
+    (
+      next_rows: NameFieldRow[],
+      next_filter_state: NameFieldFilterState,
+      next_sort_state: NameFieldSortState,
+    ): ResultViewSnapshot<NameFieldResultViewQuery, NameFieldRowId> => {
+      return create_result_view_snapshot({
+        applied_query: {
+          filter_state: next_filter_state,
+          sort_state: next_sort_state,
+        },
+        ordered_ids: filter_name_field_rows({
+          rows: next_rows,
+          filter_state: next_filter_state,
+          sort_state: next_sort_state,
+        }).map((row) => row.id),
+        invalid_message: get_name_field_filter_error(next_filter_state),
+      });
+    },
+    [],
+  );
 
-  const filtered_rows = useMemo(() => {
+  const invalid_filter_message = useMemo(() => {
+    return result_view_snapshot?.invalid_message ?? get_name_field_filter_error(filter_state);
+  }, [filter_state, result_view_snapshot]);
+
+  const live_filtered_rows = useMemo(() => {
     return filter_name_field_rows({
       rows,
       filter_state,
       sort_state,
     });
   }, [filter_state, rows, sort_state]);
+
+  const filtered_rows = useMemo(() => {
+    if (result_view_snapshot === null) {
+      return live_filtered_rows;
+    }
+
+    return materialize_result_view_snapshot({
+      snapshot: result_view_snapshot,
+      item_by_id: new Map(
+        rows.map((row) => {
+          return [row.id, row] as const;
+        }),
+      ),
+    });
+  }, [live_filtered_rows, result_view_snapshot, rows]);
+
+  useEffect(() => {
+    set_result_view_snapshot((previous_snapshot) => {
+      const valid_row_id_set = new Set(rows.map((row) => row.id));
+      if (previous_snapshot === null) {
+        return build_result_view_snapshot(rows, filter_state, sort_state);
+      }
+
+      return prune_result_view_snapshot(previous_snapshot, valid_row_id_set);
+    });
+  }, [build_result_view_snapshot, filter_state, rows, sort_state]);
 
   const visible_row_ids = useMemo<NameFieldRowId[]>(() => {
     return filtered_rows.map((row) => row.id);
@@ -249,6 +314,7 @@ export function useNameFieldExtractionPageState() {
         extracted_rows,
       });
       set_rows(next_rows);
+      set_result_view_snapshot(build_result_view_snapshot(next_rows, filter_state, sort_state));
       clear_selection_state();
       set_dialog_state(create_empty_dialog_state());
       push_toast(
@@ -269,54 +335,82 @@ export function useNameFieldExtractionPageState() {
     project_store_state.items,
     project_store_state.quality,
     rows,
+    build_result_view_snapshot,
     clear_selection_state,
+    filter_state,
     push_toast,
+    sort_state,
     t,
   ]);
 
-  const update_filter_keyword = useCallback((next_keyword: string): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_keyword = useCallback(
+    (next_keyword: string): void => {
+      const next_filter_state = {
+        ...filter_state,
         keyword: next_keyword,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(rows, next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, rows, sort_state],
+  );
 
-  const update_filter_scope = useCallback((next_scope: NameFieldFilterScope): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_scope = useCallback(
+    (next_scope: NameFieldFilterScope): void => {
+      const next_filter_state = {
+        ...filter_state,
         scope: next_scope,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(rows, next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, rows, sort_state],
+  );
 
-  const update_filter_regex = useCallback((next_is_regex: boolean): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_regex = useCallback(
+    (next_is_regex: boolean): void => {
+      const next_filter_state = {
+        ...filter_state,
         is_regex: next_is_regex,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(rows, next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, rows, sort_state],
+  );
 
-  const apply_table_sort_state = useCallback((next_sort_state: AppTableSortState | null): void => {
-    if (next_sort_state === null) {
-      set_sort_state(create_empty_sort_state());
-      return;
-    }
+  const apply_table_sort_state = useCallback(
+    (next_sort_state: AppTableSortState | null): void => {
+      const next_name_field_sort_state =
+        next_sort_state === null || !is_name_field_sort_field(next_sort_state.column_id)
+          ? create_empty_sort_state()
+          : {
+              field: next_sort_state.column_id,
+              direction: next_sort_state.direction,
+            };
+      if (next_sort_state === null) {
+        set_sort_state(next_name_field_sort_state);
+        set_result_view_snapshot(
+          build_result_view_snapshot(rows, filter_state, next_name_field_sort_state),
+        );
+        return;
+      }
 
-    if (!is_name_field_sort_field(next_sort_state.column_id)) {
-      set_sort_state(create_empty_sort_state());
-      return;
-    }
+      if (!is_name_field_sort_field(next_sort_state.column_id)) {
+        set_sort_state(next_name_field_sort_state);
+        set_result_view_snapshot(
+          build_result_view_snapshot(rows, filter_state, next_name_field_sort_state),
+        );
+        return;
+      }
 
-    set_sort_state({
-      field: next_sort_state.column_id,
-      direction: next_sort_state.direction,
-    });
-  }, []);
+      set_sort_state(next_name_field_sort_state);
+      set_result_view_snapshot(
+        build_result_view_snapshot(rows, filter_state, next_name_field_sort_state),
+      );
+    },
+    [build_result_view_snapshot, filter_state, rows],
+  );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
     set_selected_row_ids(payload.selected_row_ids);
@@ -507,7 +601,9 @@ export function useNameFieldExtractionPageState() {
         project_store.getState().quality,
         "glossary",
       );
-      const normalized_entries = next_entries.map(normalize_glossary_entry);
+      const normalized_entries = ensure_quality_rule_entry_ids(
+        next_entries.map(normalize_glossary_entry),
+      );
       const next_quality_state = replaceQualityRuleSlice(
         project_store.getState().quality,
         "glossary",

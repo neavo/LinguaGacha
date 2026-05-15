@@ -26,6 +26,16 @@ import {
   has_active_glossary_filters,
   resolve_glossary_statistics_badge_kind,
 } from "@/pages/glossary-page/filtering";
+import {
+  create_result_view_snapshot,
+  materialize_result_view_snapshot,
+  prune_result_view_snapshot,
+  type ResultViewSnapshot,
+} from "@/pages/result-view-snapshot";
+import {
+  create_quality_rule_entry_id,
+  ensure_quality_rule_entry_ids,
+} from "@/project/quality/quality-rule-entry-id";
 import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
 import type { QualityRuleImportConfirmState } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import {
@@ -65,6 +75,11 @@ type GlossarySnapshot = {
 type GlossaryPresetPayload = {
   builtin_presets: GlossaryPresetItem[];
   user_presets: GlossaryPresetItem[];
+};
+
+type GlossaryResultViewQuery = {
+  filter_state: GlossaryFilterState;
+  sort_state: GlossarySortState;
 };
 
 const EMPTY_ENTRY: GlossaryEntry = {
@@ -335,6 +350,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const [sort_state, set_sort_state] = useState<GlossarySortState>(() => {
     return create_empty_sort_state();
   });
+  const [result_view_snapshot, set_result_view_snapshot] = useState<ResultViewSnapshot<
+    GlossaryResultViewQuery,
+    GlossaryEntryId
+  > | null>(null);
   const [dialog_state, set_dialog_state] = useState<GlossaryDialogState>(() => {
     return create_empty_dialog_state();
   });
@@ -389,7 +408,39 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const completed_statistics_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
     return new Set(statistics_state.completed_entry_ids);
   }, [statistics_state.completed_entry_ids]);
-  const { visible_entries: filtered_entries, invalid_regex_message } = useMemo(() => {
+  const build_result_view_snapshot = useCallback(
+    (
+      next_filter_state: GlossaryFilterState,
+      next_sort_state: GlossarySortState,
+    ): ResultViewSnapshot<GlossaryResultViewQuery, GlossaryEntryId> => {
+      const result = build_glossary_filter_result({
+        entries,
+        entry_ids,
+        filter_state: next_filter_state,
+        sort_state: next_sort_state,
+        statistics_sort_available,
+        statistics_state,
+        completed_statistics_entry_id_set,
+      });
+
+      return create_result_view_snapshot({
+        applied_query: {
+          filter_state: next_filter_state,
+          sort_state: next_sort_state,
+        },
+        ordered_ids: result.visible_entries.map((entry) => entry.entry_id),
+        invalid_message: result.invalid_regex_message,
+      });
+    },
+    [
+      completed_statistics_entry_id_set,
+      entries,
+      entry_ids,
+      statistics_sort_available,
+      statistics_state,
+    ],
+  );
+  const live_filter_result = useMemo(() => {
     return build_glossary_filter_result({
       entries,
       entry_ids,
@@ -408,6 +459,36 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     statistics_sort_available,
     statistics_state,
   ]);
+  const visible_entry_by_id = useMemo(() => {
+    return new Map(
+      entries.flatMap((entry, source_index) => {
+        const entry_id = entry_ids[source_index];
+        return entry_id === undefined ? [] : [[entry_id, { entry, entry_id, source_index }]];
+      }),
+    );
+  }, [entries, entry_ids]);
+  const filtered_entries = useMemo<GlossaryVisibleEntry[]>(() => {
+    if (result_view_snapshot === null) {
+      return live_filter_result.visible_entries;
+    }
+
+    return materialize_result_view_snapshot({
+      snapshot: result_view_snapshot,
+      item_by_id: visible_entry_by_id,
+    });
+  }, [live_filter_result.visible_entries, result_view_snapshot, visible_entry_by_id]);
+  const invalid_regex_message =
+    result_view_snapshot?.invalid_message ?? live_filter_result.invalid_regex_message;
+  useEffect(() => {
+    set_result_view_snapshot((previous_snapshot) => {
+      const valid_entry_id_set = new Set(entry_ids);
+      if (previous_snapshot === null) {
+        return build_result_view_snapshot(filter_state, sort_state);
+      }
+
+      return prune_result_view_snapshot(previous_snapshot, valid_entry_id_set);
+    });
+  }, [build_result_view_snapshot, entry_ids, filter_state, sort_state]);
   const visible_entry_ids = useMemo<GlossaryEntryId[]>(() => {
     return filtered_entries.map((item) => item.entry_id);
   }, [filtered_entries]);
@@ -465,7 +546,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const apply_snapshot = useCallback((snapshot: GlossarySnapshot): void => {
     set_revision(snapshot.revision);
     set_enabled(snapshot.meta.enabled ?? true);
-    set_entries(snapshot.entries.map((entry) => clone_entry(entry)));
+    set_entries(ensure_quality_rule_entry_ids(snapshot.entries.map((entry) => clone_entry(entry))));
   }, []);
 
   const clear_selection_state = useCallback((): void => {
@@ -495,9 +576,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         project_store.getState().quality,
         "glossary",
       );
-      const normalized_entries = next_entries.map((entry) => {
-        return normalize_dialog_entry(entry);
-      });
+      const normalized_entries = ensure_quality_rule_entry_ids(
+        next_entries.map((entry) => {
+          return normalize_dialog_entry(entry);
+        }),
+      );
       const next_quality_state = replaceQualityRuleSlice(
         project_store.getState().quality,
         "glossary",
@@ -605,6 +688,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [settings_snapshot]);
 
   useEffect(() => {
+    set_result_view_snapshot(null);
+  }, [project_snapshot.loaded, project_snapshot.path]);
+
+  useEffect(() => {
     if (!project_snapshot.loaded) {
       apply_snapshot({
         revision: 0,
@@ -639,44 +726,56 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
   }, [active_entry_id, entry_index_by_id, selection_anchor_entry_id, visible_entry_id_set]);
 
-  const update_filter_keyword = useCallback((next_keyword: string): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_keyword = useCallback(
+    (next_keyword: string): void => {
+      const next_filter_state = {
+        ...filter_state,
         keyword: next_keyword,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, sort_state],
+  );
 
-  const update_filter_scope = useCallback((next_scope: GlossaryFilterScope): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_scope = useCallback(
+    (next_scope: GlossaryFilterScope): void => {
+      const next_filter_state = {
+        ...filter_state,
         scope: next_scope,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, sort_state],
+  );
 
-  const update_filter_regex = useCallback((next_is_regex: boolean): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_regex = useCallback(
+    (next_is_regex: boolean): void => {
+      const next_filter_state = {
+        ...filter_state,
         is_regex: next_is_regex,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, sort_state],
+  );
 
-  const apply_table_sort_state = useCallback((next_sort_state: AppTableSortState | null): void => {
-    if (next_sort_state === null) {
-      set_sort_state(create_empty_sort_state());
-      return;
-    }
-
-    set_sort_state({
-      field: next_sort_state.column_id as GlossarySortField,
-      direction: next_sort_state.direction,
-    });
-  }, []);
+  const apply_table_sort_state = useCallback(
+    (next_sort_state: AppTableSortState | null): void => {
+      const next_glossary_sort_state =
+        next_sort_state === null
+          ? create_empty_sort_state()
+          : {
+              field: next_sort_state.column_id as GlossarySortField,
+              direction: next_sort_state.direction,
+            };
+      set_sort_state(next_glossary_sort_state);
+      set_result_view_snapshot(build_result_view_snapshot(filter_state, next_glossary_sort_state));
+    },
+    [build_result_view_snapshot, filter_state],
+  );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
     set_selected_entry_ids((previous_ids) => {
@@ -704,14 +803,16 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      set_filter_state({
+      const next_filter_state = {
         // 统计入口要把用户带回一条可解释的筛选路径，而不是偷偷叠加更多隐式条件
         keyword: target_entry.src,
-        scope: "src",
+        scope: "src" as const,
         is_regex: false,
-      });
+      };
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
     },
-    [entries, entry_index_by_id],
+    [build_result_view_snapshot, entries, entry_index_by_id, sort_state],
   );
 
   const update_enabled = useCallback(
@@ -765,8 +866,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       commit_local_project_change,
       project_store,
       push_toast,
-      refresh_project_runtime,
       readonly,
+      refresh_project_runtime,
       t,
     ],
   );
@@ -949,7 +1050,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
 
     const current_dialog_state = dialog_state;
-    const normalized_entry = normalize_dialog_entry(dialog_state.draft_entry);
+    const normalized_entry = {
+      ...normalize_dialog_entry(dialog_state.draft_entry),
+      entry_id: dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(),
+    };
 
     if (normalized_entry.src === "") {
       push_toast("error", t("glossary_page.feedback.source_required"));

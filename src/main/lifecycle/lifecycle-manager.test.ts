@@ -67,6 +67,9 @@ describe("CoreLifecycleManager", () => {
         log_text.indexOf("API Gateway 已启动"),
       );
       expect(log_text).toContain("API Gateway 已启动");
+      expect(log_text.indexOf("API Gateway 已启动")).toBeLessThan(
+        log_text.lastIndexOf('"message":""'),
+      );
       expect(log_text).not.toContain("ProjectDatabase 已就绪");
       expect(log_text).not.toContain("Database Service 已启动");
     } finally {

@@ -27,6 +27,16 @@ import {
   resolve_text_preserve_statistics_badge_kind,
   sort_text_preserve_entries,
 } from "@/pages/text-preserve-page/filtering";
+import {
+  create_result_view_snapshot,
+  materialize_result_view_snapshot,
+  prune_result_view_snapshot,
+  type ResultViewSnapshot,
+} from "@/pages/result-view-snapshot";
+import {
+  create_quality_rule_entry_id,
+  ensure_quality_rule_entry_ids,
+} from "@/project/quality/quality-rule-entry-id";
 import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
 import {
   are_text_preserve_entry_ids_equal,
@@ -66,6 +76,11 @@ type TextPreserveSnapshot = {
 type TextPreservePresetPayload = {
   builtin_presets: TextPreservePresetItem[];
   user_presets: TextPreservePresetItem[];
+};
+
+type TextPreserveResultViewQuery = {
+  filter_state: TextPreserveFilterState;
+  sort_state: AppTableSortState | null;
 };
 
 const TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY = "text_preserve_default_preset";
@@ -276,6 +291,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return create_empty_filter_state();
   });
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
+  const [result_view_snapshot, set_result_view_snapshot] = useState<ResultViewSnapshot<
+    TextPreserveResultViewQuery,
+    TextPreserveEntryId
+  > | null>(null);
   const [dialog_state, set_dialog_state] = useState<TextPreserveDialogState>(() => {
     return create_empty_dialog_state();
   });
@@ -338,6 +357,35 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return new Set(statistics_state.completed_entry_ids);
   }, [statistics_state.completed_entry_ids]);
 
+  const build_result_view_snapshot = useCallback(
+    (
+      next_filter_state: TextPreserveFilterState,
+      next_sort_state: AppTableSortState | null,
+    ): ResultViewSnapshot<TextPreserveResultViewQuery, TextPreserveEntryId> => {
+      const result = build_text_preserve_filter_result({
+        entries,
+        entry_ids,
+        filter_state: next_filter_state,
+      });
+      const visible_entries = sort_text_preserve_entries(
+        result.visible_entries,
+        next_sort_state,
+        statistics_ready,
+        statistics_state,
+      );
+
+      return create_result_view_snapshot({
+        applied_query: {
+          filter_state: next_filter_state,
+          sort_state: next_sort_state,
+        },
+        ordered_ids: visible_entries.map((entry) => entry.entry_id),
+        invalid_message: result.invalid_regex_message,
+      });
+    },
+    [entries, entry_ids, statistics_ready, statistics_state],
+  );
+
   const filter_result = useMemo(() => {
     return build_text_preserve_filter_result({
       entries,
@@ -347,13 +395,44 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [entries, entry_ids, filter_state]);
 
   const filtered_entries = useMemo<TextPreserveVisibleEntry[]>(() => {
+    if (result_view_snapshot !== null) {
+      return materialize_result_view_snapshot({
+        snapshot: result_view_snapshot,
+        item_by_id: new Map(
+          entries.flatMap((entry, source_index) => {
+            const entry_id = entry_ids[source_index];
+            return entry_id === undefined ? [] : [[entry_id, { entry, entry_id, source_index }]];
+          }),
+        ),
+      });
+    }
+
     return sort_text_preserve_entries(
       filter_result.visible_entries,
       sort_state,
       statistics_ready,
       statistics_state,
     );
-  }, [filter_result.visible_entries, sort_state, statistics_ready, statistics_state]);
+  }, [
+    entries,
+    entry_ids,
+    filter_result.visible_entries,
+    result_view_snapshot,
+    sort_state,
+    statistics_ready,
+    statistics_state,
+  ]);
+
+  useEffect(() => {
+    set_result_view_snapshot((previous_snapshot) => {
+      const valid_entry_id_set = new Set(entry_ids);
+      if (previous_snapshot === null) {
+        return build_result_view_snapshot(filter_state, sort_state);
+      }
+
+      return prune_result_view_snapshot(previous_snapshot, valid_entry_id_set);
+    });
+  }, [build_result_view_snapshot, entry_ids, filter_state, sort_state]);
 
   const visible_entry_ids = useMemo<TextPreserveEntryId[]>(() => {
     return filtered_entries.map((item) => item.entry_id);
@@ -417,9 +496,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     set_revision(snapshot.revision);
     set_mode(normalize_text_preserve_mode(snapshot.meta.mode));
     set_entries(
-      snapshot.entries.map((entry) => {
-        return normalize_entry(entry);
-      }),
+      ensure_quality_rule_entry_ids(
+        snapshot.entries.map((entry) => {
+          return normalize_entry(entry);
+        }),
+      ),
     );
   }, []);
 
@@ -457,9 +538,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         project_store.getState().quality,
         TEXT_PRESERVE_RULE_TYPE,
       );
-      const normalized_entries = next_entries.map((entry) => {
-        return normalize_entry(entry);
-      });
+      const normalized_entries = ensure_quality_rule_entry_ids(
+        next_entries.map((entry) => {
+          return normalize_entry(entry);
+        }),
+      );
       const next_quality_state = replaceQualityRuleSlice(
         project_store.getState().quality,
         TEXT_PRESERVE_RULE_TYPE,
@@ -567,6 +650,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [settings_snapshot]);
 
   useEffect(() => {
+    set_result_view_snapshot(null);
+  }, [project_snapshot.loaded, project_snapshot.path]);
+
+  useEffect(() => {
     if (!project_snapshot.loaded) {
       apply_snapshot({
         revision: 0,
@@ -587,7 +674,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     set_sort_state(null);
-  }, [sort_state, statistics_ready]);
+    set_result_view_snapshot(build_result_view_snapshot(filter_state, null));
+  }, [build_result_view_snapshot, filter_state, sort_state, statistics_ready]);
 
   useEffect(() => {
     set_selected_entry_ids((previous_ids) => {
@@ -608,36 +696,49 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
   }, [active_entry_id, entry_index_by_id, selection_anchor_entry_id, visible_entry_id_set]);
 
-  const update_filter_keyword = useCallback((next_keyword: string): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_keyword = useCallback(
+    (next_keyword: string): void => {
+      const next_filter_state = {
+        ...filter_state,
         keyword: next_keyword,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, sort_state],
+  );
 
-  const update_filter_scope = useCallback((next_scope: TextPreserveFilterScope): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_scope = useCallback(
+    (next_scope: TextPreserveFilterScope): void => {
+      const next_filter_state = {
+        ...filter_state,
         scope: next_scope,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, sort_state],
+  );
 
-  const update_filter_regex = useCallback((next_is_regex: boolean): void => {
-    set_filter_state((previous_state) => {
-      return {
-        ...previous_state,
+  const update_filter_regex = useCallback(
+    (next_is_regex: boolean): void => {
+      const next_filter_state = {
+        ...filter_state,
         is_regex: next_is_regex,
       };
-    });
-  }, []);
+      set_filter_state(next_filter_state);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+    },
+    [build_result_view_snapshot, filter_state, sort_state],
+  );
 
-  const apply_table_sort_state = useCallback((next_sort_state: AppTableSortState | null): void => {
-    set_sort_state(next_sort_state);
-  }, []);
+  const apply_table_sort_state = useCallback(
+    (next_sort_state: AppTableSortState | null): void => {
+      set_sort_state(next_sort_state);
+      set_result_view_snapshot(build_result_view_snapshot(filter_state, next_sort_state));
+    },
+    [build_result_view_snapshot, filter_state],
+  );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
     set_selected_entry_ids((previous_ids) => {
@@ -933,14 +1034,16 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return;
       }
 
-      set_filter_state({
+      const next_filter_state = {
         keyword: target_entry.src,
-        scope: "src",
+        scope: "src" as const,
         is_regex: false,
-      });
+      };
+      set_filter_state(next_filter_state);
       set_sort_state(null);
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, null));
     },
-    [entries, entry_index_by_id],
+    [build_result_view_snapshot, entries, entry_index_by_id],
   );
 
   const import_entries_from_path = useCallback(
@@ -1266,7 +1369,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     const current_dialog_state = dialog_state;
-    const normalized_entry = normalize_entry(dialog_state.draft_entry);
+    const normalized_entry = {
+      ...normalize_entry(dialog_state.draft_entry),
+      entry_id: dialog_state.draft_entry.entry_id ?? create_quality_rule_entry_id(),
+    };
     const validation_message = validate_entry(normalized_entry);
     if (validation_message !== null) {
       set_dialog_state((previous_state) => {
@@ -1526,7 +1632,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     filtered_entries,
     filter_state,
     sort_state,
-    invalid_filter_message: filter_result.invalid_regex_message,
+    invalid_filter_message:
+      result_view_snapshot?.invalid_message ?? filter_result.invalid_regex_message,
     readonly,
     drag_disabled,
     statistics_state,
