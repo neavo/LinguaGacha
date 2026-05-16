@@ -28,6 +28,7 @@ import { CoreEventHub } from "../events/core-event-hub";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { TaskService } from "../service/task-service";
 import { TaskEngine } from "../engine/core/engine";
+import { create_o200k_base_token_counter } from "../engine/core/token-counter";
 import { TaskRuntimePublisher } from "../engine/runtime/task-runtime-publisher";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { TaskSnapshotBuilder } from "../engine/runtime/task-snapshot-builder";
@@ -218,6 +219,7 @@ export class ApiGatewayServer {
       taskStore: project_task_store,
       taskRuntimePublisher: task_runtime_publisher,
       executorClient: executor_client,
+      tokenCounter: create_o200k_base_token_counter(), // 生产切块预算固定走 o200k_base 真实计数，不在 Gateway 保留估算分支
       SettingService: setting_service,
       logManager: this.options.logManager,
     });

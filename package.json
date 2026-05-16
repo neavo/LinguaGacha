@@ -42,6 +42,7 @@
     "hono": "^4.12.18",
     "htmlparser2": "^12.0.0",
     "iconv-lite": "^0.7.2",
+    "js-tiktoken": "^1.0.21",
     "jsonrepair": "^3.14.0",
     "jszip": "^3.10.1",
     "lucide-react": "^1.14.0",

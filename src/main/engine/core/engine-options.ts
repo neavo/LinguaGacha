@@ -5,6 +5,7 @@ import type { SettingService } from "../../service/setting-service";
 import type { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { ProjectTaskStore } from "../store/project-task-store";
 import type { WorkerExecutor } from "../worker/worker-executor";
+import type { TokenCounter } from "./token-counter";
 
 export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
 
@@ -16,6 +17,7 @@ export interface TaskEngineOptions {
   taskStore: ProjectTaskStore; // taskStore 是任务编排器读写项目任务事实的唯一端口
   taskRuntimePublisher: TaskRuntimePublisher; // taskRuntimePublisher 是完整 task snapshot 的唯一公开出口
   executorClient: WorkerExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
+  tokenCounter: TokenCounter; // tokenCounter 是切块预算的唯一 token 数量来源，不影响 worker 返回的真实 token 统计
   SettingService: SettingService; // SettingService 在每次任务启动时提供设置与模型快照
   logManager: LogManager; // logManager 统一收敛任务引擎和 worker 回放日志
 }

@@ -13,6 +13,7 @@ import type { ProjectTaskStore } from "../store/project-task-store";
 import type { WorkerExecutor } from "../worker/worker-executor";
 import { WorkUnitExecutorTransportError } from "../worker/worker-transport-error";
 import { TaskEngine } from "./engine";
+import type { TokenCounter } from "./token-counter";
 
 describe("TaskEngine", () => {
   const cleanup_paths: string[] = [];
@@ -41,6 +42,7 @@ describe("TaskEngine", () => {
           return { text: "第二条" };
         },
       } as unknown as WorkerExecutor,
+      tokenCounter: create_test_token_counter(),
       SettingService: create_setting_service(1),
       logManager: create_log_manager(),
     });
@@ -90,6 +92,7 @@ describe("TaskEngine", () => {
         execute_unit: async () =>
           create_translation_worker_result([create_pending_item()], 0, 1, 2),
       } as unknown as WorkerExecutor,
+      tokenCounter: create_test_token_counter(),
       SettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
@@ -157,6 +160,7 @@ describe("TaskEngine", () => {
         });
       }),
       executorClient: {} as unknown as WorkerExecutor,
+      tokenCounter: create_test_token_counter(),
       SettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
@@ -234,6 +238,7 @@ describe("TaskEngine", () => {
           );
         },
       } as unknown as WorkerExecutor,
+      tokenCounter: create_test_token_counter(),
       SettingService: create_setting_service(2),
       logManager: create_log_manager(),
     });
@@ -249,6 +254,62 @@ describe("TaskEngine", () => {
     expect(committed_items).toHaveLength(2);
     expect(committed_items.map((item) => item["id"]).sort()).toEqual([1, 2]);
     expect(committed_items.every((item) => item["status"] === "PROCESSED")).toBe(true);
+  });
+
+  it("翻译切块使用注入 token 计数器而不是字符长度估算", async () => {
+    const executed_batches: number[][] = []; // executed_batches 记录 executor 可见的 chunk 分组，证明长文本仍可被 fake token 预算合并
+    const done = create_status_waiter("translation", "done");
+    const task_engine = new TaskEngine({
+      appRoot: process.cwd(),
+      taskStore: {
+        get_translation_items: () => ({
+          items: [
+            create_pending_item(1, "demo.txt", "很长的第一条原文".repeat(20)),
+            create_pending_item(2, "demo.txt", "很长的第二条原文".repeat(20)),
+          ] as unknown as ApiJsonValue,
+          meta: {},
+        }),
+        acquire_project_lease: () => () => undefined,
+        commit_artifacts: () => ({ accepted: true }),
+        update_translation_progress: () => ({ accepted: true }),
+        build_quality_snapshot: () => null,
+      } as unknown as ProjectTaskStore,
+      taskRuntimePublisher: create_task_runtime_publisher(done.publish),
+      executorClient: {
+        execute_unit: async (unit: MutableJsonRecord) => {
+          const payload = (
+            typeof unit["payload"] === "object" && unit["payload"] !== null ? unit["payload"] : {}
+          ) as MutableJsonRecord;
+          const items = (
+            Array.isArray(payload["items"]) ? payload["items"] : []
+          ) as MutableJsonRecord[];
+          executed_batches.push(items.map((item) => Number(item["id"] ?? 0)));
+          return create_translation_worker_result(
+            items.map((item) => ({
+              ...item,
+              dst: `译文${String(item["id"] ?? "")}`,
+              status: "PROCESSED",
+            })),
+            items.length,
+            1,
+            1,
+          );
+        },
+      } as unknown as WorkerExecutor,
+      tokenCounter: create_test_token_counter(1),
+      SettingService: create_setting_service(1, 16),
+      logManager: create_log_manager(),
+    });
+
+    await task_engine.start({
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+      expected_section_revisions: {},
+    });
+    await done.promise;
+
+    expect(executed_batches).toEqual([[1, 2]]);
   });
 
   it("翻译任务启动时对齐旧实现打印主提示词", async () => {
@@ -268,6 +329,7 @@ describe("TaskEngine", () => {
       } as unknown as ProjectTaskStore,
       taskRuntimePublisher: create_task_runtime_publisher(done.publish),
       executorClient: {} as unknown as WorkerExecutor,
+      tokenCounter: create_test_token_counter(),
       SettingService: create_setting_service(),
       logManager: create_log_manager(logs),
     });
@@ -302,6 +364,7 @@ describe("TaskEngine", () => {
       } as unknown as ProjectTaskStore,
       taskRuntimePublisher: create_task_runtime_publisher(done.publish),
       executorClient: {} as unknown as WorkerExecutor,
+      tokenCounter: create_test_token_counter(),
       SettingService: create_setting_service(),
       logManager: create_log_manager(logs),
     });
@@ -316,10 +379,13 @@ describe("TaskEngine", () => {
     expect(logs.join("\n")).toContain("分析前缀\n分析正文 中文\n\n分析思考\n\n分析后缀");
   });
 
-  function create_pending_item(id = 1, file_path = "demo.txt"): MutableJsonRecord {
+  /**
+   * 构造任务 item 快照，src 参数用于切块测试制造“字符很长但 token 计数很小”的场景
+   */
+  function create_pending_item(id = 1, file_path = "demo.txt", src = "原文"): MutableJsonRecord {
     return {
       id,
-      src: "原文",
+      src,
       dst: "",
       status: "NONE",
       file_path,
@@ -411,12 +477,24 @@ describe("TaskEngine", () => {
     expect(predicate()).toBe(true);
   }
 
-  function create_setting_service(concurrency_limit = 1): SettingService {
+  /**
+   * 注入稳定 token 计数，隔离 tokenizer 细节后只验证 TaskEngine 是否消费计数边界
+   */
+  function create_test_token_counter(token_count = 1): TokenCounter {
+    return {
+      count: () => token_count,
+    };
+  }
+
+  /**
+   * 构造模型阈值快照，input_token_limit 参数用于切块预算边界测试
+   */
+  function create_setting_service(concurrency_limit = 1, input_token_limit = 512): SettingService {
     const model = {
       id: "model-1",
       threshold: {
         concurrency_limit,
-        input_token_limit: 512,
+        input_token_limit,
       },
     };
     return {

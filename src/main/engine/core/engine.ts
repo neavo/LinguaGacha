@@ -26,6 +26,7 @@ import { TaskPipeline } from "./pipeline-runner";
 import { TaskProgressSnapshotTool } from "./progress-accumulator";
 import { RunCoordinator } from "./run-coordinator";
 import { TaskLogReplay } from "./log-replay";
+import type { TokenCounter } from "./token-counter";
 import { is_task_skipped_item_status } from "../../../shared/task";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import * as AppErrors from "../../../shared/error";
@@ -107,6 +108,7 @@ export class TaskEngine {
   private readonly artifact_committer: TaskArtifactCommitter; // artifact_committer 是 Engine 写入项目任务事实的唯一出口
   private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 同步写运行态并发布完整 snapshot
   private readonly executor_client: WorkerExecutor; // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果
+  private readonly token_counter: TokenCounter; // token_counter 只服务切块预算，不参与 worker token 统计或持久化
   private readonly setting_service: TaskEngineOptions["SettingService"];
   private readonly run_coordinator: RunCoordinator; // run_coordinator 是整场任务互斥、停止和终态发布的唯一权威
   private readonly log_replay: TaskLogReplay; // log_replay 统一处理任务生命周期日志和 worker 日志回放
@@ -123,6 +125,7 @@ export class TaskEngine {
     this.artifact_committer = new TaskArtifactCommitter(options.taskStore);
     this.task_runtime_publisher = options.taskRuntimePublisher;
     this.executor_client = options.executorClient;
+    this.token_counter = options.tokenCounter;
     this.setting_service = options.SettingService;
     this.run_coordinator = new RunCoordinator(options.taskRuntimePublisher);
     this.log_replay = new TaskLogReplay(options.logManager);
@@ -831,7 +834,7 @@ export class TaskEngine {
   }
 
   /**
-   * 共享切块实现，只依赖 item 快照，不读取数据库或 跨层对象
+   * 共享切块实现，只依赖 item 快照和注入的 token 计数器，不读取数据库或跨层对象
    */
   private generate_item_chunks(
     items: TaskItemRecord[],
@@ -850,7 +853,7 @@ export class TaskEngine {
         continue;
       }
       const current_line_length = this.count_non_empty_lines(String(item["src"] ?? ""));
-      const current_token_length = this.estimate_token_count(String(item["src"] ?? ""));
+      const current_token_length = this.token_counter.count(String(item["src"] ?? ""));
       if (
         chunk.length > 0 &&
         (line_length + current_line_length > line_limit ||
@@ -1269,13 +1272,6 @@ export class TaskEngine {
    */
   private count_non_empty_lines(text: string): number {
     return text.split(/\r?\n/).filter((line) => line.trim() !== "").length;
-  }
-
-  /**
-   * 当前实现暂无 tiktoken 依赖；这里用字符长度估算，只影响切块大小，不改变写入事实
-   */
-  private estimate_token_count(text: string): number {
-    return Math.max(1, Math.ceil(text.length / 2));
   }
 
   /**
