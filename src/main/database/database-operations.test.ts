@@ -6,7 +6,10 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ZstdTool } from "../../shared/utils/zstd-tool";
-import { PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION } from "../migration/project-database-migration-service";
+import {
+  PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
+  PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
+} from "../migration/migration-orchestrator";
 import { ProjectDatabase } from "./database-operations";
 
 let temp_dir = "";
@@ -75,9 +78,13 @@ describe("ProjectDatabase", () => {
     expect(
       database.execute({
         name: "getMeta",
-        args: { projectPath: lg_path, key: "writeback_migration_version", default: 0 },
+        args: {
+          projectPath: lg_path,
+          key: PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
+          default: [],
+        },
       }),
-    ).toBe(PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION);
+    ).toEqual(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS);
     expect(has_project_sidecar(lg_path)).toBe(false);
   });
 

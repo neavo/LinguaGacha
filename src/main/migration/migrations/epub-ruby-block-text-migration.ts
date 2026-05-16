@@ -1,27 +1,48 @@
-import { Item, read_json_record } from "../../base/item";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import type { ProjectDatabase } from "../database/database-operations";
-import { EpubAst, read_epub_extra } from "../file/formats/epub/epub-ast";
+import { Item, read_json_record } from "../../../base/item";
+import type { ProjectDatabase } from "../../database/database-operations";
+import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
+import { EpubAst, read_epub_extra } from "../../file/formats/epub/epub-ast";
+import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 
 /**
- * 旧 EPUB ruby 实现把去注音正文塞进 ruby_clean_candidate，再让 shared 文本层和 writer
- * 读取 EPUB 私有字段完成翻译与导出。新契约要求 EPUB reader 直接产出应用内可见正文，
- * writer 只消费正式的 slot_per_line / block_text metadata；clean_ruby 只处理字面文本标记。
- * 本迁移只在工程打开期一次性重写旧 item 形状，不提供运行时兼容旁路。
+ * 迁移背景：
+ * 旧 EPUB ruby 实现把去注音正文塞进 `ruby_clean_candidate`，再让 shared 文本层和 writer
+ * 读取 EPUB 私有字段完成翻译与导出。当前契约要求 EPUB reader 直接产出应用内可见正文，
+ * writer 只消费正式的 `slot_per_line` / `block_text` metadata，`clean_ruby` 只处理字面文本标记。
+ *
+ * 生效场景：
+ * `load_project` 打开旧 EPUB 工程时，若 item metadata 中仍含 `ruby_clean_candidate`，
+ * 则按原始 EPUB asset 用当前 reader 重建该文件 item，并迁移用户翻译、姓名、状态和重试事实。
+ *
+ * 不处理范围：
+ * 无法重新解析 asset 或存在无法映射的用户事实时保留旧项目事实，不提供运行时兼容旁路。
  */
-export class EpubRubyCleanMigration {
+export const epub_ruby_block_text_migration: MigrationDescriptor = {
+  id: "epub-ruby-block-text",
+  order: 800,
   /**
-   * ast 使用当前 EPUB reader 契约重建 item，迁移不复制旧解析规则
+   * EPUB ruby 迁移需要读取 asset 并异步解析，因此只在 project open operation hook 中生成写回操作。
    */
-  private readonly ast = new EpubAst();
+  async build_project_open_operations(
+    context: ProjectOpenMigrationContext,
+  ): Promise<DatabaseOperation[]> {
+    return new EpubRubyBlockTextMigration(context.database).build_operations(context.project_path);
+  },
+};
+
+/**
+ * 负责在项目打开期把旧 EPUB ruby item 重建为当前 block_text item，并迁移用户事实。
+ */
+export class EpubRubyBlockTextMigration {
+  private readonly ast = new EpubAst(); // ast 使用当前 EPUB reader 契约重建 item，迁移不复制旧解析规则
 
   /**
-   * database 仍是 .lg 唯一读写入口，迁移只构造 database operation 交给生命周期事务执行
+   * database 是 `.lg` 唯一读写入口；本类只读取快照并生成 operation。
    */
   public constructor(private readonly database: ProjectDatabase) {}
 
   /**
-   * 发现旧 ruby_clean_candidate 后，按原始 EPUB asset 重建当前 item 形状并迁移用户事实
+   * 发现旧 ruby_clean_candidate 后，按原始 EPUB asset 重建当前 item 形状并迁移用户事实。
    */
   public async build_operations(project_path: string): Promise<DatabaseOperation[]> {
     const current_items = this.read_all_items(project_path);
@@ -94,7 +115,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 读取当前 items 快照，迁移决策只依赖打开瞬间的持久事实
+   * 读取当前 items 快照，迁移决策只依赖打开瞬间的持久事实。
    */
   private read_all_items(project_path: string): Item[] {
     const value = this.database.execute({
@@ -105,7 +126,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 只迁移确实带旧候选字段的 EPUB 文件，普通 slot_per_line 项不参与重写
+   * 只迁移确实带旧候选字段的 EPUB 文件，普通当前 metadata 不参与重写。
    */
   private collect_legacy_epub_paths(items: Item[]): Set<string> {
     const paths = new Set<string>();
@@ -118,7 +139,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 旧候选字段是唯一触发条件，避免把仍然有效的普通 EPUB metadata 误当旧数据
+   * 旧候选字段是唯一触发条件，避免误改仍然有效的普通 EPUB 项。
    */
   private has_legacy_ruby_candidate(item: Item): boolean {
     const epub = read_epub_extra(item);
@@ -130,7 +151,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 新旧 item 以结构 key 优先对齐，ruby 旧候选再用 block_path 补齐映射
+   * 新旧 item 以结构 key 优先对齐，ruby 旧候选再用 block_path 补齐映射。
    */
   private merge_file_items(parsed_items: Item[], old_items: Item[]): Item[] | null {
     const consumed_old_items = new Set<Item>();
@@ -171,7 +192,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 全量 setItems 必须保留未迁移文件原顺序，只在原 EPUB 文件位置替换重建结果
+   * 全量 setItems 必须保留未迁移文件原顺序，只在原 EPUB 文件位置替换重建结果。
    */
   private replace_items_by_file(
     current_items: Item[],
@@ -198,7 +219,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 迁移只替换结构 metadata，用户已经产生的翻译、姓名和状态事实必须保留
+   * 迁移只替换 EPUB 结构 metadata，用户已经产生的翻译、姓名和状态事实必须保留。
    */
   private merge_user_facts(parsed_item: Item, old_item: Item): Item {
     return Item.from_json({
@@ -214,7 +235,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 有用户事实的旧 item 若无法映射，整本 EPUB 保留原状，避免静默丢译文
+   * 有用户事实的旧 item 若无法映射，整本 EPUB 保留原状，避免静默丢译文。
    */
   private has_user_fact(item: Item): boolean {
     return (
@@ -227,7 +248,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 姓名字段可能是单列或多列，只要含非空文本就视为用户事实
+   * 姓名字段可能是单列或多列，只要含非空文本就视为用户事实。
    */
   private has_name_value(value: string | string[] | null): boolean {
     if (typeof value === "string") {
@@ -237,7 +258,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 构建一对多索引，重复 key 按原 item 顺序消费，避免相同文本块互相抢占
+   * 构建一对多索引，重复 key 按原 item 顺序消费，避免相同文本块互相抢占。
    */
   private build_item_index(
     items: Item[],
@@ -257,7 +278,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 从索引中取第一个未消费 item，保证同一个旧事实只能迁移一次
+   * 从索引中取第一个未消费 item，保证同一个旧事实只能迁移一次。
    */
   private take_indexed_item(
     index: Map<string, Item[]>,
@@ -278,7 +299,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 结构 key 绑定文件、文档、行号和块路径，覆盖普通 slot 与新 block_text 项
+   * 结构 key 绑定文件、文档、行号和块路径，覆盖普通 slot 与新 block_text 项。
    */
   private structural_item_key(item: Item): string | null {
     const epub = read_epub_extra(item);
@@ -291,7 +312,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 行号 key 只作为最后兜底，服务旧 metadata 缺少 block_path 的低风险场景
+   * 行号 key 只作为最后兜底，服务旧 metadata 缺少 block_path 的低风险场景。
    */
   private row_item_key(item: Item): string | null {
     if (item.file_type !== "EPUB") {
@@ -301,7 +322,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 新 block_text 项使用正式 block_path 与旧候选的 block_path 对齐
+   * 新 block_text 项使用正式 block_path 与旧候选的 block_path 对齐。
    */
   private block_text_item_key(item: Item): string | null {
     const epub = read_epub_extra(item);
@@ -314,7 +335,7 @@ export class EpubRubyCleanMigration {
   }
 
   /**
-   * 旧候选的 block_path 是从旧 reader 写入的唯一稳定 ruby 块定位
+   * 旧候选的 block_path 是从旧 reader 写入的唯一稳定 ruby 块定位。
    */
   private legacy_ruby_block_key(item: Item): string | null {
     const epub = read_epub_extra(item);

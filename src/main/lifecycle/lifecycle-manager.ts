@@ -3,7 +3,7 @@ import { write_lifecycle_error, write_lifecycle_log } from "./lifecycle-log";
 import { allocate_core_api_port } from "./lifecycle-port-allocator";
 import { ProjectDatabase } from "../database/database-operations";
 import { ApiGatewayServer } from "../api/api-gateway-server";
-import { UserDataMigrationService } from "../migration/user-data-migration-service";
+import { migration_orchestrator } from "../migration/migration-orchestrator";
 import { AppPathService } from "../service/path-service";
 import { LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
@@ -64,7 +64,8 @@ export class CoreLifecycleManager {
     try {
       write_lifecycle_log("");
       write_lifecycle_log(t_main_log("app.log.app_version", { VERSION: paths.read_version() }));
-      new UserDataMigrationService(paths, log_manager).run_startup_migrations();
+      // 启动期迁移必须早于服务启动，确保配置和预设读取只看到当前 userdata/resource 布局
+      migration_orchestrator.run_startup_migrations({ paths, log_manager });
       const gateway_server = new ApiGatewayServer({
         appRoot: app_root,
         publicPort: public_port,

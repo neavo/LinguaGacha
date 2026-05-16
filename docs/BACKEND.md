@@ -117,11 +117,11 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 ## 6. 数据库与 `.lg` 物理存储
 
 - SQL、事务、SQLite 连接生命周期和 `.lg` asset 读写只允许落在 `src/main/database/`。
-- 旧版本写回型迁移规则只允许落在 `src/main/migration/`；`.lg` 物理迁移仍通过 database workflow 执行，工程语义迁移仍生成 database operation，userdata 迁移仍消费 `SettingService` / `AppPathService` 的当前落点。
+- 旧版本迁移规则只允许落在 `src/main/migration/`，由单一编排器按 startup、project database schema、project database writeback、project open operation hook 执行；单个迁移文件只承载一个历史场景，不能恢复运行时兼容层。
 - Zstd 压缩/解压参数和运行时能力检查只允许落在 `src/shared/utils/zstd-tool.ts`。
 - `ProjectDatabase.execute()` 是上层服务使用的窄 workflow；新增 operation 必须集中校验参数，避免 SQL 语义散落到 service。
 - `execute_transaction()` 单个事务只允许绑定一个工程文件，避免跨 `.lg` 半提交。
-- `schema_version` 只标记当前表结构能力；业务数据写回迁移使用独立 `writeback_migration_version`，避免既有工程因结构版本已是当前值而跳过数据归一。
+- `schema_version` 只标记当前表结构能力；业务数据写回迁移使用 `applied_writeback_migrations` 按迁移 id 标记，避免既有工程因结构版本已是当前值而跳过数据归一。
 - `.lg` 默认使用 SQLite `WAL+NORMAL`，但普通 database workflow 必须使用 scoped connection，用完通过 SQLite checkpoint / close 回到无常驻 `-wal` / `-shm` 的稳定态；不得手动删除 SQLite 副文件。
 - 任务等可预见长写入流程必须通过 `ProjectDatabase` 租约显式保留连接；租约持有期间 `-wal` / `-shm` 可见是预期，释放最后一个租约后由 SQLite 正常收尾。
 - asset 内容以 Zstd 压缩 blob 存储在 `.lg` 内；调用方读取时消费解压 bytes，不理解压缩格式。

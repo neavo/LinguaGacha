@@ -6,7 +6,7 @@ import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
-import { ProjectCompatibilityMigrationService } from "../migration/project-compatibility-migration-service";
+import { migration_orchestrator } from "../migration/migration-orchestrator";
 import type { SettingService } from "../service/setting-service";
 import type { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -121,8 +121,6 @@ export class ProjectLifecycleService {
 
   private readonly log_manager: LogManager; // log_manager 记录默认预设初始化结果，响应体不扩大公开协议
 
-  private readonly compatibility_migration_service: ProjectCompatibilityMigrationService; // compatibility_migration_service 只生成兼容写回操作，事务仍由生命周期入口持有
-
   /**
    * 初始化项目生命周期依赖，保持公开路由层只负责装配
    */
@@ -138,10 +136,6 @@ export class ProjectLifecycleService {
     this.setting_service = setting_service;
     this.paths = paths;
     this.log_manager = log_manager;
-    this.compatibility_migration_service = new ProjectCompatibilityMigrationService(
-      database,
-      setting_service,
-    );
   }
 
   /**
@@ -158,15 +152,19 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 加载既有 .lg，并在标记 会话前完成打开期兼容迁移
+   * 加载既有 .lg，并在标记会话 loaded 前完成打开期 operation 迁移
    */
   public async load_project(
     body: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
-    const compatibility_operations =
-      await this.compatibility_migration_service.build_open_compatibility_operations(project_path);
+    // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
+    const migration_operations = await migration_orchestrator.build_project_open_operations({
+      project_path,
+      database: this.database,
+      setting_service: this.setting_service,
+    });
 
     this.database.execute_transaction([
       this.op("setMeta", {
@@ -174,7 +172,7 @@ export class ProjectLifecycleService {
         key: "updated_at",
         value: this.build_timestamp(),
       }),
-      ...compatibility_operations,
+      ...migration_operations,
     ]);
     this.session_state.mark_loaded(project_path);
     return this.build_loaded_project_response(project_path);

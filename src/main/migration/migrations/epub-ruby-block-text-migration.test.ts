@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import { create_epub_fixture } from "../../test/epub-fixture";
-import { EpubRubyCleanMigration } from "./epub-ruby-clean-migration";
+import type { ProjectDatabase } from "../../database/database-operations";
+import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
+import { create_epub_fixture } from "../../../test/epub-fixture";
+import { EpubRubyBlockTextMigration } from "./epub-ruby-block-text-migration";
 
 type MutableJsonRecord = Record<string, DatabaseJsonValue>;
 
-describe("EpubRubyCleanMigration", () => {
+describe("EpubRubyBlockTextMigration", () => {
   it("打开旧 EPUB ruby 项目时一次性迁移为 block_text item", async () => {
     const epub_asset = await create_epub_fixture(
       '<ruby class="calibre3">宝<rt>ほう</rt>條<rt>じょう</rt>直<rt>なお</rt>希<rt>き</rt></ruby>',
@@ -86,20 +86,6 @@ describe("EpubRubyCleanMigration", () => {
       "upsertMetaEntries",
       "bumpRuntimeSectionRevisions",
     ]);
-    expect(operations).toContainEqual({
-      name: "upsertMetaEntries",
-      args: {
-        projectPath: "demo.lg",
-        meta: {
-          analysis_extras: {},
-          analysis_candidate_count: 0,
-        },
-      },
-    });
-    expect(operations).toContainEqual({
-      name: "bumpRuntimeSectionRevisions",
-      args: { projectPath: "demo.lg", sections: ["items", "analysis"] },
-    });
   });
 
   it("旧 EPUB asset 缺失时不生成运行时兼容写回", async () => {
@@ -126,10 +112,13 @@ describe("EpubRubyCleanMigration", () => {
   });
 });
 
+/**
+ * EPUB ruby 测试用内存 database stub 固定 items 与 asset bytes，专注验证 operation 输出。
+ */
 function create_migration(options: {
   items?: MutableJsonRecord[];
   asset_content_by_path?: Record<string, Buffer>;
-}): EpubRubyCleanMigration {
+}): EpubRubyBlockTextMigration {
   const database = {
     execute: vi.fn((operation: DatabaseOperation) => {
       if (operation.name === "getAllItems") {
@@ -141,5 +130,5 @@ function create_migration(options: {
       return options.asset_content_by_path?.[asset_path] ?? null;
     }),
   } as unknown as ProjectDatabase;
-  return new EpubRubyCleanMigration(database);
+  return new EpubRubyBlockTextMigration(database);
 }

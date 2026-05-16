@@ -25,11 +25,7 @@ describe("TransItemMetadataMigration", () => {
       },
     ]);
 
-    const changed = TransItemMetadataMigration.normalize_item_payload(
-      item,
-      "TRANS",
-      asset_index,
-    );
+    const changed = TransItemMetadataMigration.normalize_item_payload(item, "TRANS", asset_index);
 
     expect(changed).toBe(true);
     expect(item).toEqual({
@@ -123,18 +119,18 @@ describe("TransItemMetadataMigration", () => {
       extra_field: { tag: ["aqua"] },
     };
 
-    expect(
-      TransItemMetadataMigration.normalize_item_payload(
-        trans_without_aqua,
-        "TRANS",
-      ),
-    ).toBe(false);
+    expect(TransItemMetadataMigration.normalize_item_payload(trans_without_aqua, "TRANS")).toBe(
+      false,
+    );
     expect(TransItemMetadataMigration.normalize_item_payload(non_trans_aqua, "TXT")).toBe(false);
     expect(trans_without_aqua).toEqual({ file_type: "TRANS", extra_field: { tag: [] } });
     expect(non_trans_aqua).toEqual({ file_type: "TXT", extra_field: { tag: ["aqua"] } });
   });
 });
 
+/**
+ * 测试直接构造 asset 索引，聚焦 item metadata 归一逻辑而不重复测试 Zstd/SQLite 读取。
+ */
 function create_asset_index(
   refs: Array<{
     asset_path: string;

@@ -30,7 +30,8 @@ export const zh_cn_ts_conversion_page = {
     description: "是否确认开始执行简繁转换 …?",
   },
   feedback: {
-    prefer_native_traditional_chinese: "已支持将目标语言设置为中文（繁体），请优先使用！",
+    prefer_native_traditional_chinese:
+      "推荐使用原生繁体翻译功能：\n基础设置 - 译文语言 - 中文（繁体）",
     task_success: "任务执行成功 …",
     task_failed: "任务执行失败 …",
     task_running: "任务正在执行中 …",
