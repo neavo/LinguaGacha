@@ -3,10 +3,9 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import {
-  PROJECT_DATABASE_SCHEMA_VERSION,
-  PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
-  ProjectDatabaseMigrationService,
-} from "../migration/project-database-migration-service";
+  build_current_project_database_meta,
+  migration_orchestrator,
+} from "../migration/migration-orchestrator";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
@@ -442,8 +441,8 @@ export class ProjectDatabase {
     db.exec("PRAGMA journal_mode=WAL");
     db.exec("PRAGMA synchronous=NORMAL");
     db.exec("PRAGMA busy_timeout=5000");
-    // 每次首次打开都先跑幂等迁移，兼容既有 .lg，同时让业务读到当前 schema
-    ProjectDatabaseMigrationService.migrate(db);
+    // 每次首次打开都先跑 schema/writeback 迁移，让业务读写只面对当前 .lg 物理契约
+    migration_orchestrator.run_project_database_migrations(db);
     const record: ProjectDatabaseConnectionRecord = {
       normalized_path,
       db,
@@ -554,8 +553,7 @@ export class ProjectDatabase {
     const db = this.open_project(normalized_path);
     const now = new Date().toISOString();
     this.upsert_meta_entries_with_db(db, {
-      schema_version: PROJECT_DATABASE_SCHEMA_VERSION,
-      writeback_migration_version: PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
+      ...build_current_project_database_meta(),
       name,
       created_at: now,
       updated_at: now,

@@ -41,7 +41,7 @@ describe("ProjectLifecycleService", () => {
     });
   });
 
-  it("load 写入打开期兼容迁移并标记 会话", async () => {
+  it("load 写入打开期迁移并标记 会话", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "legacy.lg"));
     const transaction_calls: DatabaseOperation[][] = [];
     const database = create_database({

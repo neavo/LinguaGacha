@@ -40,7 +40,7 @@ export const en_us_ts_conversion_page = {
   },
   feedback: {
     prefer_native_traditional_chinese:
-      "Traditional Chinese is now available as a target language. Please prefer it.",
+      "Recommended: use the native Traditional Chinese translation feature:\nBasic Settings - Target Language - Traditional Chinese",
     task_success: "Task succeeded …",
     task_failed: "Task failed …",
     task_running: "Task is running …",
