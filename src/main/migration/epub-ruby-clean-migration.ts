@@ -1,7 +1,7 @@
 import { Item, read_json_record } from "../../base/item";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ProjectDatabase } from "../database/database-operations";
-import { EpubAst, read_epub_extra } from "../file/formats/epub-ast";
+import { EpubAst, read_epub_extra } from "../file/formats/epub/epub-ast";
 
 /**
  * 旧 EPUB ruby 实现把去注音正文塞进 ruby_clean_candidate，再让 shared 文本层和 writer

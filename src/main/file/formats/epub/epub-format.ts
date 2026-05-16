@@ -7,7 +7,7 @@ import {
   group_items as group_file_items,
   type ExportPaths,
   type FileFormatServiceConfig,
-} from "./file-format-shared";
+} from "../file-format-shared";
 import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
