@@ -82,26 +82,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260515 v0.99.5
-  - Optimizations and improvements #559 #563 #564 #565 #566 #567
-  - Now, this is a PURE `TypeScript` project ( •̀ ω •́ )✧
-
-- 20260505 v0.99.4
-  - Optimizations and Improvements #545 #546 #549 #550 #551 #552
-
-- 20260430 v0.99.3
-  - Optimizations and Improvements #535 #536 #539 #541
-
-- 20260428 v0.99.2
-  - Optimizations and Improvements #531 #533
-
-- 20260428 v0.99.1
-  - Optimizations and Improvements #513 #522
-  - Try to fix startup errors on the macOS version
-
-- 20260427 v0.99.0
-  - Completely redesigned the user interface, faster, higher, stronger
-  - Temporarily removed `CLI` mode
+- 20260517 v0.100.1
+  - Feature - New translation language `Chinese (Traditional)`
+  - Adjust and Improve #423 #524 #560 #569 #571 #572 #574
 
 ## Development Guide 🛠️
 - First install [`Node.js 24`](https://nodejs.org/), then initialize with `npm install`
