@@ -3,7 +3,8 @@ import type { LocaleKey } from "@/app/locale/locale-provider";
 import {
   ALL_LANGUAGE_CODE,
   PROJECT_SAVE_MODES,
-  SOURCE_TARGET_LANGUAGE_CODES,
+  SOURCE_LANGUAGE_CODES,
+  TARGET_LANGUAGE_CODES,
   type ProjectSaveMode,
 } from "@base/setting";
 
@@ -11,7 +12,7 @@ export type { ProjectSaveMode };
 
 export const ALL_LANGUAGE_VALUE = ALL_LANGUAGE_CODE;
 
-export const LANGUAGE_CODES = SOURCE_TARGET_LANGUAGE_CODES;
+export { SOURCE_LANGUAGE_CODES, TARGET_LANGUAGE_CODES };
 
 export const REQUEST_TIMEOUT_MIN = 0;
 export const REQUEST_TIMEOUT_MAX = 9_999_999;

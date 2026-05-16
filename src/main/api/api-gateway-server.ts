@@ -214,6 +214,7 @@ export class ApiGatewayServer {
     });
     this.task_worker_pool = executor_client;
     const task_engine = new TaskEngine({
+      appRoot: this.options.appRoot,
       taskStore: project_task_store,
       taskRuntimePublisher: task_runtime_publisher,
       executorClient: executor_client,

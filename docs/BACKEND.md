@@ -64,6 +64,7 @@ flowchart LR
 - `ProjectChangeEventAdapter` 负责把变更草稿转换为公开 `ProjectChangeEvent`，并通过 `ProjectRuntimeProjectionService` 补齐 canonical delta 与本次更新 section revision。
 - `ProjectChangeEvent` 的 payload mode 只有 `canonical-delta`、`ids-only`、`section-invalidated`；`items` / `files` 支持行级 upsert 和 tombstone，其它 section 在 canonical-delta 下返回完整 section data。
 - `project` section 只表达工程加载态和路径；项目设置 meta 不进入 `ProjectStore.project`，settings-only 对齐只写 meta 和返回 ack，不发布不可消费的 project data 事件。
+- `/api/project/analysis/import-glossary` 接收用户确认后的术语表快照和 `consumed_candidate_srcs`；后端在同一事务消费对应分析候选聚合，且只在术语表条目真实变化时推进 `quality` revision，候选池消费始终推进 `analysis` revision。
 - `CoreEventHub` 是公开运行期事件总线，只广播领域层已经写好的公开事件，不再把 SSE topic 反向投影为内部状态。
 - `TaskRuntimePublisher` 是任务运行态公开事件唯一出口；它先写 `TaskRuntimeState`，再构建完整 `TaskSnapshot` 并发布 `task.snapshot_changed`。
 - `/api/tasks/stop` 命中当前 run 时由 Engine 写入并发布 `stopping`；HTTP ack 只返回 `TaskRuntimeState` 当前完整 snapshot，不强制旧停止意图覆盖已发布终态。
@@ -126,7 +127,7 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 - asset 内容以 Zstd 压缩 blob 存储在 `.lg` 内；调用方读取时消费解压 bytes，不理解压缩格式。
 - 运行态不保留独立 database gateway、full bootstrap stream 或旧 DTO bridge；历史格式兼容只在 migration 或 project change adapter 的明确边界内处理。
 - 跨 API、数据库 payload、任务运行态和 worker 的实体和值对象从 `src/base` 导入；`Item`、`Setting`、`Model`、`Prompt`、`QualityRule` 负责 JSON 反序列化、序列化、合法值集合和贴身派生判断，后端领域服务只在 IO、数据库、路径、网络和事件边界处理副作用。
-- 跨运行时复用的 task、quality、language、log 和 JSON 工具从 `src/shared` 导入；质量规则合并、预演和任务快照归一只复用 `src/shared/quality`，运行态不得为这些共享规则另建并行词表或局部兜底。
+- 跨运行时复用的 task、quality、language、log 和 JSON 工具从 `src/shared` 导入；语言值域按源语言、目标语言和总表三类导出，后端提示词、预过滤和文件格式策略必须消费对应窄值域，不得恢复源/目标共用列表；质量规则合并、预演和任务快照归一只复用 `src/shared/quality`，运行态不得为这些共享规则另建并行词表或局部兜底。
 - 质量规则预设接口以公开 `rule_type` 为入参，物理预设目录只由 `QualityRule` 派生；提示词目录、rules 表物理类型、meta key 和默认预设 setting key 只由 `Prompt` 派生。
 
 ## 7. 更新触发条件

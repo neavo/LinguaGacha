@@ -19,7 +19,11 @@ export class TaskLogReplay {
   /**
    * 任务启动日志输出“API 名称 / 地址 / 模型”三行诊断
    */
-  public task_run_start(model: MutableJsonRecord, app_language: unknown): void {
+  public task_run_start(
+    model: MutableJsonRecord,
+    app_language: unknown,
+    prompt_text: string | null = null,
+  ): void {
     this.append("info", "", "engine");
     this.append(
       "info",
@@ -37,6 +41,11 @@ export class TaskLogReplay {
       "engine",
     );
     this.append("info", "", "engine");
+    const normalized_prompt_text = prompt_text?.trim() ?? "";
+    if (normalized_prompt_text !== "") {
+      this.append("info", normalized_prompt_text, "engine");
+      this.append("info", "", "engine");
+    }
   }
 
   /**

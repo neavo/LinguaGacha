@@ -63,6 +63,41 @@ describe("ProjectCompatibilityMigrationService", () => {
     ]);
   });
 
+  it("旧翻译提示词已迁移后不会从旧槽位反复写回", () => {
+    const service = create_service({
+      meta: {
+        text_preserve_mode: "custom",
+        translation_prompt_legacy_migrated: true,
+      },
+      rule_text_by_name: {
+        CUSTOM_PROMPT_ZH: "用户已经清空后的旧残留",
+      },
+    });
+
+    expect(service.build_open_compatibility_operations("demo.lg")).toEqual([]);
+  });
+
+  it("旧文本保护关闭时写入当前 smart 模式并标记旧提示词迁移完成", () => {
+    const service = create_service({
+      meta: { text_preserve_enable: false },
+    });
+
+    expect(service.build_open_compatibility_operations("demo.lg")).toEqual([
+      {
+        name: "setMeta",
+        args: { projectPath: "demo.lg", key: "text_preserve_mode", value: "smart" },
+      },
+      {
+        name: "setMeta",
+        args: {
+          projectPath: "demo.lg",
+          key: "translation_prompt_legacy_migrated",
+          value: true,
+        },
+      },
+    ]);
+  });
+
   it("英文界面优先迁移旧英文翻译提示词", () => {
     const service = create_service({
       config: { app_language: "EN" },

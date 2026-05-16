@@ -33,14 +33,18 @@ describe("TaskPipeline", () => {
   });
 
   it("把定时提交里的错误回传给调用方", async () => {
+    vi.useFakeTimers();
+    let release_second_context: () => void = () => {};
+    let second_context_started = false;
     const pipeline = new TaskPipeline<number, number>({
       worker_count: 1,
       signal: new AbortController().signal,
       commit_interval_ms: 1,
       execute: async (context) => {
         if (context === 2) {
+          second_context_started = true;
           await new Promise<void>((resolve) => {
-            setTimeout(resolve, 5);
+            release_second_context = resolve;
           });
         }
         return { commit_entries: [context], retry_contexts: [] };
@@ -52,7 +56,13 @@ describe("TaskPipeline", () => {
       },
     });
 
-    await expect(pipeline.run([1, 2])).rejects.toThrow("提交失败");
+    const run_promise = pipeline.run([1, 2]);
+    await wait_until(() => second_context_started);
+    await vi.advanceTimersByTimeAsync(1);
+
+    release_second_context();
+
+    await expect(run_promise).rejects.toThrow("提交失败");
   });
 
   it("worker 失败时关停队列并等待已运行 worker 收束", async () => {
@@ -149,3 +159,13 @@ describe("TaskPipeline", () => {
     expect(committed).toEqual([[1], [2]]);
   });
 });
+
+async function wait_until(predicate: () => boolean): Promise<void> {
+  for (let index = 0; index < 10; index += 1) {
+    if (predicate()) {
+      return;
+    }
+    await Promise.resolve();
+  }
+  expect(predicate()).toBe(true);
+}

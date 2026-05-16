@@ -226,9 +226,13 @@ export function useTranslationTaskRuntime(
     });
   }, [last_translation_task_snapshot, translation_task_snapshot]);
 
-  const translation_task_menu_busy = task_confirm_state !== null && task_confirm_state.submitting;
-  const translation_task_menu_disabled =
-    !project_snapshot.loaded || task_snapshot.busy || translation_task_menu_busy;
+  const translation_dialog_open = task_confirm_state !== null;
+  const translation_action_submitting =
+    task_confirm_state !== null && task_confirm_state.submitting;
+  const translation_action_blocked =
+    !project_snapshot.loaded || task_snapshot.busy || translation_dialog_open;
+  const translation_task_menu_busy = translation_action_submitting;
+  const translation_task_menu_disabled = translation_action_blocked;
   const can_open_translation_detail_sheet = project_snapshot.loaded;
   const translation_task_active = is_active_translation_task_status(
     translation_task_snapshot.status,
@@ -418,7 +422,7 @@ export function useTranslationTaskRuntime(
   }, []);
 
   const request_start_or_continue_translation = useCallback(async (): Promise<void> => {
-    if (!project_snapshot.loaded || task_snapshot.busy || translation_task_menu_busy) {
+    if (translation_action_blocked) {
       return;
     }
 
@@ -459,13 +463,11 @@ export function useTranslationTaskRuntime(
     apply_translation_task_snapshot,
     clear_terminal_prompt_suppression,
     project_store,
-    project_snapshot.loaded,
     push_toast,
     sync_runtime_task_snapshot,
     t,
-    task_snapshot.busy,
+    translation_action_blocked,
     translation_task_display_snapshot,
-    translation_task_menu_busy,
     clear_translation_waveform_sampling,
   ]);
 
@@ -677,7 +679,7 @@ export function useTranslationTaskRuntime(
       consume_terminal_prompt_suppression();
 
     if (
-      task_confirm_state === null &&
+      !translation_dialog_open &&
       !terminal_prompt_suppressed &&
       should_prompt_translation_generate_confirmation({
         previous_status,
@@ -692,7 +694,7 @@ export function useTranslationTaskRuntime(
     consume_terminal_prompt_suppression,
     push_toast,
     t,
-    task_confirm_state,
+    translation_dialog_open,
     translation_task_display_snapshot,
     translation_task_snapshot.status,
   ]);

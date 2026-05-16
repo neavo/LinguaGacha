@@ -134,4 +134,25 @@ describe("LogWindowHost", () => {
 
     expect(created_windows).toHaveLength(2);
   });
+
+  it("旧窗口延迟关闭事件不会清理新日志窗口引用", async () => {
+    const { LogWindowHost } = await import("./log-window-host");
+    const host = new LogWindowHost({
+      createWindowOptions: () => ({}),
+      loadTarget: vi.fn(),
+      registerWindow: vi.fn(),
+    });
+
+    host.open();
+    const first_window = created_windows[0];
+    if (first_window !== undefined) {
+      first_window.destroyed = true;
+    }
+    host.open();
+    first_window?.emit("closed");
+    host.open();
+
+    expect(created_windows).toHaveLength(2);
+    expect(created_windows[1]?.destroyed).toBe(false);
+  });
 });

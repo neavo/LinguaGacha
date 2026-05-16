@@ -17,8 +17,8 @@ vi.mock("@/project/quality/quality-statistics-worker-pool", () => {
   };
 });
 
-function create_test_state(): ProjectStoreState {
-  return {
+function create_test_state(overrides: Partial<ProjectStoreState> = {}): ProjectStoreState {
+  const state: ProjectStoreState = {
     project: {
       path: "E:/demo/sample.lg",
       loaded: true,
@@ -96,6 +96,10 @@ function create_test_state(): ProjectStoreState {
       },
     },
   };
+  return {
+    ...state,
+    ...overrides,
+  };
 }
 
 describe("prepare_analysis_glossary_import", () => {
@@ -116,7 +120,11 @@ describe("prepare_analysis_glossary_import", () => {
 
     expect(prepared_import).not.toBeNull();
     expect(quality_statistics_submit_mock).toHaveBeenCalledTimes(1);
+    expect(prepared_import?.duplicate_count).toBe(0);
     expect(prepared_import?.imported_count).toBe(1);
+    expect(prepared_import?.consumed_count).toBe(1);
+    expect(prepared_import?.quality_changed).toBe(true);
+    expect(prepared_import?.updated_sections).toEqual(["quality", "analysis"]);
     expect(prepared_import?.request_body.entries).toEqual([
       {
         src: "艾琳",
@@ -127,6 +135,8 @@ describe("prepare_analysis_glossary_import", () => {
       },
     ]);
     expect(prepared_import?.request_body.analysis_candidate_count).toBe(0);
+    expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
+    expect(prepared_import?.next_analysis_state.candidate_aggregate).toEqual({});
     expect(prepared_import?.request_body.expected_glossary_revision).toBe(2);
     expect(prepared_import?.request_body.expected_section_revisions).toEqual({
       quality: 12,
@@ -140,5 +150,121 @@ describe("prepare_analysis_glossary_import", () => {
         stale_key: "quality-statistics:analysis-glossary-importer",
       },
     );
+  });
+
+  it("重复候选选择跳过时只消费候选池且不改术语表 revision", async () => {
+    const state = create_test_state();
+    state.quality.glossary.entries = [
+      {
+        src: "艾琳",
+        dst: "Eileen",
+        info: "既有角色名",
+        regex: false,
+        case_sensitive: true,
+      },
+    ];
+
+    const prepared_import = await prepare_analysis_glossary_import(state, { action: "skip" });
+
+    expect(prepared_import).not.toBeNull();
+    expect(prepared_import?.duplicate_count).toBe(1);
+    expect(prepared_import?.imported_count).toBe(0);
+    expect(prepared_import?.consumed_count).toBe(1);
+    expect(prepared_import?.quality_changed).toBe(false);
+    expect(prepared_import?.updated_sections).toEqual(["analysis"]);
+    expect(prepared_import?.next_quality_state.glossary.revision).toBe(2);
+    expect(prepared_import?.request_body.entries).toEqual([
+      {
+        src: "艾琳",
+        dst: "Eileen",
+        info: "既有角色名",
+        regex: false,
+        case_sensitive: true,
+      },
+    ]);
+    expect(prepared_import?.request_body.analysis_candidate_count).toBe(0);
+    expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
+    expect(prepared_import?.next_analysis_state.candidate_aggregate).toEqual({});
+  });
+
+  it("重复候选选择覆盖时用候选术语改写旧值", async () => {
+    const state = create_test_state();
+    state.quality.glossary.entries = [
+      {
+        src: "艾琳",
+        dst: "Eileen",
+        info: "既有角色名",
+        regex: false,
+        case_sensitive: true,
+      },
+    ];
+
+    const prepared_import = await prepare_analysis_glossary_import(state, { action: "overwrite" });
+
+    expect(prepared_import).not.toBeNull();
+    expect(prepared_import?.duplicate_count).toBe(1);
+    expect(prepared_import?.imported_count).toBe(1);
+    expect(prepared_import?.quality_changed).toBe(true);
+    expect(prepared_import?.next_quality_state.glossary.revision).toBe(3);
+    expect(prepared_import?.request_body.entries).toEqual([
+      {
+        src: "艾琳",
+        dst: "Erin",
+        info: "角色名",
+        regex: false,
+        case_sensitive: true,
+      },
+    ]);
+    expect(prepared_import?.request_body.analysis_candidate_count).toBe(0);
+    expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
+    expect(prepared_import?.next_analysis_state.candidate_aggregate).toEqual({});
+  });
+
+  it("只从本地候选聚合移除实际消费项", async () => {
+    const state = create_test_state({
+      analysis: {
+        candidate_count: 2,
+        candidate_aggregate: {
+          艾琳: {
+            src: "艾琳",
+            dst_votes: {
+              Erin: 1,
+            },
+            info_votes: {
+              角色名: 1,
+            },
+            case_sensitive: true,
+          },
+          王: {
+            src: "王",
+            dst_votes: {
+              King: 1,
+            },
+            info_votes: {
+              角色名: 1,
+            },
+            case_sensitive: false,
+          },
+        },
+      },
+    });
+
+    const prepared_import = await prepare_analysis_glossary_import(state);
+
+    expect(prepared_import?.consumed_count).toBe(1);
+    expect(prepared_import?.request_body.analysis_candidate_count).toBe(1);
+    expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
+    expect(prepared_import?.next_analysis_state.candidate_aggregate).toEqual({
+      王: {
+        src: "王",
+        dst_votes: {
+          King: 1,
+        },
+        info_votes: {
+          角色名: 1,
+        },
+        case_sensitive: false,
+      },
+    });
   });
 });

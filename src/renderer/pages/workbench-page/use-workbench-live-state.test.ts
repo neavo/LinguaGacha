@@ -71,6 +71,11 @@ type AnalysisTaskRuntimeFixture = {
   };
   analysis_waveform_history: number[];
   analysis_confirm_state: null;
+  analysis_import_confirm_state: {
+    open: boolean;
+    duplicate_count: number;
+    submitting: boolean;
+  };
   open_analysis_detail_sheet: ReturnType<typeof vi.fn>;
   close_analysis_detail_sheet: ReturnType<typeof vi.fn>;
   request_start_or_continue_analysis: ReturnType<typeof vi.fn>;
@@ -78,6 +83,9 @@ type AnalysisTaskRuntimeFixture = {
   confirm_analysis_task_action: ReturnType<typeof vi.fn>;
   close_analysis_task_action_confirmation: ReturnType<typeof vi.fn>;
   request_import_analysis_glossary: ReturnType<typeof vi.fn>;
+  import_analysis_glossary_duplicate_skip: ReturnType<typeof vi.fn>;
+  import_analysis_glossary_duplicate_overwrite: ReturnType<typeof vi.fn>;
+  close_analysis_glossary_import_confirmation: ReturnType<typeof vi.fn>;
   refresh_analysis_task_snapshot: ReturnType<typeof vi.fn>;
 };
 
@@ -240,6 +248,11 @@ function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
     },
     analysis_waveform_history: [],
     analysis_confirm_state: null,
+    analysis_import_confirm_state: {
+      open: false,
+      duplicate_count: 0,
+      submitting: false,
+    },
     open_analysis_detail_sheet: vi.fn(),
     close_analysis_detail_sheet: vi.fn(),
     request_start_or_continue_analysis: vi.fn(async () => {}),
@@ -247,6 +260,9 @@ function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
     confirm_analysis_task_action: vi.fn(async () => {}),
     close_analysis_task_action_confirmation: vi.fn(),
     request_import_analysis_glossary: vi.fn(async () => {}),
+    import_analysis_glossary_duplicate_skip: vi.fn(async () => {}),
+    import_analysis_glossary_duplicate_overwrite: vi.fn(async () => {}),
+    close_analysis_glossary_import_confirmation: vi.fn(),
     refresh_analysis_task_snapshot: vi.fn(async () => {}),
   };
 }

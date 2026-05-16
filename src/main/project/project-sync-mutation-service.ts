@@ -356,16 +356,32 @@ export class ProjectSyncMutationService {
         },
       });
     }
-    this.database.execute_transaction([
-      this.op("setRules", {
+    const next_rules = this.normalize_rule_entries(request["entries"]);
+    const quality_changed = !this.are_rule_entries_equal(
+      this.get_rule_entries(project_path, "glossary"),
+      next_rules,
+    );
+    const updated_sections: ProjectDataSection[] = quality_changed
+      ? ["quality", "analysis"]
+      : ["analysis"];
+    const operations: DatabaseOperation[] = [
+      ...(quality_changed
+        ? [
+            this.op("setRules", {
+              projectPath: project_path,
+              ruleType: "glossary",
+              rules: next_rules,
+            }),
+            this.op("setMeta", {
+              projectPath: project_path,
+              key: "quality_rule_revision.glossary",
+              value: current_glossary_revision + 1,
+            }),
+          ]
+        : []),
+      this.op("deleteAnalysisCandidateAggregatesBySrcs", {
         projectPath: project_path,
-        ruleType: "glossary",
-        rules: this.normalize_rule_entries(request["entries"]),
-      }),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: "quality_rule_revision.glossary",
-        value: current_glossary_revision + 1,
+        srcs: this.normalize_string_list(request["consumed_candidate_srcs"]),
       }),
       this.op("setMeta", {
         projectPath: project_path,
@@ -373,9 +389,10 @@ export class ProjectSyncMutationService {
         value: this.read_number(request["analysis_candidate_count"], 0),
       }),
       ...this.bump_section_revision_operations(project_path, ["analysis"]),
-    ]);
-    this.publish_project_data_change("analysis_glossary_import", ["quality", "analysis"]);
-    return this.build_project_mutation_ack(project_path, ["quality", "analysis"]);
+    ];
+    this.database.execute_transaction(operations);
+    this.publish_project_data_change("analysis_glossary_import", updated_sections);
+    return this.build_project_mutation_ack(project_path, updated_sections);
   }
 
   /**
@@ -708,6 +725,49 @@ export class ProjectSyncMutationService {
         case_sensitive: Boolean(entry["case_sensitive"] ?? false),
       }))
       .filter((entry) => entry["src"] !== "");
+  }
+
+  /**
+   * 读取当前质量规则条目，供分析导入判断是否需要推进 quality revision
+   */
+  private get_rule_entries(project_path: string, rule_type: string): MutableJsonRecord[] {
+    return this.normalize_rule_entries(
+      this.database.execute(
+        this.op("getRules", {
+          projectPath: project_path,
+          ruleType: rule_type,
+        }),
+      ),
+    );
+  }
+
+  /**
+   * 规则列表按顺序比较完整写入形状，只有真实变化才 bump 质量规则 revision
+   */
+  private are_rule_entries_equal(
+    left_entries: MutableJsonRecord[],
+    right_entries: MutableJsonRecord[],
+  ): boolean {
+    if (left_entries.length !== right_entries.length) {
+      return false;
+    }
+    for (let index = 0; index < left_entries.length; index += 1) {
+      const left_entry = left_entries[index];
+      const right_entry = right_entries[index];
+      if (left_entry === undefined || right_entry === undefined) {
+        return false;
+      }
+      if (
+        left_entry["src"] !== right_entry["src"] ||
+        left_entry["dst"] !== right_entry["dst"] ||
+        left_entry["info"] !== right_entry["info"] ||
+        left_entry["regex"] !== right_entry["regex"] ||
+        left_entry["case_sensitive"] !== right_entry["case_sensitive"]
+      ) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

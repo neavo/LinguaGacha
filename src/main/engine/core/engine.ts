@@ -11,6 +11,7 @@ import { WorkUnitExecutorTransportError } from "../worker/worker-transport-error
 import type { StartTaskCommand, StopTaskCommand } from "../protocol/task-command";
 import type { TaskStartMode } from "../protocol/task-types";
 import type { WorkerExecutionResult } from "../protocol/worker-result";
+import { PromptBuilder } from "../worker/prompt/prompt-builder";
 import type {
   AnalysisWorkUnitResult,
   TaskItemRecord,
@@ -26,6 +27,7 @@ import { TaskProgressSnapshotTool } from "./progress-accumulator";
 import { RunCoordinator } from "./run-coordinator";
 import { TaskLogReplay } from "./log-replay";
 import { is_task_skipped_item_status } from "../../../shared/task";
+import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import * as AppErrors from "../../../shared/error";
 
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
@@ -100,6 +102,7 @@ interface AnalysisCommitEntry {
  * Electron main 的后台任务执行权威，持有生命周期、调度、限流、停止、重试和提交循环
  */
 export class TaskEngine {
+  private readonly app_root: string; // app_root 让 main 侧启动日志和 worker 使用同一套提示词资源
   private readonly task_store: ProjectTaskStore; // task_store 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
   private readonly artifact_committer: TaskArtifactCommitter; // artifact_committer 是 Engine 写入项目任务事实的唯一出口
   private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 同步写运行态并发布完整 snapshot
@@ -115,6 +118,7 @@ export class TaskEngine {
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
   public constructor(options: TaskEngineOptions) {
+    this.app_root = options.appRoot;
     this.task_store = options.taskStore;
     this.artifact_committer = new TaskArtifactCommitter(options.taskStore);
     this.task_runtime_publisher = options.taskRuntimePublisher;
@@ -195,7 +199,7 @@ export class TaskEngine {
       const runtime = this.resolve_runtime_snapshot();
       app_language = runtime.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
-      this.log_replay.task_run_start(runtime.model, app_language);
+      await this.log_task_run_start("translation", runtime, quality_snapshot, app_language);
       const payload =
         translation_scope.kind === "items"
           ? this.task_store.get_translation_items_by_scope({
@@ -268,7 +272,7 @@ export class TaskEngine {
       const runtime = this.resolve_runtime_snapshot();
       app_language = runtime.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
-      this.log_replay.task_run_start(runtime.model, app_language);
+      await this.log_task_run_start("analysis", runtime, quality_snapshot, app_language);
       if (legacy_mode === "NEW" || legacy_mode === "RESET") {
         this.task_store.reset_analysis_progress({});
       }
@@ -1077,6 +1081,44 @@ export class TaskEngine {
   }
 
   /**
+   * 对齐旧实现：非 SakuraLLM 任务启动时在 API 信息后打印本轮主提示词
+   */
+  private async log_task_run_start(
+    task_type: TaskType,
+    runtime: TaskRuntimeSnapshot,
+    quality_snapshot: ApiJsonValue,
+    app_language: unknown,
+  ): Promise<void> {
+    const prompt_text = await this.build_task_start_prompt(task_type, runtime, quality_snapshot);
+    this.log_replay.task_run_start(runtime.model, app_language, prompt_text);
+  }
+
+  /**
+   * 启动提示词只用于诊断日志，实际请求仍由 worker 基于同一快照重新构造完整 messages
+   */
+  private async build_task_start_prompt(
+    task_type: TaskType,
+    runtime: TaskRuntimeSnapshot,
+    quality_snapshot: ApiJsonValue,
+  ): Promise<string | null> {
+    if (String(runtime.model["api_format"] ?? "") === "SakuraLLM") {
+      return null;
+    }
+    const builder = new PromptBuilder(
+      this.app_root,
+      {
+        app_language: this.read_optional_string(runtime.config_snapshot["app_language"]),
+        source_language: this.read_optional_string(runtime.config_snapshot["source_language"]),
+        target_language: this.read_optional_string(runtime.config_snapshot["target_language"]),
+      },
+      TextQualitySnapshotTool.from_api_value(quality_snapshot),
+    );
+    return task_type === "analysis"
+      ? await builder.build_glossary_analysis_main()
+      : await builder.build_main();
+  }
+
+  /**
    * ProjectTaskStore 仍使用历史大写 mode 字段读写 `.lg` 事实，Engine 边界只接受小写命令
    */
   private to_legacy_mode(mode: TaskStartMode | string): string {
@@ -1263,5 +1305,12 @@ export class TaskEngine {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
+  }
+
+  /**
+   * 提示词构造只接受字符串配置，缺失值交给 PromptBuilder 默认口径处理
+   */
+  private read_optional_string(value: ApiJsonValue | undefined): string | undefined {
+    return typeof value === "string" ? value : undefined;
   }
 }

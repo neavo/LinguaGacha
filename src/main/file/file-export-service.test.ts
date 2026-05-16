@@ -8,7 +8,7 @@ import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import type { SettingService } from "../service/setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
-import { FileExportService } from "./file-export-service";
+import { FileExportService, type OutputFolderOpener } from "./file-export-service";
 
 let temp_dir = ""; // 每个用例独占导出目录，避免文件写回断言互相污染
 
@@ -63,12 +63,24 @@ function create_log_collector(): LogCollector {
   };
 }
 
-function create_output_folder_opener() {
-  return vi.fn(async (_output_path: string) => {});
+function create_output_folder_opener(error?: Error): {
+  opened_paths: string[];
+  open: OutputFolderOpener;
+} {
+  const opened_paths: string[] = [];
+  return {
+    opened_paths,
+    open: async (output_path) => {
+      opened_paths.push(output_path);
+      if (error !== undefined) {
+        throw error;
+      }
+    },
+  };
 }
 
 describe("FileExportService", () => {
-  it("普通导出补齐同文件重复译文并写出 格式文件", async () => {
+  it("普通导出补齐同文件重复译文并写出 TXT 格式文件", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -101,7 +113,7 @@ describe("FileExportService", () => {
       database,
       create_setting_service(),
       session_state,
-      output_folder_opener,
+      output_folder_opener.open,
       log_collector,
     );
 
@@ -109,7 +121,7 @@ describe("FileExportService", () => {
       accepted: true,
       output_path: path.join(temp_dir, "demo_译文"),
     });
-    expect(fs.readFileSync(path.join(temp_dir, "demo_译文", "script.zh.txt"), "utf-8")).toBe(
+    expect(fs.readFileSync(path.join(temp_dir, "demo_译文", "script.txt"), "utf-8")).toBe(
       "译文\n译文",
     );
     expect(log_collector.entries.map(({ level, message }) => [level, message])).toEqual([
@@ -118,7 +130,7 @@ describe("FileExportService", () => {
       ["info", `译文已保存至 ${path.join(temp_dir, "demo_译文")} …`],
       ["info", ""],
     ]);
-    expect(output_folder_opener).not.toHaveBeenCalled();
+    expect(output_folder_opener.opened_paths).toEqual([]);
   });
 
   it("启用设置后导出成功会打开译文输出目录", async () => {
@@ -144,7 +156,7 @@ describe("FileExportService", () => {
       database,
       create_setting_service(true),
       session_state,
-      output_folder_opener,
+      output_folder_opener.open,
       create_log_collector(),
     );
 
@@ -153,8 +165,7 @@ describe("FileExportService", () => {
       output_path: path.join(temp_dir, "demo_译文"),
     });
 
-    expect(output_folder_opener).toHaveBeenCalledTimes(1);
-    expect(output_folder_opener).toHaveBeenCalledWith(path.join(temp_dir, "demo_译文"));
+    expect(output_folder_opener.opened_paths).toEqual([path.join(temp_dir, "demo_译文")]);
   });
 
   it("打开输出目录失败不改变导出成功结果并记录诊断日志", async () => {
@@ -176,14 +187,12 @@ describe("FileExportService", () => {
       read_asset_content: () => null,
     } as unknown as ProjectDatabase;
     const log_collector = create_log_collector();
-    const output_folder_opener = vi.fn(async (_output_path: string) => {
-      throw new Error("open failed");
-    });
+    const output_folder_opener = create_output_folder_opener(new Error("open failed"));
     const service = new FileExportService(
       database,
       create_setting_service(true),
       session_state,
-      output_folder_opener,
+      output_folder_opener.open,
       log_collector,
     );
 
@@ -227,7 +236,7 @@ describe("FileExportService", () => {
       database,
       create_setting_service(),
       session_state,
-      create_output_folder_opener(),
+      create_output_folder_opener().open,
       log_collector,
     );
 
@@ -250,7 +259,7 @@ describe("FileExportService", () => {
       { execute: () => [], read_asset_content: () => null } as unknown as ProjectDatabase,
       create_setting_service(),
       session_state,
-      create_output_folder_opener(),
+      create_output_folder_opener().open,
     );
 
     await expect(

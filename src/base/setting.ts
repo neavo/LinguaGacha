@@ -3,8 +3,10 @@ import type { JsonValue } from "../shared/utils/json-tool";
 export {
   ALL_LANGUAGE_CODE,
   CJK_LANGUAGE_CODES,
+  LANGUAGE_CODES,
   LANGUAGE_DEFINITIONS,
-  SOURCE_TARGET_LANGUAGE_CODES,
+  SOURCE_LANGUAGE_CODES,
+  TARGET_LANGUAGE_CODES,
   all_language_characters,
   get_language_display_locale,
   get_language_display_name,
@@ -18,7 +20,8 @@ export {
   type LanguageDisplayLocale,
   type LanguageLabelKey,
   type LanguageCode,
-  type SourceTargetLanguageCode,
+  type SourceLanguageCode,
+  type TargetLanguageCode,
 } from "../shared/language";
 
 export const APP_LANGUAGES = ["ZH", "EN"] as const; // AppLanguage 是设置文件、运行态 settings 和 i18n locale 派生的唯一语言值域

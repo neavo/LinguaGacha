@@ -5,8 +5,8 @@ type TextMatcher = (text: string) => boolean;
 
 export const ALL_LANGUAGE_CODE = "ALL"; // 特殊值：表示“任意原文语言”（关闭语言过滤）
 
-// 公开源/目标语言列表由 UI、过滤器和质量检查共用，避免各模块维护不同顺序
-export const SOURCE_TARGET_LANGUAGE_CODES = [
+// 源语言列表不包含繁中变体，避免预过滤把简繁当成可精确区分的源语言
+export const SOURCE_LANGUAGE_CODES = [
   "ZH", // 中文
   "EN", // 英文
   "JA", // 日文
@@ -26,10 +26,35 @@ export const SOURCE_TARGET_LANGUAGE_CODES = [
   "VI", // 越南文
 ] as const;
 
-// 源/目标语言类型从唯一列表派生，新增语言时无需重复维护联合类型
-export type SourceTargetLanguageCode = (typeof SOURCE_TARGET_LANGUAGE_CODES)[number];
+// 目标语言列表允许繁中作为原生目标，并贴近中文排列，避免在下拉末尾割裂同族语言
+export const TARGET_LANGUAGE_CODES = [
+  "ZH", // 中文
+  "ZH-HANT", // 中文（繁体）
+  "EN", // 英文
+  "JA", // 日文
+  "KO", // 韩文
+  "RU", // 俄文
+  "AR", // 阿拉伯文
+  "DE", // 德文
+  "FR", // 法文
+  "PL", // 波兰文
+  "ES", // 西班牙文
+  "IT", // 意大利文
+  "PT", // 葡萄牙文
+  "HU", // 匈牙利文
+  "TR", // 土耳其文
+  "TH", // 泰文
+  "ID", // 印尼文
+  "VI", // 越南文
+] as const;
+
+// 总语言表只服务定义表和 i18n 资源对齐，页面应按源/目标语义选择窄列表
+export const LANGUAGE_CODES = TARGET_LANGUAGE_CODES;
+
+export type SourceLanguageCode = (typeof SOURCE_LANGUAGE_CODES)[number];
+export type TargetLanguageCode = (typeof TARGET_LANGUAGE_CODES)[number];
 // LanguageCode 额外包含 ALL，用于表示关闭语言限制的配置值
-export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceTargetLanguageCode;
+export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode | TargetLanguageCode;
 export type LanguageDisplayLocale = "zh" | "en";
 export type LanguageLabelKey = `app.language.${LanguageCode}`;
 
@@ -53,6 +78,10 @@ export const LANGUAGE_DISPLAY_NAMES: Record<
   ZH: {
     zh: "中文",
     en: "Chinese",
+  },
+  "ZH-HANT": {
+    zh: "中文（繁体）",
+    en: "Traditional Chinese",
   },
   EN: {
     zh: "英文",
@@ -187,8 +216,7 @@ const THAI_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Thai}/u; //
 const LATIN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))\p{Script=Latin}/u; // Latin Script 整段命中规则，非自然语言识别
 const JAPANESE_TEXT_PATTERN =
   /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))(?:\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana})/u; // 日文整段规则：Han + Hiragana + Katakana
-const KOREAN_TEXT_PATTERN =
-  /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))(?:\p{Script=Han}|\p{Script=Hangul})/u; // 韩文整段规则：Han + Hangul
+const KOREAN_TEXT_PATTERN = /(?!(?:[\s\p{N}\p{P}\p{S}\p{M}]))(?:\p{Script=Han}|\p{Script=Hangul})/u; // 韩文整段规则：Han + Hangul
 
 const NON_STANDALONE_LANGUAGE_CHARACTERS = new Set([
   "ー", // 长音符不能独立表达正文，规则预过滤会单独消费
@@ -272,7 +300,9 @@ export function is_kana_character(char: string): boolean {
 
 // 非独立语言字符只服务“无正文价值”判断，不能单独触发语言正文命中
 export function is_non_standalone_language_character(char: string): boolean {
-  return NON_STANDALONE_LANGUAGE_MARK_PATTERN.test(char) || NON_STANDALONE_LANGUAGE_CHARACTERS.has(char);
+  return (
+    NON_STANDALONE_LANGUAGE_MARK_PATTERN.test(char) || NON_STANDALONE_LANGUAGE_CHARACTERS.has(char)
+  );
 }
 
 // 中日韩正文字符判断供文本保护等下游语义过滤复用，不暴露正则拼接细节
@@ -344,6 +374,7 @@ function build_definition(
 export const LANGUAGE_DEFINITIONS: Record<LanguageCode, LanguageDefinition> = {
   ALL: build_definition("ALL", false, null, null), // ALL 关闭语言过滤
   ZH: build_definition("ZH", true, is_han_character, HAN_TEXT_PATTERN), // 中文只以 Han Script 正文命中
+  "ZH-HANT": build_definition("ZH-HANT", true, is_han_character, HAN_TEXT_PATTERN), // 繁中复用 Han Script，不按字符范围区分简繁
   EN: build_definition("EN", false, is_latin_character, LATIN_TEXT_PATTERN), // 英文走 Latin Script 粗过滤
   JA: build_definition("JA", true, is_ja_character, JAPANESE_TEXT_PATTERN), // 日文允许 Han + Kana 混排
   KO: build_definition("KO", true, is_ko_character, KOREAN_TEXT_PATTERN), // 韩文允许 Han + Hangul 混排
@@ -362,7 +393,7 @@ export const LANGUAGE_DEFINITIONS: Record<LanguageCode, LanguageDefinition> = {
   VI: build_definition("VI", false, is_latin_character, LATIN_TEXT_PATTERN), // 越南文走 Latin Script 粗过滤
 };
 
-export const CJK_LANGUAGE_CODES = new Set<LanguageCode>(["ZH", "JA", "KO"]); // CJK 语言集合供 UI 和规则分支快速判断，不重复解释字符范围
+export const CJK_LANGUAGE_CODES = new Set<LanguageCode>(["ZH", "ZH-HANT", "JA", "KO"]); // CJK 语言集合供 UI 和规则分支快速判断，不重复解释字符范围
 
 // 语言码入口统一大小写与空白处理，未知值显式返回 null
 export function normalize_language_code(value: string): LanguageCode | null {

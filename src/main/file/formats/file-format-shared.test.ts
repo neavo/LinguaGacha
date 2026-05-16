@@ -9,6 +9,7 @@ import {
   group_items,
   language_suffix,
   prepare_name_fields,
+  should_preserve_epub_reading_layout,
   split_text_lines_for_items,
 } from "./file-format-shared";
 
@@ -22,10 +23,20 @@ describe("file-format-shared", () => {
     const config = { source_language: "JA", target_language: "ZH" };
 
     expect(language_suffix(config, "source")).toBe("ja");
-    expect(build_target_path(config, "out", "script.txt")).toBe(path.join("out", "script.zh.txt"));
+    expect(build_target_path(config, "out", "script.txt")).toBe(path.join("out", "script.txt"));
     expect(build_bilingual_path(config, "out", "script.txt")).toBe(
       path.join("out", "script.ja.zh.txt"),
     );
+    expect(language_suffix({ source_language: "JA", target_language: "ZH-HANT" }, "target")).toBe(
+      "zh-hant",
+    );
+  });
+
+  it("按目标语言集中判断 EPUB 阅读排版保留策略", () => {
+    expect(should_preserve_epub_reading_layout("JA")).toBe(true);
+    expect(should_preserve_epub_reading_layout(" zh-hant ")).toBe(true);
+    expect(should_preserve_epub_reading_layout("ZH_HANT")).toBe(false);
+    expect(should_preserve_epub_reading_layout("ZH")).toBe(false);
   });
 
   it("按文件类型和文件路径分组条目", () => {

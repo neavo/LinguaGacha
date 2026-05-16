@@ -7,6 +7,7 @@ import { WorkbenchFileTable } from "@/pages/workbench-page/components/workbench-
 import { WorkbenchStatsSection } from "@/pages/workbench-page/components/workbench-stats-section";
 import { TaskRuntimeConfirmDialog } from "@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog";
 import { TaskRuntimeDetailSheet } from "@/pages/workbench-page/components/task-runtime/task-runtime-detail-sheet";
+import { QualityRuleImportConfirmDialog } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 import { FileDropZone } from "@/widgets/file-drop-zone/file-drop-zone";
 import "@/pages/workbench-page/workbench-page.css";
 
@@ -88,6 +89,14 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         view_model={workbench_state.analysis_task_confirm_dialog}
         on_confirm={workbench_state.analysis_task_runtime.confirm_analysis_task_action}
         on_close={workbench_state.analysis_task_runtime.close_analysis_task_action_confirmation}
+      />
+      <QualityRuleImportConfirmDialog
+        state={workbench_state.analysis_task_runtime.analysis_import_confirm_state}
+        on_skip={workbench_state.analysis_task_runtime.import_analysis_glossary_duplicate_skip}
+        on_overwrite={
+          workbench_state.analysis_task_runtime.import_analysis_glossary_duplicate_overwrite
+        }
+        on_close={workbench_state.analysis_task_runtime.close_analysis_glossary_import_confirmation}
       />
       {workbench_state.active_workbench_task_view.task_kind === "analysis" &&
       workbench_state.active_workbench_task_detail !== null ? (

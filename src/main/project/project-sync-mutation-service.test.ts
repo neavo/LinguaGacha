@@ -186,6 +186,142 @@ describe("ProjectSyncMutationService", () => {
     database.close();
   });
 
+  it("分析候选导入覆盖重复术语时写术语并消费候选池", async () => {
+    const publish_project_change = vi.fn();
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
+    database.execute({
+      name: "setRules",
+      args: {
+        projectPath: lg_path,
+        ruleType: "glossary",
+        rules: [{ src: "艾琳", dst: "Eileen", info: "旧名", regex: false, case_sensitive: true }],
+      },
+    });
+    database.execute({
+      name: "upsertAnalysisCandidateAggregates",
+      args: {
+        projectPath: lg_path,
+        aggregates: [
+          {
+            src: "艾琳",
+            dst_votes: { Erin: 1 },
+            info_votes: { 角色名: 1 },
+            observation_count: 1,
+            first_seen_at: "t",
+            last_seen_at: "t",
+            case_sensitive: true,
+          },
+        ],
+      },
+    });
+
+    const ack = await service.import_analysis_glossary({
+      entries: [{ src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true }],
+      consumed_candidate_srcs: ["艾琳"],
+      analysis_candidate_count: 0,
+      expected_glossary_revision: 0,
+      expected_section_revisions: { quality: 0, analysis: 0 },
+    });
+
+    expect(ack).toEqual({
+      accepted: true,
+      projectRevision: 1,
+      sectionRevisions: { quality: 1, analysis: 1 },
+    });
+    expect(
+      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
+    ).toEqual([{ src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true }]);
+    expect(
+      database.execute({
+        name: "getAnalysisCandidateAggregates",
+        args: { projectPath: lg_path },
+      }),
+    ).toEqual([]);
+    expect(publish_project_change).toHaveBeenCalledWith({
+      source: "analysis_glossary_import",
+      updatedSections: ["quality", "analysis"],
+      sections: {
+        quality: { payloadMode: "section-invalidated" },
+        analysis: { payloadMode: "section-invalidated" },
+      },
+    });
+    database.close();
+  });
+
+  it("分析候选导入跳过重复术语时只消费候选池和分析 revision", async () => {
+    const publish_project_change = vi.fn();
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
+    const existing_rules = [
+      { src: "艾琳", dst: "Eileen", info: "旧名", regex: false, case_sensitive: true },
+    ];
+    database.execute({
+      name: "setRules",
+      args: {
+        projectPath: lg_path,
+        ruleType: "glossary",
+        rules: existing_rules,
+      },
+    });
+    database.execute({
+      name: "upsertAnalysisCandidateAggregates",
+      args: {
+        projectPath: lg_path,
+        aggregates: [
+          {
+            src: "艾琳",
+            dst_votes: { Erin: 1 },
+            info_votes: { 角色名: 1 },
+            observation_count: 1,
+            first_seen_at: "t",
+            last_seen_at: "t",
+            case_sensitive: true,
+          },
+        ],
+      },
+    });
+
+    const ack = await service.import_analysis_glossary({
+      entries: existing_rules,
+      consumed_candidate_srcs: ["艾琳"],
+      analysis_candidate_count: 0,
+      expected_glossary_revision: 0,
+      expected_section_revisions: { quality: 0, analysis: 0 },
+    });
+
+    expect(ack).toEqual({
+      accepted: true,
+      projectRevision: 1,
+      sectionRevisions: { analysis: 1 },
+    });
+    expect(
+      database.execute({
+        name: "getMeta",
+        args: { projectPath: lg_path, key: "quality_rule_revision.glossary", default: 0 },
+      }),
+    ).toBe(0);
+    expect(
+      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
+    ).toEqual(existing_rules);
+    expect(
+      database.execute({
+        name: "getAnalysisCandidateAggregates",
+        args: { projectPath: lg_path },
+      }),
+    ).toEqual([]);
+    expect(publish_project_change).toHaveBeenCalledWith({
+      source: "analysis_glossary_import",
+      updatedSections: ["analysis"],
+      sections: {
+        analysis: { payloadMode: "section-invalidated" },
+      },
+    });
+    database.close();
+  });
+
   it("按完整文件集合重排 assets 并只 bump files section", async () => {
     const { database, service, lg_path } = create_service();
     const first_source = project_path("a.txt");

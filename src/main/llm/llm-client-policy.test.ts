@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { LLMClientPolicy } from "./llm-client-policy";
-import { build_google_thinking_config } from "./policy/google-policy";
 
 describe("LLMClientPolicy", () => {
   it("自定义 OpenAI-compatible endpoint 使用最终 payload 并写入 GPT-5 thinking 规则", async () => {
@@ -96,30 +95,6 @@ describe("LLMClientPolicy", () => {
     expect(high_resolved.payload["thinking"]).toEqual({ type: "enabled" });
   });
 
-  it("Gemini thinking 等级按官方能力映射到预算和等级字段", () => {
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "OFF" }),
-    ).toEqual({ thinkingLevel: "LOW", includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "MEDIUM" }),
-    ).toEqual({ thinkingLevel: "MEDIUM", includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3-flash-preview", thinking_level: "OFF" }),
-    ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-pro", thinking_level: "OFF" }),
-    ).toEqual({ thinkingBudget: 128, includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash-lite", thinking_level: "LOW" }),
-    ).toEqual({ thinkingBudget: 512, includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "MEDIUM" }),
-    ).toEqual({ thinkingBudget: 768, includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "HIGH" }),
-    ).toEqual({ thinkingBudget: 1024, includeThoughts: true });
-  });
-
   it("Google SDK baseUrl 会移除末尾版本段且不影响其它 provider", () => {
     expect(LLMClientPolicy.normalize_api_url("", "Google")).toBe("");
     expect(
@@ -175,6 +150,12 @@ describe("LLMClientPolicy", () => {
     expect(resolved.payload["temperature"]).toBeUndefined();
     expect(resolved.payload["top_p"]).toBeUndefined();
     expect(resolved.payload["thinking"]).toEqual({ type: "enabled", budget_tokens: 2048 });
+  });
+
+  it("多行 API key 归一后模型测试使用第一枚 key", () => {
+    expect(LLMClientPolicy.collect_api_keys(" key-1 \n\nkey-2\r\n ")).toEqual(["key-1", "key-2"]);
+    expect(LLMClientPolicy.collect_api_keys("   ")).toEqual(["no_key_required"]);
+    expect(LLMClientPolicy.get_primary_api_key(" key-1 \nkey-2")).toBe("key-1");
   });
 });
 

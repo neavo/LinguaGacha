@@ -7,6 +7,7 @@ import {
   write_electron_main_error,
   write_electron_main_warning,
 } from "./log-bridge";
+import { LogManager, type FileLogWriter } from "./log-manager";
 
 describe("log-bridge", () => {
   const time_prefix = "\x1b[2m\x1b[36m[12:12:12]\x1b[39m\x1b[22m";
@@ -46,4 +47,49 @@ describe("log-bridge", () => {
     );
     expect(stdout_write).not.toHaveBeenCalled();
   });
+
+  it("有 LogManager 时写入同一日志权威并保留 Electron 上下文", async () => {
+    const file_lines: string[] = [];
+    const console_lines: string[] = [];
+    const log_manager = new LogManager({
+      consoleWriter: (text) => {
+        console_lines.push(text);
+      },
+      fileWriter: create_memory_file_writer(file_lines),
+      logDir: ".",
+      now: () => new Date(2012, 11, 12, 12, 12, 12),
+    });
+    set_electron_main_log_manager(log_manager);
+
+    write_electron_main_error("主进程异常", {
+      error: new Error("provider boom"),
+      context: { phase: "ready" },
+    });
+    await log_manager.shutdown();
+
+    const file_record = JSON.parse(file_lines[0] ?? "{}") as Record<string, unknown>;
+    expect(file_record["message"]).toBe("主进程异常");
+    expect(file_record["source"]).toBe("electron-main");
+    expect(file_record["context"]).toEqual({ phase: "ready" });
+    expect(file_record["error_message"]).toBe("provider boom");
+    expect(String(file_record["stack"])).toContain("provider boom");
+    expect(console_lines[0]).toContain("主进程异常");
+    expect(log_manager.snapshot_events()).toMatchObject([
+      {
+        level: "error",
+        message: "主进程异常",
+      },
+    ]);
+  });
+
+  function create_memory_file_writer(lines: string[]): FileLogWriter {
+    return {
+      write: (text) => lines.push(text),
+      flush: () => undefined,
+      flushSync: () => undefined,
+      end: (callback?: () => void) => {
+        callback?.();
+      },
+    };
+  }
 });

@@ -39,6 +39,8 @@ export const en_us_ts_conversion_page = {
     description: "Confirm starting Chinese script conversion …?",
   },
   feedback: {
+    prefer_native_traditional_chinese:
+      "Traditional Chinese is now available as a target language. Please prefer it.",
     task_success: "Task succeeded …",
     task_failed: "Task failed …",
     task_running: "Task is running …",

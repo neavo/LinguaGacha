@@ -5,8 +5,15 @@ import {
   create_analysis_reset_all_plan,
   create_analysis_reset_failed_plan,
 } from "@/project/reset/analysis-reset-plan";
-import { prepare_analysis_glossary_import } from "@/project/importer/analysis-glossary-importer";
+import {
+  prepare_analysis_glossary_import,
+  type AnalysisGlossaryImportAction,
+} from "@/project/importer/analysis-glossary-importer";
 import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
+import {
+  create_empty_quality_rule_import_confirm_state,
+  type QualityRuleImportConfirmState,
+} from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import {
   normalize_project_mutation_ack,
   type ProjectMutationAckPayload,
@@ -45,8 +52,11 @@ import {
 
 type AnalysisTaskCommandPayload = {
   task?: Partial<AnalysisTaskSnapshot>;
-  imported_count?: number;
 };
+
+type PreparedAnalysisGlossaryImport = NonNullable<
+  Awaited<ReturnType<typeof prepare_analysis_glossary_import>>
+>;
 
 type AnalysisTaskRuntimeOptions = {
   createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
@@ -62,6 +72,7 @@ export type AnalysisTaskRuntime = {
   analysis_waveform_history: number[];
   analysis_detail_sheet_open: boolean;
   analysis_confirm_state: AnalysisTaskConfirmState | null;
+  analysis_import_confirm_state: QualityRuleImportConfirmState;
   analysis_importing: boolean;
   analysis_task_menu_disabled: boolean;
   analysis_task_menu_busy: boolean;
@@ -72,6 +83,9 @@ export type AnalysisTaskRuntime = {
   confirm_analysis_task_action: () => Promise<void>;
   close_analysis_task_action_confirmation: () => void;
   request_import_analysis_glossary: () => Promise<void>;
+  import_analysis_glossary_duplicate_skip: () => Promise<void>;
+  import_analysis_glossary_duplicate_overwrite: () => Promise<void>;
+  close_analysis_glossary_import_confirmation: () => void;
   refresh_analysis_task_snapshot: () => Promise<void>;
 };
 
@@ -211,7 +225,13 @@ export function useAnalysisTaskRuntime(
   const [analysis_detail_sheet_open, set_analysis_detail_sheet_open] = useState(false);
   const [analysis_confirm_state, set_analysis_confirm_state] =
     useState<AnalysisTaskConfirmState | null>(null);
+  const [analysis_import_confirm_state, set_analysis_import_confirm_state] =
+    useState<QualityRuleImportConfirmState>(() => create_empty_quality_rule_import_confirm_state());
   const [analysis_importing, set_analysis_importing] = useState(false);
+  const [
+    pending_analysis_import_duplicate_signature,
+    set_pending_analysis_import_duplicate_signature,
+  ] = useState<string | null>(null);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
   const previous_analysis_status_ref = useRef(create_empty_analysis_task_snapshot().status);
@@ -231,10 +251,19 @@ export function useAnalysisTaskRuntime(
     });
   }, [analysis_task_snapshot, last_analysis_task_snapshot]);
 
-  const analysis_task_menu_busy =
-    analysis_importing || (analysis_confirm_state !== null && analysis_confirm_state.submitting);
-  const analysis_task_menu_disabled =
-    !project_snapshot.loaded || task_snapshot.busy || analysis_task_menu_busy;
+  const analysis_dialog_open =
+    analysis_confirm_state !== null || analysis_import_confirm_state.open;
+  const analysis_action_submitting =
+    analysis_importing ||
+    (analysis_confirm_state !== null && analysis_confirm_state.submitting) ||
+    analysis_import_confirm_state.submitting;
+  const analysis_action_blocked =
+    !project_snapshot.loaded ||
+    task_snapshot.busy ||
+    analysis_dialog_open ||
+    analysis_importing;
+  const analysis_task_menu_busy = analysis_action_submitting;
+  const analysis_task_menu_disabled = analysis_action_blocked;
   const can_open_analysis_detail_sheet =
     project_snapshot.loaded && analysis_task_display_snapshot !== null;
   const analysis_task_active = is_active_analysis_task_status(analysis_task_snapshot.status);
@@ -331,6 +360,8 @@ export function useAnalysisTaskRuntime(
     set_analysis_waveform_history([]);
     set_analysis_detail_sheet_open(false);
     set_analysis_confirm_state(null);
+    set_analysis_import_confirm_state(create_empty_quality_rule_import_confirm_state());
+    set_pending_analysis_import_duplicate_signature(null);
     set_analysis_importing(false);
   }, [clear_analysis_waveform_sampling, clear_terminal_prompt_suppression]);
 
@@ -425,7 +456,7 @@ export function useAnalysisTaskRuntime(
   }, []);
 
   const request_start_or_continue_analysis = useCallback(async (): Promise<void> => {
-    if (!project_snapshot.loaded || task_snapshot.busy || analysis_task_menu_busy) {
+    if (analysis_action_blocked) {
       return;
     }
 
@@ -462,17 +493,15 @@ export function useAnalysisTaskRuntime(
       );
     }
   }, [
+    analysis_action_blocked,
     analysis_task_display_snapshot,
-    analysis_task_menu_busy,
     apply_analysis_task_snapshot,
     clear_terminal_prompt_suppression,
     project_store,
-    project_snapshot.loaded,
     push_toast,
     clear_analysis_waveform_sampling,
     sync_runtime_task_snapshot,
     t,
-    task_snapshot.busy,
   ]);
 
   const request_analysis_task_action_confirmation = useCallback(
@@ -496,92 +525,137 @@ export function useAnalysisTaskRuntime(
     });
   }, []);
 
-  const execute_analysis_glossary_import = useCallback(async (): Promise<void> => {
-    if (
-      !project_snapshot.loaded ||
-      task_snapshot.busy ||
-      analysis_task_metrics.candidate_count <= 0
-    ) {
-      return;
-    }
-
-    const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
-    set_analysis_importing(true);
-
-    try {
-      await run_modal_progress_toast({
-        message: t("workbench_page.analysis_task.feedback.import_loading_toast"),
-        task: async () => {
-          const prepared_import = await prepare_analysis_glossary_import(project_store.getState(), {
-            task_snapshot,
-          });
-          if (prepared_import === null) {
-            return;
-          }
-
-          const local_commit = commit_local_project_change({
-            source: "analysis_import_glossary",
-            updatedSections: ["quality", "analysis"],
-            operations: [
-              createProjectStoreReplaceSectionChange("quality", prepared_import.next_quality_state),
-              createProjectStoreReplaceSectionChange(
-                "analysis",
-                prepared_import.next_analysis_state,
-              ),
-            ],
-          });
-
-          try {
-            const next_snapshot = normalize_analysis_task_snapshot_payload({
-              task: prepared_import.next_task_snapshot,
-            });
-            apply_analysis_task_snapshot(next_snapshot);
-            sync_runtime_task_snapshot(next_snapshot);
-            const mutation_ack = normalize_project_mutation_ack(
-              await api_fetch<ProjectMutationAckPayload>(
-                "/api/project/analysis/import-glossary",
-                prepared_import.request_body,
-              ),
-            );
-            align_project_runtime_ack(mutation_ack);
-          } catch (error) {
-            local_commit.rollback();
-            void refresh_project_runtime().catch(() => {});
-            throw error;
-          }
-
-          if (options.waitForProjectPagesBarrier !== undefined) {
-            await options.waitForProjectPagesBarrier("proofreading_cache_refresh", {
-              checkpoint: barrierCheckpoint,
-            });
-          }
-          push_toast(
-            "success",
-            t("workbench_page.analysis_task.feedback.import_success").replace(
-              "{COUNT}",
-              String(prepared_import.imported_count),
-            ),
-          );
-        },
+  const commit_prepared_analysis_glossary_import = useCallback(
+    async (
+      prepared_import: PreparedAnalysisGlossaryImport,
+      barrierCheckpoint: ProjectPagesBarrierCheckpoint | null,
+    ): Promise<void> => {
+      const operations = [
+        ...(prepared_import.quality_changed
+          ? [createProjectStoreReplaceSectionChange("quality", prepared_import.next_quality_state)]
+          : []),
+        createProjectStoreReplaceSectionChange("analysis", prepared_import.next_analysis_state),
+      ];
+      const local_commit = commit_local_project_change({
+        source: "analysis_import_glossary",
+        updatedSections: prepared_import.updated_sections,
+        operations,
       });
-    } finally {
-      set_analysis_importing(false);
-    }
-  }, [
-    align_project_runtime_ack,
-    analysis_task_metrics.candidate_count,
-    apply_analysis_task_snapshot,
-    commit_local_project_change,
-    options,
-    project_snapshot.loaded,
-    project_store,
-    push_toast,
-    refresh_project_runtime,
-    run_modal_progress_toast,
-    task_snapshot,
-    task_snapshot.busy,
-    t,
-  ]);
+
+      try {
+        const next_snapshot = normalize_analysis_task_snapshot_payload({
+          task: prepared_import.next_task_snapshot,
+        });
+        apply_analysis_task_snapshot(next_snapshot);
+        sync_runtime_task_snapshot(next_snapshot);
+        const mutation_ack = normalize_project_mutation_ack(
+          await api_fetch<ProjectMutationAckPayload>(
+            "/api/project/analysis/import-glossary",
+            prepared_import.request_body,
+          ),
+        );
+        align_project_runtime_ack(mutation_ack);
+      } catch (error) {
+        local_commit.rollback();
+        void refresh_project_runtime().catch(() => {});
+        throw error;
+      }
+
+      if (options.waitForProjectPagesBarrier !== undefined) {
+        await options.waitForProjectPagesBarrier("proofreading_cache_refresh", {
+          checkpoint: barrierCheckpoint,
+        });
+      }
+      push_toast(
+        "success",
+        t("workbench_page.analysis_task.feedback.import_success").replace(
+          "{COUNT}",
+          String(prepared_import.imported_count),
+        ),
+      );
+    },
+    [
+      align_project_runtime_ack,
+      apply_analysis_task_snapshot,
+      commit_local_project_change,
+      options,
+      push_toast,
+      refresh_project_runtime,
+      sync_runtime_task_snapshot,
+      t,
+    ],
+  );
+
+  const execute_analysis_glossary_import = useCallback(
+    async (
+      action: AnalysisGlossaryImportAction,
+      expected_duplicate_signature: string | null = null,
+    ): Promise<boolean> => {
+      if (
+        !project_snapshot.loaded ||
+        task_snapshot.busy ||
+        analysis_task_metrics.candidate_count <= 0
+      ) {
+        return false;
+      }
+
+      const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
+      let committed = false;
+      set_analysis_importing(true);
+
+      try {
+        await run_modal_progress_toast({
+          message: t("workbench_page.analysis_task.feedback.import_loading_toast"),
+          task: async () => {
+            const prepared_import = await prepare_analysis_glossary_import(
+              project_store.getState(),
+              {
+                action,
+                task_snapshot,
+              },
+            );
+            if (prepared_import === null) {
+              set_pending_analysis_import_duplicate_signature(null);
+              set_analysis_import_confirm_state(create_empty_quality_rule_import_confirm_state());
+              return;
+            }
+
+            if (
+              prepared_import.duplicate_count > 0 &&
+              prepared_import.duplicate_signature !== expected_duplicate_signature
+            ) {
+              set_pending_analysis_import_duplicate_signature(prepared_import.duplicate_signature);
+              set_analysis_import_confirm_state({
+                open: true,
+                duplicate_count: prepared_import.duplicate_count,
+                submitting: false,
+              });
+              return;
+            }
+
+            await commit_prepared_analysis_glossary_import(prepared_import, barrierCheckpoint);
+            set_pending_analysis_import_duplicate_signature(null);
+            set_analysis_import_confirm_state(create_empty_quality_rule_import_confirm_state());
+            committed = true;
+          },
+        });
+      } finally {
+        set_analysis_importing(false);
+      }
+      return committed;
+    },
+    [
+      analysis_task_metrics.candidate_count,
+      commit_prepared_analysis_glossary_import,
+      options,
+      project_snapshot.loaded,
+      project_store,
+      run_modal_progress_toast,
+      task_snapshot,
+      task_snapshot.busy,
+      t,
+    ],
+  );
 
   const confirm_analysis_task_action = useCallback(async (): Promise<void> => {
     if (analysis_confirm_state === null) {
@@ -601,7 +675,7 @@ export function useAnalysisTaskRuntime(
 
     try {
       if (analysis_confirm_state.kind === "import-glossary") {
-        await execute_analysis_glossary_import();
+        await execute_analysis_glossary_import("overwrite");
         set_analysis_confirm_state(null);
         return;
       }
@@ -702,7 +776,7 @@ export function useAnalysisTaskRuntime(
   ]);
 
   const request_import_analysis_glossary = useCallback(async (): Promise<void> => {
-    if (!project_snapshot.loaded || task_snapshot.busy || analysis_task_menu_busy) {
+    if (analysis_action_blocked) {
       return;
     }
     if (analysis_task_metrics.candidate_count <= 0) {
@@ -710,7 +784,7 @@ export function useAnalysisTaskRuntime(
     }
 
     try {
-      await execute_analysis_glossary_import();
+      await execute_analysis_glossary_import("overwrite");
     } catch (error) {
       push_toast(
         "error",
@@ -722,14 +796,63 @@ export function useAnalysisTaskRuntime(
       );
     }
   }, [
-    analysis_task_menu_busy,
+    analysis_action_blocked,
     analysis_task_metrics.candidate_count,
     execute_analysis_glossary_import,
-    project_snapshot.loaded,
     push_toast,
     t,
-    task_snapshot.busy,
   ]);
+
+  const close_analysis_glossary_import_confirmation = useCallback((): void => {
+    if (analysis_import_confirm_state.submitting) {
+      return;
+    }
+    set_pending_analysis_import_duplicate_signature(null);
+    set_analysis_import_confirm_state(create_empty_quality_rule_import_confirm_state());
+  }, [analysis_import_confirm_state.submitting]);
+
+  const confirm_analysis_glossary_import_duplicate_action = useCallback(
+    async (action: AnalysisGlossaryImportAction): Promise<void> => {
+      if (pending_analysis_import_duplicate_signature === null) {
+        return;
+      }
+
+      set_analysis_import_confirm_state((previous_state) => {
+        return {
+          ...previous_state,
+          submitting: true,
+        };
+      });
+
+      try {
+        await execute_analysis_glossary_import(action, pending_analysis_import_duplicate_signature);
+      } catch (error) {
+        push_toast(
+          "error",
+          resolve_visible_error_message(
+            error,
+            t,
+            t("workbench_page.analysis_task.feedback.import_failed"),
+          ),
+        );
+        set_analysis_import_confirm_state((previous_state) => {
+          return {
+            ...previous_state,
+            submitting: false,
+          };
+        });
+      }
+    },
+    [execute_analysis_glossary_import, pending_analysis_import_duplicate_signature, push_toast, t],
+  );
+
+  const import_analysis_glossary_duplicate_skip = useCallback(async (): Promise<void> => {
+    await confirm_analysis_glossary_import_duplicate_action("skip");
+  }, [confirm_analysis_glossary_import_duplicate_action]);
+
+  const import_analysis_glossary_duplicate_overwrite = useCallback(async (): Promise<void> => {
+    await confirm_analysis_glossary_import_duplicate_action("overwrite");
+  }, [confirm_analysis_glossary_import_duplicate_action]);
 
   useEffect(() => {
     const previous_project_loaded = previous_project_loaded_ref.current;
@@ -792,7 +915,7 @@ export function useAnalysisTaskRuntime(
       consume_terminal_prompt_suppression();
 
     if (
-      analysis_confirm_state === null &&
+      !analysis_dialog_open &&
       !terminal_prompt_suppressed &&
       should_prompt_analysis_glossary_import_confirmation({
         previous_status,
@@ -803,7 +926,7 @@ export function useAnalysisTaskRuntime(
       set_analysis_confirm_state(create_task_confirm_state("import-glossary"));
     }
   }, [
-    analysis_confirm_state,
+    analysis_dialog_open,
     analysis_task_snapshot.candidate_count,
     analysis_task_display_snapshot,
     analysis_task_snapshot.status,
@@ -860,6 +983,7 @@ export function useAnalysisTaskRuntime(
       analysis_waveform_history,
       analysis_detail_sheet_open,
       analysis_confirm_state,
+      analysis_import_confirm_state,
       analysis_importing,
       analysis_task_menu_disabled,
       analysis_task_menu_busy,
@@ -870,11 +994,15 @@ export function useAnalysisTaskRuntime(
       confirm_analysis_task_action,
       close_analysis_task_action_confirmation,
       request_import_analysis_glossary,
+      import_analysis_glossary_duplicate_skip,
+      import_analysis_glossary_duplicate_overwrite,
+      close_analysis_glossary_import_confirmation,
       refresh_analysis_task_snapshot,
     };
   }, [
     analysis_confirm_state,
     analysis_detail_sheet_open,
+    analysis_import_confirm_state,
     analysis_importing,
     analysis_task_display_snapshot,
     analysis_task_menu_busy,
@@ -882,8 +1010,11 @@ export function useAnalysisTaskRuntime(
     analysis_task_metrics,
     analysis_waveform_history,
     close_analysis_detail_sheet,
+    close_analysis_glossary_import_confirmation,
     close_analysis_task_action_confirmation,
     confirm_analysis_task_action,
+    import_analysis_glossary_duplicate_overwrite,
+    import_analysis_glossary_duplicate_skip,
     open_analysis_detail_sheet,
     refresh_analysis_task_snapshot,
     request_analysis_task_action_confirmation,

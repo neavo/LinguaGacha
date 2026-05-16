@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
@@ -103,11 +103,20 @@ export function useTsConversionPageState() {
   );
   const [is_running, set_is_running] = useState(false);
   const run_active_ref = useRef(false); // 用 ref 阻止同一轮异步转换被重复触发，避免重复写出文件
+  const prefer_native_notice_shown_ref = useRef(false); // 页面挂载提示只在当前 hook 生命周期内展示一次
 
   // runtime_items 从 ProjectStore 派生，确认弹窗打开后仍以当前 store 快照执行转换
   const runtime_items = useMemo(() => {
     return normalize_ts_conversion_runtime_items(project_store_state.items);
   }, [project_store_state.items]);
+
+  useEffect(() => {
+    if (prefer_native_notice_shown_ref.current) {
+      return;
+    }
+    prefer_native_notice_shown_ref.current = true;
+    push_toast("info", t("ts_conversion_page.feedback.prefer_native_traditional_chinese"));
+  }, [push_toast, t]);
 
   // 请求阶段只做可执行性校验，不提前读取预设或生成转换结果
   const request_conversion = useCallback((): void => {

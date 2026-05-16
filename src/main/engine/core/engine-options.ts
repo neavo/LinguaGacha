@@ -12,6 +12,7 @@ export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
  * TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实
  */
 export interface TaskEngineOptions {
+  appRoot: string; // appRoot 用于任务启动日志读取提示词模板，保持 main 与 worker 资源根一致
   taskStore: ProjectTaskStore; // taskStore 是任务编排器读写项目任务事实的唯一端口
   taskRuntimePublisher: TaskRuntimePublisher; // taskRuntimePublisher 是完整 task snapshot 的唯一公开出口
   executorClient: WorkerExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
@@ -57,7 +58,8 @@ export interface TranslationWorkUnitResult {
   input_tokens: number; // token 字段用于任务统计累加，不作为成功与否的唯一依据
   output_tokens: number;
   stopped: boolean; // stopped 表示主动取消，区别于失败后可重试
-  logs?: Array<{ // logs 统一回放到 LogManager，worker 不直接写日志
+  logs?: Array<{
+    // logs 统一回放到 LogManager，worker 不直接写日志
     level: "info" | "warning" | "error";
     message: string;
   }>;
@@ -72,7 +74,8 @@ export interface AnalysisWorkUnitResult {
   input_tokens: number; // token 字段与翻译共享统计口径
   output_tokens: number;
   glossary_entries: MutableJsonRecord[]; // glossary_entries 是候选快照，去重和 checkpoint 归属由 TaskEngine 处理
-  logs?: Array<{ // logs 只承载诊断文本，不携带数据库对象
+  logs?: Array<{
+    // logs 只承载诊断文本，不携带数据库对象
     level: "info" | "warning" | "error";
     message: string;
   }>;

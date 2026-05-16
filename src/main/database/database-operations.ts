@@ -199,6 +199,12 @@ export class ProjectDatabase {
           this.require_array(args, "aggregates"),
         );
         return null;
+      case "deleteAnalysisCandidateAggregatesBySrcs":
+        this.delete_analysis_candidate_aggregates_by_srcs(
+          this.require_string(args, "projectPath"),
+          this.require_string_array(args, "srcs"),
+        );
+        return null;
       case "clearAnalysisCandidateAggregates":
         this.clear_analysis_candidate_aggregates(this.require_string(args, "projectPath"));
         return null;
@@ -797,6 +803,20 @@ export class ProjectDatabase {
    */
   private clear_analysis_candidate_aggregates(project_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM analysis_candidate_aggregate").run();
+  }
+
+  /**
+   * 候选导入确认后按 src 消费候选池，避免已处理候选在下一次导入继续弹出
+   */
+  private delete_analysis_candidate_aggregates_by_srcs(project_path: string, srcs: string[]): void {
+    const normalized_srcs = [...new Set(srcs.map((src) => src.trim()).filter((src) => src !== ""))];
+    if (normalized_srcs.length === 0) {
+      return;
+    }
+    const placeholders = normalized_srcs.map(() => "?").join(",");
+    this.open_project(project_path)
+      .prepare(`DELETE FROM analysis_candidate_aggregate WHERE src IN (${placeholders})`)
+      .run(...normalized_srcs);
   }
 
   /**

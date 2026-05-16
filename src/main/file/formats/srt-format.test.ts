@@ -81,7 +81,7 @@ describe("SRTFormat", () => {
       },
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "translated", "video", "a.zh.srt"), "utf-8")).toBe(
+    expect(fs.readFileSync(path.join(temp_dir, "translated", "video", "a.srt"), "utf-8")).toBe(
       "1\n00:00:01,000 --> 00:00:02,000\n同文\n\n" + "2\n00:00:03,000 --> 00:00:04,000\n译文\n\n",
     );
     expect(fs.readFileSync(path.join(temp_dir, "bilingual", "video", "a.ja.zh.srt"), "utf-8")).toBe(

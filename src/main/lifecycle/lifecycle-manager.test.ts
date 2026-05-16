@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NPM_INITIAL_CWD_ENV_NAME } from "./lifecycle-command-resolver";
 import { CoreLifecycleManager } from "./lifecycle-manager";
@@ -30,6 +30,7 @@ beforeEach(() => {
   fs.writeFileSync(path.join(temp_dir, "version.txt"), "9.8.7", "utf-8");
   original_initial_cwd = process.env[NPM_INITIAL_CWD_ENV_NAME];
   process.env[NPM_INITIAL_CWD_ENV_NAME] = temp_dir;
+  vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 });
 
 afterEach(() => {
@@ -39,6 +40,7 @@ afterEach(() => {
     process.env[NPM_INITIAL_CWD_ENV_NAME] = original_initial_cwd;
   }
   fs.rmSync(temp_dir, { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 describe("CoreLifecycleManager", () => {

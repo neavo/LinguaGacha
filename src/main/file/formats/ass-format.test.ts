@@ -80,7 +80,7 @@ describe("ASSFormat", () => {
       },
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "translated", "anime", "sub.zh.ass"), "utf-8")).toBe(
+    expect(fs.readFileSync(path.join(temp_dir, "translated", "anime", "sub.ass"), "utf-8")).toBe(
       "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,译文1\n" +
         "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,译文2",
     );
