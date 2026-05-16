@@ -34,6 +34,7 @@ export class ProjectResetPreviewService {
     }
     const project_path = await this.require_idle_project_path();
     const asset_records = this.get_asset_records(project_path);
+    const current_item_id_by_identity = this.build_current_item_id_by_identity(project_path);
     const parsed_files = await this.parse_database_assets(
       project_path,
       asset_records.map((record) => record.path),
@@ -44,12 +45,11 @@ export class ProjectResetPreviewService {
         items.push(this.normalize_item_payload(item, file.rel_path));
       }
     }
-    const preview_ids = this.preview_replace_all_item_ids(project_path, items);
     return {
-      items: items.map((item, index) => ({
-        ...item,
-        id: preview_ids[index] ?? item["id"] ?? 0,
-      })) as unknown as ApiJsonValue,
+      items: this.attach_current_item_ids(
+        items,
+        current_item_id_by_identity,
+      ) as unknown as ApiJsonValue,
     };
   }
 
@@ -160,6 +160,67 @@ export class ProjectResetPreviewService {
   }
 
   /**
+   * reset all 只重置内容，当前 item 身份必须由 file_path + row 显式保留。
+   */
+  private build_current_item_id_by_identity(project_path: string): Map<string, number> {
+    const item_id_by_identity = new Map<string, number>();
+    for (const item of this.get_all_items(project_path)) {
+      const item_id = this.read_number(item["id"], 0);
+      const identity_key = this.build_item_identity_key(item);
+      if (item_id <= 0 || identity_key === null || item_id_by_identity.has(identity_key)) {
+        this.throw_translation_reset_identity_error("current_item_identity_invalid");
+      }
+      item_id_by_identity.set(identity_key, item_id);
+    }
+    return item_id_by_identity;
+  }
+
+  /**
+   * 预览结果按当前 item 身份回填 id，避免文件重排后按数组下标错配。
+   */
+  private attach_current_item_ids(
+    items: MutableJsonRecord[],
+    item_id_by_identity: Map<string, number>,
+  ): MutableJsonRecord[] {
+    if (items.length !== item_id_by_identity.size) {
+      this.throw_translation_reset_identity_error("translation_reset_all_item_count_mismatch", {
+        current_count: item_id_by_identity.size,
+        preview_count: items.length,
+      });
+    }
+
+    const used_identity_keys = new Set<string>();
+    return items.map((item) => {
+      const identity_key = this.build_item_identity_key(item);
+      const item_id = identity_key === null ? undefined : item_id_by_identity.get(identity_key);
+      if (
+        identity_key === null ||
+        item_id === undefined ||
+        used_identity_keys.has(identity_key)
+      ) {
+        this.throw_translation_reset_identity_error("preview_item_identity_mismatch");
+      }
+      used_identity_keys.add(identity_key);
+      return {
+        ...item,
+        id: item_id,
+      };
+    });
+  }
+
+  /**
+   * file_path + row 是 reset 重解析前后唯一稳定身份；空路径或非法行号直接视为不可重置。
+   */
+  private build_item_identity_key(item: JsonRecord): string | null {
+    const file_path = String(item["file_path"] ?? "").trim();
+    const row = this.read_number(item["row"] ?? item["row_number"], NaN);
+    if (file_path === "" || !Number.isInteger(row) || row < 0) {
+      return null;
+    }
+    return `${file_path}\u0000${row}`;
+  }
+
+  /**
    * ERROR checkpoint 会在真实 failed reset 中被删除，预演据此计算剩余进度
    */
   private get_analysis_checkpoints(project_path: string): Map<number, string> {
@@ -181,19 +242,6 @@ export class ProjectResetPreviewService {
       }
     }
     return checkpoints;
-  }
-
-  /**
-   * 向数据库申请 replace-all 的预览 id，确保前端看到的 id 与真实 mutation 规则一致
-   */
-  private preview_replace_all_item_ids(project_path: string, items: MutableJsonRecord[]): number[] {
-    const value = this.database.execute(
-      this.op("previewReplaceAllItemIds", {
-        projectPath: project_path,
-        items: items as unknown as DatabaseJsonValue,
-      }),
-    );
-    return Array.isArray(value) ? value.map((item_id) => this.read_number(item_id, 0)) : [];
   }
 
   /**
@@ -227,6 +275,21 @@ export class ProjectResetPreviewService {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
+  }
+
+  /**
+   * reset all 身份不一致时统一返回请求校验失败，调用方可按诊断原因定位数据问题。
+   */
+  private throw_translation_reset_identity_error(
+    reason: string,
+    diagnostic_context: Record<string, ApiJsonValue> = {},
+  ): never {
+    throw new AppErrors.RequestValidationError({
+      diagnostic_context: {
+        reason,
+        ...diagnostic_context,
+      },
+    });
   }
 
   /**

@@ -10,7 +10,10 @@ import { migration_orchestrator } from "../migration/migration-orchestrator";
 import type { SettingService } from "../service/setting-service";
 import type { AppPathService } from "../service/path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { Item } from "../../base/item";
+import {
+  collect_project_item_missing_public_fields,
+  normalize_project_item_persistent_record,
+} from "../../base/item";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 import * as AppErrors from "../../shared/error";
@@ -722,41 +725,33 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 全量 items 写入前做最小字段归一，兼容 planner 已算出的完整 payload
+   * 新建工程草稿必须提供完整公开 item DTO，写库前统一转为持久字段
    */
   private normalize_full_items(value: ApiJsonValue | undefined): MutableJsonRecord[] {
     if (!Array.isArray(value)) {
-      return [];
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "items_not_array" },
+      });
     }
-    return value
-      .filter((item): item is JsonRecord => this.is_record(item))
-      .map((item) => this.normalize_item_payload(item));
-  }
-
-  /**
-   * 归一单条 item，保护状态和数字字段，同时保留 EPUB 等格式 extra_field
-   */
-  private normalize_item_payload(item: JsonRecord): MutableJsonRecord {
-    const normalized: MutableJsonRecord = {
-      ...item,
-      src: this.string_value(item["src"]),
-      dst: this.string_value(item["dst"]),
-      name_src: item["name_src"] ?? null,
-      name_dst: item["name_dst"] ?? null,
-      extra_field: item["extra_field"] ?? "",
-      tag: this.string_value(item["tag"]),
-      row: this.number_value(item["row"] ?? item["row_number"], 0),
-      file_type: this.string_value(item["file_type"]) || "NONE",
-      file_path: this.string_value(item["file_path"]),
-      text_type: this.string_value(item["text_type"]) || "NONE",
-      status: Item.normalize_status(item["status"]),
-      retry_count: this.number_value(item["retry_count"], 0),
-      skip_internal_filter: item["skip_internal_filter"] === true,
-    };
-    if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {
-      normalized["id"] = this.number_value(item["id"], 0);
-    }
-    return normalized;
+    const seen_ids = new Set<number>();
+    return value.map((raw_item) => {
+      const item = normalize_project_item_persistent_record(raw_item);
+      if (item === null) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: {
+            reason: "item_incomplete",
+            missing_fields: collect_project_item_missing_public_fields(raw_item),
+          },
+        });
+      }
+      if (seen_ids.has(item.id)) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "item_id_duplicated", item_id: item.id },
+        });
+      }
+      seen_ids.add(item.id);
+      return item;
+    });
   }
 
   /**

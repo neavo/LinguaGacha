@@ -7,6 +7,11 @@ import {
   type ProjectStoreState,
 } from "@/project/store/project-store";
 import { create_empty_translation_task_snapshot } from "@/project/reset/reset-state-builders";
+import {
+  Item,
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "@base/item";
 
 type WorkbenchPlannerSettings = {
   source_language: string;
@@ -22,17 +27,7 @@ type WorkbenchPlannerFileRecord = {
   sort_index: number;
 };
 
-type WorkbenchPlannerItemRecord = {
-  item_id: number;
-  file_path: string;
-  row_number: number;
-  src: string;
-  dst: string;
-  name_dst: unknown;
-  status: string;
-  text_type: string;
-  retry_count: number;
-};
+type WorkbenchPlannerItemRecord = ProjectItemPublicRecord;
 
 type WorkbenchTranslationInheritanceMode = "none" | "inherit";
 
@@ -59,7 +54,7 @@ export type WorkbenchProjectMutationPlan = {
 };
 
 type WorkbenchMutationRuntimeState = {
-  items: Record<string, Record<string, unknown>>;
+  items: Record<string, ProjectItemPublicRecord>;
   analysis: Record<string, unknown>;
   task_snapshot: Record<string, unknown>;
   mutation_meta: WorkbenchMutationMeta;
@@ -77,28 +72,9 @@ function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | nul
   };
 }
 
+// 工作台 item 来源必须是完整公开 DTO，文件 mutation 才能保留扩展字段
 function normalize_item_record(value: unknown): WorkbenchPlannerItemRecord | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  const item_id = Number(candidate.item_id ?? candidate.id ?? 0);
-  if (!Number.isInteger(item_id) || item_id <= 0) {
-    return null;
-  }
-
-  return {
-    item_id,
-    file_path: String(candidate.file_path ?? ""),
-    row_number: Number(candidate.row_number ?? candidate.row ?? 0),
-    src: String(candidate.src ?? ""),
-    dst: String(candidate.dst ?? ""),
-    name_dst: candidate.name_dst ?? null,
-    status: String(candidate.status ?? "NONE"),
-    text_type: String(candidate.text_type ?? "NONE"),
-    retry_count: Number(candidate.retry_count ?? 0),
-  };
+  return normalize_project_item_public_record(value);
 }
 
 function clone_item_record(item: WorkbenchPlannerItemRecord): WorkbenchPlannerItemRecord {
@@ -119,6 +95,7 @@ function build_file_map(state: ProjectStoreState): Map<string, WorkbenchPlannerF
   return file_map;
 }
 
+// 文件 mutation 会重建 item section，先用完整 DTO 建索引避免丢字段
 function build_item_map(state: ProjectStoreState): Map<number, WorkbenchPlannerItemRecord> {
   const item_map = new Map<number, WorkbenchPlannerItemRecord>();
   for (const value of Object.values(state.items)) {
@@ -145,10 +122,11 @@ function build_file_section(
   return next_files;
 }
 
+// 工作台本地替换 section 时写入完整公开 DTO，防止丢失文件格式和扩展字段
 function build_item_section(
   item_map: Map<number, WorkbenchPlannerItemRecord>,
-): Record<string, Record<string, unknown>> {
-  const next_items: Record<string, Record<string, unknown>> = {};
+): Record<string, ProjectItemPublicRecord> {
+  const next_items: Record<string, ProjectItemPublicRecord> = {};
   for (const item of item_map.values()) {
     next_items[String(item.item_id)] = {
       item_id: item.item_id,
@@ -156,10 +134,15 @@ function build_item_section(
       row_number: item.row_number,
       src: item.src,
       dst: item.dst,
+      name_src: item.name_src,
       name_dst: item.name_dst ?? null,
+      extra_field: item.extra_field,
+      tag: item.tag,
+      file_type: item.file_type,
       status: item.status,
       text_type: item.text_type,
       retry_count: item.retry_count,
+      skip_internal_filter: item.skip_internal_filter,
     };
   }
   return next_items;
@@ -198,7 +181,7 @@ function build_workbench_mutation_state(args: {
   state: ProjectStoreState;
   task_snapshot?: WorkbenchPlannerTaskSnapshot;
   files: Record<string, Record<string, unknown>>;
-  items: Record<string, Record<string, unknown>>;
+  items: Record<string, ProjectItemPublicRecord>;
   settings: WorkbenchPlannerSettings;
 }): WorkbenchMutationRuntimeState {
   const base_task_snapshot = args.task_snapshot ?? create_empty_translation_task_snapshot();
@@ -225,7 +208,8 @@ function build_workbench_mutation_state(args: {
   };
 }
 
-function serialize_workbench_item_payloads(
+// reset-file 后端请求只表达局部 patch，完整 DTO 只用于本地 store 回流
+function serialize_workbench_item_patch_payloads(
   items: Array<Record<string, unknown>>,
 ): Array<Record<string, unknown>> {
   return items.map((item) => {
@@ -264,6 +248,8 @@ function serialize_add_file_payload_items(args: {
       text_type: String(final_item.text_type ?? parsed_item.text_type),
       status: String(final_item.status ?? parsed_item.status),
       retry_count: Number(final_item.retry_count ?? parsed_item.retry_count),
+      skip_internal_filter:
+        final_item.skip_internal_filter === true || parsed_item.skip_internal_filter,
     };
   });
 }
@@ -357,7 +343,7 @@ export function create_workbench_reset_file_plan(args: {
     ],
     requestBody: {
       rel_paths: [target_rel_path],
-      items: serialize_workbench_item_payloads(changed_items),
+      items: serialize_workbench_item_patch_payloads(changed_items),
       translation_extras: mutation_state.mutation_meta.translation_extras,
       prefilter_config: mutation_state.mutation_meta.prefilter_config,
       expected_section_revisions: build_expected_revisions(args.state, ["items", "analysis"]),
@@ -450,6 +436,7 @@ type WorkbenchParsedItemRecord = {
   text_type: string;
   status: string;
   retry_count: number;
+  skip_internal_filter: boolean;
 };
 
 type WorkbenchAddFilePayloadDraft = {
@@ -505,6 +492,7 @@ function normalize_parsed_item_record(
     text_type: String(value.text_type ?? "NONE"),
     status: String(value.status ?? "NONE"),
     retry_count: Number(value.retry_count ?? 0),
+    skip_internal_filter: value.skip_internal_filter === true,
   };
 }
 
@@ -514,6 +502,7 @@ function clone_parsed_item_record(item: WorkbenchParsedItemRecord): WorkbenchPar
   };
 }
 
+// 新增文件解析结果必须立刻升格为完整公开 DTO，后续继承与本地 upsert 共用同一事实形状
 function convert_parsed_item_to_runtime_record(
   item: WorkbenchParsedItemRecord,
 ): WorkbenchPlannerItemRecord {
@@ -521,19 +510,29 @@ function convert_parsed_item_to_runtime_record(
     throw new Error("工作台条目缺少稳定 item_id。");
   }
 
-  return {
+  const public_item = normalize_project_item_public_record({
     item_id: item.id,
     file_path: item.file_path,
     row_number: item.row,
     src: item.src,
     dst: item.dst,
+    name_src: item.name_src,
     name_dst: item.name_dst,
+    extra_field: item.extra_field,
+    tag: item.tag,
+    file_type: item.file_type,
     status: item.status,
     text_type: item.text_type,
     retry_count: item.retry_count,
-  };
+    skip_internal_filter: item.skip_internal_filter,
+  });
+  if (public_item === null) {
+    throw new Error("工作台条目必须生成完整公开 item DTO。");
+  }
+  return public_item;
 }
 
+// add-file 的 item id 在 planner 内一次性分配，避免继承阶段处理无主条目
 function assign_item_ids_for_add(args: {
   next_item_id_seed: number;
   parsed_items: WorkbenchParsedItemRecord[];
@@ -547,16 +546,16 @@ function assign_item_ids_for_add(args: {
   });
 }
 
-function normalize_status_value(value: unknown): string {
-  const normalized_value = String(value ?? "NONE").trim();
-  return normalized_value === "" ? "NONE" : normalized_value;
+// 继承旧译文时状态仍走 item 统一值域，防止 DONE 等旧值流回公开 DTO
+function normalize_status_value(value: unknown): ProjectItemPublicRecord["status"] {
+  return Item.normalize_status(value);
 }
 
 type TranslationInheritanceCandidate = {
   dst: string;
-  name_dst: unknown;
+  name_dst: ProjectItemPublicRecord["name_dst"];
   retry_count: number;
-  status: string;
+  status: ProjectItemPublicRecord["status"];
   count: number;
   first_index: number;
 };
@@ -618,7 +617,7 @@ function create_normalized_add_parsed_items(
 
 function inherit_completed_translations(args: {
   old_items: WorkbenchPlannerItemRecord[];
-  next_items: Array<Record<string, unknown>>;
+  next_items: WorkbenchPlannerItemRecord[];
 }): void {
   const candidate_map = build_translation_inheritance_candidates(args.old_items);
 
@@ -770,11 +769,11 @@ export function create_workbench_add_files_plan(args: {
 
   if (args.inheritance_mode === "inherit") {
     // 继承必须发生在预过滤之后，只让仍待处理的新增条目吸收旧译文
-    const inherited_items = Object.fromEntries(
+    const inherited_items: Record<string, ProjectItemPublicRecord> = Object.fromEntries(
       Object.entries(mutation_state.items).map(([item_id, item]) => {
         return [item_id, { ...item }];
       }),
-    );
+    ) as Record<string, ProjectItemPublicRecord>;
     inherit_completed_translations({
       old_items,
       next_items: added_item_ids.flatMap((item_id) => {

@@ -1,8 +1,8 @@
 import {
   build_analysis_progress_snapshot,
   build_analysis_status_summary,
+  derive_project_item_view_record,
   normalize_analysis_progress_snapshot,
-  normalize_runtime_project_item_record,
 } from "@/project/reset/reset-state-builders";
 import {
   createProjectStoreReplaceSectionChange,
@@ -23,7 +23,7 @@ export type AnalysisResetPlan = {
 
 function build_runtime_items(state: ProjectStoreState) {
   return Object.values(state.items).flatMap((item) => {
-    const normalized_item = normalize_runtime_project_item_record(item);
+    const normalized_item = derive_project_item_view_record(item);
     return normalized_item === null ? [] : [normalized_item];
   });
 }

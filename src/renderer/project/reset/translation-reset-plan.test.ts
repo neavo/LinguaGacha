@@ -1,10 +1,31 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   create_translation_reset_all_plan,
   create_translation_reset_failed_plan,
 } from "@/project/reset/translation-reset-plan";
+
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
 
 function create_test_state(): ProjectStoreState {
   return {
@@ -20,7 +41,7 @@ function create_test_state(): ProjectStoreState {
       },
     },
     items: {
-      "1": {
+      "1": create_test_item({
         item_id: 1,
         file_path: "script/a.txt",
         row_number: 1,
@@ -29,8 +50,8 @@ function create_test_state(): ProjectStoreState {
         status: "ERROR",
         text_type: "NONE",
         retry_count: 2,
-      },
-      "2": {
+      }),
+      "2": create_test_item({
         item_id: 2,
         file_path: "script/a.txt",
         row_number: 2,
@@ -39,7 +60,7 @@ function create_test_state(): ProjectStoreState {
         status: "PROCESSED",
         text_type: "NONE",
         retry_count: 0,
-      },
+      }),
     },
     quality: {
       glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
@@ -91,7 +112,7 @@ describe("translation reset planners", () => {
         payloadMode: "canonical-delta",
         changedIds: [1],
         upsert: {
-          "1": {
+          "1": create_test_item({
             item_id: 1,
             file_path: "script/a.txt",
             row_number: 1,
@@ -102,7 +123,7 @@ describe("translation reset planners", () => {
             text_type: "NONE",
             skip_internal_filter: false,
             retry_count: 0,
-          },
+          }),
         },
       },
     });
@@ -147,6 +168,7 @@ describe("translation reset planners", () => {
               text_type: "NONE",
               status: "NONE",
               retry_count: 0,
+              skip_internal_filter: false,
             },
             {
               id: 12,
@@ -162,6 +184,7 @@ describe("translation reset planners", () => {
               text_type: "NONE",
               status: "NONE",
               retry_count: 0,
+              skip_internal_filter: false,
             },
           ],
         };
@@ -184,14 +207,14 @@ describe("translation reset planners", () => {
     });
     expect(plan.requestBody.items).toEqual([
       {
-        id: 11,
+        item_id: 11,
         src: "hello",
         dst: "",
         name_src: "Alice",
         name_dst: null,
         extra_field: "",
         tag: "",
-        row: 1,
+        row_number: 1,
         file_type: "TXT",
         file_path: "script/a.txt",
         text_type: "NONE",
@@ -200,14 +223,14 @@ describe("translation reset planners", () => {
         retry_count: 0,
       },
       {
-        id: 12,
+        item_id: 12,
         src: "123",
         dst: "",
         name_src: null,
         name_dst: null,
         extra_field: "",
         tag: "",
-        row: 2,
+        row_number: 2,
         file_type: "TXT",
         file_path: "script/a.txt",
         text_type: "NONE",

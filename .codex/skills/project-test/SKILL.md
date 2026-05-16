@@ -1,6 +1,6 @@
 ---
 name: project-test
-description: 通用项目测试工作流技能，用于编写、补充、审查、整理和重构 Python/TypeScript 测试，覆盖行为断言、测试文件映射、测试资产清理、跨栈边界与验证。
+description: 使用此技能维护项目测试文件
 ---
 
 # Project Test

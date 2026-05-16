@@ -1,7 +1,28 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProjectItemPublicRecord } from "@base/item";
 import { collect_project_item_texts } from "@/project/store/project-item-texts";
 import { run_quality_statistics_task } from "./quality-statistics";
+
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
 
 describe("run_quality_statistics_task", () => {
   it("对 glossary / pre / post / text_preserve 统一返回命中数", async () => {
@@ -154,8 +175,8 @@ describe("run_quality_statistics_task", () => {
 
   it("collect_project_item_texts 同时抽取 src 与 dst", () => {
     const texts = collect_project_item_texts({
-      "1": { src: "原文", dst: "译文" },
-      "2": { src: "第二行", dst: "第二译文" },
+      "1": create_test_item({ item_id: 1, src: "原文", dst: "译文" }),
+      "2": create_test_item({ item_id: 2, src: "第二行", dst: "第二译文" }),
     });
 
     expect(texts).toEqual({

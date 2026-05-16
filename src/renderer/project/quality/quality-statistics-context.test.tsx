@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import type { QualityStatisticsRuleType } from "@/project/quality/quality-statistics-store";
 import { QualityStatisticsProvider } from "@/project/quality/quality-statistics-context";
@@ -50,6 +51,26 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 function create_test_state(): ProjectStoreState {
   return {
     project: {
@@ -58,12 +79,12 @@ function create_test_state(): ProjectStoreState {
     },
     files: {},
     items: {
-      "1": {
+      "1": create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
         src: "苹果真甜",
         dst: "Apple is sweet",
-      },
+      }),
     },
     quality: {
       glossary: {

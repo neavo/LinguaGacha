@@ -1,6 +1,6 @@
 ---
 name: project-doc
-description: 使用此技能维护 LinguaGacha 项目级长期文档
+description: 使用此技能维护项目长期文档
 ---
 
 # 项目长期文档治理

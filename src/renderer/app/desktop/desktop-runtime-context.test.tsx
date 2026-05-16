@@ -166,6 +166,26 @@ function create_event_source_stub(): {
   };
 }
 
+function create_project_item(overrides: Record<string, unknown>): Record<string, unknown> {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 function create_default_project_sections(
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
@@ -181,11 +201,11 @@ function create_default_project_sections(
       },
     },
     items: {
-      "1": {
+      "1": create_project_item({
         item_id: 1,
         file_path: "chapter01.txt",
-        status: "DONE",
-      },
+        status: "PROCESSED",
+      }),
     },
     quality: {
       glossary: {
@@ -1070,14 +1090,14 @@ describe("DesktopRuntimeProvider", () => {
           payloadMode: "canonical-delta",
           changedIds: [1],
           upsert: {
-            "1": {
+            "1": create_project_item({
               item_id: 1,
               file_path: "chapter01.txt",
               row_number: 1,
               src: "foo",
               dst: "bar",
               status: "NONE",
-            },
+            }),
           },
         },
         sections: {
@@ -1097,14 +1117,14 @@ describe("DesktopRuntimeProvider", () => {
           payloadMode: "canonical-delta",
           changedIds: [2],
           upsert: {
-            "2": {
+            "2": create_project_item({
               item_id: 2,
               file_path: "chapter01.txt",
               row_number: 2,
               src: "baz",
               dst: "qux",
               status: "NONE",
-            },
+            }),
           },
         },
         sections: {
@@ -1154,20 +1174,20 @@ describe("DesktopRuntimeProvider", () => {
         expect(body).toEqual({ itemIds: [3, 4] });
         return {
           items: {
-            "3": {
+            "3": create_project_item({
               item_id: 3,
               file_path: "chapter03.txt",
               src: "foo",
               dst: "bar",
               status: "PROCESSED",
-            },
-            "4": {
+            }),
+            "4": create_project_item({
               item_id: 4,
               file_path: "chapter04.txt",
               src: "hello",
               dst: "world",
               status: "PROCESSED",
-            },
+            }),
           },
           missingIds: [],
           projectRevision: 5,
@@ -1260,13 +1280,13 @@ describe("DesktopRuntimeProvider", () => {
         expect(body).toEqual({ itemIds: [3] });
         return {
           items: {
-            "3": {
+            "3": create_project_item({
               item_id: 3,
               file_path: "chapter03.txt",
               src: "old",
               dst: "old",
               status: "PROCESSED",
-            },
+            }),
           },
           missingIds: [],
           projectRevision: 4,
@@ -1354,11 +1374,11 @@ describe("DesktopRuntimeProvider", () => {
           sectionRevisions: { items: 2 },
           sections: {
             items: {
-              "2": {
+              "2": create_project_item({
                 item_id: 2,
                 file_path: "chapter02.txt",
                 status: "NONE",
-              },
+              }),
             },
           },
         };

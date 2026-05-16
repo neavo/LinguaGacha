@@ -9,7 +9,11 @@ import {
   get_runtime_section_revision,
 } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
-import { Item } from "../../base/item";
+import {
+  Item,
+  collect_project_item_missing_public_fields,
+  normalize_project_item_persistent_record,
+} from "../../base/item";
 import type { ProjectChangePublisher } from "./project-change-publisher";
 import type { ProjectDataSection } from "../../shared/project/event";
 import * as AppErrors from "../../shared/error";
@@ -230,7 +234,7 @@ export class ProjectSyncMutationService {
       request["expected_section_revisions"],
     );
     this.assert_expected_revisions(project_path, expected, ["items", "analysis"]);
-    const items = this.normalize_full_items(request["items"]);
+    const items = this.normalize_complete_public_items(project_path, request["items"]);
     this.database.execute_transaction([
       this.op("setItems", { projectPath: project_path, items }),
       this.op("upsertMetaEntries", {
@@ -262,7 +266,7 @@ export class ProjectSyncMutationService {
       this.database.execute_transaction([
         this.op("setItems", {
           projectPath: project_path,
-          items: this.normalize_full_items(request["items"]),
+          items: this.normalize_complete_public_items(project_path, request["items"]),
         }),
         this.op("upsertMetaEntries", {
           projectPath: project_path,
@@ -590,15 +594,56 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 全量 items 写入前做最小字段归一，兼容 planner 已算出的完整 payload
+   * 全量 items 写入必须携带完整公开 DTO，并完整覆盖当前数据库 item 集合
    */
-  private normalize_full_items(value: ApiJsonValue | undefined): MutableJsonRecord[] {
+  private normalize_complete_public_items(
+    project_path: string,
+    value: ApiJsonValue | undefined,
+  ): MutableJsonRecord[] {
     if (!Array.isArray(value)) {
-      return [];
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "items_not_array" },
+      });
     }
-    return value
-      .filter((item): item is JsonRecord => this.is_record(item))
-      .map((item) => this.normalize_item_payload(item));
+    const current_ids = new Set(
+      this.get_all_items(project_path)
+        .map((item) => this.read_number(item["id"], NaN))
+        .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
+    );
+    if (value.length === 0 && current_ids.size > 0) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "items_empty_full_replace" },
+      });
+    }
+
+    const seen_ids = new Set<number>();
+    const items: MutableJsonRecord[] = [];
+    for (const raw_item of value) {
+      const item = normalize_project_item_persistent_record(raw_item);
+      if (item === null) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: {
+            reason: "item_incomplete",
+            missing_fields: collect_project_item_missing_public_fields(raw_item),
+          },
+        });
+      }
+      const item_id = this.read_number(item["id"], 0);
+      if (!Number.isInteger(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "item_id_invalid_or_duplicated", item_id },
+        });
+      }
+      seen_ids.add(item_id);
+      items.push(item);
+    }
+
+    if (!this.has_same_item_id_set(current_ids, seen_ids)) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "items_full_replace_id_set_mismatch" },
+      });
+    }
+    return items;
   }
 
   /**
@@ -663,19 +708,7 @@ export class ProjectSyncMutationService {
    * 归一单条 item，防止状态和数字字段以脏类型进入数据库
    */
   private normalize_item_payload(item: JsonRecord): MutableJsonRecord {
-    const normalized: MutableJsonRecord = {
-      ...item,
-      src: String(item["src"] ?? ""),
-      dst: String(item["dst"] ?? ""),
-      row: this.read_number(item["row"], 0),
-      status: Item.normalize_status(item["status"]),
-      retry_count: this.read_number(item["retry_count"], 0),
-      skip_internal_filter: item["skip_internal_filter"] === true,
-    };
-    if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {
-      normalized["id"] = this.read_number(item["id"], 0);
-    }
-    return normalized;
+    return Item.from_json(item).to_json() as MutableJsonRecord;
   }
 
   /**
@@ -895,6 +928,21 @@ export class ProjectSyncMutationService {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? number_value : fallback;
+  }
+
+  /**
+   * 全量替换只允许原 item 集合一一覆盖，新增/删除必须走工作台文件 mutation
+   */
+  private has_same_item_id_set(left: Set<number>, right: Set<number>): boolean {
+    if (left.size !== right.size) {
+      return false;
+    }
+    for (const item_id of left) {
+      if (!right.has(item_id)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

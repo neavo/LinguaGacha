@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import { prepare_analysis_glossary_import } from "@/project/importer/analysis-glossary-importer";
 
@@ -17,6 +18,26 @@ vi.mock("@/project/quality/quality-statistics-worker-pool", () => {
   };
 });
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 function create_test_state(overrides: Partial<ProjectStoreState> = {}): ProjectStoreState {
   const state: ProjectStoreState = {
     project: {
@@ -25,12 +46,12 @@ function create_test_state(overrides: Partial<ProjectStoreState> = {}): ProjectS
     },
     files: {},
     items: {
-      "1": {
+      "1": create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
         src: "艾琳",
         dst: "",
-      },
+      }),
     },
     quality: {
       glossary: {

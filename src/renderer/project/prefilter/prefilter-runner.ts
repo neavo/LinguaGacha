@@ -4,6 +4,10 @@ import {
   type ProjectPrefilterMutationInput,
   type ProjectPrefilterMutationOutput,
 } from "@/project/prefilter/prefilter-mutation-builder";
+import {
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "@base/item";
 
 export type ProjectPrefilterRunnerSettings = {
   source_language: string;
@@ -109,25 +113,13 @@ export function build_project_state_from_draft(draft: ProjectDraftPayload): Proj
     };
   }
 
-  const items: Record<string, Record<string, unknown>> = {};
+  const items: Record<string, ProjectItemPublicRecord> = {};
   for (const item of draft.items ?? []) {
-    const item_id = Number(item.id ?? item.item_id ?? 0);
-    if (!Number.isInteger(item_id) || item_id <= 0) {
+    const normalized_item = normalize_project_item_public_record(item);
+    if (normalized_item === null) {
       continue;
     }
-    items[String(item_id)] = {
-      item_id,
-      file_path: String(item.file_path ?? ""),
-      row_number: Number(item.row ?? item.row_number ?? 0),
-      src: String(item.src ?? ""),
-      dst: String(item.dst ?? ""),
-      name_src: item.name_src ?? null,
-      name_dst: item.name_dst ?? null,
-      status: String(item.status ?? "NONE"),
-      text_type: String(item.text_type ?? "NONE"),
-      retry_count: Number(item.retry_count ?? 0),
-      skip_internal_filter: item.skip_internal_filter === true,
-    };
+    items[String(normalized_item.item_id)] = normalized_item;
   }
 
   const section_revisions = draft.section_revisions ?? {};
@@ -146,48 +138,32 @@ export function build_project_state_from_draft(draft: ProjectDraftPayload): Proj
   };
 }
 
-export function serialize_prefilter_runtime_items(
-  items: Record<string, Record<string, unknown>>,
-): Array<Record<string, unknown>> {
-  return Object.values(items).map((item) => {
-    return {
-      id: Number(item.item_id ?? item.id ?? 0),
-      file_path: String(item.file_path ?? ""),
-      row: Number(item.row_number ?? item.row ?? 0),
-      src: String(item.src ?? ""),
-      dst: String(item.dst ?? ""),
-      name_dst: item.name_dst ?? null,
-      status: String(item.status ?? "NONE"),
-      text_type: String(item.text_type ?? "NONE"),
-      retry_count: Number(item.retry_count ?? 0),
-      skip_internal_filter: item.skip_internal_filter === true,
-    };
-  });
+// 预过滤提交全量替换时必须复制完整公开 DTO，避免共享可变引用
+export function collect_prefilter_public_items(
+  items: Record<string, ProjectItemPublicRecord>,
+): ProjectItemPublicRecord[] {
+  return Object.values(items).map((item) => ({ ...item }));
 }
 
+// 打开前预过滤以草稿完整 DTO 为底，只合并预过滤真正改变的运行态字段
 export function merge_prefilter_output_with_draft_items(args: {
   draft_items: Array<Record<string, unknown>>;
-  output_items: Record<string, Record<string, unknown>>;
-}): Array<Record<string, unknown>> {
+  output_items: Record<string, ProjectItemPublicRecord>;
+}): ProjectItemPublicRecord[] {
   return args.draft_items.map((draft_item) => {
-    const item_id = Number(draft_item.id ?? draft_item.item_id ?? 0);
-    const runtime_item = args.output_items[String(item_id)];
-    if (runtime_item === undefined) {
-      return {
-        ...draft_item,
-        id: item_id,
-      };
+    const base_item = normalize_project_item_public_record(draft_item);
+    if (base_item === null) {
+      throw new Error("预过滤草稿必须提供完整公开 item DTO。");
     }
-
+    const runtime_item = args.output_items[String(base_item.item_id)] ?? base_item;
     return {
-      ...draft_item,
-      id: item_id,
-      dst: String(runtime_item.dst ?? ""),
-      name_dst: runtime_item.name_dst ?? null,
-      status: String(runtime_item.status ?? "NONE"),
-      text_type: String(runtime_item.text_type ?? draft_item.text_type ?? "NONE"),
-      retry_count: Number(runtime_item.retry_count ?? 0),
-      skip_internal_filter: runtime_item.skip_internal_filter === true,
+      ...base_item,
+      dst: runtime_item.dst,
+      name_dst: runtime_item.name_dst,
+      status: runtime_item.status,
+      text_type: runtime_item.text_type,
+      retry_count: runtime_item.retry_count,
+      skip_internal_filter: runtime_item.skip_internal_filter,
     };
   });
 }

@@ -367,7 +367,7 @@ describe("ProjectDatabase", () => {
     );
   });
 
-  it("批量替换 item 后保持回查顺序、预览 id 不落库，并按文件路径删除", () => {
+  it("批量替换 item 后保持回查顺序，并按文件路径删除", () => {
     const { database, lg_path } = create_database_project("items");
 
     expect(
@@ -382,16 +382,6 @@ describe("ProjectDatabase", () => {
         },
       }),
     ).toEqual([10, 11]);
-    expect(
-      database.execute({
-        name: "previewReplaceAllItemIds",
-        args: {
-          projectPath: lg_path,
-          items: [{ src: "preview-a" }, { id: 5, src: "kept" }, { src: "preview-b" }],
-        },
-      }),
-    ).toEqual([12, 5, 13]);
-
     expect(database.execute({ name: "getItemCount", args: { projectPath: lg_path } })).toBe(2);
     expect(
       database.execute({

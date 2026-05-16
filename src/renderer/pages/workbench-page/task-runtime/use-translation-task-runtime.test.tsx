@@ -111,9 +111,15 @@ function create_runtime_fixture(
             row_number: 1,
             src: "failed",
             dst: "old",
+            name_src: null,
+            name_dst: null,
+            extra_field: "",
+            tag: "",
+            file_type: "TXT",
             status: "ERROR",
             text_type: "NONE",
             retry_count: 1,
+            skip_internal_filter: false,
           },
         },
         quality: {
@@ -711,6 +717,7 @@ describe("useTranslationTaskRuntime", () => {
               text_type: "NONE",
               status: "NONE",
               retry_count: 0,
+              skip_internal_filter: false,
             },
           ],
         };

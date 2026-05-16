@@ -35,10 +35,61 @@ export type ItemFileType = (typeof ITEM_FILE_TYPES)[number];
 export type ItemTextType = (typeof ITEM_TEXT_TYPES)[number];
 export type ItemName = string | string[] | null;
 
+// renderer 与公开 API 共享的完整 item DTO，字段名避开数据库内部 id/row
+export type ProjectItemPublicRecord = {
+  item_id: number; // 公开 item 主键
+  src: string; // 原文
+  dst: string; // 译文
+  name_src: ItemName; // 角色姓名原文
+  name_dst: ItemName; // 角色姓名译文
+  extra_field: JsonValue; // 格式私有扩展字段
+  tag: string; // 标签
+  row_number: number; // 公开行号
+  file_type: ItemFileType; // 文件格式
+  file_path: string; // 项目内相对路径
+  text_type: ItemTextType; // 文本规则类型
+  status: ItemStatus; // 翻译状态
+  retry_count: number; // 重试次数
+  skip_internal_filter: boolean; // 是否绕过内部过滤
+};
+
+// 写回 .lg 前使用的完整持久 item DTO，字段名保持数据库层 id/row 口径
+export type ProjectItemPersistentRecord = JsonRecord & {
+  id: number; // 数据库 item 主键
+  src: string; // 原文
+  dst: string; // 译文
+  name_src: ItemName; // 角色姓名原文
+  name_dst: ItemName; // 角色姓名译文
+  extra_field: JsonValue; // 格式私有扩展字段
+  tag: string; // 标签
+  row: number; // 数据库行号
+  file_type: ItemFileType; // 文件格式
+  file_path: string; // 项目内相对路径
+  text_type: ItemTextType; // 文本规则类型
+  status: ItemStatus; // 翻译状态
+  retry_count: number; // 重试次数
+  skip_internal_filter: boolean; // 是否绕过内部过滤
+};
+
 const ITEM_STATUS_SET = new Set<ItemStatus>(ITEM_STATUSES);
 const ITEM_FILE_TYPE_SET = new Set<ItemFileType>(ITEM_FILE_TYPES);
 const ITEM_TEXT_TYPE_SET = new Set<ItemTextType>(ITEM_TEXT_TYPES);
 const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set<ItemFileType>(["XLSX", "KVJSON", "MESSAGEJSON"]);
+// 全量公开写回必须携带这些稳定字段，避免页面层用默认值覆盖真实持久事实
+const PROJECT_ITEM_PUBLIC_REQUIRED_FIELDS = [
+  "src",
+  "dst",
+  "name_src",
+  "name_dst",
+  "extra_field",
+  "tag",
+  "file_type",
+  "file_path",
+  "text_type",
+  "status",
+  "retry_count",
+  "skip_internal_filter",
+] as const;
 
 // WOLF
 const WOLF_PATTERNS = [
@@ -128,6 +179,28 @@ export class Item {
       payload["id"] = this.id;
     }
     return payload;
+  }
+
+  /**
+   * 将持久 item 或公开 item 转成 renderer 可缓存的完整公开 DTO。
+   */
+  public to_public_json(): ProjectItemPublicRecord {
+    return {
+      item_id: this.id ?? 0,
+      src: this.src,
+      dst: this.dst,
+      name_src: Item.normalize_name(this.name_src),
+      name_dst: Item.normalize_name(this.name_dst),
+      extra_field: this.extra_field,
+      tag: this.tag,
+      row_number: this.row,
+      file_type: this.file_type,
+      file_path: this.file_path,
+      text_type: this.text_type,
+      status: this.status,
+      retry_count: this.retry_count,
+      skip_internal_filter: this.skip_internal_filter,
+    };
   }
 
   /**
@@ -240,6 +313,72 @@ export function read_json_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
+}
+
+// 完整公开 DTO 必须显式携带所有持久字段；字段缺失只能由 migration 处理
+export function collect_project_item_missing_public_fields(value: unknown): string[] {
+  const record = read_json_record(value);
+  const missing_fields: string[] = [];
+  if (record["item_id"] === undefined && record["id"] === undefined) {
+    missing_fields.push("item_id");
+  }
+  if (record["row_number"] === undefined && record["row"] === undefined) {
+    missing_fields.push("row_number");
+  }
+  for (const field of PROJECT_ITEM_PUBLIC_REQUIRED_FIELDS) {
+    if (record[field] === undefined) {
+      missing_fields.push(field);
+    }
+  }
+  return missing_fields;
+}
+
+// API 和 ProjectStore 只使用 item_id/row_number，id/row 只在边界转换时短暂出现
+export function normalize_project_item_public_record(
+  value: unknown,
+): ProjectItemPublicRecord | null {
+  const record = read_json_record(value);
+  if (collect_project_item_missing_public_fields(record).length > 0) {
+    return null;
+  }
+  const item_id = normalize_item_number(record["item_id"] ?? record["id"], 0);
+  if (!Number.isInteger(item_id) || item_id <= 0) {
+    return null;
+  }
+  const item = Item.from_json({
+    ...record,
+    id: item_id,
+    row: record["row"] ?? record["row_number"],
+  });
+  item.id = item_id;
+  return item.to_public_json();
+}
+
+// 全量写库入口统一把公开 DTO 转回持久字段，避免页面层手写 id/row 映射
+export function normalize_project_item_persistent_record(
+  value: unknown,
+): ProjectItemPersistentRecord | null {
+  const public_record = normalize_project_item_public_record(value);
+  if (public_record === null) {
+    return null;
+  }
+  const item = Item.from_json({
+    id: public_record.item_id,
+    src: public_record.src,
+    dst: public_record.dst,
+    name_src: public_record.name_src,
+    name_dst: public_record.name_dst,
+    extra_field: public_record.extra_field,
+    tag: public_record.tag,
+    row: public_record.row_number,
+    file_type: public_record.file_type,
+    file_path: public_record.file_path,
+    text_type: public_record.text_type,
+    status: public_record.status,
+    retry_count: public_record.retry_count,
+    skip_internal_filter: public_record.skip_internal_filter,
+  });
+  return item.to_json() as ProjectItemPersistentRecord;
 }
 
 // 数值字段来自 JSON 和 SQLite，统一截断为整数并保留调用方回退值

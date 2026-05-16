@@ -318,19 +318,26 @@ function create_project_store_state(items: Record<string, unknown>) {
 
 function create_project_item(args: {
   item_id: number;
-  src: string;
-  dst: string;
+  src?: string;
+  dst?: string;
+  file_path?: string;
+  status?: string;
 }): Record<string, unknown> {
   return {
     item_id: args.item_id,
-    file_path: "old.txt",
+    file_path: args.file_path ?? "old.txt",
     row_number: args.item_id,
-    src: args.src,
-    dst: args.dst,
+    src: args.src ?? "",
+    dst: args.dst ?? "",
+    name_src: null,
     name_dst: null,
-    status: "PROCESSED",
+    extra_field: "",
+    tag: "",
+    file_type: "TXT",
+    status: args.status ?? "PROCESSED",
     text_type: "NONE",
     retry_count: 0,
+    skip_internal_filter: false,
   };
 }
 
@@ -429,11 +436,11 @@ describe("useWorkbenchLiveState", () => {
               },
             },
             items: {
-              "1": {
+              "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
                 status: "DONE",
-              },
+              }),
             },
           };
         },
@@ -538,31 +545,31 @@ describe("useWorkbenchLiveState", () => {
               },
             },
             items: {
-              "1": {
+              "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
                 status: "PROCESSED",
-              },
-              "2": {
+              }),
+              "2": create_project_item({
                 item_id: 2,
                 file_path: "chapter01.txt",
                 status: "ERROR",
-              },
-              "3": {
+              }),
+              "3": create_project_item({
                 item_id: 3,
                 file_path: "chapter01.txt",
                 status: "NONE",
-              },
-              "4": {
+              }),
+              "4": create_project_item({
                 item_id: 4,
                 file_path: "chapter01.txt",
                 status: "RULE_SKIPPED",
-              },
-              "5": {
+              }),
+              "5": create_project_item({
                 item_id: 5,
                 file_path: "chapter01.txt",
                 status: "DONE",
-              },
+              }),
             },
             analysis: {
               status_summary: {
@@ -642,36 +649,36 @@ describe("useWorkbenchLiveState", () => {
               },
             },
             items: {
-              "1": {
+              "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
                 src: "一",
                 status: "NONE",
-              },
-              "2": {
+              }),
+              "2": create_project_item({
                 item_id: 2,
                 file_path: "chapter01.txt",
                 src: "二",
                 status: "NONE",
-              },
-              "3": {
+              }),
+              "3": create_project_item({
                 item_id: 3,
                 file_path: "chapter01.txt",
                 src: "三",
                 status: "NONE",
-              },
-              "4": {
+              }),
+              "4": create_project_item({
                 item_id: 4,
                 file_path: "chapter01.txt",
                 src: "四",
                 status: "NONE",
-              },
-              "5": {
+              }),
+              "5": create_project_item({
                 item_id: 5,
                 file_path: "chapter01.txt",
                 src: "五",
                 status: "RULE_SKIPPED",
-              },
+              }),
             },
             analysis: {
               status_summary: {
@@ -736,18 +743,18 @@ describe("useWorkbenchLiveState", () => {
               },
             },
             items: {
-              "1": {
+              "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
                 src: "一",
                 status: "NONE",
-              },
-              "2": {
+              }),
+              "2": create_project_item({
                 item_id: 2,
                 file_path: "chapter01.txt",
                 src: "二",
                 status: "NONE",
-              },
+              }),
             },
             analysis: {
               status_summary: {
@@ -805,11 +812,11 @@ describe("useWorkbenchLiveState", () => {
               },
             },
             items: {
-              "1": {
+              "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
                 status: item_status,
-              },
+              }),
             },
             revisions: {
               sections: {

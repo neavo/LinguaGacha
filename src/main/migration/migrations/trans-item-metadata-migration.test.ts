@@ -123,8 +123,14 @@ describe("TransItemMetadataMigration", () => {
       false,
     );
     expect(TransItemMetadataMigration.normalize_item_payload(non_trans_aqua, "TXT")).toBe(false);
-    expect(trans_without_aqua).toEqual({ file_type: "TRANS", extra_field: { tag: [] } });
-    expect(non_trans_aqua).toEqual({ file_type: "TXT", extra_field: { tag: ["aqua"] } });
+    expect(trans_without_aqua).toEqual({
+      file_type: "TRANS",
+      extra_field: { tag: [] },
+    });
+    expect(non_trans_aqua).toEqual({
+      file_type: "TXT",
+      extra_field: { tag: ["aqua"] },
+    });
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   create_workbench_add_files_plan,
@@ -8,7 +9,7 @@ import {
   type WorkbenchFileParsePreview,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 
-function create_state(items: Record<string, unknown>): ProjectStoreState {
+function create_state(items: Record<string, ProjectItemPublicRecord>): ProjectStoreState {
   return {
     project: {
       path: "E:/demo/sample.lg",
@@ -51,20 +52,25 @@ function create_item(args: {
   item_id: number;
   src: string;
   dst: string;
-  status?: string;
-  name_dst?: unknown;
+  status?: ProjectItemPublicRecord["status"];
+  name_dst?: ProjectItemPublicRecord["name_dst"];
   retry_count?: number;
-}): Record<string, unknown> {
+}): ProjectItemPublicRecord {
   return {
     item_id: args.item_id,
     file_path: "old.txt",
     row_number: args.item_id,
     src: args.src,
     dst: args.dst,
+    name_src: null,
     name_dst: args.name_dst ?? null,
+    extra_field: "",
+    tag: "",
+    file_type: "TXT",
     status: args.status ?? "PROCESSED",
     text_type: "NONE",
     retry_count: args.retry_count ?? 0,
+    skip_internal_filter: false,
   };
 }
 
@@ -116,7 +122,12 @@ describe("workbench add-file translation inheritance planner", () => {
   it("不继承时保留解析结果", () => {
     const plan = create_single_file_add_plan({
       state: create_state({
-        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+        "1": {
+          ...create_item({ item_id: 1, src: "hello", dst: "你好" }),
+          name_src: "Alice",
+          extra_field: { keep: true },
+          tag: "dialog",
+        },
       }),
       parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
       inheritance_mode: "none",
@@ -174,7 +185,12 @@ describe("workbench add-file translation inheritance planner", () => {
   it("结构性状态不会被继承状态覆盖", () => {
     const plan = create_single_file_add_plan({
       state: create_state({
-        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+        "1": {
+          ...create_item({ item_id: 1, src: "hello", dst: "你好" }),
+          name_src: "Alice",
+          extra_field: { keep: true },
+          tag: "dialog",
+        },
       }),
       parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1, status: "EXCLUDED" }]),
       inheritance_mode: "inherit",
@@ -284,7 +300,12 @@ describe("workbench file mutation payload planner", () => {
   it("重置单文件也使用 rel_paths 数组载荷", () => {
     const plan = create_workbench_reset_file_plan({
       state: create_state({
-        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+        "1": {
+          ...create_item({ item_id: 1, src: "hello", dst: "你好" }),
+          name_src: "Alice",
+          extra_field: { keep: true },
+          tag: "dialog",
+        },
       }),
       rel_path: "old.txt",
       settings: SETTINGS,
@@ -297,6 +318,18 @@ describe("workbench file mutation payload planner", () => {
     });
     expect(plan.requestBody).not.toHaveProperty("rel_path");
     expect(plan.requestBody).not.toHaveProperty("derived_meta");
+    expect(plan.operations[0]).toMatchObject({
+      items: {
+        upsert: {
+          "1": {
+            name_src: "Alice",
+            extra_field: { keep: true },
+            tag: "dialog",
+            file_type: "TXT",
+          },
+        },
+      },
+    });
   });
 
   it("删除文件使用统一 rel_paths 数组载荷", () => {

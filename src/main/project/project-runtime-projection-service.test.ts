@@ -85,6 +85,15 @@ describe("ProjectRuntimeProjectionService", () => {
             row: 1,
             src: "foo",
             dst: "bar",
+            name_src: "Alice",
+            name_dst: null,
+            extra_field: { note: "keep" },
+            tag: "line",
+            file_type: "TXT",
+            text_type: "NONE",
+            status: "NONE",
+            retry_count: 0,
+            skip_internal_filter: false,
           },
         ];
       }
@@ -102,6 +111,12 @@ describe("ProjectRuntimeProjectionService", () => {
         "2": {
           item_id: 2,
           file_path: "chapter02.txt",
+          row_number: 1,
+          file_type: "TXT",
+          name_src: "Alice",
+          extra_field: { note: "keep" },
+          tag: "line",
+          skip_internal_filter: false,
         },
       },
       missingIds: [3],

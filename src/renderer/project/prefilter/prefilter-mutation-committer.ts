@@ -15,8 +15,8 @@ import type {
   ProjectPrefilterMutationOutput,
 } from "@/project/prefilter/prefilter-mutation-builder";
 import {
+  collect_prefilter_public_items,
   run_project_prefilter,
-  serialize_prefilter_runtime_items,
 } from "@/project/prefilter/prefilter-runner";
 
 type ApplyProjectPrefilterMutationArgs = {
@@ -61,7 +61,7 @@ export async function apply_project_prefilter_mutation(
     const mutation_ack = normalize_project_mutation_ack(
       await api_fetch<ProjectMutationAckPayload>("/api/project/settings-alignment/apply", {
         mode: "prefiltered_items",
-        items: serialize_prefilter_runtime_items(mutation_output.items),
+        items: collect_prefilter_public_items(mutation_output.items),
         translation_extras: mutation_output.translation_extras,
         prefilter_config: mutation_output.prefilter_config,
         project_settings: mutation_output.project_settings,

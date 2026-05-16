@@ -1,48 +1,52 @@
+import {
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "@base/item";
 import { TASK_PROGRESS_STATUSES, is_task_skipped_item_status } from "@shared/task";
 
-export type RuntimeProjectItemRecord = {
-  item_id: number;
-  file_path: string;
-  row_number: number;
-  src: string;
-  dst: string;
-  name_dst: unknown;
-  status: string;
-  text_type: string;
-  retry_count: number;
-  skip_internal_filter: boolean;
+// reset、prefilter 和统计逻辑只需要可变视图字段，不能把它当完整持久事实写回
+export type ProjectItemViewRecord = {
+  item_id: number; // 公开 item 主键
+  file_path: string; // 项目内相对路径
+  row_number: number; // 公开行号
+  src: string; // 原文
+  dst: string; // 译文
+  name_dst: ProjectItemPublicRecord["name_dst"]; // 角色译名
+  status: ProjectItemPublicRecord["status"]; // 翻译状态
+  text_type: ProjectItemPublicRecord["text_type"]; // 文本规则类型
+  retry_count: number; // 重试次数
+  skip_internal_filter: boolean; // 是否绕过内部过滤
 };
 
-export function normalize_runtime_project_item_record(
-  value: unknown,
-): RuntimeProjectItemRecord | null {
-  if (typeof value !== "object" || value === null) {
+// 外部输入必须先是完整公开 DTO，派生视图只服务局部计算
+export function derive_project_item_view_record(value: unknown): ProjectItemViewRecord | null {
+  const item = normalize_project_item_public_record(value);
+  if (item === null) {
     return null;
   }
+  return derive_project_item_view_record_from_public(item);
+}
 
-  const candidate = value as Record<string, unknown>;
-  const item_id = Number(candidate.item_id ?? candidate.id ?? 0);
-  if (!Number.isInteger(item_id) || item_id <= 0) {
-    return null;
-  }
-
+// 从已校验公开 DTO 派生可变视图，保留 reset 计算需要的字段
+export function derive_project_item_view_record_from_public(
+  item: ProjectItemPublicRecord,
+): ProjectItemViewRecord {
   return {
-    item_id,
-    file_path: String(candidate.file_path ?? ""),
-    row_number: Number(candidate.row_number ?? candidate.row ?? 0),
-    src: String(candidate.src ?? ""),
-    dst: String(candidate.dst ?? ""),
-    name_dst: candidate.name_dst ?? null,
-    status: String(candidate.status ?? "NONE"),
-    text_type: String(candidate.text_type ?? "NONE"),
-    retry_count: Number(candidate.retry_count ?? 0),
-    skip_internal_filter: candidate.skip_internal_filter === true,
+    item_id: item.item_id,
+    file_path: item.file_path,
+    row_number: item.row_number,
+    src: item.src,
+    dst: item.dst,
+    name_dst: item.name_dst,
+    status: item.status,
+    text_type: item.text_type,
+    retry_count: item.retry_count,
+    skip_internal_filter: item.skip_internal_filter,
   };
 }
 
-export function clone_runtime_project_item_record(
-  item: RuntimeProjectItemRecord,
-): RuntimeProjectItemRecord {
+// 局部计算会原地修改视图，复制后再交给调用点避免污染上游缓存
+export function clone_project_item_view_record(item: ProjectItemViewRecord): ProjectItemViewRecord {
   return {
     ...item,
   };
@@ -94,7 +98,7 @@ export function create_empty_translation_task_snapshot(): Record<string, unknown
 
 export function build_translation_task_and_project_state(args: {
   task_snapshot: Record<string, unknown>;
-  items: Map<number, RuntimeProjectItemRecord>;
+  items: Map<number, ProjectItemViewRecord>;
 }): {
   translation_extras: Record<string, unknown>;
   task_snapshot: Record<string, unknown>;
@@ -133,7 +137,7 @@ export function build_translation_task_and_project_state(args: {
 }
 
 export function build_analysis_status_summary(
-  items: Iterable<RuntimeProjectItemRecord>,
+  items: Iterable<ProjectItemViewRecord>,
 ): Record<string, unknown> {
   let total_line = 0;
   for (const item of items) {

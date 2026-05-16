@@ -3,6 +3,10 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt } from "../../base/prompt";
+import {
+  collect_project_item_missing_public_fields,
+  normalize_project_item_public_record,
+} from "../../base/item";
 import { is_task_skipped_item_status } from "../../shared/task";
 import {
   build_section_revisions_from_meta,
@@ -10,6 +14,7 @@ import {
   type ProjectDataSection,
 } from "./project-section-revision";
 import { isProjectDataSection } from "../../shared/project/event";
+import * as AppErrors from "../../shared/error";
 
 export type ProjectRuntimeProjectionJsonRecord = Record<string, ApiJsonValue>;
 export type ProjectRuntimeProjectionMutableRecord = Record<string, ApiJsonValue>;
@@ -330,11 +335,11 @@ export class ProjectRuntimeProjectionService {
     for (const item of this.get_all_items(project_path)) {
       const record = this.normalize_item_record(item);
       item_records.push(record);
-      const file_path = String(item["file_path"] ?? "");
+      const file_path = String(record["file_path"] ?? "");
       if (file_path !== "") {
         records_by_path.set(file_path, {
           rel_path: file_path,
-          file_type: String(item["file_type"] ?? "NONE"),
+          file_type: String(record["file_type"] ?? "NONE"),
         });
       }
     }
@@ -409,19 +414,17 @@ export class ProjectRuntimeProjectionService {
   private normalize_item_record(
     item: ProjectRuntimeProjectionJsonRecord,
   ): ProjectRuntimeProjectionMutableRecord {
-    return {
-      item_id: this.read_number(item["id"], 0),
-      file_path: String(item["file_path"] ?? ""),
-      row_number: this.read_number(item["row"], 0),
-      src: String(item["src"] ?? ""),
-      dst: String(item["dst"] ?? ""),
-      name_src: item["name_src"] ?? null,
-      name_dst: item["name_dst"] ?? null,
-      status: String(item["status"] ?? "NONE"),
-      text_type: String(item["text_type"] ?? "NONE"),
-      retry_count: this.read_number(item["retry_count"], 0),
-      skip_internal_filter: item["skip_internal_filter"] === true,
-    };
+    const record = normalize_project_item_public_record(item);
+    if (record === null) {
+      throw new AppErrors.InternalInvariantError({
+        diagnostic_context: {
+          source: "project-runtime-projection",
+          missing_fields: collect_project_item_missing_public_fields(item),
+          item_id: this.read_number(item["id"] ?? item["item_id"], 0),
+        },
+      });
+    }
+    return record as unknown as ProjectRuntimeProjectionMutableRecord;
   }
 
   /**

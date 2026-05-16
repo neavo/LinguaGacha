@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("ProjectResetPreviewService", () => {
-  it("翻译 all 预演通过 文件域重解析生成预览 id", async () => {
+  it("翻译 all 预演通过 文件域重解析并保留当前 item id", async () => {
     const { database, lg_path, service } = create_service();
     database.execute({
       name: "addAssetFromSource",
@@ -53,6 +53,13 @@ describe("ProjectResetPreviewService", () => {
         path: "script.txt",
         sourcePath: write_source_file("script.txt"),
         sortOrder: 0,
+      },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [{ id: 1, src: "旧", dst: "old", row: 0, file_path: "script.txt" }],
       },
     });
 
@@ -64,6 +71,45 @@ describe("ProjectResetPreviewService", () => {
         src: "demo",
         file_path: "script.txt",
       }),
+    ]);
+  });
+
+  it("翻译 all 预演在文件顺序变化后仍按 file_path 和 row 保留 item id", async () => {
+    const { database, lg_path, service } = create_service();
+    database.execute({
+      name: "addAssetFromSource",
+      args: {
+        projectPath: lg_path,
+        path: "a.txt",
+        sourcePath: write_source_file("a.txt", "alpha"),
+        sortOrder: 1,
+      },
+    });
+    database.execute({
+      name: "addAssetFromSource",
+      args: {
+        projectPath: lg_path,
+        path: "b.txt",
+        sourcePath: write_source_file("b.txt", "beta"),
+        sortOrder: 0,
+      },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          { id: 1, src: "旧 A", dst: "old-a", row: 0, file_path: "a.txt" },
+          { id: 2, src: "旧 B", dst: "old-b", row: 0, file_path: "b.txt" },
+        ],
+      },
+    });
+
+    const result = await service.preview_translation_reset({ mode: "all" });
+
+    expect(result["items"]).toEqual([
+      expect.objectContaining({ id: 2, src: "beta", file_path: "b.txt", row: 0 }),
+      expect.objectContaining({ id: 1, src: "alpha", file_path: "a.txt", row: 0 }),
     ]);
   });
 
@@ -100,8 +146,8 @@ describe("ProjectResetPreviewService", () => {
 /**
  * 写入源文件并返回绝对路径，供数据库 asset 导入操作使用
  */
-function write_source_file(file_name: string): string {
+function write_source_file(file_name: string, content = "demo"): string {
   const file_path = path.join(temp_dir, file_name);
-  fs.writeFileSync(file_path, "demo", "utf-8");
+  fs.writeFileSync(file_path, content, "utf-8");
   return file_path;
 }

@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
+import type { ApiJsonValue } from "../api/api-types";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { ProjectSyncMutationService } from "./project-sync-mutation-service";
 import type { ProjectChangePublisher } from "./project-change-publisher";
@@ -47,6 +48,40 @@ function create_service(project_change_publisher: ProjectChangePublisher | null 
     ),
     task_runtime_state,
     lg_path,
+  };
+}
+
+function create_public_item(
+  overrides: Record<string, ApiJsonValue> = {},
+): Record<string, ApiJsonValue> {
+  return {
+    item_id: 1,
+    src: "原文",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 1,
+    file_type: "TXT",
+    file_path: "a.txt",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
+function create_persistent_item(
+  overrides: Record<string, ApiJsonValue> = {},
+): Record<string, ApiJsonValue> {
+  const item = create_public_item(overrides);
+  const { item_id, row_number, ...rest_item } = item;
+  return {
+    ...rest_item,
+    id: item_id,
+    row: row_number,
   };
 }
 
@@ -111,7 +146,24 @@ describe("ProjectSyncMutationService", () => {
       name: "setItems",
       args: {
         projectPath: lg_path,
-        items: [{ id: 1, src: "旧", dst: "old", status: "PROCESSED" }],
+        items: [
+          {
+            id: 1,
+            src: "旧",
+            dst: "old",
+            name_src: null,
+            name_dst: null,
+            extra_field: "",
+            tag: "",
+            row: 1,
+            file_type: "TXT",
+            file_path: "a.txt",
+            text_type: "NONE",
+            status: "PROCESSED",
+            retry_count: 0,
+            skip_internal_filter: false,
+          },
+        ],
       },
     });
     database.execute({
@@ -134,7 +186,24 @@ describe("ProjectSyncMutationService", () => {
 
     const ack = await service.apply_translation_reset({
       mode: "all",
-      items: [{ id: 1, src: "新", dst: "", status: "NONE", row: 1 }],
+      items: [
+        {
+          item_id: 1,
+          src: "新",
+          dst: "",
+          name_src: null,
+          name_dst: null,
+          extra_field: "",
+          tag: "",
+          row_number: 1,
+          file_type: "TXT",
+          file_path: "a.txt",
+          text_type: "NONE",
+          status: "NONE",
+          retry_count: 0,
+          skip_internal_filter: false,
+        },
+      ],
       translation_extras: { line: 0 },
       prefilter_config: { source_language: "JA" },
       expected_section_revisions: { items: 0, analysis: 0 },
@@ -150,6 +219,13 @@ describe("ProjectSyncMutationService", () => {
         id: 1,
         src: "新",
         dst: "",
+        name_src: null,
+        name_dst: null,
+        extra_field: "",
+        tag: "",
+        file_type: "TXT",
+        file_path: "a.txt",
+        text_type: "NONE",
         status: "NONE",
         row: 1,
         skip_internal_filter: false,
@@ -162,6 +238,69 @@ describe("ProjectSyncMutationService", () => {
         args: { projectPath: lg_path },
       }),
     ).toEqual([]);
+    database.close();
+  });
+
+  it("全量 items 写回遇到坏 payload 时失败且不清空既有 items", async () => {
+    const { database, service, lg_path } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_persistent_item({ dst: "old", status: "PROCESSED" })],
+      },
+    });
+    const valid_item = create_public_item();
+    const item_without_tag = create_public_item();
+    delete item_without_tag["tag"];
+    const invalid_requests: Array<Record<string, ApiJsonValue>> = [
+      { mode: "all", items: "bad" },
+      { mode: "all", items: [] },
+      { mode: "all", items: [item_without_tag] },
+      { mode: "all", items: [valid_item, valid_item] },
+      { mode: "all", items: [create_public_item({ item_id: 2 })] },
+    ];
+
+    for (const request of invalid_requests) {
+      await expect(
+        service.apply_translation_reset({
+          ...request,
+          expected_section_revisions: { items: 0, analysis: 0 },
+        }),
+      ).rejects.toThrow("request.validation_failed");
+    }
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_persistent_item({ dst: "old", status: "PROCESSED" }),
+    ]);
+    database.close();
+  });
+
+  it("settings alignment 的 prefiltered_items 同样拒绝不完整 DTO", async () => {
+    const { database, service, lg_path } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_persistent_item()],
+      },
+    });
+
+    const incomplete_item = create_public_item();
+    delete incomplete_item["extra_field"];
+
+    await expect(
+      service.apply_settings_alignment({
+        mode: "prefiltered_items",
+        items: [incomplete_item],
+        project_settings: { source_language: "JA" },
+        expected_section_revisions: { items: 0, analysis: 0 },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_persistent_item(),
+    ]);
     database.close();
   });
 

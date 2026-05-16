@@ -1,10 +1,31 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   create_analysis_reset_all_plan,
   create_analysis_reset_failed_plan,
 } from "@/project/reset/analysis-reset-plan";
+
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
 
 function create_test_state(): ProjectStoreState {
   return {
@@ -14,7 +35,7 @@ function create_test_state(): ProjectStoreState {
     },
     files: {},
     items: {
-      "1": {
+      "1": create_test_item({
         item_id: 1,
         file_path: "script/a.txt",
         row_number: 1,
@@ -23,8 +44,8 @@ function create_test_state(): ProjectStoreState {
         status: "NONE",
         text_type: "NONE",
         retry_count: 0,
-      },
-      "2": {
+      }),
+      "2": create_test_item({
         item_id: 2,
         file_path: "script/a.txt",
         row_number: 2,
@@ -33,7 +54,7 @@ function create_test_state(): ProjectStoreState {
         status: "EXCLUDED",
         text_type: "NONE",
         retry_count: 0,
-      },
+      }),
     },
     quality: {
       glossary: { entries: [], enabled: false, mode: "off", revision: 0 },

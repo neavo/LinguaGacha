@@ -290,11 +290,6 @@ export class ProjectDatabase {
           this.require_string(args, "projectPath"),
           this.require_array(args, "items"),
         ) as DatabaseJsonValue;
-      case "previewReplaceAllItemIds":
-        return this.preview_replace_all_item_ids(
-          this.require_string(args, "projectPath"),
-          this.require_array(args, "items"),
-        ) as DatabaseJsonValue;
       case "updateBatch":
         this.update_batch(
           this.require_string(args, "projectPath"),
@@ -1112,36 +1107,6 @@ export class ProjectDatabase {
       }
     }
     return ids;
-  }
-
-  /**
-   * 预览批量替换影响范围，避免页面直接拼 SQL 选择条目
-   */
-  private preview_replace_all_item_ids(project_path: string, items: DatabaseJsonValue[]): number[] {
-    const db = this.open_project(project_path);
-    const sequence_row = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'items'").get(); // 前端预演需要稳定 id，但不能为了预览提前改动 sqlite_sequence
-    const max_row = db.prepare("SELECT MAX(id) AS max_id FROM items").get();
-    let current_max_id = Math.max(
-      sequence_row === undefined ? 0 : row_number(sequence_row, "seq"),
-      max_row === undefined ? 0 : row_number(max_row, "max_id"),
-    );
-    const preview_ids: number[] = [];
-    for (const raw_item of items) {
-      const item = this.value_record(raw_item);
-      const raw_item_id = item["id"];
-      const item_id =
-        raw_item_id === undefined || raw_item_id === null || raw_item_id === ""
-          ? null
-          : Number(raw_item_id);
-      if (item_id === null || !Number.isFinite(item_id)) {
-        current_max_id += 1;
-        preview_ids.push(current_max_id);
-      } else {
-        current_max_id = Math.max(current_max_id, item_id);
-        preview_ids.push(item_id);
-      }
-    }
-    return preview_ids;
   }
 
   /**

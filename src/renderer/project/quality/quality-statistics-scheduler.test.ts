@@ -4,6 +4,7 @@ import type {
   QualityStatisticsTaskInput,
   QualityStatisticsTaskResult,
 } from "@/project/quality/quality-statistics";
+import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   REFRESH_DELAY_BY_PRIORITY,
@@ -47,6 +48,26 @@ function create_deferred<T>(): {
   };
 }
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 function create_test_state(): ProjectStoreState {
   return {
     project: {
@@ -55,12 +76,12 @@ function create_test_state(): ProjectStoreState {
     },
     files: {},
     items: {
-      "1": {
+      "1": create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
         src: "apple hero foo42",
         dst: "banana hero 保留",
-      },
+      }),
     },
     quality: {
       glossary: {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ProjectItemPublicRecord } from "@base/item";
 
 import {
   createProjectStore,
@@ -8,6 +9,26 @@ import {
   type ProjectStoreSectionStateMap,
   type ProjectStoreStage,
 } from "./project-store";
+
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
 
 function apply_store_sections(
   store: ReturnType<typeof createProjectStore>,
@@ -56,14 +77,14 @@ describe("createProjectStore", () => {
       sections: {
         project: { path: "E:/demo/demo.lg", loaded: true },
         items: {
-          1: {
+          1: create_test_item({
             item_id: 1,
             file_path: "chapter01.txt",
-          },
-          2: {
+          }),
+          2: create_test_item({
             item_id: 2,
             file_path: "chapter02.txt",
-          },
+          }),
         },
       },
     });
@@ -84,13 +105,13 @@ describe("createProjectStore", () => {
       },
       sections: {
         items: {
-          1: {
+          1: create_test_item({
             item_id: 1,
             file_path: "chapter01.txt",
             src: "原文",
             dst: "旧译文",
-            status: "PENDING",
-          },
+            status: "NONE",
+          }),
         },
       },
     });
@@ -102,25 +123,25 @@ describe("createProjectStore", () => {
       operations: [
         createProjectStoreItemsDeltaChange({
           upsertItems: [
-            {
+            create_test_item({
               item_id: 1,
               file_path: "chapter01.txt",
               src: "原文",
               dst: "新译文",
-              status: "DONE",
-            },
+              status: "PROCESSED",
+            }),
           ],
         }),
       ],
     });
 
-    expect(store.getState().items["1"]).toEqual({
+    expect(store.getState().items["1"]).toEqual(create_test_item({
       item_id: 1,
       file_path: "chapter01.txt",
       src: "原文",
       dst: "新译文",
-      status: "DONE",
-    });
+      status: "PROCESSED",
+    }));
     expect(store.getState().revisions.projectRevision).toBe(3);
     expect(store.getState().revisions.sections.items).toBe(3);
   });
@@ -138,12 +159,13 @@ describe("createProjectStore", () => {
         operations: [
           createProjectStoreItemsDeltaChange({
             upsertItems: [
-              {
+              create_test_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
+                src: "原文",
                 dst: "第一版",
                 status: "NONE",
-              },
+              }),
             ],
           }),
         ],
@@ -155,12 +177,13 @@ describe("createProjectStore", () => {
         operations: [
           createProjectStoreItemsDeltaChange({
             upsertItems: [
-              {
+              create_test_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
+                src: "原文",
                 dst: "第二版",
                 status: "PROCESSED",
-              },
+              }),
             ],
           }),
         ],
@@ -176,6 +199,19 @@ describe("createProjectStore", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("拒绝把瘦身 item upsert 写入共享 ProjectStore", () => {
+    expect(() =>
+      createProjectStoreItemsDeltaChange({
+        upsertItems: [
+          {
+            item_id: 1,
+            file_path: "chapter01.txt",
+          },
+        ],
+      }),
+    ).toThrow("完整公开 item DTO");
+  });
+
   it("对缺省 projectRevision 的项目变更保留已有 revision", () => {
     const store = createProjectStore();
 
@@ -186,13 +222,13 @@ describe("createProjectStore", () => {
       },
       sections: {
         items: {
-          1: {
+          1: create_test_item({
             item_id: 1,
             file_path: "chapter01.txt",
             src: "原文",
             dst: "旧译文",
-            status: "PENDING",
-          },
+            status: "NONE",
+          }),
         },
       },
     });
@@ -204,25 +240,25 @@ describe("createProjectStore", () => {
       operations: [
         createProjectStoreItemsDeltaChange({
           upsertItems: [
-            {
+            create_test_item({
               item_id: 1,
               file_path: "chapter01.txt",
               src: "原文",
               dst: "批次译文",
-              status: "DONE",
-            },
+              status: "PROCESSED",
+            }),
           ],
         }),
       ],
     });
 
-    expect(store.getState().items["1"]).toEqual({
+    expect(store.getState().items["1"]).toEqual(create_test_item({
       item_id: 1,
       file_path: "chapter01.txt",
       src: "原文",
       dst: "批次译文",
-      status: "DONE",
-    });
+      status: "PROCESSED",
+    }));
     expect(store.getState().revisions.projectRevision).toBe(5);
     expect(store.getState().revisions.sections.items).toBe(3);
   });
@@ -243,8 +279,8 @@ describe("createProjectStore", () => {
           "b.txt": { rel_path: "b.txt" },
         },
         items: {
-          1: { item_id: 1, file_path: "a.txt" },
-          2: { item_id: 2, file_path: "b.txt" },
+          1: create_test_item({ item_id: 1, file_path: "a.txt" }),
+          2: create_test_item({ item_id: 2, file_path: "b.txt" }),
         },
       },
     });
@@ -267,7 +303,7 @@ describe("createProjectStore", () => {
       "b.txt": { rel_path: "b.txt" },
     });
     expect(store.getState().items).toEqual({
-      2: { item_id: 2, file_path: "b.txt" },
+      2: create_test_item({ item_id: 2, file_path: "b.txt" }),
     });
     expect(result.fileDelta).toEqual({
       upsertFilePaths: [],

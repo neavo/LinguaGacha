@@ -6,18 +6,15 @@ import {
   type ProjectStoreSectionRevisions,
   type ProjectStoreState,
 } from "@/project/store/project-store";
+import {
+  Item,
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "@base/item";
 import { TASK_PROGRESS_STATUSES } from "@shared/task";
 
-type ProofreadingStoreItem = {
-  item_id: number;
-  file_path: string;
-  row_number: number;
-  src: string;
-  dst: string;
-  status: string;
-  text_type: string;
-  retry_count: number;
-};
+// 校对 planner 直接消费 ProjectStore 的完整公开 DTO，本地 upsert 不能降级成瘦身 item
+type ProofreadingStoreItem = ProjectItemPublicRecord;
 
 type ProofreadingFinalizedItemPayload = {
   id: number;
@@ -56,27 +53,9 @@ const TASK_ONLY_KEYS = new Set([
   "analysis_candidate_count",
 ]);
 
+// 读取 store item 时沿用公开 DTO 校验，缺字段的旧形状不参与校对 mutation
 function normalize_store_item(value: unknown): ProofreadingStoreItem | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  const item_id = Number(candidate.item_id ?? candidate.id ?? 0);
-  if (!Number.isInteger(item_id)) {
-    return null;
-  }
-
-  return {
-    item_id,
-    file_path: String(candidate.file_path ?? ""),
-    row_number: Number(candidate.row_number ?? candidate.row ?? 0),
-    src: String(candidate.src ?? ""),
-    dst: String(candidate.dst ?? ""),
-    status: String(candidate.status ?? ""),
-    text_type: String(candidate.text_type ?? "NONE"),
-    retry_count: Number(candidate.retry_count ?? 0),
-  };
+  return normalize_project_item_public_record(value);
 }
 
 function clone_store_item(item: ProofreadingStoreItem): ProofreadingStoreItem {
@@ -85,6 +64,7 @@ function clone_store_item(item: ProofreadingStoreItem): ProofreadingStoreItem {
   };
 }
 
+// 校对批量操作按 item_id 建索引，后续只复制并替换受影响条目
 function build_store_item_index(state: ProjectStoreState): Map<number, ProofreadingStoreItem> {
   const item_index = new Map<number, ProofreadingStoreItem>();
   for (const value of Object.values(state.items)) {
@@ -97,13 +77,17 @@ function build_store_item_index(state: ProjectStoreState): Map<number, Proofread
   return item_index;
 }
 
-function resolve_status_after_manual_edit(old_status: string, new_dst: string): string {
+function resolve_status_after_manual_edit(
+  old_status: string,
+  new_dst: string,
+): ProjectItemPublicRecord["status"] {
+  // 清空译文时保留旧状态，手工写入译文统一视为已处理
   if (new_dst === "") {
-    return old_status;
+    return Item.normalize_status(old_status);
   }
 
   if (old_status === "PROCESSED") {
-    return old_status;
+    return "PROCESSED";
   }
 
   return "PROCESSED";
@@ -218,6 +202,7 @@ function build_mutation_plan(args: {
     return null;
   }
 
+  // 本地 store 回流使用完整 DTO，后端 request 仍是局部 patch
   const changed_item_ids = args.changed_items.map((item) => item.item_id);
   const derived_state = build_derived_state({
     state: args.state,
@@ -233,18 +218,7 @@ function build_mutation_plan(args: {
     changed_item_ids,
     operations: [
       createProjectStoreItemsDeltaChange({
-        upsertItems: args.changed_items.map((item) => {
-          return {
-            item_id: item.item_id,
-            file_path: item.file_path,
-            row_number: item.row_number,
-            src: item.src,
-            dst: item.dst,
-            status: item.status,
-            text_type: item.text_type,
-            retry_count: item.retry_count,
-          };
-        }),
+        upsertItems: args.changed_items.map((item) => ({ ...item })),
       }),
       createProjectStoreReplaceSectionChange("proofreading", next_proofreading_state),
     ],

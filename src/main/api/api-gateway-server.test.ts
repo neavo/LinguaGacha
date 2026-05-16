@@ -20,6 +20,29 @@ describe("ApiGatewayServer", () => {
     }
   });
 
+  function create_project_item(
+    overrides: Partial<Record<string, string | number | boolean | null>>,
+  ): Record<string, string | number | boolean | null> {
+    const id = Number(overrides["id"] ?? 1);
+    return {
+      id,
+      src: "",
+      dst: "",
+      name_src: null,
+      name_dst: null,
+      extra_field: "",
+      tag: "",
+      row: id,
+      file_type: "TXT",
+      file_path: "",
+      text_type: "NONE",
+      status: "NONE",
+      retry_count: 0,
+      skip_internal_filter: false,
+      ...overrides,
+    };
+  }
+
   it("由 API Gateway 响应公开健康检查", async () => {
     const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
@@ -193,7 +216,7 @@ describe("ApiGatewayServer", () => {
       path: path.join(app_root, "created-by-ts.lg"),
       draft: {
         files: [{ rel_path: "source.txt", source_path, sort_index: 0 }],
-        items: [{ id: 1, file_path: "source.txt", src: "原文", status: "NONE" }],
+        items: [create_project_item({ id: 1, file_path: "source.txt", src: "原文" })],
       },
       project_settings: { source_language: "JA", target_language: "ZH" },
       translation_extras: {},
@@ -241,7 +264,7 @@ describe("ApiGatewayServer", () => {
       name: "setItems",
       args: {
         projectPath: lg_path,
-        items: [{ id: 1, src: "原文", dst: "", status: "NONE" }],
+        items: [create_project_item({ id: 1, src: "原文", dst: "" })],
       },
     });
 
@@ -260,9 +283,9 @@ describe("ApiGatewayServer", () => {
     expect(body.ok).toBe(true);
     expect(body.data?.accepted).toBe(true);
     expect(body.data?.sectionRevisions).toEqual({ items: 1, proofreading: 1 });
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
-    ]);
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toMatchObject(
+      [{ id: 1, src: "原文", dst: "译文", status: "PROCESSED" }],
+    );
   });
 
   it("由 LogManager 直接提供公开日志流", async () => {
@@ -308,7 +331,7 @@ describe("ApiGatewayServer", () => {
         name: "setItems",
         args: {
           projectPath: lg_path,
-          items: [{ id: 1, file_path: "a.txt", row: 1, src: "原文", status: "NONE" }],
+          items: [create_project_item({ id: 1, file_path: "a.txt", row: 1, src: "原文" })],
         },
       },
       {
@@ -372,8 +395,14 @@ describe("ApiGatewayServer", () => {
       args: {
         projectPath: lg_path,
         items: [
-          { id: 2, file_path: "a.txt", row: 1, src: "二号原文", status: "NONE" },
-          { id: 4, file_path: "b.txt", row: 2, src: "四号原文", status: "PROCESSED" },
+          create_project_item({ id: 2, file_path: "a.txt", row: 1, src: "二号原文" }),
+          create_project_item({
+            id: 4,
+            file_path: "b.txt",
+            row: 2,
+            src: "四号原文",
+            status: "PROCESSED",
+          }),
         ],
       },
     });
@@ -466,7 +495,7 @@ describe("ApiGatewayServer", () => {
       args: {
         projectPath: lg_path,
         items: [
-          {
+          create_project_item({
             id: 1,
             src: "原文",
             dst: "译文",
@@ -474,7 +503,7 @@ describe("ApiGatewayServer", () => {
             file_type: "TXT",
             file_path: "script.txt",
             row: 0,
-          },
+          }),
         ],
       },
     });

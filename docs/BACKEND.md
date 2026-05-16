@@ -36,7 +36,7 @@
 project -> files -> items -> quality -> prompts -> analysis -> proofreading
 ```
 
-`/api/project/manifest` 只返回项目快照、项目 revision、section revision 和轻量索引，不预热大 section。`/api/project/read-sections` 按需返回与 `ProjectStore` 同口径的 section payload；读取 `quality`、`prompts`、`project`、`proofreading` 不能隐式扫描完整 items。`/api/project/items/read-by-ids` 只读取指定 item id 的公开行，并随响应返回当前 `projectRevision` 与 `sectionRevisions`，供 renderer 丢弃过期补读结果。
+`/api/project/manifest` 只返回项目快照、项目 revision、section revision 和轻量索引，不预热大 section。`/api/project/read-sections` 按需返回与 `ProjectStore` 同口径的 section payload；读取 `quality`、`prompts`、`project`、`proofreading` 不能隐式扫描完整 items。`items` section 与 `/api/project/items/read-by-ids` 的 item 行必须是 `src/base/item` 派生的完整公开 DTO，公开字段使用 `item_id` / `row_number`，不得把数据库内部 `id` / `row` 泄漏给 renderer。`/api/project/items/read-by-ids` 随响应返回当前 `projectRevision` 与 `sectionRevisions`，供 renderer 丢弃过期补读结果。
 
 新增、删除或重排项目数据 section 时，必须同时更新：
 
@@ -63,6 +63,8 @@ flowchart LR
 - 同步 mutation 在 `.lg` 事务提交成功后必须通过 `ProjectChangePublisher` 发布项目数据变更；调用方只声明变更 section、payload mode 和可选 ids。
 - `ProjectChangeEventAdapter` 负责把变更草稿转换为公开 `ProjectChangeEvent`，并通过 `ProjectRuntimeProjectionService` 补齐 canonical delta 与本次更新 section revision。
 - `ProjectChangeEvent` 的 payload mode 只有 `canonical-delta`、`ids-only`、`section-invalidated`；`items` / `files` 支持行级 upsert 和 tombstone，其它 section 在 canonical-delta 下返回完整 section data。
+- item 全量写回只接收完整公开 DTO；缺关键字段、重复 id、非数组、错误 id 集合或用空数组覆盖非空数据库时必须在进入 `setItems` 前失败。局部 item mutation 只能提交 patch，并由后端合并当前数据库事实。
+- translation reset-all 预演重解析 asset 时必须按 `file_path + row` 回填当前 item id；文件重排只能改变展示顺序，不能让数组下标决定 item 身份。
 - `project` section 只表达工程加载态和路径；项目设置 meta 不进入 `ProjectStore.project`，settings-only 对齐只写 meta 和返回 ack，不发布不可消费的 project data 事件。
 - `/api/project/analysis/import-glossary` 接收用户确认后的术语表快照和 `consumed_candidate_srcs`；后端在同一事务消费对应分析候选聚合，且只在术语表条目真实变化时推进 `quality` revision，候选池消费始终推进 `analysis` revision。
 - `CoreEventHub` 是公开运行期事件总线，只广播领域层已经写好的公开事件，不再把 SSE topic 反向投影为内部状态。
@@ -117,7 +119,7 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 ## 6. 数据库与 `.lg` 物理存储
 
 - SQL、事务、SQLite 连接生命周期和 `.lg` asset 读写只允许落在 `src/main/database/`。
-- 旧版本迁移规则只允许落在 `src/main/migration/`，由单一编排器按 startup、project database schema、project database writeback、project open operation hook 执行；单个迁移文件只承载一个历史场景，不能恢复运行时兼容层。
+- 旧版本迁移规则只允许落在 `src/main/migration/`，由单一编排器按 startup、project database schema、project database writeback、project open operation hook 执行；单个迁移文件只承载一个历史场景，不能恢复运行时兼容层。历史 item 缺失完整公开 DTO 所需稳定字段时只在 migration 层补齐，projection、ProjectStore 和写回入口不得现场猜默认值。
 - Zstd 压缩/解压参数和运行时能力检查只允许落在 `src/shared/utils/zstd-tool.ts`。
 - `ProjectDatabase.execute()` 是上层服务使用的窄 workflow；新增 operation 必须集中校验参数，避免 SQL 语义散落到 service。
 - `execute_transaction()` 单个事务只允许绑定一个工程文件，避免跨 `.lg` 半提交。

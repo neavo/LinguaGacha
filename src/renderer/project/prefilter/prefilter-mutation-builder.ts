@@ -2,11 +2,15 @@ import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   build_analysis_status_summary,
   build_translation_task_and_project_state,
-  clone_runtime_project_item_record,
+  clone_project_item_view_record,
   create_empty_translation_task_snapshot,
-  normalize_runtime_project_item_record,
-  type RuntimeProjectItemRecord,
+  derive_project_item_view_record_from_public,
+  type ProjectItemViewRecord,
 } from "@/project/reset/reset-state-builders";
+import {
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "@base/item";
 import { should_skip_by_language_prefilter } from "@shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "@shared/prefilter/rule-prefilter";
 
@@ -23,7 +27,7 @@ type ProjectPrefilterStats = {
 };
 
 export type ProjectPrefilterMutationOutput = {
-  items: Record<string, Record<string, unknown>>;
+  items: Record<string, ProjectItemPublicRecord>;
   analysis: Record<string, unknown>;
   translation_extras: Record<string, unknown>;
   task_snapshot: Record<string, unknown>;
@@ -73,20 +77,24 @@ export function compute_project_prefilter_mutation(
     file_type_by_path.set(file.rel_path, file.file_type);
   }
 
-  const item_index = new Map<number, RuntimeProjectItemRecord>();
+  // full_item_index 保留完整 DTO，item_index 只承载预过滤会改写的视图字段
+  const full_item_index = new Map<number, ProjectItemPublicRecord>();
+  const item_index = new Map<number, ProjectItemViewRecord>();
   for (const value of Object.values(input.state.items)) {
-    const item = normalize_runtime_project_item_record(value);
-    if (item === null) {
+    const public_item = normalize_project_item_public_record(value);
+    if (public_item === null) {
       continue;
     }
-    item_index.set(item.item_id, clone_runtime_project_item_record(item));
+    const item = derive_project_item_view_record_from_public(public_item);
+    full_item_index.set(public_item.item_id, public_item);
+    item_index.set(item.item_id, clone_project_item_view_record(item));
   }
 
   let rule_skipped = 0;
   let language_skipped = 0;
   let mtool_skipped = 0;
   let duplicated = 0;
-  const kvjson_items_by_path = new Map<string, RuntimeProjectItemRecord[]>();
+  const kvjson_items_by_path = new Map<string, ProjectItemViewRecord[]>();
 
   for (const item of item_index.values()) {
     if (
@@ -165,15 +173,24 @@ export function compute_project_prefilter_mutation(
     }
   }
 
-  const next_items: Record<string, Record<string, unknown>> = {};
+  // 预过滤输出仍是完整 DTO，只把视图计算结果覆盖回原始事实
+  const next_items: Record<string, ProjectItemPublicRecord> = {};
   for (const item of item_index.values()) {
+    const full_item = full_item_index.get(item.item_id);
+    if (full_item === undefined) {
+      continue;
+    }
     next_items[String(item.item_id)] = {
-      item_id: item.item_id,
+      ...full_item,
       file_path: item.file_path,
       row_number: item.row_number,
       src: item.src,
       dst: item.dst,
+      name_src: full_item.name_src,
       name_dst: item.name_dst ?? null,
+      extra_field: full_item.extra_field,
+      tag: full_item.tag,
+      file_type: full_item.file_type,
       status: item.status,
       text_type: item.text_type,
       retry_count: item.retry_count,

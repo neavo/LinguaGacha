@@ -1,6 +1,10 @@
 import { Prompt } from "@base/prompt";
 import { QualityRule } from "@base/quality";
 import {
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "@base/item";
+import {
   PROJECT_DATA_SECTIONS,
   isProjectDataSection,
   type ProjectChangeFilesPayload,
@@ -59,7 +63,7 @@ export type ProjectStoreProofreadingState = {
 export type ProjectStoreSectionStateMap = {
   project: ProjectStoreProjectState;
   files: Record<string, unknown>;
-  items: Record<string, unknown>;
+  items: Record<string, ProjectItemPublicRecord>;
   quality: ProjectStoreQualityState;
   prompts: ProjectStorePromptsState;
   analysis: Record<string, unknown>;
@@ -450,7 +454,13 @@ function cloneProjectStoreSection<TStage extends ProjectStoreStage>(
     } as ProjectStoreSectionStateMap[TStage];
   }
 
-  if (section === "files" || section === "items" || section === "analysis") {
+  if (section === "items") {
+    return normalizeProjectItemRecordMap(
+      value as Record<string, unknown>,
+    ) as ProjectStoreSectionStateMap[TStage];
+  }
+
+  if (section === "files" || section === "analysis") {
     return {
       ...(value as Record<string, unknown>),
     } as ProjectStoreSectionStateMap[TStage];
@@ -568,18 +578,19 @@ export function createProjectStoreReplaceSectionChange<TStage extends ProjectSto
   };
 }
 
+// 本地 change 的单条 upsert 也必须是完整公开 DTO，ProjectStore 不做字段级 merge
 function normalize_project_store_item_delta_record(
   item: Record<string, unknown>,
 ): { key: string; id: number; record: ProjectChangeJsonRecord } | null {
-  const item_id = Number(item.item_id ?? item.id ?? 0);
-  if (!Number.isInteger(item_id) || item_id <= 0) {
-    return null;
+  const normalized_item = normalize_project_item_public_record(item);
+  if (normalized_item === null) {
+    throw new Error("ProjectStore.items 的 upsert 必须是完整公开 item DTO。");
   }
 
   return {
-    key: String(item_id),
-    id: item_id,
-    record: { ...item } as ProjectChangeJsonRecord,
+    key: String(normalized_item.item_id),
+    id: normalized_item.item_id,
+    record: { ...normalized_item } as unknown as ProjectChangeJsonRecord,
   };
 }
 
@@ -665,6 +676,24 @@ function normalizeRecordMap(value: Record<string, unknown> | undefined): Record<
   );
 }
 
+// section replace 和 canonical delta 共用同一完整 DTO 校验，禁止瘦身 item 进入共享 store
+function normalizeProjectItemRecordMap(
+  value: Record<string, unknown> | undefined,
+): Record<string, ProjectItemPublicRecord> {
+  if (value === undefined) {
+    return {};
+  }
+  const records: Record<string, ProjectItemPublicRecord> = {};
+  for (const item of Object.values(value)) {
+    const normalized_item = normalize_project_item_public_record(item);
+    if (normalized_item === null) {
+      throw new Error("ProjectStore.items section 必须是完整公开 item DTO map。");
+    }
+    records[String(normalized_item.item_id)] = normalized_item;
+  }
+  return records;
+}
+
 function applySectionPayloadToState(
   state: ProjectStoreState,
   section: ProjectDataSection,
@@ -680,7 +709,10 @@ function applySectionPayloadToState(
     return { ...state, files: normalizeRecordMap(payload.data as Record<string, unknown>) };
   }
   if (section === "items") {
-    return { ...state, items: normalizeRecordMap(payload.data as Record<string, unknown>) };
+    return {
+      ...state,
+      items: normalizeProjectItemRecordMap(payload.data as Record<string, unknown>),
+    };
   }
   if (section === "quality") {
     return { ...state, quality: normalizeQualityState(payload.data as ProjectStoreQualityState) };
@@ -704,7 +736,9 @@ function applyItemsPayloadToState(
   if (payload.payloadMode !== "canonical-delta") {
     return state;
   }
-  const upsert = normalizeRecordMap(payload.upsert as Record<string, unknown> | undefined);
+  const upsert = normalizeProjectItemRecordMap(
+    payload.upsert as Record<string, unknown> | undefined,
+  );
   return {
     ...state,
     items: deleteSectionRecords(
@@ -713,7 +747,7 @@ function applyItemsPayloadToState(
         ...upsert,
       },
       payload.deleteIds,
-    ),
+    ) as Record<string, ProjectItemPublicRecord>,
   };
 }
 

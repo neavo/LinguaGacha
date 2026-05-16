@@ -44,7 +44,14 @@ describe("ProjectItemStableMetadataMigration", () => {
         text_type: "WOLF",
         retry_count: 0,
       },
-      { src: "B", status: "NONE", file_type: "NONE", text_type: "NONE", row: 0, retry_count: 0 },
+      {
+        src: "B",
+        status: "NONE",
+        file_type: "NONE",
+        text_type: "NONE",
+        row: 0,
+        retry_count: 0,
+      },
       "not-json",
     ]);
   });

@@ -105,9 +105,9 @@ describe("TaskSnapshotBuilder", () => {
         args: {
           projectPath: project_path,
           items: [
-            { id: 101, src: "原文", status: "NONE" },
-            { id: 102, src: "失败", status: "NONE" },
-            { id: 103, src: "跳过", status: "EXCLUDED" },
+            create_project_item({ id: 101, src: "原文", status: "NONE" }),
+            create_project_item({ id: 102, src: "失败", status: "NONE" }),
+            create_project_item({ id: 103, src: "跳过", status: "EXCLUDED" }),
           ],
         },
       },
@@ -133,5 +133,28 @@ describe("TaskSnapshotBuilder", () => {
         },
       },
     ]);
+  }
+
+  function create_project_item(
+    overrides: Partial<Record<string, string | number | boolean | null>>,
+  ): Record<string, string | number | boolean | null> {
+    const id = Number(overrides["id"] ?? 1);
+    return {
+      id,
+      src: "",
+      dst: "",
+      name_src: null,
+      name_dst: null,
+      extra_field: "",
+      tag: "",
+      row: id,
+      file_type: "TXT",
+      file_path: "script.txt",
+      text_type: "NONE",
+      status: "NONE",
+      retry_count: 0,
+      skip_internal_filter: false,
+      ...overrides,
+    };
   }
 });

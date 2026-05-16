@@ -48,8 +48,10 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRuntimeStore` 消费的 `TaskSnapshot` 固定为 `base + progress + extras`：通用状态只在 base，进度只在 `progress`，分析候选数只在 `extras.kind === "analysis"`，重翻行级状态只在 `extras.kind === "translation" && scope.kind === "items"`。
 - 停止命令 HTTP ack 只能携带后端当前完整 `TaskSnapshot`；页面可以同步写入该 snapshot，但不能在页面层追加“终态优先于 stopping”的第二套排序规则。
 - 共享项目事实只能来自项目读取接口、`project.data_changed`、同步 mutation ack 后的 revision 对齐，以及明确的本地乐观 change。
+- `ProjectStore.items` 持有完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、worker 和 planner 可以派生轻量 view model，但派生物不得直接写回 `.lg` 或作为 `items` upsert 进入共享 store。
 - `section-invalidated` 不能只推进 revision；运行时必须先用 `/api/project/read-sections` 补读失效 section，再以 exact revision 合并，避免旧实体冒充新事实。
 - 本地乐观 change 必须通过 `commit_local_project_change()`，并提供可回滚的 section 快照。
+- 本地 item upsert 必须由当前完整 DTO 加局部 patch 合成完整记录；只表达字段变化的路径应走专门 mutation payload，由后端合并数据库事实。
 - `ProjectStore` change revision 默认合并，乐观 change 使用 exact revision；项目数据派生缓存只能消费 `ProjectDataRevisionCheckpoint` 和声明的 required sections，不得用 `task` 或时间戳作为 freshness 主依据。
 - `delete_items` / `delete_files` 是显式 tombstone 语义；无法精确表达删除时必须使用对应 section 的 full replace，让派生缓存重建。
 - renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并和分析导入预演复用 `src/shared/quality`；Electron 桌面宿主契约从 `src/desktop` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。

@@ -1,9 +1,33 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProjectItemPublicRecord } from "@base/item";
 import { compute_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-builder";
 import type { ProjectStoreState } from "@/project/store/project-store";
 
-function create_state(items: Record<string, Record<string, unknown>>): ProjectStoreState {
+function create_test_item(
+  key: string,
+  overrides: Partial<ProjectItemPublicRecord>,
+): ProjectItemPublicRecord {
+  return {
+    item_id: Number(overrides.item_id ?? key),
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "script.txt",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
+function create_state(items: Record<string, Partial<ProjectItemPublicRecord>>): ProjectStoreState {
   return {
     project: {
       path: "E:/demo.lg",
@@ -19,7 +43,9 @@ function create_state(items: Record<string, Record<string, unknown>>): ProjectSt
         file_type: "KVJSON",
       },
     },
-    items,
+    items: Object.fromEntries(
+      Object.entries(items).map(([key, item]) => [key, create_test_item(key, item)]),
+    ),
     quality: {
       glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
       pre_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
