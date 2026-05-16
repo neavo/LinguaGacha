@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  QualityRuleImportRuleTypeValue,
-  preview_quality_rule_fill_empty_import,
-  preview_quality_rule_import,
-} from "./importer";
+import { QualityRuleImportRuleTypeValue, preview_quality_rule_import } from "./importer";
 import type { JsonRecord } from "../utils/json-tool";
 
 describe("preview_quality_rule_import", () => {
@@ -197,88 +193,5 @@ describe("preview_quality_rule_import", () => {
 
     expect(preview.overwrite_entries).toHaveLength(1);
     expect(preview.overwrite_entries[0]?.dst).toBe("新值");
-  });
-});
-
-describe("preview_quality_rule_fill_empty_import", () => {
-  it("自动导入只补空目标并保留 incoming 下标", () => {
-    const preview = preview_quality_rule_fill_empty_import({
-      rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
-      existing: [{ src: "艾琳", dst: "", info: "", case_sensitive: false }],
-      incoming: [{ src: "艾琳", dst: "Erin", info: "角色名", case_sensitive: false }],
-    });
-
-    expect(preview.report).toEqual({ added: 0, filled: 1 });
-    expect(preview.entries[0]?.incoming_indexes).toEqual([0]);
-    expect(preview.merged_entries[0]).toEqual({
-      src: "艾琳",
-      dst: "Erin",
-      info: "角色名",
-      regex: false,
-      case_sensitive: false,
-    });
-  });
-
-  it("fill-empty 不覆盖非空字段或行为开关", () => {
-    const preview = preview_quality_rule_fill_empty_import({
-      rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
-      existing: [{ src: "HP", dst: "生命值", info: "", case_sensitive: true }],
-      incoming: [{ src: "hp", dst: "血量", info: "new", case_sensitive: false }],
-    });
-
-    expect(preview.merged_entries).toHaveLength(1);
-    expect(preview.merged_entries[0]?.dst).toBe("生命值");
-    expect(preview.merged_entries[0]?.info).toBe("new");
-    expect(preview.merged_entries[0]?.case_sensitive).toBe(true);
-    expect(preview.report.filled).toBe(1);
-  });
-
-  it("文本保护 fill-empty 只填 info", () => {
-    const preview = preview_quality_rule_fill_empty_import({
-      rule_type: QualityRuleImportRuleTypeValue.TEXT_PRESERVE,
-      existing: [{ src: "Tag", info: "" }],
-      incoming: [{ src: "TAG", info: "保留标签" }],
-    });
-
-    expect(preview.merged_entries).toHaveLength(1);
-    expect(preview.merged_entries[0]?.info).toBe("保留标签");
-    expect(preview.report.filled).toBe(1);
-  });
-
-  it("文本替换 fill-empty 会按相同 src_norm 去重", () => {
-    const preview = preview_quality_rule_fill_empty_import({
-      rule_type: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
-      existing: [
-        { src: "HP", dst: "", regex: true, case_sensitive: true },
-        { src: "HP", dst: "旧值", regex: false, case_sensitive: true },
-      ],
-      incoming: [{ src: "HP", dst: "新值", regex: false, case_sensitive: true }],
-    });
-
-    expect(preview.merged_entries).toHaveLength(1);
-    expect(preview.merged_entries[0]?.src).toBe("HP");
-    expect(preview.merged_entries[0]?.dst).toBe("旧值");
-    expect(preview.merged_entries[0]?.regex).toBe(true);
-    expect(preview.report.filled).toBe(1);
-  });
-
-  it("自动导入会收集折叠后新条目的 incoming 下标", () => {
-    const preview = preview_quality_rule_fill_empty_import({
-      rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
-      existing: [],
-      incoming: [
-        { src: "Alice", dst: "爱丽丝", info: "", case_sensitive: false },
-        { src: " alice ", dst: "", info: "女性人名", case_sensitive: false },
-      ],
-    });
-
-    expect(preview.merged_entries).toHaveLength(1);
-    expect(preview.merged_entries[0]?.src).toBe("Alice");
-    expect(preview.merged_entries[0]?.dst).toBe("爱丽丝");
-    expect(preview.merged_entries[0]?.info).toBe("女性人名");
-    expect(preview.report).toEqual({ added: 1, filled: 1 });
-    expect(preview.entries).toHaveLength(1);
-    expect(preview.entries[0]?.is_new).toBe(true);
-    expect(preview.entries[0]?.incoming_indexes).toEqual([0, 1]);
   });
 });

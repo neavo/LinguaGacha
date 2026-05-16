@@ -85,6 +85,11 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
       analysis_waveform_history: [],
       analysis_detail_sheet_open: false,
       analysis_confirm_state: null,
+      analysis_import_confirm_state: {
+        open: false,
+        duplicate_count: 0,
+        submitting: false,
+      },
       analysis_importing: false,
       analysis_task_menu_disabled: false,
       analysis_task_menu_busy: false,
@@ -95,6 +100,9 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
       confirm_analysis_task_action: async () => {},
       close_analysis_task_action_confirmation: () => {},
       request_import_analysis_glossary: async () => {},
+      import_analysis_glossary_duplicate_skip: async () => {},
+      import_analysis_glossary_duplicate_overwrite: async () => {},
+      close_analysis_glossary_import_confirmation: () => {},
       refresh_analysis_task_snapshot: async () => {},
     },
     active_workbench_task_view: {

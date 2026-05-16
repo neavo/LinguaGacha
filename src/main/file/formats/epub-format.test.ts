@@ -64,7 +64,7 @@ describe("EPUBFormat", () => {
       (rel_path) => (rel_path === "book.epub" ? epub_asset : null),
     );
 
-    expect(fs.existsSync(path.join(paths.translated_path, "book.zh.epub"))).toBe(true);
+    expect(fs.existsSync(path.join(paths.translated_path, "book.epub"))).toBe(true);
     expect(fs.existsSync(path.join(paths.bilingual_path, "book.ja.zh.epub"))).toBe(true);
   });
 });

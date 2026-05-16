@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALL_LANGUAGE_CODE,
+  LANGUAGE_CODES,
   LANGUAGE_DEFINITIONS,
   LANGUAGE_DISPLAY_NAMES,
-  SOURCE_TARGET_LANGUAGE_CODES,
+  SOURCE_LANGUAGE_CODES,
+  TARGET_LANGUAGE_CODES,
   all_language_characters,
   get_language_display_name,
   get_language_label_key,
@@ -34,25 +36,32 @@ import { is_app_error } from "./error";
 describe("languages", () => {
   it("以语言定义表作为前端语言代码清单事实源", () => {
     expect(Object.keys(LANGUAGE_DEFINITIONS).sort()).toEqual(
-      [ALL_LANGUAGE_CODE, ...SOURCE_TARGET_LANGUAGE_CODES].sort(),
+      [ALL_LANGUAGE_CODE, ...LANGUAGE_CODES].sort(),
     );
     expect(Object.keys(LANGUAGE_DISPLAY_NAMES).sort()).toEqual(
-      [ALL_LANGUAGE_CODE, ...SOURCE_TARGET_LANGUAGE_CODES].sort(),
+      [ALL_LANGUAGE_CODE, ...LANGUAGE_CODES].sort(),
     );
+    expect(SOURCE_LANGUAGE_CODES).not.toContain("ZH-HANT");
+    expect(TARGET_LANGUAGE_CODES).toContain("ZH-HANT");
+    expect(TARGET_LANGUAGE_CODES.slice(0, 3)).toEqual(["ZH", "ZH-HANT", "EN"]);
   });
 
   it("集中维护统一语言名称与 i18n key", () => {
     expect(get_language_display_name("ZH", "zh")).toBe("中文");
+    expect(get_language_display_name("ZH-HANT", "zh")).toBe("中文（繁体）");
     expect(get_language_display_name("JA", "zh")).toBe("日文");
     expect(get_language_display_name("ES", "zh")).toBe("西班牙文");
     expect(get_language_display_name("ZH", "en")).toBe("Chinese");
+    expect(get_language_display_name("ZH-HANT", "en")).toBe("Traditional Chinese");
     expect(get_language_label_key("JA")).toBe("app.language.JA");
+    expect(get_language_label_key("ZH-HANT")).toBe("app.language.ZH-HANT");
   });
 
   it("提示词语言名对 ALL 和非法目标语言执行专用规则", () => {
     expect(get_prompt_source_language_name("ALL", "zh")).toBe("原文");
     expect(get_prompt_source_language_name(null, "en")).toBe("Source");
     expect(get_prompt_target_language_name("ZH", "zh")).toBe("中文");
+    expect(get_prompt_target_language_name("ZH-HANT", "zh")).toBe("中文（繁体）");
     let all_code: string | null = null;
     try {
       get_prompt_target_language_name("ALL", "zh");
@@ -71,16 +80,20 @@ describe("languages", () => {
 
   it("按历史语言规则口径归一化语言代码", () => {
     expect(normalize_language_code("fr")).toBe("FR");
+    expect(normalize_language_code(" zh-hant ")).toBe("ZH-HANT");
     expect(normalize_language_code(" VI ")).toBe("VI");
+    expect(normalize_language_code("ZH_HANT")).toBeNull();
     expect(normalize_language_code("unknown")).toBeNull();
   });
 
   it("识别 CJK 语言分组和对应文字", () => {
     expect(is_cjk_language_code("ja")).toBe(true);
+    expect(is_cjk_language_code("zh-hant")).toBe(true);
     expect(is_cjk_language_code("EN")).toBe(false);
     expect(has_language_character("かなカナ漢字", "JA")).toBe(true);
     expect(has_language_character("한국어", "KO")).toBe(true);
     expect(has_language_character("plain english line", "ZH")).toBe(false);
+    expect(has_language_character("繁體中文", "ZH-HANT")).toBe(true);
   });
 
   it("基于 Unicode Script 识别正文字符并排除数字和符号", () => {

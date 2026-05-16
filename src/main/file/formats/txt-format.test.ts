@@ -60,9 +60,9 @@ describe("TXTFormat", () => {
       },
     );
 
-    expect(
-      fs.readFileSync(path.join(temp_dir, "translated", "story", "dialog.zh.txt"), "utf-8"),
-    ).toBe("同文\n译文");
+    expect(fs.readFileSync(path.join(temp_dir, "translated", "story", "dialog.txt"), "utf-8")).toBe(
+      "同文\n译文",
+    );
     expect(
       fs.readFileSync(path.join(temp_dir, "bilingual", "story", "dialog.ja.zh.txt"), "utf-8"),
     ).toBe("同文\n原文\n译文");
@@ -98,7 +98,7 @@ describe("TXTFormat", () => {
       },
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "demo_译文", "script.zh.txt"), "utf-8")).toBe(
+    expect(fs.readFileSync(path.join(temp_dir, "demo_译文", "script.txt"), "utf-8")).toBe(
       "译文\n同文",
     );
     expect(

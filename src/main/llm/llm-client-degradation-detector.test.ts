@@ -36,5 +36,8 @@ describe("llm request degradation detector", () => {
     expect(
       LLMClientDegradationDetector.has_output_degradation(`${normal_prefix}${"哈".repeat(50)}`),
     ).toBe(true);
+    expect(
+      LLMClientDegradationDetector.has_output_degradation(`${"哈".repeat(50)}${normal_prefix}`),
+    ).toBe(false);
   });
 });

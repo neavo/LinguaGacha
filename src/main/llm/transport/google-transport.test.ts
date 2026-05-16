@@ -5,6 +5,47 @@ import { GoogleTransport } from "./google-transport";
 import type { ProviderClientResolver } from "./transport-types";
 
 describe("GoogleTransport", () => {
+  it("归一 Gemini stream 的正文、思考和 token 用量", async () => {
+    const transport = new GoogleTransport(
+      create_pool(
+        [],
+        [
+          {
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: " 思考 ", thought: true }, { text: " 你好" }],
+                },
+              },
+            ],
+            usageMetadata: {
+              promptTokenCount: 3,
+            },
+          },
+          {
+            text: "，世界 ",
+            usageMetadata: {
+              candidatesTokenCount: 5,
+            },
+          },
+        ],
+      ),
+    );
+
+    const result = await transport.send(create_policy(), new AbortController().signal);
+
+    expect(result).toEqual({
+      response_think: "思考",
+      response_result: "你好，世界",
+      input_tokens: 3,
+      output_tokens: 5,
+      cancelled: false,
+      timeout: false,
+      degraded: false,
+      error: "",
+    });
+  });
+
   it("把 AbortSignal 写入 Google SDK 的 GenerateContentConfig", async () => {
     const captured_payloads: unknown[] = [];
     const transport = new GoogleTransport(create_pool(captured_payloads));
@@ -47,33 +88,38 @@ describe("GoogleTransport", () => {
   });
 });
 
-function create_pool(captured_payloads: unknown[]): ProviderClientResolver {
+function create_pool(
+  captured_payloads: unknown[],
+  chunks: unknown[] = [
+    {
+      text: "你好",
+      usageMetadata: {
+        promptTokenCount: 1,
+        candidatesTokenCount: 2,
+      },
+    },
+  ],
+): ProviderClientResolver {
   return {
     get_client: <T>() =>
       ({
         models: {
           generateContentStream: async (payload: unknown) => {
             captured_payloads.push(payload);
-            return create_stream();
+            return create_stream(chunks);
           },
         },
       }) as T,
   };
 }
 
-async function* create_stream(): AsyncGenerator<unknown> {
-  yield {
-    text: "你好",
-    usageMetadata: {
-      promptTokenCount: 1,
-      candidatesTokenCount: 2,
-    },
-  };
+async function* create_stream(chunks: unknown[]): AsyncGenerator<unknown> {
+  for (const chunk of chunks) {
+    yield chunk;
+  }
 }
 
-function create_policy(
-  overrides: Partial<ResolvedRequestPolicy> = {},
-): ResolvedRequestPolicy {
+function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): ResolvedRequestPolicy {
   return {
     provider: "google",
     api_format: "Google",

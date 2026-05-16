@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import JSZip from "jszip";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../test/epub-fixture";
 import { Item } from "../../../base/item";
@@ -22,13 +23,52 @@ afterEach(() => {
 /**
  * 写回器配置固定为日译中，便于断言导出后的可见正文
  */
-function create_writer(): EpubWriter {
+function create_writer(target_language = "ZH"): EpubWriter {
   return new EpubWriter({
     source_language: "JA",
-    target_language: "ZH",
+    target_language,
     deduplication_in_bilingual: true,
     write_translated_name_fields_to_file: true,
   });
+}
+
+/**
+ * 构造带翻页方向、竖排 CSS 和横竖排 class 的 EPUB，专门覆盖写回排版策略
+ */
+async function create_layout_epub_fixture(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    "META-INF/container.xml",
+    `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`,
+  );
+  zip.file(
+    "OPS/package.opf",
+    `<?xml version="1.0" encoding="UTF-8"?>
+<package version="3.0" xmlns="http://www.idpf.org/2007/opf">
+  <metadata/>
+  <manifest>
+    <item id="style" href="style.css" media-type="text/css"/>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine page-progression-direction="rtl">
+    <itemref idref="chapter"/>
+  </spine>
+</package>`,
+  );
+  zip.file("OPS/style.css", ".vrtl { writing-mode: vertical-rl; color: red; }");
+  zip.file(
+    "OPS/chapter.xhtml",
+    `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body><p class="vrtl keep" style="writing-mode: vertical-rl; color: red;">章节</p></body>
+</html>`,
+  );
+  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
 }
 
 /**
@@ -51,7 +91,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const item = await create_translated_epub_item(epub_asset, "译文");
-    const translated_path = path.join(temp_dir, "translated", "book.zh.epub");
+    const translated_path = path.join(temp_dir, "translated", "book.epub");
     const bilingual_path = path.join(temp_dir, "bilingual", "book.ja.zh.epub");
 
     await writer.build_epub(epub_asset, [item], translated_path, false);
@@ -66,7 +106,7 @@ describe("EpubWriter", () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
     const item = await create_translated_epub_item(epub_asset, "译文😀𠀀");
-    const out_path = path.join(temp_dir, "supplementary", "book.zh.epub");
+    const out_path = path.join(temp_dir, "supplementary", "book.epub");
 
     await writer.build_epub(epub_asset, [item], out_path, false);
 
@@ -76,7 +116,7 @@ describe("EpubWriter", () => {
   it("缺少 AST metadata 时回退 legacy 顺序写回", async () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
-    const out_path = path.join(temp_dir, "legacy", "book.zh.epub");
+    const out_path = path.join(temp_dir, "legacy", "book.epub");
     const legacy_item = Item.from_json({
       src: "章节",
       dst: "译文",
@@ -97,7 +137,7 @@ describe("EpubWriter", () => {
   it("legacy 写回按字面量保留 replacement 特殊美元序列", async () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
-    const out_path = path.join(temp_dir, "legacy-special-dollar", "book.zh.epub");
+    const out_path = path.join(temp_dir, "legacy-special-dollar", "book.epub");
     const legacy_item = Item.from_json({
       src: "章节",
       dst: "译文$& $1 $$",
@@ -114,5 +154,62 @@ describe("EpubWriter", () => {
 
     expect(written_text).toContain("译文$&amp; $1 $$");
     expect(written_text).not.toContain("译文章节");
+  });
+
+  it.each(["JA", "ZH-HANT"] as const)(
+    "目标语言为 %s 时 legacy 写回保留 EPUB 阅读排版信息",
+    async (target_language) => {
+      const writer = create_writer(target_language);
+      const epub_asset = await create_layout_epub_fixture();
+      const out_path = path.join(temp_dir, `layout-${target_language}`, "book.epub");
+      const legacy_item = Item.from_json({
+        src: "章节",
+        dst: "译文",
+        row: 0,
+        file_type: "EPUB",
+        file_path: "book.epub",
+        tag: "OPS/chapter.xhtml",
+        status: "PROCESSED",
+      });
+
+      await writer.build_epub(epub_asset, [legacy_item], out_path, false);
+
+      const written_epub = fs.readFileSync(out_path);
+      const opf_text = await read_epub_entry_text(written_epub, "OPS/package.opf");
+      const css_text = await read_epub_entry_text(written_epub, "OPS/style.css");
+      const xhtml_text = await read_epub_entry_text(written_epub);
+
+      expect(opf_text).toContain('page-progression-direction="rtl"');
+      expect(css_text).toContain("writing-mode: vertical-rl");
+      expect(xhtml_text).toContain('class="vrtl keep"');
+      expect(xhtml_text).toContain("writing-mode: vertical-rl");
+    },
+  );
+
+  it("目标语言不需要保留阅读排版时继续清洗 EPUB 方向和竖排信息", async () => {
+    const writer = create_writer("ZH");
+    const epub_asset = await create_layout_epub_fixture();
+    const out_path = path.join(temp_dir, "layout-clean", "book.epub");
+    const legacy_item = Item.from_json({
+      src: "章节",
+      dst: "译文",
+      row: 0,
+      file_type: "EPUB",
+      file_path: "book.epub",
+      tag: "OPS/chapter.xhtml",
+      status: "PROCESSED",
+    });
+
+    await writer.build_epub(epub_asset, [legacy_item], out_path, false);
+
+    const written_epub = fs.readFileSync(out_path);
+    const opf_text = await read_epub_entry_text(written_epub, "OPS/package.opf");
+    const css_text = await read_epub_entry_text(written_epub, "OPS/style.css");
+    const xhtml_text = await read_epub_entry_text(written_epub);
+
+    expect(opf_text).not.toContain('page-progression-direction="rtl"');
+    expect(css_text).not.toContain("writing-mode: vertical-rl");
+    expect(xhtml_text).toContain('class="keep"');
+    expect(xhtml_text).not.toContain("writing-mode: vertical-rl");
   });
 });

@@ -44,30 +44,12 @@ export type QualityRuleImportPreview = {
   overwrite_entries: JsonRecord[];
 };
 
-// 自动导入仍只补空字段；它共享 key 与 normalize 语义，但不进入用户确认流程
-export type QualityRuleFillEmptyImportPreview = {
-  merged_entries: JsonRecord[];
-  entries: Array<{
-    entry: JsonRecord;
-    is_new: boolean;
-    incoming_indexes: number[];
-  }>;
-  report: {
-    added: number;
-    filled: number;
-  };
-};
-
-type QualityRuleImportMode = "OVERWRITE" | "FILL_EMPTY";
-
 type QualityRuleImportItem = {
   entry: JsonRecord;
   src_norm: string;
   src_fold: string;
   case_sensitive: boolean;
   order: number;
-  is_existing: boolean;
-  incoming_index: number | null;
 };
 
 type DuplicateIndexItem = {
@@ -88,20 +70,10 @@ type QualityRuleKeptEntry = {
   order: number;
   key: string;
   entry: JsonRecord;
-  incoming_indexes: number[];
 };
 
 type QualityRuleImportMergeSnapshot = {
   merged_entries: JsonRecord[];
-  entries: Array<{
-    entry: JsonRecord;
-    is_new: boolean;
-    incoming_indexes: number[];
-  }>;
-  report: {
-    added: number;
-    filled: number;
-  };
 };
 
 /**
@@ -120,13 +92,11 @@ export function preview_quality_rule_import(args: {
     rule_type: args.rule_type,
     existing: args.existing,
     incoming: skip_incoming,
-    mode: "OVERWRITE",
   });
   const overwrite_result = merge_quality_rule_import_entries({
     rule_type: args.rule_type,
     existing: args.existing,
     incoming: args.incoming,
-    mode: "OVERWRITE",
   });
 
   return {
@@ -140,65 +110,29 @@ export function preview_quality_rule_import(args: {
   };
 }
 
-/**
- * 自动候选导入只补空字段；它复用同一共享归宿，但不触发三按钮确认流。
- */
-export function preview_quality_rule_fill_empty_import(args: {
-  rule_type: QualityRuleImportRuleType;
-  existing: JsonRecord[];
-  incoming: JsonRecord[];
-}): QualityRuleFillEmptyImportPreview {
-  return merge_quality_rule_import_entries({
-    rule_type: args.rule_type,
-    existing: args.existing,
-    incoming: args.incoming,
-    mode: "FILL_EMPTY",
-  });
-}
-
 function merge_quality_rule_import_entries(args: {
   rule_type: QualityRuleImportRuleType;
   existing: JsonRecord[];
   incoming: JsonRecord[];
-  mode: QualityRuleImportMode;
 }): QualityRuleImportMergeSnapshot {
   const existing_items = ingest_import_rows(args.existing, {
     order_offset: 0,
-    is_existing: true,
   });
   const incoming_items = ingest_import_rows(args.incoming, {
     order_offset: args.existing.length,
-    is_existing: false,
   });
   const grouped_items = group_import_items_by_fold([...existing_items, ...incoming_items]);
-  const existing_keys = collect_existing_keys(args.rule_type, grouped_items);
   const kept_entries = merge_grouped_import_entries(args, grouped_items);
   kept_entries.sort((left, right) => left.order - right.order);
 
-  let added = 0;
-  for (const entry of kept_entries) {
-    if (!existing_keys.has(entry.key)) {
-      added += 1;
-    }
-  }
-
   return {
     merged_entries: kept_entries.map((entry) => ({ ...entry.entry })),
-    entries: kept_entries.map((entry) => ({
-      entry: { ...entry.entry },
-      is_new: !existing_keys.has(entry.key),
-      incoming_indexes: [...entry.incoming_indexes],
-    })),
-    report: {
-      added,
-      filled: count_filled_import_entries(args, grouped_items),
-    },
   };
 }
 
 function ingest_import_rows(
   rows: JsonRecord[],
-  options: { order_offset: number; is_existing: boolean },
+  options: { order_offset: number },
 ): QualityRuleImportItem[] {
   return rows.flatMap((raw_entry, index) => {
     if (!is_record(raw_entry)) {
@@ -218,8 +152,6 @@ function ingest_import_rows(
         src_fold: fold_quality_rule_import_src(src_norm),
         case_sensitive: Boolean(entry["case_sensitive"] ?? false),
         order: options.order_offset + index,
-        is_existing: options.is_existing,
-        incoming_index: options.is_existing ? null : index,
       },
     ];
   });
@@ -240,35 +172,8 @@ function group_import_items_by_fold(
   return grouped_items;
 }
 
-function collect_existing_keys(
-  rule_type: QualityRuleImportRuleType,
-  grouped_items: Map<string, QualityRuleImportItem[]>,
-): Set<string> {
-  const existing_keys = new Set<string>();
-  for (const [src_fold, items] of grouped_items) {
-    // key 策略只与规则类型及 case_sensitive 语义有关，regex 不参与判重
-    const fold_only = should_use_fold_only_key(rule_type, items);
-    if (fold_only) {
-      if (items.some((item) => item.is_existing)) {
-        existing_keys.add(src_fold);
-      }
-      continue;
-    }
-
-    for (const item of items) {
-      if (item.is_existing) {
-        existing_keys.add(build_norm_key(src_fold, item.src_norm));
-      }
-    }
-  }
-  return existing_keys;
-}
-
 function merge_grouped_import_entries(
-  args: {
-    rule_type: QualityRuleImportRuleType;
-    mode: QualityRuleImportMode;
-  },
+  args: { rule_type: QualityRuleImportRuleType },
   grouped_items: Map<string, QualityRuleImportItem[]>,
 ): QualityRuleKeptEntry[] {
   const kept_entries: QualityRuleKeptEntry[] = [];
@@ -279,7 +184,6 @@ function merge_grouped_import_entries(
       for (const item of items.slice(1)) {
         merge_import_entry_into_base({
           rule_type: args.rule_type,
-          mode: args.mode,
           base,
           other: item.entry,
         });
@@ -288,7 +192,6 @@ function merge_grouped_import_entries(
         order: items[0].order,
         key: src_fold,
         entry: base,
-        incoming_indexes: collect_incoming_indexes(items),
       });
       continue;
     }
@@ -308,7 +211,6 @@ function merge_grouped_import_entries(
       for (const item of norm_items.slice(1)) {
         merge_import_entry_into_base({
           rule_type: args.rule_type,
-          mode: args.mode,
           base,
           other: item.entry,
         });
@@ -317,7 +219,6 @@ function merge_grouped_import_entries(
         order: norm_items[0].order,
         key: build_norm_key(src_fold, src_norm),
         entry: base,
-        incoming_indexes: collect_incoming_indexes(norm_items),
       });
     }
   }
@@ -326,14 +227,10 @@ function merge_grouped_import_entries(
 
 function merge_import_entry_into_base(args: {
   rule_type: QualityRuleImportRuleType;
-  mode: QualityRuleImportMode;
   base: JsonRecord;
   other: JsonRecord;
 }): boolean {
-  if (args.mode === "OVERWRITE") {
-    return overwrite_import_entry_into_base(args.rule_type, args.base, args.other);
-  }
-  return fill_empty_import_entry_into_base(args.rule_type, args.base, args.other);
+  return overwrite_import_entry_into_base(args.rule_type, args.base, args.other);
 }
 
 function overwrite_import_entry_into_base(
@@ -365,67 +262,6 @@ function overwrite_import_entry_into_base(
     }
   }
   return changed;
-}
-
-function fill_empty_import_entry_into_base(
-  rule_type: QualityRuleImportRuleType,
-  base: JsonRecord,
-  other: JsonRecord,
-): boolean {
-  let filled = false;
-  for (const field of get_fill_empty_fields(rule_type)) {
-    const current_value = read_text(base, field);
-    const next_value = read_text(other, field);
-    if (current_value === "" && next_value !== "") {
-      base[field] = next_value;
-      filled = true;
-    }
-  }
-  return filled;
-}
-
-function count_filled_import_entries(
-  args: {
-    rule_type: QualityRuleImportRuleType;
-    mode: QualityRuleImportMode;
-  },
-  grouped_items: Map<string, QualityRuleImportItem[]>,
-): number {
-  if (args.mode !== "FILL_EMPTY") {
-    return 0;
-  }
-
-  let filled = 0;
-  for (const raw_items of grouped_items.values()) {
-    const items = [...raw_items].sort((left, right) => left.order - right.order);
-    const buckets = should_use_fold_only_key(args.rule_type, items)
-      ? [items]
-      : [...bucket_items_by_norm(items).values()];
-    for (const bucket of buckets) {
-      const base = { ...bucket[0].entry };
-      for (const item of bucket.slice(1)) {
-        if (fill_empty_import_entry_into_base(args.rule_type, base, item.entry)) {
-          filled += 1;
-        }
-      }
-    }
-  }
-  return filled;
-}
-
-function bucket_items_by_norm(
-  items: QualityRuleImportItem[],
-): Map<string, QualityRuleImportItem[]> {
-  const by_norm = new Map<string, QualityRuleImportItem[]>();
-  for (const item of items) {
-    const group = by_norm.get(item.src_norm);
-    if (group === undefined) {
-      by_norm.set(item.src_norm, [item]);
-    } else {
-      group.push(item);
-    }
-  }
-  return by_norm;
 }
 
 function build_duplicate_key_groups(args: {
@@ -573,22 +409,6 @@ function get_overwrite_fields(rule_type: QualityRuleImportRuleType) {
     : rule_type === "GLOSSARY"
       ? (["dst", "info", "case_sensitive"] as const)
       : (["dst", "regex", "case_sensitive"] as const);
-}
-
-function get_fill_empty_fields(rule_type: QualityRuleImportRuleType) {
-  return rule_type === "TEXT_PRESERVE"
-    ? (["info"] as const)
-    : rule_type === "GLOSSARY"
-      ? (["dst", "info"] as const)
-      : (["dst"] as const);
-}
-
-function collect_incoming_indexes(items: QualityRuleImportItem[]): number[] {
-  return [
-    ...new Set(
-      items.flatMap((item) => (item.incoming_index === null ? [] : [item.incoming_index])),
-    ),
-  ].sort((left, right) => left - right);
 }
 
 function read_target_text(rule_type: QualityRuleImportRuleType, entry: JsonRecord): string {

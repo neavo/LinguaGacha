@@ -38,6 +38,23 @@ describe("ApiGatewayServer", () => {
     expect(Object.keys(body.data ?? {})).not.toContain("instance" + "Token");
   });
 
+  it("预检请求只暴露公开 CORS 头", async () => {
+    const { gateway, database } = await create_gateway();
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+
+    const started = await gateway.start();
+    const response = await fetch(`${started.baseUrl}/api/project/manifest`, {
+      headers: { "Access-Control-Request-Headers": "X-Private-Header" },
+      method: "OPTIONS",
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET,POST,OPTIONS");
+    expect(response.headers.get("Access-Control-Allow-Headers")).toBe("Content-Type");
+  });
+
   it("未知 JSON 路由不再代理并返回稳定 request.route_not_found", async () => {
     const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
@@ -78,7 +95,7 @@ describe("ApiGatewayServer", () => {
     expect(body.error?.request_id).toMatch(/[0-9a-f-]{36}/u);
   });
 
-  it("P2 项目同步 mutation 由 API Gateway 直接处理", async () => {
+  it("项目同步 mutation 由 API Gateway 直接处理", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const gateway = await create_gateway_with_database(app_root, database);
@@ -339,6 +356,74 @@ describe("ApiGatewayServer", () => {
     expect(sections_body.data?.sections?.prompts?.translation?.text).toBe("\uD800");
   });
 
+  it("按 item id 补读只接受当前工程正整数并去重", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "read-items-by-id.lg");
+    const gateway = await create_gateway_with_database(app_root, database);
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "read-items-by-id" },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          { id: 2, file_path: "a.txt", row: 1, src: "二号原文", status: "NONE" },
+          { id: 4, file_path: "b.txt", row: 2, src: "四号原文", status: "PROCESSED" },
+        ],
+      },
+    });
+
+    const started = await gateway.start();
+    await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
+    const response = await post_json(started.baseUrl, "/api/project/items/read-by-ids", {
+      itemIds: [2, "2", 4, 0, -1, "bad", 99],
+    });
+    const body = (await response.json()) as {
+      ok?: boolean;
+      data?: {
+        items?: Record<string, { src?: string }>;
+        missingIds?: number[];
+      };
+    };
+
+    expect(body.ok).toBe(true);
+    expect(body.data?.items).toMatchObject({
+      "2": { src: "二号原文" },
+      "4": { src: "四号原文" },
+    });
+    expect(Object.keys(body.data?.items ?? {})).toEqual(["2", "4"]);
+    expect(body.data?.missingIds).toEqual([99]);
+  });
+
+  it("按 item id 补读在工程未加载时拒绝读取任意路径", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "unloaded-read-items.lg");
+    const gateway = await create_gateway_with_database(app_root, database);
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "unloaded-read-items" },
+    });
+
+    const started = await gateway.start();
+    const response = await post_json(started.baseUrl, "/api/project/items/read-by-ids", {
+      itemIds: [1],
+      path: lg_path,
+    });
+    const body = (await response.json()) as { ok?: boolean; error?: { code?: string } };
+
+    expect(response.status).toBe(409);
+    expect(body.ok).toBe(false);
+    expect(body.error?.code).toBe("project.not_loaded");
+  });
+
   it("公开任务路由由 API Gateway 直处理", async () => {
     const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => gateway.stop());
@@ -416,12 +501,12 @@ describe("ApiGatewayServer", () => {
       accepted: true,
       output_path: path.join(app_root, "generate-route_译文"),
     });
-    expect(fs.existsSync(path.join(app_root, "generate-route_译文", "script.zh.txt"))).toBe(true);
+    expect(fs.existsSync(path.join(app_root, "generate-route_译文", "script.txt"))).toBe(true);
     expect(legacy_response.status).toBe(404);
     expect(legacy_body.error?.code).toBe("request.route_not_found");
   });
 
-  it("长期事件流由 事件 hub 提供 keepalive 并在退出时关闭", async () => {
+  it("长期事件流由事件 hub 提供 keepalive 并在 Gateway 退出时关闭", async () => {
     const { gateway, database } = await create_gateway();
     cleanup_callbacks.push(() => database.close());
 

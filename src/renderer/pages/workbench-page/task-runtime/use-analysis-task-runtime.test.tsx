@@ -4,12 +4,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useAnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
 
-const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
-  return {
-    api_fetch_mock: vi.fn(),
-    push_toast_mock: vi.fn(),
-  };
-});
+const { api_fetch_mock, prepare_analysis_glossary_import_mock, push_toast_mock } = vi.hoisted(
+  () => {
+    return {
+      api_fetch_mock: vi.fn(),
+      prepare_analysis_glossary_import_mock: vi.fn<() => Promise<Record<string, unknown> | null>>(
+        async () => null,
+      ),
+      push_toast_mock: vi.fn(),
+    };
+  },
+);
 
 const run_modal_progress_toast_mock = vi.fn(
   async <T,>(args: { message: string; task: () => Promise<T> }): Promise<T> => {
@@ -53,7 +58,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
 
 vi.mock("@/project/importer/analysis-glossary-importer", () => {
   return {
-    prepare_analysis_glossary_import: vi.fn(async () => null),
+    prepare_analysis_glossary_import: prepare_analysis_glossary_import_mock,
   };
 });
 
@@ -226,6 +231,68 @@ function flush_microtasks(): Promise<void> {
   });
 }
 
+function create_prepared_import(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  return {
+    duplicate_count: 0,
+    duplicate_signature: "",
+    imported_count: 1,
+    consumed_count: 1,
+    quality_changed: true,
+    next_quality_state: {
+      glossary: {
+        entries: [
+          { src: "alpha", dst: "Alpha", info: "角色名", regex: false, case_sensitive: true },
+        ],
+        enabled: true,
+        mode: "custom",
+        revision: 2,
+      },
+      pre_replacement: {
+        entries: [],
+        enabled: false,
+        mode: "off",
+        revision: 0,
+      },
+      post_replacement: {
+        entries: [],
+        enabled: false,
+        mode: "off",
+        revision: 0,
+      },
+      text_preserve: {
+        entries: [],
+        enabled: false,
+        mode: "off",
+        revision: 0,
+      },
+    },
+    next_analysis_state: {
+      candidate_count: 0,
+      candidate_aggregate: {},
+    },
+    next_task_snapshot: {
+      task_type: "analysis",
+      status: "done",
+      busy: false,
+      extras: { kind: "analysis", candidate_count: 0 },
+    },
+    updated_sections: ["quality", "analysis"],
+    request_body: {
+      entries: [{ src: "alpha", dst: "Alpha", info: "角色名", regex: false, case_sensitive: true }],
+      analysis_candidate_count: 0,
+      consumed_candidate_srcs: ["alpha"],
+      expected_glossary_revision: 1,
+      expected_section_revisions: {
+        quality: 0,
+        analysis: 4,
+      },
+    },
+    ...overrides,
+  };
+}
+
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useAnalysisTaskRuntime>) => void;
 }): JSX.Element | null {
@@ -261,6 +328,8 @@ describe("useAnalysisTaskRuntime", () => {
       }),
     );
     api_fetch_mock.mockReset();
+    prepare_analysis_glossary_import_mock.mockReset();
+    prepare_analysis_glossary_import_mock.mockResolvedValue(null);
     push_toast_mock.mockReset();
     run_modal_progress_toast_mock.mockClear();
   });
@@ -301,10 +370,8 @@ describe("useAnalysisTaskRuntime", () => {
 
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({
-        status: "done",
+        status: "idle",
         busy: false,
-        line: 10,
-        processed_line: 10,
         extras: { kind: "analysis", candidate_count: 2 },
       }),
     );
@@ -321,6 +388,157 @@ describe("useAnalysisTaskRuntime", () => {
       "success",
       "workbench_page.analysis_task.feedback.done",
     );
+  });
+
+  it("手动导入遇到重复候选时打开重复确认框且不写入", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "done",
+        busy: false,
+        line: 10,
+        processed_line: 10,
+        extras: { kind: "analysis", candidate_count: 2 },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+    prepare_analysis_glossary_import_mock.mockResolvedValue(
+      create_prepared_import({
+        duplicate_count: 1,
+        duplicate_signature: "0:alpha:different-target:0",
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.request_import_analysis_glossary();
+    });
+    await flush_microtasks();
+
+    expect(latest_state?.analysis_import_confirm_state).toMatchObject({
+      open: true,
+      duplicate_count: 1,
+      submitting: false,
+    });
+    expect(runtime_fixture.current.commit_local_project_change).not.toHaveBeenCalled();
+    expect(api_fetch_mock).not.toHaveBeenCalledWith(
+      "/api/project/analysis/import-glossary",
+      expect.anything(),
+    );
+  });
+
+  it("重复候选选择跳过时只提交分析候选消费", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "idle",
+        busy: false,
+        extras: { kind: "analysis", candidate_count: 1 },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/project/analysis/import-glossary") {
+        return {
+          accepted: true,
+          projectRevision: 11,
+          sectionRevisions: {
+            analysis: 5,
+          },
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+    prepare_analysis_glossary_import_mock
+      .mockResolvedValueOnce(
+        create_prepared_import({
+          duplicate_count: 1,
+          duplicate_signature: "0:alpha:different-target:0",
+        }),
+      )
+      .mockResolvedValueOnce(
+        create_prepared_import({
+          duplicate_count: 1,
+          duplicate_signature: "0:alpha:different-target:0",
+          imported_count: 0,
+          quality_changed: false,
+          updated_sections: ["analysis"],
+          request_body: {
+            entries: [
+              {
+                src: "alpha",
+                dst: "旧译名",
+                info: "旧说明",
+                regex: false,
+                case_sensitive: true,
+              },
+            ],
+            analysis_candidate_count: 0,
+            consumed_candidate_srcs: ["alpha"],
+            expected_glossary_revision: 1,
+            expected_section_revisions: {
+              quality: 0,
+              analysis: 4,
+            },
+          },
+        }),
+      );
+
+    await render_probe();
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.request_import_analysis_glossary();
+    });
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.import_analysis_glossary_duplicate_skip();
+    });
+    await flush_microtasks();
+
+    expect(prepare_analysis_glossary_import_mock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "skip" }),
+    );
+    expect(runtime_fixture.current.commit_local_project_change).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "analysis_import_glossary",
+        updatedSections: ["analysis"],
+      }),
+    );
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/analysis/import-glossary", {
+      entries: [
+        {
+          src: "alpha",
+          dst: "旧译名",
+          info: "旧说明",
+          regex: false,
+          case_sensitive: true,
+        },
+      ],
+      analysis_candidate_count: 0,
+      consumed_candidate_srcs: ["alpha"],
+      expected_glossary_revision: 1,
+      expected_section_revisions: {
+        quality: 0,
+        analysis: 4,
+      },
+    });
+    expect(latest_state?.analysis_import_confirm_state.open).toBe(false);
   });
 
   it("分析停止完成时只弹一次停止提示", async () => {

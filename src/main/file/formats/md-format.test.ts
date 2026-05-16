@@ -44,7 +44,7 @@ describe("MDFormat", () => {
     ]);
   });
 
-  it("写出目标语言后缀的 Markdown 译文并忽略其它文件类型", async () => {
+  it("写出沿用源文件名的 Markdown 译文并忽略其它文件类型", async () => {
     const format = new MDFormat({ source_language: "JA", target_language: "ZH" });
     await format.write_to_path(
       [
@@ -76,9 +76,9 @@ describe("MDFormat", () => {
       },
     );
 
-    expect(
-      fs.readFileSync(path.join(temp_dir, "translated", "docs", "readme.zh.md"), "utf-8"),
-    ).toBe("甲\n乙");
-    expect(fs.existsSync(path.join(temp_dir, "translated", "docs", "other.zh.txt"))).toBe(false);
+    expect(fs.readFileSync(path.join(temp_dir, "translated", "docs", "readme.md"), "utf-8")).toBe(
+      "甲\n乙",
+    );
+    expect(fs.existsSync(path.join(temp_dir, "translated", "docs", "other.txt"))).toBe(false);
   });
 });

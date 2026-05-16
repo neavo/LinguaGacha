@@ -41,6 +41,24 @@ describe("UserDataMigrationService", () => {
     expect(fs.readFileSync(path.join(legacy_dir, "readme.md"), "utf-8")).toBe("keep");
   });
 
+  it("当前配置已存在时不会被旧默认配置覆盖", () => {
+    const service = create_service();
+    write_file(
+      path.join(temp_dir, "userdata", "config.json"),
+      JsonTool.stringifyStrict({ clean_ruby: false }),
+    );
+    write_file(
+      path.join(temp_dir, "resource", "config.json"),
+      JsonTool.stringifyStrict({ clean_ruby: true }),
+    );
+
+    service.migrate_default_config_if_needed();
+
+    expect(
+      JsonTool.parseStrict(fs.readFileSync(path.join(temp_dir, "userdata", "config.json"))),
+    ).toEqual({ clean_ruby: false });
+  });
+
   it("把旧质量规则用户预设迁到当前 userdata 目录", () => {
     const service = create_service();
     write_file(path.join(temp_dir, "resource", "preset", "glossary", "user", "mine.json"), "[]");

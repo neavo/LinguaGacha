@@ -44,6 +44,7 @@ export interface ExportPaths {
 const LANGUAGE_SUFFIX: Record<string, string> = {
   JA: "ja",
   ZH: "zh",
+  "ZH-HANT": "zh-hant",
   EN: "en",
   RU: "ru",
   AR: "ar",
@@ -61,6 +62,8 @@ const LANGUAGE_SUFFIX: Record<string, string> = {
   KO: "ko",
 };
 
+const EPUB_READING_LAYOUT_TARGET_LANGUAGES = new Set(["JA", "ZH-HANT"]); // 日文与繁中导出保留原 EPUB 翻页方向和竖排信息
+
 /**
  * 模拟历史 splitlines 行为，但保留每一行作为独立翻译条目
  */
@@ -76,7 +79,7 @@ export function split_text_lines_for_items(text: string): string[] {
 }
 
 /**
- * 从配置生成文件名语言后缀，保证目标与双语导出一致
+ * 从配置生成文件名语言后缀，供双语对照导出标记源语和目标语
  */
 export function language_suffix(
   config: FileFormatServiceConfig,
@@ -87,15 +90,21 @@ export function language_suffix(
 }
 
 /**
- * 构造单语译文输出路径，文件名插入目标语言后缀
+ * EPUB 阅读排版保留策略只由目标语言决定，避免 AST 与 legacy 写回分支各自判断
+ */
+export function should_preserve_epub_reading_layout(target_language: string): boolean {
+  return EPUB_READING_LAYOUT_TARGET_LANGUAGES.has(target_language.trim().toUpperCase());
+}
+
+/**
+ * 构造单语译文输出路径，文件名沿用源文件相对路径
  */
 export function build_target_path(
-  config: FileFormatServiceConfig,
+  _config: FileFormatServiceConfig,
   base_path: string,
   rel_path: string,
 ): string {
-  const parsed = path.parse(path.join(base_path, rel_path));
-  return path.join(parsed.dir, `${parsed.name}.${language_suffix(config, "target")}${parsed.ext}`);
+  return path.join(base_path, rel_path);
 }
 
 /**

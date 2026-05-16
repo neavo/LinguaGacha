@@ -54,6 +54,78 @@ describe("TaskService", () => {
     });
   });
 
+  it("启动分析任务只校验质量和提示词 revision", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const begin_records: Array<Record<string, unknown>> = [];
+    const service = new TaskService(
+      {
+        start: async (command: Record<string, unknown>) => {
+          calls.push(command);
+        },
+      } as unknown as TaskEngine,
+      create_snapshot_builder({ quality: 5, prompts: 6 }),
+      create_task_runtime_publisher({ begin_records }),
+      new ProjectSessionState(),
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+    );
+
+    const result = await service.start_task({
+      task_type: "analysis",
+      mode: "CONTINUE",
+      expected_section_revisions: { quality: 5, prompts: 6, items: 404 },
+    });
+
+    expect(calls).toEqual([
+      {
+        task_type: "analysis",
+        mode: "continue",
+        expected_section_revisions: { quality: 5, prompts: 6, items: 404 },
+      },
+    ]);
+    expect(begin_records).toEqual([{ task_type: "analysis", scope: { kind: "all" } }]);
+    expect(result).toEqual({
+      accepted: true,
+      task: {
+        task_type: "analysis",
+        status: "requested",
+        busy: true,
+      },
+    });
+  });
+
+  it("Engine 启动失败时恢复此前任务运行态并继续抛出错误", async () => {
+    const previous_state = {
+      active_task_type: "translation",
+      busy: true,
+      request_in_flight_count: 2,
+      status: "running",
+      translation_scope: { kind: "items", item_ids: [9] },
+    };
+    const restored_states: unknown[] = [];
+    const service = new TaskService(
+      {
+        start: async () => {
+          throw new Error("engine failed");
+        },
+      } as unknown as TaskEngine,
+      create_snapshot_builder({ quality: 1, prompts: 2 }),
+      create_task_runtime_publisher({ previous_state, restored_states }),
+      new ProjectSessionState(),
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+    );
+
+    await expect(
+      service.start_task({
+        task_type: "translation",
+        mode: "new",
+        scope: { kind: "all" },
+        expected_section_revisions: { quality: 1, prompts: 2 },
+      }),
+    ).rejects.toThrow("engine failed");
+
+    expect(restored_states).toEqual([previous_state]);
+  });
+
   it("单条翻译在没有激活模型时直接返回 NO_ACTIVE_MODEL", async () => {
     let called = false;
     const service = new TaskService(
@@ -204,17 +276,28 @@ describe("TaskService", () => {
     } as unknown as TaskSnapshotBuilder;
   }
 
-  function create_task_runtime_publisher(): TaskRuntimePublisher {
+  function create_task_runtime_publisher(
+    options: {
+      begin_records?: Array<Record<string, unknown>>;
+      previous_state?: Record<string, unknown>;
+      restored_states?: unknown[];
+    } = {},
+  ): TaskRuntimePublisher {
+    const previous_state = options.previous_state ?? {
+      active_task_type: "idle",
+      busy: false,
+      request_in_flight_count: 0,
+      translation_scope: { kind: "all" },
+      status: "idle",
+    };
     return {
-      begin_task: async () => undefined,
-      restore: async () => undefined,
-      snapshot_state: () => ({
-        active_task_type: "idle",
-        busy: false,
-        request_in_flight_count: 0,
-        translation_scope: { kind: "all" },
-        status: "idle",
-      }),
+      begin_task: async (task_type: string, scope: Record<string, unknown>) => {
+        options.begin_records?.push({ task_type, scope });
+      },
+      restore: async (state: unknown) => {
+        options.restored_states?.push(state);
+      },
+      snapshot_state: () => previous_state,
     } as unknown as TaskRuntimePublisher;
   }
 

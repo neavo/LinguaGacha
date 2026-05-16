@@ -89,6 +89,35 @@ describe("ProjectDatabaseMigrationService", () => {
     );
   });
 
+  it("损坏的写回迁移版本会按未执行处理并修复旧规则类型", () => {
+    const db = open_database("corrupted-writeback-version.lg");
+    db.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        data TEXT NOT NULL
+      );
+    `);
+    db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(
+      "writeback_migration_version",
+      "not-json",
+    );
+    db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
+      "TEXT_PRESERVE",
+      JsonTool.stringifyStrict([{ src: "保留原文", dst: "" }]),
+    );
+
+    ProjectDatabaseMigrationService.migrate(db);
+
+    expect(read_rule_rows(db)).toEqual([
+      { type: "text_preserve", data: [{ src: "保留原文", dst: "" }] },
+    ]);
+    expect(read_meta_number(db, "writeback_migration_version")).toBe(
+      PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
+    );
+  });
+
   it("旧 assets 缺少 sort_order 时按 id 顺序补齐稳定文件顺序", () => {
     const db = open_database("legacy-assets.lg");
     db.exec(`

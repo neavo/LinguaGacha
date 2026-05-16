@@ -8,7 +8,9 @@ import { getSharedQualityStatisticsWorkerPool } from "@/project/quality/quality-
 import { getQualityRuleSlice, replaceQualityRuleSlice } from "@/project/quality/quality-runtime";
 import {
   QualityRuleImportRuleTypeValue,
-  preview_quality_rule_fill_empty_import,
+  preview_quality_rule_import,
+  type QualityRuleImportAction,
+  type QualityRuleImportPreview,
 } from "@shared/quality/importer";
 
 type CandidateAggregateEntry = {
@@ -22,36 +24,30 @@ type GlossaryEntry = {
   src: string;
   dst: string;
   info: string;
+  regex: boolean;
   case_sensitive: boolean;
 };
 
-type FillEmptyPreviewEntry = {
-  entry: GlossaryEntry;
-  is_new: boolean;
-  incoming_indexes: number[];
-};
-
-type FillEmptyPreview = {
-  merged_entries: GlossaryEntry[];
-  entries: FillEmptyPreviewEntry[];
-  report: {
-    added: number;
-    filled: number;
-  };
-};
-
 type PreparedAnalysisGlossaryImport = {
+  duplicate_count: number;
+  duplicate_signature: string;
   imported_count: number;
+  consumed_count: number;
+  quality_changed: boolean;
   next_quality_state: ProjectStoreQualityState;
   next_analysis_state: Record<string, unknown>;
   next_task_snapshot: Record<string, unknown>;
+  updated_sections: Array<"quality" | "analysis">;
   request_body: {
     entries: GlossaryEntry[];
     analysis_candidate_count: number;
+    consumed_candidate_srcs: string[];
     expected_glossary_revision: number;
     expected_section_revisions: Record<string, number>;
   };
 };
+
+export type AnalysisGlossaryImportAction = QualityRuleImportAction;
 
 const CONTROL_CODE_PATTERN = /\\(?:n|N){1,2}\[\d+\]/u;
 const quality_statistics_worker_pool = getSharedQualityStatisticsWorkerPool();
@@ -149,6 +145,7 @@ function build_glossary_from_candidates(
       src: entry.src,
       dst,
       info,
+      regex: false,
       case_sensitive: entry.case_sensitive,
     });
   }
@@ -164,34 +161,92 @@ function normalize_glossary_entry(entry: Record<string, unknown>): GlossaryEntry
     src,
     dst: String(entry.dst ?? "").trim(),
     info: String(entry.info ?? "").trim(),
+    regex: Boolean(entry.regex ?? false),
     case_sensitive: Boolean(entry.case_sensitive),
   };
 }
 
-function preview_glossary_fill_empty_import(
+function normalize_record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
+}
+
+function remove_consumed_candidate_aggregate(
+  value: unknown,
+  consumed_srcs: string[],
+): Record<string, unknown> {
+  const consumed_src_set = new Set(
+    consumed_srcs.map((src) => src.trim()).filter((src) => src !== ""),
+  );
+  if (consumed_src_set.size === 0) {
+    return normalize_record(value);
+  }
+
+  const next_candidate_aggregate: Record<string, unknown> = {};
+  for (const [raw_src, raw_entry] of Object.entries(normalize_record(value))) {
+    const normalized_entry = normalize_candidate_aggregate_entry(raw_src, raw_entry);
+    const raw_src_norm = raw_src.trim();
+    if (
+      (normalized_entry !== null && consumed_src_set.has(normalized_entry.src)) ||
+      consumed_src_set.has(raw_src_norm)
+    ) {
+      continue;
+    }
+    next_candidate_aggregate[raw_src] = raw_entry;
+  }
+  return next_candidate_aggregate;
+}
+
+function create_glossary_import_preview(
   existing_entries: GlossaryEntry[],
   incoming_entries: GlossaryEntry[],
-): FillEmptyPreview {
-  const preview = preview_quality_rule_fill_empty_import({
+): QualityRuleImportPreview {
+  return preview_quality_rule_import({
     rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
     existing: existing_entries,
     incoming: incoming_entries,
   });
+}
 
-  return {
-    merged_entries: preview.merged_entries as GlossaryEntry[],
-    entries: preview.entries.map((entry) => {
-      return {
-        entry: entry.entry as GlossaryEntry,
-        is_new: entry.is_new,
-        incoming_indexes: [...entry.incoming_indexes],
-      };
-    }),
-    report: {
-      added: preview.report.added,
-      filled: preview.report.filled,
-    },
-  };
+function are_glossary_entries_equal(
+  left_entries: GlossaryEntry[],
+  right_entries: GlossaryEntry[],
+): boolean {
+  if (left_entries.length !== right_entries.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left_entries.length; index += 1) {
+    const left_entry = left_entries[index];
+    const right_entry = right_entries[index];
+    if (left_entry === undefined || right_entry === undefined) {
+      return false;
+    }
+    if (
+      left_entry.src !== right_entry.src ||
+      left_entry.dst !== right_entry.dst ||
+      left_entry.info !== right_entry.info ||
+      left_entry.regex !== right_entry.regex ||
+      left_entry.case_sensitive !== right_entry.case_sensitive
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function build_duplicate_signature(preview: QualityRuleImportPreview): string {
+  return preview.duplicates
+    .map((duplicate) => {
+      return [
+        duplicate.incoming_index,
+        duplicate.key,
+        duplicate.kind,
+        duplicate.existing_indexes.join(","),
+      ].join(":");
+    })
+    .join("|");
 }
 
 function build_glossary_stat_key(entry: GlossaryEntry): string {
@@ -202,20 +257,17 @@ async function filter_import_candidates(args: {
   existing_entries: GlossaryEntry[];
   incoming_entries: GlossaryEntry[];
   state: ProjectStoreState;
-}): Promise<{
-  filtered_entries: GlossaryEntry[];
-  imported_count: number;
-}> {
-  const preview = preview_glossary_fill_empty_import(args.existing_entries, args.incoming_entries);
-  if (preview.entries.length === 0) {
-    return {
-      filtered_entries: [],
-      imported_count: 0,
-    };
+}): Promise<GlossaryEntry[]> {
+  if (args.incoming_entries.length === 0) {
+    return [];
   }
 
-  const merged_entries = preview.merged_entries;
-  const preview_entries = preview.entries.filter((entry) => entry.is_new);
+  const import_preview = create_glossary_import_preview(
+    args.existing_entries,
+    args.incoming_entries,
+  );
+  const merged_entries = import_preview.overwrite_entries as GlossaryEntry[];
+  const preview_entries = args.incoming_entries;
   const { srcTexts, dstTexts } = collect_project_item_texts(args.state.items);
   const rules: QualityStatisticsRuleInput[] = merged_entries.map((entry) => {
     return {
@@ -234,8 +286,8 @@ async function filter_import_candidates(args: {
   const relation_target_candidates: QualityStatisticsRelationCandidate[] = preview_entries.map(
     (entry) => {
       return {
-        key: build_glossary_stat_key(entry.entry),
-        src: entry.entry.src,
+        key: build_glossary_stat_key(entry),
+        src: entry.src,
       };
     },
   );
@@ -252,19 +304,23 @@ async function filter_import_candidates(args: {
     },
   );
   const key_by_src = new Map<string, string>();
-  preview.entries.forEach((entry) => {
-    key_by_src.set(entry.entry.src, build_glossary_stat_key(entry.entry));
+  merged_entries.forEach((entry) => {
+    key_by_src.set(entry.src, build_glossary_stat_key(entry));
   });
 
   const filtered_indexes = new Set<number>();
-  for (const preview_entry of preview_entries) {
-    const entry_key = build_glossary_stat_key(preview_entry.entry);
+  for (let index = 0; index < args.incoming_entries.length; index += 1) {
+    const preview_entry = args.incoming_entries[index];
+    if (preview_entry === undefined) {
+      continue;
+    }
+    const entry_key = build_glossary_stat_key(preview_entry);
     const matched_item_count = statistics_result.results[entry_key]?.matched_item_count ?? 0;
     if (
-      !is_control_code_self_mapping(preview_entry.entry.src, preview_entry.entry.dst) &&
+      !is_control_code_self_mapping(preview_entry.src, preview_entry.dst) &&
       matched_item_count < 1
     ) {
-      preview_entry.incoming_indexes.forEach((index) => filtered_indexes.add(index));
+      filtered_indexes.add(index);
       continue;
     }
 
@@ -274,40 +330,21 @@ async function filter_import_candidates(args: {
         continue;
       }
       const parent_count = statistics_result.results[parent_key]?.matched_item_count ?? 0;
-      if (
-        parent_count !== matched_item_count ||
-        parent_src.length < preview_entry.entry.src.length
-      ) {
+      if (parent_count !== matched_item_count || parent_src.length < preview_entry.src.length) {
         continue;
       }
-      preview_entry.incoming_indexes.forEach((index) => filtered_indexes.add(index));
+      filtered_indexes.add(index);
       break;
     }
   }
 
-  const filtered_entries = args.incoming_entries.filter(
-    (_entry, index) => !filtered_indexes.has(index),
-  );
-  if (filtered_entries.length === 0) {
-    return {
-      filtered_entries: [],
-      imported_count: 0,
-    };
-  }
-
-  const filtered_preview = preview_glossary_fill_empty_import(
-    args.existing_entries,
-    filtered_entries,
-  );
-  return {
-    filtered_entries,
-    imported_count: filtered_preview.report.added + filtered_preview.report.filled,
-  };
+  return args.incoming_entries.filter((_entry, index) => !filtered_indexes.has(index));
 }
 
 export async function prepare_analysis_glossary_import(
   state: ProjectStoreState,
   options: {
+    action?: AnalysisGlossaryImportAction;
     task_snapshot?: Record<string, unknown>;
   } = {},
 ): Promise<PreparedAnalysisGlossaryImport | null> {
@@ -324,44 +361,74 @@ export async function prepare_analysis_glossary_import(
     return null;
   }
 
-  const filter_result = await filter_import_candidates({
+  const filtered_entries = await filter_import_candidates({
     existing_entries: existing_glossary_entries,
     incoming_entries,
     state,
   });
-  if (filter_result.filtered_entries.length === 0 || filter_result.imported_count <= 0) {
+  if (filtered_entries.length === 0) {
     return null;
   }
 
-  const merged_preview = preview_glossary_fill_empty_import(
+  const import_preview = create_glossary_import_preview(
     existing_glossary_entries,
-    filter_result.filtered_entries,
+    filtered_entries,
+  );
+  const action = options.action ?? "overwrite";
+  const next_entries =
+    action === "skip" ? import_preview.skip_entries : import_preview.overwrite_entries;
+  const next_glossary_entries = next_entries as GlossaryEntry[];
+  const quality_changed = !are_glossary_entries_equal(
+    existing_glossary_entries,
+    next_glossary_entries,
   );
   const next_quality_state = replaceQualityRuleSlice(state.quality, "glossary", {
     ...getQualityRuleSlice(state.quality, "glossary"),
-    entries: merged_preview.merged_entries,
-    revision: Number(state.quality.glossary.revision ?? 0) + 1,
+    entries: next_glossary_entries,
+    revision: Number(state.quality.glossary.revision ?? 0) + (quality_changed ? 1 : 0),
   });
+  const consumed_count = filtered_entries.length;
+  const consumed_candidate_srcs = filtered_entries.map((entry) => entry.src);
   const next_candidate_count = Math.max(
     0,
-    Number(state.analysis.candidate_count ?? 0) - filter_result.imported_count,
+    Number(state.analysis.candidate_count ?? 0) - consumed_count,
   );
   const task_snapshot = options.task_snapshot ?? {};
+  const task_extras = normalize_record(task_snapshot["extras"]);
+  const imported_count =
+    action === "skip" ? import_preview.non_duplicate_count : filtered_entries.length;
+  const updated_sections: Array<"quality" | "analysis"> = quality_changed
+    ? ["quality", "analysis"]
+    : ["analysis"];
 
   return {
-    imported_count: filter_result.imported_count,
+    duplicate_count: import_preview.duplicate_count,
+    duplicate_signature: build_duplicate_signature(import_preview),
+    imported_count,
+    consumed_count,
+    quality_changed,
     next_quality_state,
     next_analysis_state: {
       ...state.analysis,
       candidate_count: next_candidate_count,
+      candidate_aggregate: remove_consumed_candidate_aggregate(
+        state.analysis.candidate_aggregate,
+        consumed_candidate_srcs,
+      ),
     },
     next_task_snapshot: {
       ...task_snapshot,
-      analysis_candidate_count: next_candidate_count,
+      extras: {
+        ...task_extras,
+        kind: "analysis",
+        candidate_count: next_candidate_count,
+      },
     },
+    updated_sections,
     request_body: {
-      entries: merged_preview.merged_entries,
+      entries: next_glossary_entries,
       analysis_candidate_count: next_candidate_count,
+      consumed_candidate_srcs,
       expected_glossary_revision: Number(state.quality.glossary.revision ?? 0),
       expected_section_revisions: {
         quality: state.revisions.sections.quality ?? 0,

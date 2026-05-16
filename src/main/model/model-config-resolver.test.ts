@@ -36,4 +36,19 @@ describe("model-config-resolver", () => {
     ).toEqual([{ id: "model-1" }]);
     expect(resolve_active_model_id({ activate_model_id: "", models: [] })).toBe("");
   });
+
+  it("读取模型列表返回副本，避免调用方污染原始配置", () => {
+    const model = { id: "model-1", name: "原始模型" };
+    const config = {
+      activate_model_id: "model-1",
+      models: [model],
+    };
+
+    const records = read_model_records(config);
+    records[0]["name"] = "调用方改名";
+    records.push({ id: "model-2" });
+
+    expect(model).toEqual({ id: "model-1", name: "原始模型" });
+    expect(read_model_records(config)).toEqual([{ id: "model-1", name: "原始模型" }]);
+  });
 });

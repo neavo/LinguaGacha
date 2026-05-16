@@ -223,6 +223,15 @@ describe("useTsConversionPageState", () => {
     );
   });
 
+  it("挂载时提示优先使用原生繁中目标语言", async () => {
+    await mount_probe();
+
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "info",
+      "ts_conversion_page.feedback.prefer_native_traditional_chinese",
+    );
+  });
+
   it("单个内置预设读取失败时按空规则继续导出", async () => {
     api_fetch_mock.mockImplementation(async (path: string, body: Record<string, unknown>) => {
       if (path === "/api/quality/rules/presets/read") {

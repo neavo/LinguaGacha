@@ -59,7 +59,7 @@ describe("FilePreviewService", () => {
     });
   });
 
-  it("工作台预解析 EPUB 时直接返回 解析结果", async () => {
+  it("工作台预解析 EPUB 时直接返回解析结果", async () => {
     const epub_file = path.join(temp_dir, "book.epub");
     await write_epub_fixture(epub_file, "章节");
     const service = new FilePreviewService(create_setting_service());
@@ -88,7 +88,7 @@ describe("FilePreviewService", () => {
     });
   });
 
-  it("新建工程预览合并 文本和 EPUB 解析结果", async () => {
+  it("新建工程预览合并文本和 EPUB 解析结果", async () => {
     const txt_file = path.join(temp_dir, "script.txt");
     const epub_file = path.join(temp_dir, "book.epub");
     fs.writeFileSync(txt_file, "文本", "utf-8");

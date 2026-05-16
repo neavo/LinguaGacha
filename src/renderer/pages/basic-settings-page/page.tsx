@@ -5,11 +5,12 @@ import { useI18n } from "@/app/locale/locale-provider";
 import "@/pages/basic-settings-page/basic-settings-page.css";
 import {
   ALL_LANGUAGE_VALUE,
-  LANGUAGE_CODES,
   PROJECT_SAVE_MODE_LABEL_KEYS,
   PROJECT_SAVE_MODE_OPTIONS,
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
+  SOURCE_LANGUAGE_CODES,
+  TARGET_LANGUAGE_CODES,
   is_project_save_mode,
 } from "@/pages/basic-settings-page/types";
 import { get_language_label_key } from "@base/setting";
@@ -85,7 +86,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
         value: ALL_LANGUAGE_VALUE,
         label: t(get_language_label_key(ALL_LANGUAGE_VALUE)),
       },
-      ...LANGUAGE_CODES.map((language_code) => {
+      ...SOURCE_LANGUAGE_CODES.map((language_code) => {
         return {
           value: language_code,
           label: t(get_language_label_key(language_code)),
@@ -95,7 +96,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
   }, [t]);
 
   const target_language_options = useMemo(() => {
-    return LANGUAGE_CODES.map((language_code) => {
+    return TARGET_LANGUAGE_CODES.map((language_code) => {
       return {
         value: language_code,
         label: t(get_language_label_key(language_code)),

@@ -7,11 +7,14 @@ import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import { Item, read_json_record } from "../../../base/item";
-import type { FileFormatServiceConfig } from "./file-format-shared";
+import {
+  should_preserve_epub_reading_layout,
+  type FileFormatServiceConfig,
+} from "./file-format-shared";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 /**
- * 导出写回会移除竖排样式
+ * 目标语言不保留原排版时，导出写回会移除竖排样式
  */
 const CSS_VERTICAL_WRITING_PATTERN = /[^;\s]*writing-mode\s*:\s*vertical-rl;*/giu;
 
@@ -30,9 +33,16 @@ export class EpubWriter {
   private readonly ast = new EpubAst();
 
   /**
+   * 目标语言阅读排版策略在构造时固定，保证 AST 和 legacy 写回路径一致
+   */
+  private readonly preserve_reading_layout: boolean;
+
+  /**
    * 写回策略依赖导出配置，尤其是双语去重和目标语言路径规则
    */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
+  public constructor(private readonly config: FileFormatServiceConfig) {
+    this.preserve_reading_layout = should_preserve_epub_reading_layout(config.target_language);
+  }
 
   /**
    * 只有带 parts 定位的条目才能走 AST 写回，缺少定位时走顺序兼容写回
@@ -552,7 +562,9 @@ export class EpubWriter {
     const is_nav_page = this.ast.is_nav_page(root);
     let item_index = 0;
     for (const dom of this.ast.flatten_elements(root)) {
-      this.remove_vertical_style(dom);
+      if (!this.preserve_reading_layout) {
+        this.remove_vertical_style(dom);
+      }
       if (!EPUB_LEGACY_TAGS.has(this.ast.local_name(dom.name))) {
         continue;
       }
@@ -659,16 +671,22 @@ export class EpubWriter {
   }
 
   /**
-   * OPF 清洗去掉翻页方向属性
+   * OPF 清洗在横排目标语言下去掉翻页方向属性
    */
   private sanitize_opf(text: string): string {
+    if (this.preserve_reading_layout) {
+      return text;
+    }
     return text.replace('page-progression-direction="rtl"', "");
   }
 
   /**
-   * CSS 清洗移除竖排样式
+   * CSS 清洗在横排目标语言下移除竖排样式
    */
   private sanitize_css(text: string): string {
+    if (this.preserve_reading_layout) {
+      return text;
+    }
     return text.replace(CSS_VERTICAL_WRITING_PATTERN, "");
   }
 

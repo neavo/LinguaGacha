@@ -76,10 +76,15 @@ describe("WorkerPool", () => {
   it("direct runner 测试路径遵守 maxInFlight 上限并持续派发队列", async () => {
     let current = 0;
     let peak = 0;
-    const run_mock = vi.spyOn(LLMClient.prototype, "request").mockImplementation(async () => {
+    let request_count = 0;
+    const release_requests: Array<() => void> = [];
+    vi.spyOn(LLMClient.prototype, "request").mockImplementation(async () => {
+      request_count += 1;
       current += 1;
       peak = Math.max(peak, current);
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise<void>((resolve) => {
+        release_requests.push(resolve);
+      });
       current -= 1;
       return {
         response_think: "",
@@ -99,17 +104,28 @@ describe("WorkerPool", () => {
       workerCount: 1,
     });
 
-    await Promise.all(
-      Array.from({ length: 5 }, (_value, index) =>
-        pool.execute_unit(
-          create_translation_unit(`unit-${index.toString()}`),
-          new AbortController().signal,
-        ),
+    const executions = Array.from({ length: 5 }, (_value, index) =>
+      pool.execute_unit(
+        create_translation_unit(`unit-${index.toString()}`),
+        new AbortController().signal,
       ),
     );
+    await vi.waitFor(() => {
+      expect(release_requests.length).toBeGreaterThanOrEqual(2);
+    });
+    release_pending_requests(release_requests, 2);
+    await vi.waitFor(() => {
+      expect(release_requests.length).toBeGreaterThanOrEqual(2);
+    });
+    release_pending_requests(release_requests, 2);
+    await vi.waitFor(() => {
+      expect(release_requests.length).toBeGreaterThanOrEqual(1);
+    });
+    release_pending_requests(release_requests, 1);
+    await Promise.all(executions);
     await pool.dispose();
 
-    expect(run_mock).toHaveBeenCalledTimes(5);
+    expect(request_count).toBe(5);
     expect(peak).toBe(2);
   });
 });
@@ -177,4 +193,11 @@ async function write_template(
   await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
   await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
   await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
+}
+
+function release_pending_requests(release_requests: Array<() => void>, count: number): void {
+  const pending = release_requests.splice(0, count);
+  for (const release of pending) {
+    release();
+  }
 }

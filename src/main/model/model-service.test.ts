@@ -268,6 +268,21 @@ describe("ModelService 配置管理", () => {
     expect(snapshot.active_model_id).toBe("openai");
   });
 
+  it("激活模型会持久化命中的模型 ID 并拒绝缺失模型", async () => {
+    const { service } = await create_model_service([
+      create_model({ id: "preset", type: "PRESET" }),
+      create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
+    ]);
+
+    const snapshot = read_model_snapshot(await service.activate_model({ model_id: "openai" }));
+
+    expect(snapshot.active_model_id).toBe("openai");
+    expect(read_model_snapshot(service.get_snapshot()).active_model_id).toBe("openai");
+    await expect(service.activate_model({ model_id: "missing" })).rejects.toThrow(
+      "model.not_found",
+    );
+  });
+
   it("预设模型和不存在的模型不能删除", async () => {
     const { service } = await create_model_service([
       create_model({ id: "preset", type: "PRESET" }),
@@ -281,7 +296,12 @@ describe("ModelService 配置管理", () => {
 
   it("更新模型只应用白名单字段并重建快照", async () => {
     const { service } = await create_model_service([
-      create_model({ id: "custom", type: "CUSTOM_OPENAI" }),
+      create_model({
+        generation: { temperature: 0.4, temperature_custom_enable: true },
+        id: "custom",
+        threshold: { input_token_limit: 1024, output_token_limit: 2048 },
+        type: "CUSTOM_OPENAI",
+      }),
     ]);
 
     const snapshot = read_model_snapshot(
@@ -298,10 +318,18 @@ describe("ModelService 配置管理", () => {
     expect(snapshot.models).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          generation: expect.objectContaining({ top_p_custom_enable: true }),
           id: "custom",
           name: "updated-name",
-          threshold: expect.objectContaining({ concurrency_limit: 2 }),
+          generation: expect.objectContaining({
+            temperature: 0.4,
+            temperature_custom_enable: true,
+            top_p_custom_enable: true,
+          }),
+          threshold: expect.objectContaining({
+            concurrency_limit: 2,
+            input_token_limit: 1024,
+            output_token_limit: 2048,
+          }),
         }),
       ]),
     );
@@ -317,6 +345,9 @@ describe("ModelService 配置管理", () => {
     ).rejects.toThrow("model.not_found");
     await expect(
       service.update_model({ model_id: "custom", patch: { forbidden: "value" } }),
+    ).rejects.toThrow("request.validation_failed");
+    await expect(
+      service.update_model({ model_id: "custom", patch: { threshold: "bad" } }),
     ).rejects.toThrow("request.validation_failed");
   });
 
@@ -513,13 +544,32 @@ describe("ModelService 远端模型能力", () => {
     const anthropic_result = await service.list_available_models({ model_id: "anthropic-1" });
 
     expect(anthropic_result["models"]).toEqual(["claude-sonnet-4-5"]);
-    expect(fetch_mock.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/models");
-    expect(fetch_mock.mock.calls[0]?.[1]).toMatchObject({
+    expect(fetch_mock).toHaveBeenCalledWith("https://api.anthropic.com/v1/models", {
       headers: expect.objectContaining({
+        "User-Agent": expect.stringContaining("Chrome/133"),
         "anthropic-version": "2023-06-01",
         "x-api-key": "anthropic-key",
       }),
+      method: "GET",
     });
+  });
+
+  it("远端列表非成功响应会转换为模型供应商错误", async () => {
+    const { service } = await create_model_service([
+      create_model({
+        api_format: "OpenAI",
+        api_key: "openai-key",
+        id: "openai-1",
+      }),
+    ]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unauthorized", { status: 401 })),
+    );
+
+    await expect(service.list_available_models({ model_id: "openai-1" })).rejects.toThrow(
+      "model.provider_failed",
+    );
   });
 
   it("模型连通性测试复用 LLM request client 并按 key 汇总结果", async () => {

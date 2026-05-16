@@ -34,4 +34,17 @@ describe("main log text", () => {
       "API Gateway started - http://127.0.0.1:65425",
     );
   });
+
+  it("配置文件损坏时回退默认中文日志正文", () => {
+    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-log-text-"));
+    cleanup_paths.push(app_root);
+    const paths = new AppPathService({ appRoot: app_root });
+    fs.mkdirSync(path.dirname(paths.get_config_path()), { recursive: true });
+    fs.writeFileSync(paths.get_config_path(), "{bad-json", "utf-8");
+    set_main_log_text_paths(paths);
+
+    expect(t_main_log("app.log.api_gateway_started", { BASE_URL: "http://127.0.0.1:65425" })).toBe(
+      "API Gateway 已启动 - http://127.0.0.1:65425",
+    );
+  });
 });

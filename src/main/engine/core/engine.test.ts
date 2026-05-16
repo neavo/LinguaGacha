@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import type { LogManager } from "../../log/log-manager";
@@ -11,10 +15,19 @@ import { WorkUnitExecutorTransportError } from "../worker/worker-transport-error
 import { TaskEngine } from "./engine";
 
 describe("TaskEngine", () => {
+  const cleanup_paths: string[] = [];
+
+  afterEach(() => {
+    for (const cleanup_path of cleanup_paths.splice(0)) {
+      fs.rmSync(cleanup_path, { force: true, recursive: true });
+    }
+  });
+
   it("公开单条翻译也通过共享 limiter 排队", async () => {
     const first_response = create_deferred<MutableJsonRecord>();
     let executor_call_count = 0;
     const task_engine = new TaskEngine({
+      appRoot: process.cwd(),
       taskStore: {
         build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
@@ -50,6 +63,7 @@ describe("TaskEngine", () => {
     const committed_batches: MutableJsonRecord[] = [];
     const done = create_status_waiter("translation", "done");
     const task_engine = new TaskEngine({
+      appRoot: process.cwd(),
       taskStore: {
         get_translation_items: () => ({
           items: [create_pending_item()] as unknown as ApiJsonValue,
@@ -119,6 +133,7 @@ describe("TaskEngine", () => {
     const progress_snapshots: MutableJsonRecord[] = [];
     const done = create_status_waiter("translation", "done");
     const task_engine = new TaskEngine({
+      appRoot: process.cwd(),
       taskStore: {
         acquire_project_lease: () => () => {
           lease_release_count += 1;
@@ -169,6 +184,7 @@ describe("TaskEngine", () => {
     const done = create_status_waiter("translation", "done");
     const failed_once_ids = new Set<number>();
     const task_engine = new TaskEngine({
+      appRoot: process.cwd(),
       taskStore: {
         get_translation_items: () => ({
           items: [
@@ -233,6 +249,71 @@ describe("TaskEngine", () => {
     expect(committed_items).toHaveLength(2);
     expect(committed_items.map((item) => item["id"]).sort()).toEqual([1, 2]);
     expect(committed_items.every((item) => item["status"] === "PROCESSED")).toBe(true);
+  });
+
+  it("翻译任务启动时对齐旧实现打印主提示词", async () => {
+    const app_root = create_template_root();
+    const logs: string[] = [];
+    const done = create_status_waiter("translation", "done");
+    const task_engine = new TaskEngine({
+      appRoot: app_root,
+      taskStore: {
+        acquire_project_lease: () => () => undefined,
+        get_translation_items: () => ({
+          items: [] as unknown as ApiJsonValue,
+          meta: {},
+        }),
+        update_translation_progress: () => ({ accepted: true }),
+        build_quality_snapshot: () => null,
+      } as unknown as ProjectTaskStore,
+      taskRuntimePublisher: create_task_runtime_publisher(done.publish),
+      executorClient: {} as unknown as WorkerExecutor,
+      SettingService: create_setting_service(),
+      logManager: create_log_manager(logs),
+    });
+
+    await task_engine.start({
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+      expected_section_revisions: {},
+    });
+    await done.promise;
+
+    expect(logs.join("\n")).toContain("翻译前缀\n翻译正文 中文\n\n翻译思考\n\n翻译后缀");
+  });
+
+  it("分析任务启动时对齐旧实现打印分析主提示词", async () => {
+    const app_root = create_template_root();
+    const logs: string[] = [];
+    const done = create_status_waiter("analysis", "done");
+    const task_engine = new TaskEngine({
+      appRoot: app_root,
+      taskStore: {
+        acquire_project_lease: () => () => undefined,
+        reset_analysis_progress: () => ({ accepted: true }),
+        get_analysis_context: () => ({
+          items: [] as unknown as ApiJsonValue,
+          checkpoints: [] as unknown as ApiJsonValue,
+          meta: {},
+        }),
+        update_analysis_progress: () => ({ accepted: true }),
+        build_quality_snapshot: () => null,
+      } as unknown as ProjectTaskStore,
+      taskRuntimePublisher: create_task_runtime_publisher(done.publish),
+      executorClient: {} as unknown as WorkerExecutor,
+      SettingService: create_setting_service(),
+      logManager: create_log_manager(logs),
+    });
+
+    await task_engine.start({
+      task_type: "analysis",
+      mode: "new",
+      expected_section_revisions: {},
+    });
+    await done.promise;
+
+    expect(logs.join("\n")).toContain("分析前缀\n分析正文 中文\n\n分析思考\n\n分析后缀");
   });
 
   function create_pending_item(id = 1, file_path = "demo.txt"): MutableJsonRecord {
@@ -346,8 +427,45 @@ describe("TaskEngine", () => {
     } as unknown as SettingService;
   }
 
-  function create_log_manager(): LogManager {
+  function create_template_root(): string {
+    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-engine-"));
+    cleanup_paths.push(app_root);
+    write_template(app_root, "translation_prompt", "zh", {
+      "prefix.txt": "翻译前缀",
+      "base.txt": "翻译正文 {target_language}",
+      "thinking.txt": "翻译思考",
+      "suffix.txt": "翻译后缀",
+    });
+    write_template(app_root, "analysis_prompt", "zh", {
+      "prefix.txt": "分析前缀",
+      "base.txt": "分析正文 {target_language}",
+      "thinking.txt": "分析思考",
+      "suffix.txt": "分析后缀",
+    });
+    return app_root;
+  }
+
+  function write_template(
+    app_root: string,
+    task_dir_name: string,
+    language: string,
+    files: Record<string, string>,
+  ): void {
+    const template_dir = path.join(app_root, "resource", task_dir_name, "template", language);
+    fs.mkdirSync(template_dir, { recursive: true });
+    for (const [file_name, content] of Object.entries(files)) {
+      fs.writeFileSync(path.join(template_dir, file_name), content, "utf-8");
+    }
+  }
+
+  function create_log_manager(logs: string[] = []): LogManager {
     return {
+      info: (message: string) => {
+        logs.push(message);
+      },
+      warning: (message: string) => {
+        logs.push(message);
+      },
       error: () => undefined,
     } as unknown as LogManager;
   }
