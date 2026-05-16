@@ -12,7 +12,7 @@ import { TRANSFormat } from "./formats/trans-format";
 import { TXTFormat } from "./formats/txt-format";
 import { WOLFXLSXFormat } from "./formats/wolfxlsx-format";
 import { XLSXFormat } from "./formats/xlsx-format";
-import { EPUBFormat } from "./formats/epub-format";
+import { EPUBFormat } from "./formats/epub/epub-format";
 import * as AppErrors from "../../shared/error";
 import {
   build_bilingual_path,

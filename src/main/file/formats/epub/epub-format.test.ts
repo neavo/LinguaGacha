@@ -2,10 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { create_epub_fixture } from "../../../test/epub-fixture";
-import { Item } from "../../../base/item";
+import { create_epub_fixture } from "../../../../test/epub-fixture";
+import { Item } from "../../../../base/item";
 import { EPUBFormat } from "./epub-format";
 
 let temp_dir = ""; // 每个用例独占 EPUB 输出目录，避免门面写回断言共享文件状态
@@ -66,5 +67,43 @@ describe("EPUBFormat", () => {
 
     expect(fs.existsSync(path.join(paths.translated_path, "book.epub"))).toBe(true);
     expect(fs.existsSync(path.join(paths.bilingual_path, "book.ja.zh.epub"))).toBe(true);
+  });
+
+  it("回归 EPUB issue：长文件名写回后译文版和双语版都是可读 EPUB", async () => {
+    const format = create_format();
+    const file_name =
+      "Stalingradas tragedija prie Volgos -- Joachim Wieder -- Anna Archive sample.epub";
+    const epub_asset = await create_epub_fixture("章节");
+    const [parsed_item] = await format.read_from_stream(epub_asset, file_name);
+    if (parsed_item === undefined) {
+      throw new Error("EPUB fixture 未生成正文条目。");
+    }
+    const paths = {
+      translated_path: path.join(temp_dir, "translated-long-name"),
+      bilingual_path: path.join(temp_dir, "bilingual-long-name"),
+    };
+
+    await format.write_to_path(
+      [
+        Item.from_json({
+          ...parsed_item.to_json(),
+          dst: "译文",
+          status: "PROCESSED",
+        }),
+      ],
+      paths,
+      (rel_path) => (rel_path === file_name ? epub_asset : null),
+    );
+
+    await expect(
+      JSZip.loadAsync(fs.readFileSync(path.join(paths.translated_path, file_name))),
+    ).resolves.toBeDefined();
+    await expect(
+      JSZip.loadAsync(
+        fs.readFileSync(
+          path.join(paths.bilingual_path, file_name.replace(/\.epub$/iu, ".ja.zh.epub")),
+        ),
+      ),
+    ).resolves.toBeDefined();
   });
 });

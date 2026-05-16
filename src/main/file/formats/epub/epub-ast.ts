@@ -15,8 +15,8 @@ import {
 import { decodeHTML } from "entities";
 import JSZip from "jszip";
 
-import type { ApiJsonValue } from "../../api/api-types";
-import { Item, read_json_record } from "../../../base/item";
+import type { ApiJsonValue } from "../../../api/api-types";
+import { Item, read_json_record } from "../../../../base/item";
 
 /**
  * EPUB slot 定位引用，path 指向元素，slot 区分元素首段文本和元素后的 tail 文本

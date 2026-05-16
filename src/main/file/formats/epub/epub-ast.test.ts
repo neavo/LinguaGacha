@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
-import { create_epub_fixture } from "../../../test/epub-fixture";
-import { Item } from "../../../base/item";
+import { create_epub_fixture } from "../../../../test/epub-fixture";
+import { Item } from "../../../../base/item";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 describe("EpubAst", () => {
@@ -106,6 +106,67 @@ describe("EpubAst", () => {
     ]);
   });
 
+  it("回归 EPUB issue：多个 spine 文档都会提取正文，不会只读取前言", async () => {
+    const ast = new EpubAst();
+    const zip = new JSZip();
+    zip.file(
+      "META-INF/container.xml",
+      `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
+    );
+    zip.file(
+      "OPS/package.opf",
+      `<package version="3.0">
+        <manifest>
+          <item id="intro" href="intro.xhtml" media-type="application/xhtml+xml"/>
+          <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+          <item id="tail" href="tail.xhtml" media-type="application/xhtml+xml"/>
+        </manifest>
+        <spine>
+          <itemref idref="intro"/>
+          <itemref idref="chapter"/>
+          <itemref idref="tail"/>
+        </spine>
+      </package>`,
+    );
+    zip.file("OPS/intro.xhtml", "<html><body><p>前言</p></body></html>");
+    zip.file("OPS/chapter.xhtml", "<html><body><p>正文</p><p>第二段</p></body></html>");
+    zip.file("OPS/tail.xhtml", "<html><body><p>尾声</p></body></html>");
+    const epub_asset = await zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+
+    const items = await ast.read_from_stream(epub_asset, "book.epub");
+
+    expect(items.map((item) => item.src)).toEqual(["前言", "正文", "第二段", "尾声"]);
+  });
+
+  it("回归 EPUB issue：div 直接承载正文时不会只提取章节编号", () => {
+    const ast = new EpubAst();
+    const raw = new TextEncoder().encode(
+      `<html><body>
+        <div>Chapter 2</div>
+        <div>Remembering: The Children on Charlie</div>
+        <div>正文直接放在 div 中</div>
+      </body></html>`,
+    );
+
+    const items = ast.extract_items_from_document("OPS/chapter.xhtml", raw, 0, "book.epub");
+
+    expect(items.map((item) => item.src)).toEqual([
+      "Chapter 2",
+      "Remembering: The Children on Charlie",
+      "正文直接放在 div 中",
+    ]);
+  });
+
+  it("回归 EPUB issue：HTML 命名实体之后的正文不会被截断", async () => {
+    const ast = new EpubAst();
+    const epub_asset = await create_epub_fixture("好&nbsp;不好");
+
+    const [item] = await ast.read_from_stream(epub_asset, "book.epub");
+
+    expect(item?.src).toContain("好");
+    expect(item?.src).toContain("不好");
+  });
+
   it("抽取 XHTML 时跳过 code 和 rt 子树并保留 tail 文本顺序", () => {
     const ast = new EpubAst();
     const raw = new TextEncoder().encode(
@@ -145,9 +206,25 @@ describe("EpubAst", () => {
     expect(epub).not.toHaveProperty("ruby_clean_candidate");
   });
 
+  it("回归 EPUB issue：ruby 与 span 混排的人名不会被拆成多条或多行", async () => {
+    const ast = new EpubAst();
+    const epub_asset = await create_epub_fixture(
+      "「<span>希</span><ruby>美<rt>み</rt></ruby>も行くわ！　何かしてないと落ち着かないし！」",
+    );
+
+    const items = await ast.read_from_stream(epub_asset, "book.epub");
+    const [item] = items;
+    const epub = item === undefined ? null : read_epub_extra(item);
+
+    expect(items).toHaveLength(1);
+    expect(item?.src).toBe("「希美も行くわ！　何かしてないと落ち着かないし！」");
+    expect(item?.src).not.toContain("\n");
+    expect(epub).toEqual(expect.objectContaining({ mode: "block_text" }));
+  });
+
   it("block_text 正文投影在内联和尾文本边界使用同一归一口径", async () => {
     const ast = new EpubAst();
-    const epub_asset = await create_epub_fixture('<ruby>A <rt>x</rt></ruby> B');
+    const epub_asset = await create_epub_fixture("<ruby>A <rt>x</rt></ruby> B");
 
     const [item] = await ast.read_from_stream(epub_asset, "book.epub");
 

@@ -5,8 +5,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
-import { create_epub_fixture, read_epub_entry_text } from "../../../test/epub-fixture";
-import { Item } from "../../../base/item";
+import { create_epub_fixture, read_epub_entry_text } from "../../../../test/epub-fixture";
+import { Item } from "../../../../base/item";
 import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
@@ -71,6 +71,32 @@ async function create_layout_epub_fixture(): Promise<Buffer> {
   return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
 }
 
+async function create_nav_epub_fixture(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    "META-INF/container.xml",
+    `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
+  );
+  zip.file(
+    "OPS/package.opf",
+    `<package version="3.0">
+      <manifest>
+        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+        <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+      </manifest>
+      <spine>
+        <itemref idref="chapter"/>
+      </spine>
+    </package>`,
+  );
+  zip.file(
+    "OPS/nav.xhtml",
+    `<html><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">第一章</a></li></ol></nav></body></html>`,
+  );
+  zip.file("OPS/chapter.xhtml", "<html><body><p>章节</p></body></html>");
+  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+}
+
 /**
  * writer 测试只借 AST 生成定位 metadata，断言归属仍聚焦写回产物
  */
@@ -126,13 +152,33 @@ describe("EpubWriter", () => {
 
   it("block_text 写回校验复用读取器的规范空白口径", async () => {
     const writer = create_writer();
-    const epub_asset = await create_epub_fixture('<ruby>A <rt>x</rt></ruby> B');
+    const epub_asset = await create_epub_fixture("<ruby>A <rt>x</rt></ruby> B");
     const item = await create_translated_epub_item(epub_asset, "译文");
     const translated_path = path.join(temp_dir, "ruby-space-translated", "book.epub");
 
     await writer.build_epub(epub_asset, [item], translated_path, false);
 
     await expect(read_epub_entry_text(fs.readFileSync(translated_path))).resolves.toContain("译文");
+  });
+
+  it("回归 EPUB issue：双语写回保留目录链接指向原有章节文件", async () => {
+    const writer = create_writer();
+    const epub_asset = await create_nav_epub_fixture();
+    const items = (await new EpubAst().read_from_stream(epub_asset, "book.epub")).map(
+      (item, index) =>
+        Item.from_json({
+          ...item.to_json(),
+          dst: `译文-${index}`,
+          status: "PROCESSED",
+        }),
+    );
+    const out_path = path.join(temp_dir, "nav-bilingual", "book.ja.zh.epub");
+
+    await writer.build_epub(epub_asset, items, out_path, true);
+
+    const nav_text = await read_epub_entry_text(fs.readFileSync(out_path), "OPS/nav.xhtml");
+    expect(nav_text).toContain('href="chapter.xhtml"');
+    expect(nav_text).not.toContain("chapter.ja.zh.xhtml");
   });
 
   it("AST 写回保留 XML 合法补充平面字符", async () => {
@@ -218,6 +264,25 @@ describe("EpubWriter", () => {
       expect(xhtml_text).toContain("writing-mode: vertical-rl");
     },
   );
+
+  it("回归 EPUB issue：AST 写回繁中 EPUB 时保留直排和右翻页信息", async () => {
+    const writer = create_writer("ZH-HANT");
+    const epub_asset = await create_layout_epub_fixture();
+    const item = await create_translated_epub_item(epub_asset, "译文");
+    const out_path = path.join(temp_dir, "layout-ast", "book.epub");
+
+    await writer.build_epub(epub_asset, [item], out_path, false);
+
+    const written_epub = fs.readFileSync(out_path);
+    const opf_text = await read_epub_entry_text(written_epub, "OPS/package.opf");
+    const css_text = await read_epub_entry_text(written_epub, "OPS/style.css");
+    const xhtml_text = await read_epub_entry_text(written_epub);
+
+    expect(opf_text).toContain('page-progression-direction="rtl"');
+    expect(css_text).toContain("writing-mode: vertical-rl");
+    expect(xhtml_text).toContain('class="vrtl keep"');
+    expect(xhtml_text).toContain("writing-mode: vertical-rl");
+  });
 
   it("目标语言不需要保留阅读排版时继续清洗 EPUB 方向和竖排信息", async () => {
     const writer = create_writer("ZH");
