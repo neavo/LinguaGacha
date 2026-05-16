@@ -17,7 +17,7 @@ import type {
  */
 export interface TranslationPrePipelineContext {
   item: TextTaskItemRecord | null; // item 保留当前 work unit 的可写快照，译后流程只回写这份对象
-  source_text: string; // source_text 是 ruby 清理后的完整源文本，译后按原行数重建 dst
+  source_text: string; // source_text 直接来自 item.src，格式结构投影必须在导入边界完成
   srcs: string[]; // srcs 是真正送入模型的行，空行和完全保护行不会进入请求
   samples: string[]; // samples 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
   valid_line_indexes: Set<number>; // valid_line_indexes 记录送入模型的源行位置，译后只按这些行回填
@@ -43,7 +43,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 按固定顺序执行：归一化、ruby、保护、替换、姓名注入
+   * 按固定顺序执行：读取 item.src、归一化、纯文本 ruby、保护、替换、姓名注入
    */
   public process_item(item: TextTaskItemRecord | null): TranslationPrePipelineContext {
     const context = this.create_empty_context(item);
@@ -51,7 +51,7 @@ export class TranslationPrePipeline {
       return context;
     }
     const text_type = this.read_text_type(item);
-    context.source_text = TextRubyCleaner.clean_item_src(item, this.config.clean_ruby);
+    context.source_text = String(item.src ?? "");
     for (const [line_index, raw_src] of context.source_text.split("\n").entries()) {
       let src = normalize_text_for_processing(raw_src);
       src = this.clean_ruby(src, text_type);
@@ -96,7 +96,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * Ruby 行级清理受 clean_ruby 控制，格式例外由 TextRubyCleaner 维护
+   * clean_ruby 只控制字面文本标记，EPUB DOM ruby 不进入 worker 层
    */
   private clean_ruby(src: string, text_type: string): string {
     return this.config.clean_ruby ? TextRubyCleaner.clean(src, text_type) : src;

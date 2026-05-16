@@ -3,18 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { SettingService } from "../service/setting-service";
+import type { EpubRubyCleanMigration } from "./epub-ruby-clean-migration";
 import { ProjectCompatibilityMigrationService } from "./project-compatibility-migration-service";
 
 type MutableJsonRecord = Record<string, DatabaseJsonValue>;
 
 describe("ProjectCompatibilityMigrationService", () => {
-  it("把旧文本保护开关和旧中文翻译提示词转换为当前工程事实", () => {
+  it("把旧文本保护开关和旧中文翻译提示词转换为当前工程事实", async () => {
     const service = create_service({
       meta: { text_preserve_enable: true },
       rule_text_by_name: { CUSTOM_PROMPT_ZH: "旧中文提示词" },
     });
 
-    expect(service.build_open_compatibility_operations("demo.lg")).toEqual([
+    await expect(service.build_open_compatibility_operations("demo.lg")).resolves.toEqual([
       {
         name: "setMeta",
         args: { projectPath: "demo.lg", key: "text_preserve_mode", value: "custom" },
@@ -38,7 +39,7 @@ describe("ProjectCompatibilityMigrationService", () => {
     ]);
   });
 
-  it("当前提示词已存在时只写入旧迁移完成标记", () => {
+  it("当前提示词已存在时只写入旧迁移完成标记", async () => {
     const service = create_service({
       meta: {
         text_preserve_mode: "smart",
@@ -51,7 +52,7 @@ describe("ProjectCompatibilityMigrationService", () => {
       },
     });
 
-    expect(service.build_open_compatibility_operations("demo.lg")).toEqual([
+    await expect(service.build_open_compatibility_operations("demo.lg")).resolves.toEqual([
       {
         name: "setMeta",
         args: {
@@ -63,7 +64,7 @@ describe("ProjectCompatibilityMigrationService", () => {
     ]);
   });
 
-  it("旧翻译提示词已迁移后不会从旧槽位反复写回", () => {
+  it("旧翻译提示词已迁移后不会从旧槽位反复写回", async () => {
     const service = create_service({
       meta: {
         text_preserve_mode: "custom",
@@ -74,15 +75,15 @@ describe("ProjectCompatibilityMigrationService", () => {
       },
     });
 
-    expect(service.build_open_compatibility_operations("demo.lg")).toEqual([]);
+    await expect(service.build_open_compatibility_operations("demo.lg")).resolves.toEqual([]);
   });
 
-  it("旧文本保护关闭时写入当前 smart 模式并标记旧提示词迁移完成", () => {
+  it("旧文本保护关闭时写入当前 smart 模式并标记旧提示词迁移完成", async () => {
     const service = create_service({
       meta: { text_preserve_enable: false },
     });
 
-    expect(service.build_open_compatibility_operations("demo.lg")).toEqual([
+    await expect(service.build_open_compatibility_operations("demo.lg")).resolves.toEqual([
       {
         name: "setMeta",
         args: { projectPath: "demo.lg", key: "text_preserve_mode", value: "smart" },
@@ -98,7 +99,7 @@ describe("ProjectCompatibilityMigrationService", () => {
     ]);
   });
 
-  it("英文界面优先迁移旧英文翻译提示词", () => {
+  it("英文界面优先迁移旧英文翻译提示词", async () => {
     const service = create_service({
       config: { app_language: "EN" },
       rule_text_by_name: {
@@ -107,12 +108,34 @@ describe("ProjectCompatibilityMigrationService", () => {
       },
     });
 
-    expect(service.build_open_compatibility_operations("demo.lg")).toContainEqual({
+    await expect(service.build_open_compatibility_operations("demo.lg")).resolves.toContainEqual({
       name: "setRuleText",
       args: {
         projectPath: "demo.lg",
         ruleType: "translation_prompt",
         text: "legacy English prompt",
+      },
+    });
+  });
+
+  it("打开工程时合并 EPUB ruby 迁移器生成的写回操作", async () => {
+    const service = create_service({
+      epub_ruby_operations: [
+        {
+          name: "bumpRuntimeSectionRevisions",
+          args: {
+            projectPath: "demo.lg",
+            sections: ["items", "analysis"],
+          },
+        },
+      ],
+    });
+
+    await expect(service.build_open_compatibility_operations("demo.lg")).resolves.toContainEqual({
+      name: "bumpRuntimeSectionRevisions",
+      args: {
+        projectPath: "demo.lg",
+        sections: ["items", "analysis"],
       },
     });
   });
@@ -123,6 +146,7 @@ function create_service(options: {
   config?: MutableJsonRecord;
   rule_text_by_type?: Record<string, string>;
   rule_text_by_name?: Record<string, string>;
+  epub_ruby_operations?: DatabaseOperation[];
 }): ProjectCompatibilityMigrationService {
   const database = {
     execute: vi.fn((operation: DatabaseOperation) => {
@@ -144,5 +168,12 @@ function create_service(options: {
       ...options.config,
     })),
   } as unknown as SettingService;
-  return new ProjectCompatibilityMigrationService(database, setting_service);
+  const epub_ruby_clean_migration = {
+    build_operations: vi.fn(async () => options.epub_ruby_operations ?? []),
+  } as unknown as EpubRubyCleanMigration;
+  return new ProjectCompatibilityMigrationService(
+    database,
+    setting_service,
+    epub_ruby_clean_migration,
+  );
 }
