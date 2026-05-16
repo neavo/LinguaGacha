@@ -110,6 +110,9 @@ export function compute_project_prefilter_mutation(
     if (item.status !== "NONE") {
       continue;
     }
+    if (item.skip_internal_filter) {
+      continue;
+    }
     if (should_skip_by_rule_prefilter(item.src)) {
       item.status = "RULE_SKIPPED";
       rule_skipped += 1;
@@ -174,6 +177,7 @@ export function compute_project_prefilter_mutation(
       status: item.status,
       text_type: item.text_type,
       retry_count: item.retry_count,
+      skip_internal_filter: item.skip_internal_filter,
     };
   }
 

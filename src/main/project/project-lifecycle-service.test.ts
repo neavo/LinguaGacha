@@ -305,6 +305,7 @@ describe("ProjectLifecycleService", () => {
               extra_field: "",
               tag: "",
               text_type: "NONE",
+              skip_internal_filter: false,
               status: "NONE",
               retry_count: 0,
             },

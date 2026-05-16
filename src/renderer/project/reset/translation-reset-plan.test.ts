@@ -100,6 +100,7 @@ describe("translation reset planners", () => {
             name_dst: null,
             status: "NONE",
             text_type: "NONE",
+            skip_internal_filter: false,
             retry_count: 0,
           },
         },
@@ -195,6 +196,7 @@ describe("translation reset planners", () => {
         file_path: "script/a.txt",
         text_type: "NONE",
         status: "NONE",
+        skip_internal_filter: false,
         retry_count: 0,
       },
       {
@@ -210,6 +212,7 @@ describe("translation reset planners", () => {
         file_path: "script/a.txt",
         text_type: "NONE",
         status: "RULE_SKIPPED",
+        skip_internal_filter: false,
         retry_count: 0,
       },
     ]);

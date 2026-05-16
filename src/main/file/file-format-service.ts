@@ -8,7 +8,7 @@ import { MDFormat } from "./formats/md-format";
 import { MESSAGEJSONFormat } from "./formats/messagejson-format";
 import { RenPyFormat } from "./formats/renpy/renpy-format";
 import { SRTFormat } from "./formats/srt-format";
-import { TRANSFormat } from "./formats/trans-format";
+import { TRANSFormat } from "./formats/trans/trans-format";
 import { TXTFormat } from "./formats/txt-format";
 import { WOLFXLSXFormat } from "./formats/wolfxlsx-format";
 import { XLSXFormat } from "./formats/xlsx-format";

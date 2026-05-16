@@ -3,12 +3,16 @@ import type { DatabaseSync } from "node:sqlite";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { Item, is_item_file_type, is_item_status, is_item_text_type } from "../../base/item";
 import { is_task_progress_status } from "../../shared/task";
+import {
+  TransItemMetadataMigration,
+  type TransItemMetadataAssetIndex,
+} from "./trans-item-metadata-migration";
 
 type ProjectDatabaseMigrationRow = Record<string, unknown>;
 type ProjectDatabaseMigrationItem = Record<string, unknown>;
 
 export const PROJECT_DATABASE_SCHEMA_VERSION = 2; // schema_version 只表达当前表结构能力，不作为业务数据写回标记
-export const PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION = 1; // 写回型迁移独立标记，避免旧工程因 schema_version 跳过数据归一
+export const PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION = 3; // 写回型迁移独立标记，避免旧工程因 schema_version 跳过数据归一
 
 const SCHEMA_VERSION_META_KEY = "schema_version";
 const WRITEBACK_MIGRATION_VERSION_META_KEY = "writeback_migration_version";
@@ -247,6 +251,7 @@ export class ProjectDatabaseMigrationService {
   private static migrate_item_status_if_needed(db: DatabaseSync): void {
     const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all(); // item 状态是业务事实，打开旧工程时直接写回当前允许集合
     const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
+    const trans_asset_index = TransItemMetadataMigration.build_asset_index(db);
     for (const row of rows) {
       const raw = row_text(row, "data");
       try {
@@ -254,7 +259,7 @@ export class ProjectDatabaseMigrationService {
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
           continue;
         }
-        const normalized = this.normalize_item_payload(parsed);
+        const normalized = this.normalize_item_payload(parsed, trans_asset_index);
         if (normalized.changed) {
           update.run(JsonTool.stringifyStrict(normalized.data), row_number(row, "id"));
         }
@@ -267,7 +272,10 @@ export class ProjectDatabaseMigrationService {
   /**
    * 规范 item payload 中的状态字段，兼容旧 JSON 形状
    */
-  private static normalize_item_payload(item_data: ProjectDatabaseMigrationRow): {
+  private static normalize_item_payload(
+    item_data: ProjectDatabaseMigrationRow,
+    trans_asset_index: TransItemMetadataAssetIndex,
+  ): {
     data: ProjectDatabaseMigrationRow;
     changed: boolean;
   } {
@@ -297,6 +305,16 @@ export class ProjectDatabaseMigrationService {
         : "NONE";
     if (raw_file_type !== normalized_file_type) {
       normalized["file_type"] = normalized_file_type;
+      changed = true;
+    }
+
+    if (
+      TransItemMetadataMigration.normalize_item_payload(
+        normalized,
+        normalized_file_type,
+        trans_asset_index,
+      )
+    ) {
       changed = true;
     }
 

@@ -653,6 +653,7 @@ export class ProjectSyncMutationService {
       text_type: String(item["text_type"] ?? "NONE"),
       status: String(item["status"] ?? "NONE"),
       retry_count: this.read_number(item["retry_count"], 0),
+      skip_internal_filter: item["skip_internal_filter"] === true,
       ...(item["id"] === undefined ? {} : { id: item["id"] }),
     });
     return normalized;
@@ -669,6 +670,7 @@ export class ProjectSyncMutationService {
       row: this.read_number(item["row"], 0),
       status: Item.normalize_status(item["status"]),
       retry_count: this.read_number(item["retry_count"], 0),
+      skip_internal_filter: item["skip_internal_filter"] === true,
     };
     if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {
       normalized["id"] = this.read_number(item["id"], 0);

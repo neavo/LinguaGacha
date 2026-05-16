@@ -24,6 +24,7 @@ export class ResponseChecker {
     quality_snapshot: TextQualitySnapshot,
     item_retry_count: number,
     stream_degraded: boolean,
+    skip_internal_filter_by_line: boolean[] = [],
   ): string[] {
     if (stream_degraded) {
       return srcs.map(() => "FAIL_DEGRADATION");
@@ -37,7 +38,14 @@ export class ResponseChecker {
     if (srcs.length !== dsts.length) {
       return srcs.map(() => "FAIL_LINE_COUNT");
     }
-    return this.check_lines(srcs, dsts, text_type, config, quality_snapshot);
+    return this.check_lines(
+      srcs,
+      dsts,
+      text_type,
+      config,
+      quality_snapshot,
+      skip_internal_filter_by_line,
+    );
   }
 
   /**
@@ -49,9 +57,17 @@ export class ResponseChecker {
     text_type: string,
     config: TextProcessingConfig,
     quality_snapshot: TextQualitySnapshot,
+    skip_internal_filter_by_line: boolean[] = [],
   ): string[] {
     return srcs.map((src, index) =>
-      this.check_line(src, dsts[index] ?? "", text_type, config, quality_snapshot),
+      this.check_line(
+        src,
+        dsts[index] ?? "",
+        text_type,
+        config,
+        quality_snapshot,
+        skip_internal_filter_by_line[index] === true,
+      ),
     );
   }
 
@@ -64,6 +80,7 @@ export class ResponseChecker {
     text_type: string,
     config: TextProcessingConfig,
     quality_snapshot: TextQualitySnapshot,
+    skip_internal_filter: boolean,
   ): string {
     let src = raw_src.trim();
     let dst = raw_dst.trim();
@@ -71,8 +88,9 @@ export class ResponseChecker {
       return "LINE_ERROR_EMPTY_LINE";
     }
     if (
-      should_skip_by_rule_prefilter(src) ||
-      should_skip_by_language_prefilter(src, config.source_language)
+      !skip_internal_filter &&
+      (should_skip_by_rule_prefilter(src) ||
+        should_skip_by_language_prefilter(src, config.source_language))
     ) {
       return "NONE";
     }

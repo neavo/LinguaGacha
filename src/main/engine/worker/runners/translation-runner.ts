@@ -360,6 +360,7 @@ export class TranslationWorkUnitRunner {
       config: TextProcessingConfig;
       quality_snapshot: TextQualitySnapshot;
       srcs: string[];
+      pipeline_contexts: TranslationPrePipelineContext[];
       items: TextTaskItemRecord[];
       skip_response_check: boolean;
       stream_degraded: boolean;
@@ -374,6 +375,12 @@ export class TranslationWorkUnitRunner {
       return dsts.map(() => "NONE");
     }
     const first_item = context.items[0];
+    const skip_internal_filter_by_line = context.pipeline_contexts.flatMap((pipeline_context) =>
+      Array.from(
+        { length: pipeline_context.srcs.length },
+        () => pipeline_context.item?.skip_internal_filter === true,
+      ),
+    );
     return ResponseChecker.check(
       context.srcs,
       dsts,
@@ -382,6 +389,7 @@ export class TranslationWorkUnitRunner {
       context.quality_snapshot,
       context.items.length === 1 ? this.read_number(first_item?.retry_count, 0) : 0,
       context.stream_degraded,
+      skip_internal_filter_by_line,
     );
   }
 

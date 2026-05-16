@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { JsonTool } from "../../shared/utils/json-tool";
+import { ZstdTool } from "../../shared/utils/zstd-tool";
 import {
   PROJECT_DATABASE_SCHEMA_VERSION,
   PROJECT_DATABASE_WRITEBACK_MIGRATION_VERSION,
@@ -234,6 +235,94 @@ describe("ProjectDatabaseMigrationService", () => {
     ]);
   });
 
+  it("旧 TRANS item metadata 按原始 asset 行确定性补齐", () => {
+    const db = open_database("legacy-trans-items.lg");
+    db.exec(`
+      CREATE TABLE assets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        data BLOB NOT NULL,
+        original_size INTEGER NOT NULL,
+        compressed_size INTEGER NOT NULL
+      );
+      CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL);
+    `);
+    insert_asset(
+      db,
+      "demo.trans",
+      {
+        project: {
+          gameEngine: "",
+          files: {
+            "script-a.json": {
+              data: [["强制翻译行", ""]],
+            },
+            "script-b.json": {
+              data: [["普通行", ""]],
+            },
+          },
+        },
+      },
+      0,
+    );
+    db.prepare("INSERT INTO items (data) VALUES (?)").run(
+      JsonTool.stringifyStrict({
+        src: "强制翻译行",
+        file_type: "TRANS",
+        file_path: "demo.trans",
+        tag: "script-a.json",
+        row: 0,
+        extra_field: { tag: ["aqua"] },
+      }),
+    );
+    db.prepare("INSERT INTO items (data) VALUES (?)").run(
+      JsonTool.stringifyStrict({
+        src: "普通行",
+        file_type: "TRANS",
+        file_path: "demo.trans",
+        tag: "script-b.json",
+        row: 1,
+        extra_field: { tag: [] },
+        skip_internal_filter: "bad",
+      }),
+    );
+
+    ProjectDatabaseMigrationService.migrate(db);
+
+    expect(read_item_payloads(db)).toEqual([
+      {
+        src: "强制翻译行",
+        file_type: "TRANS",
+        file_path: "demo.trans",
+        tag: "script-a.json",
+        row: 0,
+        extra_field: {
+          tag: ["aqua"],
+          trans_ref: { file_key: "script-a.json", row_index: 0 },
+        },
+        status: "NONE",
+        skip_internal_filter: true,
+        text_type: "NONE",
+        retry_count: 0,
+      },
+      {
+        src: "普通行",
+        file_type: "TRANS",
+        file_path: "demo.trans",
+        tag: "script-b.json",
+        row: 1,
+        extra_field: {
+          tag: [],
+          trans_ref: { file_key: "script-b.json", row_index: 0 },
+        },
+        status: "NONE",
+        text_type: "NONE",
+        retry_count: 0,
+      },
+    ]);
+  });
+
   it("旧分析 checkpoint 状态写回任务进度三态", () => {
     const db = open_database("legacy-checkpoints.lg");
     db.exec(`
@@ -307,6 +396,20 @@ function read_rule_rows(db: DatabaseSync): Array<{ type: string; data: unknown }
       type: String(row["type"]),
       data: JsonTool.parseStrict(String(row["data"])),
     }));
+}
+
+function insert_asset(
+  db: DatabaseSync,
+  asset_path: string,
+  payload: unknown,
+  sort_order: number,
+): void {
+  const raw = Buffer.from(JsonTool.stringifyStrict(payload), "utf-8");
+  const compressed = ZstdTool.compress(raw);
+  db.prepare(
+    `INSERT INTO assets (path, sort_order, data, original_size, compressed_size)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(asset_path, sort_order, compressed, raw.byteLength, compressed.byteLength);
 }
 
 function read_item_payloads(db: DatabaseSync): unknown[] {

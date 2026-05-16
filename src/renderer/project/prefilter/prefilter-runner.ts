@@ -126,6 +126,7 @@ export function build_project_state_from_draft(draft: ProjectDraftPayload): Proj
       status: String(item.status ?? "NONE"),
       text_type: String(item.text_type ?? "NONE"),
       retry_count: Number(item.retry_count ?? 0),
+      skip_internal_filter: item.skip_internal_filter === true,
     };
   }
 
@@ -159,6 +160,7 @@ export function serialize_prefilter_runtime_items(
       status: String(item.status ?? "NONE"),
       text_type: String(item.text_type ?? "NONE"),
       retry_count: Number(item.retry_count ?? 0),
+      skip_internal_filter: item.skip_internal_filter === true,
     };
   });
 }
@@ -185,6 +187,7 @@ export function merge_prefilter_output_with_draft_items(args: {
       status: String(runtime_item.status ?? "NONE"),
       text_type: String(runtime_item.text_type ?? draft_item.text_type ?? "NONE"),
       retry_count: Number(runtime_item.retry_count ?? 0),
+      skip_internal_filter: runtime_item.skip_internal_filter === true,
     };
   });
 }

@@ -123,6 +123,39 @@ describe("compute_project_prefilter_mutation", () => {
     });
   });
 
+  it("强制翻译条目绕过规则和语言预过滤并保留运行态字段", () => {
+    const output = compute_project_prefilter_mutation({
+      state: create_state({
+        "1": {
+          item_id: 1,
+          file_path: "script.txt",
+          row_number: 1,
+          src: "voice.ogg",
+          status: "NONE",
+          skip_internal_filter: true,
+        },
+        "2": {
+          item_id: 2,
+          file_path: "script.txt",
+          row_number: 2,
+          src: "plain english line",
+          status: "NONE",
+          skip_internal_filter: true,
+        },
+      }),
+      source_language: "JA",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+
+    expect(output.items["1"].status).toBe("NONE");
+    expect(output.items["2"].status).toBe("NONE");
+    expect(output.items["1"].skip_internal_filter).toBe(true);
+    expect(output.stats.rule_skipped).toBe(0);
+    expect(output.stats.language_skipped).toBe(0);
+  });
+
   it("按同一文件内完全一致的原文标记重复项", () => {
     const output = compute_project_prefilter_mutation({
       state: create_state({

@@ -753,6 +753,7 @@ export class ProjectLifecycleService {
       text_type: this.string_value(item["text_type"]) || "NONE",
       status: Item.normalize_status(item["status"]),
       retry_count: this.number_value(item["retry_count"], 0),
+      skip_internal_filter: item["skip_internal_filter"] === true,
     };
     if (item["id"] !== undefined && item["id"] !== null && item["id"] !== "") {
       normalized["id"] = this.number_value(item["id"], 0);
