@@ -146,7 +146,15 @@ describe("ProjectSyncMutationService", () => {
       sectionRevisions: { items: 1, analysis: 1 },
     });
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      { id: 1, src: "新", dst: "", status: "NONE", row: 1, retry_count: 0 },
+      {
+        id: 1,
+        src: "新",
+        dst: "",
+        status: "NONE",
+        row: 1,
+        skip_internal_filter: false,
+        retry_count: 0,
+      },
     ]);
     expect(
       database.execute({

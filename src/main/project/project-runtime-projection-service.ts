@@ -420,6 +420,7 @@ export class ProjectRuntimeProjectionService {
       status: String(item["status"] ?? "NONE"),
       text_type: String(item["text_type"] ?? "NONE"),
       retry_count: this.read_number(item["retry_count"], 0),
+      skip_internal_filter: item["skip_internal_filter"] === true,
     };
   }
 

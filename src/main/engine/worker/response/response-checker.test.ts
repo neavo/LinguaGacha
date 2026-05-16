@@ -68,6 +68,19 @@ describe("响应检查器逐行规则", () => {
     expect(check_lines(["Hello World"], ["任何译文"])).toEqual(["NONE"]);
   });
 
+  it("强制翻译行不被规则或语言过滤短路", () => {
+    expect(
+      check_lines(["voice.ogg", "Hello World"], ["voice.ogg", "Hello World"], {
+        config: create_config({
+          source_language: "JA",
+          target_language: "EN",
+          check_kana_residue: false,
+        }),
+        skip_internal_filter_by_line: [true, true],
+      }),
+    ).toEqual(["LINE_ERROR_SIMILARITY", "LINE_ERROR_SIMILARITY"]);
+  });
+
   it("检测日文源语言的假名残留", () => {
     expect(
       check_lines(["こんにちは"], ["テスト"], {
@@ -272,6 +285,7 @@ function check_response(
     quality_snapshot?: TextQualitySnapshot;
     item_retry_count?: number;
     stream_degraded?: boolean;
+    skip_internal_filter_by_line?: boolean[];
   } = {},
 ): string[] {
   return ResponseChecker.check(
@@ -282,6 +296,7 @@ function check_response(
     options.quality_snapshot ?? create_quality_snapshot(),
     options.item_retry_count ?? 0,
     options.stream_degraded ?? false,
+    options.skip_internal_filter_by_line ?? [],
   );
 }
 
@@ -292,6 +307,7 @@ function check_lines(
     text_type?: string;
     config?: TextProcessingConfig;
     quality_snapshot?: TextQualitySnapshot;
+    skip_internal_filter_by_line?: boolean[];
   } = {},
 ): string[] {
   return ResponseChecker.check_lines(
@@ -300,6 +316,7 @@ function check_lines(
     options.text_type ?? "NONE",
     options.config ?? create_config(),
     options.quality_snapshot ?? create_quality_snapshot(),
+    options.skip_internal_filter_by_line ?? [],
   );
 }
 

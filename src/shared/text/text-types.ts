@@ -58,6 +58,7 @@ export type TextTaskItemRecord = TextJsonRecord & {
   status?: string;
   text_type?: string; // text_type 决定保护规则分支，retry_count 用于任务调度诊断
   retry_count?: number;
+  skip_internal_filter?: boolean; // 强制翻译条目绕过规则/语言类内部过滤
   extra_field?: TextJsonValue; // extra_field 保留格式处理器回写所需的结构化上下文
 };
 

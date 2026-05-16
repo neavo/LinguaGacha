@@ -27,6 +27,7 @@ type TranslationResetFullItemPayload = {
   text_type: string;
   status: string;
   retry_count: number;
+  skip_internal_filter: boolean;
 };
 
 type TranslationResetPreviewPayload = {
@@ -66,6 +67,7 @@ function serialize_partial_items(
       status: item.status,
       text_type: item.text_type,
       retry_count: item.retry_count,
+      skip_internal_filter: item.skip_internal_filter,
     };
   });
 }
@@ -92,6 +94,7 @@ function normalize_full_preview_item(
     text_type: String(value.text_type ?? "NONE"),
     status: String(value.status ?? "NONE"),
     retry_count: Number(value.retry_count ?? 0),
+    skip_internal_filter: value.skip_internal_filter === true,
   };
 }
 
@@ -108,6 +111,7 @@ function convert_full_preview_item_to_runtime_record(
     status: item.status,
     text_type: item.text_type,
     retry_count: item.retry_count,
+    skip_internal_filter: item.skip_internal_filter,
   };
 }
 
@@ -142,6 +146,7 @@ function merge_full_items_with_runtime_state(args: {
       text_type: runtime_item.text_type,
       status: runtime_item.status,
       retry_count: runtime_item.retry_count,
+      skip_internal_filter: runtime_item.skip_internal_filter,
     };
   });
 }
@@ -217,6 +222,7 @@ export async function create_translation_reset_all_plan(args: {
       status: runtime_item.status,
       text_type: runtime_item.text_type,
       retry_count: runtime_item.retry_count,
+      skip_internal_filter: runtime_item.skip_internal_filter,
     };
   }
 

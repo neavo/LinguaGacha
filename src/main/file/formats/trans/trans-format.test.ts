@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { Item } from "../../../base/item";
+import { Item } from "../../../../base/item";
 import { TRANSFormat } from "./trans-format";
 
 let temp_dir = "";
@@ -72,6 +72,7 @@ describe("TRANSFormat", () => {
       ["src-only", "", "NONE"],
     ]);
     expect(items[1]?.extra_field).toEqual(expect.objectContaining({ tag: ["aqua"] }));
+    expect(items[1]?.skip_internal_filter).toBe(true);
   });
 
   it("默认处理器按资源扩展名和颜色标签过滤", () => {
@@ -403,5 +404,40 @@ describe("TRANSFormat", () => {
     );
 
     expect(fs.existsSync(path.join(temp_dir, "missing.trans"))).toBe(false);
+  });
+
+  it("缺失 trans_ref 时拒绝写回", async () => {
+    const original = {
+      project: {
+        gameEngine: "",
+        files: {
+          "/demo.map": {
+            data: [["原文", ""]],
+            tags: [[]],
+            context: [[]],
+            parameters: [[]],
+          },
+        },
+      },
+    };
+
+    await expect(
+      new TRANSFormat().write_to_path(
+        [
+          Item.from_json({
+            src: "原文",
+            dst: "译文",
+            tag: "/demo.map",
+            row: 0,
+            file_type: "TRANS",
+            file_path: "demo.trans",
+            status: "PROCESSED",
+          }),
+        ],
+        { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+        () => Buffer.from(JSON.stringify(original)),
+      ),
+    ).rejects.toThrow("TRANS 条目缺少有效 trans_ref");
+    expect(fs.existsSync(path.join(temp_dir, "demo.trans"))).toBe(false);
   });
 });

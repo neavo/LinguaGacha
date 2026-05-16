@@ -210,6 +210,7 @@ export class ProjectResetPreviewService {
       text_type: String(item["text_type"] ?? "NONE"),
       status: this.normalize_item_status(item["status"]),
       retry_count: this.read_number(item["retry_count"], 0),
+      skip_internal_filter: item["skip_internal_filter"] === true,
     };
   }
 

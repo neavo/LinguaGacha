@@ -10,6 +10,7 @@ export type RuntimeProjectItemRecord = {
   status: string;
   text_type: string;
   retry_count: number;
+  skip_internal_filter: boolean;
 };
 
 export function normalize_runtime_project_item_record(
@@ -35,6 +36,7 @@ export function normalize_runtime_project_item_record(
     status: String(candidate.status ?? "NONE"),
     text_type: String(candidate.text_type ?? "NONE"),
     retry_count: Number(candidate.retry_count ?? 0),
+    skip_internal_filter: candidate.skip_internal_filter === true,
   };
 }
 

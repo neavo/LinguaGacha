@@ -72,6 +72,7 @@ export class Item {
   public text_type: ItemTextType = "NONE"; // 文本的实际类型
   public status: ItemStatus = "NONE"; // 翻译状态
   public retry_count = 0; // 重试次数，当前只有单独重试的时候才增加此计数
+  public skip_internal_filter = false; // 强制翻译条目绕过规则/语言类内部过滤
 
   private constructor() {}
 
@@ -100,6 +101,7 @@ export class Item {
     item.text_type = text_type;
     item.status = Item.normalize_status(record["status"]);
     item.retry_count = normalize_item_number(record["retry_count"], 0);
+    item.skip_internal_filter = record["skip_internal_filter"] === true;
     return item;
   }
 
@@ -120,6 +122,7 @@ export class Item {
       text_type: this.text_type,
       status: this.status,
       retry_count: this.retry_count,
+      skip_internal_filter: this.skip_internal_filter,
     };
     if (this.id !== undefined) {
       payload["id"] = this.id;
