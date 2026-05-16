@@ -64,7 +64,7 @@ describe("TXTFormat", () => {
       "同文\n译文",
     );
     expect(
-      fs.readFileSync(path.join(temp_dir, "bilingual", "story", "dialog.ja.zh.txt"), "utf-8"),
+      fs.readFileSync(path.join(temp_dir, "bilingual", "story", "dialog.txt"), "utf-8"),
     ).toBe("同文\n原文\n译文");
   });
 
@@ -102,7 +102,7 @@ describe("TXTFormat", () => {
       "译文\n同文",
     );
     expect(
-      fs.readFileSync(path.join(temp_dir, "demo_译文_双语对照", "script.ja.zh.txt"), "utf-8"),
+      fs.readFileSync(path.join(temp_dir, "demo_译文_双语对照", "script.txt"), "utf-8"),
     ).toBe("原文\n译文\n同文");
   });
 });

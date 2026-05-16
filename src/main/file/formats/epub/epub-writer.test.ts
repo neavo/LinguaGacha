@@ -118,7 +118,7 @@ describe("EpubWriter", () => {
     const epub_asset = await create_epub_fixture("章节");
     const item = await create_translated_epub_item(epub_asset, "译文");
     const translated_path = path.join(temp_dir, "translated", "book.epub");
-    const bilingual_path = path.join(temp_dir, "bilingual", "book.ja.zh.epub");
+    const bilingual_path = path.join(temp_dir, "bilingual", "book.epub");
 
     await writer.build_epub(epub_asset, [item], translated_path, false);
     await writer.build_epub(epub_asset, [item], bilingual_path, true);
@@ -135,7 +135,7 @@ describe("EpubWriter", () => {
     );
     const item = await create_translated_epub_item(epub_asset, "宝条直希");
     const translated_path = path.join(temp_dir, "ruby-translated", "book.epub");
-    const bilingual_path = path.join(temp_dir, "ruby-bilingual", "book.ja.zh.epub");
+    const bilingual_path = path.join(temp_dir, "ruby-bilingual", "book.epub");
 
     await writer.build_epub(epub_asset, [item], translated_path, false);
     await writer.build_epub(epub_asset, [item], bilingual_path, true);
@@ -172,13 +172,12 @@ describe("EpubWriter", () => {
           status: "PROCESSED",
         }),
     );
-    const out_path = path.join(temp_dir, "nav-bilingual", "book.ja.zh.epub");
+    const out_path = path.join(temp_dir, "nav-bilingual", "book.epub");
 
     await writer.build_epub(epub_asset, items, out_path, true);
 
     const nav_text = await read_epub_entry_text(fs.readFileSync(out_path), "OPS/nav.xhtml");
     expect(nav_text).toContain('href="chapter.xhtml"');
-    expect(nav_text).not.toContain("chapter.ja.zh.xhtml");
   });
 
   it("AST 写回保留 XML 合法补充平面字符", async () => {
