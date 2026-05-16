@@ -102,6 +102,39 @@ describe("EpubWriter", () => {
     await expect(read_epub_entry_text(fs.readFileSync(bilingual_path))).resolves.toContain("译文");
   });
 
+  it("block_text 写回普通译文时移除 rt，双语原文块保留原始 ruby DOM", async () => {
+    const writer = create_writer();
+    const epub_asset = await create_epub_fixture(
+      '<ruby class="calibre3">宝<rt>ほう</rt>條<rt>じょう</rt>直<rt>なお</rt>希<rt>き</rt></ruby>',
+    );
+    const item = await create_translated_epub_item(epub_asset, "宝条直希");
+    const translated_path = path.join(temp_dir, "ruby-translated", "book.epub");
+    const bilingual_path = path.join(temp_dir, "ruby-bilingual", "book.ja.zh.epub");
+
+    await writer.build_epub(epub_asset, [item], translated_path, false);
+    await writer.build_epub(epub_asset, [item], bilingual_path, true);
+
+    const translated_text = await read_epub_entry_text(fs.readFileSync(translated_path));
+    const bilingual_text = await read_epub_entry_text(fs.readFileSync(bilingual_path));
+
+    expect(translated_text).toContain("宝条直希");
+    expect(translated_text).not.toContain("<rt>");
+    expect(bilingual_text).toContain('<ruby class="calibre3">');
+    expect(bilingual_text).toContain("<rt>ほう</rt>");
+    expect(bilingual_text).toContain("宝条直希");
+  });
+
+  it("block_text 写回校验复用读取器的规范空白口径", async () => {
+    const writer = create_writer();
+    const epub_asset = await create_epub_fixture('<ruby>A <rt>x</rt></ruby> B');
+    const item = await create_translated_epub_item(epub_asset, "译文");
+    const translated_path = path.join(temp_dir, "ruby-space-translated", "book.epub");
+
+    await writer.build_epub(epub_asset, [item], translated_path, false);
+
+    await expect(read_epub_entry_text(fs.readFileSync(translated_path))).resolves.toContain("译文");
+  });
+
   it("AST 写回保留 XML 合法补充平面字符", async () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");

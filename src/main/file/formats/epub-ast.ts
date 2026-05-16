@@ -41,13 +41,27 @@ export interface EpubPackageInfo {
 }
 
 /**
- * 单个可翻译块的抽象单位，可由一个块内多个 slot 拼成同一条翻译项
+ * 普通 EPUB 块保持 slot 级定位，逐行译文可精确写回原 DOM 位置
  */
-export interface EpubDocumentUnit {
+export interface EpubSlotPerLineDocumentUnit {
+  mode: "slot_per_line";
   block_path: string;
   slots: Array<[EpubPartRef, string]>;
-  ruby_clean_candidate: Record<string, string> | null;
 }
+
+/**
+ * 含结构化 ruby 的 EPUB 块使用整块正文投影，避免 rt 注音进入应用文本生命周期
+ */
+export interface EpubBlockTextDocumentUnit {
+  mode: "block_text";
+  block_path: string;
+  text: string;
+}
+
+/**
+ * 单个可翻译块的抽象单位，mode 决定后续 item metadata 与 writer 写回策略
+ */
+export type EpubDocumentUnit = EpubSlotPerLineDocumentUnit | EpubBlockTextDocumentUnit;
 
 /**
  * 元素路径片段使用本地名和同名序号，规避命名空间前缀变化造成的定位漂移
@@ -138,7 +152,7 @@ function is_valid_xml_text_code_point(code_point: number): boolean {
 }
 
 /**
- * EPUB AST 抽取器，复刻历史 slot_per_line 定位协议
+ * EPUB AST 抽取器，统一维护 slot_per_line 与 block_text 两种写回协议
  */
 export class EpubAst {
   /**
@@ -289,7 +303,7 @@ export class EpubAst {
   }
 
   /**
-   * 单文本摘要用于 ruby 清洗候选，保持和旧 digest 算法一致
+   * 单文本摘要用于 block_text metadata，保证整块正文投影可校验
    */
   public sha1_hex(text: string): string {
     return crypto.createHash("sha1").update(text, "utf-8").digest("hex");
@@ -623,9 +637,9 @@ export class EpubAst {
   }
 
   /**
-   * 收集跳过子树之外的可见文本，用于 ruby 清洗候选的整块摘要
+   * 收集跳过子树之外的可见文本，并统一归一成 block_text 的规范正文
    */
-  public collect_visible_text_without_skipped_subtrees(block: Element): string {
+  public canonical_block_text_projection(block: Element): string {
     const parts: string[] = [];
     const walk = (elem: Element): void => {
       const name = this.local_name(elem.name);
@@ -634,42 +648,25 @@ export class EpubAst {
       }
       const text = this.read_text_slot(elem);
       if (text !== "") {
-        parts.push(this.normalize_slot_text(text));
+        parts.push(text);
       }
       for (const child of this.iter_children_elements(elem)) {
         walk(child);
         const tail = this.read_tail_slot(child);
         if (tail !== "") {
-          parts.push(this.normalize_slot_text(tail));
+          parts.push(tail);
         }
       }
     };
     walk(block);
-    return parts.join("");
+    return this.normalize_slot_text(parts.join(""));
   }
 
   /**
-   * ruby 文本可能让 slot 数量与译文行数不一致，清洗候选提供整块写回兜底
+   * 判断块内是否存在 EPUB 结构化 ruby，命中后必须使用 block_text 协议
    */
-  public build_ruby_clean_candidate(
-    elem: Element,
-    block_path: string,
-  ): Record<string, string> | null {
-    const has_ruby = this.flatten_elements(elem).some(
-      (node) => this.local_name(node.name) === "ruby",
-    );
-    if (!has_ruby) {
-      return null;
-    }
-    const cleaned_src = this.collect_visible_text_without_skipped_subtrees(elem);
-    if (cleaned_src.trim() === "") {
-      return null;
-    }
-    return {
-      cleaned_src,
-      block_path,
-      cleaned_digest: this.sha1_hex(cleaned_src),
-    };
+  public has_ruby_descendant(elem: Element): boolean {
+    return this.flatten_elements(elem).some((node) => this.local_name(node.name) === "ruby");
   }
 
   /**
@@ -692,10 +689,21 @@ export class EpubAst {
     const elem_path = path_map.get(elem) ?? "";
 
     if (is_block && !has_block_descendant) {
+      if (this.has_ruby_descendant(elem)) {
+        const text = this.canonical_block_text_projection(elem);
+        if (text.trim() !== "") {
+          units.push({
+            mode: "block_text",
+            block_path: elem_path,
+            text,
+          });
+        }
+        return units;
+      }
       units.push({
+        mode: "slot_per_line",
         block_path: elem_path,
         slots: this.iter_translatable_text_slots(root, elem, path_map),
-        ruby_clean_candidate: this.build_ruby_clean_candidate(elem, elem_path),
       });
       return units;
     }
@@ -704,9 +712,9 @@ export class EpubAst {
     const text = this.read_text_slot(elem);
     if (collect_direct_slots && text !== "") {
       units.push({
+        mode: "slot_per_line",
         block_path: elem_path,
         slots: [[{ slot: "text", path: elem_path }, text]],
-        ruby_clean_candidate: null,
       });
     }
 
@@ -723,9 +731,9 @@ export class EpubAst {
       const tail = this.read_tail_slot(child);
       if (collect_direct_slots && tail !== "") {
         units.push({
+          mode: "slot_per_line",
           block_path: elem_path,
           slots: [[{ slot: "tail", path: path_map.get(child) ?? "" }, tail]],
-          ruby_clean_candidate: null,
         });
       }
     }
@@ -774,16 +782,26 @@ export class EpubAst {
     const items: Item[] = [];
     let unit_index = 0;
     for (const unit of units) {
-      const item = this.create_item_from_slots(
-        doc_path,
-        rel_path,
-        spine_index,
-        unit_index,
-        unit.block_path,
-        unit.slots,
-        is_nav,
-        unit.ruby_clean_candidate,
-      );
+      const item =
+        unit.mode === "block_text"
+          ? this.create_item_from_block_text(
+              doc_path,
+              rel_path,
+              spine_index,
+              unit_index,
+              unit.block_path,
+              unit.text,
+              is_nav,
+            )
+          : this.create_item_from_slots(
+              doc_path,
+              rel_path,
+              spine_index,
+              unit_index,
+              unit.block_path,
+              unit.slots,
+              is_nav,
+            );
       if (item === null) {
         continue;
       }
@@ -842,7 +860,6 @@ export class EpubAst {
     block_path: string,
     slots: Array<[EpubPartRef, string]>,
     is_nav: boolean,
-    ruby_clean_candidate: Record<string, string> | null,
   ): Item | null {
     const part_defs: EpubPartRef[] = [];
     const part_texts: string[] = [];
@@ -866,9 +883,6 @@ export class EpubAst {
       src_digest: this.sha1_hex_with_null_separator(part_texts),
       is_nav,
     };
-    if (ruby_clean_candidate !== null) {
-      epub_extra["ruby_clean_candidate"] = ruby_clean_candidate as ApiJsonValue;
-    }
 
     return Item.from_json({
       src: part_texts.join("\n"),
@@ -878,6 +892,41 @@ export class EpubAst {
       file_type: "EPUB",
       file_path: rel_path,
       extra_field: { epub: epub_extra } as ApiJsonValue,
+    });
+  }
+
+  /**
+   * 含 ruby 块组装成单条 block_text Item，src_digest 只绑定去注音后的可见正文
+   */
+  public create_item_from_block_text(
+    doc_path: string,
+    rel_path: string,
+    spine_index: number,
+    unit_index: number,
+    block_path: string,
+    text: string,
+    is_nav: boolean,
+  ): Item | null {
+    const src = this.normalize_slot_text(text);
+    if (src.trim() === "") {
+      return null;
+    }
+    return Item.from_json({
+      src,
+      dst: "",
+      tag: doc_path,
+      row: spine_index * ROW_MULTIPLIER + unit_index,
+      file_type: "EPUB",
+      file_path: rel_path,
+      extra_field: {
+        epub: {
+          mode: "block_text",
+          doc_path,
+          block_path,
+          src_digest: this.sha1_hex(src),
+          is_nav,
+        },
+      } as ApiJsonValue,
     });
   }
 
@@ -941,6 +990,16 @@ export class EpubAst {
    */
   public clone_element(elem: Element): Element {
     return cloneNode(elem, true);
+  }
+
+  /**
+   * block_text 写回会接管整个块的 children，统一重连 DOM 节点关系
+   */
+  public replace_element_children_with_text(elem: Element, text: string): void {
+    const text_node = new Text(text);
+    text_node.parent = elem;
+    elem.children = [text_node];
+    this.relink_children(elem);
   }
 
   /**

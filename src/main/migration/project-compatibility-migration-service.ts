@@ -3,6 +3,7 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-
 import type { SettingService } from "../service/setting-service";
 import { is_text_preserve_mode } from "../../base/quality";
 import { normalize_app_language } from "../../base/setting";
+import { EpubRubyCleanMigration } from "./epub-ruby-clean-migration";
 
 type MigrationMetaRecord = Record<string, DatabaseJsonValue>;
 
@@ -17,19 +18,31 @@ const TRANSLATION_PROMPT_RULE_TYPE = "translation_prompt"; // 当前工程只暴
 export class ProjectCompatibilityMigrationService {
   private readonly database: ProjectDatabase;
   private readonly setting_service: SettingService;
+  /**
+   * EPUB ruby 迁移独立封装，避免通用打开期迁移服务承载格式细节
+   */
+  private readonly epub_ruby_clean_migration: EpubRubyCleanMigration;
 
   /**
    * 注入当前工程事实读写入口和应用语言来源，避免迁移服务自行解析全局状态
    */
-  public constructor(database: ProjectDatabase, setting_service: SettingService) {
+  public constructor(
+    database: ProjectDatabase,
+    setting_service: SettingService,
+    epub_ruby_clean_migration?: EpubRubyCleanMigration,
+  ) {
     this.database = database;
     this.setting_service = setting_service;
+    this.epub_ruby_clean_migration =
+      epub_ruby_clean_migration ?? new EpubRubyCleanMigration(database);
   }
 
   /**
    * 构建打开旧工程时需要写回的兼容操作，调用方负责放入同一事务
    */
-  public build_open_compatibility_operations(project_path: string): DatabaseOperation[] {
+  public async build_open_compatibility_operations(
+    project_path: string,
+  ): Promise<DatabaseOperation[]> {
     const meta = this.get_all_meta(project_path);
     const operations: DatabaseOperation[] = [];
     const raw_text_preserve_mode = this.string_value(meta["text_preserve_mode"]);
@@ -66,6 +79,7 @@ export class ProjectCompatibilityMigrationService {
         }),
       );
     }
+    operations.push(...(await this.epub_ruby_clean_migration.build_operations(project_path)));
     return operations;
   }
 

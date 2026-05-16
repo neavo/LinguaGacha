@@ -190,22 +190,19 @@ describe("翻译文本 pipeline", () => {
     expect(context.samples).toEqual(["Markdown Code"]);
   });
 
-  it("启用 ruby 清理时 EPUB 块级候选会成为译前和译后的对齐文本", () => {
+  it("译前只读取 item.src，不消费 EPUB 私有候选字段", () => {
     const pipeline = create_pipeline_pair(
       create_config({ clean_ruby: true }),
       create_quality_snapshot({ text_preserve_mode: "OFF" }),
     );
 
     const context = pipeline.pre.process_item({
-      src: "宝條\n直希",
+      src: "宝條直希",
       text_type: "TXT",
       extra_field: {
         epub: {
-          ruby_clean_candidate: {
-            cleaned_src: "宝條直希",
-            block_path: "/html[1]/body[1]/p[1]",
-            cleaned_digest: "digest",
-          },
+          mode: "block_text",
+          cleaned_src: "错误候选",
         },
       },
     });
@@ -214,28 +211,6 @@ describe("翻译文本 pipeline", () => {
     expect(context.srcs).toEqual(["宝條直希"]);
     expect(context.valid_line_indexes).toEqual(new Set([0]));
     expect(result).toEqual({ name: null, dst: "宝条直希" });
-  });
-
-  it("关闭 ruby 清理时 EPUB 块级候选不会改变原始分行", () => {
-    const pipeline = create_pipeline_pair(
-      create_config({ clean_ruby: false }),
-      create_quality_snapshot({ text_preserve_mode: "OFF" }),
-    );
-
-    const context = pipeline.pre.process_item({
-      src: "宝條\n直希",
-      text_type: "TXT",
-      extra_field: {
-        epub: {
-          ruby_clean_candidate: {
-            cleaned_src: "宝條直希",
-          },
-        },
-      },
-    });
-
-    expect(context.srcs).toEqual(["宝條", "直希"]);
-    expect(context.valid_line_indexes).toEqual(new Set([0, 1]));
   });
 
   it("关闭自动前后缀保护时保留原文并跳过完全保护行", () => {

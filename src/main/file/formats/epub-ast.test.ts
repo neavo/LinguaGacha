@@ -114,7 +114,44 @@ describe("EpubAst", () => {
 
     const items = ast.extract_items_from_document("OPS/chapter.xhtml", raw, 0, "book.epub");
 
-    expect(items.map((item) => item.src)).toEqual(["Head\nTail\n漢\nEnd"]);
+    expect(items.map((item) => item.src)).toEqual(["HeadTail漢End"]);
+    expect(read_epub_extra(items[0] as Item)).toEqual(
+      expect.objectContaining({
+        mode: "block_text",
+        block_path: "/html[1]/body[1]/p[1]",
+      }),
+    );
+  });
+
+  it("含 class 的 EPUB ruby 在导入时投影为去注音正文", async () => {
+    const ast = new EpubAst();
+    const epub_asset = await create_epub_fixture(
+      '<ruby class="calibre3">宝<rt>ほう</rt>條<rt>じょう</rt>直<rt>なお</rt>希<rt>き</rt></ruby>',
+    );
+
+    const items = await ast.read_from_stream(epub_asset, "book.epub");
+    const [item] = items;
+    const epub = item === undefined ? null : read_epub_extra(item);
+
+    expect(item?.src).toBe("宝條直希");
+    expect(epub).toEqual(
+      expect.objectContaining({
+        mode: "block_text",
+        doc_path: "OPS/chapter.xhtml",
+        block_path: "/html[1]/body[1]/p[1]",
+        src_digest: expect.any(String),
+      }),
+    );
+    expect(epub).not.toHaveProperty("ruby_clean_candidate");
+  });
+
+  it("block_text 正文投影在内联和尾文本边界使用同一归一口径", async () => {
+    const ast = new EpubAst();
+    const epub_asset = await create_epub_fixture('<ruby>A <rt>x</rt></ruby> B');
+
+    const [item] = await ast.read_from_stream(epub_asset, "book.epub");
+
+    expect(item?.src).toBe("A B");
   });
 
   it("缺少 EPUB metadata 时返回空 extra", () => {

@@ -24,11 +24,11 @@ const CSS_VERTICAL_WRITING_PATTERN = /[^;\s]*writing-mode\s*:\s*vertical-rl;*/gi
 const EPUB_LEGACY_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td"]);
 
 /**
- * EPUB 写回器，优先使用 AST 定位，缺少 parts 时回退顺序写回
+ * EPUB 写回器，优先使用 AST 定位，缺少正式 metadata 时回退顺序写回
  */
 export class EpubWriter {
   /**
-   * AST 工具集中提供路径、slot、解析和清洗能力，写回器不重复实现 DOM 细节
+   * AST 工具集中提供路径、slot、解析和正文投影能力，写回器不重复实现 DOM 细节
    */
   private readonly ast = new EpubAst();
 
@@ -45,10 +45,22 @@ export class EpubWriter {
   }
 
   /**
-   * 只有带 parts 定位的条目才能走 AST 写回，缺少定位时走顺序兼容写回
+   * slot_per_line 和 block_text 都是正式 AST metadata，旧无 metadata 项才走 legacy
    */
   public has_epub_ast_metadata(item: Item): boolean {
     const epub = read_epub_extra(item);
+    const mode = String(epub?.["mode"] ?? "");
+    if (mode === "block_text") {
+      return (
+        typeof epub?.["doc_path"] === "string" &&
+        typeof epub["block_path"] === "string" &&
+        typeof epub["src_digest"] === "string" &&
+        epub["src_digest"] !== ""
+      );
+    }
+    if (mode !== "slot_per_line") {
+      return false;
+    }
     const parts = epub?.["parts"];
     return Array.isArray(parts) && parts.length > 0;
   }
@@ -290,24 +302,15 @@ export class EpubWriter {
 
     for (const item of items) {
       const epub = read_epub_extra(item);
-      const parts = epub?.["parts"];
-      const src_digest = epub?.["src_digest"];
-      if (
-        epub === null ||
-        !Array.isArray(parts) ||
-        parts.length === 0 ||
-        typeof src_digest !== "string" ||
-        src_digest === ""
-      ) {
+      const mode = String(epub?.["mode"] ?? "");
+      if (epub === null) {
         skipped += 1;
         continue;
       }
-
       const item_dst = Item.from_json(item).effective_dst();
-      const dst_lines = item_dst.split("\n");
-      if (dst_lines.length !== parts.length) {
+      if (mode === "block_text") {
         if (
-          this.apply_ruby_clean_candidate_to_block(
+          this.apply_block_text_item_to_tree(
             root,
             elem_by_path,
             epub,
@@ -322,6 +325,25 @@ export class EpubWriter {
         } else {
           skipped += 1;
         }
+        continue;
+      }
+
+      const parts = epub?.["parts"];
+      const src_digest = epub?.["src_digest"];
+      if (
+        mode !== "slot_per_line" ||
+        !Array.isArray(parts) ||
+        parts.length === 0 ||
+        typeof src_digest !== "string" ||
+        src_digest === ""
+      ) {
+        skipped += 1;
+        continue;
+      }
+
+      const dst_lines = item_dst.split("\n");
+      if (dst_lines.length !== parts.length) {
+        skipped += 1;
         continue;
       }
 
@@ -404,9 +426,9 @@ export class EpubWriter {
   }
 
   /**
-   * ruby 清洗候选用于处理带注音的文本块，slot 数量变化时仍能按块安全写回
+   * block_text 按整块可见正文校验，译文接管目标块 children
    */
-  private apply_ruby_clean_candidate_to_block(
+  private apply_block_text_item_to_tree(
     root: Element,
     elem_by_path: Map<string, Element>,
     epub: Record<string, ApiJsonValue>,
@@ -416,19 +438,17 @@ export class EpubWriter {
     block_refs: Array<[Element, Element]>,
     inserted_block_paths: Set<string>,
   ): boolean {
-    const candidate = read_json_record(epub["ruby_clean_candidate"]);
-    const block_path_candidate = String(candidate["block_path"] ?? epub["block_path"] ?? "");
-    const cleaned_digest = String(candidate["cleaned_digest"] ?? "");
-    if (block_path_candidate === "" || cleaned_digest === "") {
+    const block_path = typeof epub["block_path"] === "string" ? epub["block_path"] : "";
+    const src_digest = typeof epub["src_digest"] === "string" ? epub["src_digest"] : "";
+    if (block_path === "" || src_digest === "") {
       return false;
     }
-    const block_elem =
-      elem_by_path.get(block_path_candidate) ?? this.ast.find_by_path(root, block_path_candidate);
+    const block_elem = elem_by_path.get(block_path) ?? this.ast.find_by_path(root, block_path);
     if (block_elem === null) {
       return false;
     }
-    const current_cleaned_src = this.ast.collect_visible_text_without_skipped_subtrees(block_elem);
-    if (this.ast.sha1_hex(current_cleaned_src) !== cleaned_digest) {
+    const current_src = this.ast.canonical_block_text_projection(block_elem);
+    if (this.ast.sha1_hex(current_src) !== src_digest) {
       return false;
     }
     if (
@@ -438,13 +458,12 @@ export class EpubWriter {
       this.collect_bilingual_block_ref(
         root,
         elem_by_path,
-        block_path_candidate,
+        block_path,
         block_refs,
         inserted_block_paths,
       );
     }
-    block_elem.children = [new Text(this.ast.sanitize_xml_text(item_dst))];
-    block_elem.children[0].parent = block_elem;
+    this.ast.replace_element_children_with_text(block_elem, this.ast.sanitize_xml_text(item_dst));
     return true;
   }
 

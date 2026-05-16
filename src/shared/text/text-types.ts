@@ -20,7 +20,7 @@ export type TextJsonRecord = Record<string, TextJsonValue>;
 export interface TextProcessingConfig {
   source_language: string; // 源/目标语言直接来自项目配置，语言过滤器负责未知值兜底
   target_language: string;
-  clean_ruby: boolean; // clean_ruby 控制是否剥离注音标记，保持与导入格式处理器解耦
+  clean_ruby: boolean; // clean_ruby 只控制字面文本注音标记，结构化格式投影留在导入器
   check_kana_residue: boolean; // 残留和相似度检查按开关独立启用，便于旧项目逐步迁移质量规则
   check_hangeul_residue: boolean;
   check_similarity: boolean;

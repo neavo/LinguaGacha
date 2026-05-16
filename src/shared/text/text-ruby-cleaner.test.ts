@@ -14,31 +14,4 @@ describe("TextRubyCleaner", () => {
   it("WOLF 格式会跳过括号类激进 ruby 清理规则", () => {
     expect(TextRubyCleaner.clean("(漢字/かんじ)", "WOLF")).toBe("(漢字/かんじ)");
   });
-
-  it("EPUB 有块级 ruby 候选且启用时优先使用候选正文", () => {
-    expect(
-      TextRubyCleaner.clean_item_src(
-        {
-          src: "宝條\n直希",
-          extra_field: {
-            epub: {
-              ruby_clean_candidate: {
-                cleaned_src: "宝條直希",
-              },
-            },
-          },
-        },
-        true,
-      ),
-    ).toBe("宝條直希");
-  });
-
-  it("EPUB 块级 ruby 候选在关闭清理时保留原文", () => {
-    expect(TextRubyCleaner.clean_item_src({ src: "宝條\n直希" }, false)).toBe("宝條\n直希");
-  });
-
-  it("启用 ruby 清理但缺少 EPUB 候选时回退原文", () => {
-    expect(TextRubyCleaner.clean_item_src({ src: "宝條\n直希" }, true)).toBe("宝條\n直希");
-    expect(TextRubyCleaner.clean_item_src({ src: "宝條", extra_field: [] }, true)).toBe("宝條");
-  });
 });

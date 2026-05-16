@@ -165,6 +165,8 @@ export class ProjectLifecycleService {
   ): Promise<Record<string, ApiJsonValue>> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
+    const compatibility_operations =
+      await this.compatibility_migration_service.build_open_compatibility_operations(project_path);
 
     this.database.execute_transaction([
       this.op("setMeta", {
@@ -172,7 +174,7 @@ export class ProjectLifecycleService {
         key: "updated_at",
         value: this.build_timestamp(),
       }),
-      ...this.compatibility_migration_service.build_open_compatibility_operations(project_path),
+      ...compatibility_operations,
     ]);
     this.session_state.mark_loaded(project_path);
     return this.build_loaded_project_response(project_path);
