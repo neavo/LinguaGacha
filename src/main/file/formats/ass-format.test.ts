@@ -85,7 +85,7 @@ describe("ASSFormat", () => {
         "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,译文2",
     );
     expect(
-      fs.readFileSync(path.join(temp_dir, "bilingual", "anime", "sub.ja.zh.ass"), "utf-8"),
+      fs.readFileSync(path.join(temp_dir, "bilingual", "anime", "sub.ass"), "utf-8"),
     ).toBe(
       "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,原文1\\N译文1\n" +
         "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,原文2\\N译文2",
@@ -116,7 +116,7 @@ describe("ASSFormat", () => {
     );
 
     const content = fs.readFileSync(
-      path.join(temp_dir, "bilingual", "anime", "sub.ja.zh.ass"),
+      path.join(temp_dir, "bilingual", "anime", "sub.ass"),
       "utf-8",
     );
     expect(content).toBe("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,同文");

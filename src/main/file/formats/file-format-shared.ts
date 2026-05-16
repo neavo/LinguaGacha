@@ -40,28 +40,6 @@ export interface ExportPaths {
   bilingual_path: string;
 }
 
-// 语言后缀对齐旧导出文件名，未知语言使用小写代码兜底
-const LANGUAGE_SUFFIX: Record<string, string> = {
-  JA: "ja",
-  ZH: "zh",
-  "ZH-HANT": "zh-hant",
-  EN: "en",
-  RU: "ru",
-  AR: "ar",
-  DE: "de",
-  FR: "fr",
-  PL: "pl",
-  ES: "es",
-  IT: "it",
-  PT: "pt",
-  HU: "hu",
-  TR: "tr",
-  TH: "th",
-  ID: "id",
-  VI: "vi",
-  KO: "ko",
-};
-
 const EPUB_READING_LAYOUT_TARGET_LANGUAGES = new Set(["JA", "ZH-HANT"]); // 日文与繁中导出保留原 EPUB 翻页方向和竖排信息
 
 /**
@@ -76,17 +54,6 @@ export function split_text_lines_for_items(text: string): string[] {
     lines.pop();
   }
   return lines;
-}
-
-/**
- * 从配置生成文件名语言后缀，供双语对照导出标记源语和目标语
- */
-export function language_suffix(
-  config: FileFormatServiceConfig,
-  kind: "source" | "target",
-): string {
-  const language = kind === "source" ? config.source_language : config.target_language;
-  return LANGUAGE_SUFFIX[language.toUpperCase()] ?? language.toLowerCase();
 }
 
 /**
@@ -108,18 +75,10 @@ export function build_target_path(
 }
 
 /**
- * 构造双语对照输出路径，文件名同时带源语言与目标语言后缀
+ * 构造双语对照输出路径，双语目录已经表达输出语义，文件名沿用源文件相对路径
  */
-export function build_bilingual_path(
-  config: FileFormatServiceConfig,
-  base_path: string,
-  rel_path: string,
-): string {
-  const parsed = path.parse(path.join(base_path, rel_path));
-  return path.join(
-    parsed.dir,
-    `${parsed.name}.${language_suffix(config, "source")}.${language_suffix(config, "target")}${parsed.ext}`,
-  );
+export function build_bilingual_path(base_path: string, rel_path: string): string {
+  return path.join(base_path, rel_path);
 }
 
 /**

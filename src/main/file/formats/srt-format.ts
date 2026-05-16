@@ -81,7 +81,7 @@ export class SRTFormat {
         translated,
       );
       await write_text_file(
-        build_bilingual_path(this.config, paths.bilingual_path, rel_path),
+        build_bilingual_path(paths.bilingual_path, rel_path),
         bilingual,
       );
     }

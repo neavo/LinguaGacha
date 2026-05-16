@@ -66,7 +66,7 @@ describe("EPUBFormat", () => {
     );
 
     expect(fs.existsSync(path.join(paths.translated_path, "book.epub"))).toBe(true);
-    expect(fs.existsSync(path.join(paths.bilingual_path, "book.ja.zh.epub"))).toBe(true);
+    expect(fs.existsSync(path.join(paths.bilingual_path, "book.epub"))).toBe(true);
   });
 
   it("回归 EPUB issue：长文件名写回后译文版和双语版都是可读 EPUB", async () => {
@@ -100,9 +100,7 @@ describe("EPUBFormat", () => {
     ).resolves.toBeDefined();
     await expect(
       JSZip.loadAsync(
-        fs.readFileSync(
-          path.join(paths.bilingual_path, file_name.replace(/\.epub$/iu, ".ja.zh.epub")),
-        ),
+        fs.readFileSync(path.join(paths.bilingual_path, file_name)),
       ),
     ).resolves.toBeDefined();
   });

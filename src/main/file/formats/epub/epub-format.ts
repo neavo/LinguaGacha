@@ -61,7 +61,7 @@ export class EPUBFormat {
       await this.writer.build_epub(
         original_content,
         file_items,
-        build_bilingual_path(this.config, paths.bilingual_path, rel_path),
+        build_bilingual_path(paths.bilingual_path, rel_path),
         true,
       );
     }

@@ -15,8 +15,6 @@ import { XLSXFormat } from "./formats/xlsx-format";
 import { EPUBFormat } from "./formats/epub/epub-format";
 import * as AppErrors from "../../shared/error";
 import {
-  build_bilingual_path,
-  build_target_path,
   type ExportPaths,
   type FileFormatServiceConfig,
   type ParsedFilePreview,
@@ -222,20 +220,6 @@ export class FileFormatService {
       }
     }
     return "NONE";
-  }
-
-  /**
-   * 暴露给服务层复用的目标路径构造，避免导出路径规则分叉
-   */
-  public build_target_path(base_path: string, rel_path: string): string {
-    return build_target_path(this.config, base_path, rel_path);
-  }
-
-  /**
-   * 暴露给服务层复用的双语路径构造，保持与格式处理器一致
-   */
-  public build_bilingual_path(base_path: string, rel_path: string): string {
-    return build_bilingual_path(this.config, base_path, rel_path);
   }
 
   /**
