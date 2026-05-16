@@ -6,7 +6,7 @@ import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
 import { MDFormat } from "./formats/md-format";
 import { MESSAGEJSONFormat } from "./formats/messagejson-format";
-import { RenPyFormat } from "./formats/renpy-format";
+import { RenPyFormat } from "./formats/renpy/renpy-format";
 import { SRTFormat } from "./formats/srt-format";
 import { TRANSFormat } from "./formats/trans-format";
 import { TXTFormat } from "./formats/txt-format";
@@ -65,7 +65,7 @@ export class FileFormatService {
     this.xlsx = new XLSXFormat();
     this.wolfxlsx = new WOLFXLSXFormat();
     this.trans = new TRANSFormat();
-    this.renpy = new RenPyFormat();
+    this.renpy = new RenPyFormat(config);
     this.epub = new EPUBFormat(config);
   }
 

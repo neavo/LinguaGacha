@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { RenPyFormat } from "./renpy-format";
+import { RenPyFormat } from "./renpy/renpy-format";
 
 let temp_dir = "";
 
@@ -66,14 +66,23 @@ describe("RenPyFormat", () => {
         '    new "bg/scene.png"',
         '    old "[player_name]"',
         '    new "[player_name]"',
+        '    old "[ModGreen]"',
+        '    new "[ModGreen]"',
         '    old "{b}{/b}"',
         '    new "{b}{/b}"',
+        '    old "{s}{/s}"',
+        '    new "{s}{/s}"',
         '    old "{#language name and font}"',
         '    new "{#language name and font}"',
+        '    old "{image=gui/icon.png}"',
+        '    new "{image=gui/icon.png}"',
       ].join("\n"),
     );
 
-    expect(items.map((item) => item.src)).toEqual(["{#language name and font}"]);
+    expect(items.map((item) => item.src)).toEqual([
+      "{#language name and font}",
+      "{image=gui/icon.png}",
+    ]);
   });
 
   it("解析 Character 调用中的姓名和对白", () => {
@@ -144,7 +153,7 @@ describe("RenPyFormat", () => {
     );
   });
 
-  it("写回时按 extra_field target_line 替换目标行文本", async () => {
+  it("写回 strings 块时按 STRING 槽位替换 new 行文本", async () => {
     const format = new RenPyFormat();
     const text = 'translate schinese strings:\n\n    old "START"\n    new ""\n';
     const [item] = format.parse_text("script.rpy", text);
@@ -160,6 +169,56 @@ describe("RenPyFormat", () => {
     );
 
     expect(fs.readFileSync(path.join(temp_dir, "script.rpy"), "utf-8")).toContain('new "开始"');
+  });
+
+  it("写回路人格式时只替换对白槽位", async () => {
+    const format = new RenPyFormat();
+    const text = [
+      "translate schinese shop_569:",
+      "",
+      '    # "Shopkeeper" "Welcome."',
+      '    "Shopkeeper" ""',
+    ].join("\n");
+    const [item] = format.parse_text("shop.rpy", text);
+    if (item === undefined) {
+      throw new Error("测试样本应生成 RenPy 条目。");
+    }
+    item.dst = "欢迎光临。";
+
+    await format.write_to_path(
+      [item],
+      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      () => Buffer.from(text),
+    );
+
+    expect(fs.readFileSync(path.join(temp_dir, "shop.rpy"), "utf-8")).toContain(
+      '"Shopkeeper" "欢迎光临。"',
+    );
+  });
+
+  it("写回 Character 调用时保留姓名参数并替换对白", async () => {
+    const format = new RenPyFormat();
+    const text = [
+      "translate schinese chapter_5_d8798af6:",
+      "",
+      '    # Character("Man") "Hello there!"',
+      '    Character("Man") ""',
+    ].join("\n");
+    const [item] = format.parse_text("chapter.rpy", text);
+    if (item === undefined) {
+      throw new Error("测试样本应生成 RenPy 条目。");
+    }
+    item.dst = "你好啊！";
+
+    await format.write_to_path(
+      [item],
+      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      () => Buffer.from(text),
+    );
+
+    expect(fs.readFileSync(path.join(temp_dir, "chapter.rpy"), "utf-8")).toContain(
+      'Character("Man") "你好啊！"',
+    );
   });
 
   it("写回对白时不改动尾随函数参数字符串", async () => {
@@ -183,7 +242,32 @@ describe("RenPyFormat", () => {
     );
 
     expect(fs.readFileSync(path.join(temp_dir, "pushmove.rpy"), "utf-8")).toContain(
-      '"很高兴见到你。" "" with PushMove("x")',
+      '"Man" "很高兴见到你。" with PushMove("x")',
     );
+  });
+
+  it("姓名字段写回遵守 RenPyFormat 配置", async () => {
+    const format = new RenPyFormat({
+      source_language: "EN",
+      target_language: "ZH",
+      write_translated_name_fields_to_file: false,
+    });
+    const text = ["translate schinese start:", "", '    # "Alice" "Hello"', '    "艾丽丝" ""'].join(
+      "\n",
+    );
+    const [item] = format.parse_text("name.rpy", text);
+    if (item === undefined) {
+      throw new Error("测试样本应生成 RenPy 条目。");
+    }
+    item.dst = "你好";
+    item.name_dst = "爱丽丝";
+
+    await format.write_to_path(
+      [item],
+      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      () => Buffer.from(text),
+    );
+
+    expect(fs.readFileSync(path.join(temp_dir, "name.rpy"), "utf-8")).toContain('"Alice" "你好"');
   });
 });

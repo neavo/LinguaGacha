@@ -125,4 +125,30 @@ describe("FileFormatService", () => {
       }),
     );
   });
+
+  it("RenPy 导出通过 FileFormatService 注入姓名字段配置", async () => {
+    const service = new FileFormatService({
+      source_language: "EN",
+      target_language: "ZH",
+      deduplication_in_bilingual: true,
+      write_translated_name_fields_to_file: false,
+    });
+    const text = ["translate schinese start:", "", '    # "Alice" "Hello"', '    "艾丽丝" ""'].join(
+      "\n",
+    );
+    const [item] = await service.parse_asset("script.rpy", new TextEncoder().encode(text));
+    if (item === undefined) {
+      throw new Error("测试样本应生成 RenPy 条目。");
+    }
+    item.dst = "你好";
+    item.name_dst = "爱丽丝";
+
+    await service.write_items(
+      [item],
+      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      () => Buffer.from(text),
+    );
+
+    expect(fs.readFileSync(path.join(temp_dir, "script.rpy"), "utf-8")).toContain('"Alice" "你好"');
+  });
 });
