@@ -2,14 +2,12 @@ import process from "node:process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const show_error_box = vi.fn();
+const try_show_native_error_dialog = vi.fn();
 type ProcessListener = (...args: unknown[]) => void;
 
-vi.mock("electron", () => {
+vi.mock("../../native/shell/native-error-dialog", () => {
   return {
-    dialog: {
-      showErrorBox: show_error_box,
-    },
+    try_show_native_error_dialog,
   };
 });
 
@@ -37,7 +35,7 @@ describe("install_main_fatal_error_handler", () => {
     await Promise.resolve();
 
     expect(stderr_write).toHaveBeenCalledWith("[fatal] unhandledRejection: boom\n");
-    expect(show_error_box).toHaveBeenCalledWith(
+    expect(try_show_native_error_dialog).toHaveBeenCalledWith(
       "LinguaGacha 已遇到致命错误",
       "已写入诊断日志，应用将退出。",
     );

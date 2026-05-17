@@ -11,6 +11,7 @@ import {
 
 import type { RouteId } from "@/app/navigation/types";
 import { api_fetch, open_event_stream } from "@/app/desktop/desktop-api";
+import { InternalInvariantError } from "@shared/error";
 import {
   createProjectStoreReplaceSectionChange,
   createProjectStore,
@@ -728,7 +729,7 @@ function collect_unique_updated_sections(
 // 多来源合帧时统一使用批次原因，避免把某一条事件来源误认为整批语义
 function resolve_project_change_batch_reason(events: readonly ProjectStoreChangeEvent[]): string {
   const reasons = [...new Set(events.map((event) => event.source || "project_change"))];
-  return reasons.length === 1 ? reasons[0] ?? "project_change" : "project_change_batch";
+  return reasons.length === 1 ? (reasons[0] ?? "project_change") : "project_change_batch";
 }
 
 // 工作台信号按同一刷新窗口合并，任一 full 或 file 影响都会提升整批刷新级别
@@ -866,7 +867,12 @@ function build_local_project_change_rollback_change(args: {
   return args.updatedSections.map((section) => {
     const previous_section = args.previousSections[section];
     if (previous_section === undefined) {
-      throw new Error(`缺少 ${section} 的回滚快照。`);
+      throw new InternalInvariantError({
+        diagnostic_context: {
+          reason: "missing_local_project_change_rollback_snapshot",
+          section,
+        },
+      });
     }
 
     return createProjectStoreReplaceSectionChange(section, previous_section);
@@ -944,19 +950,16 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [apply_settings_snapshot, is_app_language_updating, settings_snapshot],
   );
 
-  const bump_workbench_runtime_signal = useCallback(
-    (args: WorkbenchChangeSignalInput): void => {
-      set_workbench_change_signal((previous_signal) => ({
-        seq: previous_signal.seq + 1,
-        reason: args.reason,
-        scope: args.scope,
-        mode: args.mode,
-        updated_sections: [...args.updated_sections],
-        item_ids: [...args.item_ids],
-      }));
-    },
-    [],
-  );
+  const bump_workbench_runtime_signal = useCallback((args: WorkbenchChangeSignalInput): void => {
+    set_workbench_change_signal((previous_signal) => ({
+      seq: previous_signal.seq + 1,
+      reason: args.reason,
+      scope: args.scope,
+      mode: args.mode,
+      updated_sections: [...args.updated_sections],
+      item_ids: [...args.item_ids],
+    }));
+  }, []);
 
   const bump_proofreading_runtime_signal = useCallback(
     (args: ProofreadingChangeSignalInput): void => {
@@ -1126,7 +1129,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const commit_local_project_change = useCallback(
     (input: LocalProjectChangeInput): LocalProjectChangeCommit => {
       if (input.updatedSections.length === 0) {
-        throw new Error("本地 project change 至少需要一个 updated section。");
+        throw new InternalInvariantError({
+          diagnostic_context: { reason: "local_project_change_requires_updated_sections" },
+        });
       }
 
       flush_runtime_refresh_scheduler();

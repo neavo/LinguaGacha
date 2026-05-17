@@ -9,7 +9,7 @@ type LoadLogWindowTarget = (target_window: BrowserWindow) => void;
 type LogWindowHostOptions = {
   createWindowOptions: () => BrowserWindowConstructorOptions; // 窗口能力仍由主窗口入口统一提供，避免日志窗口绕开壳层策略
   loadTarget: LoadLogWindowTarget;
-  registerWindow: (target_window: BrowserWindow) => void; // 宿主侧运行时事件由窗口 handler 接入，避免本类反向知道 DevTools 和关闭确认细节
+  registerWindow: (target_window: BrowserWindow) => void; // 宿主侧运行时事件由窗口 shell 接入，避免本类反向知道 DevTools 和关闭确认细节
 };
 
 type OpenLogWindowOptions = {
@@ -29,12 +29,18 @@ export class LogWindowHost {
   private readonly load_target: LoadLogWindowTarget;
   private readonly register_window: (target_window: BrowserWindow) => void;
 
+  /**
+   * 注入窗口创建、运行期事件注册和 renderer 加载策略，避免日志窗口自建壳层规则。
+   */
   constructor(options: LogWindowHostOptions) {
     this.create_window_options = options.createWindowOptions;
     this.load_target = options.loadTarget;
     this.register_window = options.registerWindow;
   }
 
+  /**
+   * 打开或复用日志窗口，保持日志诊断视图在 main 侧只有一个原生实例。
+   */
   open(options: OpenLogWindowOptions = {}): void {
     const should_show = options.show ?? true;
     const should_focus = options.focus ?? should_show;
@@ -67,6 +73,9 @@ export class LogWindowHost {
     this.load_target(next_window);
   }
 
+  /**
+   * 按侧栏入口语义切换日志窗口显隐，显示态再次触发即关闭当前实例。
+   */
   toggle(): void {
     // 侧栏日志入口承担显隐开关语义：已显示则关闭，隐藏或未创建则拉到前台
     if (this.log_window !== null && !this.log_window.isDestroyed() && this.log_window.isVisible()) {
@@ -77,6 +86,9 @@ export class LogWindowHost {
     this.open({ show: true, focus: true });
   }
 
+  /**
+   * 主动关闭日志窗口，并同步清理 main 侧持有的窗口引用。
+   */
   close(): void {
     if (this.log_window === null || this.log_window.isDestroyed()) {
       // Electron 可能已先销毁原生窗口，本地引用必须同步归零，避免后续误判为可复用
@@ -88,6 +100,9 @@ export class LogWindowHost {
     this.log_window = null;
   }
 
+  /**
+   * 显示并聚焦仍然有效的日志窗口，失效引用会在这里被清空。
+   */
   private show_existing_window(options: { focus: boolean }): void {
     if (this.log_window === null || this.log_window.isDestroyed()) {
       // 显示入口也做防御式清理，让异步 ready-to-show 回调不复活失效引用

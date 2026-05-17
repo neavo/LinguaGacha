@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -12,6 +11,7 @@ import {
   type LogTargets,
 } from "../../shared/log";
 import { t_main_log } from "./log-text";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
 const MAX_LOG_FILE_COUNT = 3;
 const LOG_FILE_PREFIX = "app";
@@ -40,6 +40,7 @@ export interface LogManagerOptions {
   now?: NowProvider;
   consoleWriter?: ConsoleWriter;
   fileWriter?: FileLogWriter;
+  nativeFs?: NativeFs;
 }
 
 interface FileLogRecord {
@@ -63,6 +64,7 @@ export class LogManager {
   private readonly now: NowProvider;
   private readonly console_writer: ConsoleWriter;
   private readonly file_writer: FileLogWriter;
+  private readonly native_fs: NativeFs; // native_fs 统一日志目录创建、追加和旧日志清理
   private readonly events: LogEvent[] = [];
   private readonly subscribers = new Set<LogSubscriber>();
   private next_sequence = 1;
@@ -77,7 +79,8 @@ export class LogManager {
     this.ring_buffer_size = options.ringBufferSize ?? LOG_WINDOW_EVENT_CAPACITY;
     this.now = options.now ?? (() => new Date());
     this.console_writer = options.consoleWriter ?? default_console_writer;
-    fs.mkdirSync(this.log_dir, { recursive: true });
+    this.native_fs = options.nativeFs ?? default_native_fs;
+    this.native_fs.make_dir(this.log_dir);
     this.file_writer = options.fileWriter ?? this.create_file_writer();
   }
 
@@ -203,6 +206,7 @@ export class LogManager {
     return new DailyLogFileWriter({
       logDir: this.log_dir,
       now: this.now,
+      nativeFs: this.native_fs,
     });
   }
 
@@ -271,16 +275,19 @@ function default_console_writer(text: string, level: LogLevel): void {
 interface DailyLogFileWriterOptions {
   logDir: string;
   now: NowProvider;
+  nativeFs: NativeFs;
 }
 
 class DailyLogFileWriter implements FileLogWriter {
   private readonly log_dir: string;
   private readonly now: NowProvider;
+  private readonly native_fs: NativeFs; // native_fs 负责当前日志写入和保留策略清理
   private last_cleanup_date_key: string | null = null;
 
   public constructor(options: DailyLogFileWriterOptions) {
     this.log_dir = options.logDir;
     this.now = options.now;
+    this.native_fs = options.nativeFs;
   }
 
   public write(message: string): void {
@@ -289,12 +296,12 @@ class DailyLogFileWriter implements FileLogWriter {
       this.log_dir,
       `${LOG_FILE_PREFIX}.${date_key}${LOG_FILE_EXTENSION}`,
     );
-    fs.appendFileSync(log_file_path, message, "utf-8");
+    this.native_fs.append_text_file(log_file_path, message);
     this.cleanup_old_log_files(date_key);
   }
 
   public flush(): void {
-    // appendFileSync 已完成同步写入；保留 flush 方法用于统一退出阶段调用
+    // append_text_file 已完成同步写入；保留 flush 方法用于统一退出阶段调用
   }
 
   public flushSync(): void {
@@ -311,8 +318,8 @@ class DailyLogFileWriter implements FileLogWriter {
     }
     this.last_cleanup_date_key = current_date_key;
 
-    const log_files = fs
-      .readdirSync(this.log_dir)
+    const log_files = this.native_fs
+      .read_dir_names(this.log_dir)
       .map((file_name) => {
         const match = LOG_FILE_NAME_PATTERN.exec(file_name);
         if (match === null) {
@@ -329,7 +336,7 @@ class DailyLogFileWriter implements FileLogWriter {
 
     for (const stale_file of log_files.slice(MAX_LOG_FILE_COUNT)) {
       try {
-        fs.unlinkSync(path.join(this.log_dir, stale_file.fileName));
+        this.native_fs.unlink(path.join(this.log_dir, stale_file.fileName));
       } catch {
         // 旧日志清理是尽力动作，失败不能影响当前日志写入
       }

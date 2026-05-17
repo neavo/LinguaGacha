@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 
+import { default_native_fs } from "../../../native/platform/native-fs";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
 
 // 旧默认配置只围绕这两个固定资源名迁移，当前目标由 AppPathService 提供。
@@ -11,7 +11,7 @@ const RESOURCE_DIR_NAME = "resource";
  * 迁移背景：
  * 旧版默认配置曾按运行形态分散在 `dataRoot/config.json`、`resource/config.json`
  * 或更早的 `appRoot/config.json`。当前配置唯一事实源是 `userdata/config.json`，
- * `SettingService` 启动后不再读取旧位置。
+ * `AppSettingService` 启动后不再读取旧位置。
  *
  * 生效场景：
  * Core 启动且 `userdata/config.json` 尚不存在时，按旧读取优先级复制第一份存在的配置。
@@ -27,15 +27,15 @@ export const legacy_default_config_migration: MigrationDescriptor = {
    */
   run_startup(context: StartupMigrationContext): void {
     const target_path = context.paths.get_config_path();
-    if (fs.existsSync(target_path)) {
+    if (default_native_fs.exists(target_path)) {
       return;
     }
-    fs.mkdirSync(path.dirname(target_path), { recursive: true });
+    default_native_fs.make_dir(path.dirname(target_path));
     for (const source_path of get_legacy_default_config_paths(context)) {
-      if (!fs.existsSync(source_path) || !fs.statSync(source_path).isFile()) {
+      if (!default_native_fs.exists(source_path) || !default_native_fs.stat(source_path).isFile()) {
         continue;
       }
-      fs.copyFileSync(source_path, target_path);
+      default_native_fs.copy_file(source_path, target_path);
       return;
     }
   },

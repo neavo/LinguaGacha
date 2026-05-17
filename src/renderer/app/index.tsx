@@ -36,7 +36,7 @@ import { AppSidebar } from "@/app/shell/app-sidebar";
 import { AppTitlebar } from "@/app/shell/app-titlebar";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 import { LogWindowPage } from "@/pages/log-window-page/page";
-import type { ThemeMode } from "@desktop/bridge-types";
+import type { ThemeMode } from "@native/bridge-types";
 
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const THEME_STORAGE_KEY = "lg-theme-mode";

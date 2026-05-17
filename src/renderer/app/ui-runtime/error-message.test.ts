@@ -20,13 +20,13 @@ describe("resolve_visible_error_message", () => {
     expect(message).toBe("网络请求失败：/api/tasks/start");
   });
 
-  it("普通 Error 只作为非 DesktopApiError 的兜底展示来源", () => {
+  it("普通 Error 不直接穿透为用户可见文案", () => {
     const message = resolve_visible_error_message(
       new Error("本地校验失败"),
       (key: LocaleKey) => key,
       "操作失败",
     );
 
-    expect(message).toBe("本地校验失败");
+    expect(message).toBe("操作失败");
   });
 });

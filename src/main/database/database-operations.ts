@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -10,6 +9,7 @@ import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
 import * as AppErrors from "../../shared/error";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
 type DatabaseRow = Record<string, unknown>;
 
@@ -90,11 +90,13 @@ export class DatabaseConflictError extends AppErrors.DatabaseConflictError {
  */
 export class ProjectDatabase {
   private readonly connection_records = new Map<string, ProjectDatabaseConnectionRecord>(); // connection_records 只保存当前活跃连接，不再表达永久缓存
+  private readonly native_fs: NativeFs; // native_fs 统一 .lg 文件、源 asset 和 SQLite 路径的原生 IO 策略
 
   /**
    * 初始化 ProjectDatabase 依赖，保持外部写入口清晰
    */
-  public constructor() {
+  public constructor(native_fs: NativeFs = default_native_fs) {
+    this.native_fs = native_fs;
     ensure_database_runtime_available();
   }
 
@@ -371,7 +373,7 @@ export class ProjectDatabase {
     } catch (error) {
       if (should_remove_created_project_on_failure) {
         this.close_project(project_path);
-        fs.rmSync(project_path, { force: true });
+        this.native_fs.remove(project_path, { force: true });
       }
       throw error;
     }
@@ -431,8 +433,8 @@ export class ProjectDatabase {
     if (cached !== undefined) {
       return cached;
     }
-    fs.mkdirSync(path.dirname(normalized_path), { recursive: true });
-    const db = new DatabaseSync(normalized_path);
+    this.native_fs.make_dir(path.dirname(normalized_path));
+    const db = new DatabaseSync(this.native_fs.to_native_path(normalized_path));
     db.exec("PRAGMA journal_mode=WAL");
     db.exec("PRAGMA synchronous=NORMAL");
     db.exec("PRAGMA busy_timeout=5000");
@@ -542,8 +544,8 @@ export class ProjectDatabase {
   private create_project(project_path: string, name: string): null {
     const normalized_path = path.resolve(project_path);
     this.close_project(normalized_path);
-    if (fs.existsSync(normalized_path)) {
-      fs.unlinkSync(normalized_path);
+    if (this.native_fs.exists(normalized_path)) {
+      this.native_fs.unlink(normalized_path);
     }
     const db = this.open_project(normalized_path);
     const now = new Date().toISOString();
@@ -831,7 +833,7 @@ export class ProjectDatabase {
     source_path: string,
     sort_order: number | null,
   ): void {
-    const original_data = fs.readFileSync(source_path);
+    const original_data = this.native_fs.read_file(source_path);
     const compressed = ZstdTool.compress(original_data);
     this.add_asset_buffer(
       project_path,
@@ -887,7 +889,7 @@ export class ProjectDatabase {
     asset_path: string,
     source_path: string,
   ): void {
-    const original_data = fs.readFileSync(source_path);
+    const original_data = this.native_fs.read_file(source_path);
     const compressed = ZstdTool.compress(original_data);
     const result = this.open_project(project_path)
       .prepare(

@@ -2,10 +2,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { build_core_api_base_url_argument } from "../../desktop/core-api-endpoint";
-import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../../desktop/ipc-contract";
-import { resolve_title_bar_overlay_theme } from "../../desktop/shell-contract";
-import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE } from "../log/log-window-host";
+import { build_core_api_base_url_argument } from "../core-api-endpoint";
+import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../ipc-contract";
+import { resolve_title_bar_overlay_theme } from "../shell-contract";
+import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE } from "./log-window-host";
 
 const electron_mock = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
@@ -180,11 +180,11 @@ vi.mock("electron", () => {
   };
 });
 
-vi.mock("../log/log-bridge", () => {
+vi.mock("../../main/log/log-bridge", () => {
   return log_bridge_mock;
 });
 
-vi.mock("../log/log-text", () => {
+vi.mock("../../main/log/log-text", () => {
   return {
     t_main_log: (key: string) => key,
   };
@@ -193,7 +193,7 @@ vi.mock("../log/log-text", () => {
 const original_renderer_url = process.env["ELECTRON_RENDERER_URL"];
 const original_vite_public = process.env["VITE_PUBLIC"];
 
-describe("window-handler", () => {
+describe("桌面窗口宿主", () => {
   afterEach(() => {
     restore_env("ELECTRON_RENDERER_URL", original_renderer_url);
     restore_env("VITE_PUBLIC", original_vite_public);
@@ -206,7 +206,7 @@ describe("window-handler", () => {
   it("主窗口注入 Core API 地址并把关闭确认交给 renderer", async () => {
     restore_env("ELECTRON_RENDERER_URL", undefined);
     restore_env("VITE_PUBLIC", undefined);
-    const { create_main_window } = await import("./window-handler");
+    const { create_main_window } = await import("./desktop-window-host");
     const desktop_bundle_dir = path.join(process.cwd(), "build", "dist-electron");
     const on_closed = vi.fn();
 
@@ -248,7 +248,7 @@ describe("window-handler", () => {
 
   it("日志窗口宿主加载日志页面并跳过主窗口关闭确认", async () => {
     restore_env("ELECTRON_RENDERER_URL", undefined);
-    const { create_log_window_host } = await import("./window-handler");
+    const { create_log_window_host } = await import("./desktop-window-host");
     const desktop_bundle_dir = path.join(process.cwd(), "build", "dist-electron");
     const host = create_log_window_host({
       desktopBundleDir: desktop_bundle_dir,
@@ -274,7 +274,7 @@ describe("window-handler", () => {
 
   it("渲染层加载失败时记录诊断并显示原生错误提示", async () => {
     restore_env("ELECTRON_RENDERER_URL", undefined);
-    const { create_main_window } = await import("./window-handler");
+    const { create_main_window } = await import("./desktop-window-host");
 
     create_main_window({
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
@@ -335,7 +335,7 @@ describe("window-handler", () => {
       configure_development_remote_debugging,
       configure_renderer_public_path,
       create_main_window,
-    } = await import("./window-handler");
+    } = await import("./desktop-window-host");
 
     configure_development_remote_debugging();
     configure_renderer_public_path(path.join(process.cwd(), "build", "dist-electron"));
@@ -363,7 +363,7 @@ describe("window-handler", () => {
   });
 
   it("标题栏主题只在支持 overlay 的宿主平台同步给原生窗口", async () => {
-    const { sync_title_bar_overlay } = await import("./window-handler");
+    const { sync_title_bar_overlay } = await import("./desktop-window-host");
     const target_window = new electron_mock.FakeBrowserWindow({});
 
     sync_title_bar_overlay(

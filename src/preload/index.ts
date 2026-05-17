@@ -15,11 +15,11 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
-} from "../desktop/ipc-contract";
-import { resolve_core_api_base_url_from_argv } from "../desktop/core-api-endpoint";
-import { resolve_desktop_shell_info } from "../desktop/shell-contract";
-import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../desktop/bridge-api";
-import type { DesktopPathPickResult, DesktopPlatform, ThemeMode } from "../desktop/bridge-types";
+} from "../native/ipc-contract";
+import { resolve_core_api_base_url_from_argv } from "../native/core-api-endpoint";
+import { resolve_desktop_shell_info } from "../native/shell-contract";
+import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../native/bridge-api";
+import type { DesktopPathPickResult, DesktopPlatform, ThemeMode } from "../native/bridge-types";
 
 const DESKTOP_SHELL_INFO = resolve_desktop_shell_info(process.platform as DesktopPlatform);
 const CORE_API_BASE_URL = resolve_core_api_base_url_from_argv(process.argv);

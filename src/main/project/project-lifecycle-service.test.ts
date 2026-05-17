@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
-import type { SettingService } from "../service/setting-service";
-import { AppPathService } from "../service/path-service";
+import type { AppSettingService } from "../app/app-setting-service";
+import { AppPathService } from "../app/app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
 import { ProjectSessionState } from "./project-session-state";
@@ -597,7 +597,7 @@ describe("ProjectLifecycleService", () => {
 
   function create_setting_service(config: MutableJsonRecord) {
     return {
-      load_setting: vi.fn(() => ({
+      read_setting: vi.fn(() => ({
         app_language: "ZH",
         source_language: "JA",
         target_language: "ZH",
@@ -605,7 +605,7 @@ describe("ProjectLifecycleService", () => {
         skip_duplicate_source_text_enable: true,
         ...config,
       })),
-    } as unknown as SettingService;
+    } as unknown as AppSettingService;
   }
 
   function create_log_manager() {

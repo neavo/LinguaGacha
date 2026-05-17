@@ -162,7 +162,10 @@ describe("TaskLimiter", () => {
       const queued = limiter.acquire(queued_controller.signal);
 
       queued_controller.abort();
-      await expect(queued).rejects.toThrow("任务已停止。");
+      await expect(queued).rejects.toMatchObject({
+        code: "runtime.cancelled",
+        public_details: { resource: "task_limiter" },
+      });
 
       first.release();
       const later_promise = limiter.acquire(later_controller.signal);

@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../../../../api/api-types";
+import { InvalidFileStructureError } from "../../../../../shared/error";
 import {
   has_color_block_tag,
   string_array,
@@ -26,12 +27,18 @@ export function collect_patch_targets(
       typeof row_index !== "number" ||
       !Number.isInteger(row_index)
     ) {
-      throw new Error("TRANS 条目缺少有效 trans_ref，无法定位原始行。");
+      throw new InvalidFileStructureError({
+        public_details: { format: "TRANS" },
+        diagnostic_context: { reason: "missing_trans_ref" },
+      });
     }
     const entry = to_mutable_record(files[file_key]);
     const data_list = Array.isArray(entry["data"]) ? entry["data"] : null;
     if (data_list === null || row_index < 0 || row_index >= data_list.length) {
-      throw new Error("TRANS 条目的 trans_ref 指向不存在的原始行。");
+      throw new InvalidFileStructureError({
+        public_details: { format: "TRANS" },
+        diagnostic_context: { file_key, row_index, reason: "trans_ref_out_of_range" },
+      });
     }
     targets.push({ snap, file_key, row_index });
   }

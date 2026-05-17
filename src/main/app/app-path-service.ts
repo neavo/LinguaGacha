@@ -1,12 +1,13 @@
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as AppErrors from "../../shared/error";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
 export interface AppPathServiceOptions {
   appRoot: string;
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
+  nativeFs?: NativeFs;
 }
 
 const HOME_DATA_ROOT_NAME = "LinguaGacha";
@@ -15,14 +16,16 @@ const USER_DATA_DIR_NAME = "userdata";
 const LOG_DIR_NAME = "log";
 const TEMPLATE_DIR_NAME = "template";
 const PRESET_DIR_NAME = "preset";
+const VERSION_FILE_NAME = "version.txt";
 
 /**
- * API Gateway 统一持有运行时根规则，避免配置和预设写到两处
+ * AppPathService 是应用根、数据根、资源和用户文件落点的唯一路径权威。
  */
 export class AppPathService {
   private readonly app_root: string;
   private readonly platform: NodeJS.Platform;
   private readonly env: NodeJS.ProcessEnv;
+  private readonly native_fs: NativeFs; // native_fs 只服务数据根可写探测，不承载应用文件语义
   private data_root: string | null = null;
 
   /**
@@ -32,6 +35,7 @@ export class AppPathService {
     this.app_root = path.resolve(options.appRoot);
     this.platform = options.platform ?? process.platform;
     this.env = options.env ?? process.env;
+    this.native_fs = options.nativeFs ?? default_native_fs;
   }
 
   /**
@@ -91,6 +95,13 @@ export class AppPathService {
    */
   public get_config_path(): string {
     return this.get_user_data_path("config.json");
+  }
+
+  /**
+   * 返回应用版本文件路径，读取和缓存语义由 AppMetadataService 持有。
+   */
+  public get_version_path(): string {
+    return path.join(this.app_root, VERSION_FILE_NAME);
   }
 
   /**
@@ -167,14 +178,6 @@ export class AppPathService {
   }
 
   /**
-   * 读取纯数值版本号，保持健康检查展示来源唯一
-   */
-  public read_version(): string {
-    const version_path = path.join(this.app_root, "version.txt");
-    return fs.readFileSync(version_path, "utf-8").trim();
-  }
-
-  /**
    * 选择可写数据根，兼容打包态和只读应用目录
    */
   private resolve_data_root(): string {
@@ -196,13 +199,13 @@ export class AppPathService {
    */
   private can_write_directory(directory: string): boolean {
     try {
-      fs.mkdirSync(directory, { recursive: true });
+      this.native_fs.make_dir(directory);
       const probe_path = path.join(
         directory,
         `.linguagacha_write_probe_${Date.now().toString()}_${Math.random().toString(16).slice(2)}`,
       );
-      fs.writeFileSync(probe_path, "");
-      fs.rmSync(probe_path, { force: true });
+      this.native_fs.write_file_sync(probe_path, "");
+      this.native_fs.remove(probe_path, { force: true });
       return true;
     } catch {
       return false;

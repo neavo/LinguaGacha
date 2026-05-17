@@ -1,0 +1,41 @@
+import path from "node:path";
+
+/**
+ * main 侧平台路径策略，统一处理 Windows namespaced path 与路径身份比较。
+ */
+export class NativePathPolicy {
+  /**
+   * platform 允许测试显式模拟目标平台，运行态默认读取当前 Node 平台。
+   */
+  public constructor(private readonly platform: NodeJS.Platform = process.platform) {}
+
+  /**
+   * 将文件系统 IO 路径转换为当前平台原生可接受形态。
+   */
+  public to_native_path(file_path: string): string {
+    if (this.platform !== "win32") {
+      return file_path;
+    }
+    return path.win32.toNamespacedPath(file_path);
+  }
+
+  /**
+   * 生成用于路径去重和连接表索引的稳定身份，避免 Windows 大小写差异造成重复打开。
+   */
+  public to_identity_path(file_path: string): string {
+    const resolved_path = path.resolve(file_path);
+    return this.platform === "win32" ? resolved_path.toLowerCase() : resolved_path;
+  }
+
+  /**
+   * 暴露平台判断给需要保持旧语义的调用方，避免散落 process.platform 判断。
+   */
+  public is_windows(): boolean {
+    return this.platform === "win32";
+  }
+}
+
+/**
+ * 运行态默认路径策略，所有 main 侧文件 IO 共享同一平台判断。
+ */
+export const default_native_path_policy = new NativePathPolicy();

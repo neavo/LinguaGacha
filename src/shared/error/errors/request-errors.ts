@@ -1,4 +1,4 @@
-import { AppError, type AppErrorPublicDetails } from "../app-error";
+import { AppError, type AppErrorArgs } from "../app-error";
 
 /**
  * 请求校验失败由 API 边界和服务入口抛出，保持 renderer 只按稳定 code 分支。
@@ -7,13 +7,7 @@ export class RequestValidationError extends AppError {
   /**
    * 校验错误只暴露稳定 code，内部细节必须拆到 details / diagnostic context。
    */
-  public constructor(
-    args: {
-      public_details?: AppErrorPublicDetails;
-      diagnostic_context?: Record<string, unknown>;
-      cause?: unknown;
-    } = {},
-  ) {
+  public constructor(args: AppErrorArgs = {}) {
     super({ code: "request.validation_failed", ...args });
   }
 }

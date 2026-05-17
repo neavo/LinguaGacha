@@ -32,7 +32,7 @@ export function createProjectPrefilterClient() {
     }
 
     if (typeof Worker === "undefined") {
-      throw new WorkerClientError("当前环境不支持 project prefilter worker。", "unsupported");
+      throw new WorkerClientError("unsupported");
     }
 
     try {
@@ -41,7 +41,7 @@ export function createProjectPrefilterClient() {
       });
     } catch {
       worker = null;
-      throw new WorkerClientError("project prefilter worker 初始化失败。", "init_failed");
+      throw new WorkerClientError("init_failed");
     }
 
     worker.addEventListener("message", (event: MessageEvent<ProjectPrefilterWorkerResponse>) => {
@@ -53,7 +53,7 @@ export function createProjectPrefilterClient() {
       resolver.resolve(event.data.output);
     });
     worker.addEventListener("error", () => {
-      reject_all(new WorkerClientError("project prefilter worker 执行失败。", "execution_failed"));
+      reject_all(new WorkerClientError("execution_failed"));
       worker?.terminate();
       worker = null;
     });
@@ -75,7 +75,7 @@ export function createProjectPrefilterClient() {
       });
     },
     dispose(): void {
-      reject_all(new WorkerClientError("project prefilter worker 已释放。", "disposed"));
+      reject_all(new WorkerClientError("disposed"));
       worker?.terminate();
       worker = null;
     },

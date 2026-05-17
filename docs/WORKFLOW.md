@@ -15,7 +15,7 @@
 | 任务类型 | 必读 | 视情况补读 |
 | --- | --- | --- |
 | 架构、跨层边界、进程链路 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | [`docs/BACKEND.md`](BACKEND.md)、[`docs/FRONTEND.md`](FRONTEND.md) |
-| Electron 桌面宿主契约、preload 桥接、IPC | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)、[`docs/FRONTEND.md`](FRONTEND.md) | `src/desktop/`、`src/preload/`、`src/main/handler/`、`src/renderer/app/desktop/` |
+| Electron 桌面原生契约、preload 桥接、IPC | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)、[`docs/FRONTEND.md`](FRONTEND.md) | `src/native/` 根契约、`src/native/shell/`、`src/preload/`、`src/renderer/app/desktop/` |
 | API、SSE、项目读取、mutation、错误码 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/api/`、`src/renderer/app/desktop/` |
 | 数据库、`.lg`、migration、状态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/database/`、`src/main/migration/`、相关 service 测试 |
 | 任务命令、运行态、引擎、worker、事件 | [`docs/BACKEND.md`](BACKEND.md) | `src/main/engine/`、`src/main/events/` |

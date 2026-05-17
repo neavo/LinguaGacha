@@ -68,7 +68,7 @@ vi.mock("electron", () => {
   };
 });
 
-describe("LogWindowHost", () => {
+describe("日志窗口宿主", () => {
   afterEach(() => {
     created_windows.length = 0;
     vi.restoreAllMocks();

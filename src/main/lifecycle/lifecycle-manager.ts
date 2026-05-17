@@ -4,10 +4,13 @@ import { allocate_core_api_port } from "./lifecycle-port-allocator";
 import { ProjectDatabase } from "../database/database-operations";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
-import { AppPathService } from "../service/path-service";
+import { AppPathService } from "../app/app-path-service";
+import { AppMetadataService } from "../app/app-metadata-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
-import { set_main_log_text_paths, t_main_log } from "../log/log-text";
+import { set_main_log_language_reader, t_main_log } from "../log/log-text";
+import { InternalInvariantError } from "../../shared/error";
 import type {
   CoreLifecycleManagerOptions,
   CoreLifecycleStartResult,
@@ -44,7 +47,12 @@ export class CoreLifecycleManager {
    */
   public async start(): Promise<CoreLifecycleStartResult> {
     if (this.state !== "idle" && this.state !== "stopped") {
-      throw new Error(`Core 生命周期状态不允许启动：${this.state}`);
+      throw new InternalInvariantError({
+        diagnostic_context: {
+          reason: "core_lifecycle_start_invalid_state",
+          state: this.state,
+        },
+      });
     }
 
     this.state = "starting";
@@ -56,18 +64,22 @@ export class CoreLifecycleManager {
     };
     const app_root = resolve_core_app_root(launch_environment);
     const paths = new AppPathService({ appRoot: app_root });
-    set_main_log_text_paths(paths);
+    const metadata = new AppMetadataService(paths);
     const log_manager = new LogManager({ logDir: paths.get_log_dir() });
     this.log_manager = log_manager;
     set_electron_main_log_manager(log_manager);
 
     try {
       write_lifecycle_log("");
-      write_lifecycle_log(t_main_log("app.log.app_version", { VERSION: paths.read_version() }));
+      write_lifecycle_log(t_main_log("app.log.app_version", { VERSION: metadata.read_version() }));
       // 启动期迁移必须早于服务启动，确保配置和预设读取只看到当前 userdata/resource 布局
       migration_orchestrator.run_startup_migrations({ paths, log_manager });
+      const app_setting_service = new AppSettingService(paths);
+      set_main_log_language_reader(() => app_setting_service.read_app_language());
       const gateway_server = new ApiGatewayServer({
-        appRoot: app_root,
+        paths,
+        metadata,
+        appSettingService: app_setting_service,
         publicPort: public_port,
         database: this.database,
         logManager: log_manager,
@@ -80,7 +92,11 @@ export class CoreLifecycleManager {
       );
       write_lifecycle_log("");
       this.state = "ready";
-      return gateway_start_result;
+      // Electron shell 的系统 dialog 不能走 renderer i18n，因此只返回语言读取窄入口。
+      return {
+        ...gateway_start_result,
+        readAppLanguage: () => app_setting_service.read_app_language(),
+      };
     } catch (error) {
       write_lifecycle_error(
         t_main_log("app.diagnostic.lifecycle.core_gateway_start_failed", {
@@ -121,6 +137,7 @@ export class CoreLifecycleManager {
     await this.log_manager?.shutdown();
     this.log_manager = null;
     set_electron_main_log_manager(null);
+    set_main_log_language_reader(null);
     this.state = "stopped";
   }
 }

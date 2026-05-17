@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 
+import { default_native_fs } from "../../../native/platform/native-fs";
 import { PathRelocation } from "../path-relocation";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
 
@@ -32,7 +32,7 @@ export const prompt_user_preset_layout_migration: MigrationDescriptor = {
   run_startup(context: StartupMigrationContext): void {
     const relocation = new PathRelocation(context.log_manager);
     const destination_dir = context.paths.get_prompt_user_preset_dir("translation");
-    fs.mkdirSync(destination_dir, { recursive: true });
+    default_native_fs.make_dir(destination_dir);
     for (const source_dir of get_legacy_prompt_user_preset_dirs(context)) {
       relocation.relocate_directory_items(source_dir, destination_dir, PROMPT_PRESET_EXTENSION, [
         context.paths.get_app_root(),

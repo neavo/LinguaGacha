@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
@@ -7,8 +6,9 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
-import type { SettingService } from "../service/setting-service";
-import type { AppPathService } from "../service/path-service";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
+import type { AppSettingService } from "../app/app-setting-service";
+import type { AppPathService } from "../app/app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
   collect_project_item_missing_public_fields,
@@ -118,11 +118,13 @@ export class ProjectLifecycleService {
 
   private readonly session_state: ProjectSessionState; // session_state 是 renderer 可见 loaded/path 的唯一权威
 
-  private readonly setting_service: SettingService; // setting_service 提供当前应用设置，用于打开预演与默认预设选择
+  private readonly app_setting_service: AppSettingService; // app_setting_service 提供当前应用设置，用于打开预演与默认预设选择
 
   private readonly paths: AppPathService; // paths 统一解析内置 / 用户预设目录，避免项目域拼第二套路由规则
 
   private readonly log_manager: LogManager; // log_manager 记录默认预设初始化结果，响应体不扩大公开协议
+
+  private readonly native_fs: NativeFs; // native_fs 是项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
 
   /**
    * 初始化项目生命周期依赖，保持公开路由层只负责装配
@@ -130,15 +132,17 @@ export class ProjectLifecycleService {
   public constructor(
     database: ProjectDatabase,
     session_state: ProjectSessionState,
-    setting_service: SettingService,
+    app_setting_service: AppSettingService,
     paths: AppPathService,
     log_manager: LogManager,
+    native_fs: NativeFs = default_native_fs,
   ) {
     this.database = database;
     this.session_state = session_state;
-    this.setting_service = setting_service;
+    this.app_setting_service = app_setting_service;
     this.paths = paths;
     this.log_manager = log_manager;
+    this.native_fs = native_fs;
   }
 
   /**
@@ -166,7 +170,7 @@ export class ProjectLifecycleService {
     const migration_operations = await migration_orchestrator.build_project_open_operations({
       project_path,
       database: this.database,
-      setting_service: this.setting_service,
+      app_setting_service: this.app_setting_service,
     });
 
     this.database.execute_transaction([
@@ -345,7 +349,7 @@ export class ProjectLifecycleService {
     operations: DatabaseOperation[];
     loaded_names: string[];
   } {
-    const config = this.setting_service.load_setting();
+    const config = this.app_setting_service.read_setting();
     const operations: DatabaseOperation[] = [
       this.op("setMeta", {
         projectPath: project_path,
@@ -429,7 +433,7 @@ export class ProjectLifecycleService {
     virtual_id: string,
   ): MutableJsonRecord[] {
     const preset_path = this.resolve_quality_rule_preset_path(preset_directory, virtual_id);
-    const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
+    const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
     if (!Array.isArray(data)) {
       throw new AppErrors.RequestValidationError({
         public_details: {
@@ -445,8 +449,8 @@ export class ProjectLifecycleService {
    */
   private read_prompt_preset(task_type: "translation" | "analysis", virtual_id: string): string {
     const preset_path = this.resolve_prompt_preset_path(task_type, virtual_id);
-    return fs
-      .readFileSync(preset_path, "utf-8")
+    return this.native_fs
+      .read_text_file(preset_path)
       .replace(/^\uFEFF/, "")
       .trim();
   }
@@ -635,7 +639,7 @@ export class ProjectLifecycleService {
     mtool_optimizer_enable: boolean;
     skip_duplicate_source_text_enable: boolean;
   } {
-    const config = this.setting_service.load_setting();
+    const config = this.app_setting_service.read_setting();
     return {
       source_language: this.string_value(config["source_language"]) || "JA",
       target_language: this.string_value(config["target_language"]) || "ZH",
@@ -788,10 +792,10 @@ export class ProjectLifecycleService {
    * 按文件或目录收集支持格式，目录内按名称稳定排序
    */
   private collect_source_files_from_path(source_path: string): string[] {
-    if (!fs.existsSync(source_path)) {
+    if (!this.native_fs.exists(source_path)) {
       return [];
     }
-    const stats = fs.statSync(source_path);
+    const stats = this.native_fs.stat(source_path);
     if (stats.isFile()) {
       return this.is_supported_file(source_path) ? [source_path] : [];
     }
@@ -806,8 +810,8 @@ export class ProjectLifecycleService {
    */
   private collect_source_files_from_directory(source_path: string): string[] {
     const source_files: string[] = [];
-    const entries = fs
-      .readdirSync(source_path, { withFileTypes: true })
+    const entries = this.native_fs
+      .read_dirents(source_path)
       .sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of entries) {
       const entry_path = path.join(source_path, entry.name);
@@ -831,8 +835,7 @@ export class ProjectLifecycleService {
    * 构造跨平台路径身份 key，Windows 下按文件系统大小写不敏感处理
    */
   private build_path_identity_key(source_path: string): string {
-    const resolved_path = path.resolve(source_path);
-    return process.platform === "win32" ? resolved_path.toLowerCase() : resolved_path;
+    return this.native_fs.to_identity_path(source_path);
   }
 
   /**
@@ -850,7 +853,7 @@ export class ProjectLifecycleService {
    * 打开既有工程前必须先确认文件存在，缺失时映射为 project.not_found
    */
   private assert_project_file_exists(project_path: string): void {
-    if (!fs.existsSync(project_path)) {
+    if (!this.native_fs.exists(project_path)) {
       throw new AppErrors.ProjectNotFoundError({
         public_details: { filename: path.basename(project_path) },
       });

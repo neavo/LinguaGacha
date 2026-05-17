@@ -8,7 +8,7 @@
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message, message_key, request_id, details?, action?, action_key? } }`。
 - `src/shared/error` 是公开错误 code、HTTP status、日志分级、API envelope 投影和日志投影的唯一模型；用户可见错误文案只从 `src/shared/i18n` 的 `message_key` / `action_key` 解析，错误类和定义表不得承载自然语言文案。
-- 稳定错误码使用点分语义码：请求与路由归 `request.*`，项目归 `project.*`，文件归 `file.*`，数据一致性归 `data.*` / `database.*`，任务归 `task.*`，模型归 `model.*`，worker 归 `worker.*`，运行时归 `runtime.*`。业务代码需要抛错时使用 `src/shared/error` 的语义化 `AppError` 子类，不再通过 API 层手拼 code/message/details。
+- 稳定错误码使用点分语义码：请求与路由归 `request.*`，项目归 `project.*`，文件归 `file.*`，数据一致性归 `data.*` / `database.*`，任务归 `task.*`，模型归 `model.*`，worker 归 `worker.*`，运行时归 `runtime.*`。文件域必须区分不支持格式、内容解析失败、结构不符合格式和读写失败；运行时资源释放、主动取消和内部不变量失败不能混用同一错误码。业务代码需要抛错时使用 `src/shared/error` 的语义化 `AppError` 子类，不再通过 API 层手拼 code/message/details。
 - `message` 和 `action` 是 Gateway 按当前应用语言解析出的安全展示文本；`message_key` 和 `action_key` 是 renderer 可复用的稳定 i18n key；`details` 只允许安全 JSON 字段，内部 stack、完整敏感路径、API key、Authorization header、provider 原始响应和 cause 只能进入日志。
 - `AppError` 构造不写日志；Gateway、任务和 Electron main 需要记录错误时通过日志投影写入 `LogManager`，日志窗口仍只暴露安全摘要，文件和控制台保留结构化诊断上下文与 cause 链。
 - 公开 SSE frame 必须使用严格 JSON 序列化，不能手写拼接多行 `data` 负载。
@@ -21,7 +21,7 @@
 | `POST /api/project/items/read-by-ids` | 按 item id 读取公开 item map | 供 ids-only 事件和页面缓存补读 |
 | `GET /api/events/stream` | 项目、任务、设置的运行期增量事件 | 页面运行态主事件源 |
 | `GET /api/logs/stream` | 日志窗口增量事件 | 只暴露 `log.appended` |
-| `POST /api/settings/*` | 应用设置和最近项目 | 由 `SettingService` 写入并发 `settings.changed` |
+| `POST /api/settings/*` | 应用设置和最近项目 | 由 `AppSettingService` 写入并发 `settings.changed` |
 | `POST /api/models/*` | 模型配置、激活、测试 | 由 `ModelService` 和配置服务持有 |
 | `POST /api/project/*` | 工程生命周期、工作台、reset、导出、校对 mutation | 按领域服务分发，不能在路由层写数据库 |
 | `POST /api/tasks/start`、`/stop`、`/snapshot`、`/translate-single` | 统一任务命令、任务快照和单条翻译工具调用 | 由 `TaskService`、`TaskEngine` 承接；重翻是 translation 的 items scope |
@@ -88,10 +88,12 @@ flowchart LR
 | engine/store | 任务输入读取、任务质量快照构建、artifact 提交、项目数据变更发布 | `ProjectTaskStore`、`TaskArtifactCommitter` |
 | llm | main 进程 LLM provider policy、request policy、official SDK transport、ProviderClientPool、请求结果归一 | `LLMClient`、`LLMClientPolicy`、各 provider policy 与 transport |
 | engine/worker | work unit 执行、提示词构建、runner、pipeline、响应清洗解码、worker_threads 边界 | `WorkerPool`、`worker-entry`、各 runner |
+| app | 应用路径、设置文件读写缓存、应用版本和 User-Agent 元信息 | `AppPathService`、`AppSettingService`、`AppMetadataService` |
+| platform | main / worker 原生文件系统与路径策略，含 Windows 长路径和路径身份比较 | `src/native/platform` 的 `NativeFs`、`NativePathPolicy` |
 | file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |
-| service | 设置、路径、质量规则、提示词、校对保存 | `SettingService`、`QualityService`、`ProofreadingService` |
-| log | 内部日志聚合、`AppError` 日志投影、fatal 兜底、日志窗口和日志 SSE | `LogManager`、`record_app_error`、`LogWindowHost` |
+| service | 质量规则、提示词、校对保存和任务命令门面 | `QualityService`、`ProofreadingService`、`TaskService` |
+| log | 内部日志聚合、`AppError` 日志投影、fatal 兜底和日志 SSE | `LogManager`、`record_app_error` |
 
 API 层只分发到领域服务和包装协议语义，不直接操作 database workflow，不持有 SQLite 句柄，不把内部服务对象暴露给 renderer。
 
@@ -102,6 +104,8 @@ API 层只分发到领域服务和包装协议语义，不直接操作 database 
 | 当前工程是否 loaded、工程路径 | `ProjectSessionState` | 只由工程加载/创建/卸载成功后更新，返回不可变快照 |
 | 任务 busy、status、active task、请求中数量、translation scope | `TaskRuntimeState` | 只由任务命令、任务引擎和 `TaskRuntimePublisher` 维护；`retranslate` 不作为 TaskType |
 | 项目持久事实、meta、runtime section revision | `ProjectDatabase` | 只通过 database operation 和事务写入 |
+| 应用设置完整配置和 renderer settings 快照 | `AppSettingService` | 运行期只读写 `userdata/config.json`，服务实例持有缓存；启动迁移早于服务创建并可直接处理历史配置路径 |
+| 应用版本与 LLM User-Agent 元信息 | `AppMetadataService` | 只读 `version.txt` 并缓存；路径由 `AppPathService` 提供，LLM policy 不直接读取文件 |
 | 项目公开投影 block、分析覆盖率摘要 | `ProjectRuntimeProjectionService` | manifest、read-sections、项目变更事件和任务输入快照复用同一读取口径，不另建缓存 |
 | 前端项目运行态 | renderer `ProjectStore` | 只消费项目读取接口、`project.data_changed` 和本地乐观 change |
 | 页面局部筛选、弹窗、选择、临时预览 | 页面 hook 或组件本地状态 | 不写回共享运行态，除非通过领域 mutation |
@@ -119,6 +123,8 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 ## 6. 数据库与 `.lg` 物理存储
 
 - SQL、事务、SQLite 连接生命周期和 `.lg` asset 读写只允许落在 `src/main/database/`。
+- main / worker 侧所有真实磁盘 IO 必须经 `src/native/platform` 的 `NativeFs`；业务层不得直接引入 `node:fs`，第三方库只负责生成 bytes 或解析 bytes，落盘和读取统一交给平台层处理。
+- `NativePathPolicy` 是 Windows namespaced path 转换与跨平台路径身份比较的唯一策略入口；需要判断路径相等或传给 SQLite、文件格式库、日志、迁移、配置和导出链路时先走该策略。
 - 旧版本迁移规则只允许落在 `src/main/migration/`，由单一编排器按 startup、project database schema、project database writeback、project open operation hook 执行；单个迁移文件只承载一个历史场景，不能恢复运行时兼容层。历史 item 缺失完整公开 DTO 所需稳定字段时只在 migration 层补齐，projection、ProjectStore 和写回入口不得现场猜默认值。
 - Zstd 压缩/解压参数和运行时能力检查只允许落在 `src/shared/utils/zstd-tool.ts`。
 - `ProjectDatabase.execute()` 是上层服务使用的窄 workflow；新增 operation 必须集中校验参数，避免 SQL 语义散落到 service。
@@ -129,7 +135,7 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 - asset 内容以 Zstd 压缩 blob 存储在 `.lg` 内；调用方读取时消费解压 bytes，不理解压缩格式。
 - 运行态不保留独立 database gateway、full bootstrap stream 或旧 DTO bridge；历史格式兼容只在 migration 或 project change adapter 的明确边界内处理。
 - 跨 API、数据库 payload、任务运行态和 worker 的实体和值对象从 `src/base` 导入；`Item`、`Setting`、`Model`、`Prompt`、`QualityRule` 负责 JSON 反序列化、序列化、合法值集合和贴身派生判断，后端领域服务只在 IO、数据库、路径、网络和事件边界处理副作用。
-- 跨运行时复用的 task、quality、language、log 和 JSON 工具从 `src/shared` 导入；语言值域按源语言、目标语言和总表三类导出，后端提示词、预过滤和文件格式策略必须消费对应窄值域，不得恢复源/目标共用列表；质量规则合并、预演和任务快照归一只复用 `src/shared/quality`，运行态不得为这些共享规则另建并行词表或局部兜底。
+- 跨运行时复用的 task、quality、language、log 和纯 JSON 工具从 `src/shared` 导入；`JsonTool` 只负责解析、修复和序列化，不承载文件读取或写入。语言值域按源语言、目标语言和总表三类导出，后端提示词、预过滤和文件格式策略必须消费对应窄值域，不得恢复源/目标共用列表；质量规则合并、预演和任务快照归一只复用 `src/shared/quality`，运行态不得为这些共享规则另建并行词表或局部兜底。
 - 质量规则预设接口以公开 `rule_type` 为入参，物理预设目录只由 `QualityRule` 派生；提示词目录、rules 表物理类型、meta key 和默认预设 setting key 只由 `Prompt` 派生。
 
 ## 7. 更新触发条件

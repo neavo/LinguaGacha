@@ -245,7 +245,7 @@ function useProjectPagesContext(): ProjectPagesContextValue {
   const context_value = useContext(ProjectPagesContext);
 
   if (context_value === null) {
-    throw new Error("useProjectPagesContext 必须在 ProjectPagesProvider 内使用。");
+    throw new Error("useProjectPagesContext must be used inside ProjectPagesProvider.");
   }
 
   return context_value;

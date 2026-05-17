@@ -17,7 +17,7 @@ import type {
 } from "./transport/transport-types";
 
 interface LLMClientOptions {
-  appRoot: string;
+  userAgent: string; // userAgent 由应用元信息层注入，LLMClient 不读取 version.txt
   policy?: LLMClientPolicy; // policy 注入点只供测试替换请求策略，不改变生产归属
   clientPool?: ProviderClientResolver; // clientPool 注入点用于验证 SDK client 复用和凭据隔离
   transports?: Partial<Record<RequestProvider, RequestTransport>>; // transports 只允许按 provider 替换边界实现
@@ -35,7 +35,7 @@ export class LLMClient implements LLMClientPort {
    */
   public constructor(options: LLMClientOptions) {
     const client_pool = options.clientPool ?? new ProviderClientPool();
-    this.policy = options.policy ?? new LLMClientPolicy(options.appRoot);
+    this.policy = options.policy ?? new LLMClientPolicy(options.userAgent);
     this.transports = {
       "openai-compatible":
         options.transports?.["openai-compatible"] ?? new OpenAICompatibleTransport(client_pool),

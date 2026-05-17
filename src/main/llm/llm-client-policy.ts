@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { Model, type ModelApiFormat } from "../../base/model";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { ApiJsonValue } from "../api/api-types";
@@ -18,9 +15,6 @@ import type {
 } from "./policy/policy-types";
 import type { LLMMessage, LLMRequestBody } from "./llm-types";
 
-const REPO_URL = "https://github.com/neavo/LinguaGacha";
-const USER_AGENT_NAME = "LinguaGacha";
-const DEFAULT_VERSION = "0.0.0";
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096;
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 
@@ -28,13 +22,13 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
  * LLMClientPolicy 是 LLM client 的请求策略编排器，负责读取快照、选择 provider policy 并产出最终请求事实。
  */
 export class LLMClientPolicy {
-  private readonly app_root: string;
+  private readonly user_agent: string; // user_agent 由 AppMetadataService 生成，policy 不读取应用文件
 
   /**
-   * app_root 只用于读取版本号生成 User-Agent，不读取用户配置。
+   * 注入最终 User-Agent，保持 LLM policy 只处理请求策略。
    */
-  public constructor(app_root: string) {
-    this.app_root = app_root;
+  public constructor(user_agent: string) {
+    this.user_agent = user_agent;
   }
 
   /**
@@ -164,7 +158,7 @@ export class LLMClientPolicy {
    */
   private read_extra_headers(request: Record<string, ApiJsonValue>): Record<string, string> {
     const headers: Record<string, string> = {
-      "User-Agent": this.build_linguagacha_user_agent(),
+      "User-Agent": this.user_agent,
     };
     const extra_headers = this.read_enabled_record(
       request,
@@ -175,22 +169,6 @@ export class LLMClientPolicy {
       headers[key] = String(value);
     }
     return headers;
-  }
-
-  /**
-   * User-Agent 带版本用于供应商侧诊断；缺失 version.txt 时使用占位版本。
-   */
-  private build_linguagacha_user_agent(): string {
-    let version = DEFAULT_VERSION;
-    try {
-      const raw_version = fs.readFileSync(path.join(this.app_root, "version.txt"), "utf8").trim();
-      if (raw_version !== "") {
-        version = raw_version;
-      }
-    } catch {
-      // version.txt 在源码运行和测试环境可能不存在；占位版本不影响请求路由。
-    }
-    return `${USER_AGENT_NAME}/v${version} (${REPO_URL})`;
   }
 
   /**

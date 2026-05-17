@@ -1,7 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../../api/api-types";
+import { default_native_fs, normalize_native_file_bytes } from "../../../native/platform/native-fs";
 import { Item, type ItemFileType } from "../../../base/item";
 
 /**
@@ -85,8 +85,14 @@ export function build_bilingual_path(base_path: string, rel_path: string): strin
  * 写文本文件前统一创建目录，格式处理器只关心内容生成
  */
 export async function write_text_file(file_path: string, content: string): Promise<void> {
-  fs.mkdirSync(path.dirname(file_path), { recursive: true });
-  await fs.promises.writeFile(file_path, content, "utf-8");
+  await default_native_fs.write_file(file_path, content);
+}
+
+/**
+ * 写二进制文件前统一创建目录，并在边界收窄第三方库返回的 bytes。
+ */
+export async function write_binary_file(file_path: string, content: unknown): Promise<void> {
+  await default_native_fs.write_file(file_path, normalize_native_file_bytes(content));
 }
 
 /**

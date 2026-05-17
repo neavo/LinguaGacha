@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import type { SettingService } from "../service/setting-service";
+import { default_native_fs } from "../../native/platform/native-fs";
+import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileExportService, type OutputFolderOpener } from "./file-export-service";
 
@@ -24,9 +25,9 @@ afterEach(() => {
 /**
  * 导出测试使用固定设置，便于断言目标路径和日志语言
  */
-function create_setting_service(output_folder_open_on_finish = false): SettingService {
+function create_setting_service(output_folder_open_on_finish = false): AppSettingService {
   return {
-    load_setting: () => ({
+    read_setting: () => ({
       source_language: "JA",
       target_language: "ZH",
       app_language: "ZH",
@@ -34,7 +35,7 @@ function create_setting_service(output_folder_open_on_finish = false): SettingSe
       deduplication_in_bilingual: true,
       write_translated_name_fields_to_file: true,
     }),
-  } as unknown as SettingService;
+  } as unknown as AppSettingService;
 }
 
 interface CollectedLogEntry {
@@ -229,9 +230,7 @@ describe("FileExportService", () => {
       read_asset_content: () => null,
     } as unknown as ProjectDatabase;
     const log_collector = create_log_collector();
-    vi.spyOn(fs, "mkdirSync").mockImplementation((() => {
-      throw new Error("boom");
-    }) as typeof fs.mkdirSync);
+    vi.spyOn(default_native_fs, "write_file").mockRejectedValue(new Error("boom"));
     const service = new FileExportService(
       database,
       create_setting_service(),

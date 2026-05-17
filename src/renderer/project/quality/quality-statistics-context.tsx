@@ -152,7 +152,7 @@ export function QualityStatisticsProvider(props: { children: ReactNode }): JSX.E
 function useQualityStatisticsContext(): QualityStatisticsContextValue {
   const context_value = useContext(QualityStatisticsContext);
   if (context_value === null) {
-    throw new Error("useQualityStatistics 必须在 QualityStatisticsProvider 内使用。");
+    throw new Error("useQualityStatistics must be used inside QualityStatisticsProvider.");
   }
 
   return context_value;

@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 
+import { default_native_fs } from "../../native/platform/native-fs";
 import type { CoreLaunchEnvironment } from "./lifecycle-types";
 
 export const NPM_INITIAL_CWD_ENV_NAME = "INIT_CWD";
@@ -9,10 +9,10 @@ const APP_ROOT_MARKER_DIRS = ["resource"] as const;
 
 function is_app_root(app_root: string): boolean {
   const has_files = APP_ROOT_MARKER_FILES.every((required_file) => {
-    return fs.existsSync(path.join(app_root, required_file));
+    return default_native_fs.exists(path.join(app_root, required_file));
   });
   const has_dirs = APP_ROOT_MARKER_DIRS.every((required_dir) => {
-    return fs.existsSync(path.join(app_root, required_dir));
+    return default_native_fs.exists(path.join(app_root, required_dir));
   });
   return has_files && has_dirs;
 }

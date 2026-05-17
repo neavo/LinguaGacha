@@ -2,6 +2,7 @@ import type {
   QualityStatisticsTaskInput,
   QualityStatisticsTaskResult,
 } from "@/project/quality/quality-statistics";
+import { is_worker_client_error, WorkerClientError } from "@/lib/worker-client-error";
 
 type QualityStatisticsWorkerRequest = {
   id: number;
@@ -28,8 +29,6 @@ type WorkerSlot = {
   current_task_id: number | null;
 };
 
-export const QUALITY_STATISTICS_STALE_ERROR_MESSAGE = "quality statistics 请求已被更新请求覆盖。";
-
 export type QualityStatisticsTaskExecutor = {
   compute: (input: QualityStatisticsTaskInput) => Promise<QualityStatisticsTaskResult>;
 };
@@ -48,24 +47,39 @@ const DEFAULT_WORKER_COUNT = 4;
 
 let shared_quality_statistics_worker_pool: QualityStatisticsWorkerPool | null = null;
 
+/**
+ * stale 表示同一规则已有更新请求覆盖当前结果，不属于用户可见故障。
+ */
 function create_stale_error(): Error {
-  return new Error(QUALITY_STATISTICS_STALE_ERROR_MESSAGE);
+  return new WorkerClientError("stale");
 }
 
+/**
+ * disposed 表示统计池生命周期已结束，后续请求必须由新池承接。
+ */
 function create_disposed_error(): Error {
-  return new Error("quality statistics worker pool 已释放。");
+  return new WorkerClientError("disposed");
 }
 
+/**
+ * worker 初始化失败只暴露稳定 code，浏览器原始异常不进入页面状态。
+ */
 function create_worker_init_error(): Error {
-  return new Error("quality statistics worker 初始化失败。");
+  return new WorkerClientError("init_failed");
 }
 
+/**
+ * worker runtime 失败统一映射为 execution_failed，由调度器记录到 cache 状态。
+ */
 function create_worker_runtime_error(): Error {
-  return new Error("quality statistics worker 执行失败。");
+  return new WorkerClientError("execution_failed");
 }
 
+/**
+ * stale 判断只看结构化 code，避免请求覆盖语义依赖自然语言 message。
+ */
 export function isQualityStatisticsStaleError(error: unknown): boolean {
-  return error instanceof Error && error.message === QUALITY_STATISTICS_STALE_ERROR_MESSAGE;
+  return is_worker_client_error(error, "stale");
 }
 
 export function createQualityStatisticsWorkerPool(

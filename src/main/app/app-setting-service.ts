@@ -1,27 +1,39 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import type { ApiJsonValue } from "../api/api-types";
-import { AppPathService } from "./path-service";
+import { AppPathService } from "./app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { Setting } from "../../base/setting";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
-interface SettingsEventPublisher {
+interface AppSettingsEventPublisher {
   publish: (event_type: string, payload: Record<string, ApiJsonValue>) => void; // settings.changed 是本地事件，避免设置更新绕回旧运行态同步链路
 }
 
 /**
- * 封装应用设置与最近项目设置文件的唯一写入口
+ * AppSettingService 是 userdata/config.json 的运行期唯一读写入口。
  */
-export class SettingService {
-  private readonly paths: AppPathService;
-  private readonly event_publisher: SettingsEventPublisher | null;
+export class AppSettingService {
+  private readonly paths: AppPathService; // paths 提供 config.json 的唯一落点
+  private event_publisher: AppSettingsEventPublisher | null; // event_publisher 只广播 settings.changed
+  private readonly native_fs: NativeFs; // native_fs 统一设置文件读写和长路径策略
+  private setting_cache: Setting | null = null; // setting_cache 是运行期配置事实，外部手改不做热加载
 
   /**
-   * 初始化 SettingService 依赖，保持外部写入口清晰
+   * 初始化 AppSettingService 依赖，保持配置写入口与事件出口清晰。
    */
-  public constructor(paths: AppPathService, event_publisher: SettingsEventPublisher | null = null) {
+  public constructor(
+    paths: AppPathService,
+    event_publisher: AppSettingsEventPublisher | null = null,
+    native_fs: NativeFs = default_native_fs,
+  ) {
     this.paths = paths;
+    this.event_publisher = event_publisher;
+    this.native_fs = native_fs;
+  }
+
+  /**
+   * 绑定运行期事件出口；Gateway 生命周期重建事件 hub 时只更新这个引用。
+   */
+  public set_event_publisher(event_publisher: AppSettingsEventPublisher | null): void {
     this.event_publisher = event_publisher;
   }
 
@@ -29,9 +41,9 @@ export class SettingService {
    * 读取应用设置快照，保持 UI 只消费白名单字段
    */
   public get_app_settings(): Record<string, ApiJsonValue> {
-    const setting = this.load_setting();
-    this.save_setting(setting);
-    return { settings: Setting.from_json(setting).to_snapshot() as Record<string, ApiJsonValue> };
+    const setting = this.read_setting_entity();
+    this.save_setting(setting.to_json() as Record<string, ApiJsonValue>);
+    return { settings: setting.to_snapshot() as Record<string, ApiJsonValue> };
   }
 
   /**
@@ -40,7 +52,7 @@ export class SettingService {
   public async update_app_settings(
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
-    let setting = Setting.from_json(this.load_setting());
+    let setting = this.read_setting_entity();
     const changed_keys: string[] = [];
     for (const [key, value] of Object.entries(request)) {
       const next_setting = setting.with_setting_value(key, value);
@@ -65,7 +77,7 @@ export class SettingService {
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const project_path = typeof request["path"] === "string" ? request["path"] : "";
-    let setting = Setting.from_json(this.load_setting());
+    let setting = this.read_setting_entity();
     if (project_path !== "") {
       setting = setting.with_recent_project_added(project_path, this.build_local_iso_timestamp());
       this.save_setting(setting.to_json() as Record<string, ApiJsonValue>);
@@ -84,7 +96,7 @@ export class SettingService {
     request: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const project_path = typeof request["path"] === "string" ? request["path"] : "";
-    let setting = Setting.from_json(this.load_setting());
+    let setting = this.read_setting_entity();
     if (project_path !== "") {
       setting = setting.with_recent_project_removed(project_path);
       this.save_setting(setting.to_json() as Record<string, ApiJsonValue>);
@@ -97,28 +109,23 @@ export class SettingService {
   }
 
   /**
-   * 读取设置文件并补齐默认值，兼容旧 userdata
+   * 读取完整设置对象副本，业务服务不能直接触碰 config.json。
    */
-  public load_setting(): Record<string, ApiJsonValue> {
-    const config_path = this.paths.get_config_path();
-    let payload: unknown = {};
-    if (fs.existsSync(config_path)) {
-      payload = JsonTool.parseStrict(fs.readFileSync(config_path)) as unknown;
-    }
-    return Setting.from_json(payload).to_json() as Record<string, ApiJsonValue>;
+  public read_setting(): Record<string, ApiJsonValue> {
+    return this.read_setting_entity().to_json() as Record<string, ApiJsonValue>;
   }
 
   /**
-   * 持久化设置对象，确保目录存在后再写入
+   * 持久化完整设置对象，并同步刷新运行期缓存。
    */
   public save_setting(setting: Record<string, ApiJsonValue>): void {
     const config_path = this.paths.get_config_path();
-    fs.mkdirSync(path.dirname(config_path), { recursive: true });
-    fs.writeFileSync(
+    const normalized_setting = Setting.from_json(setting);
+    this.native_fs.write_file_sync(
       config_path,
-      JsonTool.stringifyStrict(Setting.from_json(setting).to_json(), { indent: 4 }),
-      "utf-8",
+      JsonTool.stringifyStrict(normalized_setting.to_json(), { indent: 4 }),
     );
+    this.setting_cache = normalized_setting;
   }
 
   /**
@@ -131,7 +138,30 @@ export class SettingService {
   }
 
   /**
-   * 设置广播直接接发布，后续任务读取配置文件即可看到最新值
+   * 读取当前应用语言，日志和错误文案只消费这个窄入口。
+   */
+  public read_app_language(): ApiJsonValue {
+    return this.read_setting_entity().to_json()["app_language"] ?? "ZH";
+  }
+
+  /**
+   * 从缓存或磁盘读取设置实体；磁盘读取只在服务生命周期内发生一次。
+   */
+  private read_setting_entity(): Setting {
+    if (this.setting_cache !== null) {
+      return this.setting_cache;
+    }
+    const config_path = this.paths.get_config_path();
+    let payload: unknown = {};
+    if (this.native_fs.exists(config_path)) {
+      payload = JsonTool.parseStrict(this.native_fs.read_file(config_path)) as unknown;
+    }
+    this.setting_cache = Setting.from_json(payload);
+    return this.setting_cache;
+  }
+
+  /**
+   * 设置广播直接接发布，后续任务读取服务缓存即可看到最新值。
    */
   private publish_settings_changed(
     changed_keys: string[],

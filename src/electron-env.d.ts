@@ -1,6 +1,6 @@
 /// <reference types="electron-vite/node" />
 
-import type { DesktopBridgeApi } from "./desktop/bridge-api";
+import type { DesktopBridgeApi } from "./native/bridge-api";
 
 declare namespace NodeJS {
   interface ProcessEnv {

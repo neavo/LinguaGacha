@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { SettingService } from "./setting-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { resolve_active_model } from "../model/model-config-resolver";
 import { ProjectSessionState } from "../project/project-session-state";
 import { TaskEngine } from "../engine/core/engine";
@@ -31,7 +31,7 @@ export class TaskService {
 
   private readonly session_state: ProjectSessionState; // session_state 决定重翻 revision 校验是否能定位当前工程
 
-  private readonly setting_service: SettingService; // setting_service 只用于单条翻译前的主动模型可用性检查
+  private readonly app_setting_service: AppSettingService; // app_setting_service 只用于单条翻译前的主动模型可用性检查
 
   private readonly task_definition_registry = new TaskDefinitionRegistry(); // task_definition_registry 是任务类型差异和 revision 依赖的唯一注册表
 
@@ -43,13 +43,13 @@ export class TaskService {
     snapshot_builder: TaskSnapshotBuilder,
     task_runtime_publisher: TaskRuntimePublisher,
     session_state: ProjectSessionState,
-    setting_service: SettingService,
+    app_setting_service: AppSettingService,
   ) {
     this.task_engine = task_engine;
     this.snapshot_builder = snapshot_builder;
     this.task_runtime_publisher = task_runtime_publisher;
     this.session_state = session_state;
-    this.setting_service = setting_service;
+    this.app_setting_service = app_setting_service;
     this.task_definition_registry.register(new TranslationTaskDefinition());
     this.task_definition_registry.register(new AnalysisTaskDefinition());
   }
@@ -218,7 +218,7 @@ export class TaskService {
    * 单条翻译只做基础模型存在性判断；真实请求能力由 work-unit executor 负责
    */
   private has_active_model(): boolean {
-    const config = this.setting_service.load_setting();
+    const config = this.app_setting_service.read_setting();
     return resolve_active_model(config) !== null;
   }
 

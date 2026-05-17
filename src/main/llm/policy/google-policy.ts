@@ -3,6 +3,7 @@ import {
   patch_temperature,
   resolve_max_tokens_for_request,
 } from "../llm-client-policy";
+import { RequestValidationError } from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";
 import type { LLMMessage } from "../llm-types";
 
@@ -87,7 +88,10 @@ function build_google_contents(
     contents.unshift({ role: "user", parts: [{ text: system_text }] });
   }
   if (contents.length === 0) {
-    throw new Error("LLM 请求 messages 为空。");
+    throw new RequestValidationError({
+      public_details: { field: "messages" },
+      diagnostic_context: { provider_policy: "google", reason: "empty_messages" },
+    });
   }
   return contents;
 }

@@ -1,9 +1,6 @@
 import { Prompt } from "@base/prompt";
 import { QualityRule } from "@base/quality";
-import {
-  normalize_project_item_public_record,
-  type ProjectItemPublicRecord,
-} from "@base/item";
+import { normalize_project_item_public_record, type ProjectItemPublicRecord } from "@base/item";
 import {
   PROJECT_DATA_SECTIONS,
   isProjectDataSection,
@@ -14,6 +11,7 @@ import {
   type ProjectDataSection,
   type ProjectDataSectionRevisions,
 } from "@shared/project/event";
+import { InternalInvariantError } from "@shared/error";
 
 export type { ProjectDataSection, ProjectDataSectionRevisions };
 
@@ -584,7 +582,9 @@ function normalize_project_store_item_delta_record(
 ): { key: string; id: number; record: ProjectChangeJsonRecord } | null {
   const normalized_item = normalize_project_item_public_record(item);
   if (normalized_item === null) {
-    throw new Error("ProjectStore.items 的 upsert 必须是完整公开 item DTO。");
+    throw new InternalInvariantError({
+      diagnostic_context: { section: "items", reason: "delta_upsert_requires_full_item_dto" },
+    });
   }
 
   return {
@@ -687,7 +687,9 @@ function normalizeProjectItemRecordMap(
   for (const item of Object.values(value)) {
     const normalized_item = normalize_project_item_public_record(item);
     if (normalized_item === null) {
-      throw new Error("ProjectStore.items section 必须是完整公开 item DTO map。");
+      throw new InternalInvariantError({
+        diagnostic_context: { section: "items", reason: "section_requires_full_item_dto_map" },
+      });
     }
     records[String(normalized_item.item_id)] = normalized_item;
   }

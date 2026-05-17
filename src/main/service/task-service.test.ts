@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SettingService } from "./setting-service";
+import type { AppSettingService } from "../app/app-setting-service";
 import type { TaskEngine } from "../engine/core/engine";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { TaskRuntimePublisher } from "../engine/runtime/task-runtime-publisher";
@@ -301,9 +301,9 @@ describe("TaskService", () => {
     } as unknown as TaskRuntimePublisher;
   }
 
-  function create_setting_service(config: Record<string, unknown>): SettingService {
+  function create_setting_service(config: Record<string, unknown>): AppSettingService {
     return {
-      load_setting: () => config,
-    } as unknown as SettingService;
+      read_setting: () => config,
+    } as unknown as AppSettingService;
   }
 });

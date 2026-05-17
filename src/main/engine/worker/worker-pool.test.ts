@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LLMClient } from "../../llm/llm-client";
 import { WorkerPool } from "./worker-pool";
+import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
 
 describe("WorkerPool", () => {
   afterEach(() => {
@@ -127,6 +128,43 @@ describe("WorkerPool", () => {
 
     expect(request_count).toBe(5);
     expect(peak).toBe(2);
+  });
+
+  it("释放后拒绝新任务并返回结构化运行时错误", async () => {
+    const pool = new WorkerPool({
+      appRoot: await create_template_root(),
+      useDirectRunner: true,
+    });
+
+    await pool.dispose();
+
+    await expect(
+      pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal),
+    ).rejects.toThrow(RuntimeDisposedError);
+  });
+
+  it("等待队列中的 work unit 被取消时返回结构化取消错误", async () => {
+    vi.spyOn(LLMClient.prototype, "request").mockImplementation(() => new Promise(() => undefined));
+    const pool = new WorkerPool({
+      appRoot: await create_template_root(),
+      maxInFlight: 1,
+      useDirectRunner: true,
+    });
+    const first = pool.execute_unit(
+      create_translation_unit("unit-blocking"),
+      new AbortController().signal,
+    );
+    const queued_controller = new AbortController();
+    const queued = pool.execute_unit(
+      create_translation_unit("unit-cancelled"),
+      queued_controller.signal,
+    );
+
+    queued_controller.abort();
+
+    await expect(queued).rejects.toThrow(RuntimeCancelledError);
+    first.catch(() => undefined);
+    await pool.dispose();
   });
 });
 

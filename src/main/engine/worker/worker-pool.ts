@@ -1,14 +1,15 @@
 import crypto from "node:crypto";
-import { existsSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 
 import type { ApiJsonValue } from "../../api/api-types";
+import { default_native_fs } from "../../../native/platform/native-fs";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkerExecutionResult } from "../protocol/worker-result";
 import { WorkUnitRunner } from "./worker-runner";
 import type { WorkerExecutor } from "./worker-executor";
 import { WorkUnitExecutorTransportError } from "./worker-transport-error";
+import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
 
 interface WorkerPoolOptions {
   appRoot: string;
@@ -69,7 +70,7 @@ export class WorkerPool implements WorkerExecutor {
    */
   private should_use_direct_runner(worker_entry_url: URL): boolean {
     try {
-      return !existsSync(fileURLToPath(worker_entry_url));
+      return !default_native_fs.exists(fileURLToPath(worker_entry_url));
     } catch {
       return true;
     }
@@ -106,11 +107,11 @@ export class WorkerPool implements WorkerExecutor {
     const queued = this.queue.splice(0, this.queue.length);
     for (const task of queued) {
       task.signal.removeEventListener("abort", task.abort_listener);
-      task.reject(new Error("WorkerPool 已关闭。"));
+      task.reject(this.create_disposed_error());
     }
     for (const task of this.direct_in_flight.values()) {
       task.signal.removeEventListener("abort", task.abort_listener);
-      task.reject(new Error("WorkerPool 已关闭。"));
+      task.reject(this.create_disposed_error());
     }
     this.direct_in_flight.clear();
     await Promise.allSettled(this.slots.map((slot) => slot.worker.terminate()));
@@ -127,7 +128,7 @@ export class WorkerPool implements WorkerExecutor {
     signal: AbortSignal,
   ): Promise<unknown> {
     if (this.disposed) {
-      return Promise.reject(new Error("WorkerPool 已关闭。"));
+      return Promise.reject(this.create_disposed_error());
     }
     return new Promise((resolve, reject) => {
       const task: PendingTask = {
@@ -140,7 +141,7 @@ export class WorkerPool implements WorkerExecutor {
         abort_listener: () => this.cancel_task(task),
       };
       if (signal.aborted) {
-        reject(new Error("work unit 已取消。"));
+        reject(this.create_cancelled_error());
         return;
       }
       signal.addEventListener("abort", task.abort_listener, { once: true });
@@ -216,7 +217,7 @@ export class WorkerPool implements WorkerExecutor {
     if (queued_index >= 0) {
       this.queue.splice(queued_index, 1);
       task.signal.removeEventListener("abort", task.abort_listener);
-      task.reject(new Error("work unit 已取消。"));
+      task.reject(this.create_cancelled_error());
       this.drain_queue();
       return;
     }
@@ -248,7 +249,7 @@ export class WorkerPool implements WorkerExecutor {
     });
     slot.worker.on("exit", (code) => {
       if (!this.disposed && code !== 0) {
-        this.fail_slot(slot, new Error(`task worker 异常退出：${code.toString()}`));
+        this.fail_slot(slot, new Error(`Task worker exited unexpectedly: ${code.toString()}`));
       }
     });
     return slot;
@@ -350,5 +351,27 @@ export class WorkerPool implements WorkerExecutor {
       return;
     }
     task.reject(new WorkUnitExecutorTransportError(message.error ?? "work unit 执行失败。", null));
+  }
+
+  /**
+   * WorkerPool 生命周期错误集中生成，调用方只按稳定 code 判断资源是否已释放。
+   */
+  private create_disposed_error(): RuntimeDisposedError {
+    return new RuntimeDisposedError({
+      public_details: { resource: "WorkerPool" },
+      diagnostic_context: {
+        queue_length: this.queue.length,
+        in_flight_count: this.in_flight_count,
+      },
+    });
+  }
+
+  /**
+   * 主动取消和内部失败分离，避免取消路径被任务日志当作故障。
+   */
+  private create_cancelled_error(): RuntimeCancelledError {
+    return new RuntimeCancelledError({
+      public_details: { resource: "work_unit" },
+    });
   }
 }

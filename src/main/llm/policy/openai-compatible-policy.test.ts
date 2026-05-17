@@ -71,7 +71,7 @@ describe("openai-compatible-policy", () => {
 
   it("空消息在协议边界直接阻断", () => {
     expect(() => normalize_chat_messages([{ role: "user", content: "   " }])).toThrow(
-      "LLM 请求 messages 为空。",
+      "request.validation_failed",
     );
   });
 });

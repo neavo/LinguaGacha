@@ -32,6 +32,7 @@ import {
   type ProofreadingWarningFragmentsByCode,
 } from "@/pages/proofreading-page/types";
 import { is_hangul_character, is_kana_character } from "@shared/language";
+import { InternalInvariantError } from "@shared/error";
 import type { TextPreserveRule } from "@shared/text/text-preserve-rules";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
@@ -1200,7 +1201,9 @@ export function createProofreadingRuntimeEngine() {
      */
     apply_item_delta(input: ProofreadingRuntimeDeltaInput): ProofreadingRuntimeSyncState {
       if (state === null || state.projectId !== input.projectId) {
-        throw new Error("proofreading runtime 尚未完成项目级 hydrate。");
+        throw new InternalInvariantError({
+          diagnostic_context: { reason: "proofreading_runtime_requires_project_hydrate" },
+        });
       }
 
       const current_state = state;
@@ -1211,7 +1214,13 @@ export function createProofreadingRuntimeEngine() {
         revisions.quality !== current_state.revisions.quality ||
         revisions.proofreading < current_state.revisions.proofreading
       ) {
-        throw new Error("proofreading runtime delta 输入 revision 不兼容，需要 full hydrate。");
+        throw new InternalInvariantError({
+          diagnostic_context: {
+            reason: "proofreading_runtime_delta_revision_incompatible",
+            current_revisions: current_state.revisions,
+            input_revisions: revisions,
+          },
+        });
       }
 
       current_state.revisions = revisions;

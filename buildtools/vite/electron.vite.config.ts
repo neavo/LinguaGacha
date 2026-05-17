@@ -51,7 +51,12 @@ const config = {
       alias: {
         "@": path.resolve(project_root, "src/renderer"),
         "@base": path.resolve(project_root, "src/base"),
-        "@desktop": path.resolve(project_root, "src/desktop"),
+        "@native/bridge-api": path.resolve(project_root, "src/native/bridge-api.ts"),
+        "@native/bridge-types": path.resolve(project_root, "src/native/bridge-types.ts"),
+        "@native/core-api-endpoint": path.resolve(project_root, "src/native/core-api-endpoint.ts"),
+        "@native/external-url-policy": path.resolve(project_root,"src/native/external-url-policy.ts",),
+        "@native/ipc-contract": path.resolve(project_root, "src/native/ipc-contract.ts"),
+        "@native/shell-contract": path.resolve(project_root, "src/native/shell-contract.ts"),
         "@shared": path.resolve(project_root, "src/shared"),
       },
     },

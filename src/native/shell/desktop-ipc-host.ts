@@ -15,53 +15,18 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_TITLE_BAR_THEME,
-} from "../../desktop/ipc-contract";
-import { resolve_external_url } from "../../desktop/external-url-policy";
-import { type DesktopPathPickResult, type ThemeMode } from "../../desktop/bridge-types";
-import { type LogWindowHost } from "../log/log-window-host";
-import { sync_title_bar_overlay } from "./window-handler";
-
-// .lg 是项目文件的唯一桌面选择入口，和导入源文件选择保持分离
-const PROJECT_FILE_FILTERS: Electron.FileFilter[] = [
-  {
-    name: "LinguaGacha Project",
-    extensions: ["lg"],
-  },
-];
-// 术语导入只开放当前 Core 能稳定解析的结构化格式
-const GLOSSARY_IMPORT_FILE_FILTERS: Electron.FileFilter[] = [
-  {
-    name: "支持的数据格式 (*.json *.xlsx)",
-    extensions: ["json", "xlsx"],
-  },
-  {
-    name: "JSON 文件 (*.json)",
-    extensions: ["json"],
-  },
-  {
-    name: "Excel 文件 (*.xlsx)",
-    extensions: ["xlsx"],
-  },
-];
-// 术语导出沿用导入格式集合，调用方再决定具体后缀
-const GLOSSARY_EXPORT_FILE_FILTERS: Electron.FileFilter[] = [
-  {
-    name: "支持的数据格式 (*.json *.xlsx)",
-    extensions: ["json", "xlsx"],
-  },
-];
-// Prompt 只以纯文本进出，避免主进程承担富文本或二进制解释职责
-const PROMPT_FILE_FILTERS: Electron.FileFilter[] = [
-  {
-    name: "支持的文件 (*.txt)",
-    extensions: ["txt"],
-  },
-];
+} from "../ipc-contract";
+import { resolve_external_url } from "../external-url-policy";
+import { type DesktopPathPickResult, type ThemeMode } from "../bridge-types";
+import { type LogWindowHost } from "./log-window-host";
+import { sync_title_bar_overlay } from "./desktop-window-host";
+import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
 
 export type DesktopIpcHandlerOptions = {
   getMainWindow: () => BrowserWindow | null;
   getLogWindowHost: () => LogWindowHost | null;
   markRendererConfirmedAppQuit: () => void;
+  readAppLanguage: () => unknown; // 原生系统对话框文案必须跟随当前应用语言
 };
 
 /**
@@ -105,15 +70,20 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
 
   // 打开已有项目只允许选择 .lg 文件
   ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_FILE_PATH, async () => {
+    const t = create_dialog_text_resolver(options);
     return pick_open_path(options.getMainWindow(), {
       properties: ["openFile"],
-      filters: PROJECT_FILE_FILTERS,
+      filters: build_project_file_filters(t),
     });
   });
 
   // 保存项目时沿用 .lg 文件过滤器，默认文件名由 renderer 按项目语义生成
   ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SAVE_PATH, async (_event, default_name: string) => {
-    return pick_save_path(options.getMainWindow(), default_name, PROJECT_FILE_FILTERS);
+    return pick_save_path(
+      options.getMainWindow(),
+      default_name,
+      build_project_file_filters(create_dialog_text_resolver(options)),
+    );
   });
 
   // 工作台追加文件允许多选，后续去重和解析由项目流程处理
@@ -137,29 +107,102 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
 
   // 术语导入只选择单个结构化文件，批量合并语义不放在原生选择层
   ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH, async () => {
+    const t = create_dialog_text_resolver(options);
     return pick_open_path(options.getMainWindow(), {
       properties: ["openFile"],
-      filters: GLOSSARY_IMPORT_FILE_FILTERS,
+      filters: build_glossary_import_file_filters(t),
     });
   });
 
   // 术语导出通过保存对话框决定路径，实际序列化格式由后续流程根据后缀处理
   ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, async (_event, default_name: string) => {
-    return pick_save_path(options.getMainWindow(), default_name, GLOSSARY_EXPORT_FILE_FILTERS);
+    return pick_save_path(
+      options.getMainWindow(),
+      default_name,
+      build_glossary_export_file_filters(create_dialog_text_resolver(options)),
+    );
   });
 
   // Prompt 导入只读纯文本文件，避免主进程承担格式转换
   ipcMain.handle(IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH, async () => {
+    const t = create_dialog_text_resolver(options);
     return pick_open_path(options.getMainWindow(), {
       properties: ["openFile"],
-      filters: PROMPT_FILE_FILTERS,
+      filters: build_prompt_file_filters(t),
     });
   });
 
   // Prompt 导出不预设文件名，由 renderer 或系统保存面板提供最终命名
   ipcMain.handle(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH, async () => {
-    return pick_save_path(options.getMainWindow(), "", PROMPT_FILE_FILTERS);
+    return pick_save_path(
+      options.getMainWindow(),
+      "",
+      build_prompt_file_filters(create_dialog_text_resolver(options)),
+    );
   });
+}
+
+/**
+ * 系统文件选择器不经过 renderer，本地化文案在打开瞬间读取当前设置。
+ */
+function create_dialog_text_resolver(options: DesktopIpcHandlerOptions): TextResolver {
+  return create_text_resolver(resolve_i18n_locale(options.readAppLanguage()));
+}
+
+/**
+ * .lg 是项目文件的唯一桌面选择入口，和导入源文件选择保持分离。
+ */
+function build_project_file_filters(t: TextResolver): Electron.FileFilter[] {
+  return [
+    {
+      name: t("app.native_file_filter.project"),
+      extensions: ["lg"],
+    },
+  ];
+}
+
+/**
+ * 术语导入只开放当前 Core 能稳定解析的结构化格式。
+ */
+function build_glossary_import_file_filters(t: TextResolver): Electron.FileFilter[] {
+  return [
+    {
+      name: t("app.native_file_filter.supported_json_xlsx_files"),
+      extensions: ["json", "xlsx"],
+    },
+    {
+      name: t("app.native_file_filter.json_files"),
+      extensions: ["json"],
+    },
+    {
+      name: t("app.native_file_filter.excel_files"),
+      extensions: ["xlsx"],
+    },
+  ];
+}
+
+/**
+ * 术语导出沿用导入格式集合，调用方再决定具体后缀。
+ */
+function build_glossary_export_file_filters(t: TextResolver): Electron.FileFilter[] {
+  return [
+    {
+      name: t("app.native_file_filter.supported_json_xlsx_files"),
+      extensions: ["json", "xlsx"],
+    },
+  ];
+}
+
+/**
+ * Prompt 只以纯文本进出，避免主进程承担格式转换。
+ */
+function build_prompt_file_filters(t: TextResolver): Electron.FileFilter[] {
+  return [
+    {
+      name: t("app.native_file_filter.supported_txt_files"),
+      extensions: ["txt"],
+    },
+  ];
 }
 
 /**

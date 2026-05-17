@@ -1,10 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
-import { group_items, type ExportPaths } from "./file-format-shared";
+import { group_items, write_binary_file, type ExportPaths } from "./file-format-shared";
 import { Item } from "../../../base/item";
 
 /**
@@ -60,10 +59,16 @@ export class XLSXFormat {
         SpreadsheetTool.setCellValue(sheet, item.row, 2, item.dst);
       }
       const target_path = path.join(paths.translated_path, rel_path);
-      fs.mkdirSync(path.dirname(target_path), { recursive: true });
-      await workbook.xlsx.writeFile(target_path);
+      await write_xlsx_workbook(workbook, target_path);
     }
   }
+}
+
+/**
+ * ExcelJS 只负责生成工作簿 bytes，真实落盘统一走 NativeFs 长路径策略。
+ */
+async function write_xlsx_workbook(workbook: ExcelJS.Workbook, target_path: string): Promise<void> {
+  await write_binary_file(target_path, await workbook.xlsx.writeBuffer());
 }
 
 /**

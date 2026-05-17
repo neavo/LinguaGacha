@@ -6,8 +6,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { AppPathService } from "../service/path-service";
-import { SettingService } from "../service/setting-service";
+import { AppPathService } from "../app/app-path-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
 import { ModelService } from "./model-service";
 
@@ -39,13 +39,15 @@ type ModelServiceFixture = {
   app_root: string;
   paths: AppPathService;
   service: ModelService;
-  setting_service: SettingService;
+  app_setting_service: AppSettingService;
 };
 
 type LogEntry = {
   level: "info" | "warning";
   message: string;
 };
+
+const TEST_LLM_USER_AGENT = "LinguaGacha/v9.8.7 (https://github.com/neavo/LinguaGacha)";
 
 afterEach(() => {
   google_genai_mock.constructor_options.length = 0;
@@ -145,14 +147,14 @@ describe("ModelService 配置管理", () => {
 
   it("同一配置路径下的新服务实例读取同一模型事实", async () => {
     stub_random_ids("00000000-0000-4000-8000-000000000021");
-    const { paths, service, setting_service } = await create_model_service([
+    const { paths, service, app_setting_service } = await create_model_service([
       create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
       create_model({ id: "anthropic", type: "CUSTOM_ANTHROPIC", api_format: "Anthropic" }),
     ]);
 
     await service.add_model({ model_type: "CUSTOM_OPENAI" });
-    const second_service = new ModelService(paths, setting_service);
+    const second_service = new ModelService(paths, app_setting_service, TEST_LLM_USER_AGENT);
     const snapshot = read_model_snapshot(second_service.get_snapshot());
 
     expect(snapshot.models).toEqual(
@@ -669,8 +671,8 @@ async function create_model_service(
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-model-service-"));
   await write_model_presets(app_root, presets);
   const paths = new AppPathService({ appRoot: app_root });
-  const setting_service = new SettingService(paths);
-  setting_service.save_setting({
+  const app_setting_service = new AppSettingService(paths);
+  app_setting_service.save_setting({
     activate_model_id: models[0]?.["id"] ?? "",
     models: models as unknown as ApiJsonValue,
   });
@@ -688,8 +690,8 @@ async function create_model_service(
   return {
     app_root,
     paths,
-    service: new ModelService(paths, setting_service, log_manager),
-    setting_service,
+    service: new ModelService(paths, app_setting_service, TEST_LLM_USER_AGENT, log_manager),
+    app_setting_service,
   };
 }
 

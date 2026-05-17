@@ -2,6 +2,8 @@ import type { ApiJsonValue } from "../../api/api-types";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkerExecutionResult } from "../protocol/worker-result";
 import { LLMClient } from "../../llm/llm-client";
+import { AppMetadataService } from "../../app/app-metadata-service";
+import { AppPathService } from "../../app/app-path-service";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import {
   TranslationWorkUnitRunner,
@@ -26,7 +28,9 @@ export class WorkUnitRunner {
    * 每个 worker 持有自己的 runner 和 LLM client，避免跨线程共享可变对象
    */
   public constructor(options: WorkUnitRunnerOptions) {
-    const llm_client = new LLMClient({ appRoot: options.appRoot });
+    const paths = new AppPathService({ appRoot: options.appRoot }); // paths 让 worker 内 User-Agent 读取同一个应用根
+    const metadata = new AppMetadataService(paths); // metadata 在 worker 内只读取只读版本元信息
+    const llm_client = new LLMClient({ userAgent: metadata.build_linguagacha_user_agent() });
     this.translation_runner = new TranslationWorkUnitRunner(options.appRoot, llm_client);
     this.analysis_runner = new AnalysisWorkUnitRunner(options.appRoot, llm_client);
   }

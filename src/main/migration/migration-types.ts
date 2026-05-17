@@ -3,11 +3,11 @@ import type { DatabaseSync } from "node:sqlite";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
-import type { AppPathService } from "../service/path-service";
-import type { SettingService } from "../service/setting-service";
+import type { AppPathService } from "../app/app-path-service";
+import type { AppSettingService } from "../app/app-setting-service";
 
 /**
- * startup hook 只服务应用启动期文件迁移，必须先于 SettingService 读取配置执行。
+ * startup hook 只服务应用启动期文件迁移，必须先于 AppSettingService 读取配置执行。
  */
 export interface StartupMigrationContext {
   paths: AppPathService; // paths 是 appRoot/dataRoot/userdata/resource 的唯一权威，不允许迁移点自行猜根目录
@@ -27,7 +27,7 @@ export interface ProjectDatabaseMigrationContext {
 export interface ProjectOpenMigrationContext {
   project_path: string; // project_path 是本次 load_project 的唯一 .lg 目标，operation 不能跨工程
   database: ProjectDatabase; // database 只用于读取打开瞬间事实或读取 asset，不在 hook 内提交事务
-  setting_service: SettingService; // setting_service 只提供当前应用设置，用于旧业务槽位的选择规则
+  app_setting_service: AppSettingService; // app_setting_service 只提供当前应用设置，用于旧业务槽位的选择规则
 }
 
 /**

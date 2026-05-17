@@ -1,9 +1,9 @@
 import path from "node:path";
-import { readFile } from "node:fs/promises";
 
 import { JsonTool } from "../../../../shared/utils/json-tool";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared/text/text-types";
 import type { LLMMessage } from "../../../llm/llm-types";
+import { default_native_fs } from "../../../../native/platform/native-fs";
 import { Prompt } from "../../../../base/prompt";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import {
@@ -351,7 +351,7 @@ export class PromptBuilder {
       language,
       file_name,
     );
-    const text = (await readFile(template_path, "utf-8")).trim();
+    const text = default_native_fs.read_text_file(template_path).trim();
     PromptBuilder.template_cache.set(cache_key, text);
     return text;
   }

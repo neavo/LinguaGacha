@@ -1,11 +1,11 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { SettingService } from "../service/setting-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { FileFormatService } from "./file-format-service";
 import { Item } from "../../base/item";
 import * as AppErrors from "../../shared/error";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -13,10 +13,19 @@ type JsonRecord = Record<string, ApiJsonValue>;
  * 文件解析预演服务；公开源文件草稿只由 main 进程文件域解析
  */
 export class FilePreviewService {
+  private readonly app_setting_service: AppSettingService; // app_setting_service 提供当前语言和导出配置快照
+  private readonly native_fs: NativeFs; // native_fs 统一读取用户选择的源文件
+
   /**
    * 预演服务只编排配置和 格式处理器，不直接写数据库
    */
-  public constructor(private readonly setting_service: SettingService) {}
+  public constructor(
+    app_setting_service: AppSettingService,
+    native_fs: NativeFs = default_native_fs,
+  ) {
+    this.app_setting_service = app_setting_service;
+    this.native_fs = native_fs;
+  }
 
   /**
    * 工作台单文件预解析返回成功与失败清单，避免批量输入失败被静默吞掉
@@ -62,7 +71,7 @@ export class FilePreviewService {
     for (const [sort_index, source_file] of source_files.entries()) {
       const parsed_items = await format_service.parse_asset(
         source_file.rel_path,
-        fs.readFileSync(source_file.source_path),
+        this.native_fs.read_file(source_file.source_path),
       );
       let file_type = "NONE";
       for (const item of parsed_items) {
@@ -96,16 +105,19 @@ export class FilePreviewService {
    * 每次按当前配置创建格式服务，避免设置页改动后预演仍使用旧语言
    */
   private create_format_service(): FileFormatService {
-    const config = this.setting_service.load_setting();
-    return new FileFormatService({
-      source_language: String(config["source_language"] ?? "JA"),
-      target_language: String(config["target_language"] ?? "ZH"),
-      app_language: String(config["app_language"] ?? "ZH"),
-      deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
-      write_translated_name_fields_to_file: Boolean(
-        config["write_translated_name_fields_to_file"] ?? true,
-      ),
-    });
+    const config = this.app_setting_service.read_setting();
+    return new FileFormatService(
+      {
+        source_language: String(config["source_language"] ?? "JA"),
+        target_language: String(config["target_language"] ?? "ZH"),
+        app_language: String(config["app_language"] ?? "ZH"),
+        deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
+        write_translated_name_fields_to_file: Boolean(
+          config["write_translated_name_fields_to_file"] ?? true,
+        ),
+      },
+      this.native_fs,
+    );
   }
 
   /**

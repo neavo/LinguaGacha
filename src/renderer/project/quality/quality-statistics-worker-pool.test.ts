@@ -4,10 +4,7 @@ import type {
   QualityStatisticsTaskInput,
   QualityStatisticsTaskResult,
 } from "@/project/quality/quality-statistics";
-import {
-  QUALITY_STATISTICS_STALE_ERROR_MESSAGE,
-  createQualityStatisticsWorkerPool,
-} from "@/project/quality/quality-statistics-worker-pool";
+import { createQualityStatisticsWorkerPool } from "@/project/quality/quality-statistics-worker-pool";
 
 type WorkerRequestMessage = {
   id: number;
@@ -135,7 +132,10 @@ describe("createQualityStatisticsWorkerPool", () => {
       output: create_output("first", 1),
     });
 
-    await expect(first_result).rejects.toThrow(QUALITY_STATISTICS_STALE_ERROR_MESSAGE);
+    await expect(first_result).rejects.toMatchObject({
+      name: "WorkerClientError",
+      code: "stale",
+    });
     expect(worker?.posted_messages).toHaveLength(2);
 
     worker?.dispatch_message({
@@ -156,7 +156,10 @@ describe("createQualityStatisticsWorkerPool", () => {
 
     first_worker?.dispatch_error();
 
-    await expect(first_result).rejects.toThrow("quality statistics worker 执行失败。");
+    await expect(first_result).rejects.toMatchObject({
+      name: "WorkerClientError",
+      code: "execution_failed",
+    });
     expect(first_worker?.terminated).toBe(true);
 
     const second_result = pool.submit(create_input("next"));

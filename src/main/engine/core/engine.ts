@@ -109,7 +109,7 @@ export class TaskEngine {
   private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 同步写运行态并发布完整 snapshot
   private readonly executor_client: WorkerExecutor; // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果
   private readonly token_counter: TokenCounter; // token_counter 只服务切块预算，不参与 worker token 统计或持久化
-  private readonly setting_service: TaskEngineOptions["SettingService"];
+  private readonly app_setting_service: TaskEngineOptions["AppSettingService"];
   private readonly run_coordinator: RunCoordinator; // run_coordinator 是整场任务互斥、停止和终态发布的唯一权威
   private readonly log_replay: TaskLogReplay; // log_replay 统一处理任务生命周期日志和 worker 日志回放
   private readonly limiter_pool = new LimiterPool(); // limiter_pool 让后台任务和单条翻译共用同一模型节奏入口
@@ -126,7 +126,7 @@ export class TaskEngine {
     this.task_runtime_publisher = options.taskRuntimePublisher;
     this.executor_client = options.executorClient;
     this.token_counter = options.tokenCounter;
-    this.setting_service = options.SettingService;
+    this.app_setting_service = options.AppSettingService;
     this.run_coordinator = new RunCoordinator(options.taskRuntimePublisher);
     this.log_replay = new TaskLogReplay(options.logManager);
   }
@@ -458,7 +458,13 @@ export class TaskEngine {
     result: WorkerExecutionResult,
   ): TranslationWorkUnitResult {
     if (result.kind !== "translation" || result.output.kind !== "translation") {
-      throw new AppErrors.WorkerFailedError();
+      throw new AppErrors.WorkerExecutionFailedError({
+        diagnostic_context: {
+          expected_kind: "translation",
+          result_kind: result.kind,
+          output_kind: result.output.kind,
+        },
+      });
     }
     return {
       items: this.normalize_record_list(result.output.items),
@@ -475,7 +481,13 @@ export class TaskEngine {
    */
   private to_analysis_work_unit_result(result: WorkerExecutionResult): AnalysisWorkUnitResult {
     if (result.kind !== "analysis" || result.output.kind !== "analysis") {
-      throw new AppErrors.WorkerFailedError();
+      throw new AppErrors.WorkerExecutionFailedError({
+        diagnostic_context: {
+          expected_kind: "analysis",
+          result_kind: result.kind,
+          output_kind: result.output.kind,
+        },
+      });
     }
     return {
       success: result.outcome === "success",
@@ -1075,7 +1087,7 @@ export class TaskEngine {
    * 读取当前配置和激活模型，作为一次任务 run 的不可变快照
    */
   private resolve_runtime_snapshot(): TaskRuntimeSnapshot {
-    const config_snapshot = this.setting_service.load_setting();
+    const config_snapshot = this.app_setting_service.read_setting();
     const model = resolve_active_model(config_snapshot);
     if (model === null) {
       throw new AppErrors.ModelNotFoundError();

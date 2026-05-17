@@ -7,20 +7,20 @@ import {
 } from "electron";
 import path from "node:path";
 
-import { build_core_api_base_url_argument } from "../../desktop/core-api-endpoint";
-import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../../desktop/ipc-contract";
+import { build_core_api_base_url_argument } from "../core-api-endpoint";
+import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../ipc-contract";
 import {
   resolve_title_bar_overlay_theme,
   uses_title_bar_overlay,
-} from "../../desktop/shell-contract";
-import { type DesktopPlatform, type ThemeMode } from "../../desktop/bridge-types";
+} from "../shell-contract";
+import { type DesktopPlatform, type ThemeMode } from "../bridge-types";
 import {
   LOG_WINDOW_QUERY_KEY,
   LOG_WINDOW_QUERY_VALUE,
   LogWindowHost,
-} from "../log/log-window-host";
-import { write_electron_main_error, write_electron_main_warning } from "../log/log-bridge";
-import { t_main_log } from "../log/log-text";
+} from "./log-window-host";
+import { write_electron_main_error, write_electron_main_warning } from "../../main/log/log-bridge";
+import { t_main_log } from "../../main/log/log-text";
 
 const WINDOW_STANDARD_WIDTH = 1280; // 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线
 const WINDOW_STANDARD_HEIGHT = 800;

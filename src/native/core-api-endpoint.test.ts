@@ -7,7 +7,7 @@ import {
   resolve_core_api_base_url_from_argv,
 } from "./core-api-endpoint";
 
-describe("core-api-endpoint", () => {
+describe("Core API 地址契约", () => {
   it("构造本机 Core API base URL", () => {
     expect(build_core_api_base_url(38191)).toBe("http://127.0.0.1:38191");
   });
@@ -29,6 +29,12 @@ describe("core-api-endpoint", () => {
   it("缺少启动参数时直接失败", () => {
     expect(() => {
       resolve_core_api_base_url_from_argv(["electron"]);
-    }).toThrow("Core API 地址启动参数缺失。");
+    }).toThrow("Core API base URL launch argument is missing.");
+  });
+
+  it("启动参数为空时直接失败", () => {
+    expect(() => {
+      resolve_core_api_base_url_from_argv(["electron", "--core-api-base-url=   "]);
+    }).toThrow("Core API base URL launch argument is empty.");
   });
 });

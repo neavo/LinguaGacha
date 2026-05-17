@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import render from "dom-serializer";
 import { Element, isTag, Text, type ChildNode } from "domhandler";
 import JSZip from "jszip";
@@ -9,6 +6,7 @@ import type { ApiJsonValue } from "../../../api/api-types";
 import { Item, read_json_record } from "../../../../base/item";
 import {
   should_preserve_epub_reading_layout,
+  write_binary_file,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { EpubAst, read_epub_extra } from "./epub-ast";
@@ -110,7 +108,6 @@ export class EpubWriter {
       doc_items.sort((left, right) => left.row - right.row);
     }
 
-    fs.mkdirSync(path.dirname(out_path), { recursive: true });
     const source_zip = await JSZip.loadAsync(original_epub_bytes);
     const output_zip = new JSZip();
     const opf_title_sync_pair = await this.resolve_opf_title_sync_pair(
@@ -529,7 +526,6 @@ export class EpubWriter {
       tag_group.set(item.tag, bucket);
     }
 
-    fs.mkdirSync(path.dirname(out_path), { recursive: true });
     const source_zip = await JSZip.loadAsync(original_epub_bytes);
     const output_zip = new JSZip();
     for (const name of Object.keys(source_zip.files)) {
@@ -742,6 +738,6 @@ export class EpubWriter {
    */
   private async write_zip_file(zip_file: JSZip, out_path: string): Promise<void> {
     const content = await zip_file.generateAsync({ compression: "STORE", type: "nodebuffer" });
-    await fs.promises.writeFile(out_path, content);
+    await write_binary_file(out_path, content);
   }
 }

@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
-import { AppPathService } from "./path-service";
-import { SettingService } from "./setting-service";
+import { AppPathService } from "../app/app-path-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { QualityService } from "./quality-service";
 
 describe("QualityService", () => {
@@ -298,10 +298,10 @@ describe("QualityService", () => {
       env: {},
       platform: process.platform,
     });
-    const setting_service = new SettingService(paths);
+    const app_setting_service = new AppSettingService(paths);
     const service = new QualityService(
       paths,
-      setting_service,
+      app_setting_service,
       null as unknown as ProjectDatabase,
       new ProjectSessionState(),
     );
@@ -319,7 +319,7 @@ describe("QualityService", () => {
       env: {},
       platform: process.platform,
     });
-    const setting_service = new SettingService(paths);
+    const app_setting_service = new AppSettingService(paths);
     const session_state = new ProjectSessionState();
     const lg_path = path.join(app_root, "quality.lg");
     const publisher = { publish_project_change: vi.fn() };
@@ -331,7 +331,7 @@ describe("QualityService", () => {
     return {
       service: new QualityService(
         paths,
-        setting_service,
+        app_setting_service,
         database,
         session_state,
         publisher as unknown as ProjectChangePublisher,

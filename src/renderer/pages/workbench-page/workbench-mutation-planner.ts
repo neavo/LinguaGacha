@@ -60,6 +60,39 @@ type WorkbenchMutationRuntimeState = {
   mutation_meta: WorkbenchMutationMeta;
 };
 
+type WorkbenchMutationPlanErrorCode =
+  | "invalid_file_path"
+  | "invalid_file_order"
+  | "target_file_not_found"
+  | "target_filename_conflict"
+  | "missing_item_id"
+  | "invalid_item_dto";
+
+/**
+ * WorkbenchMutationPlanError 只表达 planner 稳定失败原因，页面展示由调用处 fallback 决定。
+ */
+export class WorkbenchMutationPlanError extends Error {
+  public readonly code: WorkbenchMutationPlanErrorCode; // code 是工作台 planner 唯一稳定错误分支
+
+  /**
+   * message 使用诊断标识而非自然语言，避免本地异常文本进入用户界面。
+   */
+  public constructor(code: WorkbenchMutationPlanErrorCode) {
+    super(`workbench_mutation.${code}`);
+    this.name = "WorkbenchMutationPlanError";
+    this.code = code;
+  }
+}
+
+/**
+ * 创建 planner 错误时集中收口 code，避免各业务分支散落自然语言文案。
+ */
+function create_workbench_plan_error(
+  code: WorkbenchMutationPlanErrorCode,
+): WorkbenchMutationPlanError {
+  return new WorkbenchMutationPlanError(code);
+}
+
 function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | null {
   if (typeof value !== "object" || value === null) {
     return null;
@@ -158,7 +191,7 @@ function normalize_target_rel_paths(rel_paths: string[]): string[] {
     normalized_rel_paths.push(normalized_rel_path);
   }
   if (normalized_rel_paths.length === 0) {
-    throw new Error("工作台文件路径无效。");
+    throw create_workbench_plan_error("invalid_file_path");
   }
   return normalized_rel_paths;
 }
@@ -261,14 +294,14 @@ export function create_workbench_reorder_plan(args: {
   const file_map = build_file_map(args.state);
   const ordered_rel_paths = normalize_target_rel_paths(args.ordered_rel_paths);
   if (ordered_rel_paths.length !== file_map.size) {
-    throw new Error("工作台文件顺序无效。");
+    throw create_workbench_plan_error("invalid_file_order");
   }
 
   const next_file_map = new Map<string, WorkbenchPlannerFileRecord>();
   for (const [index, rel_path] of ordered_rel_paths.entries()) {
     const current_file = file_map.get(rel_path);
     if (current_file === undefined) {
-      throw new Error("工作台文件顺序无效。");
+      throw create_workbench_plan_error("invalid_file_order");
     }
 
     next_file_map.set(rel_path, {
@@ -297,7 +330,7 @@ export function create_workbench_reset_file_plan(args: {
   const item_map = build_item_map(args.state);
   const target_rel_path = String(args.rel_path).trim();
   if (target_rel_path === "") {
-    throw new Error("工作台文件路径无效。");
+    throw create_workbench_plan_error("invalid_file_path");
   }
 
   const target_items: WorkbenchPlannerItemRecord[] = [];
@@ -317,7 +350,7 @@ export function create_workbench_reset_file_plan(args: {
   }
 
   if (target_items.length === 0) {
-    throw new Error("目标文件不存在。");
+    throw create_workbench_plan_error("target_file_not_found");
   }
 
   const next_items = build_item_section(item_map);
@@ -370,7 +403,7 @@ export function create_workbench_delete_files_plan(args: {
     }
   }
   if (removed_file_count === 0) {
-    throw new Error("目标文件不存在。");
+    throw create_workbench_plan_error("target_file_not_found");
   }
 
   const next_item_map = new Map<number, WorkbenchPlannerItemRecord>();
@@ -507,7 +540,7 @@ function convert_parsed_item_to_runtime_record(
   item: WorkbenchParsedItemRecord,
 ): WorkbenchPlannerItemRecord {
   if (!Number.isInteger(item.id) || item.id === null || item.id <= 0) {
-    throw new Error("工作台条目缺少稳定 item_id。");
+    throw create_workbench_plan_error("missing_item_id");
   }
 
   const public_item = normalize_project_item_public_record({
@@ -527,7 +560,7 @@ function convert_parsed_item_to_runtime_record(
     skip_internal_filter: item.skip_internal_filter,
   });
   if (public_item === null) {
-    throw new Error("工作台条目必须生成完整公开 item DTO。");
+    throw create_workbench_plan_error("invalid_item_dto");
   }
   return public_item;
 }
@@ -656,7 +689,7 @@ function ensure_target_path_not_conflict(args: {
     }
 
     if (normalize_casefold_path(existing_rel_path) === target_key) {
-      throw new Error("目标文件名已存在。");
+      throw create_workbench_plan_error("target_filename_conflict");
     }
   }
 }
@@ -696,7 +729,7 @@ export function create_workbench_add_files_plan(args: {
   inheritance_mode?: WorkbenchTranslationInheritanceMode;
 }): WorkbenchProjectMutationPlan {
   if (args.parsed_files.length === 0) {
-    throw new Error("工作台文件路径无效。");
+    throw create_workbench_plan_error("invalid_file_path");
   }
 
   const file_map = build_file_map(args.state);
@@ -712,7 +745,7 @@ export function create_workbench_add_files_plan(args: {
   for (const parsed_file of args.parsed_files) {
     const target_rel_path = parsed_file.target_rel_path.trim();
     if (target_rel_path === "") {
-      throw new Error("工作台文件路径无效。");
+      throw create_workbench_plan_error("invalid_file_path");
     }
 
     ensure_target_path_not_conflict({
@@ -722,7 +755,7 @@ export function create_workbench_add_files_plan(args: {
 
     const target_key = normalize_casefold_path(target_rel_path);
     if (batch_target_path_set.has(target_key)) {
-      throw new Error("目标文件名已存在。");
+      throw create_workbench_plan_error("target_filename_conflict");
     }
     batch_target_path_set.add(target_key);
 

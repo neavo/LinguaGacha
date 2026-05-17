@@ -1,13 +1,12 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 
 import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
 
 import type { ApiJsonValue } from "../api/api-types";
 import type { LogManager } from "../log/log-manager";
-import { AppPathService } from "../service/path-service";
-import { SettingService } from "../service/setting-service";
+import { AppPathService } from "../app/app-path-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
 import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
@@ -20,6 +19,7 @@ import {
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
 // 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
 const PATCH_ALLOWED_KEYS = new Set([
@@ -44,21 +44,27 @@ const BROWSER_USER_AGENT =
  * 封装模型配置 CRUD；任务执行时由 Task Engine 传入模型快照给本地 LLM adapter
  */
 export class ModelService {
-  private readonly paths: AppPathService;
-  private readonly setting_service: SettingService;
-  private readonly log_manager?: Pick<LogManager, "info" | "warning">;
+  private readonly paths: AppPathService; // paths 提供模型内置预设目录
+  private readonly app_setting_service: AppSettingService; // app_setting_service 是模型配置唯一持久化入口
+  private readonly llm_user_agent: string; // llm_user_agent 来自 AppMetadataService，模型测试不再读取 version.txt
+  private readonly log_manager?: Pick<LogManager, "info" | "warning">; // log_manager 只记录模型探测诊断
+  private readonly native_fs: NativeFs; // native_fs 统一读取内置模型预设文件
 
   /**
    * 初始化 ModelService 依赖，保持外部写入口清晰
    */
   public constructor(
     paths: AppPathService,
-    setting_service: SettingService,
+    app_setting_service: AppSettingService,
+    llm_user_agent: string,
     log_manager?: Pick<LogManager, "info" | "warning">,
+    native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
-    this.setting_service = setting_service;
+    this.app_setting_service = app_setting_service;
+    this.llm_user_agent = llm_user_agent;
     this.log_manager = log_manager;
+    this.native_fs = native_fs;
   }
 
   /**
@@ -229,7 +235,7 @@ export class ModelService {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
     const keys = LLMClientPolicy.collect_api_keys(String(model["api_key"] ?? ""));
-    const client = new LLMClient({ appRoot: this.paths.get_app_root() });
+    const client = new LLMClient({ userAgent: this.llm_user_agent });
     const key_results: Array<Record<string, ApiJsonValue>> = [];
     const app_language = config["app_language"];
     const messages = this.build_model_test_messages(String(model["api_format"] ?? "OpenAI"));
@@ -597,7 +603,7 @@ export class ModelService {
     config: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     config["models"] = this.sort_models(read_model_records(config)) as unknown as ApiJsonValue;
-    this.setting_service.save_setting(config);
+    this.app_setting_service.save_setting(config);
     return this.build_snapshot_response(config);
   }
 
@@ -605,7 +611,7 @@ export class ModelService {
    * 读取配置并补齐模型列表，兼容缺失或旧格式配置
    */
   private load_setting_with_models(persist_defaults: boolean): Record<string, ApiJsonValue> {
-    const config = this.setting_service.load_setting();
+    const config = this.app_setting_service.read_setting();
     config["models"] = this.initialize_models(
       read_model_records(config),
     ) as unknown as ApiJsonValue;
@@ -614,7 +620,7 @@ export class ModelService {
       config["activate_model_id"] = active_model_id;
     }
     if (persist_defaults) {
-      this.setting_service.save_setting(config);
+      this.app_setting_service.save_setting(config);
     }
     return config;
   }
@@ -781,7 +787,7 @@ export class ModelService {
    */
   private read_json_file(file_path: string, fallback: ApiJsonValue): ApiJsonValue {
     try {
-      return JsonTool.parseStrict<ApiJsonValue>(fs.readFileSync(file_path));
+      return JsonTool.parseStrict<ApiJsonValue>(this.native_fs.read_file(file_path));
     } catch {
       return fallback;
     }

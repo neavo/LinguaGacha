@@ -3,6 +3,7 @@ import JSZip from "jszip";
 
 import { create_epub_fixture } from "../../../../test/epub-fixture";
 import { Item } from "../../../../base/item";
+import { FileParseFailedError, InvalidFileStructureError } from "../../../../shared/error";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 
 describe("EpubAst", () => {
@@ -248,5 +249,21 @@ describe("EpubAst", () => {
     const ast = new EpubAst();
 
     expect(ast.normalize_epub_path("OPS\\chapter.xhtml")).toBe("OPS/chapter.xhtml");
+  });
+
+  it("XML 和 HTML 都无法解析时抛出文件解析错误", () => {
+    const ast = new EpubAst();
+
+    expect(() => ast.parse_xhtml_or_html(new Uint8Array())).toThrow(FileParseFailedError);
+    expect(() => ast.parse_xhtml_or_html(new Uint8Array())).toThrow("file.parse_failed");
+  });
+
+  it("EPUB 入口缺少 OPF rootfile 时抛出文件结构错误", async () => {
+    const ast = new EpubAst();
+    const zip = new JSZip();
+    zip.file("META-INF/container.xml", "<container><rootfiles></rootfiles></container>");
+
+    await expect(ast.parse_container_opf_path(zip)).rejects.toThrow(InvalidFileStructureError);
+    await expect(ast.parse_container_opf_path(zip)).rejects.toThrow("file.invalid_structure");
   });
 });

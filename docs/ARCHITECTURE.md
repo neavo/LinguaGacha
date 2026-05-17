@@ -23,12 +23,18 @@ flowchart LR
   N --> S["src/shared<br/>跨运行时共享规则"]
   S --> D
   S --> J
-  X["src/desktop<br/>桌面宿主契约"] --> A
+  X["src/native<br/>桌面原生契约"] --> A
   X --> I
   X --> J
-  A["Electron main<br/>窗口与生命周期"] --> B["CoreLifecycleManager<br/>端口、日志、数据库、Gateway"]
+  A["Electron main<br/>窗口与生命周期"] --> Y["src/native/shell<br/>窗口、IPC、dialog"]
+  A --> B["CoreLifecycleManager<br/>端口、日志、数据库、Gateway"]
+  B --> R["src/main/app<br/>路径、设置、应用元信息"]
   B --> C["ApiGatewayServer<br/>本机 HTTP / SSE 边界"]
+  C --> R
   C --> D["Project / TaskEngine / Service 领域服务"]
+  D --> R
+  D --> P["src/native/platform<br/>NativeFs / NativePath"]
+  R --> P
   D --> E["ProjectDatabase workflow<br/>SQL、事务、.lg asset"]
   D --> F["engine<br/>protocol/runtime/core/definitions/store"]
   D --> Q["main/llm<br/>request policy / official SDK transport"]
@@ -44,8 +50,11 @@ flowchart LR
 
 - Electron main 是桌面宿主和 Core 的同一进程；当前运行态没有独立 backend 子进程或内部 HTTP 回环服务。
 - `src/base` 只承载跨层数据实体和值对象的序列化、反序列化、合法值集合和贴身派生判断；不能反向依赖 main、renderer 或 Electron 宿主边界。
-- `src/shared` 承载 main、renderer、worker 和测试复用的跨运行时共享规则、协议词表与纯工具，包括 error、task、quality、language、log、i18n、文本工具、fixer、prefilter、JSON 和压缩能力；Electron 桌面宿主契约不放在这里。
-- `src/desktop` 承载 Electron main / preload / renderer 共同遵守的桌面宿主契约，包括 `window.desktopApp`、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略。
+- `src/shared` 承载 main、renderer、worker 和测试复用的跨运行时共享规则、协议词表与纯工具，包括 error、task、quality、language、log、i18n、文本工具、fixer、prefilter、纯 JSON 和压缩能力；Electron 桌面宿主契约与文件系统能力不放在这里。
+- `src/native` 根目录承载 Electron main / preload / renderer 共同遵守的桌面原生契约，包括 `window.desktopApp`、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略；`src/native/platform` 与 `src/native/shell` 只允许 main 侧实现引用。
+- `src/main/app` 承载应用级文件事实：应用根和数据根路径、`userdata/config.json` 设置读写缓存、`version.txt` 应用元信息和 LLM User-Agent。
+- `src/native/platform` 承载 main / worker 可用的原生平台能力；`NativeFs` 与 `NativePathPolicy` 是磁盘 IO、Windows 长路径转换和路径身份比较的唯一入口。
+- `src/native/shell` 承载 Electron main 的宿主实现，包括 BrowserWindow 生命周期、IPC host、原生 dialog、日志窗口和开发态 DevTools 入口。
 - `CoreLifecycleManager` 按 `LogManager -> ProjectDatabase -> ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 仍持有数据库或日志句柄。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 连接生命周期的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
@@ -106,8 +115,11 @@ sequenceDiagram
 | 层 | 固定职责 | 不能承接 |
 | --- | --- | --- |
 | `src/base/` | 数据实体和值对象的 JSON 边界、合法值集合和贴身派生判断 | HTTP 路由、数据库 workflow、页面状态、文件格式算法、跨运行时通用工具 |
-| `src/shared/` | 跨运行时业务共享规则、协议词表和纯工具：error、task、quality、language、log、i18n、文本工具、fixer、prefilter、JSON、压缩能力 | HTTP 路由、数据库 workflow、页面状态、实体持久化语义、Electron 宿主桥接 |
-| `src/desktop/` | Electron main / preload / renderer 的桌面宿主契约：桥接 API、IPC、标题栏壳层、Core API 地址注入、外链策略 | Core 业务实现、数据库 workflow、renderer 页面状态 |
+| `src/shared/` | 跨运行时业务共享规则、协议词表和纯工具：error、task、quality、language、log、i18n、文本工具、fixer、prefilter、纯 JSON、压缩能力 | HTTP 路由、数据库 workflow、页面状态、实体持久化语义、Electron 宿主桥接、文件系统能力 |
+| `src/native/` 根文件 | Electron main / preload / renderer 的桌面原生契约：桥接 API、IPC、标题栏壳层、Core API 地址注入、外链策略 | Core 业务实现、数据库 workflow、renderer 页面状态、main-only 原生实现 |
+| `src/main/app/` | 应用级路径、设置文件读写缓存、应用版本和 User-Agent 元信息 | 原生文件系统策略、项目数据库、HTTP 路由、页面状态 |
+| `src/native/platform/` | main / worker 原生平台门面：文件系统 IO、路径原生化、路径身份比较、长路径策略 | 业务协议、数据库 operation 语义、renderer / preload 桌面契约 |
+| `src/native/shell/` | Electron main 宿主实现：窗口生命周期、IPC 注册、原生 dialog、日志窗口、DevTools 入口 | Core 领域服务、数据库 workflow、renderer 页面状态、共享契约权威 |
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
 | `src/main/project/` | 项目会话、项目数据投影、项目数据变更事件、同步 mutation | Electron preload、页面局部状态 |
@@ -123,7 +135,7 @@ sequenceDiagram
 ## 5. 更新触发条件
 
 - 新增或重排运行时层、跨进程通信方式、桌面宿主契约层、Core 生命周期资源，必须更新本文。
-- 新增跨 main / renderer / worker 共享规则、协议词表、合法值集合、基础派生判断或纯工具，必须先判断归属 `src/base` 还是 `src/shared`，并在分层关系变化时更新本文。
+- 新增跨 main / renderer / worker 共享规则、协议词表、合法值集合、基础派生判断或纯工具，必须先判断归属 `src/base`、`src/shared` 还是 `src/native` 根契约，并在分层关系变化时更新本文。
 - 改公开 API、SSE、状态写入口、数据库存储、任务事件语义，更新 [`docs/BACKEND.md`](BACKEND.md)，本文只在链路或层级改变时同步。
 - 改 preload、`ProjectStore`、导航、页面运行态消费方式，更新 [`docs/FRONTEND.md`](FRONTEND.md)，本文只保留分层关系。
 - 改验证命令、任务起手式或文档同步要求，更新 [`docs/WORKFLOW.md`](WORKFLOW.md)。

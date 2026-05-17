@@ -1,7 +1,7 @@
 import process from "node:process";
-import { dialog } from "electron";
 
 import { AppError, InternalInvariantError } from "../../shared/error";
+import { try_show_native_error_dialog } from "../../native/shell/native-error-dialog";
 import { get_electron_main_log_manager } from "../log/log-bridge";
 import { record_app_error } from "../log/app-error-reporter";
 import { t_main_log } from "../log/log-text";
@@ -72,11 +72,7 @@ function handle_main_fatal_error(
     });
   }
 
-  try {
-    dialog.showErrorBox("LinguaGacha 已遇到致命错误", "已写入诊断日志，应用将退出。");
-  } catch {
-    // fatal 兜底已经处于退出路径，原生对话框失败不能覆盖原始崩溃原因。
-  }
+  try_show_native_error_dialog("LinguaGacha 已遇到致命错误", "已写入诊断日志，应用将退出。");
 
   void args.options.quitAfterCoreShutdown(1).catch(() => {
     process.exit(1);

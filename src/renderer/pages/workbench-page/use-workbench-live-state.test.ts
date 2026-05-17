@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
-import type { DesktopPathPickResult } from "@desktop/bridge-types";
+import type { DesktopPathPickResult } from "@native/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 type RuntimeFixture = {

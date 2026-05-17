@@ -80,6 +80,13 @@ export const en_us_app = {
     builder_input: "Input:",
     builder_preceding_context: "Preceding Context:",
   },
+  native_file_filter: {
+    project: "LinguaGacha Project",
+    supported_json_xlsx_files: "Supported files (*.json *.xlsx)",
+    json_files: "JSON files (*.json)",
+    excel_files: "Excel files (*.xlsx)",
+    supported_txt_files: "Supported files (*.txt)",
+  },
   error: {
     request: {
       validation_failed: {
@@ -110,6 +117,14 @@ export const en_us_app = {
       unsupported_format: {
         message: "This file format is not supported …",
         action: "Choose a source file supported by LinguaGacha …",
+      },
+      parse_failed: {
+        message: "File content parsing failed …",
+        action: "Make sure the file is complete, or import an undamaged original file …",
+      },
+      invalid_structure: {
+        message: "The file structure does not match the expected format …",
+        action: "Make sure the file came from the expected source, or export it again …",
       },
       io_failed: {
         message: "File read or write failed …",
@@ -147,10 +162,19 @@ export const en_us_app = {
       failed: {
         message: "The background execution channel failed …",
       },
+      execution_failed: {
+        message: "The background task failed …",
+      },
     },
     runtime: {
       capability_missing: {
         message: "The current runtime is missing a required capability …",
+      },
+      disposed: {
+        message: "The runtime resource has been disposed …",
+      },
+      cancelled: {
+        message: "The operation was cancelled …",
       },
       internal_invariant: {
         message: "Internal state error …",

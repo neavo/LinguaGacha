@@ -88,7 +88,7 @@ export function createProofreadingRuntimeClient() {
     }
 
     if (typeof Worker === "undefined") {
-      throw new WorkerClientError("当前环境不支持 proofreading runtime worker。", "unsupported");
+      throw new WorkerClientError("unsupported");
     }
 
     try {
@@ -97,7 +97,7 @@ export function createProofreadingRuntimeClient() {
       });
     } catch {
       worker = null;
-      throw new WorkerClientError("proofreading runtime worker 初始化失败。", "init_failed");
+      throw new WorkerClientError("init_failed");
     }
 
     worker.addEventListener("message", (event: MessageEvent<ProofreadingRuntimeWorkerResponse>) => {
@@ -109,9 +109,7 @@ export function createProofreadingRuntimeClient() {
       resolver.resolve(event.data.result);
     });
     worker.addEventListener("error", () => {
-      rejectAll(
-        new WorkerClientError("proofreading runtime worker 执行失败。", "execution_failed"),
-      );
+      rejectAll(new WorkerClientError("execution_failed"));
       worker?.terminate();
       worker = null;
     });
@@ -197,7 +195,7 @@ export function createProofreadingRuntimeClient() {
       });
     },
     dispose(): void {
-      rejectAll(new WorkerClientError("proofreading runtime worker 已释放。", "disposed"));
+      rejectAll(new WorkerClientError("disposed"));
       worker?.terminate();
       worker = null;
     },

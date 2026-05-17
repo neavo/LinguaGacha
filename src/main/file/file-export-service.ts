@@ -1,15 +1,15 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import { SettingService } from "../service/setting-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import { Item, type ItemStatus } from "../../base/item";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
 import * as AppErrors from "../../shared/error";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
 /**
  * API 入参和返回值在文件域内按 JSON 对象处理，避免暴露内部类实例
@@ -37,23 +37,38 @@ export type OutputFolderOpener = (output_path: string) => Promise<void>;
  * 文件导出服务承载全部公开文件格式写回和导出目录语义
  */
 export class FileExportService {
+  private readonly database: ProjectDatabase; // database 是导出读取项目事实和 asset bytes 的唯一入口
+  private readonly app_setting_service: AppSettingService; // app_setting_service 提供导出语言、格式和完成后动作配置
+  private readonly session_state: ProjectSessionState; // session_state 决定当前导出的 .lg 工程
+  private readonly output_folder_opener: OutputFolderOpener; // output_folder_opener 隔离宿主打开目录副作用
+  private readonly log_manager?: FileExportLogManager; // log_manager 只承接导出诊断日志
+  private readonly native_fs: NativeFs; // native_fs 负责导出目录存在性判断和格式写盘策略传递
+
   /**
    * 导出服务依赖当前 .lg 数据库、设置和项目会话，不直接读取 renderer 状态
    */
   public constructor(
-    private readonly database: ProjectDatabase,
-    private readonly setting_service: SettingService,
-    private readonly session_state: ProjectSessionState,
-    private readonly output_folder_opener: OutputFolderOpener,
-    private readonly log_manager?: FileExportLogManager,
-  ) {}
+    database: ProjectDatabase,
+    app_setting_service: AppSettingService,
+    session_state: ProjectSessionState,
+    output_folder_opener: OutputFolderOpener,
+    log_manager?: FileExportLogManager,
+    native_fs: NativeFs = default_native_fs,
+  ) {
+    this.database = database;
+    this.app_setting_service = app_setting_service;
+    this.session_state = session_state;
+    this.output_folder_opener = output_folder_opener;
+    this.log_manager = log_manager;
+    this.native_fs = native_fs;
+  }
 
   /**
    * 生成译文读取项目全部条目，并先补齐重复条目的译文
    */
   public async generate_translation(): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const config = this.setting_service.load_setting();
+    const config = this.app_setting_service.read_setting();
     this.log_export_start(config);
     try {
       const items = this.read_project_items(project_path);
@@ -72,7 +87,7 @@ export class FileExportService {
    */
   public async export_converted_translation(request: JsonRecord): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const config = this.setting_service.load_setting();
+    const config = this.app_setting_service.read_setting();
     const suffix = String(request["suffix"] ?? "");
     if (suffix !== "_S2T" && suffix !== "_T2S") {
       throw new AppErrors.RequestValidationError();
@@ -130,15 +145,18 @@ export class FileExportService {
       custom_suffix,
       String(config["app_language"] ?? "ZH"),
     );
-    const format_service = new FileFormatService({
-      source_language: String(config["source_language"] ?? "JA"),
-      target_language: String(config["target_language"] ?? "ZH"),
-      app_language: String(config["app_language"] ?? "ZH"),
-      deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
-      write_translated_name_fields_to_file: Boolean(
-        config["write_translated_name_fields_to_file"] ?? true,
-      ),
-    });
+    const format_service = new FileFormatService(
+      {
+        source_language: String(config["source_language"] ?? "JA"),
+        target_language: String(config["target_language"] ?? "ZH"),
+        app_language: String(config["app_language"] ?? "ZH"),
+        deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
+        write_translated_name_fields_to_file: Boolean(
+          config["write_translated_name_fields_to_file"] ?? true,
+        ),
+      },
+      this.native_fs,
+    );
     try {
       await format_service.write_items(items, paths, (rel_path) =>
         this.database.read_asset_content(project_path, rel_path),
@@ -182,8 +200,8 @@ export class FileExportService {
     const translated_base = `${stem}_${suffixes.translated}${custom_suffix}`;
     const bilingual_base = `${stem}_${suffixes.bilingual}${custom_suffix}`;
     const needs_timestamp =
-      fs.existsSync(path.join(project_dir, translated_base)) ||
-      fs.existsSync(path.join(project_dir, bilingual_base));
+      this.native_fs.exists(path.join(project_dir, translated_base)) ||
+      this.native_fs.exists(path.join(project_dir, bilingual_base));
     const timestamp = needs_timestamp ? this.timestamp_suffix() : "";
     return {
       translated_path: path.join(project_dir, `${translated_base}${timestamp}`),

@@ -11,7 +11,7 @@ type CoreLifecycleOptions = {
 };
 type CoreLifecycleInstance = {
   options: CoreLifecycleOptions;
-  start: () => Promise<{ baseUrl: string }>;
+  start: () => Promise<{ baseUrl: string; readAppLanguage: () => unknown }>;
   stop: () => Promise<void>;
   isStopped: () => boolean;
 };
@@ -29,6 +29,7 @@ type IpcHandlerOptions = {
   getMainWindow: () => FakeWindow | null;
   getLogWindowHost: () => { close: () => void } | null;
   markRendererConfirmedAppQuit: () => void;
+  readAppLanguage: () => unknown;
 };
 type FatalHandlerOptions = {
   isAppShutdownInProgress: () => boolean;
@@ -37,8 +38,9 @@ type FatalHandlerOptions = {
 
 const MOCK_MODULES = [
   "electron",
-  "./handler/ipc-handler",
-  "./handler/window-handler",
+  "../native/shell/desktop-ipc-host",
+  "../native/shell/desktop-window-host",
+  "../native/shell/native-error-dialog",
   "./lifecycle/lifecycle-manager",
   "./lifecycle/main-fatal-error-handler",
   "./log/log-bridge",
@@ -87,6 +89,7 @@ describe("Electron main 入口", () => {
     expect(harness.calls.ipc_handler_options[0]?.getMainWindow()).toBe(
       harness.calls.created_windows[0],
     );
+    expect(harness.calls.ipc_handler_options[0]?.readAppLanguage()).toBe("ZH");
     expect(harness.calls.ipc_handler_options[0]?.getLogWindowHost()).toBe(harness.log_window_host);
     expect(harness.calls.main_window_options[0]?.shouldBypassCloseConfirmation()).toBe(false);
 
@@ -237,12 +240,15 @@ function create_index_harness(): {
       calls.core_managers.push(this);
     }
 
-    public async start(): Promise<{ baseUrl: string }> {
+    public async start(): Promise<{ baseUrl: string; readAppLanguage: () => unknown }> {
       calls.core_start_count += 1;
       if (start_error !== null) {
         throw start_error;
       }
-      return { baseUrl: base_url };
+      return {
+        baseUrl: base_url,
+        readAppLanguage: () => "ZH",
+      };
     }
 
     public async stop(): Promise<void> {
@@ -278,18 +284,13 @@ function create_index_harness(): {
       BrowserWindow: {
         getAllWindows: () => calls.created_windows,
       },
-      dialog: {
-        showErrorBox: (title: string, message: string) => {
-          calls.show_error_boxes.push([title, message]);
-        },
-      },
       shell: {
         openPath: async () => open_path_result,
       },
     };
   });
 
-  vi.doMock("./handler/ipc-handler", () => {
+  vi.doMock("../native/shell/desktop-ipc-host", () => {
     return {
       register_desktop_ipc_handlers: (options: IpcHandlerOptions) => {
         calls.ipc_handler_options.push(options);
@@ -297,7 +298,7 @@ function create_index_harness(): {
     };
   });
 
-  vi.doMock("./handler/window-handler", () => {
+  vi.doMock("../native/shell/desktop-window-host", () => {
     return {
       configure_development_remote_debugging: () => {
         calls.remote_debugging_configured += 1;
@@ -314,6 +315,14 @@ function create_index_harness(): {
         const window = { id: `window-${calls.created_windows.length.toString()}` };
         calls.created_windows.push(window);
         return window;
+      },
+    };
+  });
+
+  vi.doMock("../native/shell/native-error-dialog", () => {
+    return {
+      show_native_error_dialog: (title: string, message: string) => {
+        calls.show_error_boxes.push([title, message]);
       },
     };
   });

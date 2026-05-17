@@ -17,6 +17,7 @@ import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../../api/api-types";
 import { Item, read_json_record } from "../../../../base/item";
+import { FileParseFailedError, InvalidFileStructureError } from "../../../../shared/error";
 
 /**
  * EPUB slot 定位引用，path 指向元素，slot 区分元素首段文本和元素后的 tail 文本
@@ -399,7 +400,10 @@ export class EpubAst {
         return this.normalize_epub_path(full_path);
       }
     }
-    throw new Error("META-INF/container.xml contains no OPF rootfile");
+    throw new InvalidFileStructureError({
+      public_details: { format: "EPUB" },
+      diagnostic_context: { entry: "META-INF/container.xml", reason: "missing_opf_rootfile" },
+    });
   }
 
   /**
@@ -1054,7 +1058,13 @@ export class EpubAst {
     });
     const root = this.first_root_element(doc);
     if (root === null || (!recover && this.looks_like_parser_error(root))) {
-      throw new Error("XML 解析失败。");
+      throw new FileParseFailedError({
+        public_details: { format: "EPUB", parser: "XML" },
+        diagnostic_context: {
+          recover,
+          parser_error_root: root === null ? null : this.local_name(root.name),
+        },
+      });
     }
     return root;
   }
@@ -1072,7 +1082,10 @@ export class EpubAst {
     });
     const root = this.first_root_element(doc);
     if (root === null) {
-      throw new Error("HTML 解析失败。");
+      throw new FileParseFailedError({
+        public_details: { format: "EPUB", parser: "HTML" },
+        diagnostic_context: { reason: "missing_root_element" },
+      });
     }
     return root;
   }
@@ -1101,7 +1114,10 @@ export class EpubAst {
   private async require_zip_text(zip_reader: JSZip, file_path: string): Promise<string> {
     const file = zip_reader.file(file_path);
     if (file === null) {
-      throw new Error(`EPUB 缺少文件：${file_path}`);
+      throw new InvalidFileStructureError({
+        public_details: { format: "EPUB" },
+        diagnostic_context: { entry: file_path, reason: "missing_required_zip_entry" },
+      });
     }
     return this.decode_bytes(await file.async("uint8array"));
   }
@@ -1125,7 +1141,10 @@ export class EpubAst {
     return parts.map((part) => {
       const match = /^([A-Za-z0-9:_-]+)\[(\d+)\]$/u.exec(part);
       if (match === null) {
-        throw new Error(`Invalid element path: ${elem_path}`);
+        throw new InvalidFileStructureError({
+          public_details: { format: "EPUB" },
+          diagnostic_context: { elem_path, reason: "invalid_element_path" },
+        });
       }
       return { name: match[1] as string, pos: Number.parseInt(match[2] as string, 10) };
     });
