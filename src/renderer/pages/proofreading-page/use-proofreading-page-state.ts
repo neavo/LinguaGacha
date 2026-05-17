@@ -23,6 +23,12 @@ import {
   create_save_item_plan,
   type ProofreadingMutationPlan,
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
+import {
+  compile_text_pattern,
+  matches_text_pattern,
+  replace_text_pattern,
+  type CompiledTextPattern,
+} from "@shared/text/text-pattern";
 import { createProofreadingRuntimeClient } from "@/pages/proofreading-page/proofreading-runtime-client";
 import type {
   ProofreadingListWindow,
@@ -135,32 +141,29 @@ function create_empty_dialog_state(): ProofreadingDialogState {
   };
 }
 
-function escape_regular_expression(source_text: string): string {
-  return source_text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
 function serialize_glossary_terms(glossary_terms: ProofreadingGlossaryTerm[]): string[][] {
   return glossary_terms.map((term) => [term[0], term[1]]);
 }
 
-function create_search_pattern(keyword: string, is_regex: boolean): RegExp | null {
-  const normalized_keyword = keyword.trim();
-  if (normalized_keyword === "") {
-    return null;
-  }
-
-  if (is_regex) {
-    return new RegExp(normalized_keyword, "iu");
-  }
-
-  return new RegExp(escape_regular_expression(normalized_keyword), "iu");
+/**
+ * 校对页搜索只编译单次匹配模式；全部替换的 global 模式由 planner 单独声明
+ */
+function create_search_pattern(keyword: string, is_regex: boolean): CompiledTextPattern | null {
+  return compile_text_pattern({
+    source_text: keyword,
+    mode: is_regex ? "regex" : "literal",
+    case_sensitive: false,
+    global: false,
+  });
 }
 
+/**
+ * 空关键字和非法正则兜底由调用方处理，这里只判断已编译模式是否命中
+ */
 function matches_search_pattern(
   text: string,
-  search_pattern: RegExp | null,
+  search_pattern: CompiledTextPattern | null,
   keyword: string,
-  is_regex: boolean,
 ): boolean {
   const normalized_keyword = keyword.trim();
   if (normalized_keyword === "") {
@@ -171,22 +174,27 @@ function matches_search_pattern(
     return true;
   }
 
-  if (is_regex) {
-    return search_pattern.test(text);
-  }
-
-  return text.toLocaleLowerCase().includes(normalized_keyword.toLocaleLowerCase());
+  return matches_text_pattern(text, search_pattern);
 }
 
+/**
+ * 单个替换和全部替换共用 replacement 语义：正则解释 `$1`，普通文本按字面量写入
+ */
 function replace_first_visible_match(
   text: string,
-  search_pattern: RegExp,
+  search_pattern: CompiledTextPattern,
   replacement: string,
+  is_regex: boolean,
 ): { text: string; replaced: boolean } {
-  const replaced_text = text.replace(search_pattern, replacement);
+  const replace_result = replace_text_pattern({
+    text,
+    pattern: search_pattern,
+    replacement_text: replacement,
+    replacement_syntax: is_regex ? "javascript" : "literal",
+  });
   return {
-    text: replaced_text,
-    replaced: replaced_text !== text,
+    text: replace_result.text,
+    replaced: replace_result.count > 0 && replace_result.text !== text,
   };
 }
 
@@ -1501,9 +1509,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    let search_pattern: RegExp;
+    let search_pattern: CompiledTextPattern;
     try {
-      search_pattern = create_search_pattern(trimmed_keyword, is_regex) ?? /^$/u;
+      const compiled_pattern = create_search_pattern(trimmed_keyword, is_regex);
+      if (compiled_pattern === null) {
+        push_toast("warning", t("proofreading_page.feedback.no_match"));
+        return;
+      }
+      search_pattern = compiled_pattern;
     } catch (error) {
       push_toast(
         "error",
@@ -1530,7 +1543,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         count: PROOFREADING_WINDOW_FETCH_COUNT,
       });
       const matched_index = target_window.rows.findIndex((row) => {
-        return matches_search_pattern(row.item.dst, search_pattern, trimmed_keyword, is_regex);
+        return matches_search_pattern(row.item.dst, search_pattern, trimmed_keyword);
       });
       if (matched_index >= 0) {
         target_index = target_window.start + matched_index;
@@ -1548,6 +1561,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       target_item.dst,
       search_pattern,
       replace_text,
+      is_regex,
     );
     if (!replaced_result.replaced) {
       push_toast("warning", t("proofreading_page.feedback.replace_no_change"));
@@ -1593,9 +1607,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    let search_pattern: RegExp;
+    let search_pattern: CompiledTextPattern;
     try {
-      search_pattern = create_search_pattern(trimmed_keyword, is_regex) ?? /^$/u;
+      const compiled_pattern = create_search_pattern(trimmed_keyword, is_regex);
+      if (compiled_pattern === null) {
+        push_toast("warning", t("proofreading_page.feedback.replace_no_change"));
+        return;
+      }
+      search_pattern = compiled_pattern;
     } catch (error) {
       push_toast(
         "error",
@@ -1606,7 +1625,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     const target_row_ids = await read_current_view_row_ids(0, list_view.row_count);
     const target_items = (await read_items_by_row_ids(target_row_ids)).filter((item) => {
-      return matches_search_pattern(item.dst, search_pattern, trimmed_keyword, is_regex);
+      return matches_search_pattern(item.dst, search_pattern, trimmed_keyword);
     });
 
     if (target_items.length === 0) {

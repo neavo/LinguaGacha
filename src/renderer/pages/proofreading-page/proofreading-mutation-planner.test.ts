@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
-import { create_save_item_plan } from "@/pages/proofreading-page/proofreading-mutation-planner";
+import {
+  create_replace_all_plan,
+  create_save_item_plan,
+} from "@/pages/proofreading-page/proofreading-mutation-planner";
 
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
@@ -104,5 +107,30 @@ describe("proofreading mutation planner", () => {
         retry_count: 0,
       },
     ]);
+  });
+
+  it("正则全部替换会按捕获组引用写回译文", () => {
+    const plan = create_replace_all_plan({
+      state: {
+        ...create_test_state(),
+        items: {
+          "1": create_test_item({
+            item_id: 1,
+            file_path: "script/a.txt",
+            row_number: 1,
+            src: "原文",
+            dst: "Name: Alice",
+            status: "NONE",
+          }),
+        },
+      },
+      item_ids: [1],
+      search_text: "Name: (.+)",
+      replace_text: "$1",
+      is_regex: true,
+    });
+
+    expect(plan?.request_body.items[0]?.dst).toBe("Alice");
+    expect(plan?.changed_item_ids).toEqual([1]);
   });
 });

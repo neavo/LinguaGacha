@@ -12,6 +12,7 @@ import {
   type ProjectItemPublicRecord,
 } from "@base/item";
 import { TASK_PROGRESS_STATUSES } from "@shared/task";
+import { compile_text_pattern, replace_text_pattern } from "@shared/text/text-pattern";
 
 // 校对 planner 直接消费 ProjectStore 的完整公开 DTO，本地 upsert 不能降级成瘦身 item
 type ProofreadingStoreItem = ProjectItemPublicRecord;
@@ -92,16 +93,9 @@ function resolve_status_after_manual_edit(
 
   return "PROCESSED";
 }
-
-function create_replace_all_pattern(search_text: string, is_regex: boolean): RegExp {
-  if (is_regex) {
-    return new RegExp(search_text, "giu");
-  }
-
-  const escaped_search_text = search_text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  return new RegExp(escaped_search_text, "giu");
-}
-
+/**
+ * 批量替换在 planner 内计算最终译文，正则模式沿用交互式 `$1` replacement 语义
+ */
 function replace_all_in_text(args: {
   text: string;
   search_text: string;
@@ -115,16 +109,26 @@ function replace_all_in_text(args: {
     };
   }
 
-  const pattern = create_replace_all_pattern(args.search_text, args.is_regex);
-  let count = 0;
-  const next_text = args.text.replace(pattern, () => {
-    count += 1;
-    return args.replace_text;
+  const pattern = compile_text_pattern({
+    source_text: args.search_text,
+    mode: args.is_regex ? "regex" : "literal",
+    case_sensitive: false,
+    global: true,
+    trim: false,
   });
-  return {
-    text: next_text,
-    count,
-  };
+  if (pattern === null) {
+    return {
+      text: args.text,
+      count: 0,
+    };
+  }
+
+  return replace_text_pattern({
+    text: args.text,
+    pattern,
+    replacement_text: args.replace_text,
+    replacement_syntax: args.is_regex ? "javascript" : "literal",
+  });
 }
 
 function build_translation_extras_from_task(
