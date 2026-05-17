@@ -4,14 +4,14 @@
 
 ## 1. 公开协议边界
 
-- `src/main/api/api-gateway-server.ts` 是 Electron 运行态公开 `/api/*` 协议的唯一注册点。
+- `src/main/api/api-gateway-server.ts` 是 Electron 运行态公开 `/api/*` 协议的唯一注册点；路由注册集中在该文件，POST JSON 路由统一返回响应壳。
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message, message_key, request_id, details?, action?, action_key? } }`。
-- `src/shared/error` 是公开错误 code、HTTP status、日志分级、API envelope 投影和日志投影的唯一模型；用户可见错误文案只从 `src/shared/i18n` 的 `message_key` / `action_key` 解析，错误类和定义表不得承载自然语言文案。
+- `src/shared/error` 是公开错误 code、HTTP status、日志分级、API envelope 投影和日志投影的唯一模型；用户可见错误文案只从 `src/shared/i18n` 的 `message_key` / `action_key` 解析。
 - 稳定错误码使用点分语义码：请求与路由归 `request.*`，项目归 `project.*`，文件归 `file.*`，数据一致性归 `data.*` / `database.*`，任务归 `task.*`，模型归 `model.*`，worker 归 `worker.*`，运行时归 `runtime.*`。文件域必须区分不支持格式、内容解析失败、结构不符合格式和读写失败；运行时资源释放、主动取消和内部不变量失败不能混用同一错误码。业务代码需要抛错时使用 `src/shared/error` 的语义化 `AppError` 子类，不再通过 API 层手拼 code/message/details。
 - `message` 和 `action` 是 Gateway 按当前应用语言解析出的安全展示文本；`message_key` 和 `action_key` 是 renderer 可复用的稳定 i18n key；`details` 只允许安全 JSON 字段，内部 stack、完整敏感路径、API key、Authorization header、provider 原始响应和 cause 只能进入日志。
 - `AppError` 构造不写日志；Gateway、任务和 Electron main 需要记录错误时通过日志投影写入 `LogManager`，日志窗口仍只暴露安全摘要，文件和控制台保留结构化诊断上下文与 cause 链。
-- 公开 SSE frame 必须使用严格 JSON 序列化，不能手写拼接多行 `data` 负载。
+- 公开 SSE frame 的 data 负载必须使用严格 JSON 序列化，不能把事件对象、模板拼接结果或可变引用直接写入 frame。
 
 | 路径 | 语义 | 维护边界 |
 | --- | --- | --- |
@@ -122,8 +122,8 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 
 ## 6. 数据库与 `.lg` 物理存储
 
-- SQL、事务、SQLite 连接生命周期和 `.lg` asset 读写只允许落在 `src/main/database/`。
-- main / worker 侧所有真实磁盘 IO 必须经 `src/native/platform` 的 `NativeFs`；业务层不得直接引入 `node:fs`，第三方库只负责生成 bytes 或解析 bytes，落盘和读取统一交给平台层处理。
+- SQL、事务、SQLite 连接生命周期和 `.lg` asset 读写落在 `src/main/database/`；迁移可在 `src/main/migration/` 直接使用数据库连接，普通领域服务不能持有 SQLite 句柄。
+- main / worker 侧所有真实磁盘 IO 经 `src/native/platform` 的 `NativeFs`，业务层落盘和读取统一交给平台层处理。
 - `NativePathPolicy` 是 Windows namespaced path 转换与跨平台路径身份比较的唯一策略入口；需要判断路径相等或传给 SQLite、文件格式库、日志、迁移、配置和导出链路时先走该策略。
 - 旧版本迁移规则只允许落在 `src/main/migration/`，由单一编排器按 startup、project database schema、project database writeback、project open operation hook 执行；单个迁移文件只承载一个历史场景，不能恢复运行时兼容层。历史 item 缺失完整公开 DTO 所需稳定字段时只在 migration 层补齐，projection、ProjectStore 和写回入口不得现场猜默认值。
 - Zstd 压缩/解压参数和运行时能力检查只允许落在 `src/shared/utils/zstd-tool.ts`。

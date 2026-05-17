@@ -29,10 +29,10 @@
 | --- | --- | --- |
 | 纯长期文档 | `npm run lint` 可选；必须检查链接和目标文档形态 | 涉及 README / 脚本提示时跑相关脚本或全文检索 |
 | TypeScript 非视觉逻辑 | `npm test -- <相关 test 文件>` 或 `npm test` | `npm run lint` |
-| 后端 API / database / task | 相关 `src/main/**/*.test.ts` | `npm test` |
-| renderer 状态 / 页面逻辑 | 相关 `src/renderer/**/*.test.ts(x)` | `npm run lint` |
-| 前端视觉 / CSS / 组件外观 | 相关组件或页面测试，`npm run renderer:audit` | Electron 真机检查；需要时接 9222 DevTools |
-| 跨前后端运行态 | 后端相关测试 + renderer runtime/store 测试 | `npm test`，必要时启动 `npm run dev` 真机走主链路 |
+| 后端 API / database / task | `npm run check:backend` + 相关 `src/main/**/*.test.ts` | `npm test` |
+| renderer 状态 / 页面逻辑 | `npm run check:frontend` + 相关 `src/renderer/**/*.test.ts(x)` | `npm run lint` |
+| 前端视觉 / CSS / 组件外观 | `npm run check:frontend` + 相关组件或页面测试 | Electron 真机检查；需要时接 9222 DevTools |
+| 跨前后端运行态或共享契约 | `npm run check:boundaries` + 后端相关测试 + renderer runtime/store 测试 | `npm test`，必要时启动 `npm run dev` 真机走主链路 |
 | 构建或打包配置 | `npm run build` | 按影响范围追加测试 |
 
 无法执行、只执行部分或验证失败时，交付必须说明原因、影响范围和剩余风险。
@@ -67,5 +67,6 @@ flowchart TD
 - 没有把专题正文写进 `AGENTS.md` 或 `ARCHITECTURE.md`。
 - 没有新增与 `BACKEND.md`、`FRONTEND.md` 并行的临时权威入口。
 - 协议、状态、数据库、前端运行态和验证要求的变更已同步到唯一归宿。
+- 命中前端、后端或跨层共享契约边界的改动已执行对应 `check:*` 脚本。
 - 验证命令已按矩阵执行，并在交付中说明结果。
-- 前端视觉改动已说明是否核对 `DESIGN.md` 和是否执行 `npm run renderer:audit`。
+- 前端视觉改动已说明是否核对 `DESIGN.md` 和是否执行 `npm run check:frontend`。

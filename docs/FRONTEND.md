@@ -19,11 +19,10 @@ flowchart LR
   F --> G["pages 与 widgets"]
 ```
 
-- renderer 只能通过 `window.desktopApp` 接入 Electron 宿主能力；禁止直接访问 Node、Electron、文件系统或内部服务。
-- `src/native` 根文件是 main、preload、renderer 共享的桌面原生契约归宿，负责 `window.desktopApp` 类型、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略；renderer 只能通过 `@native/*` 读取这些根契约文件。
+- renderer 的宿主能力只通过 `window.desktopApp` 暴露，Core API 访问只通过 `desktop-api.ts`，页面不直接拼接 `/api/*` 请求或事件流。
+- `src/native` 根文件是 main、preload、renderer 共享的桌面原生契约归宿，负责 `window.desktopApp` 类型、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略；renderer 只读取根契约，不依赖 `src/native/platform` 或 `src/native/shell` 的实现。
 - `src/preload/index.ts` 是宿主桥接唯一暴露点，只实现 `src/native` 根契约并负责 Core API base URL、原生对话框、外链、窗口关闭、日志窗口和标题栏主题的窄桥接。
 - `src/renderer/app/desktop/desktop-api.ts` 是 renderer 访问 Core API 的唯一封装，负责 `/api/health` 探测、POST 响应壳解析、SSE 连接和错误类型。
-- 页面代码不得绕过 `desktop-api.ts` 拼接 Core API URL；新增 Core 调用应先在该层收口。
 - `DesktopApiError` 是 renderer 消费 Core 失败的唯一错误类型，Core API 错误码和 envelope 类型从 `src/shared/error` 导入，本地网络、探测和事件流失败使用 renderer 本地错误码与 `app.error.desktop.*.message`；页面只能按 code/status 决定刷新、重试、禁用或跳转，不读取后端原始异常文本。
 - `src/renderer/app/ui-runtime/error-message.ts` 是普通页面解析用户可见错误文案的唯一入口；页面 toast、dialog 和空状态不能直接展示 `Error.message` 或自行解析 `DesktopApiError.message_key`。
 - 普通页面只展示 `DesktopApiError.message_key` 对应本地化文案或后端提供的安全 `message`；非 Core API 异常只按页面语境 fallback 展示，`WorkerClientError` 等本地错误只提供稳定 code 给页面分支。日志窗口可以展示脱敏后的诊断信息，但不能显示 stack、API key、Authorization header、provider 原始响应或内部绝对路径。
@@ -84,8 +83,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 设计权威不在本文；涉及产品语义先看 `PRODUCT.md`，涉及视觉和交互规范先走 `DESIGN.md`。
 - 全局 CSS token 的稳定落点是 `src/renderer/index.css`；页面和组件不得随意新增并行 `--ui-*` token。
 - 渲染层视觉尺寸字面量优先使用 `px`，`line-height` 使用无单位数值，`letter-spacing` 使用 `em`，`clamp()` 只使用 `px + vw + px` 组合。
-- shadcn 基础组件的基础视觉边界由组件和设计系统审查脚本共同维护；页面 CSS 只写页面布局和局部组合状态。
-- 前端视觉改动必须按 [`docs/WORKFLOW.md`](WORKFLOW.md) 的验证矩阵运行 `npm run renderer:audit`，必要时再用 Electron 真机检查。
+- shadcn 基础组件承载基础视觉边界；页面 CSS 只写页面布局和局部组合状态。
 
 ## 7. 更新触发条件
 
@@ -97,4 +95,4 @@ project, files, items, quality, prompts, analysis, proofreading
 - `ProjectStore` section、项目变更 payload、revision 对齐、本地乐观 change 或项目读取消费方式变化。
 - 改 renderer 消费的跨层基础值域、合法值集合、normalize 或派生判断。
 - 导航注册、项目页 runtime adapter、barrier 或页面共享缓存策略变化。
-- 样式 token、设计系统审查脚本或前端视觉边界变化。
+- 样式 token、设计系统约束或前端视觉边界变化。

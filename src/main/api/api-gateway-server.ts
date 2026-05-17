@@ -36,6 +36,7 @@ import { TaskSnapshotBuilder } from "../engine/runtime/task-snapshot-builder";
 import { ProjectTaskStore } from "../engine/store/project-task-store";
 import { WorkerPool } from "../engine/worker/worker-pool";
 import { normalizeProjectDataSections } from "../../shared/project/event";
+import { JsonTool } from "../../shared/utils/json-tool";
 import {
   close_api_gateway_with_connections,
   track_api_gateway_connections,
@@ -645,6 +646,6 @@ export class ApiGatewayServer {
    * 日志 SSE frame 使用固定事件名，renderer 日志面板只需订阅 log.appended
    */
   private build_log_sse_frame(event: LogEvent): string {
-    return `event: log.appended\ndata: ${JSON.stringify(event)}\n\n`;
+    return `event: log.appended\ndata: ${JsonTool.stringifyStrict(event)}\n\n`;
   }
 }
