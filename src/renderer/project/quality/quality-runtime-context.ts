@@ -4,6 +4,7 @@ import {
   collect_non_blank_text_preserve_segments,
   type TextPreserveRule,
 } from "@shared/text/text-preserve-rules";
+import { compile_text_pattern, replace_text_pattern } from "@shared/text/text-pattern";
 import type { TextJsonRecord } from "@shared/text/text-types";
 
 export type QualityRuntimeGlossaryEntry = {
@@ -19,8 +20,10 @@ export type QualityRuntimeGlossaryIndex = {
 };
 
 export type QualityRuntimeReplacementRule = {
-  search_text: string;
-  replace_text: string;
+  search_text: string; // 运行态实际匹配文本，译后替换会使用规则 dst
+  replace_text: string; // 命中后写入文本，译后替换会回到规则 src
+  is_regex: boolean; // 是否按正则编译 search_text
+  case_sensitive: boolean; // 是否保留大小写敏感匹配
 };
 
 export type QualityRuntimeContext = {
@@ -108,22 +111,11 @@ export function collectNonBlankQualityPreservedSegments(
 }
 
 /**
- * literal 替换保持旧逻辑的空 src 行为，避免替换规则语义在共享后漂移
- */
-function replace_all_literal(text: string, search_text: string, replace_text: string): string {
-  if (search_text === "") {
-    return `${replace_text}${Array.from(text).join(replace_text)}${replace_text}`;
-  }
-
-  return text.split(search_text).join(replace_text);
-}
-
-/**
  * 把启用的替换规则编译成最小运行时结构，调用方不用重复解释 src/dst 方向
  */
 function build_replacement_rules(args: {
   enabled: boolean;
-  entries: Array<{ src?: unknown; dst?: unknown }>;
+  entries: Array<{ src?: unknown; dst?: unknown; regex?: unknown; case_sensitive?: unknown }>;
   source_key: "src" | "dst";
   target_key: "src" | "dst";
 }): QualityRuntimeReplacementRule[] {
@@ -141,6 +133,8 @@ function build_replacement_rules(args: {
       {
         search_text,
         replace_text: String(entry[args.target_key] ?? ""),
+        is_regex: entry.regex === true,
+        case_sensitive: entry.case_sensitive === true,
       },
     ];
   });
@@ -210,17 +204,42 @@ export function applyQualityRuntimeReplacements(
   let dst_replaced = item.dst;
 
   for (const entry of quality_context.pre_replacements) {
-    src_replaced = replace_all_literal(src_replaced, entry.search_text, entry.replace_text);
+    src_replaced = apply_quality_runtime_replacement(src_replaced, entry);
   }
 
   for (const entry of quality_context.post_replacements) {
-    dst_replaced = replace_all_literal(dst_replaced, entry.search_text, entry.replace_text);
+    dst_replaced = apply_quality_runtime_replacement(dst_replaced, entry);
   }
 
   return {
     src_replaced,
     dst_replaced,
   };
+}
+
+/**
+ * 校对质量运行态按任务替换规则执行，避免统计和任务管线解释出两套结果
+ */
+function apply_quality_runtime_replacement(
+  text: string,
+  entry: QualityRuntimeReplacementRule,
+): string {
+  const pattern = compile_text_pattern({
+    source_text: entry.search_text,
+    mode: entry.is_regex ? "regex" : "literal",
+    case_sensitive: entry.case_sensitive,
+    global: true,
+    trim: false,
+  });
+  if (pattern === null) {
+    return text;
+  }
+  return replace_text_pattern({
+    text,
+    pattern,
+    replacement_text: entry.replace_text,
+    replacement_syntax: entry.is_regex ? "backslash" : "literal",
+  }).text;
 }
 
 /**

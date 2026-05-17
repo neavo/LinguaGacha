@@ -42,6 +42,19 @@ describe("apply_text_replacements", () => {
     ).toBe("aa x x");
   });
 
+  it("正则替换使用规则型反斜杠捕获并保留美元符号字面量", () => {
+    expect(
+      apply_text_replacements("Name: Alice", [
+        {
+          src: "Name: (.+)",
+          dst: "\\1 / $1",
+          regex: true,
+          case_sensitive: true,
+        },
+      ]),
+    ).toBe("Alice / $1");
+  });
+
   it("替换规则会过滤空模式并把 null 替换值视为空字符串", () => {
     expect(
       apply_text_replacements("ABC", [

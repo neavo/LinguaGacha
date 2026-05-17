@@ -1,3 +1,5 @@
+import { escape_text_pattern } from "@shared/text/text-pattern";
+
 export type QualityStatisticsRuleMode =
   | "glossary"
   | "pre_replacement"
@@ -80,10 +82,6 @@ type RelationTargetGroup = {
 
 export function casefold_text(text: string): string {
   return text.normalize("NFKC").replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLocaleLowerCase();
-}
-
-function escape_regexp(pattern: string): string {
-  return pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function compile_pattern(pattern: string, flags: string): RegExp | null {
@@ -236,7 +234,7 @@ function build_regex_rule_buckets(rules: QualityStatisticsRuleInput[]): Compiled
     const source = resolve_rule_source(rule.mode);
     const flags = rule.mode === "text_preserve" ? "iu" : is_case_sensitive_rule(rule) ? "u" : "iu";
     const pattern =
-      rule.mode === "text_preserve" || rule.regex ? raw_pattern : escape_regexp(raw_pattern);
+      rule.mode === "text_preserve" || rule.regex ? raw_pattern : escape_text_pattern(raw_pattern);
     const bucket_key = `${source}|${flags}|${pattern}`;
     const existing_bucket = bucket_map.get(bucket_key);
     if (existing_bucket !== undefined) {

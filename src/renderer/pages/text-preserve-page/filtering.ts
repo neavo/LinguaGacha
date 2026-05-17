@@ -6,6 +6,7 @@ import type {
   TextPreserveStatisticsState,
   TextPreserveVisibleEntry,
 } from "@/pages/text-preserve-page/types";
+import { create_text_keyword_matcher } from "@shared/text/text-pattern";
 
 const TEXT_PRESERVE_TEXT_SORTER = new Intl.Collator(undefined, {
   numeric: true,
@@ -27,34 +28,16 @@ function build_keyword_matcher(filter_state: TextPreserveFilterState): {
   invalid_regex_message: string | null;
   matches: (entry: TextPreserveEntry) => boolean;
 } {
-  const normalized_keyword = filter_state.keyword.trim();
-  if (normalized_keyword === "") {
-    return {
-      invalid_regex_message: null,
-      matches: () => true,
-    };
-  }
-
-  let invalid_regex_message: string | null = null;
-  let is_match = (value: string): boolean => {
-    return value.toLowerCase().includes(normalized_keyword.toLowerCase());
-  };
-
-  if (filter_state.is_regex) {
-    try {
-      const pattern = new RegExp(filter_state.keyword, "i");
-      is_match = (value: string): boolean => {
-        return pattern.test(value);
-      };
-    } catch (error) {
-      invalid_regex_message = error instanceof Error ? error.message : "Invalid regular expression";
-    }
-  }
+  const keyword_matcher = create_text_keyword_matcher({
+    keyword: filter_state.keyword,
+    is_regex: filter_state.is_regex,
+    unicode: false,
+  });
 
   return {
-    invalid_regex_message,
+    invalid_regex_message: keyword_matcher.invalid_regex_message,
     matches: (entry: TextPreserveEntry): boolean => {
-      if (invalid_regex_message !== null) {
+      if (keyword_matcher.invalid_regex_message !== null) {
         return false;
       }
 
@@ -65,7 +48,7 @@ function build_keyword_matcher(filter_state: TextPreserveFilterState): {
             ? entry.info
             : [entry.src, entry.info].join("\n");
 
-      return is_match(target_value);
+      return keyword_matcher.matches(target_value);
     },
   };
 }

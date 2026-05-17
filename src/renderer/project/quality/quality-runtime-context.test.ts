@@ -60,6 +60,29 @@ describe("quality-runtime-context", () => {
     expect(text_preserve_rule?.test("编号 123")).toBe(true);
   });
 
+  it("校对质量运行态按替换规则的正则和大小写语义处理文本", () => {
+    const context = buildQualityRuntimeContext({
+      ...create_quality_state(),
+      pre_replacement: {
+        enabled: true,
+        mode: "off",
+        revision: 2,
+        entries: [{ src: "Name: (.+)", dst: "\\1", regex: true, case_sensitive: true }],
+      },
+      post_replacement: {
+        enabled: true,
+        mode: "off",
+        revision: 2,
+        entries: [{ src: "$1", dst: "HP", regex: false, case_sensitive: true }],
+      },
+    });
+
+    expect(applyQualityRuntimeReplacements({ src: "Name: Alice", dst: "HP" }, context)).toEqual({
+      src_replaced: "Alice",
+      dst_replaced: "$1",
+    });
+  });
+
   it("校对页复用共享智能保护语义排除含中日韩正文的 RenPy 段", () => {
     const text_preserve_rule = createQualityTextPreserveRule({
       mode: "smart",
@@ -69,9 +92,9 @@ describe("quality-runtime-context", () => {
 
     expect(stripQualityPreservedSegments("{player_name}你好", text_preserve_rule)).toBe("你好");
     expect(stripQualityPreservedSegments("{名前}你好", text_preserve_rule)).toBe("{名前}你好");
-    expect(collectNonBlankQualityPreservedSegments("{player_name}{名前}", text_preserve_rule)).toEqual([
-      "{player_name}",
-    ]);
+    expect(
+      collectNonBlankQualityPreservedSegments("{player_name}{名前}", text_preserve_rule),
+    ).toEqual(["{player_name}"]);
   });
 
   it("自定义保护规则由共享规则统一处理 Python 大码位写法", () => {

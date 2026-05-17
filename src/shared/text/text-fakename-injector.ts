@@ -1,3 +1,5 @@
+import { escape_text_pattern } from "./text-pattern";
+
 const CONTROL_CODE_PATTERN = /\\(?:n|N){1,2}\[\d+\]/gu; // 控制码识别规则集中放在这里，避免请求构造和结果清洗各写一套
 
 // 伪名列表只服务控制码伪装，尽量降低模型把它们误识别成术语的概率
@@ -127,7 +129,7 @@ export class TextFakenameInjector {
     );
     this.fake_name_pattern =
       fake_names.length > 0
-        ? new RegExp(fake_names.map((name) => this.escape_regexp(name)).join("|"), "gu")
+        ? new RegExp(fake_names.map((name) => escape_text_pattern(name)).join("|"), "gu")
         : null;
   }
 
@@ -232,12 +234,5 @@ export class TextFakenameInjector {
       (match) => this.fake_name_to_source.get(match) ?? match,
     );
     return [restored, restored !== text];
-  }
-
-  /**
-   * 正则转义集中处理，保证伪名列表可安全拼接
-   */
-  private escape_regexp(text: string): string {
-    return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   }
 }
