@@ -51,10 +51,7 @@ TypeScript / React / CSS：
 
 - TypeScript 代码优先保持显式类型，只有第三方类型确实缺失时才局部使用 `any` 兜底。
 - React Hook 必须维护真实依赖数组，禁止用 eslint 禁用注释掩盖依赖问题。
-- renderer 只能通过 `window.desktopApp` 与 `desktop-api.ts` 接入宿主和 Core API。
-- 用户可见文本必须通过 `src/shared/i18n` 国际化入口提供，禁止在组件、状态、错误提示、空状态或通知中直接写死展示文案。
-- 页面不得重定义组件基础视觉或全局 token，前端样式边界按 `docs/FRONTEND.md` 与 `DESIGN.md` 执行。
-- 渲染层视觉尺寸字面量优先使用 `px`，`line-height` 使用无单位数值，`letter-spacing` 仅允许 `em`，`clamp()` 仅允许 `px + vw + px` 组合。
+- renderer 宿主接入、Core API、用户可见文案和样式边界归 `docs/FRONTEND.md`，验证入口归 `docs/WORKFLOW.md`。
 
 ## 5. 文档治理硬约束
 
@@ -68,5 +65,5 @@ TypeScript / React / CSS：
 
 - 完成后必须回看 diff，确认命名、注释、实现边界与文档边界一致。
 - 验证按 [`docs/WORKFLOW.md`](docs/WORKFLOW.md) 的矩阵执行，未执行、失败或只执行部分时，交付必须说明原因与影响范围。
-- 若任务涉及前端视觉改动，交付时必须说明是否核对 `DESIGN.md`，以及是否执行 `npm run renderer:audit`。
+- 若任务涉及前端视觉改动，交付时必须说明是否核对 `DESIGN.md`，以及是否按 `docs/WORKFLOW.md` 执行对应验证。
 - 交付结构性文档任务时，只汇报信息集合变化：删除、合并、迁移、压缩、补写、保留、未决、验证。

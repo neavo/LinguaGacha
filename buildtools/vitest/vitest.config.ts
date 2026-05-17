@@ -13,7 +13,10 @@ export default defineConfig({
       "@native/bridge-api": path.resolve(project_root, "src/native/bridge-api.ts"),
       "@native/bridge-types": path.resolve(project_root, "src/native/bridge-types.ts"),
       "@native/core-api-endpoint": path.resolve(project_root, "src/native/core-api-endpoint.ts"),
-      "@native/external-url-policy": path.resolve(project_root, "src/native/external-url-policy.ts"),
+      "@native/external-url-policy": path.resolve(
+        project_root,
+        "src/native/external-url-policy.ts",
+      ),
       "@native/ipc-contract": path.resolve(project_root, "src/native/ipc-contract.ts"),
       "@native/shell-contract": path.resolve(project_root, "src/native/shell-contract.ts"),
       "@shared": path.resolve(project_root, "src/shared"),
@@ -22,7 +25,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "buildtools/**/*.test.mjs"],
     exclude: ["**/node_modules/**", "**/build/**", "**/dist/**", "**/dist-electron/**"],
     clearMocks: true,
     deps: {
