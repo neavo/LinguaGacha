@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AppPathService } from "./path-service";
+import { AppPathService } from "./app-path-service";
 
 const cleanup_roots: string[] = [];
 
@@ -20,12 +20,12 @@ afterEach(() => {
 describe("AppPathService", () => {
   it("应用根可写时把资源、配置、日志和预设路径收口到同一应用根", () => {
     const app_root = create_temp_root("linguagacha-path-service-");
-    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3\n", "utf-8");
     const service = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
 
     expect(service.get_app_root()).toBe(path.resolve(app_root));
     expect(service.get_data_root()).toBe(path.resolve(app_root));
     expect(service.get_config_path()).toBe(path.join(app_root, "userdata", "config.json"));
+    expect(service.get_version_path()).toBe(path.join(app_root, "version.txt"));
     expect(service.get_log_dir()).toBe(path.join(app_root, "log"));
     expect(service.get_model_preset_dir()).toBe(path.join(app_root, "resource", "model", "preset"));
     expect(service.get_quality_rule_builtin_preset_dir("glossary")).toBe(
@@ -40,7 +40,6 @@ describe("AppPathService", () => {
     expect(service.get_prompt_builtin_preset_relative_dir("analysis")).toBe(
       "resource/analysis_prompt/preset",
     );
-    expect(service.read_version()).toBe("1.2.3");
   });
 
   it("打包态或不可写应用根把可写数据落到用户 LinguaGacha 根", () => {

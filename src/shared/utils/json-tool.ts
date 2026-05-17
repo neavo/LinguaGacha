@@ -32,13 +32,6 @@ export interface JsonToolStringifyOptions {
 }
 
 /**
- * 控制 JSON 文件读取策略，允许调用方显式选择修复解析
- */
-export interface JsonToolReadFileOptions {
-  repair?: boolean;
-}
-
-/**
  * UTF-8 BOM 常量集中在工具内，避免各调用点重复处理文件头
  */
 const UTF8_BOM = "\uFEFF";
@@ -136,23 +129,7 @@ function revive_non_finite_numbers(_key: string, value: unknown): unknown {
 }
 
 /**
- * 延迟加载 fs/promises 读取 UTF-8 文本，避免 renderer 打包路径静态引入 Node 文件模块
- */
-async function read_utf8_file(file_path: string): Promise<string> {
-  const fs = await import("node:fs/promises");
-  return decode_text(await fs.readFile(file_path));
-}
-
-/**
- * 延迟加载 fs/promises 写入 UTF-8 文本，保持文件写出只在具备 Node 能力的运行态发生
- */
-async function write_utf8_file(file_path: string, text: string): Promise<void> {
-  const fs = await import("node:fs/promises");
-  await fs.writeFile(file_path, text, "utf-8");
-}
-
-/**
- * 集中 JSON 解析、修复和文件读写，避免调用点重复处理异常
+ * 集中 JSON 解析、修复和序列化，文件读写由各运行态平台层负责
  */
 export class JsonTool {
   /**
@@ -225,51 +202,5 @@ export class JsonTool {
     input: JsonToolTextInput,
   ): Promise<value_type> {
     return await this.repairParse<value_type>(input);
-  }
-
-  /**
-   * 读取 JSON 文件并套用默认值，统一缺失文件处理
-   */
-  public static async readJsonFile<value_type = unknown>(
-    file_path: string,
-    options: JsonToolReadFileOptions = {},
-  ): Promise<value_type> {
-    const text = await read_utf8_file(file_path);
-    return options.repair === true
-      ? await this.repairParse<value_type>(text)
-      : this.parseStrict<value_type>(text);
-  }
-
-  /**
-   * 从文件读取 JSON，保留 Py 侧工具命名的对应入口
-   */
-  public static async loadFile<value_type = unknown>(
-    file_path: string,
-    options: JsonToolReadFileOptions = {},
-  ): Promise<value_type> {
-    return await this.readJsonFile<value_type>(file_path, options);
-  }
-
-  /**
-   * 写入 JSON 文件，先完成序列化再落盘，避免失败时破坏已有文件
-   */
-  public static async writeJsonFile(
-    file_path: string,
-    value: unknown,
-    options: JsonToolStringifyOptions = {},
-  ): Promise<void> {
-    const text = this.stringifyStrict(value, options); // 先完成序列化再写盘，避免不可序列化值把目标文件截断
-    await write_utf8_file(file_path, text);
-  }
-
-  /**
-   * 写入 JSON 文件，保留 Py 侧工具命名的对应入口
-   */
-  public static async saveFile(
-    file_path: string,
-    value: unknown,
-    options: JsonToolStringifyOptions = {},
-  ): Promise<void> {
-    await this.writeJsonFile(file_path, value, options);
   }
 }

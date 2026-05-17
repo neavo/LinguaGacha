@@ -17,6 +17,7 @@ import {
   getSharedQualityStatisticsWorkerPool,
   type QualityStatisticsTaskExecutor,
 } from "@/project/quality/quality-statistics-worker-pool";
+import { WorkerClientError } from "@/lib/worker-client-error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 
 type RefreshPriority = "warmup" | "background" | "foreground";
@@ -224,7 +225,7 @@ export function createQualityStatisticsScheduler(args: {
         }
 
         const runtime_error =
-          error instanceof Error ? error : new Error("quality statistics worker 执行失败。");
+          error instanceof Error ? error : new WorkerClientError("execution_failed");
         args.store.updateCache(rule_type, (cache) => {
           return {
             ...cache,

@@ -253,7 +253,7 @@ describe("useBasicSettingsState", () => {
 
   it("prefilter worker 失败时会回滚 source_language 并只显示通用失败提示", async () => {
     project_prefilter_client_fixture.current.compute = vi.fn(async () => {
-      throw new WorkerClientError("project prefilter worker 初始化失败。", "init_failed");
+      throw new WorkerClientError("init_failed");
     });
     vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
       if (path === "/api/settings/update") {
@@ -318,6 +318,9 @@ describe("useBasicSettingsState", () => {
 
     expect(latest_state?.snapshot.request_timeout).toBe(300);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", "基础设置刷新失败");
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "error",
+      "basic_settings_page.feedback.refresh_failed",
+    );
   });
 });

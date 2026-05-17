@@ -61,7 +61,7 @@ export const translation_prompt_legacy_slot_migration: MigrationDescriptor = {
  * 按当前应用语言决定旧 ZH/EN 槽位优先级，保持旧版本用户界面选择语义。
  */
 function get_legacy_translation_prompt(context: ProjectOpenMigrationContext): string {
-  const config = context.setting_service.load_setting();
+  const config = context.app_setting_service.read_setting();
   const preferred_rule_types =
     normalize_app_language(config["app_language"]) === "EN"
       ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]

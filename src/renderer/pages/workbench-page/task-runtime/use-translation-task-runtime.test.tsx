@@ -505,7 +505,10 @@ describe("useTranslationTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "stop boom");
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "error",
+      "workbench_page.translation_task.feedback.stop_failed",
+    );
     expect(latest_state?.task_confirm_state).toMatchObject({
       kind: "stop-translation",
       submitting: false,
@@ -918,6 +921,9 @@ describe("useTranslationTaskRuntime", () => {
       .rollback as ReturnType<typeof vi.fn>;
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "reset boom");
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "error",
+      "workbench_page.translation_task.feedback.reset_failed_failed",
+    );
   });
 });

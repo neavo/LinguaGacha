@@ -13,10 +13,10 @@
   },
   "include": [
     "buildtools/vite/electron.vite.config.ts",
-    "src/electron-env.d.ts",
     "src/base",
-    "src/desktop",
+    "src/electron-env.d.ts",
     "src/main",
+    "src/native",
     "src/preload",
     "src/shared",
     "src/test"

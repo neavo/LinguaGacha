@@ -652,7 +652,7 @@ describe("useProofreadingPageState", () => {
 
   it("worker 类错误会统一收口成刷新失败 toast", async () => {
     proofreading_runtime_client_fixture.current.hydrate_full = vi.fn(async () => {
-      throw new WorkerClientError("底层 worker 初始化失败。", "init_failed");
+      throw new WorkerClientError("init_failed");
     });
 
     await render_hook();
@@ -862,6 +862,9 @@ describe("useProofreadingPageState", () => {
 
     expect(runtime_fixture.current.set_task_snapshot).not.toHaveBeenCalled();
     expect(latest_state?.retranslating_row_ids).toEqual([]);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", "重翻失败");
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "error",
+      "proofreading_page.feedback.retranslate_failed",
+    );
   });
 });

@@ -1,8 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import { t_main_log } from "../../log/log-text";
+import { default_native_fs } from "../../../native/platform/native-fs";
+import { InternalInvariantError } from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { PathRelocation } from "../path-relocation";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
@@ -134,7 +135,7 @@ export class QualityRulePresetLayoutMigration {
     const relocation = new PathRelocation(context.log_manager);
     for (const preset_directory of QUALITY_RULE_PRESET_DIRECTORIES) {
       const destination_dir = context.paths.get_quality_rule_user_preset_dir(preset_directory);
-      fs.mkdirSync(destination_dir, { recursive: true });
+      default_native_fs.make_dir(destination_dir);
       relocation.relocate_directory_items(
         this.get_legacy_user_preset_dir(context, preset_directory),
         destination_dir,
@@ -151,7 +152,7 @@ export class QualityRulePresetLayoutMigration {
     const relocation = new PathRelocation(context.log_manager);
     for (const preset_directory of QUALITY_RULE_PRESET_DIRECTORIES) {
       const destination_dir = context.paths.get_quality_rule_builtin_preset_dir(preset_directory);
-      fs.mkdirSync(destination_dir, { recursive: true });
+      default_native_fs.make_dir(destination_dir);
       for (const source_dir of this.iter_builtin_source_dirs(context, preset_directory)) {
         relocation.relocate_directory_items(
           source_dir,
@@ -164,15 +165,17 @@ export class QualityRulePresetLayoutMigration {
   }
 
   /**
-   * 配置文件已复制到 userdata 后再写回虚拟 ID，后续 SettingService 只读当前位置。
+   * 配置文件已复制到 userdata 后再写回虚拟 ID，后续 AppSettingService 只读当前位置。
    */
   private static normalize_default_preset_config_values(context: StartupMigrationContext): void {
     const config_path = context.paths.get_config_path();
-    if (!fs.existsSync(config_path) || !fs.statSync(config_path).isFile()) {
+    if (!default_native_fs.exists(config_path) || !default_native_fs.stat(config_path).isFile()) {
       return;
     }
     try {
-      const setting_data = JsonTool.parseStrict(fs.readFileSync(config_path)) as unknown;
+      const setting_data = JsonTool.parseStrict(
+        default_native_fs.read_file(config_path),
+      ) as unknown;
       if (
         typeof setting_data !== "object" ||
         setting_data === null ||
@@ -187,10 +190,9 @@ export class QualityRulePresetLayoutMigration {
       if (!changed) {
         return;
       }
-      fs.writeFileSync(
+      default_native_fs.write_file_sync(
         config_path,
         JsonTool.stringifyStrict(normalized_config, { indent: 4 }),
-        "utf-8",
       );
     } catch (error) {
       context.log_manager.warning(
@@ -330,7 +332,12 @@ export class QualityRulePresetLayoutMigration {
    */
   private static build_virtual_id(source: PresetSource, file_name: string): string {
     if (!this.is_preset_file_name(file_name)) {
-      throw new Error(`无效预设文件名：${file_name}`);
+      throw new InternalInvariantError({
+        diagnostic_context: {
+          reason: "invalid_quality_rule_preset_file_name",
+          file_name,
+        },
+      });
     }
     return `${source}:${file_name}`;
   }

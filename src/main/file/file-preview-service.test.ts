@@ -3,9 +3,10 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import JSZip from "jszip";
 
 import { write_epub_fixture } from "../../test/epub-fixture";
-import type { SettingService } from "../service/setting-service";
+import type { AppSettingService } from "../app/app-setting-service";
 import { FilePreviewService } from "./file-preview-service";
 
 let temp_dir = "";
@@ -18,16 +19,16 @@ afterEach(() => {
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
-function create_setting_service(): SettingService {
+function create_setting_service(): AppSettingService {
   return {
-    load_setting: () => ({
+    read_setting: () => ({
       source_language: "JA",
       target_language: "ZH",
       app_language: "ZH",
       deduplication_in_bilingual: true,
       write_translated_name_fields_to_file: true,
     }),
-  } as unknown as SettingService;
+  } as unknown as AppSettingService;
 }
 
 describe("FilePreviewService", () => {
@@ -85,6 +86,40 @@ describe("FilePreviewService", () => {
         },
       ],
       failed_files: [],
+    });
+  });
+
+  it("工作台预解析 EPUB 坏内容时返回文件解析错误码", async () => {
+    const epub_file = path.join(temp_dir, "broken.epub");
+    const zip = new JSZip();
+    zip.file(
+      "META-INF/container.xml",
+      `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
+    );
+    zip.file(
+      "OPS/package.opf",
+      `<package version="3.0">
+        <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>`,
+    );
+    zip.file("OPS/chapter.xhtml", "");
+    fs.writeFileSync(
+      epub_file,
+      await zip.generateAsync({ compression: "STORE", type: "nodebuffer" }),
+    );
+    const service = new FilePreviewService(create_setting_service());
+
+    await expect(service.parse_workbench_file({ source_paths: [epub_file] })).resolves.toEqual({
+      files: [],
+      failed_files: [
+        {
+          source_path: epub_file,
+          filename: "broken.epub",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
+        },
+      ],
     });
   });
 

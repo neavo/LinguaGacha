@@ -93,7 +93,7 @@ describe("google-policy", () => {
   it("空 Gemini contents 在协议边界直接阻断", () => {
     expect(() =>
       build_google_payload(create_snapshot(), [{ role: "user", content: "   " }]),
-    ).toThrow("LLM 请求 messages 为空。");
+    ).toThrow("request.validation_failed");
   });
 });
 

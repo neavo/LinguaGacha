@@ -135,13 +135,15 @@ describe("createProjectStore", () => {
       ],
     });
 
-    expect(store.getState().items["1"]).toEqual(create_test_item({
-      item_id: 1,
-      file_path: "chapter01.txt",
-      src: "原文",
-      dst: "新译文",
-      status: "PROCESSED",
-    }));
+    expect(store.getState().items["1"]).toEqual(
+      create_test_item({
+        item_id: 1,
+        file_path: "chapter01.txt",
+        src: "原文",
+        dst: "新译文",
+        status: "PROCESSED",
+      }),
+    );
     expect(store.getState().revisions.projectRevision).toBe(3);
     expect(store.getState().revisions.sections.items).toBe(3);
   });
@@ -209,7 +211,7 @@ describe("createProjectStore", () => {
           },
         ],
       }),
-    ).toThrow("完整公开 item DTO");
+    ).toThrow("runtime.internal_invariant");
   });
 
   it("对缺省 projectRevision 的项目变更保留已有 revision", () => {
@@ -252,13 +254,15 @@ describe("createProjectStore", () => {
       ],
     });
 
-    expect(store.getState().items["1"]).toEqual(create_test_item({
-      item_id: 1,
-      file_path: "chapter01.txt",
-      src: "原文",
-      dst: "批次译文",
-      status: "PROCESSED",
-    }));
+    expect(store.getState().items["1"]).toEqual(
+      create_test_item({
+        item_id: 1,
+        file_path: "chapter01.txt",
+        src: "原文",
+        dst: "批次译文",
+        status: "PROCESSED",
+      }),
+    );
     expect(store.getState().revisions.projectRevision).toBe(5);
     expect(store.getState().revisions.sections.items).toBe(3);
   });

@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { AppPathService } from "./path-service";
-import { SettingService } from "./setting-service";
+import { AppPathService } from "./app-path-service";
+import { AppSettingService } from "./app-setting-service";
 
 type SettingsEvent = {
   event_type: string;
@@ -26,7 +26,7 @@ afterEach(() => {
   }
 });
 
-describe("SettingService", () => {
+describe("AppSettingService", () => {
   it("读取缺失设置时补齐快照并把完整设置文件落到 userdata/config.json", () => {
     const { service, config_path } = create_service();
 
@@ -92,6 +92,19 @@ describe("SettingService", () => {
     ]);
   });
 
+  it("完整设置读取使用实例级缓存且保存后刷新缓存", () => {
+    const { service, config_path } = create_service();
+    write_config(config_path, { app_language: "ZH" });
+
+    expect(service.read_setting()["app_language"]).toBe("ZH");
+    write_config(config_path, { app_language: "EN" });
+    expect(service.read_setting()["app_language"]).toBe("ZH");
+
+    service.save_setting({ app_language: "EN" });
+    expect(service.read_setting()["app_language"]).toBe("EN");
+    expect(service.read_app_language()).toBe("EN");
+  });
+
   it("最近项目写入口会去重置顶、写入本地时间并发布设置事件", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 4, 16, 9, 30, 5, 12));
@@ -135,7 +148,7 @@ describe("SettingService", () => {
 });
 
 function create_service(): {
-  service: SettingService;
+  service: AppSettingService;
   config_path: string;
   events: SettingsEvent[];
 } {
@@ -143,7 +156,7 @@ function create_service(): {
   cleanup_roots.push(app_root);
   const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
   const events: SettingsEvent[] = [];
-  const service = new SettingService(paths, {
+  const service = new AppSettingService(paths, {
     publish: (event_type, payload) => {
       events.push({ event_type, payload });
     },

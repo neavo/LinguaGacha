@@ -24,14 +24,14 @@ export function resolve_core_api_base_url_from_argv(argv: readonly string[]): st
   );
 
   if (matched_argument === undefined) {
-    throw new Error("Core API 地址启动参数缺失。");
+    throw new Error("Core API base URL launch argument is missing.");
   }
 
   const base_url = normalize_core_api_base_url(
     matched_argument.slice(CORE_API_BASE_URL_ARG_PREFIX.length),
   );
   if (base_url === "") {
-    throw new Error("Core API 地址启动参数为空。");
+    throw new Error("Core API base URL launch argument is empty.");
   }
 
   return base_url;

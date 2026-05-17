@@ -94,7 +94,7 @@ describe("lifecycle-port-allocator", () => {
     }
   });
 
-  it("候选次数耗尽时给出清晰错误", async () => {
+  it("候选次数耗尽时抛出结构化运行能力错误", async () => {
     const occupied_server = await listen_on_port(0);
     const occupied_port = read_listening_port(occupied_server);
 
@@ -104,7 +104,10 @@ describe("lifecycle-port-allocator", () => {
           maxAttempts: 2,
           pickPort: () => occupied_port,
         }),
-      ).rejects.toThrow("无法在高位端口范围内分配 Core API 本地端口");
+      ).rejects.toMatchObject({
+        code: "runtime.capability_missing",
+        public_details: { capability: "core_api_port" },
+      });
     } finally {
       await close_server(occupied_server);
     }

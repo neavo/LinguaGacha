@@ -1,5 +1,5 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { normalize_core_api_base_url } from "@desktop/core-api-endpoint";
+import { normalize_core_api_base_url } from "@native/core-api-endpoint";
 import { normalize_log_level, type LogLevel } from "@shared/log";
 import type { ApiErrorPayload, AppErrorCode } from "@shared/error";
 

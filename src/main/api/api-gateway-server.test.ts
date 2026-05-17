@@ -6,6 +6,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { JsonTool } from "../../shared/utils/json-tool";
+import { AppMetadataService } from "../app/app-metadata-service";
+import { AppPathService } from "../app/app-path-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
@@ -568,8 +571,11 @@ describe("ApiGatewayServer", () => {
     if (typeof address !== "object" || address === null) {
       throw new Error("测试占用端口未取得地址。");
     }
+    const paths = new AppPathService({ appRoot: app_root });
     const gateway = new ApiGatewayServer({
-      appRoot: app_root,
+      paths,
+      metadata: new AppMetadataService(paths),
+      appSettingService: new AppSettingService(paths),
       database,
       logManager: log_manager,
       openOutputFolder: noop_output_folder,
@@ -602,8 +608,11 @@ describe("ApiGatewayServer", () => {
     database: ProjectDatabase,
     log_manager: LogManager = create_log_manager(app_root),
   ): Promise<ApiGatewayServer> {
+    const paths = new AppPathService({ appRoot: app_root });
     return new ApiGatewayServer({
-      appRoot: app_root,
+      paths,
+      metadata: new AppMetadataService(paths),
+      appSettingService: new AppSettingService(paths),
       database,
       logManager: log_manager,
       openOutputFolder: noop_output_folder,

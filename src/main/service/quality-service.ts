@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import ExcelJS from "exceljs";
@@ -7,8 +6,8 @@ import type { Row } from "exceljs";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
-import { AppPathService } from "./path-service";
-import { SettingService } from "./setting-service";
+import { AppPathService } from "../app/app-path-service";
+import { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
 import {
@@ -20,6 +19,7 @@ import { ProjectSessionState } from "../project/project-session-state";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt, type PromptKind } from "../../base/prompt";
 import * as AppErrors from "../../shared/error";
+import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/platform/native-fs";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -29,7 +29,7 @@ type JsonRecord = Record<string, ApiJsonValue>;
 export class QualityService {
   private readonly paths: AppPathService; // paths 统一解析内置 / 用户预设目录，服务层不在调用点拼接路径
 
-  private readonly setting_service: SettingService; // 提示词模板语言跟随应用配置，因此质量服务需要配置读取能力
+  private readonly app_setting_service: AppSettingService; // 提示词模板语言跟随应用配置，因此质量服务需要配置读取能力
 
   private readonly database: ProjectDatabase; // 质量规则和提示词工程事实只通过 ProjectDatabase workflow 读写
 
@@ -37,21 +37,25 @@ export class QualityService {
 
   private readonly project_change_publisher: ProjectChangePublisher | null; // 写库成功后统一发布 project.data_changed，HTTP ack 不承载最终项目事实
 
+  private readonly native_fs: NativeFs; // native_fs 是规则、提示词预设和导入导出的唯一文件 IO 入口
+
   /**
    * 初始化 QualityService 依赖，保持外部写入口清晰
    */
   public constructor(
     paths: AppPathService,
-    setting_service: SettingService,
+    app_setting_service: AppSettingService,
     database: ProjectDatabase,
     session_state: ProjectSessionState,
     project_change_publisher: ProjectChangePublisher | null = null,
+    native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
-    this.setting_service = setting_service;
+    this.app_setting_service = app_setting_service;
     this.database = database;
     this.session_state = session_state;
     this.project_change_publisher = project_change_publisher;
+    this.native_fs = native_fs;
   }
 
   /**
@@ -159,7 +163,7 @@ export class QualityService {
       preset_directory,
       String(request["virtual_id"] ?? ""),
     );
-    const data = JsonTool.parseStrict(fs.readFileSync(preset_path)) as unknown;
+    const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
     if (!Array.isArray(data)) {
       throw new AppErrors.RequestValidationError({
         public_details: {
@@ -178,12 +182,11 @@ export class QualityService {
     const name = this.normalize_preset_name(String(request["name"] ?? ""));
     const entries = this.normalize_rule_entries(request["entries"]);
     const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
-    fs.mkdirSync(directory, { recursive: true });
+    this.native_fs.make_dir(directory);
     const file_name = `${name}.json`;
-    fs.writeFileSync(
+    this.native_fs.write_file_sync(
       path.join(directory, file_name),
       JsonTool.stringifyStrict(entries, { indent: 4 }),
-      "utf-8",
     );
     return { item: this.build_preset_item("user", file_name, directory, ".json") };
   }
@@ -202,7 +205,7 @@ export class QualityService {
     }
     const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     const new_file_name = `${this.normalize_preset_name(String(request["new_name"] ?? ""))}.json`;
-    fs.renameSync(path.join(directory, file_name), path.join(directory, new_file_name));
+    this.native_fs.rename(path.join(directory, file_name), path.join(directory, new_file_name));
     return { item: this.build_preset_item("user", new_file_name, directory, ".json") };
   }
 
@@ -222,7 +225,7 @@ export class QualityService {
       this.paths.get_quality_rule_user_preset_dir(preset_directory),
       file_name,
     );
-    fs.rmSync(file_path);
+    this.native_fs.remove(file_path);
     return { path: file_path.replace(/\\/g, "/") };
   }
 
@@ -231,7 +234,7 @@ export class QualityService {
    */
   public get_prompt_template(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
-    const config = this.setting_service.load_setting();
+    const config = this.app_setting_service.read_setting();
     const language = String(config["app_language"] ?? "ZH").toLowerCase();
     const template_dir = this.paths.get_prompt_template_dir(
       task_type,
@@ -287,8 +290,8 @@ export class QualityService {
   public read_prompt_import_text(request: JsonRecord): JsonRecord {
     const file_path = String(request["path"] ?? "");
     return {
-      text: fs
-        .readFileSync(file_path, "utf-8")
+      text: this.native_fs
+        .read_text_file(file_path)
         .replace(/^\uFEFF/, "")
         .trim(),
     };
@@ -309,7 +312,7 @@ export class QualityService {
         }),
       ) ?? "",
     );
-    fs.writeFileSync(output_path, text.trim(), "utf-8");
+    this.native_fs.write_file_sync(output_path, text.trim());
     return { path: output_path.replace(/\\/g, "/") };
   }
 
@@ -352,12 +355,12 @@ export class QualityService {
   public save_prompt_preset(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
     const directory = this.paths.get_prompt_user_preset_dir(task_type);
-    fs.mkdirSync(directory, { recursive: true });
+    this.native_fs.make_dir(directory);
     const file_path = path.join(
       directory,
       `${this.normalize_preset_name(String(request["name"] ?? ""))}.txt`,
     );
-    fs.writeFileSync(file_path, String(request["text"] ?? "").trim(), "utf-8");
+    this.native_fs.write_file_sync(file_path, String(request["text"] ?? "").trim());
     return { path: file_path.replace(/\\/g, "/") };
   }
 
@@ -375,7 +378,7 @@ export class QualityService {
     }
     const directory = this.paths.get_prompt_user_preset_dir(task_type);
     const new_file_name = `${this.normalize_preset_name(String(request["new_name"] ?? ""))}.txt`;
-    fs.renameSync(path.join(directory, file_name), path.join(directory, new_file_name));
+    this.native_fs.rename(path.join(directory, file_name), path.join(directory, new_file_name));
     return { item: this.build_preset_item("user", new_file_name, directory, ".txt") };
   }
 
@@ -392,7 +395,7 @@ export class QualityService {
       throw new AppErrors.RequestValidationError();
     }
     const file_path = path.join(this.paths.get_prompt_user_preset_dir(task_type), file_name);
-    fs.rmSync(file_path);
+    this.native_fs.remove(file_path);
     return { path: file_path.replace(/\\/g, "/") };
   }
 
@@ -557,7 +560,7 @@ export class QualityService {
    * 读取 JSON 规则文件，兼容数组和对象包装格式
    */
   private async load_rules_from_json(file_path: string): Promise<JsonRecord[]> {
-    const data = await JsonTool.repairParse(fs.readFileSync(file_path));
+    const data = await JsonTool.repairParse(this.native_fs.read_file(file_path));
     const result: JsonRecord[] = [];
     if (Array.isArray(data)) {
       for (const item of data) {
@@ -638,7 +641,9 @@ export class QualityService {
    */
   private async load_rules_from_xlsx(file_path: string): Promise<JsonRecord[]> {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(file_path);
+    await (workbook.xlsx.load as (data: unknown) => Promise<ExcelJS.Workbook>)(
+      this.native_fs.read_file(file_path),
+    );
     const worksheet = workbook.worksheets[0];
     if (worksheet === undefined) {
       return [];
@@ -667,11 +672,9 @@ export class QualityService {
    * 按目标扩展名导出规则，隐藏 JSON 与表格写出差异
    */
   private async export_rules_to_files(base_path: string, entries: JsonRecord[]): Promise<void> {
-    fs.mkdirSync(path.dirname(base_path), { recursive: true });
-    fs.writeFileSync(
+    this.native_fs.write_file_sync(
       `${base_path}.json`,
       JsonTool.stringifyStrict(entries, { indent: 4 }),
-      "utf-8",
     );
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("rules");
@@ -687,7 +690,10 @@ export class QualityService {
       SpreadsheetTool.setCellValue(worksheet, row, 4, entry["regex"] ?? "", 10);
       SpreadsheetTool.setCellValue(worksheet, row, 5, entry["case_sensitive"] ?? "", 10);
     });
-    await workbook.xlsx.writeFile(`${base_path}.xlsx`);
+    this.native_fs.write_file_sync(
+      `${base_path}.xlsx`,
+      normalize_native_file_bytes(await workbook.xlsx.writeBuffer()),
+    );
   }
 
   /**
@@ -707,13 +713,13 @@ export class QualityService {
     extension: ".json" | ".txt",
   ): JsonRecord[] {
     if (source === "user") {
-      fs.mkdirSync(directory, { recursive: true });
-    } else if (!fs.existsSync(directory)) {
+      this.native_fs.make_dir(directory);
+    } else if (!this.native_fs.exists(directory)) {
       return [];
     }
     const path_dir = resolved_path_dir ?? directory;
-    return fs
-      .readdirSync(directory)
+    return this.native_fs
+      .read_dir_names(directory)
       .filter((file_name) => file_name.toLowerCase().endsWith(extension))
       .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }))
       .map((file_name) => this.build_preset_item(source, file_name, path_dir, extension));
@@ -828,8 +834,8 @@ export class QualityService {
    * 读取文本文件，统一文件不存在和编码边界
    */
   private read_text_file(file_path: string): string {
-    return fs
-      .readFileSync(file_path, "utf-8")
+    return this.native_fs
+      .read_text_file(file_path)
       .replace(/^\uFEFF/, "")
       .trim();
   }

@@ -250,7 +250,7 @@ describe("useLaboratoryPageState", () => {
 
   it("prefilter worker 失败时会回滚 mtool_optimizer_enable 并只显示通用失败提示", async () => {
     project_prefilter_client_fixture.current.compute = vi.fn(async () => {
-      throw new WorkerClientError("project prefilter worker 初始化失败。", "init_failed");
+      throw new WorkerClientError("init_failed");
     });
     vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
       if (path === "/api/settings/update") {

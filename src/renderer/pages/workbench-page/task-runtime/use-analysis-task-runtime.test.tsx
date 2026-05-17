@@ -733,7 +733,10 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "analysis stop boom");
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "error",
+      "workbench_page.analysis_task.feedback.stop_failed",
+    );
     expect(latest_state?.analysis_confirm_state).toMatchObject({
       kind: "stop-analysis",
       submitting: false,
@@ -910,6 +913,9 @@ describe("useAnalysisTaskRuntime", () => {
       .rollback as ReturnType<typeof vi.fn>;
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);
-    expect(push_toast_mock).toHaveBeenCalledWith("error", "analysis reset boom");
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "error",
+      "workbench_page.analysis_task.feedback.reset_failed_failed",
+    );
   });
 });

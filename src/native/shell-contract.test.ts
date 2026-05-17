@@ -7,7 +7,7 @@ import {
   resolve_title_bar_overlay_theme,
 } from "./shell-contract";
 
-describe("shell-contract", () => {
+describe("桌面壳层契约", () => {
   it("为 macOS 预留左侧原生控制区", () => {
     expect(resolve_desktop_shell_info("darwin")).toEqual({
       platform: "darwin",

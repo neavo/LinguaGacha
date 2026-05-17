@@ -13,6 +13,7 @@ export interface CoreProcessExitResult {
 
 export interface CoreLifecycleStartResult {
   baseUrl: string;
+  readAppLanguage: () => unknown; // Electron 宿主只拿语言读取窄入口，不持有设置服务
 }
 
 export interface CoreLifecycleManagerOptions {

@@ -1,10 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
-import { group_items, type ExportPaths } from "./file-format-shared";
+import { group_items, write_binary_file, type ExportPaths } from "./file-format-shared";
 import { Item } from "../../../base/item";
 
 const COL_SRC_TEXT = 6; // WOLF XLSX 的源文和译文列号来自旧固定实现
@@ -79,8 +78,7 @@ export class WOLFXLSXFormat {
         SpreadsheetTool.setCellValue(sheet, item.row, COL_DST_TEXT, item.dst);
       }
       const target_path = path.join(paths.translated_path, rel_path);
-      fs.mkdirSync(path.dirname(target_path), { recursive: true });
-      await workbook.xlsx.writeFile(target_path);
+      await write_wolf_xlsx_workbook(workbook, target_path);
     }
   }
 
@@ -93,6 +91,16 @@ export class WOLFXLSXFormat {
       | undefined;
     return fill?.fgColor?.indexed ?? -1;
   }
+}
+
+/**
+ * WOLF 表格复用 ExcelJS 生成 bytes，写盘统一交给 NativeFs。
+ */
+async function write_wolf_xlsx_workbook(
+  workbook: ExcelJS.Workbook,
+  target_path: string,
+): Promise<void> {
+  await write_binary_file(target_path, await workbook.xlsx.writeBuffer());
 }
 
 /**

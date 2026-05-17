@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import { AppPathService } from "../service/path-service";
-import type { SettingService } from "../service/setting-service";
+import { AppPathService } from "../app/app-path-service";
+import type { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
@@ -100,7 +100,7 @@ describe("MigrationOrchestrator", () => {
       orchestrator.build_project_open_operations({
         project_path: "demo.lg",
         database: { execute: vi.fn() } as unknown as ProjectDatabase,
-        setting_service: { load_setting: vi.fn() } as unknown as SettingService,
+        app_setting_service: { read_setting: vi.fn() } as unknown as AppSettingService,
       }),
     ).resolves.toEqual([
       { name: "first", args: {} },

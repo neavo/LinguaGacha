@@ -1,23 +1,8 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { JsonTool } from "./json-tool";
 
 describe("JsonTool", () => {
-  const cleanup_paths: string[] = [];
-
-  afterEach(() => {
-    while (cleanup_paths.length > 0) {
-      const target_path = cleanup_paths.pop();
-      if (target_path !== undefined) {
-        fs.rmSync(target_path, { force: true, recursive: true });
-      }
-    }
-  });
-
   it("严格路径解析 BOM 并使用原生紧凑序列化", () => {
     const parsed = JsonTool.parseStrict<{ value: number }>('\uFEFF{"value":7}');
 
@@ -73,54 +58,5 @@ describe("JsonTool", () => {
 
     await expect(JsonTool.repairParse('[{"src":"A",}]')).resolves.toEqual([{ src: "A" }]);
     await expect(JsonTool.repairLoads('{"v":1,}')).resolves.toEqual({ v: 1 });
-  });
-
-  it("文件写入先完成序列化，失败时不覆盖已有内容", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-json-tool-test-"));
-    cleanup_paths.push(directory);
-    const file_path = path.join(directory, "payload.json");
-    fs.writeFileSync(file_path, '{"stable":true}', "utf-8");
-
-    await expect(JsonTool.writeJsonFile(file_path, undefined)).rejects.toThrow(
-      "JSON 序列化结果为空。",
-    );
-
-    expect(fs.readFileSync(file_path, "utf-8")).toBe('{"stable":true}');
-  });
-
-  it("文件助手支持 BOM 读取和缩进写入", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-json-tool-test-"));
-    cleanup_paths.push(directory);
-    const source_path = path.join(directory, "source.json");
-    const output_path = path.join(directory, "output.json");
-    fs.writeFileSync(source_path, '\uFEFF{"value":1}', "utf-8");
-
-    await expect(JsonTool.readJsonFile(source_path)).resolves.toEqual({ value: 1 });
-    await expect(JsonTool.loadFile(source_path)).resolves.toEqual({ value: 1 });
-    await JsonTool.writeJsonFile(output_path, { value: 2 }, { indent: 4 });
-
-    expect(fs.readFileSync(output_path, "utf-8")).toBe('{\n    "value": 2\n}');
-  });
-
-  it("文件助手默认按 4 空格缩进写入并能读回孤立代理", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-json-tool-test-"));
-    cleanup_paths.push(directory);
-    const file_path = path.join(directory, "payload.json");
-
-    await JsonTool.saveFile(file_path, { text: "\uD800" }, { indent: 4 });
-
-    expect(fs.readFileSync(file_path)).toEqual(Buffer.from('{\n    "text": "\\ud800"\n}'));
-    await expect(JsonTool.loadFile(file_path)).resolves.toEqual({ text: "\uD800" });
-  });
-
-  it("文件助手按紧凑格式写入时保留孤立代理的转义字节", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-json-tool-test-"));
-    cleanup_paths.push(directory);
-    const file_path = path.join(directory, "compact.json");
-
-    await JsonTool.saveFile(file_path, { text: "\uD800" }, { indent: 0 });
-
-    expect(fs.readFileSync(file_path)).toEqual(Buffer.from('{"text":"\\ud800"}'));
-    await expect(JsonTool.loadFile(file_path)).resolves.toEqual({ text: "\uD800" });
   });
 });

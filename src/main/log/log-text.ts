@@ -1,38 +1,32 @@
-import fs from "node:fs";
-
-import type { AppPathService } from "../service/path-service";
 import { DEFAULT_SETTING } from "../../base/setting";
 import { create_text_resolver, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
-import { JsonTool } from "../../shared/utils/json-tool";
 
-let active_paths: AppPathService | null = null;
+type AppLanguageReader = () => unknown;
 
-export function set_main_log_text_paths(paths: AppPathService | null): void {
-  active_paths = paths;
+let active_language_reader: AppLanguageReader | null = null; // active_language_reader 由 AppSettingService 注入，启动早期为空时使用默认语言
+
+/**
+ * 注入日志文案语言读取器，避免日志层直接读取 config.json。
+ */
+export function set_main_log_language_reader(reader: AppLanguageReader | null): void {
+  active_language_reader = reader;
 }
 
+/**
+ * 按当前应用语言解析 main 进程日志文案。
+ */
 export function t_main_log(key: LocaleKey, params: Record<string, string> = {}): string {
   const locale = resolve_i18n_locale(read_app_language());
   return create_text_resolver(locale)(key, params);
 }
 
+/**
+ * 读取当前日志语言；读取器异常时回退默认语言，避免日志写出被配置错误阻断。
+ */
 function read_app_language(): unknown {
-  if (active_paths === null) {
-    return DEFAULT_SETTING["app_language"];
-  }
-
-  const config_path = active_paths.get_config_path();
-  if (!fs.existsSync(config_path)) {
-    return DEFAULT_SETTING["app_language"];
-  }
-
   try {
-    const payload = JsonTool.parseStrict(fs.readFileSync(config_path));
-    if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
-      return (payload as Record<string, unknown>)["app_language"];
-    }
+    return active_language_reader?.() ?? DEFAULT_SETTING["app_language"];
   } catch {
-    // 日志本地化读取配置失败时回退默认语言，不能反过来阻断原始日志写出
+    return DEFAULT_SETTING["app_language"];
   }
-  return DEFAULT_SETTING["app_language"];
 }

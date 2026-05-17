@@ -437,7 +437,10 @@ describe("TRANSFormat", () => {
         { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
         () => Buffer.from(JSON.stringify(original)),
       ),
-    ).rejects.toThrow("TRANS 条目缺少有效 trans_ref");
+    ).rejects.toMatchObject({
+      code: "file.invalid_structure",
+      public_details: { format: "TRANS" },
+    });
     expect(fs.existsSync(path.join(temp_dir, "demo.trans"))).toBe(false);
   });
 });

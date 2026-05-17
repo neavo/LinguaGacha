@@ -8,6 +8,8 @@ import type { LLMRequestBody, LLMRequestResult } from "./llm-types";
 import type { ResolvedRequestPolicy } from "./policy/policy-types";
 import type { RequestTransport } from "./transport/transport-types";
 
+const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -16,7 +18,7 @@ describe("LLMClient", () => {
   it("按已解析 provider 调用对应 transport 并返回请求结果", async () => {
     const captured_providers: string[] = [];
     const client = new LLMClient({
-      appRoot: "",
+      userAgent: TEST_USER_AGENT,
       transports: {
         google: {
           send: async (policy) => {
@@ -38,7 +40,7 @@ describe("LLMClient", () => {
 
   it("transport 抛错时返回完整错误结果", async () => {
     const client = new LLMClient({
-      appRoot: "",
+      userAgent: TEST_USER_AGENT,
       transports: {
         "openai-compatible": {
           send: async () => {
@@ -56,7 +58,7 @@ describe("LLMClient", () => {
   it("外部取消请求时返回 cancelled 结果", async () => {
     const controller = new AbortController();
     const client = new LLMClient({
-      appRoot: "",
+      userAgent: TEST_USER_AGENT,
       transports: {
         "openai-compatible": create_abortable_transport(),
       },
@@ -71,7 +73,7 @@ describe("LLMClient", () => {
   it("请求超过策略超时时返回 timeout 结果", async () => {
     vi.useFakeTimers();
     const client = new LLMClient({
-      appRoot: "",
+      userAgent: TEST_USER_AGENT,
       transports: {
         "openai-compatible": create_abortable_transport(),
       },

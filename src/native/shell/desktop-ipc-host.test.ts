@@ -15,7 +15,7 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_TITLE_BAR_THEME,
-} from "../../desktop/ipc-contract";
+} from "../ipc-contract";
 
 const electron_mock = vi.hoisted(() => {
   type IpcEvent = { sender: unknown };
@@ -75,11 +75,11 @@ vi.mock("electron", () => {
   };
 });
 
-vi.mock("./window-handler", () => {
+vi.mock("./desktop-window-host", () => {
   return window_handler_mock;
 });
 
-describe("register_desktop_ipc_handlers", () => {
+describe("桌面 IPC 宿主", () => {
   afterEach(() => {
     electron_mock.reset();
     vi.clearAllMocks();
@@ -115,7 +115,7 @@ describe("register_desktop_ipc_handlers", () => {
     await register_handlers();
 
     await expect(invoke(IPC_CHANNEL_OPEN_EXTERNAL_URL, "file:///C:/secret.txt")).rejects.toThrow(
-      "当前只支持通过系统浏览器打开 http 或 https 链接。",
+      "Only http and https URLs can be opened in the system browser.",
     );
 
     expect(electron_mock.open_external).not.toHaveBeenCalled();
@@ -182,7 +182,7 @@ describe("register_desktop_ipc_handlers", () => {
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(6, main_window, {
       properties: ["openFile"],
       filters: [
-        { name: "支持的数据格式 (*.json *.xlsx)", extensions: ["json", "xlsx"] },
+        { name: "支持的文件 (*.json *.xlsx)", extensions: ["json", "xlsx"] },
         { name: "JSON 文件 (*.json)", extensions: ["json"] },
         { name: "Excel 文件 (*.xlsx)", extensions: ["xlsx"] },
       ],
@@ -225,7 +225,7 @@ describe("register_desktop_ipc_handlers", () => {
     });
     expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(2, main_window, {
       defaultPath: "glossary.json",
-      filters: [{ name: "支持的数据格式 (*.json *.xlsx)", extensions: ["json", "xlsx"] }],
+      filters: [{ name: "支持的文件 (*.json *.xlsx)", extensions: ["json", "xlsx"] }],
     });
     expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(3, main_window, {
       filters: [{ name: "支持的文件 (*.txt)", extensions: ["txt"] }],
@@ -257,6 +257,44 @@ describe("register_desktop_ipc_handlers", () => {
       filters: [{ name: "支持的文件 (*.txt)", extensions: ["txt"] }],
     });
   });
+
+  it("文件过滤器文案按调用时应用语言解析", async () => {
+    let app_language = "EN";
+    await register_handlers({
+      readAppLanguage: () => app_language,
+    });
+    electron_mock.show_open_dialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ["C:/glossary.json"],
+    });
+    electron_mock.show_save_dialog.mockResolvedValueOnce({
+      canceled: false,
+      filePath: "C:/glossary.xlsx",
+    });
+
+    await expect(invoke(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH)).resolves.toEqual({
+      canceled: false,
+      paths: ["C:/glossary.json"],
+    });
+    app_language = "ZH";
+    await expect(invoke(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, "glossary.xlsx")).resolves.toEqual({
+      canceled: false,
+      paths: ["C:/glossary.xlsx"],
+    });
+
+    expect(electron_mock.show_open_dialog).toHaveBeenCalledWith({
+      properties: ["openFile"],
+      filters: [
+        { name: "Supported files (*.json *.xlsx)", extensions: ["json", "xlsx"] },
+        { name: "JSON files (*.json)", extensions: ["json"] },
+        { name: "Excel files (*.xlsx)", extensions: ["xlsx"] },
+      ],
+    });
+    expect(electron_mock.show_save_dialog).toHaveBeenCalledWith({
+      defaultPath: "glossary.xlsx",
+      filters: [{ name: "支持的文件 (*.json *.xlsx)", extensions: ["json", "xlsx"] }],
+    });
+  });
 });
 
 async function register_handlers(
@@ -264,13 +302,15 @@ async function register_handlers(
     mainWindow?: unknown | null;
     logWindowHost?: { toggle: () => void } | null;
     markRendererConfirmedAppQuit?: () => void;
+    readAppLanguage?: () => unknown;
   } = {},
 ): Promise<void> {
-  const { register_desktop_ipc_handlers } = await import("./ipc-handler");
+  const { register_desktop_ipc_handlers } = await import("./desktop-ipc-host");
   register_desktop_ipc_handlers({
     getMainWindow: () => (options.mainWindow ?? null) as never,
     getLogWindowHost: () => (options.logWindowHost ?? null) as never,
     markRendererConfirmedAppQuit: options.markRendererConfirmedAppQuit ?? vi.fn(),
+    readAppLanguage: options.readAppLanguage ?? (() => "ZH"),
   });
 }
 

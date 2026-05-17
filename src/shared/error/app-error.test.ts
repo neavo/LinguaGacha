@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   InternalInvariantError,
+  FileParseFailedError,
   RequestValidationError,
+  RuntimeCapabilityMissingError,
   RevisionConflictError,
   to_api_error_payload,
   to_app_error_log_projection,
@@ -54,5 +56,40 @@ describe("shared/error", () => {
 
     expect(projection.level).toBe("debug");
     expect(projection.context["severity"]).toBe("expected");
+  });
+
+  it("运行能力错误保留统一诊断上下文", () => {
+    const error = new RuntimeCapabilityMissingError({
+      public_details: { capability: "core_api_port" },
+      diagnostic_context: {
+        reason: "exhausted_retryable_ports",
+        max_attempts: 2,
+      },
+    });
+
+    expect(error).toMatchObject({
+      code: "runtime.capability_missing",
+      public_details: { capability: "core_api_port" },
+      diagnostic_context: {
+        reason: "exhausted_retryable_ports",
+        max_attempts: 2,
+      },
+    });
+  });
+
+  it("文件解析失败使用稳定错误码和本地化动作", () => {
+    const error = new FileParseFailedError({
+      public_details: { format: "EPUB", parser: "XML" },
+    });
+
+    expect(to_api_error_payload(error, "request-2", create_text_resolver("zh-CN"))).toEqual({
+      code: "file.parse_failed",
+      details: { format: "EPUB", parser: "XML" },
+      message: "文件内容解析失败 …",
+      message_key: "app.error.file.parse_failed.message",
+      request_id: "request-2",
+      action: "请确认文件内容完整，或换用原始未损坏的文件 …",
+      action_key: "app.error.file.parse_failed.action",
+    });
   });
 });

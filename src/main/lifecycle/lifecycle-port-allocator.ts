@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 import net from "node:net";
 
-import { CORE_API_HOST } from "../../desktop/core-api-endpoint";
+import { CORE_API_HOST } from "../../native/core-api-endpoint";
+import { RuntimeCapabilityMissingError } from "../../shared/error";
 
-export { CORE_API_HOST, build_core_api_base_url } from "../../desktop/core-api-endpoint";
+export { CORE_API_HOST, build_core_api_base_url } from "../../native/core-api-endpoint";
 
 export const CORE_API_PORT_MIN = 49_152;
 export const CORE_API_PORT_MAX = 65_535;
@@ -37,7 +38,12 @@ async function assert_port_bindable(port: number): Promise<void> {
 
       if (address === null || typeof address === "string") {
         server.close(() => {
-          reject(new Error("无法分配 Core API 本地端口。"));
+          reject(
+            new RuntimeCapabilityMissingError({
+              public_details: { capability: "core_api_port" },
+              diagnostic_context: { reason: "unexpected_server_address", port },
+            }),
+          );
         });
         return;
       }
@@ -73,6 +79,14 @@ export async function allocate_core_api_port(
     }
   }
 
-  const detail = last_error instanceof Error ? last_error.message : "未知错误";
-  throw new Error(`无法在高位端口范围内分配 Core API 本地端口：${detail}`);
+  throw new RuntimeCapabilityMissingError({
+    public_details: { capability: "core_api_port" },
+    diagnostic_context: {
+      max_attempts,
+      port_min: CORE_API_PORT_MIN,
+      port_max: CORE_API_PORT_MAX,
+      reason: "exhausted_retryable_ports",
+    },
+    cause: last_error,
+  });
 }

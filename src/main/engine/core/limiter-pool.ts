@@ -1,3 +1,5 @@
+import { RuntimeCancelledError } from "../../../shared/error";
+
 const DEFAULT_CONCURRENCY_LIMIT = 8; // 用户未设置并发且未设置 RPM 时，默认同时执行 8 个 LLM work unit
 const ONE_MINUTE_MS = 60_000;
 const ONE_SECOND_MS = 1_000;
@@ -243,7 +245,10 @@ export class TaskLimiter {
    * 停止错误统一创建，避免各等待分支产生不同错误文本。
    */
   private create_abort_error(): Error {
-    return new Error("任务已停止。");
+    return new RuntimeCancelledError({
+      public_details: { resource: "task_limiter" },
+      diagnostic_context: { reason: "abort_signal" },
+    });
   }
 }
 

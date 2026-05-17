@@ -5,6 +5,7 @@ import {
 } from "../llm-client-policy";
 import type { ModelThinkingLevel } from "../../../base/model";
 import type { ApiJsonValue } from "../../api/api-types";
+import { RequestValidationError } from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";
 import type { LLMMessage } from "../llm-types";
 
@@ -58,7 +59,10 @@ export function normalize_chat_messages(
     .map((message) => ({ role: message.role, content: message.content.trim() }))
     .filter((message) => message.content !== "");
   if (result.length === 0) {
-    throw new Error("LLM 请求 messages 为空。");
+    throw new RequestValidationError({
+      public_details: { field: "messages" },
+      diagnostic_context: { provider_policy: "openai-compatible", reason: "empty_messages" },
+    });
   }
   return result;
 }

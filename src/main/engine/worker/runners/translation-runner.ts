@@ -19,6 +19,7 @@ import type { LLMClientPort, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
+import { RequestValidationError } from "../../../../shared/error";
 
 interface WorkUnitBaseRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -133,7 +134,10 @@ export class TranslationWorkUnitRunner {
   ): Promise<TranslateSingleWorkUnitResult> {
     const text = String(request.text ?? "").trim();
     if (text === "") {
-      throw new Error("待翻译文本不能为空。");
+      throw new RequestValidationError({
+        public_details: { field: "text" },
+        diagnostic_context: { task_type: "translate-single", reason: "empty_text" },
+      });
     }
     const item: TextTaskItemRecord = { src: text, dst: "", status: "NONE", text_type: "TXT" };
     const result = await this.execute_items(request, [item], [], true, signal);
@@ -574,7 +578,9 @@ export class TranslationWorkUnitRunner {
 
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
     const config =
-      typeof config_snapshot === "object" && config_snapshot !== null && !Array.isArray(config_snapshot)
+      typeof config_snapshot === "object" &&
+      config_snapshot !== null &&
+      !Array.isArray(config_snapshot)
         ? (config_snapshot as Record<string, ApiJsonValue>)
         : {};
     return config["app_language"];

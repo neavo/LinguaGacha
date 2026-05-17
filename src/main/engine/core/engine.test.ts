@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import type { LogManager } from "../../log/log-manager";
-import type { SettingService } from "../../service/setting-service";
+import type { AppSettingService } from "../../app/app-setting-service";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { ProjectTaskStore } from "../store/project-task-store";
@@ -43,7 +43,7 @@ describe("TaskEngine", () => {
         },
       } as unknown as WorkerExecutor,
       tokenCounter: create_test_token_counter(),
-      SettingService: create_setting_service(1),
+      AppSettingService: create_setting_service(1),
       logManager: create_log_manager(),
     });
 
@@ -93,7 +93,7 @@ describe("TaskEngine", () => {
           create_translation_worker_result([create_pending_item()], 0, 1, 2),
       } as unknown as WorkerExecutor,
       tokenCounter: create_test_token_counter(),
-      SettingService: create_setting_service(),
+      AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
 
@@ -161,7 +161,7 @@ describe("TaskEngine", () => {
       }),
       executorClient: {} as unknown as WorkerExecutor,
       tokenCounter: create_test_token_counter(),
-      SettingService: create_setting_service(),
+      AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
 
@@ -239,7 +239,7 @@ describe("TaskEngine", () => {
         },
       } as unknown as WorkerExecutor,
       tokenCounter: create_test_token_counter(),
-      SettingService: create_setting_service(2),
+      AppSettingService: create_setting_service(2),
       logManager: create_log_manager(),
     });
 
@@ -297,7 +297,7 @@ describe("TaskEngine", () => {
         },
       } as unknown as WorkerExecutor,
       tokenCounter: create_test_token_counter(1),
-      SettingService: create_setting_service(1, 16),
+      AppSettingService: create_setting_service(1, 16),
       logManager: create_log_manager(),
     });
 
@@ -330,7 +330,7 @@ describe("TaskEngine", () => {
       taskRuntimePublisher: create_task_runtime_publisher(done.publish),
       executorClient: {} as unknown as WorkerExecutor,
       tokenCounter: create_test_token_counter(),
-      SettingService: create_setting_service(),
+      AppSettingService: create_setting_service(),
       logManager: create_log_manager(logs),
     });
 
@@ -365,7 +365,7 @@ describe("TaskEngine", () => {
       taskRuntimePublisher: create_task_runtime_publisher(done.publish),
       executorClient: {} as unknown as WorkerExecutor,
       tokenCounter: create_test_token_counter(),
-      SettingService: create_setting_service(),
+      AppSettingService: create_setting_service(),
       logManager: create_log_manager(logs),
     });
 
@@ -489,7 +489,10 @@ describe("TaskEngine", () => {
   /**
    * 构造模型阈值快照，input_token_limit 参数用于切块预算边界测试
    */
-  function create_setting_service(concurrency_limit = 1, input_token_limit = 512): SettingService {
+  function create_setting_service(
+    concurrency_limit = 1,
+    input_token_limit = 512,
+  ): AppSettingService {
     const model = {
       id: "model-1",
       threshold: {
@@ -498,11 +501,11 @@ describe("TaskEngine", () => {
       },
     };
     return {
-      load_setting: () => ({
+      read_setting: () => ({
         activate_model_id: "model-1",
         models: [model],
       }),
-    } as unknown as SettingService;
+    } as unknown as AppSettingService;
   }
 
   function create_template_root(): string {

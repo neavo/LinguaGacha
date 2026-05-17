@@ -1,15 +1,13 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { tmpdir } from "node:os";
-
 import { describe, expect, it } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { LLMClientPolicy } from "./llm-client-policy";
 
+const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
+
 describe("LLMClientPolicy", () => {
   it("自定义 OpenAI-compatible endpoint 使用最终 payload 并写入 GPT-5 thinking 规则", async () => {
-    const policy = new LLMClientPolicy(await create_app_root());
+    const policy = new LLMClientPolicy(TEST_USER_AGENT);
 
     const resolved = policy.resolve(
       create_body({
@@ -52,7 +50,7 @@ describe("LLMClientPolicy", () => {
   });
 
   it("Gemini 2.5 Flash OFF 使用 thinkingBudget 0 且不 include thoughts", async () => {
-    const policy = new LLMClientPolicy(await create_app_root());
+    const policy = new LLMClientPolicy(TEST_USER_AGENT);
 
     const resolved = policy.resolve(
       create_body({
@@ -74,7 +72,7 @@ describe("LLMClientPolicy", () => {
   });
 
   it("Mimo v2 系列 thinking 等级映射为 OpenAI-compatible thinking.type", async () => {
-    const policy = new LLMClientPolicy(await create_app_root());
+    const policy = new LLMClientPolicy(TEST_USER_AGENT);
 
     const off_resolved = policy.resolve(
       create_body({
@@ -130,7 +128,7 @@ describe("LLMClientPolicy", () => {
   });
 
   it("Claude thinking 开启时移除 temperature 和 top_p", async () => {
-    const policy = new LLMClientPolicy(await create_app_root());
+    const policy = new LLMClientPolicy(TEST_USER_AGENT);
 
     const resolved = policy.resolve(
       create_body({
@@ -185,13 +183,4 @@ function create_body(model_overrides: Record<string, ApiJsonValue>) {
       { role: "user", content: '{"0":"こんにちは"}' },
     ],
   };
-}
-
-/**
- * 创建带固定 version.txt 的 appRoot，保证 User-Agent 断言稳定。
- */
-async function create_app_root(): Promise<string> {
-  const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-policy-"));
-  await writeFile(path.join(app_root, "version.txt"), "1.2.3", "utf-8");
-  return app_root;
 }

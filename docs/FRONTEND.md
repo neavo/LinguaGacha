@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart LR
-  X["src/desktop<br/>桌面宿主契约"] --> A["preload<br/>window.desktopApp"]
+  X["src/native<br/>桌面原生契约"] --> A["preload<br/>window.desktopApp"]
   X --> B["desktop-api.ts"]
   A --> B
   B --> C["DesktopRuntimeProvider"]
@@ -20,13 +20,13 @@ flowchart LR
 ```
 
 - renderer 只能通过 `window.desktopApp` 接入 Electron 宿主能力；禁止直接访问 Node、Electron、文件系统或内部服务。
-- `src/desktop` 是 main、preload、renderer 共享的桌面宿主契约归宿，负责 `window.desktopApp` 类型、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略。
-- `src/preload/index.ts` 是宿主桥接唯一暴露点，只实现 `src/desktop` 契约并负责 Core API base URL、原生对话框、外链、窗口关闭、日志窗口和标题栏主题的窄桥接。
+- `src/native` 根文件是 main、preload、renderer 共享的桌面原生契约归宿，负责 `window.desktopApp` 类型、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略；renderer 只能通过 `@native/*` 读取这些根契约文件。
+- `src/preload/index.ts` 是宿主桥接唯一暴露点，只实现 `src/native` 根契约并负责 Core API base URL、原生对话框、外链、窗口关闭、日志窗口和标题栏主题的窄桥接。
 - `src/renderer/app/desktop/desktop-api.ts` 是 renderer 访问 Core API 的唯一封装，负责 `/api/health` 探测、POST 响应壳解析、SSE 连接和错误类型。
 - 页面代码不得绕过 `desktop-api.ts` 拼接 Core API URL；新增 Core 调用应先在该层收口。
 - `DesktopApiError` 是 renderer 消费 Core 失败的唯一错误类型，Core API 错误码和 envelope 类型从 `src/shared/error` 导入，本地网络、探测和事件流失败使用 renderer 本地错误码与 `app.error.desktop.*.message`；页面只能按 code/status 决定刷新、重试、禁用或跳转，不读取后端原始异常文本。
 - `src/renderer/app/ui-runtime/error-message.ts` 是普通页面解析用户可见错误文案的唯一入口；页面 toast、dialog 和空状态不能直接展示 `Error.message` 或自行解析 `DesktopApiError.message_key`。
-- 普通页面只展示 `message_key` 对应本地化文案或后端提供的安全 `message`；日志窗口可以展示脱敏后的诊断信息，但不能显示 stack、API key、Authorization header、provider 原始响应或内部绝对路径。
+- 普通页面只展示 `DesktopApiError.message_key` 对应本地化文案或后端提供的安全 `message`；非 Core API 异常只按页面语境 fallback 展示，`WorkerClientError` 等本地错误只提供稳定 code 给页面分支。日志窗口可以展示脱敏后的诊断信息，但不能显示 stack、API key、Authorization header、provider 原始响应或内部绝对路径。
 
 ## 2. 运行态初始化
 
@@ -54,7 +54,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 本地 item upsert 必须由当前完整 DTO 加局部 patch 合成完整记录；只表达字段变化的路径应走专门 mutation payload，由后端合并数据库事实。
 - `ProjectStore` change revision 默认合并，乐观 change 使用 exact revision；项目数据派生缓存只能消费 `ProjectDataRevisionCheckpoint` 和声明的 required sections，不得用 `task` 或时间戳作为 freshness 主依据。
 - `delete_items` / `delete_files` 是显式 tombstone 语义；无法精确表达删除时必须使用对应 section 的 full replace，让派生缓存重建。
-- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并和分析导入预演复用 `src/shared/quality`；Electron 桌面宿主契约从 `src/desktop` 导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
+- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并和分析导入预演复用 `src/shared/quality`；Electron 桌面原生契约从 `src/native` 根导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
 - 基础设置页的源语言与目标语言控件分别消费 `SOURCE_LANGUAGE_CODES` 和 `TARGET_LANGUAGE_CODES`；`ALL` 只作为源语言过滤关闭值进入源语言控件，页面不得用总语言表同时驱动源/目标下拉。
 - `ProjectStore` 只消费 `Prompt` 和 `QualityRule` 派生出的公开 key 与切片归一化结果；页面发起质量规则预设请求时传 `rule_type`，不传物理预设目录名。
 
@@ -92,7 +92,7 @@ project, files, items, quality, prompts, analysis, proofreading
 必须同步更新本文的改动：
 
 - preload 暴露能力、`window.desktopApp` 类型或 Core API 接入方式变化。
-- `src/desktop` 的桥接 API、IPC、标题栏壳层、Core API 地址注入或外链策略变化。
+- `src/native` 根契约的桥接 API、IPC、标题栏壳层、Core API 地址注入或外链策略变化。
 - `desktop-api.ts` 的响应壳、错误、SSE、项目读取或外部网络调用语义变化。
 - `ProjectStore` section、项目变更 payload、revision 对齐、本地乐观 change 或项目读取消费方式变化。
 - 改 renderer 消费的跨层基础值域、合法值集合、normalize 或派生判断。

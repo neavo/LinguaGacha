@@ -55,7 +55,7 @@ describe("anthropic-policy", () => {
   it("只有 system 消息时在协议边界直接阻断", () => {
     expect(() =>
       build_anthropic_payload(create_snapshot(), [{ role: "system", content: "系统约束" }]),
-    ).toThrow("LLM 请求 messages 为空。");
+    ).toThrow("request.validation_failed");
   });
 });
 

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NPM_INITIAL_CWD_ENV_NAME } from "./lifecycle-command-resolver";
 import { CoreLifecycleManager } from "./lifecycle-manager";
+import { InternalInvariantError } from "../../shared/error";
 
 let temp_dir = ""; // temp_dir 承载测试应用根和数据根，避免生命周期日志写入真实工作区
 let original_initial_cwd: string | undefined; // original_initial_cwd 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析
@@ -62,6 +63,7 @@ describe("CoreLifecycleManager", () => {
           version: "9.8.7",
         },
       });
+      expect(start_result.readAppLanguage()).toBe("ZH");
 
       const log_text = read_log_text(path.join(temp_dir, "log"));
       expect(log_text.indexOf('"message":""')).toBeLessThan(
@@ -77,6 +79,34 @@ describe("CoreLifecycleManager", () => {
       );
       expect(log_text).not.toContain("ProjectDatabase 已就绪");
       expect(log_text).not.toContain("Database Service 已启动");
+    } finally {
+      await manager.stop();
+    }
+  });
+
+  it("禁止 ready 状态重复进入启动链路", async () => {
+    const manager = new CoreLifecycleManager({
+      appRoot: temp_dir,
+      openOutputFolder: noop_output_folder,
+    });
+
+    await manager.start();
+    try {
+      let repeated_start_error: unknown;
+      try {
+        await manager.start();
+      } catch (error) {
+        repeated_start_error = error;
+      }
+
+      expect(repeated_start_error).toBeInstanceOf(InternalInvariantError);
+      expect(repeated_start_error).toMatchObject({
+        code: "runtime.internal_invariant",
+        diagnostic_context: {
+          reason: "core_lifecycle_start_invalid_state",
+          state: "ready",
+        },
+      });
     } finally {
       await manager.stop();
     }

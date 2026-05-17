@@ -1,6 +1,6 @@
-import type { DesktopBridgeApi } from "../desktop/bridge-api";
-import type { DesktopCoreApiInfo, DesktopShellInfo } from "../desktop/bridge-types";
-import { resolve_desktop_shell_info } from "../desktop/shell-contract";
+import type { DesktopBridgeApi } from "../native/bridge-api";
+import type { DesktopCoreApiInfo, DesktopShellInfo } from "../native/bridge-types";
+import { resolve_desktop_shell_info } from "../native/shell-contract";
 
 export const DESKTOP_BRIDGE_TEST_BASE_URL = "http://127.0.0.1:38191";
 

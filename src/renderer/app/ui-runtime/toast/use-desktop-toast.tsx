@@ -39,6 +39,21 @@ type DesktopToastApi = {
   }) => Promise<T>;
 };
 
+/**
+ * ModalProgressToastTimeoutError 表示模态进度任务超时，页面只按 name/code 做兜底处理。
+ */
+export class ModalProgressToastTimeoutError extends Error {
+  public readonly code = "modal_progress_timeout"; // code 是进度 toast 超时的稳定诊断标识
+
+  /**
+   * message 使用非展示诊断标识，避免超时异常文本直接进入 toast。
+   */
+  public constructor() {
+    super("ui_runtime.modal_progress_timeout");
+    this.name = "ModalProgressToastTimeoutError";
+  }
+}
+
 const PROGRESS_TOAST_DISMISS_DELAY_MS = 1500;
 const PROGRESS_TOAST_SONNER_ID = "desktop-progress-toast";
 const regular_toast_id_set = new Set<DesktopToastId>();
@@ -282,7 +297,7 @@ export function useDesktopToast(): DesktopToastApi {
           args.task(),
           new Promise<T>((_resolve, reject) => {
             timeout_id = window.setTimeout(() => {
-              reject(new Error("模态进度通知等待超时。"));
+              reject(new ModalProgressToastTimeoutError());
             }, args.timeout_ms);
           }),
         ]);

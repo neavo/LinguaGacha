@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { LogManager } from "../../log/log-manager";
-import { AppPathService } from "../../service/path-service";
+import { AppPathService } from "../../app/app-path-service";
 import { prompt_user_preset_layout_migration } from "./prompt-user-preset-layout-migration";
 
 let temp_dir = "";

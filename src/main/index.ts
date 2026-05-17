@@ -1,17 +1,18 @@
-import { app, BrowserWindow, dialog, shell } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { register_desktop_ipc_handlers } from "./handler/ipc-handler";
+import { register_desktop_ipc_handlers } from "../native/shell/desktop-ipc-host";
 import {
   configure_development_remote_debugging,
   configure_renderer_public_path,
   create_log_window_host,
   create_main_window,
-} from "./handler/window-handler";
+} from "../native/shell/desktop-window-host";
+import { show_native_error_dialog } from "../native/shell/native-error-dialog";
 import { CoreLifecycleManager } from "./lifecycle/lifecycle-manager";
 import { install_main_fatal_error_handler } from "./lifecycle/main-fatal-error-handler";
-import { type LogWindowHost } from "./log/log-window-host";
+import { type LogWindowHost } from "../native/shell/log-window-host";
 import { write_electron_main_error } from "./log/log-bridge";
 import { t_main_log } from "./log/log-text";
 import * as AppErrors from "../shared/error";
@@ -34,7 +35,7 @@ const core_lifecycle_manager = new CoreLifecycleManager({
   onUnexpectedExit: (result) => {
     const exit_code_text = result.exitCode === null ? "null" : result.exitCode.toString(); // 兼容迁移窗口的异常回调；触发时仍直接走同一条退出清理路径
     const signal_text = result.signal === null ? "null" : result.signal;
-    dialog.showErrorBox(
+    show_native_error_dialog(
       "后端服务异常退出",
       `后端服务已提前退出，应用将关闭。\n退出码：${exit_code_text}\n信号：${signal_text}`,
     );
@@ -92,7 +93,7 @@ function require_core_api_base_url(): string {
 /**
  * 注册 renderer 可调用的桌面宿主桥接能力
  */
-function register_runtime_ipc_handlers(): void {
+function register_runtime_ipc_handlers(read_app_language: () => unknown): void {
   register_desktop_ipc_handlers({
     getMainWindow: () => {
       return win;
@@ -103,6 +104,7 @@ function register_runtime_ipc_handlers(): void {
     markRendererConfirmedAppQuit: () => {
       is_renderer_confirmed_app_quit = true;
     },
+    readAppLanguage: read_app_language,
   });
 }
 
@@ -155,12 +157,12 @@ app.whenReady().then(async () => {
       desktopBundleDir: desktop_bundle_dir,
       coreApiBaseUrl: core_start_result.baseUrl,
     });
-    register_runtime_ipc_handlers();
+    register_runtime_ipc_handlers(core_start_result.readAppLanguage);
     create_main_window_for_runtime();
   } catch (error) {
     write_electron_main_error(t_main_log("app.diagnostic.lifecycle.app_start_failed"), { error });
     const message = error instanceof Error ? error.message : "后端服务启动失败。";
-    dialog.showErrorBox("LinguaGacha 启动失败", message);
+    show_native_error_dialog("LinguaGacha 启动失败", message);
     app.exit(1);
   }
 });

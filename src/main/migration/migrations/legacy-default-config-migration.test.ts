@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { LogManager } from "../../log/log-manager";
-import { AppPathService } from "../../service/path-service";
+import { AppPathService } from "../../app/app-path-service";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { legacy_default_config_migration } from "./legacy-default-config-migration";
 

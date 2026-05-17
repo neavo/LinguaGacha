@@ -3,14 +3,14 @@ export function resolve_external_url(url: string): string {
   const normalized_url = url.trim();
 
   if (normalized_url === "") {
-    throw new Error("外部链接不能为空。");
+    throw new Error("External URL must not be empty.");
   }
 
   const parsed_url = new URL(normalized_url);
   const protocol = parsed_url.protocol.toLowerCase();
 
   if (protocol !== "http:" && protocol !== "https:") {
-    throw new Error("当前只支持通过系统浏览器打开 http 或 https 链接。");
+    throw new Error("Only http and https URLs can be opened in the system browser.");
   }
 
   return parsed_url.toString();

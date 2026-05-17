@@ -1,9 +1,8 @@
-import fs from "node:fs";
-
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 import {
   build_project_mutation_ack_from_meta,
   get_runtime_section_revision,
@@ -33,6 +32,8 @@ export class ProjectSyncMutationService {
 
   private readonly project_change_publisher: ProjectChangePublisher | null; // 同步 mutation 写库成功后通过发布器进入权威项目变更事件流
 
+  private readonly native_fs: NativeFs; // native_fs 只用于显式项目路径存在性校验，.lg 写入仍归 ProjectDatabase
+
   private file_operation_running = false; // 工作台文件 mutation 在 服务端内部串行化，避免同一工程文件集合并发写入
 
   /**
@@ -43,11 +44,13 @@ export class ProjectSyncMutationService {
     task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
     project_change_publisher: ProjectChangePublisher | null = null,
+    native_fs: NativeFs = default_native_fs,
   ) {
     this.database = database;
     this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
     this.project_change_publisher = project_change_publisher;
+    this.native_fs = native_fs;
   }
 
   /**
@@ -455,7 +458,7 @@ export class ProjectSyncMutationService {
    * 显式 path 来自打开前设置对齐，必须先确认旧工程存在，避免 SQLite 静默创建空库
    */
   private assert_explicit_project_file_exists(project_path: string): void {
-    if (!fs.existsSync(project_path)) {
+    if (!this.native_fs.exists(project_path)) {
       throw new AppErrors.ProjectNotFoundError({
         public_details: {
           filename: project_path.split(/[\\/]/u).at(-1) ?? "",

@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import { Item, type ItemFileType } from "../../base/item";
@@ -14,6 +13,7 @@ import { WOLFXLSXFormat } from "./formats/wolfxlsx-format";
 import { XLSXFormat } from "./formats/xlsx-format";
 import { EPUBFormat } from "./formats/epub/epub-format";
 import * as AppErrors from "../../shared/error";
+import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 import {
   type ExportPaths,
   type FileFormatServiceConfig,
@@ -38,6 +38,8 @@ const SUPPORTED_EXTENSIONS = new Set([
  * Electron main 侧公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
  */
 export class FileFormatService {
+  private readonly config: FileFormatServiceConfig; // config 固定一次解析/导出使用的语言和写回选项
+  private readonly native_fs: NativeFs; // native_fs 是源文件扫描和预览读取的唯一磁盘入口
   private readonly txt: TXTFormat;
   private readonly md: MDFormat;
   private readonly ass: ASSFormat;
@@ -53,7 +55,9 @@ export class FileFormatService {
   /**
    * 构造时固定各格式处理器，保证一次服务实例内配置一致
    */
-  public constructor(private readonly config: FileFormatServiceConfig) {
+  public constructor(config: FileFormatServiceConfig, native_fs: NativeFs = default_native_fs) {
+    this.config = config;
+    this.native_fs = native_fs;
     this.txt = new TXTFormat(config);
     this.md = new MDFormat(config);
     this.ass = new ASSFormat(config);
@@ -133,7 +137,10 @@ export class FileFormatService {
       current_rel_path === undefined || current_rel_path === ""
         ? path.basename(file_path)
         : this.build_replace_target_rel_path(current_rel_path, file_path);
-    const parsed_items = await this.parse_asset(target_rel_path, fs.readFileSync(file_path));
+    const parsed_items = await this.parse_asset(
+      target_rel_path,
+      this.native_fs.read_file(file_path),
+    );
     return {
       target_rel_path,
       file_type: this.pick_file_type(parsed_items),
@@ -226,10 +233,10 @@ export class FileFormatService {
    * 递归收集目录内支持文件，保持文件输入和目录输入共用一套过滤
    */
   private collect_source_files(source_path: string): string[] {
-    if (!fs.existsSync(source_path)) {
+    if (!this.native_fs.exists(source_path)) {
       return [];
     }
-    const stat = fs.statSync(source_path);
+    const stat = this.native_fs.stat(source_path);
     if (stat.isFile()) {
       return this.is_supported_file(source_path) ? [source_path] : [];
     }
@@ -237,7 +244,7 @@ export class FileFormatService {
       return [];
     }
     const result: string[] = [];
-    for (const entry of fs.readdirSync(source_path, { withFileTypes: true })) {
+    for (const entry of this.native_fs.read_dirents(source_path)) {
       const entry_path = path.join(source_path, entry.name);
       if (entry.isDirectory()) {
         result.push(...this.collect_source_files(entry_path));
@@ -261,15 +268,14 @@ export class FileFormatService {
    * Windows 路径比较大小写不敏感，去重 key 必须按平台归一化
    */
   private build_path_identity_key(source_path: string): string {
-    const resolved_path = path.resolve(source_path);
-    return process.platform === "win32" ? resolved_path.toLowerCase() : resolved_path;
+    return this.native_fs.to_identity_path(source_path);
   }
 
   /**
    * 目录输入保留目录内相对结构，单文件输入只使用文件名
    */
   private build_source_relative_path(source_root: string, source_file: string): string {
-    if (fs.existsSync(source_root) && fs.statSync(source_root).isFile()) {
+    if (this.native_fs.exists(source_root) && this.native_fs.stat(source_root).isFile()) {
       return path.basename(source_file);
     }
     return path.relative(source_root, source_file) || path.basename(source_file);

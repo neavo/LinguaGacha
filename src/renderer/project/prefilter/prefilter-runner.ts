@@ -4,10 +4,8 @@ import {
   type ProjectPrefilterMutationInput,
   type ProjectPrefilterMutationOutput,
 } from "@/project/prefilter/prefilter-mutation-builder";
-import {
-  normalize_project_item_public_record,
-  type ProjectItemPublicRecord,
-} from "@base/item";
+import { normalize_project_item_public_record, type ProjectItemPublicRecord } from "@base/item";
+import { InternalInvariantError } from "@shared/error";
 
 export type ProjectPrefilterRunnerSettings = {
   source_language: string;
@@ -153,7 +151,9 @@ export function merge_prefilter_output_with_draft_items(args: {
   return args.draft_items.map((draft_item) => {
     const base_item = normalize_project_item_public_record(draft_item);
     if (base_item === null) {
-      throw new Error("预过滤草稿必须提供完整公开 item DTO。");
+      throw new InternalInvariantError({
+        diagnostic_context: { reason: "prefilter_draft_requires_full_item_dto" },
+      });
     }
     const runtime_item = args.output_items[String(base_item.item_id)] ?? base_item;
     return {

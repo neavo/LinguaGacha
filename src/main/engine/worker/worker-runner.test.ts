@@ -266,7 +266,7 @@ describe("work-unit runner", () => {
         },
         new AbortController().signal,
       ),
-    ).rejects.toThrow("待翻译文本不能为空");
+    ).rejects.toThrow("request.validation_failed");
   });
 });
 

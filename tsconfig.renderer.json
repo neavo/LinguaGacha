@@ -14,9 +14,14 @@
     "noUnusedParameters": true,
     "paths": {
       "@/*": ["./src/renderer/*"],
-      "@desktop/*": ["./src/desktop/*"],
+      "@base/*": ["./src/base/*"],
+      "@native/bridge-api": ["./src/native/bridge-api.ts"],
+      "@native/bridge-types": ["./src/native/bridge-types.ts"],
+      "@native/core-api-endpoint": ["./src/native/core-api-endpoint.ts"],
+      "@native/external-url-policy": ["./src/native/external-url-policy.ts"],
+      "@native/ipc-contract": ["./src/native/ipc-contract.ts"],
+      "@native/shell-contract": ["./src/native/shell-contract.ts"],
       "@shared/*": ["./src/shared/*"],
-      "@base/*": ["./src/base/*"]
     },
     "resolveJsonModule": true,
     "skipLibCheck": true,
@@ -25,5 +30,5 @@
     "tsBuildInfoFile": "./build/tsconfig.renderer.tsbuildinfo",
     "verbatimModuleSyntax": true
   },
-  "include": ["src/renderer", "src/base", "src/shared", "src/desktop", "src/electron-env.d.ts"]
+  "include": ["src/renderer", "src/base", "src/shared", "src/native/*.ts", "src/electron-env.d.ts"]
 }

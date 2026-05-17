@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
-import type { SettingService } from "../../service/setting-service";
+import type { AppSettingService } from "../../app/app-setting-service";
 import { text_preserve_mode_migration } from "./text-preserve-mode-migration";
 
 describe("text_preserve_mode_migration", () => {
@@ -41,6 +41,6 @@ function create_context(options: { meta?: Record<string, DatabaseJsonValue> }) {
   return {
     project_path: "demo.lg",
     database,
-    setting_service: { load_setting: vi.fn(() => ({})) } as unknown as SettingService,
+    app_setting_service: { read_setting: vi.fn(() => ({})) } as unknown as AppSettingService,
   };
 }

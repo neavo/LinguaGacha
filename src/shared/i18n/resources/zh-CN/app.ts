@@ -77,6 +77,13 @@ export const zh_cn_app = {
     builder_input: "输入：",
     builder_preceding_context: "参考上文：",
   },
+  native_file_filter: {
+    project: "LinguaGacha Project",
+    supported_json_xlsx_files: "支持的文件 (*.json *.xlsx)",
+    json_files: "JSON 文件 (*.json)",
+    excel_files: "Excel 文件 (*.xlsx)",
+    supported_txt_files: "支持的文件 (*.txt)",
+  },
   error: {
     request: {
       validation_failed: {
@@ -107,6 +114,14 @@ export const zh_cn_app = {
       unsupported_format: {
         message: "不支持的文件格式 …",
         action: "请选择 LinguaGacha 支持的源文件 …",
+      },
+      parse_failed: {
+        message: "文件内容解析失败 …",
+        action: "请确认文件内容完整，或换用原始未损坏的文件 …",
+      },
+      invalid_structure: {
+        message: "文件结构不符合格式要求 …",
+        action: "请确认文件来源正确，或重新导出后再导入 …",
       },
       io_failed: {
         message: "文件读写失败 …",
@@ -144,10 +159,19 @@ export const zh_cn_app = {
       failed: {
         message: "后台执行通道失败 …",
       },
+      execution_failed: {
+        message: "后台任务执行失败 …",
+      },
     },
     runtime: {
       capability_missing: {
         message: "当前运行环境缺少必要能力 …",
+      },
+      disposed: {
+        message: "运行资源已释放 …",
+      },
+      cancelled: {
+        message: "操作已取消 …",
       },
       internal_invariant: {
         message: "内部状态异常 …",

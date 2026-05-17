@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
-import type { SettingService } from "../../service/setting-service";
+import type { AppSettingService } from "../../app/app-setting-service";
 import { translation_prompt_legacy_slot_migration } from "./translation-prompt-legacy-slot-migration";
 
 describe("translation_prompt_legacy_slot_migration", () => {
@@ -95,8 +95,8 @@ function create_context(options: {
   return {
     project_path: "demo.lg",
     database,
-    setting_service: {
-      load_setting: vi.fn(() => ({ app_language: "ZH", ...options.config })),
-    } as unknown as SettingService,
+    app_setting_service: {
+      read_setting: vi.fn(() => ({ app_language: "ZH", ...options.config })),
+    } as unknown as AppSettingService,
   };
 }

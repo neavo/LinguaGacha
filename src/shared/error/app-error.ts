@@ -19,6 +19,8 @@ export type AppErrorCode =
   | "project.not_found"
   | "file.not_found"
   | "file.unsupported_format"
+  | "file.parse_failed"
+  | "file.invalid_structure"
   | "file.io_failed"
   | "database.conflict"
   | "data.revision_conflict"
@@ -26,7 +28,10 @@ export type AppErrorCode =
   | "model.not_found"
   | "model.provider_failed"
   | "worker.failed"
+  | "worker.execution_failed"
   | "runtime.capability_missing"
+  | "runtime.disposed"
+  | "runtime.cancelled"
   | "runtime.internal_invariant"
   | "language.invalid_target_language"
   | "language.unsupported_all_target_language"
@@ -80,6 +85,16 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
     severity: "expected",
     action_key: "app.error.file.unsupported_format.action",
   },
+  "file.parse_failed": {
+    status: 415,
+    severity: "expected",
+    action_key: "app.error.file.parse_failed.action",
+  },
+  "file.invalid_structure": {
+    status: 415,
+    severity: "expected",
+    action_key: "app.error.file.invalid_structure.action",
+  },
   "file.io_failed": {
     status: 500,
     severity: "fault",
@@ -113,9 +128,21 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
     status: 502,
     severity: "warning",
   },
+  "worker.execution_failed": {
+    status: 502,
+    severity: "warning",
+  },
   "runtime.capability_missing": {
     status: 500,
     severity: "fault",
+  },
+  "runtime.disposed": {
+    status: 500,
+    severity: "fault",
+  },
+  "runtime.cancelled": {
+    status: 409,
+    severity: "expected",
   },
   "runtime.internal_invariant": {
     status: 500,
@@ -153,6 +180,8 @@ export interface AppErrorOptions {
   diagnostic_context?: AppErrorDiagnosticContext;
   cause?: unknown;
 }
+
+export type AppErrorArgs = Omit<AppErrorOptions, "code">;
 
 /**
  * AppError 是跨 main / renderer / worker 的唯一错误事实，不承担日志写入副作用。
